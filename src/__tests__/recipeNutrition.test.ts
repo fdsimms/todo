@@ -63,6 +63,7 @@ function recipe(name: string, ingredients: RecipeIngredient[], overrides: Partia
     emptySections: [],
     emptyStepSections: [],
     components: [],
+    blanks: [],
     prepTasks: [],
     steps: [],
     sortOrder: seq,

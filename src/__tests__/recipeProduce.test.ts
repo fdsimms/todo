@@ -46,6 +46,7 @@ function recipe(name: string, ingredients: RecipeIngredient[], over: Partial<Rec
     emptySections: [],
     emptyStepSections: [],
     components: [],
+    blanks: [],
     prepTasks: [],
     steps: [],
     sortOrder: seq,

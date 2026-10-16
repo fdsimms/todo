@@ -396,6 +396,8 @@ export const SIMPLE_GROCERY_ROW_FEATURES: Readonly<Record<string, SimpleFeatureI
   // "this item can stand in for that name" half of the catalog, and a mode
   // picker with one toggle per field is the complexity the mode exists to cut.
   varietyOf: 'substitutes',
+  // Only a recipe's blanks read it, and those go with the rest of composition.
+  foodKinds: 'recipeComposition',
 };
 
 /** Does a grocery item sheet field render? Same `set` rule as the editor's. */

@@ -28,6 +28,7 @@ function recipe(id: string, name: string, overrides: Partial<Recipe> = {}): Reci
     emptySections: [],
     emptyStepSections: [],
     components: [],
+    blanks: [],
     prepTasks: [],
     steps: [],
     sortOrder: ++seq,

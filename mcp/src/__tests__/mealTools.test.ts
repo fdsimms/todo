@@ -7,8 +7,9 @@
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
 import { copyMeals, listMealPlan, planMeal, saveMealAsRecipe, setMealCooked, updateMeal } from '../kitchenTools';
-import { saveRecipe } from '../logTools';
+import { saveRecipe, updateRecipe } from '../logTools';
 import { addToPantry, logLeftover } from '../pantryTools';
+import { getGroceryItem, updateGroceryItem } from '../groceryTools';
 import { completeTask, reopenTask } from '../tools';
 
 // Loaded once the replica is open, since loading an app module first in this
@@ -123,6 +124,75 @@ describe('update_meal', () => {
   it('stores the per-meal task answers', () => {
     const meal = planMeal(replica, { date: DAY, slot: 'dinner', title: 'Takeout' });
     expect(updateMeal(replica, meal.id, { shopTask: false, logMeal: true })).toMatchObject({ shopTask: false, logMeal: true });
+  });
+});
+
+describe('recipe blanks and update_meal fills', () => {
+  const bowl = () => saveRecipe(replica, {
+    name: 'Any Grain Bowl',
+    ingredients: [{ text: '1 tbsp olive oil' }],
+    blanks: [
+      { kind: 'grain', pick: 'one', amount: '1 cup' },
+      { label: 'Veg', kind: 'vegetable', amount: '2 cups' },
+    ],
+  });
+  const shop = () => replica.plannedIngredients({ from: DAY, to: DAY }, null).map(l => l.nameKey);
+
+  it('saves blanks, shows them on the recipe, and keeps a blank’s id when an edit names it again', () => {
+    const r = bowl();
+    expect(r.blanks).toEqual([
+      { label: 'Grains & starches', kind: 'grain', pick: 'one', amount: '1 cup' },
+      { label: 'Veg', kind: 'vegetable', pick: 'any', amount: '2 cups' },
+    ]);
+    const before = replica.recipes().find(x => x.id === r.id)!.blanks.map(b => b.id);
+    const edited = updateRecipe(replica, r.id, { blanks: [{ label: 'veg', kind: 'vegetable', pick: 2 }] });
+    expect(edited.blanks).toEqual([{ label: 'veg', kind: 'vegetable', pick: 2 }]);
+    expect(replica.recipes().find(x => x.id === r.id)!.blanks.map(b => b.id)).toEqual([before[1]]);
+  });
+
+  it('lists what the kitchen holds for each blank, fills it, and shops for the fill only', () => {
+    addToPantry(replica, ['rice', 'frozen peas']);
+    const r = bowl();
+    const meal = planMeal(replica, { date: DAY, slot: 'dinner', recipeId: r.id });
+    expect(shop()).toEqual(['olive oil']);
+    const listed = listMealPlan(replica, { from: DAY, days: 1 }).meals[0];
+    expect(listed.blanks?.map(b => [b.blank, b.pick, b.inKitchen, b.filledWith])).toEqual([
+      ['Grains & starches', 'Pick one', ['rice'], []],
+      ['Veg', 'Pick any', ['frozen peas'], []],
+    ]);
+
+    const out = updateMeal(replica, meal.id, { fills: [{ blank: 'grains & starches', with: ['rice'] }, { blank: 'Veg', with: ['frozen peas', 'kale'] }] });
+    expect(out.blanks?.map(b => b.filledWith)).toEqual([['1 cup rice'], ['1 cup frozen peas', '1 cup kale']]);
+    expect(shop()).toEqual(['olive oil', 'rice', 'frozen peas', 'kale']);
+    expect(out.replacements).toBeUndefined();
+
+    // Rewriting the replacements leaves the fills alone.
+    updateMeal(replica, meal.id, { replacements: [{ replace: 'olive oil', with: null }] });
+    expect(shop()).toEqual(['rice', 'frozen peas', 'kale']);
+
+    updateMeal(replica, meal.id, { fills: [{ blank: 'veg', with: [] }] });
+    expect(shop()).toEqual(['rice']);
+  });
+
+  it('refuses a blank the recipe does not have, naming the ones it does', () => {
+    const r = bowl();
+    const meal = planMeal(replica, { date: DAY, slot: 'dinner', recipeId: r.id });
+    expect(() => updateMeal(replica, meal.id, { fills: [{ blank: 'Cheese', with: ['feta'] }] }))
+      .toThrow('"Cheese" is not a blank of "Any Grain Bowl". It has: Grains & starches, Veg.');
+  });
+});
+
+describe('a grocery item’s food type', () => {
+  it('shows the guess, files it, and hands it back to the guess', () => {
+    addToPantry(replica, ['tofurky roast']);
+    const item = replica.groceryItems().find(i => i.name === 'tofurky roast')!;
+    expect(getGroceryItem(replica, { id: item.id })).toMatchObject({ foodType: ['protein'], foodTypeGuessed: true });
+    updateGroceryItem(replica, { id: item.id, foodType: ['protein', 'legume'] });
+    const filed = getGroceryItem(replica, { id: item.id });
+    expect(filed.foodType).toEqual(['protein', 'legume']);
+    expect(filed.foodTypeGuessed).toBeUndefined();
+    updateGroceryItem(replica, { id: item.id, foodType: null });
+    expect(getGroceryItem(replica, { id: item.id })).toMatchObject({ foodType: ['protein'], foodTypeGuessed: true });
   });
 });
 

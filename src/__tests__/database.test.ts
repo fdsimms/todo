@@ -2891,6 +2891,21 @@ describe('grocery items', () => {
     expect(dbGetAllGroceryItems()).toEqual([item]);
   });
 
+  // Absent and empty are two answers (see GroceryItem.foodKinds): never filed,
+  // so the name's guess applies, and filed as nothing. Both have to survive.
+  it('round-trips a food-kind filing, keeping absent and empty apart', () => {
+    insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Tofurky', foodKinds: ['protein'] }));
+    insertListedGroceryItem(makeGroceryItem({ id: 'g2', name: 'Rice', nameKey: 'rice', foodKinds: [] }));
+    insertListedGroceryItem(makeGroceryItem({ id: 'g3', name: 'Kale', nameKey: 'kale' }));
+    const byId = new Map(dbGetAllGroceryItems().map(i => [i.id, i]));
+    expect(byId.get('g1')!.foodKinds).toEqual(['protein']);
+    expect(byId.get('g2')!.foodKinds).toEqual([]);
+    expect('foodKinds' in byId.get('g3')!).toBe(false);
+
+    dbUpdateGroceryItem({ ...byId.get('g3')!, foodKinds: ['vegetable', 'herb'] });
+    expect(dbGetAllGroceryItems().find(i => i.id === 'g3')!.foodKinds).toEqual(['vegetable', 'herb']);
+  });
+
 
   // A trip is the only thing that writes the rolling window, and it has to land
   // at both levels — the item's run is the fallback for a trip that named no
@@ -5536,6 +5551,7 @@ describe('recipe rows', () => {
     emptySections: [],
     emptyStepSections: [],
     components: [],
+    blanks: [],
     prepTasks: [],
     steps: [],
     sortOrder: 1,
@@ -5575,6 +5591,23 @@ describe('recipe rows', () => {
     dbInsertRecipe(recipe);
 
     expect(dbGetAllRecipes()).toEqual([recipe]);
+  });
+
+  it('round-trips a recipe’s blanks through insert and update', () => {
+    const recipe = makeRecipe({
+      id: 'r1',
+      name: 'Any Grain Bowl',
+      blanks: [{ id: 'b1', label: 'Grain', kind: 'grain', max: 1, quantity: '1 cup', options: [] }],
+    });
+    dbInsertRecipe(recipe);
+    expect(dbGetAllRecipes()).toEqual([recipe]);
+
+    const edited = {
+      ...recipe,
+      blanks: [...recipe.blanks, { id: 'b2', label: 'Cheese', kind: null, max: 1, quantity: '', options: ['feta', 'cheddar'] }],
+    };
+    dbUpdateRecipe(edited);
+    expect(dbGetAllRecipes()).toEqual([edited]);
   });
 
   it('round-trips an update, so the SET list and its arguments stay in step', () => {

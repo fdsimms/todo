@@ -70,6 +70,7 @@ function recipe(name: string, ingredients: RecipeIngredient[]): Recipe {
     emptySections: [],
     emptyStepSections: [],
     components: [],
+    blanks: [],
     prepTasks: [],
     steps: [],
     sortOrder: seq,

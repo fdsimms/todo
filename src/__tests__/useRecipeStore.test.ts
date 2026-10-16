@@ -71,6 +71,7 @@ function makeRecipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     emptySections: [],
     emptyStepSections: [],
     components: [],
+    blanks: [],
     prepTasks: [],
     steps: [],
     sortOrder: seq,
@@ -1468,6 +1469,47 @@ describe('setComponentAmountUsed', () => {
     const { steak } = seedPair();
     useRecipeStore.getState().setComponentAmountUsed(steak.id, 'nope', '1 cup');
     expect(useRecipeStore.getState().recipeById(steak.id)!.components[0].amountUsed).toBeUndefined();
+  });
+});
+
+describe('addBlank / updateBlank / removeBlank', () => {
+  it('adds a blank, labelled by its kind when no label is typed, and persists it', () => {
+    const bowl = makeRecipe('Any Grain Bowl');
+    seed([bowl]);
+    const blank = useRecipeStore.getState().addBlank(bowl.id, { kind: 'grain', max: 1, quantity: '1 cup' });
+    expect(blank).toMatchObject({ label: 'Grains & starches', kind: 'grain', max: 1, quantity: '1 cup', options: [] });
+    expect(useRecipeStore.getState().recipeById(bowl.id)!.blanks).toEqual([blank]);
+    expect(dbUpdateRecipe).toHaveBeenCalledWith(expect.objectContaining({ id: bowl.id, blanks: [blank] }));
+  });
+
+  it('refuses a blank that says nothing, and a recipe it does not hold', () => {
+    const bowl = makeRecipe('Bowl');
+    seed([bowl]);
+    expect(useRecipeStore.getState().addBlank(bowl.id, { kind: null, max: null })).toBeNull();
+    expect(useRecipeStore.getState().addBlank('gone', { kind: 'grain', max: 1 })).toBeNull();
+    expect(useRecipeStore.getState().recipeById(bowl.id)!.blanks).toEqual([]);
+  });
+
+  it('edits a blank in place, repaired like a stored one, and refuses an edit that would empty it', () => {
+    const bowl = makeRecipe('Bowl');
+    seed([bowl]);
+    const blank = useRecipeStore.getState().addBlank(bowl.id, { label: 'Cheese', kind: null, max: 1, options: ['feta'] })!;
+    useRecipeStore.getState().updateBlank(bowl.id, blank.id, { max: null, options: ['feta', 'Feta', 'cheddar'] });
+    expect(useRecipeStore.getState().recipeById(bowl.id)!.blanks[0]).toEqual({
+      ...blank, max: null, options: ['feta', 'cheddar'],
+    });
+    useRecipeStore.getState().updateBlank(bowl.id, blank.id, { label: '  ' });
+    expect(useRecipeStore.getState().recipeById(bowl.id)!.blanks[0].label).toBe('Cheese');
+  });
+
+  it('removes a blank by id', () => {
+    const bowl = makeRecipe('Bowl');
+    seed([bowl]);
+    const blank = useRecipeStore.getState().addBlank(bowl.id, { kind: 'nuts', max: null })!;
+    useRecipeStore.getState().removeBlank(bowl.id, 'nope');
+    expect(useRecipeStore.getState().recipeById(bowl.id)!.blanks).toHaveLength(1);
+    useRecipeStore.getState().removeBlank(bowl.id, blank.id);
+    expect(useRecipeStore.getState().recipeById(bowl.id)!.blanks).toEqual([]);
   });
 });
 

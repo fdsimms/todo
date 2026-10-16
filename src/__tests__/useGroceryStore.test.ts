@@ -5493,6 +5493,33 @@ describe('setVarietyOfKey', () => {
   });
 });
 
+describe('setFoodKinds', () => {
+  it('files kinds in canonical order and persists them', () => {
+    const tofurky = makeItem({ name: 'Tofurky' });
+    seed([tofurky]);
+    useGroceryStore.getState().setFoodKinds(tofurky.id, ['legume', 'protein', 'protein']);
+    expect(useGroceryStore.getState().items[0].foodKinds).toEqual(['protein', 'legume']);
+    expect(dbUpdateGroceryItem).toHaveBeenCalledWith(expect.objectContaining({ id: tofurky.id, foodKinds: ['protein', 'legume'] }));
+  });
+
+  it('keeps an empty filing, and goes back to the name’s guess with null', () => {
+    const rice = makeItem({ name: 'Rice' });
+    seed([rice]);
+    useGroceryStore.getState().setFoodKinds(rice.id, []);
+    expect(useGroceryStore.getState().items[0].foodKinds).toEqual([]);
+    useGroceryStore.getState().setFoodKinds(rice.id, null);
+    expect('foodKinds' in useGroceryStore.getState().items[0]).toBe(false);
+  });
+
+  it('writes nothing when nothing changed, or for an id it does not hold', () => {
+    const rice = makeItem({ name: 'Rice' });
+    seed([rice]);
+    useGroceryStore.getState().setFoodKinds(rice.id, null);
+    useGroceryStore.getState().setFoodKinds('gone', ['grain']);
+    expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
+  });
+});
+
 describe('setItemBackfillDismissedFields', () => {
   it('writes the given list and persists it', () => {
     const butter = makeItem({ name: 'Butter' });

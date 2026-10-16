@@ -7,6 +7,7 @@ import type {
   Cookbook,
   CookbookIndexEntry,
   DeliverableKind,
+  FoodKind,
   FoodLogEntry,
   GeneratedKind,
   LoggedSymptom,
@@ -92,6 +93,8 @@ import { parseFollowUpTaskDraft } from '../utils/followUpTask';
 import { cookbookKey, parseRecipeIngredients, parsePrepTasks, parseSteps } from '../utils/recipeUtils';
 import { parseRecipeTags } from '../utils/recipeTags';
 import { parseRecipeChoices, parseRecipeComponents, parseRecipeOverrides } from '../utils/recipeComponents';
+import { parseRecipeBlanks } from '../utils/recipeBlanks';
+import { parseFoodKinds, serializeFoodKinds } from '../utils/foodKinds';
 import { parseEmptySections } from '../utils/recipeSections';
 import { normalizeScale } from '../utils/recipeScale';
 import { normalizeTemplateItem, normalizeTemplateQuestion } from '../utils/templateUtils';
@@ -2202,6 +2205,12 @@ function runInitDatabase(): void {
     // JSON array of one-off replacements for one planned meal, '[]' on every
     // existing entry: none has replaced a line yet. See MealPlanEntry.recipeOverrides.
     "ALTER TABLE meal_plan_entries ADD COLUMN recipe_overrides TEXT NOT NULL DEFAULT '[]'",
+    // Null on every existing item: nobody has filed one, so the name's guess
+    // applies. See GroceryItem.foodKinds.
+    'ALTER TABLE grocery_items ADD COLUMN food_kinds TEXT',
+    // JSON array of placeholders filled from the kitchen, '[]' on every existing
+    // recipe. See Recipe.blanks.
+    "ALTER TABLE recipes ADD COLUMN blanks TEXT NOT NULL DEFAULT '[]'",
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -5206,6 +5215,7 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
     lastSpoiledAt: (row.last_spoiled_at as string) ?? null,
     varietyOfKey: (row.variety_of_key as string) ?? null,
     ...otherNamesField(row.other_names as string | null),
+    ...foodKindsField(row.food_kinds),
     nameFromScan: Boolean(row.name_from_scan),
     priceHistory: parsePriceHistory(row.price_history as string | null),
     nutrition: parseFoodNutrition(row.nutrition as string | null),
@@ -5229,6 +5239,12 @@ function otherNamesField(raw: string | null): { otherNames?: string[] } {
   return names.length > 0 ? { otherNames: names } : {};
 }
 
+/** Spread into the row: the key is absent when the item was never filed, which is what lets the name's guess apply. */
+function foodKindsField(raw: unknown): { foodKinds?: FoodKind[] } {
+  const kinds = parseFoodKinds(raw);
+  return kinds ? { foodKinds: kinds } : {};
+}
+
 /** NULL for none, so a row that never had a name stays byte-identical to one written before the column. */
 function serializeOtherNames(names: readonly string[] | undefined): string | null {
   return names && names.length > 0 ? JSON.stringify(names) : null;
@@ -5249,8 +5265,8 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
        source_recipe_id, source_recipe_title, choice_group, is_staple, expires_at, frozen_at, opened_at, running_low_at, shelf_life_days, use_up_task,
        pantry_check_declined_at, pantry_reviewed_at, used_up_count, spoiled_count, last_spoiled_at,
        last_price_minor, last_priced_at, last_price_quantity, preferred_product_id, brand_strict, variety_of_key,
-       backfill_dismissed_fields, nutrition, name_from_scan, purchase_interval_days, recipe_sources, other_names)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       backfill_dismissed_fields, nutrition, name_from_scan, purchase_interval_days, recipe_sources, other_names, food_kinds)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
       item.onList ? 1 : 0, item.checked ? 1 : 0, 1, item.sortOrder,
@@ -5271,6 +5287,7 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
       item.purchaseIntervalDays ?? null,
       serializeRecipeSources(item.recipeSources),
       serializeOtherNames(item.otherNames),
+      serializeFoodKinds(item.foodKinds),
     ]
   );
 }
@@ -5292,7 +5309,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
        pantry_check_declined_at=?, pantry_reviewed_at=?, used_up_count=?, spoiled_count=?, last_spoiled_at=?,
        last_price_minor=?, last_priced_at=?, last_price_quantity=?,
        preferred_product_id=?, brand_strict=?, variety_of_key=?, backfill_dismissed_fields=?, nutrition=?,
-       name_from_scan=?, price_history=?, purchase_interval_days=?, recipe_sources=?, other_names=?
+       name_from_scan=?, price_history=?, purchase_interval_days=?, recipe_sources=?, other_names=?, food_kinds=?
      WHERE id=?`,
     [
       item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
@@ -5318,6 +5335,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
       item.purchaseIntervalDays ?? null,
       serializeRecipeSources(item.recipeSources),
       serializeOtherNames(item.otherNames),
+      serializeFoodKinds(item.foodKinds),
       item.id,
     ]
   );
@@ -6715,6 +6733,7 @@ function rowToRecipe(row: Record<string, unknown>): Recipe {
     ingredients: parseRecipeIngredients(row.ingredients),
     emptySections: parseEmptySections(row.empty_sections),
     components: parseRecipeComponents(row.components),
+    blanks: parseRecipeBlanks(row.blanks),
     prepTasks: parsePrepTasks(row.prep_tasks),
     steps: parseSteps(row.steps),
     emptyStepSections: parseEmptySections(row.empty_step_sections),
@@ -6754,8 +6773,8 @@ export function dbInsertRecipe(recipe: Recipe): void {
       (id, name, name_key, notes, source_url, source_name, author, source, source_type, source_page, cookbook_id, servings, servings_max, recipe_yield, cooked_weight_g, leftover_keep_days, image_path, meal_type, tags, ingredients, empty_sections, components, prep_tasks, steps, empty_step_sections, sort_order, created_at, cook_count, last_cooked_at, vote, up_next, up_next_order,
        estimated_minutes, timer_started_at, timer_elapsed_seconds, last_cook_minutes, cook_time_count, total_cook_minutes,
        prep_minutes, prep_timer_started_at, prep_timer_elapsed_seconds, last_prep_minutes, prep_time_count, total_prep_minutes,
-       backfill_dismissed_fields)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       backfill_dismissed_fields, blanks)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       recipe.id, recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
       recipe.sourceName ?? null, recipe.author ?? null, recipe.source ?? null,
@@ -6776,6 +6795,7 @@ export function dbInsertRecipe(recipe: Recipe): void {
       recipe.prepMinutes ?? null, recipe.prepTimerStartedAt ?? null, recipe.prepTimerElapsedSeconds,
       recipe.lastPrepMinutes ?? null, recipe.prepTimeCount, recipe.totalPrepMinutes,
       JSON.stringify(recipe.backfillDismissedFields),
+      JSON.stringify(recipe.blanks ?? []),
     ]
   );
 }
@@ -6787,7 +6807,7 @@ export function dbUpdateRecipe(recipe: Recipe): void {
        sort_order=?, cook_count=?, last_cooked_at=?, vote=?, up_next=?, up_next_order=?,
        estimated_minutes=?, timer_started_at=?, timer_elapsed_seconds=?, last_cook_minutes=?, cook_time_count=?, total_cook_minutes=?,
        prep_minutes=?, prep_timer_started_at=?, prep_timer_elapsed_seconds=?, last_prep_minutes=?, prep_time_count=?, total_prep_minutes=?,
-       backfill_dismissed_fields=?
+       backfill_dismissed_fields=?, blanks=?
      WHERE id=?`,
     [
       recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
@@ -6809,6 +6829,7 @@ export function dbUpdateRecipe(recipe: Recipe): void {
       recipe.prepMinutes ?? null, recipe.prepTimerStartedAt ?? null, recipe.prepTimerElapsedSeconds,
       recipe.lastPrepMinutes ?? null, recipe.prepTimeCount, recipe.totalPrepMinutes,
       JSON.stringify(recipe.backfillDismissedFields),
+      JSON.stringify(recipe.blanks ?? []),
       recipe.id,
     ]
   );

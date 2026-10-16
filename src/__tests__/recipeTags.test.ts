@@ -35,6 +35,7 @@ function recipe(name: string, tags: string[] = []): Recipe {
     emptySections: [],
     emptyStepSections: [],
     components: [],
+    blanks: [],
     prepTasks: [],
     steps: [],
     sortOrder: seq,

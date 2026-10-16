@@ -41,7 +41,7 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { useSharedLinkStore } from '../store/useSharedLinkStore';
 import { useUnattendedStore } from '../store/useUnattendedStore';
-import type { DeliverableKind, FocusSession, GroceryItem, MealSlot, MoodLevel, NovaGroup, Recipe, Shop, SymptomSeverity, TemplateItem } from '../types';
+import type { DeliverableKind, FocusSession, GroceryItem, MealSlot, MoodLevel, NovaGroup, Recipe, RecipeOverride, Shop, SymptomSeverity, TemplateItem } from '../types';
 import { dbGetFocusSessionLog, dbInsertFocusSessionRecord, dbSetGtinLookup } from '../db/database';
 import { advanceFocusSession, buildFocusPlan, closeFocusSession } from './focusPlan';
 import { buildWeekDays } from './calendarGrid';
@@ -72,6 +72,7 @@ import { waterHelping } from './waterLog';
 import { cookedDishGrams, mealHelping, weighedHelping } from './mealLog';
 import { perServing, recipeNutrition } from './recipeNutrition';
 import { recipeMap } from './recipeComponents';
+import { fillBlank, withBlankFill } from './recipeBlanks';
 import { makeIngredient, recipeInBook } from './recipeUtils';
 import { packageChoices, packageHelping } from './scanPortion';
 import { describeProduct } from './groceryProduct';
@@ -3700,6 +3701,7 @@ interface DemoRecipes {
   cake: string;
   tea: string;
   snacks: string;
+  bowl: string;
 }
 
 /**
@@ -3744,6 +3746,7 @@ function componentIdFor(parentId: string, childRecipeId: string): string | null 
  */
 function seedRecipes(): DemoRecipes {
   const {
+    addBlank,
     addIngredient,
     addIngredientsFromText,
     updateIngredient,
@@ -4301,6 +4304,19 @@ function seedRecipes(): DemoRecipes {
   markCooked(steak.id);
   setVote(steak.id, 'loved');
 
+  // A recipe made of what's around (RecipeBlank): a couple of fixed lines and
+  // five blanks the kitchen fills each time. Invisible until something has one,
+  // since a blank is nothing like an ingredient line on the page.
+  const bowl = newRecipe('Any Grain Bowl');
+  addIngredientsFromText(bowl.id, ['1 tbsp olive oil', '1 lemon'].join('\n'));
+  addBlank(bowl.id, { label: 'Grain', kind: 'grain', max: 1, quantity: '1 cup' });
+  addBlank(bowl.id, { label: 'Protein', kind: 'protein', max: 1, quantity: '1 portion' });
+  addBlank(bowl.id, { label: 'Vegetables', kind: 'vegetable', max: null, quantity: '2 cups' });
+  addBlank(bowl.id, { label: 'Sauce', kind: 'sauce', max: 2, quantity: '2 tbsp', options: ['tahini', 'chili crisp'] });
+  addBlank(bowl.id, { label: 'Crunch', kind: 'nuts', max: null, quantity: 'a handful' });
+  setMealType(bowl.id, 'lunch');
+  setTags(bowl.id, ['weeknight', 'no recipe']);
+
   // The Up Next shelf: recipes nobody's cooked, voted on, or put on the meal
   // plan yet — exactly the "want to try, haven't picked a day" queue it's
   // for. Reordered rather than left in creation order, so the shelf reads as
@@ -4332,6 +4348,7 @@ function seedRecipes(): DemoRecipes {
     cake: cake.id,
     tea: tea.id,
     snacks: snacks.id,
+    bowl: bowl.id,
   };
 }
 
@@ -4402,6 +4419,7 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     setUseUpTask,
     setVarietyOfKey,
     setOtherNames,
+    setFoodKinds,
     finishShopping,
     addAisle,
     deleteAisle,
@@ -5079,6 +5097,14 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   const scallions = ensureCatalogItem('Scallions');
   if (scallions) setOtherNames(scallions.id, ['Green onions']);
 
+  // A food type filed by hand (GroceryItem.foodKinds), for a name the guess
+  // can't read: it's what lets a recipe's protein blank offer it.
+  const quorn = ensureCatalogItem('Quorn pieces');
+  if (quorn) {
+    setFoodKinds(quorn.id, ['protein']);
+    setOnHandUntil(quorn.id, defaultOnHandUntil(quorn, new Date()));
+  }
+
   // Everything else typed above is still sitting on the list, since only what
   // a trip actually bought — or a link/unavailable claim above — came off it
   // or promoted it. Clearing parks what's already catalog and drops the rest,
@@ -5580,6 +5606,19 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
     const roasted = componentIdFor(recipes.steak, recipes.roasties);
     if (roasted) setRecipeChoices(steakNight.id, [roasted]);
   }
+  // Last week's grain bowl, filled from what was around then, so the picker's
+  // "Last time" has a cooking to offer back. This week's (below) is unfilled.
+  const bowlRecipe = useRecipeStore.getState().recipeById(recipes.bowl);
+  const bowlNight = cooked(-7, 'lunch', { title: 'Any Grain Bowl', recipeId: recipes.bowl });
+  if (bowlNight && bowlRecipe) {
+    const picks: Record<string, string[]> = {
+      Grain: ['brown rice'], Protein: ['chickpeas'], Vegetables: ['broccoli', 'carrots'], Sauce: ['tahini'],
+    };
+    setRecipeOverrides(bowlNight.id, bowlRecipe.blanks.reduce(
+      (overrides, blank) => withBlankFill(overrides, blank.id, fillBlank(blank, picks[blank.label] ?? [])),
+      [] as RecipeOverride[],
+    ));
+  }
   const stirFryNight = cooked(-1, 'dinner', {
     title: 'Weeknight chicken stir-fry',
     recipeId: recipes.stirFry,
@@ -5714,6 +5753,7 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   // got — and a night out is exactly the meal somebody would decline: the app
   // has no idea what was on the plate, so counting it would be fiction.
   plan(2, 'dinner', { title: 'Eating out', logMeal: false });
+  plan(2, 'lunch', { title: 'Any Grain Bowl', recipeId: recipes.bowl });
 
   // Eating the chilli that's in the fridge. Planning against a leftover
   // deliberately doesn't close it out — a pot feeds two dinners.

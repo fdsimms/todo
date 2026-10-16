@@ -28,7 +28,7 @@ import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { useMeasuredTextWidth } from '../hooks/useMeasuredTextWidth';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
-import type { ComponentPlacement, RecipeIngredient, RecipeOverride, RecipePrepTask, RecipeStep } from '../types';
+import type { ComponentPlacement, RecipeBlank, RecipeIngredient, RecipeOverride, RecipePrepTask, RecipeStep } from '../types';
 import { GROCERY_NAME_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH, RECIPE_STEP_NOTE_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useSyncStore } from '../store/useSyncStore';
@@ -77,6 +77,8 @@ import { CookModeSheet } from '../components/CookModeSheet';
 import { cookSteps, stepsFromNotes } from '../utils/cookMode';
 import { MAX_STEP_TIMER_SECONDS, formatStepDuration, parseStepDurations, stepDurationOffers } from '../utils/stepTimers';
 import { featureHidden, featureShown } from '../utils/simpleMode';
+import { blankFillOf, describeBlankRule, recipeBlanksIn } from '../utils/recipeBlanks';
+import { BlankEditorSheet } from '../components/BlankEditorSheet';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, lineHeight, radius, iconSize, interaction, flattenOverlay, type Colors } from '../theme';
 import { useTextScale } from '../hooks/useTextScale';
@@ -419,6 +421,12 @@ export function RecipeDetailScreen() {
     () => (recipe ? describeCookedWeight(recipe.cookedWeightG, recipe.servings, scale) : null),
     [recipe, scale]
   );
+  // A blank this view hasn't filled (RecipeBlank) adds whatever is picked for
+  // it, which no figure can know yet, so the total says it is the rest of the dish.
+  const hasOpenBlank = useMemo(
+    () => (recipe ? recipeBlanksIn(recipe, recipesById).some(({ blank }) => blankFillOf(overrides, blank.id).length === 0) : false),
+    [recipe, recipesById, overrides]
+  );
 
   // The same flattening again, with grams in place of prices. One reading
   // rather than three calls, so the summary line, the coverage count and the
@@ -438,11 +446,13 @@ export function RecipeDetailScreen() {
   // the case with no total is exactly the case someone would want to act on,
   // so it says so rather than saying nothing.
   const nutritionLine = useMemo(
-    () => (nutritionReading
-      ? describeRecipeNutrition(nutritionReading.nutrition)
-        ?? describeNutritionCoverage(nutritionReading.gaps)
-      : null),
-    [nutritionReading]
+    () => {
+      if (!nutritionReading) return null;
+      const total = describeRecipeNutrition(nutritionReading.nutrition);
+      if (total) return hasOpenBlank ? `${total}, plus what you pick` : total;
+      return describeNutritionCoverage(nutritionReading.gaps);
+    },
+    [nutritionReading, hasOpenBlank]
   );
   // Shown when there is something to say or something to do. A dish whose
   // every line is unmatched has neither: the total can't be built and no gap
@@ -539,6 +549,8 @@ export function RecipeDetailScreen() {
   }, [openCookModeStamp, handledCookModeStamp, cookModeAvailable, simpleMode]);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const [componentPickerVisible, setComponentPickerVisible] = useState(false);
+  // The blank being edited, 'new' for one being added, null while the sheet is closed.
+  const [editingBlank, setEditingBlank] = useState<string | null>(null);
   const [choiceComponent, setChoiceComponent] = useState<ResolvedComponent | null>(null);
   // The catalog-match review sheet, and what it's scoped to: null means the
   // whole recipe (opened from the summary row), a list of ids means the lines
@@ -1695,6 +1707,32 @@ export function RecipeDetailScreen() {
     );
   };
 
+  // A blank reads as what it asks for; opened from a planned meal, its second
+  // line is what that meal filled it with.
+  const renderBlank = (blank: RecipeBlank) => {
+    const fill = blankFillOf(overrides, blank.id).map(l => l.name).join(', ');
+    const detail = fill ? `This time: ${fill}` : [blank.quantity, blank.options.join(', ')].filter(Boolean).join(' · ');
+    return (
+      <TouchableOpacity
+        key={blank.id}
+        style={styles.ingredient}
+        activeOpacity={interaction.activeOpacity}
+        onPress={() => { haptics.tap(); setEditingBlank(blank.id); }}
+        accessibilityRole="button"
+        accessibilityLabel={[blank.label, describeBlankRule(blank.max), detail].filter(Boolean).join(', ')}
+        accessibilityHint="Double tap to edit"
+      >
+        <View style={styles.ingredientText}>
+          <Text style={styles.ingredientName}>{blank.label}</Text>
+          {!!detail && <Text style={styles.blankDetail}>{detail}</Text>}
+        </View>
+        <View style={styles.qtyPill}>
+          <Text style={styles.qtyText} numberOfLines={1}>{describeBlankRule(blank.max)}</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
   // No drag-to-reorder here — unlike ingredients, prep tasks don't read as a
   // list with a meaningful order (each just names its own day).
   const renderPrepTask = (prepTask: RecipePrepTask) => (
@@ -2666,6 +2704,34 @@ export function RecipeDetailScreen() {
           </>
         )}
 
+        {/* A recipe made of what's around (RecipeBlank). Hidden in simplified
+            mode with components, its sibling, unless the recipe already has one. */}
+        {featureShown('recipeComposition', simpleMode, (recipe.blanks ?? []).length > 0) && (
+        <>
+        <Text style={styles.sectionLabel}>Fill from your kitchen</Text>
+
+        {(recipe.blanks ?? []).length === 0 ? (
+          <HelpText style={styles.hint}>
+            For a dish you make with whatever’s around, like a grain bowl. A blank names a
+            kind of food, like a grain or any vegetables, and each time you plan the
+            recipe you pick what fills it from your kitchen.
+          </HelpText>
+        ) : (
+          <View style={styles.card}>
+            {recipe.blanks.map(renderBlank)}
+          </View>
+        )}
+
+        <View style={styles.addRow}>
+          <InlineAction
+            label="Add a blank"
+            icon="add"
+            onPress={() => { haptics.tap(); setEditingBlank('new'); }}
+          />
+        </View>
+        </>
+        )}
+
         {/* The whole section goes in simplified mode, unless this recipe already
             uses components — a composed recipe that couldn't show its parts
             would be missing half its ingredients with nothing to say why. */}
@@ -2924,6 +2990,13 @@ export function RecipeDetailScreen() {
         recipe={recipe}
         component={choiceComponent}
         onClose={() => setChoiceComponent(null)}
+      />
+
+      <BlankEditorSheet
+        visible={editingBlank !== null}
+        recipeId={recipe.id}
+        blankId={editingBlank === 'new' ? null : editingBlank}
+        onClose={() => setEditingBlank(null)}
       />
 
       <RecipeComponentPicker
@@ -3309,6 +3382,10 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   ingredientName: {
     color: colors.text,
     fontSize: font.md,
+  },
+  blankDetail: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
   },
   ingredientPrep: {
     color: colors.textTertiary,

@@ -44,6 +44,7 @@ function recipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     emptySections: [],
     emptyStepSections: [],
     components: [],
+    blanks: [],
     prepTasks: [],
     steps: [],
     sortOrder: seq,

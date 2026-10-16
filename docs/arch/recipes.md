@@ -299,6 +299,54 @@ already allows two things on one dinner, so ad-hoc pairing needs nothing.
   follow-up to cooking one. The week-level `AddMealsToListSheet` deliberately has no chips of its
   own: it aggregates many recipes, and each entry already carries its own answers.
 
+## Blanks (`Recipe.blanks`, `recipeBlanks.ts`) — a recipe filled from the kitchen
+
+A grain bowl or a fridge frittata has no fixed ingredient list: it has a shape ("a grain, a
+protein, any vegetables, a sauce") filled from whatever is around. A `RecipeBlank` is one slot of
+that shape: a label, a kind of food (`FoodKind`, or null for a blank filled only from its own
+suggestions), how many things may fill it, the amount they share, and suggestions offered every
+time. "Blank" in the code because "slot" already means breakfast/lunch/dinner everywhere in the meal
+planner.
+
+- **Its own list, not an ingredient line**, for the reason components are: `nameKey` is the bridge
+  to the catalog, and a line called "vegetables" would mint a catalog row, shop for it and count it
+  in the dish's figures. A blank names no food, so until a meal fills it it contributes nothing to
+  shopping, cost, nutrition or cook mode. The recipe page's nutrition total says so ("…, plus what
+  you pick") rather than presenting the base as the dish.
+- **The fill lives on the meal, as an override aimed at the blank** (`RecipeOverride.fill`, with
+  `replacement: null`). The pick is a fact about one cooking, the split `recipeChoices` makes. Riding
+  `recipeOverrides` rather than a new entry field was deliberate: about a dozen paths carry a meal's
+  overrides by hand (route params, cook mode, add-to-list, the food log prompt, the cook recap,
+  leftovers), and a new field would have had to be threaded through every one with nothing to catch
+  a miss. `flattenRecipeIngredients` emits a node's fill after the node's own lines, unswapped (the
+  person picked them, as with a replacement).
+- **Anything that rewrites a meal's override list keeps the fills.** The MCP's `replacements` write
+  rebuilt the whole list and would have wiped them; it now keeps every `fill` row. `overrideLines`
+  skips a fill because its target is neither an ingredient nor a component, which is what keeps it
+  out of the "This time" sentences.
+- **The amount is shared evenly, and editable** (`shareOfBlank`, `fillBlank`). "2 cups" across three
+  picks is "2/3 cup" each. An amount the scaler can't divide ("a handful") stays whole on one pick
+  and is left off several, because writing it against each would claim one per pick.
+- **What a blank offers comes from the kitchen first** (`blankPicker.ts`). In order: what the pantry
+  vouches for of the blank's kind (most urgent first, via `kitchenInventory`), then the recipe's own
+  suggestions, then what's usually bought of the kind. Anything past its use-by is asked about
+  rather than offered ("Still have it" / "Gone", written to the pantry straight away through the
+  pantry review's own answers). The pantry knows least about fresh produce, which is why the other
+  two groups exist: a vegetables blank that offered only what the pantry vouches for would often
+  offer nothing. Leftovers never answer a blank: a leftover's name has no kind.
+- **The picker pre-picks, but writes nothing until Done.** What needs using starts picked, up to
+  the blank's limit; a pick-one blank otherwise starts on the first thing in the kitchen, and a
+  pick-any blank starts empty, since "everything you have" is never the answer.
+
+### Food kinds (`foodKinds.ts`, `GroceryItem.foodKinds`)
+
+What kind of food a catalog item is: a guess from its name that the person can overrule on the item
+sheet's Food type row. **The head noun decides** ("oat milk" is milk, "vegan popcorn chicken" is
+chicken), a head that names a form rather than a food ("stock", "chips", "powder", "oil") stops the
+guess instead of looking past it, and anything unknown is no kind at all: being offered a battery as
+a vegetable costs more than missing a rare one. Absent means "go by the name"; an empty list is a
+filing ("offer it nowhere") and survives a merge, a sync and a backup like any other answer.
+
 ## Where a recipe is from (`Cookbook`, `recipeProvenance.ts`)
 
 Attribution is four fields on the recipe — `author`, `source`, `sourceType`, `sourcePage` — plus,

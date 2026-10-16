@@ -2438,7 +2438,8 @@ describe('demo seed — people', () => {
     // MealPlanEntry.recipeOverrides is invisible until something uses it: the
     // Sunday roast buys a bag of frozen potatoes instead of making the dish.
     const entries = useMealPlanStore.getState().entries;
-    const replaced = entries.find(e => e.recipeOverrides.length > 0);
+    // A replacement, not a blank's fill, which rides on the same list.
+    const replaced = entries.find(e => e.recipeOverrides.some(o => o.replacement));
     expect(replaced).toBeTruthy();
     expect(replaced!.recipeOverrides[0].replacement?.name).toBe('frozen roast potatoes');
     const recipes = useRecipeStore.getState().recipes;
@@ -3495,6 +3496,23 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const recipes = useRecipeStore.getState().recipes;
     const salmon = recipes.find(r => r.components.some(c => c.amountUsed));
     expect(salmon?.components.find(c => c.amountUsed)?.amountUsed).toBe('1/2');
+  });
+
+  it('seeds a recipe with blanks, a cooking that filled them and one still to fill, and a hand-filed food type', () => {
+    const bowl = useRecipeStore.getState().recipes.find(r => r.blanks.length > 0)!;
+    expect(bowl.blanks.map(b => [b.label, b.kind, b.max])).toEqual([
+      ['Grain', 'grain', 1], ['Protein', 'protein', 1], ['Vegetables', 'vegetable', null], ['Sauce', 'sauce', 2], ['Crunch', 'nuts', null],
+    ]);
+    const meals = useMealPlanStore.getState().entries.filter(e => e.recipeId === bowl.id);
+    const filled = meals.find(e => e.recipeOverrides.some(o => o.fill));
+    expect(filled?.cookedAt).toBeTruthy();
+    const veg = bowl.blanks.find(b => b.label === 'Vegetables')!;
+    expect(filled!.recipeOverrides.find(o => o.targetId === veg.id)?.fill?.map(l => [l.name, l.quantity]))
+      .toEqual([['broccoli', '1 cup'], ['carrots', '1 cup']]);
+    expect(meals.some(e => !e.cookedAt && e.recipeOverrides.length === 0)).toBe(true);
+
+    const quorn = useGroceryStore.getState().items.find(i => i.nameKey === 'quorn pieces');
+    expect(quorn?.foodKinds).toEqual(['protein']);
   });
 
   it('seeds a variety declaration, covering the generic name end to end', () => {

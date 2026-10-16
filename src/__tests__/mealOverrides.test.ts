@@ -31,7 +31,7 @@ function recipe(id: string, name: string, overrides: Partial<Recipe> = {}): Reci
   return {
     backfillDismissedFields: [], id, name, nameKey: name.toLowerCase(), notes: '',
     sourceUrl: null, sourceName: null, author: null, source: null, servings: null, mealType: null,
-    tags: [], ingredients: [], emptySections: [], emptyStepSections: [], components: [], prepTasks: [],
+    tags: [], ingredients: [], emptySections: [], emptyStepSections: [], components: [], blanks: [], prepTasks: [],
     steps: [], sortOrder: ++seq, createdAt: '2026-01-01T00:00:00.000Z', servingsMax: null,
     recipeYield: null, cookedWeightG: null, leftoverKeepDays: null, imagePath: null,
     estimatedMinutes: null, timerStartedAt: null, timerElapsedSeconds: 0, lastCookMinutes: null,

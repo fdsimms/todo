@@ -18,7 +18,7 @@
  *   rule (`docs/arch/groceries.md`, "An away trip records nothing"), and the
  *   result says so rather than leaving it to look like a failure.
  */
-import type { FoodNutrition, FoodPortion, GroceryItem, GroceryList, ItemProduct, ReceiptStyle } from '../../src/types';
+import type { FoodKind, FoodNutrition, FoodPortion, GroceryItem, GroceryList, ItemProduct, ReceiptStyle } from '../../src/types';
 import type {
   GroceryBoxInput,
   GroceryItemChange,
@@ -31,6 +31,7 @@ import { brandSummaries } from '../../src/utils/brands';
 import { findPantryItem } from './pantryTools';
 import { NUTRIENT_KEYS } from '../../src/types';
 import { describeFoodPanel } from '../../src/utils/foodNutrition';
+import { foodKindsOf } from '../../src/utils/foodKinds';
 
 const HOME = 'home';
 
@@ -117,6 +118,10 @@ export interface GroceryItemDetail {
   price?: { minor: number; quantity?: string; at?: string };
   kindOf?: string;
   alsoCalled?: string[];
+  /** Which of a recipe's blanks it can fill (grain, protein…). */
+  foodType?: string[];
+  /** True when foodType is the app's guess from the name rather than the person's own filing. */
+  foodTypeGuessed?: boolean;
   preferredBoxId?: string;
   onlyPreferredBrand?: boolean;
   boughtTimes?: number;
@@ -185,6 +190,7 @@ export function getGroceryItem(replica: Replica, ref: { id?: string; name?: stri
     ...(item.lastPriceMinor !== null ? { price: { minor: item.lastPriceMinor, ...(item.lastPriceQuantity ? { quantity: item.lastPriceQuantity } : {}), ...(item.lastPricedAt ? { at: item.lastPricedAt } : {}) } } : {}),
     ...(item.varietyOfKey ? { kindOf: item.varietyOfKey } : {}),
     ...(item.otherNames && item.otherNames.length > 0 ? { alsoCalled: item.otherNames } : {}),
+    ...foodTypeOf(item),
     ...(item.preferredProductId ? { preferredBoxId: item.preferredProductId } : {}),
     ...(item.productStrict ? { onlyPreferredBrand: true } : {}),
     ...(item.purchaseCount > 0 ? { boughtTimes: item.purchaseCount } : {}),
@@ -307,6 +313,7 @@ export interface UpdateGroceryItemInput {
   priceStore?: string;
   kindOf?: string | null;
   alsoCalled?: string[];
+  foodType?: FoodKind[] | null;
   preferredBoxId?: string | null;
   onlyPreferredBrand?: boolean;
   linkStores?: string[];
@@ -325,6 +332,7 @@ export function updateGroceryItem(replica: Replica, input: UpdateGroceryItemInpu
     ...(input.priceMinor !== undefined ? { price: { minor: input.priceMinor, shopId: input.priceStore ? resolveShop(replica, input.priceStore)!.id : null } } : {}),
     ...(input.kindOf !== undefined ? { varietyOf: input.kindOf } : {}),
     ...(input.alsoCalled !== undefined ? { otherNames: input.alsoCalled } : {}),
+    ...(input.foodType !== undefined ? { foodKinds: input.foodType } : {}),
     ...(input.preferredBoxId !== undefined ? { preferredBoxId: input.preferredBoxId } : {}),
     ...(input.onlyPreferredBrand !== undefined ? { strict: input.onlyPreferredBrand } : {}),
     ...(input.linkStores ? { linkShops: input.linkStores.map(s => resolveShop(replica, s)!.id) } : {}),
@@ -785,4 +793,11 @@ export function mergeGroceryItems(replica: Replica, input: { from: string; into:
     gone: result.from.name,
     note: `"${result.from.name}" is now part of "${result.merged.name}": its purchase history, brands, store links and prices, substitutes, receipt names, list entries and recipe lines moved over. This cannot be undone from Activity.`,
   };
+}
+
+/** An item's food type for a reader: the person's filing, or the name's guess marked as one. Absent when it is neither. */
+function foodTypeOf(item: GroceryItem): { foodType?: string[]; foodTypeGuessed?: boolean } {
+  const kinds = foodKindsOf(item);
+  if (kinds.length === 0) return item.foodKinds ? { foodType: [] } : {};
+  return { foodType: kinds, ...(item.foodKinds ? {} : { foodTypeGuessed: true }) };
 }
