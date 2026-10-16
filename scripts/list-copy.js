@@ -193,6 +193,8 @@ function scan(rel) {
 
   const read = new Set(); // nodes already listed under a more specific kind
   const add = (kind, raw, node) => {
+    // An alert's button is also an object field named `text`; listed once.
+    if (read.has(node)) return;
     read.add(node);
     const text = clean(raw);
     if (!hasLetters(text)) return;
