@@ -566,15 +566,12 @@ extension ScreenTimeShared {
       && other.webDomainTokens.isSubset(of: selection.webDomainTokens)
   }
 
-  /// `selection` with everything in `other` added back. Both the picker's own
-  /// sets and the tokens are merged, so the result reads the same whichever
-  /// the picker or the shield looks at.
+  /// `selection` with everything in `other` added back. Only the token sets
+  /// are merged: `applications`, `categories` and `webDomains` are get-only on
+  /// `FamilyActivitySelection`, and the shield reads the tokens alone.
   @available(iOS 16.0, *)
   static func selection(_ selection: FamilyActivitySelection, adding other: FamilyActivitySelection) -> FamilyActivitySelection {
     var merged = selection
-    merged.applications.formUnion(other.applications)
-    merged.categories.formUnion(other.categories)
-    merged.webDomains.formUnion(other.webDomains)
     merged.applicationTokens.formUnion(other.applicationTokens)
     merged.categoryTokens.formUnion(other.categoryTokens)
     merged.webDomainTokens.formUnion(other.webDomainTokens)

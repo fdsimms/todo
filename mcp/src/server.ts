@@ -543,6 +543,13 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
   );
 
   server.tool(
+    'list_cookware',
+    'The pots, pans, lids and tubs the person has weighed empty, each with its empty weight in grams. Use it when they tell you what a dish weighed with its pot on: subtract the saved pot (and lid) yourself, because a recipe\'s cookedWeightG is the food alone.',
+    {},
+    async () => json(await withFresh(() => listCookware(replica)))
+  );
+
+  server.tool(
     'list_milestones',
     'The days something changed in the person\'s life that they have marked on the mood log ("Started sertraline", "New job"), each with its date. mood_insights reads mood before and after each one, under its own minimum-days rules; a start and a later stop are two milestones and are never paired. Empty unless the person has turned on Include health logs for the sync server on their phone.',
     {},
@@ -1967,13 +1974,6 @@ function registerWriteTools(
         return json({ error: e instanceof Error ? e.message : 'Could not delete the milestone.' });
       }
     }
-  );
-
-  server.tool(
-    'list_cookware',
-    'The pots, pans, lids and tubs the person has weighed empty, each with its empty weight in grams. Use it when they tell you what a dish weighed with its pot on: subtract the saved pot (and lid) yourself, because a recipe\'s cookedWeightG is the food alone.',
-    {},
-    async () => json(await withFresh(() => listCookware(replica)))
   );
 
   server.tool(
