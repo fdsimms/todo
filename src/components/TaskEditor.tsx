@@ -48,7 +48,7 @@ import { subDays } from 'date-fns/subDays';
 import { subMinutes } from 'date-fns/subMinutes';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Task, Priority, Effort, FollowUpTaskDraft, RecurrenceType, HolidayRule, ChainItem, RotationItem, DeliverableKind, TimeOfDay, ReminderKind, Polarity, Difficulty, QuotaPeriod, WeatherCondition, NutrientKey, MealSlot, AnswerGate } from '../types';
-import { PRIORITY_LABELS, EFFORT_LABELS, TITLE_MAX_LENGTH, HEALTH_WRITABLE_NUTRIENTS, MINERAL_KEYS, VITAMIN_KEYS, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
+import { PRIORITY_LABELS, TITLE_MAX_LENGTH, HEALTH_WRITABLE_NUTRIENTS, MINERAL_KEYS, VITAMIN_KEYS, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
 import { NUTRIENT_LABEL, mlToFlOz, flOzToMl } from '../utils/foodNutrition';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, border, interaction, animation, checkboxRadius, iconSize, type Colors, textScale } from '../theme';
@@ -106,7 +106,7 @@ import { parseTaskInputAheadOfRainSkip, scheduleClockInstant, stripRemindPrefix,
 import { groupMentionTokens } from '../utils/peopleRegistry';
 import { mergeRanges } from '../utils/ranges';
 import { HighlightedText } from './HighlightedText';
-import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration, estimatedMinutesFor, effortTimeLabel } from '../utils/effort';
+import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration, estimatedMinutesFor, effortTimeLabel, ESTIMATE_PRESET_MINUTES, estimatePatchForMinutes, chosenEstimateMinutes } from '../utils/effort';
 import { previewCategoryDefault, previewSeededFields } from '../utils/taskFieldDefaults';
 import { apportionedMinutes, timerSegments } from '../utils/timerSegments';
 import { CollapsibleField } from './CollapsibleField';
@@ -3231,7 +3231,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
 
 
   // Whether the current estimate is a precise value that isn't one of the presets.
-  const customEffortActive = estimatedMinutes != null && estimatedMinutes !== effortToMinutes(effort);
+  const customEffortActive = estimatedMinutes != null && !ESTIMATE_PRESET_MINUTES.includes(estimatedMinutes);
   // A countdown no preset names, so it came from the typed field.
   const customDurationActive = timedMinutes != null && !(DURATION_PRESETS as readonly number[]).includes(timedMinutes);
 
@@ -3239,6 +3239,14 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     setEffortTouched(true);
     setEffort(e);
     setEstimatedMinutes(EFFORT_MINUTES[e]);
+    setCustomEffortOpen(false);
+  };
+
+  const applyEstimatePreset = (minutes: number) => {
+    const patch = estimatePatchForMinutes(minutes);
+    setEffortTouched(true);
+    setEffort(patch.effort);
+    setEstimatedMinutes(patch.estimatedMinutes);
     setCustomEffortOpen(false);
   };
 
@@ -3370,7 +3378,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const defaultPriorityLabel = defaultsPreview && !priorityTouched && defaultsPreview.priority > 0
     ? `Default: ${PRIORITY_LABELS[defaultsPreview.priority]}` : undefined;
   const defaultEffortLabel = defaultsPreview && !effortTouched && defaultsPreview.effort > 0
-    ? `Default: ${effortTimeLabel(defaultsPreview.effort, EFFORT_LABELS[defaultsPreview.effort])}` : undefined;
+    ? `Default: ${effortTimeLabel(defaultsPreview.effort, '')}` : undefined;
   // What each toggle shows: the default on a new task nobody has touched, else
   // what was set. Read by the rows and by their taps, so a tap flips what is on
   // screen rather than the untouched state underneath it.
@@ -6711,21 +6719,21 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             onToggle={() => toggleField('effort')}
           >
             <View style={styles.pillRow}>
-              {([0, 1, 2, 3, 4, 5, 6] as Effort[]).map(e => {
-                const active = !customEffortActive && effort === e;
-                const presetMins = EFFORT_MINUTES[e];
+              <TouchableOpacity
+                style={[styles.pill, !customEffortActive && effort === 0 && styles.pillActiveNeutral]}
+                onPress={() => { haptics.tap(); applyEffortPreset(0); closeField('effort'); }}
+              >
+                <Text style={[styles.pillText, !customEffortActive && effort === 0 && styles.pillTextActive]}>—</Text>
+              </TouchableOpacity>
+              {ESTIMATE_PRESET_MINUTES.map(mins => {
+                const active = !customEffortActive && chosenEstimateMinutes({ estimatedMinutes, effort }) === mins;
                 return (
                   <TouchableOpacity
-                    key={e}
+                    key={mins}
                     style={[styles.pill, active && styles.pillActiveNeutral]}
-                    onPress={() => { haptics.tap(); applyEffortPreset(e); closeField('effort'); }}
+                    onPress={() => { haptics.tap(); applyEstimatePreset(mins); closeField('effort'); }}
                   >
-                    <Text style={[styles.pillText, active && styles.pillTextActive]}>
-                      {e === 0 ? '—' : EFFORT_LABELS[e]}
-                    </Text>
-                    {presetMins != null ? (
-                      <Text style={styles.pillHint}>{formatDuration(presetMins)}</Text>
-                    ) : null}
+                    <Text style={[styles.pillText, active && styles.pillTextActive]}>{formatDuration(mins)}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -6741,7 +6749,6 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 ) : (
                   <Text style={styles.pillText}>Custom</Text>
                 )}
-                <Text style={styles.pillHint}>exact</Text>
               </TouchableOpacity>
             </View>
             {customEffortOpen && (

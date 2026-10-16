@@ -623,7 +623,7 @@ function rangeErrors(item: ItemPlan, label: string): string[] {
   if (item.priority !== undefined && ![0, 1, 2, 3, 4].includes(item.priority as Priority)) {
     errors.push(`item "${label}" priority must be 0 to 4.`);
   }
-  // 0 to 6, not 0 to 4 like priority: EFFORT_LABELS runs '—' then XXS to XL.
+  // 0 to 6, not 0 to 4 like priority: effort buckets run 1 to 6, with 0 for none.
   if (item.effort !== undefined && ![0, 1, 2, 3, 4, 5, 6].includes(item.effort as Effort)) {
     errors.push(`item "${label}" effort must be 0 to 6.`);
   }

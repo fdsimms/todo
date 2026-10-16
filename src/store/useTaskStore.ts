@@ -4052,7 +4052,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // carrying its own medication records that one — "morning pills / evening
     // pills" would otherwise log the morning dose again at night.
     const completedDose = options?.missed ? null : medicationFor(task);
+    // What the tick wrote into the app's own logs, named on the undo bar so a
+    // dose or a meal landing in a log isn't silent (see UndoableAction.announce).
+    let loggedLabel: string | null = null;
     if (completedDose) {
+      loggedLabel = `Logged ${completedDose.name}`;
       useMedicationStore.getState().addLog({
         ...completedDose,
         taskId: id,
@@ -4251,6 +4255,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           completedAt,
           { taskId: id, undoable: false },
         );
+        loggedLabel = `Logged ${loggedSavedMeal.name}`;
       } else if (task.logMealSlot) {
         // An arbitrary task ("Log breakfast", "Pack lunch") opted into the
         // same offer, but names no recipe and no meal-plan entry — so it
@@ -4454,11 +4459,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const finishedRecurrence = built.recurs && built.advancesBySchedule && !missed && nextTask === null;
     get().setLastAction({
       destructive: finishedRecurrence,
+      // A tick that wrote a dose or a meal says so, with the undo that takes it
+      // back. An ordinary completion stays shake-only (see UndoBar).
+      announce: loggedLabel !== null,
       label: missed
         ? 'Task marked missed'
         : finishedRecurrence
           ? 'Last one, so it won’t repeat again'
-          : 'Task completed',
+          : loggedLabel ?? 'Task completed',
       redo: () => get().completeTask(id, options),
       undo: () => {
         if (autoCompletedProjectId) {

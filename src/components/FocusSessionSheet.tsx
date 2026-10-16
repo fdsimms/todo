@@ -38,6 +38,8 @@ import { useFocusStore } from '../store/useFocusStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useRewardStore } from '../store/useRewardStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useTaskGroupStore } from '../store/useTaskGroupStore';
+import { stackProgress } from '../utils/focusStacks';
 import { formatCoins } from '../utils/rewards';
 import { CoinIcon } from './CoinIcon';
 import { useFocusSession } from '../hooks/useFocusSession';
@@ -84,6 +86,8 @@ interface Props {
  * phone had been in front of you the whole time.
  */
 const NO_TASKS: Task[] = [];
+/** Past this many tasks in one stack the chip drops its bar and keeps the count, since the segments would be too small to read. */
+const STACK_BAR_MAX = 10;
 
 export function FocusSessionSheet({ visible, onClose }: Props) {
   const actionMenu = useActionMenu();
@@ -134,6 +138,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   const clearPendingUndo = () => setPendingUndo(null);
 
   const byId = useMemo(() => new Map(tasks.map(t => [t.id, t])), [tasks]);
+  const stackTitles = useTaskGroupStore(s => s.groups);
   const titleOf = (taskId: string | null): string => {
     const task = taskId === null ? undefined : byId.get(taskId);
     return task ? displayTitleFor(task) : 'Task';
@@ -162,6 +167,15 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   const endsAt = focusProjectedEnd(session, now);
   const coinsEarned = rewardsEnabled ? sessionCoinsEarned(session, coinEntries) : null;
   const currentTask: Task | undefined = step?.taskId ? byId.get(step.taskId) : undefined;
+  // Where the current task sits among its stack's tasks in this session, so a
+  // stack reads as one while the plan underneath stays a flat run of tasks.
+  const stack = stackProgress(
+    session.steps,
+    session.stepIndex,
+    [...session.completedTaskIds, ...session.stepLog.flatMap(r => (r.kind === 'work' && r.taskId ? [r.taskId] : []))],
+    id => byId.get(id)?.groupId,
+  );
+  const stackName = stack ? stackTitles.find(g => g.id === stack.groupId)?.title ?? null : null;
 
   // ==== the current task's outward actions: link, call, text, email ====
   // Same handlers and sanitisation as TaskItem's row actions (utils/phone.ts,
@@ -480,6 +494,31 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
           <Text style={styles.stageTitle} numberOfLines={3}>
             {isRest ? 'Step away' : titleOf(step.taskId)}
           </Text>
+
+          {!isRest && stack !== null && stackName !== null && (
+            <View
+              style={styles.stackChip}
+              accessible
+              accessibilityLabel={`${stackName}, task ${stack.position} of ${stack.total}`}
+            >
+              <Ionicons name="layers" size={iconSize.xs} color={colors.accentText} />
+              <Text style={styles.stackChipText} numberOfLines={1}>{`${stackName} · ${stack.position} of ${stack.total}`}</Text>
+              {stack.total <= STACK_BAR_MAX && (
+                <View style={styles.stackBar}>
+                  {Array.from({ length: stack.total }, (_, k) => (
+                    <View
+                      key={k}
+                      style={[
+                        styles.stackSeg,
+                        k < stack.position - 1 && styles.stackSegDone,
+                        k === stack.position - 1 && styles.stackSegNow,
+                      ]}
+                    />
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
 
           {/* Whatever the task itself holds to get the work done — the
               details a person would otherwise have to back out of the
@@ -810,6 +849,23 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.sm,
   },
+  stackChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    maxWidth: '100%',
+    gap: spacing.xsm,
+    marginTop: spacing.smd,
+    paddingHorizontal: spacing.smd,
+    paddingVertical: spacing.xsm,
+    borderRadius: radius.full,
+    backgroundColor: colors.accentSubtle,
+  },
+  stackChipText: { flexShrink: 1, color: colors.accentText, fontSize: font.xs, fontWeight: fontWeight.semibold },
+  stackBar: { flexDirection: 'row', gap: spacing.xs, marginLeft: spacing.xs },
+  stackSeg: { width: 14, height: 4, borderRadius: 2, backgroundColor: colors.controlBorder, opacity: 0.55 },
+  stackSegDone: { backgroundColor: colors.accent, opacity: 1 },
+  stackSegNow: { backgroundColor: colors.text, opacity: 1 },
   contactRow: {
     flexDirection: 'row',
     gap: spacing.sm,

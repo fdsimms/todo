@@ -56,6 +56,7 @@ import {
   matchMealPlanEntry,
   parseFoodAmount,
   recallAmount,
+  describeRecalledAmount,
   recipeHelpingNutrition,
   savedMealCalories,
   savedMealsMatching,
@@ -1558,11 +1559,13 @@ export function FoodLogEntrySheet({
   // ==== render. Everything below is JSX ====
   const renderRow = ({ item }: { item: Candidate }) => {
     const recalled = editing ? null : recallFor(item);
+    // The plus logs the amount last time's helping had, so the row says it.
+    const meta = [recalled ? describeRecalledAmount(recalled) : '', item.detail].filter(Boolean).join(' · ');
     const body = (
       <>
         <View style={styles.rowText}>
           <Text style={styles.rowTitle}>{item.label}</Text>
-          {!!item.detail && <Text style={styles.rowMeta}>{item.detail}</Text>}
+          {!!meta && <Text style={styles.rowMeta}>{meta}</Text>}
         </View>
         {!recalled && <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />}
       </>
@@ -1598,7 +1601,7 @@ export function FoodLogEntrySheet({
           activeOpacity={interaction.activeOpacity}
           onPress={() => quickLog(item)}
           accessibilityRole="button"
-          accessibilityLabel={`Log ${item.label} again, ${recalled.amount}`}
+          accessibilityLabel={`Log ${item.label} again, ${describeRecalledAmount(recalled)}`}
         >
           <Ionicons name="add-circle-outline" size={iconSize.md} color={colors.accent} />
         </TouchableOpacity>
