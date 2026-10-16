@@ -3446,7 +3446,9 @@ export interface Task {
    *   free of special cases, the same trade quota tasks make by going *through*
    *   completion rather than around it.
    * - **It stays visible all day** (see isVisibleApartFromVacation), because
-   *   the row is the reminder. A positive task earns its place by being undone;
+   *   the row is the reminder. A repeating one is there every day; one with no
+   *   repeat covers a single day and is finished once it passes
+   *   (`oneDayEndPatch`). A positive task earns its place by being undone;
    *   an avoid-task that vanished once you were doing well would be missing at
    *   exactly the moment it is useful.
    * - **Its streak counts clean days, not completions.** Nothing advances it on

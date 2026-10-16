@@ -1,5 +1,6 @@
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { subDays } from 'date-fns/subDays';
+import { addDays } from 'date-fns/addDays';
 import type { Task } from '../types';
 import { nextStreakRecord } from './streakRecord';
 
@@ -364,4 +365,25 @@ export function negativeHoldFor(
   if (slipsToday(task, todayStart) > 0) return closable ? 'undo-or-close' : 'undo-slip';
   if (isClosedToday(task, todayStart)) return opts.windowClosed ? null : 'reopen';
   return closable ? 'close' : null;
+}
+
+/**
+ * A "don't" task with no repeat is a commitment for one day, not a standing one.
+ * Once that day has gone by it is finished: completed at the end of the day it
+ * covered, which is how it leaves Today and lands in the Logbook as a day kept.
+ * A repeating one never ends here, since its next day is always owed.
+ *
+ * The day it covers is the one its date names, else the day it was created, and
+ * the caller passes that day's start (`coveredDayStart`) because resolving it
+ * needs the day-reset setting, which this file stays clear of. Returns null while that day is still running. Run it on the row *after* the
+ * clean-day patches, so the last day is credited before the row is closed.
+ */
+export function oneDayEndPatch(
+  task: Pick<Task, 'polarity' | 'recurrenceType' | 'completed'>,
+  todayStart: Date,
+  coveredDayStart: Date,
+): Partial<Task> | null {
+  if (!isNegativeTask(task) || task.completed || task.recurrenceType !== 'none') return null;
+  if (coveredDayStart >= todayStart) return null;
+  return { completed: true, completedAt: addDays(coveredDayStart, 1).toISOString() };
 }
