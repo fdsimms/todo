@@ -43,7 +43,7 @@ import { getEditorMentionSuggestions, type MentionSuggestionCandidate } from '..
 import { groupMentionTokens } from '../utils/peopleRegistry';
 import { animateLayout } from '../utils/layoutAnimation';
 import { joinNames } from '../utils/shoppingTrip';
-import { journalPlainText, toggleLinePrefix, toggleWrap } from '../utils/journalMarkdown';
+import { continueListOnEnter, journalPlainText, toggleLinePrefix, toggleWrap } from '../utils/journalMarkdown';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { useJournalStore } from '../store/useJournalStore';
 import { useTaskStore } from '../store/useTaskStore';
@@ -188,6 +188,17 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
     if (edit.text.length > TEXT_MAX_LENGTH) return;
     setText(edit.text);
     caret.selectRange(edit.selection, edit.text);
+  };
+
+  // Enter on a list line starts the next item (or ends the list on an empty one).
+  const handleChangeText = (next: string) => {
+    const edit = continueListOnEnter(text, next);
+    if (edit && edit.text.length <= TEXT_MAX_LENGTH) {
+      setText(edit.text);
+      caret.selectRange(edit.selection, edit.text);
+      return;
+    }
+    setText(next);
   };
 
   // The day's page so far, for a new entry only: an edit is one snippet of it.
@@ -379,7 +390,7 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
         <TextField
           style={styles.input}
           value={text}
-          onChangeText={setText}
+          onChangeText={handleChangeText}
           selection={caret.selection}
           onSelectionChange={caret.onSelectionChange}
           onFocus={() => setFocused(true)}
