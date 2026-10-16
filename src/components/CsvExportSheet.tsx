@@ -12,6 +12,7 @@ import {
   writeExportFile, shareCsvFile, discardBackupFile, canShare,
 } from '../utils/backupFile';
 import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
+import { HelpText } from './HelpText';
 
 /** How far back an export reaches. Days, so the cutoff is one subtraction. */
 type ExportRange = 30 | 90 | 365 | null;
@@ -120,7 +121,7 @@ export function CsvExportSheet<T>({
         />
 
         <View style={styles.body}>
-          <Text style={styles.hint}>{hint}</Text>
+          <HelpText style={styles.hint}>{hint}</HelpText>
 
           <SegmentedControl
             label="Range"

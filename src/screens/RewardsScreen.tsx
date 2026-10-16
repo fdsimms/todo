@@ -87,6 +87,7 @@ import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { ProgressBar } from '../components/ProgressBar';
 import { AnimatedNumber } from '../components/AnimatedNumber';
+import { HelpText } from '../components/HelpText';
 
 /**
  * Coins and rewards — the screen for `src/utils/rewards.ts`.
@@ -672,7 +673,7 @@ export function RewardsScreen() {
           <View style={styles.switchRow}>
             <View style={styles.switchText}>
               <Text style={styles.switchLabel}>One time only</Text>
-              <Text style={styles.hint}>Checked off in your project once claimed.</Text>
+              <HelpText style={styles.hint}>Checked off in your project once claimed.</HelpText>
             </View>
             <Switch
               value={draftOneTime}
@@ -727,9 +728,9 @@ export function RewardsScreen() {
             return (
               <>
                 <Text style={styles.fieldLabel}>Linked habit</Text>
-                <Text style={styles.hint}>
+                <HelpText style={styles.hint}>
                   An Avoid this habit for having this without claiming it. A slip on the habit claims this reward, or takes your coins up to its price if you can’t afford it.
-                </Text>
+                </HelpText>
                 {habit && <Text style={styles.guardName}>{displayTitleFor(habit)}</Text>}
                 <View style={[styles.rewardActions, styles.guardActions]}>
                   <InlineAction

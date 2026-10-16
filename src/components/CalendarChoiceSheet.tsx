@@ -15,6 +15,7 @@ import { InlineAction } from './InlineAction';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { CardSheet, useCardSheet } from './CardSheet';
+import { HelpText } from './HelpText';
 
 interface Props {
   visible: boolean;
@@ -162,10 +163,10 @@ export function CalendarChoiceSheet({ visible, title, selectedId, onSelect, onCl
             </View>
           )}
 
-          <Text style={styles.hint}>
+          <HelpText style={styles.hint}>
             Every task writes to this calendar. Changing it here also changes it in
             Settings › Calendar.
-          </Text>
+          </HelpText>
         </ScrollView>
       </View>
     </CardSheet>

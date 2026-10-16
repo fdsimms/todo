@@ -15,6 +15,7 @@ import { haptics } from '../utils/haptics';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetScrim } from './SheetScrim';
 import { Toggle } from './Toggle';
+import { HelpText } from './HelpText';
 
 /**
  * The birthday picker — month, day and an optional year, as three native
@@ -130,7 +131,7 @@ export function BirthdayPicker({ visible, month, day, year, onConfirm, onClear, 
             <SheetHeaderButton label="Save" onPress={confirm} minWidth={28} />
           </View>
 
-          <Text style={styles.hint}>The year is optional and isn’t used to calculate an age.</Text>
+          <HelpText style={styles.hint}>The year is optional and isn’t used to calculate an age.</HelpText>
 
           {pickerReady && (
             <DateTimePicker

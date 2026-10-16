@@ -13,6 +13,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorSheet } from './EditorSheet';
 import { TextField } from './TextField';
 import { useSheetSubject } from '../hooks/useSheetSubject';
+import { HelpText } from './HelpText';
 
 interface Props {
   visible: boolean;
@@ -116,9 +117,9 @@ export function PrepTaskSheet({ visible, recipeId, prepTask: livePrepTask, onClo
           format={n => formatOffsetLabel(n)}
           label="Days before the meal"
         />
-        <Text style={styles.hint}>
+        <HelpText style={styles.hint}>
           Once this recipe is on a planned meal, this task lands on that day.
-        </Text>
+        </HelpText>
       </View>
 
       <View style={styles.sectionCard}>

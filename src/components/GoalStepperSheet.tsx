@@ -7,6 +7,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { HelpText } from './HelpText';
 
 interface Props {
   visible: boolean;
@@ -71,7 +72,7 @@ export function GoalStepperSheet({ visible, onClose, name, heading, hint, saved,
           <SheetHeaderButton label="Done" onPress={save} minWidth={56} style={styles.headerRight} />
         </View>
         <View style={styles.body}>
-          <Text style={styles.hint}>{hint}</Text>
+          <HelpText style={styles.hint}>{hint}</HelpText>
           <View style={styles.stepperRow}>
             <CountStepper
               value={draft}
