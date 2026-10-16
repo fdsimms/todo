@@ -15,6 +15,7 @@ jest.mock('../store/useUnattendedStore', () => ({ useUnattendedStore: { getState
 jest.mock('../store/useEventReminderStore', () => ({
   useEventReminderStore: { getState: () => ({ remindersByKey: {} }) },
 }));
+jest.mock('../db/database', () => ({ dbReclaimFreePages: jest.fn() }));
 jest.mock('../utils/notifications', () => ({ rescheduleAllReminders: jest.fn() }));
 jest.mock('../utils/deviceTimeZone', () => ({ recordDeviceTimeZone: jest.fn() }));
 
@@ -89,6 +90,7 @@ describe('the three maintenance groups', () => {
       'purge old meal plan entries',
       'purge old leftovers',
       'purge unattended ledger',
+      'reclaim freed storage',
     ]);
   });
 

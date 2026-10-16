@@ -1485,6 +1485,12 @@ Four areas had no MCP read or write, and the shape of each answer follows from w
   blanked. It is capped at 100 rows and 30 days, is excluded from backups, and demo mode writes
   nothing. A new catch site that wants to be readable here passes its `source` to
   `describeImportError`/`describeAIError`, or calls `logError` directly.
+- **Storage is counts here and the file size only on the phone.** `storage_report`
+  (`storageTools.ts`) reads the replica's own `dbStorageStats` and the task counts. The phone's
+  database size (free pages included) and its recipe photos never sync, so an agent gets this
+  replica's per-area sizes, labelled as such, and is pointed at Settings › Data & reset ›
+  Storage for the real figure. It is read-only: compacting and the retention window are the
+  person's calls on the phone, and `dbReclaimFreePages` runs at launch once they've compacted.
 - **Milestones go through `useMilestoneStore`'s own actions** (`milestoneTools.ts`), which is
   loadable here because it imports only the db layer. A blank label is refused as the sheet refuses
   it, and a date is anchored at noon as `MilestoneSheet` anchors a picked day, because the row's

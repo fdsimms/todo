@@ -104,6 +104,7 @@ import { REORDER_KINDS, reorder } from './reorderTools';
 import { cancelCalendarRequest, changeCalendarEvent, listCalendarRequests, requestCalendarEvent } from './calendarTools';
 import { ESTIMATE_KEY_LIST, NUTRIENT_KEY_LIST, atFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logSavedMeal, moveFoodEntry, saveMealFromEntries, setNutritionTargets, renameMedication, renameMoodTag, setMedicationArchived, addMedication, removeMedication, setMedicationProfile, setMedicationLimit, setMedicationSupply, logFood, logMedication, setSupplementNutrients, logMood, logWater, updateRecipe, patchRecipe, deleteRecipe, updateFoodEntry, refreshDishEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
 import { listErrors, MAX_ERRORS } from './errorTools';
+import { storageReport } from './storageTools';
 import { DEFAULT_PATTERN_DAYS, focusHistory, habitPatterns, moodInsights } from './patternTools';
 import { addMilestone, deleteMilestone, listMilestones, updateMilestone } from './milestoneTools';
 import { addCookware, deleteCookware, listCookware, updateCookware } from './cookwareTools';
@@ -577,6 +578,13 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
       limit: z.number().int().positive().max(MAX_ERRORS).optional(),
     },
     async input => json(await withFresh(() => listErrors(replica, input)))
+  );
+
+  server.tool(
+    'storage_report',
+    'How much task data the person has stored: open tasks, completed copies of repeating tasks still kept (with the oldest), their completed-task retention window, and the largest areas of this server\'s copy by size. Use it when they ask why the app is large or how to shrink it. The phone\'s own file size does not sync, so the exact figure is in Settings › Data & reset › Storage on the phone, where they can also compact it. Read-only; never delete tasks or change the retention window to save space unless they ask.',
+    {},
+    async () => json(await withFresh(() => storageReport(replica)))
   );
 
   server.tool(

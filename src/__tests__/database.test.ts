@@ -11,6 +11,9 @@ import {
   ensureDatabaseReady,
   dbGetSetting,
   dbGetAllSettings,
+  dbStorageStats,
+  dbOptimizeStorage,
+  dbReclaimFreePages,
   dbSetSetting,
   dbGetAllTasks,
   dbGetAllJournalEntries,
@@ -6196,5 +6199,63 @@ describe('logMealSlotByTime', () => {
     expect(dbGetAllTasks().find(t => t.id === 'bytime')!.logMealSlotByTime).toBe(false);
     dbInsertTask(makeTask({ id: 'plain2' }));
     expect(dbGetAllTasks().find(t => t.id === 'plain2')!.logMealSlotByTime).toBe(false);
+  });
+});
+
+describe('storage stats and compacting', () => {
+  it('reports a size and counts the pages a delete leaves free', () => {
+    for (let i = 0; i < 400; i++) dbInsertTask(makeTask({ id: `bulk${i}`, notes: 'x'.repeat(2000) }));
+    const full = dbStorageStats();
+    expect(full.databaseBytes).toBeGreaterThan(0);
+    dbBulkDeleteTasks(Array.from({ length: 400 }, (_, i) => `bulk${i}`));
+    const after = dbStorageStats();
+    expect(after.databaseBytes).toBe(full.databaseBytes);
+    expect(after.freeBytes).toBeGreaterThan(0);
+  });
+
+  it('gives the freed pages back on optimize, and keeps the rows that remain', () => {
+    dbInsertTask(makeTask({ id: 'keeper' }));
+    for (let i = 0; i < 400; i++) dbInsertTask(makeTask({ id: `bulk${i}`, notes: 'x'.repeat(2000) }));
+    dbBulkDeleteTasks(Array.from({ length: 400 }, (_, i) => `bulk${i}`));
+    const { before, after } = dbOptimizeStorage();
+    expect(after).toBeLessThan(before);
+    expect(dbStorageStats().freeBytes).toBe(0);
+    expect(dbGetAllTasks().map(t => t.id)).toEqual(['keeper']);
+  });
+
+  it('refuses inside a transaction', () => {
+    expect(() => dbTransaction(() => { dbOptimizeStorage(); })).toThrow();
+  });
+});
+
+// The file stays switched on from the first compact for the rest of the run (one in-memory
+// database serves every test), so the "not compacted yet" case isn't reachable from here.
+describe('reclaiming freed pages at launch', () => {
+  const fill = () => {
+    for (let i = 0; i < 400; i++) dbInsertTask(makeTask({ id: `bulk${i}`, notes: 'x'.repeat(2000) }));
+  };
+  const drain = () => dbBulkDeleteTasks(Array.from({ length: 400 }, (_, i) => `bulk${i}`));
+
+  it('hands deleted space back after a compact has switched it on', () => {
+    dbOptimizeStorage();
+    expect(dbStorageStats().autoReclaim).toBe(true);
+    fill();
+    drain();
+    const before = dbStorageStats();
+    expect(before.freeBytes).toBeGreaterThan(0);
+    const reclaimed = dbReclaimFreePages();
+    expect(reclaimed).toBeGreaterThan(0);
+    expect(dbStorageStats().databaseBytes).toBe(before.databaseBytes - reclaimed);
+    expect(dbStorageStats().freeBytes).toBe(0);
+  });
+
+  it('takes at most the pages it was given per run', () => {
+    dbOptimizeStorage();
+    fill();
+    drain();
+    const before = dbStorageStats();
+    const reclaimed = dbReclaimFreePages(2);
+    expect(reclaimed).toBeGreaterThan(0);
+    expect(reclaimed).toBeLessThan(before.freeBytes);
   });
 });
