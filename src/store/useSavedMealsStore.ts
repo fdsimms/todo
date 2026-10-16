@@ -121,6 +121,8 @@ export const useSavedMealsStore = create<SavedMealsStore>((set, get) => ({
     for (const item of meal.items) {
       const entry = addEntry({
         taskId: opts?.taskId,
+        savedMealId: meal.id,
+        savedMealName: meal.name,
         label: item.label,
         quantity: item.quantity,
         grams: item.grams,

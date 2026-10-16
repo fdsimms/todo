@@ -29,6 +29,8 @@ import {
   foodLogTotals,
   logInstantFor,
   resolveFoodLogDrop,
+  savedMealRuns,
+  type SavedMealRun,
   wholeEstimate,
   type FoodLogListItem,
 } from '../utils/foodLog';
@@ -498,6 +500,10 @@ export function FoodLogScreen() {
     }
     return out;
   }, [sections]);
+
+  // The saved-meal trays, read off the list as it stands so a row dragged out
+  // of one ends it. See `savedMealRuns`.
+  const trayByEntryId = useMemo(() => savedMealRuns(listItems), [listItems]);
 
   // Every row doubles as a target for the add button being dragged in: a
   // meal's header or any of its entries means "log into that meal". The key is
@@ -1521,6 +1527,7 @@ export function FoodLogScreen() {
                 <FabDropZone zone={zone}>
                 <FoodLogRow
                   entry={item.entry}
+                  tray={trayByEntryId.get(item.entry.id)}
                   isActive={isActive}
                   selectionMode={selectionMode}
                   selected={selectedIds.has(item.entry.id)}
@@ -1970,6 +1977,27 @@ function makeStyles(colors: Colors) {
     },
     sectionTotal: { color: colors.textSecondary, fontSize: font.xs },
     entryRowSwipe: { borderRadius: radius.md, marginBottom: spacing.xs },
+    // A saved meal's rows share one recessed region (the TaskGroupTray shape):
+    // each row carries its slice of it, so the slices read as one tray without
+    // the list needing a row that spans several.
+    tray: { backgroundColor: colors.bgSunken, paddingHorizontal: spacing.sm },
+    trayFirst: { borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, paddingTop: spacing.sm },
+    trayLast: {
+      borderBottomLeftRadius: radius.lg,
+      borderBottomRightRadius: radius.lg,
+      paddingBottom: spacing.xs,
+      marginBottom: spacing.xs,
+    },
+    trayCaption: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: spacing.xsm,
+      paddingBottom: spacing.sm,
+      gap: spacing.sm,
+    },
+    trayName: { flex: 1, color: colors.accentText, fontSize: font.sm, fontWeight: fontWeight.semibold },
+    trayCount: { color: colors.textSecondary, fontSize: font.sm },
     // Holds the row's own background (and the selected/active overrides
     // below) so it spans both the tappable row and the nutrient panel that
     // can expand underneath it — one continuous card, not two.
@@ -2065,9 +2093,11 @@ function LogFoodFabWithDropLabel({
 }
 
 const FoodLogRow = React.memo(function FoodLogRow({
-  entry, isActive, selectionMode, selected, drag, styles, colors, waterUnit, onToggleSelect, onSwipeSelect, onOpenMenu, onEdit,
+  entry, tray, isActive, selectionMode, selected, drag, styles, colors, waterUnit, onToggleSelect, onSwipeSelect, onOpenMenu, onEdit,
 }: {
   entry: FoodLogEntry;
+  /** Set when the entry sits in a saved meal's tray. See `savedMealRuns`. */
+  tray?: SavedMealRun;
   isActive: boolean;
   selectionMode: boolean;
   selected: boolean;
@@ -2186,7 +2216,7 @@ const FoodLogRow = React.memo(function FoodLogRow({
       )}
     </View>
   );
-  return (
+  const swipeable = (
     <SwipeableRow
       style={styles.entryRowSwipe}
       enabled={!selectionMode}
@@ -2194,5 +2224,24 @@ const FoodLogRow = React.memo(function FoodLogRow({
     >
       {rowBody}
     </SwipeableRow>
+  );
+  // A dragged row floats as a plain card: the tray is a region it is leaving.
+  if (!tray || isActive) return swipeable;
+  return (
+    <View
+      style={[
+        styles.tray,
+        tray.position === 'first' && styles.trayFirst,
+        tray.position === 'last' && styles.trayLast,
+      ]}
+    >
+      {tray.position === 'first' && (
+        <View style={styles.trayCaption} accessibilityLabel={`${tray.name}, ${tray.count} foods`}>
+          <Text style={styles.trayName} numberOfLines={1}>{tray.name}</Text>
+          <Text style={styles.trayCount}>{tray.count} foods</Text>
+        </View>
+      )}
+      {swipeable}
+    </View>
   );
 });
