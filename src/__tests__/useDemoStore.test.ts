@@ -4818,6 +4818,10 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(useSettingsStore.getState().goalTargetTaskCategory).toBe('Health');
   });
 
+  it('turns on the meal plan produce line', () => {
+    expect(useSettingsStore.getState().mealProduceCheck).toBe(true);
+  });
+
   it('seeds a snack suggestion under the Health category', () => {
     const task = useTaskStore.getState().tasks.find(t => t.generatedKind === 'snackNudge');
     expect(task).toBeDefined();

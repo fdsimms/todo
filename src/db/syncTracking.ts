@@ -473,6 +473,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // (see the note on GeneratedTasksSection — these were never merged).
   'mealCookTasks',
   'mealLogPrompt',
+  'mealProduceCheck',
   'mealCookTaskCategory',
   'groceryUseUpTasks',
   'groceryUseUpTaskCategory',
