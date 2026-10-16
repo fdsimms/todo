@@ -227,7 +227,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/livePickerConfirm.ts` — confirmLivePicker
 - `src/utils/lookAhead.ts` — LookAheadWindow, LookAheadDay, AwayEntry, TightDeadline, LookAheadTotals, LookAhead, BuildLookAheadOptions, buildLookAhead, carriedOverTasks, awayEntries, +8 more
 - `src/utils/maintenancePasses.ts` — MaintenanceStep, expiryPasses, catchUpPasses, retentionPasses, rebuildNotificationQueue
-- `src/utils/manualBlock.ts` — MANUAL_BLOCK_SETTING, MIN_MANUAL_MINUTES, MAX_MANUAL_MINUTES, MANUAL_BLOCK_PRESETS, ManualBlock, manualMinutesProblem, parseManualBlock, newManualBlock, serializeManualBlock, isTimedBlock, +3 more
+- `src/utils/manualBlock.ts` — MANUAL_BLOCK_SETTING, MIN_MANUAL_MINUTES, MAX_MANUAL_MINUTES, MANUAL_BLOCK_PRESETS, ManualBlock, manualMinutesProblem, parseManualBlock, newManualBlock, serializeManualBlock, isTimedBlock, +4 more
 - `src/utils/maps.ts` — DirectionsApp, DirectionsCoordinate, directionsUrl, isMappable
 - `src/utils/mealCalendarSync.ts` — mealEventTitle, mealEventFields, syncMealEvent, mealEventLink, deleteMealEvent, MealEventSyncPlan, mealEventsAfterSync
 - `src/utils/mealIdeas.ts` — MIN_MEAL_IDEAS, MAX_MEAL_IDEAS, RECENT_MEAL_DAYS, MealIdea, RawMealIdea, mealTitleKey, clampIdeaCount, dedupeMealIdeas, MealSuggestion, mergeMealSuggestions, +7 more
