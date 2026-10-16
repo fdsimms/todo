@@ -562,6 +562,10 @@ export function RecipeDetailScreen() {
     if (cookModeAvailable && !featureHidden('cookMode', simpleMode)) setCookModeVisible(true);
   }, [openCookModeStamp, handledCookModeStamp, cookModeAvailable, simpleMode]);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
+  // The footer is in the layout rather than floating, so the scroll-to-top
+  // button (placed for a Fab) has to clear it by its measured height, which
+  // moves with text size and the safe-area inset.
+  const [footerHeight, setFooterHeight] = useState(0);
   const [componentPickerVisible, setComponentPickerVisible] = useState(false);
   // The blank being edited, 'new' for one being added, null while the sheet is closed.
   const [editingBlank, setEditingBlank] = useState<string | null>(null);
@@ -2822,7 +2826,10 @@ export function RecipeDetailScreen() {
       {/* Hidden while selecting: the bulk bar floats where it does, and adding
           to the list isn't something you're doing mid-selection anyway. */}
       {!selectionMode && (
-        <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}>
+        <View
+          style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}
+          onLayout={e => setFooterHeight(e.nativeEvent.layout.height)}
+        >
           {/* Planning and shopping are peers here — the two things you do
               having decided to cook something — so they share the footer rather
               than one of them going up into an already-crowded header. Plan is
@@ -3032,7 +3039,10 @@ export function RecipeDetailScreen() {
           answering. Cook mode mounts its own for its copy of the row; both
           being mounted at once is fine (see NumberPadAccessory). */}
       <NumberPadAccessory />
-      <ScrollToTopButton {...scrollTop.buttonProps} />
+      <ScrollToTopButton
+        {...scrollTop.buttonProps}
+        bottom={selectionMode ? scrollTop.buttonProps.bottom : footerHeight + spacing.md}
+      />
       {actionMenu.element}
     </View>
   );
