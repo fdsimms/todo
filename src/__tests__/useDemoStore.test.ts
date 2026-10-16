@@ -5347,6 +5347,17 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(suggestions[0].uses.length).toBeGreaterThan(0);
   });
 
+  it('seeds a recipe whose blanks use up something dying', () => {
+    // A blank takes any dying food of its kind (useUpRecipes), which is
+    // invisible until a dying item meets a recipe with one.
+    const { items } = useGroceryStore.getState();
+    const { leftovers } = useLeftoverStore.getState();
+    const { recipes } = useRecipeStore.getState();
+    const dying = useUpEntries(kitchenInventory(items, leftovers, new Date()));
+    const bowl = useUpRecipes(dying, recipes, items).find(s => s.recipe.blanks.length > 0);
+    expect(bowl?.uses.map(u => u.title)).toEqual(expect.arrayContaining(['Spinach', 'Red bell pepper']));
+  });
+
   it('seeds a week whose meals have unplanned recipes worth cooking alongside them', () => {
     const { items } = useGroceryStore.getState();
     const { recipes } = useRecipeStore.getState();

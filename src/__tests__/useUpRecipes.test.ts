@@ -1,7 +1,7 @@
 import { describeUseUpRecipe, useUpRecipes } from '../utils/useUpRecipes';
 import { kitchenEntryId } from '../utils/kitchenInventory';
 import type { KitchenEntry } from '../utils/kitchenInventory';
-import type { GroceryItem, LeftoverFreshness, Recipe, RecipeIngredient } from '../types';
+import type { GroceryItem, LeftoverFreshness, Recipe, RecipeBlank, RecipeIngredient } from '../types';
 
 // Pure key matching and ranking: nothing here reads a clock, since freshness
 // arrives on the entries already resolved. The stub is only because the import
@@ -316,6 +316,60 @@ describe('useUpRecipes', () => {
       const white = entry('White onion', 'due');
       expect(useUpRecipes([white], [recipe('Ragù', ['onion'])])).toEqual([]);
     });
+  });
+});
+
+describe('useUpRecipes with blanks', () => {
+  // A catalog row and its pantry entry, sharing the id a plain row carries as its sourceId.
+  const stocked = (name: string, freshness: LeftoverFreshness, item: Partial<GroceryItem> = {}) => {
+    const e = entry(name, freshness);
+    const row = { id: e.sourceId, name, nameKey: name.toLowerCase(), aisle: 'Produce', ...item } as GroceryItem;
+    return { entry: e, item: row };
+  };
+  const bowl = (blanks: Recipe['blanks']) => ({ ...recipe('Any Grain Bowl', ['olive oil']), blanks });
+  const blank = (fields: Partial<RecipeBlank>): RecipeBlank =>
+    ({ id: `b-${++seq}`, label: 'Vegetables', kind: 'vegetable', max: null, quantity: '', options: [], ...fields });
+
+  it('lets a pick-any blank use up every dying thing of its kind, most urgent first', () => {
+    const spinach = stocked('Spinach', 'over');
+    const kale = stocked('Kale', 'due');
+    const rice = stocked('Rice', 'due');
+    const suggestions = useUpRecipes(
+      [kale.entry, spinach.entry, rice.entry],
+      [bowl([blank({})])],
+      [spinach.item, kale.item, rice.item],
+    );
+    expect(suggestions[0].uses.map(e => e.title)).toEqual(['Spinach', 'Kale']);
+  });
+
+  it('takes no more than the blank’s limit', () => {
+    const rice = stocked('Rice', 'due');
+    const farro = stocked('Farro', 'over');
+    const suggestions = useUpRecipes(
+      [rice.entry, farro.entry],
+      [bowl([blank({ label: 'Grain', kind: 'grain', max: 1 })])],
+      [rice.item, farro.item],
+    );
+    expect(suggestions[0].uses.map(e => e.title)).toEqual(['Farro']);
+  });
+
+  it('matches a suggestion by name whatever its kind, and the person’s own filing over the guess', () => {
+    const feta = stocked('Feta', 'due');
+    const tofurky = stocked('Tofurky', 'due', { foodKinds: ['protein'] });
+    const peas = stocked('Peas', 'due', { foodKinds: [] });
+    const suggestions = useUpRecipes(
+      [feta.entry, tofurky.entry, peas.entry],
+      [bowl([blank({ label: 'Cheese', kind: null, options: ['feta'] }), blank({ label: 'Protein', kind: 'protein', max: 1 }), blank({})])],
+      [feta.item, tofurky.item, peas.item],
+    );
+    expect(suggestions[0].uses.map(e => e.title).sort()).toEqual(['Feta', 'Tofurky']);
+  });
+
+  it('never counts one thing twice when a line already uses it, and finds nothing without the catalog', () => {
+    const kale = stocked('Kale', 'due');
+    const salad = { ...recipe('Kale salad', ['kale']), blanks: [blank({})] };
+    expect(useUpRecipes([kale.entry], [salad], [kale.item])[0].uses).toHaveLength(1);
+    expect(useUpRecipes([kale.entry], [bowl([blank({})])])).toEqual([]);
   });
 });
 

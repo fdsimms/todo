@@ -27,6 +27,29 @@ import { isNonFoodAisle } from './groceryAisles';
  * and "use up last night's chilli" is the Fridge card's job, not a grain's.
  */
 
+/**
+ * Whether a catalog item can fill a blank: one of the blank's own suggestions,
+ * or food of its kind (`foodKindsOf`, the person's filing over the name's
+ * guess). Never anything in a non-food aisle. The one rule the picker and the
+ * use-up suggestions (`useUpRecipes`) share, so the two can't disagree about
+ * what a blank takes.
+ */
+export function blankFits(
+  blank: RecipeBlank,
+  item: Pick<GroceryItem, 'name' | 'nameKey' | 'aisle' | 'foodKinds'>,
+  nonFoodAisles: readonly string[] = [],
+): boolean {
+  if (isNonFoodAisle(item.aisle, nonFoodAisles)) return false;
+  if (blank.options.some(option => groceryNameKey(option) === item.nameKey)) return true;
+  return blank.kind !== null && foodKindsOf(item).includes(blank.kind);
+}
+
+/** The catalog item a pantry entry is about: a box names it in `itemId`, a plain row is it, by `sourceId`. Null for a leftover. */
+export function kitchenEntryItemId(entry: KitchenEntry): string | null {
+  if (entry.kind === 'leftover') return null;
+  return entry.kind === 'product' ? entry.itemId : entry.sourceId;
+}
+
 /** One thing that could fill a blank. */
 export interface BlankCandidate {
   /** The catalog item's own name, or the recipe's option as written. What the fill line is called. */
@@ -62,13 +85,8 @@ export function blankChoices(
   nonFoodAisles: readonly string[] = [],
   filled: readonly string[] = [],
 ): BlankChoices {
-  const optionKeys = new Set(blank.options.map(groceryNameKey));
   const itemsById = new Map(items.map(i => [i.id, i]));
-  const fits = (item: GroceryItem): boolean => {
-    if (isNonFoodAisle(item.aisle, nonFoodAisles)) return false;
-    if (optionKeys.has(item.nameKey)) return true;
-    return blank.kind !== null && foodKindsOf(item).includes(blank.kind);
-  };
+  const fits = (item: GroceryItem): boolean => blankFits(blank, item, nonFoodAisles);
 
   const seen = new Set<string>();
   const kitchenOut: BlankCandidate[] = [];
@@ -76,9 +94,8 @@ export function blankChoices(
   // Most urgent first is the order kitchenInventory already returns, and an
   // item and its boxes share a key, so the first of them is the one to show.
   for (const entry of kitchen) {
-    if (entry.kind === 'leftover') continue;
-    // A box names its item in `itemId`; a plain row is the item, by `sourceId`.
-    const item = itemsById.get(entry.kind === 'product' ? entry.itemId ?? '' : entry.sourceId);
+    const itemId = kitchenEntryItemId(entry);
+    const item = itemId ? itemsById.get(itemId) : undefined;
     if (!item || seen.has(item.nameKey) || !fits(item)) continue;
     seen.add(item.nameKey);
     const candidate: BlankCandidate = {
