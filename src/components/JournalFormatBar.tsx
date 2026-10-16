@@ -15,7 +15,7 @@ import type { LineFormat } from '../utils/journalMarkdown';
  */
 export const JOURNAL_FORMAT_BAR_HEIGHT = 57;
 
-export type FormatAction = { wrap: '**' | '*' } | { line: LineFormat };
+export type FormatAction = { wrap: '**' | '*' | '||' } | { line: LineFormat };
 
 interface Props {
   /** Whether the journal field has focus. A floating bar has no native tie to it. */
@@ -39,6 +39,7 @@ const BUTTONS: ButtonDef[] = [
   { action: { line: 'bullet' }, label: 'Bulleted list', icon: 'list-outline' },
   { action: { line: 'numbered' }, label: 'Numbered list', glyph: '1.' },
   { action: { line: 'quote' }, label: 'Quote', glyph: '“' },
+  { action: { wrap: '||' }, label: 'Hide as spoiler', icon: 'eye-off-outline' },
 ];
 
 /**

@@ -24,6 +24,46 @@ describe('parseInline', () => {
   });
 });
 
+describe('spoilers', () => {
+  it('reads ||words|| as a spoiler span', () => {
+    expect(parseInline('the end was ||the butler|| again')).toEqual([
+      { text: 'the end was ' },
+      { text: 'the butler', spoiler: 1 },
+      { text: ' again' },
+    ]);
+  });
+
+  it('numbers each spoiler on a line and shares the number across styled spans', () => {
+    expect(parseInline('||a **b** c|| and ||d||')).toEqual([
+      { text: 'a ', spoiler: 1 },
+      { text: 'b', bold: true, spoiler: 1 },
+      { text: ' c', spoiler: 1 },
+      { text: ' and ' },
+      { text: 'd', spoiler: 2 },
+    ]);
+  });
+
+  it('leaves an unclosed, empty or space-padded pair as typed', () => {
+    expect(parseInline('a || b')).toEqual([{ text: 'a || b' }]);
+    expect(parseInline('a |||| b')).toEqual([{ text: 'a |||| b' }]);
+    expect(parseInline('x || y || z')).toEqual([{ text: 'x || y || z' }]);
+  });
+
+  it('keeps a spoiler out of the plain text a label or preview shows', () => {
+    expect(journalPlainText('it was ||the butler|| all along')).toBe('it was [hidden] all along');
+    expect(journalPlainText('||a **b** c|| and ||d||')).toBe('[hidden] and [hidden]');
+  });
+
+  it('wraps and unwraps a selection like the other markers', () => {
+    const wrapped = toggleWrap('it was the butler', { start: 7, end: 17 }, '||');
+    expect(wrapped).toEqual({ text: 'it was ||the butler||', selection: { start: 9, end: 19 } });
+    expect(toggleWrap(wrapped.text, wrapped.selection, '||')).toEqual({
+      text: 'it was the butler',
+      selection: { start: 7, end: 17 },
+    });
+  });
+});
+
 describe('parseJournalMarkdown', () => {
   it('splits headings, lists, quotes and paragraphs', () => {
     const blocks = parseJournalMarkdown([
