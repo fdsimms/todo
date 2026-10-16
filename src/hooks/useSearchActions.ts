@@ -21,9 +21,16 @@ import { runSearchAction, waterTodayMl, type SearchActionReceipt } from '../util
 export interface SearchActionsView extends SearchActionsOutcome {
   /** What each row says, by action key. */
   descriptions: ReadonlyMap<string, ActionDescription>;
+  /** Describe an action other than the ones offered, e.g. a water row stepped to 3 glasses. */
+  describe: (action: SearchAction) => ActionDescription;
 }
 
-const NONE: SearchActionsView = { actions: [], onSubmit: null, descriptions: new Map() };
+const NONE: SearchActionsView = {
+  actions: [],
+  onSubmit: null,
+  descriptions: new Map(),
+  describe: () => { throw new Error('No search action to describe'); },
+};
 
 /**
  * The actions a search query offers (see `searchActions.ts`), for the
@@ -80,6 +87,7 @@ export function useSearchActions(query: string, active: boolean, limit?: number)
     return {
       ...outcome,
       descriptions: new Map(outcome.actions.map(a => [a.key, describeSearchAction(a, ctx)])),
+      describe: (a: SearchAction) => describeSearchAction(a, ctx),
     };
   }, [active, query, routes, limit]);
 }

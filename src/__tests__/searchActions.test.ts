@@ -3,6 +3,8 @@ import {
   describeSearchAction,
   glassMl,
   isRunnable,
+  MAX_GLASSES,
+  withGlasses,
   searchActions,
   QUICK_ACTION_LIMIT,
   type DescribeContext,
@@ -143,6 +145,20 @@ describe('searchActions: water', () => {
   it('lets Return run it only when the words asked for it', () => {
     expect(searchActions('water', water).onSubmit).toBeNull();
     expect(searchActions('drank water', water).onSubmit?.kind).toBe('water');
+  });
+
+  it('resizes the row to another number of glasses, in the unit it was built in', () => {
+    const one = only<WaterAction>('water', { water: { unit: 'flOz' } })!;
+    expect(withGlasses(one, 3)).toMatchObject({ glasses: 3, ml: one.ml * 3 });
+    const two = only<WaterAction>('2 glasses of water', water)!;
+    expect(withGlasses(two, 5)).toMatchObject({ glasses: 5, ml: 1250 });
+    expect(withGlasses(two, 1)).toMatchObject({ glasses: 1, ml: 250 });
+  });
+
+  it('keeps a stepped count within what a typed query could offer', () => {
+    const one = only<WaterAction>('water', water)!;
+    expect(withGlasses(one, 0).glasses).toBe(1);
+    expect(withGlasses(one, MAX_GLASSES + 5)).toMatchObject({ glasses: MAX_GLASSES, ml: MAX_GLASSES * 250 });
   });
 
   it('leaves a search that only mentions water alone', () => {
