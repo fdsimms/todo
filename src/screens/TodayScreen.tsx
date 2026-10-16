@@ -219,7 +219,8 @@ import { PressableScale } from '../components/PressableScale';
 import { AddTaskFab, type AddTaskType } from '../components/AddTaskFab';
 import { type FabDragHandlers, FAB_SIZE, useFabBottom } from '../components/Fab';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, interaction, iconSize, textScale, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, interaction, iconSize, textScale, animation, type Colors } from '../theme';
+import { AnimatedCollapsible } from '../components/AnimatedCollapsible';
 import { haptics } from '../utils/haptics';
 import { openElsewhereResult } from '../navigation/openSearchResult';
 import type { ElsewhereResult } from '../utils/searchElsewhere';
@@ -312,6 +313,7 @@ const NO_SECTION_TASKS: string[] = [];
 // filter/section) — TaskGroupHeader's `allChildren` prop, so a fresh `[]`
 // here would be exactly the identity churn NO_SUBTASKS above exists to avoid.
 const NO_GROUP_CHILDREN: Task[] = [];
+const NO_PINNED_ITEMS: never[] = [];
 
 // The add button's drop target for "create this already pinned". A module
 // constant so its identity is stable across renders — FabDropZone keys zones by
@@ -4011,6 +4013,32 @@ export function TodayScreen() {
     return items;
   }, [pinnedTasks, taskGroups]);
 
+  // The block eases in and out instead of popping, so it has to outlive its
+  // last pin by one collapse: `pinnedMounted` keeps it rendered, `pinnedShown`
+  // is what AnimatedCollapsible animates toward, and the last non-empty items
+  // are held so the collapsing block still has rows to draw. Opening mounts it
+  // collapsed first and flips on the next frame, or it would appear at full
+  // height with nothing to animate from.
+  const pinnedOpen = pinnedItems.length > 0;
+  const heldPinnedItems = useRef(pinnedItems);
+  if (pinnedOpen) heldPinnedItems.current = pinnedItems;
+  const shownPinnedItems = pinnedOpen ? pinnedItems : heldPinnedItems.current;
+  const [pinnedMounted, setPinnedMounted] = useState(pinnedOpen);
+  const [pinnedShown, setPinnedShown] = useState(pinnedOpen);
+  useEffect(() => {
+    if (pinnedOpen) {
+      setPinnedMounted(true);
+      const frame = requestAnimationFrame(() => setPinnedShown(true));
+      return () => cancelAnimationFrame(frame);
+    }
+    setPinnedShown(false);
+    const timer = setTimeout(() => {
+      heldPinnedItems.current = NO_PINNED_ITEMS;
+      setPinnedMounted(false);
+    }, animation.duration.normal + 60);
+    return () => clearTimeout(timer);
+  }, [pinnedOpen]);
+
   // A dragged group item moves as one block (long-press its header); the
   // pinned order within it is left exactly as it was (see pinnedItems above)
   // since there's no drag surface here for reordering a stack's own pinned
@@ -4084,7 +4112,7 @@ export function TodayScreen() {
    * see the ListHeaderComponent prop for what a header outside it would do to
    * the drag math.
    */
-  const pinnedBlock = pinnedTasks.length === 0 ? null : (
+  // The block is wrapped in AnimatedCollapsible (see pinnedMounted above).
     // One zone for the whole block rather than one per row: the add button only
     // ever asks "did this land on the pinned section", and the answer doesn't
     // change per row. The rows aren't in `zoneByKey` at all now.
@@ -4095,6 +4123,8 @@ export function TodayScreen() {
     // (see makeCategoryGroups), so without it the pinned block's last card and
     // the next task's card sit back to back with only the ordinary 2px
     // inter-row gap, reading as one section.
+  const pinnedBlock = !pinnedMounted ? null : (
+    <AnimatedCollapsible expanded={pinnedShown}>
     <>
     <ChannelDropTarget channel={dropTargetChannel} id={PINNED_DRAG_TARGET}>
     <FabDropZone zone={PINNED_DROP_ZONE}>
@@ -4187,7 +4217,7 @@ export function TodayScreen() {
         <SpotlightScrim />
       </Pressable>
       <SortableList<PinnedListItem>
-        data={pinnedItems}
+        data={shownPinnedItems}
         onReorder={reorderPinnedItems}
         onDragStateChange={setDraggingPin}
         placeholderStyle={styles.stackDropSlot}
@@ -4215,6 +4245,7 @@ export function TodayScreen() {
       <SpotlightScrim />
     </View>
     </>
+    </AnimatedCollapsible>
   );
 
   const toggleBandCollapsed = (projectId: string) => {
