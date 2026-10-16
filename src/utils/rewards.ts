@@ -487,6 +487,8 @@ function cleanCoins(raw: number): number {
 // so does the rate, and `cost` is rewritten from the price when it does (see
 // `repriceDollarRewards` in `useRewardStore`). That is the one place a saved
 // price moves by itself, and only for a reward the person priced in dollars.
+// The reward being saved for is skipped, so the goal doesn't move under the
+// person while they save toward it.
 
 /** Reads the stored weekly budget: a positive whole number of minor units, or null. */
 export function parseWeeklyBudget(stored: string | null | undefined): number | null {

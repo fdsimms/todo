@@ -113,9 +113,11 @@ interface RewardStore {
   /**
    * Rewrites the coin cost of every dollar-priced reward from its price at
    * `rate` (coins per dollar). The one place a saved cost moves on its own,
-   * and only for a reward whose price is in dollars. Returns how many changed.
+   * and only for a reward whose price is in dollars. `savingForId` (the
+   * reward being saved for) is left alone, so the goal doesn't move while you
+   * save toward it. Returns how many changed.
    */
-  repriceDollarRewards: (rate: number) => number;
+  repriceDollarRewards: (rate: number, savingForId?: string | null) => number;
   /** Deletes the reward. Coins already spent on it stay spent. */
   deleteReward: (id: string) => void;
   /**
@@ -327,11 +329,11 @@ export const useRewardStore = create<RewardStore>((set, get) => {
       set(s => ({ rewards: sortRewards(s.rewards.map(r => (r.id === id ? next : r))) }));
     },
 
-    repriceDollarRewards(rate) {
+    repriceDollarRewards(rate, savingForId) {
       if (!(rate > 0)) return 0;
       let changed = 0;
       const next = get().rewards.map(r => {
-        if (r.priceMinor === null) return r;
+        if (r.priceMinor === null || r.id === savingForId) return r;
         const cost = coinsForPrice(r.priceMinor, rate);
         if (cost === r.cost) return r;
         changed += 1;
