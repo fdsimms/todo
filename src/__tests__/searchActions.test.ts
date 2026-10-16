@@ -11,6 +11,7 @@ import {
   type DoseAction,
   type GroceryAction,
   type MoodAction,
+  type PantryAction,
   type SearchActionSources,
   type SymptomAction,
   type WaterAction,
@@ -314,6 +315,50 @@ describe('searchActions: groceries', () => {
 
   it('offers nothing while Groceries is hidden', () => {
     expect(searchActions('buy milk', { groceries: null }).actions).toEqual([]);
+  });
+});
+
+describe('searchActions: pantry', () => {
+  const pantry = (query: string, sources = groceries()) => only<PantryAction>(query, sources);
+
+  it('offers out for "out of" and its spellings', () => {
+    for (const q of ['out of milk', 'we ran out of milk', "I'm out of the milk", 'no more milk', 'just out of milk', 'running out of milk']) {
+      expect(pantry(q)).toMatchObject({ kind: 'pantry', itemId: 'milk', name: 'Milk', answer: 'out' });
+    }
+  });
+
+  it('offers running low for "low on" and "almost out of"', () => {
+    for (const q of ['low on milk', 'running low on milk', "we're getting low on milk", 'almost out of milk', 'nearly out of the milk']) {
+      expect(pantry(q)).toMatchObject({ itemId: 'milk', answer: 'low' });
+    }
+  });
+
+  it('lets Return run it, since the line named the answer', () => {
+    const action = pantry('out of milk')!;
+    expect(isRunnable(action)).toBe(true);
+    expect(searchActions('out of milk', groceries()).onSubmit).toEqual(action);
+  });
+
+  it('matches the catalog the way an add does, and never offers a new item', () => {
+    expect(pantry('out of Eggs')).toMatchObject({ itemId: 'eggs' });
+    expect(pantry('out of egg')).toMatchObject({ itemId: 'eggs' });
+    expect(searchActions('out of saffron', groceries()).actions).toEqual([]);
+    expect(searchActions('out of mi', groceries()).actions).toEqual([]);
+  });
+
+  it('is not confused with a sentence that only starts like one', () => {
+    expect(searchActions('outside milk', groceries()).actions).toEqual([]);
+    expect(searchActions('out of', groceries()).actions).toEqual([]);
+  });
+
+  it('offers nothing while Groceries is hidden', () => {
+    expect(searchActions('out of milk', { groceries: null }).actions).toEqual([]);
+  });
+
+  it('is described by the answer the line named', () => {
+    const ctx: DescribeContext = { medicationLogs: [], medicationSettings: {}, waterUnit: 'ml', waterTodayMl: 0, now: new Date('2026-10-05T12:00') };
+    expect(describeSearchAction(pantry('out of milk')!, ctx)).toMatchObject({ title: 'Mark Milk as out', meta: [] });
+    expect(describeSearchAction(pantry('low on milk')!, ctx)).toMatchObject({ title: 'Mark Milk as running low' });
   });
 });
 

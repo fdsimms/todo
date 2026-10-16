@@ -9,10 +9,15 @@ import { PressableScale } from './PressableScale';
 import { haptics } from '../utils/haptics';
 import {
   isRunnable, MAX_GLASSES, withGlasses,
-  type ActionDescription, type SearchAction,
+  type ActionDescription, type PantryAnswer, type SearchAction,
 } from '../utils/searchActions';
 import { SYMPTOM_SEVERITIES } from '../utils/moodLog';
 import type { SearchActionReceipt } from '../utils/searchActionRun';
+
+const PANTRY_ANSWERS: { value: PantryAnswer; label: string }[] = [
+  { value: 'out', label: 'Out of it' },
+  { value: 'low', label: 'Running low' },
+];
 
 /**
  * One search action ("Record a dose of Aleve", "Add milk to Groceries"), in
@@ -33,6 +38,10 @@ import type { SearchActionReceipt } from '../utils/searchActionRun';
  * title, so the name keeps the whole row: tapping a pill logs at that severity.
  * No pill is marked unless the line stated one, and the title does nothing
  * until one is, so a severity is always a choice.
+ *
+ * A pantry row ("out of milk") is the same shape with Out of it / Running low
+ * as the pills. The line always names one, so that pill is marked and the
+ * title runs it; a tap on the other writes that instead.
  */
 export function SearchActionRow({ action, description, describe, receipt, layout, onRun, onUndo }: {
   action: SearchAction;
@@ -120,7 +129,22 @@ export function SearchActionRow({ action, description, describe, receipt, layout
       {body}
     </TouchableOpacity>
   );
-  if (action.kind === 'symptom') {
+  if (action.kind === 'symptom' || action.kind === 'pantry') {
+    const pills = action.kind === 'symptom'
+      ? SYMPTOM_SEVERITIES.map(({ value, label: pill }) => ({
+          key: String(value),
+          label: pill,
+          selected: value === action.severity,
+          run: () => onRun({ ...action, severity: value }),
+          accessibilityLabel: `Log ${action.symptom} as ${pill.toLowerCase()}`,
+        }))
+      : PANTRY_ANSWERS.map(({ value, label: pill }) => ({
+          key: value,
+          label: pill,
+          selected: value === action.answer,
+          run: () => onRun({ ...action, answer: value }),
+          accessibilityLabel: `Mark ${action.name} as ${value === 'low' ? 'running low' : 'out'}`,
+        }));
     return (
       <View style={list ? styles.listShell : null}>
         {isRunnable(action) ? (
@@ -131,13 +155,13 @@ export function SearchActionRow({ action, description, describe, receipt, layout
           </View>
         )}
         <View style={[styles.severityRow, list ? styles.listSeverityRow : styles.cardSeverityRow]}>
-          {SYMPTOM_SEVERITIES.map(({ value, label: severity }) => (
+          {pills.map(pill => (
             <InlineAction
-              key={value}
-              label={severity}
-              variant={value === action.severity ? 'accent' : 'neutral'}
-              onPress={() => onRun({ ...action, severity: value })}
-              accessibilityLabel={`Log ${action.symptom} as ${severity.toLowerCase()}`}
+              key={pill.key}
+              label={pill.label}
+              variant={pill.selected ? 'accent' : 'neutral'}
+              onPress={pill.run}
+              accessibilityLabel={pill.accessibilityLabel}
             />
           ))}
         </View>

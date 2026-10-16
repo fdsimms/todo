@@ -20,7 +20,8 @@ import { entryFor } from './groceryLists';
 /**
  * Things the search field can *do*, not just find: "take aleve" offers to
  * record a dose, "drank water" a glass of water, "feeling tired" a Tired entry
- * (or the mood log with Tired checked), "buy milk" milk on the grocery list.
+ * (or the mood log with Tired checked), "buy milk" milk on the grocery list,
+ * "out of milk" a pantry answer for milk.
  *
  * An action is only ever an offer. Nothing here writes anything; a row is
  * shown, and a tap on it goes through the same path the feature's own screen
@@ -109,7 +110,21 @@ export interface GroceryAction {
   onList: 'list' | 'cart' | null;
 }
 
-export type SearchAction = DoseAction | WaterAction | MoodAction | SymptomAction | GroceryAction;
+/** What a pantry row can say about an item: the two the line can name. */
+export type PantryAnswer = 'out' | 'low';
+
+export interface PantryAction {
+  kind: 'pantry';
+  key: string;
+  explicit: boolean;
+  itemId: string;
+  /** The catalog item's own spelling. */
+  name: string;
+  /** What the line said ("out of" is out, "low on" is low); the pills can change it. */
+  answer: PantryAnswer;
+}
+
+export type SearchAction = DoseAction | WaterAction | MoodAction | SymptomAction | GroceryAction | PantryAction;
 
 /** What each kind needs to match against, or null while its screen is hidden. */
 export interface SearchActionSources {
@@ -389,6 +404,51 @@ function groceryAction(
   };
 }
 
+// ==== pantry ====
+
+const PANTRY_SUBJECT = String.raw`(?:i['’]?m|i am|we['’]?re|we are|i['’]?ve|we['’]?ve|i|we)`;
+const PANTRY_OUT_RE = new RegExp(
+  String.raw`^(?:${PANTRY_SUBJECT}\s+)?(?:(?:just|all|totally)\s+)?(?:out\s+of|(?:ran|run|running)\s+out\s+of|no\s+more)\s+(?:the\s+|my\s+|our\s+|any\s+)?(.+)$`,
+  'i',
+);
+const PANTRY_LOW_RE = new RegExp(
+  String.raw`^(?:${PANTRY_SUBJECT}\s+)?(?:(?:getting|running|a\s+bit|a\s+little|pretty|really)\s+low\s+(?:on|of)|low\s+(?:on|of)|(?:almost|nearly)\s+out\s+of)\s+(?:the\s+|my\s+|our\s+)?(.+)$`,
+  'i',
+);
+
+/**
+ * "out of milk", "we ran out of eggs", "running low on rice", "almost out of
+ * butter". Offers the two pantry answers a line can state, as pills under the
+ * row (the symptom row's shape): the pill the words named is marked, and a
+ * tap on either one writes it.
+ *
+ * Only an item already in the catalog: a name the catalog has never seen is
+ * far more likely a sentence than a new thing to track, and the pantry only
+ * holds what the catalog does. Matched the way `addByName` matches
+ * (`catalogItemForKey`), so "out of tomatoes" finds Tomato. Needs the whole
+ * name, like "buy milk", since a prefix would put a row over every search that
+ * starts "out of".
+ */
+function pantryAction(
+  query: string,
+  sources: NonNullable<SearchActionSources['groceries']>,
+): PantryAction | null {
+  const low = PANTRY_LOW_RE.exec(query);
+  const out = low ? null : PANTRY_OUT_RE.exec(query);
+  const words = (low ?? out)?.[1];
+  if (!words) return null;
+  const match = catalogItemForKey(groceryNameKey(words), sources.items);
+  if (!match) return null;
+  return {
+    kind: 'pantry',
+    key: `pantry:${match.id}`,
+    explicit: true,
+    itemId: match.id,
+    name: match.name,
+    answer: low ? 'low' : 'out',
+  };
+}
+
 // ==== all of them ====
 
 /** Whether a row can be run at all: one saying milk is already on the list can't. */
@@ -423,6 +483,8 @@ export function searchActions(
   if (sources.groceries) {
     const grocery = groceryAction(text, sources.groceries);
     if (grocery) found.push(grocery);
+    const pantry = pantryAction(text, sources.groceries);
+    if (pantry) found.push(pantry);
   }
 
   const actions = found.slice(0, limit);
@@ -514,6 +576,13 @@ function describeSymptom(action: SymptomAction, ctx: DescribeContext): ActionDes
   };
 }
 
+function describePantry(action: PantryAction): ActionDescription {
+  // No line under the title: the pills under the row are the choice, with the
+  // one the words named marked.
+  const title = action.answer === 'low' ? `Mark ${action.name} as running low` : `Mark ${action.name} as out`;
+  return { title, meta: [], warn: false, icon: 'basket-outline' };
+}
+
 function describeGrocery(action: GroceryAction): ActionDescription {
   const meta: string[] = [];
   if (action.quantity) meta.push(action.quantity);
@@ -534,5 +603,6 @@ export function describeSearchAction(action: SearchAction, ctx: DescribeContext)
     case 'mood': return describeMood(action);
     case 'symptom': return describeSymptom(action, ctx);
     case 'grocery': return describeGrocery(action);
+    case 'pantry': return describePantry(action);
   }
 }

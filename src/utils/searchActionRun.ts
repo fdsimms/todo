@@ -11,7 +11,8 @@ import { formatDose } from './medicationLog';
 import { severityLabel } from './moodLog';
 import { describeWater, waterEntryOf, waterHelping, waterTotalMl } from './waterLog';
 import { resetToMood } from '../navigation/navigationRef';
-import type { DoseAction, GroceryAction, MoodAction, SearchAction, SymptomAction, WaterAction } from './searchActions';
+import type { DoseAction, GroceryAction, MoodAction, PantryAction, SearchAction, SymptomAction, WaterAction } from './searchActions';
+import { entryFor } from './groceryLists';
 
 /**
  * Running a search action (see `searchActions.ts`): the write, through the
@@ -114,6 +115,26 @@ function runGrocery(action: GroceryAction): SearchActionReceipt | null {
   };
 }
 
+function runPantry(action: PantryAction): SearchActionReceipt | null {
+  const store = useGroceryStore.getState();
+  const item = store.items.find(i => i.id === action.itemId);
+  if (!item) return null;
+  // What the row and its home-list entry were before, since "running low" can
+  // put it on the list and only a snapshot knows whether it was already there
+  // (the pantry review deck's Undo takes the same two).
+  const entry = entryFor(store.listEntries, item.id, null);
+  // Through the deck's answer: it writes exactly what the Out of it / Running
+  // low pills write, and raises no disposal question, which a search line
+  // isn't the place for.
+  const portions = store.answerPantryReview(item.id, action.answer);
+  const joined = action.answer === 'low' && !entry && entryFor(useGroceryStore.getState().listEntries, item.id, null) !== null;
+  return {
+    title: action.answer === 'low' ? `Marked ${item.name} as running low` : `Marked ${item.name} as out`,
+    meta: joined ? 'Added to your grocery list' : '',
+    undo: () => useGroceryStore.getState().revertPantryAnswer(item, entry, portions),
+  };
+}
+
 function runSymptom(action: SymptomAction): SearchActionReceipt | null {
   // A row with no severity chosen isn't runnable (`isRunnable`); this is the backstop for Return.
   if (action.severity === null) return null;
@@ -144,6 +165,7 @@ export async function runSearchAction(action: SearchAction): Promise<SearchActio
     case 'water': return runWater(action);
     case 'symptom': return runSymptom(action);
     case 'grocery': return runGrocery(action);
+    case 'pantry': return runPantry(action);
     case 'mood': return null;
   }
 }
