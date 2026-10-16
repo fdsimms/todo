@@ -52,6 +52,7 @@ jest.mock('../db/database', () => ({
   dbBulkDeleteFoodLogEntries: jest.fn(),
   dbBulkSetFoodLogSlot: jest.fn(),
   dbBulkUpdateFoodLogPlacement: jest.fn(),
+  dbRestoreFoodLogSavedMeals: jest.fn(),
 }));
 
 // Real module reaches healthBridge.ts, which imports react-native — irrelevant
@@ -1204,5 +1205,48 @@ describe('duplicateEntry', () => {
     (dbGetFoodLogEntry as jest.Mock).mockReturnValue(null);
     const result = state().duplicateEntry('nope', new Date(2026, 3, 1));
     expect(result).toBeNull();
+  });
+});
+
+describe('a slot change leaves the saved meal', () => {
+  const meal = { savedMealId: 'm1', savedMealName: 'Usual lunch' };
+  const link = (id: string) => {
+    const e = state().entries.find(x => x.id === id)!;
+    return [e.savedMealId ?? null, e.savedMealName ?? null];
+  };
+
+  it('moveEntries clears the link on an entry that changes meal, and undo puts it back', () => {
+    state().loadRange('2026-04-02', '2026-04-02');
+    const a = state().addEntry(draft({ slot: 'lunch', ...meal }))!;
+    expect(link(a.id)).toEqual(['m1', 'Usual lunch']);
+
+    state().moveEntries([a.id], 'dinner');
+    expect(link(a.id)).toEqual([null, null]);
+
+    state().undoLastAction();
+    expect(state().entries.find(e => e.id === a.id)?.slot).toBe('lunch');
+    expect(link(a.id)).toEqual(['m1', 'Usual lunch']);
+  });
+
+  it('moveEntries to the slot it is already in keeps the link', () => {
+    state().loadRange('2026-04-02', '2026-04-02');
+    const a = state().addEntry(draft({ slot: 'lunch', ...meal }))!;
+    state().moveEntries([a.id], 'lunch');
+    expect(link(a.id)).toEqual(['m1', 'Usual lunch']);
+  });
+
+  it('reorderEntries clears it only for a row dragged into another meal, and undo restores it', () => {
+    state().loadRange('2026-04-02', '2026-04-02');
+    const a = state().addEntry(draft({ slot: 'lunch', ...meal }))!;
+    const b = state().addEntry(draft({ slot: 'lunch', ...meal }))!;
+    state().reorderEntries([
+      { id: a.id, slot: 'lunch', sortOrder: 5 },
+      { id: b.id, slot: 'dinner', sortOrder: 6 },
+    ]);
+    expect(link(a.id)).toEqual(['m1', 'Usual lunch']);
+    expect(link(b.id)).toEqual([null, null]);
+
+    state().undoLastAction();
+    expect(link(b.id)).toEqual(['m1', 'Usual lunch']);
   });
 });

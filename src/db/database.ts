@@ -7731,11 +7731,34 @@ export function dbBulkDeleteFoodLogEntries(ids: string[]): void {
   });
 }
 
+// An entry that changes meal leaves the saved meal it was logged with (a
+// "Usual lunch" caption over a dinner row is the one wrong answer), so the
+// link is cleared in the same statement exactly when the slot differs. `IS`
+// because the slot is nullable. See FoodLogEntry.savedMealId.
+const CLEAR_SAVED_MEAL_ON_SLOT_CHANGE = `
+  saved_meal_id = CASE WHEN slot IS ? THEN saved_meal_id ELSE NULL END,
+  saved_meal_name = CASE WHEN slot IS ? THEN saved_meal_name ELSE NULL END`;
+
 export function dbBulkSetFoodLogSlot(ids: string[], slot: MealSlot | null): void {
   if (ids.length === 0) return;
   withTransaction(() => {
     for (const id of ids) {
-      db.runSync('UPDATE food_logs SET slot = ? WHERE id = ?', [slot, id]);
+      db.runSync(
+        `UPDATE food_logs SET ${CLEAR_SAVED_MEAL_ON_SLOT_CHANGE}, slot = ? WHERE id = ?`,
+        [slot, slot, slot, id],
+      );
+    }
+  });
+}
+
+/** Puts back the saved-meal links a slot change cleared, for its undo. */
+export function dbRestoreFoodLogSavedMeals(
+  links: { id: string; savedMealId: string | null; savedMealName: string | null }[]
+): void {
+  if (links.length === 0) return;
+  withTransaction(() => {
+    for (const l of links) {
+      db.runSync('UPDATE food_logs SET saved_meal_id = ?, saved_meal_name = ? WHERE id = ?', [l.savedMealId, l.savedMealName, l.id]);
     }
   });
 }
@@ -7748,7 +7771,10 @@ export function dbBulkUpdateFoodLogPlacement(
   if (updates.length === 0) return;
   withTransaction(() => {
     for (const u of updates) {
-      db.runSync('UPDATE food_logs SET slot = ?, sort_order = ? WHERE id = ?', [u.slot, u.sortOrder, u.id]);
+      db.runSync(
+        `UPDATE food_logs SET ${CLEAR_SAVED_MEAL_ON_SLOT_CHANGE}, slot = ?, sort_order = ? WHERE id = ?`,
+        [u.slot, u.slot, u.slot, u.sortOrder, u.id],
+      );
     }
   });
 }
