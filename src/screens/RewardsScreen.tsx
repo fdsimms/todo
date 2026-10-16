@@ -173,10 +173,11 @@ export function RewardsScreen() {
   // Coins per dollar: a week of your earning over a week of what you'd spend
   // on rewards. Null until both exist, and dollar prices wait for it.
   const exchange = useMemo(() => coinsPerDollar(rate, budgetMinor), [rate, budgetMinor]);
-  // Dollar-priced rewards follow the rate as your earning changes.
+  // Dollar-priced rewards follow the rate as your earning changes, except the
+  // one you're saving for. It catches up once it stops being the goal.
   useEffect(() => {
-    if (enabled && exchange !== null) useRewardStore.getState().repriceDollarRewards(exchange);
-  }, [enabled, exchange]);
+    if (enabled && exchange !== null) useRewardStore.getState().repriceDollarRewards(exchange, goalId);
+  }, [enabled, exchange, goalId]);
   const [budgetText, setBudgetText] = useState(() => (budgetMinor === null ? '' : priceToInput(budgetMinor)));
   const taskById = useMemo(() => new Map(tasks.map(t => [t.id, t])), [tasks]);
   const sourceOf = useCallback((reward: Reward) => (reward.taskId ? taskById.get(reward.taskId) ?? null : null), [taskById]);

@@ -288,6 +288,16 @@ describe('dollar-priced rewards', () => {
     expect(state().rewards.find(r => r.id === episode.id)!.cost).toBe(10);
   });
 
+  it('leaves the reward being saved for alone, then catches it up once it is not', () => {
+    const coffee = state().addReward('Coffee', 45, { priceMinor: 450 })!;
+    const lunch = state().addReward('Lunch', 100, { priceMinor: 1000 })!;
+    expect(state().repriceDollarRewards(20, coffee.id)).toBe(1);
+    expect(state().rewards.find(r => r.id === coffee.id)!.cost).toBe(45);
+    expect(state().rewards.find(r => r.id === lunch.id)!.cost).toBe(200);
+    expect(state().repriceDollarRewards(20, null)).toBe(1);
+    expect(state().rewards.find(r => r.id === coffee.id)!.cost).toBe(90);
+  });
+
   it('writes nothing when the clean cost is unchanged or there is no rate', () => {
     state().addReward('Coffee', 45, { priceMinor: 450 });
     expect(state().repriceDollarRewards(10)).toBe(0);

@@ -175,6 +175,10 @@ so the rate is never a number the app invented, and there is no rate until both 
 - **This is the one place a saved cost moves on its own**, and it was asked for: a dollar price
   should follow what you earn. A reward priced in coins is never touched, which keeps "a price
   never changes on its own" true for everything else in this file.
+- **The reward you're saving for is never repriced.** `repriceDollarRewards` skips
+  `rewardGoalId`, because a goal that moved while you saved toward it is the goalposts moving. It
+  catches up at the current rate on the first repricing after it stops being the goal (another
+  goal chosen, or the goal cleared).
 - **Repricing runs from the Rewards screen** (an effect on the rate), so a phone that hasn't opened
   it lately, or the MCP replica, can claim at the last repriced cost.
 - **A typed price replaces the coin field** in the form rather than sitting beside it, so there is
