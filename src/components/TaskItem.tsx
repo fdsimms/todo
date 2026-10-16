@@ -159,7 +159,6 @@ import { TaskBreakdownSheet } from './TaskBreakdownSheet';
 import { DeliverablePromptSheet } from './DeliverablePromptSheet';
 import { RecipePickerSheet } from './RecipePickerSheet';
 import { PressableScale } from './PressableScale';
-import { InlineAction } from './InlineAction';
 import { usePaintSelectionRow } from './PaintSelection';
 import { SelectionDot } from './SelectionDot';
 import { SwipeableRow } from './SwipeableRow';
@@ -718,10 +717,6 @@ const TaskItemRow = React.memo(function TaskItem({
   const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null);
   const [subtaskTitleEdit, setSubtaskTitleEdit] = useState('');
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
-  // A task with no subtasks shows an "Add subtask" button rather than an empty
-  // field; tapping it opens the field. Once there is a subtask the field is
-  // always shown, so this only matters for the first one.
-  const [addingFirstSubtask, setAddingFirstSubtask] = useState(false);
   // Correcting the time the stopwatch recorded. The draft is separate from the
   // stored value so an abandoned edit leaves it alone, and separate from the
   // open flag because clearing the field is a real state (null = nothing to
@@ -1388,16 +1383,15 @@ const TaskItemRow = React.memo(function TaskItem({
   }, [expanded, notice, offerSource]);
   const activeTitleOffer = titleOffer && titleOffer.key !== dismissedOffer ? titleOffer : null;
 
-  // A notice offers no subtasks, but one that somehow has them still lists
-  // them — only the "Add subtask" field goes. Hiding a row somebody put there
-  // would be losing it, not simplifying it.
-  // A list line keeps the section only for subtasks it already has: an empty
-  // "Add subtask" field under every line of a checklist is noise.
-  const showSubtaskSection = (!notice && !listRow) || subtasks.length > 0;
-  // Sections in the expanded panel each draw a border above themselves, which
-  // has been unconditional since the subtask section started always rendering.
-  // A notice drops that section, so the first thing below it must not draw a
-  // border above nothing. One boolean rather than a running count because the
+  // The section exists only for a task that has subtasks. An empty one used to
+  // show an "Add subtask" button, which cost a full row of height in every
+  // expanded task for a feature most tasks never use; the first subtask is
+  // added from the editor. A notice or list line that somehow has subtasks
+  // still lists them: hiding a row somebody put there would be losing it.
+  const showSubtaskSection = subtasks.length > 0;
+  // Sections in the expanded panel each draw a border above themselves. A task
+  // with no subtasks drops that section, so the first thing below it must not
+  // draw a border above nothing. One boolean rather than a running count because the
   // sections a notice can actually reach are its notes and its own inline
   // block: no notice kind is timed, recurring, chained or in a series. A
   // notice kind that grew any of those would need this to become a count.
@@ -4181,12 +4175,9 @@ const TaskItemRow = React.memo(function TaskItem({
               </View>
             )}
 
-            {/* Unconditional except on a notice — the always-visible "Add
-                subtask" field below needs somewhere to live even when the list
-                is empty, so this can't stay gated on subtasks.length like the
-                rows below it still are. A notice has no field to house, so it
-                renders this only for subtasks it already has (see
-                showSubtaskSection). */}
+            {/* Only while the task has subtasks (see showSubtaskSection). The
+                "Add subtask" field below is the last row of the list, so a
+                task with none shows no section at all. */}
             {showSubtaskSection && (
             <View style={[
               styles.subtaskSection,
@@ -4308,35 +4299,20 @@ const TaskItemRow = React.memo(function TaskItem({
               {!notice && (
               <View style={styles.subtaskRow}>
                 <SubtaskRail last color={colors.separator} />
-                {subtasks.length === 0 && !addingFirstSubtask ? (
-                  <InlineAction
-                    label="Add subtask"
-                    icon="add"
-                    onPress={() => setAddingFirstSubtask(true)}
-                    style={styles.subtaskAddAction}
-                  />
-                ) : (
-                  <>
-                    <Ionicons name="add" size={SUBTASK_CHECKBOX_SIZE} color={colors.accentText} />
-                    <TextField
-                      ref={newSubtaskInputRef}
-                      style={styles.subtaskTitleInput}
-                      value={newSubtaskTitle}
-                      onChangeText={setNewSubtaskTitle}
-                      placeholder="Add subtask"
-                      placeholderTextColor={colors.textTertiary}
-                      maxLength={TITLE_MAX_LENGTH}
-                      returnKeyType="done"
-                      blurOnSubmit={false}
-                      autoFocus={addingFirstSubtask}
-                      onSubmitEditing={commitNewSubtask}
-                      onBlur={() => {
-                        commitNewSubtask();
-                        setAddingFirstSubtask(false);
-                      }}
-                    />
-                  </>
-                )}
+                <Ionicons name="add" size={SUBTASK_CHECKBOX_SIZE} color={colors.accentText} />
+                <TextField
+                  ref={newSubtaskInputRef}
+                  style={styles.subtaskTitleInput}
+                  value={newSubtaskTitle}
+                  onChangeText={setNewSubtaskTitle}
+                  placeholder="Add subtask"
+                  placeholderTextColor={colors.textTertiary}
+                  maxLength={TITLE_MAX_LENGTH}
+                  returnKeyType="done"
+                  blurOnSubmit={false}
+                  onSubmitEditing={commitNewSubtask}
+                  onBlur={commitNewSubtask}
+                />
               </View>
               )}
             </View>
@@ -5794,9 +5770,6 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
     gap: spacing.sm,
     paddingVertical: spacing.xsm,
     paddingLeft: spacing.xl,
-  },
-  subtaskAddAction: {
-    alignSelf: 'flex-start',
   },
   subtaskCheck: {
     width: SUBTASK_CHECKBOX_SIZE,
