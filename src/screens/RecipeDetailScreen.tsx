@@ -260,6 +260,8 @@ export function RecipeDetailScreen() {
     () => (recipe ? resolveComponents(recipe, recipesById) : []),
     [recipe, recipesById]
   );
+  const blanks = recipe?.blanks ?? [];
+  const showBlankAction = featureShown('recipeComposition', simpleMode, blanks.length > 0);
   // ==== the resolved recipe: components, counts, cost, the scaled lines ====
   // The two lookups each row's weight caption and the shared text read
   // (lineWeight.ts), built once per catalog change rather than once per row.
@@ -1736,6 +1738,11 @@ export function RecipeDetailScreen() {
         accessibilityLabel={[blank.label, describeBlankRule(blank.max), detail].filter(Boolean).join(', ')}
         accessibilityHint="Double tap to edit"
       >
+        {/* componentMarker's badge, like a used recipe in the same card: the
+            row is not an ingredient line, and the badge is what says so. */}
+        <View style={styles.componentMarker}>
+          <Ionicons name="shapes-outline" size={12} color={colors.accent} />
+        </View>
         <View style={styles.ingredientText}>
           <Text style={styles.ingredientName}>{blank.label}</Text>
           {!!detail && <Text style={styles.blankDetail}>{detail}</Text>}
@@ -2366,7 +2373,7 @@ export function RecipeDetailScreen() {
           </TouchableOpacity>
         )}
 
-        {mergedIngredientRows.length === 0 && components.length === 0 ? (
+        {mergedIngredientRows.length === 0 && components.length === 0 && blanks.length === 0 ? (
           <HelpText style={styles.hint}>
             Type one ingredient at a time, or paste a whole list. “2 lb chicken thighs”
             saves the quantity separately from the name.
@@ -2381,6 +2388,20 @@ export function RecipeDetailScreen() {
                 onHoverChange={handleIngredientHoverChange}
                 renderItem={renderMergedRow}
               />
+            )}
+            {/* A recipe's blanks (RecipeBlank) are part of what it's made of,
+                so they sit in this card rather than a section of their own:
+                down the page, a grain bowl read as a recipe for olive oil. After
+                the lines, under their own heading, because that's where a meal's
+                fills land in cook mode and on the list (flattenRecipeIngredients),
+                and the heading keeps them out of the last section above. Not in
+                the drag: a blank isn't an ingredient line. */}
+            {blanks.length > 0 && (
+              <View style={mergedIngredientRows.length > 0 ? styles.ingredientSectionHeaderWrap : styles.blankHeaderFirst}>
+                {mergedIngredientRows.length > 0 && <View style={styles.ingredientSectionDivider} />}
+                <Text style={styles.ingredientSectionHeader}>From your kitchen</Text>
+                {blanks.map(renderBlank)}
+              </View>
             )}
           </View>
         )}
@@ -2514,17 +2535,32 @@ export function RecipeDetailScreen() {
         </Text>
 
         {/* Sits at the end of what the recipe is made of, because that list is
-            exactly what the comparison runs on. */}
-        {recipe.ingredients.length > 0 && (
-          <View style={styles.addRow}>
-            <InlineAction
-              label="Cook something with this"
-              icon="git-merge-outline"
-              variant="neutral"
-              surface="page"
-              onPress={() => openOverlap(recipe)}
-              accessibilityLabel={`Find recipes that share ingredients with ${recipe.name}`}
-            />
+            exactly what the comparison runs on. Adding a blank sits beside it
+            for the same reason: a blank is one more thing the dish is made of.
+            Hidden in simplified mode with components, its sibling, unless the
+            recipe already has one. */}
+        {(recipe.ingredients.length > 0 || showBlankAction) && (
+          <View style={[styles.addRow, styles.addRowWrap]}>
+            {showBlankAction && (
+              <InlineAction
+                label="Add a blank"
+                icon="add"
+                variant="neutral"
+                surface="page"
+                onPress={() => { haptics.tap(); setEditingBlank('new'); }}
+                accessibilityLabel="Add a blank, a kind of food you pick from your kitchen each time"
+              />
+            )}
+            {recipe.ingredients.length > 0 && (
+              <InlineAction
+                label="Cook something with this"
+                icon="git-merge-outline"
+                variant="neutral"
+                surface="page"
+                onPress={() => openOverlap(recipe)}
+                accessibilityLabel={`Find recipes that share ingredients with ${recipe.name}`}
+              />
+            )}
           </View>
         )}
 
@@ -2716,34 +2752,6 @@ export function RecipeDetailScreen() {
               </>
             )}
           </>
-        )}
-
-        {/* A recipe made of what's around (RecipeBlank). Hidden in simplified
-            mode with components, its sibling, unless the recipe already has one. */}
-        {featureShown('recipeComposition', simpleMode, (recipe.blanks ?? []).length > 0) && (
-        <>
-        <Text style={styles.sectionLabel}>Fill from your kitchen</Text>
-
-        {(recipe.blanks ?? []).length === 0 ? (
-          <HelpText style={styles.hint}>
-            For a dish you make with whatever’s around, like a grain bowl. A blank names a
-            kind of food, like a grain or any vegetables, and each time you plan the
-            recipe you pick what fills it from your kitchen.
-          </HelpText>
-        ) : (
-          <View style={styles.card}>
-            {recipe.blanks.map(renderBlank)}
-          </View>
-        )}
-
-        <View style={styles.addRow}>
-          <InlineAction
-            label="Add a blank"
-            icon="add"
-            onPress={() => { haptics.tap(); setEditingBlank('new'); }}
-          />
-        </View>
-        </>
         )}
 
         {/* The whole section goes in simplified mode, unless this recipe already
@@ -3226,6 +3234,11 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   ingredientSectionHeaderWrap: {
     paddingTop: spacing.sm,
   },
+  // The blanks' heading when nothing sits above it in the card: no divider to
+  // follow, so the card's own edge needs the row's top padding instead.
+  blankHeaderFirst: {
+    paddingTop: spacing.smd,
+  },
   // Marks the break between two sections' rows — skipped for a heading that
   // opens the card, where there's no prior section to divide from and a
   // hairline right under the card's top edge would just look stray.
@@ -3655,6 +3668,7 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     gap: spacing.sm,
     marginTop: spacing.xs,
   },
+  addRowWrap: { flexWrap: 'wrap' },
   inputHint: {
     color: colors.textTertiary,
     fontSize: font.xs,

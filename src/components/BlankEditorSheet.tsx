@@ -150,6 +150,16 @@ export function BlankEditorSheet({ visible, recipeId, blankId, onClose }: Props)
           keyboardShouldPersistTaps="handled"
           {...keyboardScroll.props}
         >
+          {/* Said here rather than on the recipe page, where it used to head a
+              section of its own: that page now shows only an "Add a blank"
+              button, and this is where the button lands. */}
+          {!blankId && (
+            <HelpText style={[styles.hint, styles.intro]}>
+              For a dish you make with whatever’s around, like a grain bowl. A blank names a
+              kind of food, like a grain or any vegetables, and each time you plan the recipe
+              you pick what fills it from your kitchen.
+            </HelpText>
+          )}
           <Text style={styles.fieldLabel}>Filled with</Text>
           <SegmentedControl options={KIND_OPTIONS} value={kind} onChange={setKind} columns={2} label="Filled with" />
           <HelpText style={styles.hint}>
@@ -242,6 +252,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.xs,
     marginTop: spacing.sm,
   },
+  intro: { marginTop: 0, marginBottom: spacing.md },
   deleteRow: {
     flexDirection: 'row',
     alignItems: 'center',
