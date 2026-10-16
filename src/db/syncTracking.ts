@@ -689,7 +689,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
  * - `grocery_trip_shop_id`, `grocery_trip_started_at`,
  *   `mealPlanNudgeLastFiredWeekKey`, `mealPlanNudgeGroupId`,
  *   `meal_plan_added_to_list`, `patchNotesQaStatus`, `filterEfforts`,
- *   `filterPriorities` — transient state about what one device is doing right
+ *   `filterPriorities`, `filterTypes` — transient state about what one device is doing right
  *   now. `mealPlanNudgeGroupId` names the stack this device last laid the
  *   weekly nudge into; the other device is kept from laying down a second one
  *   by seeing the synced tasks themselves (`hasLiveMealPlanNudgeTask`), which

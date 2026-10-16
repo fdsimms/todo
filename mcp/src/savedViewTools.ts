@@ -118,6 +118,7 @@ const CLAUSE_SHAPES: Record<string, string> = {
   project: '{ kind: "project", values: [project ids] }',
   priority: '{ kind: "priority", values: [0 to 4] }',
   effort: '{ kind: "effort", values: [0 to 6] }',
+  taskType: '{ kind: "taskType", values: ["task", "timed", "target", "health", "rotation", "chain", "repeating"] }',
   maxMinutes: '{ kind: "maxMinutes", minutes: a positive number }',
   overdue: '{ kind: "overdue", overdue: true or false }',
   hasReminder: '{ kind: "hasReminder", hasReminder: true or false }',

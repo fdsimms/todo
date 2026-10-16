@@ -2,6 +2,12 @@ import type { Effort, Priority, SavedViewClause, SavedViewClauseKind, Task } fro
 import { PRIORITY_LABELS } from '../types';
 import { overdueDayCount } from './clockTime';
 import { estimatedMinutesFor, effortRangeLabel } from './effort';
+import {
+  TASK_TYPE_FILTERS,
+  matchesTaskTypes,
+  taskTypeFilterLabel,
+  type TaskTypeFilter,
+} from './taskTypeFilter';
 
 /**
  * Matching a saved view against a task (#2679) — the rules half of the lens
@@ -31,6 +37,7 @@ export const SAVED_VIEW_CLAUSE_KINDS: readonly SavedViewClauseKind[] = [
   'project',
   'priority',
   'effort',
+  'taskType',
   'maxMinutes',
   'overdue',
   'hasReminder',
@@ -46,6 +53,7 @@ export function savedViewClauseLabel(kind: SavedViewClauseKind): string {
     case 'project': return 'Project';
     case 'priority': return 'Priority';
     case 'effort': return 'Effort';
+    case 'taskType': return 'Type';
     case 'maxMinutes': return 'Time estimate';
     case 'overdue': return 'Overdue';
     case 'hasReminder': return 'Reminder';
@@ -114,6 +122,8 @@ export function matchesClause(
     case 'effort':
       if (clause.values.length === 0) return true;
       return clause.values.includes(task.effort);
+    case 'taskType':
+      return matchesTaskTypes(task, knownTaskTypes(clause.values));
     case 'maxMinutes': {
       // Through estimatedMinutesFor, like every other workload read: mid-chain
       // only one step is on the day, and the task-level number covers the whole
@@ -211,6 +221,10 @@ export function describeSavedViewClause(
       const joined = joinValues(clause.values.map(e => effortRangeLabel(e)));
       return joined === null ? null : `${joined} effort`;
     }
+    case 'taskType': {
+      const joined = joinValues(knownTaskTypes(clause.values).map(taskTypeFilterLabel));
+      return joined === null ? null : `${joined} tasks`;
+    }
     case 'maxMinutes':
       return `Under ${clause.minutes} min`;
     case 'overdue':
@@ -241,6 +255,16 @@ export function describeSavedView(
 }
 
 // ==== Storage ====
+
+/**
+ * A stored type list read back as chips, dropping a key this build doesn't know
+ * (a view synced from a newer one). Dropping it leaves a clause that can still
+ * be empty, and an empty clause is inert rather than hiding every task, which
+ * is what `matchesTaskTypes` does with nothing picked.
+ */
+function knownTaskTypes(values: readonly string[]): TaskTypeFilter[] {
+  return TASK_TYPE_FILTERS.filter(t => values.includes(t));
+}
 
 /** The probe shape a stored clause is checked against before it is trusted. */
 interface ClauseProbe {
@@ -274,6 +298,8 @@ function isClause(value: unknown): value is SavedViewClause {
       return isNumberList(probe.values, 4);
     case 'effort':
       return isNumberList(probe.values, 6);
+    case 'taskType':
+      return isStringList(probe.values);
     case 'maxMinutes':
       return typeof probe.minutes === 'number'
         && Number.isFinite(probe.minutes)
@@ -338,6 +364,7 @@ export function parseSavedViewClauses(raw: string | null | undefined): SavedView
 export function clausesFromFilters(filters: {
   priorities: readonly Priority[];
   efforts: readonly Effort[];
+  types: readonly TaskTypeFilter[];
 }): SavedViewClause[] {
   const clauses: SavedViewClause[] = [];
   if (filters.priorities.length > 0) {
@@ -345,6 +372,9 @@ export function clausesFromFilters(filters: {
   }
   if (filters.efforts.length > 0) {
     clauses.push({ kind: 'effort', values: [...filters.efforts] });
+  }
+  if (filters.types.length > 0) {
+    clauses.push({ kind: 'taskType', values: [...filters.types] });
   }
   return clauses;
 }

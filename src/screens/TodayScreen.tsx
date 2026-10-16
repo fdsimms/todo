@@ -149,6 +149,8 @@ import { TemplateAppliedToast } from '../components/TemplateAppliedToast';
 import { templateRunDestination, templateRunDestinationLabel, type TemplateRunDestination } from '../utils/templateRunDestination';
 import { goToTemplateRun } from '../navigation/navigationRef';
 import { SortFilterSheet } from '../components/SortFilterSheet';
+import { filterByTaskTypes } from '../utils/taskTypeFilter';
+import { slotUpdates } from '../utils/projectOrder';
 import { SavedViewEditorSheet } from '../components/SavedViewEditorSheet';
 import { clausesFromFilters } from '../utils/savedViews';
 import { useSavedViewStore } from '../store/useSavedViewStore';
@@ -762,7 +764,7 @@ export function TodayScreen() {
     (navigation as any).navigate('CategoryDetail', { category });
   }, [navigation]);
   const route = useRoute<any>();
-  const inboxTasks = useTaskStore(useShallow(s => s.inboxTasks()));
+  const inboxTasksAll = useTaskStore(useShallow(s => s.inboxTasks()));
   const tabBarHeight = useBottomTabBarHeight();
   const fabBottom = useFabBottom();
   // ==== local state (view mode, selection, expansion, sheets) ====
@@ -783,9 +785,21 @@ export function TodayScreen() {
   const showingToday = viewMode === 'today';
   const visibleTasks = useTaskStore(useShallow(s => (showingToday ? s.visibleTasks() : NO_TASKS)));
   const pinnedTasks = useTaskStore(useShallow(s => (showingToday ? s.pinnedTasks() : NO_TASKS)));
-  const deferredTasks = useTaskStore(useShallow(s => (viewMode === 'later' ? s.deferredTasks() : NO_TASKS)));
-  const unscheduledTasks = useTaskStore(
+  const deferredTasksAll = useTaskStore(useShallow(s => (viewMode === 'later' ? s.deferredTasks() : NO_TASKS)));
+  const unscheduledTasksAll = useTaskStore(
     useShallow(s => (viewMode === 'unscheduled' ? s.unscheduledTasks() : NO_TASKS)),
+  );
+  // The type filter narrows all four lists, so these three are the lists as the
+  // screen shows them. The *All* ones stay for what is about the whole lens
+  // rather than the rows: the Inbox badge, the new-tasks banner, and telling an
+  // empty lens from one the filter has emptied.
+  const filterTypes = useSettingsStore(useShallow(s => s.filterTypes));
+  const setFilterTypes = useSettingsStore(s => s.setFilterTypes);
+  const inboxTasks = useMemo(() => filterByTaskTypes(inboxTasksAll, filterTypes), [inboxTasksAll, filterTypes]);
+  const deferredTasks = useMemo(() => filterByTaskTypes(deferredTasksAll, filterTypes), [deferredTasksAll, filterTypes]);
+  const unscheduledTasks = useMemo(
+    () => filterByTaskTypes(unscheduledTasksAll, filterTypes),
+    [unscheduledTasksAll, filterTypes],
   );
   const expiredTasks = useTaskStore(useShallow(s => (showingToday ? s.expiredTasks() : NO_TASKS)));
   const vacationHiddenTasks = useTaskStore(
@@ -2023,14 +2037,26 @@ export function TodayScreen() {
   }, [route.params?.showViewModeAt, handledShowViewMode]);
   const projects = useProjectStore(useShallow(s => s.projects));
 
+  // A lens with tasks in it that the type filter has emptied is a different
+  // empty state from one with nothing in it: "Nothing for later" would be a lie.
+  const typeFilterEmptied = (all: readonly Task[]) => filterTypes.length > 0 && all.length > 0;
+  const typeFilterEmptyState = (
+    <EmptyState
+      icon="funnel-outline"
+      title="No tasks match"
+      subtitle="None of the tasks here are one of the selected types. Change the filter to see them."
+      bottomOffset={tabBarHeight}
+    />
+  );
+
   const activeFilterCount =
-    (sort !== 'default' ? 1 : 0) + filterPriorities.length + filterEfforts.length;
+    (sort !== 'default' ? 1 : 0) + filterPriorities.length + filterEfforts.length + filterTypes.length;
   // Only priority/effort filters narrow which tasks render — sort
   // just reorders them — so only those should suppress a stack's "N/M" tally
   // (see the filtered prop on TaskGroupHeader). Later Today's groups don't go
   // through this filter at all (upcomingTaskIds is unfiltered), so this only
   // applies to the main Today list's group rows below.
-  const groupTallyFiltered = filterPriorities.length > 0 || filterEfforts.length > 0;
+  const groupTallyFiltered = filterPriorities.length > 0 || filterEfforts.length > 0 || filterTypes.length > 0;
 
   // Both close the filter sheet first: a sheet raised while it is still
   // visible would be a second Modal presented from a view controller already
@@ -2040,8 +2066,9 @@ export function TodayScreen() {
     setSaveViewClauses(clausesFromFilters({
       priorities: filterPriorities,
       efforts: filterEfforts,
+      types: filterTypes,
     }));
-  }, [filterPriorities, filterEfforts]);
+  }, [filterPriorities, filterEfforts, filterTypes]);
 
   const handleOpenSavedViews = useCallback(() => {
     setFilterVisible(false);
@@ -2301,6 +2328,7 @@ export function TodayScreen() {
     let result = visibleTasks;
     if (filterPriorities.length > 0) result = result.filter(t => filterPriorities.includes(t.priority));
     if (filterEfforts.length > 0) result = result.filter(t => filterEfforts.includes(t.effort));
+    result = filterByTaskTypes(result, filterTypes);
     switch (sort) {
       case 'priority': return [...result].sort((a, b) => b.priority - a.priority);
       case 'effort-asc': return [...result].sort((a, b) => (a.effort || 99) - (b.effort || 99));
@@ -2314,7 +2342,7 @@ export function TodayScreen() {
       case 'streak': return [...result].sort((a, b) => liveStreakCount(b) - liveStreakCount(a));
       default: return result;
     }
-  }, [visibleTasks, sort, filterPriorities, filterEfforts]);
+  }, [visibleTasks, sort, filterPriorities, filterEfforts, filterTypes]);
 
   // The rows the current sub-view is actually showing — what "select all" and
   // the bulk bar's tally operate on.
@@ -3268,7 +3296,24 @@ export function TodayScreen() {
     const spliced = [...laterDraggableData];
     spliced.splice(intent.before ? anchor : anchor + 1, 0, { type: 'task', task, key: task.id });
     setLaterDraggableData(spliced);
-    reorderTasks(laterTaskOrder(spliced));
+    reorderListedTasks(laterTaskOrder(spliced));
+  };
+
+  /**
+   * Persists an order for the rows a list shows. With the type filter off that
+   * is the whole lens, so it is the plain renumber. With it on, the rows are a
+   * slice of the lens, and numbering them from 1 would collide with the hidden
+   * ones and shuffle them: they are laid into the slots the shown rows already
+   * hold instead (`slotUpdates`), so everything hidden keeps its place.
+   */
+  const reorderListedTasks = (orderedIds: string[]) => {
+    if (filterTypes.length === 0) {
+      reorderTasks(orderedIds);
+      return;
+    }
+    const listed = new Set(orderedIds);
+    const updates = slotUpdates(allTasks.filter(t => listed.has(t.id)), orderedIds);
+    if (updates.length > 0) reorderWithCategoryUpdates(updates, []);
   };
 
   /** Shared by Inbox and Unscheduled: splice the new task's id into a flat id
@@ -3279,7 +3324,7 @@ export function TodayScreen() {
     if (anchor < 0) return;
     const spliced = [...ids];
     spliced.splice(before ? anchor : anchor + 1, 0, taskId);
-    reorderTasks(spliced);
+    reorderListedTasks(spliced);
   };
 
   const placeCreatedInboxTask = (task: Task, intent: Extract<FabDropIntent, { kind: 'insert' }>) => {
@@ -4462,8 +4507,8 @@ export function TodayScreen() {
   // opens one it can't scroll to rather than eating the tap.
   const newTasksSource =
     viewMode === 'today' ? visibleTasks
-    : viewMode === 'unscheduled' ? unscheduledTasks
-    : viewMode === 'inbox' ? inboxTasks
+    : viewMode === 'unscheduled' ? unscheduledTasksAll
+    : viewMode === 'inbox' ? inboxTasksAll
     : NO_TASKS;
   const newTasks = useMemo(() => newTasksSource.filter(isTaskNew), [newTasksSource]);
   const dismissNewTasksBanner = () => {
@@ -4911,7 +4956,7 @@ export function TodayScreen() {
         <ViewModePills
           modes={viewModes}
           viewMode={viewMode}
-          inboxCount={inboxTasks.length}
+          inboxCount={inboxTasksAll.length}
           unscheduledCount={unscheduledCount}
           onLeave={leaveViewMode}
           onSelect={selectViewMode}
@@ -5079,7 +5124,7 @@ export function TodayScreen() {
             placeholderStyle={styles.dropSlot}
             onReorder={reordered => {
               setLaterDraggableData(reordered);
-              reorderTasks(laterTaskOrder(reordered));
+              reorderListedTasks(laterTaskOrder(reordered));
             }}
             onEndReached={handleLaterEndReached}
             onEndReachedThreshold={LATER_END_REACHED_THRESHOLD}
@@ -5089,7 +5134,7 @@ export function TodayScreen() {
                 : [styles.listContent, extraListBottomPadding !== undefined && { paddingBottom: extraListBottomPadding }]
             }
             ListEmptyComponent={
-              isEmptyDatabase ? (
+              typeFilterEmptied(deferredTasksAll) ? typeFilterEmptyState : isEmptyDatabase ? (
                 <EmptyState
                   icon="rocket-outline"
                   title="No tasks yet"
@@ -5402,7 +5447,7 @@ export function TodayScreen() {
                 : [styles.listContent, extraListBottomPadding !== undefined && { paddingBottom: extraListBottomPadding }]
             }
             ListEmptyComponent={
-              isEmptyDatabase ? (
+              typeFilterEmptied(unscheduledTasksAll) ? typeFilterEmptyState : isEmptyDatabase ? (
                 <EmptyState
                   icon="rocket-outline"
                   title="No tasks yet"
@@ -5486,7 +5531,7 @@ export function TodayScreen() {
                 : [styles.listContent, extraListBottomPadding !== undefined && { paddingBottom: extraListBottomPadding }]
             }
             ListEmptyComponent={
-              isEmptyDatabase ? (
+              typeFilterEmptied(inboxTasksAll) ? typeFilterEmptyState : isEmptyDatabase ? (
                 <EmptyState
                   icon="rocket-outline"
                   title="No tasks yet"
@@ -5679,6 +5724,8 @@ export function TodayScreen() {
             onPrioritiesChange={setFilterPriorities}
             efforts={filterEfforts}
             onEffortsChange={setFilterEfforts}
+            types={filterTypes}
+            onTypesChange={setFilterTypes}
             onSaveAsView={savedViewsShown ? handleSaveAsView : undefined}
             onOpenSavedViews={savedViewsShown ? handleOpenSavedViews : undefined}
           />

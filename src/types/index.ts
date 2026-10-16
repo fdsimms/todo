@@ -890,6 +890,7 @@ export type SavedViewClause =
   | { kind: 'project'; values: string[] }   // project ids
   | { kind: 'priority'; values: Priority[] }
   | { kind: 'effort'; values: Effort[] }
+  | { kind: 'taskType'; values: string[] }  // TaskTypeFilter keys; unknown ones match nothing
   | { kind: 'maxMinutes'; minutes: number }
   | { kind: 'overdue'; overdue: boolean }
   | { kind: 'hasReminder'; hasReminder: boolean }
