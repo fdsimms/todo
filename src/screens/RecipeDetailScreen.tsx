@@ -2399,7 +2399,7 @@ export function RecipeDetailScreen() {
             {blanks.length > 0 && (
               <View style={mergedIngredientRows.length > 0 ? styles.ingredientSectionHeaderWrap : styles.blankHeaderFirst}>
                 {mergedIngredientRows.length > 0 && <View style={styles.ingredientSectionDivider} />}
-                <Text style={styles.ingredientSectionHeader}>From your kitchen</Text>
+                <Text style={styles.ingredientSectionHeader}>Pick each time</Text>
                 {blanks.map(renderBlank)}
               </View>
             )}
@@ -2548,7 +2548,7 @@ export function RecipeDetailScreen() {
                 variant="neutral"
                 surface="page"
                 onPress={() => { haptics.tap(); setEditingBlank('new'); }}
-                accessibilityLabel="Add a blank, a kind of food you pick from your kitchen each time"
+                accessibilityLabel="Add a blank, a kind of food you pick each time you plan the recipe"
               />
             )}
             {recipe.ingredients.length > 0 && (

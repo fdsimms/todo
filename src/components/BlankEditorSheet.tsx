@@ -157,7 +157,7 @@ export function BlankEditorSheet({ visible, recipeId, blankId, onClose }: Props)
             <HelpText style={[styles.hint, styles.intro]}>
               For a dish you make with whatever’s around, like a grain bowl. A blank names a
               kind of food, like a grain or any vegetables, and each time you plan the recipe
-              you pick what fills it from your kitchen.
+              you pick what fills it. What you already have is offered first.
             </HelpText>
           )}
           <Text style={styles.fieldLabel}>Filled with</Text>
