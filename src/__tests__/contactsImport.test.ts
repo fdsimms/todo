@@ -8,6 +8,7 @@ import {
   contactBirthday,
   contactPersonDraft,
   describeCandidateBirthday,
+  contactAddress,
   fillFromContactPatch,
   filterBrowsableContacts,
   normalizePhone,
@@ -21,6 +22,7 @@ function candidate(over: Partial<ContactCandidate> = {}): ContactCandidate {
     name: 'Gideon Reyes',
     phoneNumber: null,
     email: null,
+    address: null,
     birthdayMonth: null,
     birthdayDay: null,
     birthYear: null,
@@ -278,7 +280,7 @@ describe('contactPersonDraft', () => {
       email: 'd@example.com',
       birthdayMonth: 3,
       birthdayDay: 14,
-      birthYear: 1992,
+      birthYear: 1992, address: null,
     });
   });
 
@@ -294,19 +296,19 @@ describe('contactPersonDraft', () => {
 describe('fillFromContactPatch', () => {
   const draft = {
     name: 'Gideon Reyes', phoneNumber: '555 123 4567', email: 'g@example.com',
-    birthdayMonth: 3, birthdayDay: 14, birthYear: 1992,
+    birthdayMonth: 3, birthdayDay: 14, birthYear: 1992, address: '214 Elm St\nAustin, TX 78701',
   };
-  const empty = { phoneNumber: null, email: null, birthdayMonth: null, birthdayDay: null, birthYear: null };
+  const empty = { phoneNumber: null, email: null, birthdayMonth: null, birthdayDay: null, birthYear: null, address: null };
 
   it('fills every empty field', () => {
     expect(fillFromContactPatch(empty, draft)).toEqual({
       phoneNumber: '555 123 4567', email: 'g@example.com',
-      birthdayMonth: 3, birthdayDay: 14, birthYear: 1992,
+      birthdayMonth: 3, birthdayDay: 14, birthYear: 1992, address: '214 Elm St\nAustin, TX 78701',
     });
   });
 
   it('never overwrites what the person already has', () => {
-    const full = { phoneNumber: '111', email: 'a@b.c', birthdayMonth: 1, birthdayDay: 2, birthYear: null };
+    const full = { phoneNumber: '111', email: 'a@b.c', birthdayMonth: 1, birthdayDay: 2, birthYear: null, address: '1 Main St' };
     expect(fillFromContactPatch(full, draft)).toEqual({});
   });
 
@@ -315,7 +317,7 @@ describe('fillFromContactPatch', () => {
   });
 
   it('skips fields the contact does not have', () => {
-    const bare = { ...draft, phoneNumber: null, email: null, birthdayMonth: null, birthdayDay: null, birthYear: null };
+    const bare = { ...draft, phoneNumber: null, email: null, birthdayMonth: null, birthdayDay: null, birthYear: null, address: null };
     expect(fillFromContactPatch(empty, bare)).toEqual({});
   });
 
@@ -323,5 +325,22 @@ describe('fillFromContactPatch', () => {
     const patch = fillFromContactPatch({ ...empty, birthdayMonth: 5, birthdayDay: 9 }, draft);
     expect(patch.birthYear).toBeUndefined();
     expect(patch.birthdayMonth).toBeUndefined();
+  });
+});
+
+describe('contactAddress', () => {
+  it('writes street, then city/region/postal, then country, one per line', () => {
+    expect(contactAddress([{ street: '214 Elm St', city: 'Austin', region: 'TX', postalCode: '78701', country: 'United States' }]))
+      .toBe('214 Elm St\nAustin, TX 78701\nUnited States');
+  });
+
+  it('skips blank parts and cards with no address', () => {
+    expect(contactAddress([{ street: '  ', city: 'Austin', region: '', postalCode: '' }])).toBe('Austin');
+    expect(contactAddress([{ street: '', city: '' }])).toBeNull();
+    expect(contactAddress(undefined)).toBeNull();
+  });
+
+  it('takes the first address that has anything in it', () => {
+    expect(contactAddress([{ street: '' }, { street: '9 Oak Ave' }, { street: '1 Other' }])).toBe('9 Oak Ave');
   });
 });

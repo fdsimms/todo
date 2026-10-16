@@ -57,13 +57,33 @@ export interface ContactCandidate {
   birthdayDay: number | null;
   /** Only ever copied alongside a month and day — see `contactBirthday`. */
   birthYear: number | null;
+  /** The first postal address on the card, joined into lines; see `contactAddress`. */
+  address: string | null;
 }
 
 /** What gets written when one is picked. Deliberately a subset of `Person`. */
 export type ContactPersonDraft = Pick<
   Person,
-  'name' | 'phoneNumber' | 'email' | 'birthdayMonth' | 'birthdayDay' | 'birthYear'
+  'name' | 'phoneNumber' | 'email' | 'birthdayMonth' | 'birthdayDay' | 'birthYear' | 'address'
 >;
+
+/**
+ * A native postal address as the lines a person would write on an envelope:
+ * street, then "City, Region Postal", then country. Parts the contact left
+ * blank are skipped, and a card with none of them gives null rather than an
+ * empty string. The first address on the card is the one taken, as with the
+ * phone number and email.
+ */
+export function contactAddress(
+  addresses: readonly { street?: string | null; city?: string | null; region?: string | null; postalCode?: string | null; country?: string | null }[] | null | undefined
+): string | null {
+  const a = addresses?.find(x => x && [x.street, x.city, x.region, x.postalCode, x.country].some(v => v?.trim()));
+  if (!a) return null;
+  const regionPostal = [a.region?.trim(), a.postalCode?.trim()].filter(Boolean).join(' ');
+  const cityLine = [a.city?.trim(), regionPostal].filter(Boolean).join(', ');
+  const lines = [a.street?.trim(), cityLine, a.country?.trim()].filter(Boolean);
+  return lines.length > 0 ? lines.join('\n') : null;
+}
 
 /**
  * The month, day and (if the contact has one) year off a native contact's
@@ -269,6 +289,7 @@ export function describeCandidateBirthday(
 export function contactPersonDraft(candidate: ContactCandidate): ContactPersonDraft {
   const phone = candidate.phoneNumber?.trim();
   const email = candidate.email?.trim();
+  const address = candidate.address?.trim();
   return {
     name: candidate.name.trim(),
     phoneNumber: phone ? phone : null,
@@ -276,6 +297,7 @@ export function contactPersonDraft(candidate: ContactCandidate): ContactPersonDr
     birthdayMonth: candidate.birthdayMonth,
     birthdayDay: candidate.birthdayDay,
     birthYear: candidate.birthYear,
+    address: address ? address : null,
   };
 }
 
@@ -291,12 +313,13 @@ export function contactPersonDraft(candidate: ContactCandidate): ContactPersonDr
  * all, so a contact's year can't end up beside somebody else's date.
  */
 export function fillFromContactPatch(
-  current: Pick<Person, 'phoneNumber' | 'email' | 'birthdayMonth' | 'birthdayDay' | 'birthYear'>,
+  current: Pick<Person, 'phoneNumber' | 'email' | 'birthdayMonth' | 'birthdayDay' | 'birthYear' | 'address'>,
   draft: ContactPersonDraft
-): Partial<Pick<Person, 'phoneNumber' | 'email' | 'birthdayMonth' | 'birthdayDay' | 'birthYear'>> {
+): Partial<Pick<Person, 'phoneNumber' | 'email' | 'birthdayMonth' | 'birthdayDay' | 'birthYear' | 'address'>> {
   const patch: ReturnType<typeof fillFromContactPatch> = {};
   if (!current.phoneNumber?.trim() && draft.phoneNumber) patch.phoneNumber = draft.phoneNumber;
   if (!current.email?.trim() && draft.email) patch.email = draft.email;
+  if (!current.address?.trim() && draft.address) patch.address = draft.address;
   const hasBirthday = current.birthdayMonth !== null && current.birthdayDay !== null;
   if (!hasBirthday && draft.birthdayMonth !== null && draft.birthdayDay !== null) {
     patch.birthdayMonth = draft.birthdayMonth;
