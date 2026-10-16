@@ -37,6 +37,7 @@ import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { useFilterField } from '../hooks/useFilterField';
 import { TextField } from './TextField';
+import { HelpText } from './HelpText';
 
 interface Props {
   visible: boolean;
@@ -542,10 +543,10 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
               maxLength={GROCERY_NAME_MAX_LENGTH}
               accessibilityLabel="Note about this substitute"
             />
-            <Text style={styles.hint}>
+            <HelpText style={styles.hint}>
               Say when a swap only works sometimes, for example fine for frying but not for
               baking.
-            </Text>
+            </HelpText>
 
             <TouchableOpacity
               style={styles.toggleRow}

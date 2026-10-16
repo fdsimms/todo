@@ -48,6 +48,7 @@ import { describeSupplementPanel } from '../utils/supplementDose';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { useLingering } from '../hooks/useLingering';
+import { HelpText } from '../components/HelpText';
 
 type RootStackParamList = {
   MedicationDetail: {
@@ -394,9 +395,9 @@ export function MedicationDetailScreen() {
               </View>
             ))}
           </View>
-          <Text style={styles.caption}>
+          <HelpText style={styles.caption}>
             Doses recorded each day. A day with no bar had no doses recorded.
-          </Text>
+          </HelpText>
         </View>
 
         {timeOfDay.length > 0 && (

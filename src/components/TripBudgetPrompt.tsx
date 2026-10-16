@@ -8,6 +8,7 @@ import { border, font, fontWeight, radius, spacing, type Colors } from '../theme
 import { formatPriceInput, parsePriceInput, priceToInput } from '../utils/groceryPrice';
 import { haptics } from '../utils/haptics';
 import { TextField } from './TextField';
+import { HelpText } from './HelpText';
 
 interface Props {
   visible: boolean;
@@ -92,10 +93,10 @@ export function TripBudgetPrompt({ visible, budgetMinor, currencySymbol, onSave,
       >
         <View style={styles.card}>
           <Text style={styles.title}>Trip budget</Text>
-          <Text style={styles.hint}>
+          <HelpText style={styles.hint}>
             What you plan to spend. The running total is
             compared to it.
-          </Text>
+          </HelpText>
 
           <View style={styles.field}>
             <Text style={styles.symbol}>{currencySymbol}</Text>

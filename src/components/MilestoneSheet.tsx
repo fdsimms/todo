@@ -14,6 +14,7 @@ import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { getLogicalToday } from '../utils/dateUtils';
 import { TextField } from './TextField';
+import { HelpText } from './HelpText';
 
 const LABEL_MAX_LENGTH = 80;
 
@@ -145,9 +146,9 @@ export function MilestoneSheet({ visible, milestone, onClose }: Props) {
         value={format(date, 'EEE, MMM d, yyyy')}
         onPress={() => { haptics.tap(); setShowDatePicker(true); }}
       />
-      <Text style={styles.hint}>
+      <HelpText style={styles.hint}>
         Used to split your mood record into before and after this day.
-      </Text>
+      </HelpText>
     </EditorSheet>
   );
 }

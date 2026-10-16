@@ -32,6 +32,7 @@ import {
 } from '../services/aiSuggestions';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useActionMenu } from '../hooks/useActionMenu';
+import { HelpText } from './HelpText';
 
 /**
  * What one serving of a supplement contains, typed in from its label.
@@ -272,10 +273,10 @@ export function SupplementPanelSheet({ visible, name, panel, onClose, onSave }: 
                 onChange={unit => { setForm(f => ({ ...f, servingUnit: unit })); }}
                 surface="card"
               />
-              <Text style={styles.hint}>
+              <HelpText style={styles.hint}>
                 Use the serving size the label states, such as 2 tablets. A dose recorded in
                 this unit adds that many servings. Any other dose adds one serving.
-              </Text>
+              </HelpText>
             </View>
 
             <Text style={styles.groupLabel}>NUTRIENTS</Text>
@@ -293,9 +294,9 @@ export function SupplementPanelSheet({ visible, name, panel, onClose, onSave }: 
                 that the label didn't say.
               </Text>
             )}
-            <Text style={styles.hint}>
+            <HelpText style={styles.hint}>
               Applies to doses you record from now on. Past doses keep what they added.
-            </Text>
+            </HelpText>
             {!!panel && (
               <View style={styles.removeRow}>
                 <InlineAction label="Remove nutrients" icon="trash-outline" variant="neutral" onPress={handleRemove} />

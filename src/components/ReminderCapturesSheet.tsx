@@ -21,6 +21,7 @@ import { haptics } from '../utils/haptics';
 import { PillGroup, type PillGroupOption } from './PillGroup';
 import { RuleListSheet } from './RuleListSheet';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
+import { HelpText } from './HelpText';
 
 /**
  * The extra Reminders lists the app drains, each filed somewhere of its own.
@@ -318,11 +319,11 @@ export function ReminderCapturesSheet({ visible, onClose, reminderLists, reserve
 
             {capture.filing.kind === 'meal' && (
               <View style={styles.block}>
-                <Text style={styles.hint}>
+                <HelpText style={styles.hint}>
                   Checking off a task from this list opens the food log’s entry sheet,
                   prefilled with what you dictated. Project, Category, and Tag only file
                   the task.
-                </Text>
+                </HelpText>
                 <View style={styles.toggleRowTop}>
                   <View style={styles.toggleText}>
                     <Text style={styles.toggleLabel}>Always the same meal</Text>
