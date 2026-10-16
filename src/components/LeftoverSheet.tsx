@@ -170,6 +170,12 @@ interface Props {
    * deleted recipe just leaves this row off rather than opening a dead one.
    */
   onOpenRecipe?: () => void;
+  /**
+   * Hides the storage fields (put away, keep for, weighs) and leaves the name,
+   * the caption and the actions. For the sheet a completed "Use up" task opens,
+   * where the question is what happened to the container, not how it's kept.
+   */
+  actionsOnly?: boolean;
 }
 
 /**
@@ -199,6 +205,7 @@ interface Props {
 export function LeftoverSheet({
   visible, leftover, seed, onLog, onRename, onSetStoredAt, onSetKeepDays, onSetWeight,
   onFinish, onSetFrozen, onSplit, onReopen, onDelete, onClose, onOpenRecipe,
+  actionsOnly = false,
 }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
@@ -540,22 +547,30 @@ export function LeftoverSheet({
             </Text>
           )}
 
-          <Text style={styles.label}>Put away</Text>
-          <View style={styles.destination}>
-            <SegmentedControl
-              options={PUT_AWAY_CHOICES.map(days => ({
-                value: days,
-                label: PUT_AWAY_LABELS[days],
-                accessibilityLabel: `Put away ${PUT_AWAY_SPOKEN[days]}`,
-              }))}
-              value={storedDaysAgo}
-              onChange={pickDaysAgo}
-            />
-          </View>
-          {/* Older than the chips offer, so the row still reads honestly rather
-              than showing four unselected chips and no explanation. */}
-          {storedDaysAgo > PUT_AWAY_CHOICES[PUT_AWAY_CHOICES.length - 1] && (
-            <Text style={styles.hint}>{`Put away ${storedDaysAgo} days ago`}</Text>
+          {/* The three field rows (put away, keep for, weighs) describe how a
+              container is stored, which is not what someone completing its
+              "Use up" task is deciding. `actionsOnly` leaves just the name, the
+              caption and the actions. */}
+          {!actionsOnly && (
+            <>
+              <Text style={styles.label}>Put away</Text>
+              <View style={styles.destination}>
+                <SegmentedControl
+                  options={PUT_AWAY_CHOICES.map(days => ({
+                    value: days,
+                    label: PUT_AWAY_LABELS[days],
+                    accessibilityLabel: `Put away ${PUT_AWAY_SPOKEN[days]}`,
+                  }))}
+                  value={storedDaysAgo}
+                  onChange={pickDaysAgo}
+                />
+              </View>
+              {/* Older than the chips offer, so the row still reads honestly rather
+                  than showing four unselected chips and no explanation. */}
+              {storedDaysAgo > PUT_AWAY_CHOICES[PUT_AWAY_CHOICES.length - 1] && (
+                <Text style={styles.hint}>{`Put away ${storedDaysAgo} days ago`}</Text>
+              )}
+            </>
           )}
 
           {/* Only while logging. An existing container moves between the two
@@ -585,6 +600,7 @@ export function LeftoverSheet({
             </>
           )}
 
+          {!actionsOnly && (
           <View style={styles.keepRow}>
             <View style={styles.keepText}>
               <Text style={styles.keepLabel}>Keep for</Text>
@@ -609,6 +625,7 @@ export function LeftoverSheet({
               describeValue={n => (n === 0 ? 'Use today' : `${n} days`)}
             />
           </View>
+          )}
 
           {/* Only where a weight would be used, which is a container that came
               off a recipe: the number is measured against that dish's own
@@ -616,7 +633,7 @@ export function LeftoverSheet({
               divide for half a takeaway. Withheld while several containers are
               about to be written at once, since one number cannot be the
               weight of two tubs. */}
-          {showWeight && (
+          {showWeight && !actionsOnly && (
             <View style={styles.keepRow}>
               <View style={styles.keepText}>
                 <Text style={styles.keepLabel}>Weighs</Text>
