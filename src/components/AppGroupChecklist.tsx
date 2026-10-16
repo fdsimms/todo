@@ -35,7 +35,12 @@ export function AppGroupChecklist({ groups, selectedIds, onToggle, bare }: Props
             accessibilityState={{ checked: on }}
             accessibilityLabel={g.name}
           >
-            <Text style={styles.rowTitle} numberOfLines={1}>{g.name}</Text>
+            <View style={styles.rowText}>
+              <Text style={styles.rowTitle} numberOfLines={1}>{g.name}</Text>
+              {g.allowOnly === true && (
+                <Text style={styles.rowDetail}>Blocks everything except its apps</Text>
+              )}
+            </View>
             {on && <Ionicons name="checkmark" size={iconSize.sm} color={colors.accent} />}
           </TouchableOpacity>
         );
@@ -57,6 +62,8 @@ function makeStyles(colors: Colors) {
       minHeight: 44,
     },
     rowRuled: { borderTopWidth: 1, borderTopColor: colors.separator },
-    rowTitle: { flex: 1, color: colors.text, fontSize: font.md },
+    rowText: { flex: 1 },
+    rowTitle: { color: colors.text, fontSize: font.md },
+    rowDetail: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs },
   });
 }
