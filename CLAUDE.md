@@ -191,6 +191,16 @@ option of a pair has to be filed as an alternative for itself. If a label only m
 you've read the type, it's the wrong label — name the state the user is choosing between
 ("Always needed" / "One of a choice") and let the control carry the mechanism.
 
+**A line that explains a control uses `HelpText`, not `Text`.** Settings › Hide help text is meant to
+remove every static explanation under a field, and a hint rendered with a plain `Text` ignores it.
+`HelpText` (`src/components/HelpText.tsx`) renders nothing while the setting is on, so use it for
+the one-liner under a field, option or section ("Used only to calculate the figure below"). It is
+not for text that is the content: a count, a preview, a warning, an error, an empty state, or a
+consequence the person has to see before confirming. `SettingsRow`, `EditorRow` and
+`CollapsibleField` already check the setting themselves, so their `hint` props need nothing extra.
+No test enforces this (whether a line is help text is a judgment call), so check it on sight when
+adding a hint.
+
 **An alert says what happened, then what to do.** The title names what failed or what is
 being asked ("Couldn't save to Health", "Discard changes?"), never a command ("Name this
 project") or the symptom as the system saw it ("Health didn't accept the weight"). The body gives
