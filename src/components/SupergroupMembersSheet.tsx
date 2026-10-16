@@ -7,6 +7,7 @@ import { AppGroupChecklist } from './AppGroupChecklist';
 import { useColors } from '../theme/ThemeContext';
 import { font, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { BUTTON_LABEL } from '../copy/shared';
 import type { AppGroup } from '../utils/appGroups';
 
 interface Props {
@@ -60,8 +61,8 @@ export function SupergroupMembersSheet({ visible, title, groups, initialIds, onC
       <View style={styles.root}>
         <SheetHeader
           title={title}
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={dismiss} />}
-          right={<SheetHeaderButton label="Done" onPress={confirm} disabled={selected.length === 0} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={dismiss} />}
+          right={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={confirm} disabled={selected.length === 0} />}
         />
         <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
           <AppGroupChecklist groups={groups} selectedIds={selected} onToggle={toggle} lockedReason={lockedReason} />

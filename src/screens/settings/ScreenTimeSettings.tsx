@@ -209,7 +209,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
       return;
     }
     Alert.prompt('Name this supergroup', 'For example, Distractions or Work apps.', [
-      { text: 'Cancel', style: 'cancel' },
+      { text: BUTTON_LABEL.cancel, style: 'cancel' },
       {
         text: 'Next',
         onPress: (text?: string) => setMemberSheet({ open: true, id: null, name: text ?? '' }),
@@ -244,9 +244,9 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
       {
         text: 'Rename',
         onPress: () => Alert.prompt('Rename supergroup', undefined, [
-          { text: 'Cancel', style: 'cancel' },
+          { text: BUTTON_LABEL.cancel, style: 'cancel' },
           {
-            text: 'Save',
+            text: BUTTON_LABEL.save,
             onPress: (text?: string) => {
               const renamed = useAppGroupStore.getState().renameGroup(groupId, text ?? '');
               if (!renamed.ok) groupNameFailed(renamed.reason);
@@ -255,7 +255,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
         ], 'plain-text', name),
       },
       {
-        text: 'Delete',
+        text: BUTTON_LABEL.delete,
         style: 'destructive' as const,
         onPress: () => refuseWhileBlocked(groupLocked(groupId)) || Alert.alert(
           `Delete ${name}?`,
@@ -263,16 +263,16 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
             ? `Anything using this supergroup will block the ${fallbackName} group instead. The groups inside it are kept.`
             : 'The groups inside it are kept.',
           [
-            { text: 'Cancel', style: 'cancel' as const },
+            { text: BUTTON_LABEL.cancel, style: 'cancel' as const },
             {
-              text: 'Delete',
+              text: BUTTON_LABEL.delete,
               style: 'destructive' as const,
               onPress: () => useAppGroupStore.getState().removeGroup(groupId),
             },
           ],
         ),
       },
-      { text: 'Cancel', style: 'cancel' as const },
+      { text: BUTTON_LABEL.cancel, style: 'cancel' as const },
     ]);
   };
 
@@ -312,7 +312,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
           if (!next) {
             if (!inSupergroup) { useAppGroupStore.getState().setGroupMode(groupId, false); return; }
             Alert.alert('Block these apps?', leavesSupergroups, [
-              { text: 'Cancel', style: 'cancel' as const },
+              { text: BUTTON_LABEL.cancel, style: 'cancel' as const },
               { text: 'Block these', onPress: () => useAppGroupStore.getState().setGroupMode(groupId, false) },
             ]);
             return;
