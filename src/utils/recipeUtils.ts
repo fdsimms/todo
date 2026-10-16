@@ -615,6 +615,14 @@ export function formatServings(recipe: Recipe): string | null {
 export interface LikelyInPantryCount {
   probablyHave: number;
   viaSubstitute: number;
+  /**
+   * The ingredient lines these were counted against, components included
+   * (`PantryCoverage.total`). Set by the counters below; optional so a caller
+   * that builds the shape by hand needn't know it. Only `describeRecipeRow`
+   * reads it, for "6/13": the recipe's own line count would be the wrong
+   * denominator, since `probablyHave` counts what its components bring too.
+   */
+  total?: number;
 }
 
 /**
@@ -663,6 +671,54 @@ export function describeRecipe(
   if (recipe.recipeYield) parts.push(`makes ${recipe.recipeYield}`);
   const total = totalMinutes(recipe);
   if (total) parts.push(formatDuration(total));
+  const attribution = describeAttribution(recipe);
+  if (attribution) {
+    if (options.sharedName) parts.unshift(attribution);
+    else parts.push(attribution);
+  }
+  return parts.join(' · ');
+}
+
+/**
+ * The Recipes list row's subtitle: "6/13 likely in pantry · 25m · NYT Cooking".
+ * `describeRecipe` is the fuller line the detail screen and the pickers keep;
+ * this one is cut to what survives a single line beside four icon buttons.
+ *
+ * - **No meal type.** The list is already sectioned by it, and a flat or
+ *   searched list is one the person chose to look at as a whole.
+ * - **No servings or yield.** A recipe scales, so neither is a fact about the
+ *   dish.
+ * - **The pantry fraction replaces the ingredient count** when the pantry guess
+ *   has anything to say, and the count stays as the fallback so a recipe with no
+ *   pantry match never reads "0/11". The denominator is the count's own
+ *   (`LikelyInPantryCount.total`, components included), so a composed recipe can
+ *   never read "7/5". "likely" stays: the pantry is a guess, and "6/13 in
+ *   pantry" claims more than it knows.
+ * - **A substitute is still its own trailing clause**, never added into the
+ *   fraction (#1568, see `LikelyInPantryCount`).
+ *
+ * `sharedName` moves the attribution to the front, as in `describeRecipe`.
+ */
+export function describeRecipeRow(
+  recipe: Recipe,
+  likelyInPantry?: LikelyInPantryCount | null,
+  options: { sharedName?: boolean; recipesById?: ReadonlyMap<string, Recipe> } = {},
+): string {
+  const count = countChoiceAware(recipe.ingredients);
+  const parts: string[] = [];
+  const total = likelyInPantry?.total;
+  if (likelyInPantry?.probablyHave && total) {
+    parts.push(`${likelyInPantry.probablyHave}/${total} likely in pantry`);
+  } else {
+    parts.push(count === 1 ? '1 ingredient' : `${count} ingredients`);
+  }
+  if (likelyInPantry?.viaSubstitute) {
+    parts.push(likelyInPantry.viaSubstitute === 1 ? '1 with a substitute' : `${likelyInPantry.viaSubstitute} with a substitute`);
+  }
+  const minutes = totalMinutes(recipe);
+  if (minutes) parts.push(formatDuration(minutes));
+  const components = describeComponents(recipe, options.recipesById);
+  if (components) parts.push(components);
   const attribution = describeAttribution(recipe);
   if (attribution) {
     if (options.sharedName) parts.unshift(attribution);
@@ -745,7 +801,7 @@ export function countLikelyInPantryByRecipe(
 /** The two counts a coverage reduces to, or null when both are zero — see `countLikelyInPantry`. */
 function likelyCountOf(coverage: PantryCoverage): LikelyInPantryCount | null {
   if (coverage.probablyHave === 0 && coverage.viaSubstitute === 0) return null;
-  return { probablyHave: coverage.probablyHave, viaSubstitute: coverage.viaSubstitute };
+  return { probablyHave: coverage.probablyHave, viaSubstitute: coverage.viaSubstitute, total: coverage.total };
 }
 
 /**

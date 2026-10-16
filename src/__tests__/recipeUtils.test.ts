@@ -11,6 +11,7 @@ import {
   blockedReviewRows,
   remapIngredientKeyIn,
   describeRecipe,
+  describeRecipeRow,
   cleanRecipeName,
   recipeByName,
   sharedRecipeNameKeys,
@@ -1126,6 +1127,66 @@ describe('describeRecipe', () => {
   });
 });
 
+describe('describeRecipeRow', () => {
+  const salt2 = () => recipe('R', { ingredients: [ing('Salt'), ing('Pepper')] });
+
+  it('shows the pantry fraction in place of the ingredient count', () => {
+    expect(describeRecipeRow(salt2(), { probablyHave: 1, viaSubstitute: 0, total: 2 }))
+      .toBe('1/2 likely in pantry');
+  });
+
+  it('falls back to the plain count with no pantry match, never "0/n"', () => {
+    expect(describeRecipeRow(salt2())).toBe('2 ingredients');
+    expect(describeRecipeRow(salt2(), null)).toBe('2 ingredients');
+    expect(describeRecipeRow(salt2(), { probablyHave: 0, viaSubstitute: 0, total: 2 })).toBe('2 ingredients');
+    expect(describeRecipeRow(recipe('One', { ingredients: [ing('Salt')] }))).toBe('1 ingredient');
+  });
+
+  it('falls back to the plain count when the pantry count has no total', () => {
+    expect(describeRecipeRow(salt2(), { probablyHave: 1, viaSubstitute: 0 })).toBe('2 ingredients');
+  });
+
+  it('leaves out meal type, servings and yield', () => {
+    expect(describeRecipeRow(recipe('M', {
+      ingredients: [ing('Salt')],
+      mealType: 'breakfast',
+      servings: 4,
+      recipeYield: '3 cups',
+    }))).toBe('1 ingredient');
+  });
+
+  it('puts the time before the source', () => {
+    expect(describeRecipeRow(recipe('T', {
+      ingredients: [ing('Salt')],
+      estimatedMinutes: 25,
+      sourceName: 'NYT Cooking',
+    }), { probablyHave: 1, viaSubstitute: 0, total: 1 })).toBe('1/1 likely in pantry · 25m · NYT Cooking');
+  });
+
+  it('keeps a substitute as its own clause, not part of the fraction', () => {
+    expect(describeRecipeRow(salt2(), { probablyHave: 1, viaSubstitute: 1, total: 2 }))
+      .toBe('1/2 likely in pantry · 1 with a substitute');
+    expect(describeRecipeRow(salt2(), { probablyHave: 0, viaSubstitute: 2, total: 2 }))
+      .toBe('2 ingredients · 2 with a substitute');
+  });
+
+  it('uses the components-inclusive total so a composed recipe cannot read 7/5', () => {
+    const mash = recipe('Mash', { id: 'r-mash', ingredients: [ing('Potato'), ing('Butter'), ing('Milk')] });
+    const composed = recipe('C', {
+      ingredients: [ing('Steak')],
+      components: [component('r-mash', 'Mash')],
+    });
+    const byId = new Map([[mash.id, mash], [composed.id, composed]]);
+    expect(describeRecipeRow(composed, { probablyHave: 3, viaSubstitute: 0, total: 4 }, { recipesById: byId }))
+      .toBe('3/4 likely in pantry · 1 component with 3 ingredients');
+  });
+
+  it('leads with the source for a shared name', () => {
+    const soup = recipe('Soup', { ingredients: [ing('Salt')], sourceName: 'Plenty' });
+    expect(describeRecipeRow(soup, null, { sharedName: true })).toBe('Plenty · 1 ingredient');
+  });
+});
+
 describe('sortRecipesForDisplay', () => {
   it('puts loved recipes first, then sortOrder', () => {
     const a = recipe('A', { sortOrder: 2, vote: null });
@@ -2010,13 +2071,13 @@ describe('countLikelyInPantry', () => {
         ing('Saffron', { nameKey: 'saffron' }),
       ],
     });
-    expect(countLikelyInPantry(r, [milk, onions], now, [])).toEqual({ probablyHave: 1, viaSubstitute: 0 });
+    expect(countLikelyInPantry(r, [milk, onions], now, [])).toMatchObject({ probablyHave: 1, viaSubstitute: 0, total: 3 });
   });
 
   it('counts a staple ("always have it") ingredient as probably on hand', () => {
     const salt = item('Salt', { nameKey: 'salt', isStaple: true, purchaseCount: 0 });
     const r = recipe('Ragù', { ingredients: [ing('Salt', { nameKey: 'salt' })] });
-    expect(countLikelyInPantry(r, [salt], now, [])).toEqual({ probablyHave: 1, viaSubstitute: 0 });
+    expect(countLikelyInPantry(r, [salt], now, [])).toMatchObject({ probablyHave: 1, viaSubstitute: 0, total: 1 });
   });
 
   it('counts a component\'s ingredients when given the library', () => {
@@ -2030,7 +2091,7 @@ describe('countLikelyInPantry', () => {
     });
 
     expect(countLikelyInPantry(steak, [milk], now, [])).toBeNull();
-    expect(countLikelyInPantry(steak, [milk], now, [], new Map([[steak.id, steak], [mash.id, mash]]))).toEqual({ probablyHave: 1, viaSubstitute: 0 });
+    expect(countLikelyInPantry(steak, [milk], now, [], new Map([[steak.id, steak], [mash.id, mash]]))).toMatchObject({ probablyHave: 1, viaSubstitute: 0 });
   });
 
   // #1568 — an ingredient with no pantry match of its own, whose linked
@@ -2043,7 +2104,7 @@ describe('countLikelyInPantry', () => {
       });
       const r = recipe('Cake', { ingredients: [ing('Butter', { nameKey: 'butter' })] });
       expect(countLikelyInPantry(r, [butter, margarine], now, [], undefined, [sub(butter.id, margarine.id)]))
-        .toEqual({ probablyHave: 0, viaSubstitute: 1 });
+        .toMatchObject({ probablyHave: 0, viaSubstitute: 1 });
     });
 
     it('reports both counts, never folded into one', () => {
@@ -2056,7 +2117,7 @@ describe('countLikelyInPantry', () => {
         ingredients: [ing('Butter', { nameKey: 'butter' }), ing('Milk', { nameKey: 'milk' })],
       });
       expect(countLikelyInPantry(r, [butter, margarine, milk], now, [], undefined, [sub(butter.id, margarine.id)]))
-        .toEqual({ probablyHave: 1, viaSubstitute: 1 });
+        .toMatchObject({ probablyHave: 1, viaSubstitute: 1 });
     });
 
     it('does not read the link backwards', () => {
@@ -2088,7 +2149,7 @@ describe('countLikelyInPantry', () => {
       });
       const r = recipe('Cake', { ingredients: [ing('Butter', { nameKey: 'butter' })] });
       expect(countLikelyInPantry(r, [butter, margarine], now, [], undefined, [sub(butter.id, margarine.id)]))
-        .toEqual({ probablyHave: 1, viaSubstitute: 0 });
+        .toMatchObject({ probablyHave: 1, viaSubstitute: 0 });
     });
   });
 });
