@@ -15,7 +15,6 @@ import {
   rotationPeriodStart,
   rotationPick,
   rotationRemaining,
-  rotationSummary,
   rotationUnpick,
   rotationUnpickUncovers,
   rotationUnitsLeft,
@@ -213,23 +212,6 @@ describe('days left and over-commitment', () => {
 
   it('says nothing for a task that is not a rotation', () => {
     expect(rotationOverCommitted(rot({ rotationItems: [] }), SAT, 1)).toBe(false);
-    expect(rotationSummary(rot({ rotationItems: [] }), SAT, 1)).toBeNull();
-  });
-});
-
-describe('rotationSummary', () => {
-  it('says what is left against what is left of the week', () => {
-    expect(rotationSummary(rot(), WED, 1)).toBe('5 left · 5 days');
-  });
-
-  it('singularizes the last day', () => {
-    const SUN = new Date('2026-09-20T00:00:00');
-    expect(rotationSummary(rot(), SUN, 1)).toBe('5 left · 1 day');
-  });
-
-  it('goes quiet once the set is covered, rather than saying so twice', () => {
-    const task = loggedThisWeek(ITEMS.map(i => ({ itemId: i.id, at: MON.toISOString() })), WED);
-    expect(rotationSummary(task, WED, 1)).toBeNull();
   });
 });
 
@@ -434,8 +416,7 @@ describe('per-member counts', () => {
     expect(rotationUnpickUncovers(workouts([]), WED, 1)).toBe(false);
   });
 
-  it('says units left in the summary, and flags a week that no longer fits', () => {
-    expect(rotationSummary(workouts(['run']), WED, 1)).toBe('3 left · 5 days');
+  it('flags a week that no longer fits', () => {
     expect(rotationOverCommitted(workouts(['run']), SAT, 1)).toBe(true);
     expect(rotationOverCommitted(workouts(['run', 'run', 'run', 'bike']), SAT, 1)).toBe(false);
   });
