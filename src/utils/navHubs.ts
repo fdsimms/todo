@@ -53,6 +53,8 @@ export interface NavContentCounts {
   dreams?: number;
   /** Meter readings: the Meters screen's content. */
   meters?: number;
+  /** Workouts, custom exercises, routines and programs: the Workouts screen's content. */
+  workouts?: number;
 }
 
 export type NavHubId = 'kitchen' | 'organize' | 'history' | 'health';
@@ -80,6 +82,12 @@ export interface NavDestination {
    * thing naming it and that label isn't on screen until you open the hub.
    */
   keywords?: string[];
+  /**
+   * Dropped while `workoutsEnabled` is off, the way a kitchen row drops with
+   * `kitchenEnabled`. On the destination rather than the hub because it is one
+   * member of a hub whose other members stay.
+   */
+  workouts?: boolean;
 }
 
 export interface NavHub {
@@ -183,6 +191,16 @@ const HEALTH_HUB: NavHub = {
     { route: 'Sleep', label: 'Sleep', icon: 'moon-outline', keywords: ['bedtime', 'asleep', 'night', 'rest', 'tired', 'woke'] },
     { route: 'Journal', label: 'Journal', icon: 'book-outline', keywords: ['diary', 'write', 'writing', 'notes', 'reflect'] },
     { route: 'Dreams', label: 'Dreams', icon: 'cloudy-night-outline', keywords: ['dream journal', 'nightmare', 'asleep', 'woke'] },
+    // Here rather than a row of its own: a workout log is a record of what a
+    // body did, which is what this hub holds, and the menu stays at its rows.
+    // See docs/arch/workouts.md.
+    {
+      route: 'Workouts',
+      label: 'Workouts',
+      icon: 'barbell-outline',
+      keywords: ['gym', 'lifting', 'strength', 'training', 'exercise', 'exercises', 'sets', 'reps', 'weights', 'routine'],
+      workouts: true,
+    },
   ],
 };
 
@@ -315,8 +333,9 @@ export function visibleHubMembers(
   hub: NavHub,
   simpleMode: boolean,
   counts: NavContentCounts,
+  workoutsEnabled = false,
 ): NavDestination[] {
-  return hub.members.filter(m => screenShown(m.route, simpleMode, counts));
+  return hub.members.filter(m => (!m.workouts || workoutsEnabled) && screenShown(m.route, simpleMode, counts));
 }
 
 export interface NavMenuOptions {
@@ -331,6 +350,8 @@ export interface NavMenuOptions {
    * can't work.
    */
   screenTimeSupported?: boolean;
+  /** The Workouts switch. Left out means off, which hides the screen. */
+  workoutsEnabled?: boolean;
 }
 
 /**
@@ -338,18 +359,21 @@ export interface NavMenuOptions {
  * reach. A hub with nothing left drops out entirely rather than opening onto
  * an empty pill row.
  */
-export function visibleMenuRows({ kitchenEnabled, simpleMode, counts, screenTimeSupported = false }: NavMenuOptions): NavMenuRow[] {
+export function visibleMenuRows(
+  { kitchenEnabled, simpleMode, counts, screenTimeSupported = false, workoutsEnabled = false }: NavMenuOptions,
+): NavMenuRow[] {
   const rows: NavMenuRow[] = [];
   for (const row of NAV_MENU_ROWS) {
     if (row.kind === 'screen') {
       if (row.kitchen && !kitchenEnabled) continue;
       if (row.screenTime && !screenTimeSupported) continue;
+      if (row.destination.workouts && !workoutsEnabled) continue;
       if (!screenShown(row.destination.route, simpleMode, counts)) continue;
       rows.push(row);
       continue;
     }
     if (row.hub.kitchen && !kitchenEnabled) continue;
-    const members = visibleHubMembers(row.hub, simpleMode, counts);
+    const members = visibleHubMembers(row.hub, simpleMode, counts, workoutsEnabled);
     if (members.length === 0) continue;
     rows.push({ kind: 'hub', hub: { ...row.hub, members } });
   }

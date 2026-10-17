@@ -96,15 +96,17 @@ export interface Overview {
   /** Areas of the app the person has switched off. An agent should not walk them through a screen they cannot see. */
   features: {
     kitchen: boolean; simplifiedMode: boolean; rewards: boolean;
+    /** The Workouts area's own switch, off by default. */
+    workouts: boolean;
     /** Whether a device is set to add the events request_calendar_event asks for. */
     calendarRequests: boolean;
   };
   /**
-   * Whether the health logs (food, mood, medication) have reached the server
-   * in the last 30 days. They travel only with a switch on the phone, so false
-   * means "not sent", not "nothing logged".
+   * Whether the health logs (food, mood, medication, workouts) have reached
+   * the server in the last 30 days. They travel only with a switch on the
+   * phone, so zero means "not sent", not "nothing logged".
    */
-  healthLogs: { food: number; mood: number; medication: number; note?: string };
+  healthLogs: { food: number; mood: number; medication: number; workouts: number; note?: string };
   completedTasksKeptForDays: number | 'forever';
   /**
    * What the person has asked Claude to keep in mind, in their own words. Follow
@@ -142,6 +144,7 @@ export function getOverview(replica: Replica, access: 'read' | 'write' = 'read')
   const food = replica.foodLogEntries(healthFrom, today).length;
   const mood = replica.moodLogs(healthFrom, today).length;
   const medication = replica.medicationLogs(healthFrom, today).length;
+  const workouts = replica.workoutSessions(healthFrom, today).length;
   const synced = replica.lastSyncedAt();
 
   return {
@@ -176,13 +179,15 @@ export function getOverview(replica: Replica, access: 'read' | 'write' = 'read')
       .map(p => ({ id: p.id, title: p.title, outstanding: p.outstanding, ...(p.deadline ? { deadline: p.deadline } : {}) })),
     features: {
       kitchen: settings.kitchenEnabled, simplifiedMode: settings.simpleMode, rewards: settings.rewardsEnabled,
+      workouts: settings.workoutsEnabled,
       calendarRequests: settings.calendarRequestsOn,
     },
     healthLogs: {
       food,
       mood,
       medication,
-      ...(food + mood + medication === 0
+      workouts,
+      ...(food + mood + medication + workouts === 0
         ? { note: 'None in the last 30 days. They reach the server only with Settings › Data & reset › Sync › Include health logs turned on, so this may mean they were never sent.' }
         : {}),
     },
