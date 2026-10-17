@@ -846,5 +846,5 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
   restockLead: { marginTop: 1 },
   restockBody: { flex: 1, gap: spacing.xsm, alignItems: 'flex-start' },
   restockHave: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  restockAdd: { alignSelf: 'flex-start', marginHorizontal: spacing.md, marginTop: spacing.sm },
+  restockAdd: { alignSelf: 'flex-start', marginHorizontal: spacing.md, marginTop: spacing.md },
 });
