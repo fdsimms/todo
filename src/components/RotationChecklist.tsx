@@ -47,6 +47,9 @@ export function RotationChecklist({ task, label = 'This week', asOf }: Props) {
   const members = rotationMembers(task, dayStart, weekStartsOn);
   // Both only for a live week. A finished week passes `asOf`, and a member's
   // last-done today would say something about now on a row about then.
+  // The count is the right-most column on every row, so the figures line up
+  // whatever the note beside them says ("Today", "3 days ago") or whether a row has one.
+  const anyCounted = members.some(m => m.perWeek > 1);
   const lastId = asOf ? null : rotationLastPick(task, dayStart, weekStartsOn)?.item.id ?? null;
 
   return (
@@ -65,12 +68,14 @@ export function RotationChecklist({ task, label = 'This week', asOf }: Props) {
           >
             {member.item.title}
           </Text>
-          {member.perWeek > 1 && (
-            <Text style={styles.when}>{Math.min(member.count, member.perWeek)}/{member.perWeek}</Text>
-          )}
           <Text style={[styles.when, member.item.id === lastId && styles.whenLast]}>
             {whenText(member, asOf, dayStart)}
           </Text>
+          {anyCounted && (
+            <Text style={[styles.when, styles.count]}>
+              {member.perWeek > 1 ? `${Math.min(member.count, member.perWeek)}/${member.perWeek}` : ''}
+            </Text>
+          )}
         </View>
       ))}
     </View>
@@ -119,6 +124,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   name: { flex: 1, color: colors.text, fontSize: font.sm },
   nameDone: { color: colors.textTertiary },
   when: { color: colors.textTertiary, fontSize: font.xxs },
+  count: { minWidth: 28, textAlign: 'right', fontVariant: ['tabular-nums'] },
   // The one done most recently reads at the same size, a step darker, so it is
   // found by its colour rather than by a second badge.
   whenLast: { color: colors.textSecondary, fontWeight: fontWeight.semibold },
