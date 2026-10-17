@@ -579,9 +579,7 @@ export function CookModeSheet({
                 <View style={styles.miseCard}>
                   {blanks.map(({ blank }, position) => {
                     const fill = blankFillOf(overrides, blank.id).map(l => l.name).join(', ');
-                    const detail = fill
-                      ? `This time: ${fill}`
-                      : [blank.quantity, blank.options.join(', ')].filter(Boolean).join(' · ');
+                    const detail = fill || [blank.quantity, blank.options.join(', ')].filter(Boolean).join(' · ');
                     return (
                       <TouchableOpacity
                         key={blank.id}
