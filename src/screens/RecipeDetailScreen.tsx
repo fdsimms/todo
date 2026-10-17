@@ -145,6 +145,7 @@ import { resetToMealPlan, navigateToTab } from '../navigation/navigationRef';
 import { TextField } from '../components/TextField';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton, SCROLL_TO_TOP_SIZE } from '../components/ScrollToTopButton';
+import { SectionComposer } from '../components/SectionComposer';
 import { useActionMenu } from '../hooks/useActionMenu';
 import type { ActionMenuAction } from '../components/ActionMenu';
 import { FadeInImage } from '../components/FadeInImage';
@@ -483,7 +484,7 @@ export function RecipeDetailScreen() {
   const [addNote, setAddNote] = useState<string | null>(null);
   // What new ingredients are filed under, until changed or cleared — the add
   // field's own equivalent of RecipeIngredientSheet's Section field, and its
-  // picker works the same way (same PillGroup, same onCreate): it used to be
+  // picker works the same way (SectionComposer's menu, same onCreate): it used to be
   // free text, on the theory that a picker would be empty exactly when
   // someone first needed it, but the grid's own "New section" reveal field
   // fills that gap without letting a typo mint a heading nothing else can
@@ -2574,51 +2575,35 @@ export function RecipeDetailScreen() {
             (Recipe.emptySections), if the field's blurred before an
             ingredient names it. Rows already on the list are moved between
             headings by dragging them, which is what the hint below says. */}
-        <View style={styles.sectionPickerWrap}>
-          <Text style={styles.inputHint}>New ingredients below go under:</Text>
-          <PillGroup
-            noun="section"
-            surface="page"
-            filterPlaceholder="Find or name a section…"
-            createMaxLength={RECIPE_SECTION_MAX_LENGTH}
-            onCreate={name => {
-              const cleaned = name.trim();
-              if (allSections.includes(cleaned)) return 'Already a heading on this recipe.';
-              if (!addEmptySection(recipe.id, name)) return 'That isn’t a usable section name.';
-              haptics.success();
-              setSectionDraft(cleaned.slice(0, RECIPE_SECTION_MAX_LENGTH));
-            }}
-            options={[
-              {
-                key: '__none__',
-                label: 'No section',
-                pinned: true,
-                selected: !sectionDraft,
-                onPress: () => { haptics.tap(); setSectionDraft(''); },
-              },
-              ...allSections.map(name => ({
-                key: name,
-                label: name,
-                selected: sectionDraft === name,
-                onPress: () => { haptics.tap(); setSectionDraft(name); },
-              })),
-            ]}
-          />
-        </View>
         {/* Only once there's a heading to drag under. Sections are a label on a
             flat list, so the order *is* the grouping — this is the one place
             that's worth saying out loud, since nothing about a row suggests
             dragging it changes which heading it sits below. */}
         {allSections.length > 0 && (
-          <Text style={styles.inputHint}>
+          <Text style={[styles.inputHint, styles.sectionPickerWrap]}>
             Drag an ingredient under a heading to move it there.
           </Text>
         )}
 
-        <View style={styles.addRow}>
+        <SectionComposer
+          name="IngredientSectionComposer"
+          sections={allSections}
+          value={sectionDraft}
+          onChange={setSectionDraft}
+          onCreate={name => addEmptySection(recipe.id, name)}
+          maxLength={RECIPE_SECTION_MAX_LENGTH}
+          actions={(
+            <InlineAction
+              label="Add"
+              icon="add"
+              onPress={submitDraft}
+              disabled={!draft.trim()}
+            />
+          )}
+        >
           <TextField
             ref={draftInputRef}
-            style={styles.addInput}
+            style={styles.composerInput}
             value={draft}
             onChangeText={text => { setDraft(text); if (addNote) setAddNote(null); }}
             onSubmitEditing={submitDraft}
@@ -2630,13 +2615,7 @@ export function RecipeDetailScreen() {
             autoCapitalize="none"
             accessibilityLabel="Add an ingredient"
           />
-          <InlineAction
-            label="Add"
-            icon="add"
-            onPress={submitDraft}
-            disabled={!draft.trim()}
-          />
-        </View>
+        </SectionComposer>
         {!!addNote && (
           <Text style={styles.addNote} accessibilityLiveRegion="polite">{addNote}</Text>
         )}
@@ -2695,49 +2674,45 @@ export function RecipeDetailScreen() {
           </View>
         )}
 
-        {/* Which heading new steps below file under — same picker-not-free-text
-            convention as the ingredients one above, for RecipeStep.section. */}
-        <View style={styles.sectionPickerWrap}>
-          <Text style={styles.inputHint}>New steps below go under:</Text>
-          <PillGroup
-            noun="section"
-            surface="page"
-            filterPlaceholder="Find or name a section…"
-            createMaxLength={RECIPE_SECTION_MAX_LENGTH}
-            onCreate={name => {
-              const cleaned = name.trim();
-              if (allStepSections.includes(cleaned)) return 'Already a heading on this recipe.';
-              if (!addEmptyStepSection(recipe.id, name)) return 'That isn’t a usable section name.';
-              haptics.success();
-              setStepSectionDraft(cleaned.slice(0, RECIPE_SECTION_MAX_LENGTH));
-            }}
-            options={[
-              {
-                key: '__none__',
-                label: 'No section',
-                pinned: true,
-                selected: !stepSectionDraft,
-                onPress: () => { haptics.tap(); setStepSectionDraft(''); },
-              },
-              ...allStepSections.map(name => ({
-                key: name,
-                label: name,
-                selected: stepSectionDraft === name,
-                onPress: () => { haptics.tap(); setStepSectionDraft(name); },
-              })),
-            ]}
-          />
-        </View>
         {allStepSections.length > 0 && (
-          <Text style={styles.inputHint}>
+          <Text style={[styles.inputHint, styles.sectionPickerWrap]}>
             Drag a step under a heading to move it there.
           </Text>
         )}
 
-        <View style={styles.addRow}>
+        {/* Which heading new steps below file under: same composer as the
+            ingredients one above, for RecipeStep.section. */}
+        <SectionComposer
+          name="StepSectionComposer"
+          sections={allStepSections}
+          value={stepSectionDraft}
+          onChange={setStepSectionDraft}
+          onCreate={name => addEmptyStepSection(recipe.id, name)}
+          maxLength={RECIPE_SECTION_MAX_LENGTH}
+          actions={(
+            <>
+              {editingStepId && (
+                <TouchableOpacity
+                  onPress={cancelEditStep}
+                  hitSlop={10}
+                  accessibilityRole="button"
+                  accessibilityLabel="Cancel editing this step"
+                >
+                  <Ionicons name="close-circle-outline" size={iconSize.md} color={colors.textTertiary} />
+                </TouchableOpacity>
+              )}
+              <InlineAction
+                label={editingStepId ? BUTTON_LABEL.save : 'Add'}
+                icon={editingStepId ? 'checkmark' : 'add'}
+                onPress={submitStepDraft}
+                disabled={!stepDraft.trim()}
+              />
+            </>
+          )}
+        >
           <TextField
             ref={stepInputRef}
-            style={styles.addInput}
+            style={styles.composerInput}
             value={stepDraft}
             onChangeText={setStepDraft}
             onSubmitEditing={submitStepDraft}
@@ -2748,23 +2723,7 @@ export function RecipeDetailScreen() {
             returnKeyType="done"
             accessibilityLabel={editingStepId ? 'Edit step' : 'Add a step'}
           />
-          {editingStepId && (
-            <TouchableOpacity
-              onPress={cancelEditStep}
-              hitSlop={10}
-              accessibilityRole="button"
-              accessibilityLabel="Cancel editing this step"
-            >
-              <Ionicons name="close-circle-outline" size={iconSize.md} color={colors.textTertiary} />
-            </TouchableOpacity>
-          )}
-          <InlineAction
-            label={editingStepId ? BUTTON_LABEL.save : 'Add'}
-            icon={editingStepId ? 'checkmark' : 'add'}
-            onPress={submitStepDraft}
-            disabled={!stepDraft.trim()}
-          />
-        </View>
+        </SectionComposer>
 
         {/* Only while a step is open for editing. Cook mode reads the length out
             of the sentence for nearly every step, so a control asking for it
@@ -3806,8 +3765,7 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     fontSize: font.xs,
     marginTop: spacing.xs,
   },
-  // Wraps the "new ingredients file under" picker so its caption and pills
-  // read as one control.
+  // Space above the drag hint that sits over a SectionComposer.
   sectionPickerWrap: {
     marginTop: spacing.md,
   },
@@ -3829,6 +3787,15 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     color: colors.textSecondary,
     fontSize: font.xs,
     marginTop: spacing.xs,
+  },
+  // The add field inside a SectionComposer: the card is its surface.
+  composerInput: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.smd,
+    color: colors.text,
+    fontSize: font.md,
+    minHeight: 44,
+    maxHeight: 140,
   },
   addInput: {
     flex: 1,
