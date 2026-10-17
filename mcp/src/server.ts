@@ -3937,7 +3937,7 @@ function registerWriteTools(
   );
 
   const personShape = {
-    nickname: z.string().optional(),
+    nickname: z.string().optional().describe('What to call them instead of their name. Several can be listed, separated by commas, and each is something they can be tagged by ("@cardiologist"); the first is the one shown.'),
     kind: z.enum(['individual', 'business']).optional(),
     notes: z.string().optional(),
     askAbout: z.string().optional().describe('Something to ask them about next time.'),

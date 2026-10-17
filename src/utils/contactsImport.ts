@@ -1,3 +1,4 @@
+import { nicknamesOf } from './nicknames';
 import { format } from 'date-fns/format';
 import type { Person } from '../types';
 
@@ -154,7 +155,7 @@ export function alreadyAdded(
   const digits = normalizePhone(candidate.phoneNumber);
   const tail = digits.length >= 7 ? digits.slice(-7) : null;
   return people.some(person => {
-    if (name && (person.name.trim().toLowerCase() === name || person.nickname.trim().toLowerCase() === name)) {
+    if (name && (person.name.trim().toLowerCase() === name || nicknamesOf(person.nickname).some(n => n.toLowerCase() === name))) {
       return true;
     }
     if (!tail) return false;

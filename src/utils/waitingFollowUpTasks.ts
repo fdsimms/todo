@@ -1,3 +1,4 @@
+import { primaryNickname } from './nicknames';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Person, Task } from '../types';
 import { dayKeyToDate, getDayStart } from './dateUtils';
@@ -46,7 +47,7 @@ export function waitingFollowUpTitle(
   person: Pick<Person, 'name' | 'nickname'>,
   waitingTask: Task
 ): string {
-  const who = person.nickname.trim() || person.name.trim();
+  const who = primaryNickname(person.nickname) || person.name.trim();
   return `Follow up with ${who} about “${displayTitleFor(waitingTask)}”`;
 }
 

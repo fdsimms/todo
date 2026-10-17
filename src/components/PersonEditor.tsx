@@ -632,12 +632,12 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
             style={styles.fieldInput}
             value={nickname}
             onChangeText={setNickname}
-            placeholder="e.g. Tess"
+            placeholder="e.g. Tess, Tessie"
             placeholderTextColor={colors.textTertiary}
             maxLength={TITLE_MAX_LENGTH}
           />
         </View>
-        <Text style={styles.cardFooter}>Shown instead of their name, everywhere.</Text>
+        <Text style={styles.cardFooter}>Shown instead of their name, everywhere. List several separated by commas: each works after @, and the first is the one shown.</Text>
         <View style={styles.sep} />
         <TouchableOpacity
           style={styles.optionRow}

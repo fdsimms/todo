@@ -1,3 +1,4 @@
+import { primaryNickname } from './nicknames';
 import type { Person } from '../types';
 
 /**
@@ -15,7 +16,7 @@ import type { Person } from '../types';
 export function peopleNearLocation(people: Person[], query: string): Person[] {
   const q = query.trim().toLowerCase();
   if (!q) return [];
-  const nameOf = (p: Person) => p.nickname.trim() || p.name.trim();
+  const nameOf = (p: Person) => primaryNickname(p.nickname) || p.name.trim();
   return people
     .filter(p => !p.archived && p.location && p.location.toLowerCase().includes(q))
     .sort((a, b) => nameOf(a).localeCompare(nameOf(b), undefined, { sensitivity: 'base' }));

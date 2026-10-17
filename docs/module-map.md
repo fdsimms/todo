@@ -271,6 +271,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/negativeHold.ts` — negativeHoldNow, negativeHoldOffered
 - `src/utils/nfcBridge.ts` — NfcBridge, nfcBridge, isNfcSupported, NfcScanResult, parseScanAnswer, scanKeyTag
 - `src/utils/nfcKey.ts` — NFC_KEYS_SETTING, NFC_KEY_LOCK_SETTING, NfcKeyKind, NfcKey, MAX_NFC_KEYS, MAX_KEY_NAME_LENGTH, normalizeTagUid, newLinkToken, normalizeLinkToken, keyLinkUrl, +10 more
+- `src/utils/nicknames.ts` — nicknamesOf, primaryNickname
 - `src/utils/notificationTapRoute.ts` — NotificationTapData, NotificationTapRoute, routeNotificationTap
 - `src/utils/notificationTapSync.ts` — useNotificationTapSync
 - `src/utils/notifications.ts` — isWithinQuietHours, deferPastQuietHours, TASK_REMINDER_CATEGORY, COMPLETE_ACTION_IDENTIFIER, SNOOZE_ACTION_IDENTIFIER, SNOOZE_MINUTES, requestNotificationPermissions, NotificationPermission, getNotificationPermission, scheduleTaskReminder, +36 more

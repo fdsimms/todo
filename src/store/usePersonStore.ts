@@ -1,3 +1,4 @@
+import { primaryNickname } from '../utils/nicknames';
 import { create } from 'zustand';
 import type { Person, PersonNote } from '../types';
 import {
@@ -79,7 +80,7 @@ export function blankPerson(name: string, sortOrder: number): Person {
 
 /** What to call somebody: their nickname if they have one, else their name. */
 export function displayNameOf(person: Pick<Person, 'name' | 'nickname'>): string {
-  return person.nickname.trim() || person.name.trim();
+  return primaryNickname(person.nickname) || person.name.trim();
 }
 
 /** The fields the editor may write. Deliberately every field except identity and order. */

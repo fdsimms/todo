@@ -1,3 +1,4 @@
+import { primaryNickname } from './nicknames';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Person, PersonGroup, Task } from '../types';
 import { getDayStart } from './dateUtils';
@@ -90,7 +91,7 @@ export function reachOutPersonId(
  * one entry, and it is the one string in the feature that arrives uninvited.
  */
 export function reachOutTitle(person: Pick<Person, 'name' | 'nickname' | 'askAbout'>): string {
-  const who = person.nickname.trim() || person.name.trim();
+  const who = primaryNickname(person.nickname) || person.name.trim();
   const ask = person.askAbout.trim();
   if (ask) return `Ask ${who} about ${ask}`;
   return `Catch up with ${who}`;

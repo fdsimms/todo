@@ -188,7 +188,7 @@ only the fallback until the first sync.
 | `reopen_task` | **Write.** Reopens a completed or missed task and takes back what its completion did. Needs `MCP_WRITE_TOKEN`. |
 | `update_meal` | **Write.** Moves a planned meal, swaps or renames it, sets a recipe's scale, answers its either/or choices, uses something else for this one cooking (`replacements`: a line or used recipe swapped for another ingredient, or left out; the recipe is not edited), or sets its shopping, thaw and log answers. |
 | `remove_meal` | **Write.** Takes a meal off the plan. |
-| `create_person` | **Write.** Adds a person: name, nickname, notes, birthday, contact details (phone, fax, email, link), location (free text), group, archived, birthday task opt-outs. Never a cadence or nudge. |
+| `create_person` | **Write.** Adds a person: name, nickname (several, comma-separated), notes, birthday, contact details (phone, fax, email, link), location (free text), group, archived, birthday task opt-outs. Never a cadence or nudge. |
 | `delete_person` | **Write.** Deletes a person and the notes about them; tasks naming them stay. Restorable from Activity. |
 | `save_person_group` | **Write.** The People screen's groups (add, rename, delete, catch up one at a time). |
 | `add_person_note` / `update_person_note` / `delete_person_note` | **Write.** Gift ideas and other notes about someone, optionally about a day. |

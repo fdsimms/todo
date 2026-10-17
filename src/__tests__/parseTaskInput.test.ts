@@ -1475,6 +1475,27 @@ describe('parseTargetInput', () => {
   });
 });
 
+describe('matchPersonMentions with several nicknames', () => {
+  const kushman = {
+    id: 'd1', name: 'Dr. Arielle Kushman, MD', nickname: 'Dr. Kushman, cardiologist', kind: 'business' as const,
+  };
+  const zia = { id: 'd2', name: 'Dr. Mohammad Zia, DO', nickname: 'pcp, primary care', kind: 'business' as const };
+
+  it('answers to each nickname', () => {
+    expect(matchPersonMentions('see @cardiologist', [kushman, zia])).toEqual([{ start: 4, end: 17, personId: 'd1' }]);
+    expect(matchPersonMentions('see @pcp', [kushman, zia])).toEqual([{ start: 4, end: 8, personId: 'd2' }]);
+  });
+
+  it('reads a nickname with a period and a space spelled out in full', () => {
+    expect(matchPersonMentions('call @Dr. Kushman today', [kushman, zia])).toEqual([{ start: 5, end: 17, personId: 'd1' }]);
+    expect(matchPersonMentions('ask @primary care', [kushman, zia])).toEqual([{ start: 4, end: 17, personId: 'd2' }]);
+  });
+
+  it('does not tag the whole comma-joined field', () => {
+    expect(matchPersonMentions('see @Dr. Kushman, cardiologist', [kushman])).toEqual([{ start: 4, end: 16, personId: 'd1' }]);
+  });
+});
+
 describe('matchPersonMentions', () => {
   const PEOPLE = [
     { id: 'p1', name: 'Gideon', nickname: '' },
@@ -1710,6 +1731,39 @@ describe('getMentionSuggestions', () => {
 
     it('does not offer an individual again after "@gideon "', () => {
       expect(getMentionSuggestions('Call @gideon ', withBiz)).toBeNull();
+    });
+
+    describe('a doctor listed as "Dr. First Last, MD"', () => {
+      const kushman = {
+        id: 'd1', name: 'Dr. Arielle Kushman, MD', nickname: 'Dr. Kushman, cardiologist, heart doctor', kind: 'business' as const,
+      };
+      const zia = { id: 'd2', name: 'Dr. Mohammad Zia, DO', nickname: 'pcp', kind: 'business' as const };
+      const docs = [...people, kushman, zia];
+
+      it('is offered after "@dr", with the period typed, and by surname', () => {
+        expect(getMentionSuggestions('Call @dr', docs)?.candidates.map(c => c.id)).toEqual(['d1', 'd2']);
+        expect(getMentionSuggestions('Call @dr.', docs)?.candidates.map(c => c.id)).toEqual(['d1', 'd2']);
+        expect(getMentionSuggestions('Call @dr. kush', docs)?.candidates.map(c => c.id)).toEqual(['d1']);
+        expect(getMentionSuggestions('Call @dr kushman', docs)?.candidates.map(c => c.id)).toEqual(['d1']);
+      });
+
+      it('skips the first name but never the order of the words', () => {
+        expect(getMentionSuggestions('Call @dr. zia', docs)?.candidates.map(c => c.id)).toEqual(['d2']);
+        expect(getMentionSuggestions('Call @kushman dr', docs)).toBeNull();
+      });
+
+      it('writes the first nickname into the title when picked', () => {
+        expect(getMentionSuggestions('Call @dr. kush', docs)?.candidates[0].resolveKey).toBe('Dr. Kushman');
+      });
+
+      it('is offered by any of its nicknames', () => {
+        expect(getMentionSuggestions('Call @heart d', docs)?.candidates.map(c => c.id)).toEqual(['d1']);
+        expect(getMentionSuggestions('Call @cardio', docs)?.candidates.map(c => c.id)).toEqual(['d1']);
+      });
+
+      it('does not suggest a finished mention after a sentence period', () => {
+        expect(getMentionSuggestions('Call @gideon.', docs)).toBeNull();
+      });
     });
 
     it('offers a nickname with a space in it', () => {
