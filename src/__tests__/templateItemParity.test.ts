@@ -74,6 +74,12 @@ const NOT_SEEDED: Record<string, string[]> = {
   // to another person (or run on another device before sync) can't resolve.
   'names a saved meal outside the template': ['logSavedMealId'],
 
+  // Points at one of this person's workout routines, for the same reason: a
+  // template shared with somebody else, or run before the routine has synced,
+  // would carry an id that names nothing. The link is one row in the task
+  // editor once the task exists.
+  'names a workout routine outside the template': ['workoutRoutineId'],
+
   // The reading a task is due at is where one meter stood at one moment. A run
   // can't know where the odometer is now, so a seeded "due at 45,000" would be
   // wrong for every run but the first.

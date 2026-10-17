@@ -12,7 +12,7 @@ import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import {
-  canStep, clampCount, holdRepeatDelay, stepCount, type StepRange,
+  canStep, clampCount, holdRepeatDelay, parseStepperInput, stepCount, type StepRange,
 } from '../utils/stepper';
 import { TextField } from './TextField';
 
@@ -38,6 +38,12 @@ interface Props {
    * up from null and where the value grid starts.
    */
   step?: number;
+  /**
+   * Decimal places a value keeps when finer than `step` (see `StepRange.places`).
+   * Set it, and the field typed into takes a decimal point (or comma), for a
+   * stepper whose value isn't a whole number: a weight in 2.5 kg steps.
+   */
+  places?: number;
   /** Shown in place of a number when `value` is null. */
   emptyLabel?: string;
   /** Renders the number — e.g. `n => `${n}×``. */
@@ -100,6 +106,7 @@ export function CountStepper({
   allowNull = false,
   start,
   step = 1,
+  places,
   emptyLabel = 'Off',
   format = String,
   label,
@@ -109,7 +116,10 @@ export function CountStepper({
   const colors = useColors();
   const styles = makeStyles(colors);
 
-  const range: StepRange = { min, max, allowNull, start, step };
+  const range: StepRange = { min, max, allowNull, start, step, places };
+  // A decimal field wherever the value can hold one; a whole-number counter
+  // keeps the number pad, which has no point key to mistype.
+  const decimal = (places ?? 0) > 0 || !Number.isInteger(step);
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
@@ -188,8 +198,8 @@ export function CountStepper({
       if (range.allowNull) onChange(null);
       return;
     }
-    const parsed = Number(trimmed);
-    if (!Number.isFinite(parsed)) return;
+    const parsed = parseStepperInput(trimmed);
+    if (parsed === null) return;
     const clamped = clampCount(parsed, range);
     if (clamped !== value) onChange(clamped);
   };
@@ -224,7 +234,7 @@ export function CountStepper({
           onChangeText={setDraft}
           onBlur={commitEdit}
           onSubmitEditing={commitEdit}
-          keyboardType="number-pad"
+          keyboardType={decimal ? 'decimal-pad' : 'number-pad'}
           autoFocus
           selectTextOnFocus
           accessibilityLabel={`${label}, editing`}

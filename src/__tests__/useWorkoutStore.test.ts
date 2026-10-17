@@ -8,6 +8,8 @@
 import { initDatabase, dbGetWorkoutSets, dbGetAllExercises } from '../db/database';
 import { useWorkoutStore, workoutContentCount } from '../store/useWorkoutStore';
 import { catalogExercise } from '../utils/exerciseCatalog';
+import { newTaskFromDraft } from '../utils/taskDraft';
+import type { Task, TaskDraft } from '../types';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mockRawDb: any;
@@ -33,6 +35,18 @@ jest.mock('expo-sqlite', () => {
   };
 });
 
+// The task store as a fake: the real one loads the notification and native
+// bridges, and what is under test here is only that finishing asks it to
+// complete the right task.
+const mockCompleteTask = jest.fn();
+const mockLogQuotaUnit = jest.fn();
+let mockTasks: Task[] = [];
+jest.mock('../store/useTaskStore', () => ({
+  useTaskStore: { getState: () => ({ tasks: mockTasks, completeTask: mockCompleteTask, logQuotaUnit: mockLogQuotaUnit }) },
+}));
+const task = (id: string, draft: Partial<TaskDraft> = {}, extra: Partial<Task> = {}): Task =>
+  ({ ...newTaskFromDraft({ title: id, dueDate: new Date(2026, 0, 1).toISOString(), ...draft }, new Date(2026, 0, 1).toISOString(), 0, false, id), ...extra });
+
 beforeAll(() => {
   initDatabase();
 });
@@ -42,6 +56,8 @@ beforeEach(() => {
     mockRawDb.exec(`DELETE FROM ${t}`);
   }
   useWorkoutStore.getState().initialize();
+  mockTasks = [];
+  jest.clearAllMocks();
 });
 
 const state = () => useWorkoutStore.getState();
@@ -267,6 +283,139 @@ describe('a live session', () => {
   });
 });
 
+describe('a session from a routine', () => {
+  const bench = 'lib:barbell-bench-press';
+  const fly = 'lib:cable-fly';
+  const items = [
+    { exerciseId: bench, supersetKey: null, restSeconds: 150, progression: null, targets: [
+      { kind: 'warmup' as const, repsMin: null, repsMax: null },
+      { kind: 'working' as const, repsMin: 6, repsMax: 8 },
+      { kind: 'working' as const, repsMin: 6, repsMax: 8, weightKg: 85 },
+    ] },
+    { exerciseId: fly, supersetKey: 'ss', restSeconds: null, progression: null, targets: [
+      { kind: 'working' as const, repsMin: 12, repsMax: 15 },
+    ] },
+    { exerciseId: 'not-an-exercise', supersetKey: null, restSeconds: null, progression: null, targets: [
+      { kind: 'working' as const, repsMin: 5, repsMax: 5 },
+    ] },
+  ];
+
+  it('lays the routine\'s sets out as planned, from the routine and from last time', () => {
+    const r = ok(state().addRoutine('Push A', items));
+    const before = ok(state().startSession({ routineId: r.id, at: new Date(2026, 9, 1, 18) }));
+    for (const s of state().loadSets(before.id)) {
+      ok(state().editSet(before.id, s.id, { weightKg: s.kind === 'warmup' ? 40 : 80, reps: 8, completedAt: new Date(2026, 9, 1, 18, 10).toISOString() }));
+    }
+    ok(state().finishSession(before.id));
+
+    const s = ok(state().startSession({ routineId: r.id }));
+    const sets = dbGetWorkoutSets(s.id);
+    expect(sets.map(x => [x.exerciseId, x.position, x.setIndex, x.kind, x.weightKg, x.reps, x.completedAt])).toEqual([
+      [bench, 0, 0, 'warmup', 40, 8, null],
+      [bench, 0, 1, 'working', 80, 8, null],
+      // The routine's own weight wins over last time's.
+      [bench, 0, 2, 'working', 85, 8, null],
+      [fly, 1, 0, 'working', 80, 8, null],
+    ]);
+    expect(sets[3].supersetKey).toBe('ss');
+    expect(state().setsBySession[s.id]).toHaveLength(4);
+    expect(state().lastTimeFor(bench, s.id).map(x => x.weightKg)).toEqual([40, 80, 80]);
+  });
+
+  it('finishes by dropping the sets never ticked', () => {
+    const r = ok(state().addRoutine('Push A', items));
+    const s = ok(state().startSession({ routineId: r.id }));
+    const [, second] = state().loadSets(s.id);
+    ok(state().editSet(s.id, second.id, { completedAt: new Date().toISOString() }));
+    ok(state().finishSession(s.id));
+    expect(dbGetWorkoutSets(s.id).map(x => [x.exerciseId, x.setIndex])).toEqual([[bench, 0]]);
+    expect(state().setCounts[s.id]).toBe(1);
+  });
+
+  it('completes the task it was started from, once, and only an open one', () => {
+    mockTasks = [task('t1'), task('t2', {}, { completed: true, completedAt: new Date().toISOString() })];
+    const a = ok(state().startSession({ taskId: 't1' }));
+    ok(state().finishSession(a.id));
+    expect(mockCompleteTask).toHaveBeenCalledWith('t1');
+    const b = ok(state().startSession({ taskId: 't2' }));
+    ok(state().finishSession(b.id));
+    const c = ok(state().startSession({ taskId: 'gone' }));
+    ok(state().finishSession(c.id));
+    expect(mockCompleteTask).toHaveBeenCalledTimes(1);
+  });
+
+  it('logs one workout on a target below its count, the way its checkbox would', () => {
+    mockTasks = [task('t3', { targetCount: 3, quotaPeriod: 'week', recurrenceType: 'weekly', recurrenceInterval: 1 })];
+    const s = ok(state().startSession({ taskId: 't3' }));
+    ok(state().finishSession(s.id));
+    expect(mockLogQuotaUnit).toHaveBeenCalledWith('t3');
+    expect(mockCompleteTask).not.toHaveBeenCalled();
+  });
+
+  it('leaves the task alone when asked to, for a task that asks a question first', () => {
+    mockTasks = [task('t1')];
+    const s = ok(state().startSession({ taskId: 't1' }));
+    ok(state().finishSession(s.id, { completeLinkedTask: false }));
+    expect(mockCompleteTask).not.toHaveBeenCalled();
+  });
+
+  it('adds an exercise mid-session laid out like last time, once', () => {
+    const s = ok(state().startSession());
+    const added = ok(state().addSessionExercise(s.id, 'lib:back-squat'));
+    expect(added.map(x => [x.position, x.setIndex, x.kind, x.completedAt])).toEqual([[0, 0, 'working', null]]);
+    expect(state().addSessionExercise(s.id, 'lib:back-squat')).toBe('taken');
+    expect(state().addSessionExercise(s.id, 'nobody')).toBe('notFound');
+  });
+
+  it('adds a set like the exercise\'s last', () => {
+    const s = ok(state().startSession());
+    ok(state().logSet(s.id, { exerciseId: 'lib:back-squat', kind: 'warmup', weightKg: 60, reps: 5 }));
+    const added = ok(state().addPlannedSet(s.id, 'lib:back-squat'));
+    expect(added).toMatchObject({ kind: 'working', weightKg: 60, reps: 5, setIndex: 1, completedAt: null });
+    expect(state().addPlannedSet(s.id, 'lib:leg-press')).toBe('notFound');
+  });
+});
+
+describe('a workout logged after the fact', () => {
+  const at = (h: number, m = 0) => new Date(2026, 9, 5, h, m).toISOString();
+
+  it('writes a finished session with its sets in order, all done, while another is live', () => {
+    ok(state().startSession());
+    const { session, sets } = ok(state().addFinishedSession({
+      title: '  Legs ', startedAt: at(7), endedAt: at(8), effort: 7, notes: ' Heavy ',
+      sets: [
+        { exerciseId: 'lib:back-squat', weightKg: 100, reps: 5 },
+        { exerciseId: 'lib:leg-press', weightKg: 200, reps: 10 },
+        { exerciseId: 'lib:back-squat', weightKg: 100, reps: 4 },
+      ],
+    }));
+    expect(session).toMatchObject({ title: 'Legs', endedAt: at(8), effort: 7, notes: 'Heavy', taskId: null });
+    expect(sets.map(x => [x.exerciseId, x.position, x.setIndex, x.completedAt])).toEqual([
+      ['lib:back-squat', 0, 0, at(8)], ['lib:leg-press', 1, 0, at(8)], ['lib:back-squat', 0, 1, at(8)],
+    ]);
+    reload();
+    expect(state().sessions.find(x => x.id === session.id)?.endedAt).toBe(at(8));
+    expect(mockCompleteTask).not.toHaveBeenCalled();
+  });
+
+  it('refuses one with no sets, one that ends first, and an unknown exercise', () => {
+    expect(state().addFinishedSession({ startedAt: at(7), endedAt: at(8), sets: [] })).toBe('empty');
+    expect(state().addFinishedSession({ startedAt: at(8), endedAt: at(7), sets: [{ exerciseId: 'lib:back-squat' }] })).toBe('order');
+    expect(state().addFinishedSession({ startedAt: at(7), endedAt: at(8), sets: [{ exerciseId: 'nobody' }] })).toBe('notFound');
+    expect(state().sessions).toEqual([]);
+  });
+
+  it('replaces a session\'s sets to correct it', () => {
+    const { session } = ok(state().addFinishedSession({
+      startedAt: at(7), endedAt: at(8), sets: [{ exerciseId: 'lib:back-squat', weightKg: 100, reps: 5 }],
+    }));
+    const sets = ok(state().replaceSets(session.id, [{ exerciseId: 'lib:front-squat', weightKg: 80, reps: 3 }]));
+    expect(dbGetWorkoutSets(session.id)).toEqual(sets);
+    expect(sets[0]).toMatchObject({ exerciseId: 'lib:front-squat', completedAt: at(8) });
+    expect(state().replaceSets('nope', [])).toBe('notFound');
+  });
+});
+
 describe('history', () => {
   it('lists sessions newest first and loads a finished one\'s sets on demand', () => {
     const older = ok(state().startSession({ title: 'Older', at: new Date(2026, 9, 1, 18) }));
@@ -296,6 +445,7 @@ describe('history', () => {
     const s = ok(state().startSession({ title: 'Legs' }));
     expect(ok(state().updateSession(s.id, { title: 'Leg day', effort: 11 }))).toMatchObject({ title: 'Leg day', effort: null });
     expect(state().updateSession(s.id, { title: ' ' })).toBe('blank');
+    expect(state().updateSession(s.id, { endedAt: new Date(2000, 0, 1).toISOString() })).toBe('order');
     expect(state().updateSession('nope', {})).toBe('notFound');
   });
 

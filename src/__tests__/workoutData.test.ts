@@ -2,6 +2,7 @@ import {
   DEFAULT_PLATE_INVENTORY, DEFAULT_REST_SECONDS, REST_SECONDS_MAX, REST_SECONDS_MIN, WORKOUT_NAME_MAX_LENGTH,
   clampRestSeconds, cleanWorkoutName, exerciseNameKey, normalizePlateInventory, parsePlateInventory, parseRestSeconds,
   readEquipment, readExerciseKind, readIdList, readMuscles, readRoutineItems, readScheme, readSetKind, readTrainingMaxes,
+  WEIGHT_STEP, formatRestSeconds, formatWeightNumber, formatWeightWithUnit, weightFromDisplay, weightToDisplay,
 } from '../utils/workoutData';
 
 describe('names', () => {
@@ -127,5 +128,33 @@ describe('plate inventory', () => {
   it('reads a stored inventory back as it was saved', () => {
     const inv = { barsKg: [20.41], plates: [{ kg: 20.41, count: 4 }, { kg: 1.13, count: 2 }] };
     expect(parsePlateInventory(JSON.stringify(inv))).toEqual(inv);
+  });
+});
+
+describe('weights on screen', () => {
+  it('shows kilograms to the quarter and pounds to the tenth', () => {
+    expect(weightToDisplay(82.5, 'kg')).toBe(82.5);
+    expect(weightToDisplay(1.25, 'kg')).toBe(1.25);
+    expect(weightToDisplay(20, 'lb')).toBe(44.1);
+    expect(formatWeightNumber(80, 'kg')).toBe('80');
+    expect(formatWeightWithUnit(82.5, 'kg')).toBe('82.5 kg');
+  });
+
+  it('stores a weight typed in pounds so it reads back as typed', () => {
+    const kg = weightFromDisplay(135, 'lb');
+    expect(kg).toBe(61.235);
+    expect(weightToDisplay(kg, 'lb')).toBe(135);
+    expect(formatWeightWithUnit(weightFromDisplay(225, 'lb'), 'lb')).toBe('225 lb');
+    expect(weightFromDisplay(82.5, 'kg')).toBe(82.5);
+  });
+
+  it('steps by a pair of the smallest common plates in each unit', () => {
+    expect(WEIGHT_STEP).toEqual({ kg: 2.5, lb: 5 });
+  });
+
+  it('writes a rest in minutes and seconds', () => {
+    expect(formatRestSeconds(150)).toBe('2:30');
+    expect(formatRestSeconds(45)).toBe('0:45');
+    expect(formatRestSeconds(-3)).toBe('0:00');
   });
 });

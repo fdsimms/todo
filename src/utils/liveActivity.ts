@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
-import type { Task, Recipe, StepTimer } from '../types';
+import type { Task, Recipe, RestTimer, StepTimer } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useStepTimerStore } from '../store/useStepTimerStore';
@@ -39,13 +39,13 @@ function truncate(title: string): string {
   return title.length > TITLE_MAX ? `${title.slice(0, TITLE_MAX - 1)}…` : title;
 }
 
-export type TimerRunKind = 'task' | 'cook' | 'prep' | 'step' | 'completionTimer';
+export type TimerRunKind = 'task' | 'cook' | 'prep' | 'step' | 'rest' | 'completionTimer';
 
 export interface TimerRun {
-  /** How the native side tells which activities are still wanted — 'task:<id>' | 'cook:<id>' | 'prep:<id>' | 'step:<id>' | 'completionTimer:<id>'. */
+  /** How the native side tells which activities are still wanted — 'task:<id>' | 'cook:<id>' | 'prep:<id>' | 'step:<id>' | 'rest:<id>' | 'completionTimer:<id>'. */
   key: string;
   kind: TimerRunKind;
-  itemId: string; // task id, recipe id for cook/prep, or step timer id
+  itemId: string; // task id, recipe id for cook/prep, or step or rest timer id
   title: string;
   subtitle: string;
   symbolName: string;
@@ -150,6 +150,10 @@ export function buildTimerRuns(
 
   for (const timer of stepTimers) {
     if (!isStepTimerRunning(timer)) continue;
+    if (timer.kind === 'rest') {
+      runs.push(restRun(timer));
+      continue;
+    }
     const startedAtMs = new Date(timer.startedAt as string).getTime();
     // A step timer always has a target — it's a countdown by construction, so
     // unlike the three above there's no stopwatch case to fall through to.
@@ -175,6 +179,30 @@ export function buildTimerRuns(
   }
 
   return runs;
+}
+
+/**
+ * A workout's rest, on the same activity a cooking step timer uses: a
+ * countdown with a title and a line under it is all a rest needs, so it rides
+ * the existing attributes from here and no native code knows it is a rest.
+ * Its Done is the `stopTimer` link with this key, which skips the rest (see
+ * `rest:` in deepLinks.ts). The workout's own activity, with the set and its
+ * buttons, is phase 6 of docs/arch/workouts.md.
+ */
+function restRun(timer: RestTimer): TimerRun {
+  const startedAtMs = new Date(timer.startedAt as string).getTime();
+  return {
+    key: `rest:${timer.id}`,
+    kind: 'rest',
+    itemId: timer.id,
+    title: truncate(timer.sessionTitle || 'Workout'),
+    subtitle: timer.label ? truncate(`Rest ${timer.label.charAt(0).toLowerCase()}${timer.label.slice(1)}`) : 'Rest',
+    symbolName: 'timer',
+    startedAtMs,
+    // Clamped for the reason every countdown here is: an inverted range
+    // crashes the extension.
+    targetEndMs: Math.max(startedAtMs, startedAtMs + stepTimerRemaining(timer, startedAtMs) * 1000),
+  };
 }
 
 // Through widgetBridge(), which is where not-iOS, demo mode and a build with

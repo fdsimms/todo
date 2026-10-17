@@ -747,6 +747,13 @@ describe('openInAppUrl', () => {
     expect(mockResetToRecipeDetail).not.toHaveBeenCalled();
   });
 
+  it('skips a workout rest for a rest: key, and moves nothing else on', () => {
+    expect(openInAppUrl('dundundun://stopTimer?key=rest:r1')).toBe(true);
+    expect(mockRemoveStepTimer).toHaveBeenCalledWith('r1');
+    expect(mockStopCookTimer).not.toHaveBeenCalled();
+    expect(mockResetToRecipeDetail).not.toHaveBeenCalled();
+  });
+
   it('dismisses a completion timer for a completionTimer: key, without opening anything', () => {
     // Same "nothing to log, nowhere to open" shape as the step timer above —
     // the task this reminder is about was already completed long before Done

@@ -111,6 +111,8 @@ import { previewCategoryDefault, previewSeededFields } from '../utils/taskFieldD
 import { apportionedMinutes, timerSegments } from '../utils/timerSegments';
 import { CollapsibleField } from './CollapsibleField';
 import { PillGroup } from './PillGroup';
+import { EmptyNote } from './EmptyNote';
+import { useWorkoutStore } from '../store/useWorkoutStore';
 import { pinnedPlaces } from '../utils/placeGate';
 import { readSavedPlaces } from '../utils/savedPlaces';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -283,6 +285,7 @@ export interface TaskDraft {
   logMealSlot?: MealSlot | null;
   logSavedMealId?: string | null;
   logMealSlotByTime?: boolean;
+  workoutRoutineId?: string | null;
   phoneNumber?: string | null;
   emailAddress?: string | null;
   location?: string | null;
@@ -837,6 +840,11 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     return t ? displayTitleFor(t) : '';
   })));
   const [showLinkPicker, setShowLinkPicker] = useState(false);
+  // Task.workoutRoutineId: the routine "Workout" on the row opens.
+  const [workoutRoutineId, setWorkoutRoutineId] = useState<string | null>(null);
+  const [showWorkoutPicker, setShowWorkoutPicker] = useState(false);
+  const workoutsEnabled = useSettingsStore(s => s.workoutsEnabled);
+  const workoutRoutines = useWorkoutStore(s => s.routines);
   const [customLinkText, setCustomLinkText] = useState('');
   const [phoneNumber, setPhoneNumber] = useState<string | null>(null);
   const [showPhoneField, setShowPhoneField] = useState(false);
@@ -1206,6 +1214,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       setLogMealSlot(task.logMealSlot ?? null);
       setLogSavedMealId(task.logSavedMealId ?? null);
       setLogMealSlotByTime(task.logMealSlotByTime ?? false);
+      setWorkoutRoutineId(task.workoutRoutineId ?? null);
       setPhoneNumber(task.phoneNumber ?? null);
       setEmailAddress(task.emailAddress ?? null);
       setLocation(task.location ?? null);
@@ -1280,6 +1289,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       setLogMealSlot(initialDraft?.logMealSlot ?? null);
       setLogSavedMealId(initialDraft?.logSavedMealId ?? null);
       setLogMealSlotByTime(initialDraft?.logMealSlotByTime ?? false);
+      setWorkoutRoutineId(initialDraft?.workoutRoutineId ?? null);
       setPhoneNumber(initialDraft?.phoneNumber ?? null);
       setEmailAddress(initialDraft?.emailAddress ?? null);
       setLocation(initialDraft?.location ?? null);
@@ -1303,6 +1313,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     setShowBlockerPicker(false);
     setShowBlocks(false); setShowBlocksPicker(false);
     setShowLinkPicker(false); setCustomLinkText('');
+    setShowWorkoutPicker(false);
     setShowPhoneField(false); setPhoneText(task?.phoneNumber ?? initialDraft?.phoneNumber ?? '');
     setShowEmailField(false); setEmailText(task?.emailAddress ?? initialDraft?.emailAddress ?? '');
     setShowLocationField(false); setLocationText(task?.location ?? initialDraft?.location ?? '');
@@ -1438,6 +1449,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       logMealSlot: task ? (task.logMealSlot ?? null) : (initialDraft?.logMealSlot ?? null),
       logSavedMealId: task ? (task.logSavedMealId ?? null) : (initialDraft?.logSavedMealId ?? null),
       logMealSlotByTime: task ? (task.logMealSlotByTime ?? false) : (initialDraft?.logMealSlotByTime ?? false),
+      workoutRoutineId: task ? (task.workoutRoutineId ?? null) : (initialDraft?.workoutRoutineId ?? null),
       phoneNumber: task ? (task.phoneNumber ?? null) : (initialDraft?.phoneNumber ?? null),
       emailAddress: task ? (task.emailAddress ?? null) : (initialDraft?.emailAddress ?? null),
       location: task ? (task.location ?? null) : (initialDraft?.location ?? null),
@@ -2279,6 +2291,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       // A food needs a slot to be logged under, so clearing the slot clears it.
       logSavedMealId: logMealSlot !== null ? logSavedMealId : null,
       logMealSlotByTime: logMealSlot !== null && logMealSlotByTime,
+      workoutRoutineId,
       phoneNumber: resolvePhoneNumber(),
       emailAddress: resolveEmailAddress(),
       location: resolveLocation(),
@@ -3120,6 +3133,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       logMealSlot,
       logSavedMealId,
       logMealSlotByTime,
+      workoutRoutineId,
       phoneNumber,
       emailAddress,
       location,
@@ -8045,6 +8059,54 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
               </>
             ),
           },
+          // Shown while the area is on, or when the task already names a
+          // routine, so a link made before the switch went off can be seen
+          // and cleared rather than kept invisibly.
+          ...(workoutsEnabled || workoutRoutineId ? [{
+            key: 'workout', label: 'Workout', set: !!workoutRoutineId || showWorkoutPicker,
+            keywords: ['routine', 'gym', 'exercise', 'lift', 'training', 'sets', 'start workout'],
+            node: (
+              <>
+            <EditorRow
+              icon="barbell-outline"
+              label="Workout"
+              hint="Open this routine from the task. Finishing the workout completes the task."
+              value={workoutRoutineId
+                ? workoutRoutines.find(r => r.id === workoutRoutineId)?.name ?? 'A deleted routine'
+                : undefined}
+              expanded={showWorkoutPicker}
+              onPress={() => setShowWorkoutPicker(v => !v)}
+              onClear={workoutRoutineId ? () => { setWorkoutRoutineId(null); setShowWorkoutPicker(false); } : undefined}
+            />
+            {showWorkoutPicker && (
+              <View style={styles.workoutPicker}>
+                {workoutRoutines.length === 0 ? (
+                  <EmptyNote icon="barbell-outline">No routines yet. Make one on the Workouts screen, then link it here.</EmptyNote>
+                ) : (
+                  <PillGroup
+                    noun="routine"
+                    options={[
+                      {
+                        key: '__none__',
+                        label: 'None',
+                        pinned: true,
+                        selected: workoutRoutineId === null,
+                        onPress: () => { haptics.tap(); setWorkoutRoutineId(null); setShowWorkoutPicker(false); },
+                      },
+                      ...workoutRoutines.map(r => ({
+                        key: r.id,
+                        label: r.name,
+                        selected: r.id === workoutRoutineId,
+                        onPress: () => { haptics.tap(); setWorkoutRoutineId(r.id); setShowWorkoutPicker(false); },
+                      })),
+                    ]}
+                  />
+                )}
+              </View>
+            )}
+              </>
+            ),
+          }] : []),
           {
             key: 'phone', label: 'Phone', set: !!phoneNumber || showPhoneField,
             keywords: ['call', 'text', 'number', 'sms', 'contact'],
@@ -8654,6 +8716,7 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   followUpTaskTitleInput: {
     marginHorizontal: spacing.md, marginTop: spacing.sm, minHeight: 40,
   },
+  workoutPicker: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.sm },
   linkPickerRow: {
     flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs,
     paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.sm,

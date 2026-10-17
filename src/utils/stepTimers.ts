@@ -1,4 +1,4 @@
-import type { StepTimer } from '../types';
+import type { RecipeStepTimer, RestTimer, StepTimer } from '../types';
 import { formatStopwatch } from './effort';
 
 /**
@@ -342,6 +342,39 @@ export function stepTimerEndsAt(timer: StepTimer, now: number = Date.now()): Dat
 /** What "+1 min" adds. A minute is the unit every stove clock and oven mitt agrees on. */
 export const STEP_TIMER_NUDGE_SECONDS = 60;
 
+/** What a rest's "−15 s" and "+30 s" move it by: a rest is seconds, not a stove's minutes. */
+export const REST_NUDGE_BACK_SECONDS = 15;
+export const REST_NUDGE_FORWARD_SECONDS = 30;
+
+/**
+ * A timer's length after moving it by `seconds`, from now.
+ *
+ * Forward is measured from now rather than from the original length: a timer
+ * four minutes past its seven is a cook saying "another minute from here", and
+ * adding to the duration alone would hand back a minute that had already gone.
+ *
+ * Back takes time off what is left and stops at now, so −15 s on a rest with
+ * ten seconds to go ends it rather than banking a debt; on a timer that has
+ * already rung there is nothing left to take, and it stays as it is.
+ */
+export function nudgedDuration(timer: StepTimer, seconds: number, now: number = Date.now()): number {
+  const elapsed = stepTimerElapsed(timer, now);
+  if (seconds >= 0) {
+    return Math.min(MAX_STEP_TIMER_SECONDS, Math.round(Math.max(timer.durationSeconds, elapsed) + seconds));
+  }
+  if (elapsed >= timer.durationSeconds) return timer.durationSeconds;
+  return Math.max(0, Math.round(Math.max(elapsed, timer.durationSeconds + seconds)));
+}
+
+/**
+ * How long a timer has been up, in whole seconds: 0 until it rings, then
+ * counting. A rest that runs out counts up rather than stopping at zero, so a
+ * glance says how long the rest really was.
+ */
+export function stepTimerOverSeconds(timer: StepTimer, now: number = Date.now()): number {
+  return Math.max(0, Math.floor(-stepTimerRemaining(timer, now)));
+}
+
 /**
  * The countdown as the row draws it: `m:ss`, or `h:mm:ss` past an hour,
  * clamped at zero. `formatStopwatch`'s output, and deliberately the same
@@ -363,8 +396,8 @@ export { formatStopwatch as formatStepTimerClock } from './effort';
  * sorts to the *bottom* instead, where the Dismiss it wants is nearest the
  * footer's own controls, and says it has rung by turning accent.
  */
-export function sortStepTimers(timers: StepTimer[], now: number = Date.now()): StepTimer[] {
-  const ready = (timer: StepTimer) => (isStepTimerReady(timer, now) ? 1 : 0);
+export function sortStepTimers<T extends StepTimer>(timers: T[], now: number = Date.now()): T[] {
+  const ready = (timer: T) => (isStepTimerReady(timer, now) ? 1 : 0);
   return [...timers].sort((a, b) => {
     const byState = ready(a) - ready(b);
     if (byState !== 0) return byState;
@@ -447,7 +480,7 @@ export function stepTimerCancelPrompt(
 ): { title: string; message: string } | null {
   if (isStepTimerReady(timer, now)) return null;
   const left = `${formatStopwatch(stepTimerRemaining(timer, now))} left`;
-  const where = [timer.stepExcerpt, timer.stepLabel].filter(Boolean).join('\n');
+  const where = (timer.kind === 'rest' ? [timer.label] : [timer.stepExcerpt, timer.stepLabel]).filter(Boolean).join('\n');
   return {
     title: 'Cancel this timer?',
     message: where ? `${where}\n${isStepTimerRunning(timer) ? left : `Paused, ${left}`}` : left,
@@ -501,23 +534,46 @@ export function parseStepTimerQueue(raw: string | null): StepTimer[] {
   const out: StepTimer[] = [];
   for (const entry of parsed) {
     if (!entry || typeof entry !== 'object') continue;
-    const t = entry as Partial<StepTimer>;
-    if (typeof t.id !== 'string' || typeof t.recipeId !== 'string') continue;
+    const t = entry as Record<string, unknown>;
+    if (typeof t.id !== 'string') continue;
     if (typeof t.durationSeconds !== 'number' || !Number.isFinite(t.durationSeconds)) continue;
-    out.push({
+    const clock = {
       id: t.id,
-      recipeId: t.recipeId,
-      stepId: typeof t.stepId === 'string' ? t.stepId : '',
-      recipeName: typeof t.recipeName === 'string' ? t.recipeName : '',
-      stepLabel: typeof t.stepLabel === 'string' ? t.stepLabel : '',
-      ...(typeof t.stepExcerpt === 'string' && t.stepExcerpt ? { stepExcerpt: t.stepExcerpt } : {}),
       durationSeconds: Math.max(0, Math.round(t.durationSeconds)),
       startedAt: typeof t.startedAt === 'string' ? t.startedAt : null,
       elapsedSeconds: typeof t.elapsedSeconds === 'number' && Number.isFinite(t.elapsedSeconds)
         ? Math.max(0, t.elapsedSeconds)
         : 0,
       createdAt: typeof t.createdAt === 'string' ? t.createdAt : new Date(0).toISOString(),
-    });
+    };
+    if (t.kind === 'rest') {
+      if (typeof t.sessionId !== 'string') continue;
+      const rest: RestTimer = {
+        kind: 'rest',
+        ...clock,
+        sessionId: t.sessionId,
+        exerciseId: typeof t.exerciseId === 'string' ? t.exerciseId : '',
+        sessionTitle: typeof t.sessionTitle === 'string' ? t.sessionTitle : '',
+        label: typeof t.label === 'string' ? t.label : '',
+      };
+      out.push(rest);
+      continue;
+    }
+    // A timer written before `kind` existed is a recipe's, and so is any kind
+    // this build doesn't know only if it still carries a recipe: an unknown
+    // kind from a newer build with no recipe is dropped rather than misread.
+    if (t.kind !== undefined && t.kind !== 'recipe') continue;
+    if (typeof t.recipeId !== 'string') continue;
+    const recipe: RecipeStepTimer = {
+      kind: 'recipe',
+      ...clock,
+      recipeId: t.recipeId,
+      stepId: typeof t.stepId === 'string' ? t.stepId : '',
+      recipeName: typeof t.recipeName === 'string' ? t.recipeName : '',
+      stepLabel: typeof t.stepLabel === 'string' ? t.stepLabel : '',
+      ...(typeof t.stepExcerpt === 'string' && t.stepExcerpt ? { stepExcerpt: t.stepExcerpt } : {}),
+    };
+    out.push(recipe);
   }
   return out;
 }

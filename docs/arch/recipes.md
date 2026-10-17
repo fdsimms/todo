@@ -1344,7 +1344,15 @@ through a locked phone, and outlives the sheet.
   wording the reading gets wrong; leaving the wrong chip next to the right one would defeat having
   set it. Nothing derived is ever written into it — a parse is a reading of the text and stays one,
   so a step whose wording changes gets a new reading rather than an old answer.
-- **`StepTimer` is its own model, in its own settings-backed store.** A recipe's cook and prep timers
+- **`StepTimer` is its own model, in its own settings-backed store, and a workout's rest shares it.**
+  `StepTimer` is a union on `kind`: `RecipeStepTimer` (`kind: 'recipe'`, the step timers here) and
+  `RestTimer` (`kind: 'rest'`, the rest between two sets, docs/arch/workouts.md). One store
+  (`useStepTimerStore`), one clock and one alarm id, two policies: a rest is a plain notification
+  that quiet hours suppress, never AlarmKit, and there is one at a time (`startRest` replaces the
+  last). A timer stored before `kind` existed has none and reads back as a recipe's
+  (`parseStepTimerQueue`), and everything recipe-shaped (`useStepTimers`, `StepTimerRow`,
+  `removeForRecipe`) narrows to `kind === 'recipe'` first, so a rest never appears in cook mode's
+  stack. A recipe's cook and prep timers
   are two fixed clocks measuring the whole cooking; these are ad hoc and several at once ("7 minutes
   on the tempeh" and "20 on the rice" during one dish), so a field pair can't hold them. It persists
   because the whole point of setting one is walking away: the sheet closes, the app backgrounds, the
@@ -1397,5 +1405,6 @@ through a locked phone, and outlives the sheet.
   7am is noise. This is minutes long and was started on purpose by someone standing at a stove, so
   it goes out through AlarmKit where that's available (falling back to a notification with a sound
   everywhere else). Someone cooking at 11pm with quiet hours from 10 has not asked the app to let
-  dinner burn.
+  dinner burn. A workout's rest goes through the same `scheduleStepAlarm` and is turned off to the opposite
+  policy (`scheduleRestAlarm`), so the divergence is per kind, written once.
 

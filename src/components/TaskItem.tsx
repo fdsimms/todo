@@ -107,6 +107,8 @@ import { useNowTick } from '../hooks/useNowTick';
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { useTaskStore, redoRestoringRows } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useWorkoutStore } from '../store/useWorkoutStore';
+import { useStartWorkout } from '../hooks/useStartWorkout';
 import { useRewardStore } from '../store/useRewardStore';
 import { guardingReward } from '../utils/rewardGuard';
 import { taskFieldsFromEvent } from '../utils/calendarEventImport';
@@ -1852,6 +1854,13 @@ const TaskItemRow = React.memo(function TaskItem({
   // re-renders when it changes.
   const guardTitle = useRewardStore(s =>
     rewardsEnabled && isNegative ? guardingReward(s.rewards, task.id)?.title ?? null : null);
+  // The routine "Workout" in the expanded panel opens (Task.workoutRoutineId),
+  // when the area is on and the routine still exists: a link to a deleted
+  // routine offers nothing. A boolean, so the row re-renders only when it flips.
+  const workoutsEnabled = useSettingsStore(s => s.workoutsEnabled);
+  const hasWorkout = useWorkoutStore(s =>
+    workoutsEnabled && !!task.workoutRoutineId && s.routines.some(r => r.id === task.workoutRoutineId));
+  const startWorkout = useStartWorkout();
 
   const activeChainItem =
     !task.completed && !isNegative && task.chainEnabled && task.chainItems.length > 0
@@ -4650,6 +4659,20 @@ const TaskItemRow = React.memo(function TaskItem({
               // off the content.
               <View style={styles.editSection}>
                 <View style={styles.editSectionLeft}>
+                  {/* The workout this task is for. Finishing it in workout
+                      mode completes this occurrence; the checkbox completes
+                      it without one, as ever. */}
+                  {showActions && hasWorkout && !task.completed && (
+                    <PressableScale
+                      style={styles.workoutBtn}
+                      onPress={() => startWorkout({ routineId: task.workoutRoutineId, taskId: task.id })}
+                      hitSlop={8}
+                      accessibilityLabel={`Start the workout for ${task.title}`}
+                    >
+                      <Ionicons name="play" size={iconSize.xs} color={colors.accentText} />
+                      <Text style={styles.workoutBtnText}>Workout</Text>
+                    </PressableScale>
+                  )}
                   {showActions && timed && (
                     <View style={styles.timerRunningGroup}>
                       <TouchableOpacity
@@ -6075,6 +6098,22 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
   },
   iconActionBtnAccent: {
     backgroundColor: colors.accentSubtle,
+  },
+  // A labelled pill rather than a bare icon: starting a workout is the one
+  // thing a workout task's panel is opened for, so it says what it does.
+  workoutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    minHeight: 34,
+    paddingHorizontal: spacing.smd,
+    borderRadius: radius.full,
+    backgroundColor: colors.accentSubtle,
+  },
+  workoutBtnText: {
+    color: colors.accentText,
+    fontSize: font.sm,
+    fontWeight: fontWeight.semibold,
   },
 });
 

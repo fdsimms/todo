@@ -103,6 +103,7 @@ const FIELD_NAMES: Record<string, string> = {
   recurrenceEndDate: 'repeat ends on', recurrenceCount: 'repeat count', recurrenceMonthDay: 'repeat day of month',
   recurrenceWeekOrdinal: 'repeat week of month', recurrenceFromCompletion: 'repeat from completion', groupId: 'stack',
   answerGate: 'only if answered', followUpOn: 'follow-up date', medicationName: 'medication', completedAt: 'completed on',
+  workoutRoutineId: 'workout routine',
 };
 
 /** Words for the ids a field holds, so a line never prints an opaque id. */
@@ -158,6 +159,7 @@ function collapse(lines: string[]): string[] {
 const SUBJECT_NOUN: Record<string, string> = {
   task: 'task', project: 'project', template: 'template', recipe: 'recipe', meal: 'meal',
   milestone: 'milestone', cookware: 'cookware', journal: 'journal entry', view: 'saved view', setting: 'setting',
+  routine: 'routine', workout: 'workout',
 };
 
 /**

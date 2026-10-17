@@ -607,6 +607,11 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'weightGoal', groupId: 'health', label: 'Weight goal', section: 'Weight', keywords: ['target', 'lose', 'gain', 'maintain', 'calories', 'tdee', 'deficit', 'macros', 'protein', 'bmr', 'rate', 'lb per week'] },
   { id: 'weightUnit', groupId: 'health', label: 'Weight unit', section: 'Weight',
     keywords: ['kg', 'kilograms', 'lb', 'pounds', 'scale', 'body', 'mass', 'metric', 'imperial'] },
+  // Rendered only while the Workouts area is on, which is what `requires` says.
+  { id: 'workoutUnit', requires: 'workoutsEnabled', groupId: 'health', label: 'Workout weights', section: 'Workouts',
+    keywords: ['kg', 'kilograms', 'lb', 'pounds', 'gym', 'lifting', 'barbell', 'plates', 'metric', 'imperial'] },
+  { id: 'defaultRestSeconds', requires: 'workoutsEnabled', groupId: 'health', label: 'Rest between sets', section: 'Workouts',
+    keywords: ['rest timer', 'break', 'seconds', 'gym', 'lifting', 'countdown'] },
   { id: 'sleepGoal', groupId: 'health', label: 'Sleep goal', section: 'Sleep',
     keywords: ['hours', 'asleep', 'bedtime', 'night', 'rest', 'target'] },
   { id: 'shortNightNote', requires: 'healthRead', groupId: 'health', label: 'Short night note', section: 'Sleep',
@@ -831,6 +836,11 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'rewardsEnabled', groupId: 'featureAreas', label: 'Coins and rewards', section: 'Feature areas',
     keywords: ['bounty', 'bounties', 'points', 'gamify', 'earn', 'spend', 'prize',
       'hide', 'remove', 'disable', 'turn off', 'difficulty'] },
+  // Workouts (docs/arch/workouts.md). Unflagged like the switches around it:
+  // it is the way back to the area it hides.
+  { id: 'workoutsEnabled', groupId: 'featureAreas', label: 'Workouts', section: 'Feature areas',
+    keywords: ['gym', 'lifting', 'strength', 'training', 'exercise', 'routine', 'sets', 'reps', 'weights',
+      'hide', 'remove', 'disable', 'turn on', 'turn off'] },
   // The other master switch, and unflagged for the same reason. Keyworded for
   // the features it removes as well as for what it is: someone who wants
   // chains or the focus timer gone will search for those, not for "simplified".

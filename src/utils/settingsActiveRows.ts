@@ -34,6 +34,7 @@ export type SettingsGateState = GeneratedEnabledFlags & {
   remindersImportEnabled: boolean;
   travelEstimates: boolean;
   transitAlerts: boolean;
+  workoutsEnabled: boolean;
 };
 
 /** The sync store's values "Sync now" depends on. The sync store satisfies it. */
@@ -67,6 +68,7 @@ export function activeSettingsEntryIds(settings: SettingsGateState, sync: SyncGa
   if (settings.healthWriteEnabled) on.add('healthWrite');
   if (settings.calendarReadEnabled) on.add('calendarRead');
   if (settings.remindersImportEnabled) on.add('remindersImport');
+  if (settings.workoutsEnabled) on.add('workoutsEnabled');
   // The two ways to sync, which is what "Sync now" renders behind: iCloud
   // switched on, or a server with both a URL and a token.
   if (sync.supported && sync.enabled) on.add('syncEnabled');

@@ -1,4 +1,4 @@
-import { canStep, clampCount, holdRepeatDelay, stepCount } from '../utils/stepper';
+import { canStep, clampCount, holdRepeatDelay, parseStepperInput, stepCount } from '../utils/stepper';
 
 const range = { min: 2, max: 99 };
 const clearable = { min: 2, max: 99, allowNull: true };
@@ -74,6 +74,50 @@ describe('stepCount', () => {
     const sodium = { min: 200, max: 6000, step: 100 };
     expect(stepCount(2006, 100, sodium)).toBe(2106);
     expect(stepCount(2106, 100, sodium)).toBe(2206);
+  });
+});
+
+describe('a weight stepper, in 2.5 kg steps', () => {
+  const kg = { min: 0, max: 500, step: 2.5, places: 2 };
+
+  it('steps by the plate pair, landing on the half kilogram', () => {
+    expect(stepCount(80, 2.5, kg)).toBe(82.5);
+    expect(stepCount(82.5, 2.5, kg)).toBe(85);
+    expect(stepCount(2.5, -2.5, kg)).toBe(0);
+    expect(stepCount(0, -2.5, kg)).toBe(0);
+  });
+
+  it('keeps a value typed finer than the step, to the places the range names', () => {
+    // 85.25, not 85.3: the step's one place must not round away the quarter.
+    expect(stepCount(82.75, 2.5, kg)).toBe(85.25);
+    expect(clampCount(82.75, kg)).toBe(82.75);
+    expect(clampCount(82.756, kg)).toBe(82.76);
+    // Without `places`, the step's own precision, as every other stepper has.
+    expect(stepCount(82.75, 2.5, { min: 0, max: 500, step: 2.5 })).toBe(85.3);
+  });
+
+  it('still rounds away the dust a run of fractional adds leaves', () => {
+    let v: number | null = 0;
+    for (let i = 0; i < 7; i++) v = stepCount(v, 2.5, kg);
+    expect(v).toBe(17.5);
+    expect(clampCount(0.30000000000000004, kg)).toBe(0.3);
+  });
+});
+
+describe('parseStepperInput', () => {
+  it('reads a decimal point or a decimal comma', () => {
+    expect(parseStepperInput('82.5')).toBe(82.5);
+    expect(parseStepperInput(' 82,5 ')).toBe(82.5);
+    expect(parseStepperInput('8')).toBe(8);
+    expect(parseStepperInput('.5')).toBe(0.5);
+  });
+
+  it('refuses anything that is not one number', () => {
+    expect(parseStepperInput('')).toBeNull();
+    expect(parseStepperInput('.')).toBeNull();
+    expect(parseStepperInput('1,000.5')).toBeNull();
+    expect(parseStepperInput('82 kg')).toBeNull();
+    expect(parseStepperInput('8-10')).toBeNull();
   });
 });
 

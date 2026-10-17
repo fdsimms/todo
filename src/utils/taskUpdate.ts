@@ -45,6 +45,10 @@ import { blockerFields, blockerIdsOf } from './blocking';
 export const CONTENT_FIELDS: (keyof Task)[] = [
   'title', 'notes', 'tags', 'category', 'priority', 'effort', 'difficulty',
   'estimatedMinutes', 'timedMinutes', 'healthMetric', 'healthTarget', 'healthFollowGoal', 'windowStart', 'windowEnd', 'windowStartSun', 'windowEndSun', 'timeSegments', 'reminderTime', 'reminderKind', 'reminderOffsetDays', 'reminderTracksVisibility', 'linkUrl', 'phoneNumber', 'emailAddress', 'location', 'completionTimerMinutes', 'completionTimerNote',
+  // What "Start workout" opens, the way linkUrl is what the row's link opens: a
+  // scope:'occurrence' change to one date's routine must not become the default
+  // for every date after it.
+  'workoutRoutineId',
   // The question, not the answer — `deliverableValue` is per-occurrence data
   // like progressCount and is deliberately absent, or a scope:'occurrence'
   // edit would capture one date's answer as the default for every date after.

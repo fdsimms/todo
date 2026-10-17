@@ -114,7 +114,7 @@ import {
 import { scheduleNativeAlarm, cancelNativeAlarm } from 'todo-alarmkit-bridge';
 import { setDemoModeActive } from '../utils/demoState';
 import type { EventReminder } from '../utils/eventReminders';
-import type { Shop, StepTimer } from '../types';
+import type { RecipeStepTimer, RestTimer, Shop } from '../types';
 
 const FUTURE = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 const PAST   = new Date(Date.now() - 10 * 60 * 1000).toISOString();
@@ -1528,7 +1528,8 @@ describe('demo mode suppresses scheduling', () => {
 
 // ─── Cooking step timers ─────────────────────────────────────────────────────
 
-const makeStepTimer = (overrides: Partial<StepTimer> = {}): StepTimer => ({
+const makeStepTimer = (overrides: Partial<RecipeStepTimer> = {}): RecipeStepTimer => ({
+  kind: 'recipe',
   id: 'st1',
   recipeId: 'r1',
   stepId: 's2',
@@ -1614,6 +1615,48 @@ describe('scheduleStepAlarm', () => {
     await scheduleStepAlarm(makeStepTimer());
     expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
     expect(scheduleNativeAlarm).not.toHaveBeenCalled();
+  });
+
+  describe('a workout rest', () => {
+    const makeRest = (overrides: Partial<RestTimer> = {}): RestTimer => ({
+      kind: 'rest',
+      id: 'rt1',
+      sessionId: 'w1',
+      exerciseId: 'lib:barbell-bench-press',
+      sessionTitle: 'Push A',
+      label: 'After set 2 of Barbell bench press',
+      durationSeconds: 150,
+      startedAt: new Date().toISOString(),
+      elapsedSeconds: 0,
+      createdAt: new Date().toISOString(),
+      ...overrides,
+    });
+
+    it('rings as a plain notification, never an AlarmKit alarm', async () => {
+      mockAlarmKitAvailable = true;
+      await scheduleStepAlarm(makeRest());
+      expect(scheduleNativeAlarm).not.toHaveBeenCalled();
+      const call = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
+      expect(call.identifier).toBe('step-timer:rt1');
+      expect(call.content.title).toBe('Rest is over');
+      expect(call.content.body).toBe('Push A: time for your next set.');
+      expect(call.content.data).toEqual({ restTimerId: 'rt1', workoutSessionId: 'w1' });
+      expect(Math.round(((call.trigger.date as Date).getTime() - Date.now()) / 1000)).toBe(150);
+    });
+
+    it('schedules nothing inside quiet hours, the opposite of a recipe timer', async () => {
+      Object.assign(mockSettings, { quietHoursStart: '00:00', quietHoursEnd: '23:59' });
+      await scheduleStepAlarm(makeRest());
+      expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+      // Still cancels what was pending, so a rest moved into quiet hours goes quiet.
+      expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('step-timer:rt1');
+    });
+
+    it('schedules nothing in demo mode', async () => {
+      setDemoModeActive(true);
+      await scheduleStepAlarm(makeRest());
+      expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+    });
   });
 
   it('cancels in both backends without being told which one was used', async () => {

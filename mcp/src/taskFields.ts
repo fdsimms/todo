@@ -278,6 +278,8 @@ export interface TaskFieldsInput {
   location?: string | null;
   /** Hidden, streak kept, while vacation mode is on. */
   vacationPause?: boolean;
+  /** The workout routine (list_workouts' routines) Start workout on the task opens. null removes the link. Checked by the replica. */
+  workoutRoutineId?: string | null;
   /** Completing it also records a dose of this medicine, in get_task's own shape. null stops it. */
   medication?: { name: string; amount?: number | null; unit?: string | null } | null;
   /** A deadline worked out from the date on every occurrence, in get_task's own shape. null drops the rule. */
@@ -915,6 +917,11 @@ export function taskFieldsPatch(
   if (input.vacationPause !== undefined) {
     if (context.isSubtask && input.vacationPause) errors.push('vacationPause is set on the task a checklist item belongs to, not on the item.');
     else patch.vacationPause = input.vacationPause;
+  }
+  if (input.workoutRoutineId !== undefined) {
+    const id = input.workoutRoutineId?.trim() || null;
+    if (id && context.isSubtask) errors.push('workoutRoutineId goes on a top-level task, not a checklist item.');
+    else patch.workoutRoutineId = id;
   }
   if (input.medication !== undefined) {
     const m = input.medication;

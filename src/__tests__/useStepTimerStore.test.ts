@@ -2,7 +2,7 @@ import { useStepTimerStore } from '../store/useStepTimerStore';
 import { dbDeleteSetting, dbGetSetting, dbSetSetting } from '../db/database';
 import { cancelStepAlarm, scheduleStepAlarm } from '../utils/notifications';
 import { isStepTimerReady, stepTimerRemaining } from '../utils/stepTimers';
-import type { StepTimer } from '../types';
+import type { RecipeStepTimer, StepTimer } from '../types';
 
 jest.mock('../db/database', () => ({
   dbGetSetting: jest.fn().mockReturnValue(null),
@@ -49,7 +49,8 @@ describe('start', () => {
   it('keeps the step excerpt it was started with, so the row can say which pan it is', () => {
     const timer = useStepTimerStore.getState().start({ ...START, stepExcerpt: 'Simmer the rice' });
     expect(timer?.stepExcerpt).toBe('Simmer the rice');
-    expect(persisted()[0].stepExcerpt).toBe('Simmer the rice');
+    const [saved] = persisted();
+    expect(saved.kind === 'recipe' && saved.stepExcerpt).toBe('Simmer the rice');
   });
 
   it('refuses a length outside what a step timer can be', () => {
@@ -149,13 +150,66 @@ describe('remove', () => {
     useStepTimerStore.getState().start(START);
     useStepTimerStore.getState().start({ ...START, recipeId: 'r2' });
     useStepTimerStore.getState().removeForRecipe('r1');
-    expect(useStepTimerStore.getState().timers.map(t => t.recipeId)).toEqual(['r2']);
+    expect(useStepTimerStore.getState().timers.map(t => t.kind === 'recipe' && t.recipeId)).toEqual(['r2']);
     expect(mockCancel).toHaveBeenCalledTimes(2);
   });
 });
 
+describe('rest timers', () => {
+  const REST = {
+    sessionId: 'w1',
+    exerciseId: 'lib:barbell-bench-press',
+    sessionTitle: 'Push A',
+    label: 'After set 1 of Barbell bench press',
+    durationSeconds: 150,
+  };
+
+  it('starts a rest beside the recipe timers, stored with its kind', () => {
+    useStepTimerStore.getState().start(START);
+    const rest = useStepTimerStore.getState().startRest(REST)!;
+    expect(rest).toMatchObject({ kind: 'rest', sessionId: 'w1', durationSeconds: 150 });
+    expect(persisted().map(t => t.kind)).toEqual(['recipe', 'rest']);
+    expect(mockSchedule).toHaveBeenLastCalledWith(expect.objectContaining({ id: rest.id, kind: 'rest' }));
+  });
+
+  it('keeps one rest at a time: the next set\'s rest replaces the last, alarm and all', () => {
+    const first = useStepTimerStore.getState().startRest(REST)!;
+    const second = useStepTimerStore.getState().startRest({ ...REST, label: 'After set 2 of Barbell bench press' })!;
+    expect(useStepTimerStore.getState().timers.map(t => t.id)).toEqual([second.id]);
+    expect(mockCancel).toHaveBeenCalledWith(first.id);
+  });
+
+  it('takes −15 s off what is left and adds +30 s from now', () => {
+    const rest = useStepTimerStore.getState().startRest(REST)!;
+    useStepTimerStore.getState().addTime(rest.id, -15);
+    expect(useStepTimerStore.getState().timers[0].durationSeconds).toBe(135);
+    useStepTimerStore.getState().addTime(rest.id, 30);
+    expect(useStepTimerStore.getState().timers[0].durationSeconds).toBe(165);
+  });
+
+  it('drops a rest whose session is no longer live, and leaves a cook\'s timers alone', () => {
+    useStepTimerStore.getState().start(START);
+    useStepTimerStore.getState().startRest(REST);
+    useStepTimerStore.getState().removeForRecipe('r1');
+    expect(useStepTimerStore.getState().timers.map(t => t.kind)).toEqual(['rest']);
+    useStepTimerStore.getState().start(START);
+    useStepTimerStore.getState().removeRestsOutside('w1');
+    expect(useStepTimerStore.getState().timers.map(t => t.kind)).toEqual(['rest', 'recipe']);
+    const rest = useStepTimerStore.getState().timers[0];
+    useStepTimerStore.getState().removeRestsOutside(null);
+    expect(useStepTimerStore.getState().timers.map(t => t.kind)).toEqual(['recipe']);
+    expect(mockCancel).toHaveBeenCalledWith(rest.id);
+  });
+
+  it('refuses a rest outside what a timer can be', () => {
+    expect(useStepTimerStore.getState().startRest({ ...REST, durationSeconds: 0 })).toBeNull();
+    expect(useStepTimerStore.getState().timers).toEqual([]);
+  });
+});
+
 describe('hydrate', () => {
-  const stored = (overrides: Partial<StepTimer> = {}): StepTimer => ({
+  const stored = (overrides: Partial<RecipeStepTimer> = {}): RecipeStepTimer => ({
+    kind: 'recipe',
     id: 'st1',
     recipeId: 'r1',
     stepId: 's2',

@@ -1411,6 +1411,44 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return milestone;
     },
 
+    // Routines are plans, named by their own names. A workout is health
+    // content, so the recorded title is the kind, as a mood entry's is; the
+    // preview names it, for the person, before the write.
+    saveRoutine(input) {
+      const before = input.id ? replica.workoutRoutines().find(r => r.id === input.id) ?? null : null;
+      const routine = replica.saveRoutine(input);
+      const exercises = `${routine.items.length} ${routine.items.length === 1 ? 'exercise' : 'exercises'}`;
+      log(before
+        ? { action: 'edited', subject: 'routine', title: routine.name, taskId: null, recordId: routine.id, note: `Change the routine "${before.name}"${before.name !== routine.name ? ` to "${routine.name}"` : ''} (${exercises})` }
+        : { action: 'created', subject: 'routine', title: routine.name, taskId: null, recordId: routine.id, note: `Add the routine "${routine.name}" (${exercises})` });
+      return routine;
+    },
+
+    deleteRoutine(id) {
+      const routine = replica.deleteRoutine(id);
+      log({ action: 'cleared', subject: 'routine', title: routine.name, taskId: null, recordId: routine.id, note: `Delete the routine "${routine.name}". Workouts logged from it keep their history. It cannot be restored from here.` });
+      return routine;
+    },
+
+    logWorkout(input) {
+      const result = replica.logWorkout(input);
+      const n = result.sets.length;
+      log({ action: 'created', subject: 'workout', title: 'Workout', taskId: null, recordId: result.session.id, note: `Log the workout "${result.session.title}" on ${replica.logicalDayKeyOf(result.session.startedAt)} with ${n} ${n === 1 ? 'set' : 'sets'}` });
+      return result;
+    },
+
+    updateWorkout(id, patch) {
+      const result = replica.updateWorkout(id, patch);
+      log({ action: 'edited', subject: 'workout', title: 'Workout', taskId: null, recordId: id, note: `Change the workout "${result.session.title}" on ${replica.logicalDayKeyOf(result.session.startedAt)}${patch.sets ? `, replacing its sets with ${result.sets.length}` : ''}` });
+      return result;
+    },
+
+    deleteWorkout(id) {
+      const result = replica.deleteWorkout(id);
+      log({ action: 'cleared', subject: 'workout', title: 'Workout', taskId: null, recordId: id, note: `Delete the workout "${result.session.title}" from ${replica.logicalDayKeyOf(result.session.startedAt)} and its ${result.sets.length} ${result.sets.length === 1 ? 'set' : 'sets'}. It cannot be restored from here.` });
+      return result;
+    },
+
     addCookware(name, weightG) {
       const item = replica.addCookware(name, weightG);
       log({ action: 'created', subject: 'cookware', title: item.name, taskId: null, recordId: item.id, note: `Add the cookware "${item.name}" at ${item.weightG} g empty` });

@@ -3310,6 +3310,22 @@ function seedWorkouts(today: Date): void {
     [rowId, 42.5, 10], [rowId, 42.5, 9], [rowId, 42.5, 9],
     ['lib:dumbbell-lateral-raise', 8, 15], ['lib:triceps-pushdown', 27.5, 12],
   ], 7);
+
+  // A repeating task linked to a routine (Task.workoutRoutineId): its row
+  // offers Workout, and finishing that workout checks it off. Due today, so
+  // the button is on Today in the demo rather than waiting for its day.
+  if (typeof lower !== 'string') {
+    const day = today.getDay();
+    useTaskStore.getState().addTask({
+      title: 'Leg day',
+      notes: 'Lower A from the Upper and lower program.',
+      category: 'Health',
+      recurrenceType: 'weekly',
+      recurrenceDays: [day, (day + 3) % 7].sort((a, b) => a - b),
+      dueDate: today.toISOString(),
+      workoutRoutineId: lower.id,
+    });
+  }
 }
 
 /**

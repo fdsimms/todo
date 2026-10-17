@@ -32,19 +32,49 @@ export interface StepRange {
    * or stored value onto the step's own grid.
    */
   step?: number;
+  /**
+   * How many decimal places a value keeps, when that is finer than the step.
+   * A weight steps by 2.5 kg but can be typed to the quarter (a 1.25 kg plate
+   * a side is 82.75 on some bars); rounded to the step's one place, stepping
+   * 82.75 would land on 85.3 rather than 85.25. Defaults to the step's own.
+   */
+  places?: number;
 }
 
 /** How many digits after the decimal point `n` is expressed to. */
 function decimalPlaces(n: number): number {
   const s = Math.abs(n).toString();
+  if (s.includes('e')) return 0;
   const i = s.indexOf('.');
   return i === -1 ? 0 : s.length - i - 1;
 }
 
+/**
+ * The precision a result is rounded to: `places` where the range names one,
+ * else the step's own. Rounding clears the dust a repeated fractional add
+ * leaves (0.30000000000000004), and is all `places` changes.
+ */
+function placesFor(range: StepRange, delta: number): number {
+  return range.places ?? decimalPlaces(range.step ?? delta);
+}
+
 /** Pulls a value into range, for a stored number outside the current bounds. */
 export function clampCount(value: number, range: StepRange): number {
-  const rounded = Number(value.toFixed(decimalPlaces(range.step ?? 1)));
+  const rounded = Number(value.toFixed(placesFor(range, 1)));
   return Math.min(range.max, Math.max(range.min, rounded));
+}
+
+/**
+ * A number typed into a stepper's field, or null for anything that isn't one.
+ * A decimal comma reads as a point ("82,5"), since that is what a phone set to
+ * much of Europe types; grouping is not accepted, so "1,000" is refused rather
+ * than read as one.
+ */
+export function parseStepperInput(text: string): number | null {
+  const trimmed = text.trim();
+  if (!/^-?\d*(?:[.,]\d*)?$/.test(trimmed) || !/\d/.test(trimmed)) return null;
+  const n = Number(trimmed.replace(',', '.'));
+  return Number.isFinite(n) ? n : null;
 }
 
 /**
@@ -69,7 +99,7 @@ export function clampCount(value: number, range: StepRange): number {
  */
 export function stepCount(value: number | null, delta: number, range: StepRange): number | null {
   if (value === null) return delta > 0 ? (range.start ?? range.min) : null;
-  const places = decimalPlaces(range.step ?? delta);
+  const places = placesFor(range, delta);
   const next = Number((value + delta).toFixed(places));
   if (next > range.max) return range.max;
   if (next < range.min) return range.allowNull ? null : range.min;

@@ -457,8 +457,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/stats.ts` — OnTimeSummary, onTimeSummary
 - `src/utils/stepGoal.ts` — STEP_GOAL_MIN, STEP_GOAL_MAX, STEP_GOAL_STEP, STEP_GOAL_DEFAULT, clampStepGoal, parseStepGoal
 - `src/utils/stepIngredients.ts` — AnnotatableStep, StepIngredientLine, StepSegment, stepIngredientLines, annotateSteps, stepNamesIngredient
-- `src/utils/stepTimers.ts` — StepDuration, MIN_STEP_TIMER_SECONDS, MAX_STEP_TIMER_SECONDS, parseStepDurations, formatStepDuration, describeStepDuration, stepTimerElapsed, stepTimerRemaining, stepTimerProgress, isStepTimerRunning, +12 more
-- `src/utils/stepper.ts` — StepRange, clampCount, stepCount, canStep, holdRepeatDelay
+- `src/utils/stepTimers.ts` — StepDuration, MIN_STEP_TIMER_SECONDS, MAX_STEP_TIMER_SECONDS, parseStepDurations, formatStepDuration, describeStepDuration, stepTimerElapsed, stepTimerRemaining, stepTimerProgress, isStepTimerRunning, +16 more
+- `src/utils/stepper.ts` — StepRange, clampCount, parseStepperInput, stepCount, canStep, holdRepeatDelay
 - `src/utils/storageReport.ts` — StorageTable, StorageStats, formatBytes, MIN_RECLAIMABLE_BYTES, worthOptimizing, optimizeBlockedReason, topAreas, describeAreas
 - `src/utils/storeAliases.ts` — aliasKeyFor, gtinAliasText, aliasItemIdFor, AliasDraft, aliasDraftsFrom
 - `src/utils/streakLeaderboard.ts` — LEADERBOARD_SIZE, streakScore, rankStreaks
@@ -551,7 +551,10 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/widgetQuietTaps.ts` — QuietTap, QuietTapAction, widgetTapNeedsApp, parseQuietTaps, planQuietTaps, tapsToRequeue
 - `src/utils/widgetSnapshot.ts` — SnapshotCaps, WIDGET_CAPS, WATCH_CAPS, WidgetTask, WidgetUpcomingTask, WidgetGroceryList, WidgetGroceryRow, WidgetGroceries, WidgetMeal, WidgetKitchenItem, +19 more
 - `src/utils/widgetSync.ts` — drainWatchQueues, writeWidgetSnapshotNow, useWidgetSync
-- `src/utils/workoutData.ts` — EXERCISE_KINDS, EXERCISE_EQUIPMENT, MUSCLE_GROUPS, WORKOUT_SET_KINDS, PROGRESSION_SCHEMES, EQUIPMENT_LABELS, MUSCLE_LABELS, WORKOUT_NAME_MAX_LENGTH, exerciseNameKey, cleanWorkoutName, +16 more
+- `src/utils/workoutData.ts` — EXERCISE_KINDS, EXERCISE_EQUIPMENT, MUSCLE_GROUPS, WORKOUT_SET_KINDS, PROGRESSION_SCHEMES, EQUIPMENT_LABELS, MUSCLE_LABELS, WORKOUT_NAME_MAX_LENGTH, exerciseNameKey, cleanWorkoutName, +24 more
+- `src/utils/workoutRoutine.ts` — RoutineItemShape, itemShape, MAX_ROUTINE_SETS, defaultTargets, newRoutineItem, withWorkingSets, withWarmups, withReps, withTargetWeight, withTargetDuration, +12 more
+- `src/utils/workoutSession.ts` — SessionExercise, sessionExercises, supersetGroup, roundRobin, walkOrder, nextSet, currentSetOf, AfterLog, afterLog, restSecondsFor, +18 more
+- `src/utils/workoutTask.ts` — WorkoutTaskEffect, workoutTaskEffect
 
 ## `src/store`
 
@@ -613,7 +616,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useUnattendedStore.ts` — UnattendedRecord, useUnattendedStore
 - `src/store/useWeatherStore.ts` — useWeatherStore, useWeatherSync
 - `src/store/useWidgetCompletionStore.ts` — TAP_CLAIM_WINDOW_MS, useWidgetCompletionStore
-- `src/store/useWorkoutStore.ts` — ExerciseInput, ExercisePatch, RoutinePatch, ProgramInput, ProgramPatch, StartSessionInput, SessionPatch, SetInput, SetPatch, WorkoutRefusal, +2 more
+- `src/store/useWorkoutModeStore.ts` — useWorkoutModeStore
+- `src/store/useWorkoutStore.ts` — ExerciseInput, ExercisePatch, RoutinePatch, ProgramInput, ProgramPatch, StartSessionInput, SessionPatch, FinishOptions, FinishedSessionInput, SetInput, +4 more
 
 ## `src/hooks`
 
@@ -664,6 +668,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useRecipeTimer.ts` — RecipeTimerBinding, useRecipeTimer
 - `src/hooks/useRecordTaskReady.ts` — useRecordTaskReady
 - `src/hooks/useReminderMeetingResync.ts` — useReminderMeetingResync
+- `src/hooks/useRestTimer.ts` — useRestTimer, useRestChime
 - `src/hooks/useRowSelection.ts` — useRowSelection
 - `src/hooks/useScreenSettings.ts` — useScreenSettings, withScreenSettings
 - `src/hooks/useScrollEdgeFade.ts` — ScrollEdgeFadeScrollProps, ScrollEdgeFadeBinding, useScrollEdgeFade
@@ -678,6 +683,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useSheetSubject.ts` — useSheetSubject
 - `src/hooks/useShieldReasons.ts` — useShieldReasons
 - `src/hooks/useStableCallback.ts` — useStableCallback
+- `src/hooks/useStartWorkout.ts` — StartWorkoutInput, useStartWorkout
 - `src/hooks/useStepTimers.ts` — StepTimersBinding, useStepTimers
 - `src/hooks/useStoreWhileOpen.ts` — useStoreWhileOpen
 - `src/hooks/useTaskSelection.ts` — useTaskSelection

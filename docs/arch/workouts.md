@@ -1,6 +1,6 @@
 # Workouts: a full strength-training tracker
 
-**Status: phase 1 built (the data foundation), the rest planned.** The five tables, their sync and backup registration, the exercise library and catalog, `useWorkoutStore`, the settings and a bare Workouts screen exist; logging, analysis, programs and everything native are still the plan below. The Workouts switch exists (`workoutsEnabled`, off by default) but has no row in Settings yet: phase 2 adds the row together with logging, so nobody finds a switch that opens an area with nothing to do in it. Demo mode turns it on. This file records the plan and the decisions already made. The three main surfaces are mocked in `workouts-mocks/`: HTML at 390pt using the real theme tokens, in light and dark. They are a proxy for layout and hierarchy, not a render of the app.
+**Status: phases 1 and 2 built (the data foundation, and logging), the rest planned.** Phase 1 is the five tables, their sync and backup registration, the exercise library and catalog, `useWorkoutStore` and the settings. Phase 2 is the routine editor, workout mode with its rest timer, the task link (`Task.workoutRoutineId`), the Workouts switch in Settings › Feature areas, the unit and default rest under Settings › Apple Health › Workouts, and the MCP writes; "Phase 2, as built" below records what it decided. Analysis, programs and everything native are still the plan. This file records the plan and the decisions already made. The three main surfaces are mocked in `workouts-mocks/`: HTML at 390pt using the real theme tokens, in light and dark. They are a proxy for layout and hierarchy, not a render of the app.
 
 This feature is a gym logger with the depth of a dedicated app. It includes an exercise library, routines and multi-week programs with progression, set-by-set logging, a rest timer, PRs and charts, Apple Health, Live Activity, Siri and Apple Watch logging. Cloning Strong or Hevy is not the goal. The goal is to be good enough at the gym that the integration (the schedule, the food log, mood, rewards, Claude over MCP) is reason enough to keep it all in one app.
 
@@ -46,7 +46,7 @@ The new types go in `src/types/index.ts`, and the tables go in `initDatabase` wi
 - **`workout_programs`**: `id`, `name`, `weeks`, `rotation` (an ordered list of routine ids), `scheme` (`double | linear | percent | rpe`), `trainingMaxes` (JSON, per exercise), `startedAt`, `archived`. The program's current week and next routine are derived from its sessions.
 - **`workout_sessions`**: `id`, `routineId?`, `programId?`, `taskId?` (the occurrence it completed), `title`, `startedAt`, `endedAt` (null while live), `notes`, `effort` (1 to 10, typed), `healthWorkoutId?`, `healthWritePending`.
 - **`workout_sets`**: `id`, `sessionId`, `exerciseId`, `position`, `setIndex`, `kind`, `weightKg?`, `reps?`, `durationSeconds?`, `distanceM?`, `rpe?`, `completedAt?`, `supersetKey?`, `note?`. Indexes are `(session_id)` and `(exercise_id, completed_at)`. Weight is always stored in kg, and the unit is display only, like `waterUnit`.
-- **Task link**: a new `Task.workoutRoutineId` or `Task.workoutProgramId` field, like `medicationName`. It triggers `templateItemParity`, `taskDraftFieldCoverage` and the MCP `taskFieldCoverage` tests, which is intended: a template can seed "Push day, Mon/Thu".
+- **Task link**: `Task.workoutRoutineId` (built in phase 2), like `logSavedMealId`; a `workoutProgramId` waits for programs (phase 4). A template does not seed it: like a saved meal, a routine is a row of this person's own, which a template shared with somebody else (or run before the routine synced) would name and not find (`templateItemParity.test.ts`, "names a workout routine outside the template"). The MCP writes and reads it (`create_task`/`update_task`, `get_task`'s `workout`).
 - **Settings** (the `settings` table, added to `SYNCED_SETTING_KEYS`): `workoutUnit`, `plateInventory` (bar weights, plates and counts), `defaultRestSeconds`, `workoutHealthWrite`.
 
 **Registration.** Each table also needs:
@@ -72,20 +72,22 @@ New files in `src/utils/`, each with its test in `src/__tests__/`. The first thr
   It returns a proposal plus its reason ("Last time 3x10 at 60 kg, so try 62.5"), and it rounds to loads you can make with your plates.
 - `plateMath.ts`: load, bar and plate inventory give the plates per side. It also builds warm-up ramps.
 - `workoutRecords.ts`: PR detection and estimated 1RM (Epley, only from sets of 10 reps or fewer, always labelled "estimated"). Best set, rep PRs at each rep count, and volume per session, exercise and muscle per week. Memoized per set array, the way `openTasksOf` is cached.
-- `workoutSession.ts`: the live session's cursor rules (current exercise and set, superset alternation, "copy last set", what finishing writes). It is shaped like `cookMode.ts` and `focusPlan.ts`.
+- `src/utils/workoutSession.ts` (built): the live session's rules, shaped like `cookMode.ts` and `focusPlan.ts`: the walking order with supersets alternated round by round (`walkOrder`, `nextSet`), where a logged set leaves the screen and whether it rests (`afterLog`), a routine's planned sets (`plannedSetsFor`), last time's sets and their match to this time's (`previousSets`, `matchPrevious`), "Add set" and "Same as last set" (`copyLastSet`, `valuesFromLastDone`), what finishing drops (`finishPlan`) and the summary (`sessionSummary`).
+- `src/utils/workoutRoutine.ts` (built): the routine editor's edits (`withWorkingSets`, `withReps`, `withWarmups`, `withTargetWeight`, `withProgression`), supersets as runs of neighbours (`supersetRoles`, `joinPrevious`, `leaveSuperset`, `normalizeSupersets`) and the summary lines.
+- `src/utils/workoutTask.ts` (built): what finishing a workout does to the task it was started from (`workoutTaskEffect`).
 - `workoutCsv.ts`: imports Strong and Hevy CSV exports and exports a CSV of your own. Exercise names are matched like `ingredientCatalogMatch.ts`, with a review sheet for anything unmatched.
 
 ### Store
 
-`src/store/useWorkoutStore.ts` (built in phase 1, without the task link):
+`src/store/useWorkoutStore.ts` (built in phase 1; phase 2 added laying a routine out, `addSessionExercise`, `addPlannedSet`, `lastTimeFor`, `addFinishedSession`, `replaceSets` and the task link):
 - it holds exercises, routines, programs and sessions, with sets loaded per session or exercise on demand;
 - its actions are `startSession`, `logSet`, `editSet`, `deleteSet`, `reorderExercises`, `finishSession`, `discardSession`, plus CRUD for routines, programs and custom exercises;
-- `finishSession` completes the linked task through `completeTask`, never the reverse. Ticking the task off without a session does not invent a session. (Phase 2: the task link and its completion come with `Task.workoutRoutineId`.)
+- `finishSession` answers the linked task through the task store, never the reverse: `completeTask`, or `logQuotaUnit` for a target below its count (`workoutTaskEffect`). Ticking the task off without a session does not invent a session.
 - a custom exercise is never removed, only archived, because sets logged on another device never arrive over iCloud and can't be counted from here; an archived custom exercise keeps its name (the database's unique `name_key`); deleting a built-in's row puts the library's back. Deleting a session deletes its sets in the same transaction.
 
 ### Rest timer
 
-- **Mechanism.** Generalise the step timers rather than building a fourth timer. They are the only timers that run to the second, have +1 min and restart, ring through quiet hours via AlarmKit and survive backgrounding. Today `StepTimer` is tied to recipes (`recipeId`, `stepId`), so it becomes a subject union, `{ kind: 'recipe', recipeId, stepId } | { kind: 'rest', sessionId, exerciseId }`. The store, alarm and Live Activity plumbing are reused.
+- **Mechanism.** Generalise the step timers rather than building a fourth timer. They are the only timers that run to the second, have +1 min and restart, ring through quiet hours via AlarmKit and survive backgrounding. `StepTimer` is now a subject union (built): `RecipeStepTimer` (`kind: 'recipe'`, `recipeId`, `stepId`) and `RestTimer` (`kind: 'rest'`, `sessionId`, `exerciseId`). The store, alarm and Live Activity plumbing are reused.
 - **Behaviour.** Logging a set starts the rest for that exercise automatically. When the rest ends it chimes and counts up, and the cursor stays put.
 - **Quiet hours.** The subject decides whether quiet hours apply: `rest` respects them and `recipe` keeps ringing through. One store with two policies, not two stores.
 
@@ -154,6 +156,24 @@ This is the strongest differentiator: "build me a 4-day upper/lower around my Tu
 - Exercise videos or images in v1, because of asset size and licensing.
 - Auto-advancing a session, or auto-applying a progression.
 
+## Phase 2, as built
+
+What phase 2 settled that the plan above left open. Files: `RoutineEditorSheet.tsx`, `WorkoutModeSheet.tsx`, `WorkoutModeHost.tsx` and `ExercisePickerSheet.tsx` in `src/components/`, `useStartWorkout.ts` and `useRestTimer.ts` in `src/hooks/`, `useWorkoutModeStore.ts`, and the three utils above. The routine editor and workout mode follow the approved mocks; the Workouts screen's routine list, the exercise picker, the finish summary and the task row's button were mocked in the PR.
+
+- **Planned sets are rows with no `completedAt`.** Starting from a routine lays its sets out as rows (`startSession`), so they can be shown, edited and checked one at a time; finishing deletes the ones never checked, because a plan nobody carried out records nothing. A set's numbers come from the routine's target weight, else from last time's matching set; reps from last time, else the top of the range. Neither is a progression: nothing here moves a load on.
+- **PREVIOUS matches by kind**: the nth warm-up against last time's nth warm-up, the nth working set against the nth working set, so adding a warm-up doesn't shift every row onto the wrong one.
+- **A logged set is the only thing that moves the screen.** On its own, an exercise keeps its card and the set starts the rest. In a superset the card turns to the partner with no rest, and the set that closes the round starts it (the mock's "rest after the pair"). A finished exercise keeps its card; moving on is a tap.
+- **A rest is one timer at a time**, a `RestTimer` in `useStepTimerStore` beside the recipe step timers (the subject union). Logging the next set replaces it. It is a plain notification that quiet hours suppress, never an AlarmKit alarm: a full-screen alarm to dismiss after every set is the wrong weight for a rest. `useRestChime`, mounted once in `WorkoutModeHost`, buzzes when it ends with the app in front, whatever screen is showing. It never moves the workout on.
+- **The rest's Live Activity rides the step timer's** from JS alone: key `rest:<id>`, kind `rest`, the session title over "Rest after set 2 of …". Its Done is the existing `stopTimer` link, which for a `rest:` key skips the rest. No Swift changed; phase 6 builds the workout's own activity.
+- **A rest outlives nothing.** `WorkoutModeHost` drops every rest whose session is no longer live (`removeRestsOutside`), however it ended (finished, discarded, deleted on another device), so the workout store never reaches into the timers and stays loadable by the MCP server.
+- **Finishing answers the task the way its checkbox would** (`workoutTaskEffect`): complete it, log one unit on a target below its count ("3 a week"), ask its question first (the host queues it once workout mode closes, the answer-first rule), or leave it alone (already done, not due, a rotation that asks which member) and say so on the summary.
+- **Leaving is not ending.** End asks: Close keeps the session live (the Workouts screen shows it as In progress with Resume), Discard deletes it. One session at a time: starting another while one is live offers to open it.
+- **Weights step in the shown unit** by 2.5 kg or 5 lb, through `CountStepper`'s new `places` (decimal keyboard, a typed 82.75 kept to the quarter), converted at the stepper (`weightToDisplay`, `weightFromDisplay`, kept to three places of a kilogram so 135 lb reads back as 135).
+- **The progression is a stored choice** on each routine item, and the editor says the app doesn't suggest weights from it yet. Warm-ups are a count (a stepper, not the mock's "2, ramped", since a ramp needs phase 3's plate math).
+- **The finish screen** shows time, exercises, sets and each exercise's heaviest set, takes effort (1 to 10, optional) and notes, and says what saving drops and what it does to the task. Per-set notes are on the open set's row.
+- **Settings.** The Workouts switch is in Feature areas beside kitchen and rewards. The unit and the default rest are a Workouts section under Apple Health, shown while the area is on.
+- **Not built in phase 2:** reordering exercises inside a live session (the store has `reorderExercises`; workout mode has no drag yet), a floating bar for a live session on every screen (the Workouts screen's card is the way back), and the plate line and suggestion card in the mock (phases 3 and 4).
+
 ## Phases
 
 Each phase ships its own demo seed, patch note, MCP slice and regenerated docs.
@@ -162,7 +182,7 @@ Each phase ships its own demo seed, patch note, MCP slice and regenerated docs.
 |---|---|---|---|
 | 0 | This doc, plus HTML mocks of workout mode, exercise detail and the routine editor in both themes | sonnet, low | the PR that added this file |
 | 1 | Data foundation: types, 5 tables, sync, backup, natural keys, store, exercise library, units and plate settings, Feature-areas switch, nav entry, demo seed. A bare Workouts screen | opus, high | #3851 |
-| 2 | Logging: routine editor, workout mode, rest timer (step-timer generalisation), finish → completes the linked task, `Task.workoutRoutineId` with template parity | opus, xhigh | #3852 |
+| 2 | Logging: routine editor, workout mode, rest timer (step-timer generalisation), finish → completes the linked task, `Task.workoutRoutineId` with template parity. Built | opus, xhigh | #3852 |
 | 3 | Analysis: PRs, estimated 1RM, plate math, exercise detail charts, Stats section, mood contrast | sonnet, high | #3853 |
 | 4 | Programs: multi-week programs, rotation, the four progression schemes, deload proposals, built-in program library | opus, high | #3854 |
 | 5 | Health: HKWorkout write with retraction, read workouts from other apps (native; expect build cycles) | opus, high | #3855 |
