@@ -24,6 +24,7 @@ import {
   normalizeStep,
   resolvePrepTaskDraft,
   prepTaskDraftsForMeal,
+  prepOfferMessage,
   describeCookHistory,
   applyMeasuredCookTime,
   applyMeasuredPrepTime,
@@ -942,6 +943,23 @@ describe('prepTaskDraftsForMeal', () => {
     const drafts = prepTaskDraftsForMeal(steak, new Map([[steak.id, steak], [mash.id, mash]]), mealDate);
     expect(drafts.map(d => d.title)).toEqual(['Take the steak out', 'Boil the potatoes']);
     expect(new Date(drafts[1].dueDate).getDate()).toBe(14);
+    expect(drafts.map(d => d.source)).toEqual([null, 'Mash']);
+  });
+
+  it("names the component in the offer's text", () => {
+    const mash = recipe('Mash', { prepTasks: [prepTask('Boil the potatoes')] });
+    const steak = recipe('Steak with mash', {
+      prepTasks: [prepTask('Take the steak out')],
+      components: [component(mash.id, 'Mash')],
+    });
+    const byId = new Map([[steak.id, steak], [mash.id, mash]]);
+    expect(prepOfferMessage(steak.name, prepTaskDraftsForMeal(steak, byId, mealDate))).toBe(
+      'Steak with mash has 2 prep steps:\n• Take the steak out\n• Boil the potatoes (for Mash)\n\nAdd them to your tasks?'
+    );
+    const onlyMash = recipe('Dinner', { components: [component(mash.id, 'Mash')] });
+    expect(prepOfferMessage(onlyMash.name, prepTaskDraftsForMeal(onlyMash, new Map([[onlyMash.id, onlyMash], [mash.id, mash]]), mealDate))).toBe(
+      'Dinner has 1 prep step: Boil the potatoes (for Mash). Add it to your tasks?'
+    );
   });
 
   it('ignores a component whose recipe is gone', () => {

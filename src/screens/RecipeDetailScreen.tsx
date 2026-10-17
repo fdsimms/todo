@@ -114,6 +114,7 @@ import {
   ingredientLayout,
   optionalCounts,
   recipeAlternativeCaptions,
+  choiceOptionsShownTogether,
   describeOverrides,
   recipeChoiceGroups,
   stepOptionNames,
@@ -796,10 +797,20 @@ export function RecipeDetailScreen() {
   // alternativeCaptions called twice) so a label crossing them gets one
   // consistent caption on each side rather than each list only ever seeing
   // its own options.
-  const alternativeNotesById = useMemo(
-    () => (recipe ? recipeAlternativeCaptions(recipe, recipesById) : new Map<string, string>()),
-    [recipe, recipesById],
-  );
+  //
+  // A group drawn as one unbroken run under its header gets none: the header
+  // and the bar already say it is one choice and the next row is the other
+  // option. A group split up by another row or a heading keeps them.
+  const alternativeNotesById = useMemo(() => {
+    if (!recipe) return new Map<string, string>();
+    const notes = recipeAlternativeCaptions(recipe, recipesById);
+    const together = choiceOptionsShownTogether(mergedIngredientRows.flatMap(row =>
+      row.kind === 'ingredient' ? [{ id: row.id, choiceGroup: row.ingredient.choiceGroup }]
+        : row.kind === 'component' ? [{ id: row.id, choiceGroup: row.resolved.component.choiceGroup }]
+        : [{ id: row.id, choiceGroup: null }]));
+    for (const id of together) notes.delete(id);
+    return notes;
+  }, [recipe, recipesById, mergedIngredientRows]);
 
   // Lines the app can see wanting to be two — "corn tortillas or flour
   // tortillas" — so the row can say so. Without this the suggestion existed
@@ -1544,7 +1555,7 @@ export function RecipeDetailScreen() {
             )}
           </View>
           {!!scaledQuantity && (
-            <View style={styles.qtyColumn}>
+            <View style={styles.qtyGroup}>
               <View style={[styles.qtyPill, scaledHere && styles.qtyPillScaled]}>
                 <Text
                   style={[styles.qtyText, scaledHere && styles.qtyTextScaled]}
@@ -1553,7 +1564,7 @@ export function RecipeDetailScreen() {
                   {scaledQuantity}
                 </Text>
               </View>
-              {/* Under the pill rather than inside it: the pill is the
+              {/* Beside the pill rather than inside it: the pill is the
                   recipe's amount (or the app's conversion of it), and this is
                   a second measurement of the same thing. Only present when
                   the food's own portion table can say it. */}
@@ -3679,12 +3690,10 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     fontSize: font.xs,
   },
   qtyTextScaled: { color: colors.accent, fontWeight: fontWeight.medium },
-  qtyColumn: { alignItems: 'flex-end' },
+  qtyGroup: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   qtyWeight: {
     color: colors.textSecondary,
     fontSize: font.xxs,
-    marginTop: spacing.xxs,
-    paddingHorizontal: spacing.sm,
   },
   scaleRow: { marginTop: spacing.xs, marginBottom: spacing.sm },
   choiceRow: { gap: spacing.sm, marginBottom: spacing.sm },

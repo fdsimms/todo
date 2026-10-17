@@ -607,9 +607,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,
     alignItems: 'center',
   },
-  pillActiveNeutral: { backgroundColor: colors.bgQuaternary },
+  pillActiveNeutral: { backgroundColor: colors.accentFill },
   pillText: { color: colors.text, fontSize: font.sm, fontWeight: '500' },
-  pillTextActive: { color: colors.text, fontWeight: '600' },
+  pillTextActive: { color: colors.onAccent, fontWeight: '600' },
   pillHint: { color: colors.textTertiary, fontSize: font.xxs, marginTop: spacing.xxs },
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, alignItems: 'center' },
   tagChip: {

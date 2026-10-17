@@ -656,6 +656,9 @@ const VARIETY_MODIFIERS: Record<string, string[]> = {
   lentils: ['red', 'green', 'brown', 'yellow', 'black'],
   cabbage: ['red', 'green', 'napa', 'savoy'],
 };
+for (const noun of ['chile', 'chiles', 'chili', 'chilies', 'chilli', 'chillies']) {
+  VARIETY_MODIFIERS[noun] = ['red', 'green', 'long red', 'long green', 'dried', 'fresh', 'thai'];
+}
 
 /**
  * Puts a noun back on whichever bare options dropped it, when the last

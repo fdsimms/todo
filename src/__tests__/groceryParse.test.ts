@@ -826,6 +826,8 @@ describe('splitAlternativeNames', () => {
     expect(splitAlternativeNames('red or white onion')).toEqual(['red onion', 'white onion']);
     expect(splitAlternativeNames('yellow or white onion')).toEqual(['yellow onion', 'white onion']);
     expect(splitAlternativeNames('red or green pepper')).toEqual(['red pepper', 'green pepper']);
+    expect(splitAlternativeNames('long red or green chiles'))
+      .toEqual(['long red chiles', 'green chiles']);
     expect(splitAlternativeNames('russet or yukon gold potatoes'))
       .toEqual(['russet potatoes', 'yukon gold potatoes']);
     // Oxford-comma list form gets the same treatment.

@@ -562,6 +562,20 @@ export interface PrepTaskDraft {
   title: string;
   dueDate: string;
   reminderTime: string | null;
+  /** The component recipe carrying the step; null when the meal's own recipe does. */
+  source: string | null;
+}
+
+/**
+ * The "Add prep tasks?" alert's body. A step that belongs to a component says
+ * which one, because a step like "Store the paste in a jar" names nothing that
+ * ties it back to the dish the person planned.
+ */
+export function prepOfferMessage(recipeName: string, drafts: readonly PrepTaskDraft[]): string {
+  const line = (d: PrepTaskDraft) => (d.source ? `${d.title} (for ${d.source})` : d.title);
+  return drafts.length === 1
+    ? `${recipeName} has 1 prep step: ${line(drafts[0])}. Add it to your tasks?`
+    : `${recipeName} has ${drafts.length} prep steps:\n${drafts.map(d => `• ${line(d)}`).join('\n')}\n\nAdd them to your tasks?`;
 }
 
 /**
@@ -584,9 +598,10 @@ export function prepTaskDraftsForMeal(
   mealDate: Date,
   resolution?: ChoiceResolution
 ): PrepTaskDraft[] {
-  return flattenRecipePrepTasks(recipe, recipesById, resolution).map(({ prepTask }) => ({
+  return flattenRecipePrepTasks(recipe, recipesById, resolution).map(({ prepTask, recipe: owner }) => ({
     title: prepTask.title,
     ...resolvePrepTaskDraft(prepTask, mealDate),
+    source: owner.id === recipe.id ? null : owner.name,
   }));
 }
 
