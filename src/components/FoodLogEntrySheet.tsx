@@ -27,6 +27,8 @@ import {
 import { SheetModal } from './SheetModal';
 import { LimitImpactLines } from './LimitImpactLines';
 import { useLimitImpact } from '../hooks/useLimitImpact';
+import { useWeighIn } from '../hooks/useWeighIn';
+import { CookwareWeighIn } from './CookwareWeighIn';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { useStoreWhileOpen } from '../hooks/useStoreWhileOpen';
@@ -47,6 +49,7 @@ import {
   describeFoodLogEntry,
   foodLogEntryEdit,
   foodUnitOptionsFor,
+  type FoodUnitOption,
   helpingNutrition,
   isDescriptionDraft,
   keptDatabasePanel,
@@ -520,6 +523,9 @@ export function FoodLogEntrySheet({
   // (see its own doc comment) doesn't lose what was actually typed or saved.
   const [amountUnit, setAmountUnit] = useState<string | null>(null);
   const [amountNumber, setAmountNumber] = useState('');
+  // Plates the food was weighed on, for a grams amount typed as the scale read.
+  // `amount` always holds the food alone: the plate comes off before it is set.
+  const weighIn = useWeighIn('plate');
   // The amount `choose` filled in from the last time this food was logged, or
   // null when it opened on the ordinary default. Compared against `amount`
   // rather than cleared on edit, so the hint that says where the number came
@@ -1066,6 +1072,35 @@ export function FoodLogEntrySheet({
     if (!picked || picked.kind !== 'food' || !picked.panel) return [];
     return foodUnitOptionsFor(picked.panel);
   }, [picked]);
+
+  const usingFoodUnitPills = picked?.kind === 'food' && foodUnitOptions.length > 0 && amountUnit !== 'other';
+
+  // What `amount` becomes for a typed number and unit. In grams with a plate
+  // picked, the number is the scale's reading and the plate comes off; a reading
+  // that comes to nothing leaves the amount blank, and the weigh-in row says why.
+  const composeAmount = (numberText: string, unit: FoodUnitOption | undefined) => {
+    if (unit?.key === 'g' && weighIn.picked.length > 0) {
+      const net = weighIn.convert(numberText);
+      return net?.ok ? composeFoodAmount(String(net.grams), unit) : '';
+    }
+    return composeFoodAmount(numberText, unit);
+  };
+
+  // Picking or dropping a plate re-measures the number already typed. Skipped
+  // on arrival so a seeded or recalled amount is left as it was.
+  const plateWeightG = weighIn.picked.reduce((sum, c) => sum + c.weightG, 0);
+  const lastPlateWeightG = useRef(0);
+  useEffect(() => {
+    if (lastPlateWeightG.current === plateWeightG) return;
+    lastPlateWeightG.current = plateWeightG;
+    if (usingFoodUnitPills && amountUnit === 'g') {
+      setAmount(composeAmount(amountNumber, foodUnitOptions.find(o => o.key === 'g')));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plateWeightG]);
+
+  // A plate belongs to the food it was weighed under.
+  useEffect(() => { weighIn.clear(); }, [picked, weighIn.clear]);
 
   // The weight field itself is shown as soon as a per-100ml food's unit pill
   // is picked — before an amount is even typed — so the option to save a
@@ -1882,7 +1917,6 @@ export function FoodLogEntrySheet({
               </View>
             )}
             {(() => {
-              const usingFoodUnitPills = picked.kind === 'food' && foodUnitOptions.length > 0 && amountUnit !== 'other';
               const selectedFoodUnit = usingFoodUnitPills ? foodUnitOptions.find(o => o.key === amountUnit) : undefined;
               return (
                 <View style={(picked.kind === 'food' && foodUnitOptions.length > 0) || dishServingsSuffix ? styles.inputRow : undefined}>
@@ -1892,7 +1926,7 @@ export function FoodLogEntrySheet({
                     onChangeText={text => {
                       if (usingFoodUnitPills) {
                         setAmountNumber(text);
-                        setAmount(composeFoodAmount(text, selectedFoodUnit));
+                        setAmount(composeAmount(text, selectedFoodUnit));
                       } else {
                         setAmount(text);
                       }
@@ -1958,7 +1992,7 @@ export function FoodLogEntrySheet({
                         const number = key === 'serving' && !amountNumber.trim() ? '1' : amountNumber;
                         setAmountUnit(key);
                         setAmountNumber(number);
-                        setAmount(composeFoodAmount(number, option));
+                        setAmount(composeAmount(number, option));
                       }}
                     />
                   )}
@@ -1981,6 +2015,12 @@ export function FoodLogEntrySheet({
                     }`
                     : 'A weight, like 100g.'}
             </Text>
+
+            {usingFoodUnitPills && amountUnit === 'g' && (
+              <View style={styles.plateWeighIn}>
+                <CookwareWeighIn weighIn={weighIn} scaleText={amountNumber} surface="page" noun="plate" />
+              </View>
+            )}
 
             {!!amount.trim() && !built && (
               <Text style={styles.error}>
@@ -2500,6 +2540,7 @@ function makeStyles(colors: Colors) {
     },
     servingsSuffix: { color: colors.textSecondary, fontSize: font.md },
     hint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16, marginTop: spacing.xs },
+    plateWeighIn: { marginTop: spacing.smd },
     error: { color: colors.redText, fontSize: font.sm, lineHeight: 18, marginTop: spacing.sm },
     preview: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold, marginTop: spacing.sm },
     limitImpacts: { marginTop: spacing.xs },

@@ -2396,6 +2396,7 @@ describe('demo seed — people', () => {
     const cookware = useCookwareStore.getState().cookware;
     expect(cookware.length).toBeGreaterThan(0);
     expect(cookware.every(c => c.weightG > 0)).toBe(true);
+    expect(cookware.some(c => c.name === 'Dinner plate')).toBe(true);
   });
 
   it('seeds a milestone with enough days on each side for the before/after card to draw', () => {

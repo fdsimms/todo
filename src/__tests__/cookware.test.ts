@@ -44,4 +44,15 @@ describe('netWeight', () => {
     if (!lighter.ok) expect(lighter.reason).toContain('4,310 g');
     expect(netWeight(4310, [4310]).ok).toBe(false);
   });
+
+  it('names the piece the way the field it was typed in does', () => {
+    const pot = netWeight(250, [280]);
+    const plate = netWeight(250, [280], 'plate');
+    expect(pot.ok || pot.reason).toBe(
+      "That's less than the pot weighs (280 g). Check the reading or pick a different pot.",
+    );
+    expect(plate.ok || plate.reason).toBe(
+      "That's less than the plate weighs (280 g). Check the reading or pick a different plate.",
+    );
+  });
 });
