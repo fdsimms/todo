@@ -644,11 +644,21 @@ export function CookRecapSheet({
                     return (
                       <React.Fragment key={row.nameKey}>
                         {i > 0 && <View style={styles.sep} />}
-                        {have ? (
-                          <View style={styles.restockRow}>
-                            <Ionicons name="checkmark-circle" size={CHECKBOX_SIZE} color={colors.green} style={styles.restockLead} />
-                            <View style={styles.restockBody}>
-                              <Text style={styles.name} numberOfLines={1}>{row.name}</Text>
+                        <TouchableOpacity
+                          style={styles.restockRow}
+                          activeOpacity={interaction.activeOpacity}
+                          onPress={() => toggleRestock(row)}
+                          accessibilityRole="checkbox"
+                          accessibilityState={{ checked: on }}
+                          accessibilityLabel={[row.name, shownQuantity, have ? 'in your pantry' : ''].filter(Boolean).join(', ')}
+                          accessibilityHint="Adds it to your grocery list"
+                        >
+                          <View style={[styles.checkbox, styles.restockLead, on && styles.checkboxOn]}>
+                            {on && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
+                          </View>
+                          <View style={styles.restockBody}>
+                            <Text style={styles.name} numberOfLines={1}>{row.name}</Text>
+                            {have ? (
                               <View style={styles.restockHave}>
                                 <Text style={styles.reason}>In your pantry</Text>
                                 <InlineAction
@@ -657,33 +667,16 @@ export function CookRecapSheet({
                                   accessibilityLabel={`Undo, ${row.name} is not in your pantry`}
                                 />
                               </View>
-                            </View>
-                            {qty}
-                          </View>
-                        ) : (
-                          <TouchableOpacity
-                            style={styles.restockRow}
-                            activeOpacity={interaction.activeOpacity}
-                            onPress={() => toggleRestock(row)}
-                            accessibilityRole="checkbox"
-                            accessibilityState={{ checked: on }}
-                            accessibilityLabel={[row.name, shownQuantity].filter(Boolean).join(', ')}
-                            accessibilityHint="Adds it to your grocery list"
-                          >
-                            <View style={[styles.checkbox, styles.restockLead, on && styles.checkboxOn]}>
-                              {on && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
-                            </View>
-                            <View style={styles.restockBody}>
-                              <Text style={styles.name} numberOfLines={1}>{row.name}</Text>
+                            ) : (
                               <InlineAction
                                 label="Still have it"
                                 onPress={() => markHave(row, i)}
                                 accessibilityLabel={`I still have ${row.name}`}
                               />
-                            </View>
-                            {qty}
-                          </TouchableOpacity>
-                        )}
+                            )}
+                          </View>
+                          {qty}
+                        </TouchableOpacity>
                       </React.Fragment>
                     );
                   })}
