@@ -6624,7 +6624,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 >
                   <View style={[styles.subtaskBox, sub.completed && styles.subtaskBoxDone]}>
                     {sub.completed && (
-                      <Ionicons name="checkmark" size={11} color={colors.onDone} />
+                      <Ionicons name="checkmark" size={11} color={colors.done} />
                     )}
                   </View>
                   </TouchableOpacity>
@@ -8754,8 +8754,8 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     flexShrink: 0,
   },
   subtaskBoxDone: {
-    backgroundColor: colors.done,
-    borderColor: colors.done,
+    backgroundColor: colors.doneQuiet,
+    borderColor: colors.doneQuiet,
   },
   subtaskTitleWrapper: { flex: 1 },
   subtaskTitle: {

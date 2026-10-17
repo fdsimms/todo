@@ -115,6 +115,14 @@ export type Colors = {
   /** The check drawn on a `done` fill: ink in every theme. */
   onDone: string;
   /**
+   * A checked box that stays on screen beside open ones (a subtask, a chain
+   * step, a rotation member, the editor's subtask list): `done` at 35% over
+   * the card, flattened so it is opaque. The full `done` fill is for the
+   * moment of finishing and for coins and streaks; left in a list it pulls
+   * the eye off the boxes still to do. Its check is drawn in `done`.
+   */
+  doneQuiet: string;
+  /**
    * The mark's own gold, Marigold 500 in every theme, so the mark drawn in the
    * app (Today's All clear) matches the app icon. Not a state colour: a
    * checked box is `done`, which goes darker in Light to hold 3:1 on a card.
@@ -206,6 +214,7 @@ export const darkColors: Colors = {
   onFill: '#FFFFFF',
   done: '#FFB020',
   onDone: INK,
+  doneQuiet: '#6b501f',
   brand: '#FFB020',
   onBrand: INK,
   warning: '#FF9F0A',
@@ -262,6 +271,7 @@ export const nightColors: Colors = {
   onFill: '#FFFFFF',
   done: '#FFB020',
   onDone: INK,
+  doneQuiet: '#6d4f28',
   brand: '#FFB020',
   onBrand: INK,
   warning: '#FF9F0A',
@@ -314,6 +324,7 @@ export const lightColors: Colors = {
   onFill: '#FFFFFF',
   done: '#C98500',
   onDone: INK,
+  doneQuiet: '#ecd4a6',
   brand: '#FFB020',
   onBrand: INK,
   warning: '#FF9500',

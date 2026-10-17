@@ -4213,7 +4213,7 @@ const TaskItemRow = React.memo(function TaskItem({
                         accessibilityLabel={sub.title}
                       >
                         <CheckPop checked={sub.completed} style={styles.subtaskCheck} checkedStyle={styles.subtaskCheckDone}>
-                          <Ionicons name="checkmark" size={8} color={colors.onDone} />
+                          <Ionicons name="checkmark" size={8} color={colors.done} />
                         </CheckPop>
                       </TouchableOpacity>
                       {editingSubtaskId === sub.id ? (
@@ -4404,7 +4404,7 @@ const TaskItemRow = React.memo(function TaskItem({
                           isCurrent && styles.chainStepListDotActive,
                         ]}>
                           {isDone ? (
-                            <Ionicons name="checkmark" size={9} color={colors.onDone} />
+                            <Ionicons name="checkmark" size={9} color={colors.done} />
                           ) : (
                             <Text maxFontSizeMultiplier={textScale.fixed} style={[
                               styles.chainStepListDotText,
@@ -5775,8 +5775,8 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
     flexShrink: 0,
   },
   subtaskCheckDone: {
-    backgroundColor: colors.done,
-    borderColor: colors.done,
+    backgroundColor: colors.doneQuiet,
+    borderColor: colors.doneQuiet,
   },
   subtaskTitleWrapper: {
     flex: 1,
@@ -5901,7 +5901,7 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
     flexShrink: 0,
   },
   chainStepListDotDone: {
-    backgroundColor: colors.done,
+    backgroundColor: colors.doneQuiet,
   },
   chainStepListDotActive: {
     backgroundColor: colors.accentFill,
