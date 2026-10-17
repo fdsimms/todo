@@ -50,7 +50,7 @@ export function JournalText({ text, textStyle }: Props) {
           case 'numbered':
             return (
               <View key={i} style={[styles.listRow, { marginTop: gap }]}>
-                <Text style={[textStyle, styles.marker]}>
+                <Text style={[textStyle, styles.marker, block.type === 'bullet' && styles.bulletMarker]}>
                   {block.type === 'bullet' ? '•' : `${block.number}.`}
                 </Text>
                 <Text style={[textStyle, styles.listText]}>{spans}</Text>
@@ -119,6 +119,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   listRow: { flexDirection: 'row', gap: spacing.sm },
   // Fixed so a column of numbered items lines up; scales with the text since it is text.
   marker: { minWidth: 18, color: colors.textSecondary },
+  // A bullet is one narrow glyph, so it doesn't need a number's width; at 18 it sat far from its text.
+  bulletMarker: { minWidth: 10 },
   listText: { flex: 1 },
   quote: {
     borderLeftWidth: 3,
