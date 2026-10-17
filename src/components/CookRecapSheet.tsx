@@ -33,6 +33,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { InlineAction } from './InlineAction';
+import { PressableScale } from './PressableScale';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SheetScrim } from './SheetScrim';
 import { haptics } from '../utils/haptics';
@@ -658,15 +659,20 @@ export function CookRecapSheet({
                           </View>
                           <View style={styles.restockBody}>
                             <Text style={styles.name} numberOfLines={1}>{row.name}</Text>
+                            {/* One control that turns over: the tinted pill is the
+                                question, the filled one with a tick is the answer,
+                                and a second tap takes it back. */}
                             {have ? (
-                              <View style={styles.restockHave}>
-                                <Text style={styles.reason}>In your pantry</Text>
-                                <InlineAction
-                                  label="Undo"
-                                  onPress={() => undoHave(row)}
-                                  accessibilityLabel={`Undo, ${row.name} is not in your pantry`}
-                                />
-                              </View>
+                              <PressableScale
+                                style={styles.haveOn}
+                                onPress={() => undoHave(row)}
+                                accessibilityRole="button"
+                                accessibilityLabel={`${row.name} is in your pantry`}
+                                accessibilityHint="Double tap to undo"
+                              >
+                                <Ionicons name="checkmark" size={14} color={colors.onAccent} />
+                                <Text style={styles.haveOnLabel}>In your pantry</Text>
+                              </PressableScale>
                             ) : (
                               <InlineAction
                                 label="Still have it"
@@ -845,6 +851,17 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
   },
   restockLead: { marginTop: 1 },
   restockBody: { flex: 1, gap: spacing.xsm, alignItems: 'flex-start' },
-  restockHave: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  // InlineAction's own geometry, filled: the answered state of that pill.
+  haveOn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    minHeight: 32,
+    borderRadius: radius.full,
+    backgroundColor: colors.accentFill,
+  },
+  haveOnLabel: { fontSize: font.sm, fontWeight: fontWeight.semibold, color: colors.onAccent },
   restockAdd: { alignSelf: 'flex-start', marginHorizontal: spacing.md, marginTop: spacing.md },
 });
