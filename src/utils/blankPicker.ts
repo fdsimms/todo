@@ -27,18 +27,25 @@ import { isNonFoodAisle } from './groceryAisles';
  * and "use up last night's chilli" is the Fridge card's job, not a grain's.
  */
 
+/** Whether the person told this blank never to offer `nameKey` (`RecipeBlank.excluded`). */
+export function isBlankExcluded(blank: Pick<RecipeBlank, 'excluded'>, nameKey: string): boolean {
+  return blank.excluded.some(name => groceryNameKey(name) === nameKey);
+}
+
 /**
  * Whether a catalog item can fill a blank: one of the blank's own suggestions,
  * or food of its kind (`foodKindsOf`, the person's filing over the name's
- * guess). Never anything in a non-food aisle. The one rule the picker and the
- * use-up suggestions (`useUpRecipes`) share, so the two can't disagree about
- * what a blank takes.
+ * guess). Never anything in a non-food aisle, and never something the person
+ * said this blank must not offer. The one rule the picker and the use-up
+ * suggestions (`useUpRecipes`) share, so the two can't disagree about what a
+ * blank takes.
  */
 export function blankFits(
   blank: RecipeBlank,
   item: Pick<GroceryItem, 'name' | 'nameKey' | 'aisle' | 'foodKinds'>,
   nonFoodAisles: readonly string[] = [],
 ): boolean {
+  if (isBlankExcluded(blank, item.nameKey)) return false;
   if (isNonFoodAisle(item.aisle, nonFoodAisles)) return false;
   if (blank.options.some(option => groceryNameKey(option) === item.nameKey)) return true;
   return blank.kind !== null && foodKindsOf(item).includes(blank.kind);
@@ -76,7 +83,8 @@ export const USUAL_CANDIDATE_LIMIT = 6;
 /**
  * The three groups for `blank`, given the catalog and its kitchen entries.
  * `filled` names what this meal already picked, so a pick typed in by hand
- * ("frozen peas" from Other) still shows, selected, among the others.
+ * ("frozen peas" from Other) still shows, selected, among the others, even when
+ * the blank's `excluded` list names it: that is a choice, not an offer.
  */
 export function blankChoices(
   blank: RecipeBlank,
@@ -113,7 +121,7 @@ export function blankChoices(
   const byKey = new Map(items.map(i => [i.nameKey, i]));
   for (const option of blank.options) {
     const key = groceryNameKey(option);
-    if (!key || seen.has(key)) continue;
+    if (!key || seen.has(key) || isBlankExcluded(blank, key)) continue;
     seen.add(key);
     const item = byKey.get(key);
     others.push({ name: item?.name ?? option, nameKey: key, itemId: item?.id ?? null, source: 'option', freshness: null, caption: null });

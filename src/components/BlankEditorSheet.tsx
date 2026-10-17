@@ -73,7 +73,8 @@ export function BlankEditorSheet({ visible, recipeId, blankId, onClose }: Props)
   const [quantity, setQuantity] = useState('');
   const [label, setLabel] = useState('');
   const [options, setOptions] = useState('');
-  const opened = useRef({ kind: 'vegetable' as KindChoice, count: 'any' as CountChoice, quantity: '', label: '', options: '' });
+  const [excluded, setExcluded] = useState('');
+  const opened = useRef({ kind: 'vegetable' as KindChoice, count: 'any' as CountChoice, quantity: '', label: '', options: '', excluded: '' });
 
   useEffect(() => {
     if (!visible) return;
@@ -85,6 +86,7 @@ export function BlankEditorSheet({ visible, recipeId, blankId, onClose }: Props)
       // the kind changes the heading with it.
       label: blank && (!blank.kind || blank.label !== FOOD_KIND_LABELS[blank.kind]) ? blank.label : '',
       options: blank?.options.join(', ') ?? '',
+      excluded: blank?.excluded.join(', ') ?? '',
     };
     opened.current = seed;
     setKind(seed.kind);
@@ -92,6 +94,7 @@ export function BlankEditorSheet({ visible, recipeId, blankId, onClose }: Props)
     setQuantity(seed.quantity);
     setLabel(seed.label);
     setOptions(seed.options);
+    setExcluded(seed.excluded);
     // Seeded on the open only: re-seeding on a store write would stomp what's being typed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, blankId]);
@@ -100,7 +103,8 @@ export function BlankEditorSheet({ visible, recipeId, blankId, onClose }: Props)
     || count !== opened.current.count
     || quantity !== opened.current.quantity
     || label !== opened.current.label
-    || options !== opened.current.options;
+    || options !== opened.current.options
+    || excluded !== opened.current.excluded;
 
   const handleCancel = () => {
     if (!dirty) { onClose(); return; }
@@ -115,7 +119,7 @@ export function BlankEditorSheet({ visible, recipeId, blankId, onClose }: Props)
 
   const handleSave = () => {
     if (!canSave) return;
-    const fields = { label, kind: fieldKind, max: countToMax(count), quantity, options: optionNames };
+    const fields = { label, kind: fieldKind, max: countToMax(count), quantity, options: optionNames, excluded: splitOptions(excluded) };
     if (blankId) updateBlank(recipeId, blankId, fields);
     else addBlank(recipeId, fields);
     haptics.success();
@@ -209,6 +213,20 @@ export function BlankEditorSheet({ visible, recipeId, blankId, onClose }: Props)
             accessibilityLabel="Suggestions, separated by commas"
           />
           <HelpText style={styles.hint}>Offered every time, whether or not they’re in your kitchen. Separate them with commas.</HelpText>
+
+          <Text style={[styles.fieldLabel, styles.fieldLabelSpaced]}>Never offer</Text>
+          <TextField
+            style={styles.input}
+            value={excluded}
+            onChangeText={setExcluded}
+            placeholder="e.g. baguette, tortillas"
+            placeholderTextColor={colors.textTertiary}
+            autoCapitalize="none"
+            returnKeyType="done"
+            onSubmitEditing={handleSave}
+            accessibilityLabel="Never offer, separated by commas"
+          />
+          <HelpText style={styles.hint}>Left out of this blank’s choices even when they’re in your kitchen. Long-press a choice in the picker to add one here. Separate them with commas.</HelpText>
 
           {blankId && (
             <TouchableOpacity

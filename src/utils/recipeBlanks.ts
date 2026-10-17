@@ -22,6 +22,19 @@ export const RECIPE_BLANK_OPTIONS_MAX = 24;
 /** "Pick up to N" past this reads as "pick any", so the stepper stops here. */
 export const RECIPE_BLANK_MAX_PICKS = 6;
 
+/** A stored list of names, trimmed, bounded and without repeats by catalog key. */
+function cleanNames(raw: unknown): string[] {
+  const names: string[] = [];
+  for (const entry of Array.isArray(raw) ? raw : []) {
+    if (typeof entry !== 'string') continue;
+    const name = entry.trim().slice(0, GROCERY_NAME_MAX_LENGTH);
+    if (!name || names.some(o => groceryNameKey(o) === groceryNameKey(name))) continue;
+    names.push(name);
+    if (names.length >= RECIPE_BLANK_OPTIONS_MAX) break;
+  }
+  return names;
+}
+
 /** Repairs one stored blank. Null for one with no label and no kind, which has nothing to say. */
 export function normalizeBlank(raw: unknown): RecipeBlank | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -33,14 +46,8 @@ export function normalizeBlank(raw: unknown): RecipeBlank | null {
   const max = typeof r.max === 'number' && Number.isInteger(r.max) && r.max >= 1
     ? Math.min(r.max, RECIPE_BLANK_MAX_PICKS)
     : null;
-  const options: string[] = [];
-  for (const option of Array.isArray(r.options) ? r.options : []) {
-    if (typeof option !== 'string') continue;
-    const name = option.trim().slice(0, GROCERY_NAME_MAX_LENGTH);
-    if (!name || options.some(o => groceryNameKey(o) === groceryNameKey(name))) continue;
-    options.push(name);
-    if (options.length >= RECIPE_BLANK_OPTIONS_MAX) break;
-  }
+  const options = cleanNames(r.options);
+  const excluded = cleanNames(r.excluded);
   return {
     id: typeof r.id === 'string' && r.id ? r.id : generateId(),
     label,
@@ -48,6 +55,7 @@ export function normalizeBlank(raw: unknown): RecipeBlank | null {
     max,
     quantity: typeof r.quantity === 'string' ? r.quantity.trim().slice(0, RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH) : '',
     options,
+    excluded,
   };
 }
 
@@ -69,8 +77,9 @@ export function makeBlank(fields: {
   max: number | null;
   quantity?: string;
   options?: readonly string[];
+  excluded?: readonly string[];
 }): RecipeBlank | null {
-  return normalizeBlank({ ...fields, id: generateId(), options: [...(fields.options ?? [])] });
+  return normalizeBlank({ ...fields, id: generateId(), options: [...(fields.options ?? [])], excluded: [...(fields.excluded ?? [])] });
 }
 
 /** "Pick one", "Pick up to 2", "Pick any". */

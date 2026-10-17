@@ -16,7 +16,7 @@ interface Props {
 }
 
 interface Row {
-  key: 'have' | 'low' | 'low-list' | 'out' | 'out-list';
+  key: 'have' | 'new' | 'low' | 'low-list' | 'out' | 'out-list';
   icon: React.ComponentProps<typeof Ionicons>['name'];
   tone: 'accent' | 'red';
   label: string;
@@ -31,6 +31,14 @@ const ROWS: Row[] = [
     tone: 'accent',
     label: 'Still have it',
     detail: 'Keeps it in your pantry and starts its window over.',
+    feedback: haptics.success,
+  },
+  {
+    key: 'new',
+    icon: 'bag-add-outline',
+    tone: 'accent',
+    label: 'Bought more',
+    detail: 'You restocked, so the old packet no longer counts. Keeps it in your pantry as a fresh one.',
     feedback: haptics.success,
   },
   {
@@ -96,7 +104,7 @@ export function PantryCheckSheet({ visible, itemId, onClose }: Props) {
       // which `answerPantryReview` does for 'low'.
       groceries.answerPantryReview(itemId, 'low', { addToList: key === 'low-list' });
     } else {
-      groceries.answerPantryReview(itemId, key === 'have' ? 'have' : 'out');
+      groceries.answerPantryReview(itemId, key === 'have' ? 'have' : key === 'new' ? 'new' : 'out');
     }
     // The home list, not whichever one is open: this is answered from a task
     // row, and an away list is that trip's own.

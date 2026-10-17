@@ -5600,14 +5600,14 @@ describe('recipe rows', () => {
     const recipe = makeRecipe({
       id: 'r1',
       name: 'Any Grain Bowl',
-      blanks: [{ id: 'b1', label: 'Grain', kind: 'grain', max: 1, quantity: '1 cup', options: [] }],
+      blanks: [{ id: 'b1', label: 'Grain', kind: 'grain', max: 1, quantity: '1 cup', options: [], excluded: [] }],
     });
     dbInsertRecipe(recipe);
     expect(dbGetAllRecipes()).toEqual([recipe]);
 
     const edited = {
       ...recipe,
-      blanks: [...recipe.blanks, { id: 'b2', label: 'Cheese', kind: null, max: 1, quantity: '', options: ['feta', 'cheddar'] }],
+      blanks: [...recipe.blanks, { id: 'b2', label: 'Cheese', kind: null, max: 1, quantity: '', options: ['feta', 'cheddar'], excluded: [] }],
     };
     dbUpdateRecipe(edited);
     expect(dbGetAllRecipes()).toEqual([edited]);

@@ -85,13 +85,13 @@ function recipe(id: string, name: string, overrides: Partial<Recipe> = {}): Reci
 }
 
 function blank(fields: Partial<RecipeBlank> = {}): RecipeBlank {
-  return { id: `blank-${++seq}`, label: 'Vegetables', kind: 'vegetable', max: null, quantity: '', options: [], ...fields };
+  return { id: `blank-${++seq}`, label: 'Vegetables', kind: 'vegetable', max: null, quantity: '', options: [], excluded: [], ...fields };
 }
 
 describe('normalizeBlank / parseRecipeBlanks', () => {
   it('falls back to the kind’s label when none was typed', () => {
     expect(normalizeBlank({ id: 'b', kind: 'grain', max: 1 })).toEqual({
-      id: 'b', label: 'Grains & starches', kind: 'grain', max: 1, quantity: '', options: [],
+      id: 'b', label: 'Grains & starches', kind: 'grain', max: 1, quantity: '', options: [], excluded: [],
     });
   });
 
@@ -109,6 +109,11 @@ describe('normalizeBlank / parseRecipeBlanks', () => {
   it('dedupes options by catalog key and drops blanks', () => {
     expect(normalizeBlank({ label: 'Cheese', kind: null, options: ['Feta', ' feta ', '', 'Cheddar', 7] })?.options)
       .toEqual(['Feta', 'Cheddar']);
+  });
+
+  it('keeps the never-offer list, deduped by catalog key, and reads a missing one as empty', () => {
+    expect(normalizeBlank({ id: 'b', kind: 'grain', excluded: ['Baguette', 'baguette ', 7, ''] })?.excluded).toEqual(['Baguette']);
+    expect(normalizeBlank({ id: 'b', kind: 'grain' })?.excluded).toEqual([]);
   });
 
   it('tolerates a null column and a corrupt blob', () => {

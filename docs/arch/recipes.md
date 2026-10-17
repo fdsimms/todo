@@ -342,6 +342,17 @@ planner.
   pantry review's own answers). The pantry knows least about fresh produce, which is why the other
   two groups exist: a vegetables blank that offered only what the pantry vouches for would often
   offer nothing. Leftovers never answer a blank: a leftover's name has no kind.
+- **Only the kitchen shows at first; the rest is "Suggestions to buy".** The dashed chips (the
+  recipe's own options and the usual buys) sit behind a per-blank toggle, closed on each open, except
+  what is already picked, which must show or it can't be taken off. Showing food you don't have in a
+  list headed by food you do read as the picker not knowing the pantry.
+- **A blank can be told never to offer something** (`RecipeBlank.excluded`, `isBlankExcluded`).
+  Long-pressing a chip asks, and saves on the recipe the blank sits on, so every meal using it stops
+  seeing the name. It is checked inside `blankFits`, so `useUpRecipes` agrees with the picker, and a
+  hand-typed pick through Other still shows: an exclusion removes an offer, not a choice. It is
+  edited as a comma list in the blank's settings (`BlankEditorSheet`).
+- **A past-use-by row asks three things**: "Still have it", "Bought more" (the pantry review's `new`
+  answer: the old packet's frozen, opened and running-low claims go and the window restarts) and "Gone".
 - **The picker pre-picks, but writes nothing until Done.** What needs using starts picked, up to
   the blank's limit; a pick-one blank otherwise starts on the first thing in the kitchen, and a
   pick-any blank starts empty, since "everything you have" is never the answer.

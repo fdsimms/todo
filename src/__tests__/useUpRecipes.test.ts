@@ -328,7 +328,7 @@ describe('useUpRecipes with blanks', () => {
   };
   const bowl = (blanks: Recipe['blanks']) => ({ ...recipe('Any Grain Bowl', ['olive oil']), blanks });
   const blank = (fields: Partial<RecipeBlank>): RecipeBlank =>
-    ({ id: `b-${++seq}`, label: 'Vegetables', kind: 'vegetable', max: null, quantity: '', options: [], ...fields });
+    ({ id: `b-${++seq}`, label: 'Vegetables', kind: 'vegetable', max: null, quantity: '', options: [], excluded: [], ...fields });
 
   it('lets a pick-any blank use up every dying thing of its kind, most urgent first', () => {
     const spinach = stocked('Spinach', 'over');
