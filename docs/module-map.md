@@ -322,6 +322,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/produceFloorTasks.ts` — DEFAULT_PRODUCE_FLOOR, PRODUCE_FLOOR_MIN, PRODUCE_FLOOR_MAX, clampProduceFloor, stockedProduce, produceFloorApplies, produceFloorTitle, PRODUCE_FLOOR_SUGGESTIONS_SHOWN, restockSuggestions, produceFloorNotes
 - `src/utils/produceNudgeTasks.ts` — DEFAULT_PRODUCE_NUDGE_FROM_HOUR, PRODUCE_NUDGE_FROM_HOUR_MIN, PRODUCE_NUDGE_FROM_HOUR_MAX, DEFAULT_PRODUCE_NUDGE_GOAL, PRODUCE_NUDGE_GOAL_MIN, PRODUCE_NUDGE_GOAL_MAX, clampProduceNudgeFromHour, clampProduceNudgeGoal, describeProduceNudgeHour, ProduceReading, +8 more
 - `src/utils/produceServings.ts` — PORTION_GRAMS, DRIED_PORTION_GRAMS, LEGUME_DAILY_CAP, ProduceKind, ProduceGrams, emptyProduceGrams, ProduceServings, DayProduce, stems, tokensOf, +16 more
+- `src/utils/productCase.ts` — readableProductCase
 - `src/utils/productCategory.ts` — CATEGORY_AISLES, aisleForProductCategory
 - `src/utils/projectBackfill.ts` — ProjectBackfillFieldId, ProjectBackfillFieldDef, PROJECT_BACKFILL_FIELDS, isProjectFieldMissing, isProjectBackfillDismissed, projectBackfillCandidates, projectBackfillFieldCounts, dismissProjectBackfillField
 - `src/utils/projectDateShortcuts.ts` — ProjectDateAnchor, ProjectDateShortcut, projectDateAnchor, projectDateShortcuts
