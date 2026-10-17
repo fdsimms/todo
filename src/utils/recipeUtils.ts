@@ -24,6 +24,9 @@ import { classifyPlanned, plannedCatalogIndex, plannedIngredientsForRecipe, type
 import { substitutesOnHand } from './itemSubs';
 import { varietyIndex } from './itemVarieties';
 import { onHandNameKeys } from './grocerySuggest';
+import { kitchenInventory, type KitchenEntry } from './kitchenInventory';
+import { blankChoices } from './blankPicker';
+import { recipeBlanksIn } from './recipeBlanks';
 import { resolvePluralKey } from './groceryPlural';
 import { standingSwapMap, type StandingSwapMap } from './standingSwaps';
 import { formatDuration } from './effort';
@@ -927,6 +930,8 @@ interface PantryLookups {
   catalog: PlannedCatalogIndex;
   /** The boxes, so a packet frozen or marked "Got it" counts as it does in the Pantry. */
   products: readonly ItemProduct[];
+  /** The pantry's entries, built the first time a recipe with a blank asks, since most boxes have none. */
+  kitchen: () => readonly KitchenEntry[];
 }
 
 function pantryLookups(
@@ -936,6 +941,7 @@ function pantryLookups(
   itemSubs: readonly ItemSubLink[]
 ): PantryLookups {
   const catalog = plannedCatalogIndex(items);
+  let kitchen: KitchenEntry[] | undefined;
   return {
     // Live, not persisted — an unresolved choice group counts toward coverage
     // via whichever alternative is already on hand (see recipeComponents.ts's
@@ -951,6 +957,7 @@ function pantryLookups(
     itemKeys: catalog.keys,
     catalog,
     products,
+    kitchen: () => (kitchen ??= kitchenInventory(items, [], now, products)),
   };
 }
 
@@ -963,12 +970,19 @@ function coverageWithLookups(
   lookups: PantryLookups,
 ): PantryCoverage {
   const planned = plannedIngredientsForRecipe(recipe, recipesById, { onHand: lookups.onHand }, 1, lookups.swaps);
-  if (planned.length === 0) return { total: 0, catalogMatches: 0, probablyHave: 0, viaSubstitute: 0, percent: null };
+  // A blank is one more thing the recipe needs, answered by the pantry the way
+  // the blank picker answers it (`blankChoices`' kitchen group), so the
+  // fraction can't say a grain bowl is 1/1 while its grain is unaccounted for.
+  const blanks = recipeBlanksIn(recipe, recipesById ?? new Map());
+  if (planned.length === 0 && blanks.length === 0) return { total: 0, catalogMatches: 0, probablyHave: 0, viaSubstitute: 0, percent: null };
 
-  const classified = classifyPlanned(planned, items, now, itemSubs, null, lookups.products, lookups.catalog);
-  const total = classified.length;
-  const catalogMatches = classified.filter(row => lookups.itemKeys.has(row.nameKey)).length;
-  const probablyHave = classified.filter(row => row.category === 'probablyHave' || row.category === 'staple').length;
+  const classified = planned.length === 0
+    ? []
+    : classifyPlanned(planned, items, now, itemSubs, null, lookups.products, lookups.catalog);
+  const blanksFillable = blanks.filter(({ blank }) => blankChoices(blank, items, lookups.kitchen()).kitchen.length > 0).length;
+  const total = classified.length + blanks.length;
+  const catalogMatches = classified.filter(row => lookups.itemKeys.has(row.nameKey)).length + blanksFillable;
+  const probablyHave = classified.filter(row => row.category === 'probablyHave' || row.category === 'staple').length + blanksFillable;
   const viaSubstitute = classified.filter(row => row.category === 'needToBuy' && row.reason !== null).length;
   const percent = catalogMatches > 0 ? Math.round((probablyHave / total) * 100) : null;
 

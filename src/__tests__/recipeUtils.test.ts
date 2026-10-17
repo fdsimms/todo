@@ -58,7 +58,7 @@ import {
   recipeHasAttribution,
   defaultChoiceGroupLabel,
 } from '../utils/recipeUtils';
-import type { GroceryItem, ItemSubLink, Recipe, RecipeComponent, RecipeIngredient, RecipePrepTask } from '../types';
+import type { GroceryItem, ItemSubLink, Recipe, RecipeBlank, RecipeComponent, RecipeIngredient, RecipePrepTask } from '../types';
 import { RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH, RECIPE_STEP_NOTE_MAX_LENGTH } from '../types';
 
 /** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
@@ -2078,6 +2078,21 @@ describe('countLikelyInPantry', () => {
     const salt = item('Salt', { nameKey: 'salt', isStaple: true, purchaseCount: 0 });
     const r = recipe('Ragù', { ingredients: [ing('Salt', { nameKey: 'salt' })] });
     expect(countLikelyInPantry(r, [salt], now, [])).toMatchObject({ probablyHave: 1, viaSubstitute: 0, total: 1 });
+  });
+
+  describe('blanks', () => {
+    const grain: RecipeBlank = { id: 'b1', label: 'Grain', kind: null, options: ['rice'], max: 1, quantity: '' };
+    const salt = item('Salt', { nameKey: 'salt', isStaple: true, purchaseCount: 0 });
+    const withBlank = () => recipe('Grain Bowl', { ingredients: [ing('Salt', { nameKey: 'salt' })], blanks: [grain] });
+
+    it('adds a blank to the denominator, unfilled when nothing in the pantry fits it', () => {
+      expect(countLikelyInPantry(withBlank(), [salt], now, [])).toMatchObject({ probablyHave: 1, total: 2 });
+    });
+
+    it('counts a blank as covered when a pantry item fits it', () => {
+      const rice = item('Rice', { nameKey: 'rice', isStaple: true, purchaseCount: 0 });
+      expect(countLikelyInPantry(withBlank(), [salt, rice], now, [])).toMatchObject({ probablyHave: 2, total: 2 });
+    });
   });
 
   it('counts a component\'s ingredients when given the library', () => {
