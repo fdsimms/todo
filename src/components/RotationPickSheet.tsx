@@ -142,7 +142,7 @@ export function RotationPickSheet({ visible, task, onPick, onCancel, onPlan }: P
       >
         <View style={[styles.bullet, isDone && styles.bulletDone]}>
           {!isDone && (
-            <Ionicons name="headset-outline" size={iconSize.sm} color={colors.accentText} />
+            <Ionicons name="repeat-outline" size={iconSize.sm} color={colors.accentText} />
           )}
         </View>
         <View style={styles.rowBody}>
@@ -161,7 +161,7 @@ export function RotationPickSheet({ visible, task, onPick, onCancel, onPlan }: P
             : `Plan ${member.item.title} for today`}
         >
           <Ionicons
-            name={isPlanned ? 'flag' : 'flag-outline'}
+            name={isPlanned ? 'today' : 'today-outline'}
             size={iconSize.sm}
             color={isPlanned ? colors.accentText : colors.textSecondary}
           />
