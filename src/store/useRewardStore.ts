@@ -133,6 +133,12 @@ interface RewardStore {
 /** How recent an entry's own time has to be for `CoinToast` to announce it. */
 const ANNOUNCE_WINDOW_MS = 60_000;
 
+/**
+ * How long `CoinToast` stays up after a change, and so how long a following
+ * change of the same kind keeps adding to the one shown instead of replacing it.
+ */
+export const COIN_BURST_MS = 1500;
+
 /** The optional half of a reward, as the form edits it. */
 export type RewardDetails = Pick<Reward, 'linkUrl' | 'note' | 'oneTime' | 'taskId' | 'priceMinor' | 'guardsTaskId' | 'claimEveryDays'>;
 
@@ -158,7 +164,12 @@ export const useRewardStore = create<RewardStore>((set, get) => {
     if (entry.kind === 'spend') return;
     const now = Date.now();
     if (Math.abs(now - Date.parse(entry.at)) > ANNOUNCE_WINDOW_MS) return;
-    set({ lastChange: { amount: entry.amount, kind: entry.kind, at: now } });
+    // A change landing while the previous one is still on screen is part of
+    // the same burst (a bulk or stack completion writes one entry per task),
+    // so the pill shows the running total instead of only the last entry.
+    const prev = get().lastChange;
+    const sameBurst = prev !== null && prev.kind === entry.kind && now - prev.at < COIN_BURST_MS;
+    set({ lastChange: { amount: sameBurst ? prev.amount + entry.amount : entry.amount, kind: entry.kind, at: now } });
   };
   const remove = (ids: string[]) => {
     if (ids.length === 0) return;
