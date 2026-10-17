@@ -3714,9 +3714,11 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number, textScaleFactor = 1)
   inputHidden: {
     color: 'transparent',
   },
+  // No fontWeight here: the real input underneath is regular weight, and a
+  // bolder phrase is wider, so everything after it in the overlay drifts right
+  // of where the input (and its caret) thinks that text is.
   inputHighlight: {
     color: colors.accent,
-    fontWeight: fontWeight.semibold,
     backgroundColor: colors.accentSubtle,
   },
   suggestionsBox: {
