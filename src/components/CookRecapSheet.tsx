@@ -23,6 +23,7 @@ import { SafeBlurView } from './SafeBlurView';
 import { useGroceryStore, type PlannedRow } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { convertQuantity, showContainerCount } from '../utils/unitConvert';
+import { defaultOnHandUntil } from '../utils/grocerySuggest';
 import type { ClassifiedIngredient } from '../utils/mealPlanGroceries';
 import { RECIPE_VOTE_LABELS, type RecipeVote } from '../types';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
@@ -258,6 +259,7 @@ export function CookRecapSheet({
 
   const items = useGroceryStore(useShallow(s => s.items));
   const markOutOfMany = useGroceryStore(s => s.markOutOfMany);
+  const setOnHandUntil = useGroceryStore(s => s.setOnHandUntil);
   const addFromPlan = useGroceryStore(s => s.addFromPlan);
   const unitSystem = useSettingsStore(s => s.unitSystem);
   const hideHelpText = useSettingsStore(s => s.hideHelpText);
@@ -269,6 +271,12 @@ export function CookRecapSheet({
   // Which restock rows are queued to add. Starts empty like `ticked` above:
   // the app only knows it has no record of the item, not that it ran out.
   const [restockTicked, setRestockTicked] = useState<Set<string>>(new Set());
+  // Restock rows answered "Still have it". The row is kept here, with the place
+  // it held and what the item's on-hand mark was before, because the write
+  // reclassifies it out of `restockRows` (and into `rows`, as a thing to ask
+  // about using up) and the answer has to stay on screen where it was given,
+  // with its way back.
+  const [haveAnswered, setHaveAnswered] = useState<Map<string, { row: ClassifiedIngredient; index: number; prior: string | null }>>(new Map());
 
   // Cleared/reseeded on every opening. A sheet that hands back last cook's
   // answers would be asserting them about this one.
@@ -278,6 +286,7 @@ export function CookRecapSheet({
       setWeightText('');
       weighIn.clear();
       setRestockTicked(new Set());
+      setHaveAnswered(new Map());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
@@ -304,6 +313,45 @@ export function CookRecapSheet({
       const next = new Set(prev);
       if (next.has(row.nameKey)) next.delete(row.nameKey);
       else next.add(row.nameKey);
+      return next;
+    });
+  };
+
+  /**
+   * "Still have it" on a restock row: the answer to a cooking that used
+   * something the app had no record of buying. The same write the item sheet's
+   * "Got it" pill makes (`setOnHandUntil` with the cadence window), by catalog
+   * id, so nothing is parsed out of the row's name and no row is minted: a
+   * restock row is `known`, which is what puts it in this section at all.
+   *
+   * Writes at once, like the fridge and "Add to list" — a complete answer on
+   * its own, not part of Done's batch. A row the user had ticked for the list
+   * is un-ticked, since the two answers contradict.
+   */
+  const markHave = (row: ClassifiedIngredient, index: number) => {
+    const id = itemsByKey.get(row.nameKey);
+    const item = id ? items.find(i => i.id === id) : undefined;
+    if (!item) return;
+    haptics.tap();
+    setOnHandUntil(item.id, defaultOnHandUntil(item, new Date()));
+    setHaveAnswered(prev => new Map(prev).set(row.nameKey, { row, index, prior: item.onHandUntil ?? null }));
+    setRestockTicked(prev => {
+      if (!prev.has(row.nameKey)) return prev;
+      const next = new Set(prev);
+      next.delete(row.nameKey);
+      return next;
+    });
+  };
+
+  const undoHave = (row: ClassifiedIngredient) => {
+    const answered = haveAnswered.get(row.nameKey);
+    const id = itemsByKey.get(row.nameKey);
+    if (!answered || !id) return;
+    haptics.tap();
+    setOnHandUntil(id, answered.prior);
+    setHaveAnswered(prev => {
+      const next = new Map(prev);
+      next.delete(row.nameKey);
       return next;
     });
   };
@@ -388,8 +436,17 @@ export function CookRecapSheet({
   };
 
   const restockAddCount = restockRows.filter(r => restockTicked.has(r.nameKey)).length;
-  const showPantry = rows.length > 0;
-  const showBuy = restockRows.length > 0;
+  // A row answered "Still have it" is now `probablyHave`, so it would turn up
+  // under "Out of anything?" asking whether the cooking used up the thing just
+  // said to be left. It stays where it was answered instead.
+  const pantryRows = useMemo(() => rows.filter(r => !haveAnswered.has(r.nameKey)), [rows, haveAnswered]);
+  const restockShown = useMemo(() => {
+    const list = restockRows.filter(r => !haveAnswered.has(r.nameKey));
+    for (const { row, index } of haveAnswered.values()) list.splice(Math.min(index, list.length), 0, row);
+    return list;
+  }, [restockRows, haveAnswered]);
+  const showPantry = pantryRows.length > 0;
+  const showBuy = restockShown.length > 0;
 
   return (
     <SheetModal visible={visible} animationType="none" transparent onRequestClose={closeKeepingWeight}>
@@ -518,7 +575,7 @@ export function CookRecapSheet({
                 )}
 
                 <View style={styles.card}>
-                  {rows.map((row, i) => {
+                  {pantryRows.map((row, i) => {
                     const on = ticked.has(row.nameKey);
                     const shownQuantity = showContainerCount(convertQuantity(row.quantity, unitSystem).text);
                     return (
@@ -570,38 +627,67 @@ export function CookRecapSheet({
                 {!hideHelpText && (
                   <Text style={styles.hint}>
                     Ingredients from this recipe that aren’t on your grocery list. Check the ones you need,
-                    then tap Add to list.
+                    then tap Add to list. If you still have one, tap Still have it.
                   </Text>
                 )}
 
                 <View style={styles.card}>
-                  {restockRows.map((row, i) => {
+                  {restockShown.map((row, i) => {
                     const on = restockTicked.has(row.nameKey);
+                    const have = haveAnswered.has(row.nameKey);
                     const shownQuantity = showContainerCount(convertQuantity(row.quantity, unitSystem).text);
+                    const qty = !!shownQuantity && (
+                      <View style={styles.qtyPill}>
+                        <Text style={styles.qtyText} numberOfLines={1}>{shownQuantity}</Text>
+                      </View>
+                    );
                     return (
                       <React.Fragment key={row.nameKey}>
                         {i > 0 && <View style={styles.sep} />}
-                        <TouchableOpacity
-                          style={styles.row}
-                          activeOpacity={interaction.activeOpacity}
-                          onPress={() => toggleRestock(row)}
-                          accessibilityRole="checkbox"
-                          accessibilityState={{ checked: on }}
-                          accessibilityLabel={[row.name, shownQuantity].filter(Boolean).join(', ')}
-                          accessibilityHint="Adds it to your grocery list"
-                        >
-                          <View style={[styles.checkbox, on && styles.checkboxOn]}>
-                            {on && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
-                          </View>
-                          <View style={styles.rowBody}>
-                            <Text style={styles.name} numberOfLines={1}>{row.name}</Text>
-                          </View>
-                          {!!shownQuantity && (
-                            <View style={styles.qtyPill}>
-                              <Text style={styles.qtyText} numberOfLines={1}>{shownQuantity}</Text>
+                        {have ? (
+                          <View style={styles.restockRow}>
+                            <Ionicons name="checkmark-circle" size={CHECKBOX_SIZE} color={colors.green} style={styles.restockLead} />
+                            <View style={styles.restockBody}>
+                              <Text style={styles.name} numberOfLines={1}>{row.name}</Text>
+                              <View style={styles.restockHave}>
+                                <Text style={styles.reason}>In your pantry</Text>
+                                <InlineAction
+                                  label="Undo"
+                                  variant="neutral"
+                                  surface="page"
+                                  onPress={() => undoHave(row)}
+                                  accessibilityLabel={`Undo, ${row.name} is not in your pantry`}
+                                />
+                              </View>
                             </View>
-                          )}
-                        </TouchableOpacity>
+                            {qty}
+                          </View>
+                        ) : (
+                          <TouchableOpacity
+                            style={styles.restockRow}
+                            activeOpacity={interaction.activeOpacity}
+                            onPress={() => toggleRestock(row)}
+                            accessibilityRole="checkbox"
+                            accessibilityState={{ checked: on }}
+                            accessibilityLabel={[row.name, shownQuantity].filter(Boolean).join(', ')}
+                            accessibilityHint="Adds it to your grocery list"
+                          >
+                            <View style={[styles.checkbox, styles.restockLead, on && styles.checkboxOn]}>
+                              {on && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
+                            </View>
+                            <View style={styles.restockBody}>
+                              <Text style={styles.name} numberOfLines={1}>{row.name}</Text>
+                              <InlineAction
+                                label="Still have it"
+                                variant="neutral"
+                                surface="page"
+                                onPress={() => markHave(row, i)}
+                                accessibilityLabel={`I still have ${row.name}`}
+                              />
+                            </View>
+                            {qty}
+                          </TouchableOpacity>
+                        )}
                       </React.Fragment>
                     );
                   })}
@@ -759,5 +845,17 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
   choiceButtons: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   // Both margins, not just the one above: nothing below this has a top margin
   // of its own, and the section that follows would otherwise sit against it.
+  // The name has the row's first line to itself and the answer sits under it,
+  // never beside it: a pill claiming its width first is what truncates a name.
+  restockRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+    paddingVertical: spacing.smd,
+    paddingHorizontal: spacing.md,
+  },
+  restockLead: { marginTop: 1 },
+  restockBody: { flex: 1, gap: spacing.xsm, alignItems: 'flex-start' },
+  restockHave: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   restockAdd: { alignSelf: 'flex-start', marginHorizontal: spacing.md, marginTop: spacing.sm },
 });
