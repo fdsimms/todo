@@ -22,7 +22,7 @@ import { runSearchAction, waterTargetTodayMl, waterTodayMl, type SearchActionRec
 export interface SearchActionsView extends SearchActionsOutcome {
   /** What each row says, by action key. */
   descriptions: ReadonlyMap<string, ActionDescription>;
-  /** Describe an action other than the ones offered, e.g. a water row stepped to 3 glasses. */
+  /** Describe an action other than the ones offered, e.g. a water row stepped to 3 glasses, or a dose row stepped up. */
   describe: (action: SearchAction) => ActionDescription;
 }
 
