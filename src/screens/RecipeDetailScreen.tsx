@@ -1659,15 +1659,18 @@ export function RecipeDetailScreen() {
           onPress={() => {
             if (!target) return;
             haptics.tap();
-            // Same-route navigate, exactly as TemplateDetailScreen opens a nested
-            // template: it swaps this screen's params rather than stacking a
-            // second copy, so Back still means "back to the library".
+            // Pushed rather than navigated: a same-route navigate swapped this
+            // screen's params in place, so the component opened at whatever
+            // scroll offset the parent was at, and Back skipped the parent
+            // for the library. A pushed copy starts at the top and Back (the
+            // chevron or the edge swipe) returns to the parent recipe exactly
+            // where it was left.
             //
             // At the scale this page is showing, since a component scales with
             // the dish around it everywhere else (the list, the cost, the
             // nutrition): opened at 1× from a doubled dish, its amounts were
             // half of what the cooking in front of the person needed.
-            (navigation as any).navigate('RecipeDetail', { recipeId: target.id, scale });
+            (navigation as any).push('RecipeDetail', { recipeId: target.id, scale });
           }}
           // Long press is free on these rows (unlike an ingredient's, which
           // drags) and is where making this an either/or lives. In the
