@@ -1525,7 +1525,8 @@ Four areas had no MCP read or write, and the shape of each answer follows from w
 ### The health logs have their own switch, and iCloud never gets them
 
 Decided, and built. `HEALTH_SYNC_TABLES` (`src/db/syncTracking.ts`) names the mood, medication and
-food logs plus the milestones read against the mood log ("started sertraline" is a common one), and
+food logs, the workout sessions and their sets (`docs/arch/workouts.md`), plus the milestones read
+against the mood log ("started sertraline" is a common one), and
 `HEALTH_SYNC_SETTING_KEYS` adds `medication_archived`, a list of medicine names. A
 transport can withhold tables (`SyncTransport.withhold`, applied by `withholdChanges` in
 `syncEngine.ts`), and two transports do:
@@ -1533,7 +1534,9 @@ transport can withhold tables (`SyncTransport.withhold`, applied by `withholdCha
 - **The sync server withholds them unless "Include health logs" is on.** Off by default and per
   device, like the server address. So the replica, and so Claude, has no health logs until somebody
   has said yes to that specifically, separately from saying yes to a hosted copy of their tasks. The
-  three log tools say so in their descriptions, so an empty result is not read as "nothing logged".
+  log tools say so in their descriptions, so an empty result is not read as "nothing logged".
+  `list_workouts` is the same, with one split: routines and programs are plans, not records, so
+  they arrive either way and the tool reports them beside an empty history.
 - **Journal entries and dreams have a switch of their own, "Include journal and
   dreams"** (`JOURNAL_SYNC_TABLES`, `syncServerJournal`), off by default and
   per device, with its own resend mark. The server is what an agent reads, and

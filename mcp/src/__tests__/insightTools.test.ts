@@ -62,9 +62,10 @@ function stub(tasks: Task[], over: Partial<Replica> = {}): Replica {
     foodLogEntries: () => [],
     moodLogs: () => [],
     medicationLogs: () => [],
+    workoutSessions: () => [],
     settings: () => ({
       dayResetTime: '04:00', weekStartsOn: 1, vacationMode: false, vacationEnd: null,
-      kitchenEnabled: false, simpleMode: false, rewardsEnabled: true, completedRetentionDays: 90, calendarRequestsOn: false,
+      kitchenEnabled: false, simpleMode: false, rewardsEnabled: true, workoutsEnabled: false, completedRetentionDays: 90, calendarRequestsOn: false,
     }),
     lastSyncedAt: () => null,
     agentNotes: () => [],
@@ -107,7 +108,7 @@ describe('getOverview', () => {
       { name: 'Home', open: 1 },
     ]);
     expect(overview.tags).toEqual([{ name: 'call', count: 2 }, { name: 'quick', count: 1 }]);
-    expect(overview.features).toEqual({ kitchen: false, simplifiedMode: false, rewards: true, calendarRequests: false });
+    expect(overview.features).toEqual({ kitchen: false, simplifiedMode: false, rewards: true, workouts: false, calendarRequests: false });
     expect(overview.completedTasksKeptForDays).toBe(90);
     expect(overview.access).toBe('write');
   });
@@ -115,7 +116,10 @@ describe('getOverview', () => {
   it('says why the health logs might be empty rather than calling it a quiet month', () => {
     expect(getOverview(stub([])).healthLogs.note).toMatch(/Include health logs/);
     const withLogs = getOverview(stub([], { moodLogs: () => [{} as never] }));
-    expect(withLogs.healthLogs).toEqual({ food: 0, mood: 1, medication: 0 });
+    expect(withLogs.healthLogs).toEqual({ food: 0, mood: 1, medication: 0, workouts: 0 });
+    // A workout alone is enough to say the health logs are being sent.
+    const withWorkout = getOverview(stub([], { workoutSessions: () => [{} as never] }));
+    expect(withWorkout.healthLogs).toEqual({ food: 0, mood: 0, medication: 0, workouts: 1 });
   });
 });
 

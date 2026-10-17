@@ -1,6 +1,6 @@
 # Workouts: a full strength-training tracker
 
-**Status: design only.** Nothing here is built. This file records the plan and the decisions already made. When phase 1 lands, rewrite the status line and keep the reasoning. The three main surfaces are mocked in `workouts-mocks/`: HTML at 390pt using the real theme tokens, in light and dark. They are a proxy for layout and hierarchy, not a render of the app.
+**Status: phase 1 built (the data foundation), the rest planned.** The five tables, their sync and backup registration, the exercise library and catalog, `useWorkoutStore`, the settings and a bare Workouts screen exist; logging, analysis, programs and everything native are still the plan below. The Workouts switch exists (`workoutsEnabled`, off by default) but has no row in Settings yet: phase 2 adds the row together with logging, so nobody finds a switch that opens an area with nothing to do in it. Demo mode turns it on. This file records the plan and the decisions already made. The three main surfaces are mocked in `workouts-mocks/`: HTML at 390pt using the real theme tokens, in light and dark. They are a proxy for layout and hierarchy, not a render of the app.
 
 This feature is a gym logger with the depth of a dedicated app. It includes an exercise library, routines and multi-week programs with progression, set-by-set logging, a rest timer, PRs and charts, Apple Health, Live Activity, Siri and Apple Watch logging. Cloning Strong or Hevy is not the goal. The goal is to be good enough at the gym that the integration (the schedule, the food log, mood, rewards, Claude over MCP) is reason enough to keep it all in one app.
 
@@ -58,10 +58,11 @@ The new types go in `src/types/index.ts`, and the tables go in `initDatabase` wi
 
 ### Logic modules (pure, tested 1:1)
 
-None of these exist yet. They are new files in `src/utils/`, each with its test in `src/__tests__/`.
+New files in `src/utils/`, each with its test in `src/__tests__/`. The first three are built; the rest are planned.
 
-- `exerciseLibrary.ts`: roughly 250 built-in exercises (name, kind, muscles, equipment, a short text cue). No images or video in v1.
-- `exerciseCatalog.ts`: merges the library with the custom rows, plus search (reusing `fuzzySearch`) and muscle and equipment filters.
+- `src/utils/exerciseLibrary.ts` (built): about 200 built-in exercises (name, kind, muscles, equipment, a short text cue), with ids written out rather than derived, since an id is forever. No images or video in v1.
+- `src/utils/exerciseCatalog.ts` (built): merges the library with the custom rows, plus search (the substring scoring task search uses, without its scattered-letters fallback, which matched half the library) and muscle and equipment filters. An override row contributes only the name, notes, bar weight and archived flag; what the movement is stays the library's.
+- `src/utils/workoutData.ts` (built): the closed vocabularies, their labels, the resolve-or-shrug readers every row mapper uses, and the rest and plate settings' defaults and parsers.
 - `workoutProgression.ts`: given the history for an exercise and its rule, propose the next session's targets:
   - **double:** hit the top of the rep range on every working set, then add an increment;
   - **linear:** add an increment after a success, and after N failures propose a 10% deload;
@@ -76,10 +77,11 @@ None of these exist yet. They are new files in `src/utils/`, each with its test 
 
 ### Store
 
-`useWorkoutStore.ts`, a new file in `src/store/`:
+`src/store/useWorkoutStore.ts` (built in phase 1, without the task link):
 - it holds exercises, routines, programs and sessions, with sets loaded per session or exercise on demand;
 - its actions are `startSession`, `logSet`, `editSet`, `deleteSet`, `reorderExercises`, `finishSession`, `discardSession`, plus CRUD for routines, programs and custom exercises;
-- `finishSession` completes the linked task through `completeTask`, never the reverse. Ticking the task off without a session does not invent a session.
+- `finishSession` completes the linked task through `completeTask`, never the reverse. Ticking the task off without a session does not invent a session. (Phase 2: the task link and its completion come with `Task.workoutRoutineId`.)
+- a custom exercise with sets can't be deleted, only archived, and an archived custom exercise keeps its name (the database's unique `name_key`); deleting a built-in's row puts the library's back. Deleting a session deletes its sets in the same transaction.
 
 ### Rest timer
 

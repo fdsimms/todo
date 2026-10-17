@@ -86,6 +86,7 @@ export type SimpleFeatureId =
   | 'stuckScreen'
   | 'rewardsScreen'
   | 'screenTimeScreen'
+  | 'workoutsScreen'
   // Everything Today offers besides the list itself.
   | 'focusSessions'
   | 'suggestedPins'
@@ -212,6 +213,11 @@ export const SIMPLE_FEATURES: readonly SimpleFeature[] = [
   // configures is already out of reach in this mode, and the shield itself
   // keeps running off what was set, so nothing is stranded.
   { id: 'screenTimeScreen', label: 'Screen Time', area: 'screens', screen: 'ScreenTime' },
+  // A content screen for Mood's reason: custom exercises, routines and the
+  // workouts logged against them live nowhere else, so hiding the screen while
+  // it holds any would strand them. It also has a switch of its own
+  // (`workoutsEnabled`), which hides it whatever this mode says.
+  { id: 'workoutsScreen', label: 'Workouts', area: 'screens', screen: 'Workouts', contentScreen: true },
 
   { id: 'focusSessions', label: 'Focus sessions', area: 'today' },
   { id: 'suggestedPins', label: 'Suggested pins', area: 'today' },
@@ -300,7 +306,7 @@ export const SIMPLE_CONTENT_SCREENS: ReadonlySet<string> = new Set(
 export function screenShown(
   routeName: string,
   simpleMode: boolean,
-  contentCounts: { stacks: number; templates: number; people?: number; mood?: number; medications?: number; foodLog?: number; journal?: number; dreams?: number; meters?: number } = { stacks: 0, templates: 0 },
+  contentCounts: { stacks: number; templates: number; people?: number; mood?: number; medications?: number; foodLog?: number; journal?: number; dreams?: number; meters?: number; workouts?: number } = { stacks: 0, templates: 0 },
 ): boolean {
   if (!simpleMode) return true;
   if (SIMPLE_HIDDEN_SCREENS.has(routeName)) return false;
@@ -322,6 +328,9 @@ export function screenShown(
   // would take the screen away, and months of entries with it, on any day
   // nobody had logged yet.
   if (routeName === 'FoodLog') return (contentCounts.foodLog ?? 0) > 0;
+  // Sessions, custom exercises, routines and programs together: anything the
+  // person made there. The built-in library alone is not content.
+  if (routeName === 'Workouts') return (contentCounts.workouts ?? 0) > 0;
   return true;
 }
 

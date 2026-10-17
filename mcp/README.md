@@ -100,6 +100,8 @@ only the fallback until the first sync.
 | `add_cookware` / `update_cookware` / `delete_cookware` | **Write.** A pot, pan, lid or tub and what it weighs empty. A recipe's `cookedWeightG` stays the food alone, so these never rewrite a recipe. |
 | `list_meter_readings` | The meters the person reads by hand, each with its readings, the rate they imply, and the open tasks due at a reading on it. |
 | `log_meter_reading` / `delete_meter_reading` | **Write.** A reading of a meter ("Car", 45,120). Every task on that meter uses it; the phone moves them on its next sync. |
+| `list_exercises` | The exercise library the app ships merged with the person's own exercises and their notes on built-in ones, each with its kind, equipment, muscles and a one-line cue. Filters by a query, a muscle or equipment. |
+| `list_workouts` | Workouts logged over a day range with their sets (weights in kg), plus the routines and programs. Workout history is a health log, so it arrives only with Include health logs on; routines and programs arrive either way. |
 | `list_saved_views` | The person's saved views, each with its clauses in words and how many open tasks it holds right now. |
 | `get_saved_view` | One view by id or name, with the tasks it holds (up to 100). |
 | `create_saved_view` / `update_saved_view` / `delete_saved_view` | **Write.** A view by name, icon and clauses, checked by the app's own parser; a clause it would drop is refused instead. An update can also move it in the list. |

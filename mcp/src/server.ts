@@ -110,6 +110,8 @@ import { addMilestone, deleteMilestone, listMilestones, updateMilestone } from '
 import { addCookware, deleteCookware, listCookware, updateCookware } from './cookwareTools';
 import { listCopyFlags, resolveCopyFlag } from './copyFlagTools';
 import { deleteMeterReading, listMeterReadings, logMeterReading } from './meterTools';
+import { DEFAULT_EXERCISE_LIMIT, MAX_EXERCISE_LIMIT, listExercises, listWorkouts } from './workoutTools';
+import { EXERCISE_EQUIPMENT, MUSCLE_GROUPS } from '../../src/utils/workoutData';
 import { deleteJournalEntry, listJournalEntries, logJournalEntry, searchJournalEntries, updateJournalEntry } from './journalTools';
 import { SAVED_VIEW_TASK_LIMIT, createSavedView, deleteSavedView, getSavedView, listSavedViews, updateSavedView } from './savedViewTools';
 import { setVacationMode } from './vacationTools';
@@ -561,6 +563,26 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     'The meters the person reads by hand (a car\'s odometer, an espresso machine\'s shot counter), each with its readings, the rate they imply when there are readings at least a week apart, and the open tasks due at a reading on it with what their row says ("Due at 45,000 miles · est. Dec 10"). Pass meter to see one.',
     { meter: z.string().optional().describe('One meter by name, e.g. "Car".') },
     async input => json(await withFresh(() => listMeterReadings(replica, input)))
+  );
+
+  server.tool(
+    'list_exercises',
+    `The exercises the person can log: the app's built-in library (ids starting lib:) merged with exercises they made (custom: true) and their own names and notes on built-in ones (changedByYou: true). Each has its kind (what a set records: weight_reps, bodyweight_reps, assisted_reps, duration, distance, weight_distance), equipment, the muscles it trains as a primary mover and as a helper, and a one-line cue. query matches a name, a muscle or the equipment ("dumbbell chest"); muscle and equipment narrow it. Archived exercises are left out unless includeArchived. At most ${DEFAULT_EXERCISE_LIMIT} unless limit says more; total says how many matched. The Workouts area may be switched off in the app (get_overview's features); do not walk the person through it if so.`,
+    {
+      query: z.string().optional(),
+      muscle: z.enum(MUSCLE_GROUPS as [string, ...string[]]).optional(),
+      equipment: z.enum(EXERCISE_EQUIPMENT as [string, ...string[]]).optional(),
+      includeArchived: z.boolean().optional(),
+      limit: z.number().int().positive().max(MAX_EXERCISE_LIMIT).optional(),
+    },
+    async input => json(await withFresh(() => listExercises(replica, input as Parameters<typeof listExercises>[1])))
+  );
+
+  server.tool(
+    'list_workouts',
+    'Workouts the person logged over a range of days, newest first, each with its exercises and sets (weights in kg, whatever unit the phone shows; done: false is a set laid out but not done), plus their routines (planned sets per exercise) and programs. Defaults to the last 7 days. Workout history is part of the health record: it is empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that they did not train. Routines and programs are plans and arrive either way. Report what was logged. Never estimate calories from sets, and never work anything out from body weight.',
+    logRange,
+    async input => json(await withFresh(() => listWorkouts(replica, input)))
   );
 
   server.tool(

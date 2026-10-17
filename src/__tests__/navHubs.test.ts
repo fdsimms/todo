@@ -7,7 +7,7 @@ import {
 } from '../utils/navHubs';
 import { SIMPLE_HIDDEN_SCREENS } from '../utils/simpleMode';
 
-const FULL = { kitchenEnabled: true, simpleMode: false, screenTimeSupported: true, counts: { stacks: 3, templates: 2, people: 4, mood: 5, medications: 2, foodLog: 6 } };
+const FULL = { kitchenEnabled: true, simpleMode: false, screenTimeSupported: true, workoutsEnabled: true, counts: { stacks: 3, templates: 2, people: 4, mood: 5, medications: 2, foodLog: 6 } };
 const routesOf = (rows: ReturnType<typeof visibleMenuRows>) => rows.map(rowEntryRoute);
 
 describe('the menu as data', () => {
@@ -155,7 +155,7 @@ describe('the subtitle under a hub row', () => {
     const organize = NAV_HUBS.find(h => h.id === 'organize')!;
     expect(hubSubtitle(organize)).toBe('Categories, Tags, People, Meters, Stacks, Templates');
     const health = NAV_HUBS.find(h => h.id === 'health')!;
-    expect(hubSubtitle(health)).toBe('Mood, Medications, Weight, Sleep, Journal, Dreams');
+    expect(hubSubtitle(health)).toBe('Mood, Medications, Weight, Sleep, Journal, Dreams, Workouts');
   });
 
   // The whole point of building it from the members rather than writing it
@@ -348,6 +348,32 @@ describe('tab slots', () => {
   });
 });
 
+describe('Workouts', () => {
+  const route = 'Workouts';
+
+  it('is a member of the Health hub rather than a row of its own', () => {
+    expect(hubForRoute(route)?.id).toBe('health');
+    expect(NAV_MENU_ROWS).toHaveLength(15);
+  });
+
+  it('drops out with its switch off, from the hub, the find field and the tab bar', () => {
+    const off = { ...FULL, workoutsEnabled: false };
+    const health = NAV_HUBS.find(h => h.id === 'health')!;
+    expect(visibleHubMembers(health, false, FULL.counts, false).map(m => m.route)).not.toContain(route);
+    expect(menuDestinations(off).map(d => d.route)).not.toContain(route);
+    expect(visibleTabRoutes(['Today', 'Groceries', 'Projects', route], off)).toEqual(['Today', 'Groceries', 'Projects']);
+    // Left out means off.
+    const { workoutsEnabled: _, ...unsaid } = FULL;
+    expect(menuDestinations(unsaid).map(d => d.route)).not.toContain(route);
+    expect(menuDestinations(FULL).map(d => d.route)).toContain(route);
+  });
+
+  it('survives simplified mode only while it holds something the person made', () => {
+    const health = NAV_HUBS.find(h => h.id === 'health')!;
+    expect(visibleHubMembers(health, true, { ...FULL.counts, workouts: 0 }, true).map(m => m.route)).not.toContain(route);
+    expect(visibleHubMembers(health, true, { ...FULL.counts, workouts: 2 }, true).map(m => m.route)).toContain(route);
+  });
+});
 
 describe('Screen Time', () => {
   const route = 'ScreenTime';
