@@ -1,3 +1,4 @@
+import { nicknamesOf, primaryNickname } from './nicknames';
 import { addDays } from 'date-fns/addDays';
 import { addMonths } from 'date-fns/addMonths';
 import { addWeeks } from 'date-fns/addWeeks';
@@ -2221,7 +2222,7 @@ const PERSON_TOKEN_PATTERN = /(?<!\w)@([a-z][\w'-]*)/gi;
  * `getEditorMentionSuggestions`.
  */
 function mentionResolveKey(person: PersonToken): string {
-  const nickname = person.nickname.trim();
+  const nickname = primaryNickname(person.nickname);
   if (nickname) return nickname;
   const name = person.name.trim();
   // A first name, since the title keeps what's written after "@" and a full
@@ -2250,7 +2251,7 @@ function buildPersonNameIndex(people: PersonToken[]) {
     // name is skipped outright rather than only its explicit first-word entry;
     // a single-word business name (or nickname) still indexes normally.
     if (person.kind !== 'business' || !/\s/.test(name)) add(name, person.id);
-    add(person.nickname, person.id);
+    for (const nickname of nicknamesOf(person.nickname)) add(nickname, person.id);
     // First word only, so "Gideon Reyes" answers to "@gideon". Skipped when the
     // name is one word already, which the map above has covered, and skipped
     // outright for a business — its name's first word isn't a first name, and
@@ -2283,7 +2284,7 @@ function buildPhraseIndex(people: PersonToken[]): Map<string, string[]> {
   };
   for (const person of people) {
     add(person.name, person.id);
-    add(person.nickname, person.id);
+    for (const nickname of nicknamesOf(person.nickname)) add(nickname, person.id);
   }
   return phrases;
 }
@@ -2498,7 +2499,8 @@ export interface MentionSuggestionCandidate {
 
 // What follows the last "@" when it runs on past one word: "eye q", or "eye " with the
 // space already typed. Only the end of the line counts, and only one space between words.
-const MULTI_WORD_TAIL = /^[a-z][\w'-]*(?: [\w'-]+)*(?: )?$/i;
+// A period or comma is allowed inside it, since a title ("Dr.") and a credential ("MD,") carry them.
+const MULTI_WORD_TAIL = /^[a-z][\w'.,-]*(?: [\w'.,-]+)*(?: )?$/i;
 
 /**
  * The "@name" being typed at the very end of the title, or null. Usually one word,
@@ -2520,6 +2522,27 @@ function trailingMentionToken(
   return { start, end: input.length, token, typed: rest.toLowerCase() };
 }
 
+/** A name's words, lowercased, with the periods and commas of "Dr." and "MD," taken out. */
+function phraseWords(text: string): string[] {
+  return text.toLowerCase().replace(/[.,]/g, ' ').split(/\s+/).filter(Boolean);
+}
+
+/**
+ * Whether every word typed starts a word of `candidate`, in order, the first one
+ * starting its first word. Words in between may be skipped, so "dr kush" finds
+ * "Dr. Arielle Kushman, MD" without the first name being typed.
+ */
+function typedStartsPhrase(candidate: string[], typed: string[]): boolean {
+  if (typed.length === 0 || !candidate[0]?.startsWith(typed[0])) return false;
+  let at = 1;
+  for (const word of typed.slice(1)) {
+    while (at < candidate.length && !candidate[at].startsWith(word)) at++;
+    if (at >= candidate.length) return false;
+    at++;
+  }
+  return true;
+}
+
 /**
  * People whose multi-word answer starts with what's typed: a business's full name
  * ("Eye Q") and any nickname with a space in it. `buildPersonNameIndex` leaves
@@ -2529,12 +2552,13 @@ function trailingMentionToken(
  * full name after "@gideon " would put a tooltip on every finished mention.
  */
 function phrasePrefixIds(people: PersonToken[], typed: string): string[] {
+  const want = phraseWords(typed);
   const ids: string[] = [];
   for (const p of people) {
-    const keys = [p.nickname, p.kind === 'business' ? p.name : ''];
+    const keys = [...nicknamesOf(p.nickname), p.kind === 'business' ? p.name : ''];
     const hit = keys.some(k => {
-      const n = k.trim().replace(/\s+/g, ' ').toLowerCase();
-      return n.includes(' ') && n.startsWith(typed);
+      const have = phraseWords(k);
+      return have.length > 1 && typedStartsPhrase(have, want);
     });
     if (hit) ids.push(p.id);
   }
@@ -2587,7 +2611,7 @@ export function getMentionSuggestions(
   // An exact match, unique or ambiguous, is already spoken for above. A tail that
   // runs past a space is only ever a multi-word name, and a first word that
   // already resolves ("@gideon reyes") has nothing left to suggest.
-  if (byName.has(spaced ? token : typed)) return null;
+  if (byName.has(spaced ? token : typed.replace(/[.,]+$/, ''))) return null;
 
   const prefixIds = new Set<string>();
   if (!spaced) {

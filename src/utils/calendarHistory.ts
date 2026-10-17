@@ -1,3 +1,4 @@
+import { nicknamesOf } from './nicknames';
 import { addDays } from 'date-fns/addDays';
 import { startOfDay } from 'date-fns/startOfDay';
 import type { BusyEvent } from './calendarBusy';
@@ -179,7 +180,7 @@ function nameTokensOf(person: PersonName): string[] {
     if (!tokens.includes(token)) tokens.push(token);
   };
   add(person.name);
-  add(person.nickname);
+  nicknamesOf(person.nickname).forEach(add);
   if (person.kind !== 'business') {
     const first = person.name.trim().split(/\s+/)[0];
     if (first) add(first);

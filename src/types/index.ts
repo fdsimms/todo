@@ -1558,6 +1558,7 @@ export interface Person {
   kind: 'individual' | 'business';
   // What you'd actually call them, when that isn't their name. Display falls
   // back to `name`, so leaving it empty is the normal case rather than a gap.
+  // May hold several, comma-separated; read it through `src/utils/nicknames.ts`.
   nickname: string;
   notes: string;
   // Hand-ordered, like categories and aisles, and never re-ranked by recency or

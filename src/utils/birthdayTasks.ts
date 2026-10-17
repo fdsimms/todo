@@ -1,3 +1,4 @@
+import { primaryNickname } from './nicknames';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { startOfDay } from 'date-fns/startOfDay';
 import type { Person, Task } from '../types';
@@ -200,7 +201,7 @@ export function nextBirthday(
  * is the American convention the rest of the app's copy follows.
  */
 export function birthdayTitle(person: Pick<Person, 'name' | 'nickname'>): string {
-  const who = person.nickname.trim() || person.name.trim();
+  const who = primaryNickname(person.nickname) || person.name.trim();
   return `${who}'s birthday`;
 }
 
@@ -210,7 +211,7 @@ export function birthdayTitle(person: Pick<Person, 'name' | 'nickname'>): string
  * has no ambiguity to dodge the way the reminder does.
  */
 export function birthdayGiftTitle(person: Pick<Person, 'name' | 'nickname'>): string {
-  const who = person.nickname.trim() || person.name.trim();
+  const who = primaryNickname(person.nickname) || person.name.trim();
   return `Get ${who}’s birthday gift`;
 }
 

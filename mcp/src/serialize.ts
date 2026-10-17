@@ -19,6 +19,7 @@
  * replica.ts's rule and why): nothing can reach `database.ts` from it, because
  * the dependency runs the other way.
  */
+import { primaryNickname } from '../../src/utils/nicknames';
 import { PRIORITY_LABELS } from '../../src/types';
 import type { Task } from '../../src/types';
 import type { Replica } from './replica';
@@ -141,7 +142,7 @@ function compact<T extends object>(o: T): T {
  * nothing.
  */
 function personNames(replica: Replica): Map<string, string> {
-  return new Map(replica.people().map(p => [p.id, p.nickname?.trim() || p.name]));
+  return new Map(replica.people().map(p => [p.id, primaryNickname(p.nickname ?? '') || p.name]));
 }
 
 export function serializeTask(replica: Replica, task: Task, names?: Map<string, string>): SerializedTask {

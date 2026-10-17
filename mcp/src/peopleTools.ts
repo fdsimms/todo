@@ -12,6 +12,7 @@
  * record one here), and who someone is can be written (`createPerson`),
  * though never a cadence, nudge, group, archive or order.
  */
+import { primaryNickname } from '../../src/utils/nicknames';
 import type { Person } from '../../src/types';
 import type { PersonFields, Replica } from './replica';
 import { localDateInput } from './timeZone';
@@ -141,7 +142,7 @@ export function upcomingBirthdays(replica: Replica, days = DEFAULT_BIRTHDAY_DAYS
     .map(p => ({ p, next: replica.nextBirthday(p) }))
     .filter((x): x is { p: Person; next: Date } => x.next !== null && dayKey(x.next) <= limit)
     .sort((a, b) => +a.next - +b.next)
-    .map(({ p, next }) => ({ id: p.id, name: p.nickname || p.name, date: dayKey(next) }));
+    .map(({ p, next }) => ({ id: p.id, name: primaryNickname(p.nickname) || p.name, date: dayKey(next) }));
 }
 
 /**
@@ -155,7 +156,7 @@ export function addPersonHistory(
   const at = input.date ? new Date(localDateInput(input.date)) : new Date();
   if (Number.isNaN(at.getTime())) throw new Error('date must be an ISO date or date-time.');
   const task = replica.addPersonHistory(input.personIds, input.title, at);
-  const names = new Map(replica.people().map(p => [p.id, p.nickname || p.name]));
+  const names = new Map(replica.people().map(p => [p.id, primaryNickname(p.nickname) || p.name]));
   return {
     added: {
       title: task.title,

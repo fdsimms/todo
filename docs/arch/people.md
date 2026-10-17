@@ -262,6 +262,15 @@ Search and Quick Search, and `TaskEditor`'s own title field.
   first; the prefix scan never answers a multi-word name by its first word.
   Groups have no phrase index, so a group's name still resolves one word at a
   time.
+- **A person can have several nicknames, and a suggestion matches word by word.**
+  `Person.nickname` stays one string, with the names comma-separated
+  (`src/utils/nicknames.ts`): no column, nothing to sync. A reader of what to
+  *call* them takes `primaryNickname` (the first), a reader of what they
+  *answer to* takes `nicknamesOf`; the raw field would put the whole list in a
+  title. A suggestion row matches the typed words in order against a
+  multi-word name or nickname with periods and commas ignored, skipping words
+  between (`typedStartsPhrase`), so "@dr. kush" finds "Dr. Arielle Kushman, MD".
+  Resolving without the row still needs the full spelled-out name or one nickname.
 - **A still-growing token gets a live suggestion row, not silence.**
   `getMentionSuggestions` (`src/utils/parseTaskInput.ts`) exists so someone
   partway into "@l" or "@luk" can tell whether they're spelling a real

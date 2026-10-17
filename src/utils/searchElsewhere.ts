@@ -1,3 +1,4 @@
+import { nicknamesOf, primaryNickname } from './nicknames';
 import type { GroceryItem, Person, Recipe } from '../types';
 import { menuSearchTerms, searchMenu, type NavSearchResult } from './navHubs';
 import { searchSettings } from './settingsSearch';
@@ -128,7 +129,7 @@ export function searchPeople(people: readonly Person[], terms: string[]): { pers
     const haystack = `${person.name} ${person.nickname}`.toLowerCase();
     if (!terms.every(t => haystack.includes(t))) return;
     const byName = nameTier(person.name, terms);
-    const byNickname = person.nickname ? nameTier(person.nickname, terms) + 0.5 : 3;
+    const byNickname = Math.min(3, ...nicknamesOf(person.nickname).map(n => nameTier(n, terms) + 0.5));
     scored.push({ person, tier: Math.min(3, byName, byNickname), index });
   });
   return scored
@@ -219,7 +220,7 @@ export function describeElsewhere(result: ElsewhereResult): ElsewhereDescription
         accessibilityKind: `setting, in ${result.groupTitle}`,
       };
     case 'person': {
-      const nickname = result.person.nickname.trim();
+      const nickname = primaryNickname(result.person.nickname);
       const also = nickname && nickname !== result.person.name ? nickname : '';
       return {
         icon: 'person-outline',

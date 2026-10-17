@@ -194,6 +194,7 @@ describe('the title', () => {
 
   it('prefers what you actually call them', () => {
     expect(birthdayTitle(person({ name: 'Tessa Brown', nickname: 'Tess' }))).toBe("Tess's birthday");
+    expect(birthdayTitle(person({ name: 'Tessa Brown', nickname: 'Tess, Tessie' }))).toBe("Tess's birthday");
   });
 
   it("keeps the American 's after a name ending in s", () => {
