@@ -1368,6 +1368,7 @@ function registerWriteTools(
       pick: z.union([z.enum(['one', 'any']), z.number().int().min(1).max(6)]).optional().describe('How many things may fill it: "one", "any" (the default), or up to a number.'),
       amount: z.string().max(60).optional().describe('The whole amount the picks share ("2 cups"); split evenly across what is picked.'),
       suggestions: z.array(z.string()).optional().describe('Names offered every time whether or not they are in the kitchen ("feta", "goat cheese").'),
+      neverOffer: z.array(z.string()).optional().describe('Names this blank must never offer, even from the kitchen ("baguette" for a grain bowl). Left out keeps the blank\'s current list; [] clears it.'),
     })).optional().describe('For a dish made from what is around (a grain bowl, a frittata): blanks filled from the kitchen each time it is cooked, replacing the list. A blank contributes nothing to shopping or nutrition until a meal fills it (update_meal\'s fills). Use one instead of a long list of optional lines.'),
     prepTasks: z.array(z.object({
       title: z.string().min(1),

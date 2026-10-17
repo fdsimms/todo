@@ -56,9 +56,10 @@ import { liveExpiresAt } from './groceryShelfLife';
  * pass something to show for itself.
  *
  * `new` is "I just got another one": the packet the card was asking about is
- * gone and a fresh one is here. It is only ever offered by the deck itself (the
- * Describe and scan sheets' pantry control stays three-way), because a
- * restock is something you say standing at the cupboard.
+ * gone and a fresh one is here. A restock is something you say standing at the
+ * cupboard, so every place that asks about stock offers it: the deck, the
+ * Describe and scan sheets' pantry control, the check card and the blank
+ * picker's past-use-by row.
  */
 export type PantryReviewAnswer = 'have' | 'low' | 'out' | 'new';
 

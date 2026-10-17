@@ -404,7 +404,7 @@ export interface RecipeInput {
    * replacing the list. A blank with the same label as one already there keeps
    * its id, so meals that filled it stay filled. See RecipeBlank.
    */
-  blanks?: { label?: string; kind?: FoodKind | null; pick?: 'one' | 'any' | number; amount?: string; suggestions?: string[] }[];
+  blanks?: { label?: string; kind?: FoodKind | null; pick?: 'one' | 'any' | number; amount?: string; suggestions?: string[]; neverOffer?: string[] }[];
 }
 
 /** `cookbook` on an edit moves the recipe: a title (created when new), or null to take it out of its book. */
@@ -2650,6 +2650,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           max: b.pick === undefined || b.pick === 'any' ? null : b.pick === 'one' ? 1 : b.pick,
           quantity: b.amount ?? '',
           options: b.suggestions ?? [],
+          // Left out keeps the list the person built by long-pressing in the picker.
+          ...(b.neverOffer !== undefined ? { excluded: b.neverOffer } : {}),
         };
         const label = (b.label ?? '').trim().toLowerCase();
         const existing = current().blanks.find(x => !kept.has(x.id) && (
