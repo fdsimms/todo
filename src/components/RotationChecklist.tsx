@@ -56,7 +56,7 @@ export function RotationChecklist({ task, label = 'This week', asOf }: Props) {
         <View key={member.item.id} style={styles.row}>
           <View style={[styles.box, member.doneAt !== null && styles.boxDone]}>
             {member.doneAt !== null && (
-              <Ionicons name="checkmark" size={10} color={colors.onDone} />
+              <Ionicons name="checkmark" size={10} color={colors.done} />
             )}
           </View>
           <Text
@@ -115,7 +115,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  boxDone: { backgroundColor: colors.done, borderColor: colors.done },
+  boxDone: { backgroundColor: colors.doneQuiet, borderColor: colors.doneQuiet },
   name: { flex: 1, color: colors.text, fontSize: font.sm },
   nameDone: { color: colors.textTertiary },
   when: { color: colors.textTertiary, fontSize: font.xxs },
