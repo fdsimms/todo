@@ -180,7 +180,8 @@ export function TemplateDetailScreen() {
   // Stable and taking what it opens, so `TemplateItemRow`'s memo holds — see
   // the note on its handler props.
   const handleOpenRefTemplate = useCallback((refTemplateId: string) => {
-    (navigation as any).navigate('TemplateDetail', { templateId: refTemplateId });
+    // Pushed so the nested template opens at the top and Back returns here.
+    (navigation as any).push('TemplateDetail', { templateId: refTemplateId });
   }, [navigation]);
 
   /**
