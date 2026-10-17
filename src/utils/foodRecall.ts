@@ -15,6 +15,7 @@ import {
   type EstimateCount,
 } from './foodLog';
 import { describeProduct } from './groceryProduct';
+import { looseNameWeight } from './looseNameMatch';
 import { packageChoices, type PackageChoice } from './scanPortion';
 
 /**
@@ -222,8 +223,10 @@ export function recallWeight(labelKey: string, queryKey: string): number {
   if (!labelKey || !queryKey) return 0;
   const direct = matchWeight(labelKey, queryKey);
   if (direct > 0) return direct;
-  if (labelKey.length < MIN_CONTAINED_LABEL) return 0;
-  return matchWeight(queryKey, labelKey) / CONTAINED_SCALE;
+  const contained = labelKey.length < MIN_CONTAINED_LABEL ? 0 : matchWeight(queryKey, labelKey) / CONTAINED_SCALE;
+  // Last, under both: an amount, a filler word or a one-letter typo in the
+  // description that the character comparison above cannot see past.
+  return contained > 0 ? contained : looseNameWeight(labelKey, queryKey);
 }
 
 /**

@@ -2,6 +2,7 @@ import type { FoodLogEntry, FoodNutrition, MealPlanEntry, MealSlot, NutrientKey,
 import { MEAL_SLOTS, NUTRIENT_KEYS } from '../types';
 import { aisleForName } from './groceryAisles';
 import { groceryNameKey } from './groceryParse';
+import { looseNameWeight } from './looseNameMatch';
 import { isWaterEntry } from './waterLog';
 import { mealHelping, weighedHelping, type DishFigures } from './mealLog';
 import { isNutrientOnlyEntry } from './nutrientLog';
@@ -794,7 +795,28 @@ export function savedMealCalories(items: readonly SavedMealItem[]): number | nul
 export function savedMealsMatching(meals: readonly SavedMeal[], query: string): SavedMeal[] {
   const key = groceryNameKey(query);
   if (!key) return [];
-  return meals.filter(m => groceryNameKey(m.name).includes(key));
+  return meals.filter(m => groceryNameKey(m.name).includes(key) || looseNameWeight(m.name, query) > 0);
+}
+
+/**
+ * What a saved meal comes to, for a nutrient every item in it states. A
+ * nutrient only some items report is left out rather than summed, which would
+ * state a figure lower than the meal's own.
+ */
+export function savedMealAmounts(items: readonly SavedMealItem[]): Partial<Record<NutrientKey, number>> {
+  const out: Partial<Record<NutrientKey, number>> = {};
+  if (items.length === 0) return out;
+  for (const key of NUTRIENT_KEYS) {
+    let total = 0;
+    let complete = true;
+    for (const item of items) {
+      const amount = item.nutrition.amounts[key];
+      if (amount === undefined) { complete = false; break; }
+      total += amount;
+    }
+    if (complete) out[key] = round(total);
+  }
+  return out;
 }
 
 /**

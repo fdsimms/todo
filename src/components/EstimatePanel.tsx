@@ -50,7 +50,8 @@ import {
   type RecalledHelping,
 } from '../utils/foodRecall';
 import { creditedKeys, foodLogRecency, rankByRecency } from '../utils/foodLogRecents';
-import { MAX_ESTIMATE_MULTIPLE, describeEstimateCount, estimateCountNoun, scalePanelToAmount, wholeEstimate } from '../utils/foodLog';
+import { MAX_ESTIMATE_MULTIPLE, describeEstimateCount, estimateCountNoun, savedMealAmounts, savedMealsMatching, scalePanelToAmount, wholeEstimate } from '../utils/foodLog';
+import { useSavedMealsStore } from '../store/useSavedMealsStore';
 import { formatQuantityAmount } from '../utils/quantity';
 import { perServing, recipeNutrition } from '../utils/recipeNutrition';
 import { standingSwapMap } from '../utils/standingSwaps';
@@ -248,6 +249,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
   const addEntry = useFoodLogStore(s => s.addEntry);
   const recentEntries = useFoodLogStore(s => s.recentEntries);
   const recipes = useRecipeStore(s => s.recipes);
+  const savedMeals = useSavedMealsStore(s => s.meals);
   // Every recipe, so a composed dish counts its components — see the same
   // map in FoodLogEntrySheet.
   const recipesById = useMemo(() => new Map(recipes.map(r => [r.id, r])), [recipes]);
@@ -448,13 +450,19 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
       const helping = helpingOf(food);
       if (helping) out.push({ label: food.label, quantity: food.choice.label, amounts: helping.amounts });
     }
+    // A saved meal has no row here (the host sheet offers its own), but its
+    // summed figures are exactly what "half my usual breakfast" needs.
+    for (const meal of savedMealsMatching(savedMeals, description).slice(0, 2)) {
+      const amounts = savedMealAmounts(meal.items);
+      if (Object.keys(amounts).length > 0) out.push({ label: meal.name, quantity: '1 saved meal', amounts });
+    }
     for (const recipe of matches) {
       const serving = perServing(recipeNutrition(recipe, items, itemProducts, recipesById, undefined, 1, swaps));
       if (serving) out.push({ label: recipe.name, quantity: '1 serving', amounts: serving });
     }
     return out.slice(0, MAX_CONTEXT_FOODS);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recalled, catalogMatches, matches, items, itemProducts, at, swaps]);
+  }, [recalled, catalogMatches, matches, savedMeals, description, items, itemProducts, at, swaps]);
 
   // ==== estimate: asking, refining, logging ====
   /**
