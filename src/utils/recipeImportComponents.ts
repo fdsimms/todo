@@ -171,7 +171,7 @@ export type ComponentImportState =
   | { status: 'picking' }
   | { status: 'reading' }
   /** `photoCount` is how many photos the read combined; see `nextComponentPhotos`. */
-  | { status: 'read'; extracted: ExtractedRecipe; photoCount: number }
+  | { status: 'read'; extracted: ExtractedRecipe; photoCount: number; edited?: boolean }
   /** Picked by hand from the recipe box (the hook's `linkTo`). */
   | { status: 'linked'; recipe: Recipe }
   | { status: 'failed'; message: string };
@@ -254,4 +254,61 @@ export function componentCommitFor(
   const name = cleanRecipeName(state.extracted.name || candidate.reference.name);
   if (!name) return { kind: 'skip' };
   return { kind: 'create', name, extracted: state.extracted };
+}
+
+/**
+ * A read component as the edit sheet holds it: the name, and every ingredient
+ * and step with a tick saying whether it stays. The same two-part shape the
+ * main import's review list has (a list of lines, and the set of ticked ones),
+ * so a line left out is one tap to bring back until the sheet is confirmed.
+ */
+export interface ComponentDraft {
+  name: string;
+  ingredients: RecipeGroceryItem[];
+  acceptedIngredients: ReadonlySet<number>;
+  steps: string[];
+  acceptedSteps: ReadonlySet<number>;
+}
+
+const allIndexes = (count: number): Set<number> => new Set(Array.from({ length: count }, (_, i) => i));
+
+/** The starting point of an edit: everything the read found, all of it kept. */
+export function draftOfComponent(extracted: ExtractedRecipe, fallbackName: string): ComponentDraft {
+  return {
+    name: extracted.name || fallbackName,
+    ingredients: extracted.ingredients.map(row => ({ ...row })),
+    acceptedIngredients: allIndexes(extracted.ingredients.length),
+    steps: [...extracted.steps],
+    acceptedSteps: allIndexes(extracted.steps.length),
+  };
+}
+
+/**
+ * What confirming an edit writes back over the read: the edited name, and only
+ * the ticked ingredients and steps, in order. Everything the sheet doesn't show
+ * (servings, prep time, prep tasks, the source) rides through untouched.
+ * A line left out is dropped here rather than carried as unticked, because the
+ * commit (`commitTo`) writes whatever the read holds and has no tick of its own.
+ */
+export function applyComponentDraft(extracted: ExtractedRecipe, draft: ComponentDraft): ExtractedRecipe {
+  return {
+    ...extracted,
+    name: draft.name.trim(),
+    ingredients: draft.ingredients.filter((_, i) => draft.acceptedIngredients.has(i)),
+    steps: draft.steps.filter((_, i) => draft.acceptedSteps.has(i)),
+  };
+}
+
+/** Whether confirming the draft would change anything, for the sheet's discard guard. */
+export function componentDraftChanged(
+  extracted: ExtractedRecipe,
+  draft: ComponentDraft,
+  fallbackName: string,
+): boolean {
+  const start = draftOfComponent(extracted, fallbackName);
+  if (draft.name.trim() !== start.name) return true;
+  if (draft.acceptedIngredients.size !== start.ingredients.length) return true;
+  if (draft.acceptedSteps.size !== start.steps.length) return true;
+  if (draft.ingredients.some((row, i) => JSON.stringify(row) !== JSON.stringify(start.ingredients[i]))) return true;
+  return draft.steps.some((step, i) => step !== start.steps[i]);
 }

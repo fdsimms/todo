@@ -6,6 +6,9 @@ import {
   nextComponentPhotos,
   coveringComponentKeys,
   componentCommitFor,
+  draftOfComponent,
+  applyComponentDraft,
+  componentDraftChanged,
   type ComponentImportState,
   type ReferenceCandidate,
 } from '../utils/recipeImportComponents';
@@ -337,5 +340,53 @@ describe('componentCommitFor', () => {
     expect(componentCommitFor(candidate('Mash'), new Set(['mash']), { status: 'failed', message: 'blurry' }))
       .toEqual({ kind: 'skip' });
     expect(componentCommitFor(candidate('   '), new Set(['   ']), readState(''))).toEqual({ kind: 'skip' });
+  });
+});
+
+describe('editing a read component', () => {
+  const read = (): ExtractedRecipe => ({
+    ...extracted('Shatta'),
+    ingredients: [
+      { name: 'chiles', quantity: '4 oz', aisle: 'Produce', section: null, prep: null, optional: false },
+      { name: 'garlic', quantity: '3 cloves', aisle: 'Produce', section: null, prep: null, optional: false },
+    ],
+    steps: ['Toast the chiles.', 'Blend.'],
+  });
+
+  it('starts with everything kept, named by the read or else the referencing page', () => {
+    const draft = draftOfComponent(read(), 'Hot sauce');
+    expect(draft.name).toBe('Shatta');
+    expect([...draft.acceptedIngredients]).toEqual([0, 1]);
+    expect([...draft.acceptedSteps]).toEqual([0, 1]);
+    expect(draftOfComponent({ ...read(), name: '' }, 'Hot sauce').name).toBe('Hot sauce');
+  });
+
+  it('is unchanged until something is edited, ticked off or renamed', () => {
+    const base = read();
+    expect(componentDraftChanged(base, draftOfComponent(base, 'x'), 'x')).toBe(false);
+    const draft = draftOfComponent(base, 'x');
+    expect(componentDraftChanged(base, { ...draft, name: ' Shatta ' }, 'x')).toBe(false);
+    expect(componentDraftChanged(base, { ...draft, name: 'Green shatta' }, 'x')).toBe(true);
+    expect(componentDraftChanged(base, { ...draft, acceptedSteps: new Set([0]) }, 'x')).toBe(true);
+    expect(componentDraftChanged(base, { ...draft, steps: ['Toast the chiles.', 'Blend well.'] }, 'x')).toBe(true);
+    const edited = draft.ingredients.map((r, i) => (i === 0 ? { ...r, quantity: '5 oz' } : r));
+    expect(componentDraftChanged(base, { ...draft, ingredients: edited }, 'x')).toBe(true);
+  });
+
+  it('writes back the edited name and only the ticked lines, in order, leaving the rest of the read alone', () => {
+    const base = { ...read(), servings: 4, prepMinutes: 10 };
+    const draft = draftOfComponent(base, 'x');
+    const result = applyComponentDraft(base, {
+      ...draft,
+      name: '  Green shatta ',
+      ingredients: draft.ingredients.map((r, i) => (i === 1 ? { ...r, name: 'roasted garlic' } : r)),
+      acceptedIngredients: new Set([1]),
+      acceptedSteps: new Set([1]),
+    });
+    expect(result.name).toBe('Green shatta');
+    expect(result.ingredients.map(r => r.name)).toEqual(['roasted garlic']);
+    expect(result.steps).toEqual(['Blend.']);
+    expect(result.servings).toBe(4);
+    expect(result.prepMinutes).toBe(10);
   });
 });

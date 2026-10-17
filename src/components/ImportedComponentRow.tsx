@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, ActivityIndicator, Alert, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import {
@@ -8,6 +8,8 @@ import {
 } from '../theme';
 import { InlineAction } from './InlineAction';
 import { RecipeComponentPicker } from './RecipeComponentPicker';
+import { ImportedComponentEditSheet } from './ImportedComponentEditSheet';
+import { LazySheet } from './LazySheet';
 import { formatServingsRange } from '../utils/recipeUtils';
 import type { Recipe } from '../types';
 import type { ReferenceCandidate } from '../utils/recipeImportComponents';
@@ -15,6 +17,9 @@ import type { ComponentImportState } from '../hooks/useRecipeComponentImports';
 import { MAX_RECIPE_PHOTOS, type RecipePhotoSource } from '../utils/recipePhoto';
 import { haptics } from '../utils/haptics';
 import { capitalize } from '../utils/capitalize';
+import { useActionMenu } from '../hooks/useActionMenu';
+import { BUTTON_LABEL } from '../copy/shared';
+import type { ExtractedRecipe } from '../services/aiSuggestions';
 
 const CHECKBOX_SIZE = 22;
 
@@ -28,6 +33,8 @@ interface Props {
   onImport: (source: RecipePhotoSource) => void;
   /** The user picked an existing recipe by hand — see `linkTo` on the hook. */
   onLink: (recipe: Recipe) => void;
+  /** The user corrected a read recipe in the edit sheet — see `editRead` on the hook. */
+  onEdit: (extracted: ExtractedRecipe) => void;
   /** "Not this one" — removes the row from the list. See `dismiss` on the hook. */
   onDismiss: () => void;
 }
@@ -47,7 +54,9 @@ interface Props {
  *
  * A read row turns back into the first kind — a name, a tick, and what was
  * found — so the two paths converge on the same row before the sheet commits
- * anything. The name shown is the *photographed page's* own title rather than
+ * anything. It can be corrected from there (**Edit**, `ImportedComponentEditSheet`),
+ * since the only other way to fix a misread component was to finish the import
+ * and edit the saved recipe. The name shown is the *photographed page's* own title rather than
  * the word the first page used for it, because that is what the new recipe will
  * be called.
  *
@@ -58,10 +67,12 @@ interface Props {
  * the whole box the same way either entry point does. Picking one behaves like
  * an automatic match from there on: ticked, and shown as already in the box.
  */
-export function ImportedComponentRow({ candidate, state, accepted, parent, onToggle, onImport, onLink, onDismiss }: Props) {
+export function ImportedComponentRow({ candidate, state, accepted, parent, onToggle, onImport, onLink, onEdit, onDismiss }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [pickerVisible, setPickerVisible] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const actionMenu = useActionMenu();
 
   const { reference, match } = candidate;
   const read = state.status === 'read' ? state.extracted : null;
@@ -98,38 +109,29 @@ export function ImportedComponentRow({ candidate, state, accepted, parent, onTog
   const accessibilityLabel = `${title}, ${meta}`;
 
   /**
-   * The same pair the source picker offers, with the camera leading: the
-   * reference points at a page of the book already in the reader's hands.
-   * "Find in recipe box" rides along beside them — same row, same tap cost —
-   * for the reader who turns the page and realizes they don't need to.
-   *
-   * A row that has already been read drops the second button. Both fit on one
-   * line at 390pt only while the first is short, and "Add the next page"
-   * beside "Choose a photo" wraps — a row that is already answered doesn't
-   * need two ways to answer it again.
+   * A row that hasn't been read: the camera leads, since the reference points
+   * at a page of the book already in the reader's hands. The library and the
+   * clipboard are icon-only beside it, so the row's own line reads as one
+   * answer rather than four, and "Find in recipe box" sits under them as the
+   * other answer ("I already have this one").
    */
-  const renderPhotoButtons = (cameraLabel: string, withLibrary = true) => (
+  const renderPhotoButtons = (cameraLabel: string) => (
     <View style={styles.actions}>
       <InlineAction
         label={cameraLabel}
         icon="camera-outline"
-        variant={read ? 'neutral' : 'accent'}
         onPress={() => onImport('camera')}
         haptic
         accessibilityLabel={`${cameraLabel} of ${title}`}
       />
-      {withLibrary && (
-        <InlineAction
-          label="Choose a photo"
-          icon="images-outline"
-          variant="neutral"
-          onPress={() => onImport('library')}
-          haptic
-          accessibilityLabel={`Choose a photo of ${title}`}
-        />
-      )}
       <InlineAction
-        label="Paste image"
+        icon="images-outline"
+        variant="neutral"
+        onPress={() => onImport('library')}
+        haptic
+        accessibilityLabel={`Choose a photo of ${title}`}
+      />
+      <InlineAction
         icon="copy-outline"
         variant="neutral"
         onPress={() => onImport('clipboard')}
@@ -147,6 +149,40 @@ export function ImportedComponentRow({ candidate, state, accepted, parent, onTog
     </View>
   );
 
+  /**
+   * A row that has been read: correcting it, or adding the next page of it.
+   * "Find in recipe box" is not offered, because the recipe is already answered;
+   * the edit sheet carries that escape for a read that came back wrong.
+   *
+   * Adding a page re-reads every photo as one recipe (see `importFrom`), which
+   * replaces any correction made since, so it asks first when there is one.
+   */
+  const addPage = (source: RecipePhotoSource) => {
+    if (state.status === 'read' && state.edited) {
+      Alert.alert(
+        'Add a page?',
+        'Reading another page re-reads the whole recipe, so the edits you made to it will be lost.',
+        [
+          { text: BUTTON_LABEL.cancel, style: 'cancel' },
+          { text: 'Add a page', style: 'destructive', onPress: () => onImport(source) },
+        ],
+      );
+      return;
+    }
+    onImport(source);
+  };
+
+  const openAddPageMenu = () => {
+    actionMenu.open({
+      title: 'Add a page',
+      actions: [
+        { key: 'camera', label: 'Take a photo', icon: 'camera-outline', onPress: () => addPage('camera') },
+        { key: 'library', label: 'Choose a photo', icon: 'images-outline', onPress: () => addPage('library') },
+        { key: 'paste', label: 'Paste image', icon: 'copy-outline', onPress: () => addPage('clipboard') },
+      ],
+    });
+  };
+
   const body = (
     <View style={styles.body}>
       <Text style={styles.name} numberOfLines={1}>{title}</Text>
@@ -158,8 +194,27 @@ export function ImportedComponentRow({ candidate, state, accepted, parent, onTog
       {/* Adds a page to the read rather than redoing it — see importFrom's
           append-on-read rule — so it drops out once the cap is reached the
           same way the main import's own add buttons do. */}
-      {state.status === 'read' && state.photoCount < MAX_RECIPE_PHOTOS
-        && renderPhotoButtons('Add the next page', false)}
+      {!!read && (
+        <View style={styles.actions}>
+          <InlineAction
+            label="Edit"
+            icon="create-outline"
+            onPress={() => setEditOpen(true)}
+            haptic
+            accessibilityLabel={`Edit ${title}`}
+          />
+          {state.status === 'read' && state.photoCount < MAX_RECIPE_PHOTOS && (
+            <InlineAction
+              label="Add a page"
+              icon="camera-outline"
+              variant="neutral"
+              onPress={openAddPageMenu}
+              haptic
+              accessibilityLabel={`Add another page of ${title}`}
+            />
+          )}
+        </View>
+      )}
       {!!linked && (
         <View style={styles.actions}>
           <InlineAction
@@ -178,6 +233,20 @@ export function ImportedComponentRow({ candidate, state, accepted, parent, onTog
         onClose={() => setPickerVisible(false)}
         onSelect={onLink}
       />
+      {!!read && (
+        <LazySheet open={editOpen}>
+          <ImportedComponentEditSheet
+            visible={editOpen}
+            fallbackName={reference.name}
+            extracted={read}
+            parent={parent}
+            onSave={onEdit}
+            onLink={onLink}
+            onClose={() => setEditOpen(false)}
+          />
+        </LazySheet>
+      )}
+      {actionMenu.element}
     </View>
   );
 

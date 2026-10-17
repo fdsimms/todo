@@ -633,6 +633,15 @@ import sheets offer them above the ingredient list.
   (`includeReferences: false`) — a component pointing at a *third* page has nowhere to offer
   that, and a row that grows its own rows is a flow with no bottom. `suggestRecipeGroceries`
   turns them off for the same reason `includeMethod` is off there: nowhere to put the answer.
+- **A read component can be corrected before the import is confirmed** (`ImportedComponentEditSheet`,
+  `editRead` on the hook). The sheet is the main import's review list in miniature (name, ingredients
+  via `ExtractedIngredientRow`, method steps), and Done writes the corrected read back over the hook's
+  state with only the ticked lines (`applyComponentDraft`), so `commitTo` needs no tick of its own and
+  nothing is written to the box until Create/Add. Servings, prep time, prep tasks and source are
+  untouched. **A page added afterwards re-reads every photo, which replaces the edit**, so the row asks
+  first when the read is `edited`. A read that came back wrong is escaped from the sheet ("Use a recipe
+  from my box instead" links one and drops the read); a row that has been read no longer offers "Find
+  in recipe box" itself, because it is already answered.
 - **The component import is photo-only.** The main import offers paste and link too, because
   a recipe started from scratch could come from anywhere. A reference has already said where
   it is: page 45 of the book in front of you.
