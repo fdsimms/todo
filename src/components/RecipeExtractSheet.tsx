@@ -563,6 +563,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
               onToggle={() => components.toggle(candidate.key)}
               onImport={source => components.importFrom(candidate.key, source)}
               onLink={picked => components.linkTo(candidate.key, picked)}
+              onEdit={edited => components.editRead(candidate.key, edited)}
               onDismiss={() => components.dismiss(candidate.key)}
             />
           ))}

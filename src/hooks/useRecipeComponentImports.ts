@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Recipe } from '../types';
+import type { ExtractedRecipe } from '../services/aiSuggestions';
 import { extractRecipe } from '../services/aiSuggestions';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { normalizeIngredient, recipeInBook } from '../utils/recipeUtils';
@@ -58,6 +59,11 @@ const IDLE: ComponentImportState = { status: 'idle' };
  * and the simplest recovery is to try again from scratch. `photosRef`/
  * `statesRef` carry that distinction without going through React state, since
  * nothing here needs a render just to remember what the last status was.
+ *
+ * **A read can be corrected before the sheet commits** (`editRead`), and a page
+ * added after that re-reads every photo from scratch, so it replaces the
+ * correction. The row asks first when `edited` is set rather than merging the
+ * two: a second read has no way to say which of its lines the user had fixed.
  */
 export function useRecipeComponentImports(
   candidates: readonly ReferenceCandidate[],
@@ -193,6 +199,18 @@ export function useRecipeComponentImports(
     setAccepted(prev => (prev.has(key) ? prev : new Set(prev).add(key)));
   }, [setState]);
 
+  /**
+   * Replaces what a photo read with the user's corrected version (see
+   * `applyComponentDraft`). Marks the row `edited` so a later "add a page",
+   * which re-reads every photo from scratch, can say that it will undo this.
+   */
+  const editRead = useCallback((key: string, extracted: ExtractedRecipe) => {
+    const prior = statesRef.current[key];
+    if (prior?.status !== 'read') return;
+    setState(key, { ...prior, extracted, edited: true });
+    haptics.success();
+  }, [setState]);
+
   const stateFor = useCallback(
     (key: string): ComponentImportState => states[key] ?? IDLE,
     [states],
@@ -304,5 +322,5 @@ export function useRecipeComponentImports(
     setDismissed(new Set());
   }, []);
 
-  return { stateFor, accepted, acceptedKeys, dismissed, toggle, dismiss, importFrom, linkTo, commitTo, reset };
+  return { stateFor, accepted, acceptedKeys, dismissed, toggle, dismiss, importFrom, linkTo, editRead, commitTo, reset };
 }
