@@ -31,6 +31,9 @@ export function parseWeightText(text: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** What a piece of cookware is called where it is picked. */
+export type CookwareNoun = 'pot' | 'plate';
+
 export type NetWeight =
   | { ok: true; grams: number }
   | { ok: false; reason: string };
@@ -42,15 +45,20 @@ export type NetWeight =
  * rather than clamped to something small: it means the wrong pot is picked or
  * the pot was weighed empty, and a dish of 1 g would pass every later check.
  * With nothing picked it passes the reading through unchanged, which is how
- * the field behaved before cookware existed.
+ * the field behaved before cookware existed. `noun` is what the picked piece is
+ * called where the reading was typed ("pot" over a dish, "plate" over a meal).
  */
-export function netWeight(scaleGrams: number, tares: readonly number[]): NetWeight {
+export function netWeight(
+  scaleGrams: number,
+  tares: readonly number[],
+  noun: CookwareNoun = 'pot',
+): NetWeight {
   const tare = tares.reduce((sum, g) => sum + g, 0);
   const net = scaleGrams - tare;
   if (!(net > 0)) {
     return {
       ok: false,
-      reason: `That is lighter than the ${tare.toLocaleString('en-US')} g it sits in. Check which pot is picked.`,
+      reason: `That's less than the ${noun} weighs (${tare.toLocaleString('en-US')} g). Check the reading or pick a different ${noun}.`,
     };
   }
   return { ok: true, grams: Math.round(net) };

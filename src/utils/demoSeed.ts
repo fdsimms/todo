@@ -3238,6 +3238,7 @@ function seedCookware(): void {
   addCookware('Dutch oven lid', 1150);
   addCookware('Sauté pan', 1820);
   addCookware('Glass tub', 310);
+  addCookware('Dinner plate', 280);
 }
 
 function seedMilestone(today: Date): void {

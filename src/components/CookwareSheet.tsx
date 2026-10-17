@@ -81,8 +81,8 @@ export function CookwareSheet({ visible, onClose }: Props) {
       footer={<NumberPadAccessory />}
     >
       <HelpText style={styles.hint}>
-        Weigh each one empty and save it here. When you weigh a dish with its pot, the app takes
-        the pot's weight off.
+        Weigh each one empty and save it here. When you weigh a dish with its pot, or food on a
+        plate, the app takes its weight off.
       </HelpText>
 
       <Text style={styles.groupLabel}>New</Text>
@@ -117,7 +117,7 @@ export function CookwareSheet({ visible, onClose }: Props) {
       <Text style={styles.groupLabel}>Your cookware</Text>
       {cookware.length === 0 ? (
         <EmptyNote icon="restaurant-outline">
-          Nothing saved yet. Add a pot above and it will show up next to the weight field.
+          Nothing saved yet. Add a pot or plate above and it will show up next to the weight field.
         </EmptyNote>
       ) : (
         <View style={styles.card}>

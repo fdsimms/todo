@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useCookwareStore } from '../store/useCookwareStore';
 import type { WeighIn } from '../hooks/useWeighIn';
+import type { CookwareNoun } from '../utils/cookware';
 import { PillGroup } from './PillGroup';
 import { InlineAction } from './InlineAction';
 import { HelpText } from './HelpText';
@@ -15,6 +16,8 @@ interface Props {
   scaleText: string;
   /** `card` inside a `bgSecondary` card, `page` straight onto the sheet. */
   surface?: 'page' | 'card';
+  /** What the pieces are called here: a pot under a dish's weight, a plate under a meal's. */
+  noun?: CookwareNoun;
 }
 
 /**
@@ -28,7 +31,7 @@ interface Props {
  *
  * Several can be picked at once because a pot and its lid are two entries.
  */
-export function CookwareWeighIn({ weighIn, scaleText, surface = 'card' }: Props) {
+export function CookwareWeighIn({ weighIn, scaleText, surface = 'card', noun = 'pot' }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const cookware = useCookwareStore(s => s.cookware);
@@ -43,11 +46,11 @@ export function CookwareWeighIn({ weighIn, scaleText, surface = 'card' }: Props)
         <>
           <PillGroup
             surface={surface}
-            noun="pot"
+            noun={noun}
             options={[
               {
                 key: 'none',
-                label: 'No pot',
+                label: `No ${noun}`,
                 selected: weighIn.picked.length === 0,
                 pinned: true,
                 onPress: weighIn.clear,
@@ -62,12 +65,14 @@ export function CookwareWeighIn({ weighIn, scaleText, surface = 'card' }: Props)
             ]}
           />
           <HelpText style={styles.hint}>
-            With a pot picked, type what the scale reads. The pot's weight is taken off.
+            {noun === 'plate'
+              ? "Weighed the food on a plate? Type what the scale read. The plate's weight is taken off."
+              : "With a pot picked, type what the scale reads. The pot's weight is taken off."}
           </HelpText>
         </>
       )}
       <InlineAction
-        label={cookware.length > 0 ? 'Cookware' : 'Weigh with a pot'}
+        label={cookware.length > 0 ? 'Cookware' : `Weigh with a ${noun}`}
         icon={cookware.length > 0 ? 'create-outline' : 'add'}
         variant={cookware.length > 0 ? 'neutral' : 'accent'}
         surface={surface}
@@ -77,7 +82,7 @@ export function CookwareWeighIn({ weighIn, scaleText, surface = 'card' }: Props)
       {weighIn.picked.length > 0 && result && (
         <Text style={result.ok ? styles.result : styles.refusal}>
           {result.ok
-            ? `${tare.toLocaleString('en-US')} g of cookware taken off. The dish is ${result.grams.toLocaleString('en-US')} g.`
+            ? `${tare.toLocaleString('en-US')} g of cookware taken off. The ${noun === 'plate' ? 'food' : 'dish'} is ${result.grams.toLocaleString('en-US')} g.`
             : result.reason}
         </Text>
       )}

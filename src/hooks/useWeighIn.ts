@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useCookwareStore } from '../store/useCookwareStore';
-import { netWeight, parseWeightText, type NetWeight } from '../utils/cookware';
+import { netWeight, parseWeightText, type CookwareNoun, type NetWeight } from '../utils/cookware';
 
 /**
  * The state behind "weighed with the pot on": which cookware is picked, and
@@ -11,7 +11,7 @@ import { netWeight, parseWeightText, type NetWeight } from '../utils/cookware';
  * than throwing, so a sheet left open across a sync that removed one still
  * reads sensibly.
  */
-export function useWeighIn() {
+export function useWeighIn(noun: CookwareNoun = 'pot') {
   const cookware = useCookwareStore(s => s.cookware);
   const [selected, setSelected] = useState<string[]>([]);
 
@@ -26,9 +26,9 @@ export function useWeighIn() {
       const typed = parseWeightText(text);
       if (typed === null || typed <= 0) return null;
       if (picked.length === 0) return { ok: true, grams: typed };
-      return netWeight(typed, picked.map(c => c.weightG));
+      return netWeight(typed, picked.map(c => c.weightG), noun);
     },
-    [picked],
+    [picked, noun],
   );
 
   const toggle = useCallback((id: string) => {
