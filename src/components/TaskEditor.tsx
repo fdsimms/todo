@@ -8298,9 +8298,9 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                     }
                   }}
                   activeOpacity={interaction.activeOpacity}
-                  accessibilityRole="switch"
+                  accessibilityRole={task.archived ? 'switch' : 'button'}
                   accessibilityLabel="Archive"
-                  accessibilityState={{ checked: task.archived }}
+                  accessibilityState={task.archived ? { checked: true } : undefined}
                 >
                   <Ionicons name="archive-outline" size={18} color={task.archived ? colors.accent : colors.textSecondary} />
                   <View style={styles.optionContent}>
@@ -8311,7 +8311,9 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                         : 'Hide the task and keep its history. Find it later in Archived'}
                     </Text>
                   </View>
-                  <Toggle value={task.archived} onColor={colors.orange} />
+                  {/* Archiving closes the sheet, so a switch would never be seen flipping.
+                      Resuming stays open, where the switch does show the change. */}
+                  {task.archived && <Toggle value onColor={colors.orange} />}
                 </TouchableOpacity>
           <View style={styles.sep} />
           <TouchableOpacity style={styles.optionRow} onPress={handleDelete} activeOpacity={interaction.activeOpacity}>
