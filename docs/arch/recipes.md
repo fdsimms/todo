@@ -628,11 +628,21 @@ import sheets offer them above the ingredient list.
   imported into, a component it already has, a link that would be a cycle — using the same
   `wouldCreateRecipeCycle` the store checks with. An offer that ends in a silent no-op is an
   offer not worth making.
+- **A component's own page can point at a third recipe, one level deep.** A top-level read asks the model
+  for references too (`includeReferences: !isNestedComponentKey(key)`); the ones that survive
+  `importableReferences` are offered **in the component's edit sheet**, and its row says it "mentions N other
+  recipes". They live in the same flat maps as the top level, under keys namespaced by the component's
+  (`nestedComponentKey`), so every hook action works on them unchanged. **Nesting stops there**: a nested read
+  asks for no references of its own, and a nested row's own sheet offers none. Accepting one unticks the
+  component's ingredient line that names it (the same `coveredIngredients`), and committing creates the
+  component first, then the nested recipe, then links each to its parent. **A component that was already in the
+  box is left alone, nested references included**, on the same no-overwrite rule as its ingredients. A page that
+  points back at the recipe being imported, or at the component itself, is not offered.
 - **A created component gets everything a standalone import would**: ingredients, servings,
-  time, method and prep tasks. The one thing it doesn't get is references of its own
-  (`includeReferences: false`) — a component pointing at a *third* page has nowhere to offer
-  that, and a row that grows its own rows is a flow with no bottom. `suggestRecipeGroceries`
-  turns them off for the same reason `includeMethod` is off there: nowhere to put the answer.
+  time, method and prep tasks. A reference nested under a *nested* recipe is not asked for
+  (`includeReferences: false` below one level), since a row that grows its own rows is a flow with no
+  bottom. `suggestRecipeGroceries` turns them off for the same reason `includeMethod` is off there:
+  nowhere to put the answer.
 - **A read component can be corrected before the import is confirmed** (`ImportedComponentEditSheet`,
   `editRead` on the hook). The sheet is the main import's review list in miniature (name, ingredients
   via `ExtractedIngredientRow`, method steps), and Done writes the corrected read back over the hook's

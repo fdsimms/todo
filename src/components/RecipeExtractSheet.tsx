@@ -170,7 +170,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     () => (extracted ? importableReferences(extracted.references, recipes, recipe) : []),
     [extracted, recipes, recipe],
   );
-  const components = useRecipeComponentImports(candidates, aisleOrder);
+  const components = useRecipeComponentImports(candidates, aisleOrder, recipe?.nameKey ?? null);
   const { reset: resetComponents, acceptedKeys } = components;
   // An ingredient line naming a recipe that's about to become a component is
   // already shopped for through that component — see coveredIngredients.
@@ -559,14 +559,8 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
             <ImportedComponentRow
               key={candidate.key}
               candidate={candidate}
-              state={components.stateFor(candidate.key)}
-              accepted={components.accepted.has(candidate.key)}
+              imports={components}
               parent={recipe}
-              onToggle={() => components.toggle(candidate.key)}
-              onImport={source => components.importFrom(candidate.key, source)}
-              onLink={picked => components.linkTo(candidate.key, picked)}
-              onEdit={edited => components.editRead(candidate.key, edited)}
-              onDismiss={() => components.dismiss(candidate.key)}
             />
           ))}
         </View>

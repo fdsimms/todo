@@ -24,7 +24,8 @@ import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { aisleForName } from '../utils/groceryAisles';
 import { sectionsOf } from '../utils/recipeSections';
 import {
-  applyComponentDraft, componentDraftChanged, draftOfComponent, type ComponentDraft,
+  applyComponentDraft, componentDraftChanged, coveredIngredients, draftOfComponent,
+  type ComponentDraft, type ReferenceCandidate,
 } from '../utils/recipeImportComponents';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { haptics } from '../utils/haptics';
@@ -40,6 +41,12 @@ interface Props {
   /** The recipe being imported into, or null before it exists. Passed to the picker. */
   parent: Recipe | null;
   onSave: (extracted: ExtractedRecipe) => void;
+  /** The recipes this component's own page points at, still on offer. Empty below one level of nesting. */
+  references?: readonly ReferenceCandidate[];
+  /** Which of those the component's own ingredient lines no longer have to shop for. */
+  coveringKeys?: ReadonlySet<string>;
+  /** One reference's row. The caller draws it, since its state lives in the import hook. */
+  renderReference?: (candidate: ReferenceCandidate) => React.ReactNode;
   /** "Use a recipe from my box instead": the read is thrown away and this one is linked. */
   onLink: (recipe: Recipe) => void;
   onClose: () => void;
@@ -64,7 +71,8 @@ interface Props {
  * recipe box" on a row that was never read.
  */
 export function ImportedComponentEditSheet({
-  visible, fallbackName, extracted, parent, onSave, onLink, onClose,
+  visible, fallbackName, extracted, parent, onSave, references = [], coveringKeys, renderReference,
+  onLink, onClose,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -89,6 +97,13 @@ export function ImportedComponentEditSheet({
   const existingSections = useMemo(
     () => sectionsOf(draft.ingredients.map((row, i) => ({ id: String(i), section: row.section }))),
     [draft.ingredients],
+  );
+
+  // An ingredient line naming a recipe that is about to be linked is already
+  // shopped for through that link, so it shows unticked with the reason.
+  const covered = useMemo(
+    () => coveredIngredients(draft.ingredients, references, coveringKeys ?? new Set()),
+    [draft.ingredients, references, coveringKeys],
   );
 
   const toggleIn = (key: 'acceptedIngredients' | 'acceptedSteps', index: number) => {
@@ -193,6 +208,16 @@ export function ImportedComponentEditSheet({
             />
           </View>
 
+          {references.length > 0 && !!renderReference && (
+            <>
+              <Text style={styles.groupLabel}>OTHER RECIPES THIS ONE USES</Text>
+              <HelpText style={styles.groupHint}>
+                Link the ones you already have, or photograph the page for the ones you don’t.
+              </HelpText>
+              <View style={styles.referenceBlock}>{references.map(renderReference)}</View>
+            </>
+          )}
+
           {draft.ingredients.length > 0 && (
             <>
               <Text style={styles.groupLabel}>INGREDIENTS</Text>
@@ -203,7 +228,7 @@ export function ImportedComponentEditSheet({
                   row={row}
                   edits={edits}
                   index={i}
-                  checked={draft.acceptedIngredients.has(i)}
+                  checked={draft.acceptedIngredients.has(i) && !covered.has(i)}
                   onToggle={() => toggleIn('acceptedIngredients', i)}
                   onEditName={name => editIngredient(i, { name })}
                   onEditQuantity={quantity => editIngredient(i, { quantity })}
@@ -215,6 +240,7 @@ export function ImportedComponentEditSheet({
                   }}
                   existingSections={existingSections}
                   catalogItems={groceryItems}
+                  note={covered.has(i) ? `made from the ${covered.get(i)} recipe` : null}
                   sectionHeader={
                     row.section && row.section !== (i > 0 ? draft.ingredients[i - 1].section : null)
                       ? row.section
@@ -329,6 +355,16 @@ function makeStyles(colors: Colors) {
       paddingHorizontal: spacing.md,
       paddingTop: spacing.md,
     },
+    groupHint: {
+      color: colors.textTertiary,
+      fontSize: font.xs,
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.xxs,
+      paddingBottom: spacing.xs,
+    },
+    // Its own bottom margin: the ingredient rows below have none, and a 2pt
+    // gap would read as one continuous list.
+    referenceBlock: { marginBottom: spacing.sm },
     meta: {
       color: colors.textTertiary,
       fontSize: font.xs,

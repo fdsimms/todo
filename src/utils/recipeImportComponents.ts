@@ -146,9 +146,12 @@ export function coveredIngredients(
   // The name the *first* page used for it, not the title of whatever page 45
   // turned out to be called: it's the ingredient line's own word for the thing,
   // which is what makes the note read as an explanation of that line.
+  // Keyed by the reference's own name rather than `candidate.key`: a nested
+  // candidate's key is namespaced by its component (`nestedComponentKey`), and
+  // an ingredient line says only "chile paste".
   const nameByKey = new Map<string, string>();
   for (const candidate of candidates) {
-    if (acceptedKeys.has(candidate.key)) nameByKey.set(candidate.key, candidate.reference.name);
+    if (acceptedKeys.has(candidate.key)) nameByKey.set(groceryNameKey(candidate.reference.name), candidate.reference.name);
   }
 
   ingredients.forEach((row, index) => {
@@ -312,3 +315,13 @@ export function componentDraftChanged(
   if (draft.ingredients.some((row, i) => JSON.stringify(row) !== JSON.stringify(start.ingredients[i]))) return true;
   return draft.steps.some((step, i) => step !== start.steps[i]);
 }
+
+/**
+ * The key of a reference found on a component's own page, namespaced by the
+ * component's. Rows nested under two components can both mention the same
+ * recipe, and one flat map of states and ticks has to keep them apart.
+ */
+export const nestedComponentKey = (parentKey: string, key: string): string => `${parentKey}>${key}`;
+
+/** Whether a key names a nested reference. Nesting stops there: one level, so a flow with no bottom has one. */
+export const isNestedComponentKey = (key: string): boolean => key.includes('>');

@@ -54,7 +54,7 @@ import { recipeFromPageOffline } from '../utils/recipePageOffline';
 import {
   alreadyInRecipeNote, blockedReviewRows,
   normalizeIngredient, splitImportedAlternatives, cleanRecipeName, cleanRecipeSource, cookbookKey, formatServingsRange,
-  parseServingsRange, recipeInBook,
+  parseServingsRange, recipeInBook, recipeNameKey,
 } from '../utils/recipeUtils';
 import { describeKeepDays } from '../utils/leftovers';
 import { sourceFieldsFor, sourcePlanFor } from '../utils/recipeProvenance';
@@ -269,7 +269,7 @@ export function RecipeCreateSheet({
     () => (extracted ? importableReferences(extracted.references, recipes, null) : []),
     [extracted, recipes],
   );
-  const components = useRecipeComponentImports(candidates, aisleOrder);
+  const components = useRecipeComponentImports(candidates, aisleOrder, name.trim() ? recipeNameKey(name) : null);
   const { reset: resetComponents, acceptedKeys } = components;
   // An ingredient line naming a recipe that's about to become a component is
   // already shopped for through that component — see coveredIngredients.
@@ -780,14 +780,8 @@ export function RecipeCreateSheet({
             <ImportedComponentRow
               key={candidate.key}
               candidate={candidate}
-              state={components.stateFor(candidate.key)}
-              accepted={components.accepted.has(candidate.key)}
+              imports={components}
               parent={null}
-              onToggle={() => components.toggle(candidate.key)}
-              onImport={source => components.importFrom(candidate.key, source)}
-              onLink={picked => components.linkTo(candidate.key, picked)}
-              onEdit={edited => components.editRead(candidate.key, edited)}
-              onDismiss={() => components.dismiss(candidate.key)}
             />
           ))}
         </View>
