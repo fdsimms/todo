@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TAB_BAR_HEIGHT } from './DemoBanner';
 import { BannerBar } from './BannerBar';
@@ -42,9 +43,18 @@ export function EventCreatedToast() {
   if (!created) return null;
 
   const open = () => {
-    const { id, start } = created;
+    const { id } = created;
     clear();
-    void openEventInSystemCalendar(id, start);
+    // No occurrence start: a just-added event is its own first occurrence, and
+    // expo-calendar matches a given start to the stored one exactly, so an
+    // all-day or second-rounded start came back "not found" and nothing opened.
+    void openEventInSystemCalendar(id).then(opened => {
+      if (opened) return;
+      Alert.alert(
+        "Couldn’t open the event",
+        'Open the Calendar app to see it. If calendar access is off, turn it on in Settings.'
+      );
+    });
   };
 
   const justSaved = savedKey === created.key;
