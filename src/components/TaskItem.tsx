@@ -133,6 +133,7 @@ import { SwipeActionButtons } from './SwipeActionButtons';
 import type { CardAnchor } from '../utils/cardAnchor';
 import { RotationPickSheet } from './RotationPickSheet';
 import { RotationChecklist } from './RotationChecklist';
+import { RotationPills } from './RotationPills';
 import { isRotationTask, plannedRotationItem, rotationLastPickLabel, rotationMembers, rotationOverCommitted } from '../utils/rotation';
 import {
   describeProjectQuiet,
@@ -2513,6 +2514,18 @@ const TaskItemRow = React.memo(function TaskItem({
     setShowRotationPick(true);
   };
 
+  // A pill on the row is the picker's shortcut: the same guards as the tap
+  // above, then the pick itself, with no sheet in between.
+  const handleRotationPillTap = async (itemId: string) => {
+    if (completingRef.current || pacingOutRef.current) return;
+    if (completionLocked) {
+      await haptics.error();
+      return;
+    }
+    if (isNew) markTaskSeen(task.id);
+    await handleRotationPick(itemId);
+  };
+
   const handleRotationPick = async (itemId: string) => {
     setShowRotationPick(false);
     if (completingRef.current || pacingOutRef.current) return;
@@ -3886,6 +3899,14 @@ const TaskItemRow = React.memo(function TaskItem({
               </View>
             )}
           </View>
+        )}
+        {isRotation && (
+          <RotationPills
+            task={task}
+            onPick={handleRotationPillTap}
+            disabled={selectionMode || completing}
+            onRaised={trayRaised}
+          />
         )}
         {/* What an Apple Reminders import read off the reminder but hasn't
             applied. It's an offer, not a state: the row is still bare

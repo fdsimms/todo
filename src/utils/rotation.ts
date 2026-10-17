@@ -287,6 +287,38 @@ export function rotationMembers(
   });
 }
 
+/** A member as the task row's pills draw it. */
+export interface RotationPill {
+  id: string;
+  title: string;
+  /** Its count for the period is reached. A done pill can still be tapped to log it again. */
+  done: boolean;
+  /** "1/3" for a member done more than once a week, null for one done once. */
+  progress: string | null;
+}
+
+/**
+ * What the task row says about each member without opening anything: its name,
+ * whether it is covered, and how far along it is when it takes more than one.
+ *
+ * Deliberately no "last done" here. The picker's second line carries that, and
+ * it is what makes the picker a decision rather than a list (see
+ * `RotationPickSheet`); a pill is a one-tap shortcut for someone who already
+ * knows which they did. Order is the set's own, as everywhere else.
+ */
+export function rotationPills(
+  task: RotationCarrier,
+  dayStart: Date,
+  weekStartsOn: 0 | 1,
+): RotationPill[] {
+  return rotationMembers(task, dayStart, weekStartsOn).map(m => ({
+    id: m.item.id,
+    title: m.item.title,
+    done: m.doneAt !== null,
+    progress: m.perWeek > 1 ? `${Math.min(m.count, m.perWeek)}/${m.perWeek}` : null,
+  }));
+}
+
 /** The members still outstanding this period, in the set's own order. */
 export function rotationRemaining(
   task: RotationCarrier,

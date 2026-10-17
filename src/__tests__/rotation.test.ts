@@ -14,6 +14,7 @@ import {
   rotationOverCommitted,
   rotationPeriodStart,
   rotationPick,
+  rotationPills,
   rotationRemaining,
   rotationUnpick,
   rotationUnpickUncovers,
@@ -472,5 +473,33 @@ describe("today's plan", () => {
     expect(rotationPick(today, 'run', WED, WED, 1)!.rotationPlan).toBeNull();
     const other = { ...workouts([]), rotationPlan: { itemId: 'bike', dayKey: '2026-09-17' } };
     expect(rotationPick(other, 'run', WED, WED, 1)!.rotationPlan).toEqual({ itemId: 'bike', dayKey: '2026-09-17' });
+  });
+});
+
+describe('rotationPills', () => {
+  it('lists every member in the set\'s own order, none done on a fresh week', () => {
+    expect(rotationPills(rot(), WED, 1).map(p => [p.title, p.done])).toEqual([
+      ['Spanish', false], ['French', false], ['German', false], ['Japanese', false], ['Portuguese', false],
+    ]);
+  });
+
+  it('shows a count only for a member done more than once a week', () => {
+    const pills = rotationPills(workouts(['run']), WED, 1);
+    expect(pills.map(p => [p.title, p.progress])).toEqual([['Run', '1/3'], ['Peloton ride', null]]);
+  });
+
+  it('marks a member done only once it reaches its own count', () => {
+    expect(rotationPills(workouts(['run', 'run']), WED, 1)[0].done).toBe(false);
+    expect(rotationPills(workouts(['run', 'run', 'run']), WED, 1)[0]).toMatchObject({ done: true, progress: '3/3' });
+    expect(rotationPills(workouts(['bike']), WED, 1)[1]).toMatchObject({ done: true, progress: null });
+  });
+
+  it('caps the count at the member\'s own, however often it is logged', () => {
+    expect(rotationPills(workouts(['run', 'run', 'run', 'run']), WED, 1)[0].progress).toBe('3/3');
+  });
+
+  it('starts clean when the ledger belongs to an earlier week', () => {
+    const lastWeek = workouts(['run', 'run', 'run', 'bike'], WED);
+    expect(rotationPills(lastWeek, NEXT_MON, 1).every(p => !p.done)).toBe(true);
   });
 });
