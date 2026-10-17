@@ -1582,3 +1582,21 @@ describe('savedMealRuns', () => {
     expect(runs.size).toBe(0);
   });
 });
+
+describe('saved meals and the estimator', () => {
+  const item = (calorieKcal: number, proteinG?: number) => ({
+    label: 'x', recipeId: null, itemId: null, productId: null, quantity: '1', grams: null,
+    nutrition: { amounts: { calorieKcal, ...(proteinG === undefined ? {} : { proteinG }) }, source: 'manual' },
+  }) as never;
+
+  it('sums only the nutrients every item states', () => {
+    const { savedMealAmounts } = require('../utils/foodLog');
+    expect(savedMealAmounts([item(100, 5), item(50)])).toEqual({ calorieKcal: 150 });
+  });
+
+  it('finds a saved meal through an amount and a typo', () => {
+    const { savedMealsMatching } = require('../utils/foodLog');
+    const meals = [{ id: '1', name: "Za'atar roasted vegetables", items: [], createdAt: '' }];
+    expect(savedMealsMatching(meals, '122g zataar roasted vegetables')).toHaveLength(1);
+  });
+});
