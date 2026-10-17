@@ -840,6 +840,13 @@ export interface RecipeGroceryItem {
    */
   optional?: boolean;
   /**
+   * The label shared by the rows that are alternatives of each other ("Red
+   * shatta or rose harissa"). Read straight into RecipeIngredient.choiceGroup
+   * by normalizeIngredient. Never set by the model: `splitImportedAlternatives`
+   * writes it where the import review splits an "x or y" line.
+   */
+  choiceGroup?: string | null;
+  /**
    * True for a staple already on hand rather than something to shop for —
    * water used at a stated amount, most often. Read straight into
    * RecipeIngredient.excludeFromShoppingList by normalizeIngredient. Same

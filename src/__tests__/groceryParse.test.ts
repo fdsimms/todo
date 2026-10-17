@@ -5,6 +5,7 @@ import {
   splitPurpose,
   splitExample,
   splitAlternativeNames,
+  splitImportAlternatives,
   suggestShorterCatalogName,
   resolveGroceryTokens,
   splitGroceryLines,
@@ -880,5 +881,32 @@ describe('parseGroceryInput measures', () => {
 
   it('reads the fraction slash', () => {
     expect(parseGroceryInput('1⁄2 cup sugar')).toEqual({ name: 'sugar', quantity: '1/2 cup' });
+  });
+});
+
+describe('splitImportAlternatives', () => {
+  it('splits options of the same length in words', () => {
+    expect(splitImportAlternatives('red shatta or rose harissa')).toEqual(['red shatta', 'rose harissa']);
+    expect(splitImportAlternatives('butter or margarine')).toEqual(['butter', 'margarine']);
+    expect(splitImportAlternatives('corn tortillas or flour tortillas')).toEqual(['corn tortillas', 'flour tortillas']);
+  });
+
+  it('puts the noun back on a known variety, which then matches in length', () => {
+    expect(splitImportAlternatives('red or white onion')).toEqual(['red onion', 'white onion']);
+  });
+
+  it('leaves a shared trailing noun alone, where a verbatim split would store an adjective', () => {
+    expect(splitImportAlternatives('chicken or vegetable stock')).toBeNull();
+    expect(splitImportAlternatives('salted or unsalted butter')).toBeNull();
+    expect(splitImportAlternatives('extra virgin or light olive oil')).toBeNull();
+    expect(splitImportAlternatives('butter or olive oil')).toBeNull();
+  });
+
+  it('leaves an option that carries its own amount alone', () => {
+    expect(splitImportAlternatives('butter or 3 tbsp oil')).toBeNull();
+  });
+
+  it('leaves a hedge about quantity alone, like splitAlternativeNames', () => {
+    expect(splitImportAlternatives('salt or more to taste')).toBeNull();
   });
 });
