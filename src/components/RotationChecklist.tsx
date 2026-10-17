@@ -69,7 +69,7 @@ export function RotationChecklist({ task, label = 'This week', asOf }: Props) {
             <Text style={styles.when}>{Math.min(member.count, member.perWeek)}/{member.perWeek}</Text>
           )}
           <Text style={[styles.when, member.item.id === lastId && styles.whenLast]}>
-            {whenText(member, lastId, asOf, dayStart)}
+            {whenText(member, asOf, dayStart)}
           </Text>
         </View>
       ))}
@@ -79,16 +79,12 @@ export function RotationChecklist({ task, label = 'This week', asOf }: Props) {
 
 /** The note at a row's right edge: the day it was done this week, else how long ago it was last done. */
 function whenText(
-  member: { item: { id: string }; doneAt: string | null; lastDoneAt: string | null },
-  lastId: string | null,
+  member: { doneAt: string | null; lastDoneAt: string | null },
   asOf: Date | undefined,
   dayStart: Date,
 ): string | null {
-  const when = member.doneAt !== null
-    ? format(new Date(member.doneAt), 'EEE')
-    : asOf ? null : rotationLastDoneLabel(member.lastDoneAt, dayStart);
-  if (when === null) return null;
-  return member.item.id === lastId ? `Last · ${when}` : when;
+  if (member.doneAt !== null) return format(new Date(member.doneAt), 'EEE');
+  return asOf ? null : rotationLastDoneLabel(member.lastDoneAt, dayStart);
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({

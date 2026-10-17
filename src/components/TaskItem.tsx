@@ -133,7 +133,7 @@ import { SwipeActionButtons } from './SwipeActionButtons';
 import type { CardAnchor } from '../utils/cardAnchor';
 import { RotationPickSheet } from './RotationPickSheet';
 import { RotationChecklist } from './RotationChecklist';
-import { isRotationTask, plannedRotationItem, rotationLastPickLabel, rotationMembers, rotationOverCommitted, rotationSummary } from '../utils/rotation';
+import { isRotationTask, plannedRotationItem, rotationLastPickLabel, rotationMembers, rotationOverCommitted } from '../utils/rotation';
 import {
   describeProjectQuiet,
   projectQuietDays,
@@ -1652,9 +1652,6 @@ const TaskItemRow = React.memo(function TaskItem({
   // in that a tap has to ask which member. `isQuota` already excludes a
   // completed or negative row, so this inherits both guards.
   const isRotation = isQuota && isRotationTask(task);
-  const rotationLine = isRotation
-    ? rotationSummary(task, rotationDayStart, weekStartsOn)
-    : null;
   const rotationTight = isRotation && rotationOverCommitted(task, rotationDayStart, weekStartsOn);
   const rotationLast = isRotation
     ? rotationLastPickLabel(task, rotationDayStart, weekStartsOn)
@@ -3378,25 +3375,14 @@ const TaskItemRow = React.memo(function TaskItem({
                 <Ionicons name="speedometer-outline" size={iconSize.xs} color={colors.accent} />
                 {/* The count rolls as a unit lands; the rest stays put and is
                     what gives way if the chip runs out of room. */}
-                <AnimatedNumber text={quotaProgress} value={quotaLogged} style={styles.quotaLabel} />
+                <AnimatedNumber
+                  text={quotaProgress}
+                  value={quotaLogged}
+                  style={[styles.quotaLabel, rotationTight && styles.rotationTight]}
+                />
                 {quotaReturnAt ? (
                   <Text style={[styles.quotaLabel, styles.quotaReturn]} numberOfLines={1}>{`· next ${quotaReturnAt}`}</Text>
                 ) : null}
-              </View>
-            )}
-            {rotationLine !== null && (
-              // Deliberately not the pace ramp said twice: the gap between the
-              // meter's fill and its pace mark already draws "behind". This is
-              // the discrete claim the ramp cannot make — what is left no
-              // longer fits in the days left — and it only takes the warning
-              // colour at that point.
-              <View style={styles.metaChip}>
-                <Text
-                  style={[styles.quotaLabel, rotationTight && styles.rotationTight]}
-                  numberOfLines={1}
-                >
-                  {rotationLine}
-                </Text>
               </View>
             )}
             {rotationPlanned !== null && (
@@ -3414,7 +3400,7 @@ const TaskItemRow = React.memo(function TaskItem({
             {rotationLast !== null && (
               // Its own chip, so a long member name truncates itself rather
               // than the count beside it, and so it still shows once the set
-              // is covered and `rotationLine` has gone quiet.
+              // is covered.
               <View style={styles.metaChip}>
                 <Text style={styles.quotaLabel} numberOfLines={1}>{rotationLast}</Text>
               </View>
@@ -5603,8 +5589,8 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
     fontWeight: fontWeight.medium,
   },
   quotaReturn: { flexShrink: 1 },
-  // Only worn once what's outstanding no longer fits in the days left — see
-  // rotationOverCommitted, which is deliberately a harder test than "behind".
+  // Worn by the count once what's outstanding no longer fits in the days left —
+  // see rotationOverCommitted, which is deliberately a harder test than "behind".
   rotationTight: { color: colors.orangeText },
   // Deliberately textSecondary rather than red: the shield beside it is already
   // carrying the alarm, and a second red thing on the same row would make one

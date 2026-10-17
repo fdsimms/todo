@@ -413,25 +413,6 @@ export function rotationOverCommitted(
 }
 
 /**
- * The row's secondary line: "3 left · 4 days", or null once the set is covered.
- *
- * Null rather than "all done" because the row carries a meter that is already
- * full and a count chip that already reads 5/5; a third element saying the same
- * thing is what makes a row feel crowded.
- */
-export function rotationSummary(
-  task: RotationCarrier,
-  dayStart: Date,
-  weekStartsOn: 0 | 1,
-): string | null {
-  if (!isRotationTask(task)) return null;
-  const remaining = rotationUnitsLeft(task, dayStart, weekStartsOn);
-  if (remaining === 0) return null;
-  const days = rotationDaysLeft(dayStart, weekStartsOn);
-  return `${remaining} left · ${days} ${days === 1 ? 'day' : 'days'}`;
-}
-
-/**
  * Applies a pick to a task's rotation state, returning only the fields that
  * change. The caller writes them; this decides them.
  *
@@ -579,8 +560,8 @@ export function rotationLastPick(
 
 /**
  * The row's "Last: Spanish, yesterday" chip, or null before anything has been
- * logged. Separate from `rotationSummary` so the member's name can be the part
- * that truncates in its own chip rather than cutting off "3 left" behind it.
+ * logged. Its own chip so the member's name is the part that truncates, rather
+ * than the count beside it.
  */
 export function rotationLastPickLabel(
   task: RotationCarrier,
