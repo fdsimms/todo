@@ -1,5 +1,6 @@
 import {
   alreadyScanned,
+  classifyTypedEntry,
   matchScans,
   nameFromScanFor,
   newItemBox,
@@ -452,5 +453,30 @@ describe('newItemBox', () => {
     expect(newItemBox(typed)).toEqual({ brand: null, variant: null });
     expect(newItemBox({ ...typed, brandEdit: 'Chobani', variantEdit: 'Vanilla' }))
       .toEqual({ brand: 'Chobani', variant: 'Vanilla' });
+  });
+});
+
+describe('classifyTypedEntry', () => {
+  it('reads a valid barcode, spaces and all', () => {
+    expect(classifyTypedEntry('0 12345 67890 5', false)).toEqual({ kind: 'gtin', gtin: '00012345678905' });
+  });
+
+  it('refuses digits that are not a barcode instead of naming a food after them', () => {
+    expect(classifyTypedEntry('7172053944', true)).toEqual({ kind: 'invalid', reason: 'digits' });
+    expect(classifyTypedEntry('71720 53944', false)).toEqual({ kind: 'invalid', reason: 'digits' });
+  });
+
+  it('keeps a produce sticker and a plain name where names are allowed', () => {
+    expect(classifyTypedEntry('4011', true)).toEqual({ kind: 'plu', plu: '4011' });
+    expect(classifyTypedEntry(' bananas ', true)).toEqual({ kind: 'name', name: 'bananas' });
+  });
+
+  it('takes barcodes only where names are not allowed', () => {
+    expect(classifyTypedEntry('bananas', false)).toEqual({ kind: 'invalid', reason: 'name' });
+    expect(classifyTypedEntry('4011', false)).toEqual({ kind: 'invalid', reason: 'digits' });
+  });
+
+  it('says nothing for an empty field', () => {
+    expect(classifyTypedEntry('   ', true)).toBeNull();
   });
 });
