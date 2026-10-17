@@ -25,6 +25,7 @@ import {
   normalizeStep,
   resolvePrepTaskDraft,
   prepTaskDraftsForMeal,
+  prepOfferMessage,
   describeCookHistory,
   applyMeasuredCookTime,
   applyMeasuredPrepTime,
@@ -59,6 +60,7 @@ import {
   recipeHasAttribution,
   defaultChoiceGroupLabel,
 } from '../utils/recipeUtils';
+import { splitIngredientAnd } from '../utils/recipeUtils';
 import type { GroceryItem, ItemSubLink, Recipe, RecipeBlank, RecipeComponent, RecipeIngredient, RecipePrepTask } from '../types';
 import { RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH, RECIPE_STEP_NOTE_MAX_LENGTH } from '../types';
 
@@ -942,6 +944,23 @@ describe('prepTaskDraftsForMeal', () => {
     const drafts = prepTaskDraftsForMeal(steak, new Map([[steak.id, steak], [mash.id, mash]]), mealDate);
     expect(drafts.map(d => d.title)).toEqual(['Take the steak out', 'Boil the potatoes']);
     expect(new Date(drafts[1].dueDate).getDate()).toBe(14);
+    expect(drafts.map(d => d.source)).toEqual([null, 'Mash']);
+  });
+
+  it("names the component in the offer's text", () => {
+    const mash = recipe('Mash', { prepTasks: [prepTask('Boil the potatoes')] });
+    const steak = recipe('Steak with mash', {
+      prepTasks: [prepTask('Take the steak out')],
+      components: [component(mash.id, 'Mash')],
+    });
+    const byId = new Map([[steak.id, steak], [mash.id, mash]]);
+    expect(prepOfferMessage(steak.name, prepTaskDraftsForMeal(steak, byId, mealDate))).toBe(
+      'Steak with mash has 2 prep steps:\n• Take the steak out\n• Boil the potatoes (for Mash)\n\nAdd them to your tasks?'
+    );
+    const onlyMash = recipe('Dinner', { components: [component(mash.id, 'Mash')] });
+    expect(prepOfferMessage(onlyMash.name, prepTaskDraftsForMeal(onlyMash, new Map([[onlyMash.id, onlyMash], [mash.id, mash]]), mealDate))).toBe(
+      'Dinner has 1 prep step: Boil the potatoes (for Mash). Add it to your tasks?'
+    );
   });
 
   it('ignores a component whose recipe is gone', () => {
@@ -2665,6 +2684,51 @@ describe('defaultChoiceGroupLabel', () => {
   it('ignores blanks and handles a single or empty list', () => {
     expect(defaultChoiceGroupLabel(['  ', 'Butter'])).toBe('Butter');
     expect(defaultChoiceGroupLabel([])).toBe('');
+  });
+});
+
+describe('splitIngredientAnd', () => {
+  const line = (name: string, quantity = '') => splitIngredientAnd({ name, quantity });
+
+  it('keeps each amount with the thing it was written beside', () => {
+    expect(line('flour and 1 cup sugar', '1 cup')).toEqual([
+      { name: 'flour', quantity: '1 cup' },
+      { name: 'sugar', quantity: '1 cup' },
+    ]);
+  });
+
+  it('gives a part with no amount of its own none, rather than sharing the first', () => {
+    expect(line('flour and sugar', '1 cup')).toEqual([
+      { name: 'flour', quantity: '1 cup' },
+      { name: 'sugar', quantity: '' },
+    ]);
+  });
+
+  it('splits a bare pair with no amounts at all', () => {
+    expect(line('salt and pepper')).toEqual([
+      { name: 'salt', quantity: '' },
+      { name: 'pepper', quantity: '' },
+    ]);
+  });
+
+  it('hands a trailing "to taste" to every part without an amount', () => {
+    expect(line('salt and pepper to taste')).toEqual([
+      { name: 'salt', quantity: 'to taste' },
+      { name: 'pepper', quantity: 'to taste' },
+    ]);
+    expect(line('salt and 1 tsp pepper to taste', '')).toEqual([
+      { name: 'salt', quantity: 'to taste' },
+      { name: 'pepper', quantity: '1 tsp' },
+    ]);
+  });
+
+  it('refuses a later part carrying a number that is not an amount', () => {
+    expect(line('lemon juice and zest of 1 lemon')).toBeNull();
+  });
+
+  it('is null for a line that does not split', () => {
+    expect(line('half and half', '1 cup')).toBeNull();
+    expect(line('garlic')).toBeNull();
   });
 });
 

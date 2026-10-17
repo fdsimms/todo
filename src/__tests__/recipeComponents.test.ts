@@ -21,6 +21,7 @@ import {
   parseRecipeChoices,
   alternativeCaptions,
   recipeAlternativeCaptions,
+  choiceOptionsShownTogether,
   choiceGroupKey,
   componentPlacement,
   ingredientLayout,
@@ -745,6 +746,30 @@ describe('choice groups', () => {
       expect(captions.get(taco.ingredients[1].id)).toBe('or Tortillas de Maíz');
       expect(captions.get(taco.components[0].id)).toBe('or Corn tortillas');
     });
+  });
+});
+
+describe('choiceOptionsShownTogether', () => {
+  const row = (id: string, choiceGroup: string | null = null) => ({ id, choiceGroup });
+
+  it('includes a group whose options sit side by side', () => {
+    const rows = [row('a'), row('b', 'Chile'), row('c', 'Chile'), row('d')];
+    expect([...choiceOptionsShownTogether(rows)]).toEqual(['b', 'c']);
+  });
+
+  it('leaves out a group another row splits up', () => {
+    const rows = [row('b', 'Chile'), row('x'), row('c', 'Chile')];
+    expect(choiceOptionsShownTogether(rows).size).toBe(0);
+  });
+
+  it('leaves out a group a section heading splits up', () => {
+    const rows = [row('b', 'Chile'), row('heading:Sauce'), row('c', 'Chile')];
+    expect(choiceOptionsShownTogether(rows).size).toBe(0);
+  });
+
+  it('judges each group on its own', () => {
+    const rows = [row('b', 'Chile'), row('c', 'Chile'), row('m', 'Milk'), row('x'), row('n', 'Milk')];
+    expect([...choiceOptionsShownTogether(rows)]).toEqual(['b', 'c']);
   });
 });
 

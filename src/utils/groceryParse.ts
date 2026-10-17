@@ -656,6 +656,9 @@ const VARIETY_MODIFIERS: Record<string, string[]> = {
   lentils: ['red', 'green', 'brown', 'yellow', 'black'],
   cabbage: ['red', 'green', 'napa', 'savoy'],
 };
+for (const noun of ['chile', 'chiles', 'chili', 'chilies', 'chilli', 'chillies']) {
+  VARIETY_MODIFIERS[noun] = ['red', 'green', 'long red', 'long green', 'dried', 'fresh', 'thai'];
+}
 
 /**
  * Puts a noun back on whichever bare options dropped it, when the last
@@ -785,6 +788,64 @@ export function splitImportAlternatives(name: string): string[] | null {
  */
 export function looksLikeAlternativeList(name: string): boolean {
   return OXFORD_OR.test(name) && splitAlternativeNames(name) !== null;
+}
+
+/**
+ * Names where "and" is part of what the thing is called, so the line is one
+ * shelf item and not two. Curated and short, the same discipline UNITS and
+ * VARIETY_MODIFIERS follow: it only has to cover the products that actually
+ * turn up in a recipe, and a gap costs a suggestion the user can decline.
+ */
+const AND_COMPOUNDS = new RegExp(
+  `\\b(?:${[
+    'half and half', 'mac and cheese', 'macaroni and cheese', 'salt and vinegar',
+    'oil and vinegar', 'sweet and sour', 'sweet and spicy', 'hot and sour',
+    'bread and butter', 'sour cream and onion', 'cream and onion', 'pork and beans',
+    'peaches and cream', 'cookies and cream', 'fish and chips', 'peanut butter and jelly',
+    'oats and honey', 'fruit and nut',
+  ].join('|')})\\b`,
+  'i',
+);
+
+/** "salt, pepper, and paprika": the comma before the "and" licenses reading the other commas as separators. */
+const OXFORD_AND = /,\s*and\s+/i;
+const AND_LIST_SEPARATOR = /\s*,\s*(?:and\s+)?|\s+and\s+/i;
+
+/**
+ * "salt and pepper" → `['salt', 'pepper']`, and null for anything that isn't
+ * two or more things written on one line.
+ *
+ * The sibling of `splitAlternativeNames` for "and", and it keeps the same
+ * contract: **it only feeds a suggestion the user confirms.** "And" is
+ * ambiguous in a way "or" is not. "Half and half" and "mac and cheese" are one
+ * item (AND_COMPOUNDS), and "red and white onion" is two onions where
+ * "butter and olive oil" is not "butter oil", so the parts come back verbatim
+ * apart from the one curated case `distributeVarietyNoun` already knows.
+ *
+ * A line with "or" in it is left to the either/or suggestion, so one row never
+ * carries two competing offers. Commas are separators only in the Oxford form
+ * (see OXFORD_AND); "garlic, minced and divided" is a prep clause, not a
+ * second ingredient, and a part that opens with a prep word is refused for the
+ * same reason in either form.
+ */
+export function splitAndNames(name: string): string[] | null {
+  const trimmed = name.trim();
+  if (!trimmed || /\s+or\s+/i.test(trimmed) || AND_COMPOUNDS.test(trimmed)) return null;
+  const asList = OXFORD_AND.test(trimmed);
+  if (!asList && trimmed.includes(',')) return null;
+  const parts = trimmed
+    .split(asList ? AND_LIST_SEPARATOR : /\s+and\s+/i)
+    .map(part => part.trim())
+    .filter(part => part.length > 0);
+  if (parts.length < 2 || parts.length > MAX_ALTERNATIVES) return null;
+  if (parts.some(part => !/[a-z]/i.test(part))) return null;
+  if (parts.slice(1).some(part => {
+    const first = firstWord(part);
+    return NOT_AN_ALTERNATIVE.has(first) || PREP_CLAUSE_WORDS.has(first);
+  })) return null;
+  const keys = parts.map(groceryNameKey);
+  if (new Set(keys).size !== keys.length) return null;
+  return distributeVarietyNoun(parts);
 }
 
 /**

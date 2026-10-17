@@ -27,7 +27,7 @@ import { groceryNameKey, splitAlternativeNames } from '../utils/groceryParse';
 import { varietyOfferFor } from '../utils/itemVarieties';
 import { matchIngredientToCatalog } from '../utils/ingredientCatalogMatch';
 import { catalogItemForKey } from '../utils/groceryPlural';
-import { cleanChoiceGroup, defaultChoiceGroupLabel } from '../utils/recipeUtils';
+import { cleanChoiceGroup, defaultChoiceGroupLabel, splitIngredientAnd as andPartsOf, type AndSplitPart } from '../utils/recipeUtils';
 import { describeCatalogItem } from '../utils/groceryProduct';
 import { allSectionsOf } from '../utils/recipeSections';
 import { standingSwapMap } from '../utils/standingSwaps';
@@ -51,6 +51,9 @@ interface Props {
   ingredient: RecipeIngredient | null;
   onClose: () => void;
 }
+
+/** "1 cup flour": a part of an "and" split as the new line will read. */
+const andPartLabel = (part: AndSplitPart) => [part.quantity, part.name].filter(Boolean).join(' ');
 
 /**
  * One ingredient line: what to buy, how much, which part of the recipe it
@@ -90,6 +93,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
 
   const updateIngredient = useRecipeStore(s => s.updateIngredient);
   const splitIngredientAlternatives = useRecipeStore(s => s.splitIngredientAlternatives);
+  const splitIngredientAnd = useRecipeStore(s => s.splitIngredientAnd);
   const mergeChoiceGroup = useRecipeStore(s => s.mergeChoiceGroup);
   const renameChoiceGroup = useRecipeStore(s => s.renameChoiceGroup);
   const setComponentChoiceGroup = useRecipeStore(s => s.setComponentChoiceGroup);
@@ -338,6 +342,19 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
   // stock" needs a human to finish it.
   const alternatives = splitAlternativeNames(name);
 
+  // "salt and pepper" wants to be two lines you buy, the other half of the
+  // suggestion above. Read off the saved line rather than the name being
+  // typed, because accepting splits the stored row; a name edited but not yet
+  // saved has nothing to split. Withheld for a line in a choice group, or one
+  // with a part the recipe already lists, which the store would refuse.
+  const andParts = ingredient && !alternatives && !ingredient.choiceGroup && name.trim() === ingredient.name
+    ? andPartsOf(ingredient)
+    : null;
+  const andPartsTaken = !!ingredient && !!andParts && andParts.some(part => (
+    recipeIngredients.some(other => other.id !== ingredient.id && other.nameKey === groceryNameKey(part.name))
+  ));
+  const andOffer = andPartsTaken ? null : andParts;
+
   // What the new group is called, asked beside the offer rather than after it.
   // Untouched, it's the short default (the whole line would be clipped at the
   // label cap and head the group as half a word); typing replaces it, and an
@@ -355,6 +372,14 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
   // still untickable. A control for a rule you haven't written would be a
   // setting explaining a feature rather than changing anything.
   const standingSwap = standingSwapMap(itemSubs, groceryItems).get(ingredient.nameKey) ?? null;
+
+  const acceptAndSplit = () => {
+    if (!ingredient || !andOffer) return;
+    if (!splitIngredientAnd(recipeId, ingredient.id)) { haptics.error(); return; }
+    haptics.success();
+    animateLayout();
+    onClose();
+  };
 
   const acceptSplit = () => {
     if (!ingredient || !alternatives) return;
@@ -497,6 +522,25 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
               <Text style={styles.suggestionDetail}>
                 Each becomes its own line. You pick one when you add this to your list.
               </Text>
+            </View>
+          </TouchableOpacity>
+        )}
+        {!!andOffer && (
+          <TouchableOpacity
+            style={styles.suggestionRow}
+            activeOpacity={interaction.activeOpacity}
+            onPress={acceptAndSplit}
+            accessibilityRole="button"
+            accessibilityLabel={`Split into ${andOffer.length} lines: ${andOffer.map(andPartLabel).join(', ')}`}
+          >
+            <Ionicons name="copy-outline" size={iconSize.sm} color={colors.accent} />
+            <View style={styles.suggestionBody}>
+              <Text style={styles.suggestionTitle}>Split into {andOffer.length} lines?</Text>
+              {/* Verbatim and up front, like the either/or offer: the amounts
+                  are the half to check, since only an amount a part wrote
+                  itself goes with it. */}
+              <Text style={styles.suggestionDetail}>{andOffer.map(andPartLabel).join('  ·  ')}</Text>
+              <Text style={styles.suggestionDetail}>Each becomes its own line, and you buy both.</Text>
             </View>
           </TouchableOpacity>
         )}
@@ -1224,7 +1268,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: spacing.xs,
   },
   splitNameRow: {
-    marginTop: spacing.xs,
+    marginTop: spacing.md,
     gap: spacing.xs,
   },
   splitNameInput: {

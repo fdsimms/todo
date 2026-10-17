@@ -184,7 +184,7 @@ export function CookModeSheet({
   const groceryItems = useGroceryStore(useShallow(s => s.items));
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
   // What each line weighs, where its food's portion table can say
-  // (lineWeight.ts) — the same caption the recipe page puts under a pill.
+  // (lineWeight.ts) — the same caption the recipe page puts beside a pill.
   const weightLookups = useMemo(
     () => buildWeightLookups(groceryItems, itemProducts),
     [groceryItems, itemProducts],
@@ -641,7 +641,7 @@ export function CookModeSheet({
                         )}
                       </View>
                       {!!converted.text && (
-                        <View style={styles.qtyColumn}>
+                        <View style={styles.qtyGroup}>
                           <View style={[styles.miseQtyPill, marked && styles.miseQtyPillMarked]}>
                             <Text
                               style={[styles.miseQtyText, marked && styles.miseQtyTextMarked]}
@@ -938,7 +938,7 @@ export function CookModeSheet({
                             )}
                           </View>
                           {!!converted.text && (
-                            <View style={styles.qtyColumn}>
+                            <View style={styles.qtyGroup}>
                               <View style={[styles.qtyPill, marked && styles.qtyPillMarked]}>
                                 <Text style={[styles.qtyText, marked && styles.qtyTextMarked]} numberOfLines={1}>
                                   {showContainerCount(converted.text)}
@@ -1390,14 +1390,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.sm,
   },
   qtyTextMarked: { color: colors.accent, fontWeight: fontWeight.medium },
-  // The line's weight under its pill (lineWeight.ts), same treatment as the
+  // The line's weight beside its pill (lineWeight.ts), same treatment as the
   // recipe page's.
-  qtyColumn: { alignItems: 'flex-end' },
+  qtyGroup: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   qtyWeight: {
     color: colors.textSecondary,
     fontSize: font.xs,
-    marginTop: spacing.xxs,
-    paddingHorizontal: spacing.sm,
   },
   // The mise en place screen: the same ingredient list the tray's collapsed
   // panel shows mid-step, but this is the one place it's the main event —
@@ -1489,8 +1487,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   miseWeight: {
     color: colors.textSecondary,
     fontSize: font.sm,
-    marginTop: spacing.xxs,
-    paddingHorizontal: spacing.sm,
   },
   timerCard: {
     backgroundColor: colors.bgSecondary,

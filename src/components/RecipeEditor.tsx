@@ -990,9 +990,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgTertiary,
     alignItems: 'center',
   },
-  pillActiveNeutral: { backgroundColor: colors.bgQuaternary },
+  pillActiveNeutral: { backgroundColor: colors.accentFill },
   pillText: { color: colors.text, fontSize: font.sm, fontWeight: '500' },
-  pillTextActive: { color: colors.text, fontWeight: '600' },
+  pillTextActive: { color: colors.onAccent, fontWeight: '600' },
   // Every one of these sits under an EditorRow, so they all take the indent.
   urlInput: {
     color: colors.text,

@@ -93,6 +93,7 @@ import {
   duplicateIngredientIn,
   ingredientsFromText,
   makeIngredient,
+  splitIngredientAnd,
   totalMinutes,
 } from '../utils/recipeUtils';
 import { buildIngredientsText, buildRecipeShareText } from '../utils/shareText';
@@ -113,6 +114,7 @@ import {
   ingredientLayout,
   optionalCounts,
   recipeAlternativeCaptions,
+  choiceOptionsShownTogether,
   describeOverrides,
   recipeChoiceGroups,
   stepOptionNames,
@@ -136,13 +138,14 @@ import {
   recipeNutrition,
 } from '../utils/recipeNutrition';
 import { formatOffsetLabel } from '../utils/templateUtils';
-import { splitAlternativeNames, splitGroceryLines } from '../utils/groceryParse';
+import { groceryNameKey, splitAlternativeNames, splitGroceryLines } from '../utils/groceryParse';
 import { dayKeyOf, getCurrentDayStart, getLogicalToday } from '../utils/dateUtils';
 import { plannedMealLabel } from '../utils/recipePlanned';
 import { resetToMealPlan, navigateToTab } from '../navigation/navigationRef';
 import { TextField } from '../components/TextField';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton, SCROLL_TO_TOP_SIZE } from '../components/ScrollToTopButton';
+import { SectionComposer } from '../components/SectionComposer';
 import { useActionMenu } from '../hooks/useActionMenu';
 import type { ActionMenuAction } from '../components/ActionMenu';
 import { FadeInImage } from '../components/FadeInImage';
@@ -158,7 +161,7 @@ type RootStackParamList = {
    * written back to the entry. `overrides` does the same for the meal's one-off
    * replacements (MealPlanEntry.recipeOverrides).
    */
-  RecipeDetail: { recipeId: string; choices?: string[]; overrides?: RecipeOverride[]; scale?: number; openCookMode?: number; openDetails?: number; draft?: boolean; returnTo?: string };
+  RecipeDetail: { recipeId: string; choices?: string[]; overrides?: RecipeOverride[]; scale?: number; openCookMode?: number; openDetails?: number; draft?: boolean; returnTo?: string; fromName?: string };
 };
 
 /** One row of the merged list the ingredients SortableList drags over — see mergedIngredientRows. */
@@ -481,7 +484,7 @@ export function RecipeDetailScreen() {
   const [addNote, setAddNote] = useState<string | null>(null);
   // What new ingredients are filed under, until changed or cleared — the add
   // field's own equivalent of RecipeIngredientSheet's Section field, and its
-  // picker works the same way (same PillGroup, same onCreate): it used to be
+  // picker works the same way (SectionComposer's menu, same onCreate): it used to be
   // free text, on the theory that a picker would be empty exactly when
   // someone first needed it, but the grid's own "New section" reveal field
   // fills that gap without letting a typo mint a heading nothing else can
@@ -795,10 +798,31 @@ export function RecipeDetailScreen() {
   // alternativeCaptions called twice) so a label crossing them gets one
   // consistent caption on each side rather than each list only ever seeing
   // its own options.
-  const alternativeNotesById = useMemo(
-    () => (recipe ? recipeAlternativeCaptions(recipe, recipesById) : new Map<string, string>()),
-    [recipe, recipesById],
-  );
+  //
+  // A group drawn as one unbroken run needs neither its "Choose one" header nor
+  // those captions: a thin "or" between the options says it, and the bar down
+  // the edge says they go together. A group split up by another row or a
+  // heading keeps the header and the captions, since there nothing else says
+  // what a line is an alternative to.
+  const choiceRuns = useMemo(() => {
+    const asGroupable = mergedIngredientRows.map(row =>
+      row.kind === 'ingredient' ? { id: row.id, choiceGroup: row.ingredient.choiceGroup }
+        : row.kind === 'component' ? { id: row.id, choiceGroup: row.resolved.component.choiceGroup }
+        : { id: row.id, choiceGroup: null });
+    const together = choiceOptionsShownTogether(asGroupable);
+    // The options of a together group after its first: each opens with the "or".
+    const orBefore = new Set<string>();
+    asGroupable.forEach((row, i) => {
+      if (together.has(row.id) && asGroupable[i - 1]?.choiceGroup === row.choiceGroup) orBefore.add(row.id);
+    });
+    return { together, orBefore };
+  }, [mergedIngredientRows]);
+  const alternativeNotesById = useMemo(() => {
+    if (!recipe) return new Map<string, string>();
+    const notes = recipeAlternativeCaptions(recipe, recipesById);
+    for (const id of choiceRuns.together) notes.delete(id);
+    return notes;
+  }, [recipe, recipesById, choiceRuns]);
 
   // Lines the app can see wanting to be two — "corn tortillas or flour
   // tortillas" — so the row can say so. Without this the suggestion existed
@@ -816,6 +840,25 @@ export function RecipeDetailScreen() {
       if (ing.choiceGroup) continue;
       const parts = splitAlternativeNames(ing.name);
       if (parts) counts.set(ing.id, parts.length);
+    }
+    return counts;
+  }, [recipe]);
+
+  // Lines that are two things on one line, "salt and pepper". The sibling of
+  // the either/or offer above and kept off the same rows (a line with an "or"
+  // belongs to that one), and it is withheld when a part is already a line
+  // elsewhere in the recipe, since accepting would be refused: an offer that
+  // can't be taken is worse than none.
+  const andSplitCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    const ingredients = recipe?.ingredients ?? [];
+    for (const ing of ingredients) {
+      if (ing.choiceGroup || splitAlternativeNames(ing.name)) continue;
+      const parts = splitIngredientAnd(ing);
+      if (!parts) continue;
+      const taken = new Set(ingredients.filter(o => o.id !== ing.id).map(o => o.nameKey));
+      if (parts.some(part => taken.has(groceryNameKey(part.name)))) continue;
+      counts.set(ing.id, parts.length);
     }
     return counts;
   }, [recipe]);
@@ -1332,7 +1375,11 @@ export function RecipeDetailScreen() {
     // to be two" comes first, and each half gets matched on its own once it
     // is. Two competing offers on one row is a row nobody reads.
     const catalogMatch = catalogMatches.get(ingredient.id);
-    const catalogSuggestion = !splittableInto && catalogMatch?.kind === 'suggested'
+    const andSplittable = andSplitCounts.get(ingredient.id);
+    const andInto = andSplittable && ingredient.dismissedSplitSuggestion !== ingredient.name
+      ? andSplittable
+      : undefined;
+    const catalogSuggestion = !splittableInto && !andSplittable && catalogMatch?.kind === 'suggested'
       && catalogMatch.suggestedName !== ingredient.dismissedCatalogSuggestion
       ? catalogMatch
       : null;
@@ -1345,7 +1392,14 @@ export function RecipeDetailScreen() {
             had somehow acquired a suffix. A tinted inline label with the same
             branch glyph the split suggestion uses reads as a rule about the
             rows under it. */}
-        {!!choiceHeader && (
+        {choiceRuns.orBefore.has(ingredient.id) && (
+          <View style={styles.choiceOr} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+            <View style={styles.choiceOrLine} />
+            <Text style={styles.choiceOrText}>or</Text>
+            <View style={styles.choiceOrLine} />
+          </View>
+        )}
+        {!!choiceHeader && !choiceRuns.together.has(ingredient.id) && (
           <View style={styles.choiceHeader}>
             <Ionicons name="git-branch-outline" size={iconSize.xs} color={colors.accent} />
             <Text style={styles.choiceHeaderText} numberOfLines={1}>
@@ -1453,6 +1507,33 @@ export function RecipeDetailScreen() {
                 </TouchableOpacity>
               </View>
             )}
+            {/* The "and" form of the signpost above, and the same pill: it opens
+                the sheet where the two lines are confirmed against their actual
+                parts. Its own glyph, because these are two things to buy and
+                the branch glyph says "pick one". */}
+            {!!andInto && !splitInto && !selectionMode && (
+              <View style={styles.splitPill}>
+                <PressableScale
+                  style={styles.splitPillTap}
+                  haptic
+                  onPress={() => setEditingIngredient(ingredient)}
+                  accessibilityLabel={`Split ${ingredient.name} into ${andInto} lines`}
+                  accessibilityHint="Double tap to review the split"
+                >
+                  <Ionicons name="copy-outline" size={iconSize.xs} color={colors.accent} />
+                  <Text style={styles.splitPillText}>Split into {andInto} lines…</Text>
+                </PressableScale>
+                <TouchableOpacity
+                  onPress={() => dismissSplitPill(ingredient.id, ingredient.name)}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Dismiss the split suggestion for ${ingredient.name}`}
+                  accessibilityHint="Leaves the line as it is"
+                >
+                  <Ionicons name="close" size={iconSize.xs} color={colors.textTertiary} />
+                </TouchableOpacity>
+              </View>
+            )}
             {/* The same signpost the split pill is, for the same reason: it
                 names what it would link to, and opens the sheet where the
                 link is confirmed rather than being a second place to accept.
@@ -1493,7 +1574,7 @@ export function RecipeDetailScreen() {
             )}
           </View>
           {!!scaledQuantity && (
-            <View style={styles.qtyColumn}>
+            <View style={styles.qtyGroup}>
               <View style={[styles.qtyPill, scaledHere && styles.qtyPillScaled]}>
                 <Text
                   style={[styles.qtyText, scaledHere && styles.qtyTextScaled]}
@@ -1502,7 +1583,7 @@ export function RecipeDetailScreen() {
                   {scaledQuantity}
                 </Text>
               </View>
-              {/* Under the pill rather than inside it: the pill is the
+              {/* Beside the pill rather than inside it: the pill is the
                   recipe's amount (or the app's conversion of it), and this is
                   a second measurement of the same thing. Only present when
                   the food's own portion table can say it. */}
@@ -1644,7 +1725,14 @@ export function RecipeDetailScreen() {
     const alternativeNote = alternativeNotesById.get(resolved.component.id);
     return (
       <View key={resolved.component.id}>
-        {!!groupHeader && (
+        {choiceRuns.orBefore.has(resolved.component.id) && (
+          <View style={styles.choiceOr} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+            <View style={styles.choiceOrLine} />
+            <Text style={styles.choiceOrText}>or</Text>
+            <View style={styles.choiceOrLine} />
+          </View>
+        )}
+        {!!groupHeader && !choiceRuns.together.has(resolved.component.id) && (
           <View style={styles.choiceHeader}>
             <Ionicons name="git-branch-outline" size={iconSize.xs} color={colors.accent} />
             <Text style={styles.choiceHeaderText} numberOfLines={1}>
@@ -1659,15 +1747,18 @@ export function RecipeDetailScreen() {
           onPress={() => {
             if (!target) return;
             haptics.tap();
-            // Same-route navigate, exactly as TemplateDetailScreen opens a nested
-            // template: it swaps this screen's params rather than stacking a
-            // second copy, so Back still means "back to the library".
+            // Pushed rather than navigated: a same-route navigate swapped this
+            // screen's params in place, so the component opened at whatever
+            // scroll offset the parent was at, and Back skipped the parent
+            // for the library. A pushed copy starts at the top and Back (the
+            // chevron or the edge swipe) returns to the parent recipe exactly
+            // where it was left.
             //
             // At the scale this page is showing, since a component scales with
             // the dish around it everywhere else (the list, the cost, the
             // nutrition): opened at 1× from a doubled dish, its amounts were
             // half of what the cooking in front of the person needed.
-            (navigation as any).navigate('RecipeDetail', { recipeId: target.id, scale });
+            (navigation as any).push('RecipeDetail', { recipeId: target.id, scale, fromName: recipe.name });
           }}
           // Long press is free on these rows (unlike an ingredient's, which
           // drags) and is where making this an either/or lives. In the
@@ -2019,6 +2110,23 @@ export function RecipeDetailScreen() {
           </View>
         }
       />
+
+      {/* Only on a recipe pushed from another one (a component, an overlap
+          pick): the chevron above says Back, this says to whom. */}
+      {!!route.params.fromName && !selectionMode && (
+        <TouchableOpacity
+          style={styles.fromStrip}
+          activeOpacity={interaction.activeOpacity}
+          onPress={handleBack}
+          accessibilityRole="button"
+          accessibilityLabel={`Back to ${route.params.fromName}`}
+        >
+          <Ionicons name="chevron-back" size={iconSize.xs} color={colors.accentText} />
+          <Text style={styles.fromStripText} numberOfLines={1}>
+            Back to {route.params.fromName}
+          </Text>
+        </TouchableOpacity>
+      )}
 
       {/* Around the whole scroll view, since the ingredient card is one block
           inside it: while selecting, a drag started on the trailing edge
@@ -2467,51 +2575,35 @@ export function RecipeDetailScreen() {
             (Recipe.emptySections), if the field's blurred before an
             ingredient names it. Rows already on the list are moved between
             headings by dragging them, which is what the hint below says. */}
-        <View style={styles.sectionPickerWrap}>
-          <Text style={styles.inputHint}>New ingredients below go under:</Text>
-          <PillGroup
-            noun="section"
-            surface="page"
-            filterPlaceholder="Find or name a section…"
-            createMaxLength={RECIPE_SECTION_MAX_LENGTH}
-            onCreate={name => {
-              const cleaned = name.trim();
-              if (allSections.includes(cleaned)) return 'Already a heading on this recipe.';
-              if (!addEmptySection(recipe.id, name)) return 'That isn’t a usable section name.';
-              haptics.success();
-              setSectionDraft(cleaned.slice(0, RECIPE_SECTION_MAX_LENGTH));
-            }}
-            options={[
-              {
-                key: '__none__',
-                label: 'No section',
-                pinned: true,
-                selected: !sectionDraft,
-                onPress: () => { haptics.tap(); setSectionDraft(''); },
-              },
-              ...allSections.map(name => ({
-                key: name,
-                label: name,
-                selected: sectionDraft === name,
-                onPress: () => { haptics.tap(); setSectionDraft(name); },
-              })),
-            ]}
-          />
-        </View>
         {/* Only once there's a heading to drag under. Sections are a label on a
             flat list, so the order *is* the grouping — this is the one place
             that's worth saying out loud, since nothing about a row suggests
             dragging it changes which heading it sits below. */}
         {allSections.length > 0 && (
-          <Text style={styles.inputHint}>
+          <Text style={[styles.inputHint, styles.sectionPickerWrap]}>
             Drag an ingredient under a heading to move it there.
           </Text>
         )}
 
-        <View style={styles.addRow}>
+        <SectionComposer
+          name="IngredientSectionComposer"
+          sections={allSections}
+          value={sectionDraft}
+          onChange={setSectionDraft}
+          onCreate={name => addEmptySection(recipe.id, name)}
+          maxLength={RECIPE_SECTION_MAX_LENGTH}
+          actions={(
+            <InlineAction
+              label="Add"
+              icon="add"
+              onPress={submitDraft}
+              disabled={!draft.trim()}
+            />
+          )}
+        >
           <TextField
             ref={draftInputRef}
-            style={styles.addInput}
+            style={styles.composerInput}
             value={draft}
             onChangeText={text => { setDraft(text); if (addNote) setAddNote(null); }}
             onSubmitEditing={submitDraft}
@@ -2523,13 +2615,7 @@ export function RecipeDetailScreen() {
             autoCapitalize="none"
             accessibilityLabel="Add an ingredient"
           />
-          <InlineAction
-            label="Add"
-            icon="add"
-            onPress={submitDraft}
-            disabled={!draft.trim()}
-          />
-        </View>
+        </SectionComposer>
         {!!addNote && (
           <Text style={styles.addNote} accessibilityLiveRegion="polite">{addNote}</Text>
         )}
@@ -2588,49 +2674,45 @@ export function RecipeDetailScreen() {
           </View>
         )}
 
-        {/* Which heading new steps below file under — same picker-not-free-text
-            convention as the ingredients one above, for RecipeStep.section. */}
-        <View style={styles.sectionPickerWrap}>
-          <Text style={styles.inputHint}>New steps below go under:</Text>
-          <PillGroup
-            noun="section"
-            surface="page"
-            filterPlaceholder="Find or name a section…"
-            createMaxLength={RECIPE_SECTION_MAX_LENGTH}
-            onCreate={name => {
-              const cleaned = name.trim();
-              if (allStepSections.includes(cleaned)) return 'Already a heading on this recipe.';
-              if (!addEmptyStepSection(recipe.id, name)) return 'That isn’t a usable section name.';
-              haptics.success();
-              setStepSectionDraft(cleaned.slice(0, RECIPE_SECTION_MAX_LENGTH));
-            }}
-            options={[
-              {
-                key: '__none__',
-                label: 'No section',
-                pinned: true,
-                selected: !stepSectionDraft,
-                onPress: () => { haptics.tap(); setStepSectionDraft(''); },
-              },
-              ...allStepSections.map(name => ({
-                key: name,
-                label: name,
-                selected: stepSectionDraft === name,
-                onPress: () => { haptics.tap(); setStepSectionDraft(name); },
-              })),
-            ]}
-          />
-        </View>
         {allStepSections.length > 0 && (
-          <Text style={styles.inputHint}>
+          <Text style={[styles.inputHint, styles.sectionPickerWrap]}>
             Drag a step under a heading to move it there.
           </Text>
         )}
 
-        <View style={styles.addRow}>
+        {/* Which heading new steps below file under: same composer as the
+            ingredients one above, for RecipeStep.section. */}
+        <SectionComposer
+          name="StepSectionComposer"
+          sections={allStepSections}
+          value={stepSectionDraft}
+          onChange={setStepSectionDraft}
+          onCreate={name => addEmptyStepSection(recipe.id, name)}
+          maxLength={RECIPE_SECTION_MAX_LENGTH}
+          actions={(
+            <>
+              {editingStepId && (
+                <TouchableOpacity
+                  onPress={cancelEditStep}
+                  hitSlop={10}
+                  accessibilityRole="button"
+                  accessibilityLabel="Cancel editing this step"
+                >
+                  <Ionicons name="close-circle-outline" size={iconSize.md} color={colors.textTertiary} />
+                </TouchableOpacity>
+              )}
+              <InlineAction
+                label={editingStepId ? BUTTON_LABEL.save : 'Add'}
+                icon={editingStepId ? 'checkmark' : 'add'}
+                onPress={submitStepDraft}
+                disabled={!stepDraft.trim()}
+              />
+            </>
+          )}
+        >
           <TextField
             ref={stepInputRef}
-            style={styles.addInput}
+            style={styles.composerInput}
             value={stepDraft}
             onChangeText={setStepDraft}
             onSubmitEditing={submitStepDraft}
@@ -2641,23 +2723,7 @@ export function RecipeDetailScreen() {
             returnKeyType="done"
             accessibilityLabel={editingStepId ? 'Edit step' : 'Add a step'}
           />
-          {editingStepId && (
-            <TouchableOpacity
-              onPress={cancelEditStep}
-              hitSlop={10}
-              accessibilityRole="button"
-              accessibilityLabel="Cancel editing this step"
-            >
-              <Ionicons name="close-circle-outline" size={iconSize.md} color={colors.textTertiary} />
-            </TouchableOpacity>
-          )}
-          <InlineAction
-            label={editingStepId ? BUTTON_LABEL.save : 'Add'}
-            icon={editingStepId ? 'checkmark' : 'add'}
-            onPress={submitStepDraft}
-            disabled={!stepDraft.trim()}
-          />
-        </View>
+        </SectionComposer>
 
         {/* Only while a step is open for editing. Cook mode reads the length out
             of the sentence for nearly every step, so a control asking for it
@@ -2986,7 +3052,7 @@ export function RecipeDetailScreen() {
         onHandOff={handOffOverlap}
         onOpenRecipe={other => {
           closeOverlap();
-          (navigation as any).navigate('RecipeDetail', { recipeId: other.id });
+          (navigation as any).push('RecipeDetail', { recipeId: other.id, fromName: recipe.name });
         }}
         onClose={closeOverlap}
       />
@@ -3447,6 +3513,21 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     fontWeight: fontWeight.medium,
     marginTop: spacing.xxs,
   },
+  fromStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.separator,
+  },
+  fromStripText: {
+    flexShrink: 1,
+    color: colors.accentText,
+    fontSize: font.sm,
+    fontWeight: fontWeight.semibold,
+  },
   choiceHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3459,6 +3540,27 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     // not just to the rows underneath.
     borderLeftWidth: 2,
     borderLeftColor: colors.accent,
+  },
+  // The "or" between two options of a group drawn together. The same bar as the
+  // rows either side, so it reads as part of the one block; the rules and the
+  // word are tertiary because it is a joint, not a row.
+  choiceOr: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderLeftWidth: 2,
+    borderLeftColor: colors.accent,
+  },
+  choiceOrLine: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.bgQuaternary,
+  },
+  choiceOrText: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
   },
   choiceHeaderText: {
     flex: 1,
@@ -3628,12 +3730,10 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     fontSize: font.xs,
   },
   qtyTextScaled: { color: colors.accent, fontWeight: fontWeight.medium },
-  qtyColumn: { alignItems: 'flex-end' },
+  qtyGroup: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   qtyWeight: {
     color: colors.textSecondary,
     fontSize: font.xxs,
-    marginTop: spacing.xxs,
-    paddingHorizontal: spacing.sm,
   },
   scaleRow: { marginTop: spacing.xs, marginBottom: spacing.sm },
   choiceRow: { gap: spacing.sm, marginBottom: spacing.sm },
@@ -3665,8 +3765,7 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     fontSize: font.xs,
     marginTop: spacing.xs,
   },
-  // Wraps the "new ingredients file under" picker so its caption and pills
-  // read as one control.
+  // Space above the drag hint that sits over a SectionComposer.
   sectionPickerWrap: {
     marginTop: spacing.md,
   },
@@ -3688,6 +3787,15 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     color: colors.textSecondary,
     fontSize: font.xs,
     marginTop: spacing.xs,
+  },
+  // The add field inside a SectionComposer: the card is its surface.
+  composerInput: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.smd,
+    color: colors.text,
+    fontSize: font.md,
+    minHeight: 44,
+    maxHeight: 140,
   },
   addInput: {
     flex: 1,

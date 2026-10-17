@@ -715,9 +715,9 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,
     alignItems: 'center',
   },
-  pillActiveNeutral: { backgroundColor: colors.bgQuaternary },
+  pillActiveNeutral: { backgroundColor: colors.accentFill },
   pillText: { color: colors.text, fontSize: font.sm, fontWeight: '500' },
-  pillTextActive: { color: colors.text, fontWeight: '600' },
+  pillTextActive: { color: colors.onAccent, fontWeight: '600' },
   offerRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     marginHorizontal: spacing.md, marginBottom: spacing.md,
