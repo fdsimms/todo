@@ -160,7 +160,7 @@ type RootStackParamList = {
    * written back to the entry. `overrides` does the same for the meal's one-off
    * replacements (MealPlanEntry.recipeOverrides).
    */
-  RecipeDetail: { recipeId: string; choices?: string[]; overrides?: RecipeOverride[]; scale?: number; openCookMode?: number; openDetails?: number; draft?: boolean; returnTo?: string };
+  RecipeDetail: { recipeId: string; choices?: string[]; overrides?: RecipeOverride[]; scale?: number; openCookMode?: number; openDetails?: number; draft?: boolean; returnTo?: string; fromName?: string };
 };
 
 /** One row of the merged list the ingredients SortableList drags over — see mergedIngredientRows. */
@@ -1721,15 +1721,18 @@ export function RecipeDetailScreen() {
           onPress={() => {
             if (!target) return;
             haptics.tap();
-            // Same-route navigate, exactly as TemplateDetailScreen opens a nested
-            // template: it swaps this screen's params rather than stacking a
-            // second copy, so Back still means "back to the library".
+            // Pushed rather than navigated: a same-route navigate swapped this
+            // screen's params in place, so the component opened at whatever
+            // scroll offset the parent was at, and Back skipped the parent
+            // for the library. A pushed copy starts at the top and Back (the
+            // chevron or the edge swipe) returns to the parent recipe exactly
+            // where it was left.
             //
             // At the scale this page is showing, since a component scales with
             // the dish around it everywhere else (the list, the cost, the
             // nutrition): opened at 1× from a doubled dish, its amounts were
             // half of what the cooking in front of the person needed.
-            (navigation as any).navigate('RecipeDetail', { recipeId: target.id, scale });
+            (navigation as any).push('RecipeDetail', { recipeId: target.id, scale, fromName: recipe.name });
           }}
           // Long press is free on these rows (unlike an ingredient's, which
           // drags) and is where making this an either/or lives. In the
@@ -2081,6 +2084,23 @@ export function RecipeDetailScreen() {
           </View>
         }
       />
+
+      {/* Only on a recipe pushed from another one (a component, an overlap
+          pick): the chevron above says Back, this says to whom. */}
+      {!!route.params.fromName && !selectionMode && (
+        <TouchableOpacity
+          style={styles.fromStrip}
+          activeOpacity={interaction.activeOpacity}
+          onPress={handleBack}
+          accessibilityRole="button"
+          accessibilityLabel={`Back to ${route.params.fromName}`}
+        >
+          <Ionicons name="chevron-back" size={iconSize.xs} color={colors.accentText} />
+          <Text style={styles.fromStripText} numberOfLines={1}>
+            Back to {route.params.fromName}
+          </Text>
+        </TouchableOpacity>
+      )}
 
       {/* Around the whole scroll view, since the ingredient card is one block
           inside it: while selecting, a drag started on the trailing edge
@@ -3048,7 +3068,7 @@ export function RecipeDetailScreen() {
         onHandOff={handOffOverlap}
         onOpenRecipe={other => {
           closeOverlap();
-          (navigation as any).navigate('RecipeDetail', { recipeId: other.id });
+          (navigation as any).push('RecipeDetail', { recipeId: other.id, fromName: recipe.name });
         }}
         onClose={closeOverlap}
       />
@@ -3508,6 +3528,21 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     fontSize: font.xs,
     fontWeight: fontWeight.medium,
     marginTop: spacing.xxs,
+  },
+  fromStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.separator,
+  },
+  fromStripText: {
+    flexShrink: 1,
+    color: colors.accentText,
+    fontSize: font.sm,
+    fontWeight: fontWeight.semibold,
   },
   choiceHeader: {
     flexDirection: 'row',

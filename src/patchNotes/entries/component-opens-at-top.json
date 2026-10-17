@@ -1,0 +1,1 @@
+{ "message": "Opening a component from a recipe, or a nested template, now starts at the top of its page. A \"Back to\" link under the header returns to the recipe you came from, and Back returns to it at the same spot.", "date": "2026-10-17" }
