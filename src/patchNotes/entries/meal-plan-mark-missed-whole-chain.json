@@ -1,0 +1,4 @@
+{
+  "message": "Marking a meal-plan task missed from the delete prompt now marks the rest of that meal's steps missed too, instead of leaving Prepare and Eat to dismiss one by one",
+  "date": "2026-10-17"
+}

@@ -4,6 +4,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useRowSelection } from './useRowSelection';
 import { bulkDeletePrompt } from '../utils/bulkDelete';
 import { confirmDelete } from '../utils/confirmDelete';
+import { isMissableMealPlanTask } from '../utils/visibilityUtils';
 import { BUTTON_LABEL } from '../copy/shared';
 
 // Bulk selection for a task list: the shared row-selection machinery
@@ -51,7 +52,13 @@ export function useTaskSelection(allTasks: Task[]) {
         {
           text: 'Mark missed',
           onPress: () => {
-            missableIds.forEach(id => markMissed(id));
+            // A meal-plan chain (Choose, Prepare, Eat) can't go on without its
+            // first step, so missing one step misses the rest of its chain too
+            // rather than spawning the next step to dismiss one at a time.
+            missableIds.forEach(id => {
+              const task = allTasks.find(t => t.id === id);
+              markMissed(id, { wholeChain: !!task && isMissableMealPlanTask(task) });
+            });
             bulkDeleteTasks(restIds);
             exitSelection();
           },

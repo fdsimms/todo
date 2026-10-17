@@ -3184,7 +3184,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           {
             text: 'Mark missed',
             onPress: () => {
-              markMissed(task.id);
+              // Later steps of a meal-plan chain depend on this one.
+              markMissed(task.id, { wholeChain: true });
               onClose();
             },
           },
