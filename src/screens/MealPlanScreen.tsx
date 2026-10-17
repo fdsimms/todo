@@ -84,11 +84,12 @@ import { useTaskStore } from '../store/useTaskStore';
 import { sameEntries, useFoodLogStore } from '../store/useFoodLogStore';
 import { useFocusRefreshedRead } from '../hooks/useFocusRefreshedRead';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, lineHeight, radius, border, animation, interaction, iconSize, type Colors } from '../theme';
+import { spacing, font, fontWeight, lineHeight, radius, border, animation, interaction, iconSize, flattenOverlay, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { featureShown, screenShown } from '../utils/simpleMode';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
+import { RotatingChevron } from '../components/RotatingChevron';
 import { resolveActiveTrip } from '../utils/activeTrip';
 import { resetToGroceries } from '../navigation/navigationRef';
 import { buildWeekDays } from '../utils/calendarGrid';
@@ -569,7 +570,7 @@ export function MealPlanScreen() {
   const nutritionTargets = useSettingsStore(useShallow(s => s.nutritionTargets));
   const nutritionLimits = useSettingsStore(useShallow(s => s.nutritionLimits));
   const limitLineByDay = useMemo(() => {
-    const out = new Map<string, { text: string; over: boolean }>();
+    const out = new Map<string, { label: string; items: { text: string; over: boolean }[]; overCount: number; note: string }>();
     const keys = activeLimits(nutritionTargets, nutritionLimits);
     if (keys.length === 0) return out;
     const helpingFor = (entry: MealPlanEntry) => {
@@ -587,18 +588,21 @@ export function MealPlanScreen() {
       const logged = weekFoodLog.filter(e => e.dayKey === key);
       if (logged.length === 0 && (coverage?.size ?? 0) === 0) continue;
       const { totals, uncounted } = plannedDayNutrition(coverage, logged, helpingFor);
-      const parts = keys.map(k => {
+      const items = keys.map(k => {
         const unit = NUTRIENT_LABEL[k].unit;
         const amount = Math.round((totals[k] ?? 0) * 10) / 10;
-        return `${NUTRIENT_LABEL[k].label} ${amount.toLocaleString()} of ${nutritionTargets[k]!.toLocaleString()}${unit === 'cal' ? ' cal' : unit}`;
+        return {
+          text: `${NUTRIENT_LABEL[k].label} ${amount.toLocaleString()} / ${nutritionTargets[k]!.toLocaleString()}${unit === 'cal' ? ' cal' : unit}`,
+          over: (totals[k] ?? 0) > nutritionTargets[k]!,
+        };
       });
-      const over = keys.some(k => (totals[k] ?? 0) > nutritionTargets[k]!);
-      const note = uncounted > 0 ? ` (${uncounted} ${uncounted === 1 ? 'meal' : 'meals'} without figures not counted)` : '';
+      const overCount = items.filter(i => i.over).length;
+      const note = uncounted > 0 ? `${uncounted} ${uncounted === 1 ? 'meal' : 'meals'} without figures not counted` : '';
       // Name what the figures are made of: a day with only logged food has no
       // plan in it, and calling it "Planned" reads as a meal that isn't there.
       const hasPlanned = [...(coverage?.values() ?? [])].some(s => s.logged.length === 0 && s.planned.length > 0);
       const label = hasPlanned ? (logged.length > 0 ? 'Logged and planned' : 'Planned') : 'Logged';
-      out.set(key, { text: `${label}: ${parts.join(' · ')}${note}`, over });
+      out.set(key, { label, items, overCount, note });
     }
     return out;
   }, [days, coverageByDay, weekFoodLog, nutritionTargets, nutritionLimits, recipesById, groceryItems, itemProducts, standingSwaps]);
@@ -761,6 +765,19 @@ export function MealPlanScreen() {
   const [overridingId, setOverridingId] = useState<string | null>(null);
   // The meal whose recipe's blanks are being filled (RecipeBlank), null while closed.
   const [fillingId, setFillingId] = useState<string | null>(null);
+
+  // Days whose limit chips are unfolded. The summary row is all a day shows by
+  // default, so a day with limits set doesn't cost a block of chips each.
+  const [expandedLimitDays, setExpandedLimitDays] = useState<Set<string>>(() => new Set());
+  const toggleLimitDay = (key: string) => {
+    haptics.tap();
+    animateLayout();
+    setExpandedLimitDays(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
 
   const toggleDayCollapse = (key: string) => {
     haptics.tap();
@@ -1620,11 +1637,41 @@ export function MealPlanScreen() {
                   week-level hint above says the thing the seven copies were each
                   saying badly.
                 */}
-                {!collapsed && limitLineByDay.has(key) && (
-                  <Text style={[styles.limitLine, limitLineByDay.get(key)!.over && styles.limitLineOver]}>
-                    {limitLineByDay.get(key)!.text}
-                  </Text>
-                )}
+                {!collapsed && limitLineByDay.has(key) && (() => {
+                  const line = limitLineByDay.get(key)!;
+                  const open = expandedLimitDays.has(key);
+                  const summary = line.overCount > 0
+                    ? `${line.label} · over ${line.overCount} ${line.overCount === 1 ? 'limit' : 'limits'}`
+                    : `${line.label} · within limits`;
+                  return (
+                    <View style={styles.limitBlock}>
+                      <TouchableOpacity
+                        style={styles.limitSummary}
+                        onPress={() => toggleLimitDay(key)}
+                        activeOpacity={interaction.activeOpacity}
+                        hitSlop={{ top: 6, bottom: 6, left: 0, right: 16 }}
+                        accessibilityRole="button"
+                        accessibilityState={{ expanded: open }}
+                        accessibilityLabel={`${summary}. ${open ? 'Hide' : 'Show'} details`}
+                      >
+                        <Text style={[styles.limitLine, styles.limitSummaryText, line.overCount > 0 && styles.limitLineOver]}>
+                          {summary}
+                        </Text>
+                        <RotatingChevron open={open} size={iconSize.xs} color={line.overCount > 0 ? colors.redText : colors.textSecondary} />
+                      </TouchableOpacity>
+                      {open && (
+                        <View style={styles.limitChips}>
+                          {line.items.map(item => (
+                            <View key={item.text} style={[styles.limitChip, item.over && styles.limitChipOver]}>
+                              <Text style={[styles.limitChipText, item.over && styles.limitLineOver]}>{item.text}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+                      {open && line.note !== '' && <Text style={styles.limitNote}>{line.note}</Text>}
+                    </View>
+                  );
+                })()}
                 {!collapsed && produceLineByDay.has(key) && (
                   <Text style={styles.limitLine}>{produceLineByDay.get(key)}</Text>
                 )}
@@ -1701,7 +1748,7 @@ export function MealPlanScreen() {
     // closed from the fridge card while this list stayed mounted is still live
     // to this closure, and the badge asks about a leftover that's already been
     // finished. Don't prune it as unused.
-  }, [entries, recipesById, styles, collapsedDays, colors, fabIntentChannel, selectionMode, selectedIds, toggleSelection, enterSelectionMode, leftovers, describeEntryChoices, todayKey, previousDaysInfo, previousDaysExpanded, openDayAddToList, mealDrag, busyEveningByDay, limitLineByDay, produceLineByDay]);
+  }, [entries, recipesById, styles, collapsedDays, colors, fabIntentChannel, selectionMode, selectedIds, toggleSelection, enterSelectionMode, leftovers, describeEntryChoices, todayKey, previousDaysInfo, previousDaysExpanded, openDayAddToList, mealDrag, busyEveningByDay, limitLineByDay, produceLineByDay, expandedLimitDays]);
 
   // Cheap enough to compute on every render: whether there's anything an "Add
   // week to list" could possibly find, without running the full ingredient
@@ -2851,6 +2898,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginBottom: spacing.xs,
   },
   limitLineOver: { color: colors.redText },
+  limitBlock: { marginBottom: spacing.xs },
+  limitSummary: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, alignSelf: 'flex-start' },
+  limitSummaryText: { marginBottom: 0 },
+  limitChips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xsm, marginTop: spacing.xsm },
+  limitChip: {
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  limitChipOver: { backgroundColor: flattenOverlay(colors.red + '26', colors.bg) },
+  limitChipText: { color: colors.textSecondary, fontSize: font.xs },
+  limitNote: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xsm },
   dayHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
