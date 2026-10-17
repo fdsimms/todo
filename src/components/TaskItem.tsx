@@ -4930,7 +4930,7 @@ const TaskItemRow = React.memo(function TaskItem({
                     hitSlop={8}
                     accessibilityLabel={`Edit ${task.title}`}
                   >
-                    <Ionicons name="pencil-outline" size={iconSize.sm} color={colors.accent} />
+                    <Ionicons name="create-outline" size={iconSize.sm} color={colors.accent} />
                   </PressableScale>
                 </View>
               </View>

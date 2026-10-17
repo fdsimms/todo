@@ -255,7 +255,7 @@ export function GroceryListSheet({ visible, onClose }: Props) {
                         accessibilityRole="button"
                         accessibilityLabel={`Rename ${row.name}`}
                       >
-                        <Ionicons name="pencil-outline" size={iconSize.sm} color={colors.textTertiary} />
+                        <Ionicons name="create-outline" size={iconSize.sm} color={colors.textTertiary} />
                       </TouchableOpacity>
                       <TouchableOpacity
                         onPress={() => handleDelete(row.id!, row.name, row.count)}
