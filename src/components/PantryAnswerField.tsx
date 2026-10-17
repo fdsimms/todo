@@ -33,13 +33,15 @@ interface Props {
 
 const OPTIONS: { value: PantryReviewAnswer | null; label: string }[] = [
   { value: 'have', label: 'Still have it' },
+  { value: 'new', label: 'Bought more' },
   { value: 'low', label: 'Running low' },
   { value: 'out', label: 'Out of it' },
 ];
 
 /**
  * The "what is the stock of this item" answer shared by the two sheets that log
- * a food (Describe and the scanned-package portion sheet).
+ * a food (Describe and the scanned-package portion sheet). "Bought more" is the
+ * pantry review's `new`: you restocked, so the old packet's claims go.
  *
  * **It shows where the item stands now and starts with nothing picked.** The
  * old control opened on "No change", which said nothing about the item. Now the
@@ -82,7 +84,7 @@ export function PantryAnswerField({ itemId, value, onChange, addToList, onAddToL
         options={OPTIONS}
         value={shown}
         onChange={v => onChange(v === (standing?.answer ?? null) ? null : v)}
-        columns={3}
+        columns={2}
         label={label}
         surface={surface}
       />

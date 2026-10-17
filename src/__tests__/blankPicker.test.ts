@@ -67,7 +67,7 @@ function entry(item: GroceryItem, freshness: LeftoverFreshness | null = 'fresh',
 }
 
 function blank(fields: Partial<RecipeBlank> = {}): RecipeBlank {
-  return { id: 'b', label: 'Vegetables', kind: 'vegetable', max: null, quantity: '', options: [], ...fields };
+  return { id: 'b', label: 'Vegetables', kind: 'vegetable', max: null, quantity: '', options: [], excluded: [], ...fields };
 }
 
 describe('blankChoices', () => {
@@ -118,6 +118,22 @@ describe('blankChoices', () => {
       ['goat cheese', 'option', null],
       ['cheddar', 'option', null],
     ]);
+  });
+
+  it('never offers what the blank excludes, from the kitchen, the options or the usual buys', () => {
+    const feta = makeItem({ name: 'Feta' });
+    const cheese = blank({ label: 'Cheese', kind: null, options: ['goat cheese', 'cheddar'], excluded: ['FETA', 'Goat Cheese'] });
+    const choices = blankChoices(cheese, [feta], [entry(feta)]);
+    expect(choices.kitchen).toEqual([]);
+    expect(choices.others.map(c => c.name)).toEqual(['cheddar']);
+    const veg = blankChoices(blank({ excluded: ['spinach', 'broccoli'] }), items, kitchen);
+    expect(veg.kitchen.map(c => c.name)).toEqual(['frozen peas']);
+    expect(veg.others.map(c => c.name)).toEqual(['carrots']);
+  });
+
+  it('still shows an excluded name the meal picked by hand', () => {
+    const choices = blankChoices(blank({ excluded: ['broccoli'] }), items, kitchen, [], ['broccoli']);
+    expect(choices.others.map(c => c.name)).toContain('broccoli');
   });
 
   it('keeps a hand-typed pick on screen so it can be taken back off', () => {

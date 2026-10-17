@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format } from 'date-fns/format';
 import { SheetModal } from './SheetModal';
@@ -10,6 +10,7 @@ import { TextField } from './TextField';
 import { HelpText } from './HelpText';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
+import { useRecipeStore } from '../store/useRecipeStore';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { useColors } from '../theme/ThemeContext';
@@ -72,6 +73,12 @@ interface Picks {
  * A thing past its use-by isn't offered as a pick: it asks whether it's still
  * there, which is answered to the pantry straight away (the same answer the
  * pantry review deck writes) since it's true whether or not this meal is saved.
+ *
+ * Only what the kitchen has shows at first. The recipe's suggestions and the
+ * usual buys sit behind "Suggestions to buy", except those already picked.
+ * Long-pressing a chip offers to stop the blank offering it
+ * (`RecipeBlank.excluded`), saved on the recipe straight away like the pantry
+ * answers.
  */
 export function BlankPickerSheet({ visible, entry: liveEntry, recipe: liveRecipe, recipesById, onSave, onClose }: Props) {
   const entry = useSheetSubject(liveEntry);
@@ -85,6 +92,7 @@ export function BlankPickerSheet({ visible, entry: liveEntry, recipe: liveRecipe
   const itemProducts = useGroceryStore(s => s.itemProducts);
   const nonFoodAisles = useGroceryStore(s => s.nonFoodAisles);
   const answerPantryReview = useGroceryStore(s => s.answerPantryReview);
+  const updateBlank = useRecipeStore(s => s.updateBlank);
   const entries = useMealPlanStore(s => s.entries);
 
   const blanks = useMemo(() => (recipe ? recipeBlanksIn(recipe, recipesById) : []), [recipe, recipesById]);
@@ -95,6 +103,9 @@ export function BlankPickerSheet({ visible, entry: liveEntry, recipe: liveRecipe
   // Past-use-by things the person said are still there, this visit only: the
   // pantry answer is written, but its use-by may still read as past.
   const [kept, setKept] = useState<ReadonlySet<string>>(new Set());
+  // Blanks whose "suggestions to buy" are showing. Closed on each open, since
+  // the picker starts from what the kitchen has.
+  const [buyOpen, setBuyOpen] = useState<ReadonlySet<string>>(new Set());
   const [adding, setAdding] = useState<string | null>(null);
   const [addText, setAddText] = useState('');
   const [amountsOpen, setAmountsOpen] = useState<string | null>(null);
@@ -124,6 +135,7 @@ export function BlankPickerSheet({ visible, entry: liveEntry, recipe: liveRecipe
     opened.current = JSON.stringify(seed);
     setPicks(seed);
     setKept(new Set());
+    setBuyOpen(new Set());
     setAdding(null);
     setAddText('');
     setAmountsOpen(null);
@@ -191,6 +203,31 @@ export function BlankPickerSheet({ visible, entry: liveEntry, recipe: liveRecipe
     toggle(blank, name);
   };
 
+  /** Long-press: stop this blank offering `candidate`, saved on the recipe the blank sits on. */
+  const confirmExclude = (blank: RecipeBlank, owner: Recipe, candidate: BlankCandidate) => {
+    haptics.warning();
+    Alert.alert(
+      `Never offer ${candidate.name}?`,
+      `It won’t show up as a choice for ${blank.label}. You can still add it with Other, and bring it back from the blank’s settings in the recipe.`,
+      [
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
+        {
+          text: 'Never offer',
+          style: 'destructive',
+          onPress: () => {
+            updateBlank(owner.id, blank.id, { excluded: [...blank.excluded, candidate.name] });
+            // An exclusion that left the pick standing would keep showing it as a chip.
+            const key = groceryNameKey(candidate.name);
+            setPicks(p => ({
+              ...p,
+              names: { ...p.names, [blank.id]: (p.names[blank.id] ?? []).filter(n => groceryNameKey(n) !== key) },
+            }));
+          },
+        },
+      ],
+    );
+  };
+
   const setAmount = (blank: RecipeBlank, nameKey: string, text: string) => {
     setPicks(p => ({ ...p, amounts: { ...p.amounts, [blank.id]: { ...(p.amounts[blank.id] ?? {}), [nameKey]: text } } }));
   };
@@ -199,19 +236,24 @@ export function BlankPickerSheet({ visible, entry: liveEntry, recipe: liveRecipe
 
   // What the picks would cost a trip: anything not vouched for by the kitchen.
   const inKitchen = new Set<string>();
-  const sections = blanks.map(({ blank }) => {
+  const sections = blanks.map(({ blank, recipe: owner }) => {
     const names = picks.names[blank.id] ?? [];
     const choices = choicesFor(blank, names);
     const keptStale = choices.stale.filter(c => kept.has(c.nameKey));
     const offered = [...choices.kitchen, ...keptStale.map(c => ({ ...c, source: 'kitchen' as const }))];
     for (const c of offered) inKitchen.add(c.nameKey);
-    return { blank, names, offered, others: choices.others, stale: choices.stale.filter(c => !kept.has(c.nameKey)) };
+    // Things to buy stay out of sight until asked for, except what is picked:
+    // a pick has to show or there is no way to take it off.
+    const buyShown = buyOpen.has(blank.id);
+    const toBuyChoices = choices.others;
+    const others = toBuyChoices.filter(c => buyShown || names.some(n => groceryNameKey(n) === c.nameKey));
+    return { blank, owner, names, offered, others, hiddenToBuy: toBuyChoices.length - others.length, stale: choices.stale.filter(c => !kept.has(c.nameKey)) };
   });
   const allPicked = sections.flatMap(s => s.names);
   const toBuy = allPicked.filter(n => !inKitchen.has(groceryNameKey(n))).length;
   const lastFill = last ? describeBlankFills(recipe, recipesById, last.recipeOverrides) : null;
 
-  const renderChip = (blank: RecipeBlank, candidate: BlankCandidate, selected: boolean) => {
+  const renderChip = (blank: RecipeBlank, owner: Recipe, candidate: BlankCandidate, selected: boolean) => {
     const fromKitchen = candidate.source === 'kitchen';
     return (
       <TouchableOpacity
@@ -219,6 +261,10 @@ export function BlankPickerSheet({ visible, entry: liveEntry, recipe: liveRecipe
         style={[styles.chip, !fromKitchen && styles.chipToBuy, selected && styles.chipOn]}
         activeOpacity={interaction.activeOpacity}
         onPress={() => toggle(blank, candidate.name)}
+        onLongPress={() => confirmExclude(blank, owner, candidate)}
+        delayLongPress={interaction.delayLongPress}
+        accessibilityActions={[{ name: 'exclude', label: `Never offer ${candidate.name}` }]}
+        onAccessibilityAction={() => confirmExclude(blank, owner, candidate)}
         accessibilityRole="button"
         accessibilityState={{ selected }}
         accessibilityLabel={`${blank.label}: ${candidate.name}, ${fromKitchen
@@ -264,7 +310,7 @@ export function BlankPickerSheet({ visible, entry: liveEntry, recipe: liveRecipe
             </View>
           )}
 
-          {sections.map(({ blank, names, offered, others, stale }) => {
+          {sections.map(({ blank, owner, names, offered, others, hiddenToBuy, stale }) => {
             const keys = new Set(names.map(groceryNameKey));
             const share = shareOfBlank(blank.quantity, names.length);
             return (
@@ -275,8 +321,8 @@ export function BlankPickerSheet({ visible, entry: liveEntry, recipe: liveRecipe
                 </View>
 
                 <View style={styles.chips}>
-                  {offered.map(c => renderChip(blank, c, keys.has(c.nameKey)))}
-                  {others.map(c => renderChip(blank, c, keys.has(c.nameKey)))}
+                  {offered.map(c => renderChip(blank, owner, c, keys.has(c.nameKey)))}
+                  {others.map(c => renderChip(blank, owner, c, keys.has(c.nameKey)))}
                   {adding !== blank.id && (
                     <InlineAction
                       label="Other"
@@ -287,8 +333,26 @@ export function BlankPickerSheet({ visible, entry: liveEntry, recipe: liveRecipe
                     />
                   )}
                 </View>
+                {(hiddenToBuy > 0 || buyOpen.has(blank.id)) && (
+                  <View style={styles.buyToggle}>
+                    <InlineAction
+                      label={buyOpen.has(blank.id) ? 'Hide suggestions to buy' : `Suggestions to buy (${hiddenToBuy})`}
+                      icon={buyOpen.has(blank.id) ? 'chevron-up' : 'cart-outline'}
+                      variant="neutral"
+                      onPress={() => setBuyOpen(open => {
+                        const next = new Set(open);
+                        if (next.has(blank.id)) next.delete(blank.id); else next.add(blank.id);
+                        return next;
+                      })}
+                    />
+                  </View>
+                )}
                 {offered.length === 0 && others.length === 0 && (
-                  <HelpText style={styles.hint}>Nothing in your kitchen or your usual shop counts as this yet. Add what you’re using with Other.</HelpText>
+                  <HelpText style={styles.hint}>
+                    {hiddenToBuy > 0
+                      ? 'Nothing in your kitchen counts as this yet. Show suggestions to buy, or add what you’re using with Other.'
+                      : 'Nothing in your kitchen or your usual shop counts as this yet. Add what you’re using with Other.'}
+                  </HelpText>
                 )}
 
                 {adding === blank.id && (
@@ -328,6 +392,16 @@ export function BlankPickerSheet({ visible, entry: liveEntry, recipe: liveRecipe
                           setKept(prev => new Set(prev).add(c.nameKey));
                         }}
                         accessibilityLabel={`Still have ${c.name}`}
+                      />
+                      <InlineAction
+                        label="Bought more"
+                        variant="neutral"
+                        surface="card"
+                        onPress={() => {
+                          if (c.itemId) answerPantryReview(c.itemId, 'new');
+                          setKept(prev => new Set(prev).add(c.nameKey));
+                        }}
+                        accessibilityLabel={`Bought more ${c.name}`}
                       />
                       <InlineAction
                         label="Gone"
@@ -425,6 +499,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     letterSpacing: 0.8,
   },
   sectionRule: { color: colors.textTertiary, fontSize: font.xs },
+  buyToggle: { flexDirection: 'row', marginTop: spacing.sm },
   chips: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
   chip: {
     flexDirection: 'row',

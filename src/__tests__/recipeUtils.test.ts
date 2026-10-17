@@ -2081,7 +2081,7 @@ describe('countLikelyInPantry', () => {
   });
 
   describe('blanks', () => {
-    const grain: RecipeBlank = { id: 'b1', label: 'Grain', kind: null, options: ['rice'], max: 1, quantity: '' };
+    const grain: RecipeBlank = { id: 'b1', label: 'Grain', kind: null, options: ['rice'], max: 1, quantity: '', excluded: [] };
     const salt = item('Salt', { nameKey: 'salt', isStaple: true, purchaseCount: 0 });
     const withBlank = () => recipe('Grain Bowl', { ingredients: [ing('Salt', { nameKey: 'salt' })], blanks: [grain] });
 

@@ -7058,6 +7058,13 @@ export interface RecipeBlank {
   quantity: string;
   /** Names the recipe suggests whether or not they are in the kitchen, in the order written. */
   options: string[];
+  /**
+   * Names the picker never offers for this blank, whatever the kitchen or the
+   * purchase history says: the person long-pressed them and said so. A pick typed
+   * in by hand through Other is still allowed, since that is a choice rather than
+   * an offer. Absent on a blank stored before this existed.
+   */
+  excluded: string[];
 }
 
 // One recipe used as a part of another — "mashed potatoes" inside both "Steak

@@ -78,7 +78,7 @@ export interface RecipeDetail extends SerializedRecipe {
   /** The same, by recipe id; ones sharing a choiceGroup are alternatives (cook one). */
   components?: { recipeId: string; name: string; choiceGroup?: string; amountUsed?: string }[];
   /** Blanks filled from the kitchen at each cooking; see save_recipe's blanks. */
-  blanks?: { label: string; kind?: string; pick: 'one' | 'any' | number; amount?: string; suggestions?: string[] }[];
+  blanks?: { label: string; kind?: string; pick: 'one' | 'any' | number; amount?: string; suggestions?: string[]; neverOffer?: string[] }[];
   /** Tasks written ahead of a planned meal of it, days before the meal (negative) or on the day (0). */
   prepTasks?: { title: string; offsetDays: number; reminderOffsetMinutes?: number }[];
   cookbookId?: string;
@@ -148,6 +148,7 @@ export function getRecipe(replica: Replica, id: string): RecipeDetail | null {
           pick: b.max === 1 ? 'one' : b.max === null ? 'any' : b.max,
           ...(b.quantity ? { amount: b.quantity } : {}),
           ...(b.options.length > 0 ? { suggestions: b.options } : {}),
+          ...(b.excluded.length > 0 ? { neverOffer: b.excluded } : {}),
         })),
       }
       : {}),
