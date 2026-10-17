@@ -1142,11 +1142,24 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
       );
     }
     const rowKcal = stagedKcal(row);
+    // What the + writes, stated on the row: "last as 1 teaspoon" alone read as
+    // the amount typed in the field, which the + only uses when the food has a
+    // weight to measure it against. A typed weight it can't use is said.
+    const rowWrite = stagedWrite(row, stagedDefaults(row));
+    const rowAsk = askFor(row);
+    const typedWeight = describedGrams(row.clause);
+    const typedApplied = rowAsk.kind === 'weight'
+      ? scaledWeight(row) !== null
+      : rowAsk.kind === 'none' ? false : describedEstimateFactor((row as Extract<PendingRecallLog, { kind: 'recall' }>).food, row.clause) !== null;
+    const logsLine = 'error' in rowWrite
+      ? null
+      : `Logs ${rowWrite.quantity}.${typedWeight && !typedApplied ? ` Not ${typedWeight.replace(/g$/, ' g')}: this food has no recorded weight to measure it against.` : ''}`;
     return (
       <View key={`${row.kind}-${food.key}`} style={[styles.offerRow, index > 0 && styles.offerDivider]}>
         <View style={styles.offerMain}>
           <Text style={styles.offerName}>{food.label}</Text>
           <Text style={styles.offerMeta}>{meta}</Text>
+          {logsLine && <Text style={styles.offerMeta}>{logsLine}</Text>}
           {/* On its own line under the name, so the name keeps the row's width. */}
           <InlineAction
             label="Change amount"
@@ -1160,7 +1173,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
         <PressableScale
           style={styles.offerAdd}
           onPress={() => quickLog(row)}
-          accessibilityLabel={`Log ${food.label}, same amount as before`}
+          accessibilityLabel={logsLine ? `Log ${food.label}. ${logsLine}` : `Log ${food.label}, same amount as before`}
         >
           <Ionicons name="add" size={iconSize.md} color={colors.accent} />
         </PressableScale>
