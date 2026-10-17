@@ -467,6 +467,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/supplementDoseSync.ts` — installSupplementDoseEffects
 - `src/utils/supply.ts` — MAX_SUPPLY_COUNT, DEFAULT_SUPPLY_REORDER_AT, MAX_SUPPLY_REORDER_TASKS, clampSupplyCount, clampSupplyReorderAt, clampSupplyLeadDays, clampSupplyRefillCount, SupplySource, isSupplyTask, canHoldSupply, +20 more
 - `src/utils/swipeArm.ts` — SwipeArmSides, swipeArmDistance, nextSwipeArm
+- `src/utils/swipeDismiss.ts` — SWIPE_DISMISS_DISTANCE, SWIPE_DISMISS_VELOCITY, OVERSCROLL_DISMISS_DISTANCE, isDownwardDrag, shouldDismissOnSwipe, swipeFollowOffset, overscrollDismisses, quickSearchMaxHeight
 - `src/utils/symptomQuickLog.ts` — SymptomPhrase, resolveClockTime, parseSymptomPhrase, matchSymptoms
 - `src/utils/syncEngine.ts` — SyncTransport, SyncImageStore, SyncWithholding, withholdChanges, pushCursorKey, PullResult, SyncLocal, IMAGE_PAYLOAD_BUDGET_CHARS, imagesSentKey, imagesKnownKey, +9 more
 - `src/utils/syncIds.ts` — derivedId, isDerivedId, spawnSeed
