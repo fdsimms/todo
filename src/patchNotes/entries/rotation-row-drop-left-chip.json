@@ -1,1 +1,1 @@
-{ "message": "A rotation's row no longer shows \"6 left · 7 days\" next to its count. The count already says it, and it now turns orange when the week no longer fits in the days left.", "date": "2026-10-17" }
+{ "message": "A rotation's row no longer shows \"6 left · 7 days\" next to its count, and its This week list says \"Yesterday\" instead of \"Last · Yesterday\". The count turns orange when the week no longer fits in the days left.", "date": "2026-10-17" }
