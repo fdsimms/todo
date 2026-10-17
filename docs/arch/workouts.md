@@ -81,7 +81,7 @@ New files in `src/utils/`, each with its test in `src/__tests__/`. The first thr
 - it holds exercises, routines, programs and sessions, with sets loaded per session or exercise on demand;
 - its actions are `startSession`, `logSet`, `editSet`, `deleteSet`, `reorderExercises`, `finishSession`, `discardSession`, plus CRUD for routines, programs and custom exercises;
 - `finishSession` completes the linked task through `completeTask`, never the reverse. Ticking the task off without a session does not invent a session. (Phase 2: the task link and its completion come with `Task.workoutRoutineId`.)
-- a custom exercise with sets can't be deleted, only archived, and an archived custom exercise keeps its name (the database's unique `name_key`); deleting a built-in's row puts the library's back. Deleting a session deletes its sets in the same transaction.
+- a custom exercise is never removed, only archived, because sets logged on another device never arrive over iCloud and can't be counted from here; an archived custom exercise keeps its name (the database's unique `name_key`); deleting a built-in's row puts the library's back. Deleting a session deletes its sets in the same transaction.
 
 ### Rest timer
 

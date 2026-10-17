@@ -150,9 +150,11 @@ interface WorkoutStore {
   /** Edits a custom exercise, or writes the person's changes over a built-in one. */
   updateExercise: (id: string, patch: ExercisePatch) => Exercise | WorkoutRefusal;
   /**
-   * A custom exercise with no sets is deleted; one with sets is refused
-   * (`hasHistory`), since archiving keeps its history and deleting would orphan
-   * it. On a built-in, removes the person's changes and puts the library's back.
+   * A custom exercise is archived rather than removed, whether or not this
+   * device holds sets for it: `workout_sets` never go to iCloud, so another
+   * device's sets (and the routines and programs naming it) can't be counted
+   * from here, and a synced delete would leave them pointing at nothing. On a
+   * built-in, removes the person's changes and puts the library's back.
    */
   deleteExercise: (id: string) => true | WorkoutRefusal;
 
@@ -359,7 +361,10 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
     deleteExercise(id) {
       const existing = get().exercises.find(e => e.id === id);
       if (!existing) return libraryExercise(id) ? true : 'notFound';
-      if (existing.isCustom && dbGetWorkoutSetsForExercise(id).length > 0) return 'hasHistory';
+      if (existing.isCustom) {
+        if (!existing.archived) putExercise({ ...existing, archived: true });
+        return true;
+      }
       dbDeleteExercise(id);
       set({ exercises: get().exercises.filter(e => e.id !== id) });
       return true;

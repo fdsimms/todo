@@ -33,7 +33,7 @@ import { AgentNotesRows } from './AgentNotesRows';
  * of user data lives on device; a sync server ends that, and the row that turns
  * one on is the last place a person can decide whether they want it to. So the
  * footer says the server holds a complete copy rather than only describing the
- * mechanism, and the mood, medication and food logs are named wherever they go
+ * mechanism, and the mood, medication, food and workout logs are named wherever they go
  * or don't. iCloud never gets them (HEALTH_SYNC_TABLES, App Review 5.1.3(ii)),
  * and the server gets them only behind their own switch, off by default, since
  * a hosted copy of somebody's symptoms and doses is a separate decision from a
@@ -89,7 +89,7 @@ export function SyncSettings() {
   return (
     <SettingsSection
       label="Sync"
-      footer="Changes sync when you open the app on each device. iCloud stores them in your private iCloud database and doesn’t receive your mood, medication or food logs, journal, dreams or milestones. A sync server holds a full copy of everything else except recipe photos, plus your health logs if you include them, on the machine you point it at. Set one up only if you want that copy."
+      footer="Changes sync when you open the app on each device. iCloud stores them in your private iCloud database and doesn’t receive your mood, medication or food logs, workouts, journal, dreams or milestones. A sync server holds a full copy of everything else except recipe photos, plus your health logs if you include them, on the machine you point it at. Set one up only if you want that copy."
     >
       {supported && (
         <SettingsRow
@@ -97,7 +97,7 @@ export function SyncSettings() {
           icon="cloud-outline"
           iconColor={enabled ? colors.accent : undefined}
           label="Sync with iCloud"
-          hint="Syncs your data across devices signed in to this Apple ID. Your mood, medication and food logs, journal, dreams and milestones aren’t sent to iCloud and stay on the device you added them on."
+          hint="Syncs your data across devices signed in to this Apple ID. Your mood, medication and food logs, workouts, journal, dreams and milestones aren’t sent to iCloud and stay on the device you added them on."
           toggle={enabled}
           value={enabled ? 'On' : 'Off'}
           onPress={onToggle}
@@ -158,7 +158,7 @@ export function SyncSettings() {
         icon="heart-outline"
         iconColor={serverHealthLogs ? colors.accent : undefined}
         label="Include health logs"
-        hint="Sends your mood, medication and food logs and your milestones to the sync server. Turning this off stops sending new entries. Entries already sent stay on the server."
+        hint="Sends your mood, medication and food logs, your workouts and your milestones to the sync server. Turning this off stops sending new entries. Entries already sent stay on the server."
         toggle={serverHealthLogs}
         value={serverHealthLogs ? 'On' : 'Off'}
         onPress={() => setServerHealthLogs(!serverHealthLogs)}

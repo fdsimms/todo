@@ -6347,6 +6347,25 @@ describe('workouts', () => {
     expect(mockRawDb.prepare('SELECT id FROM workout_sets').all()).toEqual([{ id: 'b' }]);
   });
 
+  it('takes a session\'s sets with it when the delete arrives from a peer', () => {
+    // The peer tombstoned only the sets it had; 'a' was logged here before the
+    // session's delete arrived, and would otherwise be left with no session.
+    dbSaveWorkoutSession(session);
+    dbSaveWorkoutSession({ ...session, id: 's2' });
+    dbSaveWorkoutSet(set('a'));
+    dbSaveWorkoutSet(set('b', { sessionId: 's2' }));
+    mockRawDb.prepare("UPDATE workout_sessions SET updated_at = '2026-01-01T00:00:00.000Z' WHERE id = 's1'").run();
+
+    const report = dbApplySyncChanges({
+      format: SYNC_FORMAT, deviceId: 'peer', since: null, until: '2030-01-01T00:00:00.000Z', tables: {},
+      deletions: [{ table: 'workout_sessions', rowKey: 's1', deletedAt: '2026-06-01T00:00:00.000Z' }],
+    });
+
+    expect(report.deleted).toBe(1);
+    expect(dbGetAllWorkoutSessions().map(x => x.id)).toEqual(['s2']);
+    expect(mockRawDb.prepare('SELECT id FROM workout_sets').all()).toEqual([{ id: 'b' }]);
+  });
+
   it('goes into a backup, every table of it', () => {
     dbSaveExercise(exercise);
     dbSaveWorkoutSession(session);

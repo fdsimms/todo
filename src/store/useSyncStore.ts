@@ -131,7 +131,7 @@ interface SyncState {
   /** Whether a token is stored, which is all a settings row may say about one. */
   hasServerToken: boolean;
   /**
-   * Whether the mood, medication and food logs go to the sync server. Off by
+   * Whether the mood, medication, food and workout logs go to the sync server. Off by
    * default, and per device like the server address itself. iCloud never gets
    * them either way (see HEALTH_SYNC_TABLES).
    */

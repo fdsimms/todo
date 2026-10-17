@@ -85,16 +85,22 @@ describe('custom exercises', () => {
     expect(state().updateExercise('nobody', { name: 'x' })).toBe('notFound');
   });
 
-  it('deletes one with no history and refuses one with sets, which archiving keeps', () => {
+  it('archives a custom exercise rather than removing it, with or without sets here', () => {
+    // Another device's sets never arrive over iCloud, so "no sets" on this
+    // device is not evidence there are none: a removal would sync out and
+    // leave them pointing at nothing.
     const unused = ok(state().addExercise(fly));
     expect(state().deleteExercise(unused.id)).toBe(true);
-    expect(state().exercises).toEqual([]);
+    expect(dbGetAllExercises()).toEqual([expect.objectContaining({ id: unused.id, archived: true })]);
+    expect(state().deleteExercise(unused.id)).toBe(true);
 
-    const used = ok(state().addExercise(fly));
+    const used = ok(state().addExercise({ ...fly, name: 'Landmine row' }));
     const s = ok(state().startSession());
     ok(state().logSet(s.id, { exerciseId: used.id, weightKg: 20, reps: 12 }));
-    expect(state().deleteExercise(used.id)).toBe('hasHistory');
-    expect(dbGetAllExercises()).toHaveLength(1);
+    expect(state().deleteExercise(used.id)).toBe(true);
+    reload();
+    expect(state().exercises.find(e => e.id === used.id)).toMatchObject({ archived: true });
+    expect(dbGetAllExercises()).toHaveLength(2);
   });
 });
 

@@ -3647,6 +3647,12 @@ export function dbApplySyncChanges(payload: SyncPayload, transport?: string): Ap
           WHERE table_name = ? AND row_key = ?`,
         [deletion.deletedAt, transport ?? null, deletion.table, deletion.rowKey]
       );
+      // A session's sets go with it, as in dbDeleteWorkoutSession. The peer
+      // tombstoned only the sets it had, so any this device logged before the
+      // delete arrived would otherwise be left pointing at no session.
+      if (deletion.table === 'workout_sessions') {
+        db.runSync('DELETE FROM workout_sets WHERE session_id = ?', [deletion.rowKey]);
+      }
       report.deleted++;
     }
 
