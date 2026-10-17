@@ -9,6 +9,7 @@
  * are genuinely separate stores and a leak between them would show up as a
  * real test failure rather than being papered over by a shared handle.
  */
+import { splitIngredientAnd } from '../utils/recipeUtils';
 import { addDays } from 'date-fns/addDays';
 import { subDays } from 'date-fns/subDays';
 import { useDemoStore } from '../store/useDemoStore';
@@ -3376,6 +3377,15 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // Each option is its own clean catalog name, never one row called
     // "serrano or jalapeño".
     expect(grouped.every(i => !/\bor\b/.test(i.nameKey))).toBe(true);
+  });
+
+  it('seeds a line the recipe screen offers to split into two with "and"', () => {
+    // Invisible without a seeded instance: the offer only appears on a line
+    // still written as "salt and pepper".
+    const lines = useRecipeStore.getState().recipes.flatMap(r => r.ingredients);
+    const andLine = lines.find(i => /\band\b/.test(i.name) && splitIngredientAnd(i) !== null);
+    expect(andLine).toBeDefined();
+    expect(andLine!.choiceGroup).toBeNull();
   });
 
   it('seeds an optional ingredient, unticked by default when its recipe goes on the list', () => {
