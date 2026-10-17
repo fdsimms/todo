@@ -8362,9 +8362,10 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   titleInputHidden: {
     color: 'transparent',
   },
+  // Same weight as titleInput: a bolder phrase is wider than the input's own
+  // text, so the overlay drifts off the caret.
   titleHighlight: {
     color: colors.accent,
-    fontWeight: '700',
     backgroundColor: colors.accentSubtle,
   },
   scheduleBanner: {
