@@ -290,8 +290,8 @@ export function typeSummary(type: TaskKind, v: TypeValues): string | null {
       // this from the Chain sitting under it in the picker, and the summary
       // line is the only place the app explains either.
       return v.rotationItems.length > 0
-        ? `${v.rotationItems.length} thing${v.rotationItems.length === 1 ? '' : 's'}, ${rotationTargetTotal(v.rotationItems)} ${rotationTargetTotal(v.rotationItems) === 1 ? 'time' : 'times'} a week in all, in any order. Stays on Today until all are done.`
-        : 'A set of things, each done a set number of times a week, in any order. Stays on Today until all are done.';
+        ? `${v.rotationItems.length} thing${v.rotationItems.length === 1 ? '' : 's'}, ${rotationTargetTotal(v.rotationItems)} ${rotationTargetTotal(v.rotationItems) === 1 ? 'time' : 'times'} a week in all, in any order. Leaves Today while you are on pace for the week.`
+        : 'A set of things, each done a set number of times a week, in any order. Leaves Today while you are on pace for the week.';
     case 'chain':
       return v.chainItems.length > 0
         ? `${v.chainItems.length} step${v.chainItems.length === 1 ? '' : 's'}, one per completion. Finishing one reveals the next.`

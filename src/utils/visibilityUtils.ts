@@ -13,7 +13,6 @@ import { resolveBlocker } from './blockerRegistry';
 import { resolvePerson } from './peopleRegistry';
 import { proratedFrom, quotaRunSpan, quotaWeekSpan } from './quotaSchedule';
 import { isNegativeTask } from './negativeHabits';
-import { isRotationTask } from './rotation';
 import { isProjectPaused, projectPausedUntil } from './projectPause';
 import { windowBounds, type SunLocation, type WindowFields } from './sunTimes';
 
@@ -702,15 +701,14 @@ export function quotaExpectedByNow(task: Task): number {
   return Math.min(target, Math.ceil((target * (+now - +start)) / (+end - +start)));
 }
 
-// Whether being on pace takes this target off Today. A rotation never does:
-// its members are a checklist for the week, so the row stays up until each is
-// done, and a day you don't want to do it is rescheduled by hand rather than
-// being decided for you by a pace ramp. A weekly target may leave for a later
-// *day* when it is ahead, but not for a later time today: its next unit
-// falling due this afternoon is not worth a row tucked into Later today, so it
-// stays up. Anything else follows its own opt-out.
+// Whether being on pace takes this target off Today. A rotation is a weekly
+// target whose units have names, so it follows the weekly rule and the same
+// `quotaAlwaysVisible` opt-out as any other target. A weekly target may leave
+// for a later *day* when it is ahead, but not for a later time today: its next
+// unit falling due this afternoon is not worth a row tucked into Later today,
+// so it stays up. Anything else follows its own opt-out.
 export function quotaHidesWhenOnPace(task: Task): boolean {
-  if (task.quotaAlwaysVisible || isRotationTask(task)) return false;
+  if (task.quotaAlwaysVisible) return false;
   if (task.quotaPeriod === 'week' && isQuotaTask(task)) {
     return getTaskDayStart(quotaNextDueAt(task)).getTime() !== getCurrentDayStart().getTime();
   }

@@ -1896,7 +1896,7 @@ describe('quota tasks', () => {
       expect(isTaskVisible(behind)).toBe(true);
     });
 
-    it('a rotation stays on Today while on pace', () => {
+    it('a rotation leaves Today while on pace, unless it is always visible', () => {
       const item = (id: string) => ({ id, title: id });
       const rotation = {
         ...quotaTask,
@@ -1905,7 +1905,8 @@ describe('quota tasks', () => {
         progressCount: 2,
       } as Task;
       expect(isQuotaOnPace(rotation)).toBe(true);
-      expect(isTaskVisible(rotation)).toBe(true);
+      expect(isTaskVisible(rotation)).toBe(false);
+      expect(isTaskVisible({ ...rotation, quotaAlwaysVisible: true })).toBe(true);
     });
 
     it('re-hides as soon as the next unit is logged', () => {

@@ -8,11 +8,10 @@
  * `Task.rotationLog` (what has been picked this period) bolted onto the weekly
  * quota that already exists, rather than a mechanism of its own.
  *
- * *When the row appears* is the quota's except for one thing: a rotation never
- * hides for being on pace (`quotaHidesWhenOnPace`). Hiding it while you are
- * keeping up left no way to know it was waiting, and invited skipping it by
- * default. It sits on Today until every member is done, and a day you don't
- * want it is a manual reschedule. `targetCount` is derived from the
+ * *When the row appears* is the quota's: a rotation leaves Today while you are
+ * on pace for the week (`quotaHidesWhenOnPace`) and comes back when you fall
+ * behind, and `quotaAlwaysVisible` keeps it up all week, as for any target.
+ * `targetCount` is derived from the
  * set's size (`derivedTargetCount` in useTaskStore), which is what lets the
  * meter, the pace mark, the progress chip, `isQuotaPartial` and
  * `rolloverQuotas` all keep working without knowing rotations exist.

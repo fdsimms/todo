@@ -1175,7 +1175,7 @@ const taskFieldsShape = {
       .describe('With remind: only notify while the phone is at one of these saved places, by name (as the person named them, e.g. "Home", "Office"; each needs a map pin). The phone checks where it is when the app is opened, never in the background, so notifications stop within about 2 hours of leaving and nothing is sent when it cannot tell. [] or null: notify anywhere.'),
     allowOvershoot: z.boolean().optional().describe('Per day only: keep counting past the target.'),
     coinsPerTap: z.boolean().optional().describe('Pay coins on every tap instead of when the target is reached. The total is the same; each tap earns its share and the last one the rest. Only matters while rewards are on. Omit to leave as is.'),
-    alwaysVisible: z.boolean().optional().describe('Keep the task on Today all day (a weekly one, all week) instead of hiding it while you are on pace. Pacing still runs underneath; only the hiding is switched off. Has no effect on a rotation, which never hides. Omit to leave as is.'),
+    alwaysVisible: z.boolean().optional().describe('Keep the task on Today all day (a weekly one, all week) instead of hiding it while you are on pace. Pacing still runs underneath; only the hiding is switched off. A rotation hides while on pace like any weekly target, so this is how to keep one up. Omit to leave as is.'),
     rampUp: z.object({
       add: z.number().int().describe('How much to add to the count each time, 1 to 20.'),
       every: z.number().int().describe('How many days (weeks, for a weekly target) the target has to be met before each increase, 1 to 60.'),
