@@ -49,7 +49,7 @@ export function RecipeChoiceChips({
           accessibilityHint="Double tap to rename this group"
         >
           <Text style={[styles.sectionLabel, styles.labelText]}>{group.label}</Text>
-          <Ionicons name="pencil" size={iconSize.xs} color={colors.textTertiary} />
+          <Ionicons name="create-outline" size={iconSize.xs} color={colors.textTertiary} />
         </TouchableOpacity>
       ) : (
         <Text style={styles.sectionLabel}>{group.label}</Text>
