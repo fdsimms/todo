@@ -1,0 +1,4 @@
+{
+  "message": "Importing a recipe now splits an ingredient written as \"x or y\", like \"chicken or vegetable stock\", into one row for each option, filed as a choice.",
+  "date": "2026-10-17"
+}

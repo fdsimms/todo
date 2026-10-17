@@ -25,7 +25,7 @@ import {
 } from '../services/aiSuggestions';
 import { describeImportError, isRetryableImportError } from '../services/recipePage';
 import {
-  alreadyInRecipeNote, blockedReviewRows, normalizeIngredient, formatServingsRange, parseServingsRange,
+  alreadyInRecipeNote, blockedReviewRows, normalizeIngredient, splitImportedAlternatives, formatServingsRange, parseServingsRange,
   recipeHasMethod, recipeHasPrepTasks, recipeHasAttribution,
 } from '../utils/recipeUtils';
 import { describeKeepDays } from '../utils/leftovers';
@@ -254,8 +254,10 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       // the next time this sheet opens.
       if (!visibleRef.current) return;
       setExtracted(result);
-      setIngredients(result.ingredients);
-      setAccepted(new Set(result.ingredients.map((_, i) => i)));
+      // "x or y" lines arrive as one row per option, filed as alternatives.
+      const rows = splitImportedAlternatives(result.ingredients);
+      setIngredients(rows);
+      setAccepted(new Set(rows.map((_, i) => i)));
       setApplyDetails(
         result.servings !== null || result.prepMinutes !== null || result.recipeYield !== null
           || result.leftoverKeepDays !== null,

@@ -3,6 +3,7 @@ import {
   TITLE_MAX_LENGTH,
   GROCERY_NAME_MAX_LENGTH,
   GROCERY_QUANTITY_MAX_LENGTH,
+  RECIPE_CHOICE_GROUP_MAX_LENGTH,
   RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH,
   RECIPE_NAME_MAX_LENGTH,
   RECIPE_PAGE_MAX_LENGTH,
@@ -840,12 +841,39 @@ export interface RecipeGroceryItem {
    */
   optional?: boolean;
   /**
+   * The label shared by the rows that are alternatives of each other ("Red
+   * shatta or rose harissa"). Read straight into RecipeIngredient.choiceGroup
+   * by normalizeIngredient. The model sets it only on a recipe import
+   * (`includeChoices`), one row per option; `splitImportedAlternatives` writes
+   * it where the import review splits an "x or y" line the model left whole.
+   */
+  choiceGroup?: string | null;
+  /**
    * True for a staple already on hand rather than something to shop for —
    * water used at a stated amount, most often. Read straight into
    * RecipeIngredient.excludeFromShoppingList by normalizeIngredient. Same
    * "written only when true" rule as `optional` above.
    */
   excludeFromShoppingList?: boolean;
+}
+
+/**
+ * A choice label held by one row is no choice, which is what happens when the
+ * model labels only one option or the dedupe above drops the other. The label is
+ * removed rather than the row, so the ingredient still imports.
+ */
+function dropLoneChoiceGroups(rows: RecipeGroceryItem[]): RecipeGroceryItem[] {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    if (!row.choiceGroup) continue;
+    const key = row.choiceGroup.toLowerCase();
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return rows.map(row => {
+    if (!row.choiceGroup || (counts.get(row.choiceGroup.toLowerCase()) ?? 0) > 1) return row;
+    const { choiceGroup: _lone, ...rest } = row;
+    return rest;
+  });
 }
 
 /**
@@ -865,7 +893,7 @@ function parseExtractedItems(
   const items = raw as Array<
     {
       name?: unknown; quantity?: unknown; aisle?: unknown; component?: unknown; prep?: unknown;
-      optional?: unknown; excludeFromShoppingList?: unknown;
+      optional?: unknown; excludeFromShoppingList?: unknown; choiceGroup?: unknown;
     }
   > | undefined;
   // Not an array, rather than absent: a reply carrying an object or a string
@@ -904,9 +932,12 @@ function parseExtractedItems(
       // for this field — an absent/false model answer just isn't carried.
       ...(item.optional === true && { optional: true }),
       ...(item.excludeFromShoppingList === true && { excludeFromShoppingList: true }),
+      ...(typeof item.choiceGroup === 'string' && item.choiceGroup.trim() && {
+        choiceGroup: item.choiceGroup.trim().replace(/\s+/g, ' ').slice(0, RECIPE_CHOICE_GROUP_MAX_LENGTH).trim(),
+      }),
     });
   }
-  return result.slice(0, MAX_RECIPE_ITEMS);
+  return dropLoneChoiceGroups(result.slice(0, MAX_RECIPE_ITEMS));
 }
 
 /**
@@ -971,7 +1002,7 @@ function parseExtractedReferences(raw: unknown): ExtractedRecipeReference[] {
  * one parser — the prompts are what differ, and the shape they have to
  * produce must not.
  */
-function groceryItemsSchema(availableAisles: string[], description: string) {
+function groceryItemsSchema(availableAisles: string[], description: string, includeChoices = false) {
   return {
     type: 'array',
     description,
@@ -998,6 +1029,12 @@ function groceryItemsSchema(availableAisles: string[], description: string) {
           type: 'string',
           description: `What to do to it before using it, in the recipe's own words — "pressed and cubed", "steamed 10 min", "minced" — the instruction dropped out of "name" and "quantity" above. Under ${PREP_MAX_LENGTH} characters. Empty string when the recipe states no prep for this item.`,
         },
+        ...(includeChoices ? {
+          choiceGroup: {
+            type: 'string',
+            description: `Set only on the rows that are alternatives of each other, to one label shared by every option: "Chicken or vegetable stock". Under ${RECIPE_CHOICE_GROUP_MAX_LENGTH} characters. Empty string for every other row.`,
+          },
+        } : {}),
         optional: {
           type: 'boolean',
           description: 'True when the recipe itself marks this ingredient as optional — "(optional)", "if desired/available", "or leave it out", a garnish called out as not required. False for everything else, including anything you merely think a cook could skip; only the recipe\'s own wording counts.',
@@ -1133,11 +1170,14 @@ export interface ExtractedRecipe {
  * quantities, which aisle. Shared verbatim by both sources so a photo and a
  * paste can't drift into reading the ingredients differently.
  */
-function sharedRecipeInstructions(availableAisles: string[]): string[] {
+function sharedRecipeInstructions(availableAisles: string[], includeChoices = false): string[] {
   return [
     'Name each shopping item the way a shop would label it, not the way the recipe prepares it — "garlic" rather than "3 cloves garlic, minced". Keep the recipe\'s own quantity and unit as stated, with the prep instruction moved to the "prep" field instead of "name" or "quantity" — "4 cloves" or "3 cloves", not "1 bulb", with "minced" in "prep". Never substitute your own guess at a purchasable equivalent; the recipe\'s stated amount is what the cook actually needs, and a bulb doesn\'t reliably yield a fixed number of cloves. Ignore the method when deciding what goes on the shopping list, with one exception: if the recipe calls for a stated amount of water — in its own ingredient list, or only in the method ("combine 3/4 cup water and the vinegar") — include it as its own line with that amount, and set "excludeFromShoppingList" to true, since nobody needs to buy water. Skip water entirely when no amount is ever stated for it.',
     `Sections available: ${availableAisles.join(', ')}. Use "Other" only when nothing else fits.`,
     'If the recipe\'s own ingredient list is split into labelled components — "For the cake" / "For the frosting", "For the marinade" / "For the dish" — carry that label into each item\'s "component" field. Leave it empty when the recipe lists everything as one plain list.',
+    ...(includeChoices ? [
+      'When one line offers a choice between ingredients — "chicken or vegetable stock", "red shatta or rose harissa", "salted or unsalted butter" — return one item for each option, each named in full the way you would name it alone ("chicken stock" and "vegetable stock", not "chicken" and "stock"), each with the line\'s amount, and give all of them the same "choiceGroup" label. Only a genuine either/or counts: a list of things used together ("salt and pepper"), a hedge about amount ("1 cup or so") and a substitution the recipe mentions in passing are not choices.',
+    ] : []),
     'Set "optional" to true only when the recipe itself says so — "(optional)", "if desired", "if you have it", a garnish explicitly called not required. Leave it false otherwise, even for an item you\'d personally guess is skippable, like a garnish with nothing next to it saying so.',
     'If the recipe says how long its own leftovers keep — "store in an airtight container for up to 4 days", "keeps 3-4 days in the fridge", "will keep for a week", "store up to 6 months" — put that number of days in "leftoverKeepDays", the low end when a range is given. Convert weeks and longer to days (a week is 7, a month 30, a year 365), so "up to 6 months" is 180. A storage time counts whatever it is stored in (fridge, freezer, pantry); when the recipe gives more than one, use the refrigerator figure. This is about the cooked dish afterward, not a raw ingredient\'s shelf life, a "best served immediately" note, or how long the dish takes to make. 0 when the recipe says nothing about storage, which is most recipes — never estimate one yourself.',
   ];
@@ -1228,9 +1268,9 @@ function methodInstructions(): string[] {
 export async function extractRecipe(
   source: RecipeSource,
   availableAisles: string[],
-  options: { includeMethod?: boolean; includeReferences?: boolean; includeSource?: boolean } = {},
+  options: { includeMethod?: boolean; includeReferences?: boolean; includeSource?: boolean; includeChoices?: boolean } = {},
 ): Promise<ExtractedRecipe> {
-  const { includeMethod = true, includeReferences = true, includeSource = true } = options;
+  const { includeMethod = true, includeReferences = true, includeSource = true, includeChoices = true } = options;
   const { apiKey, model } = requireFeature('recipeExtraction');
 
   const empty: ExtractedRecipe = {
@@ -1266,7 +1306,7 @@ export async function extractRecipe(
         multiPhoto
           ? `${pageFurniture} If any single photo shows more than one recipe on the page (for example a facing-page recipe next to the one you were asked to read), ignore the other recipe and extract only the one that continues across the photos you were given — never merge ingredients across recipes. A photo that is mostly or entirely method text with a short or absent ingredient list is still part of the same recipe if it continues the method from an earlier photo; never drop it, or the steps or prep tasks on it, for looking ingredient-light. Ingredient lists are often set in two columns; read down each column rather than across.`
           : `${pageFurniture} If the page shows more than one recipe, extract only the most prominent one — the one whose title and ingredient list are most complete — and never merge ingredients across recipes. Ingredient lists are often set in two columns; read down each column rather than across.`,
-        ...sharedRecipeInstructions(availableAisles),
+        ...sharedRecipeInstructions(availableAisles, includeChoices),
         ...(includeSource ? sourceInstructions() : []),
         ...(includeReferences ? referenceInstructions() : []),
         ...(includeMethod ? methodInstructions() : []),
@@ -1274,7 +1314,7 @@ export async function extractRecipe(
       ].join('\n\n')
     : [
         `Extract this recipe: its name, how many it serves (or what it makes, if that's how the source states it — "2 loaves", "3 cups", "2 dozen cookies"), its total prep/cook time, and ${foundLine}.`,
-        ...sharedRecipeInstructions(availableAisles),
+        ...sharedRecipeInstructions(availableAisles, includeChoices),
         ...(includeSource ? sourceInstructions() : []),
         ...(includeReferences ? referenceInstructions() : []),
         ...(includeMethod ? methodInstructions() : []),
@@ -1328,6 +1368,7 @@ export async function extractRecipe(
           items: groceryItemsSchema(
             availableAisles,
             'The things a shopper needs to buy for this recipe.',
+            includeChoices,
           ),
           ...(includeSource ? {
             sourceTitle: {
@@ -1503,6 +1544,9 @@ export async function suggestRecipeGroceries(
     includeReferences: false,
     // Nowhere to put an attribution either — same reason the method is off.
     includeSource: false,
+    // The grocery list has no either/or for a recipe's choice: two rows would
+    // put both options on the list.
+    includeChoices: false,
   });
   return extracted.ingredients;
 }

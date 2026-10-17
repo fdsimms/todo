@@ -4,6 +4,7 @@ import {
   makeIngredient,
   splitPrep,
   ingredientsFromText,
+  splitImportedAlternatives,
   mergeIngredients,
   duplicateIngredientIn,
   blockedIngredientNote,
@@ -2728,5 +2729,49 @@ describe('splitIngredientAnd', () => {
   it('is null for a line that does not split', () => {
     expect(line('half and half', '1 cup')).toBeNull();
     expect(line('garlic')).toBeNull();
+  });
+});
+
+describe('splitImportedAlternatives', () => {
+  type Row = {
+    name: string; quantity: string; aisle: string; section: string | null; prep: string | null;
+    choiceGroup?: string | null; purpose?: string;
+  };
+  const row = (name: string, extra: Partial<Row> = {}): Row => ({
+    name, quantity: '1 tbsp', aisle: 'Pantry', section: null, prep: null, ...extra,
+  });
+
+  it('turns an "x or y" row into one row per option sharing a choice group', () => {
+    const out = splitImportedAlternatives([row('red shatta or rose harissa', { prep: 'chopped', section: 'Sauce' })]);
+    expect(out.map(r => r.name)).toEqual(['red shatta', 'rose harissa']);
+    expect(new Set(out.map(r => r.choiceGroup)).size).toBe(1);
+    expect(out[0].choiceGroup).toBe('red shatta or rose harissa');
+    // The slot's amount, prep, section and aisle are true of each option.
+    for (const r of out) {
+      expect(r).toMatchObject({ quantity: '1 tbsp', aisle: 'Pantry', prep: 'chopped', section: 'Sauce' });
+    }
+  });
+
+  it('keeps fields only one path carries, and the order of the rows around it', () => {
+    const out = splitImportedAlternatives([
+      row('garlic'),
+      row('butter or margarine', { purpose: 'for frying' }),
+      row('salt'),
+    ]);
+    expect(out.map(r => r.name)).toEqual(['garlic', 'butter', 'margarine', 'salt']);
+    expect(out[1]).toMatchObject({ purpose: 'for frying' });
+    expect(out[0].choiceGroup).toBeUndefined();
+  });
+
+  it('returns a row that is already a choice, or not a safe split, untouched', () => {
+    const grouped = row('butter or margarine', { choiceGroup: 'Fat' });
+    const stock = row('chicken or vegetable stock');
+    const out = splitImportedAlternatives([grouped, stock]);
+    expect(out).toEqual([grouped, stock]);
+  });
+
+  it('feeds normalizeIngredient a choice group it keeps', () => {
+    const [first] = splitImportedAlternatives([row('butter or margarine')]);
+    expect(normalizeIngredient(first)?.choiceGroup).toBe('butter or margarine');
   });
 });

@@ -750,6 +750,33 @@ function firstWord(part: string): string {
   return part.split(/\s+/)[0].toLowerCase();
 }
 
+function wordCount(part: string): number {
+  return part.split(/\s+/).filter(Boolean).length;
+}
+
+/**
+ * `splitAlternativeNames`, narrowed to the lines safe to split without asking:
+ * the ones a recipe import splits on its own.
+ *
+ * The suggestion in the ingredient sheet can afford the verbatim split because
+ * a person confirms it and fixes the name that needs it. Import has no such
+ * step for each line, so it only takes a line whose options are the same length
+ * in words: "red shatta or rose harissa", "corn tortillas or flour tortillas".
+ * A length mismatch is the shape of a shared trailing noun ("chicken or
+ * vegetable stock", "salted or unsalted butter", "extra virgin or light olive
+ * oil"), where splitting verbatim would store "chicken" and "salted" as things
+ * to buy. Those lines stay one row, and the detail screen's suggestion is still
+ * there for them. An option opening with a digit carries its own amount, which
+ * a split would copy from the wrong line, so it is left alone too.
+ */
+export function splitImportAlternatives(name: string): string[] | null {
+  const parts = splitAlternativeNames(name);
+  if (!parts) return null;
+  if (parts.some(part => /^\d/.test(part))) return null;
+  const length = wordCount(parts[0]);
+  return parts.every(part => wordCount(part) === length) ? parts : null;
+}
+
 /**
  * Whether a line reads as a comma-separated list of alternatives, which is the
  * one case `splitPrep` has to stand down for: "chicken, beef, or lamb" would

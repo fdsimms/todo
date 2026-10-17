@@ -16,7 +16,7 @@ import {
   TITLE_MAX_LENGTH,
 } from '../types';
 import { format } from 'date-fns/format';
-import { groceryNameKey, parseGroceryInput, splitAndNames, splitExample, splitGroceryLines, splitPrep, splitPurpose } from './groceryParse';
+import { groceryNameKey, parseGroceryInput, splitAndNames, splitExample, splitGroceryLines, splitImportAlternatives, splitPrep, splitPurpose } from './groceryParse';
 import { generateId } from './id';
 import { resolveOffsetDate } from './templateUtils';
 import { itemKeyIndex } from './itemAliases';
@@ -1241,6 +1241,31 @@ export function filterRecipeSuggestions(values: readonly string[], query: string
   const q = query.trim().toLowerCase();
   const matches = q ? values.filter(v => v.toLowerCase().includes(q) && v.toLowerCase() !== q) : values;
   return matches.slice(0, 8);
+}
+
+/**
+ * An import's review rows with every "red shatta or rose harissa" line turned
+ * into one row per option, filed as alternatives of each other.
+ *
+ * Each new row takes the original's place and inherits everything else on it
+ * (amount, prep, section, aisle), the same rule `splitIngredientAlternatives`
+ * applies to a saved line: the options fill one slot in the recipe, so what is
+ * true of the slot is true of each way of filling it. A row already in a choice
+ * group, or whose line `splitImportAlternatives` won't split without asking, is
+ * returned as it came. Generic over the row type because the AI and offline
+ * paths each carry extra fields (`purpose`, `example`) that have to survive.
+ */
+export function splitImportedAlternatives<T extends { name: string; choiceGroup?: string | null }>(
+  rows: readonly T[],
+): T[] {
+  return rows.flatMap(row => {
+    if (row.choiceGroup) return [row];
+    const names = splitImportAlternatives(row.name);
+    if (!names) return [row];
+    const choiceGroup = defaultChoiceGroupLabel(names);
+    if (!choiceGroup) return [row];
+    return names.map(name => ({ ...row, name, choiceGroup }));
+  });
 }
 
 /**

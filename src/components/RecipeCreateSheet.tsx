@@ -53,7 +53,7 @@ import { normalizeRecipeUrl, recipeImportedFrom } from '../utils/recipeUrl';
 import { recipeFromPageOffline } from '../utils/recipePageOffline';
 import {
   alreadyInRecipeNote, blockedReviewRows,
-  normalizeIngredient, cleanRecipeName, cleanRecipeSource, cookbookKey, formatServingsRange,
+  normalizeIngredient, splitImportedAlternatives, cleanRecipeName, cleanRecipeSource, cookbookKey, formatServingsRange,
   parseServingsRange, recipeInBook,
 } from '../utils/recipeUtils';
 import { describeKeepDays } from '../utils/leftovers';
@@ -400,11 +400,13 @@ export function RecipeCreateSheet({
       // the next time this sheet opens.
       if (!visibleRef.current) return;
       setExtracted(result);
-      setIngredients(result.ingredients);
+      // "x or y" lines arrive as one row per option, filed as alternatives.
+      const rows = splitImportedAlternatives(result.ingredients);
+      setIngredients(rows);
       // The page's own title is the better answer when the model didn't give
       // one — a page that says what it's called is not a recipe with no name.
       setName(result.name || resolved.page?.title || '');
-      setAccepted(new Set(result.ingredients.map((_, i) => i)));
+      setAccepted(new Set(rows.map((_, i) => i)));
       setApplyDetails(
         result.servings !== null || result.prepMinutes !== null || result.recipeYield !== null
           || result.leftoverKeepDays !== null,

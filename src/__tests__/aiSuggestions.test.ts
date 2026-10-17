@@ -786,6 +786,13 @@ describe('suggestGroceryAisles on the on-device model', () => {
 });
 
 describe('suggestRecipeGroceries', () => {
+  it('does not ask for choices, since the grocery list has no either/or for a recipe', async () => {
+    const spy = mockFetchOnce(toolUseResponse('extract_groceries', { items: [] }));
+    await suggestRecipeGroceries('some recipe', AISLES);
+    const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+    expect(JSON.stringify(body)).not.toContain('choiceGroup');
+  });
+
   it('returns items with quantity and aisle', async () => {
     mockFetchOnce(
       toolUseResponse('extract_groceries', {
@@ -1183,6 +1190,38 @@ describe('extractRecipe', () => {
     expect(result.ingredients).toEqual([
       { name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', section: null, prep: null },
       { name: 'sour cream', quantity: '', aisle: 'Dairy & Eggs', section: null, prep: null, optional: true },
+    ]);
+  });
+
+  it('asks for one row per option of an either/or, and carries the label they share', async () => {
+    const spy = mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Soup',
+        items: [
+          { name: 'chicken stock', quantity: '4 cups', aisle: 'Pantry', choiceGroup: 'Chicken or vegetable stock' },
+          { name: 'vegetable stock', quantity: '4 cups', aisle: 'Pantry', choiceGroup: 'chicken or  vegetable stock' },
+          { name: 'salt', quantity: '', aisle: 'Pantry', choiceGroup: '' },
+        ],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.ingredients.map(i => i.choiceGroup)).toEqual([
+      'Chicken or vegetable stock', 'chicken or vegetable stock', undefined,
+    ]);
+    const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+    expect(JSON.stringify(body)).toContain('choiceGroup');
+  });
+
+  it('drops a choice label that only one row holds, keeping the row', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Soup',
+        items: [{ name: 'chicken stock', quantity: '4 cups', aisle: 'Pantry', choiceGroup: 'Stock' }],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.ingredients).toEqual([
+      { name: 'chicken stock', quantity: '4 cups', aisle: 'Pantry', section: null, prep: null },
     ]);
   });
 
