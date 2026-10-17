@@ -1,0 +1,67 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="base.css">
+<style>
+.pos { display:flex; justify-content:space-between; align-items:center; margin: 4px 4px 12px; }
+.dots { display:flex; gap:6px; } .dots i { width:6px; height:6px; border-radius:3px; background: var(--bg4); }
+.dots i.on { background: var(--accent); width:18px; } .dots i.past { background: var(--done); }
+.exName { font-size: 22px; font-weight: 700; letter-spacing: -0.2px; }
+.suggest { margin-top: 12px; background: var(--bg3); border-radius: 12px; padding: 12px; display:flex; flex-direction:column; gap:8px; }
+.setHead, .setRow { display:grid; grid-template-columns: 34px 1fr 72px 52px 28px; align-items:center; gap: 8px; padding: 0 16px; }
+.setHead { font-size: 11px; font-weight:600; letter-spacing:0.8px; color: var(--text2); padding-top: 12px; padding-bottom: 6px; }
+.setRow { min-height: 46px; border-top: 0.5px solid var(--sep); font-size: 15px; }
+.setRow .n { font-weight:600; color: var(--text2); text-align:center; }
+.setRow .w { color: var(--orangeText); font-weight:700; text-align:center; }
+.setRow.current { background: var(--accentSubtle); }
+.edit { padding: 12px 16px 14px; background: var(--accentSubtle); display:flex; flex-direction:column; gap: 12px; }
+.edit .stepper { background: var(--bg2); }
+.edit .line { display:flex; justify-content:space-between; align-items:center; }
+.plates { display:flex; align-items:center; gap:6px; font-size:13px; color: var(--text2); }
+.plate { border-radius: 3px; background: var(--text3); }
+.adds { display:flex; gap: 8px; flex-wrap: wrap; padding: 12px 16px; border-top: 0.5px solid var(--sep); }
+.next { margin-top: 16px; }
+.rest { flex:none; background: var(--bg2); border-top: 0.5px solid var(--sep); padding: 12px 16px 34px; }
+.rest .top { display:flex; justify-content:space-between; align-items:baseline; }
+.rest .time { font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.5px; }
+.bar { height: 4px; background: var(--bg3); border-radius: 2px; margin: 8px 0 12px; overflow:hidden; } .bar i { display:block; height:100%; width:42%; background: var(--accent); }
+.restBtns { display:flex; gap: 8px; } .restBtns .pill { flex:1; justify-content:center; padding: 10px 0; font-size: 15px; }
+</style></head><body>
+<div class="phone light" id="p">
+  <div class="status"><span>9:41</span><span>●●●</span></div>
+  <div class="sheetHeader"><span class="side">End</span><span class="title">Push A<small>Started 6:12 PM · 32:14</small></span><span class="side r">Finish</span></div>
+  <div class="scroll">
+    <div class="pos"><span class="sec">Exercise 2 of 5</span><span class="dots"><i class="past"></i><i class="on"></i><i></i><i></i><i></i></span></div>
+    <div class="card">
+      <div style="padding: 16px 16px 4px">
+        <div class="exName">Barbell bench press</div>
+        <div class="sec" style="margin-top:4px">Chest, triceps, front shoulders</div>
+        <div class="suggest">
+          <div style="font-size:13px"><b style="font-weight:600">Today 3 × 6–8 at 82.5 kg.</b> Up 2.5 kg because every set last time reached 8.</div>
+        </div>
+      </div>
+      <div class="setHead"><span style="text-align:center">SET</span><span>PREVIOUS</span><span>KG</span><span>REPS</span><span></span></div>
+      <div class="setRow"><span class="w">W</span><span class="ter">40 × 10</span><span class="num">40</span><span class="num">10</span><span class="check done">✓</span></div>
+      <div class="setRow"><span class="n">1</span><span class="ter">80 × 8</span><span class="num">82.5</span><span class="num">8</span><span class="check done">✓</span></div>
+      <div class="setRow current"><span class="n">2</span><span class="ter">80 × 8</span><span class="num" style="font-weight:600">82.5</span><span class="num" style="font-weight:600">8</span><span class="check"></span></div>
+      <div class="edit">
+        <div class="line"><span class="sec">Weight</span><span class="stepper"><b>−</b><i>82.5 kg</i><b>+</b></span></div>
+        <div class="line"><span class="sec">Reps</span><span class="stepper"><b>−</b><i>8</i><b>+</b></span></div>
+        <div class="plates">Each side
+          <span class="plate" style="width:9px;height:30px"></span><span>20</span>
+          <span class="plate" style="width:7px;height:24px"></span><span>10</span>
+          <span class="plate" style="width:5px;height:16px"></span><span>1.25</span>
+          <span class="ter">on a 20 kg bar</span></div>
+      </div>
+      <div class="setRow"><span class="n">3</span><span class="ter">80 × 8</span><span class="ter num">82.5</span><span class="ter num">8</span><span class="check"></span></div>
+      <div class="adds"><span class="pill">+ Add set</span><span class="pill neutral">Notes</span></div>
+    </div>
+    <div class="groupLabel">Up next</div>
+    <div class="card"><div class="row"><div style="flex:1"><div>Incline dumbbell press</div><div class="sec">3 × 10–12 · 24 kg last time</div></div><span class="chev">›</span></div></div>
+  </div>
+  <div class="rest">
+    <div class="top"><span class="sec">Rest after set 1</span><span class="ter">of 2:30</span></div>
+    <div class="time">1:24</div>
+    <div class="bar"><i></i></div>
+    <div class="restBtns"><span class="pill neutral">−15 s</span><span class="pill neutral">+30 s</span><span class="pill">Skip rest</span></div>
+  </div>
+</div>
+<script>const p=document.getElementById('p'); const d=p.cloneNode(true); d.className='phone dark'; d.id=''; document.body.appendChild(d);</script>
+</body></html>
