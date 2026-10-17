@@ -14,6 +14,8 @@ import type { RecipeSortOption } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, animation, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { tagColor } from '../utils/tagColor';
+import { toggleRecipeTag } from '../utils/recipeTags';
 import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useSheetMotion } from '../hooks/useSheetMotion';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
@@ -26,6 +28,12 @@ interface Props {
   onSortChange: (s: RecipeSortOption) => void;
   lovedOnly: boolean;
   onLovedOnlyChange: (lovedOnly: boolean) => void;
+  /** The whole box's vocabulary, alphabetical (see allRecipeTags). */
+  tags: readonly string[];
+  /** How many recipes each tag is on (see recipeTagCounts). */
+  tagCounts: ReadonlyMap<string, number>;
+  selectedTags: readonly string[];
+  onTagsChange: (tags: string[]) => void;
 }
 
 const SORT_OPTIONS: { value: RecipeSortOption; label: string; icon: string }[] = [
@@ -50,6 +58,7 @@ const SORT_OPTIONS: { value: RecipeSortOption; label: string; icon: string }[] =
  */
 export function RecipeSortFilterSheet({
   visible, onClose, sort, onSortChange, lovedOnly, onLovedOnlyChange,
+  tags, tagCounts, selectedTags, onTagsChange,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -92,11 +101,12 @@ export function RecipeSortFilterSheet({
     })
   ).current;
 
-  const activeCount = (sort !== 'default' ? 1 : 0) + (lovedOnly ? 1 : 0);
+  const activeCount = (sort !== 'default' ? 1 : 0) + (lovedOnly ? 1 : 0) + selectedTags.length;
 
   const reset = () => {
     onSortChange('default');
     onLovedOnlyChange(false);
+    onTagsChange([]);
   };
 
   return (
@@ -180,6 +190,39 @@ export function RecipeSortFilterSheet({
                 </Text>
               </TouchableOpacity>
             </View>
+
+            {tags.length > 0 && (
+              <>
+                <Text style={[styles.groupLabel, { marginTop: spacing.lg }]}>Tags</Text>
+                {/* Wrapping chips rather than a scrolling row: the vocabulary
+                    is the user's own and has no ceiling. Tags AND together
+                    (see filterRecipesByTags), so each chip is a checkbox. */}
+                <View style={styles.chips}>
+                  {tags.map(tag => {
+                    const on = selectedTags.includes(tag);
+                    const count = tagCounts.get(tag) ?? 0;
+                    const color = tagColor(tag);
+                    return (
+                      <TouchableOpacity
+                        key={tag}
+                        style={[styles.chip, { backgroundColor: on ? color + '33' : colors.bgTertiary }]}
+                        onPress={() => {
+                          haptics.tap();
+                          onTagsChange(toggleRecipeTag(selectedTags, tag));
+                        }}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: on }}
+                        accessibilityLabel={`${tag}, ${count} recipes`}
+                      >
+                        {on && <Ionicons name="checkmark" size={13} color={color} />}
+                        <Text style={[styles.chipText, on && { color }]}>{tag}</Text>
+                        <Text style={styles.chipCount}>{count}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
+            )}
           </ScrollView>
           <ScrollEdgeFade
             edge="bottom"
@@ -248,5 +291,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   chipActive: { backgroundColor: colors.accentFill },
   chipText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
+  chipCount: { color: colors.textSecondary, fontSize: font.xs },
   chipTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
 });

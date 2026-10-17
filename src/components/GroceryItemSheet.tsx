@@ -1719,7 +1719,7 @@ export function GroceryItemSheet({
             label="Food type"
             summary={foodKindSummary}
             emptySummary="None"
-            hint="Which blanks in a recipe this can fill, like a grain or a protein. Guessed from the name until you pick."
+            hint="Which wild cards in a recipe this can fill, like a grain or a protein. Guessed from the name until you pick."
             expanded={openField === 'foodKinds'}
             onToggle={() => toggleField('foodKinds')}
           >

@@ -1731,7 +1731,7 @@ export function RecipeDetailScreen() {
   // line is what that meal filled it with.
   const renderBlank = (blank: RecipeBlank) => {
     const fill = blankFillOf(overrides, blank.id).map(l => l.name).join(', ');
-    const detail = fill ? `This time: ${fill}` : [blank.quantity, blank.options.join(', ')].filter(Boolean).join(' · ');
+    const detail = fill || [blank.quantity, blank.options.join(', ')].filter(Boolean).join(' · ');
     return (
       <TouchableOpacity
         key={blank.id}
@@ -2255,7 +2255,7 @@ export function RecipeDetailScreen() {
             change. Plain sentences, not controls: they are set on the meal. */}
         {overrideLines.length > 0 && (
           <View style={styles.overrideBox}>
-            <Text style={styles.overrideTitle}>This time</Text>
+            <Text style={styles.overrideTitle}>For this meal</Text>
             {overrideLines.map(line => (
               <Text key={line} style={styles.overrideLine}>{line}</Text>
             ))}
@@ -2403,7 +2403,7 @@ export function RecipeDetailScreen() {
             {blanks.length > 0 && (
               <View style={mergedIngredientRows.length > 0 ? styles.ingredientSectionHeaderWrap : styles.blankHeaderFirst}>
                 {mergedIngredientRows.length > 0 && <View style={styles.ingredientSectionDivider} />}
-                <Text style={styles.ingredientSectionHeader}>From your kitchen</Text>
+                <Text style={styles.ingredientSectionHeader}>Wild cards</Text>
                 {blanks.map(renderBlank)}
               </View>
             )}
@@ -2547,12 +2547,12 @@ export function RecipeDetailScreen() {
           <View style={[styles.addRow, styles.addRowWrap]}>
             {showBlankAction && (
               <InlineAction
-                label="Add a blank"
+                label="Add a wild card"
                 icon="add"
                 variant="neutral"
                 surface="page"
                 onPress={() => { haptics.tap(); setEditingBlank('new'); }}
-                accessibilityLabel="Add a blank, a kind of food you pick from your kitchen each time"
+                accessibilityLabel="Add a wild card, a kind of food you pick from your kitchen each time"
               />
             )}
             {recipe.ingredients.length > 0 && (

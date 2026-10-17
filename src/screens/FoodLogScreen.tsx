@@ -390,6 +390,7 @@ export function FoodLogScreen() {
   const guessedSlot = useMemo(() => slotForHour(loggingAt.getHours()), [loggingAt]);
 
   const foodScrollControl = useRef<DragScroller | null>(null);
+  const arrivedBefore = useRef(false);
   useEffect(() => {
     loadRange(dayKey, dayKey);
   }, [dayKey, loadRange]);
@@ -434,7 +435,12 @@ export function FoodLogScreen() {
       // out as well, since a blurred tab is frozen and runs nothing until it
       // is already on screen.
       const resetScroll = () => foodScrollControl.current?.scrollToOffset(0);
-      resetScroll();
+      // Not on the first arrival: a list that has just mounted is already at
+      // the top, and a scrollTo issued before its first layout moved it
+      // instead, so the content painted off the top and snapped down a beat
+      // later on every cold start.
+      if (arrivedBefore.current) resetScroll();
+      arrivedBefore.current = true;
       return resetScroll;
     }, [route.params?.openEntry, handledOpenEntry]),
   );

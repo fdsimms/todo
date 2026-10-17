@@ -143,7 +143,7 @@ export function BlankEditorSheet({ visible, recipeId, blankId, onClose }: Props)
     >
       <View style={[styles.root, { paddingTop: spacing.md }]}>
         <SheetHeader
-          title={blankId ? 'Edit blank' : 'Add a blank'}
+          title={blankId ? 'Edit wild card' : 'Add a wild card'}
           left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} />}
           right={<SheetHeaderButton label={BUTTON_LABEL.save} onPress={handleSave} disabled={!canSave} />}
         />
@@ -159,7 +159,7 @@ export function BlankEditorSheet({ visible, recipeId, blankId, onClose }: Props)
               button, and this is where the button lands. */}
           {!blankId && (
             <HelpText style={[styles.hint, styles.intro]}>
-              For a dish you make with whatever’s around, like a grain bowl. A blank names a
+              For a dish you make with whatever’s around, like a grain bowl. A wild card names a
               kind of food, like a grain or any vegetables, and each time you plan the recipe
               you pick what fills it from your kitchen.
             </HelpText>
@@ -234,10 +234,10 @@ export function BlankEditorSheet({ visible, recipeId, blankId, onClose }: Props)
               onPress={handleDelete}
               activeOpacity={interaction.activeOpacity}
               accessibilityRole="button"
-              accessibilityLabel={`Delete the ${blank?.label ?? ''} blank`}
+              accessibilityLabel={`Delete the ${blank?.label ?? ''} wild card`}
             >
               <Ionicons name="trash-outline" size={iconSize.md} color={colors.red} />
-              <Text style={styles.deleteText}>Delete blank</Text>
+              <Text style={styles.deleteText}>Delete wild card</Text>
             </TouchableOpacity>
           )}
         </ScrollView>
