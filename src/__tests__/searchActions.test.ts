@@ -5,6 +5,9 @@ import {
   isRunnable,
   MAX_GLASSES,
   withGlasses,
+  doseStepper,
+  withDoseCount,
+  MAX_DOSE_STEPS,
   searchActions,
   QUICK_ACTION_LIMIT,
   type DescribeContext,
@@ -119,6 +122,32 @@ describe('searchActions: doses', () => {
 
   it('leaves out archived medications', () => {
     expect(doseNames('take aleve', meds(logs, ['aleve']))).toEqual([]);
+  });
+
+  it('steps a measured dose by the amount it would record', () => {
+    const aleve = only<DoseAction>('take aleve', meds())!;
+    expect(doseStepper(aleve)).toEqual({ step: 440, count: 1 });
+    expect(withDoseCount(aleve, 2).dose.amount).toBe(880);
+    expect(withDoseCount(aleve, 3).dose).toEqual({ name: 'Aleve', amount: 1320, unit: 'mg', asNeeded: true });
+  });
+
+  it('steps a counted dose by one, starting from the amount typed', () => {
+    const d = only<DoseAction>('take 2 tablets of vitamin d', meds())!;
+    expect(doseStepper(d)).toEqual({ step: 1, count: 2 });
+    expect(withDoseCount(d, 3).dose.amount).toBe(3);
+    expect(withDoseCount(d, 1).dose.amount).toBe(1);
+    const half = only<DoseAction>('take 1.5 tablets of vitamin d', meds())!;
+    expect(doseStepper(half)).toEqual({ step: 0.5, count: 3 });
+    expect(withDoseCount(half, 4).dose.amount).toBe(2);
+  });
+
+  it('keeps a stepped dose within range, and offers no stepper without an amount', () => {
+    const aleve = only<DoseAction>('take aleve', meds())!;
+    expect(withDoseCount(aleve, 0).dose.amount).toBe(440);
+    expect(withDoseCount(aleve, MAX_DOSE_STEPS + 5).dose.amount).toBe(440 * MAX_DOSE_STEPS);
+    const bare = { ...aleve, dose: { ...aleve.dose, amount: null, unit: null } };
+    expect(doseStepper(bare)).toBeNull();
+    expect(withDoseCount(bare, 3)).toBe(bare);
   });
 
   it('caps the rows it offers', () => {

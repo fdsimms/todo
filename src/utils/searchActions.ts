@@ -3,6 +3,7 @@ import { isSameDay } from 'date-fns/isSameDay';
 import type { GroceryItem, GroceryListEntry, MedicationLog, MoodLevel, SymptomSeverity } from '../types';
 import {
   formatDose,
+  isCountedUnit,
   medicationKey,
   medicationVocabulary,
   repeatDose,
@@ -51,6 +52,9 @@ const BARE_NAME_MIN_LENGTH = 3;
 
 /** The most glasses one row offers to log; past it the number is a typo. */
 export const MAX_GLASSES = 10;
+
+/** The most steps a dose row's stepper goes to; past it the number is a typo. */
+export const MAX_DOSE_STEPS = 10;
 
 export interface DoseAction {
   kind: 'dose';
@@ -246,6 +250,30 @@ function doseActions(
       dose: amount !== null ? { name: last.name, amount, unit, asNeeded: true } : last,
     };
   });
+}
+
+/**
+ * What a dose row's stepper moves by, and where the row starts on it, or null
+ * when the dose states no amount (there is nothing to step from).
+ *
+ * A counted unit (tablets, drops) steps by one, or by a half when the amount
+ * itself is fractional. A measured one (mg, ml) has no natural step, so it
+ * steps by the amount the row would record: 200 mg goes to 400, 600. The row
+ * starts at the amount it would have recorded.
+ */
+export function doseStepper(action: DoseAction): { step: number; count: number } | null {
+  const { amount, unit } = action.dose;
+  if (amount === null || !unit || !(amount > 0)) return null;
+  const step = isCountedUnit(unit) ? (Number.isInteger(amount) ? 1 : 0.5) : amount;
+  return { step, count: Math.max(1, Math.round(amount / step)) };
+}
+
+/** The same row for `count` steps of its stepper. Clamped, and rounded past float noise. */
+export function withDoseCount(action: DoseAction, count: number): DoseAction {
+  const stepper = doseStepper(action);
+  if (!stepper) return action;
+  const n = Math.min(Math.max(MAX_DOSE_STEPS, stepper.count), Math.max(1, Math.round(count)));
+  return { ...action, dose: { ...action.dose, amount: Math.round(stepper.step * n * 100) / 100 } };
 }
 
 // ==== water ====

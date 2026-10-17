@@ -8,7 +8,7 @@ import { TASK_CHECKBOX_SIZE } from './TaskCheckbox';
 import { PressableScale } from './PressableScale';
 import { haptics } from '../utils/haptics';
 import {
-  isRunnable, MAX_GLASSES, withGlasses,
+  doseStepper, isRunnable, MAX_DOSE_STEPS, MAX_GLASSES, withDoseCount, withGlasses,
   type ActionDescription, type PantryAnswer, type SearchAction,
 } from '../utils/searchActions';
 import { SYMPTOM_SEVERITIES } from '../utils/moodLog';
@@ -33,6 +33,10 @@ const PANTRY_ANSWERS: { value: PantryAnswer; label: string }[] = [
  * A water row carries a `− N +` stepper beside it, so several glasses are one
  * tap. The count is the row's own state (a query's rows are short-lived), and
  * the row is described and run as that many glasses through `describe`.
+ *
+ * A dose row that states an amount carries the same stepper, moving the amount
+ * a step at a time (`doseStepper`): a counted unit by one, a measured one by
+ * the amount itself.
  *
  * A symptom row carries its severity pills on a line of their own under the
  * title, so the name keeps the whole row: tapping a pill logs at that severity.
@@ -63,11 +67,17 @@ export function SearchActionRow({ action, description, describe, receipt, layout
   const list = layout === 'list';
 
   // A typed "3 glasses of water" starts the stepper at 3, and a new query
-  // that reads differently starts it over.
-  const typedGlasses = action.kind === 'water' ? action.glasses : 1;
-  const [glasses, setGlasses] = useState(typedGlasses);
-  useEffect(() => setGlasses(typedGlasses), [typedGlasses]);
-  const stepped = action.kind === 'water' && glasses !== action.glasses ? withGlasses(action, glasses) : action;
+  // that reads differently starts it over. A dose row's stepper starts at the
+  // amount it would have recorded.
+  const doseSteps = action.kind === 'dose' ? doseStepper(action) : null;
+  const typedCount = action.kind === 'water' ? action.glasses : doseSteps?.count ?? 1;
+  const baseAmount = action.kind === 'dose' ? `${action.dose.amount}${action.dose.unit}` : '';
+  const [count, setCount] = useState(typedCount);
+  useEffect(() => setCount(typedCount), [typedCount, baseAmount]);
+  const maxCount = action.kind === 'dose' ? Math.max(MAX_DOSE_STEPS, typedCount) : MAX_GLASSES;
+  let stepped: SearchAction = action;
+  if (action.kind === 'water' && count !== action.glasses) stepped = withGlasses(action, count);
+  else if (action.kind === 'dose' && doseSteps && count !== doseSteps.count) stepped = withDoseCount(action, count);
   if (stepped !== action) description = describe(stepped);
 
   const icon = (name: string) => (
@@ -195,11 +205,14 @@ export function SearchActionRow({ action, description, describe, receipt, layout
       </View>
     );
   }
-  if (action.kind === 'water') {
+  if (action.kind === 'water' || (action.kind === 'dose' && doseSteps)) {
     const step = (delta: number) => {
       haptics.tap();
-      setGlasses(g => Math.min(MAX_GLASSES, Math.max(1, g + delta)));
+      setCount(g => Math.min(maxCount, Math.max(1, g + delta)));
     };
+    const [fewer, more, valueLabel] = action.kind === 'water'
+      ? ['Fewer glasses', 'More glasses', `${count} ${count === 1 ? 'glass' : 'glasses'}`]
+      : ['Smaller dose', 'Larger dose', 'Dose amount'];
     // The button and the stepper are siblings rather than nested, so a screen
     // reader reads the row as one button and the stepper as its own controls.
     return (
@@ -208,20 +221,22 @@ export function SearchActionRow({ action, description, describe, receipt, layout
         <View style={styles.stepper}>
           <PressableScale
             onPress={() => step(-1)}
-            disabled={glasses <= 1}
+            disabled={count <= 1}
             style={styles.stepButton}
-            accessibilityLabel="Fewer glasses"
+            accessibilityLabel={fewer}
           >
-            <Ionicons name="remove" size={iconSize.sm} color={colors.text} style={glasses <= 1 ? styles.stepOff : undefined} />
+            <Ionicons name="remove" size={iconSize.sm} color={colors.text} style={count <= 1 ? styles.stepOff : undefined} />
           </PressableScale>
-          <Text style={styles.stepValue} accessibilityLabel={`${glasses} ${glasses === 1 ? 'glass' : 'glasses'}`}>{glasses}</Text>
+          {action.kind === 'water' && (
+            <Text style={styles.stepValue} accessibilityLabel={valueLabel}>{count}</Text>
+          )}
           <PressableScale
             onPress={() => step(1)}
-            disabled={glasses >= MAX_GLASSES}
+            disabled={count >= maxCount}
             style={styles.stepButton}
-            accessibilityLabel="More glasses"
+            accessibilityLabel={more}
           >
-            <Ionicons name="add" size={iconSize.sm} color={colors.text} style={glasses >= MAX_GLASSES ? styles.stepOff : undefined} />
+            <Ionicons name="add" size={iconSize.sm} color={colors.text} style={count >= maxCount ? styles.stepOff : undefined} />
           </PressableScale>
         </View>
       </View>
