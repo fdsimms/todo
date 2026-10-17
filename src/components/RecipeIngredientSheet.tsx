@@ -1224,7 +1224,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: spacing.xs,
   },
   splitNameRow: {
-    marginTop: spacing.xs,
+    marginTop: spacing.md,
     gap: spacing.xs,
   },
   splitNameInput: {
