@@ -190,10 +190,9 @@ describe('typeSummary', () => {
     expect(s).toContain('fall behind');
   });
 
-  it('says a rotation stays on Today until all are done', () => {
+  it('says a rotation leaves Today while you are on pace', () => {
     const s = typeSummary('rotation', values({ rotationItems: [] }))!;
-    expect(s).toContain('Stays on Today');
-    expect(s).not.toContain('fall behind');
+    expect(s).toContain('Leaves Today while you are on pace');
   });
 
   it('says a week for a weekly target', () => {

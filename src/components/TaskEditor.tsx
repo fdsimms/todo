@@ -2152,7 +2152,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       quotaIntervalMinutes: targetCount !== null ? quotaIntervalMinutes : null,
       quotaReminders: targetCount !== null ? quotaReminders : false,
       quotaPlaceIds: targetCount !== null && quotaReminders ? quotaPlaceIds : [],
-      quotaAlwaysVisible: targetCount !== null ? quotaAlwaysVisible : false,
+      quotaAlwaysVisible: targetCount !== null || rotationEnabled ? quotaAlwaysVisible : false,
       // Cleared when what it follows goes: it only means anything on a daily
       // target that logs water.
       followWaterTarget: followsWaterTarget ? followWaterTarget : false,
@@ -3072,7 +3072,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       quotaIntervalMinutes: targetCount !== null ? quotaIntervalMinutes : null,
       quotaReminders: targetCount !== null ? quotaReminders : false,
       quotaPlaceIds: targetCount !== null && quotaReminders ? quotaPlaceIds : [],
-      quotaAlwaysVisible: targetCount !== null ? quotaAlwaysVisible : false,
+      quotaAlwaysVisible: targetCount !== null || rotationEnabled ? quotaAlwaysVisible : false,
       // Cleared when what it follows goes: it only means anything on a daily
       // target that logs water.
       followWaterTarget: followsWaterTarget ? followWaterTarget : false,
@@ -4885,7 +4885,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                   }
                   hint={
                     'A set of things to do each week, in any order, each with its own weekly target. '
-                    + 'Checking the task off asks which one you did. It stays on Today until every one is done. To skip a day, reschedule it.'
+                    + 'Checking the task off asks which one you did. It leaves Today while you are on pace for the week and comes back when you fall behind.'
                   }
                   expanded={fieldOpen('rotationSet', true)}
                   onToggle={() => toggleField('rotationSet', true)}
@@ -4999,6 +4999,21 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                         Drag to reorder. The picker lists them in this order.
                       </Text>
                     )}
+                    <TouchableOpacity
+                      style={styles.optionRow}
+                      onPress={() => { haptics.tap(); setQuotaAlwaysVisible(v => !v); }}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="switch"
+                      accessibilityLabel="Stay visible even when on pace"
+                      accessibilityState={{ checked: quotaAlwaysVisible }}
+                    >
+                      <Ionicons name="eye-outline" size={18} color={quotaAlwaysVisible ? colors.accent : colors.textSecondary} />
+                      <View style={styles.optionContent}>
+                        <Text style={styles.optionLabel}>Stay visible even when on pace</Text>
+                        <Text style={styles.optionHint}>Keep this on Today every day until every one is done</Text>
+                      </View>
+                      <Toggle value={quotaAlwaysVisible} onColor={colors.orange} />
+                    </TouchableOpacity>
                   </View>
                 </CollapsibleField>
             </>),
