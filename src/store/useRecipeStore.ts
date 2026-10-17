@@ -31,6 +31,7 @@ import {
   recipeInBook,
   recipeNameKey,
   remapIngredientKeyIn,
+  splitIngredientAnd,
 } from '../utils/recipeUtils';
 import { cookTimerElapsed, prepTimerElapsed } from '../utils/recipeTimer';
 import { clampKeepDays } from '../utils/leftovers';
@@ -362,6 +363,22 @@ interface RecipeStore {
     names: readonly string[],
     choiceGroup: string,
   ) => number;
+  /**
+   * Turns one "salt and pepper" line into that many separate ingredient rows,
+   * the accept half of the suggestion `splitIngredientAnd` makes. Unlike
+   * splitIngredientAlternatives these are not a choice: each row is bought.
+   *
+   * The rows take the original's place in order. The first keeps its id, so a
+   * meal's stored pick still resolves, along with the aisle and the other
+   * facts that were about its name; the rest start clean apart from the
+   * things true of the whole line (section, prep, purpose, optional, and the
+   * two opt-outs). Each part keeps only the amount it was written with.
+   *
+   * Returns how many rows the line became, and 0 without writing when the
+   * line doesn't split, sits in a choice group, or would recreate an
+   * ingredient the recipe already lists.
+   */
+  splitIngredientAnd: (recipeId: string, ingredientId: string) => number;
   /**
    * The undo for splitIngredientAlternatives — recombines every row in
    * ingredientId's choice group back into that one row, named as the
@@ -1132,6 +1149,61 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     }
     // One survivor is not a choice; leave the line exactly as the user wrote it.
     if (rows.length < 2) return 0;
+
+    save(set, {
+      ...recipe,
+      ingredients: [
+        ...recipe.ingredients.slice(0, index),
+        ...rows,
+        ...recipe.ingredients.slice(index + 1),
+      ],
+    });
+    return rows.length;
+  },
+
+  splitIngredientAnd(recipeId, ingredientId) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe) return 0;
+    const index = recipe.ingredients.findIndex(i => i.id === ingredientId);
+    if (index < 0) return 0;
+    const original = recipe.ingredients[index];
+    if (original.choiceGroup) return 0;
+    const parts = splitIngredientAnd(original);
+    if (!parts) return 0;
+
+    const takenKeys = new Set(
+      recipe.ingredients.filter(i => i.id !== ingredientId).map(i => i.nameKey)
+    );
+    const rows: RecipeIngredient[] = [];
+    for (const [n, part] of parts.entries()) {
+      const name = part.name.slice(0, GROCERY_NAME_MAX_LENGTH).trim();
+      const nameKey = groceryNameKey(name);
+      // A part that is already a line elsewhere would be silently dropped, and
+      // its amount with it, so the whole split is refused instead.
+      if (!nameKey || takenKeys.has(nameKey)) return 0;
+      takenKeys.add(nameKey);
+      if (n === 0) {
+        // The catalog link and the dismissals were about the whole line's name.
+        const { catalogKey: _k, example: _e, dismissedCatalogSuggestion: _c, dismissedSplitSuggestion: _s, ...rest } = original;
+        rows.push({ ...rest, name, nameKey, quantity: part.quantity });
+        continue;
+      }
+      const row: RecipeIngredient = {
+        id: generateId(),
+        name,
+        nameKey,
+        quantity: part.quantity,
+        aisle: null,
+        prep: original.prep,
+        purpose: original.purpose,
+        section: original.section,
+        choiceGroup: null,
+      };
+      if (original.optional) row.optional = true;
+      if (original.excludeFromNutrition) row.excludeFromNutrition = true;
+      if (original.excludeFromShoppingList) row.excludeFromShoppingList = true;
+      rows.push(row);
+    }
 
     save(set, {
       ...recipe,

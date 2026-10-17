@@ -11,7 +11,18 @@ import {
   Animated,
   StyleSheet,
   Platform,
+  PanResponder,
+  ScrollView,
+  useWindowDimensions,
 } from 'react-native';
+import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
+import {
+  isDownwardDrag,
+  overscrollDismisses,
+  quickSearchMaxHeight,
+  shouldDismissOnSwipe,
+  swipeFollowOffset,
+} from '../utils/swipeDismiss';
 import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { NamedIcon } from './CoinIcon';
@@ -417,6 +428,10 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
   const translateYAnim = useRef(new Animated.Value(-20)).current;
   const cardOpacity = useRef(new Animated.Value(0)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
+  // How far a swipe-down has pulled the card, on top of its entrance travel.
+  const dragY = useRef(new Animated.Value(0)).current;
+  const { height: screenHeight } = useWindowDimensions();
+  const keyboardHeight = useKeyboardHeight(visible);
 
   const projectNamesById = useMemo(
     () => new Map(projects.map(p => [p.id, p.title])),
@@ -508,6 +523,7 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
     translateYAnim.setValue(-20);
     cardOpacity.setValue(0);
     backdropOpacity.setValue(0);
+    dragY.setValue(0);
     Animated.parallel([
       Animated.spring(scaleAnim, { toValue: 1, ...animation.spring.smooth, useNativeDriver: true }),
       Animated.spring(translateYAnim, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
@@ -529,9 +545,43 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
     ]).start(() => {
       scaleAnim.setValue(0.94);
       cardOpacity.setValue(0);
+      dragY.setValue(0);
       onClose();
       then?.();
     });
+  };
+
+  // Pulling the search field's strip down closes the card, which is the way out
+  // that needs no aim once the results and keyboard cover most of the screen.
+  // The responder is built once, so it reaches `dismiss` through a ref.
+  const dismissRef = useRef(dismiss);
+  dismissRef.current = dismiss;
+  const headerPan = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_e, g) => isDownwardDrag(g.dx, g.dy),
+      onPanResponderMove: (_e, g) => dragY.setValue(swipeFollowOffset(g.dy)),
+      onPanResponderRelease: (_e, g) => {
+        if (shouldDismissOnSwipe(g.dy, g.vy)) {
+          haptics.tap();
+          dismissRef.current();
+        } else {
+          Animated.spring(dragY, { toValue: 0, ...animation.spring.snappy, useNativeDriver: true }).start();
+        }
+      },
+      onPanResponderTerminate: () => {
+        Animated.spring(dragY, { toValue: 0, ...animation.spring.snappy, useNativeDriver: true }).start();
+      },
+    })
+  ).current;
+
+  // The results list is the same gesture by another route: pulled down past its
+  // top and let go, it bounces and closes. A scroll that merely returns to the
+  // top never reaches the threshold, so reading down and back up is unaffected.
+  const handleResultsScrollEnd = (e: { nativeEvent: { contentOffset: { y: number } } }) => {
+    if (overscrollDismisses(e.nativeEvent.contentOffset.y)) {
+      haptics.tap();
+      dismiss();
+    }
   };
 
   const handleSelect = (task: Task) => {
@@ -613,16 +663,32 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
           style={[
             styles.card,
             shadows.sheet,
-            { opacity: cardOpacity, transform: [{ scale: scaleAnim }, { translateY: translateYAnim }] },
+            {
+              // Capped above the keyboard so the results scroll inside the card
+              // and the footer stays on screen, with a band of backdrop left
+              // under it to tap.
+              maxHeight: quickSearchMaxHeight(screenHeight, insets.top + spacing.md, keyboardHeight, insets.bottom, spacing.lg),
+              opacity: cardOpacity,
+              transform: [{ scale: scaleAnim }, { translateY: Animated.add(translateYAnim, dragY) }],
+            },
           ]}
         >
-          <SearchField
-            surface="sunken"
-            placeholder="Search everything"
-            field={searchFilter}
-            onSubmitEditing={handleSubmit}
-          />
+          <View {...headerPan.panHandlers}>
+            <SearchField
+              surface="sunken"
+              placeholder="Search everything"
+              field={searchFilter}
+              onSubmitEditing={handleSubmit}
+            />
+          </View>
 
+          <ScrollView
+            style={styles.body}
+            keyboardShouldPersistTaps="handled"
+            alwaysBounceVertical
+            showsVerticalScrollIndicator={false}
+            onScrollEndDrag={handleResultsScrollEnd}
+          >
           {/* Looking the same thing up twice is the common case here too — see
               utils/recentSearches. Capped to the card's own quick-search limit
               rather than the full 8 the setting keeps, for the same reason the
@@ -720,6 +786,7 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
           {showNoMatches && (
             <Text style={styles.noMatches}>No matches for “{trimmed}”</Text>
           )}
+          </ScrollView>
 
           {hasSearchResults && (
             <View style={styles.footer}>
@@ -775,6 +842,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.md,
   },
 
+  // Shrinks to the card's cap and scrolls; a short list leaves the card its own height.
+  body: { flexShrink: 1, flexGrow: 0 },
   results: { marginTop: spacing.xs },
   // Same slot TaskCheckbox occupies on a task row, so a stack/project row's
   // icon lines up with the checkboxes above and below it.

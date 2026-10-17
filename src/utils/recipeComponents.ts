@@ -1262,6 +1262,38 @@ export function recipeAlternativeCaptions(
 }
 
 /**
+ * Ids of the rows whose choice group is drawn as one unbroken run, as the list
+ * is actually shown (headings included, as rows with no group).
+ *
+ * The "Choose one" header and the group's bar already say these rows are one
+ * choice, and the next row is the other option, so an "or manchego" caption
+ * under each only repeats it. A group whose options are split up (by another
+ * row or a section heading) keeps its captions, since there the caption is the
+ * only thing saying what the line is an alternative to.
+ */
+export function choiceOptionsShownTogether(
+  rows: readonly { id: string; choiceGroup: string | null }[],
+): Set<string> {
+  const runs = new Map<string, string[]>();
+  const broken = new Set<string>();
+  let open: string | null = null;
+  for (const row of rows) {
+    const group = row.choiceGroup;
+    if (group !== open && group) {
+      if (runs.has(group)) broken.add(group);
+      else runs.set(group, []);
+    }
+    if (group) runs.get(group)!.push(row.id);
+    open = group;
+  }
+  const out = new Set<string>();
+  for (const [group, ids] of runs) {
+    if (!broken.has(group)) for (const id of ids) out.add(id);
+  }
+  return out;
+}
+
+/**
  * How many things a list actually amounts to for one meal: every ungrouped row,
  * plus one per choice group however many options it holds.
  *

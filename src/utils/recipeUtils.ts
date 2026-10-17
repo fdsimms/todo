@@ -16,7 +16,7 @@ import {
   TITLE_MAX_LENGTH,
 } from '../types';
 import { format } from 'date-fns/format';
-import { groceryNameKey, parseGroceryInput, splitExample, splitGroceryLines, splitPrep, splitPurpose } from './groceryParse';
+import { groceryNameKey, parseGroceryInput, splitAndNames, splitExample, splitGroceryLines, splitPrep, splitPurpose } from './groceryParse';
 import { generateId } from './id';
 import { resolveOffsetDate } from './templateUtils';
 import { itemKeyIndex } from './itemAliases';
@@ -226,6 +226,44 @@ export function makeIngredient(line: string, section: string | null = null): Rec
   // lines never have one.
   if (example) ingredient.example = example;
   return ingredient;
+}
+
+/** One line of an "and" split: the name it becomes and the amount it carries. */
+export interface AndSplitPart {
+  name: string;
+  quantity: string;
+}
+
+/**
+ * "1 cup flour and 1 cup sugar" into the lines it wants to be, or null when
+ * the line isn't two things (see `splitAndNames` for what that rules out).
+ *
+ * The amount stays with the thing it was written beside: the first part keeps
+ * the line's own quantity, and a later part keeps only one it wrote itself
+ * ("1 cup sugar"). "1 cup flour and sugar" therefore becomes flour at 1 cup
+ * and sugar with no amount, never both at 1 cup, because a single amount can
+ * mean either "each" or "together" and nothing here can tell which. "To taste"
+ * is the exception, since it can only mean each. A later
+ * part with a digit that isn't a leading amount ("juice of 1 lemon") isn't a
+ * second ingredient, so it refuses the split.
+ */
+export function splitIngredientAnd(
+  ingredient: Pick<RecipeIngredient, 'name' | 'quantity'>,
+): AndSplitPart[] | null {
+  // "salt and pepper to taste": the amount closes the line but belongs to each
+  // part, so it is taken off the last name and handed to every part without one.
+  const toTaste = /\s+to taste$/i.test(ingredient.name.trim());
+  const names = splitAndNames(ingredient.name.trim().replace(/\s+to taste$/i, ''));
+  if (!names) return null;
+  const fallback = toTaste ? 'to taste' : '';
+  const parts: AndSplitPart[] = [{ name: names[0], quantity: ingredient.quantity || fallback }];
+  for (const raw of names.slice(1)) {
+    const parsed = parseGroceryInput(raw);
+    if (/\d/.test(raw) && !parsed.quantity) return null;
+    if (!parsed.name.trim()) return null;
+    parts.push({ name: parsed.name.trim(), quantity: parsed.quantity ?? fallback });
+  }
+  return parts;
 }
 
 /**
@@ -524,6 +562,20 @@ export interface PrepTaskDraft {
   title: string;
   dueDate: string;
   reminderTime: string | null;
+  /** The component recipe carrying the step; null when the meal's own recipe does. */
+  source: string | null;
+}
+
+/**
+ * The "Add prep tasks?" alert's body. A step that belongs to a component says
+ * which one, because a step like "Store the paste in a jar" names nothing that
+ * ties it back to the dish the person planned.
+ */
+export function prepOfferMessage(recipeName: string, drafts: readonly PrepTaskDraft[]): string {
+  const line = (d: PrepTaskDraft) => (d.source ? `${d.title} (for ${d.source})` : d.title);
+  return drafts.length === 1
+    ? `${recipeName} has 1 prep step: ${line(drafts[0])}. Add it to your tasks?`
+    : `${recipeName} has ${drafts.length} prep steps:\n${drafts.map(d => `• ${line(d)}`).join('\n')}\n\nAdd them to your tasks?`;
 }
 
 /**
@@ -546,9 +598,10 @@ export function prepTaskDraftsForMeal(
   mealDate: Date,
   resolution?: ChoiceResolution
 ): PrepTaskDraft[] {
-  return flattenRecipePrepTasks(recipe, recipesById, resolution).map(({ prepTask }) => ({
+  return flattenRecipePrepTasks(recipe, recipesById, resolution).map(({ prepTask, recipe: owner }) => ({
     title: prepTask.title,
     ...resolvePrepTaskDraft(prepTask, mealDate),
+    source: owner.id === recipe.id ? null : owner.name,
   }));
 }
 

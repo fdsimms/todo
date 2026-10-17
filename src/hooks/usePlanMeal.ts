@@ -9,7 +9,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { cookEntryForRecipe, earliestUnplannedSlot, recipeIndex } from '../utils/mealPlan';
 import { dayKeyOf, dayKeyToDate, getLogicalToday } from '../utils/dateUtils';
-import { prepTaskDraftsForMeal } from '../utils/recipeUtils';
+import { prepOfferMessage, prepTaskDraftsForMeal } from '../utils/recipeUtils';
 import { slotForHour } from '../utils/mealLog';
 import { onHandNameKeys } from '../utils/grocerySuggest';
 import { haptics } from '../utils/haptics';
@@ -90,13 +90,9 @@ export function usePlanMeal() {
       entryResolution(entry, { onHand: onHandNameKeys(groceryItems, new Date(), itemProducts) })
     );
     if (drafts.length === 0) { onDone?.(); return; }
-    const one = drafts.length === 1;
-    const message = one
-      ? `${recipe.name} has 1 prep step: ${drafts[0].title}. Add it to your tasks?`
-      : `${recipe.name} has ${drafts.length} prep steps:\n${drafts.map(d => `• ${d.title}`).join('\n')}\n\nAdd them to your tasks?`;
     Alert.alert(
       'Add prep tasks?',
-      message,
+      prepOfferMessage(recipe.name, drafts),
       [
         { text: 'Not now', style: 'cancel', onPress: onDone },
         {
