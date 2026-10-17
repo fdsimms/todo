@@ -1,0 +1,51 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="base.css">
+<style>
+.big { padding: 8px 20px 4px; } .big h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.3px; } .big .sec { margin-top: 2px; }
+.navrow { display:flex; justify-content:space-between; padding: 6px 16px; color: var(--accentText); font-size:17px; }
+.chartCard { padding: 16px; }
+.headline { display:flex; align-items:baseline; gap: 8px; margin: 14px 0 2px; }
+.headline b { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+svg text { font-family: Inter, sans-serif; font-size: 11px; fill: var(--text3); }
+.pr { display:flex; justify-content:space-between; align-items:center; }
+.pr .v { font-weight: 600; font-variant-numeric: tabular-nums; text-align:right; }
+.pr .v small { display:block; font-weight:400; font-size: 12px; color: var(--text2); }
+.badge { font-size: 11px; font-weight: 700; color: var(--onDone); background: var(--done); border-radius: 9999px; padding: 2px 7px; margin-left: 6px; }
+</style></head><body>
+<div class="phone light" id="p">
+  <div class="status"><span>9:41</span><span>●●●</span></div>
+  <div class="navrow"><span>‹ Workouts</span><span>Edit</span></div>
+  <div class="big"><h1>Barbell bench press</h1><div class="sec">Barbell · Chest, triceps, front shoulders</div></div>
+  <div class="scroll">
+    <div class="card chartCard" style="margin-top: 16px">
+      <div class="seg"><span class="on">Estimated 1RM</span><span>Best set</span><span>Volume</span></div>
+      <div class="headline"><b>104.5 kg</b><span class="sec">estimated, Oct 14</span></div>
+      <div class="ter" style="font-size:12px">From your best set of 10 reps or fewer each session</div>
+      <svg width="326" height="150" viewBox="0 0 326 150" style="margin-top:10px; display:block">
+        <line x1="0" x2="300" y1="20" y2="20" stroke="var(--chartGrid)"/><line x1="0" x2="300" y1="70" y2="70" stroke="var(--chartGrid)"/><line x1="0" x2="300" y1="120" y2="120" stroke="var(--chartGrid)"/>
+        <text x="306" y="24">105</text><text x="306" y="74">95</text><text x="306" y="124">85</text>
+        <polyline fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"
+          points="8,112 34,108 60,100 86,96 112,98"/>
+        <polyline fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"
+          points="190,80 216,70 242,58 268,44 294,28"/>
+        <g fill="var(--accent)"><circle cx="8" cy="112" r="3.5"/><circle cx="34" cy="108" r="3.5"/><circle cx="60" cy="100" r="3.5"/><circle cx="86" cy="96" r="3.5"/><circle cx="112" cy="98" r="3.5"/><circle cx="190" cy="80" r="3.5"/><circle cx="216" cy="70" r="3.5"/><circle cx="242" cy="58" r="3.5"/><circle cx="268" cy="44" r="3.5"/></g>
+        <circle cx="294" cy="28" r="5" fill="var(--done)" stroke="var(--bg2)" stroke-width="2"/>
+        <text x="4" y="144">Jul</text><text x="104" y="144">Aug</text><text x="196" y="144">Sep</text><text x="276" y="144">Oct</text>
+      </svg>
+      <div class="ter" style="font-size:12px; margin-top:6px">A break in the line is a stretch with no sessions.</div>
+    </div>
+    <div class="groupLabel">Personal records</div>
+    <div class="card">
+      <div class="row pr"><span>Estimated 1RM<span class="badge">New</span></span><span class="v">104.5 kg<small>Oct 14</small></span></div>
+      <div class="row pr"><span>Heaviest weight</span><span class="v">90 kg × 3<small>Sep 30</small></span></div>
+      <div class="row pr"><span>Best set of 8</span><span class="v">82.5 kg × 8<small>Oct 14</small></span></div>
+      <div class="row pr"><span>Most volume in a session</span><span class="v">2,640 kg<small>Oct 10</small></span></div>
+    </div>
+    <div class="groupLabel">History</div>
+    <div class="card">
+      <div class="row"><div style="flex:1"><div>Tue, Oct 14 · Push A</div><div class="sec num">82.5 × 8, 82.5 × 8, 82.5 × 7</div></div><span class="chev">›</span></div>
+      <div class="row"><div style="flex:1"><div>Fri, Oct 10 · Push A</div><div class="sec num">80 × 8, 80 × 8, 80 × 8</div></div><span class="chev">›</span></div>
+    </div>
+  </div>
+</div>
+<script>const p=document.getElementById('p'); const d=p.cloneNode(true); d.className='phone dark'; d.id=''; document.body.appendChild(d);</script>
+</body></html>

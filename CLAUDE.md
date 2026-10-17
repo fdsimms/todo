@@ -722,6 +722,7 @@ decided, and the design system every screen is built from. Individual features a
 | `docs/arch/nfc-key.md` | Key tags: why a tag is one shield reason among four, the two kinds of key, and what isn't verified without a device |
 | `docs/arch/mcp-server.md` | The MCP server: why it is a syncing replica rather than an in-app or backup-file one, and what it costs the "no backend" promise |
 | `docs/arch/desktop-client.md` | A Mac desktop client (design only, not built): why Electron over the existing logic layer, and what the desktop leaves to the phone |
+| `docs/arch/workouts.md` | A strength-training tracker (design only, not built): what it stores against what it reads from Health, why sessions are part of the health record, and the phase plan |
 | `docs/native-targets.md` | Adding an iOS native target (widget, Watch app, Live Activity) |
 
 ### Data flow

@@ -1,0 +1,52 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="base.css">
+<style>
+.field { background: var(--bg2); border-radius: 12px; padding: 12px 16px; font-size: 17px; font-weight: 600; margin-top: 4px; }
+.notes { color: var(--text3); font-weight: 400; font-size: 15px; border-top: 0.5px solid var(--sep); margin: 12px -16px -12px; padding: 12px 16px; }
+.handle { color: var(--text3); font-size: 15px; letter-spacing: -1px; width: 14px; }
+.ex { flex:1; min-width:0; } .ex .name { font-size: 15px; } .ex .sec { margin-top: 2px; }
+.super { border-left: 3px solid var(--accent); border-top: 0.5px solid var(--sep); }
+.super + .row { border-top: 0.5px solid var(--sep); }
+.superTag { font-size: 11px; font-weight: 600; letter-spacing: 0.8px; color: var(--accentText); padding: 8px 16px 0 13px; }
+.expanded { padding: 4px 16px 16px; display:flex; flex-direction:column; gap: 14px; border-top: 0.5px solid var(--sep); }
+.kv { display:flex; justify-content:space-between; align-items:center; }
+.cap { font-size: 12px; font-weight: 600; letter-spacing: 0.8px; color: var(--text2); text-transform: uppercase; }
+.hint { font-size: 12px; color: var(--text3); }
+.adds { padding: 12px 16px; border-top: 0.5px solid var(--sep); display:flex; gap:8px; }
+.val { color: var(--accentText); }
+</style></head><body>
+<div class="phone light" id="p">
+  <div class="status"><span>9:41</span><span>●●●</span></div>
+  <div class="sheetHeader"><span class="side">Cancel</span><span class="title">Routine</span><span class="side r">Save</span></div>
+  <div class="scroll">
+    <div class="field">Push A<div class="notes">Notes</div></div>
+    <div class="groupLabel">Exercises</div>
+    <div class="card">
+      <div class="row"><span class="handle">≡</span><div class="ex"><div class="name">Barbell bench press</div><div class="sec">3 × 6–8 · add 2.5 kg at 8 · rest 2:30</div></div><span class="chev">⌃</span></div>
+      <div class="expanded">
+        <div class="kv"><span class="cap">Working sets</span><span class="stepper"><b>−</b><i>3</i><b>+</b></span></div>
+        <div class="kv"><span class="cap">Reps</span><span><span class="stepper"><b>−</b><i>6</i><b>+</b></span> <span class="sec">to</span> <span class="stepper"><b>−</b><i>8</i><b>+</b></span></span></div>
+        <div>
+          <div class="cap" style="margin-bottom:8px">Progression</div>
+          <div class="seg"><span class="on">Rep range</span><span>Linear</span><span>% of max</span><span>RPE</span></div>
+          <div class="hint" style="margin-top:6px">Once every set reaches the top of the range, the next session suggests 2.5 kg more.</div>
+        </div>
+        <div class="kv"><span class="cap">Warm-up sets</span><span class="sec">2, ramped <span class="chev">›</span></span></div>
+        <div class="kv"><span class="cap">Rest</span><span class="stepper"><b>−</b><i>2:30</i><b>+</b></span></div>
+      </div>
+      <div class="super">
+        <div class="superTag">SUPERSET</div>
+        <div class="row" style="padding-left:13px"><span class="handle">≡</span><div class="ex"><div class="name">Incline dumbbell press</div><div class="sec">3 × 10–12 · rep range</div></div><span class="chev">⌄</span></div>
+        <div class="row" style="padding-left:13px"><span class="handle">≡</span><div class="ex"><div class="name">Cable fly</div><div class="sec">3 × 12–15 · rest 1:30 after the pair</div></div><span class="chev">⌄</span></div>
+      </div>
+      <div class="row"><span class="handle">≡</span><div class="ex"><div class="name">Overhead triceps extension</div><div class="sec">3 × 10–12 · rest 1:00</div></div><span class="chev">⌄</span></div>
+      <div class="adds"><span class="pill">+ Add exercise</span><span class="pill neutral">Superset</span></div>
+    </div>
+    <div class="groupLabel">Schedule</div>
+    <div class="card">
+      <div class="row"><span style="flex:1">Repeats</span><span class="val">Mon, Thu</span><span class="chev">›</span></div>
+      <div class="row"><span style="flex:1">Program</span><span class="val">Upper/Lower, week 3 of 6</span><span class="chev">›</span></div>
+    </div>
+  </div>
+</div>
+<script>const p=document.getElementById('p'); const d=p.cloneNode(true); d.className='phone dark'; d.id=''; document.body.appendChild(d);</script>
+</body></html>
