@@ -32,6 +32,7 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import { InlineAction } from './InlineAction';
@@ -47,8 +48,9 @@ import { describeProduct, productsForItem } from '../utils/groceryProduct';
 import { nutritionFor, panelLooksWrongFor } from '../utils/foodNutrition';
 import { priceNearBarcode } from '../utils/shelfLabel';
 import { formatPrice } from '../utils/groceryPrice';
-import { normalizePlu, pluNameFor } from '../utils/plu';
+import { pluNameFor } from '../utils/plu';
 import {
+  classifyTypedEntry,
   matchScans,
   scanBoxChoice,
   scanLinkTarget,
@@ -229,6 +231,13 @@ const CONTEXT_COPY: Record<ScanContext, {
   confirmLabel: string;
   /** Whether the freezer toggle means anything here. */
   freezer: boolean;
+  /**
+   * Whether the typed field takes a name or a produce sticker as well as a
+   * barcode. A log records a food with figures, which a typed name never has,
+   * so there the field is for a barcode that won't scan and nothing else.
+   */
+  typedNames: boolean;
+  manualPlaceholder: string;
   matched: (name: string) => string;
   /** A row the user filed by hand. One sentence per context, same as the rest. */
   picked: (name: string) => string;
@@ -244,6 +253,8 @@ const CONTEXT_COPY: Record<ScanContext, {
     emptySubtitle: 'Scan barcodes as you unpack, then mark everything as bought. Type anything without a barcode below.',
     confirmLabel: 'Mark as bought',
     freezer: true,
+    typedNames: true,
+    manualPlaceholder: 'e.g. bananas, or a barcode number',
     matched: name => `On your list as ${name}`,
     picked: name => `Filed as ${name} on your list`,
     offList: name => `Back on the list as ${name}`,
@@ -253,17 +264,21 @@ const CONTEXT_COPY: Record<ScanContext, {
     emptySubtitle: 'Scan a barcode to add it to the pantry. Type anything without a barcode below.',
     confirmLabel: 'Add',
     freezer: true,
+    typedNames: true,
+    manualPlaceholder: 'e.g. bananas, or a barcode number',
     matched: name => `Matches \u201C${name}\u201D in your pantry`,
     picked: name => `Filed as \u201C${name}\u201D in your pantry`,
     offList: name => `Matches \u201C${name}\u201D`,
   },
   log: {
     title: 'Scan to log',
-    emptySubtitle: 'Scan a barcode to log what you ate. Type anything without a barcode below.',
+    emptySubtitle: 'Scan a barcode to log what you ate. If it won\u2019t scan, type the number below.',
     confirmLabel: 'Next',
     // A log has no fridge and no freezer: it records that something was eaten,
     // which is the opposite of where a thing is being kept.
     freezer: false,
+    typedNames: false,
+    manualPlaceholder: 'Type a barcode number',
     matched: name => `Matches \u201C${name}\u201D`,
     picked: name => `Filed as \u201C${name}\u201D`,
     offList: name => `Matches \u201C${name}\u201D`,
@@ -475,6 +490,9 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
   const [permission, requestPermission] = useCameraPermissions();
   const [rows, setRows] = useState<ScanRow[]>([]);
   const [manual, setManual] = useState('');
+  /** Why the last typed entry was refused, shown under the field until it is edited. */
+  const [manualError, setManualError] = useState<string | null>(null);
+  const insets = useSafeAreaInsets();
   /**
    * The row whose catalog picker is open, or null. One at a time: the picker
    * is a list of its own, and two of them open down the sheet would bury the
@@ -494,7 +512,8 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
    * between the two. The scanner is unmounted rather than just shrunk, so it is
    * not reading codes the person has no way to aim at.
    */
-  const keyboardUp = useKeyboardHeight(visible) > 0;
+  const keyboardHeight = useKeyboardHeight(visible);
+  const keyboardUp = keyboardHeight > 0;
   /**
    * GTINs already claimed in this session, checked and set synchronously in
    * the scan callback itself rather than read off `rows`.
@@ -512,6 +531,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
   const reset = useCallback(() => {
     setRows([]);
     setManual('');
+    setManualError(null);
     setPicking(null);
     setOpenKey(null);
     scannedGtinsRef.current = new Set();
@@ -537,8 +557,9 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
   const addScan = useCallback(
     async (gtin: string, priceMinor: number | null = null) => {
       const key = generateId();
+      // Newest first, so the read that just landed is the one under the
+      // camera. Appended, it sat below the fold once a few were scanned.
       setRows(current => [
-        ...current,
         {
           ...unknownScannedItem(gtin),
           key,
@@ -551,7 +572,9 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
           pickedProductId: null,
           priceMinor,
         },
+        ...current,
       ]);
+      keyboardScroll.ref.current?.scrollTo({ y: 0, animated: true });
       // A code this app has already been told about answers for itself when
       // the database can't: lookups switched off, no signal in the store, or a
       // cached miss. The row is named after the catalog row the code was
@@ -588,7 +611,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
         }
       }
     },
-    [patchRow, gtinItemFor]
+    [patchRow, gtinItemFor, keyboardScroll.ref]
   );
 
   /**
@@ -634,16 +657,28 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
    * that has no barcode at all.
    */
   const handleManualAdd = useCallback(() => {
-    const raw = manual.trim();
-    if (!raw) return;
-    const gtin = normalizeGtin(raw);
-    const plu = gtin ? null : normalizePlu(raw);
-    if (gtin) {
-      if (!scannedGtinsRef.current.has(gtin)) {
-        scannedGtinsRef.current.add(gtin);
-        void addScan(gtin);
+    const entry = classifyTypedEntry(manual, CONTEXT_COPY[context].typedNames);
+    if (!entry) return;
+    // Refused out loud and left in the field to fix: digits that aren't a
+    // barcode used to become a food named after them.
+    if (entry.kind === 'invalid') {
+      setManualError(
+        entry.reason === 'digits'
+          ? 'That isn\u2019t a valid barcode. Check the digits.'
+          : 'Barcodes only here. To log a food by name, close this and add it from the food log.'
+      );
+      haptics.error();
+      return;
+    }
+    if (entry.kind === 'gtin') {
+      if (scannedGtinsRef.current.has(entry.gtin)) {
+        setManualError('That barcode is already in the list.');
+        haptics.warning();
+        return;
       }
-    } else if (plu) {
+      scannedGtinsRef.current.add(entry.gtin);
+      void addScan(entry.gtin);
+    } else if (entry.kind === 'plu') {
       // A produce sticker. It goes in as a row keyed on the code rather than
       // named after it, so the alias table can answer for it now and learn it
       // if it can't — see `pluScannedItem`. A seeded name is a suggestion and
@@ -653,14 +688,13 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
       // A sticker this app has already been told about, though, is known: it
       // arrives named after the row it was filed under and ticked, the same
       // as a remembered barcode above.
-      const suggested = pluNameFor(plu);
-      const scanned = pluScannedItem(plu, suggested);
+      const suggested = pluNameFor(entry.plu);
+      const scanned = pluScannedItem(entry.plu, suggested);
       const knownId = aliasItemFor(null, scanned.label);
       const known = knownId ? useGroceryStore.getState().items.find(i => i.id === knownId) : undefined;
       const pluKey = generateId();
       if (!known) setOpenKey(pluKey);
       setRows(current => [
-        ...current,
         {
           ...scanned,
           ...(known ? { name: known.name } : {}),
@@ -674,16 +708,16 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
           pickedProductId: null,
           priceMinor: null,
         },
+        ...current,
       ]);
     } else {
       setRows(current => [
-        ...current,
         {
           gtin: null,
           label: '',
-          name: raw.slice(0, GROCERY_NAME_MAX_LENGTH),
+          name: entry.name.slice(0, GROCERY_NAME_MAX_LENGTH),
           brand: null,
-        aisle: null,
+          aisle: null,
           quantity: '',
           key: generateId(),
           included: true,
@@ -695,11 +729,14 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
           pickedProductId: null,
           priceMinor: null,
         },
+        ...current,
       ]);
     }
     setManual('');
+    setManualError(null);
+    keyboardScroll.ref.current?.scrollTo({ y: 0, animated: true });
     haptics.tap();
-  }, [manual, addScan, aliasItemFor]);
+  }, [manual, context, addScan, aliasItemFor, keyboardScroll.ref]);
 
   // The barcode first, the source's words second. A code is the one thing on a
   // scan that can't drift: rename the row to "vegan sausage" and the product
@@ -719,7 +756,6 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
       ),
     [rows, items, aliasItemFor, gtinItemFor]
   );
-  const includedCount = rows.filter(r => r.included && r.name.trim()).length;
 
   /**
    * A weak match is a single coincidental word in common ("cream" in both
@@ -787,6 +823,29 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
           : null;
     return candidate && candidate !== row.confirmedMatchId ? candidate : null;
   };
+
+  /**
+   * Whether a row is a food with no figures to log, in a log. Such a row isn't
+   * ready: it is left out of Next's count and out of what Next hands on, so
+   * nothing is minted for it and nothing is dropped without being said. It
+   * becomes ready when its label is photographed or a match brings figures.
+   */
+  const needsNutritionFor = (row: ScanRow, match: ReceiptMatch | undefined): boolean => {
+    if (context !== 'log' || row.pending || !row.name.trim() || pendingMatchId(row, match)) return false;
+    const itemId = resolvedItemId(row, match);
+    const item = itemId ? items.find(i => i.id === itemId) : null;
+    if (item) {
+      const box = productsForItem(item.id, itemProducts).find(
+        b => b.id === (row.pickedProductId ?? gtinProductFor(row.gtin)?.id)
+      );
+      if (nutritionFor(item, box)) return false;
+    }
+    return !row.hasNutrition;
+  };
+  const includedCount = rows.filter(
+    (r, i) => r.included && r.name.trim() && !needsNutritionFor(r, matches[i])
+  ).length;
+  const needNutritionCount = rows.filter((r, i) => needsNutritionFor(r, matches[i])).length;
 
   /**
    * Files a scanned row under a catalog item, from the picker's own results or
@@ -881,6 +940,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
       if (!row.included) return;
       if (!row.name.trim() && !pickedTarget(row)) return;
       const match = matches[index];
+      if (needsNutritionFor(row, match)) return;
       const itemId = confidentItemId(row, match);
       if (itemId) {
         itemIds.push(itemId);
@@ -931,8 +991,8 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
     // guess, not a confirmed reading worth teaching the alias table.
     rememberAliases([
       ...rows
-        .map((row, index) => ({ row, itemId: confidentItemId(row, matches[index]) }))
-        .filter(({ row, itemId }) => row.included && !!row.label && !!itemId)
+        .map((row, index) => ({ row, itemId: confidentItemId(row, matches[index]), blocked: needsNutritionFor(row, matches[index]) }))
+        .filter(({ row, itemId, blocked }) => row.included && !blocked && !!row.label && !!itemId)
         .map(({ row, itemId }) => ({
           shopId: null,
           rawText: row.label,
@@ -944,7 +1004,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
     ]);
     Keyboard.dismiss();
     onApply(itemIds, toAdd, frozenItemIds, products, gtinLinks, priceById);
-  }, [rows, matches, items, itemProducts, onApply, rememberAliases, gtinProductFor]);
+  }, [rows, matches, items, itemProducts, onApply, rememberAliases, gtinProductFor, context]);
 
   /**
    * Whether the confirm is mid-flight. Applying is a run of synchronous
@@ -1047,18 +1107,24 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
     return 'Saved as a new item when you continue';
   };
 
+  // An open editor is a form too: the 200pt camera over it left a few rows of
+  // it between the camera and the bottom bar, so it folds the same way.
+  const editing = openKey !== null && rows.some(r => r.key === openKey && !r.pending);
+
   const camera = () => {
-    if (keyboardUp) {
+    if (keyboardUp || editing) {
       return (
         <TouchableOpacity
           style={styles.cameraStrip}
           activeOpacity={interaction.activeOpacity}
-          onPress={Keyboard.dismiss}
+          onPress={() => { Keyboard.dismiss(); setPicking(null); setOpenKey(null); }}
           accessibilityRole="button"
-          accessibilityLabel="Scanner paused while the keyboard is open. Tap to resume scanning"
+          accessibilityLabel={`Scanner paused while you ${keyboardUp ? 'type' : 'edit'}. Tap to resume scanning`}
         >
           <Ionicons name="barcode-outline" size={iconSize.sm} color={colors.textSecondary} />
-          <Text style={styles.cameraStripText}>Scanner paused while you type. Tap to resume</Text>
+          <Text style={styles.cameraStripText}>
+            {keyboardUp ? 'Scanner paused while you type. Tap to resume' : 'Scanner paused while you edit. Tap to resume'}
+          </Text>
         </TouchableOpacity>
       );
     }
@@ -1094,6 +1160,11 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
           />
         )}
         <View style={styles.reticle} pointerEvents="none" />
+        <View style={styles.hint} pointerEvents="none">
+          <View style={styles.hintPill}>
+            <Text style={styles.hintText}>Hold a barcode inside the box</Text>
+          </View>
+        </View>
       </View>
     );
   };
@@ -1138,6 +1209,13 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
               subtitle={CONTEXT_COPY[context].emptySubtitle}
             />
           ) : (
+            <>
+            <View style={styles.summary}>
+              <Text style={styles.summaryText}>{rows.length} SCANNED</Text>
+              {needNutritionCount > 0 && (
+                <Text style={styles.summaryWarn}>{needNutritionCount} NEED NUTRITION</Text>
+              )}
+            </View>
             <View style={styles.card}>
               {rows.map((row, index) => {
                 const match = matches[index];
@@ -1212,8 +1290,10 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                 const needsName = !row.name.trim() && !pickedTarget(row);
                 // A food with no figures can't be logged, so in a log the row says
                 // so before it is opened rather than only inside.
-                const needsNutrition =
-                  context === 'log' && !row.pending && !!row.name.trim() && !pendingId && !nutritionSource;
+                const needsNutrition = needsNutritionFor(row, match);
+                // What the checkbox shows: a row that can't be logged yet is
+                // never drawn as going in, whatever its flag says.
+                const ready = row.included && !needsNutrition;
                 const title =
                   row.name.trim() || row.label || (row.gtin ? formatGtin(row.gtin) : 'Unnamed scan');
                 const subtitle = row.pending
@@ -1222,7 +1302,10 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                     ? row.error
                     : caption && (needsName || pendingId || rowItemId)
                       ? caption
-                      : [newBox.brand, newBox.variant].filter(Boolean).join(' · ') || 'New item';
+                      : `${
+                          [newBox.brand, newBox.variant].filter(Boolean).join(' · ') ||
+                          (row.label ? 'New item' : row.gtin ? 'Barcode not found' : 'Typed by hand')
+                        }${needsNutrition ? ' · No nutrition yet' : ''}`;
                 const chip: { tone: ChipTone; label: string } | null = row.pending
                   ? null
                   : row.error
@@ -1232,7 +1315,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                       : pendingId
                         ? { tone: 'warn', label: 'Check match' }
                         : needsNutrition
-                          ? { tone: 'warn', label: 'Needs nutrition' }
+                          ? { tone: 'warn', label: 'Add nutrition' }
                           : rowItemId
                             ? { tone: 'neutral', label: 'Matched' }
                             : { tone: 'new', label: 'New' };
@@ -1245,22 +1328,56 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                 // The match line's own answer. A row nobody has matched says what
                 // the line is for instead of what it found.
                 const matchSaysFound = !row.error && !!caption && !needsName;
+                // The way out of a code nothing has heard of: the packet is in hand and
+                // its figures are printed on it, so offer to read them off the label.
+                // Log-only, and only once there's a name to attach the figures to and
+                // nothing in the catalog has already answered for this row. When the
+                // row can't be logged without it, it sits right under the name.
+                const nutritionBlock = context === 'log' && !pendingId && !!row.name.trim() && (
+                        nutritionSource ? (
+                          <ActionRow
+                            icon="nutrition-outline"
+                            title={nutritionSource === 'catalog' ? 'Nutrition on file' : 'Nutrition from the barcode lookup'}
+                            tone="plain"
+                            done
+                            accessibilityLabel={`Nutrition facts for ${row.name.trim()} are already known`}
+                          />
+                        ) : !!onPhotographLabel && !row.pickedItemId ? (
+                          <ActionRow
+                            icon="nutrition-outline"
+                            title="Add nutrition from the label"
+                            note="Not found yet. Photograph the label to log it"
+                            tone="action"
+                            onPress={() => onPhotographLabel(labelSubjectNamed(row.name.trim()))}
+                            accessibilityLabel={`Photograph the nutrition label for ${row.name.trim()}`}
+                          />
+                        ) : (
+                          <ActionRow
+                            icon="nutrition-outline"
+                            title="No nutrition yet"
+                            note="This item can’t be logged until it has nutrition facts"
+                            tone="muted"
+                            accessibilityLabel={`${row.name.trim()} has no nutrition facts yet`}
+                          />
+                        )
+                      );
                 return (
                   <View key={row.key} style={index > 0 ? styles.rowDivided : undefined}>
                   <View style={styles.row}>
                     <TouchableOpacity hitSlop={11}
                       style={[
                         styles.check,
-                        row.included && { backgroundColor: colors.accentFill, borderColor: colors.accent },
+                        ready && { backgroundColor: colors.accentFill, borderColor: colors.accent },
+                        needsNutrition && styles.checkBlocked,
                       ]}
                       activeOpacity={interaction.activeOpacity}
-                      disabled={!row.name.trim() && !row.pickedItemId}
+                      disabled={needsNutrition || (!row.name.trim() && !row.pickedItemId)}
                       onPress={() => patchRow(row.key, { included: !row.included })}
                       accessibilityRole="checkbox"
-                      accessibilityState={{ checked: row.included }}
-                      accessibilityLabel={row.name.trim() || 'Unnamed scan'}
+                      accessibilityState={{ checked: ready, disabled: needsNutrition }}
+                      accessibilityLabel={`${row.name.trim() || 'Unnamed scan'}${needsNutrition ? '. Needs nutrition before it can be logged' : ''}`}
                     >
-                      {row.included && (
+                      {ready && (
                         <Ionicons name="checkmark" size={iconSize.xs} color={colors.onAccent} />
                       )}
                     </TouchableOpacity>
@@ -1307,6 +1424,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                         editable={nameable}
                         selectTextOnFocus
                       />
+                      {needsNutrition && nutritionBlock}
                       {showBox && (
                         <View style={styles.fieldPair}>
                           <FieldInput
@@ -1469,41 +1587,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                         </View>
                       )}
 
-                      {/* The way out of a code nothing has heard of: the
-                          packet is in hand and its figures are printed on
-                          it, so offer to read them off the label. Log-only,
-                          since the other two contexts never ask about
-                          nutrition, and only once there's a name to attach
-                          the figures to and nothing in the catalog has
-                          already answered for this row. */}
-                      {context === 'log' && !pendingId && !!row.name.trim() && (
-                        nutritionSource ? (
-                          <ActionRow
-                            icon="nutrition-outline"
-                            title={nutritionSource === 'catalog' ? 'Nutrition on file' : 'Nutrition from the barcode lookup'}
-                            tone="plain"
-                            done
-                            accessibilityLabel={`Nutrition facts for ${row.name.trim()} are already known`}
-                          />
-                        ) : !!onPhotographLabel && !row.pickedItemId ? (
-                          <ActionRow
-                            icon="nutrition-outline"
-                            title="Add nutrition from the label"
-                            note="Not found yet. Photograph the label to log it"
-                            tone="action"
-                            onPress={() => onPhotographLabel(labelSubjectNamed(row.name.trim()))}
-                            accessibilityLabel={`Photograph the nutrition label for ${row.name.trim()}`}
-                          />
-                        ) : (
-                          <ActionRow
-                            icon="nutrition-outline"
-                            title="No nutrition yet"
-                            note="This item can’t be logged until it has nutrition facts"
-                            tone="muted"
-                            accessibilityLabel={`${row.name.trim()} has no nutrition facts yet`}
-                          />
-                        )
-                      )}
+                      {!needsNutrition && nutritionBlock}
 
                       {/* Where a thing is being kept, which a log has no
                           opinion about: it records that something was eaten. */}
@@ -1549,25 +1633,38 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                 );
               })}
             </View>
+            </>
           )}
 
-          <Text style={styles.label}>NO BARCODE</Text>
+        </ScrollView>
+
+        {/* Out of the scroll, so typing a code that won't scan never means
+            finding the foot of a list. Lifted by the keyboard's own height:
+            this sheet isn't one the system resizes for it. */}
+        <View
+          style={[
+            styles.manualBar,
+            { paddingBottom: keyboardHeight > 0 ? keyboardHeight + spacing.sm : Math.max(insets.bottom, spacing.md) },
+          ]}
+        >
+          {!!manualError && <Text style={styles.manualError} accessibilityLiveRegion="polite">{manualError}</Text>}
           <View style={styles.manualRow}>
             <TextField
               style={styles.manualInput}
               value={manual}
-              onChangeText={setManual}
+              onChangeText={text => { setManual(text); if (manualError) setManualError(null); }}
               onSubmitEditing={handleManualAdd}
               returnKeyType="done"
-              placeholder="e.g. bananas, or a barcode number"
+              keyboardType={CONTEXT_COPY[context].typedNames ? 'default' : 'number-pad'}
+              placeholder={CONTEXT_COPY[context].manualPlaceholder}
               placeholderTextColor={colors.textTertiary}
               autoCapitalize="none"
               autoCorrect={false}
-              accessibilityLabel="Add an item by name or barcode"
+              accessibilityLabel={CONTEXT_COPY[context].typedNames ? 'Add an item by name or barcode' : 'Add an item by barcode number'}
             />
             <InlineAction label="Add" icon="add" onPress={handleManualAdd} />
           </View>
-        </ScrollView>
+        </View>
       </View>
     </SheetModal>
   );
@@ -1621,19 +1718,41 @@ function makeStyles(colors: Colors) {
       borderRadius: radius.md,
       opacity: 0.6,
     },
+    hint: { position: 'absolute', left: 0, right: 0, bottom: spacing.smd, alignItems: 'center' },
+    hintPill: {
+      backgroundColor: colors.backdrop,
+      borderRadius: radius.full,
+      paddingHorizontal: spacing.smd,
+      paddingVertical: spacing.xs,
+    },
+    hintText: { color: colors.onFill, fontSize: font.xs },
+    summary: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.xsm },
+    summaryText: {
+      color: colors.textSecondary,
+      fontSize: font.xs,
+      fontWeight: fontWeight.semibold,
+      letterSpacing: 0.8,
+    },
+    summaryWarn: {
+      color: colors.warningText,
+      fontSize: font.xs,
+      fontWeight: fontWeight.semibold,
+      letterSpacing: 0.8,
+    },
+    manualBar: {
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.smd,
+      gap: spacing.xs,
+      backgroundColor: colors.bg,
+      borderTopWidth: border.hairline,
+      borderTopColor: colors.separator,
+    },
+    manualError: { color: colors.redText, fontSize: font.xs },
     body: { padding: spacing.md, paddingBottom: spacing.xl },
     // Full-height content container so EmptyState's own `flex: 1` has room
     // to center above the manual-add row, instead of collapsing to its
     // natural height right under the camera.
     bodyEmpty: { flexGrow: 1, padding: spacing.md, paddingBottom: spacing.xl },
-    label: {
-      color: colors.textSecondary,
-      fontSize: font.xs,
-      fontWeight: fontWeight.semibold,
-      letterSpacing: 0.8,
-      marginTop: spacing.md,
-      marginBottom: spacing.xs,
-    },
     card: {
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.lg,
@@ -1714,6 +1833,8 @@ function makeStyles(colors: Colors) {
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.lg,
     },
+    // A row that can't be logged yet: the box is drawn, but empty and dashed.
+    checkBlocked: { borderStyle: 'dashed', opacity: 0.7 },
     // The app's checkbox shape, same as the receipt sheet's.
     check: {
       width: CHECK_SIZE,

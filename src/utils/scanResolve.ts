@@ -8,6 +8,8 @@ import { aisleForProductCategory } from './productCategory';
 import { matchReceiptLines, type AliasResolver, type ReceiptMatch } from './receiptMatch';
 import type { ReceiptLine } from '../services/aiSuggestions';
 import type { ProductRecord } from '../services/productLookup';
+import { normalizeGtin } from './gtin';
+import { normalizePlu } from './plu';
 
 /**
  * Reading a scanned barcode against the grocery catalog.
@@ -456,4 +458,39 @@ export function scanBoxFor(
 ): { brand: string | null; variant: string | null } | null {
   if (!picked || picked.itemId !== itemId) return null;
   return { brand: picked.brand, variant: picked.variant };
+}
+
+/**
+ * What the sheet's typed field was given, decided once so the sheet and its
+ * tests read the same rule.
+ *
+ * **A string of digits that isn't a barcode is a mistyped barcode, never a
+ * name.** It used to fall through to a named row, so "7172053944" (one digit
+ * short of a UPC-A) became a food called 7172053944 that could never be logged
+ * and, on Next, a catalog item minted for it. Digits with spaces or dashes in
+ * them ("71720 53944") count as digits.
+ *
+ * `allowNames` is the context's choice: a log records a food with figures, and
+ * a name has none, so there the field takes barcodes only. Shopping and pantry
+ * keep names and PLU stickers for produce, which has no barcode at all.
+ */
+export type TypedEntry =
+  | { kind: 'gtin'; gtin: string }
+  | { kind: 'plu'; plu: string }
+  | { kind: 'name'; name: string }
+  | { kind: 'invalid'; reason: 'digits' | 'name' };
+
+export function classifyTypedEntry(raw: string, allowNames: boolean): TypedEntry | null {
+  const text = raw.trim();
+  if (!text) return null;
+  const gtin = normalizeGtin(text);
+  if (gtin) return { kind: 'gtin', gtin };
+  const digitsOnly = /^[\d\s-]+$/.test(text);
+  if (allowNames) {
+    const plu = normalizePlu(text);
+    if (plu) return { kind: 'plu', plu };
+    if (digitsOnly) return { kind: 'invalid', reason: 'digits' };
+    return { kind: 'name', name: text };
+  }
+  return { kind: 'invalid', reason: digitsOnly ? 'digits' : 'name' };
 }
