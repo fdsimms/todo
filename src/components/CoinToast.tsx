@@ -2,15 +2,16 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Animated, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CoinIcon } from './CoinIcon';
-import { useRewardStore } from '../store/useRewardStore';
+import { COIN_BURST_MS, useRewardStore } from '../store/useRewardStore';
 import { TAB_BAR_HEIGHT } from './DemoBanner';
 import { useTheme } from '../theme/ThemeContext';
 import { animation, border, font, fontWeight, iconSize, radius, spacing, type Colors } from '../theme';
 import { formatCoins } from '../utils/rewards';
 
 // Long enough to read a number, short enough that a run of ticks reads as a
-// running tally rather than a queue of notices.
-const VISIBLE_MS = 1500;
+// running tally rather than a queue of notices. The store sums changes that
+// land within this window, so the two must stay the same number.
+const VISIBLE_MS = COIN_BURST_MS;
 
 /**
  * The "+3 coins" a completion earns, said where it happens.

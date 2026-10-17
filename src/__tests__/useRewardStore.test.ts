@@ -87,6 +87,26 @@ describe('announcing a change', () => {
     expect(state().lastChange).toMatchObject({ kind: 'loss', amount: 2 });
   });
 
+  it('adds up changes of one kind that land in a burst', () => {
+    const now = new Date().toISOString();
+    state().recordEarn('t1', 3, 'Run', now);
+    state().recordEarn('t2', 5, 'Read', now);
+    state().recordEarn('t3', 2, 'Cook', now);
+    expect(state().lastChange).toMatchObject({ kind: 'earn', amount: 10 });
+  });
+
+  it('starts over when the kind changes or the last one has left the screen', () => {
+    state().recordEarn('t1', 3, 'Run', new Date().toISOString());
+    state().recordSlip('neg', 2, 'Smoke');
+    expect(state().lastChange).toMatchObject({ kind: 'loss', amount: 2 });
+    state().recordEarn('t2', 4, 'Read', new Date().toISOString());
+    expect(state().lastChange).toMatchObject({ kind: 'earn', amount: 4 });
+    const stale = state().lastChange!;
+    useRewardStore.setState({ lastChange: { ...stale, at: stale.at - 5000 } });
+    state().recordEarn('t3', 1, 'Cook', new Date().toISOString());
+    expect(state().lastChange).toMatchObject({ kind: 'earn', amount: 1 });
+  });
+
   it('stays quiet for a backdated entry', () => {
     state().recordEarn('t1', 3, 'Run', AT);
     state().recordMiss('t2', 3, 'Run', AT);
