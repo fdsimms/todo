@@ -653,8 +653,6 @@ export function CookRecapSheet({
                                 <Text style={styles.reason}>In your pantry</Text>
                                 <InlineAction
                                   label="Undo"
-                                  variant="neutral"
-                                  surface="page"
                                   onPress={() => undoHave(row)}
                                   accessibilityLabel={`Undo, ${row.name} is not in your pantry`}
                                 />
@@ -679,8 +677,6 @@ export function CookRecapSheet({
                               <Text style={styles.name} numberOfLines={1}>{row.name}</Text>
                               <InlineAction
                                 label="Still have it"
-                                variant="neutral"
-                                surface="page"
                                 onPress={() => markHave(row, i)}
                                 accessibilityLabel={`I still have ${row.name}`}
                               />
