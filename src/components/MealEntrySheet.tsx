@@ -496,7 +496,7 @@ export function MealEntrySheet({
               action row below, beside Replace meal. */}
           {overrideLines.length > 0 && (
             <View>
-              <Text style={styles.label}>This time</Text>
+              <Text style={styles.label}>For this meal</Text>
               {overrideLines.map(line => (
                 <View key={line.targetId} style={styles.overrideRow}>
                   <Text style={styles.overrideText}>{line.text}</Text>

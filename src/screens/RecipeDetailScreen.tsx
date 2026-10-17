@@ -2255,7 +2255,7 @@ export function RecipeDetailScreen() {
             change. Plain sentences, not controls: they are set on the meal. */}
         {overrideLines.length > 0 && (
           <View style={styles.overrideBox}>
-            <Text style={styles.overrideTitle}>This time</Text>
+            <Text style={styles.overrideTitle}>For this meal</Text>
             {overrideLines.map(line => (
               <Text key={line} style={styles.overrideLine}>{line}</Text>
             ))}
