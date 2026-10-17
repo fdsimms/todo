@@ -528,30 +528,11 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
   }, []);
 
   /**
-   * Adds a row for a barcode and fills it in when the lookup comes back.
-   *
-   * The row appears immediately, before the network is asked, because the
-   * person is holding the next item and needs to see that this one landed. The
-   * lookup patches it in place afterwards.
+   * Asks for the row's barcode and patches the answer in. Shared by the first
+   * scan and by Retry, which is why it takes the key rather than creating a row.
    */
-  const addScan = useCallback(
-    async (gtin: string, priceMinor: number | null = null) => {
-      const key = generateId();
-      setRows(current => [
-        ...current,
-        {
-          ...unknownScannedItem(gtin),
-          key,
-          included: false,
-          pending: true,
-          error: null,
-          frozen: false,
-          confirmedMatchId: null,
-          pickedItemId: null,
-          pickedProductId: null,
-          priceMinor,
-        },
-      ]);
+  const runLookup = useCallback(
+    async (key: string, gtin: string) => {
       // A code this app has already been told about answers for itself when
       // the database can't: lookups switched off, no signal in the store, or a
       // cached miss. The row is named after the catalog row the code was
@@ -589,6 +570,50 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
       }
     },
     [patchRow, gtinItemFor]
+  );
+
+  /**
+   * Retry on a row whose lookup failed (no signal, a timeout, a bad minute at
+   * the service). A miss the databases confirmed is a different state and is
+   * not offered this: `lookupGtin` caches it, so asking again would only repeat it.
+   */
+  const retryLookup = useCallback(
+    (key: string, gtin: string) => {
+      setOpenKey(current => (current === key ? null : current));
+      patchRow(key, { pending: true, error: null });
+      void runLookup(key, gtin);
+    },
+    [patchRow, runLookup]
+  );
+
+  /**
+   * Adds a row for a barcode and fills it in when the lookup comes back.
+   *
+   * The row appears immediately, before the network is asked, because the
+   * person is holding the next item and needs to see that this one landed. The
+   * lookup patches it in place afterwards.
+   */
+  const addScan = useCallback(
+    async (gtin: string, priceMinor: number | null = null) => {
+      const key = generateId();
+      setRows(current => [
+        ...current,
+        {
+          ...unknownScannedItem(gtin),
+          key,
+          included: false,
+          pending: true,
+          error: null,
+          frozen: false,
+          confirmedMatchId: null,
+          pickedItemId: null,
+          pickedProductId: null,
+          priceMinor,
+        },
+      ]);
+      void runLookup(key, gtin);
+    },
+    [runLookup]
   );
 
   /**
@@ -1381,6 +1406,15 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                               variant="neutral"
                               onPress={() => patchRow(row.key, { confirmedMatchId: pendingId })}
                               accessibilityLabel={`Confirm: ${caption}`}
+                              style={styles.confirmPill}
+                            />
+                          ) : row.error && row.gtin ? (
+                            <InlineAction
+                              label="Retry"
+                              icon="refresh"
+                              variant="neutral"
+                              onPress={() => retryLookup(row.key, row.gtin as string)}
+                              accessibilityLabel={`Retry the barcode lookup for ${subject}`}
                               style={styles.confirmPill}
                             />
                           ) : row.pickedItemId ? (
