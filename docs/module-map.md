@@ -363,7 +363,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/recipeCost.ts` — CostEstimate, estimateRecipeCost, estimateWeekCost, describeRecipeCost, describeWeekCost
 - `src/utils/recipeEstimateQueue.ts` — PendingRecipeEstimateStatus, PendingRecipeEstimate, liveFor, awaitingRecipeEstimate
 - `src/utils/recipeImageSync.ts` — recipeImageNames, readRecipeImageForSync, hasRecipeImageForSync, writeRecipeImageFromSync, recipeIdsIn, unreferencedImageNames, applyWithRecipeImages
-- `src/utils/recipeImportComponents.ts` — ReferenceCandidate, referencePageNumber, importableReferences, coveredIngredients, ComponentImportState, seededComponentKeys, nextComponentPhotos, coveringComponentKeys, ComponentCommit, componentCommitFor, +4 more
+- `src/utils/recipeImportComponents.ts` — ReferenceCandidate, referencePageNumber, importableReferences, coveredIngredients, ComponentImportState, seededComponentKeys, nextComponentPhotos, coveringComponentKeys, ComponentCommit, componentCommitFor, +6 more
 - `src/utils/recipeImportPreview.ts` — ImportPreviewLine, methodRowMeta, prepTasksRowMeta, methodPreviewLines, prepTaskPreviewLines, previewToggleLabel
 - `src/utils/recipeNutrition.ts` — RecipeNutrition, NutritionLineState, recipeNutrition, componentShares, RecipeNutritionReading, readRecipeNutrition, NutritionLine, recipeNutritionLines, ExcludedNutritionLine, excludedNutritionLines, +10 more
 - `src/utils/recipeNutritionEstimate.ts` — RecipeEstimateConfidence, RecipeNutritionEstimate, RawRecipeNutritionEstimate, readRecipeNutritionEstimate, describeRecipeNutritionEstimate

@@ -7,6 +7,8 @@ import {
   coveringComponentKeys,
   componentCommitFor,
   draftOfComponent,
+  nestedComponentKey,
+  isNestedComponentKey,
   applyComponentDraft,
   componentDraftChanged,
   type ComponentImportState,
@@ -388,5 +390,27 @@ describe('editing a read component', () => {
     expect(result.steps).toEqual(['Blend.']);
     expect(result.servings).toBe(4);
     expect(result.prepMinutes).toBe(10);
+  });
+});
+
+describe('nested component keys', () => {
+  it('namespaces a reference by the component it was found on', () => {
+    expect(nestedComponentKey('shatta', 'chile paste')).toBe('shatta>chile paste');
+    expect(nestedComponentKey('shatta', 'chile paste')).not.toBe(nestedComponentKey('zhug', 'chile paste'));
+  });
+
+  it('tells a nested key from a top-level one, which is where nesting stops', () => {
+    expect(isNestedComponentKey('shatta')).toBe(false);
+    expect(isNestedComponentKey(nestedComponentKey('shatta', 'chile paste'))).toBe(true);
+  });
+
+  it('lets a nested candidate commit and cover ingredients like a top-level one', () => {
+    const nested: ReferenceCandidate = { ...candidate('Chile paste'), key: nestedComponentKey('shatta', 'chile paste') };
+    const state = readState('Chile paste');
+    expect(componentCommitFor(nested, new Set([nested.key]), state)).toMatchObject({ kind: 'create', name: 'Chile paste' });
+    expect(componentCommitFor(nested, new Set(), state)).toEqual({ kind: 'skip' });
+    const lines = [{ name: 'chile paste', quantity: '2 tbsp', aisle: 'Pantry', section: null, prep: null, optional: false }];
+    // The ingredient line is matched on the reference's own name, not on the namespaced key.
+    expect([...coveredIngredients(lines, [nested], new Set([nested.key])).keys()]).toEqual([0]);
   });
 });

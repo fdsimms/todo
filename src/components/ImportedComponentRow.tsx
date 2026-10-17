@@ -13,7 +13,7 @@ import { LazySheet } from './LazySheet';
 import { formatServingsRange } from '../utils/recipeUtils';
 import type { Recipe } from '../types';
 import type { ReferenceCandidate } from '../utils/recipeImportComponents';
-import type { ComponentImportState } from '../hooks/useRecipeComponentImports';
+import type { useRecipeComponentImports } from '../hooks/useRecipeComponentImports';
 import { MAX_RECIPE_PHOTOS, type RecipePhotoSource } from '../utils/recipePhoto';
 import { haptics } from '../utils/haptics';
 import { capitalize } from '../utils/capitalize';
@@ -23,20 +23,14 @@ import type { ExtractedRecipe } from '../services/aiSuggestions';
 
 const CHECKBOX_SIZE = 22;
 
+export type ComponentImports = ReturnType<typeof useRecipeComponentImports>;
+
 interface Props {
   candidate: ReferenceCandidate;
-  state: ComponentImportState;
-  accepted: boolean;
+  /** The import's state, keyed by candidate (and by nested candidate); the row reads and drives its own entry. */
+  imports: ComponentImports;
   /** The recipe this reference is being imported into, or null before it exists yet (RecipeCreateSheet). Passed straight through to RecipeComponentPicker. */
   parent: Recipe | null;
-  onToggle: () => void;
-  onImport: (source: RecipePhotoSource) => void;
-  /** The user picked an existing recipe by hand — see `linkTo` on the hook. */
-  onLink: (recipe: Recipe) => void;
-  /** The user corrected a read recipe in the edit sheet — see `editRead` on the hook. */
-  onEdit: (extracted: ExtractedRecipe) => void;
-  /** "Not this one" — removes the row from the list. See `dismiss` on the hook. */
-  onDismiss: () => void;
 }
 
 /**
@@ -67,7 +61,16 @@ interface Props {
  * the whole box the same way either entry point does. Picking one behaves like
  * an automatic match from there on: ticked, and shown as already in the box.
  */
-export function ImportedComponentRow({ candidate, state, accepted, parent, onToggle, onImport, onLink, onEdit, onDismiss }: Props) {
+export function ImportedComponentRow({ candidate, imports, parent }: Props) {
+  const state = imports.stateFor(candidate.key);
+  const accepted = imports.accepted.has(candidate.key);
+  const onToggle = () => imports.toggle(candidate.key);
+  const onImport = (source: RecipePhotoSource) => imports.importFrom(candidate.key, source);
+  const onLink = (picked: Recipe) => imports.linkTo(candidate.key, picked);
+  const onEdit = (edited: ExtractedRecipe) => imports.editRead(candidate.key, edited);
+  const onDismiss = () => imports.dismiss(candidate.key);
+  // What this component's own page points at (one level deep): shown in its edit sheet.
+  const nested = imports.nestedFor(candidate.key);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [pickerVisible, setPickerVisible] = useState(false);
@@ -100,7 +103,11 @@ export function ImportedComponentRow({ candidate, state, accepted, parent, onTog
       const serves = formatServingsRange(read.servings, read.servingsMax);
       const base = serves ? `${count}, serves ${serves}` : count;
       const photoCount = state.status === 'read' ? state.photoCount : 1;
-      return photoCount > 1 ? `${base}, from ${photoCount} photos` : base;
+      const withPhotos = photoCount > 1 ? `${base}, from ${photoCount} photos` : base;
+      // The edit sheet is where these are answered, so the row says there are some.
+      return nested.length > 0
+        ? `${withPhotos}, mentions ${nested.length} other recipe${nested.length === 1 ? '' : 's'}`
+        : withPhotos;
     }
     return 'not in your recipe box yet';
   })();
@@ -242,6 +249,16 @@ export function ImportedComponentRow({ candidate, state, accepted, parent, onTog
             parent={parent}
             onSave={onEdit}
             onLink={onLink}
+            references={nested}
+            coveringKeys={imports.nestedCovering(candidate.key)}
+            renderReference={nestedCandidate => (
+              <ImportedComponentRow
+                key={nestedCandidate.key}
+                candidate={nestedCandidate}
+                imports={imports}
+                parent={null}
+              />
+            )}
             onClose={() => setEditOpen(false)}
           />
         </LazySheet>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import type { Recipe } from '../types';
 import type { ExtractedRecipe } from '../services/aiSuggestions';
 import { extractRecipe } from '../services/aiSuggestions';
@@ -8,7 +9,11 @@ import { describeImportError } from '../services/recipePage';
 import { pickRecipePhoto, type RecipePhoto, type RecipePhotoSource } from '../utils/recipePhoto';
 import {
   componentCommitFor,
+  coveredIngredients,
   coveringComponentKeys,
+  importableReferences,
+  nestedComponentKey,
+  isNestedComponentKey,
   nextComponentPhotos,
   seededComponentKeys,
   type ComponentImportState,
@@ -16,6 +21,7 @@ import {
 } from '../utils/recipeImportComponents';
 import { alertPhotoAccessDenied } from './useRecipeImportSource';
 import { haptics } from '../utils/haptics';
+import { groceryNameKey } from '../utils/groceryParse';
 
 // The state lives beside the candidates it is keyed by, with the rules that
 // read it; re-exported so the row component keeps importing it from here.
@@ -68,7 +74,10 @@ const IDLE: ComponentImportState = { status: 'idle' };
 export function useRecipeComponentImports(
   candidates: readonly ReferenceCandidate[],
   availableAisles: readonly string[],
+  /** `recipeNameKey` of the recipe being imported, so a component's page that points back at it isn't offered. */
+  rootNameKey: string | null = null,
 ) {
+  const recipes = useRecipeStore(useShallow(s => s.recipes));
   const [states, setStates] = useState<Record<string, ComponentImportState>>({});
   const [accepted, setAccepted] = useState<Set<string>>(new Set());
   // Rows the user has explicitly waved off — "not this one" rather than
@@ -128,6 +137,44 @@ export function useRecipeComponentImports(
   }, []);
 
   /**
+   * The recipes a read component's own page points at, as rows nested under
+   * it. Their keys carry the component's (`nestedComponentKey`) so every action
+   * above works on them unchanged and two components can each mention a
+   * "chile paste". A component never offers itself or the recipe being
+   * imported, and none of this applies below one level of nesting.
+   */
+  const nestedCandidatesOf = useCallback((key: string, extracted: ExtractedRecipe): ReferenceCandidate[] => {
+    if (isNestedComponentKey(key)) return [];
+    const skip = new Set([key, groceryNameKey(extracted.name), rootNameKey].filter((k): k is string => !!k));
+    return importableReferences(extracted.references ?? [], recipes, null)
+      .filter(c => !skip.has(c.key))
+      .map(c => ({ ...c, key: nestedComponentKey(key, c.key) }));
+  }, [recipes, rootNameKey]);
+
+  /** Forgets everything held for the rows nested under `parentKey`. */
+  const dropNested = useCallback((parentKey: string) => {
+    const mine = (k: string) => k.startsWith(`${parentKey}>`);
+    statesRef.current = Object.fromEntries(Object.entries(statesRef.current).filter(([k]) => !mine(k)));
+    photosRef.current = Object.fromEntries(Object.entries(photosRef.current).filter(([k]) => !mine(k)));
+    setStates(prev => Object.fromEntries(Object.entries(prev).filter(([k]) => !mine(k))));
+    setAccepted(prev => new Set([...prev].filter(k => !mine(k))));
+    setDismissed(prev => new Set([...prev].filter(k => !mine(k))));
+  }, []);
+
+  /** The rows nested under a read component that are still on offer. */
+  const nestedFor = useCallback((key: string): ReferenceCandidate[] => {
+    const state = states[key];
+    if (state?.status !== 'read') return [];
+    return nestedCandidatesOf(key, state.extracted).filter(c => !dismissed.has(c.key));
+  }, [states, dismissed, nestedCandidatesOf]);
+
+  /** Which of a component's nested references its own ingredient lines no longer have to shop for. */
+  const nestedCovering = useCallback(
+    (key: string) => coveringComponentKeys(nestedFor(key), accepted, states),
+    [nestedFor, accepted, states],
+  );
+
+  /**
    * Take or choose a photo of the referenced page and read it.
    *
    * A successful read ticks the row itself: someone who has just photographed
@@ -168,19 +215,30 @@ export function useRecipeComponentImports(
     setState(key, { status: 'reading' });
     try {
       // The method comes across, same as it does for a recipe imported on its
-      // own — page 45 is a whole recipe, not an ingredient list. References do
-      // not: a component that points at a *third* page has nowhere to offer
-      // that, and a row that grows its own rows is a flow with no bottom.
+      // own — page 45 is a whole recipe, not an ingredient list. References are
+      // asked for one level down only: a row that grows its own rows is a flow
+      // with no bottom.
       const extracted = await extractRecipe(photos, [...availableAisles], {
-        includeReferences: false,
+        // One level of nesting: a component's page can point at a third
+        // recipe, but that one's own page is not asked about again.
+        includeReferences: !isNestedComponentKey(key),
       });
+      const nested = nestedCandidatesOf(key, extracted);
+      // Whatever an earlier read of this row had nested under it described a
+      // different set of photos.
+      dropNested(key);
       setState(key, { status: 'read', extracted, photoCount: photos.length });
       haptics.success();
-      setAccepted(prev => (prev.has(key) ? prev : new Set(prev).add(key)));
+      setAccepted(prev => {
+        const next = new Set(prev).add(key);
+        // A nested reference the box already has starts ticked, as at the top level.
+        seededComponentKeys(nested).forEach(k => next.add(k));
+        return next;
+      });
     } catch (e) {
       setState(key, { status: 'failed', message: describeImportError(e, 'recipe-component-import') });
     }
-  }, [availableAisles, setState]);
+  }, [availableAisles, setState, nestedCandidatesOf, dropNested]);
 
   /**
    * The reference isn't a name match for anything in the box, but the user
@@ -243,8 +301,8 @@ export function useRecipeComponentImports(
    *   rule `RecipeExtractSheet` follows: a recipe the user already wrote is not
    *   somewhere to pour a fresh extraction into unasked.
    * - **A created component gets everything a standalone import would**: its
-   *   ingredients, servings, time, method and prep tasks. The only thing it
-   *   doesn't get is references of its own — see `importFrom`.
+   *   ingredients, servings, time, method and prep tasks, and the recipes its own
+   *   page pointed at, one level down — see `nestedCandidatesOf`.
    * - **The page number is the source's own statement, so it is kept.** A
    *   recipe read off "page 45" gets `sourceType: 'cookbook'` and
    *   `sourcePage: '45'`, the same provenance-not-a-guess argument a link
@@ -259,12 +317,13 @@ export function useRecipeComponentImports(
    */
   const commitTo = useCallback((parentRecipeId: string) => {
     const store = useRecipeStore.getState();
-    for (const candidate of candidates) {
+
+    const commitOne = (candidate: ReferenceCandidate, parentId: string) => {
       const commit = componentCommitFor(candidate, accepted, states[candidate.key]);
-      if (commit.kind === 'skip') continue;
+      if (commit.kind === 'skip') return;
       if (commit.kind === 'link') {
-        store.addComponent(parentRecipeId, commit.recipeId);
-        continue;
+        store.addComponent(parentId, commit.recipeId);
+        return;
       }
       const { name, extracted } = commit;
 
@@ -274,16 +333,23 @@ export function useRecipeComponentImports(
       // the import that read it. The component's own photo is the fallback
       // for the case where it hasn't — a running head the parent's page
       // didn't show.
-      const parent = useRecipeStore.getState().recipeById(parentRecipeId);
+      const parent = useRecipeStore.getState().recipeById(parentId);
       const book = store.cookbookById(parent?.cookbookId)
         ?? (extracted.sourceTitle ? store.ensureCookbook(extracted.sourceTitle, extracted.sourceAuthor) : null);
       const created = store.addRecipe(name, book?.id ?? null);
       const target = created
         ?? recipeInBook(useRecipeStore.getState().recipes, name, book?.id ?? null);
-      if (!target) continue;
+      if (!target) return;
 
       if (created) {
+        // A line naming a recipe this component is about to link is shopped
+        // for through that link, same as in the parent (see `coveredIngredients`).
+        const nested = nestedCandidatesOf(candidate.key, extracted);
+        const covered = coveredIngredients(
+          extracted.ingredients, nested, coveringComponentKeys(nested, accepted, states),
+        );
         const ingredients = extracted.ingredients
+          .filter((_, i) => !covered.has(i))
           .map(item => normalizeIngredient(item))
           .filter((i): i is NonNullable<typeof i> => i !== null);
         if (ingredients.length > 0) store.addStructuredIngredients(target.id, ingredients);
@@ -309,10 +375,16 @@ export function useRecipeComponentImports(
             store.updatePrepTask(target.id, added.id, { offsetDays: task.offsetDays });
           }
         });
+        // The recipes this one's own page pointed at, now that it exists to
+        // hang them on. Only for a recipe made here: one that was already in
+        // the box is the user's own, and a photo is not poured into it.
+        nested.filter(c => !dismissed.has(c.key)).forEach(c => commitOne(c, target.id));
       }
-      store.addComponent(parentRecipeId, target.id);
-    }
-  }, [candidates, accepted, states]);
+      store.addComponent(parentId, target.id);
+    };
+
+    for (const candidate of candidates) commitOne(candidate, parentRecipeId);
+  }, [candidates, accepted, states, dismissed, nestedCandidatesOf]);
 
   const reset = useCallback(() => {
     statesRef.current = {};
@@ -322,5 +394,5 @@ export function useRecipeComponentImports(
     setDismissed(new Set());
   }, []);
 
-  return { stateFor, accepted, acceptedKeys, dismissed, toggle, dismiss, importFrom, linkTo, editRead, commitTo, reset };
+  return { stateFor, accepted, acceptedKeys, dismissed, toggle, dismiss, importFrom, linkTo, editRead, nestedFor, nestedCovering, commitTo, reset };
 }
