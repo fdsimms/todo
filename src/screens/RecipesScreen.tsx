@@ -32,7 +32,6 @@ import { EmptyState } from '../components/EmptyState';
 import { RecipeCreateSheet } from '../components/RecipeCreateSheet';
 import { InventRecipeSheet } from '../components/InventRecipeSheet';
 import type { RecipeInputMode } from '../components/RecipeSourcePicker';
-import { RecipeTagFilterSheet } from '../components/RecipeTagFilterSheet';
 import { OverlapPickerSheet } from '../components/OverlapPickerSheet';
 import { useOverlapPicker } from '../hooks/useOverlapPicker';
 import { RecipeSortFilterSheet } from '../components/RecipeSortFilterSheet';
@@ -279,7 +278,6 @@ export function RecipesScreen() {
   const [planningRecipe, setPlanningRecipe] = useState<Recipe | null>(null);
   const { query, props: filterField } = useFilterField();
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [tagFilterVisible, setTagFilterVisible] = useState(false);
   const [sortFilterVisible, setSortFilterVisible] = useState(false);
   const [importVisible, setImportVisible] = useState(false);
   const [importMode, setImportMode] = useState<RecipeInputMode>('photo');
@@ -419,10 +417,8 @@ export function RecipesScreen() {
   );
   const tagFiltering = activeTags.length > 0;
   const filtering = tagFiltering || recipeLovedOnly;
-  // Every narrowing the list is under, tags included: those are set from the
-  // Tags button under the search field rather than from the sheet this badge
-  // opens, but a badge that ignored them read as "nothing filtered" over a
-  // list that was.
+  // Every narrowing the list is under, tags included, so the badge on the
+  // header's filter button matches what the sheet it opens shows as set.
   const activeFilterCount = (recipeSort !== 'default' ? 1 : 0) + (recipeLovedOnly ? 1 : 0) + activeTags.length;
 
   const visible = useMemo(() => {
@@ -812,60 +808,6 @@ export function RecipesScreen() {
             />
           </View>
 
-          {tagVocabulary.length > 0 && (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              // flexGrow/flexShrink: 0 in the style, or this row stretches or
-              // gets squeezed sharing the column with the list below it —
-              // same reason the Logbook pins its own filter bar's height. A
-              // missing flexShrink left the button's pill background taller
-              // and wider than its own content once the list below pushed
-              // back. Unlike the vocabulary itself
-              // (unbounded — see RecipeTagFilterSheet), what's *selected* is
-              // small enough in practice to sit in a scrolling row: it's the
-              // handful the cook is actively narrowing by, not the whole box.
-              style={styles.tagFilterScroll}
-              contentContainerStyle={styles.tagFilterRow}
-              keyboardShouldPersistTaps="handled"
-            >
-              <TouchableOpacity
-                style={styles.filterButton}
-                onPress={() => { haptics.tap(); setTagFilterVisible(true); }}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
-                accessibilityLabel="Filter recipes by tag"
-              >
-                <Ionicons name="funnel-outline" size={13} color={colors.text} />
-                <Text style={styles.filterButtonText}>
-                  {tagFiltering ? `Tags (${activeTags.length})` : 'Tags'}
-                </Text>
-                <Ionicons name="chevron-down" size={12} color={colors.textTertiary} />
-              </TouchableOpacity>
-              {activeTags.map(tag => (
-                <TouchableOpacity
-                  key={tag}
-                  // Tinted rather than filled, and colored text rather than
-                  // onAccent — the same treatment every other removable tag
-                  // chip in this app uses (TaskEditor, LogbookScreen). A
-                  // filled pill would put white text on a yellow tag.
-                  style={[styles.activePill, { backgroundColor: tagColor(tag) + '33' }]}
-                  onPress={() => {
-                    haptics.tap();
-                    animateLayout();
-                    setSelectedTags(prev => prev.filter(t => t !== tag));
-                  }}
-                  activeOpacity={interaction.activeOpacity}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Remove tag filter ${tag}`}
-                >
-                  <Text style={[styles.activePillText, { color: tagColor(tag) }]} numberOfLines={1}>{tag}</Text>
-                  <Ionicons name="close" size={13} color={tagColor(tag)} />
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          )}
-
           {visible.length === 0 ? (
             <EmptyState
               icon={filtering && !query.trim() ? (tagFiltering ? 'pricetags-outline' : 'thumbs-up-outline') : 'search-outline'}
@@ -1038,17 +980,6 @@ export function RecipesScreen() {
         />
       </LazySheet>
 
-      <LazySheet open={tagFilterVisible}>
-        <RecipeTagFilterSheet
-          visible={tagFilterVisible}
-          onClose={() => setTagFilterVisible(false)}
-          tags={tagVocabulary}
-          counts={tagCounts}
-          selected={activeTags}
-          onChange={next => { animateLayout(); setSelectedTags(next); }}
-        />
-      </LazySheet>
-
       {/* Discovery only — this screen has no week to land picks on, so they
           go to the meal plan. See useOverlapPicker. */}
       <LazySheet open={overlap !== null}>
@@ -1073,6 +1004,10 @@ export function RecipesScreen() {
           onSortChange={s => { animateLayout(); setRecipeSort(s); }}
           lovedOnly={recipeLovedOnly}
           onLovedOnlyChange={v => { animateLayout(); setRecipeLovedOnly(v); }}
+          tags={tagVocabulary}
+          tagCounts={tagCounts}
+          selectedTags={activeTags}
+          onTagsChange={next => { animateLayout(); setSelectedTags(next); }}
         />
       </LazySheet>
 
@@ -1328,50 +1263,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text,
     fontSize: font.md,
     padding: 0,
-  },
-  // The tag filter row — a button that opens RecipeTagFilterSheet (the
-  // vocabulary is unbounded, see that component's doc comment) plus the
-  // currently-active tags as removable pills. Same shape as LogbookScreen's
-  // own filterButton/activePill.
-  tagFilterScroll: {
-    flexGrow: 0,
-    flexShrink: 0,
-  },
-  tagFilterRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  filterButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 7,
-    borderRadius: radius.full,
-    backgroundColor: colors.bgQuaternary,
-  },
-  filterButtonText: {
-    color: colors.text,
-    fontSize: font.sm,
-    fontWeight: fontWeight.semibold,
-  },
-  activePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    maxWidth: 220,
-    paddingLeft: spacing.md,
-    paddingRight: 10,
-    paddingVertical: 7,
-    borderRadius: radius.full,
-  },
-  activePillText: {
-    fontSize: font.sm,
-    fontWeight: fontWeight.semibold,
-    flexShrink: 1,
   },
   // Same treatment as LogbookScreen's day headers — section headers app-wide
   // are uppercase font.xs semibold textTertiary with 0.8 letterSpacing.

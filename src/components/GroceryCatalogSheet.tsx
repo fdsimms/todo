@@ -126,7 +126,7 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
   );
 
   // Wrapping pills, not a horizontal scroll row — the same call
-  // LogbookFilterSheet/RecipeTagFilterSheet made for the same reason: a
+  // LogbookFilterSheet made for the same reason: a
   // scroll row hides options past what fits on screen behind a swipe nobody
   // is prompted to make. "All" is pinned so the no-filter option is never
   // buried behind PillGroup's "N more".
