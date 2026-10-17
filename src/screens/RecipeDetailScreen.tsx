@@ -798,19 +798,30 @@ export function RecipeDetailScreen() {
   // consistent caption on each side rather than each list only ever seeing
   // its own options.
   //
-  // A group drawn as one unbroken run under its header gets none: the header
-  // and the bar already say it is one choice and the next row is the other
-  // option. A group split up by another row or a heading keeps them.
+  // A group drawn as one unbroken run needs neither its "Choose one" header nor
+  // those captions: a thin "or" between the options says it, and the bar down
+  // the edge says they go together. A group split up by another row or a
+  // heading keeps the header and the captions, since there nothing else says
+  // what a line is an alternative to.
+  const choiceRuns = useMemo(() => {
+    const asGroupable = mergedIngredientRows.map(row =>
+      row.kind === 'ingredient' ? { id: row.id, choiceGroup: row.ingredient.choiceGroup }
+        : row.kind === 'component' ? { id: row.id, choiceGroup: row.resolved.component.choiceGroup }
+        : { id: row.id, choiceGroup: null });
+    const together = choiceOptionsShownTogether(asGroupable);
+    // The options of a together group after its first: each opens with the "or".
+    const orBefore = new Set<string>();
+    asGroupable.forEach((row, i) => {
+      if (together.has(row.id) && asGroupable[i - 1]?.choiceGroup === row.choiceGroup) orBefore.add(row.id);
+    });
+    return { together, orBefore };
+  }, [mergedIngredientRows]);
   const alternativeNotesById = useMemo(() => {
     if (!recipe) return new Map<string, string>();
     const notes = recipeAlternativeCaptions(recipe, recipesById);
-    const together = choiceOptionsShownTogether(mergedIngredientRows.flatMap(row =>
-      row.kind === 'ingredient' ? [{ id: row.id, choiceGroup: row.ingredient.choiceGroup }]
-        : row.kind === 'component' ? [{ id: row.id, choiceGroup: row.resolved.component.choiceGroup }]
-        : [{ id: row.id, choiceGroup: null }]));
-    for (const id of together) notes.delete(id);
+    for (const id of choiceRuns.together) notes.delete(id);
     return notes;
-  }, [recipe, recipesById, mergedIngredientRows]);
+  }, [recipe, recipesById, choiceRuns]);
 
   // Lines the app can see wanting to be two — "corn tortillas or flour
   // tortillas" — so the row can say so. Without this the suggestion existed
@@ -1380,7 +1391,14 @@ export function RecipeDetailScreen() {
             had somehow acquired a suffix. A tinted inline label with the same
             branch glyph the split suggestion uses reads as a rule about the
             rows under it. */}
-        {!!choiceHeader && (
+        {choiceRuns.orBefore.has(ingredient.id) && (
+          <View style={styles.choiceOr} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+            <View style={styles.choiceOrLine} />
+            <Text style={styles.choiceOrText}>or</Text>
+            <View style={styles.choiceOrLine} />
+          </View>
+        )}
+        {!!choiceHeader && !choiceRuns.together.has(ingredient.id) && (
           <View style={styles.choiceHeader}>
             <Ionicons name="git-branch-outline" size={iconSize.xs} color={colors.accent} />
             <Text style={styles.choiceHeaderText} numberOfLines={1}>
@@ -1706,7 +1724,14 @@ export function RecipeDetailScreen() {
     const alternativeNote = alternativeNotesById.get(resolved.component.id);
     return (
       <View key={resolved.component.id}>
-        {!!groupHeader && (
+        {choiceRuns.orBefore.has(resolved.component.id) && (
+          <View style={styles.choiceOr} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+            <View style={styles.choiceOrLine} />
+            <Text style={styles.choiceOrText}>or</Text>
+            <View style={styles.choiceOrLine} />
+          </View>
+        )}
+        {!!groupHeader && !choiceRuns.together.has(resolved.component.id) && (
           <View style={styles.choiceHeader}>
             <Ionicons name="git-branch-outline" size={iconSize.xs} color={colors.accent} />
             <Text style={styles.choiceHeaderText} numberOfLines={1}>
@@ -3556,6 +3581,27 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     // not just to the rows underneath.
     borderLeftWidth: 2,
     borderLeftColor: colors.accent,
+  },
+  // The "or" between two options of a group drawn together. The same bar as the
+  // rows either side, so it reads as part of the one block; the rules and the
+  // word are tertiary because it is a joint, not a row.
+  choiceOr: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderLeftWidth: 2,
+    borderLeftColor: colors.accent,
+  },
+  choiceOrLine: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.bgQuaternary,
+  },
+  choiceOrText: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
   },
   choiceHeaderText: {
     flex: 1,
