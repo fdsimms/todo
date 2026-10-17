@@ -1296,6 +1296,69 @@ describe('splitIngredientAlternatives', () => {
   });
 });
 
+describe('splitIngredientAnd', () => {
+  const base = { aisle: null, prep: null, purpose: null, section: null, choiceGroup: null };
+  const withLine = (name: string, overrides: Partial<RecipeIngredient> = {}, extra: RecipeIngredient[] = []) => {
+    const r = makeRecipe('Dough', {
+      ingredients: [
+        { id: 'i0', name: 'Yeast', nameKey: 'yeast', quantity: '1 tsp', ...base },
+        {
+          id: 'i1', name, nameKey: name.toLowerCase(), quantity: '1 cup', ...base,
+          aisle: 'Baking', prep: 'sifted', section: 'Dry', optional: true, ...overrides,
+        },
+        ...extra,
+      ],
+    });
+    seed([r]);
+    return r;
+  };
+
+  it('replaces the line with one row per part, in its place, none of them a choice', () => {
+    const r = withLine('flour and 1 cup sugar');
+
+    expect(useRecipeStore.getState().splitIngredientAnd(r.id, 'i1')).toBe(2);
+
+    const ingredients = useRecipeStore.getState().recipeById(r.id)!.ingredients;
+    expect(ingredients.map(i => i.name)).toEqual(['Yeast', 'flour', 'sugar']);
+    expect(ingredients.map(i => i.nameKey)).toEqual(['yeast', 'flour', 'sugar']);
+    expect(ingredients.map(i => i.quantity)).toEqual(['1 tsp', '1 cup', '1 cup']);
+    expect(ingredients.every(i => i.choiceGroup === null)).toBe(true);
+  });
+
+  it('keeps the original id and aisle on the first part, and the shared facts on all', () => {
+    const r = withLine('flour and sugar');
+
+    useRecipeStore.getState().splitIngredientAnd(r.id, 'i1');
+
+    const [, flour, sugar] = useRecipeStore.getState().recipeById(r.id)!.ingredients;
+    expect(flour.id).toBe('i1');
+    expect(sugar.id).not.toBe('i1');
+    expect(flour.aisle).toBe('Baking');
+    expect(sugar.aisle).toBeNull();
+    for (const row of [flour, sugar]) {
+      expect(row.prep).toBe('sifted');
+      expect(row.section).toBe('Dry');
+      expect(row.optional).toBe(true);
+    }
+    expect(sugar.quantity).toBe('');
+  });
+
+  it('refuses without writing when a part is already a line, or the line is a choice', () => {
+    const taken = withLine('flour and yeast');
+    (dbUpdateRecipe as jest.Mock).mockClear();
+    expect(useRecipeStore.getState().splitIngredientAnd(taken.id, 'i1')).toBe(0);
+
+    const grouped = withLine('flour and sugar', { choiceGroup: 'Sweetener' });
+    expect(useRecipeStore.getState().splitIngredientAnd(grouped.id, 'i1')).toBe(0);
+
+    const plain = withLine('flour');
+    expect(useRecipeStore.getState().splitIngredientAnd(plain.id, 'i1')).toBe(0);
+    expect(useRecipeStore.getState().splitIngredientAnd(plain.id, 'gone')).toBe(0);
+    expect(useRecipeStore.getState().splitIngredientAnd('gone', 'i1')).toBe(0);
+    expect(dbUpdateRecipe).not.toHaveBeenCalled();
+  });
+});
+
 describe('mergeChoiceGroup', () => {
   const withGroup = () => {
     const r = makeRecipe('Salsa', {

@@ -5,6 +5,7 @@ import {
   splitPurpose,
   splitExample,
   splitAlternativeNames,
+  splitAndNames,
   suggestShorterCatalogName,
   resolveGroceryTokens,
   splitGroceryLines,
@@ -882,5 +883,52 @@ describe('parseGroceryInput measures', () => {
 
   it('reads the fraction slash', () => {
     expect(parseGroceryInput('1⁄2 cup sugar')).toEqual({ name: 'sugar', quantity: '1/2 cup' });
+  });
+});
+
+describe('splitAndNames', () => {
+  it('splits a plain "and" into its parts', () => {
+    expect(splitAndNames('salt and pepper')).toEqual(['salt', 'pepper']);
+    expect(splitAndNames('Butter AND olive oil')).toEqual(['Butter', 'olive oil']);
+    expect(splitAndNames('flour and 1 cup sugar')).toEqual(['flour', '1 cup sugar']);
+  });
+
+  it('reads the Oxford form as a list', () => {
+    expect(splitAndNames('salt, pepper, and paprika')).toEqual(['salt', 'pepper', 'paprika']);
+  });
+
+  it('leaves names where "and" is part of the name', () => {
+    expect(splitAndNames('half and half')).toBeNull();
+    expect(splitAndNames('mac and cheese')).toBeNull();
+    expect(splitAndNames('Salt and Vinegar chips')).toBeNull();
+  });
+
+  it('is not fooled by words that contain "and"', () => {
+    expect(splitAndNames('sandwich bread')).toBeNull();
+    expect(splitAndNames('brandy')).toBeNull();
+    expect(splitAndNames('coriander')).toBeNull();
+  });
+
+  it('leaves an either/or line to the either/or suggestion', () => {
+    expect(splitAndNames('salt and pepper or paprika')).toBeNull();
+  });
+
+  it('refuses prep clauses and hedges', () => {
+    expect(splitAndNames('black beans drained and rinsed')).toBeNull();
+    expect(splitAndNames('garlic, minced and divided')).toBeNull();
+    expect(splitAndNames('salt and more to taste')).toBeNull();
+  });
+
+  it('refuses degenerate input', () => {
+    expect(splitAndNames('')).toBeNull();
+    expect(splitAndNames('salt')).toBeNull();
+    expect(splitAndNames('salt and')).toBeNull();
+    expect(splitAndNames('and pepper')).toBeNull();
+    expect(splitAndNames('salt and Salt')).toBeNull();
+    expect(splitAndNames('a and b and c and d and e')).toBeNull();
+  });
+
+  it('puts the noun back on a bare variety word', () => {
+    expect(splitAndNames('red and white onion')).toEqual(['red onion', 'white onion']);
   });
 });

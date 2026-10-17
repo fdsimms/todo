@@ -93,6 +93,7 @@ import {
   duplicateIngredientIn,
   ingredientsFromText,
   makeIngredient,
+  splitIngredientAnd,
   totalMinutes,
 } from '../utils/recipeUtils';
 import { buildIngredientsText, buildRecipeShareText } from '../utils/shareText';
@@ -137,7 +138,7 @@ import {
   recipeNutrition,
 } from '../utils/recipeNutrition';
 import { formatOffsetLabel } from '../utils/templateUtils';
-import { splitAlternativeNames, splitGroceryLines } from '../utils/groceryParse';
+import { groceryNameKey, splitAlternativeNames, splitGroceryLines } from '../utils/groceryParse';
 import { dayKeyOf, getCurrentDayStart, getLogicalToday } from '../utils/dateUtils';
 import { plannedMealLabel } from '../utils/recipePlanned';
 import { resetToMealPlan, navigateToTab } from '../navigation/navigationRef';
@@ -831,6 +832,25 @@ export function RecipeDetailScreen() {
     return counts;
   }, [recipe]);
 
+  // Lines that are two things on one line, "salt and pepper". The sibling of
+  // the either/or offer above and kept off the same rows (a line with an "or"
+  // belongs to that one), and it is withheld when a part is already a line
+  // elsewhere in the recipe, since accepting would be refused: an offer that
+  // can't be taken is worse than none.
+  const andSplitCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    const ingredients = recipe?.ingredients ?? [];
+    for (const ing of ingredients) {
+      if (ing.choiceGroup || splitAlternativeNames(ing.name)) continue;
+      const parts = splitIngredientAnd(ing);
+      if (!parts) continue;
+      const taken = new Set(ingredients.filter(o => o.id !== ing.id).map(o => o.nameKey));
+      if (parts.some(part => taken.has(groceryNameKey(part.name)))) continue;
+      counts.set(ing.id, parts.length);
+    }
+    return counts;
+  }, [recipe]);
+
   // What each line resolves to in the grocery catalog — see
   // ingredientCatalogMatch.ts. `nameKey` has always been that bridge, but
   // nothing on this screen ever said whether a line had crossed it, so a line
@@ -1343,7 +1363,11 @@ export function RecipeDetailScreen() {
     // to be two" comes first, and each half gets matched on its own once it
     // is. Two competing offers on one row is a row nobody reads.
     const catalogMatch = catalogMatches.get(ingredient.id);
-    const catalogSuggestion = !splittableInto && catalogMatch?.kind === 'suggested'
+    const andSplittable = andSplitCounts.get(ingredient.id);
+    const andInto = andSplittable && ingredient.dismissedSplitSuggestion !== ingredient.name
+      ? andSplittable
+      : undefined;
+    const catalogSuggestion = !splittableInto && !andSplittable && catalogMatch?.kind === 'suggested'
       && catalogMatch.suggestedName !== ingredient.dismissedCatalogSuggestion
       ? catalogMatch
       : null;
@@ -1452,6 +1476,33 @@ export function RecipeDetailScreen() {
                 >
                   <Ionicons name="git-branch-outline" size={iconSize.xs} color={colors.accent} />
                   <Text style={styles.splitPillText}>Split into {splitInto}…</Text>
+                </PressableScale>
+                <TouchableOpacity
+                  onPress={() => dismissSplitPill(ingredient.id, ingredient.name)}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Dismiss the split suggestion for ${ingredient.name}`}
+                  accessibilityHint="Leaves the line as it is"
+                >
+                  <Ionicons name="close" size={iconSize.xs} color={colors.textTertiary} />
+                </TouchableOpacity>
+              </View>
+            )}
+            {/* The "and" form of the signpost above, and the same pill: it opens
+                the sheet where the two lines are confirmed against their actual
+                parts. Its own glyph, because these are two things to buy and
+                the branch glyph says "pick one". */}
+            {!!andInto && !splitInto && !selectionMode && (
+              <View style={styles.splitPill}>
+                <PressableScale
+                  style={styles.splitPillTap}
+                  haptic
+                  onPress={() => setEditingIngredient(ingredient)}
+                  accessibilityLabel={`Split ${ingredient.name} into ${andInto} lines`}
+                  accessibilityHint="Double tap to review the split"
+                >
+                  <Ionicons name="copy-outline" size={iconSize.xs} color={colors.accent} />
+                  <Text style={styles.splitPillText}>Split into {andInto} lines…</Text>
                 </PressableScale>
                 <TouchableOpacity
                   onPress={() => dismissSplitPill(ingredient.id, ingredient.name)}

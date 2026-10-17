@@ -4060,6 +4060,8 @@ function seedRecipes(): DemoRecipes {
       '2 cups rice',
       '1 serrano chile',
       '1 jalapeno',
+      // Left as one line on purpose: the row offers to split it into two.
+      'salt and pepper to taste',
     ].join('\n')
   );
   setMealType(stirFry.id, 'dinner');
