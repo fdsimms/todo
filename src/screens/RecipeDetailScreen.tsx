@@ -1493,7 +1493,7 @@ export function RecipeDetailScreen() {
             )}
           </View>
           {!!scaledQuantity && (
-            <View style={styles.qtyColumn}>
+            <View style={styles.qtyGroup}>
               <View style={[styles.qtyPill, scaledHere && styles.qtyPillScaled]}>
                 <Text
                   style={[styles.qtyText, scaledHere && styles.qtyTextScaled]}
@@ -1502,7 +1502,7 @@ export function RecipeDetailScreen() {
                   {scaledQuantity}
                 </Text>
               </View>
-              {/* Under the pill rather than inside it: the pill is the
+              {/* Beside the pill rather than inside it: the pill is the
                   recipe's amount (or the app's conversion of it), and this is
                   a second measurement of the same thing. Only present when
                   the food's own portion table can say it. */}
@@ -3628,12 +3628,10 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     fontSize: font.xs,
   },
   qtyTextScaled: { color: colors.accent, fontWeight: fontWeight.medium },
-  qtyColumn: { alignItems: 'flex-end' },
+  qtyGroup: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   qtyWeight: {
     color: colors.textSecondary,
     fontSize: font.xxs,
-    marginTop: spacing.xxs,
-    paddingHorizontal: spacing.sm,
   },
   scaleRow: { marginTop: spacing.xs, marginBottom: spacing.sm },
   choiceRow: { gap: spacing.sm, marginBottom: spacing.sm },
