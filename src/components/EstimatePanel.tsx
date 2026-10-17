@@ -1153,7 +1153,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
       : rowAsk.kind === 'none' ? false : describedEstimateFactor((row as Extract<PendingRecallLog, { kind: 'recall' }>).food, row.clause) !== null;
     const logsLine = 'error' in rowWrite
       ? null
-      : `Logs ${rowWrite.quantity}.${typedWeight && !typedApplied ? ` Not ${typedWeight.replace(/g$/, ' g')}: this food has no recorded weight to measure it against.` : ''}`;
+      : `Logs ${rowWrite.quantity}.${typedWeight && !typedApplied ? ` Not ${typedWeight.replace(/g$/, ' g')}: this food has no recorded weight to measure it against. Use Estimate below to log it by weight.` : ''}`;
     return (
       <View key={`${row.kind}-${food.key}`} style={[styles.offerRow, index > 0 && styles.offerDivider]}>
         <View style={styles.offerMain}>
@@ -1229,9 +1229,6 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
                   );
                 })}
               </View>
-              <Text style={styles.listHint}>
-                Tap + to log the same amount again, or Change amount to log a different one.
-              </Text>
             </>
           )}
 
