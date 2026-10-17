@@ -2872,6 +2872,13 @@ const TaskItemRow = React.memo(function TaskItem({
     addSubtask(task.id, trimmed);
   };
 
+  // Whether the meta row has anything to show besides the notes and deadline
+  // markers. The notes icon alone is a bare glyph, so it never takes a line
+  // of its own (see `notesStayInTitle`).
+  const hasOtherMeta = isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || (showStreakChip && !nutrientRow) || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || meterText !== null || reminderTimeLabel !== null || travelNote !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.generatedKind === 'calendarReview';
+  const deadlineOnMeta = markersOnMeta && deadlineDays !== null;
+  const notesStayInTitle = markersOnMeta && hasNotes && !hasOtherMeta && !deadlineOnMeta;
+
   const rowBody = (
     <View style={[styles.row, isActive && styles.rowActive]}>
       {task.priority > 0 && (
@@ -3239,7 +3246,7 @@ const TaskItemRow = React.memo(function TaskItem({
                         style={[styles.title, styles.titleDone]}
                         highlightStyle={[styles.titleMention, styles.titleDone]}
                         numberOfLines={listRow ? undefined : 2}
-                        trailing={markersFit ? markerNodes : null}
+                        trailing={markersFit || notesStayInTitle ? markerNodes : null}
                       />
                     }
                   >
@@ -3251,7 +3258,7 @@ const TaskItemRow = React.memo(function TaskItem({
                       // Open, a list line shows all of itself: the editor was
                       // otherwise the only place a long question could be read.
                       numberOfLines={listRow ? undefined : 2}
-                      trailing={markersFit ? markerNodes : null}
+                      trailing={markersFit || notesStayInTitle ? markerNodes : null}
                     />
                   </StrikeReveal>
                 </Animated.View>
@@ -3272,7 +3279,7 @@ const TaskItemRow = React.memo(function TaskItem({
                       highlightStyle={[styles.titleMention, styles.titleDone]}
                       numberOfLines={2}
                       ellipsizeMode="tail"
-                      trailing={markersFit ? markerNodes : null}
+                      trailing={markersFit || notesStayInTitle ? markerNodes : null}
                     />
                   }
                 >
@@ -3283,7 +3290,7 @@ const TaskItemRow = React.memo(function TaskItem({
                     highlightStyle={styles.titleMention}
                     numberOfLines={2}
                     ellipsizeMode="tail"
-                    trailing={markersFit ? markerNodes : null}
+                    trailing={markersFit || notesStayInTitle ? markerNodes : null}
                   />
                 </StrikeReveal>
               </Animated.View>
@@ -3314,9 +3321,9 @@ const TaskItemRow = React.memo(function TaskItem({
             dismissLabel={activeTitleOffer.kind === 'filed' ? 'Hide suggestion' : 'Not a date'}
           />
         )}
-        {(markersOnMeta || isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || (showStreakChip && !nutrientRow) || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || meterText !== null || reminderTimeLabel !== null || travelNote !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.generatedKind === 'calendarReview') && (
+        {(markersOnMeta || hasOtherMeta) && (
           <View style={styles.metaRow}>
-            {markersOnMeta && hasNotes && (
+            {markersOnMeta && hasNotes && !notesStayInTitle && (
               <View style={styles.metaChip} accessibilityLabel="Has notes">
                 <Ionicons name="document-text-outline" size={iconSize.xs} color={colors.textSecondary} />
               </View>
