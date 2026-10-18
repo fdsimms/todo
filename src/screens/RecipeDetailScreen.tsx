@@ -20,6 +20,7 @@ import {
   Linking,
   Share,
   StyleSheet,
+  type GestureResponderEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
@@ -73,6 +74,7 @@ import { useRecipeTimer } from '../hooks/useRecipeTimer';
 import { useStepTimers } from '../hooks/useStepTimers';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { RecipeTimerRow } from '../components/RecipeTimerRow';
+import { RecipeTabBar, type RecipeTab } from '../components/RecipeTabBar';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from '../components/NumberPadAccessory';
 import { CookModeSheet } from '../components/CookModeSheet';
 import { cookSteps, stepsFromNotes } from '../utils/cookMode';
@@ -288,6 +290,10 @@ export function RecipeDetailScreen() {
   // Seeded from a planned meal's own scale when one opened this, and reset
   // with the picks below when the route params change.
   const [scale, setScale] = useState(() => route.params.scale ?? 1);
+
+  // Which tab of the page is showing. Session-only: a recipe always opens on
+  // its ingredients, the thing most visits are for.
+  const [tab, setTab] = useState<RecipeTab>('ingredients');
 
   // Which alternative the cost and nutrition estimates below are for, when the
   // recipe poses an either/or — "sourdough" and "baguette" don't share a
@@ -649,7 +655,7 @@ export function RecipeDetailScreen() {
     [recipe, recipesById, scale, unitSystem, weightLookups]
   );
 
-  const { copied: copiedIngredients, copy: copyIngredients } = useCopyToClipboard();
+  const { copy: copyIngredients } = useCopyToClipboard();
 
   // The ingredients list, plus one marker per heading it has — populated ones
   // where a row's section first differs from the row before it, and every
@@ -1059,6 +1065,33 @@ export function RecipeDetailScreen() {
     animateLayout();
     removePrepTask(recipe.id, prepTask.id);
     haptics.tap();
+  };
+
+  // The "…" menu. Edit leads because that is what the button did before it
+  // became a menu; the rest are the controls that used to sit in the header
+  // and above the ingredients. Each is left out when it has nothing to act on.
+  const handleMoreMenu = (e: GestureResponderEvent) => {
+    haptics.tap();
+    actionMenu.open({
+      title: recipe.name,
+      anchor: { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY },
+      actions: [
+        { key: 'edit', label: 'Edit recipe', icon: 'create-outline', onPress: () => setEditorVisible(true) },
+        { key: 'share', label: 'Share recipe', icon: 'share-outline', onPress: handleShare },
+        ...(ingredientsText
+          ? [
+              { key: 'copy', label: 'Copy ingredients', icon: 'copy-outline', onPress: () => copyIngredients(ingredientsText) } as const,
+              { key: 'shareIngredients', label: 'Share ingredients only', icon: 'share-outline', onPress: handleShareIngredients } as const,
+            ]
+          : []),
+        ...(recipe.sourceUrl
+          ? [{ key: 'source', label: 'Open original recipe', icon: 'open-outline', onPress: handleOpenSourceUrl } as const]
+          : []),
+        ...(recipeImportRoute !== 'unavailable'
+          ? [{ key: 'extract', label: 'Fill in from a pasted recipe', icon: 'sparkles-outline', onPress: () => setExtractVisible(true) } as const]
+          : []),
+      ],
+    });
   };
 
   const handleShareIngredients = () => {
@@ -2040,16 +2073,6 @@ export function RecipeDetailScreen() {
         onBack={handleBack}
         actions={
           <View style={styles.headerActions}>
-            {!selectionMode && recipeImportRoute !== 'unavailable' && (
-              <TouchableOpacity
-                onPress={() => { haptics.tap(); setExtractVisible(true); }}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Fill in from a pasted recipe"
-              >
-                <Ionicons name="sparkles" size={iconSize.md} color={colors.purple} />
-              </TouchableOpacity>
-            )}
             {!selectionMode && (
               <TouchableOpacity
                 onPress={() => {
@@ -2078,32 +2101,15 @@ export function RecipeDetailScreen() {
                 onPress={handleMadeIt}
               />
             )}
+            {/* Everything else the header used to carry (share, the original,
+                the paste fill, copying the ingredients) lives in this menu, so
+                the title keeps its row. */}
             {!selectionMode && (
               <TouchableOpacity
-                onPress={handleShare}
+                onPress={handleMoreMenu}
                 hitSlop={8}
                 accessibilityRole="button"
-                accessibilityLabel="Share this recipe"
-              >
-                <Ionicons name="share-outline" size={iconSize.md} color={colors.textSecondary} />
-              </TouchableOpacity>
-            )}
-            {!selectionMode && !!recipe.sourceUrl && (
-              <TouchableOpacity
-                onPress={handleOpenSourceUrl}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Open original recipe"
-              >
-                <Ionicons name="open-outline" size={iconSize.md} color={colors.textSecondary} />
-              </TouchableOpacity>
-            )}
-            {!selectionMode && (
-              <TouchableOpacity
-                onPress={() => { haptics.tap(); setEditorVisible(true); }}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Edit recipe"
+                accessibilityLabel="More actions for this recipe"
               >
                 <Ionicons name="ellipsis-horizontal" size={iconSize.md} color={colors.textSecondary} />
               </TouchableOpacity>
@@ -2129,6 +2135,14 @@ export function RecipeDetailScreen() {
         </TouchableOpacity>
       )}
 
+      <RecipeTabBar
+        value={tab}
+        onChange={setTab}
+        timerActive={
+          prepTimer.inProgress || cookTimer.inProgress || stepTimers.timers.length > 0
+        }
+      />
+
       {/* Around the whole scroll view, since the ingredient card is one block
           inside it: while selecting, a drag started on the trailing edge
           paints rather than scrolls, the trade every selectable list makes. */}
@@ -2144,6 +2158,8 @@ export function RecipeDetailScreen() {
         {...keyboardScroll.props}
         {...scrollTop.listProps}
       >
+        {tab === 'details' && (
+        <>
         {recipe.imagePath && photoOnDevice ? (
           <TouchableOpacity
             style={styles.hero}
@@ -2248,12 +2264,16 @@ export function RecipeDetailScreen() {
             ))}
           </View>
         )}
+        </>
+        )}
         {/* Notes show whether or not the recipe has steps: with none they are the
             method, and with steps they are the cook's own tips ("double the
             garlic"), which cook mode shows in its Notes panel too. They are
             not the method once steps exist, so nothing here repeats them. */}
-        {!!recipe.notes.trim() && <Text style={styles.notes}>{recipe.notes}</Text>}
+        {tab === 'steps' && !!recipe.notes.trim() && <Text style={styles.notes}>{recipe.notes}</Text>}
 
+        {tab === 'timers' && (
+        <>
         {totalTimeMinutes != null && (
           <Text style={styles.totalTimeSummary}>Total time {formatDuration(totalTimeMinutes)}</Text>
         )}
@@ -2284,41 +2304,10 @@ export function RecipeDetailScreen() {
             </React.Fragment>
           ))}
         </View>
-
-        {/* The two ways the list leaves the app, on the card they act on
-            rather than up in the screen header — that header's share button
-            sends the whole recipe (name, method, source), and these send the
-            ingredient lines alone, which is what another app's "paste your
-            ingredients" box can actually read. Hidden while selecting, like
-            every other action on this screen. */}
-        <View style={styles.ingredientsHeaderRow}>
-          <Text style={[styles.sectionLabel, styles.sectionLabelFlush]}>Ingredients</Text>
-          {!selectionMode && !!ingredientsText && (
-            <View style={styles.ingredientsHeaderActions}>
-              <TouchableOpacity
-                onPress={() => copyIngredients(ingredientsText)}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Copy the ingredients as plain text"
-              >
-                <Ionicons
-                  name={copiedIngredients ? 'checkmark' : 'copy-outline'}
-                  size={iconSize.sm}
-                  color={copiedIngredients ? colors.green : colors.textSecondary}
-                />
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleShareIngredients}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Share the ingredients on their own"
-              >
-                <Ionicons name="share-outline" size={iconSize.sm} color={colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-
+        </>
+        )}
+        {tab === 'ingredients' && (
+        <>
         {/* Above the list rather than up by the summary: it's the quantities
             below that visibly change, and a control that far from what it
             changes reads as another fact about the recipe. Gated the same as
@@ -2370,6 +2359,10 @@ export function RecipeDetailScreen() {
             ))}
           </View>
         )}
+        </>
+        )}
+        {tab === 'details' && (
+        <>
         {/* Live off the same scale chips above — a doubled dinner reads as a
             doubled cost. Renders nothing rather than a guess while too few
             lines are priced to say (see recipeCost.ts's coverage floor). */}
@@ -2485,7 +2478,10 @@ export function RecipeDetailScreen() {
             <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
           </TouchableOpacity>
         )}
-
+        </>
+        )}
+        {tab === 'ingredients' && (
+        <>
         {mergedIngredientRows.length === 0 && components.length === 0 && blanks.length === 0 ? (
           <HelpText style={styles.hint}>
             Type one ingredient at a time, or paste a whole list. “2 lb chicken thighs”
@@ -2654,9 +2650,10 @@ export function RecipeDetailScreen() {
             )}
           </View>
         )}
-
-        <Text style={styles.sectionLabel}>Steps</Text>
-
+        </>
+        )}
+        {tab === 'steps' && (
+        <>
         {mergedStepRows.length === 0 ? (
           <HelpText style={styles.hint}>
             Write the method as steps, and it stays legible when the recipe is
@@ -2824,7 +2821,10 @@ export function RecipeDetailScreen() {
             )}
           </>
         )}
-
+        </>
+        )}
+        {tab === 'ingredients' && (
+        <>
         {/* The whole section goes in simplified mode, unless this recipe already
             uses components — a composed recipe that couldn't show its parts
             would be missing half its ingredients with nothing to say why. */}
@@ -2854,7 +2854,10 @@ export function RecipeDetailScreen() {
         </View>
         </>
         )}
-
+        </>
+        )}
+        {tab === 'steps' && (
+        <>
         <Text style={styles.sectionLabel}>Prep tasks</Text>
 
         {recipe.prepTasks.length === 0 ? (
@@ -2889,7 +2892,8 @@ export function RecipeDetailScreen() {
             disabled={!prepDraft.trim()}
           />
         </View>
-
+        </>
+        )}
         {/* Clears the floating bulk bar, which takes the footer's place while
             selecting — see below. */}
         {selectionMode && (
@@ -3260,25 +3264,6 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     // The hint or card under a label carries no top margin, so the label owns
     // the gap on both sides.
     marginBottom: spacing.sm,
-  },
-  // The Ingredients label and its copy/share buttons on one line. The row
-  // carries the label's own top margin, so the label goes flush inside it and
-  // the icons sit level with the text rather than pushed down by it.
-  ingredientsHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  sectionLabelFlush: {
-    marginTop: 0,
-    marginBottom: 0,
-  },
-  ingredientsHeaderActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
   },
   hint: {
     color: colors.textTertiary,
