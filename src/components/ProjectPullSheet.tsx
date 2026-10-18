@@ -26,8 +26,6 @@ import {
 } from '../utils/projectPull';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTasksWhileOpen } from '../hooks/useTasksWhileOpen';
-import { useCalendarStore } from '../store/useCalendarStore';
-import { liveAwaySpans } from '../utils/awayDates';
 import { useProjectStore } from '../store/useProjectStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { liveGeneratedTask } from '../utils/generatedTasks';
@@ -42,8 +40,6 @@ import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
-  /** Today's visible list — decides whether a pull lands today or on a lighter day. */
-  todaysTasks: readonly Task[];
   /**
    * Restricts the plan to these project ids — set when opened from the
    * quiet-project nudge, which is already about a specific project or two,
@@ -92,7 +88,7 @@ interface Props {
  * doesn't (outside the expanded case, which has no need for it), so it gets
  * its own visible affordance instead of a third gesture.
  */
-export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, landOnDayKey, onOpenProject, onClose }: Props) {
+export function ProjectPullSheet({ visible, scopeProjectIds, landOnDayKey, onOpenProject, onClose }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -105,15 +101,6 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, landOn
   const setVacationMode = useSettingsStore(s => s.setVacationMode);
   const completeTask = useTaskStore(s => s.completeTask);
   const updateProject = useProjectStore(s => s.updateProject);
-  const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
-  const calendarEvents = useCalendarStore(s => s.events);
-  const calendarLoaded = useCalendarStore(s => s.loaded);
-  // Meetings weigh on the days a pull can land on, the same gate DeloadSheet
-  // applies before handing them to the same engine.
-  const busyEvents = calendarReadEnabled && calendarLoaded ? calendarEvents : undefined;
-  const dayResetTime = useSettingsStore(s => s.dayResetTime);
-  const awaySpans = useMemo(() => liveAwaySpans(projects, dayResetTime), [projects, dayResetTime]);
-
   // The one review task this opening is answering, when it's scoped to a
   // single project — i.e. opened from that project's own "Review X" task
   // rather than the board-wide "..." menu. Skip below marks *this* task
@@ -169,7 +156,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, landOn
   const showAllProjects = () => {
     haptics.tap();
     animateLayout();
-    const next = buildProjectPullPlan(projects, allTasks, todaysTasks, scopeProjectIds, landOnDayKey, Number.MAX_SAFE_INTEGER, busyEvents, awaySpans);
+    const next = buildProjectPullPlan(projects, allTasks, scopeProjectIds, landOnDayKey, Number.MAX_SAFE_INTEGER);
     setLimit(Number.MAX_SAFE_INTEGER);
     setPlan(next);
     setSelectedIds(initialSelectedIds(next));
@@ -178,7 +165,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, landOn
   useEffect(() => {
     if (!visible) return;
     setLimit(MAX_PULLED_PROJECTS);
-    const next = buildProjectPullPlan(projects, allTasks, todaysTasks, scopeProjectIds, landOnDayKey, limit, busyEvents, awaySpans);
+    const next = buildProjectPullPlan(projects, allTasks, scopeProjectIds, landOnDayKey, limit);
     setPlan(next);
     setSelectedIds(initialSelectedIds(next));
     setCandidateIndex({});
@@ -243,7 +230,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, landOn
     const override = overrides[task.id];
     if (override) return { date: override, dayLabel: null, reason: 'moved by hand' };
     if (task.id === p.candidates[0].id) return p.suggestion;
-    return suggestPullDate(task, allTasks, todaysTasks, p.quietDays, landOnDayKey, busyEvents, awaySpans);
+    return suggestPullDate(p.quietDays, landOnDayKey);
   };
 
   const toggle = (taskId: string) => {
@@ -339,7 +326,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, landOn
     haptics.tap();
     forgivVacationStreaks();
     setVacationMode(false);
-    const next = buildProjectPullPlan(projects, allTasks, todaysTasks, scopeProjectIds, landOnDayKey, limit, busyEvents, awaySpans);
+    const next = buildProjectPullPlan(projects, allTasks, scopeProjectIds, landOnDayKey, limit);
     setPlan(next);
     setSelectedIds(initialSelectedIds(next));
   };
