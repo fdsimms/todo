@@ -392,6 +392,7 @@ function addReport(into: ApplyReport, from: ApplyReport): void {
   into.removedMealEvents.push(...from.removedMealEvents);
   into.taskIds.push(...from.taskIds);
   into.removedTaskEvents.push(...from.removedTaskEvents);
+  into.removedWatchWorkouts.push(...from.removedWatchWorkouts);
 }
 
 /**

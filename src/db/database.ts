@@ -3651,6 +3651,18 @@ export function dbApplySyncChanges(payload: SyncPayload, transport?: string): Ap
           });
         }
       }
+      // A workout the Apple Watch measured is the watch's to retract, and only
+      // the phone it is paired with can ask it: a delete made on another
+      // device reaches it only here. Read before the delete, like the events.
+      if (deletion.table === 'workout_sessions') {
+        const session = db.getFirstSync<{ health_workout_id: string | null; measured_on_watch: number | null }>(
+          `SELECT health_workout_id, measured_on_watch FROM workout_sessions WHERE ${where.sql}`,
+          where.values
+        );
+        if (session && Number(session.measured_on_watch) === 1) {
+          report.removedWatchWorkouts.push({ sessionId: deletion.rowKey, healthWorkoutId: session.health_workout_id ?? null });
+        }
+      }
       db.runSync(`DELETE FROM "${deletion.table}" WHERE ${where.sql}`, where.values);
       // The tombstone trigger just stamped this deletion with local now. Put
       // the peer's time back, or a third device hearing it relayed would take

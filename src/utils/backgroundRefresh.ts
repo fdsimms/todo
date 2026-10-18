@@ -125,6 +125,7 @@ import type { SyncSummary } from './syncEngine';
 import { isDemoModeActive } from './demoState';
 import { runPendingHealthFoodWrites } from './pendingHealthFoodWrites';
 import { runPendingHealthWorkoutWrites } from './pendingHealthWorkoutWrites';
+import { askWatchAboutSyncedDeletes } from './healthWorkoutSync';
 import { runStartupSequence, runStartupStep } from './startup';
 import { timed } from './perfLog';
 import { savePerfRun } from './perfReport';
@@ -282,6 +283,10 @@ registerSyncReload(applied => {
   timed('sync reload: settings', () => useSettingsStore.getState().initialize());
   timed('sync reload: task events', () => useTaskStore.getState().reconcileSyncedEvents(applied));
   timed('sync reload: meal events', () => useMealPlanStore.getState().reconcileSyncedEvents(applied));
+  // A workout the Apple Watch measured, deleted on another device: only this
+  // phone can ask its watch to retract it. The two lists are device-local
+  // settings, so writing them here sends nothing back out.
+  if (applied.removedWatchWorkouts.length > 0) askWatchAboutSyncedDeletes(applied.removedWatchWorkouts);
   // A calendar request an agent made arrives this way, so this is when one
   // can be written. Not filtered on the report: a pass with nothing pending
   // reads one small table and stops.

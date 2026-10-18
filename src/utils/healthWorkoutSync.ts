@@ -1,4 +1,5 @@
 import type { WorkoutSession } from '../types';
+import type { RemovedWatchWorkout } from './syncMerge';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { isDemoModeActive } from './demoState';
 
@@ -209,6 +210,20 @@ export function retractWatchWorkouts(ids: readonly string[]): void {
 export function dropWatchMeasurement(sessionId: string): void {
   if (isDemoModeActive()) return;
   watchHealthStore().drop(sessionId);
+}
+
+/**
+ * A sync deleted sessions the Apple Watch measured (`ApplyReport.removedWatchWorkouts`):
+ * the person deleted them on another device. Asked of the watch exactly as a
+ * delete here asks it (`deleteSession`): what it saved is retracted, and a
+ * measurement it may still be taking is thrown away. On a device with no
+ * watch the lists are kept and never read, and they cap themselves.
+ */
+export function askWatchAboutSyncedDeletes(removed: readonly RemovedWatchWorkout[]): void {
+  if (isDemoModeActive()) return;
+  const retract = removed.map(r => r.healthWorkoutId).filter((id): id is string => !!id);
+  if (retract.length > 0) retractWatchWorkouts(retract);
+  for (const r of removed) if (!r.healthWorkoutId) dropWatchMeasurement(r.sessionId);
 }
 
 /**

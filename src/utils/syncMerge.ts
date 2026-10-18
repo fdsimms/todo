@@ -247,6 +247,16 @@ export interface RemovedTaskEvent {
   externalId: string | null;
 }
 
+/**
+ * A workout session the apply deleted that the Apple Watch measured, read off
+ * the row before the delete: `healthWorkoutId` is the workout the watch saved,
+ * or null while it was still measuring or hadn't sent one.
+ */
+export interface RemovedWatchWorkout {
+  sessionId: string;
+  healthWorkoutId: string | null;
+}
+
 /** What an apply did, for the sync log and for tests. */
 export interface ApplyReport {
   inserted: number;
@@ -282,6 +292,14 @@ export interface ApplyReport {
    * event is a record of what happened rather than a mirror of the row.
    */
   removedTaskEvents: RemovedTaskEvent[];
+  /**
+   * The workout sessions the apply deleted that the Apple Watch measured. The
+   * watch retracts what it saved (the phone may not), and the device it is
+   * paired with is the only one that can ask it, which a delete made on
+   * another device can't reach. Read before the delete, for the reason
+   * `removedMealEvents` is.
+   */
+  removedWatchWorkouts: RemovedWatchWorkout[];
 }
 
 export function emptyApplyReport(): ApplyReport {
@@ -295,6 +313,7 @@ export function emptyApplyReport(): ApplyReport {
     removedMealEvents: [],
     taskIds: [],
     removedTaskEvents: [],
+    removedWatchWorkouts: [],
   };
 }
 

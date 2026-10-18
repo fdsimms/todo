@@ -27,6 +27,7 @@ jest.mock('../store/useWatchHealthStore', () => ({ useWatchHealthStore: { getSta
 
 import {
   PENDING_WORKOUT_WRITE_MAX_AGE_DAYS,
+  askWatchAboutSyncedDeletes,
   WATCH_WORKOUT_WAIT_MINUTES,
   WORKOUT_HEALTH_ACTIVITY,
   logWorkoutToHealth,
@@ -190,6 +191,13 @@ describe('demo mode', () => {
     expect(mockWatchHealth.drop).not.toHaveBeenCalled();
   });
 
+  it('asks the watch nothing about a sync’s deletes either', () => {
+    mockDemo = true;
+    askWatchAboutSyncedDeletes([{ sessionId: 's1', healthWorkoutId: 'HK-WATCH' }, { sessionId: 's2', healthWorkoutId: null }]);
+    expect(mockWatchHealth.retract).not.toHaveBeenCalled();
+    expect(mockWatchHealth.drop).not.toHaveBeenCalled();
+  });
+
   it('asks the watch once demo mode is off, leaving out blank ids', () => {
     retractWatchWorkouts(['HK-WATCH', ' ', '']);
     retractWatchWorkouts(['']);
@@ -197,5 +205,19 @@ describe('demo mode', () => {
     expect(mockWatchHealth.retract).toHaveBeenCalledTimes(1);
     expect(mockWatchHealth.retract).toHaveBeenCalledWith(['HK-WATCH']);
     expect(mockWatchHealth.drop).toHaveBeenCalledWith('s1');
+  });
+});
+
+describe('a sync deleting workouts the watch measured', () => {
+  it('asks the watch to retract what it saved, and to throw away what it may still be measuring, as a delete here does', () => {
+    askWatchAboutSyncedDeletes([
+      { sessionId: 's1', healthWorkoutId: 'HK-1' },
+      { sessionId: 's2', healthWorkoutId: null },
+      { sessionId: 's3', healthWorkoutId: 'HK-3' },
+    ]);
+    expect(mockWatchHealth.retract).toHaveBeenCalledTimes(1);
+    expect(mockWatchHealth.retract).toHaveBeenCalledWith(['HK-1', 'HK-3']);
+    expect(mockWatchHealth.drop).toHaveBeenCalledTimes(1);
+    expect(mockWatchHealth.drop).toHaveBeenCalledWith('s2');
   });
 });
