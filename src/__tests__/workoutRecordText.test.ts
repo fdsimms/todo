@@ -3,6 +3,7 @@ import {
   formatAxisValue,
   formatBestPoint,
   formatMetricPoint,
+  formatRecordChange,
   formatRecordFigure,
   formatRecordValue,
   formatVolume,
@@ -71,6 +72,22 @@ describe('formatRecordValue', () => {
 
   it('writes a carry with its distance', () => {
     expect(formatRecordValue({ type: 'weight', value: 40, set: set({ reps: null, distanceM: 40 }) }, 'weight_distance', 'kg')).toBe('40 kg × 40 m');
+  });
+});
+
+describe('formatRecordChange', () => {
+  it('gives the old figure and the new one, in the person\'s unit', () => {
+    expect(formatRecordChange({ type: 'e1rm', value: 104.5, previous: 102, set: set() }, 'weight_reps', 'kg'))
+      .toEqual({ before: '102 kg', after: '104.5 kg' });
+    expect(formatRecordChange({ type: 'volume', value: 2520, previous: 2400, set: null }, 'weight_reps', 'kg'))
+      .toEqual({ before: '2,400 kg', after: '2,520 kg' });
+  });
+
+  it('leaves the reps off a best set of N, whose label already names them, and keeps them on a heaviest weight', () => {
+    expect(formatRecordChange({ type: 'repsAt', value: 82.5, previous: 80, reps: 8, set: set() }, 'weight_reps', 'kg'))
+      .toEqual({ before: '80 kg', after: '82.5 kg' });
+    expect(formatRecordChange({ type: 'weight', value: 90, previous: 85, set: set({ reps: 3 }) }, 'weight_reps', 'kg'))
+      .toEqual({ before: '85 kg', after: '90 kg × 3' });
   });
 });
 

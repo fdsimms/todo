@@ -81,6 +81,25 @@ export function formatRecordValue(
   return figure;
 }
 
+/**
+ * A record beaten this workout, as the finish summary shows it: the old figure,
+ * then the new one ("102 kg" then "104.5 kg"). A best set of N already names its
+ * reps in the label, so its new figure leaves the "× 8" off; a heaviest weight
+ * keeps the reps it was lifted for, since those aren't in its label.
+ */
+export function formatRecordChange(
+  record: { type: RecordType; value: number; previous: number; reps?: number; set: Pick<WorkoutSet, 'reps' | 'distanceM'> | null },
+  kind: ExerciseKind,
+  unit: WeightUnit,
+): { before: string; after: string } {
+  return {
+    before: formatRecordFigure(record.type, kind, record.previous, unit),
+    after: record.type === 'repsAt'
+      ? formatRecordFigure(record.type, kind, record.value, unit)
+      : formatRecordValue(record, kind, unit),
+  };
+}
+
 /** The segmented control's label for each metric. */
 export function metricLabel(metric: RecordMetric): string {
   return metric === 'e1rm' ? 'Estimated 1RM' : metric === 'best' ? 'Best set' : 'Volume';

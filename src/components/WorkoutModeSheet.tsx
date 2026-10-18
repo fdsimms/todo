@@ -45,7 +45,7 @@ import { displayTitleFor } from '../utils/visibilityUtils';
 import { catalogExercise } from '../utils/exerciseCatalog';
 import { barKgFor, effectivePlateInventory, plateLoad } from '../utils/plateMath';
 import { analyzeExercise, recordSessions, recordsInSession, summarizeRecords } from '../utils/workoutRecords';
-import { formatRecordFigure, formatRecordValue, recordLabel } from '../utils/workoutRecordText';
+import { formatRecordChange, recordLabel } from '../utils/workoutRecordText';
 import {
   MUSCLE_LABELS, WEIGHT_PLACES, WEIGHT_STEP, formatRestSeconds, formatWeightNumber, weightFromDisplay, weightToDisplay,
 } from '../utils/workoutData';
@@ -409,18 +409,24 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                             key={r.exerciseId}
                             style={[styles.summaryRow, i > 0 && styles.rowSep]}
                             accessible
-                            accessibilityLabel={`${info?.name ?? 'Unknown exercise'}. ${r.records.map(e => `${recordLabel(e.type, recordKind, e.reps)} ${formatRecordValue(e, recordKind, unit)}, was ${formatRecordFigure(e.type, recordKind, e.previous, unit)}`).join('. ')}`}
+                            accessibilityLabel={`${info?.name ?? 'Unknown exercise'}. ${r.records.map(e => {
+                              const change = formatRecordChange(e, recordKind, unit);
+                              return `${recordLabel(e.type, recordKind, e.reps)}, up from ${change.before} to ${change.after}`;
+                            }).join('. ')}`}
                           >
                             <Text style={styles.summaryName}>{info?.name ?? 'Unknown exercise'}</Text>
-                            {r.records.map(e => (
-                              <View key={`${e.type}-${e.reps ?? 0}`} style={styles.recordLine}>
-                                <Text style={styles.recordLabel}>{recordLabel(e.type, recordKind, e.reps)}</Text>
-                                <Text style={styles.recordValue}>
-                                  {formatRecordValue(e, recordKind, unit)}
-                                  <Text style={styles.recordWas}>{` was ${formatRecordFigure(e.type, recordKind, e.previous, unit)}`}</Text>
-                                </Text>
-                              </View>
-                            ))}
+                            {r.records.map(e => {
+                              const change = formatRecordChange(e, recordKind, unit);
+                              return (
+                                <View key={`${e.type}-${e.reps ?? 0}`} style={styles.recordLine}>
+                                  <Text style={styles.recordLabel}>{recordLabel(e.type, recordKind, e.reps)}</Text>
+                                  <Text style={styles.recordValue}>
+                                    <Text style={styles.recordBefore}>{`${change.before} → `}</Text>
+                                    {change.after}
+                                  </Text>
+                                </View>
+                              );
+                            })}
                           </View>
                         );
                       })}
@@ -1006,7 +1012,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   recordLine: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: spacing.smd, marginTop: spacing.xs },
   recordLabel: { flex: 1, color: colors.textSecondary, fontSize: font.sm },
   recordValue: { flexShrink: 0, color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold, fontVariant: ['tabular-nums'], textAlign: 'right' },
-  recordWas: { color: colors.textSecondary, fontWeight: fontWeight.regular },
+  recordBefore: { color: colors.textSecondary, fontWeight: fontWeight.regular },
   summaryMeta: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs },
   kv: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   kvLabel: { color: colors.text, fontSize: font.md },
