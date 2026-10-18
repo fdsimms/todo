@@ -155,6 +155,18 @@ describe('overdueRoutines', () => {
     ];
     expect(overdueRoutines('p1', tasks, today).map(t => t.id)).toEqual(['late']);
   });
+
+  it('does not offer a routine the person pushed to a later day', () => {
+    const today = new Date(2026, 5, 10);
+    const tasks = [
+      makeTask({
+        id: 'pushed', recurrenceType: 'weekly',
+        dueDate: new Date(2026, 4, 20, 12).toISOString(),
+        deferUntil: new Date(2026, 5, 12).toISOString(),
+      } as Partial<Task>),
+    ];
+    expect(overdueRoutines('p1', tasks, today)).toEqual([]);
+  });
 });
 
 describe('projectNextStepTitle', () => {

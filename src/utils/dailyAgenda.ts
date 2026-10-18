@@ -1,6 +1,6 @@
 import { isSameDay } from 'date-fns/isSameDay';
 import type { Task } from '../types';
-import { formatTimeOfDay, getDayStart, getTaskDayStart } from './dateUtils';
+import { formatTimeOfDay, getDayStart, getEffectiveTaskDate, getTaskDayStart } from './dateUtils';
 import { occupiesTime, type BusyEvent } from './calendarBusy';
 import { hhmmToDate } from './clockTime';
 
@@ -98,8 +98,12 @@ export function agendaCounts(tasks: Task[], targetDay: Date, dayResetTime: strin
     // rollback would then read a task dated for the target day as belonging
     // to the day before, undercounting "due" and dropping "deadlines"
     // entirely for anyone who's moved dayResetTime off midnight.
-    if (task.dueDate) {
-      const day = getTaskDayStart(new Date(task.dueDate), dayResetTime);
+    //
+    // The effective date, so a task deferred to Friday is not "due" or
+    // "carried over" on the mornings in between.
+    const placed = getEffectiveTaskDate(task, dayResetTime);
+    if (task.dueDate && placed) {
+      const day = getTaskDayStart(new Date(placed), dayResetTime);
       if (isSameDay(day, target)) due++;
       else if (day < target) carriedOver++;
     }

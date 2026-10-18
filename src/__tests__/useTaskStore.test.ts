@@ -14931,6 +14931,59 @@ describe('quota tasks', () => {
       expect(next.progressCount).toBe(0);
     });
 
+    // The count belongs to the week it was logged in. Pushing last week's row
+    // to the first day of this one used to carry its 1/3 into the new week,
+    // because the sweep judged the row by where it now sat.
+    it('restarts the count when last week’s row was deferred into this week', () => {
+      useTaskStore.setState({
+        tasks: [weekly({
+          progressCount: 1,
+          dueDate: new Date(2025, 5, 3, 12, 0, 0).toISOString(),
+          deferUntil: new Date(2025, 5, 8, 0, 0, 0).toISOString(), // Sun June 8, this week's first day
+        })],
+      });
+      useTaskStore.getState().rolloverQuotas();
+
+      const closed = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(closed.completed).toBe(true);
+      expect(closed.progressCount).toBe(1); // the record of the week it was logged in
+      expect(new Date(closed.completedAt!).getDate()).toBe(7);
+      const live = useTaskStore.getState().tasks.filter(t => !t.completed);
+      expect(live).toHaveLength(1);
+      expect(live[0].progressCount).toBe(0);
+    });
+
+    it('keeps a deferred later day of this week for the fresh row', () => {
+      useTaskStore.setState({
+        tasks: [weekly({
+          progressCount: 1,
+          dueDate: new Date(2025, 5, 3, 12, 0, 0).toISOString(),
+          deferUntil: new Date(2025, 5, 12, 0, 0, 0).toISOString(), // Thu June 12
+        })],
+      });
+      useTaskStore.getState().rolloverQuotas();
+
+      const live = useTaskStore.getState().tasks.filter(t => !t.completed);
+      expect(live).toHaveLength(1);
+      expect(live[0].progressCount).toBe(0);
+      expect(new Date(live[0].dueDate!).getDate()).toBe(12);
+      expect(live[0].deferUntil).toBeNull();
+    });
+
+    it('leaves last week’s row alone while it is deferred into a later week', () => {
+      useTaskStore.setState({
+        tasks: [weekly({
+          progressCount: 1,
+          dueDate: new Date(2025, 5, 3, 12, 0, 0).toISOString(),
+          deferUntil: new Date(2025, 5, 16, 0, 0, 0).toISOString(), // Mon June 16, next week
+        })],
+      });
+      useTaskStore.getState().rolloverQuotas();
+
+      expect(useTaskStore.getState().tasks).toHaveLength(1);
+      expect(useTaskStore.getState().tasks[0].completed).toBe(false);
+    });
+
     // The regression guard on the other side: making the sweep period-aware
     // must not stop it closing an ordinary daily target every night.
     it('still closes a daily target the next day', () => {
@@ -15350,6 +15403,26 @@ describe('quota tasks', () => {
       const next = useTaskStore.getState().tasks.find(t => !t.completed)!;
       expect(done.completedAt).toBe(new Date(2025, 5, 9, 23, 59, 59, 999).toISOString());
       expect(new Date(next.dueDate!).toDateString()).toBe('Tue Jun 10 2025');
+    });
+
+    // The count is the dueDate day's, but a row pushed to a day that hasn't
+    // come is held until then: closing it now spawned the successor on today.
+    it('leaves a row alone while it is deferred to a day that has not come', () => {
+      useTaskStore.setState({
+        tasks: [quota({
+          allowOvershoot: true,
+          quotaIntervalMinutes: null,
+          quotaReminders: false,
+          quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
+          progressCount: 5,
+          dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
+          deferUntil: new Date(2025, 5, 12, 0, 0, 0).toISOString(),
+        })],
+      });
+      useTaskStore.getState().sweepOvershootQuotas();
+
+      expect(useTaskStore.getState().tasks).toHaveLength(1);
+      expect(useTaskStore.getState().tasks[0].completed).toBe(false);
     });
 
     it('completes an overshot day with the high count', () => {
@@ -19443,10 +19516,53 @@ describe('negative habits', () => {
       expect(get('once')).toEqual(finished);
     });
 
+    // A one-off held with deferUntil keeps its old dueDate, so the day it
+    // covers is where it now sits, not the day it left.
+    it('does not finish a non-repeating one while it is deferred to a day that has not come', () => {
+      const made = new Date(2026, 0, 5, 15).toISOString();
+      seed(avoid({
+        id: 'once', recurrenceType: 'none', createdAt: made, streakCount: 0, streakDate: made,
+        dueDate: new Date(2026, 0, 8, 12).toISOString(),
+        deferUntil: new Date(2026, 0, 14).toISOString(),
+      }));
+      useTaskStore.getState().rolloverNegativeStreaks();
+      expect(get('once').completed).toBe(false);
+    });
+
     it('credits the clean days that have gone by', () => {
       seed(avoid({ streakCount: 1, streakDate: new Date(2026, 0, 5).toISOString() }));
       useTaskStore.getState().rolloverNegativeStreaks();
       expect(get().streakCount).toBe(5); // Jan 6..9 are four whole clean days
+    });
+
+    // A habit pushed to a later day is off Today, so no slip can be logged
+    // against it. Those days are skipped, not credited and not banked.
+    it('credits nothing while the habit is deferred to a day that has not come', () => {
+      seed(avoid({
+        streakCount: 1,
+        streakDate: new Date(2026, 0, 5).toISOString(),
+        deferUntil: new Date(2026, 0, 14).toISOString(),
+      }));
+      useTaskStore.getState().rolloverNegativeStreaks();
+      expect(get().streakCount).toBe(1);
+
+      // The days under the hold stay consumed: only Jan 14 onward credits.
+      jest.setSystemTime(new Date(2026, 0, 16, 10, 0, 0));
+      useTaskStore.getState().rolloverNegativeStreaks();
+      expect(get().streakCount).toBe(3); // Jan 14 and 15
+    });
+
+    // The app can sit closed through the whole hold, so the first pass after it
+    // finds the defer day already behind it. Held days still must not credit.
+    it('does not credit the held days when the first pass comes after the hold ended', () => {
+      seed(avoid({
+        streakCount: 1,
+        streakDate: new Date(2026, 0, 5).toISOString(),
+        deferUntil: new Date(2026, 0, 14).toISOString(),
+      }));
+      jest.setSystemTime(new Date(2026, 0, 16, 10, 0, 0));
+      useTaskStore.getState().rolloverNegativeStreaks();
+      expect(get().streakCount).toBe(3); // Jan 14 and 15, not Jan 6..15
     });
 
     it('is a no-op on the second call the same day', () => {

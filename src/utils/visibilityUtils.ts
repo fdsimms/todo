@@ -1,7 +1,7 @@
 import { addDays } from 'date-fns/addDays';
 import { format } from 'date-fns/format';
 import type { Task, TimeOfDay, Category } from '../types';
-import { getCurrentDayStart, getCurrentDayStartMs, getTaskDayStart, getDayStart, hhmmToDate, getNextDueDate, getLogicalDayKey, getCurrentLogicalDayKey, dayKeyToDate, formatTimeOfDay } from './dateUtils';
+import { getCurrentDayStart, getCurrentDayStartMs, getTaskDayStart, getDayStart, hhmmToDate, getNextDueDate, getLogicalDayKey, getCurrentLogicalDayKey, dayKeyToDate, formatTimeOfDay, getEffectiveTaskDate } from './dateUtils';
 import { effectiveWindowEndTime, onLogicalDay } from './clockTime';
 import type { ExpiredTaskGraceDays } from './expiredTaskGrace';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -446,9 +446,12 @@ const TIME_SEGMENT_ORDER: TimeOfDay[] = ['morning', 'afternoon', 'evening', 'nig
 // completion. Anchored to the occurrence's own day instead, "tomorrow" is a
 // fixed calendar date rather than a moving target.
 function streakWindowAnchor(task: Task): Date {
-  const anchor = task.dueDate ?? task.deferUntil;
-  if (!anchor) return getCurrentDayStart();
+  // The effective day, not dueDate: a task due Monday and deferred to Thursday
+  // has its window on Thursday, and measuring it from Monday called a
+  // completion inside the window late.
   const { dayResetTime } = useSettingsStore.getState();
+  const anchor = getEffectiveTaskDate(task, dayResetTime);
+  if (!anchor) return getCurrentDayStart();
   return getTaskDayStart(new Date(anchor), dayResetTime);
 }
 
@@ -566,9 +569,11 @@ export function isTaskExpired(task: Task): boolean {
 // The end is resolved on that same day, not today: a bound that follows the
 // sun closed at that day's sunset, which can be minutes away from today's.
 function windowClosedAt(task: Task, end: string): Date {
-  const anchor = task.dueDate ?? task.deferUntil;
-  if (!anchor) return getWindowThreshold(end);
+  // The effective day: a deferred task's window closes on the day it was moved
+  // to, so the grace clock starts there rather than on the stale dueDate.
   const { dayResetTime } = useSettingsStore.getState();
+  const anchor = getEffectiveTaskDate(task, dayResetTime);
+  if (!anchor) return getWindowThreshold(end);
   const dayStart = getTaskDayStart(new Date(anchor), dayResetTime);
   // onLogicalDay rather than hhmmToDate, for getWindowThreshold's reason.
   return onLogicalDay(dayStart, effectiveWindowEnd(task, dayStart) ?? end);
