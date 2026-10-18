@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Keyboard, View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { ThumbIcon } from './ThumbIcon';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, interaction, type Colors } from '../theme';
@@ -161,7 +162,7 @@ export function RecipeSourceSheet({ visible, allowAIImport, onPickSaved, onImpor
                       <Text style={styles.rowName} numberOfLines={1}>{recipe.name}</Text>
                       <Text style={styles.rowHint} numberOfLines={1}>{describeRecipe(recipe, null, { sharedName: sharedNames.has(recipe.nameKey), recipesById: libraryById })}</Text>
                     </View>
-                    {recipe.vote === 'loved' && <Ionicons name="thumbs-up" size={13} color={colors.orangeText} />}
+                    {recipe.vote === 'loved' && <ThumbIcon size={13} color={colors.orangeText} />}
                   </TouchableOpacity>
                 </React.Fragment>
               ))

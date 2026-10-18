@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { NamedIcon } from '../components/CoinIcon';
 import { useShallow } from 'zustand/react/shallow';
 import { format } from 'date-fns/format';
 import { describeReminderTracksVisibility } from '../utils/dateUtils';
@@ -2059,7 +2060,7 @@ export function BackfillScreen() {
                   accessibilityLabel={`${field.label}, ${count === 0 ? 'every task already has one' : `${count} ${count === 1 ? 'task needs' : 'tasks need'} one`}`}
                 >
                   <View style={styles.fieldIcon}>
-                    <Ionicons name={FIELD_ICONS[field.id]} size={iconSize.md} color={colors.accent} />
+                    <NamedIcon name={FIELD_ICONS[field.id]} size={iconSize.md} color={colors.accent} />
                   </View>
                   <View style={styles.fieldBody}>
                     <Text style={styles.fieldLabel}>{field.label}</Text>
@@ -2088,7 +2089,7 @@ export function BackfillScreen() {
                   accessibilityLabel={`${field.label}, ${count === 0 ? 'every category already has this on' : `${count} ${count === 1 ? "category hasn’t" : "categories haven’t"} turned this on`}`}
                 >
                   <View style={styles.fieldIcon}>
-                    <Ionicons name={CATEGORY_FIELD_ICONS[field.id].row} size={iconSize.md} color={colors.accent} />
+                    <NamedIcon name={CATEGORY_FIELD_ICONS[field.id].row} size={iconSize.md} color={colors.accent} />
                   </View>
                   <View style={styles.fieldBody}>
                     <Text style={styles.fieldLabel}>{field.label}</Text>
@@ -2117,7 +2118,7 @@ export function BackfillScreen() {
                   accessibilityLabel={`${field.label}, ${count === 0 ? 'every project already has this set' : `${count} ${count === 1 ? "project hasn’t" : "projects haven’t"} set this`}`}
                 >
                   <View style={styles.fieldIcon}>
-                    <Ionicons name={PROJECT_FIELD_ICONS[field.id]} size={iconSize.md} color={colors.accent} />
+                    <NamedIcon name={PROJECT_FIELD_ICONS[field.id]} size={iconSize.md} color={colors.accent} />
                   </View>
                   <View style={styles.fieldBody}>
                     <Text style={styles.fieldLabel}>{field.label}</Text>
@@ -2155,7 +2156,7 @@ export function BackfillScreen() {
                     accessibilityLabel={`${field.label}, ${countLabel.toLowerCase()}`}
                   >
                     <View style={styles.fieldIcon}>
-                      <Ionicons name={PERSON_FIELD_ICONS[field.id]} size={iconSize.md} color={colors.accent} />
+                      <NamedIcon name={PERSON_FIELD_ICONS[field.id]} size={iconSize.md} color={colors.accent} />
                     </View>
                     <View style={styles.fieldBody}>
                       <Text style={styles.fieldLabel}>{field.label}</Text>
@@ -2196,7 +2197,7 @@ export function BackfillScreen() {
                     accessibilityLabel={`${field.label}, ${count === 0 ? 'every item already has one' : `${count} ${count === 1 ? 'item needs' : 'items need'} one`}`}
                   >
                     <View style={styles.fieldIcon}>
-                      <Ionicons name={ITEM_FIELD_ICONS[field.id]} size={iconSize.md} color={colors.accent} />
+                      <NamedIcon name={ITEM_FIELD_ICONS[field.id]} size={iconSize.md} color={colors.accent} />
                     </View>
                     <View style={styles.fieldBody}>
                       <Text style={styles.fieldLabel}>{field.label}</Text>
@@ -2236,7 +2237,7 @@ export function BackfillScreen() {
                     accessibilityLabel={`${field.label}, ${count === 0 ? 'every recipe already has one' : `${count} ${count === 1 ? 'recipe needs' : 'recipes need'} one`}`}
                   >
                     <View style={styles.fieldIcon}>
-                      <Ionicons name={RECIPE_FIELD_ICONS[field.id]} size={iconSize.md} color={colors.accent} />
+                      <NamedIcon name={RECIPE_FIELD_ICONS[field.id]} size={iconSize.md} color={colors.accent} />
                     </View>
                     <View style={styles.fieldBody}>
                       <Text style={styles.fieldLabel}>{field.label}</Text>
