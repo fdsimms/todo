@@ -51,6 +51,15 @@ final class WatchStore: NSObject, ObservableObject {
     /// The haptic at the end of the rest on screen.
     var restAlarm: DispatchWorkItem? = nil
 
+    // ==== The workout's HealthKit session (WatchHealthSession.swift) ====
+
+    /// The heart rate the session measured last, in beats per minute, while
+    /// it measures; nil otherwise. The number only: never colored, never judged.
+    @Published var heartRate: Int? = nil
+    /// Health workouts being retracted for the phone right now, so a context
+    /// arriving mid-delete doesn't start the same delete again.
+    var retractionsInFlight = Set<String>()
+
     var local: LocalTapState { LocalTapState(taps) }
 
     /// The most recent tap still being held, which the Undo button removes.
@@ -63,6 +72,7 @@ final class WatchStore: NSObject, ObservableObject {
         taps = WatchTapLog.load()
         workoutSection = Self.loadWorkoutSection()
         ownWorkout = WatchOwnWorkoutFile.load()
+        connectHealthSession()
     }
 
     func activate() {
@@ -153,7 +163,9 @@ final class WatchStore: NSObject, ObservableObject {
         setIds: [String]? = nil,
         direction: String? = nil,
         doneSets: [WatchFinishedSet]? = nil,
-        notes: [WatchFinishedNote]? = nil
+        notes: [WatchFinishedNote]? = nil,
+        on: Bool? = nil,
+        healthWorkoutId: String? = nil
     ) -> WatchTap {
         var tap = WatchTap(id: UUID().uuidString, kind: kind, itemId: itemId, listId: nil, title: title, at: Date(), sent: false)
         tap.sessionId = sessionId
@@ -167,6 +179,8 @@ final class WatchStore: NSObject, ObservableObject {
         tap.direction = direction
         tap.doneSets = doneSets
         tap.notes = notes
+        tap.on = on
+        tap.healthWorkoutId = healthWorkoutId
         taps.append(tap)
         WatchTapLog.save(taps)
         sendDue(force: false)
@@ -273,6 +287,10 @@ final class WatchStore: NSObject, ObservableObject {
             WatchTapLog.save(self.taps)
             WidgetCenter.shared.reloadAllTimelines()
             self.refreshRestAlarm()
+            // A workout started or finished on the phone, writing turned on or
+            // off there, or a workout to retract (phase 9).
+            self.syncHealthSession()
+            self.processRetractions()
         }
     }
 

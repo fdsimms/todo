@@ -13,7 +13,7 @@ import { buildWidgetSnapshot, WATCH_CAPS, type SnapshotInput, type WidgetSnapsho
 import { completedOnDay } from './allClear';
 import { getDayStart, getLogicalDayKey } from './dateUtils';
 import { beginVisibleAtPass, getVisibleAt } from './visibilityUtils';
-import { parseQuietTaps, planQuietTaps, tapsToRequeue, workoutHandOffTaps, type QuietTapWorkouts } from './widgetQuietTaps';
+import { parseQuietTaps, planQuietTaps, tapsToRequeue, workoutHandOffTaps, type QuietTap, type QuietTapWorkouts } from './widgetQuietTaps';
 import type { Task } from '../types';
 import { addDays } from 'date-fns/addDays';
 import { useCalendarStore } from '../store/useCalendarStore';
@@ -388,6 +388,8 @@ async function processQuietWidgetTaps(handOff: 'app' | 'requeue' = 'app'): Promi
       useStepTimerStore.getState().hydrate();
     }
     const handedOver: Record<string, string> = {};
+    // Health taps left for a drain in front (see 'watchHealthWorkout' below).
+    const forFront: QuietTap[] = [];
     for (const action of plan) {
       switch (action.type) {
         case 'complete':
@@ -444,9 +446,23 @@ async function processQuietWidgetTaps(handOff: 'app' | 'requeue' = 'app'): Promi
         case 'watchMeasuring':
           useWorkoutStore.getState().markWatchMeasuring(action.sessionId, action.on);
           break;
-        case 'watchHealthWorkout':
+        case 'watchHealthWorkout': {
+          // Taking over from a copy the phone wrote means retracting that
+          // copy, and HealthKit refuses a delete with the phone locked, which
+          // a drain with nobody looking may well be: the phone's copy would
+          // stay in Health with nothing pointing at it. So that one waits for
+          // a drain in front; everything else applies here.
+          const row = useWorkoutStore.getState().sessions.find(x => x.id === action.sessionId);
+          if (handOff === 'requeue' && row && row.healthWorkoutId !== null && !row.measuredOnWatch) {
+            forFront.push({
+              kind: 'healthWorkout', id: action.sessionId, sessionId: action.sessionId, listId: null,
+              at: new Date().toISOString(), healthWorkoutId: action.workoutId,
+            });
+            break;
+          }
           useWorkoutStore.getState().recordWatchHealthWorkout(action.sessionId, action.workoutId);
           break;
+        }
         case 'watchHealthRetracted':
           useWatchHealthStore.getState().retracted(action.workoutId);
           break;
@@ -473,9 +489,9 @@ async function processQuietWidgetTaps(handOff: 'app' | 'requeue' = 'app'): Promi
       }
     }
     const ids = Object.keys(handedOver);
-    if (ids.length > 0) {
+    if (ids.length > 0 || forFront.length > 0) {
       if (handOff === 'requeue') {
-        const requeue = [...tapsToRequeue(taps, new Set(ids)), ...workoutHandOffTaps(plan)];
+        const requeue = [...tapsToRequeue(taps, new Set(ids)), ...workoutHandOffTaps(plan), ...forFront];
         await bridge.requeueQuietTaps(JSON.stringify(requeue));
       } else {
         useWidgetCompletionStore.getState().enqueue(ids, handedOver);

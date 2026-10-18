@@ -161,6 +161,16 @@ public class TodoHealthBridgeModule: Module {
     // quantity types above (`workoutType()`, Apple's doc:
     // https://developer.apple.com/tutorials/data/documentation/healthkit/hkobjecttype/workouttype().json).
     types.insert(HKObjectType.workoutType())
+    // Heart rate, for one thing only: the workout page's card, read for a
+    // workout the Apple Watch measured (`readWorkoutHeartRate`), shown and
+    // never interpreted. Not resting heart rate or HRV, which stay ruled out;
+    // `docs/arch/health-data.md`, "Heart rate during a workout", is the review.
+    // Like every addition here, an install that already answered the sheet
+    // gets no card until somebody taps the access row again.
+    // (https://developer.apple.com/tutorials/data/documentation/healthkit/hkquantitytypeidentifier/heartrate.json)
+    if let heartRate = HKQuantityType.quantityType(forIdentifier: .heartRate) {
+      types.insert(heartRate)
+    }
     return types
   }
 
@@ -1974,6 +1984,110 @@ public class TodoHealthBridgeModule: Module {
       if !started { promise.resolve("[]") }
       #else
       promise.resolve("[]")
+      #endif
+    }
+
+    /// Heart rate during one workout, for the workout page's card, as JSON:
+    /// `{"start":"…","end":"…","average":128.4,"max":171,
+    /// "samples":[[1760464800000,121],…]}` (each reading as epoch
+    /// milliseconds and beats per minute, oldest first), or `null`.
+    ///
+    /// **The readings are the ones the workout itself carries**
+    /// (`HKQuery.predicateForObjects(from:)`: "objects that have been added to
+    /// the provided workout"), which is what the Apple Watch's workout session
+    /// adds as it measures. Not every reading in the workout's span: a watch
+    /// worn all day records heart rate in the background every few minutes,
+    /// and dividing those into zones would be a measurement nobody started.
+    /// So a workout the phone wrote, with nothing added to it, has none.
+    ///
+    /// `average` and `max` are the workout's own statistics
+    /// (`statistics(for:)`, iOS 16+, what the Fitness app shows), left out
+    /// when the workout has none; the JS side works them out from the
+    /// readings then (`heartRateSummary`). Never a zero for a missing figure.
+    ///
+    /// `null` for every reason there is nothing to say (no such workout, no
+    /// heart rate, a refused read), which are one answer by Apple's design.
+    /// The parse and every rule about the figures are in
+    /// `src/utils/heartRateZones.ts`. Nothing is stored.
+    AsyncFunction("readWorkoutHeartRate") { (workoutId: String, promise: Promise) in
+      #if canImport(HealthKit)
+      guard HKHealthStore.isHealthDataAvailable(),
+            let uuid = UUID(uuidString: workoutId),
+            let heartRateType = HKQuantityType.quantityType(forIdentifier: .heartRate) else {
+        promise.resolve("null")
+        return
+      }
+      // Beats per minute: `count()` and `minute()` are class funcs returning
+      // Self, `unitDivided(by:)` returns HKUnit
+      // (…/healthkit/hkunit/count().json, …/minute().json, …/unitdivided(by:).json).
+      let perMinute = HKUnit.count().unitDivided(by: HKUnit.minute())
+
+      var started = false
+      TodoHealthExceptionCatcher.runCatchingExceptions {
+        let workoutQuery = HKSampleQuery(
+          sampleType: HKObjectType.workoutType(),
+          predicate: HKQuery.predicateForObject(with: uuid),
+          limit: 1,
+          sortDescriptors: nil
+        ) { _, samples, _ in
+          guard let workout = samples?.first as? HKWorkout else {
+            promise.resolve("null")
+            return
+          }
+          let startISO = Self.formatISO(workout.startDate)
+          let endISO = Self.formatISO(workout.endDate)
+          var average: Double? = nil
+          var maximum: Double? = nil
+          TodoHealthExceptionCatcher.runCatchingExceptions {
+            if #available(iOS 16.0, *), let stats = workout.statistics(for: heartRateType) {
+              if let value = stats.averageQuantity()?.doubleValue(for: perMinute), value.isFinite, value > 0 {
+                average = value
+              }
+              if let value = stats.maximumQuantity()?.doubleValue(for: perMinute), value.isFinite, value > 0 {
+                maximum = value
+              }
+            }
+          }
+          let averageFound = average
+          let maximumFound = maximum
+
+          var samplesStarted = false
+          TodoHealthExceptionCatcher.runCatchingExceptions {
+            let sampleQuery = HKSampleQuery(
+              sampleType: heartRateType,
+              predicate: HKQuery.predicateForObjects(from: workout),
+              limit: HKObjectQueryNoLimit,
+              sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)]
+            ) { _, readings, _ in
+              var points: [[Any]] = []
+              TodoHealthExceptionCatcher.runCatchingExceptions {
+                for reading in readings ?? [] {
+                  guard let sample = reading as? HKQuantitySample else { continue }
+                  let value = sample.quantity.doubleValue(for: perMinute)
+                  guard value.isFinite, value > 0 else { continue }
+                  let ms = (sample.startDate.timeIntervalSince1970 * 1000).rounded()
+                  guard ms.isFinite else { continue }
+                  points.append([Int64(ms), value])
+                }
+              }
+              var body: [String: Any] = ["start": startISO, "end": endISO, "samples": points]
+              if let averageFound { body["average"] = averageFound }
+              if let maximumFound { body["max"] = maximumFound }
+              let encoded = (try? JSONSerialization.data(withJSONObject: body))
+                .flatMap { String(data: $0, encoding: .utf8) }
+              promise.resolve(encoded ?? "null")
+            }
+            self.store.execute(sampleQuery)
+            samplesStarted = true
+          }
+          if !samplesStarted { promise.resolve("null") }
+        }
+        self.store.execute(workoutQuery)
+        started = true
+      }
+      if !started { promise.resolve("null") }
+      #else
+      promise.resolve("null")
       #endif
     }
   }

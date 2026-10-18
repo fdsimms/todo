@@ -307,6 +307,22 @@ final class WatchSession: NSObject, WCSessionDelegate {
             let sets = workout["sets"] as? [Any], !sets.isEmpty else { return }
       let entry: [String: Any] = ["kind": kind, "id": workoutId, "workout": workout, "at": at, "watchTapId": tapId]
       appendToQueue(watchQuietTapsFileName, entry)
+    // The watch's HealthKit session (phase 9, WatchHealthSession.swift there):
+    // it started measuring the phone's session ("on" true) or stopped without
+    // saving (false), so the app holds its own Health write back or lets it
+    // go; it saved a session's workout to Health ("workoutId", absent for a
+    // save made locked); or it retracted a workout the app asked about ("id").
+    case "measuring", "healthWorkout":
+      guard let sessionId = info["sessionId"] as? String, !sessionId.isEmpty else { return }
+      var entry: [String: Any] = ["kind": kind, "id": sessionId, "sessionId": sessionId, "at": at, "watchTapId": tapId]
+      if kind == "measuring", let on = info["on"] as? Bool { entry["on"] = on }
+      if kind == "healthWorkout", let workoutId = info["workoutId"] as? String, !workoutId.isEmpty {
+        entry["workoutId"] = workoutId
+      }
+      appendToQueue(watchQuietTapsFileName, entry)
+    case "healthRetracted":
+      guard let workoutId = info["id"] as? String, !workoutId.isEmpty else { return }
+      appendToQueue(watchQuietTapsFileName, ["kind": kind, "id": workoutId, "at": at, "watchTapId": tapId])
     default:
       // A kind this build doesn't know is dropped without its receipt, so a
       // watch newer than this app keeps drawing it rather than settling it.

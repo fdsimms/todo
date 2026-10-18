@@ -124,6 +124,8 @@ describe('time in zones', () => {
     ]);
     expect(rows.map(r => r.fraction)).toEqual([0.25, 0.5, 0, 0.25, 0]);
     expect(rows[1].minutes).toBe('1 min');
+    expect(rows[1].spoken).toBe('Zone 4, 149 to 167 beats per minute, 1 minute');
+    expect(rows[2].spoken).toBe('Zone 3, 131 to 148 beats per minute, no time');
   });
 
   it('has no rows without a maximum, or without readings to divide', () => {

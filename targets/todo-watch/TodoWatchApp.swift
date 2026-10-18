@@ -1,4 +1,5 @@
 import SwiftUI
+import WatchKit
 
 // The Apple Watch app: today's tasks and the grocery list, ticked off from the
 // wrist, plus a task added by dictation, and a workout logged set by set
@@ -21,6 +22,9 @@ enum WatchPage: Hashable {
 struct TodoWatchApp: App {
     @StateObject private var store = WatchStore.shared
     @Environment(\.scenePhase) private var scenePhase
+    /// Takes a workout's HealthKit session back after a crash mid-workout
+    /// (WatchHealthSession.swift).
+    @WKApplicationDelegateAdaptor(WatchAppDelegate.self) private var appDelegate
     /// Which page is showing. The Digital Crown scrolls Today's list rather
     /// than paging past it, so the pager alone left Groceries with no visible
     /// way in; Today carries a row that sets this.
@@ -49,6 +53,9 @@ struct TodoWatchApp: App {
             // on screen; with it away, the notification does.
             store.isActive = phase == .active
             store.refreshRestAlarm()
+            // Opening the app while the phone's workout runs is what starts
+            // measuring it (phase 9); only ever with the app in front.
+            if phase == .active { store.syncHealthSession() }
         }
         // Lets WatchConnectivity wake the app in the background to hand over a
         // new snapshot, which is what keeps the complication current while

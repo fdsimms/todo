@@ -213,6 +213,9 @@ struct WorkoutSetView: View {
 
     var body: some View {
         VStack(spacing: 6) {
+            if let bpm = store.shownHeartRate(on: screen) {
+                WatchHeartRateLine(bpm: bpm)
+            }
             Text(exercise?.name ?? "")
                 .font(.headline)
                 .lineLimit(2)
@@ -426,6 +429,29 @@ struct WorkoutSetView: View {
     }
 }
 
+/// "♥ 142 bpm" under the top bar while the watch measures the workout
+/// (docs/arch/workouts-mocks/heart-rate.png). The number and a heart, in one
+/// color whatever the number is: no zone color, no "high" or "low", nothing
+/// that reads it (docs/arch/health-data.md, "Heart rate during a workout").
+struct WatchHeartRateLine: View {
+    let bpm: Int
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "heart.fill")
+            Text("\(bpm)")
+                .fontWeight(.semibold)
+                .monospacedDigit()
+            Text("bpm")
+                .foregroundStyle(palette.textSecondary)
+        }
+        .font(.footnote)
+        .foregroundStyle(palette.red)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Heart rate, \(bpm) beats per minute")
+    }
+}
+
 /// "1:24", "12:05": whole seconds as minutes and seconds.
 func clockText(_ seconds: Int) -> String {
     let s = max(0, seconds)
@@ -446,6 +472,9 @@ struct WorkoutRestView: View {
         TimelineView(.periodic(from: Date(), by: 1)) { context in
             let remaining = rest.endsAt.timeIntervalSince(context.date)
             VStack(spacing: 6) {
+                if let bpm = store.shownHeartRate(on: screen) {
+                    WatchHeartRateLine(bpm: bpm)
+                }
                 if remaining > 0 {
                     Text("Rest")
                         .font(.headline)

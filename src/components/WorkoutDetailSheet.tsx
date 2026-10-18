@@ -12,12 +12,14 @@ import { HelpText } from './HelpText';
 import { CalendarPicker } from './CalendarPicker';
 import { WorkoutRecordsCard } from './WorkoutRecordsCard';
 import { WorkoutStatTiles } from './WorkoutStatTiles';
+import { WorkoutHeartRateCard } from './WorkoutHeartRateCard';
 import type { WorkoutSet } from '../types';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useDemoStore } from '../store/useDemoStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
+import { useWorkoutHeartRate } from '../hooks/useWorkoutHeartRate';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { useTextScale } from '../hooks/useTextScale';
 import { useColors } from '../theme/ThemeContext';
@@ -31,6 +33,7 @@ import { sessionRecordSummary } from '../utils/workoutRecords';
 import { formatSetLine, sessionExercises, sessionMinutes, setLabels, setName } from '../utils/workoutSession';
 import { WORKOUT_EFFORT } from '../utils/workoutData';
 import { workoutSpanWritable } from '../utils/healthWorkoutSync';
+import { resolveMaxHeartRate } from '../utils/heartRateZones';
 import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
@@ -70,7 +73,13 @@ function timeLabel(date: Date, day: Date): string {
  *   only done sets are listed (a finished session rarely has any other).
  * - **Health is the store's business.** Changing a time rewrites the workout
  *   in Health while writing is on (`updateSession`), and deleting retracts it
- *   (`deleteSession`); this page only says so, and only when it is true.
+ *   (`deleteSession`); this page only says so, and only when it is true. For a
+ *   workout the Apple Watch measured, the line under the times also says the
+ *   rewrite loses its heart rate and energy, before the change rather than after.
+ * - **Heart rate is read back, shown, and never interpreted** (phase 9): the
+ *   card shows only when Health returns heart rate for a workout the watch
+ *   measured (`useWorkoutHeartRate`), with the zones of a maximum the person
+ *   typed or 220 minus their age, labeled as the estimate it is.
  * - **A workout that goes away while the page is open closes it**: deleted on
  *   another device, over MCP, or here. The last copy is drawn while it slides
  *   away (`useSheetSubject`), never a half-empty page.
@@ -102,6 +111,14 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose }: Props) {
   const demoActive = useDemoStore(s => s.active);
   const inHealth = session?.healthWorkoutId != null;
   const timesReachHealth = inHealth && healthWriteOn && !demoActive;
+  // The watch's own workout, with what it measured: a retime rewrites it as
+  // the phone's, which carries neither.
+  const measuredOnWatch = inHealth && session?.measuredOnWatch === true;
+
+  // ==== heart rate, read back from Health (phase 9) ====
+  const heartRate = useWorkoutHeartRate(session, visible);
+  const typedMaxHeartRate = useSettingsStore(s => s.maxHeartRate);
+  const birthYear = useSettingsStore(s => s.bodyProfile.birthYear);
 
   // The host loads the sets as it opens the page; a sync or a restore drops
   // the cache, so they are read again here. Never for a workout that's gone,
@@ -324,6 +341,16 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose }: Props) {
           >
             <WorkoutStatTiles minutes={minutes} exercises={exercises.length} sets={setCount} />
 
+            {heartRate && (
+              <>
+                <Text style={styles.groupLabel}>Heart rate</Text>
+                <WorkoutHeartRateCard
+                  read={heartRate}
+                  max={resolveMaxHeartRate(typedMaxHeartRate, birthYear, new Date())}
+                />
+              </>
+            )}
+
             {endedAt && (
               <>
                 <Text style={styles.groupLabel}>Times</Text>
@@ -332,7 +359,11 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose }: Props) {
                   {timeRow('end', 'Finished', endedAt)}
                 </View>
                 {timesReachHealth && (
-                  <Text style={styles.hint}>Changing the times also changes the workout in Apple Health.</Text>
+                  <Text style={styles.hint}>
+                    {measuredOnWatch
+                      ? 'Changing the times also changes the workout in Apple Health, and it loses its heart rate and energy.'
+                      : 'Changing the times also changes the workout in Apple Health.'}
+                  </Text>
                 )}
               </>
             )}

@@ -223,6 +223,7 @@ interface TodoHealthNativeModule {
   ): Promise<string>;
   deleteWorkout(idsJSON: string): Promise<boolean>;
   readWorkouts(anchorISO: string, days: number): Promise<string>;
+  readWorkoutHeartRate(workoutId: string): Promise<string>;
 }
 
 let nativeModule: TodoHealthNativeModule | null = null;
@@ -521,6 +522,23 @@ export function deleteHealthWorkout(ids: readonly string[]): Promise<boolean> {
  */
 export function readWorkouts(anchorISO: string, days: number): Promise<string> {
   return degradeOnReject(() => nativeModule!.readWorkouts(anchorISO, days), '[]');
+}
+
+/**
+ * Heart rate during one workout in Health (by its id), as the raw JSON the
+ * native side wrote: the workout's span, its own average and maximum when it
+ * has them, and the readings added to it, which is what the Apple Watch's
+ * workout session adds as it measures. `'null'` for every reason there is
+ * nothing to show, a refused read, a workout the phone wrote with nothing
+ * added to it, and a build predating this call included.
+ *
+ * Returned unparsed for `readWorkouts`' reason: the rules (a broken reading is
+ * dropped, never a zero; the zones; the label on an estimated maximum) are
+ * `src/utils/heartRateZones.ts`, which tests can reach. Shown on the workout
+ * page and never stored (docs/arch/health-data.md, "Heart rate during a workout").
+ */
+export function readWorkoutHeartRate(workoutId: string): Promise<string> {
+  return degradeOnReject(() => nativeModule!.readWorkoutHeartRate(workoutId), 'null');
 }
 
 /**

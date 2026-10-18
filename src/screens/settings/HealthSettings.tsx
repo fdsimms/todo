@@ -23,7 +23,9 @@ import { formatWeight } from '../../utils/weightLog';
 import { goalDirection } from '../../utils/weightGoal';
 import { formatSleepDuration } from '../../utils/sleepLog';
 import { REST_SECONDS_MAX, REST_SECONDS_MIN, formatRestSeconds } from '../../utils/workoutData';
+import { describeMaxHeartRate, resolveMaxHeartRate } from '../../utils/heartRateZones';
 import { SleepGoalSheet } from '../../components/SleepGoalSheet';
+import { MaxHeartRateSheet } from '../../components/MaxHeartRateSheet';
 import { JournalWordGoalSheet } from '../../components/JournalWordGoalSheet';
 import { JournalPromptsSheet } from '../../components/JournalPromptsSheet';
 import { formatWordCount } from '../../utils/journal';
@@ -139,6 +141,9 @@ export function HealthSettings() {
   const setDefaultRestSeconds = useSettingsStore(s => s.setDefaultRestSeconds);
   const workoutLiveActivity = useSettingsStore(s => s.workoutLiveActivity);
   const setWorkoutLiveActivity = useSettingsStore(s => s.setWorkoutLiveActivity);
+  const maxHeartRate = useSettingsStore(s => s.maxHeartRate);
+  const birthYear = useSettingsStore(s => s.bodyProfile.birthYear);
+  const [maxHeartRateOpen, setMaxHeartRateOpen] = useState(false);
   const weightGoal = useSettingsStore(useShallow(s => s.weightGoal));
   const setWeightUnit = useSettingsStore(s => s.setWeightUnit);
   const sleepGoalMinutes = useSettingsStore(s => s.sleepGoalMinutes);
@@ -739,8 +744,19 @@ export function HealthSettings() {
             />
           </>
         )}
+        <View style={styles.sep} />
+        <SettingsRow
+          entryId="maxHeartRate"
+          icon="heart-outline"
+          label="Maximum heart rate"
+          hint="Used to split a workout’s heart rate into five zones. Estimated as 220 minus your age until you set it. Your age comes from your year of birth in the calorie budget."
+          // "186, from age" while it is the estimate: it says so wherever it shows.
+          value={describeMaxHeartRate(resolveMaxHeartRate(maxHeartRate, birthYear, new Date()))}
+          onPress={() => { haptics.tap(); setMaxHeartRateOpen(true); }}
+        />
       </SettingsSection>
     )}
+    <MaxHeartRateSheet visible={workoutsEnabled && maxHeartRateOpen} onClose={() => setMaxHeartRateOpen(false)} />
 
     <SettingsSection
       label="Sleep"

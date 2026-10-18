@@ -369,6 +369,13 @@ func watchConvertWeight(_ value: Double, from: String, to: String) -> Double {
     return to == "lb" ? (kg / kgPerLb * 10).rounded() / 10 : (kg * 100).rounded() / 100
 }
 
+/// A workout of the phone's that finished lately, and when (phase 9): where a
+/// measurement of it reads the moment it ended.
+struct WatchFinishedWorkout: Decodable, Equatable {
+    let sessionId: String
+    let endedAt: String
+}
+
 struct WatchWorkoutSection: Decodable {
     let unit: String
     /// One click of the Crown on a weight, in `unit`.
@@ -378,8 +385,20 @@ struct WatchWorkoutSection: Decodable {
     /// "Add exercise"'s list, A to Z.
     let recent: [WatchRecentExercise]
     let quietHours: WatchQuietHours?
+    /// Whether a workout run here is measured with a HealthKit session and
+    /// saved to Health from the watch: the phone's three switches (phase 9).
+    /// False from a phone that predates it, which is phase 8's behavior.
+    let healthWrite: Bool
+    /// The phone's workouts finished in the last day, newest first.
+    let finished: [WatchFinishedWorkout]
+    /// Health workouts the watch saved that the phone asks it to retract.
+    let retractWorkouts: [String]
+    /// Sessions deleted on the phone whose measurement is to be thrown away.
+    let dropSessions: [String]
 
-    enum CodingKeys: String, CodingKey { case unit, weightStep, live, routines, recent, quietHours }
+    enum CodingKeys: String, CodingKey {
+        case unit, weightStep, live, routines, recent, quietHours, healthWrite, finished, retractWorkouts, dropSessions
+    }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -389,6 +408,10 @@ struct WatchWorkoutSection: Decodable {
         routines = c.decodeLossy(WatchRoutine.self, forKey: .routines)
         recent = c.decodeLossy(WatchRecentExercise.self, forKey: .recent)
         quietHours = try? c.decodeIfPresent(WatchQuietHours.self, forKey: .quietHours)
+        healthWrite = (try? c.decodeIfPresent(Bool.self, forKey: .healthWrite)) ?? false
+        finished = c.decodeLossy(WatchFinishedWorkout.self, forKey: .finished)
+        retractWorkouts = c.decodeLossy(String.self, forKey: .retractWorkouts)
+        dropSessions = c.decodeLossy(String.self, forKey: .dropSessions)
     }
 }
 
@@ -438,7 +461,10 @@ struct WatchOwnWorkout: Codable {
 
     /// What Finish sends: the done sets, in the unit shown (the phone
     /// converts), as JSON text (`parseWatchSession` in widgetQuietTaps.ts).
-    func payload(endedAt: Date) -> String? {
+    /// With `health` saved, the id of the workout the watch saved to Health
+    /// (an empty object for one saved locked with no id), so the phone writes
+    /// no copy of its own; absent otherwise, and the phone writes as Save does.
+    func payload(endedAt: Date, health: WatchHealthOutcome? = nil) -> String? {
         let sets: [[String: Any]] = self.sets.compactMap { set in
             guard let doneAt = set.doneAt else { return nil }
             var entry: [String: Any] = [
@@ -468,6 +494,11 @@ struct WatchOwnWorkout: Codable {
         ]
         if let programId { body["programId"] = programId }
         if let taskId { body["taskId"] = taskId }
+        if case .saved(let workoutId)? = health {
+            var saved: [String: Any] = [:]
+            if let workoutId { saved["workoutId"] = workoutId }
+            body["health"] = saved
+        }
         guard let data = try? JSONSerialization.data(withJSONObject: body) else { return nil }
         return String(data: data, encoding: .utf8)
     }
@@ -497,6 +528,14 @@ enum WatchOwnWorkoutFile {
         }
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? data.write(to: url, options: .atomic)
+    }
+
+    /// Removes the file only while it still holds workout `id`: a workout
+    /// finished while its Health save was on its way keeps its file until it
+    /// is sent, and another started meanwhile must not lose its own.
+    static func clear(ifStill id: String) {
+        guard load()?.id == id else { return }
+        save(nil)
     }
 }
 
@@ -983,6 +1022,8 @@ extension WatchStore {
         WatchOwnWorkoutFile.save(workout)
         WKInterfaceDevice.current().play(.start)
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        // Measured from the start while the phone says workouts go to Health.
+        syncHealthSession()
     }
 
     // ---- a set ----
@@ -1143,19 +1184,42 @@ extension WatchStore {
         let now = Date()
         let queued = !phoneReachable
         let elapsed = screen.startedAt.map { describeElapsed(since: $0, now: now) } ?? ""
+        let health = WatchHealthSession.shared
         switch screen.source {
         case .own:
             guard let workout = ownWorkout else { return }
             let done = workout.sets.filter(\.isDone).count
+            let measured = health.measuring?.sessionId == workout.id
             // A workout with nothing done records nothing, as finishing on the
-            // phone drops every set never done; there is nothing to send.
-            if done > 0, let body = workout.payload(endedAt: now) {
-                recordWorkoutTap(kind: "watchSession", itemId: workout.id, title: workout.title, body: body)
+            // phone drops every set never done; there is nothing to send, and
+            // nothing saved to Health either (`discardWorkout`).
+            if done > 0 {
                 finishedSummary = WatchFinishedSummary(title: workout.title, elapsed: elapsed, setsDone: done, queued: queued)
+                if measured {
+                    // Saved first, so the workout reaches the phone carrying
+                    // the id of what the watch saved and the phone writes no
+                    // copy of its own. The file stays until then.
+                    health.finish(at: now) { [weak self] outcome in
+                        guard let self else { return }
+                        self.heartRate = nil
+                        self.sendOwnWorkout(workout, endedAt: now, health: outcome)
+                        self.syncHealthSession()
+                    }
+                } else {
+                    sendOwnWorkout(workout, endedAt: now, health: nil)
+                }
+            } else {
+                if measured { health.discard() }
+                heartRate = nil
+                WatchOwnWorkoutFile.save(nil)
             }
             ownWorkout = nil
-            WatchOwnWorkoutFile.save(nil)
         case .phone:
+            // The phone's workout ends here: the measurement of it is saved
+            // ending now, and its id follows the Finish to the phone.
+            if let measurement = health.measuring, measurement.phone, measurement.sessionId == screen.sessionId {
+                saveMeasurement(measurement, at: now)
+            }
             // The sets done and notes written here that the phone hasn't
             // answered for, carried in the Finish itself: a message can
             // overtake their own taps, and the phone records each once.
@@ -1180,6 +1244,14 @@ extension WatchStore {
         cancelRestNotification()
         refreshRestAlarm()
         WKInterfaceDevice.current().play(.success)
+    }
+
+    /// Sends a workout run here to the phone, once, and lets its file go.
+    private func sendOwnWorkout(_ workout: WatchOwnWorkout, endedAt: Date, health: WatchHealthOutcome?) {
+        if let body = workout.payload(endedAt: endedAt, health: health) {
+            recordWorkoutTap(kind: "watchSession", itemId: workout.id, title: workout.title, body: body)
+        }
+        WatchOwnWorkoutFile.clear(ifStill: workout.id)
     }
 
     // ---- the wrist ----

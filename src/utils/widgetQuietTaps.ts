@@ -314,7 +314,9 @@ export function parseQuietTaps(json: string): QuietTap[] {
         // only sends it when it starts.
         tap.on = fields.on !== false;
       }
-      if (kind === 'healthWorkout') tap.healthWorkoutId = idOf(fields.workoutId);
+      // `workoutId` from the watch; `healthWorkoutId` from a tap the app put
+      // back on the queue itself for a drain in front (widgetSync.ts).
+      if (kind === 'healthWorkout') tap.healthWorkoutId = idOf(fields.workoutId) ?? idOf(fields.healthWorkoutId);
     }
     if (kind === 'watchSession') {
       const workout = parseWatchSession(fields.workout);

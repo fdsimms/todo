@@ -613,6 +613,10 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'workoutUnit',
   'plateInventory',
   'defaultRestSeconds',
+  // The maximum a workout's heart-rate zones are shares of, when the person
+  // typed one. A figure about a body, so it travels with the health record
+  // too (HEALTH_SYNC_SETTING_KEYS).
+  'maxHeartRate',
 
   // Vocabularies the user builds. These are data as much as preference — a
   // tag that exists but is unused, and the walk round the shop — and a device
@@ -782,6 +786,8 @@ export const HEALTH_SYNC_SETTING_KEYS: readonly string[] = [
   'limitWarningAutoSlips',
   // A typed-in goal that sleep is read against; it travels with the record it is read against.
   'sleepGoalMinutes',
+  // A typed-in maximum heart rate, which says something about a body.
+  'maxHeartRate',
 ];
 
 /**

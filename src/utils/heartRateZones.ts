@@ -240,12 +240,21 @@ export function formatZoneMinutes(seconds: number): string {
   return minutes === 0 ? '<1 min' : `${minutes} min`;
 }
 
+function spokenMinutes(seconds: number): string {
+  if (seconds <= 0) return 'no time';
+  const minutes = Math.round(seconds / 60);
+  if (minutes === 0) return 'under a minute';
+  return minutes === 1 ? '1 minute' : `${minutes} minutes`;
+}
+
 /** One row of the card, zone 5 first, as the mock draws them. */
 export interface ZoneRow {
   zone: number;
   /** "Zone 2 · 112–130" */
   label: string;
   minutes: string;
+  /** What a screen reader says for the row: "Zone 2, 112 to 130 beats per minute, 15 minutes". */
+  spoken: string;
   /** The bar's length: this zone's share of the time measured in any zone, 0 to 1. */
   fraction: number;
 }
@@ -261,11 +270,15 @@ export function zoneRows(read: WorkoutHeartRate, max: MaxHeartRate | null): Zone
   const seconds = secondsInZones(read, zones);
   const total = seconds.reduce((a, b) => a + b, 0);
   return zones
-    .map((z, i) => ({
-      zone: z.zone,
-      label: `Zone ${z.zone} · ${z.low}–${z.high}`,
-      minutes: formatZoneMinutes(seconds[i]),
-      fraction: total > 0 ? seconds[i] / total : 0,
-    }))
+    .map((z, i) => {
+      const minutes = formatZoneMinutes(seconds[i]);
+      return {
+        zone: z.zone,
+        label: `Zone ${z.zone} · ${z.low}–${z.high}`,
+        minutes,
+        spoken: `Zone ${z.zone}, ${z.low} to ${z.high} beats per minute, ${spokenMinutes(seconds[i])}`,
+        fraction: total > 0 ? seconds[i] / total : 0,
+      };
+    })
     .reverse();
 }

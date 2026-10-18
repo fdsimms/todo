@@ -501,6 +501,11 @@ describe('watch workout taps', () => {
       ]);
     });
 
+    it('reads a saved workout the app put back on the queue for a drain in front, by its own key', () => {
+      const [t] = parseQuietTaps(JSON.stringify([{ kind: 'healthWorkout', id: 'w1', sessionId: 'w1', healthWorkoutId: 'HK-W', listId: null, at: AT }]));
+      expect(t).toMatchObject({ kind: 'healthWorkout', sessionId: 'w1', healthWorkoutId: 'HK-W' });
+    });
+
     it('caps a dictated note', () => {
       const [t] = parseQuietTaps(JSON.stringify([{ kind: 'setNote', id: 's', sessionId: 'w1', note: 'x'.repeat(WATCH_NOTE_MAX + 50), at: AT }]));
       expect(t.note).toHaveLength(WATCH_NOTE_MAX);
