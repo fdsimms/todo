@@ -393,6 +393,9 @@ jest.mock('../store/useWeatherStore', () => ({
 jest.mock('../store/useTransitStore', () => ({
   useTransitStore: { getState: jest.fn(() => ({ snapshot: null })) },
 }));
+jest.mock('../store/useWaniKaniStore', () => ({
+  useWaniKaniStore: { getState: jest.fn(() => ({ snapshot: null })) },
+}));
 jest.mock('../store/useTravelTimeStore', () => ({
   useTravelTimeStore: { getState: jest.fn(() => ({ estimates: {} })) },
   travelOriginOfEvent: jest.fn(() => null),
@@ -620,6 +623,8 @@ beforeEach(() => {
   useWeatherStore.getState.mockReturnValue({ snapshot: null, snapshotDayKey: null });
   const { useTransitStore } = jest.requireMock('../store/useTransitStore') as { useTransitStore: { getState: jest.Mock } };
   useTransitStore.getState.mockReturnValue({ snapshot: null });
+  const { useWaniKaniStore } = jest.requireMock('../store/useWaniKaniStore') as { useWaniKaniStore: { getState: jest.Mock } };
+  useWaniKaniStore.getState.mockReturnValue({ snapshot: null });
   const { useTravelTimeStore } = jest.requireMock('../store/useTravelTimeStore') as { useTravelTimeStore: { getState: jest.Mock } };
   useTravelTimeStore.getState.mockReturnValue({ estimates: {} });
   useTaskStore.setState({
@@ -6096,6 +6101,230 @@ describe('checkTravelTasks', () => {
       useTaskStore.getState().checkTravelTasks();
       expect(travelTasks()).toHaveLength(1);
     });
+  });
+});
+
+// ─── checkWaniKaniTasks ─────────────────────────────────────────────────────
+
+describe('checkWaniKaniTasks', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+  const { useWaniKaniStore } = jest.requireMock('../store/useWaniKaniStore') as {
+    useWaniKaniStore: { getState: jest.Mock };
+  };
+
+  // Oct 18 2026, 10:20 local, with 3 reviews arriving at noon and 8 at 3 PM.
+  const NOW = new Date(2026, 9, 18, 10, 20);
+  const at = (hour: number, day = 18) => new Date(2026, 9, day, hour, 0, 0);
+  const snap = (overrides: Record<string, unknown> = {}) => ({
+    fetchedAt: NOW.toISOString(),
+    reviewsNow: 4,
+    upcoming: [{ at: at(12).toISOString(), count: 3 }, { at: at(15).toISOString(), count: 8 }],
+    lessonsNow: 12,
+    dayKey: '2026-10-18',
+    lessonsDone: 0,
+    apprentice: 60,
+    ...overrides,
+  });
+
+  // A settings object the setters write back into, so a second pass sees the
+  // first pass's review state and lessons mark, as the real store would.
+  let current: Record<string, unknown>;
+  const setSettings = (overrides: Record<string, unknown> = {}) => {
+    current = {
+      dayResetTime: '00:00',
+      vacationMode: false,
+      newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+      titleRules: [],
+      collapsedCategories: [],
+      wanikaniTasks: true,
+      wanikaniTaskCategory: 'Study',
+      wanikaniReviewThreshold: 10,
+      wanikaniLessonsPerDay: null,
+      wanikaniApprenticeCap: 100,
+      wanikaniNotify: false,
+      wanikaniReviewState: { baseline: 0, openSourceId: null },
+      wanikaniLessonsLastDayKey: null,
+      setWanikaniReviewState: jest.fn((state: unknown) => { current.wanikaniReviewState = state; }),
+      setWanikaniLessonsLastDayKey: jest.fn((key: unknown) => { current.wanikaniLessonsLastDayKey = key; }),
+      ...overrides,
+    };
+  };
+  const setSnapshot = (overrides: Record<string, unknown> = {}) =>
+    useWaniKaniStore.getState.mockReturnValue({ snapshot: snap(overrides) });
+  const check = () => useTaskStore.getState().checkWaniKaniTasks();
+  const live = (prefix: string) =>
+    useTaskStore.getState().tasks.filter(t =>
+      t.generatedKind === 'wanikani' && !t.completed && !t.archived && t.generatedSourceId?.startsWith(prefix));
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+    setSettings();
+    useSettingsStore.getState.mockImplementation(() => current);
+    setSnapshot();
+    useTaskStore.setState({ tasks: [] });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    useWaniKaniStore.getState.mockReturnValue({ snapshot: null });
+  });
+
+  it('writes a reviews task for today once the queue is over the number', () => {
+    setSnapshot({ reviewsNow: 12 });
+    check();
+    const [task] = live('reviews:');
+    expect(task.title).toBe('WaniKani: 12 reviews');
+    expect(task.category).toBe('Study');
+    expect(task.linkUrl).toBe('https://www.wanikani.com/subjects/review');
+    expect(task.windowStart).toBeNull();
+    expect(new Date(task.dueDate!)).toEqual(new Date(2026, 9, 18, 12, 0));
+    expect(task.vacationPause).toBe(true);
+    expect(current.wanikaniReviewState).toEqual({ baseline: 0, openSourceId: task.generatedSourceId });
+  });
+
+  it('holds the task until the hour the forecast gets there, with a reminder when asked', () => {
+    setSettings({ wanikaniNotify: true });
+    check();
+    const [task] = live('reviews:');
+    expect(task.title).toBe('WaniKani: 15 reviews');
+    expect(task.windowStart).toBe('15:00');
+    expect(new Date(task.dueDate!)).toEqual(new Date(2026, 9, 18, 12, 0));
+    expect(task.reminderTime).toBe(at(15).toISOString());
+    // The note is the notification's body.
+    expect(task.notes).toBe('Your reviews are up on WaniKani.');
+  });
+
+  it('writes no note on a task with no reminder', () => {
+    check();
+    expect(live('reviews:')[0].notes).toBe('');
+  });
+
+  it('lets a held task go of its window once its hour has passed, with no read needed', () => {
+    check();
+    expect(live('reviews:')[0].windowStart).toBe('15:00');
+    // The next morning, the app opened before any read has landed.
+    jest.setSystemTime(new Date(2026, 9, 19, 8, 0));
+    useWaniKaniStore.getState.mockReturnValue({ snapshot: null });
+    check();
+    expect(live('reviews:')[0].windowStart).toBeNull();
+    expect(live('reviews:')[0].title).toBe('WaniKani: 15 reviews');
+  });
+
+  it('leaves a hold that has not come yet', () => {
+    check();
+    useWaniKaniStore.getState.mockReturnValue({ snapshot: null });
+    check();
+    expect(live('reviews:')[0].windowStart).toBe('15:00');
+  });
+
+  it('writes nothing without a read, switched off, in demo mode, or on vacation', () => {
+    useWaniKaniStore.getState.mockReturnValue({ snapshot: null });
+    check();
+    setSnapshot({ reviewsNow: 12 });
+    setSettings({ wanikaniTasks: false });
+    check();
+    setSettings({ vacationMode: true });
+    check();
+    setSettings();
+    setDemoModeActive(true);
+    try {
+      check();
+    } finally {
+      setDemoModeActive(false);
+    }
+    expect(live('')).toHaveLength(0);
+  });
+
+  it('keeps one task, its count following the queue, and drops the count at zero', () => {
+    setSnapshot({ reviewsNow: 12 });
+    check();
+    setSnapshot({ reviewsNow: 20 });
+    check();
+    expect(live('reviews:')).toHaveLength(1);
+    expect(live('reviews:')[0].title).toBe('WaniKani: 20 reviews');
+    setSnapshot({ reviewsNow: 0, upcoming: [] });
+    check();
+    expect(live('reviews:')).toHaveLength(1);
+    expect(live('reviews:')[0].title).toBe('WaniKani reviews');
+    expect(live('reviews:')[0].completed).toBe(false);
+  });
+
+  it('moves a held task when reviews are done elsewhere, and drops it when the forecast never gets there', () => {
+    // 4 waiting and 3 at noon: seven by noon.
+    setSettings({ wanikaniReviewThreshold: 7 });
+    check();
+    const [held] = live('reviews:');
+    expect(held.windowStart).toBe('12:00');
+    // Three of the four done on the website: seven isn't reached until 3 PM now.
+    setSnapshot({ reviewsNow: 1 });
+    check();
+    expect(live('reviews:')).toHaveLength(1);
+    expect(live('reviews:')[0].id).toBe(held.id);
+    expect(live('reviews:')[0].windowStart).toBe('15:00');
+    expect(live('reviews:')[0].title).toBe('WaniKani: 12 reviews');
+    // Sixteen is more than this read's 24 hours ever reach.
+    current.wanikaniReviewThreshold = 16;
+    check();
+    expect(live('reviews:')).toHaveLength(0);
+    expect((current.wanikaniReviewState as { openSourceId: string | null }).openSourceId).toBeNull();
+  });
+
+  it('waits for a new wave after the task is checked off with reviews left', () => {
+    setSnapshot({ reviewsNow: 30, upcoming: [] });
+    check();
+    const [first] = live('reviews:');
+    useTaskStore.setState({ tasks: useTaskStore.getState().tasks.map(t => (t.id === first.id ? { ...t, completed: true } : t)) });
+    check();
+    // 30 still waiting, nothing more coming: no second task.
+    expect(live('reviews:')).toHaveLength(0);
+    expect(current.wanikaniReviewState).toEqual({ baseline: 30, openSourceId: null });
+    setSnapshot({ reviewsNow: 40, upcoming: [] });
+    check();
+    expect(live('reviews:')).toHaveLength(1);
+    expect(live('reviews:')[0].title).toBe('WaniKani: 40 reviews');
+  });
+
+  it('writes a lessons task once a day, its count following the lessons done', () => {
+    setSettings({ wanikaniLessonsPerDay: 5 });
+    check();
+    expect(live('lessons:').map(t => t.title)).toEqual(['WaniKani: 5 lessons']);
+    expect(live('lessons:')[0].linkUrl).toBe('https://www.wanikani.com/subjects/lesson');
+    expect(current.wanikaniLessonsLastDayKey).toBe('2026-10-18');
+    setSnapshot({ lessonsDone: 3 });
+    check();
+    expect(live('lessons:').map(t => t.title)).toEqual(['WaniKani: 2 lessons']);
+  });
+
+  it('does not bring a deleted lessons task back the same day', () => {
+    setSettings({ wanikaniLessonsPerDay: 5 });
+    check();
+    useTaskStore.setState({ tasks: useTaskStore.getState().tasks.filter(t => !t.generatedSourceId?.startsWith('lessons:')) });
+    check();
+    expect(live('lessons:')).toHaveLength(0);
+  });
+
+  it('writes no lessons task at the Apprentice cap', () => {
+    setSettings({ wanikaniLessonsPerDay: 5 });
+    setSnapshot({ apprentice: 100 });
+    check();
+    expect(live('lessons:')).toHaveLength(0);
+    expect(current.wanikaniLessonsLastDayKey).toBeNull();
+  });
+
+  it('clears yesterday’s lessons task', () => {
+    setSettings({ wanikaniLessonsPerDay: 5 });
+    jest.setSystemTime(new Date(2026, 9, 17, 9, 0));
+    setSnapshot({ dayKey: '2026-10-17', fetchedAt: new Date(2026, 9, 17, 9, 0).toISOString() });
+    check();
+    expect(live('lessons:2026-10-17')).toHaveLength(1);
+    jest.setSystemTime(NOW);
+    setSnapshot();
+    check();
+    expect(live('lessons:2026-10-17')).toHaveLength(0);
+    expect(live('lessons:2026-10-18')).toHaveLength(1);
   });
 });
 

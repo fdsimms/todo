@@ -4945,6 +4945,20 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     });
   });
 
+  it('seeds a WaniKani reviews task, with the switch left off so nothing reads', () => {
+    const { tasks } = useTaskStore.getState();
+    const settings = useSettingsStore.getState();
+
+    const task = tasks.find(t => t.generatedKind === 'wanikani');
+    expect(task).toBeDefined();
+    expect(task!.title).toBe('WaniKani: 24 reviews');
+    expect(task!.generatedSourceId).toBe(`reviews:${dayKeyOf(getCurrentDayStart())}T09`);
+    expect(task!.linkUrl).toBe('https://www.wanikani.com/subjects/review');
+    expect(task!.category).toBe('Study');
+    expect(settings.wanikaniTaskCategory).toBe('Study');
+    expect(settings.wanikaniTasks).toBe(false);
+  });
+
   it('seeds a Stay under limit, shown on Today, and a warning for it', () => {
     const settings = useSettingsStore.getState();
     expect(settings.nutritionLimits).toEqual(['satFatG']);

@@ -129,6 +129,8 @@ import { EmptyNote } from '../../components/EmptyNote';
 import { PillGroup, type PillGroupOption } from '../../components/PillGroup';
 import { type SegmentOption } from '../../components/SegmentedControl';
 import { makeSettingsStyles } from './settingsStyles';
+import { WaniKaniSettingsRows } from './WaniKaniSettingsRows';
+import { useWaniKaniStore } from '../../store/useWaniKaniStore';
 import { useSettingsFocus } from './SettingsFocus';
 import { navigateToSettingsEntry } from '../../navigation/openSettings';
 import { alertPermissionOff } from '../../utils/permissionAlert';
@@ -210,6 +212,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
   const sectionStyles = useMemo(() => makeStyles(colors), [colors]);
 
   const s = useSettingsStore();
+  const wanikaniHasToken = useWaniKaniStore(state => state.hasToken);
   const navigation = useNavigation();
   const categories = useCategoryStore(useShallow(state => state.categories));
   // Names for the per-calendar leave-by rows. Filled by the calendar read, so a
@@ -406,6 +409,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
       case 'moodNudge': return s.moodNudgeTaskCategory;
       case 'journalLog': return s.journalLogTaskCategory;
       case 'dreamLog': return s.dreamLogTaskCategory;
+      case 'wanikani': return s.wanikaniTaskCategory;
       case 'weekendNudge': return s.weekendNudgeTaskCategory;
       case 'weighIn': return s.weighInTaskCategory;
       case 'waterShortfall': return s.waterShortfallTaskCategory;
@@ -447,6 +451,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
       case 'moodNudge': s.setMoodNudgeTaskCategory(category); break;
       case 'journalLog': s.setJournalLogTaskCategory(category); break;
       case 'dreamLog': s.setDreamLogTaskCategory(category); break;
+      case 'wanikani': s.setWanikaniTaskCategory(category); break;
       case 'weekendNudge': s.setWeekendNudgeTaskCategory(category); break;
       case 'weighIn': s.setWeighInTaskCategory(category); break;
       case 'waterShortfall': s.setWaterShortfallTaskCategory(category); break;
@@ -501,6 +506,8 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
         ? `Adds one task a day, held back until ${segmentNames[0]}, to log how you’re feeling`
         : `Adds a task at each of these times to log how you’re feeling: ${segmentNames.join(', ')}`;
     }
+    // On without a token reads nothing, so say what it is waiting for.
+    if (spec.kind === 'wanikani' && !wanikaniHasToken) return 'Add an API token from WaniKani to start';
     if (spec.kind === 'journalLog' && s.journalLogTimeSegments.length > 0) {
       const segmentNames = s.journalLogTimeSegments.map(seg =>
         timeSegmentChoices.find(o => o.value === seg)?.label.toLowerCase() ?? seg
@@ -1156,6 +1163,8 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
         'Any time means one task a day. Pick parts of the day to get a task in each, and an unanswered one is cleared when the next arrives.',
       );
     }
+
+    if (kind === 'wanikani') return <WaniKaniSettingsRows />;
 
     if (kind === 'weather') {
       return (

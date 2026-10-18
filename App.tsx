@@ -39,6 +39,7 @@ import { useWeatherSync, useWeatherStore } from './src/store/useWeatherStore';
 import { useWeatherWaitSync } from './src/hooks/useWeatherWaitSync';
 import { useMeterHoldSync } from './src/hooks/useMeterHoldSync';
 import { useTravelTaskSync } from './src/hooks/useTravelTaskSync';
+import { useWaniKaniSync } from './src/hooks/useWaniKaniSync';
 import { useEventTaskSync } from './src/hooks/useEventTaskSync';
 import { useReminderMeetingResync } from './src/hooks/useReminderMeetingResync';
 import { usePlaceGateRefresh } from './src/hooks/usePlaceGateRefresh';
@@ -54,7 +55,7 @@ import { startDeviceMetrics } from './src/utils/deviceMetrics';
 import { backfillCalendarExternalIds } from './src/utils/calendarIdBackfill';
 import { drainCalendarRequests } from './src/utils/calendarRequestDrain';
 import { expiryPasses, catchUpPasses, retentionPasses } from './src/utils/maintenancePasses';
-import { useBackgroundRefresh } from './src/utils/backgroundRefresh';
+import { useAppRefresh, useBackgroundRefresh } from './src/utils/backgroundRefresh';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { preloadAppFont, preloadBrandFonts } from './src/theme/AppFont';
 import { animation } from './src/theme';
@@ -169,6 +170,7 @@ function AppGate() {
 function AppRoot() {
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const backgroundRefreshEnabled = useSettingsStore(s => s.backgroundRefreshEnabled);
+  const wanikaniTasks = useSettingsStore(s => s.wanikaniTasks);
   const initSecrets = useSettingsStore(s => s.initializeSecrets);
 
   useEffect(() => {
@@ -307,6 +309,10 @@ function AppRoot() {
   // until travel tasks, the transit switch and a line are all on), and re-runs
   // the travel task check when the calendar window or the alerts land.
   useTravelTaskSync();
+  // Reads the person's WaniKani queue while the app is in front (inert until
+  // the WaniKani task is switched on and has a token) and re-runs its check
+  // when a read lands.
+  useWaniKaniSync();
   // Re-runs the event rule sweep when the calendar windows land (including the
   // wider one the "after the event" rules read) or the rules change.
   useEventTaskSync();
@@ -337,6 +343,9 @@ function AppRoot() {
   // so a device iOS never grants a background run to loses nothing but
   // punctuality. See src/utils/backgroundRefresh.ts.
   useBackgroundRefresh(backgroundRefreshEnabled);
+  // Short daytime refreshes on top of it, which run the same task. Asked for
+  // only while something in the day is worth reading: today, WaniKani's queue.
+  useAppRefresh(backgroundRefreshEnabled && wanikaniTasks);
 
   // Collects recipe pages saved from another app's share sheet (targets/todo-share)
   // into the queue the Recipes screen offers. Same ordering requirement as the

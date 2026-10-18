@@ -4,6 +4,7 @@ import {
   API_KEY_LEGACY_SETTING,
   API_KEY_SECURE_KEY,
   loadAnthropicApiKey,
+  makeSecureKeyReadableWhileLocked,
   saveAnthropicApiKey,
   saveSecureKey,
   SYNC_TOKEN_SECURE_KEY,
@@ -13,6 +14,7 @@ jest.mock('expo-secure-store', () => ({
   getItemAsync: jest.fn(),
   setItemAsync: jest.fn(),
   deleteItemAsync: jest.fn(),
+  AFTER_FIRST_UNLOCK: 0,
 }));
 
 jest.mock('../db/database', () => ({
@@ -124,6 +126,66 @@ describe('saveAnthropicApiKey', () => {
     getSetting.mockReturnValue('sk-ant-stranded');
     await saveAnthropicApiKey('sk-ant-new');
     expect(dbDeleteSetting).toHaveBeenCalledWith(API_KEY_LEGACY_SETTING);
+  });
+});
+
+describe('saveSecureKey', () => {
+  it('writes a key with the store’s default, and clears one on empty', async () => {
+    await expect(saveSecureKey(SYNC_TOKEN_SECURE_KEY, 'token')).resolves.toBe(true);
+    expect(setItem).toHaveBeenCalledWith(SYNC_TOKEN_SECURE_KEY, 'token');
+    await expect(saveSecureKey(SYNC_TOKEN_SECURE_KEY, '')).resolves.toBe(true);
+    expect(deleteItem).toHaveBeenCalledWith(SYNC_TOKEN_SECURE_KEY);
+  });
+
+  it('adds a key a background run needs afresh, readable after the first unlock', async () => {
+    await expect(saveSecureKey('wanikaniApiToken', 'token', { readableWhileLocked: true })).resolves.toBe(true);
+    // Deleted first: an update would keep the accessibility the old item was added with.
+    expect(deleteItem).toHaveBeenCalledWith('wanikaniApiToken');
+    expect(setItem).toHaveBeenCalledWith('wanikaniApiToken', 'token', { keychainAccessible: 0 });
+    expect(deleteItem.mock.invocationCallOrder[0]).toBeLessThan(setItem.mock.invocationCallOrder[0]);
+  });
+
+  it('reports a keychain that refused the write', async () => {
+    setItem.mockRejectedValue(new Error('locked'));
+    await expect(saveSecureKey('wanikaniApiToken', 'token', { readableWhileLocked: true })).resolves.toBe(false);
+  });
+});
+
+describe('makeSecureKeyReadableWhileLocked', () => {
+  it('re-adds a stored key readable after the first unlock', async () => {
+    getItem.mockResolvedValue('token');
+    await expect(makeSecureKeyReadableWhileLocked(SYNC_TOKEN_SECURE_KEY)).resolves.toBe(true);
+    expect(deleteItem).toHaveBeenCalledWith(SYNC_TOKEN_SECURE_KEY);
+    expect(setItem).toHaveBeenCalledWith(SYNC_TOKEN_SECURE_KEY, 'token', { keychainAccessible: 0 });
+  });
+
+  it('changes nothing when the key can’t be read (a locked phone) or isn’t there', async () => {
+    getItem.mockRejectedValue(new Error('interaction not allowed'));
+    await expect(makeSecureKeyReadableWhileLocked(SYNC_TOKEN_SECURE_KEY)).resolves.toBe(false);
+    getItem.mockResolvedValue(null);
+    await expect(makeSecureKeyReadableWhileLocked(SYNC_TOKEN_SECURE_KEY)).resolves.toBe(false);
+    expect(deleteItem).not.toHaveBeenCalled();
+    expect(setItem).not.toHaveBeenCalled();
+  });
+
+  it('puts the key back the old way when the new add fails, so it is never lost', async () => {
+    getItem.mockResolvedValue('token');
+    setItem.mockRejectedValueOnce(new Error('refused')).mockResolvedValueOnce(undefined);
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(makeSecureKeyReadableWhileLocked(SYNC_TOKEN_SECURE_KEY)).resolves.toBe(false);
+    expect(setItem).toHaveBeenLastCalledWith(SYNC_TOKEN_SECURE_KEY, 'token');
+  });
+
+  it('does nothing in demo mode', async () => {
+    const { setDemoModeActive } = jest.requireActual('../utils/demoState') as typeof import('../utils/demoState');
+    setDemoModeActive(true);
+    try {
+      getItem.mockResolvedValue('token');
+      await expect(makeSecureKeyReadableWhileLocked(SYNC_TOKEN_SECURE_KEY)).resolves.toBe(false);
+    } finally {
+      setDemoModeActive(false);
+    }
+    expect(deleteItem).not.toHaveBeenCalled();
   });
 });
 

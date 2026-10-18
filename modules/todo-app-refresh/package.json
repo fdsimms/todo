@@ -1,0 +1,7 @@
+{
+  "name": "todo-app-refresh",
+  "version": "1.0.0",
+  "description": "Local Expo module that asks iOS for short background app refreshes (BGAppRefreshTask) and runs the app's existing background task in each, alongside expo-background-task's overnight processing run.",
+  "main": "index.ts",
+  "private": true
+}
