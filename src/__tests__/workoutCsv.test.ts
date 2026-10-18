@@ -601,11 +601,12 @@ describe('matchExerciseName', () => {
     expect(isAutoMatch(m)).toBe(false);
   });
 
-  it('sends "Back Squat" to a choice instead of deciding it is "Hack squat"', () => {
-    // One letter apart once the words are joined, which used to be accepted without asking.
+  it('sends "Back Squat" to a choice, offering the back squat rather than "Hack squat"', () => {
+    // One letter apart from "Hack squat" once the words are joined, which used to
+    // be accepted without asking; the name holding both of its words is offered first.
     const m = matchExerciseName('Back Squat', catalog);
     expect(isAutoMatch(m)).toBe(false);
-    expect(m).toMatchObject({ kind: 'suggest', exerciseId: 'lib:hack-squat' });
+    expect(m).toMatchObject({ kind: 'suggest', exerciseId: 'lib:back-squat' });
     // The full name is the library's own.
     expect(matchExerciseName('Barbell Back Squat', catalog)).toMatchObject({ kind: 'exact', exerciseId: 'lib:back-squat' });
   });
@@ -620,8 +621,14 @@ describe('matchExerciseName', () => {
     expect(matchExerciseName('Bench Press (Smith Machine)', catalog)).toMatchObject({ kind: 'words', exerciseId: 'lib:smith-machine-bench-press' });
   });
 
+  it('offers a library name holding every word of a two-word name, but never decides it', () => {
+    // Strong's own name for the back squat.
+    const m = matchExerciseName('Squat (Barbell)', catalog);
+    expect(m).toMatchObject({ kind: 'suggest', exerciseId: 'lib:back-squat' });
+    expect(isAutoMatch(m)).toBe(false);
+  });
+
   it('offers nothing for a name that is only vaguely like something', () => {
-    expect(idOf('Squat (Barbell)')).toBeNull();
     expect(idOf('Mystery Machine')).toBeNull();
     expect(idOf('Press')).toBeNull();
     // One extra word on a three-word name is not close enough to suggest.

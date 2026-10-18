@@ -687,6 +687,11 @@ export function matchExerciseName(name: string, catalog: readonly CatalogExercis
   // Two exercises with the same words are two variants to choose between.
   if (sameWords.length > 1) return { kind: 'suggest', exerciseId: sameWords[0].id, exerciseName: sameWords[0].name };
 
+  // A name holding every word of the file's name ("Back Squat" in "Barbell back
+  // squat") is offered ahead of anything scored by overlap or a one-letter typo,
+  // fewest extra words first: the file's name is usually the library's with the
+  // equipment left off, and a typo match is the one most likely to be a
+  // different lift ("Hack squat").
   const compact = words.join('');
   const best = live
     .map(e => {
@@ -694,10 +699,16 @@ export function matchExerciseName(name: string, catalog: readonly CatalogExercis
       const shared = w.filter(x => words.includes(x)).length;
       const overlap = shared / (new Set([...w, ...words]).size);
       const typo = compact.length >= MIN_SIMILAR_LENGTH && withinOneEdit(compact, w.join(''));
-      return { e, score: typo ? Math.max(overlap, 0.9) : overlap };
+      // One word ("Press") is held by half the library, so it says nothing.
+      const extra = words.length >= 2 && shared === words.length ? w.length - words.length : null;
+      return { e, extra, score: typo ? Math.max(overlap, 0.9) : overlap };
     })
-    .filter(x => x.score >= SUGGEST_MIN_OVERLAP)
-    .sort((a, b) => b.score - a.score || a.e.name.localeCompare(b.e.name))[0];
+    .filter(x => x.extra !== null || x.score >= SUGGEST_MIN_OVERLAP)
+    .sort((a, b) =>
+      (a.extra === null ? 1 : 0) - (b.extra === null ? 1 : 0)
+      || (a.extra ?? 0) - (b.extra ?? 0)
+      || b.score - a.score
+      || a.e.name.localeCompare(b.e.name))[0];
   if (!best) return { kind: 'none' };
   return { kind: 'suggest', exerciseId: best.e.id, exerciseName: best.e.name };
 }
