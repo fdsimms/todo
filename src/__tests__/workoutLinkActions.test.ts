@@ -137,20 +137,21 @@ describe('skipRestFromLink', () => {
     expect(mockShow).toHaveBeenCalledTimes(1);
   });
 
-  it('leaves workout mode alone for a rest left over from another session, or with none going', () => {
-    mockTimers = [{ kind: 'rest', id: 'r1', sessionId: 'w0' }];
-    skipRestFromLink('r1');
-    mockLive = null;
-    mockTimers = [{ kind: 'rest', id: 'r1', sessionId: 'w1' }];
-    skipRestFromLink('r1');
-    expect(mockRemove).toHaveBeenCalledTimes(2);
-    expect(mockShow).not.toHaveBeenCalled();
-  });
-
-  it('still drops a timer it can’t find a rest for', () => {
+  it('opens workout mode again whenever a workout is going, even for a rest already gone or left over', () => {
+    // The card can lag the app by a sync: the rest skipped or replaced in the
+    // sheet a moment before the tap still leaves the person mid-workout.
     mockTimers = [];
     skipRestFromLink('gone');
+    mockTimers = [{ kind: 'rest', id: 'r1', sessionId: 'w0' }];
+    skipRestFromLink('r1');
     expect(mockRemove).toHaveBeenCalledWith('gone');
+    expect(mockShow).toHaveBeenCalledTimes(2);
+  });
+
+  it('opens nothing with no workout going', () => {
+    mockLive = null;
+    skipRestFromLink('r1');
+    expect(mockRemove).toHaveBeenCalledWith('r1');
     expect(mockShow).not.toHaveBeenCalled();
   });
 });

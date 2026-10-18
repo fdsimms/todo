@@ -101,17 +101,35 @@ export type WorkoutStartPlan =
   /** Nothing to start on its own: open the Workouts screen to pick one. */
   | { kind: 'openWorkouts' };
 
-/** The first workout task on Today, in Today's order, whose routine or program still exists. */
+/**
+ * How long a queued start stays good. The intent brings the app forward as it
+ * queues, so a start drained much later is one that waited out demo mode or a
+ * launch that never drained it, and starting a workout then, hours after it
+ * was asked for, is starting one nobody asked for now.
+ */
+export const QUEUED_START_MAX_AGE_MS = 5 * 60_000;
+
+type ProgramRow = Pick<WorkoutProgram, 'id' | 'rotation' | 'weeks' | 'startedAt' | 'archived'>;
+type SessionRow = Pick<WorkoutSession, 'programId' | 'routineId' | 'endedAt' | 'startedAt'>;
+
+/**
+ * The first workout task on Today, in Today's order, that has something to
+ * start: a routine that still exists, or a program in use with a next routine.
+ */
 function firstWorkoutTask(
   todayTasks: readonly Task[],
   routines: readonly Pick<WorkoutRoutine, 'id'>[],
-  programs: readonly Pick<WorkoutProgram, 'id'>[],
+  programs: readonly ProgramRow[],
+  sessions: readonly SessionRow[],
   routineId: string | null = null,
 ): Task | null {
   return todayTasks.find(t => {
     if (t.completed || t.archived) return false;
     if (routineId !== null) return t.workoutRoutineId === routineId;
-    if (t.workoutProgramId) return programs.some(p => p.id === t.workoutProgramId);
+    if (t.workoutProgramId) {
+      const program = programs.find(p => p.id === t.workoutProgramId);
+      return !!program && !program.archived && programProgress(program, sessions, routines).nextRoutineId !== null;
+    }
     if (t.workoutRoutineId) return routines.some(r => r.id === t.workoutRoutineId);
     return false;
   }) ?? null;
@@ -135,35 +153,44 @@ function firstWorkoutTask(
  * 4. otherwise nothing is started, and the Workouts screen opens.
  *
  * A routine asked for while another workout is going is left to `startWorkout`,
- * which says so rather than replacing it.
+ * which says so rather than replacing it; the same routine asked for again
+ * just opens it. A start asked for more than `QUEUED_START_MAX_AGE_MS` ago is
+ * dropped.
  */
 export function resolveQueuedWorkoutStart(
   queued: readonly QueuedWorkoutStart[],
   ctx: {
     workoutsEnabled: boolean;
-    live: Pick<WorkoutSession, 'id'> | null;
+    live: Pick<WorkoutSession, 'id' | 'routineId'> | null;
     routines: readonly Pick<WorkoutRoutine, 'id' | 'name'>[];
-    programs: readonly Pick<WorkoutProgram, 'id' | 'rotation' | 'weeks' | 'startedAt' | 'archived'>[];
-    sessions: readonly Pick<WorkoutSession, 'programId' | 'routineId' | 'endedAt' | 'startedAt'>[];
+    programs: readonly ProgramRow[];
+    sessions: readonly SessionRow[];
     /** What Today shows, in its order (`visibleTasks()`). */
     todayTasks: readonly Task[];
+    now: Date;
   },
 ): WorkoutStartPlan {
   if (!ctx.workoutsEnabled) return { kind: 'none' };
   const entry = newestWorkoutStart(queued);
   if (!entry) return { kind: 'none' };
+  // The intent always stamps when it was asked; one without a time, or asked
+  // too long ago, is dropped rather than acted on late (QUEUED_START_MAX_AGE_MS).
+  if (entry.at === null || ctx.now.getTime() - entry.at.getTime() > QUEUED_START_MAX_AGE_MS) return { kind: 'none' };
 
   if (entry.routineId !== null || entry.name !== null) {
     const routine = (entry.routineId ? ctx.routines.find(r => r.id === entry.routineId) : undefined)
       ?? (entry.name ? ctx.routines.find(r => exerciseNameKey(r.name) === exerciseNameKey(entry.name as string)) : undefined);
     if (!routine) return { kind: 'openWorkouts' };
-    const task = firstWorkoutTask(ctx.todayTasks, ctx.routines, ctx.programs, routine.id);
+    // The routine asked for is the one already going: open it, rather than
+    // have startWorkout ask about a workout in progress that is this one.
+    if (ctx.live && ctx.live.routineId === routine.id) return { kind: 'showLive' };
+    const task = firstWorkoutTask(ctx.todayTasks, ctx.routines, ctx.programs, ctx.sessions, routine.id);
     return { kind: 'start', input: { routineId: routine.id, taskId: task?.id ?? null } };
   }
 
   if (ctx.live) return { kind: 'showLive' };
 
-  const task = firstWorkoutTask(ctx.todayTasks, ctx.routines, ctx.programs);
+  const task = firstWorkoutTask(ctx.todayTasks, ctx.routines, ctx.programs, ctx.sessions);
   if (task) {
     return {
       kind: 'start',

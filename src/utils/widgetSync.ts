@@ -279,6 +279,7 @@ async function processPendingWorkoutStarts(): Promise<void> {
       programs: workouts.programs,
       sessions: workouts.sessions,
       todayTasks: useTaskStore.getState().visibleTasks(),
+      now: new Date(),
     });
     if (plan.kind === 'none') return;
     requestDismissAllSheets();
@@ -319,13 +320,22 @@ function scheduleRoutineIndexWrite(): void {
 // file reads as "you take nothing" until the next dose.
 let medicationIndexTimer: ReturnType<typeof setTimeout> | null = null;
 
+// Written only when it changed, since each write also has Siri read the
+// shortcuts' names again (see the routine index below); the first write of a
+// launch always goes, so a name added under an older build is heard too.
+let lastMedicationIndex: string | null = null;
+
 function scheduleMedicationIndexWrite(): void {
   if (medicationIndexTimer) clearTimeout(medicationIndexTimer);
   medicationIndexTimer = setTimeout(() => {
     const meds = useMedicationStore.getState();
     if (!meds.initialized) return;
     const bridge = widgetBridge();
-    bridge?.writeMedicationIndex?.(JSON.stringify(buildMedicationIndex(meds.logs, meds.archived, meds.registered))).catch(() => {});
+    if (!bridge?.writeMedicationIndex) return;
+    const json = JSON.stringify(buildMedicationIndex(meds.logs, meds.archived, meds.registered));
+    if (json === lastMedicationIndex) return;
+    lastMedicationIndex = json;
+    bridge.writeMedicationIndex(json).catch(() => { lastMedicationIndex = null; });
   }, DEBOUNCE_MS);
 }
 
@@ -464,6 +474,9 @@ function widgetUpcoming(deferred: readonly Task[], now: Date): { task: Task; vis
   return deferred.map(task => ({ task, visibleAt: getVisibleAt(task, pass) }));
 }
 
+// The pantry index as last written (see the end of writeSnapshotNow).
+let lastPantryIndex: string | null = null;
+
 const notLocked = (t: Task) => !isProjectLocked(t.projectId);
 
 function writeSnapshotNow(): void {
@@ -556,8 +569,16 @@ function writeSnapshotNow(): void {
   // owns until the next grocery write happened to land. The snapshot above
   // handles the same gap by contributing null for a section it can't speak
   // for; a file has no null, so it keeps the last true one.
-  if (grocery.initialized) {
-    bridge?.writePantryIndex(JSON.stringify(buildPantryIndex(grocery.items))).catch(() => {});
+  //
+  // Written only when it changed, as the medication index is: each write has
+  // Siri read the shortcuts' names again, and the snapshot runs on every
+  // grocery change.
+  if (grocery.initialized && bridge) {
+    const json = JSON.stringify(buildPantryIndex(grocery.items));
+    if (json !== lastPantryIndex) {
+      lastPantryIndex = json;
+      bridge.writePantryIndex(json).catch(() => { lastPantryIndex = null; });
+    }
   }
 }
 

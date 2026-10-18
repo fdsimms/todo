@@ -78,6 +78,15 @@ interface TodoWidgetBridgeNativeModule {
 
 const TodoWidgetBridge = requireNativeModule<TodoWidgetBridgeNativeModule>('TodoWidgetBridge');
 
+// Whether this binary's native module has a function. The functions added
+// after the first release are exported as undefined when it doesn't, which is
+// what `WidgetBridge` (src/utils/widgetBridge.ts) types them optional for: a
+// JS bundle run against an older native build (a dev client built before the
+// function existed) skips the call rather than throwing from inside a timer.
+function hasNative(name: keyof TodoWidgetBridgeNativeModule): boolean {
+  return typeof (TodoWidgetBridge as unknown as Record<string, unknown>)[name] === 'function';
+}
+
 export function writeWidgetSnapshot(jsonString: string): Promise<boolean> {
   return TodoWidgetBridge.writeSnapshot(jsonString);
 }
@@ -106,21 +115,21 @@ export function drainPendingDisposals(): Promise<string> {
   return TodoWidgetBridge.drainPendingDisposals();
 }
 
-export function writeMedicationIndex(jsonString: string): Promise<boolean> {
-  return TodoWidgetBridge.writeMedicationIndex(jsonString);
-}
+export const writeMedicationIndex = hasNative('writeMedicationIndex')
+  ? (jsonString: string): Promise<boolean> => TodoWidgetBridge.writeMedicationIndex(jsonString)
+  : undefined;
 
-export function drainPendingDoses(): Promise<string> {
-  return TodoWidgetBridge.drainPendingDoses();
-}
+export const drainPendingDoses = hasNative('drainPendingDoses')
+  ? (): Promise<string> => TodoWidgetBridge.drainPendingDoses()
+  : undefined;
 
-export function drainPendingDreams(): Promise<string> {
-  return TodoWidgetBridge.drainPendingDreams();
-}
+export const drainPendingDreams = hasNative('drainPendingDreams')
+  ? (): Promise<string> => TodoWidgetBridge.drainPendingDreams()
+  : undefined;
 
-export function drainPendingKeyScans(): Promise<string> {
-  return TodoWidgetBridge.drainPendingKeyScans();
-}
+export const drainPendingKeyScans = hasNative('drainPendingKeyScans')
+  ? (): Promise<string> => TodoWidgetBridge.drainPendingKeyScans()
+  : undefined;
 
 export function drainQuietWidgetTaps(): Promise<string> {
   return TodoWidgetBridge.drainQuietTaps();
@@ -142,17 +151,17 @@ export function syncFocusLiveActivity(jsonString: string): Promise<boolean> {
   return TodoWidgetBridge.syncFocusLiveActivity(jsonString);
 }
 
-export function syncWorkoutLiveActivity(jsonString: string): Promise<boolean> {
-  return TodoWidgetBridge.syncWorkoutLiveActivity(jsonString);
-}
+export const syncWorkoutLiveActivity = hasNative('syncWorkoutLiveActivity')
+  ? (jsonString: string): Promise<boolean> => TodoWidgetBridge.syncWorkoutLiveActivity(jsonString)
+  : undefined;
 
-export function writeWorkoutRoutineIndex(jsonString: string): Promise<boolean> {
-  return TodoWidgetBridge.writeWorkoutRoutineIndex(jsonString);
-}
+export const writeWorkoutRoutineIndex = hasNative('writeWorkoutRoutineIndex')
+  ? (jsonString: string): Promise<boolean> => TodoWidgetBridge.writeWorkoutRoutineIndex(jsonString)
+  : undefined;
 
-export function drainPendingWorkoutStarts(): Promise<string> {
-  return TodoWidgetBridge.drainPendingWorkoutStarts();
-}
+export const drainPendingWorkoutStarts = hasNative('drainPendingWorkoutStarts')
+  ? (): Promise<string> => TodoWidgetBridge.drainPendingWorkoutStarts()
+  : undefined;
 
 export function writeWatchSnapshot(jsonString: string): Promise<boolean> {
   return TodoWidgetBridge.writeWatchSnapshot(jsonString);

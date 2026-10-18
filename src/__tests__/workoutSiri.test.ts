@@ -4,6 +4,7 @@ import {
   buildRoutineIndex,
   newestWorkoutStart,
   parseQueuedWorkoutStarts,
+  QUEUED_START_MAX_AGE_MS,
   resolveQueuedWorkoutStart,
   type QueuedWorkoutStart,
 } from '../utils/workoutSiri';
@@ -72,7 +73,8 @@ describe('newestWorkoutStart', () => {
 });
 
 describe('resolveQueuedWorkoutStart', () => {
-  const myWorkout: QueuedWorkoutStart = { routineId: null, name: null, at: null };
+  const NOW = new Date('2026-10-18T09:00:00Z');
+  const myWorkout: QueuedWorkoutStart = { routineId: null, name: null, at: NOW };
   const routines = [{ id: 'r1', name: 'Push A' }, { id: 'r2', name: 'Pull A' }, { id: 'r3', name: 'Legs' }];
   const program = (extra: Partial<WorkoutProgram> = {}): WorkoutProgram => ({
     id: 'p1',
@@ -97,46 +99,61 @@ describe('resolveQueuedWorkoutStart', () => {
     programs: [],
     sessions: [],
     todayTasks: [],
+    now: NOW,
     ...extra,
   });
 
   it('does nothing with the Workouts area off, or nothing queued', () => {
     expect(resolveQueuedWorkoutStart([myWorkout], ctx({ workoutsEnabled: false }))).toEqual({ kind: 'none' });
-    expect(resolveQueuedWorkoutStart([{ routineId: 'r1', name: 'Push A', at: null }], ctx({ workoutsEnabled: false }))).toEqual({ kind: 'none' });
+    expect(resolveQueuedWorkoutStart([{ routineId: 'r1', name: 'Push A', at: NOW }], ctx({ workoutsEnabled: false }))).toEqual({ kind: 'none' });
     expect(resolveQueuedWorkoutStart([], ctx())).toEqual({ kind: 'none' });
   });
 
   describe('a routine by name', () => {
     it('starts the routine the entity query picked', () => {
-      expect(resolveQueuedWorkoutStart([{ routineId: 'r2', name: 'Pull A', at: null }], ctx()))
+      expect(resolveQueuedWorkoutStart([{ routineId: 'r2', name: 'Pull A', at: NOW }], ctx()))
         .toEqual({ kind: 'start', input: { routineId: 'r2', taskId: null } });
     });
 
     it('falls back to the spoken name when the id has gone, with the area’s own name key', () => {
-      expect(resolveQueuedWorkoutStart([{ routineId: 'gone', name: '  pull   a ', at: null }], ctx()))
+      expect(resolveQueuedWorkoutStart([{ routineId: 'gone', name: '  pull   a ', at: NOW }], ctx()))
         .toEqual({ kind: 'start', input: { routineId: 'r2', taskId: null } });
     });
 
     it('starts it for the task on Today that names it, so finishing completes that task', () => {
       const today = [task('t0', { workoutRoutineId: 'r1' }), task('t1', { workoutRoutineId: 'r2' })];
-      expect(resolveQueuedWorkoutStart([{ routineId: 'r2', name: 'Pull A', at: null }], ctx({ todayTasks: today })))
+      expect(resolveQueuedWorkoutStart([{ routineId: 'r2', name: 'Pull A', at: NOW }], ctx({ todayTasks: today })))
         .toEqual({ kind: 'start', input: { routineId: 'r2', taskId: 't1' } });
     });
 
     it('opens the Workouts screen for a routine nothing matches', () => {
-      expect(resolveQueuedWorkoutStart([{ routineId: 'gone', name: 'Arms', at: null }], ctx())).toEqual({ kind: 'openWorkouts' });
+      expect(resolveQueuedWorkoutStart([{ routineId: 'gone', name: 'Arms', at: NOW }], ctx())).toEqual({ kind: 'openWorkouts' });
     });
 
     it('leaves a workout already going to startWorkout to speak about', () => {
-      expect(resolveQueuedWorkoutStart([{ routineId: 'r1', name: 'Push A', at: null }], ctx({ live: { id: 'w1' } })))
+      expect(resolveQueuedWorkoutStart([{ routineId: 'r1', name: 'Push A', at: NOW }], ctx({ live: { id: 'w1', routineId: 'r2' } })))
         .toEqual({ kind: 'start', input: { routineId: 'r1', taskId: null } });
     });
+  });
+
+  it('just opens the routine asked for when it is the one already going', () => {
+    expect(resolveQueuedWorkoutStart([{ routineId: 'r1', name: 'Push A', at: NOW }], ctx({ live: { id: 'w1', routineId: 'r1' } })))
+      .toEqual({ kind: 'showLive' });
+  });
+
+  it('drops a start asked for too long ago, or with no time', () => {
+    const late = new Date(NOW.getTime() - QUEUED_START_MAX_AGE_MS - 1000);
+    const recent = new Date(NOW.getTime() - QUEUED_START_MAX_AGE_MS + 1000);
+    expect(resolveQueuedWorkoutStart([{ ...myWorkout, at: late }], ctx({ programs: [program()] }))).toEqual({ kind: 'none' });
+    expect(resolveQueuedWorkoutStart([{ ...myWorkout, at: null }], ctx({ programs: [program()] }))).toEqual({ kind: 'none' });
+    expect(resolveQueuedWorkoutStart([{ ...myWorkout, at: recent }], ctx({ programs: [program()] })))
+      .toEqual({ kind: 'start', input: { programId: 'p1' } });
   });
 
   describe('"my workout"', () => {
     it('opens the workout already going first', () => {
       const today = [task('t1', { workoutRoutineId: 'r2' })];
-      expect(resolveQueuedWorkoutStart([myWorkout], ctx({ live: { id: 'w1' }, todayTasks: today }))).toEqual({ kind: 'showLive' });
+      expect(resolveQueuedWorkoutStart([myWorkout], ctx({ live: { id: 'w1', routineId: null }, todayTasks: today }))).toEqual({ kind: 'showLive' });
     });
 
     it('then starts the first workout task on Today, in Today’s order, for that task', () => {
@@ -154,6 +171,13 @@ describe('resolveQueuedWorkoutStart', () => {
       const today = [task('t1', { workoutProgramId: 'p1' })];
       expect(resolveQueuedWorkoutStart([myWorkout], ctx({ todayTasks: today, programs: [program()] })))
         .toEqual({ kind: 'start', input: { programId: 'p1', taskId: 't1' } });
+    });
+
+    it('passes over a task whose program is archived or has nothing next', () => {
+      const today = [task('t0', { workoutProgramId: 'p0' }), task('t1', { workoutProgramId: 'p2' }), task('t2', { workoutRoutineId: 'r3' })];
+      const programs = [program({ id: 'p0', archived: true }), program({ id: 'p2', rotation: [] })];
+      expect(resolveQueuedWorkoutStart([myWorkout], ctx({ todayTasks: today, programs })))
+        .toEqual({ kind: 'start', input: { routineId: 'r3', taskId: 't2' } });
     });
 
     it('passes over a task whose routine or program is gone', () => {
@@ -181,8 +205,8 @@ describe('resolveQueuedWorkoutStart', () => {
 
   it('acts on the newest start only, however many were queued', () => {
     const queued: QueuedWorkoutStart[] = [
-      { routineId: 'r1', name: 'Push A', at: null },
-      { routineId: 'r3', name: 'Legs', at: null },
+      { routineId: 'r1', name: 'Push A', at: NOW },
+      { routineId: 'r3', name: 'Legs', at: NOW },
     ];
     expect(resolveQueuedWorkoutStart(queued, ctx())).toEqual({ kind: 'start', input: { routineId: 'r3', taskId: null } });
   });

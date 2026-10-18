@@ -172,8 +172,11 @@ private func sameInstant(_ date: Date, ms: Double) -> Bool {
 }
 
 // An activity that has ended can still be listed in `activities` for a moment,
-// and the system ignores updates to it, so it is never the one kept. A switch
-// rather than `==`, which would lean on ActivityState's conformances.
+// and the system ignores updates to it, so it is never the one kept. Only
+// `.ended`: this module's own ends use `.immediate`, which leaves `.dismissed`,
+// and so does a card the person swiped away, which must not be put straight
+// back. See docs/native-targets.md. A switch rather than `==`, which would
+// lean on ActivityState's conformances.
 @available(iOS 16.1, *)
 private func hasEnded(_ state: ActivityState) -> Bool {
   if case .ended = state { return true }
@@ -321,6 +324,11 @@ public class TodoWidgetBridgeModule: Module {
         guard let data = jsonString.data(using: .utf8) else { return }
         try? data.write(to: fileURL, options: .atomic)
         succeeded = true
+
+        // Its names are what a "\(entity)" phrase can hear, so Siri is asked
+        // to read them again, as the routine index does. The JS side writes
+        // only when the list changed.
+        refreshAppShortcutParameters()
       }
       return succeeded
     }
@@ -345,6 +353,11 @@ public class TodoWidgetBridgeModule: Module {
         guard let data = jsonString.data(using: .utf8) else { return }
         try? data.write(to: fileURL, options: .atomic)
         succeeded = true
+
+        // Its names are what a "\(entity)" phrase can hear, so Siri is asked
+        // to read them again, as the routine index does. The JS side writes
+        // only when the list changed.
+        refreshAppShortcutParameters()
       }
       return succeeded
     }

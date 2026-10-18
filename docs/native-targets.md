@@ -89,10 +89,20 @@ the two runs compare exactly, which is how to prove a refactor left a target unc
   JSON docs: `func update(_ content: ActivityContent<Activity<Attributes>.ContentState>) async`
   and `var content: ActivityContent<Activity<Attributes>.ContentState> { get }`, both iOS 16.2,
   async and non-throwing ("The system ignores attempts to update a Live Activity that ended").
-  Two things follow. An activity whose `activityState` is `.ended` can still be listed in
-  `activities` for a moment, so it is never the one kept. And an update replaces the stale date,
+  Two things follow. An activity whose `activityState` is `.ended` is never the one kept. That
+  guard does not cover the app's own ends: `end(_:dismissalPolicy: .immediate)` moves an activity
+  to `.dismissed`, not `.ended`, and `.dismissed` is deliberately still matched, because it is also
+  what a card the person swiped away reads as, and treating it as gone would put that card straight
+  back on the next sync. The cost is narrow: an activity ended moments ago and still listed can be
+  matched by a run that returns to exactly its attributes (the workout switch turned off and on
+  again quickly), which then shows nothing until the next change. And an update replaces the stale date,
   so a state sent after the stale moment has passed has to carry that fact itself (`restOver`), or
   the update turns the card back to the state before it.
+- **A bridge function added after the first release is exported as `undefined` when the binary
+  lacks it** (`hasNative` in `modules/todo-widget-bridge/index.ts`), not as a wrapper that throws.
+  That is what `WidgetBridge` typing it optional means, and what lets a caller's `bridge?.fn?.()`
+  skip it on a dev client built before it. A new function goes in that list and in the type as
+  optional together.
 - **A restarted kind keeps an activity only while every attribute still matches its run, never on
   its key alone.** `syncTimerLiveActivities` used to, so "+1 min", a restart or a rest's nudge,
   which keep the key, left the Lock Screen counting to the old end (`timerActivityMatches`). And

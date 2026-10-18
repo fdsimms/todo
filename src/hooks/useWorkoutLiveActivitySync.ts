@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import type { RestTimer } from '../types';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useStepTimerStore } from '../store/useStepTimerStore';
@@ -80,12 +80,21 @@ export function useWorkoutLiveActivitySync(): void {
       }
     });
 
+    // Again on every return to the front, the trip activity's reason: a
+    // request that landed while the app was going to the background (a
+    // workout started and the phone locked within the debounce) is refused,
+    // and nothing else would ask again until the next set.
+    const appState = AppState.addEventListener('change', state => {
+      if (state === 'active') sync();
+    });
+
     sync();
 
     return () => {
       unsubWorkouts();
       unsubTimers();
       unsubSettings();
+      appState.remove();
     };
   }, []);
 }

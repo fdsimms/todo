@@ -54,15 +54,14 @@ export function applyWorkoutLink(link: WorkoutLink): void {
 
 /**
  * A rest's own timer activity's Done (`stopTimer?key=rest:<id>`): skips the
- * rest, the way the footer's Skip rest does, and moves nothing else on. When
- * the rest belongs to the workout in progress, workout mode opens again after
- * the dismiss-all that every incoming link runs, which would otherwise have
- * closed it under the person mid-workout.
+ * rest, the way the footer's Skip rest does, and moves nothing else on. While
+ * a workout is in progress, workout mode opens again after the dismiss-all
+ * that every incoming link runs, which would otherwise have closed it under
+ * the person mid-workout. That holds even when the rest has already gone (
+ * skipped or replaced in the app before the card caught up): the tap still
+ * came from a workout's card.
  */
 export function skipRestFromLink(restId: string): void {
-  const timers = useStepTimerStore.getState();
-  const rest = timers.timers.find(t => t.id === restId);
-  timers.remove(restId);
-  const live = useWorkoutStore.getState().liveSession();
-  if (rest?.kind === 'rest' && live && rest.sessionId === live.id) useWorkoutModeStore.getState().show();
+  useStepTimerStore.getState().remove(restId);
+  if (useWorkoutStore.getState().liveSession()) useWorkoutModeStore.getState().show();
 }
