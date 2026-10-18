@@ -54,6 +54,10 @@ describe('netWeight', () => {
     expect(plate.ok || plate.reason).toBe(
       "That's less than the plate weighs (280 g). Check the reading or pick a different plate.",
     );
+    const any = netWeight(250, [280], 'cookware');
+    expect(any.ok || any.reason).toBe(
+      "That's less than the cookware weighs (280 g). Check the reading or pick other cookware.",
+    );
   });
 });
 
