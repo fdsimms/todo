@@ -267,7 +267,9 @@ export function BulkActionBar({
                 <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
               </TouchableOpacity>
               <Text style={styles.subTitle}>More actions</Text>
-              <View style={{ width: 28 }} />
+              <TouchableOpacity onPress={onCancel} hitSlop={8} style={{ width: 28, alignItems: 'flex-end' }} accessibilityRole="button" accessibilityLabel="Cancel selection">
+                <Ionicons name="close" size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
             </View>
             {onGroup && (
               <TouchableOpacity style={styles.moreRow} onPress={() => setPanel('group')}>
@@ -337,7 +339,9 @@ export function BulkActionBar({
                 <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
               </TouchableOpacity>
               <Text style={styles.subTitle}>Move to project</Text>
-              <View style={{ width: 28 }} />
+              <TouchableOpacity onPress={onCancel} hitSlop={8} style={{ width: 28, alignItems: 'flex-end' }} accessibilityRole="button" accessibilityLabel="Cancel selection">
+                <Ionicons name="close" size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
             </View>
             {moveToProject.projects.length === 0 ? (
               <Text style={styles.panelNote}>There are no other active projects to move these to.</Text>
@@ -371,7 +375,9 @@ export function BulkActionBar({
                 <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
               </TouchableOpacity>
               <Text style={styles.subTitle}>Set priority</Text>
-              <View style={{ width: 28 }} />
+              <TouchableOpacity onPress={onCancel} hitSlop={8} style={{ width: 28, alignItems: 'flex-end' }} accessibilityRole="button" accessibilityLabel="Cancel selection">
+                <Ionicons name="close" size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
             </View>
             <View style={styles.priorityRow}>
               {([0, 1, 2, 3, 4] as Priority[]).map(p => (
@@ -405,7 +411,9 @@ export function BulkActionBar({
                 <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
               </TouchableOpacity>
               <Text style={styles.subTitle}>Set difficulty</Text>
-              <View style={{ width: 28 }} />
+              <TouchableOpacity onPress={onCancel} hitSlop={8} style={{ width: 28, alignItems: 'flex-end' }} accessibilityRole="button" accessibilityLabel="Cancel selection">
+                <Ionicons name="close" size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
             </View>
             <View style={styles.priorityRow}>
               {[...DIFFICULTY_SEGMENTS, { value: null, label: 'Not set' }].map(d => (
