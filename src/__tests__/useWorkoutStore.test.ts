@@ -545,6 +545,18 @@ describe('history', () => {
     expect(state().exerciseHistory('lib:back-squat')).toHaveLength(1);
   });
 
+  it('reads every done set across sessions, leaving planned ones out', () => {
+    const a = ok(state().startSession({ at: new Date(2026, 9, 1, 18) }));
+    ok(state().logSet(a.id, { exerciseId: 'lib:back-squat', reps: 5, completedAt: new Date(2026, 9, 1, 18, 5).toISOString() }));
+    ok(state().finishSession(a.id));
+    const b = ok(state().startSession({ at: new Date(2026, 9, 3, 18) }));
+    ok(state().logSet(b.id, { exerciseId: 'lib:barbell-bench-press', reps: 8, completedAt: new Date(2026, 9, 3, 18, 5).toISOString() }));
+    ok(state().logSet(b.id, { exerciseId: 'lib:barbell-bench-press', reps: 8, completedAt: null }));
+    const all = state().allSets();
+    expect(all.map(x => x.exerciseId)).toEqual(['lib:back-squat', 'lib:barbell-bench-press']);
+    expect(all.every(x => x.completedAt !== null)).toBe(true);
+  });
+
   it('deletes a finished session and its sets', () => {
     const s = ok(state().startSession());
     ok(state().logSet(s.id, { exerciseId: 'lib:back-squat', reps: 5 }));

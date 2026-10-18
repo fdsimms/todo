@@ -54,8 +54,11 @@ import {
   symptomMoodContrasts,
   taskContrastTitles,
   taskMoodContrasts,
+  trainingDayMoodContrast,
   MIN_PAIRED_DAYS,
 } from '../utils/moodInsights';
+import { useWorkoutStore } from '../store/useWorkoutStore';
+import { trainingDays } from '../utils/workoutRecords';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
@@ -305,6 +308,18 @@ export function MoodScreen() {
       label: foodNames.get(row.label) ?? row.label,
     })) : []),
     [days, foodNames, kitchenEnabled],
+  );
+  // Mood on the days a workout was logged here, against the other days since
+  // the first one. Only this app's own finished sessions: a day with no Health
+  // workout is ambiguous, so Health's are never read (see
+  // `trainingDayMoodContrast`). Off with the Workouts switch.
+  const workoutsEnabled = useSettingsStore(s => s.workoutsEnabled);
+  const workoutSessions = useWorkoutStore(s => s.sessions);
+  const trainingRow = useMemo(
+    () => (workoutsEnabled
+      ? trainingDayMoodContrast(days, trainingDays(workoutSessions, settings.dayResetTime))
+      : null),
+    [days, workoutsEnabled, workoutSessions, settings.dayResetTime],
   );
   const summary = useMemo(() => moodSummary(days, todayKey), [days, todayKey]);
   const completion = useMemo(() => moodCompletionInsight(days), [days]);
@@ -765,6 +780,30 @@ export function MoodScreen() {
                 <Text style={styles.chartCaption}>
                   Your average mood on days you finished a repeating task, against days you
                   didn’t. This doesn’t show cause and effect.
+                </Text>
+              </View>
+            </>
+          )}
+
+          {trainingRow && (
+            <>
+              <Text style={styles.sectionTitle}>MOOD ON TRAINING DAYS</Text>
+              <View style={styles.card}>
+                <ContrastBars
+                  first
+                  label="Workout days"
+                  withLabel="Trained"
+                  withoutLabel="Rest day"
+                  withFraction={moodBarFraction(trainingRow.moodWith)}
+                  withoutFraction={moodBarFraction(trainingRow.moodWithout)}
+                  withText={trainingRow.moodWith.toFixed(1)}
+                  withoutText={trainingRow.moodWithout.toFixed(1)}
+                  accessibilityLabel={`Workout days, average mood ${trainingRow.moodWith.toFixed(1)} on the ${trainingRow.withDays} days you logged a workout, ${trainingRow.moodWithout.toFixed(1)} on the ${trainingRow.withoutDays} days since your first one that you didn’t`}
+                />
+                <Text style={styles.chartCaption}>
+                  Your average mood on days you finished a workout in this app, against the other
+                  {' '}days since your first one. Workouts from Apple Health aren’t counted. This
+                  {' '}doesn’t show cause and effect.
                 </Text>
               </View>
             </>

@@ -105,7 +105,9 @@ import { useRewardStore } from '../store/useRewardStore';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { catalogExercise } from '../utils/exerciseCatalog';
 import { linkFor } from '../constants/linkApps';
-import { buildMoodDays, contextTagMoodContrasts, describeNutrientInsight, lowMoodRun, foodMoodContrasts, foodPairedDays, symptomFoodContrasts, milestoneMoodContrast, moodCompletionInsight, nutrientInsight, symptomMoodContrasts, taskContrastTitles, taskMoodContrasts, MIN_PAIRED_DAYS } from '../utils/moodInsights';
+import { buildMoodDays, contextTagMoodContrasts, describeNutrientInsight, lowMoodRun, foodMoodContrasts, foodPairedDays, symptomFoodContrasts, milestoneMoodContrast, moodCompletionInsight, nutrientInsight, symptomMoodContrasts, taskContrastTitles, taskMoodContrasts, trainingDayMoodContrast, MIN_PAIRED_DAYS } from '../utils/moodInsights';
+import { analyzeExercise, recordSessions, trainingDays } from '../utils/workoutRecords';
+import { daysBetween } from '../utils/exerciseChart';
 import { contextTagVocabulary, symptomVocabulary } from '../utils/moodLog';
 import { MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogSourceId, moodNudgeNotes, wantsMoodNudge } from '../utils/moodTasks';
 import { followedWaterTaskDoneOn, WATER_SHORTFALL_NOTES, waterShortfallTitle } from '../utils/waterShortfallTasks';
@@ -2257,7 +2259,7 @@ describe('demo seed — people', () => {
     // Off by default, so without this the Workouts screen isn't even in the menu.
     expect(useSettingsStore.getState().workoutsEnabled).toBe(true);
     const { sessions, routines, programs, exercises, setCounts } = useWorkoutStore.getState();
-    expect(sessions.length).toBe(3);
+    expect(sessions.length).toBe(13);
     expect(sessions.every(s => s.endedAt !== null && s.routineId !== null)).toBe(true);
     expect(sessions.every(s => (setCounts[s.id] ?? 0) > 0)).toBe(true);
     const program = programs[0];
@@ -2272,6 +2274,38 @@ describe('demo seed — people', () => {
     const sets = sessions.flatMap(s => useWorkoutStore.getState().loadSets(s.id));
     expect(sets.some(s => s.exerciseId === custom?.id)).toBe(true);
     expect(sets.some(s => s.kind === 'warmup')).toBe(true);
+  });
+
+  it('seeds weeks of bench history that climb, with the latest session setting a record', () => {
+    const { sessions, exercises } = useWorkoutStore.getState();
+    const dayResetTime = useSettingsStore.getState().dayResetTime;
+    const bench = 'lib:barbell-bench-press';
+    const kind = catalogExercise(exercises, bench)!.kind;
+    const analysis = analyzeExercise(bench, kind, useWorkoutStore.getState().exerciseHistory(bench), recordSessions(sessions, dayResetTime));
+    // A line to draw: seven sessions over six weeks, rising.
+    expect(analysis.points.length).toBe(7);
+    const first = analysis.points[0];
+    const last = analysis.points[analysis.points.length - 1];
+    expect(last.e1rm!).toBeGreaterThan(first.e1rm!);
+    expect(daysBetween(first.dayKey, last.dayKey)).toBeGreaterThanOrEqual(35);
+    // The latest session is a personal best, announced against the ones before it.
+    const latest = analysis.events.filter(e => e.sessionId === last.sessionId).map(e => e.type);
+    expect(latest).toContain('e1rm');
+    expect(latest).toContain('weight');
+    // And the flat week in the middle (the same load twice running) sets no record, which is what a tie is.
+    const flat = analysis.points[3];
+    expect(flat.e1rm).toBe(analysis.points[2].e1rm);
+    expect(analysis.events.some(e => e.type === 'e1rm' && e.sessionId === flat.sessionId)).toBe(false);
+  });
+
+  it('seeds enough logged days around the training days for mood on training days to show', () => {
+    const { sessions } = useWorkoutStore.getState();
+    const dayResetTime = useSettingsStore.getState().dayResetTime;
+    const days = buildMoodDays(useMoodStore.getState().logs, useTaskStore.getState().tasks, dayResetTime);
+    const contrast = trainingDayMoodContrast(days, trainingDays(sessions, dayResetTime));
+    expect(contrast).not.toBeNull();
+    expect(contrast!.withDays).toBeGreaterThanOrEqual(3);
+    expect(contrast!.withoutDays).toBeGreaterThanOrEqual(3);
   });
 
   it('seeds a repeating task linked to a routine, due today, so its row offers the workout', () => {

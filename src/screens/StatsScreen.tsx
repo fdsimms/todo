@@ -104,6 +104,8 @@ import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { ProgressBar } from '../components/ProgressBar';
 import { AnimatedBarFill } from '../components/AnimatedBarFill';
+import { WorkoutMusclesCard, WorkoutRecordsCard, WorkoutWeeksCard } from '../components/WorkoutStatsCards';
+import { WORKOUT_STATS_WEEKS, useWorkoutStats } from '../hooks/useWorkoutStats';
 
 const BAR_HEIGHT = 96;
 // The window the focus summary rows describe. Matches HABIT_DAYS below rather
@@ -540,6 +542,12 @@ export function StatsScreen() {
   // who focuses but completes nothing outside a session has history here, and
   // an empty screen would be the bug those notes describe.
   const hasFocusData = focusHistory.length > 0;
+  // The Workouts section: off with the Workouts switch (the log is kept and
+  // comes back with it), and absent until a workout has been finished.
+  const workoutsEnabled = useSettingsStore(s => s.workoutsEnabled);
+  const workoutUnit = useSettingsStore(s => s.workoutUnit);
+  const workoutStats = useWorkoutStats(workoutsEnabled, todayKey);
+  const hasWorkoutData = workoutStats !== null;
   const focusStagger = hasTaskData ? 9 : 0;
   const cookingStagger = focusStagger + (hasFocusData ? 2 : 0);
   // The same argument the cooking gate above already makes, one area further
@@ -548,7 +556,8 @@ export function StatsScreen() {
   const hasProjectData = projectSummary.active > 0 || projectSummary.finished > 0;
   // Two blocks when there is eating to describe, so everything below it keeps
   // its place in the cascade rather than every index being rewritten.
-  const peopleStagger = cookingStagger + 2 + (hasEating ? 2 : 0);
+  const workoutStagger = cookingStagger + 2 + (hasEating ? 2 : 0);
+  const peopleStagger = workoutStagger + (hasWorkoutData ? 3 : 0);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -556,7 +565,7 @@ export function StatsScreen() {
       <ScreenSettingsSheet {...screenSettings.sheet} />
       <HubPills hub="history" active="Stats" />
 
-      {!hasTaskData && !hasCooking && !hasEating && !hasProjectData && !hasFocusData ? (
+      {!hasTaskData && !hasCooking && !hasEating && !hasProjectData && !hasFocusData && !hasWorkoutData ? (
         <EmptyState
           icon="bar-chart-outline"
           title="No data yet"
@@ -1213,6 +1222,36 @@ export function StatsScreen() {
                   </View>
                 </View>
               </View>
+            </View>
+            </StaggerIn>
+          )}
+
+          {/*
+            Workouts: counts of what was logged, never a verdict on how much
+            anybody trained. Bars per week, sets per muscle this week, and the
+            newest records (see utils/workoutRecords.ts for what a record is).
+          */}
+          {workoutStats && (
+            <StaggerIn index={workoutStagger}>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>WORKOUTS (LAST {WORKOUT_STATS_WEEKS} WEEKS)</Text>
+              <WorkoutWeeksCard weeks={workoutStats.weeks} />
+            </View>
+            </StaggerIn>
+          )}
+          {workoutStats && workoutStats.muscles.length > 0 && (
+            <StaggerIn index={workoutStagger + 1}>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>SETS PER MUSCLE THIS WEEK</Text>
+              <WorkoutMusclesCard muscles={workoutStats.muscles} />
+            </View>
+            </StaggerIn>
+          )}
+          {workoutStats && workoutStats.records.length > 0 && (
+            <StaggerIn index={workoutStagger + 2}>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>RECENT PERSONAL RECORDS</Text>
+              <WorkoutRecordsCard records={workoutStats.records} unit={workoutUnit} />
             </View>
             </StaggerIn>
           )}

@@ -708,6 +708,41 @@ export function milestoneMoodContrast(
   };
 }
 
+/**
+ * How your mood ran on the days you trained, against the days you didn't.
+ *
+ * **Training day means a workout this app logged, and nothing else.**
+ * `trainingDayKeys` is the logical day of each finished session
+ * (`trainingDays` in `workoutRecords.ts`); a run or a class another app wrote
+ * to Health is not read, because a day with no Health workout is ambiguous in
+ * the way every Health absence is (nothing recorded and a refused read look
+ * the same, `docs/arch/health-data.md`), so it could not honestly be called a
+ * rest day.
+ *
+ * **A rest day is a day you logged your mood on, on or after your first
+ * logged workout.** The second half is rule 3's cousin: before the first
+ * session the person was not using the workout log at all, and every one of
+ * those days would read as a rest day, which says something about when they
+ * started the feature and nothing about rest. Without a workout on both sides
+ * of that line, the read stays quiet.
+ *
+ * Same gates as every contrast here: `MIN_PAIRED_DAYS` of days that can answer
+ * at all (counted from the first workout), `MIN_CONTRAST_DAYS` on each side.
+ * A mean of each side and the days behind it, never a cause: a better mood on
+ * the days someone lifts says nothing about which came first, and people tend
+ * to train on days they already feel well. The caller's wording says so.
+ */
+export function trainingDayMoodContrast(
+  days: readonly MoodDay[],
+  trainingDayKeys: ReadonlySet<string>,
+): GroupContrast | null {
+  if (trainingDayKeys.size === 0) return null;
+  const firstTraining = [...trainingDayKeys].sort()[0];
+  const paired = pairedDays(days).filter(d => d.dayKey >= firstTraining);
+  if (paired.length < MIN_PAIRED_DAYS) return null;
+  return contrastsFor(paired, ['training'], day => trainingDayKeys.has(day.dayKey))[0] ?? null;
+}
+
 function contrastsFor(
   paired: readonly MoodDay[],
   labels: readonly string[],

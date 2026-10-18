@@ -1230,6 +1230,8 @@ export interface Replica {
   workoutSessions(fromDayKey: string, toDayKey: string): WorkoutSession[];
   /** One session's sets, in the order they were done. Withheld with the sessions. */
   workoutSets(sessionId: string): WorkoutSet[];
+  /** Every set ever logged against one exercise, oldest first: what its history and records are read from. Withheld with the sessions. */
+  workoutExerciseSets(exerciseId: string): WorkoutSet[];
   /** One session by id, live or finished, or null. */
   workoutSession(id: string): WorkoutSession | null;
   /**
@@ -4223,6 +4225,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         return day >= from && day <= to;
       }),
     workoutSets: (sessionId: string) => db.dbGetWorkoutSets(sessionId),
+    workoutExerciseSets: (exerciseId: string) => db.dbGetWorkoutSetsForExercise(exerciseId),
     workoutSession: (id: string) => db.dbGetAllWorkoutSessions().find(x => x.id === id) ?? null,
     saveRoutine(input) {
       const store = workoutStore();

@@ -20,6 +20,7 @@ import {
   dbDeleteWorkoutRoutine,
   dbDeleteWorkoutSession,
   dbDeleteWorkoutSet,
+  dbGetAllDoneWorkoutSets,
   dbGetAllExercises,
   dbGetAllWorkoutPrograms,
   dbGetAllWorkoutRoutines,
@@ -256,6 +257,12 @@ interface WorkoutStore {
   loadSets: (sessionId: string) => WorkoutSet[];
   /** Every set ever logged against one exercise, oldest first. Not cached: an exercise's page reads it once. */
   exerciseHistory: (exerciseId: string) => WorkoutSet[];
+  /**
+   * Every done set in every session, oldest first. Not cached here: the
+   * caller holds the array (keyed on `sessions`), which is what the records'
+   * own memoization is keyed on in turn.
+   */
+  allSets: () => WorkoutSet[];
   /**
    * Appends a set. An exercise already in the session keeps its place; a new
    * one goes after the rest. Refuses a session or exercise nobody knows.
@@ -878,6 +885,10 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
 
     exerciseHistory(exerciseId) {
       return dbGetWorkoutSetsForExercise(exerciseId);
+    },
+
+    allSets() {
+      return dbGetAllDoneWorkoutSets();
     },
 
     logSet(sessionId, input) {

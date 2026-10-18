@@ -1,6 +1,6 @@
 import type { Exercise, WorkoutProgram, WorkoutRoutine, WorkoutSession, WorkoutSet } from '../../../src/types';
 import type { Replica } from '../replica';
-import { DEFAULT_EXERCISE_LIMIT, listExercises, listWorkouts } from '../workoutTools';
+import { DEFAULT_EXERCISE_LIMIT, TREND_POINTS, exerciseHistory, listExercises, listWorkouts } from '../workoutTools';
 
 const custom: Exercise = {
   id: 'c1', name: 'Landmine row', kind: 'weight_reps', primaryMuscles: ['upper_back'], secondaryMuscles: [],
@@ -24,6 +24,14 @@ const program: WorkoutProgram = {
   trainingMaxes: [{ exerciseId: 'lib:back-squat', kg: 120 }], startedAt: null, archived: false, createdAt: '2026-10-01T10:00:00.000Z',
 };
 
+const allSets: WorkoutSet[] = [
+  set('o1', 'lib:barbell-bench-press', { sessionId: 's0', weightKg: 80, reps: 8, completedAt: '2026-09-01T18:10:00.000Z' }),
+  set('o0', 'lib:barbell-bench-press', { sessionId: 's0', kind: 'warmup', weightKg: 40, reps: 10, setIndex: 0, completedAt: '2026-09-01T18:05:00.000Z' }),
+  set('a', 'lib:barbell-bench-press', { weightKg: 82.5, reps: 8 }),
+  set('b', 'lib:barbell-bench-press', { setIndex: 1, weightKg: 82.5, reps: 7 }),
+  set('p', 'lib:barbell-bench-press', { setIndex: 2, weightKg: 82.5, reps: 8, completedAt: null }),
+];
+
 function fakeReplica(over: Partial<Replica> = {}): Replica {
   const sessions = [session('s1', '2026-10-07T18:00:00.000Z'), session('s0', '2026-09-01T18:00:00.000Z')];
   return {
@@ -34,6 +42,8 @@ function fakeReplica(over: Partial<Replica> = {}): Replica {
     workoutSets: (id: string) => (id === 's1'
       ? [set('a', 'lib:barbell-bench-press'), set('b', 'lib:barbell-bench-press', { setIndex: 1, reps: 7 }), set('c', 'c1', { position: 1, completedAt: null })]
       : []),
+    workoutSession: (id: string) => sessions.find(x => x.id === id) ?? null,
+    workoutExerciseSets: (id: string) => allSets.filter(x => x.exerciseId === id),
     todayKey: () => '2026-10-08',
     shiftDayKey: (key: string, days: number) => {
       const d = new Date(`${key}T12:00:00`);
@@ -104,5 +114,68 @@ describe('list_workouts', () => {
       name: 'Upper and lower', rotation: ['Upper A', 'A deleted routine'],
       trainingMaxes: [{ exerciseId: 'lib:back-squat', name: 'Barbell back squat', kg: 120 }],
     });
+  });
+});
+
+describe('exercise_history', () => {
+  const BENCH = 'lib:barbell-bench-press';
+
+  it('reports the records, the estimated 1RM trend and the last session', () => {
+    const result = exerciseHistory(fakeReplica(), { exerciseId: BENCH });
+    expect(result.exercise).toMatchObject({ id: BENCH, name: 'Barbell bench press', kind: 'weight_reps' });
+    expect(result).toMatchObject({ sessions: 2, firstDate: '2026-09-01', lastDate: '2026-10-07' });
+    expect(result.personalRecords.find(r => r.type === 'e1rm')).toEqual({
+      record: 'Estimated 1RM', type: 'e1rm', value: 104.5, unit: 'kg', date: '2026-10-07', estimated: true,
+    });
+    expect(result.personalRecords.find(r => r.type === 'weight')).toMatchObject({ value: 82.5, unit: 'kg', reps: 8, date: '2026-10-07' });
+    expect(result.estimatedOneRepMaxTrend).toEqual([
+      { date: '2026-09-01', estimatedKg: 101.3 }, { date: '2026-10-07', estimatedKg: 104.5 },
+    ]);
+    expect(result.trendNote).toMatch(/Estimated, not lifted/);
+  });
+
+  it('shows the last session\'s sets, planned ones marked not done, warm-ups kept', () => {
+    const { lastSession } = exerciseHistory(fakeReplica(), { exerciseId: BENCH });
+    expect(lastSession).toMatchObject({ id: 's1', title: 'Upper A', date: '2026-10-07' });
+    expect(lastSession!.sets.map(s => [s.weightKg, s.reps])).toEqual([[82.5, 8], [82.5, 7]]);
+  });
+
+  it('keeps warm-ups out of the records', () => {
+    const result = exerciseHistory(fakeReplica(), { exerciseId: BENCH });
+    expect(result.personalRecords.some(r => r.value === 40)).toBe(false);
+  });
+
+  it('names a record\'s unit by what the exercise measures', () => {
+    const replica = fakeReplica({
+      workoutExerciseSets: () => [
+        set('x', 'lib:pull-up', { weightKg: null, reps: 8 }),
+        set('y', 'lib:pull-up', { sessionId: 's0', weightKg: null, reps: 6, completedAt: '2026-09-01T18:10:00.000Z' }),
+      ],
+    });
+    const result = exerciseHistory(replica, { exerciseId: 'lib:pull-up' });
+    expect(result.estimatedOneRepMaxTrend).toBeUndefined();
+    expect(result.personalRecords.map(r => [r.type, r.unit, r.value])).toEqual([['best', 'reps', 8], ['volume', 'reps', 8]]);
+  });
+
+  it('says the history may be withheld when there are no sets', () => {
+    const result = exerciseHistory(fakeReplica({ workoutExerciseSets: () => [] }), { exerciseId: BENCH });
+    expect(result).toMatchObject({ sessions: 0, personalRecords: [] });
+    expect(result.note).toMatch(/Include health logs/);
+  });
+
+  it('refuses an exercise nobody knows, pointing at list_exercises', () => {
+    expect(() => exerciseHistory(fakeReplica(), { exerciseId: 'nope' })).toThrow(/list_exercises/);
+  });
+
+  it('caps the trend', () => {
+    const many: WorkoutSet[] = [];
+    const sessions: WorkoutSession[] = [];
+    for (let i = 0; i < TREND_POINTS + 5; i++) {
+      const day = `2026-0${1 + Math.floor(i / 28)}-${String(1 + (i % 28)).padStart(2, '0')}`;
+      sessions.push(session(`m${i}`, `${day}T18:00:00.000Z`));
+      many.push(set(`m${i}`, BENCH, { sessionId: `m${i}`, weightKg: 60 + i, reps: 5, completedAt: `${day}T18:10:00.000Z` }));
+    }
+    const replica = fakeReplica({ workoutSessions: () => sessions, workoutExerciseSets: () => many });
+    expect(exerciseHistory(replica, { exerciseId: BENCH }).estimatedOneRepMaxTrend).toHaveLength(TREND_POINTS);
   });
 });

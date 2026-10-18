@@ -111,7 +111,7 @@ import { addCookware, deleteCookware, listCookware, updateCookware } from './coo
 import { listCopyFlags, resolveCopyFlag } from './copyFlagTools';
 import { deleteMeterReading, listMeterReadings, logMeterReading } from './meterTools';
 import {
-  DEFAULT_EXERCISE_LIMIT, MAX_EXERCISE_LIMIT, deleteRoutine, deleteWorkout, listExercises, listWorkouts, logWorkout,
+  DEFAULT_EXERCISE_LIMIT, MAX_EXERCISE_LIMIT, deleteRoutine, deleteWorkout, exerciseHistory, listExercises, listWorkouts, logWorkout,
   saveRoutine, updateWorkout,
 } from './workoutTools';
 import { EXERCISE_EQUIPMENT, MUSCLE_GROUPS } from '../../src/utils/workoutData';
@@ -586,6 +586,13 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     'Workouts the person logged over a range of days, newest first, each with its exercises and sets (weights in kg, whatever unit the phone shows; done: false is a set laid out but not done), plus their routines (planned sets per exercise) and programs. Defaults to the last 7 days. Workout history is part of the health record: it is empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that they did not train. Routines and programs are plans and arrive either way. Report what was logged. Never estimate calories from sets, and never work anything out from body weight.',
     logRange,
     async input => json(await withFresh(() => listWorkouts(replica, input)))
+  );
+
+  server.tool(
+    'exercise_history',
+    'One exercise\'s history: its personal records, the trend of its estimated 1RM, and the sets of the last session that did it. Take the id from list_exercises. The estimated 1RM is a calculation (Epley, from each session\'s best set of 10 reps or fewer), not a lift the person did: always call it estimated, and never present it as a number they lifted. Records are the heaviest weight, the best set at each rep count, and the most volume in a session; a first session sets no records, and warm-ups never count. Weights are kg, whatever unit the phone shows; a bodyweight exercise\'s volume is its reps and is never multiplied by a body weight. Never work anything out relative to body weight. Workout history is part of the health record: it is empty unless the person has turned on Include health logs for the sync server, so an empty history is not evidence that they did not train.',
+    { exerciseId: z.string().min(1).describe('From list_exercises.') },
+    async input => json(await withFresh(() => exerciseHistory(replica, input)))
   );
 
   const routineSet = z.object({

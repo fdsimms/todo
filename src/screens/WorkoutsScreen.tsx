@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { Alert, FlatList, StyleSheet, Text, TouchableOpacity, View, type GestureResponderEvent } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { differenceInMinutes } from 'date-fns/differenceInMinutes';
 import type { WorkoutRoutine, WorkoutSession } from '../types';
@@ -18,6 +19,7 @@ import { useWorkoutModeStore } from '../store/useWorkoutModeStore';
 import { useStartWorkout } from '../hooks/useStartWorkout';
 import { InlineAction } from '../components/InlineAction';
 import { RoutineEditorSheet } from '../components/RoutineEditorSheet';
+import { ExerciseDetailSheet } from '../components/ExerciseDetailSheet';
 import { LazySheet } from '../components/LazySheet';
 import { ActionMenu } from '../components/ActionMenu';
 import type { CardAnchor } from '../components/CardSheet';
@@ -34,9 +36,8 @@ import {
 } from '../utils/workoutCsv';
 import { dayKeyOf } from '../utils/dateUtils';
 import { useColors } from '../theme/ThemeContext';
-import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
+import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { animateLayout } from '../utils/layoutAnimation';
 import { catalogExercise, describeExercise, searchExercises, type CatalogExercise } from '../utils/exerciseCatalog';
 import { describeRoutine } from '../utils/workoutRoutine';
 import { formatTimeOfDay } from '../utils/dateUtils';
@@ -51,7 +52,8 @@ import { formatTimeOfDay } from '../utils/dateUtils';
  * routine starts with one tap on its row's Start; tapping the row edits it.
  *
  * The library search matches a name, a muscle or the equipment ("dumbbell
- * chest"). Behind its own switch (`workoutsEnabled`, off by default) and in
+ * chest"). Tapping an exercise opens its page (`ExerciseDetailSheet`): the
+ * chart, the personal records and every session that did it. Behind its own switch (`workoutsEnabled`, off by default) and in
  * the Health hub beside the other logs of what a body did.
  */
 
@@ -111,17 +113,20 @@ export function WorkoutsScreen() {
     refreshing: pullSearch.pulling,
     listMounted: view === 'exercises',
   });
-  const [openId, setOpenId] = useState<string | null>(null);
+  // The exercise whose page is open, kept through the close so the sheet
+  // doesn't retitle itself while it slides away.
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailId, setDetailId] = useState<string | null>(null);
   const search = useFilterField();
   const results = useMemo(
     () => searchExercises(exercises, search.query).map(r => r.exercise),
     [exercises, search.query]
   );
 
-  const toggleOpen = useCallback((id: string) => {
+  const openExercise = useCallback((id: string) => {
     haptics.tap();
-    animateLayout();
-    setOpenId(prev => (prev === id ? null : id));
+    setDetailId(id);
+    setDetailOpen(true);
   }, []);
 
   const renderSession = useCallback(({ item }: { item: WorkoutSession }) => (
@@ -131,25 +136,22 @@ export function WorkoutsScreen() {
     </View>
   ), [styles, setCounts]);
 
-  const renderExercise = useCallback(({ item }: { item: CatalogExercise }) => {
-    const open = openId === item.id;
-    const about = item.notes || item.cue;
-    return (
-      <TouchableOpacity
-        style={styles.row}
-        activeOpacity={interaction.activeOpacity}
-        onPress={() => toggleOpen(item.id)}
-        accessibilityRole="button"
-        accessibilityState={{ expanded: open }}
-        accessibilityLabel={`${item.name}. ${describeExercise(item)}`}
-        accessibilityHint={about ? (open ? 'Hides how it is done' : 'Shows how it is done') : undefined}
-      >
+  const renderExercise = useCallback(({ item }: { item: CatalogExercise }) => (
+    <TouchableOpacity
+      style={[styles.row, styles.exerciseRow]}
+      activeOpacity={interaction.activeOpacity}
+      onPress={() => openExercise(item.id)}
+      accessibilityRole="button"
+      accessibilityLabel={`${item.name}. ${describeExercise(item)}`}
+      accessibilityHint="Opens its history and records"
+    >
+      <View style={styles.flex}>
         <Text style={styles.title}>{item.name}</Text>
         <Text style={styles.detail}>{describeExercise(item)}</Text>
-        {open && about ? <Text style={styles.cue}>{about}</Text> : null}
-      </TouchableOpacity>
-    );
-  }, [styles, openId, toggleOpen]);
+      </View>
+      <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
+    </TouchableOpacity>
+  ), [styles, colors, openExercise]);
 
   const listBottom = { paddingBottom: tabBarHeight + spacing.xl };
 
@@ -374,6 +376,9 @@ export function WorkoutsScreen() {
           summary={workoutExportSummary}
         />
       </LazySheet>
+      <LazySheet open={detailOpen}>
+        <ExerciseDetailSheet visible={detailOpen} exerciseId={detailId} onClose={() => setDetailOpen(false)} />
+      </LazySheet>
       <LazySheet open={editorOpen}>
         <RoutineEditorSheet
           visible={editorOpen}
@@ -392,6 +397,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   list: { paddingHorizontal: spacing.md, paddingTop: spacing.xs, gap: spacing.sm },
   flex: { flex: 1 },
   routineRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd },
+  exerciseRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd },
   liveCard: {
     gap: spacing.smd,
     marginHorizontal: spacing.md, marginBottom: spacing.sm,
@@ -412,5 +418,4 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   title: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
   detail: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs },
-  cue: { color: colors.text, fontSize: font.sm, marginTop: spacing.sm },
 });

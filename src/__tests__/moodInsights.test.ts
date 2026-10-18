@@ -33,6 +33,7 @@ import {
   moodSummary,
   pairedDays,
   symptomMoodContrasts,
+  trainingDayMoodContrast,
   type HealthInsight,
   type MoodDay,
   type NutrientInsight,
@@ -1179,5 +1180,73 @@ describe('how full a mood draws its bar', () => {
   it('stays inside its track for anything out of range', () => {
     expect(moodBarFraction(6)).toBe(1);
     expect(moodBarFraction(-1)).toBe(0);
+  });
+});
+
+describe('trainingDayMoodContrast', () => {
+  const dayKey = (i: number) => `2026-08-${String(i + 1).padStart(2, '0')}`;
+  const daysOf = (moods: (number | null)[]): MoodDay[] =>
+    moods.map((mood, i) => ({
+      dayKey: dayKey(i),
+      mood,
+      symptomKeys: [],
+      contextTagKeys: [],
+      completed: 0,
+      categories: [],
+      taskKeys: [],
+      steps: null,
+      sleepHours: null,
+      nutrients: null,
+      foodKeys: [],
+    }));
+
+  it('compares mood on training days with the logged days since the first one', () => {
+    const days = daysOf([5, 5, 4, 2, 4, 2, 4, 2, 4, 2, 4, 2]);
+    // Trained on indexes 2, 4, 6, 8, 10; the first two days predate the first workout.
+    const training = new Set([2, 4, 6, 8, 10].map(dayKey));
+    const contrast = trainingDayMoodContrast(days, training)!;
+    expect(contrast).toMatchObject({ label: 'training', withDays: 5, withoutDays: 5, moodWith: 4, moodWithout: 2, delta: 2 });
+  });
+
+  it('leaves the days before the first workout out of the rest days', () => {
+    const days = daysOf([1, 1, 1, 1, 4, 2, 4, 2, 4, 2, 4, 2, 4, 2, 4, 2]);
+    const training = new Set([4, 6, 8, 10, 12, 14].map(dayKey));
+    const contrast = trainingDayMoodContrast(days, training)!;
+    expect(contrast.withoutDays).toBe(6);
+    expect(contrast.moodWithout).toBe(2);
+  });
+
+  it('says nothing with no workouts logged', () => {
+    expect(trainingDayMoodContrast(daysOf([3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]), new Set())).toBeNull();
+  });
+
+  it('says nothing below the paired-day floor, counted from the first workout', () => {
+    const days = daysOf([3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]);
+    // Twelve days, but only the last nine come on or after the first workout.
+    const training = new Set([3, 5, 7].map(dayKey));
+    expect(trainingDayMoodContrast(days, training)).toBeNull();
+  });
+
+  it('says nothing when either side has too few days', () => {
+    const days = daysOf([3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]);
+    expect(trainingDayMoodContrast(days, new Set([0, 1].map(dayKey)))).toBeNull();
+    expect(trainingDayMoodContrast(days, new Set([0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map(dayKey)))).toBeNull();
+  });
+
+  it('does not count a day with no mood as either side', () => {
+    const days = daysOf([4, null, 4, null, 2, 4, 2, 4, 2, 4, 2, 4, 2]);
+    const training = new Set([0, 2, 5, 7, 9, 11].map(dayKey));
+    const contrast = trainingDayMoodContrast(days, training)!;
+    expect(contrast.withDays + contrast.withoutDays).toBe(11);
+  });
+
+  it('counts a training day with no mood nowhere', () => {
+    // A workout on a day nobody logged a mood says nothing about mood, and the
+    // day is not a rest day either.
+    const days = daysOf([4, 4, 4, 2, 2, 2, 4, 4, 4, 2, 2, 2]);
+    days[1].mood = null;
+    const training = new Set([0, 1, 2, 6, 7, 8].map(dayKey));
+    const contrast = trainingDayMoodContrast(days, training)!;
+    expect(contrast.withDays).toBe(5);
   });
 });

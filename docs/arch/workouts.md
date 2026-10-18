@@ -1,6 +1,6 @@
 # Workouts: a full strength-training tracker
 
-**Status: phases 1 and 2 built (the data foundation, and logging), the rest planned.** Phase 1 is the five tables, their sync and backup registration, the exercise library and catalog, `useWorkoutStore` and the settings. Phase 2 is the routine editor, workout mode with its rest timer, the task link (`Task.workoutRoutineId`), the Workouts switch in Settings › Feature areas, the unit and default rest under Settings › Apple Health › Workouts, and the MCP writes; "Phase 2, as built" below records what it decided. Analysis, programs and everything native are still the plan. This file records the plan and the decisions already made. The three main surfaces are mocked in `workouts-mocks/`: HTML at 390pt using the real theme tokens, in light and dark. They are a proxy for layout and hierarchy, not a render of the app.
+**Status: phases 1, 2 and 3 built (the data foundation, logging, and analysis), the rest planned.** Phase 1 is the five tables, their sync and backup registration, the exercise library and catalog, `useWorkoutStore` and the settings. Phase 2 is the routine editor, workout mode with its rest timer, the task link (`Task.workoutRoutineId`), the Workouts switch in Settings › Feature areas, the unit and default rest under Settings › Apple Health › Workouts, and the MCP writes; "Phase 2, as built" below records what it decided. Phase 3 is the records, the plate math, the exercise page, the Stats section and the mood contrast; "Phase 3, as built" records what it decided. Programs and everything native are still the plan. This file records the plan and the decisions already made. The three main surfaces are mocked in `workouts-mocks/`: HTML at 390pt using the real theme tokens, in light and dark. They are a proxy for layout and hierarchy, not a render of the app.
 
 This feature is a gym logger with the depth of a dedicated app. It includes an exercise library, routines and multi-week programs with progression, set-by-set logging, a rest timer, PRs and charts, Apple Health, Live Activity, Siri and Apple Watch logging. Cloning Strong or Hevy is not the goal. The goal is to be good enough at the gym that the integration (the schedule, the food log, mood, rewards, Claude over MCP) is reason enough to keep it all in one app.
 
@@ -63,15 +63,15 @@ New files in `src/utils/`, each with its test in `src/__tests__/`. The first thr
 - `src/utils/exerciseLibrary.ts` (built): about 200 built-in exercises (name, kind, muscles, equipment, a short text cue), with ids written out rather than derived, since an id is forever. No images or video in v1.
 - `src/utils/exerciseCatalog.ts` (built): merges the library with the custom rows, plus search (the substring scoring task search uses, without its scattered-letters fallback, which matched half the library) and muscle and equipment filters. An override row contributes only the name, notes, bar weight and archived flag; what the movement is stays the library's.
 - `src/utils/workoutData.ts` (built): the closed vocabularies, their labels, the resolve-or-shrug readers every row mapper uses, and the rest and plate settings' defaults and parsers.
-- `workoutProgression.ts`: given the history for an exercise and its rule, propose the next session's targets:
+- `workoutProgression.ts` (phase 4): given the history for an exercise and its rule, propose the next session's targets:
   - **double:** hit the top of the rep range on every working set, then add an increment;
   - **linear:** add an increment after a success, and after N failures propose a 10% deload;
   - **percent:** sets taken from a training max, and the training max is bumped at the end of a cycle;
   - **rpe:** adjust the load from the last top set's RPE.
 
   It returns a proposal plus its reason ("Last time 3x10 at 60 kg, so try 62.5"), and it rounds to loads you can make with your plates.
-- `plateMath.ts`: load, bar and plate inventory give the plates per side. It also builds warm-up ramps.
-- `workoutRecords.ts`: PR detection and estimated 1RM (Epley, only from sets of 10 reps or fewer, always labelled "estimated"). Best set, rep PRs at each rep count, and volume per session, exercise and muscle per week. Memoized per set array, the way `openTasksOf` is cached.
+- `src/utils/plateMath.ts` (built): load, bar and plate inventory give the plates per side. It also builds warm-up ramps.
+- `src/utils/workoutRecords.ts` (built): PR detection and estimated 1RM (Epley, only from sets of 10 reps or fewer, always labelled "estimated"). Best set, rep PRs at each rep count, and volume per session, exercise and muscle per week. Memoized per set array, the way `openTasksOf` is cached.
 - `src/utils/workoutSession.ts` (built): the live session's rules, shaped like `cookMode.ts` and `focusPlan.ts`: the walking order with supersets alternated round by round (`walkOrder`, `nextSet`), where a logged set leaves the screen and whether it rests (`afterLog`), a routine's planned sets (`plannedSetsFor`), last time's sets and their match to this time's (`previousSets`, `matchPrevious`), "Add set" and "Same as last set" (`copyLastSet`, `valuesFromLastDone`), what finishing drops (`finishPlan`) and the summary (`sessionSummary`).
 - `src/utils/workoutRoutine.ts` (built): the routine editor's edits (`withWorkingSets`, `withReps`, `withWarmups`, `withTargetWeight`, `withProgression`), supersets as runs of neighbours (`supersetRoles`, `joinPrevious`, `leaveSuperset`, `normalizeSupersets`) and the summary lines.
 - `src/utils/workoutTask.ts` (built): what finishing a workout does to the task it was started from (`workoutTaskEffect`).
@@ -95,7 +95,7 @@ New files in `src/utils/`, each with its test in `src/__tests__/`. The first thr
 
 **Screens:**
 - **Workouts**: history list, calendar dots on the month grid, and a "Start" for the next routine in the active program.
-- **Exercise detail**: estimated 1RM and best-set line chart (the `WeightChart` shape), volume bars, PR table and history.
+- **Exercise detail** (built as a sheet in phase 3, see below): estimated 1RM, best-set and volume line chart (the `WeightChart` shape), PR table and history.
 - **Routine editor**: an `EditorSheet`-based list of exercises with drag reorder, per-set targets and a progression picker.
 - **Program editor and library**: generic built-ins (5x5 linear, Push/Pull/Legs, Upper/Lower, a 4-week percentage wave). They avoid trademarked program names.
 
@@ -174,6 +174,30 @@ What phase 2 settled that the plan above left open. Files: `RoutineEditorSheet.t
 - **Settings.** The Workouts switch is in Feature areas beside kitchen and rewards. The unit and the default rest are a Workouts section under Apple Health, shown while the area is on.
 - **Not built in phase 2:** reordering exercises inside a live session (the store has `reorderExercises`; workout mode has no drag yet), a floating bar for a live session on every screen (the Workouts screen's card is the way back), and the plate line and suggestion card in the mock (phases 3 and 4).
 
+## Phase 3, as built
+
+What phase 3 settled that the plan above left open. Files: `src/utils/workoutRecords.ts`, `workoutRecordText.ts` (the words a record is shown as), `plateMath.ts` and `exerciseChart.ts` (where the chart's points and breaks fall) in `src/utils/`; `ExerciseDetailSheet.tsx`, `ExerciseProgressChart.tsx`, `PlateLine.tsx` and `WorkoutStatsCards.tsx` in `src/components/`; `useWorkoutStats.ts` in `src/hooks/`; `trainingDayMoodContrast` in `moodInsights.ts`; `exercise_history` in `mcp/src/workoutTools.ts`. `src/__bench__/workoutRecords.bench.ts` times it over a year of sets (about 30 ms cold in Node for every exercise, nothing warm). The exercise page, the Stats section and the mood row were mocked before they were built (the exercise page is `workouts-mocks/exercise-detail.png`).
+
+**The records, and what makes one:**
+- **Nothing is stored.** `analyzeExercise` walks one exercise's sets oldest to newest and returns its chart points, its standing bests and every record any session broke. `analyzeAll` does it for every exercise at once (Stats). Both are memoized per array of sets, the way `openTasksOf` is per task array, and the key is the array's identity: the store never mutates one.
+- **A set counts when it was done and isn't a warm-up** (`countsForRecords`). Drop sets and AMRAP sets are working sets. A planned set has no `completedAt` and counts for nothing.
+- **A session is judged as a whole against everything before it.** Three improving sets are one record at the best figure, not three events. A record is announced only where there is something earlier to beat, so a first session, or a rep count nobody had done, sets no record.
+- **The estimated 1RM is Epley from a set of 10 reps or fewer** (`E1RM_MAX_REPS`), rounded to 0.1 kg, and a single is the weight itself. Every label that shows it says "estimated"; the MCP field is `estimatedKg` with a note.
+- **"Best set at N reps" is the heaviest set of N or more reps.** A heavier set of ten retires the best of eight, since it dominates it. A rep count is listed, and announced, only while the set holding it has exactly N reps (up to `REP_RECORD_MAX`, 12), or one set would read as eight records.
+- **Other kinds have the same two readings in their own unit.** A bodyweight or assisted exercise ranks by reps and its volume is its reps, **never reps times a body weight**; an assisted set's weight is the help, so it is never multiplied either. A hold ranks by its longest set and sums seconds, a distance by its farthest and sums metres, a carry by its heaviest load and sums metres. Only weight and reps has an estimated 1RM (`metricsFor`).
+- **Muscles credit a primary muscle 1 set and a secondary 0.5** (`SECONDARY_MUSCLE_WEIGHT`), the common fractional-set convention, once per set (a muscle listed as both counts as primary). Weekly volume in kilograms is summed only for weight and reps, since volumes in other units don't add. Weeks start on the person's `weekStartsOn`, and a session's day is its logical day (`dayResetTime`), never a cut of `toISOString()`.
+- **Stats counts finished workouts only** (`useWorkoutStats`): a session in progress can still have its sets unchecked, so none of the bars, muscle sets or records read it.
+
+**The exercise page is a sheet, not a route.** It opens from the Exercises list and from the exercise's name in workout mode, and workout mode is a full-screen modal, where a pushed route would sit behind it. A sheet nests inside that modal the way the exercise picker does and closing it leaves the workout where it was. The chart's x axis is the calendar (a layoff is a gap, not a squeeze), the line breaks after `CHART_GAP_DAYS` (21) with no session, the y axis is never anchored at zero (`chartDomain`, for `WeightChart`'s reason), and only the latest record's dot is `colors.done`. "New" marks a record set in the last `NEW_RECORD_DAYS` (14) days. The Edit button in the mock is not built: there is no exercise editor yet.
+
+**Plates.** `plateLoad` searches in hundredths of the unit shown, so a 135 lb target on 45 lb plates is exact (kilograms would miss by a few thousandths); the count of a plate is both sides together, a single plate of a size can't go on both. It returns the fewest plates that make the closest loadable weight, the lighter on a tie, and `exact: false` when that isn't the target, which the line says in words ("Closest load: 82.5 kg"). The line shows for barbell exercises only (`equipment === 'barbell'`), on the open set, from the exercise's own `barKg` else the inventory's heaviest bar. An inventory still equal to the metric default, read in pounds, is shown as the pound default (`effectivePlateInventory`): a pound lifter told "20 kg bar" would be told something false. `warmupRamp` (40, 60, 80 percent, rounded to loadable weights) is built and tested but nothing shows it yet: warm-up sets are still a count in the routine editor, and writing a ramp into a session is a proposal the person hasn't been offered.
+
+**The finish summary** lists the records the workout set, per exercise, capped at three by notability (`summarizeRecords`: estimated 1RM, heaviest weight, best set, rep counts low to high, volume), each with what it beat ("was 80 kg").
+
+**Mood on training days** (`trainingDayMoodContrast`) counts only the app's own finished sessions: a day with no Health workout is ambiguous (nothing recorded and a refused read are one answer), so Health's are never read. A rest day is a day with a mood logged **on or after the first logged workout**: before it the person wasn't using the workout log, and every day would read as a rest day. Both mood-log gates apply (`MIN_PAIRED_DAYS` counted from the first workout, `MIN_CONTRAST_DAYS` each side), a day with no mood is neither side, and the caption says it doesn't show cause and effect.
+
+**Not built in phase 3:** warm-up ramp suggestions in the UI (above), an exercise editor, a session detail page behind a history row, and plates for equipment other than a barbell (EZ and trap bars are plate-loaded too, and are left out because the brief named barbells).
+
 ## Phase 7, as built
 
 Files: `src/utils/workoutCsv.ts` (pure), `importSessions` in `useWorkoutStore`, `WorkoutImportSheet.tsx`, and the Workouts screen's "…" menu. It reuses `pickBackupFile` (the document picker) and `CsvExportSheet` with `writeExportFile`/`shareCsvFile` (the mood and food log exports). No native dependency and no network call. Nothing was added to the MCP server: the file is on the person's phone, and the sessions an import adds are read through the existing workout tools.
@@ -198,7 +222,7 @@ Each phase ships its own demo seed, patch note, MCP slice and regenerated docs.
 | 0 | This doc, plus HTML mocks of workout mode, exercise detail and the routine editor in both themes | sonnet, low | the PR that added this file |
 | 1 | Data foundation: types, 5 tables, sync, backup, natural keys, store, exercise library, units and plate settings, Feature-areas switch, nav entry, demo seed. A bare Workouts screen | opus, high | #3851 |
 | 2 | Logging: routine editor, workout mode, rest timer (step-timer generalisation), finish → completes the linked task, `Task.workoutRoutineId` with template parity. Built | opus, xhigh | #3852 |
-| 3 | Analysis: PRs, estimated 1RM, plate math, exercise detail charts, Stats section, mood contrast | sonnet, high | #3853 |
+| 3 | Analysis: PRs, estimated 1RM, plate math, exercise detail charts, Stats section, mood contrast. Built | sonnet, high | #3853 |
 | 4 | Programs: multi-week programs, rotation, the four progression schemes, deload proposals, built-in program library | opus, high | #3854 |
 | 5 | Health: HKWorkout write with retraction, read workouts from other apps (native; expect build cycles) | opus, high | #3855 |
 | 6 | Live Activity kind and Siri intents (native) | sonnet, high | #3856 |
