@@ -33,6 +33,8 @@ const mockFocusAdvance = jest.fn();
 const mockFocusPause = jest.fn();
 const mockFocusResume = jest.fn();
 const mockApplyScan = jest.fn();
+const mockApplyWorkoutLink = jest.fn();
+const mockSkipRestFromLink = jest.fn();
 const mockAlert = jest.fn();
 const mockWarning = jest.fn();
 
@@ -59,6 +61,12 @@ jest.mock('../store/useMealPlanStore', () => ({
 }));
 jest.mock('../store/useStepTimerStore', () => ({
   useStepTimerStore: { getState: () => ({ remove: mockRemoveStepTimer }) },
+}));
+// What a workout link does is workoutLinkActions.test.ts's; here, only that
+// the right link reaches it.
+jest.mock('../utils/workoutLinkActions', () => ({
+  applyWorkoutLink: (...args: unknown[]) => mockApplyWorkoutLink(...args),
+  skipRestFromLink: (...args: unknown[]) => mockSkipRestFromLink(...args),
 }));
 jest.mock('../store/useFocusStore', () => ({
   useFocusStore: {
@@ -134,6 +142,8 @@ import {
   isAddEventUrl,
   isFocusUrl,
   focusUrlAction,
+  isWorkoutUrl,
+  workoutUrlLink,
   openInAppUrl,
   mealPlanUrlPickSlot,
   mealPlanUrlShopEntryId,
@@ -747,9 +757,12 @@ describe('openInAppUrl', () => {
     expect(mockResetToRecipeDetail).not.toHaveBeenCalled();
   });
 
+  // Skipping it, and opening workout mode again when it was the live
+  // workout's (the dismiss-all every link runs had closed it), is
+  // skipRestFromLink's; see workoutLinkActions.test.ts.
   it('skips a workout rest for a rest: key, and moves nothing else on', () => {
     expect(openInAppUrl('dundundun://stopTimer?key=rest:r1')).toBe(true);
-    expect(mockRemoveStepTimer).toHaveBeenCalledWith('r1');
+    expect(mockSkipRestFromLink).toHaveBeenCalledWith('r1');
     expect(mockStopCookTimer).not.toHaveBeenCalled();
     expect(mockResetToRecipeDetail).not.toHaveBeenCalled();
   });
@@ -1147,5 +1160,50 @@ describe('the key tag link', () => {
     expect(openInAppUrl(`dundundun://key?token=${token}`)).toBe(true);
     expect(mockApplyScan).not.toHaveBeenCalled();
     expect(mockAlert).not.toHaveBeenCalled();
+  });
+});
+
+describe('workout links', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockDemoActive = false;
+  });
+
+  describe('isWorkoutUrl / workoutUrlLink', () => {
+    it('recognizes the bare link and its trailing-slash and triple-slash forms', () => {
+      expect(isWorkoutUrl('dundundun://workout')).toBe(true);
+      expect(isWorkoutUrl('dundundun:///workout/')).toBe(true);
+      expect(isWorkoutUrl('dundundun://workouts')).toBe(false);
+      expect(isWorkoutUrl('dundundun://focus')).toBe(false);
+    });
+
+    it('reads the verb and what it names', () => {
+      expect(workoutUrlLink('dundundun://workout?do=set-done&session=w1&set=s1')).toEqual({
+        verb: 'set-done', sessionId: 'w1', setId: 's1', restId: null,
+      });
+      expect(workoutUrlLink('dundundun://workout?do=rest-add&session=w1&rest=r1')).toEqual({
+        verb: 'rest-add', sessionId: 'w1', setId: null, restId: 'r1',
+      });
+      expect(workoutUrlLink('dundundun://workout?do=skip-rest&session=a%20b&rest=r%261')).toEqual({
+        verb: 'skip-rest', sessionId: 'a b', setId: null, restId: 'r&1',
+      });
+    });
+
+    it('reads an unknown verb, or none, as "just open"', () => {
+      expect(workoutUrlLink('dundundun://workout?do=finish&session=w1')?.verb).toBeNull();
+      expect(workoutUrlLink('dundundun://workout')).toEqual({ verb: null, sessionId: null, setId: null, restId: null });
+    });
+
+    it('is null for anything that is not a workout link', () => {
+      expect(workoutUrlLink('dundundun://focus?do=next')).toBeNull();
+    });
+  });
+
+  it('hands the parsed link to the workout, whatever it asks', () => {
+    expect(openInAppUrl('dundundun://workout?do=set-done&session=w1&set=s1')).toBe(true);
+    expect(mockApplyWorkoutLink).toHaveBeenCalledWith({ verb: 'set-done', sessionId: 'w1', setId: 's1', restId: null });
+    expect(openInAppUrl('dundundun://workout')).toBe(true);
+    expect(mockApplyWorkoutLink).toHaveBeenLastCalledWith({ verb: null, sessionId: null, setId: null, restId: null });
+    expect(mockResetToToday).not.toHaveBeenCalled();
   });
 });

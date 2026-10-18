@@ -37,6 +37,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useDemoStore } from '../store/useDemoStore';
 import { useStepTimerStore } from '../store/useStepTimerStore';
 import { useTaskStore } from '../store/useTaskStore';
+import { useWorkoutModeStore } from '../store/useWorkoutModeStore';
 import { useRestTimer } from '../hooks/useRestTimer';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useColors } from '../theme/ThemeContext';
@@ -64,9 +65,10 @@ import {
   stepTimerRemaining,
 } from '../utils/stepTimers';
 import {
-  afterLog, currentSetOf, finishPlan, formatDistance, formatSetLine, matchPrevious, nextSet, restSecondsFor,
+  currentSetOf, finishPlan, formatDistance, formatSetLine, matchPrevious, nextSet,
   sessionExercises, sessionSummary, setFieldsFor, setLabels, valuesFromLastDone, type SetField,
 } from '../utils/workoutSession';
+import { tickSet } from '../utils/workoutTick';
 import type { WeightUnit } from '../utils/weightLog';
 import { workoutSpanWritable } from '../utils/healthWorkoutSync';
 import { BUTTON_LABEL } from '../copy/shared';
@@ -89,8 +91,8 @@ interface Props {
  *
  * - **A tick is the only thing that moves the session.** Checking a set logs
  *   it, may turn the card to a superset partner, and starts the rest
- *   (`afterLog`). The rest running out chimes and counts up; it never moves
- *   anything on.
+ *   (`tickSet`, which the Lock Screen's "Done set" calls too). The rest running
+ *   out chimes and counts up; it never moves anything on.
  * - **Rows are the sets.** Planned sets are rows with no `completedAt`; the
  *   expanded row (the first open one, unless another is tapped) takes the
  *   steppers, and every change is written as it is made, so closing the sheet
@@ -114,7 +116,6 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const exerciseRows = useWorkoutStore(s => s.exercises);
   const sessionsList = useWorkoutStore(s => s.sessions);
   const unit = useSettingsStore(s => s.workoutUnit);
-  const defaultRest = useSettingsStore(s => s.defaultRestSeconds);
   const plateInventory = useSettingsStore(s => s.plateInventory);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   // Whether Save also writes the workout to Health (`workoutHealthWriteOn`,
@@ -163,6 +164,17 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     // On open only: a tick re-derives the view through its own handler.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, session?.id]);
+
+  // A tick made outside the sheet (the Lock Screen's "Done set") turns the card
+  // the way a tick here does. After the open effect above, so on a cold open it
+  // is the one that decides.
+  const viewRequest = useWorkoutModeStore(s => s.viewRequest);
+  useEffect(() => {
+    if (!viewRequest) return;
+    setViewedId(viewRequest.exerciseId);
+    setOpenSetId(null);
+    setNotesOpen(false);
+  }, [viewRequest]);
 
   const viewIndex = Math.max(0, exercises.findIndex(e => e.exerciseId === viewedId));
   const viewed = exercises[viewIndex] ?? null;
@@ -248,13 +260,6 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     useWorkoutStore.getState().editSet(session.id, setId, patch);
   }, [session]);
 
-  const restLabel = (set: WorkoutSet, exerciseName: string) => {
-    const label = labels.get(set.id);
-    if (set.kind === 'warmup') return `After a warm-up set of ${exerciseName}`;
-    if (set.kind === 'drop') return `After a drop set of ${exerciseName}`;
-    return `After set ${label} of ${exerciseName}`;
-  };
-
   const toggleSet = (set: WorkoutSet) => {
     if (!session) return;
     if (set.completedAt !== null) {
@@ -263,26 +268,10 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
       return;
     }
     haptics.impactMedium();
-    const done = useWorkoutStore.getState().editSet(session.id, set.id, { completedAt: new Date().toISOString() });
-    if (typeof done === 'string') return;
-    const next = afterLog(useWorkoutStore.getState().setsBySession[session.id] ?? [], set.id);
+    // The write, the rest it starts and where the card goes are `tickSet`'s,
+    // shared with the Lock Screen's "Done set".
+    const next = tickSet(session.id, set.id);
     if (!next) return;
-    if (next.rest) {
-      const seconds = restSecondsFor(routine, set.exerciseId, defaultRest);
-      if (seconds > 0) {
-        useStepTimerStore.getState().startRest({
-          sessionId: session.id,
-          exerciseId: set.exerciseId,
-          sessionTitle: session.title,
-          label: restLabel(set, catalogExercise(exerciseRows, set.exerciseId)?.name ?? 'this exercise'),
-          durationSeconds: seconds,
-        });
-      } else {
-        // No rest after this exercise: the last one's would otherwise keep
-        // running in the footer, about a set that is no longer the latest.
-        useStepTimerStore.getState().removeRestsOutside(null);
-      }
-    }
     if (next.showExerciseId !== viewedId) animateLayout();
     setViewedId(next.showExerciseId);
     setOpenSetId(null);
