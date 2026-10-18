@@ -527,6 +527,18 @@ export const TASK_SETTINGS_SPECS: Partial<Record<GeneratedKind, TaskSettingsSpec
       { key: 'phone', label: 'Phone', summary: 'Their phone number', hint: 'Taken from the person’s page, so the task can call or text them.' },
     ],
   },
+  wanikani: {
+    example: 'WaniKani: 42 reviews',
+    noun: 'WaniKani task',
+    locks: ['time'],
+    owned: () => [
+      { key: 'title', label: 'Title', summary: 'WaniKani: (number) reviews, or lessons', hint: 'Kept up to date with your queue. The number goes once there are none left.' },
+      { key: 'date', label: 'Date', summary: 'The day the reviews arrive', hint: 'Today, or the day WaniKani expects enough reviews.' },
+      { key: 'time', label: 'Time window', summary: 'Starts at the hour they arrive', hint: 'Until then the task waits on Later, and the hour moves if you do reviews on WaniKani first.' },
+      { key: 'reminder', label: 'Reminder', summary: 'The hour they arrive', hint: 'Only with Notify when reviews arrive turned on.' },
+      { key: 'link', label: 'Link', summary: 'Opens WaniKani', hint: 'Its review or lesson page. Change it to open another app and it stays.' },
+    ],
+  },
 };
 
 export function hasTaskSettingsSheet(kind: GeneratedKind): boolean {

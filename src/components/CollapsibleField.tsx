@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, interaction, type Colors } from '../theme';
 import { disclosureValue } from '../theme/textStyles';
@@ -12,12 +13,21 @@ interface Props {
   /** Uppercase section label, e.g. "Category". */
   label: string;
   /**
+   * Draws the header as an `EditorRow` does (an icon, the label in sentence
+   * case, the value in accent) instead of the uppercase label, so a form can
+   * mix the two without two looks for one kind of row. With it, the hint sits
+   * under the label whenever nothing is shown on the right, as EditorRow's
+   * does, and `emptySummary` shows only when the caller passes one: a bare
+   * "None" beside an icon row says nothing a missing value doesn't.
+   */
+  icon?: string;
+  /**
    * The current value, rendered on the header row while collapsed so the
    * field reads as a summary until you actually want to change it.
    * Omit for "nothing chosen yet".
    */
   summary?: string;
-  /** Shown in place of the summary when the field has no value. */
+  /** Shown in place of the summary when the field has no value. Defaults to "None" without `icon`. */
   emptySummary?: string;
   /** One-liner explaining what the field does — shown only while expanded. */
   hint?: string;
@@ -49,7 +59,7 @@ interface Props {
  * when someone has expressed interest by opening it.
  */
 export function CollapsibleField({
-  label, summary, emptySummary = 'None', hint, expanded, onToggle, right, locked, lockedHint, children,
+  label, icon, summary, emptySummary, hint, expanded, onToggle, right, locked, lockedHint, children,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -61,6 +71,62 @@ export function CollapsibleField({
     onToggle();
   };
 
+  if (icon) {
+    const shown = expanded ? undefined : (summary || emptySummary);
+    const showHint = !!hint && !hideHelpText && (expanded || !shown);
+    const iconColor = summary ? colors.accent : colors.textSecondary;
+    if (locked) {
+      return (
+        <View
+          style={[styles.iconSection, styles.iconHeader]}
+          accessibilityLabel={`${label}: ${summary || emptySummary || 'None'}. ${lockedHint ?? ''}`}
+        >
+          <Ionicons name={icon as never} size={18} color={colors.textSecondary} />
+          <View style={styles.iconContentShrink}>
+            <Text style={styles.iconLabel}>{label}</Text>
+            {!!lockedHint && <Text style={styles.iconHint}>{lockedHint}</Text>}
+          </View>
+          <Text style={[styles.summary, styles.summaryLocked, !summary && styles.summaryEmpty]} numberOfLines={1}>
+            {summary || emptySummary}
+          </Text>
+        </View>
+      );
+    }
+    // The content gives way only while it holds a hint, which has to wrap to
+    // the row's width. Beside a value the label keeps its natural width and the
+    // value truncates instead, the same split EditorRow makes.
+    return (
+      <View style={styles.iconSection}>
+        <TouchableOpacity
+          style={[styles.iconHeader, expanded && styles.headerExpanded]}
+          onPress={handleToggle}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="button"
+          accessibilityState={{ expanded }}
+          accessibilityLabel={`${label}${summary ? `: ${summary}` : ''}`}
+        >
+          <Ionicons name={icon as never} size={18} color={iconColor} />
+          <View style={showHint ? styles.iconContentShrink : styles.iconContent}>
+            <Text style={styles.iconLabel}>{label}</Text>
+            {showHint && <Text style={styles.iconHint}>{hint}</Text>}
+          </View>
+          <View style={styles.iconValueRow}>
+            {right}
+            {!!shown && (
+              <Text style={[styles.summary, !summary && styles.summaryEmpty]} numberOfLines={1}>
+                {shown}
+              </Text>
+            )}
+            <RotatingChevron open={expanded} size={14} color={colors.textSecondary} />
+          </View>
+        </TouchableOpacity>
+        {expanded && children}
+      </View>
+    );
+  }
+
+  const emptyText = emptySummary ?? 'None';
+
   if (locked) {
     // The value centers against the label and its hint together, so it sits
     // mid-height of the block rather than on the label's line.
@@ -68,14 +134,14 @@ export function CollapsibleField({
       <View style={styles.section}>
         <View
           style={styles.lockedRow}
-          accessibilityLabel={`${label}: ${summary || emptySummary}. ${lockedHint ?? ''}`}
+          accessibilityLabel={`${label}: ${summary || emptyText}. ${lockedHint ?? ''}`}
         >
           <View style={styles.lockedText}>
             <Text style={styles.label}>{label}</Text>
             {!!lockedHint && <Text style={[styles.hint, styles.lockedHint]}>{lockedHint}</Text>}
           </View>
           <Text style={[styles.summary, styles.summaryLocked, !summary && styles.summaryEmpty]} numberOfLines={1}>
-            {summary || emptySummary}
+            {summary || emptyText}
           </Text>
         </View>
       </View>
@@ -97,7 +163,7 @@ export function CollapsibleField({
         {right}
         {!expanded && (
           <Text style={[styles.summary, !summary && styles.summaryEmpty]} numberOfLines={1}>
-            {summary || emptySummary}
+            {summary || emptyText}
           </Text>
         )}
         <RotatingChevron open={expanded} size={14} color={colors.textSecondary} />
@@ -148,4 +214,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
    * last thing in its section, so it takes the bare style.
    */
   hintSpaced: { marginBottom: spacing.sm },
+  // The `icon` header, measured off EditorRow's row so the two line up: the
+  // same 13pt of vertical padding, 16pt gaps, 18pt icon, and so the same 50pt
+  // separator inset EditorGroup draws between them.
+  iconSection: { paddingHorizontal: spacing.md, paddingVertical: 13 },
+  iconHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  iconContent: { flexGrow: 1, flexShrink: 0 },
+  iconContentShrink: { flexGrow: 1, flexShrink: 1 },
+  iconLabel: { color: colors.text, fontSize: font.md },
+  iconHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: 1 },
+  iconValueRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flexShrink: 1 },
 });

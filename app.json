@@ -133,6 +133,7 @@
       "./plugins/withActivityMonitor",
       "./plugins/withShieldExtensions",
       "./plugins/withWatchApp",
+      "./plugins/withAppRefresh",
       [
         "expo-quick-actions",
         {

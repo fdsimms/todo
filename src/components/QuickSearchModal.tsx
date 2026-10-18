@@ -667,7 +667,7 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
               // Capped above the keyboard so the results scroll inside the card
               // and the footer stays on screen, with a band of backdrop left
               // under it to tap.
-              maxHeight: quickSearchMaxHeight(screenHeight, insets.top + spacing.md, keyboardHeight, insets.bottom, spacing.lg),
+              maxHeight: quickSearchMaxHeight(screenHeight, insets.top + spacing.md, keyboardHeight, insets.bottom, spacing.xl),
               opacity: cardOpacity,
               transform: [{ scale: scaleAnim }, { translateY: Animated.add(translateYAnim, dragY) }],
             },

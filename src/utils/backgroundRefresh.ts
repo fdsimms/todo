@@ -65,6 +65,27 @@
  * docs/arch/mcp-server.md) reached the phone only when the app was next opened,
  * which is the one thing this file exists to stop being true of anything.
  *
+ * ## The WaniKani read is the second, and it runs just before the sync
+ *
+ * `runBackgroundWaniKani` reads the person's WaniKani queue and runs its task
+ * check, so a reviews task can be written while the app is closed. It holds to
+ * the rule above: the read writes only memory until it lands, and the check
+ * after it is synchronous and idempotent, so a run expired mid-request leaves
+ * nothing half-done. Before the sync, so a task it writes is pushed in the
+ * same run. Its token is saved readable while the phone is locked
+ * (`saveSecureKey`'s `readableWhileLocked`), or this would read "no token" on
+ * the charger, which is when most of these runs happen.
+ *
+ * ## Two ways iOS starts this
+ *
+ * The task above is expo-background-task's processing run, which iOS mostly
+ * gives overnight on the charger. `modules/todo-app-refresh` adds short app
+ * refreshes (about thirty seconds, a few times a day, at times iOS picks) that
+ * run this same task through the same task service. `useAppRefresh` asks for
+ * them only while something in the day is worth reading, which today is only
+ * WaniKani. Nothing here can tell the two apart, and nothing needs to: every
+ * step was already safe to run twice.
+ *
  * ## A watch tap is the other way in
  *
  * A tap on the Apple Watch, sent while the phone is in reach, wakes this app in
@@ -111,6 +132,7 @@ import { catchUpPasses, rebuildNotificationQueue } from './maintenancePasses';
 import { drainWatchQueues, writeWidgetSnapshotNow } from './widgetSync';
 import { widgetBridge } from './widgetBridge';
 import { reconcileAppShield } from './appShieldReconcile';
+import { useWaniKaniStore } from '../store/useWaniKaniStore';
 
 /**
  * Namespaced to this app rather than reusing expo's own permitted identifier
@@ -216,6 +238,24 @@ export async function runBackgroundSync(): Promise<SyncSummary | null> {
   return useSyncStore.getState().syncNow();
 }
 
+/**
+ * Reads the WaniKani queue and runs its task check, while the app is closed.
+ * See "The WaniKani read is the second" above. The store's own guards decide
+ * whether anything is read (the switch, a token, a read fresh enough already),
+ * so this only skips the check when no new read landed.
+ */
+export async function runBackgroundWaniKani(): Promise<void> {
+  if (isDemoModeActive()) return;
+  if (!useSettingsStore.getState().wanikaniTasks) return;
+  const before = useWaniKaniStore.getState().snapshot;
+  await useWaniKaniStore.getState().refresh();
+  if (useWaniKaniStore.getState().snapshot === before) return;
+  useTaskStore.getState().checkWaniKaniTasks();
+  // The snapshot was written before this read landed, so a task it wrote or
+  // recounted reaches the widget now rather than at the next run.
+  writeWidgetSnapshotNow();
+}
+
 // Registered at module scope, which is what makes a *cold* background launch
 // work at all: iOS starts the app with no UI, the bundle evaluates, and this is
 // what has to already exist by the time the native task looks for its handler.
@@ -266,7 +306,11 @@ TaskManager.defineTask(BACKGROUND_REFRESH_TASK, async () => {
     // Only once the database is actually open and the passes have run. A sync
     // off a failed init would push nothing and pull into nowhere, and `ran:
     // false` is demo mode, where a sync must never happen at all.
-    if (outcome.ran) await runBackgroundSync();
+    if (outcome.ran) {
+      // Isolated, so a failed read can't cost the sync after it.
+      await runBackgroundWaniKani().catch(error => console.error('Background WaniKani read failed', error));
+      await runBackgroundSync();
+    }
     return BackgroundTask.BackgroundTaskResult.Success;
   } catch (error) {
     console.error('Background refresh failed', error);
@@ -336,4 +380,37 @@ export function useBackgroundRefresh(enabled: boolean): void {
     })();
     return () => { cancelled = true; };
   }, [enabled]);
+}
+
+/**
+ * How soon, in minutes, iOS may wake the app for the next short refresh. It
+ * decides when, from how often the app is used, so this is a floor rather than
+ * a schedule. WaniKani's reviews arrive on the hour, so half an hour.
+ */
+export const APP_REFRESH_INTERVAL_MINUTES = 30;
+
+// Resolved lazily, deviceMetrics.ts's way, so importing this module loads
+// nothing native and a test never reaches the bridge.
+function appRefreshBridge(): typeof import('todo-app-refresh') {
+  return require('todo-app-refresh');
+}
+
+/**
+ * Asks iOS for short app refreshes while `wanted`, and stops asking when not
+ * (see "Two ways iOS starts this" above). Each refresh runs the background
+ * task, so wanting refreshes without that task registered would wake the app
+ * for nothing: callers pass `backgroundRefreshEnabled` in with whatever needs
+ * the daytime reads. The native side keeps the interval and re-asks after
+ * each run and each time the app leaves the screen.
+ */
+export function useAppRefresh(wanted: boolean): void {
+  useEffect(() => {
+    if (Platform.OS !== 'ios') return;
+    try {
+      appRefreshBridge().setAppRefreshInterval(wanted ? APP_REFRESH_INTERVAL_MINUTES : 0);
+    } catch (error) {
+      // A build without the native module: the overnight run still happens.
+      console.error('App refresh registration failed', error);
+    }
+  }, [wanted]);
 }

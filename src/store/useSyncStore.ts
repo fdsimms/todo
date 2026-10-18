@@ -17,7 +17,13 @@ import { dbGetSetting, dbGetSyncCursor, dbSetSetting, dbSetSyncCursor } from '..
 import { HEALTH_SYNC_SETTING_KEYS, HEALTH_SYNC_TABLES, JOURNAL_SYNC_TABLES } from '../db/syncTracking';
 import { cloudKitTransport, cloudKitUnavailableReason, isCloudKitSyncAvailable } from '../utils/cloudKitTransport';
 import { HTTP_SYNC_SOURCE, httpSyncTransport, isHttpSyncConfigured } from '../utils/httpSyncTransport';
-import { loadSecureKey, saveSecureKey, SYNC_TOKEN_SECURE_KEY } from '../utils/secureApiKey';
+import {
+  loadSecureKey,
+  makeSecureKeyReadableWhileLocked,
+  saveSecureKey,
+  SYNC_TOKEN_READABLE_LOCKED_SETTING,
+  SYNC_TOKEN_SECURE_KEY,
+} from '../utils/secureApiKey';
 import { databaseSyncLocal } from '../utils/syncLocal';
 import {
   pushCursorKey,
@@ -234,7 +240,18 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     // The keychain read is async and initialize is not, so the flag lands a
     // tick later. Nothing gates on it except a settings row's subtitle, and a
     // sync reads the token itself rather than trusting this.
-    void loadSecureKey(SYNC_TOKEN_SECURE_KEY).then(token => set({ hasServerToken: !!token }));
+    void loadSecureKey(SYNC_TOKEN_SECURE_KEY).then(token => {
+      set({ hasServerToken: !!token });
+      // A token saved before setServerToken made it readable while locked is
+      // re-saved once, so the background sync can read it on the charger.
+      // Only once it's done is it marked: a launch on a locked phone reads
+      // nothing here and leaves it for the next one.
+      if (token && dbGetSetting(SYNC_TOKEN_READABLE_LOCKED_SETTING) !== '1') {
+        void makeSecureKeyReadableWhileLocked(SYNC_TOKEN_SECURE_KEY).then(moved => {
+          if (moved) dbSetSetting(SYNC_TOKEN_READABLE_LOCKED_SETTING, '1');
+        });
+      }
+    });
   },
 
   setServerUrl: (url: string) => {
@@ -244,7 +261,9 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   },
 
   setServerToken: async (token: string) => {
-    const saved = await saveSecureKey(SYNC_TOKEN_SECURE_KEY, token.trim());
+    // Readable while locked: the background sync reads it on the charger.
+    const saved = await saveSecureKey(SYNC_TOKEN_SECURE_KEY, token.trim(), { readableWhileLocked: true });
+    if (saved && token.trim()) dbSetSetting(SYNC_TOKEN_READABLE_LOCKED_SETTING, '1');
     if (saved) set({ hasServerToken: !!token.trim(), problem: null });
     return saved;
   },

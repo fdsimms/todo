@@ -102,6 +102,7 @@ import { screenTimeSourceId, defaultScreenTimeRules } from './screenTimeRules';
 import { defaultEventRules, eventOccurrenceKey, eventTaskSourceId } from './eventTasks';
 import { TRAVEL_LEAD_MINUTES_DEFAULT, travelSourceId, travelTaskTitle } from './travelTasks';
 import { healthSourceId, defaultHealthRules } from './healthRules';
+import { WANIKANI_REVIEW_URL, wanikaniReviewSourceId, wanikaniReviewTitle } from './wanikaniTasks';
 import { dueMealPlanNudge, mealPlanNudgeLinkUrl } from './mealPlanNudge';
 import { groceryNameKey } from './groceryParse';
 import { OUT_OF_IT_UNTIL, defaultOnHandUntil } from './grocerySuggest';
@@ -1953,6 +1954,24 @@ export function seedDemoData(): void {
     dueDate: today.toISOString(),
     category: 'Health',
     ...generatedBy('health', healthSourceId(dayKeyOf(today), sleepRule.id)),
+  });
+
+  // A WaniKani reviews task, seeded directly for the health task's reason:
+  // the read (useWaniKaniStore) and the pass (checkWaniKaniTasks) both refuse
+  // in demo mode, and the demo has no token and no account. The switch stays
+  // off, so nothing reads. What it shows is the shape: the review queue as a
+  // task, its count in the title, linked to the review page.
+  addCategory('Study');
+  setCategoryEmoji('Study', '\u{1F4DA}');
+  useSettingsStore.getState().setWanikaniTaskCategory('Study');
+  const demoReviewsAt = new Date(today);
+  demoReviewsAt.setHours(9, 0, 0, 0);
+  addTask({
+    title: wanikaniReviewTitle(24),
+    dueDate: today.toISOString(),
+    category: 'Study',
+    linkUrl: WANIKANI_REVIEW_URL,
+    ...generatedBy('wanikani', wanikaniReviewSourceId(demoReviewsAt)),
   });
 
   // The weigh-in request, seeded directly for the same reason the health task

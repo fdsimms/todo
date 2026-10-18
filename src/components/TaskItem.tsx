@@ -122,6 +122,8 @@ import { navigateToSettingsEntry } from '../navigation/openSettings';
 import { useCalendarStore } from '../store/useCalendarStore';
 import type { BusyEvent } from '../utils/calendarBusy';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useWaniKaniStore } from '../store/useWaniKaniStore';
+import { isWaniKaniTaskReady } from '../utils/wanikaniTasks';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { recipeMap } from '../utils/recipeComponents';
 import { standingSwapMap } from '../utils/standingSwaps';
@@ -1229,6 +1231,15 @@ const TaskItemRow = React.memo(function TaskItem({
     isDeloadUrl(task.linkUrl ?? '') &&
     !task.completed &&
     parseHealthSourceId(task.generatedSourceId)?.dayKey === lastDeloadAppliedDayKey;
+
+  // A WaniKani row: ready once the last read of the account has its queue
+  // empty, or its day's lessons done. One boolean out of each selector, and
+  // gated on the kind, so no other row re-renders when a read lands.
+  const isWaniKaniTask = task.generatedKind === 'wanikani';
+  const wanikaniLessonsPerDay = useSettingsStore(s => (isWaniKaniTask ? s.wanikaniLessonsPerDay : null));
+  const wanikaniReady = useWaniKaniStore(s =>
+    isWaniKaniTask && !task.completed && isWaniKaniTaskReady(task, s.snapshot, wanikaniLessonsPerDay, new Date())
+  );
 
   // Which meal an auto-generated meal task is for (mealSlotOf, off the row's
   // own source id — no store read). Only its unanswered steps name the meal
@@ -2960,7 +2971,7 @@ const TaskItemRow = React.memo(function TaskItem({
                       ? `${task.title}, health target reached, complete`
                     : mealPlanReady
                       ? `${task.title}, all ${mealPlanNudgeSlotCount} meals planned, complete`
-                    : pantryCheckReady || pantryReviewReady || deloadReady || mealShortfallReady
+                    : pantryCheckReady || pantryReviewReady || deloadReady || mealShortfallReady || wanikaniReady
                       ? `${task.title}, ready, complete`
                     : mealSlotChooseSource
                       ? `${task.title}, pick a meal`
@@ -3006,7 +3017,8 @@ const TaskItemRow = React.memo(function TaskItem({
               pantryCheckReady ||
               pantryReviewReady ||
               deloadReady ||
-              mealShortfallReady) &&
+              mealShortfallReady ||
+              wanikaniReady) &&
             styles.circleReady,
           !completing && hoursLoggable && styles.circleReady,
           (quotaMeterVisible || quotaPartial) && styles.circleQuota,

@@ -13,7 +13,7 @@ import { HEALTH_SYNC_TABLES, JOURNAL_SYNC_TABLES } from '../db/syncTracking';
 import { cloudKitTransport, cloudKitUnavailableReason, isCloudKitSyncAvailable } from '../utils/cloudKitTransport';
 import { databaseSyncLocal } from '../utils/syncLocal';
 import { runSyncAll } from '../utils/syncEngine';
-import { loadSecureKey, saveSecureKey } from '../utils/secureApiKey';
+import { loadSecureKey, makeSecureKeyReadableWhileLocked, saveSecureKey } from '../utils/secureApiKey';
 import { emptyApplyReport } from '../utils/syncMerge';
 
 jest.mock('../db/database', () => ({
@@ -43,8 +43,10 @@ jest.mock('../utils/syncEngine', () => ({
 
 jest.mock('../utils/secureApiKey', () => ({
   SYNC_TOKEN_SECURE_KEY: 'syncServerToken',
+  SYNC_TOKEN_READABLE_LOCKED_SETTING: 'syncTokenReadableWhileLocked',
   loadSecureKey: jest.fn().mockResolvedValue(''),
   saveSecureKey: jest.fn().mockResolvedValue(true),
+  makeSecureKeyReadableWhileLocked: jest.fn().mockResolvedValue(true),
 }));
 
 // Real describeApply — it's the store's own report-to-string call and has no
@@ -73,6 +75,8 @@ const withServer = () => {
 beforeEach(() => {
   jest.clearAllMocks();
   (dbGetSetting as jest.Mock).mockReturnValue(null);
+  (loadSecureKey as jest.Mock).mockResolvedValue('');
+  (makeSecureKeyReadableWhileLocked as jest.Mock).mockResolvedValue(true);
   (cloudKitUnavailableReason as jest.Mock).mockResolvedValue(null);
   (isCloudKitSyncAvailable as jest.Mock).mockReturnValue(true);
   useSyncStore.setState({
@@ -105,6 +109,33 @@ describe('initialize', () => {
     expect(state.enabled).toBe(true);
     expect(state.supported).toBe(true);
     expect(state.lastSyncedAt).toBe('2026-08-20T00:00:00.000Z');
+  });
+
+  it('re-saves a stored token once, readable while locked, and marks it only when that worked', async () => {
+    (loadSecureKey as jest.Mock).mockResolvedValue('a-token');
+    (makeSecureKeyReadableWhileLocked as jest.Mock).mockResolvedValue(false);
+    useSyncStore.getState().initialize();
+    await new Promise(resolve => setImmediate(resolve));
+    expect(makeSecureKeyReadableWhileLocked).toHaveBeenCalledWith('syncServerToken');
+    expect(dbSetSetting).not.toHaveBeenCalledWith('syncTokenReadableWhileLocked', '1');
+
+    (makeSecureKeyReadableWhileLocked as jest.Mock).mockResolvedValue(true);
+    useSyncStore.getState().initialize();
+    await new Promise(resolve => setImmediate(resolve));
+    expect(dbSetSetting).toHaveBeenCalledWith('syncTokenReadableWhileLocked', '1');
+  });
+
+  it('leaves a token already moved, and does nothing without one', async () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'syncTokenReadableWhileLocked' ? '1' : null);
+    (loadSecureKey as jest.Mock).mockResolvedValue('a-token');
+    useSyncStore.getState().initialize();
+    await new Promise(resolve => setImmediate(resolve));
+    (dbGetSetting as jest.Mock).mockReturnValue(null);
+    (loadSecureKey as jest.Mock).mockResolvedValue('');
+    useSyncStore.getState().initialize();
+    await new Promise(resolve => setImmediate(resolve));
+    expect(makeSecureKeyReadableWhileLocked).not.toHaveBeenCalled();
   });
 
   it('reads disabled and unsupported the same way', () => {
@@ -317,7 +348,7 @@ describe('the payload store as a second destination', () => {
     await useSyncStore.getState().setServerToken('a-token');
     // The token goes to the keychain. A settings row would sync, which would
     // hand the credential to every device through the store it authenticates.
-    expect(saveSecureKey).toHaveBeenCalledWith('syncServerToken', 'a-token');
+    expect(saveSecureKey).toHaveBeenCalledWith('syncServerToken', 'a-token', { readableWhileLocked: true });
     expect(dbSetSetting).not.toHaveBeenCalledWith('syncServerToken', expect.anything());
     expect(useSyncStore.getState().hasServerToken).toBe(true);
   });

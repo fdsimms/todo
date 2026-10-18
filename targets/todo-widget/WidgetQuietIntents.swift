@@ -46,26 +46,57 @@ enum QuietTapQueue {
             .appendingPathComponent(fileName)
     }
 
-    static func load() -> [QuietTap] {
+    /// The file's entries as written, by whichever process wrote them.
+    ///
+    /// **Read through JSONSerialization, never decoded as `[QuietTap]`.** This
+    /// file has two writers: this widget, and the phone's WatchSession, which
+    /// queues the watch's taps here with fields `QuietTap` doesn't spell out
+    /// (`watchTapId`, a dictated grocery item's `title`). Decoded and re-encoded
+    /// through the struct, a widget tap landing before the app drained the
+    /// queue stripped those fields (the item dictated on the watch was then
+    /// dropped as nameless, and the watch stopped drawing its taps early), and
+    /// one entry the struct couldn't read failed the whole decode, so the
+    /// rewrite kept only the new tap. WatchSession.appendToQueue reads it the
+    /// same way.
+    private static func loadEntries() -> [Any] {
         guard let url = fileURL(),
               let data = try? Data(contentsOf: url),
-              let taps = try? JSONDecoder().decode([QuietTap].self, from: data) else {
+              let entries = (try? JSONSerialization.jsonObject(with: data)) as? [Any] else {
             return []
         }
-        return taps
+        return entries
     }
 
-    /// Appends a tap. A repeat of a "complete" or "grocery" tap already queued
-    /// is the same tap and is dropped; "unit" taps all count, since each one is
+    /// The taps the widget draws, from every entry it can read. An entry it
+    /// can't is skipped rather than costing the rest.
+    static func load() -> [QuietTap] {
+        loadEntries().compactMap { entry in
+            guard let fields = entry as? [String: Any],
+                  let kind = fields["kind"] as? String,
+                  let id = fields["id"] as? String,
+                  let at = fields["at"] as? String else {
+                return nil
+            }
+            return QuietTap(kind: kind, id: id, listId: fields["listId"] as? String, at: at)
+        }
+    }
+
+    /// Appends a tap, leaving every entry already queued exactly as it was
+    /// written. A repeat of a "complete" or "grocery" tap already queued is
+    /// the same tap and is dropped; "unit" taps all count, since each one is
     /// another glass.
     static func append(kind: String, id: String, listId: String? = nil) {
         guard let url = fileURL() else { return }
-        var taps = load()
-        if kind != "unit", taps.contains(where: { $0.kind == kind && $0.id == id && $0.listId == listId }) {
+        var entries = loadEntries()
+        if kind != "unit", load().contains(where: { $0.kind == kind && $0.id == id && $0.listId == listId }) {
             return
         }
-        taps.append(QuietTap(kind: kind, id: id, listId: listId, at: ISO8601DateFormatter().string(from: Date())))
-        guard let data = try? JSONEncoder().encode(taps) else { return }
+        // The shape the struct's synthesized Encodable wrote: no listId key
+        // for the home list.
+        var entry: [String: Any] = ["kind": kind, "id": id, "at": ISO8601DateFormatter().string(from: Date())]
+        if let listId { entry["listId"] = listId }
+        entries.append(entry)
+        guard let data = try? JSONSerialization.data(withJSONObject: entries) else { return }
         try? FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(),
             withIntermediateDirectories: true
