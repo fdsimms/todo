@@ -57,4 +57,5 @@ says why). Splitting that countdown up — "violin practice" as 5 min scales, 10
   keep reading one number in one unit. `formatDuration` prints a fractional minute as seconds, and
   the editor reopens a fractional value in "sec", and the MCP `timed` input takes `seconds` as an
   alternative to `minutes`. Subtask stretches (`StepMinutes`), the per-unit stepper on a target and
-  quick add's custom field are still whole minutes.
+  quick add's custom field are still whole minutes. Quick add reads seconds from the title
+  ("wall stands for 45 seconds"), but an event's length (`parseDurationTail`) stays whole minutes.

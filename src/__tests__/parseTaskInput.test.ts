@@ -948,6 +948,20 @@ describe('parseDurationInput', () => {
     expect(result?.cleanTitle).toBe('play violin');
   });
 
+  it('reads seconds as a fraction of a minute', () => {
+    const result = parseDurationInput('wall stands for 45 seconds');
+    expect(result?.minutes).toBe(0.75);
+    expect(result?.cleanTitle).toBe('wall stands');
+    expect(parseDurationInput('plank for 30s')?.minutes).toBe(0.5);
+    expect(parseDurationInput('plank for 90 sec')?.minutes).toBe(1.5);
+    expect(parseDurationInput('plank for a second')?.minutes).toBeCloseTo(1 / 60);
+    expect(parseDurationInput('plank for 0 seconds')).toBeNull();
+  });
+
+  it('does not read a word starting with s as seconds', () => {
+    expect(parseDurationInput('buy stuff for 3 sets')).toBeNull();
+  });
+
   it('accepts the short unit forms', () => {
     expect(parseDurationInput('stretch for 10 min')?.minutes).toBe(10);
     expect(parseDurationInput('stretch for 10min')?.minutes).toBe(10);
