@@ -110,10 +110,16 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose }: Props) {
   const healthWriteOn = useSettingsStore(s => s.healthWriteEnabled && s.workoutHealthWrite && s.workoutsEnabled);
   const demoActive = useDemoStore(s => s.active);
   const inHealth = session?.healthWorkoutId != null;
-  const timesReachHealth = inHealth && healthWriteOn && !demoActive;
+  // Measured on the watch, finished, and still waiting for the watch's copy
+  // (the pending flag; a save made with the watch locked, which has no id
+  // either, carries no flag). A retime now still reaches Health: the copy
+  // arrives at the old times and the phone writes the new ones in its place
+  // (`recordWatchHealthWorkout`), so the same line and the same one-day limit apply.
+  const awaitingWatch = !inHealth && session?.measuredOnWatch === true && session.healthWritePending;
+  const timesReachHealth = (inHealth || awaitingWatch) && healthWriteOn && !demoActive;
   // The watch's own workout, with what it measured: a retime rewrites it as
   // the phone's, which carries neither.
-  const measuredOnWatch = inHealth && session?.measuredOnWatch === true;
+  const measuredOnWatch = (inHealth || awaitingWatch) && session?.measuredOnWatch === true;
 
   // ==== heart rate, read back from Health (phase 9) ====
   const heartRate = useWorkoutHeartRate(session, visible);

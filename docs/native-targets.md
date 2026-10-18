@@ -310,7 +310,7 @@ whose comments carry the reasons. The rules worth knowing before touching them:
   watch) and copes with a refusal (the rest's end is then a haptic, in front only). A
   `UNTimeIntervalNotificationTrigger` refuses an interval that isn't above zero, so a rest ending
   within the second schedules nothing.
-- **The watch app is a HealthKit app of its own, and needs three things the iPhone app's
+- **The watch app is a HealthKit app of its own, and needs four things the iPhone app's
   HealthKit setup doesn't give it** (phase 9, `WatchHealthSession.swift`):
   - **The entitlement**, `com.apple.developer.healthkit`, in the watch app's own entitlements
     (`watchAppEntitlements` in `plugins/withWatchApp.js`) *and* in its `appExtensions` entry in
@@ -324,6 +324,13 @@ whose comments carry the reasons. The rules worth knowing before touching them:
     what the phone's say.
   - **`WKBackgroundModes` with `workout-processing`**, which a workout session needs to keep the
     app running with the wrist down. Without it the session starts and the app is suspended anyway.
+  - **`UIBackgroundModes` with `audio`**, for the tap on the wrist at a rest's end with the wrist
+    down. Apple's workout-session guide: "If your app plays audio or provides haptic feedback
+    during the workout session, you must also add the Audio background mode". On watchOS that
+    mode is `audio` under `UIBackgroundModes` (the key's page lists watchOS, and Xcode's
+    background-modes page lists Audio for watchOS); it is not a `WKBackgroundModes` value. The
+    app plays no sound. Whether App Review asks about an audio mode on an app with no audio is
+    not known until a submission.
   `import HealthKit` links the framework by itself (module autolinking), so nothing is added to
   the target's frameworks. The watch's floor (watchOS 11) is past every API it uses, so none needs
   an availability check; the iPhone half can't use them at all below iOS 26
@@ -332,16 +339,29 @@ whose comments carry the reasons. The rules worth knowing before touching them:
 - **A workout session starts only with the app in front, and recovers through the app
   delegate.** `syncHealthSession` checks `WKApplication.shared().applicationState` as well as
   the scene, because a launch in the background to take a snapshot starts with the store's own
-  flag at its default. After a crash mid-workout the system calls `handleActiveWorkoutRecovery()`
+  flag at its default. **The watch runs one workout session at a time, across every app**:
+  starting one ends whatever other app's session is running, which gets
+  `errorAnotherWorkoutSessionStarted` and ends ("the original session receives this error
+  message and then ends"). So nothing starts a session unless the person chose this app's
+  workout (Start on the watch, or opening the phone's workout screen there), and a session that
+  failed is not started again for that workout, or two apps would end each other in turn. After a crash mid-workout the system calls `handleActiveWorkoutRecovery()`
   on the app's `WKApplicationDelegate`, which the SwiftUI app gets through
   `@WKApplicationDelegateAdaptor` (`WatchAppDelegate`); the session is taken back with
   `recoverActiveWorkoutSession` and its data source and delegates set up again, as Apple
   documents. What it was measuring is kept in the watch's App Group (`watch_health_session.json`).
+  The session counts as busy until the system answers, so nothing starts a second one over the
+  session being taken back, and every save and recovery callback checks it is still about the
+  session it began with before tearing anything down.
 - **What the watch saves to Health, the watch retracts.** HealthKit lets an app delete only
   objects "that it has previously saved", and nothing Apple publishes says whether an iPhone app
   counts as the saver of what its watch app saved. So the phone never tries: it lists the ids in
   the watch's snapshot section (`retractWorkouts`) and the watch deletes them and says so
   (`healthRetracted`). Any new kind of thing the watch saves has to be retracted the same way.
+  **A delete counts as done only when it worked or the object is already gone** (nothing
+  matched, or `errorNoData`). A watch on its charger is locked, and a query or delete then fails
+  with `errorDatabaseInaccessible` ("occurs when your app queries for HealthKit data while the
+  device is locked"), so anything else leaves the id unanswered for the next snapshot or the
+  next time the app comes to the front.
 - **The session is activated from an app delegate subscriber** (`WatchSessionAppDelegate`, in
   the bridge's `expo-module.config.json`), so a transfer delivered while the app is in the
   background lands in the queue before any JS has run. On the watch, `.backgroundTask(.watchConnectivity)`

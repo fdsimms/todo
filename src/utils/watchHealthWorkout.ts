@@ -12,12 +12,14 @@ import type { WorkoutSession } from '../types';
  * keeps two short lists here, sent in the watch's workout section of the
  * snapshot (`buildWatchWorkout`), and the watch acts on them:
  *
- * - `retract`: workouts the watch saved that the person has since deleted, or
- *   whose times they changed (the phone writes its own copy at the new times).
- *   The watch deletes each, with the energy saved with it, and says so with a
- *   `healthRetracted` tap, which takes it off the list. Kept until then, since
- *   the watch may be away for days; capped, oldest dropped, so a watch that is
- *   never seen again can't grow it for ever.
+ * - `retract`: workouts the watch saved that the person has since deleted (here,
+ *   or on another device, heard of by sync: `askWatchAboutSyncedDeletes`), or
+ *   whose times they changed (once the phone's own copy at the new times is
+ *   in). The watch deletes each, with the energy saved with it, and says so
+ *   with a `healthRetracted` tap, which takes it off the list; one it couldn't
+ *   delete (the watch locked) it leaves unanswered and tries again. Kept until
+ *   then, since the watch may be away for days; capped, oldest dropped, so a
+ *   watch that is never seen again can't grow it for ever.
  * - `drop`: workouts deleted on the phone while the watch may still be
  *   measuring them, so it throws the measurement away rather than saving it.
  *   Only useful while that workout is going, so each is dropped after a day.

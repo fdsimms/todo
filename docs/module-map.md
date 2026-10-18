@@ -196,9 +196,9 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/healthRules.ts` — HEALTH_NUTRIENT_METRICS, usesCheckpoint, HEALTH_RULE_TITLE_MAX_LENGTH, HEALTH_THRESHOLDS, HEALTH_METRIC_DIRECTION, healthRuleDirection, HEALTH_METRIC_EARLIEST_HOUR, HEALTH_METRICS, healthRuleCheckpointHour, HealthRuleReading, +23 more
 - `src/utils/healthTarget.ts` — HEALTH_TARGET_METRICS, HealthTargetState, HealthTargetReading, HEALTH_TARGET_RANGES, hasHealthTarget, healthTargetValue, followsRingGoal, effectiveHealthTarget, healthTargetProgress, isHealthTargetReady, +3 more
 - `src/utils/healthWeightSync.ts` — WeightWriteResult, logWeightToHealth
-- `src/utils/healthWorkoutSync.ts` — WORKOUT_HEALTH_ACTIVITY, PENDING_WORKOUT_WRITE_MAX_AGE_DAYS, WATCH_WORKOUT_WAIT_MINUTES, workoutSpanWritable, pendingWorkoutWriteAction, workoutHealthWriteOn, WorkoutWriteResult, logWorkoutToHealth, retractWorkoutFromHealth, retractWatchWorkouts, +1 more
+- `src/utils/healthWorkoutSync.ts` — WORKOUT_HEALTH_ACTIVITY, PENDING_WORKOUT_WRITE_MAX_AGE_DAYS, WATCH_WORKOUT_WAIT_MINUTES, workoutSpanWritable, pendingWorkoutWriteAction, workoutHealthWriteOn, WorkoutWriteResult, logWorkoutToHealth, retractWorkoutFromHealth, retractWatchWorkouts, +2 more
 - `src/utils/healthWorkouts.ts` — HEALTH_WORKOUT_ACTIVITIES, HealthWorkoutActivity, HEALTH_WORKOUT_ACTIVITY_LABEL, HealthWorkout, parseHealthWorkouts, readHealthWorkouts
-- `src/utils/heartRateZones.ts` — HEART_RATE_ZONE_SHARES, AGE_ESTIMATE_BASE, MAX_HEART_RATE_RANGE, MAX_READING_GAP_SECONDS, MaxHeartRate, parseMaxHeartRate, resolveMaxHeartRate, describeMaxHeartRate, describeZoneBasis, HeartRateZone, +10 more
+- `src/utils/heartRateZones.ts` — HEART_RATE_ZONE_SHARES, AGE_ESTIMATE_BASE, MAX_HEART_RATE_RANGE, MAX_READING_GAP_SECONDS, MaxHeartRate, parseMaxHeartRate, resolveMaxHeartRate, describeMaxHeartRate, describeZoneBasis, HeartRateZone, +11 more
 - `src/utils/hiddenEvents.ts` — HiddenEvent, hiddenEventKey, hiddenEventFromEvent, isHiddenEventStale, pruneStaleHiddenEvents
 - `src/utils/holidays.ts` — HolidaySet, HOLIDAY_SETS, HOLIDAY_SET_LABELS, Holiday, HolidayConfig, holidaysInYear, holidayOn, hasAnyHolidays, nextHoliday, parseHolidaySet, +1 more
 - `src/utils/httpSyncTransport.ts` — HTTP_SYNC_SOURCE, SYNC_REQUEST_TIMEOUT_MS, SYNC_BODY_TIMEOUT_MS, HttpSyncConfig, isHttpSyncConfigured, httpSyncTransport, readPullBody
@@ -483,7 +483,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/syncEngine.ts` — SyncTransport, SyncImageStore, SyncWithholding, withholdChanges, pushCursorKey, PullResult, SyncLocal, IMAGE_PAYLOAD_BUDGET_CHARS, imagesSentKey, imagesKnownKey, +9 more
 - `src/utils/syncIds.ts` — derivedId, isDerivedId, spawnSeed
 - `src/utils/syncLocal.ts` — databaseSyncLocal
-- `src/utils/syncMerge.ts` — SyncDeletion, SyncChangeSet, SYNC_FORMAT, SyncPayload, MAX_SYNC_IMAGE_CHARS, isSyncImageName, ParsedPayload, buildPayload, buildImagePayload, serializePayload, +8 more
+- `src/utils/syncMerge.ts` — SyncDeletion, SyncChangeSet, SYNC_FORMAT, SyncPayload, MAX_SYNC_IMAGE_CHARS, isSyncImageName, ParsedPayload, buildPayload, buildImagePayload, serializePayload, +9 more
 - `src/utils/syncStatus.ts` — describeLastSynced
 - `src/utils/tabFreeze.ts` — shouldFreezeTab, isTabFocused, TAB_FREEZE_DELAY_MS
 - `src/utils/tabHubMenu.ts` — HUB_MENU_ROW_HEIGHT, HUB_MENU_PADDING, HUB_MENU_WIDTH, HUB_MENU_EDGE, HUB_MENU_ARROW_SIZE, HUB_MENU_ARROW_TIP, HUB_MENU_TIP_GAP, HUB_MENU_HIT_SLACK, hubMenuItems, HubMenuLayout, +6 more
@@ -542,7 +542,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/visibilityUtils.ts` — isTaskBlocked, isInPausedProject, isWithheld, isTaskNotNeeded, isHeldBack, VisibleAtPass, beginVisibleAtPass, isHiddenForVacation, isCategoryScheduledDay, sameTimeSegments, +43 more
 - `src/utils/waitingFollowUpTasks.ts` — MAX_WAITING_FOLLOW_UP_TASKS, WAITING_FOLLOW_UP_DECLINE_DAYS, WAITING_FOLLOW_UP_THRESHOLD_DAYS, waitingFollowUpTaskId, waitingFollowUpTitle, waitingFollowUpsHandledRecently, followUpDue, WaitingFollowUpWant, wantedWaitingFollowUps, staleWaitingFollowUpTasks
 - `src/utils/wanikaniTasks.ts` — WaniKaniSnapshot, WaniKaniReviewState, WANIKANI_INITIAL_REVIEW_STATE, WANIKANI_REVIEW_THRESHOLD_DEFAULT, WANIKANI_REVIEW_THRESHOLD_MIN, WANIKANI_REVIEW_THRESHOLD_MAX, WANIKANI_LESSONS_PER_DAY_MIN, WANIKANI_LESSONS_PER_DAY_MAX, WANIKANI_APPRENTICE_CAP_DEFAULT, WANIKANI_APPRENTICE_CAP_MIN, +26 more
-- `src/utils/watchHealthWorkout.ts` — WATCH_HEALTH_REQUESTS_SETTING, WATCH_RETRACT_LIMIT, WATCH_DROP_HOURS, RECENTLY_FINISHED_HOURS, RECENTLY_FINISHED_LIMIT, WatchHealthRequest, WatchHealthRequests, NO_WATCH_HEALTH_REQUESTS, parseWatchHealthRequests, withRetractions, +4 more
+- `src/utils/watchHealthWorkout.ts` — WATCH_HEALTH_REQUESTS_SETTING, WATCH_RETRACT_LIMIT, WATCH_DROP_HOURS, RECENTLY_FINISHED_HOURS, RECENTLY_FINISHED_LIMIT, WatchHealthRequest, WatchHealthRequests, NO_WATCH_HEALTH_REQUESTS, parseWatchHealthRequests, withRetractions, +8 more
 - `src/utils/watchWorkout.ts` — MAX_WATCH_ROUTINES, MAX_WATCH_PLAN_SETS, MAX_WATCH_LIVE_SETS, MAX_WATCH_RECENT, WATCH_RECENT_DAYS, WatchSuggestion, WatchWorkoutExercise, WatchRecentExercise, WatchWorkoutSet, WatchLiveWorkout, +10 more
 - `src/utils/watchWorkoutClash.ts` — WatchClash, WATCH_CLASHES_SETTING, MAX_PENDING_CLASHES, overlappingSessions, parseWatchClashes, withClash, withoutClash, ClashToAsk, nextClash, ClashChoice, +3 more
 - `src/utils/waterExerciseBoost.ts` — WaterExerciseBoost, WATER_EXERCISE_BOOST_MINUTES_RANGE, WATER_EXERCISE_BOOST_ML_RANGE, parseWaterExerciseBoost, serializeWaterExerciseBoost, effectiveWaterTargetMl, waterExerciseBoostApplies
