@@ -217,6 +217,7 @@ import { catchUpPasses, retentionPasses, expiryPasses } from '../utils/maintenan
 
 beforeEach(() => {
   mockCalls.length = 0;
+  mockAskedWatch = [];
   setDemoModeActive(false);
   mockSettingsState.initialized = true;
   mockSettingsState.wanikaniTasks = false;
@@ -471,7 +472,6 @@ describe('the reload after a sync', () => {
   // A workout the watch measured, deleted on another device: only the phone
   // paired with the watch can ask it to retract what it saved.
   it('asks the watch about workouts it measured that a sync deleted', () => {
-    mockAskedWatch = [];
     const removedWatchWorkouts = [{ sessionId: 's1', healthWorkoutId: 'HK-WATCH' }, { sessionId: 's2', healthWorkoutId: null }];
     const applied = { mealEntryIds: [], removedMealEvents: [], taskIds: [], removedTaskEvents: [], removedWatchWorkouts };
 
