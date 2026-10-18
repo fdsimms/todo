@@ -287,7 +287,7 @@ struct WorkoutSetView: View {
         .onChange(of: second) { _ = touched.insert(.second) }
     }
 
-    private var noteLabel: String { set.note == nil ? "Add a note" : "Change the note" }
+    private var noteLabel: String { self.set.note == nil ? "Add a note" : "Change the note" }
 
     /// "Use 82.5 kg", with the unit the button leaves off.
     private func useLabel(_ suggestion: WatchSuggestion) -> String {
