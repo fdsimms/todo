@@ -42,6 +42,7 @@ import { workoutTaskEffect } from '../utils/workoutTask';
 import {
   copyLastSet,
   finishPlan,
+  movedExerciseOrder,
   plannedSetsFor,
   plannedSetsFromHistory,
   previousSets,
@@ -212,6 +213,8 @@ export interface WatchSessionInput {
     durationSeconds: number | null;
     distanceM: number | null;
     completedAt: string;
+    /** A note written on the set on the watch. */
+    note: string | null;
   }[];
 }
 
@@ -236,9 +239,16 @@ export interface SetInput {
   note?: string | null;
   /** When it was done. Defaults to now; null lays the set out as planned, not done. */
   completedAt?: string | null;
+  /**
+   * The id to give the set, when the caller already has one: a set added on
+   * the Apple Watch keeps the watch's id, so the watch can settle what it
+   * drew by it. One already in the session is refused (`taken`), which makes
+   * a repeat of the same addition a no-op.
+   */
+  id?: string;
 }
 
-export type SetPatch = Partial<Omit<SetInput, 'exerciseId'>>;
+export type SetPatch = Partial<Omit<SetInput, 'exerciseId' | 'id'>>;
 
 /** Why a write was refused, for the caller to say in its own words. */
 export type WorkoutRefusal =
@@ -403,10 +413,19 @@ interface WorkoutStore {
   /**
    * Adds an exercise to a session, laid out like last time (or as one empty
    * set). Refuses one already in it (`taken`) or nobody knows (`notFound`).
+   * `ids` names the sets laid out, in order, for a caller that drew them
+   * already (the Apple Watch); one already in the session refuses the lot
+   * (`taken`), and sets past the ids given get ids of their own.
    */
-  addSessionExercise: (sessionId: string, exerciseId: string) => WorkoutSet[] | WorkoutRefusal;
-  /** "Add set": one more planned set like the exercise's last (`copyLastSet`). */
-  addPlannedSet: (sessionId: string, exerciseId: string) => WorkoutSet | WorkoutRefusal;
+  addSessionExercise: (sessionId: string, exerciseId: string, options?: { ids?: readonly string[] }) => WorkoutSet[] | WorkoutRefusal;
+  /** "Add set": one more planned set like the exercise's last (`copyLastSet`), with `id` as `SetInput.id`. */
+  addPlannedSet: (sessionId: string, exerciseId: string, options?: { id?: string }) => WorkoutSet | WorkoutRefusal;
+  /**
+   * Moves an exercise a place up or down in the session, with its sets, and a
+   * superset as one block (`movedExerciseOrder`, then `reorderExercises`).
+   * False when it can't move that way.
+   */
+  moveSessionExercise: (sessionId: string, exerciseId: string, direction: 'up' | 'down') => boolean;
   /**
    * Lays warm-up steps out as planned sets ahead of the exercise's other sets,
    * which move down to make room. Refuses a session, or an exercise not in it,
@@ -625,8 +644,9 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
     position: number,
     setIndex: number,
     v: PlannedSetValues,
+    id: string = generateId(),
   ): WorkoutSet => ({
-    id: generateId(),
+    id,
     sessionId,
     exerciseId,
     position,
@@ -1201,7 +1221,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         rpe: null,
         completedAt: st.completedAt,
         supersetKey: null,
-        note: null,
+        note: st.note?.trim() || null,
       })));
       const clashesWith = overlappingSessions(session, get().sessions, now);
       dbTransaction(() => {
@@ -1393,12 +1413,13 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       if (!get().sessions.some(s => s.id === sessionId)) return 'notFound';
       if (!exerciseKnown(input.exerciseId)) return 'notFound';
       const sets = get().loadSets(sessionId);
+      if (input.id !== undefined && (input.id.trim() === '' || sets.some(s => s.id === input.id))) return 'taken';
       const same = sets.filter(s => s.exerciseId === input.exerciseId);
       const position = same.length > 0
         ? same[0].position
         : sets.reduce((max, s) => Math.max(max, s.position), -1) + 1;
       const row: WorkoutSet = {
-        id: generateId(),
+        id: input.id ?? generateId(),
         sessionId,
         exerciseId: input.exerciseId,
         position,
@@ -1455,25 +1476,28 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       return previousSets(dbGetWorkoutSetsForExercise(exerciseId), get().sessions, exceptSessionId);
     },
 
-    addSessionExercise(sessionId, exerciseId) {
+    addSessionExercise(sessionId, exerciseId, options = {}) {
       if (!get().sessions.some(s => s.id === sessionId)) return 'notFound';
       if (!exerciseKnown(exerciseId)) return 'notFound';
       const sets = get().loadSets(sessionId);
       if (sets.some(s => s.exerciseId === exerciseId)) return 'taken';
+      const ids = (options.ids ?? []).filter(id => typeof id === 'string' && id.trim() !== '');
+      if (ids.some(id => sets.some(s => s.id === id)) || new Set(ids).size !== ids.length) return 'taken';
       const position = sets.reduce((max, s) => Math.max(max, s.position), -1) + 1;
       const added = plannedSetsFromHistory(get().lastTimeFor(exerciseId, sessionId))
-        .map((v, i) => plannedRow(sessionId, exerciseId, position, i, v));
+        .map((v, i) => plannedRow(sessionId, exerciseId, position, i, v, ids[i]));
       dbSaveWorkoutSets(added);
       putSets(sessionId, [...sets, ...added].sort(bySetOrder));
       return added;
     },
 
-    addPlannedSet(sessionId, exerciseId) {
+    addPlannedSet(sessionId, exerciseId, options = {}) {
       const sets = get().loadSets(sessionId);
       const mine = sets.filter(s => s.exerciseId === exerciseId);
       if (mine.length === 0) return 'notFound';
       const v = copyLastSet(mine);
       return get().logSet(sessionId, {
+        ...(options.id !== undefined ? { id: options.id } : {}),
         exerciseId,
         kind: v.kind,
         weightKg: v.weightKg,
@@ -1498,6 +1522,14 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       dbSaveWorkoutSets([...added, ...shifted.filter(s => s.exerciseId === exerciseId)]);
       putSets(sessionId, [...shifted, ...added].sort(bySetOrder));
       return added;
+    },
+
+    moveSessionExercise(sessionId, exerciseId, direction) {
+      if (!get().sessions.some(s => s.id === sessionId)) return false;
+      const order = movedExerciseOrder(get().loadSets(sessionId), exerciseId, direction);
+      if (!order) return false;
+      get().reorderExercises(sessionId, order);
+      return true;
     },
 
     reorderExercises(sessionId, exerciseIds) {

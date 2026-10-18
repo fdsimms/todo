@@ -45,11 +45,12 @@ import { buildRoutineIndex, parseQueuedWorkoutStarts, resolveQueuedWorkoutStart 
 import { startWorkout } from './startWorkout';
 import { requestDismissAllSheets } from './sheetModal';
 import { useStepTimerStore } from '../store/useStepTimerStore';
-import { buildWatchWorkout, todaysWatchWorkout, type WatchWorkoutSnapshot } from './watchWorkout';
+import { WATCH_RECENT_DAYS, buildWatchWorkout, todaysWatchWorkout, type WatchWorkoutSnapshot } from './watchWorkout';
 import { tickSet } from './workoutTick';
+import { applyProposal } from './workoutProposal';
 import { REST_NUDGE_FORWARD_SECONDS } from './stepTimers';
 import type { PlannedRoutineSet } from '../store/useWorkoutStore';
-import type { RestTimer } from '../types';
+import type { RestTimer, WorkoutSet } from '../types';
 
 const DEBOUNCE_MS = 300;
 
@@ -440,6 +441,24 @@ async function processQuietWidgetTaps(handOff: 'app' | 'requeue' = 'app'): Promi
         case 'addWatchSession':
           useWorkoutStore.getState().addWatchSession(action.workout, { deferHealthWrite: handOff === 'requeue' });
           break;
+        // What the watch adds to the phone's workout, each through the store
+        // action workout mode itself uses, with the watch's ids where it made
+        // some, so the watch settles what it drew by them.
+        case 'noteWorkoutSet':
+          useWorkoutStore.getState().editSet(action.sessionId, action.setId, { note: action.note });
+          break;
+        case 'addWorkoutSet':
+          useWorkoutStore.getState().addPlannedSet(action.sessionId, action.exerciseId, { id: action.setId });
+          break;
+        case 'addWorkoutExercise':
+          useWorkoutStore.getState().addSessionExercise(action.sessionId, action.exerciseId, { ids: action.setIds });
+          break;
+        case 'moveWorkoutExercise':
+          useWorkoutStore.getState().moveSessionExercise(action.sessionId, action.exerciseId, action.direction);
+          break;
+        case 'useWorkoutSuggestion':
+          applyProposal(action.sessionId, action.exerciseId);
+          break;
       }
     }
     const ids = Object.keys(handedOver);
@@ -468,11 +487,8 @@ function quietTapWorkouts(): QuietTapWorkouts {
     workouts = useWorkoutStore.getState();
   }
   const live = workouts.liveSession();
-  const liveSets = live ? workouts.setsBySession[live.id] ?? workouts.loadSets(live.id) : [];
   return {
-    live: live
-      ? { id: live.id, taskId: live.taskId, openSetIds: new Set(liveSets.filter(s => s.completedAt === null).map(s => s.id)) }
-      : null,
+    live: live ? { id: live.id, taskId: live.taskId, sets: workouts.setsBySession[live.id] ?? workouts.loadSets(live.id) } : null,
     sessionIds: new Set(workouts.sessions.map(s => s.id)),
   };
 }
@@ -677,26 +693,70 @@ let lastWatchOnly: string | null = null;
 let watchWorkoutTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
- * The routine plans the start list carries, read from the database once per
- * state of what they depend on: last time's sets (any session or set
- * changing), the routines, the exercises, and the plates and unit a warm-up
- * ramp is rounded to.
+ * What the workout section reads from the database (the routine plans, each
+ * exercise's history for its suggestion, the exercises logged lately and last
+ * time's sets of each), read once per state of what they depend on: the
+ * sessions, any set of a session other than the one in progress, the
+ * routines, the exercises, and the plates and unit a load is rounded to.
+ *
+ * The live session's own sets are left out on purpose: none of these reads
+ * counts them (a suggestion and last time both pass over the workout in
+ * progress, and an exercise already in it can't be added again), and they
+ * change on every weight stepped, which would read it all again each time.
  */
-let planCache: { deps: readonly unknown[]; plans: Map<string, PlannedRoutineSet[]> } | null = null;
+interface WorkoutReads {
+  deps: readonly unknown[];
+  plans: Map<string, PlannedRoutineSet[]>;
+  history: Map<string, WorkoutSet[]>;
+  lastTime: Map<string, WorkoutSet[]>;
+  recentIds: string[] | null;
+}
+let workoutReads: WorkoutReads | null = null;
 
-function plannedFor(routineId: string): PlannedRoutineSet[] {
+function currentWorkoutReads(): WorkoutReads {
   const workouts = useWorkoutStore.getState();
   const settings = useSettingsStore.getState();
-  const deps = [workouts.sessions, workouts.setsBySession, workouts.routines, workouts.exercises, settings.workoutUnit, settings.plateInventory];
-  if (!planCache || planCache.deps.length !== deps.length || planCache.deps.some((d, i) => d !== deps[i])) {
-    planCache = { deps, plans: new Map() };
+  const liveId = workouts.liveSession()?.id ?? null;
+  const otherSets = Object.entries(workouts.setsBySession).filter(([id]) => id !== liveId).map(([, sets]) => sets);
+  const deps = [workouts.sessions, workouts.routines, workouts.exercises, settings.workoutUnit, settings.plateInventory, ...otherSets];
+  if (!workoutReads || workoutReads.deps.length !== deps.length || workoutReads.deps.some((d, i) => d !== deps[i])) {
+    workoutReads = { deps, plans: new Map(), history: new Map(), lastTime: new Map(), recentIds: null };
   }
-  let plan = planCache.plans.get(routineId);
-  if (!plan) {
-    plan = workouts.plannedSetsForRoutine(routineId, null);
-    planCache.plans.set(routineId, plan);
+  return workoutReads;
+}
+
+function cachedRead<T>(map: Map<string, T>, key: string, read: () => T): T {
+  if (!map.has(key)) map.set(key, read());
+  return map.get(key)!;
+}
+
+function plannedFor(routineId: string): PlannedRoutineSet[] {
+  return cachedRead(currentWorkoutReads().plans, routineId, () => useWorkoutStore.getState().plannedSetsForRoutine(routineId, null));
+}
+
+function historyFor(exerciseId: string): WorkoutSet[] {
+  return cachedRead(currentWorkoutReads().history, exerciseId, () => useWorkoutStore.getState().exerciseHistory(exerciseId));
+}
+
+/**
+ * The exercises with a set done in the last `WATCH_RECENT_DAYS`, each with
+ * last time's sets as adding it to the workout in progress (or to none) would
+ * read them (`lastTimeFor`, `addSessionExercise`'s own source).
+ */
+function recentFor(liveId: string | null): { exerciseId: string; lastTime: WorkoutSet[] }[] {
+  const reads = currentWorkoutReads();
+  if (!reads.recentIds) {
+    const since = Date.now() - WATCH_RECENT_DAYS * 86_400_000;
+    const ids = new Set<string>();
+    for (const set of useWorkoutStore.getState().allSets()) {
+      if (set.completedAt !== null && Date.parse(set.completedAt) >= since) ids.add(set.exerciseId);
+    }
+    reads.recentIds = [...ids];
   }
-  return plan;
+  return reads.recentIds.map(exerciseId => ({
+    exerciseId,
+    lastTime: cachedRead(reads.lastTime, `${liveId ?? ''}\u0000${exerciseId}`, () => useWorkoutStore.getState().lastTimeFor(exerciseId, liveId)),
+  }));
 }
 
 /** The watch's workout section now, or null while the store hasn't loaded or the area is off. */
@@ -724,6 +784,9 @@ function watchWorkoutSection(): WatchWorkoutSnapshot | null {
         }
       : null,
     routines: workouts.routines,
+    programs: workouts.programs,
+    sessions: workouts.sessions,
+    plateInventory: settings.plateInventory,
     todays: live
       ? null
       : todaysWatchWorkout({
@@ -733,6 +796,8 @@ function watchWorkoutSection(): WatchWorkoutSnapshot | null {
           todayTasks: useTaskStore.getState().visibleTasks(),
         }),
     planFor: plannedFor,
+    historyFor,
+    recent: settings.workoutsEnabled ? recentFor(live?.id ?? null) : [],
   });
 }
 

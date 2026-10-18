@@ -1,0 +1,91 @@
+<!doctype html><html><head><meta charset="utf-8">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, "SF Pro Rounded", "Inter", system-ui, sans-serif; background: #8E8A99; padding: 20px; -webkit-font-smoothing: antialiased; }
+.grid { display: grid; grid-template-columns: repeat(4, 214px); gap: 18px 16px; }
+.cap { color: #fff; font-size: 12px; font-weight: 600; margin: 0 4px 6px; height: 30px; line-height: 1.25; }
+.watch { width: 214px; height: 262px; background: #000; border-radius: 46px; padding: 8px; border: 6px solid #2a2830; }
+.screen { width: 100%; height: 100%; border-radius: 36px; overflow: hidden; color: #F6F3F8; padding: 10px 10px 0; position: relative; }
+.bar { display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; padding: 0 6px 6px; }
+.bar .t { color: #9B7BFF; } .bar .clock { color: #F6F3F8; }
+.row { background: #222025; border-radius: 12px; padding: 7px 10px; margin-bottom: 5px; font-size: 14px; }
+.row .s { font-size: 11px; color: #B3ADBD; margin-top: 1px; }
+.row.acc { display: flex; align-items: center; gap: 8px; }
+.ic { width: 18px; text-align: center; font-size: 13px; }
+.gold { color: #FFB020; } .vio { color: #9B7BFF; } .or { color: #FF9F0A; } .dim { color: #B3ADBD; }
+.hdr { font-size: 11px; color: #B3ADBD; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; margin: 4px 4px 4px; }
+.ex { font-size: 15px; font-weight: 600; text-align: center; }
+.which { font-size: 11px; color: #B3ADBD; text-align: center; margin-top: 1px; }
+.vals { display: flex; gap: 6px; margin-top: 6px; }
+.val { flex: 1; border-radius: 12px; background: #222025; text-align: center; padding: 5px 2px 4px; border: 2px solid transparent; }
+.val.focus { border-color: #9B7BFF; }
+.val b { display: block; font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.5px; }
+.val span { font-size: 10px; color: #B3ADBD; }
+.btn { margin-top: 6px; border-radius: 9999px; text-align: center; padding: 8px; font-size: 14px; font-weight: 700; }
+.btn.gold { background: #FFB020; color: #17131C; } .btn.q { background: #3A3541; color: #F6F3F8; }
+.btns { display: flex; gap: 6px; align-items: center; } .btns .btn { flex: 1; }
+.iconbtn { width: 38px; height: 38px; border-radius: 19px; background: #3A3541; display: flex; align-items: center; justify-content: center; font-size: 15px; margin-top: 6px; flex: none; }
+.sug { margin-top: 5px; border-radius: 10px; background: #2b2410; border: 1px solid #5a4410; padding: 4px 8px; display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.sug .l { font-size: 10px; color: #E9D7AE; line-height: 1.25; }
+.sug .u { font-size: 12px; font-weight: 700; color: #17131C; background: #FFB020; border-radius: 9999px; padding: 4px 8px; white-space: nowrap; }
+.note { font-size: 11px; color: #F6F3F8; margin-top: 5px; text-align: center; }
+.note .dim { font-size: 10px; }
+.swipe { display: flex; gap: 4px; margin-bottom: 5px; }
+.swipe .row { flex: 1; margin-bottom: 0; }
+.sa { width: 36px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; }
+.sa.v { background: #9B7BFF; color: #17131C; } .sa.g { background: #3A3541; color: #F6F3F8; }
+.search { background: #222025; border-radius: 9999px; padding: 6px 10px; font-size: 13px; color: #B3ADBD; margin-bottom: 6px; }
+.setrow { display: flex; justify-content: space-between; font-size: 13px; font-variant-numeric: tabular-nums; }
+.note2 { color: #fff; font-size: 12px; margin-top: 14px; line-height: 1.45; max-width: 900px; }
+</style></head><body>
+<div class="grid">
+
+<div><div class="cap">A. First set of an exercise, with a load suggestion</div>
+<div class="watch"><div class="screen">
+  <div class="bar"><span class="t">‹ Push A</span><span class="clock">6:14</span></div>
+  <div class="ex">Bench press</div>
+  <div class="which">Set 1 of 4</div>
+  <div class="sug"><span class="l">All sets hit 8 last time</span><span class="u">Use 82.5</span></div>
+  <div class="vals"><div class="val focus"><b>80</b><span>kg</span></div><div class="val"><b>8</b><span>reps</span></div></div>
+  <div class="btns"><div class="btn gold">✓ Done set</div><div class="iconbtn">✎</div></div>
+</div></div></div>
+
+<div><div class="cap">B. After a note was dictated (✎ opens dictation)</div>
+<div class="watch"><div class="screen">
+  <div class="bar"><span class="t">‹ Push A</span><span class="clock">6:21</span></div>
+  <div class="ex">Bench press</div>
+  <div class="which">Set 3 of 4</div>
+  <div class="vals"><div class="val focus"><b>82.5</b><span>kg</span></div><div class="val"><b>8</b><span>reps</span></div></div>
+  <div class="note"><span class="dim">Note: </span>Left shoulder twinged</div>
+  <div class="btns"><div class="btn gold">✓ Done set</div><div class="iconbtn">✎</div></div>
+</div></div></div>
+
+<div><div class="cap">C. Workout list: swipe a row to move it, or add one</div>
+<div class="watch"><div class="screen">
+  <div class="bar"><span class="t">‹ Push A</span><span class="clock">48:10</span></div>
+  <div class="row acc"><span class="ic gold">✓</span><div>Bench press<div class="s">4 of 4</div></div></div>
+  <div class="swipe"><div class="row acc"><span class="ic dim">○</span><div>Incline DB<div class="s">1 of 3</div></div></div><div class="sa v">↑</div><div class="sa g">↓</div></div>
+  <div class="row acc"><span class="ic vio">+</span><div class="vio">Add exercise</div></div>
+</div></div></div>
+
+<div><div class="cap">D. Add exercise: what you've done lately, or dictate a name</div>
+<div class="watch"><div class="screen">
+  <div class="bar"><span class="t">‹ Add</span><span class="clock">48:22</span></div>
+  <div class="search">🎙 Search</div>
+  <div class="hdr">Recent</div>
+  <div class="row">Cable fly</div>
+  <div class="row">Triceps pushdown</div>
+</div></div></div>
+
+<div><div class="cap">E. Tap an exercise in the list: its sets, and Add set</div>
+<div class="watch"><div class="screen">
+  <div class="bar"><span class="t">‹ Bench press</span><span class="clock">48:30</span></div>
+  <div class="row"><div class="setrow"><span><span class="or" style="font-weight:700">W</span>&nbsp; 40 × 10</span><span class="gold">✓</span></div></div>
+  <div class="row"><div class="setrow"><span>1&nbsp; 82.5 × 8</span><span class="gold">✓</span></div></div>
+  <div class="row"><div class="setrow"><span>2&nbsp; 82.5 × 8</span><span class="gold">✓</span></div></div>
+  <div class="row acc"><span class="ic vio">+</span><div class="vio">Add set</div></div>
+</div></div></div>
+
+</div>
+<div class="note2">Watch proxy at 45 mm, in the watch's dark palette, extending the approved watch mock. A: the suggestion is worked out on the iPhone ahead of time (the phase 4 progression rules) and applied only on "Use", never by itself. B: ✎ opens dictation, as "Add task" does today. C: swiping an exercise shows move up and move down. D: "Recent" is what you've logged in the last 90 days, and Search filters it by a dictated name. E: "Add set" copies the last set's values. A set added, an exercise added or moved, and every note all reach the iPhone with the workout.</div>
+</body></html>

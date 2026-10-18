@@ -8,9 +8,11 @@ jest.mock('../store/useWorkoutStore', () => ({ useWorkoutStore: { getState: () =
 jest.mock('../store/useStepTimerStore', () => ({ useStepTimerStore: { getState: () => ({}) } }));
 jest.mock('../store/useSettingsStore', () => ({ useSettingsStore: { getState: () => ({ defaultRestSeconds: 90 }) } }));
 
+import { DEFAULT_PLATE_INVENTORY, weightToDisplay } from '../utils/workoutData';
 import {
   MAX_WATCH_LIVE_SETS,
   MAX_WATCH_PLAN_SETS,
+  MAX_WATCH_RECENT,
   MAX_WATCH_ROUTINES,
   buildWatchWorkout,
   todaysWatchWorkout,
@@ -93,8 +95,25 @@ const input = (extra: Partial<WatchWorkoutInput> = {}): WatchWorkoutInput => ({
   routines: [],
   todays: null,
   planFor: () => [],
+  programs: [],
+  sessions: [],
+  plateInventory: DEFAULT_PLATE_INVENTORY,
+  historyFor: () => [],
+  recent: [],
   ...extra,
 });
+
+// A routine whose bench press moves up by double progression (6 to 8 reps),
+// and a finished workout where every set reached 8 at 80 kg: workout mode's
+// card proposes 82.5 kg for 6.
+const doubleItem = {
+  exerciseId: BENCH, supersetKey: null, restSeconds: 150, warmupRamp: false,
+  progression: { scheme: 'double', incrementKg: null },
+  targets: [0, 1, 2].map(() => ({ kind: 'working', repsMin: 6, repsMax: 8 })),
+} as unknown as WorkoutRoutine['items'][number];
+const finished = live({ id: 'old', routineId: 'r1', startedAt: '2026-10-15T09:00:00.000Z', endedAt: '2026-10-15T10:00:00.000Z' });
+const lastTime = [0, 1, 2].map(i => set(BENCH, 0, i, { sessionId: 'old', weightKg: 80, reps: 8, completedAt: `2026-10-15T09:0${i}:00.000Z` }));
+const PROPOSED = { weight: 82.5, use: 'Use 82.5', reason: 'All sets hit 8 last time', sets: [0, 1, 2].map(() => ({ weight: 82.5, reps: 6 })) };
 
 describe('watchSetRows', () => {
   const ctx = { exercises: [], unit: 'kg' as const, routine: null, defaultRestSeconds: 90 };
@@ -187,6 +206,29 @@ describe('buildWatchWorkout', () => {
       expect(buildWatchWorkout(input({ live: { session: live(), sets, routine: null, rest: paused } }))!.live!.rest).toBeNull();
     });
 
+    it('carries each exercise’s rest, and its suggestion while workout mode would offer it', () => {
+      const r1 = routine('r1', { items: [doubleItem] });
+      const open = [0, 1, 2].map(i => set(BENCH, 0, i, { weightKg: 80, reps: 8 }));
+      const at = (sets: WorkoutSet[]) => buildWatchWorkout(input({
+        live: { session: live({ routineId: 'r1' }), sets, routine: r1, rest: null },
+        routines: [r1],
+        sessions: [finished, live({ routineId: 'r1' })],
+        historyFor: id => (id === BENCH ? lastTime : []),
+      }))!.live!.exercises[0];
+      expect(at(open)).toMatchObject({ id: BENCH, rest: 150, suggestion: PROPOSED });
+      // Gone once a working set is logged, and once the planned sets ask for it.
+      expect(at([{ ...open[0], completedAt: STARTED }, ...open.slice(1)]).suggestion).toBeUndefined();
+      expect(at(open.map(x => ({ ...x, weightKg: 82.5, reps: 6 }))).suggestion).toBeUndefined();
+      // A logged warm-up isn't work yet.
+      const warmup = set(BENCH, 0, 0, { kind: 'warmup', weightKg: 40, completedAt: STARTED });
+      expect(at([warmup, ...open]).suggestion).toEqual(PROPOSED);
+    });
+
+    it('carries a set’s note', () => {
+      const out = buildWatchWorkout(input({ live: { session: live(), sets: [set(BENCH, 0, 0, { note: 'Felt the left shoulder' })], routine: null, rest: null } }))!;
+      expect(out.live!.sets[0].note).toBe('Felt the left shoulder');
+    });
+
     it('stops at the cap and says how many more the phone has', () => {
       const many = Array.from({ length: MAX_WATCH_LIVE_SETS + 3 }, (_, i) => set(BENCH, 0, i));
       const out = buildWatchWorkout(input({ live: { session: live(), sets: many, routine: null, rest: null } }))!;
@@ -220,6 +262,17 @@ describe('buildWatchWorkout', () => {
       });
     });
 
+    it('carries the suggestion on a routine’s exercises, against what starting it lays out', () => {
+      const r1 = routine('r1', { items: [doubleItem] });
+      const out = buildWatchWorkout(input({
+        routines: [r1],
+        sessions: [finished],
+        planFor: () => planned(BENCH, 0, 3),
+        historyFor: () => lastTime,
+      }))!;
+      expect(out.routines[0].exercises).toEqual([{ id: BENCH, name: 'Barbell bench press', kind: 'weight_reps', rest: 150, suggestion: PROPOSED }]);
+    });
+
     it('leaves out a routine with nothing in it, and stops at the caps', () => {
       const routines = Array.from({ length: MAX_WATCH_ROUTINES + 2 }, (_, i) => routine(`r${i}`, { sortOrder: i }));
       const out = buildWatchWorkout(input({
@@ -232,20 +285,64 @@ describe('buildWatchWorkout', () => {
     });
 
     it('stays well under the watch context’s size at the caps', () => {
-      const exercises = ['lib:barbell-bench-press', 'lib:barbell-row', 'lib:back-squat', 'lib:deadlift', 'lib:overhead-press', 'lib:pull-up', 'lib:barbell-curl', 'lib:triceps-pushdown'];
+      const exercises = ['lib:barbell-bench-press', 'lib:barbell-row', 'lib:back-squat', 'lib:deadlift', 'lib:overhead-press', 'lib:lat-pulldown', 'lib:barbell-curl', 'lib:triceps-pushdown'];
       // Every routine different and every load different, so the compression
       // has as little repetition to work with as a real start list would.
       const planOf = (r: number) => exercises.flatMap((id, position) => planned(id, position, MAX_WATCH_PLAN_SETS / exercises.length)
         .map((p, k) => ({ ...p, values: { ...p.values, weightKg: 20 + r * 7.5 + position * 5 + k * 2.5, reps: 5 + ((r + k) % 8) } })));
-      const routines = Array.from({ length: MAX_WATCH_ROUTINES }, (_, i) => routine(`Routine number ${i}`, { sortOrder: i }));
-      const out = buildWatchWorkout(input({ routines, planFor: id => planOf(Number(id.split(' ').pop())) }));
+      // Every exercise of every routine with a suggestion, ramp included.
+      const items = exercises.map(exerciseId => ({ ...doubleItem, exerciseId, warmupRamp: true }));
+      const routines = Array.from({ length: MAX_WATCH_ROUTINES }, (_, i) => routine(`Routine number ${i}`, { sortOrder: i, items }));
+      // A full "Add exercise" list, each with five sets of last time.
+      const recent = Array.from({ length: MAX_WATCH_RECENT }, (_, i) => ({
+        exerciseId: `custom-${i}`,
+        lastTime: Array.from({ length: 5 }, (_, k) => set(`custom-${i}`, 0, k, { sessionId: 'old', weightKg: 10 + i * 2.5 + k, reps: 5 + k })),
+      }));
+      const out = buildWatchWorkout(input({
+        routines,
+        sessions: [finished],
+        planFor: id => planOf(Number(id.split(' ').pop())),
+        historyFor: id => lastTime.map(x => ({ ...x, exerciseId: id })),
+        recent,
+        exercises: recent.map(({ exerciseId }, i) => ({ id: exerciseId, name: `My exercise number ${i}`, kind: 'weight_reps' }) as never),
+      }))!;
+      expect(out.routines[0].exercises.every(e => e.suggestion?.ramp)).toBe(true);
+      expect(out.recent).toHaveLength(MAX_WATCH_RECENT);
       const json = JSON.stringify(out);
-      // About 60 KB written out and 2.5 KB deflated (zlib standing in for the
-      // LZFSE the phone sends), against a context the rest of the snapshot
-      // already fills a good part of.
-      expect(json.length).toBeLessThan(80_000);
-      expect(deflateRawSync(json).length).toBeLessThan(6_000);
+      // About 95 KB written out and 4.3 KB deflated (zlib standing in for the
+      // LZFSE the phone sends, which is what travels), against a context the
+      // rest of the snapshot already fills a good part of. Before the
+      // suggestions and the Add exercise list it was 60 KB and 2.5 KB.
+      expect(json.length).toBeLessThan(120_000);
+      expect(deflateRawSync(json).length).toBeLessThan(8_000);
     });
+  });
+});
+
+describe('the Add exercise list', () => {
+  it('lists what was logged lately A to Z, each with last time’s sets in the unit shown', () => {
+    const out = buildWatchWorkout(input({
+      unit: 'lb',
+      recent: [
+        { exerciseId: ROW, lastTime: [set(ROW, 0, 0, { weightKg: 60, reps: 10 }), set(ROW, 0, 1, { weightKg: 60, reps: 9 })] },
+        { exerciseId: PLANK, lastTime: [set(PLANK, 0, 0, { weightKg: null, reps: null, durationSeconds: 60 })] },
+        { exerciseId: BENCH, lastTime: [set(BENCH, 0, 0, { kind: 'warmup', weightKg: 40, reps: 5 })] },
+      ],
+    }))!;
+    expect(out.recent.map(r => r.name)).toEqual(['Barbell bench press', 'Barbell row', 'Plank']);
+    expect(out.recent[1]).toEqual({
+      id: ROW, name: 'Barbell row', kind: 'weight_reps', rest: 90,
+      sets: [{ kind: 'working', weight: weightToDisplay(60, 'lb'), reps: 10 }, { kind: 'working', weight: weightToDisplay(60, 'lb'), reps: 9 }],
+    });
+    expect(out.recent[2].sets).toEqual([{ kind: 'working', durationSeconds: 60 }]);
+    expect(out.recent[0].sets[0].kind).toBe('warmup');
+  });
+
+  it('stops at the cap, and travels with a live workout too', () => {
+    const recent = Array.from({ length: MAX_WATCH_RECENT + 5 }, (_, i) => ({ exerciseId: `custom-${i}`, lastTime: [] }));
+    expect(buildWatchWorkout(input({ recent }))!.recent).toHaveLength(MAX_WATCH_RECENT);
+    const out = buildWatchWorkout(input({ recent, live: { session: live(), sets: [set(BENCH, 0, 0)], routine: null, rest: null } }))!;
+    expect(out.recent).toHaveLength(MAX_WATCH_RECENT);
   });
 });
 

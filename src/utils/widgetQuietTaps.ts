@@ -1,4 +1,4 @@
-import type { GroceryListEntry, Task, WorkoutSetKind } from '../types';
+import type { GroceryListEntry, Task, WorkoutSet, WorkoutSetKind } from '../types';
 import type { WatchSessionInput } from '../store/useWorkoutStore';
 import type { WeightUnit } from './weightLog';
 import { completionTapFor, offersMealLogOnCompletion } from './completionTap';
@@ -77,6 +77,14 @@ export interface QuietTap {
   values?: WatchTickValues;
   /** `watchSession`: the workout the watch ran on its own, read (`parseWatchSession`). */
   workout?: WatchSessionInput;
+  /** `setNote`: the words, trimmed. */
+  note?: string;
+  /** `addSet`: the exercise the set is added to. */
+  exerciseId?: string;
+  /** `addExercise`: the ids the watch gave the sets it laid out, in order. */
+  setIds?: string[];
+  /** `moveExercise`: which way. */
+  direction?: 'up' | 'down';
 }
 
 /**
@@ -85,14 +93,28 @@ export interface QuietTap {
  * progress with the numbers it was done at, `restAdd` and `restSkip` are the
  * rest screen's +30 s and Skip, `finish` is Finish workout, and `watchSession`
  * is a whole workout the watch ran on its own, sent once when it was finished.
+ * And the four the watch adds to the phone's workout: `setNote` (a dictated
+ * note on a set), `addSet` and `addExercise` (with the ids the watch gave
+ * them), `moveExercise` (up or down), and `useSuggestion` (the load card's
+ * Use).
  */
 export type QuietTapKind =
   | 'complete' | 'unit' | 'grocery' | 'choose' | 'groceryAdd'
-  | 'set' | 'restAdd' | 'restSkip' | 'finish' | 'watchSession';
+  | 'set' | 'restAdd' | 'restSkip' | 'finish' | 'watchSession'
+  | 'setNote' | 'addSet' | 'addExercise' | 'moveExercise' | 'useSuggestion';
 
 const QUIET_TAP_KINDS: readonly QuietTapKind[] = [
   'complete', 'unit', 'grocery', 'choose', 'groceryAdd', 'set', 'restAdd', 'restSkip', 'finish', 'watchSession',
+  'setNote', 'addSet', 'addExercise', 'moveExercise', 'useSuggestion',
 ];
+
+/** The kinds made on the phone's workout in progress, each naming its session. */
+const SESSION_KINDS: ReadonlySet<QuietTapKind> = new Set([
+  'set', 'restAdd', 'restSkip', 'finish', 'setNote', 'addSet', 'addExercise', 'moveExercise', 'useSuggestion',
+]);
+
+/** The longest note a set keeps from the watch: dictation, not an essay. */
+export const WATCH_NOTE_MAX = 500;
 
 /** The kinds that tick a task, and so the only ones a drain can hand to the app. */
 const TASK_KINDS: ReadonlySet<QuietTapKind> = new Set(['complete', 'unit']);
@@ -129,14 +151,28 @@ export type QuietTapAction =
   | { type: 'nudgeRest'; sessionId: string; restId: string | null }
   | { type: 'skipRest'; sessionId: string; restId: string | null }
   | { type: 'finishWorkout'; sessionId: string; at: string }
-  | { type: 'addWatchSession'; workout: WatchSessionInput };
+  | { type: 'addWatchSession'; workout: WatchSessionInput }
+  /** `editSet` with the note. */
+  | { type: 'noteWorkoutSet'; sessionId: string; setId: string; note: string }
+  /** `addPlannedSet` with the watch's id. */
+  | { type: 'addWorkoutSet'; sessionId: string; exerciseId: string; setId: string }
+  /** `addSessionExercise` with the watch's ids. */
+  | { type: 'addWorkoutExercise'; sessionId: string; exerciseId: string; setIds: string[] }
+  /** `moveSessionExercise`. */
+  | { type: 'moveWorkoutExercise'; sessionId: string; exerciseId: string; direction: 'up' | 'down' }
+  /** `applyProposal`, workout mode's own Use. */
+  | { type: 'useWorkoutSuggestion'; sessionId: string; exerciseId: string };
 
 /**
  * The workouts a drain is judged against: the phone's one in progress, with
- * the sets still open, and every session already in the log.
+ * its sets, and every session already in the log.
  */
 export interface QuietTapWorkouts {
-  live: { id: string; taskId: string | null; openSetIds: ReadonlySet<string> } | null;
+  live: {
+    id: string;
+    taskId: string | null;
+    sets: readonly Pick<WorkoutSet, 'id' | 'exerciseId' | 'kind' | 'completedAt'>[];
+  } | null;
   sessionIds: ReadonlySet<string>;
 }
 
@@ -182,15 +218,34 @@ export function parseQuietTaps(json: string): QuietTap[] {
       if (words === '') continue;
       tap.title = words;
     }
-    if (kind === 'set' || kind === 'restAdd' || kind === 'restSkip' || kind === 'finish') {
+    if (SESSION_KINDS.has(kind as QuietTapKind)) {
       // Every workout tap names the phone's session it was made on: a stale
       // watch must never log onto whatever workout happens to be going now.
-      const sessionId = idOf(fields.sessionId) ?? (kind === 'set' ? null : id);
+      // The rest and finish taps' own id is the session, so they may leave it out.
+      const ownId = kind === 'restAdd' || kind === 'restSkip' || kind === 'finish';
+      const sessionId = idOf(fields.sessionId) ?? (ownId ? id : null);
       if (!sessionId) continue;
       tap.sessionId = sessionId;
       const restId = idOf(fields.restId);
-      if (restId && kind !== 'set' && kind !== 'finish') tap.restId = restId;
+      if (restId && (kind === 'restAdd' || kind === 'restSkip')) tap.restId = restId;
       if (kind === 'set') tap.values = tickValuesFromWatch(fields, fields.unit);
+      if (kind === 'setNote') {
+        const note = typeof fields.note === 'string' ? fields.note.trim().slice(0, WATCH_NOTE_MAX) : '';
+        if (note === '') continue;
+        tap.note = note;
+      }
+      if (kind === 'addSet') {
+        const exerciseId = idOf(fields.exerciseId);
+        if (!exerciseId) continue;
+        tap.exerciseId = exerciseId;
+      }
+      if (kind === 'addExercise') {
+        tap.setIds = Array.isArray(fields.setIds) ? fields.setIds.filter((x): x is string => idOf(x) !== null) : [];
+      }
+      if (kind === 'moveExercise') {
+        if (fields.direction !== 'up' && fields.direction !== 'down') continue;
+        tap.direction = fields.direction;
+      }
     }
     if (kind === 'watchSession') {
       const workout = parseWatchSession(fields.workout);
@@ -231,11 +286,13 @@ export function planQuietTaps(
   const actions: QuietTapAction[] = [];
 
   // The workout as this drain leaves it, so a set ticked twice in one queue
-  // is ticked once and nothing applies to a workout finished earlier in it.
-  const ticked = new Set<string>();
+  // is ticked once, a set or exercise added earlier in it can be ticked or
+  // moved later in it, and nothing applies to a workout finished earlier in it.
   const finished = new Set<string>();
   const written = new Set<string>();
   const live = workouts?.live ?? null;
+  const workingSets = new Map((live?.sets ?? []).map(s => [s.id, { exerciseId: s.exerciseId, kind: s.kind, done: s.completedAt !== null }]));
+  const inSession = (exerciseId: string) => [...workingSets.values()].some(s => s.exerciseId === exerciseId);
   const isLive = (sessionId: string | undefined) => !!live && live.id === sessionId && !finished.has(sessionId);
   const askFor = (taskId: string | null): Task | null => {
     const task = taskId ? byId.get(taskId) ?? null : null;
@@ -249,9 +306,48 @@ export function planQuietTaps(
     // the one in progress (finished, discarded, another one started since the
     // watch last heard) does nothing: tickSet's own guards say the same.
     if (tap.kind === 'set') {
-      if (!isLive(tap.sessionId) || !live!.openSetIds.has(tap.id) || ticked.has(tap.id)) continue;
-      ticked.add(tap.id);
+      const set = workingSets.get(tap.id);
+      if (!isLive(tap.sessionId) || !set || set.done) continue;
+      set.done = true;
       actions.push({ type: 'tickWorkoutSet', sessionId: tap.sessionId!, setId: tap.id, at: tap.at, values: tap.values ?? {} });
+      continue;
+    }
+    if (tap.kind === 'setNote') {
+      // On a set done or still to do, as workout mode lets a note go on either.
+      if (!isLive(tap.sessionId) || !workingSets.has(tap.id) || !tap.note) continue;
+      actions.push({ type: 'noteWorkoutSet', sessionId: tap.sessionId!, setId: tap.id, note: tap.note });
+      continue;
+    }
+    if (tap.kind === 'addSet') {
+      // To an exercise in the workout, under an id nothing in it has yet: a
+      // repeat of the same addition adds nothing.
+      if (!isLive(tap.sessionId) || !tap.exerciseId || !inSession(tap.exerciseId) || workingSets.has(tap.id)) continue;
+      workingSets.set(tap.id, { exerciseId: tap.exerciseId, kind: 'working', done: false });
+      actions.push({ type: 'addWorkoutSet', sessionId: tap.sessionId!, exerciseId: tap.exerciseId, setId: tap.id });
+      continue;
+    }
+    if (tap.kind === 'addExercise') {
+      if (!isLive(tap.sessionId) || inSession(tap.id)) continue;
+      const setIds = (tap.setIds ?? []).filter(id => !workingSets.has(id));
+      for (const id of setIds) workingSets.set(id, { exerciseId: tap.id, kind: 'working', done: false });
+      // An exercise added with no sets named still lays its sets out; it is
+      // in the workout from here on either way.
+      // (A stand-in row, a warm-up so it never counts as a working set logged.)
+      if (setIds.length === 0) workingSets.set(`\u0000${tap.id}`, { exerciseId: tap.id, kind: 'warmup', done: true });
+      actions.push({ type: 'addWorkoutExercise', sessionId: tap.sessionId!, exerciseId: tap.id, setIds });
+      continue;
+    }
+    if (tap.kind === 'moveExercise') {
+      if (!isLive(tap.sessionId) || !tap.direction || !inSession(tap.id)) continue;
+      actions.push({ type: 'moveWorkoutExercise', sessionId: tap.sessionId!, exerciseId: tap.id, direction: tap.direction });
+      continue;
+    }
+    if (tap.kind === 'useSuggestion') {
+      // Workout mode's own rule for when the card offers Use: not once a
+      // working set of the exercise has been logged.
+      const logged = [...workingSets.values()].some(s => s.exerciseId === tap.id && s.done && (s.kind === 'working' || s.kind === 'amrap'));
+      if (!isLive(tap.sessionId) || !inSession(tap.id) || logged) continue;
+      actions.push({ type: 'useWorkoutSuggestion', sessionId: tap.sessionId!, exerciseId: tap.id });
       continue;
     }
     if (tap.kind === 'restAdd' || tap.kind === 'restSkip') {
@@ -437,6 +533,7 @@ export function parseWatchSession(raw: unknown): WatchSessionInput | null {
       durationSeconds: values.durationSeconds ?? null,
       distanceM: values.distanceM ?? null,
       completedAt,
+      note: typeof s.note === 'string' && s.note.trim() !== '' ? s.note.trim().slice(0, WATCH_NOTE_MAX) : null,
     });
   }
   if (sets.length === 0) return null;

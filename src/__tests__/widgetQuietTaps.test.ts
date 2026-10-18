@@ -1,4 +1,5 @@
 import {
+  WATCH_NOTE_MAX,
   parseQuietTaps,
   parseWatchSession,
   planQuietTaps,
@@ -428,10 +429,47 @@ describe('watch workout taps', () => {
       const [t] = parseQuietTaps(JSON.stringify([{ kind: 'watchSession', id: 'watch-w1', at: AT, workout: workoutJson() }]));
       expect(t.workout).toMatchObject({ id: 'watch-w1', taskId: 'lift', title: 'Push A' });
       expect(t.workout!.sets).toEqual([
-        { id: 's1', exerciseId: 'lib:barbell-bench-press', position: 0, setIndex: 0, kind: 'working', weightKg: 83.915, reps: 8, durationSeconds: null, distanceM: null, completedAt: ENDED },
+        { id: 's1', exerciseId: 'lib:barbell-bench-press', position: 0, setIndex: 0, kind: 'working', weightKg: 83.915, reps: 8, durationSeconds: null, distanceM: null, completedAt: ENDED, note: null },
       ]);
       expect(parseQuietTaps(JSON.stringify([{ kind: 'watchSession', id: 'other', at: AT, workout: workoutJson() }]))).toEqual([]);
       expect(parseQuietTaps(JSON.stringify([{ kind: 'watchSession', id: 'watch-w1', at: AT }]))).toEqual([]);
+    });
+
+    it('reads the four the watch adds to the phone’s workout, each with what it needs or not at all', () => {
+      const taps = parseQuietTaps(JSON.stringify([
+        { kind: 'setNote', id: 'set-3', sessionId: 'w1', note: '  Felt the left shoulder ', at: AT },
+        { kind: 'setNote', id: 'set-3', sessionId: 'w1', note: '   ', at: AT },
+        { kind: 'addSet', id: 'set-9', sessionId: 'w1', exerciseId: 'bench', at: AT },
+        { kind: 'addSet', id: 'set-9', sessionId: 'w1', at: AT },
+        { kind: 'addExercise', id: 'row', sessionId: 'w1', setIds: ['n1', '', 7, 'n2'], at: AT },
+        { kind: 'addExercise', id: 'curl', sessionId: 'w1', at: AT },
+        { kind: 'moveExercise', id: 'row', sessionId: 'w1', direction: 'up', at: AT },
+        { kind: 'moveExercise', id: 'row', sessionId: 'w1', direction: 'sideways', at: AT },
+        { kind: 'useSuggestion', id: 'bench', sessionId: 'w1', at: AT },
+        { kind: 'useSuggestion', id: 'bench', at: AT },
+      ]));
+      expect(taps.map(t => [t.kind, t.id, t.note ?? t.exerciseId ?? t.setIds ?? t.direction ?? null])).toEqual([
+        ['setNote', 'set-3', 'Felt the left shoulder'],
+        ['addSet', 'set-9', 'bench'],
+        ['addExercise', 'row', ['n1', 'n2']],
+        ['addExercise', 'curl', []],
+        ['moveExercise', 'row', 'up'],
+        ['useSuggestion', 'bench', null],
+      ]);
+      expect(taps.every(t => t.sessionId === 'w1')).toBe(true);
+    });
+
+    it('caps a dictated note', () => {
+      const [t] = parseQuietTaps(JSON.stringify([{ kind: 'setNote', id: 's', sessionId: 'w1', note: 'x'.repeat(WATCH_NOTE_MAX + 50), at: AT }]));
+      expect(t.note).toHaveLength(WATCH_NOTE_MAX);
+    });
+
+    it('reads a watch workout’s set notes', () => {
+      const workout = workoutJson({
+        sets: [{ id: 's1', exerciseId: 'x', position: 0, setIndex: 0, kind: 'working', weight: 100, reps: 5, completedAt: ENDED, note: ' Belt on ' }],
+      });
+      const [t] = parseQuietTaps(JSON.stringify([{ kind: 'watchSession', id: 'watch-w1', at: AT, workout }]));
+      expect(t.workout!.sets[0].note).toBe('Belt on');
     });
   });
 
@@ -460,10 +498,14 @@ describe('watch workout taps', () => {
   });
 
   describe('planQuietTaps', () => {
-    const live = (openSetIds: string[], taskId: string | null = null): QuietTapWorkouts => ({
-      live: { id: 'w1', taskId, openSetIds: new Set(openSetIds) },
+    type Row = NonNullable<QuietTapWorkouts['live']>['sets'][number];
+    const row = (id: string, extra: Partial<Row> = {}): Row => ({ id, exerciseId: 'bench', kind: 'working', completedAt: null, ...extra });
+    // The open sets named, one already done ('done'), and any others given.
+    const live = (openSetIds: string[], taskId: string | null = null, others: Row[] = []): QuietTapWorkouts => ({
+      live: { id: 'w1', taskId, sets: [...openSetIds.map(id => row(id)), row('done', { completedAt: AT }), ...others] },
       sessionIds: new Set(['w1']),
     });
+    const sessionTap = (kind: QuietTap['kind'], id: string, extra: Partial<QuietTap> = {}): QuietTap => ({ ...tap(kind, id), sessionId: 'w1', ...extra });
     const setTap = (id: string, sessionId = 'w1'): QuietTap => ({ ...tap('set', id), sessionId, values: { reps: 8 } });
     const plan = (taps: QuietTap[], workouts: QuietTapWorkouts | null, tasks: Task[] = []) =>
       planQuietTaps(taps, tasks, [], true, isCurrentDay, workouts);
@@ -512,6 +554,88 @@ describe('watch workout taps', () => {
       expect(plan([{ ...tap('finish', 'w1'), sessionId: 'w1' }], live([], 'lift'), [task({ id: 'lift' })])).toEqual([
         { type: 'finishWorkout', sessionId: 'w1', at: AT },
       ]);
+    });
+
+    it('notes a set of the workout in progress, done or still to do, and nothing else', () => {
+      expect(plan([
+        sessionTap('setNote', 'a', { note: 'Belt on' }),
+        sessionTap('setNote', 'done', { note: 'Grindy' }),
+        sessionTap('setNote', 'gone', { note: 'Lost' }),
+        sessionTap('setNote', 'a', { note: 'Other workout', sessionId: 'w0' }),
+      ], live(['a']))).toEqual([
+        { type: 'noteWorkoutSet', sessionId: 'w1', setId: 'a', note: 'Belt on' },
+        { type: 'noteWorkoutSet', sessionId: 'w1', setId: 'done', note: 'Grindy' },
+      ]);
+    });
+
+    it('adds a set under the watch’s id once, and lets it be ticked later in the same drain', () => {
+      expect(plan([
+        sessionTap('addSet', 'n1', { exerciseId: 'bench' }),
+        sessionTap('addSet', 'n1', { exerciseId: 'bench' }),
+        sessionTap('addSet', 'a', { exerciseId: 'bench' }),
+        sessionTap('addSet', 'n2', { exerciseId: 'not-in-it' }),
+        { ...setTap('n1') },
+      ], live(['a']))).toEqual([
+        { type: 'addWorkoutSet', sessionId: 'w1', exerciseId: 'bench', setId: 'n1' },
+        { type: 'tickWorkoutSet', sessionId: 'w1', setId: 'n1', at: AT, values: { reps: 8 } },
+      ]);
+    });
+
+    it('adds an exercise once, with the ids not already taken, and then lets it be moved and ticked', () => {
+      expect(plan([
+        sessionTap('addExercise', 'row', { setIds: ['r1', 'a', 'r2'] }),
+        sessionTap('addExercise', 'row', { setIds: ['r3'] }),
+        sessionTap('addExercise', 'bench', { setIds: ['b9'] }),
+        sessionTap('moveExercise', 'row', { direction: 'up' }),
+        setTap('r2'),
+      ], live(['a']))).toEqual([
+        { type: 'addWorkoutExercise', sessionId: 'w1', exerciseId: 'row', setIds: ['r1', 'r2'] },
+        { type: 'moveWorkoutExercise', sessionId: 'w1', exerciseId: 'row', direction: 'up' },
+        { type: 'tickWorkoutSet', sessionId: 'w1', setId: 'r2', at: AT, values: { reps: 8 } },
+      ]);
+      // With no ids it still lays its sets out, and is in the workout after.
+      expect(plan([
+        sessionTap('addExercise', 'curl', { setIds: [] }),
+        sessionTap('moveExercise', 'curl', { direction: 'down' }),
+        sessionTap('useSuggestion', 'curl'),
+      ], live([]))).toEqual([
+        { type: 'addWorkoutExercise', sessionId: 'w1', exerciseId: 'curl', setIds: [] },
+        { type: 'moveWorkoutExercise', sessionId: 'w1', exerciseId: 'curl', direction: 'down' },
+        { type: 'useWorkoutSuggestion', sessionId: 'w1', exerciseId: 'curl' },
+      ]);
+    });
+
+    it('moves only an exercise in the workout in progress', () => {
+      expect(plan([
+        sessionTap('moveExercise', 'squat', { direction: 'up' }),
+        sessionTap('moveExercise', 'bench', { direction: 'up', sessionId: 'w0' }),
+        sessionTap('moveExercise', 'bench', { direction: 'down' }),
+      ], live(['a']))).toEqual([{ type: 'moveWorkoutExercise', sessionId: 'w1', exerciseId: 'bench', direction: 'down' }]);
+    });
+
+    it('uses a suggestion only while workout mode would offer it: not once a working set is logged', () => {
+      expect(plan([sessionTap('useSuggestion', 'bench')], live(['a']))).toEqual([]);
+      const fresh = (others: Row[]): QuietTapWorkouts => ({ live: { id: 'w1', taskId: null, sets: others }, sessionIds: new Set(['w1']) });
+      const warmedUp = fresh([row('w', { kind: 'warmup', completedAt: AT }), row('a')]);
+      expect(plan([sessionTap('useSuggestion', 'bench')], warmedUp)).toEqual([
+        { type: 'useWorkoutSuggestion', sessionId: 'w1', exerciseId: 'bench' },
+      ]);
+      // A set ticked earlier in the same drain counts.
+      expect(plan([setTap('a'), sessionTap('useSuggestion', 'bench')], warmedUp)).toEqual([
+        { type: 'tickWorkoutSet', sessionId: 'w1', setId: 'a', at: AT, values: { reps: 8 } },
+      ]);
+      expect(plan([sessionTap('useSuggestion', 'squat')], warmedUp)).toEqual([]);
+    });
+
+    it('applies none of the four after the workout is finished in the same drain', () => {
+      expect(plan([
+        sessionTap('finish', 'w1'),
+        sessionTap('setNote', 'a', { note: 'Late' }),
+        sessionTap('addSet', 'n1', { exerciseId: 'bench' }),
+        sessionTap('addExercise', 'row', { setIds: ['r1'] }),
+        sessionTap('moveExercise', 'bench', { direction: 'down' }),
+        sessionTap('useSuggestion', 'bench'),
+      ], live(['a']))).toEqual([{ type: 'finishWorkout', sessionId: 'w1', at: AT }]);
     });
 
     it('writes a watch workout once, skips one already in the log, and hands an asking task over', () => {

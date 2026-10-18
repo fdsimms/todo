@@ -51,11 +51,8 @@ import { displayTitleFor } from '../utils/visibilityUtils';
 import { catalogExercise } from '../utils/exerciseCatalog';
 import { barKgFor, effectivePlateInventory, isPlateLoaded, plateLoad } from '../utils/plateMath';
 import { sessionRecordSummary } from '../utils/workoutRecords';
-import {
-  loadContextFor, proposalActionLabel, proposalApplied, proposalEdits, proposalHeadline, proposeNext, rampSteps, rampWarmupsToAdd,
-  schemeFor, workingSetLogged, type Proposal,
-} from '../utils/workoutProgression';
-import { programProgress } from '../utils/workoutProgram';
+import { proposalActionLabel, proposalApplied, proposalHeadline, workingSetLogged, type Proposal } from '../utils/workoutProgression';
+import { applyProposal, exerciseProposal, type ExerciseProposal } from '../utils/workoutProposal';
 import {
   MUSCLE_LABELS, WEIGHT_PLACES, WEIGHT_STEP, WORKOUT_EFFORT, formatRestSeconds, formatWeightNumber, weightFromDisplay,
   weightToDisplay,
@@ -203,53 +200,40 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const previousBySet = useMemo(() => matchPrevious(viewed?.sets ?? [], previous), [viewed, previous]);
 
   // ==== the suggestion: the next load, proposed and never applied unasked ====
-  // The routine item the shown exercise was laid out from, and the program the
-  // workout belongs to: between them they say which scheme moves it on.
+  // The routine the workout follows and the program it belongs to decide
+  // which scheme moves the shown exercise on (`exerciseProposal`, shared with
+  // the Apple Watch's suggestion).
   const program = session?.programId ? programs.find(p => p.id === session.programId) ?? null : null;
-  const routineItem = viewed ? routine?.items.find(i => i.exerciseId === viewed.exerciseId) ?? null : null;
-  const loadCtx = useMemo(
-    () => (viewedInfo ? loadContextFor(viewedInfo, plateInventory, unit, routineItem) : null),
-    [viewedInfo, plateInventory, unit, routineItem],
-  );
-  const proposal = useMemo<Proposal | null>(() => {
-    if (!viewed || !session || !viewedInfo || !loadCtx) return null;
-    const scheme = schemeFor(routineItem, program);
-    if (!scheme) return null;
-    // The week the program is in: this workout isn't finished, so it isn't
-    // counted, and the finished ones say where it stands.
-    const progress = program ? programProgress(program, sessionsList, routines) : null;
-    return proposeNext({
+  const shownProposal = useMemo<ExerciseProposal | null>(() => {
+    if (!viewed || !session) return null;
+    return exerciseProposal({
       exerciseId: viewed.exerciseId,
-      kind: viewedInfo.kind,
-      item: routineItem,
-      scheme,
-      history: useWorkoutStore.getState().exerciseHistory(viewed.exerciseId),
+      exercises: exerciseRows,
+      routine,
+      program,
       sessions: sessionsList,
+      routines,
+      history: useWorkoutStore.getState().exerciseHistory(viewed.exerciseId),
       exceptSessionId: session.id,
-      load: loadCtx,
-      trainingMaxKg: program?.trainingMaxes.find(t => t.exerciseId === viewed.exerciseId)?.kg ?? null,
-      week: progress ? { week: progress.week, weeks: progress.weeks } : null,
+      plateInventory,
+      unit,
     });
     // Keyed on the exercise and what decides its history, not on its sets: a
     // set edited this session doesn't change what was lifted before.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewed?.exerciseId, session?.id, viewedInfo, loadCtx, routineItem, program, sessionsList, routines]);
+  }, [viewed?.exerciseId, session?.id, exerciseRows, routine, program, sessionsList, routines, plateInventory, unit]);
+  const proposal = shownProposal?.proposal ?? null;
 
   /**
    * "Use 82.5 kg": the proposal written onto the planned working sets, and a
-   * ramp's planned warm-ups worked out again from the new weight. Each is an
+   * ramp's planned warm-ups worked out again from the new weight
+   * (`applyProposal`, which the watch's Use goes through too). Each is an
    * ordinary edit, as if typed, and every one stays editable.
    */
-  const applyProposal = () => {
-    if (!session || !viewed || !proposal || !loadCtx) return;
-    const top = proposal.sets[0]?.weightKg ?? null;
-    const ramp = routineItem?.warmupRamp && viewedInfo?.kind === 'weight_reps' && top !== null ? rampSteps(top, loadCtx) : null;
+  const useProposal = () => {
+    if (!session || !viewed || !shownProposal) return;
     haptics.success();
-    for (const e of proposalEdits(viewed.sets, proposal, ramp)) edit(e.setId, { weightKg: e.weightKg, reps: e.reps });
-    // A ramp with no weight to start from (a percentage program's first
-    // session) laid out no warm-ups; the proposal names one now, so add them.
-    const missing = rampWarmupsToAdd(viewed.sets, ramp);
-    if (missing.length > 0) useWorkoutStore.getState().addPlannedWarmups(session.id, viewed.exerciseId, missing);
+    applyProposal(session.id, viewed.exerciseId, shownProposal);
   };
   const upNext = exercises[viewIndex + 1] ?? null;
   const upNextInfo = upNext ? catalogExercise(exerciseRows, upNext.exerciseId) : null;
@@ -595,7 +579,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                       // already asks for it; after that it is shown plainly,
                       // as the target being worked to.
                       offer={!workingSetLogged(viewed.sets) && !proposalApplied(viewed.sets, proposal, unit)}
-                      onUse={applyProposal}
+                      onUse={useProposal}
                       styles={styles}
                     />
                   )}

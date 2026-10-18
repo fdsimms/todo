@@ -465,6 +465,45 @@ describe('a session from a routine', () => {
     expect(state().plannedSetsForRoutine('nobody')).toEqual([]);
   });
 
+  // What the Apple Watch adds to the phone's workout keeps the ids the watch
+  // drew it under, so the watch can settle its own drawing by them.
+  it('takes a set id from the caller, and refuses one the session already has', () => {
+    const s = ok(state().startSession());
+    const first = ok(state().logSet(s.id, { id: 'WATCH-SET-1', exerciseId: bench, weightKg: 60, reps: 8, completedAt: null }));
+    expect(first.id).toBe('WATCH-SET-1');
+    expect(state().logSet(s.id, { id: 'WATCH-SET-1', exerciseId: bench })).toBe('taken');
+    expect(state().logSet(s.id, { id: ' ', exerciseId: bench })).toBe('taken');
+    const added = ok(state().addPlannedSet(s.id, bench, { id: 'WATCH-SET-2' }));
+    expect(added).toMatchObject({ id: 'WATCH-SET-2', weightKg: 60, reps: 8, completedAt: null, setIndex: 1 });
+    expect(state().addPlannedSet(s.id, bench, { id: 'WATCH-SET-2' })).toBe('taken');
+    expect(dbGetWorkoutSets(s.id).map(x => x.id)).toEqual(['WATCH-SET-1', 'WATCH-SET-2']);
+  });
+
+  it('lays an added exercise out under the ids given, refusing any the session has', () => {
+    const r = ok(state().addRoutine('Push A', items));
+    const before = ok(state().startSession({ routineId: r.id }));
+    for (const x of state().loadSets(before.id)) ok(state().editSet(before.id, x.id, { completedAt: new Date().toISOString() }));
+    ok(state().finishSession(before.id));
+    const s = ok(state().startSession());
+    ok(state().logSet(s.id, { id: 'TAKEN', exerciseId: 'lib:back-squat' }));
+    expect(state().addSessionExercise(s.id, bench, { ids: ['TAKEN', 'B'] })).toBe('taken');
+    expect(state().addSessionExercise(s.id, bench, { ids: ['A', 'A'] })).toBe('taken');
+    const added = ok(state().addSessionExercise(s.id, bench, { ids: ['A', 'B'] }));
+    // Last time had three bench sets: two take the ids given, the third its own.
+    expect(added.map(x => x.id).slice(0, 2)).toEqual(['A', 'B']);
+    expect(added).toHaveLength(3);
+    expect(added[2].id).not.toMatch(/^[AB]$/);
+  });
+
+  it('moves an exercise a place, with its sets, and a superset as one block', () => {
+    const s = ok(state().startSession());
+    for (const id of ['lib:back-squat', bench, fly]) ok(state().logSet(s.id, { exerciseId: id, completedAt: null }));
+    expect(state().moveSessionExercise(s.id, fly, 'up')).toBe(true);
+    expect(dbGetWorkoutSets(s.id).sort((a, b) => a.position - b.position).map(x => x.exerciseId)).toEqual(['lib:back-squat', fly, bench]);
+    expect(state().moveSessionExercise(s.id, 'lib:back-squat', 'up')).toBe(false);
+    expect(state().moveSessionExercise('nobody', fly, 'up')).toBe(false);
+  });
+
   it('finishes by dropping the sets never ticked', () => {
     const r = ok(state().addRoutine('Push A', items));
     const s = ok(state().startSession({ routineId: r.id }));
@@ -999,8 +1038,8 @@ describe('a workout the Apple Watch ran on its own', () => {
     startedAt: at(6, 0),
     endedAt: at(6, 50),
     sets: [
-      { id: 'WS-2', exerciseId: squat, position: 0, setIndex: 2, kind: 'working', weightKg: 100, reps: 5, durationSeconds: null, distanceM: null, completedAt: at(6, 20) },
-      { id: 'WS-1', exerciseId: squat, position: 0, setIndex: 0, kind: 'warmup', weightKg: 60, reps: 5, durationSeconds: null, distanceM: null, completedAt: at(6, 10) },
+      { id: 'WS-2', exerciseId: squat, position: 0, setIndex: 2, kind: 'working', weightKg: 100, reps: 5, durationSeconds: null, distanceM: null, completedAt: at(6, 20), note: ' Knees in ' },
+      { id: 'WS-1', exerciseId: squat, position: 0, setIndex: 0, kind: 'warmup', weightKg: 60, reps: 5, durationSeconds: null, distanceM: null, completedAt: at(6, 10), note: null },
     ],
     ...extra,
   });
@@ -1019,9 +1058,9 @@ describe('a workout the Apple Watch ran on its own', () => {
     });
     reload();
     expect(state().sessions.map(x => x.id)).toEqual(['WATCH-1']);
-    expect(dbGetWorkoutSets('WATCH-1').map(x => [x.id, x.setIndex, x.kind, x.weightKg, x.completedAt])).toEqual([
-      ['WS-1', 0, 'warmup', 60, at(6, 10)],
-      ['WS-2', 1, 'working', 100, at(6, 20)],
+    expect(dbGetWorkoutSets('WATCH-1').map(x => [x.id, x.setIndex, x.kind, x.weightKg, x.completedAt, x.note])).toEqual([
+      ['WS-1', 0, 'warmup', 60, at(6, 10), null],
+      ['WS-2', 1, 'working', 100, at(6, 20), 'Knees in'],
     ]);
   });
 

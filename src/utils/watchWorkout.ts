@@ -1,6 +1,7 @@
 import type {
   Exercise,
   ExerciseKind,
+  PlateInventory,
   RestTimer,
   Task,
   WorkoutProgram,
@@ -12,9 +13,11 @@ import type {
 import type { WeightUnit } from './weightLog';
 import type { PlannedRoutineSet } from '../store/useWorkoutStore';
 import { catalogExercise, exerciseName } from './exerciseCatalog';
-import { sessionExercises, setBadge, setLabels, setName, walkOrder } from './workoutSession';
+import { plannedSetsFromHistory, restSecondsFor, sessionExercises, setBadge, setLabels, setName, walkOrder } from './workoutSession';
 import { tickOutcome } from './workoutTick';
-import { WEIGHT_STEP, weightToDisplay } from './workoutData';
+import { WEIGHT_STEP, formatWeightNumber, weightToDisplay } from './workoutData';
+import { exerciseProposal, proposalRamp } from './workoutProposal';
+import { proposalApplied, workingSetLogged } from './workoutProgression';
 import { stepTimerRemaining, isStepTimerRunning } from './stepTimers';
 import { myWorkoutStart } from './workoutSiri';
 import { programProgress } from './workoutProgram';
@@ -59,12 +62,53 @@ export const MAX_WATCH_ROUTINES = 8;
 export const MAX_WATCH_PLAN_SETS = 40;
 /** Sets of the phone's live workout carried to the watch. */
 export const MAX_WATCH_LIVE_SETS = 100;
+/** Exercises on the watch's "Add exercise" list. */
+export const MAX_WATCH_RECENT = 60;
+/** How far back that list reaches: what the person has logged lately. */
+export const WATCH_RECENT_DAYS = 90;
+
+/**
+ * The next load for an exercise, as workout mode's card would propose it
+ * (`exerciseProposal`), in the unit shown. Applied on the watch only on a tap
+ * of Use, to the planned working sets (and the ramp's warm-ups) exactly as
+ * `proposalWrites` would: the phone's own `applyProposal` does it for a
+ * workout going on the phone.
+ */
+export interface WatchSuggestion {
+  /** The first working set's weight, the one the button names. */
+  weight: number;
+  /** "Use 82.5", or "Use these" when the sets differ. */
+  use: string;
+  /** "All sets hit 8 last time" (`Proposal.brief`). */
+  reason: string;
+  /** The working sets proposed, in order. */
+  sets: { weight: number; reps?: number }[];
+  /** The warm-ups a ramp lays out from the new weight, when the exercise warms up with one. */
+  ramp?: { weight: number; reps: number }[];
+}
 
 export interface WatchWorkoutExercise {
   id: string;
   name: string;
   /** What a set records, which the watch turns into its one or two boxes. */
   kind: ExerciseKind;
+  /** The rest after one of its sets (`restSecondsFor`), which a set added on the watch takes. */
+  rest: number;
+  /** The suggestion card's proposal, when there is one with sets to use. */
+  suggestion?: WatchSuggestion;
+}
+
+/**
+ * An exercise the person has logged lately, for "Add exercise", with the sets
+ * adding it lays out (`plannedSetsFromHistory` of last time), so a workout on
+ * the watch alone can add it with no phone in reach.
+ */
+export interface WatchRecentExercise {
+  id: string;
+  name: string;
+  kind: ExerciseKind;
+  rest: number;
+  sets: { kind: WorkoutSetKind; weight?: number; reps?: number; durationSeconds?: number; distanceM?: number }[];
 }
 
 /**
@@ -98,6 +142,8 @@ export interface WatchWorkoutSet {
   distanceM?: number;
   /** When it was done, on a live workout's done sets. */
   doneAt?: string;
+  /** The note written on the set, if any. */
+  note?: string;
 }
 
 export interface WatchLiveWorkout {
@@ -136,6 +182,8 @@ export interface WatchWorkoutSnapshot {
   live: WatchLiveWorkout | null;
   /** Empty while `live` is set. */
   routines: WatchRoutine[];
+  /** "Add exercise"'s list, A to Z, at most `MAX_WATCH_RECENT`. */
+  recent: WatchRecentExercise[];
   /** The quiet-hours window (`"HH:MM"`), or null when it's off. */
   quietHours: { start: string; end: string } | null;
 }
@@ -230,23 +278,115 @@ export function watchSetRows(
     if (s.durationSeconds !== null) row.durationSeconds = s.durationSeconds;
     if (s.distanceM !== null) row.distanceM = s.distanceM;
     if (s.completedAt !== null) row.doneAt = s.completedAt;
+    if (s.note) row.note = s.note;
     return row;
   });
 }
 
-function exercisesOf(sets: readonly { exerciseId: string }[], exercises: readonly Exercise[]): WatchWorkoutExercise[] {
+/** What the exercises of one workout are read against, for their rest and their suggestion. */
+interface ExerciseContext {
+  exercises: readonly Exercise[];
+  unit: WeightUnit;
+  routine: WorkoutRoutine | null;
+  program: WorkoutProgram | null;
+  sessions: readonly WorkoutSession[];
+  routines: readonly WorkoutRoutine[];
+  plateInventory: PlateInventory;
+  defaultRestSeconds: number;
+  historyFor: (exerciseId: string) => readonly WorkoutSet[];
+  /** The workout the suggestions are for, whose own sets aren't history yet. */
+  exceptSessionId: string | null;
+}
+
+/**
+ * The suggestion for an exercise, in the unit shown, or none: nothing
+ * proposed, a proposal with no sets to use (a percentage program with no
+ * training max yet, whose card only says so), or one `exerciseSets` already
+ * ask for.
+ */
+export function watchSuggestion(exerciseId: string, ctx: ExerciseContext, exerciseSets: readonly WorkoutSet[] = []): WatchSuggestion | undefined {
+  const p = exerciseProposal({
+    exerciseId,
+    exercises: ctx.exercises,
+    routine: ctx.routine,
+    program: ctx.program,
+    sessions: ctx.sessions,
+    routines: ctx.routines,
+    history: ctx.historyFor(exerciseId),
+    exceptSessionId: ctx.exceptSessionId,
+    plateInventory: ctx.plateInventory,
+    unit: ctx.unit,
+  });
+  if (!p || p.proposal.sets.length === 0) return undefined;
+  if (exerciseSets.length > 0 && proposalApplied(exerciseSets, p.proposal, ctx.unit)) return undefined;
+  const shown = p.proposal.sets.map(s => formatWeightNumber(s.weightKg, ctx.unit));
+  const out: WatchSuggestion = {
+    weight: weightToDisplay(p.proposal.sets[0].weightKg, ctx.unit),
+    use: shown.every(w => w === shown[0]) ? `Use ${shown[0]}` : 'Use these',
+    reason: p.proposal.brief,
+    sets: p.proposal.sets.map(s => (s.reps === null
+      ? { weight: weightToDisplay(s.weightKg, ctx.unit) }
+      : { weight: weightToDisplay(s.weightKg, ctx.unit), reps: s.reps })),
+  };
+  const ramp = proposalRamp(p);
+  if (ramp && ramp.length > 0) out.ramp = ramp.map(step => ({ weight: weightToDisplay(step.kg, ctx.unit), reps: step.reps }));
+  return out;
+}
+
+/**
+ * The exercises of the rows shown, in order. Each carries its suggestion only
+ * while workout mode's card would offer it for these sets: none once a
+ * working set is logged, or once the planned working sets already ask for it
+ * (`workingSetLogged`, `proposalApplied`). The watch keeps to the same two
+ * rules as its own sets change.
+ */
+function exercisesOf(rows: readonly { exerciseId: string }[], sets: readonly WorkoutSet[], ctx: ExerciseContext): WatchWorkoutExercise[] {
   const seen = new Set<string>();
   const out: WatchWorkoutExercise[] = [];
-  for (const s of sets) {
+  for (const s of rows) {
     if (seen.has(s.exerciseId)) continue;
     seen.add(s.exerciseId);
-    out.push({
+    const entry: WatchWorkoutExercise = {
       id: s.exerciseId,
-      name: exerciseName(exercises, s.exerciseId),
-      kind: catalogExercise(exercises, s.exerciseId)?.kind ?? 'weight_reps',
-    });
+      name: exerciseName(ctx.exercises, s.exerciseId),
+      kind: catalogExercise(ctx.exercises, s.exerciseId)?.kind ?? 'weight_reps',
+      rest: restSecondsFor(ctx.routine, s.exerciseId, ctx.defaultRestSeconds),
+    };
+    const own = sets.filter(x => x.exerciseId === s.exerciseId);
+    if (!workingSetLogged(own)) {
+      const suggestion = watchSuggestion(s.exerciseId, ctx, own);
+      if (suggestion) entry.suggestion = suggestion;
+    }
+    out.push(entry);
   }
   return out;
+}
+
+/**
+ * "Add exercise"'s list: the exercises logged lately, A to Z, each with the
+ * sets adding it lays out, in the unit shown.
+ */
+export function watchRecentExercises(
+  recent: readonly { exerciseId: string; lastTime: readonly WorkoutSet[] }[],
+  ctx: { exercises: readonly Exercise[]; unit: WeightUnit; defaultRestSeconds: number },
+): WatchRecentExercise[] {
+  return recent
+    .map(({ exerciseId, lastTime }): WatchRecentExercise => ({
+      id: exerciseId,
+      name: exerciseName(ctx.exercises, exerciseId),
+      kind: catalogExercise(ctx.exercises, exerciseId)?.kind ?? 'weight_reps',
+      rest: ctx.defaultRestSeconds,
+      sets: plannedSetsFromHistory(lastTime).map(v => {
+        const set: WatchRecentExercise['sets'][number] = { kind: v.kind };
+        if (v.weightKg !== null) set.weight = weightToDisplay(v.weightKg, ctx.unit);
+        if (v.reps !== null) set.reps = v.reps;
+        if (v.durationSeconds !== null) set.durationSeconds = v.durationSeconds;
+        if (v.distanceM !== null) set.distanceM = v.distanceM;
+        return set;
+      }),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
+    .slice(0, MAX_WATCH_RECENT);
 }
 
 /** A plan's rows as unsaved sets, so the session rules can read them. */
@@ -294,10 +434,17 @@ export interface WatchWorkoutInput {
     rest: RestTimer | null;
   } | null;
   routines: readonly WorkoutRoutine[];
+  programs: readonly WorkoutProgram[];
+  sessions: readonly WorkoutSession[];
+  plateInventory: PlateInventory;
   /** `todaysWatchWorkout`. */
   todays: WatchTodaysWorkout | null;
   /** `plannedSetsForRoutine`, read only when there is no live workout. */
   planFor: (routineId: string) => readonly PlannedRoutineSet[];
+  /** An exercise's sets from any session (`exerciseHistory`), for its suggestion. */
+  historyFor: (exerciseId: string) => readonly WorkoutSet[];
+  /** The exercises logged in the last `WATCH_RECENT_DAYS`, each with last time's sets. */
+  recent: readonly { exerciseId: string; lastTime: readonly WorkoutSet[] }[];
 }
 
 /**
@@ -309,7 +456,24 @@ export function buildWatchWorkout(input: WatchWorkoutInput): WatchWorkoutSnapsho
   const quietHours = input.quietHoursStart && input.quietHoursEnd && input.quietHoursStart !== input.quietHoursEnd
     ? { start: input.quietHoursStart, end: input.quietHoursEnd }
     : null;
-  const base = { unit: input.unit, weightStep: WEIGHT_STEP[input.unit], quietHours };
+  const base = {
+    unit: input.unit,
+    weightStep: WEIGHT_STEP[input.unit],
+    quietHours,
+    recent: watchRecentExercises(input.recent, input),
+  };
+  const contextFor = (routine: WorkoutRoutine | null, programId: string | null, exceptSessionId: string | null): ExerciseContext => ({
+    exercises: input.exercises,
+    unit: input.unit,
+    routine,
+    program: programId ? input.programs.find(p => p.id === programId) ?? null : null,
+    sessions: input.sessions,
+    routines: input.routines,
+    plateInventory: input.plateInventory,
+    defaultRestSeconds: input.defaultRestSeconds,
+    historyFor: input.historyFor,
+    exceptSessionId,
+  });
 
   if (input.live && input.live.session.endedAt === null) {
     const { session, sets, routine, rest } = input.live;
@@ -321,7 +485,7 @@ export function buildWatchWorkout(input: WatchWorkoutInput): WatchWorkoutSnapsho
         sessionId: session.id,
         title: session.title,
         startedAt: session.startedAt,
-        exercises: exercisesOf(shown, input.exercises),
+        exercises: exercisesOf(shown, sets, contextFor(routine, session.programId, session.id)),
         sets: shown,
         moreSets: rows.length - shown.length,
         rest: liveRest(rest, session.id),
@@ -348,16 +512,16 @@ export function buildWatchWorkout(input: WatchWorkoutInput): WatchWorkoutSnapsho
     const plan = watchSetRows(planned, {
       exercises: input.exercises, unit: input.unit, routine, defaultRestSeconds: input.defaultRestSeconds,
     }).slice(0, MAX_WATCH_PLAN_SETS).map(({ id: _id, doneAt: _doneAt, ...row }) => row);
+    const programId = today ? today.programId : routine.programId;
     const entry: WatchRoutine = {
       id: routine.id,
       name: routine.name,
       exerciseCount: new Set(planned.map(p => p.exerciseId)).size,
       fromToday: today !== null,
-      exercises: exercisesOf(plan, input.exercises),
+      exercises: exercisesOf(plan, planned, contextFor(routine, programId, null)),
       plan,
     };
     if (today?.taskId) entry.taskId = today.taskId;
-    const programId = today ? today.programId : routine.programId;
     if (programId) entry.programId = programId;
     routines.push(entry);
   }

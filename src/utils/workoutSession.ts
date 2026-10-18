@@ -100,6 +100,35 @@ export function walkOrder(sets: readonly WorkoutSet[]): WorkoutSet[] {
   return out;
 }
 
+/**
+ * The session's exercise order with one exercise moved a place up or down,
+ * for `reorderExercises`: the Apple Watch's list moves a row this way. An
+ * exercise in a superset moves with its partners, as one block past the
+ * neighbouring block (an exercise, or another superset), so a pair is never
+ * split by the move. Null when it can't move that way: unknown, or already
+ * at that end.
+ */
+export function movedExerciseOrder(
+  sets: readonly WorkoutSet[],
+  exerciseId: string,
+  direction: 'up' | 'down',
+): string[] | null {
+  const exercises = sessionExercises(sets);
+  const blocks: string[][] = [];
+  const seen = new Set<string>();
+  for (const ex of exercises) {
+    if (seen.has(ex.exerciseId)) continue;
+    const group = supersetGroup(exercises, ex.exerciseId).map(e => e.exerciseId);
+    group.forEach(id => seen.add(id));
+    blocks.push(group);
+  }
+  const at = blocks.findIndex(b => b.includes(exerciseId));
+  const to = direction === 'up' ? at - 1 : at + 1;
+  if (at < 0 || to < 0 || to >= blocks.length) return null;
+  [blocks[at], blocks[to]] = [blocks[to], blocks[at]];
+  return blocks.flat();
+}
+
 /** The first set not yet done, in walking order; null once every set is done. */
 export function nextSet(sets: readonly WorkoutSet[]): WorkoutSet | null {
   return walkOrder(sets).find(s => !isDone(s)) ?? null;
