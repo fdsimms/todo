@@ -161,9 +161,9 @@ export function MealSlotRow({
     wasCooked.current = cooked;
   }, [cooked, pop]);
   const fromFridge = !!entry.leftoverId;
-  // "2×" on a meal being cooked at some multiple of its recipe, so the week
+  // "2× batch" on a meal being cooked at some multiple of its recipe, so the week
   // shows it without having to open each night's sheet.
-  const scaleLabel = isUnscaled(entry.recipeScale) ? null : formatScale(entry.recipeScale);
+  const scaleLabel = isUnscaled(entry.recipeScale) ? null : `${formatScale(entry.recipeScale)} batch`;
 
   // Shared by the swipe and the iPhone Mirroring button.
   const swipeSelect = onSwipeSelect ? {

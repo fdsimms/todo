@@ -1641,8 +1641,8 @@ export function MealPlanScreen() {
                   const line = limitLineByDay.get(key)!;
                   const open = expandedLimitDays.has(key);
                   const summary = line.overCount > 0
-                    ? `${line.label} · over ${line.overCount} ${line.overCount === 1 ? 'limit' : 'limits'}`
-                    : `${line.label} · within limits`;
+                    ? `${line.label} · over ${line.overCount} nutrition ${line.overCount === 1 ? 'limit' : 'limits'}`
+                    : `${line.label} · under all nutrition limits`;
                   return (
                     <View style={styles.limitBlock}>
                       <TouchableOpacity
