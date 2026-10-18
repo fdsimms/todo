@@ -617,6 +617,9 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // typed one. A figure about a body, so it travels with the health record
   // too (HEALTH_SYNC_SETTING_KEYS).
   'maxHeartRate',
+  // The sleep goal a night is read against. A figure about a body, so it
+  // travels with the health record too (HEALTH_SYNC_SETTING_KEYS).
+  'sleepGoalMinutes',
 
   // Vocabularies the user builds. These are data as much as preference — a
   // tag that exists but is unused, and the walk round the shop — and a device
