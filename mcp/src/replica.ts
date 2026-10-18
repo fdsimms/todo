@@ -4327,7 +4327,12 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (session.healthWorkoutId && retimed) {
         throw new Error('That workout was written to Apple Health, which only the phone can correct, so its times can\'t be changed from here. Its title, notes, effort and sets can.');
       }
-      const updated = store.updateSession(id, fields);
+      // A sets-only patch leaves the session row alone. Rewriting it restamps
+      // it as this replica's change, and a sync can then send this copy,
+      // which may still hold no Health id and the pending flag, over the
+      // phone's stamp, so the phone writes the workout to Health again.
+      const touchesSession = Object.values(fields).some(v => v !== undefined);
+      const updated = touchesSession ? store.updateSession(id, fields) : session;
       if (typeof updated === 'string') throw new Error(WORKOUT_REFUSALS[updated]);
       if (sets !== undefined) {
         if (sets.length === 0) throw new Error(WORKOUT_REFUSALS.empty);

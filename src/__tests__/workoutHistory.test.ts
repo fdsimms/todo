@@ -9,6 +9,7 @@ import {
   healthWorkoutSource,
   healthWorkoutTitle,
   interleaveHistory,
+  overlapsSession,
 } from '../utils/workoutHistory';
 
 /** Local wall-clock instants, so the tests read the same in every zone. */
@@ -68,14 +69,57 @@ describe('interleaveHistory', () => {
     expect(interleaveHistory(sessions, [workout(at(2026, 9, 16, 7))], null).map(r => r.key)).toEqual(['upper', 'lower']);
   });
 
-  it('leaves out a workout that ended before the window, and puts a session first on a tie', () => {
-    const rows = interleaveHistory(sessions, [workout(at(2026, 9, 1, 7)), workout(at(2026, 9, 17, 18))], at(2026, 9, 15));
+  it('leaves out a workout that ended before the window', () => {
+    const rows = interleaveHistory(sessions, [workout(at(2026, 9, 1, 7)), workout(at(2026, 9, 16, 7))], at(2026, 9, 15));
     expect(rows.map(r => r.kind)).toEqual(['session', 'health', 'session']);
   });
 
   it('keys each Health row apart from the sessions and from each other', () => {
     const rows = interleaveHistory([], [workout(at(2026, 9, 16, 7)), workout(at(2026, 9, 16, 7), { sourceName: 'Watch' })], at(2026, 9, 1));
     expect(new Set(rows.map(r => r.key)).size).toBe(2);
+  });
+
+  it('keys two workouts of one kind from one source starting together apart, by their ends and then their place', () => {
+    const start = at(2026, 9, 16, 7);
+    const shorter = interleaveHistory([], [workout(start), workout(start, { end: at(2026, 9, 16, 8) })], at(2026, 9, 1));
+    expect(new Set(shorter.map(r => r.key)).size).toBe(2);
+    const twins = interleaveHistory([], [workout(start), workout(start)], at(2026, 9, 1));
+    expect(twins).toHaveLength(2);
+    expect(new Set(twins.map(r => r.key)).size).toBe(2);
+  });
+
+  it('leaves out a Health workout that is one of the sessions over again, such as an imported Hevy session', () => {
+    // 'upper' is 18:00 to 19:00 on the 17th.
+    const rows = interleaveHistory(sessions, [workout(at(2026, 9, 17, 18, 5), { sourceName: 'Hevy' })], at(2026, 9, 14));
+    expect(rows.map(r => r.kind)).toEqual(['session', 'session']);
+  });
+});
+
+describe('overlapsSession', () => {
+  const upper = session('upper', at(2026, 9, 17, 18));
+  const live = { ...upper, endedAt: null };
+  const instant = { ...upper, endedAt: upper.startedAt };
+
+  it('holds a workout whose span overlaps the session\'s', () => {
+    expect(overlapsSession(workout(at(2026, 9, 17, 17, 45)), upper)).toBe(true);
+    expect(overlapsSession(workout(at(2026, 9, 17, 18, 50)), upper)).toBe(true);
+    expect(overlapsSession(workout(at(2026, 9, 17, 17), { end: at(2026, 9, 17, 20) }), upper)).toBe(true);
+  });
+
+  it('lets through one that does not overlap, or only touches an end', () => {
+    expect(overlapsSession(workout(at(2026, 9, 17, 7)), upper)).toBe(false);
+    expect(overlapsSession(workout(at(2026, 9, 17, 19)), upper)).toBe(false);
+    expect(overlapsSession(workout(at(2026, 9, 17, 17, 30)), upper)).toBe(false);
+  });
+
+  it('compares starts, within ten minutes, when either side has no usable end', () => {
+    expect(overlapsSession(workout(at(2026, 9, 17, 18, 10)), live)).toBe(true);
+    expect(overlapsSession(workout(at(2026, 9, 17, 18, 11)), live)).toBe(false);
+    expect(overlapsSession(workout(at(2026, 9, 17, 17, 52)), instant)).toBe(true);
+    expect(overlapsSession(workout(at(2026, 9, 17, 17, 45)), instant)).toBe(false);
+    const noEnd = workout(at(2026, 9, 17, 18, 9), { end: at(2026, 9, 17, 18, 9) });
+    expect(overlapsSession(noEnd, upper)).toBe(true);
+    expect(overlapsSession({ ...noEnd, start: at(2026, 9, 17, 18, 30), end: at(2026, 9, 17, 18, 30) }, upper)).toBe(false);
   });
 });
 

@@ -767,6 +767,39 @@ describe('Apple Health', () => {
     expect(dbGetWorkoutSession(done.id)?.healthWorkoutId).toBe('HK-4');
   });
 
+  it('moves to its own id when another write of the session landed first, and retracts the older one', async () => {
+    // Both carry the session's sync identifier, so this one replaced the
+    // other in Health; retracting it would leave neither.
+    let land: (v: unknown) => void = () => {};
+    mockWrite.mockReturnValue(new Promise(r => { land = r; }));
+    const done = finishOne();
+    stampId(done.id, 'HK-OTHER');
+    land(written('HK-13'));
+    await flush();
+    expect(mockRetract).toHaveBeenCalledWith(['HK-OTHER']);
+    expect(mockRetract).not.toHaveBeenCalledWith(['HK-13']);
+    expect(dbGetWorkoutSession(done.id)?.healthWorkoutId).toBe('HK-13');
+  });
+
+  it('keeps the id it has when the later write saved locked, with no id to move to', async () => {
+    let land: (v: unknown) => void = () => {};
+    mockWrite.mockReturnValue(new Promise(r => { land = r; }));
+    const done = finishOne();
+    stampId(done.id, 'HK-OTHER');
+    land(written(null));
+    await flush();
+    expect(mockRetract).not.toHaveBeenCalled();
+    expect(dbGetWorkoutSession(done.id)?.healthWorkoutId).toBe('HK-OTHER');
+  });
+
+  it('writes nothing for an edit that changes nothing', () => {
+    const s = logged();
+    const before = state().sessions;
+    expect(state().updateSession(s.id, {})).toBe(state().sessions.find(x => x.id === s.id));
+    expect(state().updateSession(s.id, { title: s.title, notes: s.notes, startedAt: s.startedAt, endedAt: s.endedAt })).toBe(before.find(x => x.id === s.id));
+    expect(state().sessions).toBe(before);
+  });
+
   it('says a refusal once, and again only after a write has landed', async () => {
     useSettingsStore.getState().setHealthWorkoutWriteRefusalSeen(false);
     mockWrite.mockResolvedValue({ outcome: 'refused', workoutId: null, sampleIds: [] });
@@ -853,15 +886,31 @@ describe('Apple Health', () => {
       }
     });
 
-    it('is dropped unwritten once it ended over a week ago, or when its span can never be written', async () => {
+    it('is dropped unwritten once it ended over a week ago', async () => {
       const old = logged({ healthWritePending: true });
       await state().writePendingHealthSessions();
       expect(mockWrite).not.toHaveBeenCalled();
       expect(dbGetWorkoutSession(old.id)?.healthWritePending).toBe(false);
+    });
+
+    it('waits, still flagged, while it has no length, and is written once one is added', async () => {
+      const end = new Date(Date.now() - 3_600_000).toISOString();
+      const s = logged({ startedAt: end, endedAt: end, healthWritePending: true });
+      await state().writePendingHealthSessions();
+      expect(mockWrite).not.toHaveBeenCalled();
+      expect(dbGetWorkoutSession(s.id)?.healthWritePending).toBe(true);
+      ok(state().updateSession(s.id, { endedAt: new Date(Date.now() - 600_000).toISOString() }));
+      mockWrite.mockResolvedValue(written('HK-12'));
+      await state().writePendingHealthSessions();
+      expect(mockWrite).toHaveBeenCalledTimes(1);
+      expect(dbGetWorkoutSession(s.id)).toMatchObject({ healthWorkoutId: 'HK-12', healthWritePending: false });
+    });
+
+    it('keeps the flag when the writer calls the span unwritable', async () => {
       const s = recent();
       mockWrite.mockResolvedValue({ outcome: 'notWritable', workoutId: null, sampleIds: [] });
       await state().writePendingHealthSessions();
-      expect(dbGetWorkoutSession(s.id)?.healthWritePending).toBe(false);
+      expect(dbGetWorkoutSession(s.id)?.healthWritePending).toBe(true);
     });
 
     it('is written once when two passes overlap', async () => {

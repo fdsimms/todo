@@ -25,6 +25,13 @@ import { isDemoModeActive } from './demoState';
  * No metadata either, so what Health holds is the span and the activity, and an
  * edit that leaves both alone has nothing to rewrite.
  *
+ * **One session is one workout in Health, whoever writes it.** The session's
+ * id goes to the bridge as the workout's HealthKit sync identifier, and the
+ * bridge stamps a version that only grows (milliseconds at the write), so a
+ * second write of the same session replaces the first rather than sitting
+ * beside it. That is what keeps a sync that hands back a stale, unwritten copy
+ * of a session already in Health from putting it there twice.
+ *
  * **The bridge is required at the call, never imported.** `useWorkoutStore`
  * imports this file, and the MCP replica loads that store in Node, where
  * `healthBridge.ts`'s `react-native` import cannot load. Every rule here is
@@ -76,16 +83,21 @@ export function workoutSpanWritable(session: Pick<WorkoutSession, 'startedAt' | 
  * "a workout an agent logged is written, and history is not" is decided.
  *
  * - `write`: try it now.
+ * - `wait`: a span the bridge would refuse (`workoutSpanWritable`), most often
+ *   a workout logged with no duration, so its start and end are one instant.
+ *   The flag stays, so a length added later (`update_workout`) is written by
+ *   the next pass; it ages out at the limit like any other.
  * - `drop`: already written, still live, or ended over the age limit ago;
  *   clear the flag and write nothing.
  *
  * A session has no creation stamp, so its age is from when it ended: a workout
  * logged over MCP more than a week after it happened is not written.
  */
-export function pendingWorkoutWriteAction(session: WorkoutSession, now: Date = new Date()): 'write' | 'drop' {
+export function pendingWorkoutWriteAction(session: WorkoutSession, now: Date = new Date()): 'write' | 'wait' | 'drop' {
   if (session.healthWorkoutId !== null || session.endedAt === null) return 'drop';
   const age = now.getTime() - new Date(session.endedAt).getTime();
   if (!Number.isFinite(age) || age > PENDING_WORKOUT_WRITE_MAX_AGE_DAYS * 86_400_000) return 'drop';
+  if (!workoutSpanWritable(session, now)) return 'wait';
   return 'write';
 }
 
@@ -135,7 +147,7 @@ export async function logWorkoutToHealth(session: WorkoutSession): Promise<Worko
   const health = bridge();
   if (!health) return nothing('unavailable');
 
-  const saved = await health.writeHealthWorkout(session.startedAt, session.endedAt!, WORKOUT_HEALTH_ACTIVITY, null);
+  const saved = await health.writeHealthWorkout(session.startedAt, session.endedAt!, WORKOUT_HEALTH_ACTIVITY, null, null, session.id);
   if (!saved) return nothing('refused');
   return { outcome: 'written', workoutId: saved.workoutId, sampleIds: saved.sampleIds };
 }

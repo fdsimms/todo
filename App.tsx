@@ -60,6 +60,7 @@ import { preloadAppFont, preloadBrandFonts } from './src/theme/AppFont';
 import { animation } from './src/theme';
 import { AppState, View } from 'react-native';
 import { runPendingHealthFoodWrites } from './src/utils/pendingHealthFoodWrites';
+import { runPendingHealthWorkoutWrites } from './src/utils/pendingHealthWorkoutWrites';
 import { usePendingEstimateStore } from './src/store/usePendingEstimateStore';
 import { usePendingRecipeEstimateStore } from './src/store/usePendingRecipeEstimateStore';
 
@@ -212,6 +213,9 @@ function AppRoot() {
       // Health. Async and not awaited, idempotent, and a no-op with the switch
       // off. See pendingHealthFoodWrites.ts.
       ['write pending Health meals', runPendingHealthFoodWrites],
+      // And the workouts an agent logged, by the same rules
+      // (pendingHealthWorkoutWrites.ts).
+      ['write pending Health workouts', runPendingHealthWorkoutWrites],
       // Meals described offline get their estimate now there may be a
       // connection. They are only estimated here, never logged: a person
       // confirms each one on the Food log screen.
@@ -247,7 +251,8 @@ function AppRoot() {
   }, [initSecrets]);
 
   // The launch step above covers a cold start; this covers the app coming back
-  // to the front, where a meal an agent logged in the meantime has since synced.
+  // to the front, where a meal or workout an agent logged in the meantime has
+  // since synced.
   // It is also when a meal saved offline is asked about again: the drain stops
   // at the first request that fails for want of a connection, so a phone that
   // is still offline costs one request per return to the app.
@@ -255,6 +260,7 @@ function AppRoot() {
     const sub = AppState.addEventListener('change', state => {
       if (state === 'active') {
         runPendingHealthFoodWrites();
+        runPendingHealthWorkoutWrites();
         void usePendingEstimateStore.getState().drain();
         void usePendingRecipeEstimateStore.getState().drain();
       }

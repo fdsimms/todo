@@ -219,6 +219,7 @@ interface TodoHealthNativeModule {
     activity: string,
     energyKcal: number | null,
     metadataJSON: string | null,
+    syncIdentifier: string | null,
   ): Promise<string>;
   deleteWorkout(idsJSON: string): Promise<boolean>;
   readWorkouts(anchorISO: string, days: number): Promise<string>;
@@ -442,6 +443,13 @@ export interface HealthWorkoutWrite {
  * null when nothing measured it, and never an estimate worked out from sets.
  * `metadata` is saved under the app's own keys (string or number values; a
  * key starting with `HK` is dropped).
+ *
+ * `syncIdentifier` names the record the workout stands for (a session's id).
+ * The native side saves it as `HKMetadataKeySyncIdentifier`, beside an
+ * `HKMetadataKeySyncVersion` of the milliseconds at the write, so a later
+ * write under the same identifier replaces the earlier workout in Health
+ * rather than sitting beside it. Its own argument rather than a metadata key,
+ * since `HK` keys are dropped from `metadata`.
  */
 export async function writeHealthWorkout(
   startISO: string,
@@ -449,6 +457,7 @@ export async function writeHealthWorkout(
   activity: HealthWorkoutWriteActivity,
   energyKcal: number | null = null,
   metadata: Record<string, string | number> | null = null,
+  syncIdentifier: string | null = null,
 ): Promise<HealthWorkoutWrite | null> {
   const raw = await degradeOnReject(
     () =>
@@ -458,6 +467,7 @@ export async function writeHealthWorkout(
         activity,
         energyKcal,
         metadata ? JSON.stringify(metadata) : null,
+        syncIdentifier && syncIdentifier.length > 0 ? syncIdentifier : null,
       ),
     'null',
   );

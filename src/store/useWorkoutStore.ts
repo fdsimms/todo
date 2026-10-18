@@ -480,24 +480,39 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       }
       return;
     }
-    // A span the bridge would refuse can never be written, so waiting on it
-    // would only retry the same answer.
-    if (result.outcome === 'notWritable') {
-      const fresh = dbGetWorkoutSession(written.id);
-      if (fresh?.healthWritePending) stampHealth(fresh, { healthWorkoutId: fresh.healthWorkoutId, healthWritePending: false });
-      return;
-    }
+    // Off, unavailable, refused and a span the bridge would refuse all leave
+    // the row as it is. The last matters for a workout an agent logged with no
+    // length: its pending flag stays, so a length added later is written by
+    // the next pass (`pendingWorkoutWriteAction` waits on it, and the limit
+    // ages it out).
     if (result.outcome !== 'written') return;
     if (settings.healthWorkoutWriteRefusalSeen) settings.setHealthWorkoutWriteRefusalSeen(false);
 
     const ids = [result.workoutId, ...result.sampleIds].filter((id): id is string => !!id);
     const fresh = dbGetWorkoutSession(written.id);
-    if (!fresh || fresh.healthWorkoutId !== null || !sameSpan(fresh, written)) {
+    if (!fresh) {
       if (ids.length > 0) void retractWorkoutFromHealth(ids);
-      if (fresh && fresh.healthWorkoutId === null && fresh.endedAt !== null && !sameSpan(fresh, written)) {
-        void logWorkoutToHealth(fresh).then(next => recordHealthWrite(fresh, next));
-      }
       return;
+    }
+    if (!sameSpan(fresh, written)) {
+      // Written at times the row no longer has. Taken back out, and the row
+      // written again at its own times, which replaces whatever this session
+      // has in Health under its sync identifier (see `logWorkoutToHealth`).
+      if (ids.length > 0) void retractWorkoutFromHealth(ids);
+      if (fresh.endedAt !== null) void logWorkoutToHealth(fresh).then(next => recordHealthWrite(fresh, next));
+      return;
+    }
+    if (fresh.healthWorkoutId !== null && fresh.healthWorkoutId !== result.workoutId) {
+      // Another pass or device wrote this session meanwhile. Both writes
+      // carry the session's id as their sync identifier and this one the
+      // later version, so it replaced that workout rather than joining it:
+      // retracting it, as an unrelated duplicate would be, would leave Health
+      // with neither. The row moves to this id, and the older id is still
+      // retracted, which matches nothing once replaced and removes the copy
+      // if the replacement didn't happen. A locked save has no id to move to,
+      // so the row keeps the one it has.
+      if (result.workoutId === null) return;
+      void retractWorkoutFromHealth([fresh.healthWorkoutId]);
     }
     // A null id is a workout saved while the phone was locked: in Health, with
     // nothing to keep. The flag still clears, or the pending pass would write
@@ -932,6 +947,14 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         endedAt: patch.endedAt !== undefined ? patch.endedAt : existing.endedAt,
       };
       if (row.endedAt !== null && new Date(row.endedAt).getTime() < new Date(row.startedAt).getTime()) return 'order';
+      // A patch that changes nothing writes nothing. Saving the row anyway
+      // restamps it as a local change, and a sync then sends this copy over
+      // one a peer has changed since (an agent's sets-only edit sending a
+      // stale, unwritten copy over the phone's Health id is how a workout got
+      // into Health twice).
+      if (row.title === existing.title && row.notes === existing.notes && row.effort === existing.effort && sameSpan(row, existing)) {
+        return existing;
+      }
       // Health holds the span and nothing else, so only a finished workout in
       // Health whose times moved is rewritten, and only while writing is on:
       // with it off an edit leaves Health alone. A workout never written stays
@@ -1146,11 +1169,14 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       pendingHealthWriteRunning = true;
       try {
         for (const session of dbGetPendingHealthWorkoutSessions()) {
-          if (pendingWorkoutWriteAction(session) === 'drop') {
+          const action = pendingWorkoutWriteAction(session);
+          if (action === 'drop') {
             const fresh = dbGetWorkoutSession(session.id);
             if (fresh?.healthWritePending) stampHealth(fresh, { healthWorkoutId: fresh.healthWorkoutId, healthWritePending: false });
             continue;
           }
+          // No length yet: flagged until one arrives or the limit passes.
+          if (action === 'wait') continue;
           // Off, unavailable and refused leave the flag, so turning writing on
           // the same week still sends it.
           recordHealthWrite(session, await logWorkoutToHealth(session));

@@ -66,6 +66,7 @@ import {
   sessionExercises, sessionSummary, setFieldsFor, setLabels, valuesFromLastDone, type SetField,
 } from '../utils/workoutSession';
 import type { WeightUnit } from '../utils/weightLog';
+import { workoutSpanWritable } from '../utils/healthWorkoutSync';
 import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
@@ -551,7 +552,12 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                 plan.loggedCount > 0 && linkedTask && !linkedTask.completed && !linkedTask.archived
                   ? linkedTaskLine(taskEffect, displayTitleFor(linkedTask))
                   : null,
-                plan.loggedCount > 0 && writesToHealth
+                // Only for a span the write would accept: Save ends the
+                // session now, so a workout left running past a day is saved
+                // here and refused by Health's write, and the line would
+                // promise something that doesn't happen.
+                plan.loggedCount > 0 && writesToHealth && session
+                  && workoutSpanWritable({ startedAt: session.startedAt, endedAt: new Date().toISOString() })
                   ? 'Saving also writes it to Apple Health as a strength workout.'
                   : null,
               ].filter(Boolean).join(' ')}

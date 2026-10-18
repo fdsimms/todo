@@ -4,8 +4,9 @@ import { useWorkoutStore } from '../store/useWorkoutStore';
 /**
  * Writes the workouts an agent logged over MCP to Apple Health, from the phone.
  *
- * `runPendingHealthFoodWrites` for sessions, run beside it after a sync that
- * applied rows, which is when a flagged session can have arrived. The rules
+ * `runPendingHealthFoodWrites` for sessions, run exactly where it runs: at
+ * launch, whenever the app comes to the front, and after a sync that applied
+ * rows, which is when a flagged session can have arrived. The rules
  * are `pendingWorkoutWriteAction` (`healthWorkoutSync.ts`) and
  * `writePendingHealthSessions` (`useWorkoutStore`); this only decides when.
  *

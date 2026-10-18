@@ -30,14 +30,18 @@ export function useHealthWorkoutHistory(sessions: readonly WorkoutSession[], act
   const readOn = useSettingsStore(s => s.healthReadEnabled);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const demo = useDemoStore(s => s.active);
-  const window = useMemo(() => healthHistoryWindow(sessions, dayResetTime), [sessions, dayResetTime]);
-  const anchorMs = window ? window.anchor.getTime() : null;
-  const days = window?.days ?? 0;
-  const allowed = active && readOn && !demo && anchorMs !== null;
-
   const [workouts, setWorkouts] = useState<HealthWorkout[]>(NONE);
   const [reads, setReads] = useState(0);
   const again = useCallback(() => setReads(n => n + 1), []);
+
+  // `reads` is one of the window's keys so that "today" is taken again at
+  // every focus and foreground. Keyed on the sessions alone, the window kept
+  // the day it was first worked out on, and a History left open across the
+  // day boundary went on reading up to yesterday.
+  const window = useMemo(() => healthHistoryWindow(sessions, dayResetTime), [sessions, dayResetTime, reads]);
+  const anchorMs = window ? window.anchor.getTime() : null;
+  const days = window?.days ?? 0;
+  const allowed = active && readOn && !demo && anchorMs !== null;
 
   useFocusEffect(again);
   useEffect(() => {

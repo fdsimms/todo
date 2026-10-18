@@ -78,6 +78,13 @@ describe('pendingWorkoutWriteAction', () => {
     const old = new Date(NOW.getTime() - (PENDING_WORKOUT_WRITE_MAX_AGE_DAYS * 86_400_000 + 60_000));
     expect(pendingWorkoutWriteAction(session({ startedAt: new Date(old.getTime() - 3_600_000).toISOString(), endedAt: old.toISOString() }), NOW)).toBe('drop');
   });
+
+  it('waits on a span the bridge would refuse, such as one logged with no length, until the limit drops it', () => {
+    const end = new Date(2026, 9, 18, 10).toISOString();
+    expect(pendingWorkoutWriteAction(session({ startedAt: end, endedAt: end }), NOW)).toBe('wait');
+    const old = new Date(NOW.getTime() - (PENDING_WORKOUT_WRITE_MAX_AGE_DAYS * 86_400_000 + 60_000)).toISOString();
+    expect(pendingWorkoutWriteAction(session({ startedAt: old, endedAt: old }), NOW)).toBe('drop');
+  });
 });
 
 describe('workoutHealthWriteOn', () => {
@@ -94,7 +101,9 @@ describe('logWorkoutToHealth', () => {
   it('writes a strength workout over the session\'s own span, with no energy', async () => {
     const s = session({ startedAt: new Date(2026, 0, 2, 9).toISOString(), endedAt: new Date(2026, 0, 2, 10).toISOString() });
     await expect(logWorkoutToHealth(s)).resolves.toEqual({ outcome: 'written', workoutId: 'HK-1', sampleIds: [] });
-    expect(mockNative.writeHealthWorkout).toHaveBeenCalledWith(s.startedAt, s.endedAt, WORKOUT_HEALTH_ACTIVITY, null);
+    // The session's id is the workout's sync identifier, so a second write
+    // of the same session replaces the first in Health.
+    expect(mockNative.writeHealthWorkout).toHaveBeenCalledWith(s.startedAt, s.endedAt, WORKOUT_HEALTH_ACTIVITY, null, null, s.id);
   });
 
   it('says written with no id when the phone saved it locked, so nothing retries it', async () => {

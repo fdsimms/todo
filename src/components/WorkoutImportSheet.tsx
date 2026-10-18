@@ -270,11 +270,14 @@ export function WorkoutImportSheet({ visible, onClose, fileText }: Props) {
             ) : null}
           </View>
           {/* Said only while saved workouts go to Health, which is when somebody
-              would expect these to follow them there. */}
+              would expect these to follow them there. A consequence of the
+              import to see before confirming it, so a plain Text: Hide help
+              text must not remove it. Styled as workout mode's own line about
+              Health on its summary. */}
           {writesToHealth ? (
-            <HelpText style={styles.quietBelow}>
+            <Text style={styles.quietBelow}>
               Imported workouts aren’t written to Apple Health. The app they came from may have saved them there already.
-            </HelpText>
+            </Text>
           ) : null}
 
           {ok?.unitAssumed ? (

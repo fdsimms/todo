@@ -54,11 +54,42 @@ export function healthHistoryWindow(
 }
 
 /**
+ * How close two starts are, when one side has no usable end, for a Health
+ * workout to count as the same workout as a session.
+ */
+export const SAME_WORKOUT_START_MS = 10 * 60_000;
+
+/**
+ * Whether a Health workout is one of the person's own sessions over again:
+ * a session imported from Strong or Hevy is usually also in Health from that
+ * app, and would otherwise show twice. The spans overlap (touching ends don't
+ * count), or, when either has no usable end (a live session, one logged with
+ * no length, a reading whose end isn't after its start), the two start within
+ * `SAME_WORKOUT_START_MS` of each other. Pure, exported for its tests.
+ */
+export function overlapsSession(workout: HealthWorkout, session: WorkoutSession): boolean {
+  const sStart = new Date(session.startedAt).getTime();
+  if (!Number.isFinite(sStart)) return false;
+  const sEnd = session.endedAt === null ? NaN : new Date(session.endedAt).getTime();
+  const hStart = workout.start.getTime();
+  const hEnd = workout.end.getTime();
+  if (!Number.isFinite(hStart)) return false;
+  const sUsable = Number.isFinite(sEnd) && sEnd > sStart;
+  const hUsable = Number.isFinite(hEnd) && hEnd > hStart;
+  if (sUsable && hUsable) return hStart < sEnd && sStart < hEnd;
+  return Math.abs(hStart - sStart) <= SAME_WORKOUT_START_MS;
+}
+
+/**
  * The sessions (newest first, as the store holds them) with the Health
- * workouts between them, newest first by start. A session and a Health
- * workout starting at the same moment put the session first. A Health
- * workout before the window's anchor is left out, so a list read for a wider
- * window a moment ago doesn't trail rows past the oldest session.
+ * workouts between them, newest first by start. A Health workout that is one
+ * of the sessions over again (`overlapsSession`) is left out, and so is one
+ * before the window's anchor, so a list read for a wider window a moment ago
+ * doesn't trail rows past the oldest session.
+ *
+ * A row's key holds the start, end, activity and source, and the workout's
+ * place in the read as a last resort, since one source can record two
+ * workouts of a kind starting together.
  */
 export function interleaveHistory(
   sessions: readonly WorkoutSession[],
@@ -70,12 +101,17 @@ export function interleaveHistory(
     rows.push({ at: new Date(session.startedAt).getTime(), order: i, row: { kind: 'session', key: session.id, session } });
   });
   if (windowStart) {
+    const seen = new Set<string>();
     health.forEach((workout, i) => {
       if (workout.end < windowStart) return;
+      if (sessions.some(session => overlapsSession(workout, session))) return;
+      const base = `health:${workout.start.getTime()}:${workout.end.getTime()}:${workout.activity}:${workout.sourceName}`;
+      const key = seen.has(base) ? `${base}:${i}` : base;
+      seen.add(base);
       rows.push({
         at: workout.start.getTime(),
         order: sessions.length + i,
-        row: { kind: 'health', key: `health:${workout.start.toISOString()}:${workout.activity}:${workout.sourceName}`, workout },
+        row: { kind: 'health', key, workout },
       });
     });
   }

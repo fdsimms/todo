@@ -625,6 +625,13 @@ looking for. So:
 - **The correlation's own UUID is stored alongside its members'.** Deleting the
   correlation is what retracts the meal; the members are carried so a partial
   save still leaves something to clean up.
+- **A nutrient type still `notDetermined` is skipped, and the correlation type
+  never is.** Deleting from a type the app was never asked to share fails, so an
+  install that allowed nutrition before a type joined the table would report
+  every retraction as failed. The food correlation is never a share type (an
+  app shares a correlation's members), so it reads `notDetermined` everywhere;
+  filtered with the rest, no meal's correlation would ever be deleted and Health
+  would keep empty meals. It is added after the filter, unconditionally.
 - **The delete tallies its results on a serial queue.** One delete per type
   reports back on arbitrary background queues, and getting the count wrong means
   telling the app a retraction succeeded when it did not, leaving a sample in a
@@ -1099,9 +1106,11 @@ over the history of sessions logged before this shipped.
   swallow the workout's.
 - **A workout an agent logged waits for the phone**, the meal write's
   exception (`WorkoutSession.healthWritePending`, `writePendingHealthSessions`,
-  run beside the food log's after a sync that applied rows, in front only). A
-  session has no creation stamp, so the seven-day limit counts from when it
-  ended. One logged with no length has no span to write and is dropped.
+  run wherever the food log's runs: at launch, on foreground and after a sync
+  that applied rows, in front only). A session has no creation stamp, so the
+  seven-day limit counts from when it ended. One logged with no length has no
+  span to write yet and keeps its flag, so a length added later is written by
+  the next pass; the limit ages it out otherwise.
 
 ### What is retracted
 
@@ -1114,7 +1123,8 @@ session retracts it (`deleteSession`, which reads the id off the row before it
 goes).
 
 **An edit rewrites less than `reviseEntry` does, on purpose.** Health holds the
-span and the activity and nothing else (no title, no sets, no metadata), so
+span and the activity and nothing else (no title, no sets, and no metadata
+beyond the sync pair below), so
 only a change to a written workout's start or end retracts and rewrites it,
 and only while writing is on. With the switches off, an edit leaves Health as
 it is rather than retracting: the meal's correction is about a false figure in
@@ -1133,6 +1143,26 @@ for a workout marked `inAppleHealth` and `delete_workout` refuses to delete one,
 exactly as the food tools refuse for a meal with sample ids. The write switches
 are device-local, like `healthWriteEnabled`: they say what this phone may put in
 Health.
+
+**One session is one workout in Health, however many times it is written.**
+Each write carries the session's id as `HKMetadataKeySyncIdentifier` and the
+milliseconds at the write as `HKMetadataKeySyncVersion`, set natively from
+their own argument (JS metadata may not name `HK` keys). Apple documents the
+pair on any `HKObject` saved with them: a save matching an existing object's
+identifier with a greater version replaces it
+(`healthkit/hkmetadatakeysyncidentifier.json`, `…/hkmetadatakeysyncversion.json`,
+both iOS 11). That is the guard against a sync handing the phone back a stale,
+unwritten copy of a session already in Health, which would otherwise be written
+twice. The version is a clock, not a fingerprint of the span, because a workout
+moved earlier would carry a smaller fingerprint and lose to the copy it was
+replacing. It changes one store rule: a write that lands on a row already
+stamped by another write of the same times has replaced that workout, so the
+row takes the new id and the older id is retracted (a no-op once replaced),
+where before the new write retracted itself. The builder's own pages don't say
+the pair applies to a workout it saves, only that it applies to any object;
+the first device build is where that is seen. An edit that changes nothing
+saves nothing, and an agent's sets-only edit leaves the session row alone, so
+neither restamps a row a sync could then send over the phone's.
 
 **There is no column for sample ids.** The bridge can hand back ids of samples
 saved beside the workout, but only for measured energy, which nothing passes,
@@ -1182,7 +1212,9 @@ Other apps' workouts are **readings**, and the reading rules apply in full:
 - **This app's own workouts are left out**, by the saving app's bundle
   identifier (and any identifier under it, which is how a watch app's is
   formed), so a session written from the Workouts screen isn't listed again
-  beside itself.
+  beside itself. A workout from another app that overlaps a session logged
+  here is left out of the history too (`overlapsSession`), which is an
+  imported Strong or Hevy session that app also saved to Health.
 - **An empty answer can't say why.** A refused read, no workouts, and an install
   that hasn't asked since the type was added all read `[]`, so nothing may say
   "no workouts this week" from it. Mood on training days already counts only
@@ -1192,7 +1224,7 @@ Other apps' workouts are **readings**, and the reading rules apply in full:
 syncs them, a copy would be someone else's record in this app's backup file,
 and a reading never becomes user data. The history queries the window it shows,
 each time it shows it (`useHealthWorkoutHistory`: on focus, on foreground and
-when the window moves), from the day of the oldest session listed and no more
+when the window moves, with "today" taken again at each focus and foreground), from the day of the oldest session listed and no more
 than `HEALTH_HISTORY_MAX_DAYS` (90) back, and only while Read Apple Health is
 on. They are not counted in the header, records, Stats or the mood contrast,
 and an empty read adds nothing to the list: no "connect Health" row, since a

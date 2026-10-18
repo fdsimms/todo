@@ -1009,21 +1009,25 @@ public class TodoHealthBridgeModule: Module {
         return
       }
 
-      var candidates: [HKObjectType] = Self.nutrientWriteTable.compactMap {
+      let candidates: [HKObjectType] = Self.nutrientWriteTable.compactMap {
         HKQuantityType.quantityType(forIdentifier: $0.identifier)
-      }
-      if let correlationType = HKObjectType.correlationType(forIdentifier: .food) {
-        candidates.append(correlationType)
       }
       guard !candidates.isEmpty else {
         promise.resolve(false)
         return
       }
-      // A type this install was never asked to share is one the app never
-      // wrote, and deleting from it fails rather than matching nothing: an
-      // install that allowed nutrition before a type joined the table (the
+      // A nutrient type this install was never asked to share is one the app
+      // never wrote, and deleting from it fails rather than matching nothing:
+      // an install that allowed nutrition before a type joined the table (the
       // vitamins, cholesterol) would otherwise report every retraction as a
       // failure. Skipped, as `deleteWorkout` does.
+      //
+      // The filter runs over the quantity types only. The food correlation is
+      // never in `writeTypes` (an app shares a correlation's member types, not
+      // the correlation type), so its status is `notDetermined` on every
+      // install, or the call raises; filtered with the rest, the meal's
+      // correlation object would never be deleted and the Health app would
+      // keep an empty meal. It is appended after the filter, unconditionally.
       var types: [HKObjectType] = []
       var checked = false
       TodoHealthExceptionCatcher.runCatchingExceptions {
@@ -1033,6 +1037,9 @@ public class TodoHealthBridgeModule: Module {
       guard checked else {
         promise.resolve(false)
         return
+      }
+      if let correlationType = HKObjectType.correlationType(forIdentifier: .food) {
+        types.append(correlationType)
       }
       guard !types.isEmpty else {
         promise.resolve(true)
@@ -1117,9 +1124,27 @@ public class TodoHealthBridgeModule: Module {
     ///
     /// `metadataJSON` is a flat object of string or number values saved with
     /// the workout under the app's own keys. A key starting with `HK` is
-    /// dropped: those are HealthKit's names, and the one this sets
-    /// (`HKMetadataKeyIndoorWorkout`) it sets itself.
-    AsyncFunction("writeWorkout") { (startISO: String, endISO: String, activity: String, energyKcal: Double?, metadataJSON: String?, promise: Promise) in
+    /// dropped: those are HealthKit's names, and the ones this sets
+    /// (`HKMetadataKeyIndoorWorkout`, and the sync pair below) it sets itself.
+    ///
+    /// **`syncIdentifier` makes a rewrite replace rather than duplicate.** When
+    /// one is passed (the session's id), it is saved as
+    /// `HKMetadataKeySyncIdentifier` with an `HKMetadataKeySyncVersion` of the
+    /// milliseconds since 1970 at this write. Apple documents the pair on any
+    /// `HKObject` saved with them: a save whose identifier matches an existing
+    /// object's replaces it when its version is greater
+    /// (https://developer.apple.com/tutorials/data/documentation/healthkit/hkmetadatakeysyncidentifier.json,
+    /// `let HKMetadataKeySyncIdentifier: String`, a String value, iOS 11.0+;
+    /// https://developer.apple.com/tutorials/data/documentation/healthkit/hkmetadatakeysyncversion.json,
+    /// `let HKMetadataKeySyncVersion: String`, an NSNumber value, iOS 11.0+;
+    /// the identifier's page says adding one requires adding the version).
+    /// The version is a clock rather than a fingerprint of the span, because a
+    /// workout moved earlier would carry a smaller fingerprint and its rewrite
+    /// would lose to the copy it was meant to replace. Whether the builder's
+    /// saved workout honours the pair is not stated on the builder's pages;
+    /// the identifier's page says any `HKObject`, which a workout is. Set from
+    /// its own argument because JS metadata may not name `HK` keys.
+    AsyncFunction("writeWorkout") { (startISO: String, endISO: String, activity: String, energyKcal: Double?, metadataJSON: String?, syncIdentifier: String?, promise: Promise) in
       #if canImport(HealthKit)
       guard HKHealthStore.isHealthDataAvailable(),
             Self.writableWorkoutActivities.contains(activity),
@@ -1175,6 +1200,10 @@ public class TodoHealthBridgeModule: Module {
             metadataBuilt[key] = number
           }
         }
+      }
+      if let identifier = syncIdentifier, !identifier.isEmpty {
+        metadataBuilt[HKMetadataKeySyncIdentifier] = identifier
+        metadataBuilt[HKMetadataKeySyncVersion] = NSNumber(value: Int64((Date().timeIntervalSince1970 * 1000).rounded()))
       }
       let metadata = metadataBuilt
 
@@ -1245,8 +1274,11 @@ public class TodoHealthBridgeModule: Module {
         if !started { abandon() }
       }
 
-      // Metadata failing to save costs the indoor flag and the app's own keys,
-      // not the session, so the workout is still finished.
+      // Metadata failing to save costs the indoor flag, the sync pair and the
+      // app's own keys, not the session, so the workout is still finished. A
+      // workout saved without the sync pair is one a later rewrite sits
+      // beside rather than replaces, which the caller's retraction of the old
+      // id still covers.
       let saveMetadata: () -> Void = {
         var started = false
         TodoHealthExceptionCatcher.runCatchingExceptions {

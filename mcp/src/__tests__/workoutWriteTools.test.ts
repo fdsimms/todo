@@ -398,6 +398,19 @@ describe('the workout write tools', () => {
       expect(replica.workoutSession(w.id)).toMatchObject({ healthWorkoutId: 'HK-1' });
     });
 
+    it('leaves the workout row alone for a sets-only change, so a sync cannot send a stale copy over the phone\'s', () => {
+      const w = log();
+      const stamp = '2000-01-01T00:00:00.000Z';
+      mockRaw.runSync('UPDATE workout_sessions SET updated_at = ? WHERE id = ?', [stamp, w.id]);
+      replica.refresh();
+      const updated = updateWorkout(ledgered, w.id, { exercises: [{ exerciseId: FLY, sets: [{ weightKg: 10, reps: 15 }] }] }).workout;
+      expect(updated.exercises.map(e => e.exerciseId)).toEqual([FLY]);
+      const row = () => mockRaw.getFirstSync<{ updated_at: string }>('SELECT updated_at FROM workout_sessions WHERE id = ?', [w.id]);
+      expect(row()?.updated_at).toBe(stamp);
+      updateWorkout(ledgered, w.id, { notes: 'Felt strong' });
+      expect(row()?.updated_at).not.toBe(stamp);
+    });
+
     it('deletes a finished workout with its sets, naming what it removed', () => {
       const w = log();
       const { removed, note } = deleteWorkout(ledgered, w.id);
