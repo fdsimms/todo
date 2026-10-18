@@ -46,7 +46,8 @@ import { requireNativeModule } from 'expo-modules-core';
  *   sequence that triggers it: there is no later solo grant left to flip
  *   anything, because both halves are decided in the same user action the
  *   first time either switch is turned on.
- * - **Each write type earns its own review, and there are two.** `writeTypes`
+ * - **Each write type earns its own review** (see `docs/arch/health-data.md`;
+ *   a finished strength session is the latest). `writeTypes`
  *   in the Swift module is deliberately not `readTypes`'s shape generalized —
  *   a new share type is a new consequence (a real sample lands in somebody's
  *   Health record), not a new column in a read tuple. Dietary water was the
@@ -89,7 +90,10 @@ export type HealthAuthorizationResult = 'unavailable' | 'requested' | 'failed';
 export type HealthWriteStatus = 'unavailable' | 'notDetermined' | 'sharingDenied' | 'sharingAuthorized';
 
 /**
- * Which of the three things this app can write.
+ * Which of the things this app can write.
+ *
+ * `workout` is the one share type a finished strength session is saved under
+ * (`writeHealthWorkout`).
  *
  * Every write-side call takes one, because Health asks about share types
  * individually and somebody can allow water and refuse weight in the same
@@ -101,7 +105,7 @@ export type HealthWriteStatus = 'unavailable' | 'notDetermined' | 'sharingDenied
  * `writeAuthorizationStatus`, which explains why under-claiming is the right
  * direction to be wrong in.
  */
-export type HealthWriteKind = 'water' | 'weight' | 'nutrition';
+export type HealthWriteKind = 'water' | 'weight' | 'nutrition' | 'workout';
 
 /**
  * One logical day's body mass, in kilograms, or null for a day with no
@@ -209,6 +213,16 @@ interface TodoHealthNativeModule {
   writeBodyMassSample(kilograms: number, whenISO: string): Promise<boolean>;
   writeFoodSamples(label: string, atISO: string, amountsJSON: string): Promise<string>;
   deleteHealthSamples(idsJSON: string): Promise<boolean>;
+  writeWorkout(
+    startISO: string,
+    endISO: string,
+    activity: string,
+    energyKcal: number | null,
+    metadataJSON: string | null,
+    syncIdentifier: string | null,
+  ): Promise<string>;
+  deleteWorkout(idsJSON: string): Promise<boolean>;
+  readWorkouts(anchorISO: string, days: number): Promise<string>;
 }
 
 let nativeModule: TodoHealthNativeModule | null = null;
@@ -394,6 +408,119 @@ export async function writeFoodSamples(
 export function deleteHealthSamples(ids: readonly string[]): Promise<boolean> {
   if (ids.length === 0) return Promise.resolve(true);
   return degradeOnReject(() => nativeModule!.deleteHealthSamples(JSON.stringify(ids)), false);
+}
+
+/** The two kinds of workout `writeHealthWorkout` will record. */
+export type HealthWorkoutWriteActivity = 'traditionalStrengthTraining' | 'functionalStrengthTraining';
+
+/**
+ * What a workout write saved.
+ *
+ * `workoutId` is null on a write that *worked* when the phone was locked as
+ * it finished: HealthKit saved the workout and could not hand it back, so
+ * there is no id to keep. That is not "nothing was written" (which is a null
+ * result, below), and a caller must not retry it, or the session lands in
+ * Health twice.
+ *
+ * `sampleIds` are the samples saved with the workout (today none: energy is
+ * attached only when active-energy sharing is allowed, and this app doesn't
+ * ask for it yet). Pass them with `workoutId` to `deleteHealthWorkout`.
+ */
+export interface HealthWorkoutWrite {
+  workoutId: string | null;
+  sampleIds: string[];
+}
+
+/**
+ * Writes one finished strength session to Health as a workout.
+ *
+ * Resolves null for every reason nothing was saved: no native half, workout
+ * sharing not allowed, an activity other than the two strength kinds, an end
+ * not after the start, a session over a day long or ending in the future, or
+ * the save failing. The native side never asks for permission itself.
+ *
+ * `energyKcal` is a *measured* figure or nothing. Absent stays absent: pass
+ * null when nothing measured it, and never an estimate worked out from sets.
+ * `metadata` is saved under the app's own keys (string or number values; a
+ * key starting with `HK` is dropped).
+ *
+ * `syncIdentifier` names the record the workout stands for (a session's id).
+ * The native side saves it as `HKMetadataKeySyncIdentifier`, beside an
+ * `HKMetadataKeySyncVersion` of the milliseconds at the write, so a later
+ * write under the same identifier replaces the earlier workout in Health
+ * rather than sitting beside it. Its own argument rather than a metadata key,
+ * since `HK` keys are dropped from `metadata`.
+ */
+export async function writeHealthWorkout(
+  startISO: string,
+  endISO: string,
+  activity: HealthWorkoutWriteActivity,
+  energyKcal: number | null = null,
+  metadata: Record<string, string | number> | null = null,
+  syncIdentifier: string | null = null,
+): Promise<HealthWorkoutWrite | null> {
+  const raw = await degradeOnReject(
+    () =>
+      nativeModule!.writeWorkout(
+        startISO,
+        endISO,
+        activity,
+        energyKcal,
+        metadata ? JSON.stringify(metadata) : null,
+        syncIdentifier && syncIdentifier.length > 0 ? syncIdentifier : null,
+      ),
+    'null',
+  );
+  // Re-validated rather than trusted, for `writeFoodSamples`' reason: an id
+  // that isn't a string is one that would be stored and later handed to a
+  // delete that couldn't use it.
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
+    const { workoutId, sampleIds } = parsed as Record<string, unknown>;
+    return {
+      workoutId: typeof workoutId === 'string' && workoutId.length > 0 ? workoutId : null,
+      sampleIds: Array.isArray(sampleIds)
+        ? sampleIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
+        : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Deletes a workout `writeHealthWorkout` saved, with any samples saved beside
+ * it: pass the workout's id and its `sampleIds` together.
+ *
+ * Its own call rather than `deleteHealthSamples`, so a meal's retraction
+ * never asks HealthKit to delete from a type the person was never asked to
+ * share (Apple documents that as a failure). HealthKit only lets an app
+ * delete what it saved itself, so no id here can reach another app's workout.
+ *
+ * Resolves true when nothing went wrong, a workout already deleted in the
+ * Health app included.
+ */
+export function deleteHealthWorkout(ids: readonly string[]): Promise<boolean> {
+  if (ids.length === 0) return Promise.resolve(true);
+  return degradeOnReject(() => nativeModule!.deleteWorkout(JSON.stringify(ids)), false);
+}
+
+/**
+ * Workouts other apps recorded that overlap the `days` days starting at
+ * `anchorISO`, as the raw JSON the native side wrote (`[]` for every reason
+ * there is nothing to say, a refused read and a build predating this call
+ * included). This app's own workouts are left out natively.
+ *
+ * Returned unparsed for `readSleepSeries`' reason: the parse has rules worth
+ * testing (an absent energy figure is never a zero, an unknown activity reads
+ * as `other`), and tests can reach `src/` and not this folder. They live in
+ * `parseHealthWorkouts` (`src/utils/healthWorkouts.ts`).
+ *
+ * Nothing is cached, for the reason `readDailyHealth` gives.
+ */
+export function readWorkouts(anchorISO: string, days: number): Promise<string> {
+  return degradeOnReject(() => nativeModule!.readWorkouts(anchorISO, days), '[]');
 }
 
 /**

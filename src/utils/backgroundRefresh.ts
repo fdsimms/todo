@@ -103,6 +103,7 @@ import { registerSyncReload, useSyncStore } from '../store/useSyncStore';
 import type { SyncSummary } from './syncEngine';
 import { isDemoModeActive } from './demoState';
 import { runPendingHealthFoodWrites } from './pendingHealthFoodWrites';
+import { runPendingHealthWorkoutWrites } from './pendingHealthWorkoutWrites';
 import { runStartupSequence, runStartupStep } from './startup';
 import { timed } from './perfLog';
 import { savePerfRun } from './perfReport';
@@ -245,9 +246,11 @@ registerSyncReload(applied => {
   // can be written. Not filtered on the report: a pass with nothing pending
   // reads one small table and stops.
   void drainCalendarRequests();
-  // And so is a meal an agent logged, which only the phone can write to Health.
-  // Skips itself unless the app is in front; see runPendingHealthFoodWrites.
+  // And so is a meal or a workout an agent logged, which only the phone can
+  // write to Health. Each skips itself unless the app is in front; see
+  // runPendingHealthFoodWrites.
   runPendingHealthFoodWrites();
+  runPendingHealthWorkoutWrites();
 });
 
 TaskManager.defineTask(BACKGROUND_REFRESH_TASK, async () => {

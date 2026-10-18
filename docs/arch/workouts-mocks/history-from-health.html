@@ -1,0 +1,46 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="base.css">
+<style>
+.hdr { padding: 4px 20px 0; }
+.hdr h1 { font-size: 34px; font-weight: 700; letter-spacing: -0.4px; }
+.hdr .sub { font-size: 13px; color: var(--text2); margin-top: 2px; }
+.hub { display: flex; gap: 8px; padding: 12px 16px 0; }
+.hub span { font-size: 13px; padding: 6px 12px; border-radius: 9999px; background: var(--bg3); color: var(--text); }
+.hub span.on { background: var(--accent); color: var(--onAccent); font-weight: 600; }
+.segwrap { padding: 8px 16px 8px; }
+.list { padding: 4px 16px 0; display: flex; flex-direction: column; gap: 8px; }
+.srow { background: var(--bg2); border-radius: 16px; padding: 12px 16px; }
+.srow .t { font-size: 15px; font-weight: 600; }
+.srow .d { font-size: 13px; color: var(--text2); margin-top: 2px; }
+.tag { display: flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: var(--text2); margin-bottom: 2px; }
+.tag svg { width: 12px; height: 12px; fill: var(--text2); }
+.cap { position: absolute; bottom: 14px; left: 0; right: 0; text-align: center; font-size: 11px; color: var(--text3); }
+</style></head>
+<body>
+<script>
+const heart = '<svg viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.7 4.5c2.1 0 3.6 1.2 4.3 2.4h2c.7-1.2 2.2-2.4 4.3-2.4 3.7 0 5.8 3.9 4.3 7.3C19.5 16.4 12 21 12 21z"/></svg>';
+function phone(theme) {
+  const rows = [
+    ['s', 'Upper A', 'Sat, Oct 17 · 52 min · 18 sets'],
+    ['h', 'Running', 'Fri, Oct 16 · 31 min', 'Strava'],
+    ['s', 'Lower A', 'Thu, Oct 15 · 48 min · 16 sets'],
+    ['h', 'Yoga', 'Wed, Oct 14 · 45 min', 'Apple Watch'],
+    ['h', 'Cycling', 'Tue, Oct 13 · 1 hr 12 min', 'Zwift'],
+    ['s', 'Upper A', 'Mon, Oct 12 · 55 min · 18 sets'],
+    ['s', 'Lower A', 'Sat, Oct 10 · 50 min · 16 sets'],
+  ];
+  const list = rows.map(r => r[0] === 's'
+    ? `<div class="srow"><div class="t">${r[1]}</div><div class="d">${r[2]}</div></div>`
+    : `<div class="srow"><div class="tag">${heart}From Health · ${r[3]}</div><div class="t">${r[1]}</div><div class="d">${r[2]}</div></div>`).join('');
+  return `<div class="phone ${theme}">
+    <div class="status"><span>9:41</span><span>●●●</span></div>
+    <div class="hdr"><h1>Workouts</h1><div class="sub">12 workouts</div></div>
+    <div class="hub"><span>Mood</span><span>Sleep</span><span>Weight</span><span class="on">Workouts</span></div>
+    <div class="segwrap"><div class="seg"><span class="on">History</span><span>Routines</span><span>Programs</span><span>Exercises</span></div></div>
+    <div class="list">${list}</div>
+    <div class="cap">Proxy mock (${theme === 'light' ? 'Light' : 'Dark'}), not a render of the app</div>
+  </div>`;
+}
+document.body.innerHTML = phone('light') + phone('dark');
+</script>
+</body></html>

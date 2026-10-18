@@ -177,6 +177,7 @@ jest.mock('../store/useSyncStore', () => {
 });
 jest.mock('../utils/calendarRequestDrain', () => ({ drainCalendarRequests: () => Promise.resolve() }));
 jest.mock('../utils/pendingHealthFoodWrites', () => ({ runPendingHealthFoodWrites: () => {} }));
+jest.mock('../utils/pendingHealthWorkoutWrites', () => ({ runPendingHealthWorkoutWrites: () => {} }));
 jest.mock('../utils/deviceTimeZone', () => ({ recordDeviceTimeZone: () => { mockCalls.push('recordDeviceTimeZone'); } }));
 jest.mock('../utils/notifications', () => ({
   rescheduleAllReminders: () => { mockCalls.push('rescheduleAllReminders'); },

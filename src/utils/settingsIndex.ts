@@ -238,6 +238,13 @@ export interface SettingsEntry {
    * use-up generator is on, and "Sync now" while either sync destination is.
    */
   requires?: string | readonly string[];
+  /**
+   * Rows that all have to be on, for a row nested under two switches at once
+   * (the Workouts row under Log to Health renders only while that section and
+   * the Workouts area are both on). `requires` is "any of", so this is its
+   * other half rather than a second meaning for the list.
+   */
+  requiresAll?: readonly string[];
 }
 
 /**
@@ -606,6 +613,11 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['permission', 'allow', 'authorize', 'grant', 'sharing', 'food', 'meal', 'calories', 'macros'] },
   { id: 'healthWriteNutrients', requires: 'healthWrite', groupId: 'health', label: 'Nutrients written per meal', section: 'Log to Health',
     keywords: ['optional', 'choose', 'select', 'exclude', 'protein', 'sodium', 'fat', 'fiber', 'sugar', 'calcium', 'iron', 'potassium', 'caffeine', 'water', 'macros'] },
+  // Rendered only while Log to Health and the Workouts area are both on.
+  { id: 'workoutHealthWrite', requiresAll: ['healthWrite', 'workoutsEnabled'], groupId: 'health', label: 'Workouts', section: 'Log to Health',
+    keywords: ['write workouts', 'save workouts', 'strength training', 'gym', 'lifting', 'healthkit', 'exercise', 'activity'] },
+  { id: 'healthWorkoutWriteAccess', requiresAll: ['healthWrite', 'workoutsEnabled', 'workoutHealthWrite'], groupId: 'health', label: 'Workout-write access', section: 'Log to Health',
+    keywords: ['permission', 'allow', 'authorize', 'grant', 'sharing', 'workouts', 'gym'] },
   { id: 'weightGoal', groupId: 'health', label: 'Weight goal', section: 'Weight', keywords: ['target', 'lose', 'gain', 'maintain', 'calories', 'tdee', 'deficit', 'macros', 'protein', 'bmr', 'rate', 'lb per week'] },
   { id: 'weightUnit', groupId: 'health', label: 'Weight unit', section: 'Weight',
     keywords: ['kg', 'kilograms', 'lb', 'pounds', 'scale', 'body', 'mass', 'metric', 'imperial'] },
@@ -1144,7 +1156,8 @@ export function visibleSettingsEntries(
     && (kitchenEnabled || !e.kitchen)
     && (!simpleMode || !e.simple)
     && (!e.iosOnly || platformOS === 'ios')
-    && (!e.requires || !activeEntryIds || requiredRowOn(e.requires, activeEntryIds)));
+    && (!e.requires || !activeEntryIds || requiredRowOn(e.requires, activeEntryIds))
+    && (!e.requiresAll || !activeEntryIds || e.requiresAll.every(id => activeEntryIds.has(id))));
 }
 
 export function settingsGroup(id: SettingsGroupId): SettingsGroup | undefined {

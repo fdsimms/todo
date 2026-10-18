@@ -5,7 +5,9 @@
  * session takes its sets with it, and that a renumber after a delete lands in
  * the database and not only in memory.
  */
-import { initDatabase, dbGetWorkoutSets, dbGetAllExercises } from '../db/database';
+import { initDatabase, dbGetWorkoutSets, dbGetAllExercises, dbGetWorkoutSession, dbSaveWorkoutSession } from '../db/database';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { logWorkoutToHealth, retractWorkoutFromHealth, workoutHealthWriteOn } from '../utils/healthWorkoutSync';
 import { useWorkoutStore, workoutContentCount } from '../store/useWorkoutStore';
 import { catalogExercise } from '../utils/exerciseCatalog';
 import { newTaskFromDraft } from '../utils/taskDraft';
@@ -51,6 +53,21 @@ let mockTasks: Task[] = [];
 jest.mock('../store/useTaskStore', () => ({
   useTaskStore: { getState: () => ({ tasks: mockTasks, completeTask: mockCompleteTask, logQuotaUnit: mockLogQuotaUnit }) },
 }));
+// The Health writer's two native calls and its switch, as fakes: what is
+// under test here is what the store does with each answer. The pure rules
+// (`pendingWorkoutWriteAction`) stay real.
+jest.mock('../utils/healthWorkoutSync', () => ({
+  ...jest.requireActual('../utils/healthWorkoutSync'),
+  logWorkoutToHealth: jest.fn(),
+  retractWorkoutFromHealth: jest.fn(),
+  workoutHealthWriteOn: jest.fn(),
+}));
+const mockWrite = logWorkoutToHealth as jest.Mock;
+const mockRetract = retractWorkoutFromHealth as jest.Mock;
+const mockWriteOn = workoutHealthWriteOn as jest.Mock;
+const written = (workoutId: string | null) => ({ outcome: 'written', workoutId, sampleIds: [] });
+const flush = async () => { for (let i = 0; i < 5; i++) await new Promise(r => setImmediate(r)); };
+
 const task = (id: string, draft: Partial<TaskDraft> = {}, extra: Partial<Task> = {}): Task =>
   ({ ...newTaskFromDraft({ title: id, dueDate: new Date(2026, 0, 1).toISOString(), ...draft }, new Date(2026, 0, 1).toISOString(), 0, false, id), ...extra });
 
@@ -63,8 +80,12 @@ beforeEach(() => {
     mockRawDb.exec(`DELETE FROM ${t}`);
   }
   useWorkoutStore.getState().initialize();
+  useWorkoutStore.setState({ pendingHealthWriteRefusal: false });
   mockTasks = [];
   jest.clearAllMocks();
+  mockWrite.mockResolvedValue({ outcome: 'off', workoutId: null, sampleIds: [] });
+  mockRetract.mockResolvedValue(true);
+  mockWriteOn.mockReturnValue(false);
 });
 
 const state = () => useWorkoutStore.getState();
@@ -690,5 +711,255 @@ describe('history', () => {
     ok(state().addProgram({ name: 'P' }));
     ok(state().addExercise({ name: 'Landmine row', kind: 'weight_reps', equipment: 'barbell', primaryMuscles: ['upper_back'] }));
     expect(workoutContentCount(state())).toBe(4);
+  });
+});
+
+/**
+ * Writing a workout to Apple Health (docs/arch/health-data.md, "The fourth
+ * write"): on Save, retracted on delete, rewritten when a written workout's
+ * times move, and the pending pass for a workout an agent logged.
+ */
+describe('Apple Health', () => {
+  const at = (h: number, m = 0) => new Date(2026, 9, 5, h, m).toISOString();
+  const finishOne = () => {
+    const live = ok(state().startSession({ title: 'Upper', at: new Date(2026, 9, 5, 9) }));
+    ok(state().logSet(live.id, { exerciseId: 'lib:back-squat', weightKg: 100, reps: 5 }));
+    return ok(state().finishSession(live.id, { endedAt: at(10) }));
+  };
+  const logged = (extra: Record<string, unknown> = {}) => ok(state().addFinishedSession({
+    startedAt: at(7), endedAt: at(8), sets: [{ exerciseId: 'lib:back-squat', weightKg: 100, reps: 5 }], ...extra,
+  })).session;
+  const stampId = (id: string, healthWorkoutId: string) => {
+    dbSaveWorkoutSession({ ...dbGetWorkoutSession(id)!, healthWorkoutId });
+    reload();
+  };
+
+  it('writes a workout once on Save and keeps the id Health gave it', async () => {
+    mockWrite.mockResolvedValue(written('HK-1'));
+    const done = finishOne();
+    expect(mockWrite).toHaveBeenCalledTimes(1);
+    expect(mockWrite.mock.calls[0][0]).toMatchObject({ id: done.id, endedAt: at(10) });
+    await flush();
+    expect(dbGetWorkoutSession(done.id)).toMatchObject({ healthWorkoutId: 'HK-1', healthWritePending: false });
+    expect(state().sessions.find(x => x.id === done.id)?.healthWorkoutId).toBe('HK-1');
+  });
+
+  it('takes the write back out when the workout was deleted before Health answered', async () => {
+    let land: (v: unknown) => void = () => {};
+    mockWrite.mockReturnValue(new Promise(r => { land = r; }));
+    const done = finishOne();
+    state().deleteSession(done.id);
+    land(written('HK-2'));
+    await flush();
+    expect(mockRetract).toHaveBeenCalledWith(['HK-2']);
+    expect(dbGetWorkoutSession(done.id)).toBeNull();
+  });
+
+  it('writes it again when its times moved before Health answered, and drops the first', async () => {
+    let land: (v: unknown) => void = () => {};
+    mockWrite.mockReturnValueOnce(new Promise(r => { land = r; })).mockResolvedValueOnce(written('HK-4'));
+    const done = finishOne();
+    ok(state().updateSession(done.id, { endedAt: at(11) }));
+    land(written('HK-3'));
+    await flush();
+    expect(mockRetract).toHaveBeenCalledWith(['HK-3']);
+    expect(mockWrite).toHaveBeenLastCalledWith(expect.objectContaining({ endedAt: at(11) }));
+    expect(dbGetWorkoutSession(done.id)?.healthWorkoutId).toBe('HK-4');
+  });
+
+  it('moves to its own id when another write of the session landed first, and retracts the older one', async () => {
+    // Both carry the session's sync identifier, so this one replaced the
+    // other in Health; retracting it would leave neither.
+    let land: (v: unknown) => void = () => {};
+    mockWrite.mockReturnValue(new Promise(r => { land = r; }));
+    const done = finishOne();
+    stampId(done.id, 'HK-OTHER');
+    land(written('HK-13'));
+    await flush();
+    expect(mockRetract).toHaveBeenCalledWith(['HK-OTHER']);
+    expect(mockRetract).not.toHaveBeenCalledWith(['HK-13']);
+    expect(dbGetWorkoutSession(done.id)?.healthWorkoutId).toBe('HK-13');
+  });
+
+  it('keeps the id it has when the later write saved locked, with no id to move to', async () => {
+    let land: (v: unknown) => void = () => {};
+    mockWrite.mockReturnValue(new Promise(r => { land = r; }));
+    const done = finishOne();
+    stampId(done.id, 'HK-OTHER');
+    land(written(null));
+    await flush();
+    expect(mockRetract).not.toHaveBeenCalled();
+    expect(dbGetWorkoutSession(done.id)?.healthWorkoutId).toBe('HK-OTHER');
+  });
+
+  it('writes nothing for an edit that changes nothing', () => {
+    const s = logged();
+    const before = state().sessions;
+    expect(state().updateSession(s.id, {})).toBe(state().sessions.find(x => x.id === s.id));
+    expect(state().updateSession(s.id, { title: s.title, notes: s.notes, startedAt: s.startedAt, endedAt: s.endedAt })).toBe(before.find(x => x.id === s.id));
+    expect(state().sessions).toBe(before);
+  });
+
+  it('says a refusal once, and again only after a write has landed', async () => {
+    useSettingsStore.getState().setHealthWorkoutWriteRefusalSeen(false);
+    mockWrite.mockResolvedValue({ outcome: 'refused', workoutId: null, sampleIds: [] });
+    finishOne();
+    await flush();
+    expect(state().pendingHealthWriteRefusal).toBe(true);
+    state().setPendingHealthWriteRefusal(false);
+    finishOne();
+    await flush();
+    expect(state().pendingHealthWriteRefusal).toBe(false);
+    mockWrite.mockResolvedValue(written('HK-5'));
+    finishOne();
+    await flush();
+    expect(useSettingsStore.getState().healthWorkoutWriteRefusalSeen).toBe(false);
+  });
+
+  it('retracts a deleted workout whatever the switches say, and asks nothing of one never written', async () => {
+    const plain = logged();
+    state().deleteSession(plain.id);
+    expect(mockRetract).not.toHaveBeenCalled();
+    const inHealth = logged();
+    stampId(inHealth.id, 'HK-6');
+    state().deleteSession(inHealth.id);
+    expect(mockRetract).toHaveBeenCalledWith(['HK-6']);
+  });
+
+  it('rewrites a written workout whose times change, while writing is on', async () => {
+    mockWriteOn.mockReturnValue(true);
+    mockWrite.mockResolvedValue(written('HK-8'));
+    const s = logged();
+    stampId(s.id, 'HK-7');
+    ok(state().updateSession(s.id, { startedAt: at(6, 30) }));
+    // Still in Health while the rewrite is on its way, so the page keeps
+    // saying so and a second edit is checked against Health's limits.
+    expect(dbGetWorkoutSession(s.id)?.healthWorkoutId).toBe('HK-7');
+    await flush();
+    expect(mockRetract).toHaveBeenCalledWith(['HK-7']);
+    expect(mockWrite).toHaveBeenCalledWith(expect.objectContaining({ startedAt: at(6, 30), endedAt: at(8) }));
+    expect(dbGetWorkoutSession(s.id)?.healthWorkoutId).toBe('HK-8');
+  });
+
+  it('keeps pointing at the old workout when a rewrite is refused and the retract failed', async () => {
+    mockWriteOn.mockReturnValue(true);
+    mockRetract.mockResolvedValue(false);
+    mockWrite.mockResolvedValue({ outcome: 'refused', workoutId: null, sampleIds: [] });
+    const s = logged();
+    stampId(s.id, 'HK-20');
+    ok(state().updateSession(s.id, { endedAt: at(9) }));
+    await flush();
+    expect(dbGetWorkoutSession(s.id)?.healthWorkoutId).toBe('HK-20');
+  });
+
+  it('lets go of the old id when a rewrite is refused after the retract took it out', async () => {
+    mockWriteOn.mockReturnValue(true);
+    mockWrite.mockResolvedValue({ outcome: 'refused', workoutId: null, sampleIds: [] });
+    const s = logged();
+    stampId(s.id, 'HK-21');
+    ok(state().updateSession(s.id, { endedAt: at(9) }));
+    await flush();
+    expect(mockRetract).toHaveBeenCalledWith(['HK-21']);
+    expect(dbGetWorkoutSession(s.id)?.healthWorkoutId).toBeNull();
+  });
+
+  it('rewrites again for a second retime while the first is on its way, and ends on one id', async () => {
+    mockWriteOn.mockReturnValue(true);
+    let land: (v: unknown) => void = () => {};
+    mockWrite.mockReturnValueOnce(new Promise(r => { land = r; })).mockResolvedValue(written('HK-23'));
+    const s = logged();
+    stampId(s.id, 'HK-22');
+    ok(state().updateSession(s.id, { endedAt: at(9) }));
+    await flush();
+    ok(state().updateSession(s.id, { endedAt: at(9, 30) }));
+    await flush();
+    land(written('HK-STALE'));
+    await flush();
+    await flush();
+    expect(mockWrite).toHaveBeenLastCalledWith(expect.objectContaining({ endedAt: at(9, 30) }));
+    expect(mockRetract).toHaveBeenCalledWith(['HK-STALE']);
+    expect(dbGetWorkoutSession(s.id)?.healthWorkoutId).toBe('HK-23');
+  });
+
+  it('leaves Health alone for an edit with writing off, one that keeps the times, and one never written', async () => {
+    const s = logged();
+    stampId(s.id, 'HK-9');
+    ok(state().updateSession(s.id, { endedAt: at(9) }));
+    mockWriteOn.mockReturnValue(true);
+    ok(state().updateSession(s.id, { notes: 'Heavy', effort: 8 }));
+    ok(state().replaceSets(s.id, [{ exerciseId: 'lib:front-squat', weightKg: 80, reps: 3 }]));
+    const never = logged();
+    ok(state().updateSession(never.id, { endedAt: at(9) }));
+    await flush();
+    expect(mockRetract).not.toHaveBeenCalled();
+    expect(mockWrite).not.toHaveBeenCalled();
+    expect(dbGetWorkoutSession(s.id)?.healthWorkoutId).toBe('HK-9');
+  });
+
+  it('never writes an imported workout', () => {
+    state().importSessions([{
+      id: 'imp-h', title: 'Push', startedAt: at(7), startPrecisionMs: 1000, endedAt: at(8), notes: '',
+      sets: [{ exerciseRef: 'lib:back-squat', kind: 'working', weightKg: 100, reps: 5, durationSeconds: null, distanceM: null, rpe: null, note: null, supersetKey: null }],
+    }], {});
+    expect(mockWrite).not.toHaveBeenCalled();
+    expect(dbGetWorkoutSession('imp-h')).toMatchObject({ healthWorkoutId: null, healthWritePending: false });
+  });
+
+  describe('a workout an agent logged', () => {
+    const recent = () => {
+      const end = new Date(Date.now() - 3_600_000);
+      return logged({ startedAt: new Date(end.getTime() - 3_600_000).toISOString(), endedAt: end.toISOString(), healthWritePending: true });
+    };
+
+    it('is written by the pending pass, which keeps the id and clears the flag', async () => {
+      const s = recent();
+      expect(s.healthWritePending).toBe(true);
+      mockWrite.mockResolvedValue(written('HK-10'));
+      await state().writePendingHealthSessions();
+      expect(dbGetWorkoutSession(s.id)).toMatchObject({ healthWorkoutId: 'HK-10', healthWritePending: false });
+    });
+
+    it('stays flagged while writing is off or refused, so a later pass can send it', async () => {
+      const s = recent();
+      for (const outcome of ['off', 'unavailable', 'refused']) {
+        mockWrite.mockResolvedValue({ outcome, workoutId: null, sampleIds: [] });
+        await state().writePendingHealthSessions();
+        expect(dbGetWorkoutSession(s.id)?.healthWritePending).toBe(true);
+      }
+    });
+
+    it('is dropped unwritten once it ended over a week ago', async () => {
+      const old = logged({ healthWritePending: true });
+      await state().writePendingHealthSessions();
+      expect(mockWrite).not.toHaveBeenCalled();
+      expect(dbGetWorkoutSession(old.id)?.healthWritePending).toBe(false);
+    });
+
+    it('waits, still flagged, while it has no length, and is written once one is added', async () => {
+      const end = new Date(Date.now() - 3_600_000).toISOString();
+      const s = logged({ startedAt: end, endedAt: end, healthWritePending: true });
+      await state().writePendingHealthSessions();
+      expect(mockWrite).not.toHaveBeenCalled();
+      expect(dbGetWorkoutSession(s.id)?.healthWritePending).toBe(true);
+      ok(state().updateSession(s.id, { endedAt: new Date(Date.now() - 600_000).toISOString() }));
+      mockWrite.mockResolvedValue(written('HK-12'));
+      await state().writePendingHealthSessions();
+      expect(mockWrite).toHaveBeenCalledTimes(1);
+      expect(dbGetWorkoutSession(s.id)).toMatchObject({ healthWorkoutId: 'HK-12', healthWritePending: false });
+    });
+
+    it('keeps the flag when the writer calls the span unwritable', async () => {
+      const s = recent();
+      mockWrite.mockResolvedValue({ outcome: 'notWritable', workoutId: null, sampleIds: [] });
+      await state().writePendingHealthSessions();
+      expect(dbGetWorkoutSession(s.id)?.healthWritePending).toBe(true);
+    });
+
+    it('is written once when two passes overlap', async () => {
+      recent();
+      mockWrite.mockResolvedValue(written('HK-11'));
+      await Promise.all([state().writePendingHealthSessions(), state().writePendingHealthSessions()]);
+      expect(mockWrite).toHaveBeenCalledTimes(1);
+    });
   });
 });

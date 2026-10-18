@@ -7,7 +7,7 @@ import type {
   WorkoutSetKind,
 } from '../types';
 import type { WeightUnit } from './weightLog';
-import { formatRestSeconds, formatWeightNumber } from './workoutData';
+import { formatRestSeconds, formatWeightNumber, formatWeightWithUnit } from './workoutData';
 
 /**
  * The live workout's rules: which set is next, where the screen goes after a
@@ -242,9 +242,23 @@ export function formatDistance(m: number): string {
  * "80 × 8", "0:45", "400 m", "24 × 400 m". Null when it records nothing the
  * exercise's kind uses. Units are left off weights, which the column heading
  * or the summary's own line already names.
+ *
+ * `withUnit` is for a list with no heading to name the unit (the workout
+ * page): the weight carries it ("82.5 kg × 8"), and an assisted exercise's
+ * weight reads as the assistance it is ("−20 kg × 8"), which is what workout
+ * mode's "−kg" column heading says of the same number.
  */
-export function formatSetLine(set: Pick<WorkoutSet, 'weightKg' | 'reps' | 'durationSeconds' | 'distanceM'>, kind: ExerciseKind, unit: WeightUnit): string | null {
-  const w = set.weightKg !== null ? formatWeightNumber(set.weightKg, unit) : null;
+export function formatSetLine(
+  set: Pick<WorkoutSet, 'weightKg' | 'reps' | 'durationSeconds' | 'distanceM'>,
+  kind: ExerciseKind,
+  unit: WeightUnit,
+  withUnit = false,
+): string | null {
+  const w = set.weightKg === null
+    ? null
+    : withUnit
+      ? `${kind === 'assisted_reps' && set.weightKg > 0 ? '−' : ''}${formatWeightWithUnit(set.weightKg, unit)}`
+      : formatWeightNumber(set.weightKg, unit);
   switch (kind) {
     case 'weight_reps':
     case 'assisted_reps':
@@ -284,6 +298,17 @@ export function setLabels(sets: readonly WorkoutSet[]): Map<string, string> {
     else out.set(s.id, String(++n));
   }
   return out;
+}
+
+/**
+ * A set named in words, from its `setLabels` entry: "Set 2", "Warm-up" or
+ * "Drop set". What a screen reader hears, and what a set's note is filed under
+ * once the workout is over.
+ */
+export function setName(kind: WorkoutSetKind, label: string): string {
+  if (kind === 'warmup') return 'Warm-up';
+  if (kind === 'drop') return 'Drop set';
+  return `Set ${label}`;
 }
 
 // ==== laying sets out ====
@@ -412,8 +437,18 @@ export interface ExerciseSummary {
   heaviest: WorkoutSet | null;
 }
 
+/**
+ * Whole minutes from a session's start to its end, or to `now` while it is
+ * live. The History row, the finish summary and the workout page all read it,
+ * so a workout is the same length wherever it is shown.
+ */
+export function sessionMinutes(session: Pick<WorkoutSession, 'startedAt' | 'endedAt'>, now: Date = new Date()): number {
+  const end = session.endedAt ? new Date(session.endedAt) : now;
+  return Math.max(0, Math.floor((end.getTime() - new Date(session.startedAt).getTime()) / 60000));
+}
+
 export interface SessionSummary {
-  /** Whole minutes from start to `endedAt` (or to `now` for a live session). */
+  /** Whole minutes from start to `endedAt` (or to `now` for a live session), `sessionMinutes`. */
   minutes: number;
   setsDone: number;
   /** Exercises with at least one set done, in session order. */
@@ -431,8 +466,7 @@ export function sessionSummary(
   sets: readonly WorkoutSet[],
   now: Date = new Date(),
 ): SessionSummary {
-  const end = session.endedAt ? new Date(session.endedAt) : now;
-  const minutes = Math.max(0, Math.floor((end.getTime() - new Date(session.startedAt).getTime()) / 60000));
+  const minutes = sessionMinutes(session, now);
   const exercises: ExerciseSummary[] = [];
   for (const ex of sessionExercises(sets)) {
     const done = ex.sets.filter(isDone);

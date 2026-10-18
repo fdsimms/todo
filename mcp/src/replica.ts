@@ -4306,7 +4306,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return program;
     },
     logWorkout(input) {
-      const result = workoutStore().addFinishedSession(input);
+      // Flagged for the phone, which writes it to Apple Health on its next
+      // foreground if its own switches say to (WorkoutSession.healthWritePending):
+      // this process has no HealthKit. The food log's arrangement.
+      const result = workoutStore().addFinishedSession({ ...input, healthWritePending: true });
       if (typeof result === 'string') throw new Error(WORKOUT_REFUSALS[result]);
       return result;
     },
@@ -4316,7 +4319,20 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (!session) throw new Error(`No workout with id ${id}. list_workouts lists them.`);
       if (session.endedAt === null) throw new Error('That workout is still in progress on the phone. It can be changed once it is finished there.');
       const { sets, ...fields } = patch;
-      const updated = store.updateSession(id, fields);
+      // Health holds a written workout's start and end, and only the phone can
+      // take the old one back out (the food log's refusal, for the same reason).
+      // Refused before the store is reached, which would otherwise try to.
+      const retimed = (fields.startedAt !== undefined && fields.startedAt !== session.startedAt)
+        || (fields.endedAt !== undefined && fields.endedAt !== session.endedAt);
+      if (session.healthWorkoutId && retimed) {
+        throw new Error('That workout was written to Apple Health, which only the phone can correct, so its times can\'t be changed from here. Its title, notes, effort and sets can.');
+      }
+      // A sets-only patch leaves the session row alone. Rewriting it restamps
+      // it as this replica's change, and a sync can then send this copy,
+      // which may still hold no Health id and the pending flag, over the
+      // phone's stamp, so the phone writes the workout to Health again.
+      const touchesSession = Object.values(fields).some(v => v !== undefined);
+      const updated = touchesSession ? store.updateSession(id, fields) : session;
       if (typeof updated === 'string') throw new Error(WORKOUT_REFUSALS[updated]);
       if (sets !== undefined) {
         if (sets.length === 0) throw new Error(WORKOUT_REFUSALS.empty);
@@ -4330,6 +4346,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const session = store.sessions.find(x => x.id === id);
       if (!session) throw new Error(`No workout with id ${id}. list_workouts lists them.`);
       if (session.endedAt === null) throw new Error('That workout is still in progress on the phone. Only the person can end or discard it there.');
+      if (session.healthWorkoutId) {
+        throw new Error('That workout was written to Apple Health, which only the phone can remove it from, so it can\'t be deleted from here.');
+      }
       const sets = store.loadSets(id);
       store.deleteSession(id);
       return { session, sets };

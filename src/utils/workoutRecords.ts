@@ -527,6 +527,32 @@ export function summarizeRecords(events: readonly RecordEvent[]): ExerciseRecord
 }
 
 /**
+ * The records one session set, as a summary lists them: each exercise it did
+ * walked over that exercise's whole history (`historyOf`, which is
+ * `exerciseHistory`), the events that belong to this session kept, grouped and
+ * capped by `summarizeRecords`. Workout mode's finish summary and the workout
+ * page both call this, so a workout says the same about itself on both.
+ *
+ * A record is against everything *before* the session, so an old workout keeps
+ * the records it set at the time even once they have been beaten since: the
+ * page is about that workout, not about where each lift stands today (that is
+ * the exercise page's table).
+ */
+export function sessionRecordSummary(
+  sessionId: string,
+  exerciseIds: readonly string[],
+  kindOf: (exerciseId: string) => ExerciseKind,
+  historyOf: (exerciseId: string) => readonly WorkoutSet[],
+  sessions: readonly Pick<WorkoutSession, 'id' | 'startedAt'>[],
+  dayResetTime: string,
+): ExerciseRecordsSummary[] {
+  if (exerciseIds.length === 0) return [];
+  const recSessions = recordSessions(sessions, dayResetTime);
+  const analyses = exerciseIds.map(id => analyzeExercise(id, kindOf(id), historyOf(id), recSessions));
+  return summarizeRecords(recordsInSession(analyses, sessionId));
+}
+
+/**
  * The newest records for Stats: for each exercise and session, only the most
  * notable one, newest first, within `RECENT_RECORD_DAYS` of `todayKey`, at
  * most `limit`. A year-old PR is not recent however few have come since.

@@ -1,0 +1,48 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="base.css">
+<style>
+.hdr { display:flex; align-items:flex-start; padding: 10px 16px 6px; }
+.hdr .t { flex:1; text-align:center; } .hdr .t b { font-size:17px; } .hdr .t div { font-size:13px; color:var(--text2); margin-top:2px; }
+.hdr .side { min-width:56px; color:var(--accentText); font-size:17px; } .hdr .side.r { text-align:right; font-weight:600; }
+.health { display:flex; justify-content:center; margin: 2px 0 4px; }
+.health span { font-size:12px; color:var(--text2); background:var(--bg3); border-radius:9999px; padding:3px 10px; }
+.tiles { display:flex; gap:8px; margin-top: 12px; } .tile { flex:1; background:var(--bg2); border-radius:12px; padding:10px 12px; }
+.tile b { font-size:20px; font-weight:700; display:block; font-variant-numeric:tabular-nums; } .tile span { font-size:12px; color:var(--text2); }
+.kv { display:flex; justify-content:space-between; align-items:center; }
+.val { color: var(--accentText); }
+.hint { font-size:12px; color:var(--text3); margin: 6px 4px 0; }
+.ex { padding: 12px 16px; } .ex + .ex { border-top: 0.5px solid var(--sep); }
+.ex .n { font-size:15px; } .sets { margin-top:6px; display:grid; grid-template-columns: 22px 1fr; row-gap:2px; font-size:13px; color:var(--text2); font-variant-numeric:tabular-nums; }
+.sets .w { color: var(--orangeText); font-weight:700; }
+.rec { font-size:13px; } .rec .b { color:var(--text2); }
+.phone { height:auto; padding-bottom:28px; } .scroll { overflow:visible; }
+.del { text-align:center; color: #D10B00; font-weight:600; } .dark .del { color: #FF594F; }
+</style></head><body>
+<div class="phone light" id="p">
+  <div class="status"><span>9:41</span><span>●●●</span></div>
+  <div class="hdr"><span class="side"></span><span class="t"><b>Push A</b><div>Tue, Oct 14</div></span><span class="side r">Done</span></div>
+  <div class="health"><span>In Apple Health</span></div>
+  <div class="scroll">
+    <div class="tiles"><div class="tile"><b>52 min</b><span>Time</span></div><div class="tile"><b>5</b><span>Exercises</span></div><div class="tile"><b>17</b><span>Sets</span></div></div>
+    <div class="groupLabel">Times</div>
+    <div class="card">
+      <div class="row kv"><span>Started</span><span class="val">6:12 PM ›</span></div>
+      <div class="row kv"><span>Finished</span><span class="val">7:04 PM ›</span></div>
+    </div>
+    <div class="hint">Changing the times also changes the workout in Apple Health.</div>
+    <div class="groupLabel">Personal records</div>
+    <div class="card"><div class="row" style="flex-direction:column;align-items:stretch;gap:4px">
+      <div>Barbell bench press</div>
+      <div class="kv rec"><span class="b">Estimated 1RM</span><span><span class="b">102 kg → </span><b>104.5 kg</b></span></div>
+    </div></div>
+    <div class="groupLabel">Exercises</div>
+    <div class="card">
+      <div class="ex"><div class="n">Barbell bench press</div><div class="sets"><span class="w">W</span><span>40 kg × 10</span><span>1</span><span>82.5 kg × 8</span><span>2</span><span>82.5 kg × 8</span><span>3</span><span>82.5 kg × 7</span></div></div>
+      <div class="ex"><div class="n">Incline dumbbell press</div><div class="sets"><span>1</span><span>26 kg × 10</span><span>2</span><span>26 kg × 10</span><span>3</span><span>24 kg × 10</span></div></div>
+    </div>
+    <div class="groupLabel">How it went</div>
+    <div class="card"><div class="row kv"><span>Effort</span><span class="stepper"><b>−</b><i>7</i><b>+</b></span></div><div class="row ter">Shoulder felt fine on the last set</div></div>
+    <div class="card" style="margin-top:24px"><div class="row del" style="justify-content:center">Delete workout</div></div>
+  </div>
+</div>
+<script>const p=document.getElementById('p'); const d=p.cloneNode(true); d.className='phone dark'; d.id=''; document.body.appendChild(d);</script>
+</body></html>
