@@ -1,5 +1,6 @@
 import React from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { ThumbIcon } from './ThumbIcon';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { useColors } from '../theme/ThemeContext';
 import { COIN_ICON } from '../constants/coinIcon';
@@ -59,11 +60,22 @@ export function CoinIcon({ size, color, filled = false, markColor }: Props) {
 }
 
 /**
- * An icon named by `IconName`: the coin when it says so, an Ionicons glyph
- * otherwise. The one place a destination's icon is turned into a picture, so a
- * surface that lists screens doesn't each learn about the coin.
+ * An icon named by `IconName`: the coin when it says so, the drawn thumb for
+ * any Ionicons `thumbs-*` name (`-outline` is the outline, bare is solid), an
+ * Ionicons glyph otherwise. The one place a name is turned into a picture, so a
+ * surface that takes an icon name doesn't each learn about the drawn ones.
  */
 export function NamedIcon({ name, size, color }: { name: string; size: number; color: string }) {
   if (name === COIN_ICON) return <CoinIcon size={size} color={color} />;
+  if (name.startsWith('thumbs-')) {
+    return (
+      <ThumbIcon
+        down={name.startsWith('thumbs-down')}
+        filled={!name.endsWith('-outline')}
+        size={size}
+        color={color}
+      />
+    );
+  }
   return <Ionicons name={name as keyof typeof Ionicons.glyphMap} size={size} color={color} />;
 }

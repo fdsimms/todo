@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, View, Text, TouchableOpacity, StyleSheet, type LayoutChangeEvent } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { NamedIcon } from './CoinIcon';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { animation, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -10,7 +10,7 @@ import { segmentRows } from '../utils/segmentColumns';
 export interface SegmentOption<T> {
   value: T;
   label: string;
-  /** Ionicons glyph, for the option sets that carry one. */
+  /** Icon name (Ionicons, or a drawn one `NamedIcon` knows), for the option sets that carry one. */
   icon?: string;
   /**
    * A colour swatch before the label, on *every* segment rather than only the
@@ -257,8 +257,8 @@ export function SegmentedControl<T extends string | number | boolean | null>({
         accessibilityLabel={opt.accessibilityLabel ?? opt.label}
       >
         {!!opt.icon && (
-          <Ionicons
-            name={opt.icon as never}
+          <NamedIcon
+            name={opt.icon}
             size={iconSize.sm}
             color={selected ? colors.text : colors.textSecondary}
           />

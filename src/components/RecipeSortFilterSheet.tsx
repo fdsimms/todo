@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { NamedIcon } from './CoinIcon';
 import { ThumbIcon } from './ThumbIcon';
 import type { RecipeSortOption } from '../types';
 import { useColors } from '../theme/ThemeContext';
@@ -38,7 +39,7 @@ interface Props {
 }
 
 const SORT_OPTIONS: { value: RecipeSortOption; label: string; icon: string }[] = [
-  { value: 'default', label: 'Loved first', icon: 'thumbs-up' },
+  { value: 'default', label: 'Loved first', icon: 'thumbs-up-outline' },
   { value: 'name', label: 'Name (A to Z)', icon: 'text' },
   { value: 'cooked-recent', label: 'Recently cooked', icon: 'time' },
   { value: 'cooked-oldest', label: 'Not cooked in a while', icon: 'hourglass' },
@@ -156,8 +157,8 @@ export function RecipeSortFilterSheet({
                 }}
                 activeOpacity={interaction.activeOpacity}
               >
-                <Ionicons
-                  name={opt.icon as never}
+                <NamedIcon
+                  name={opt.icon}
                   size={18}
                   color={sort === opt.value ? colors.accent : colors.textSecondary}
                 />
