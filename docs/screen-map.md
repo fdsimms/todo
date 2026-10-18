@@ -69,8 +69,7 @@ components below.
 - `src/screens/TodayScreen.tsx` — AddTaskFab, AllClearMark, AnimatedCollapsible, AnimatedNumber, ApplyTemplateSheet, BulkActionBar, CardSheet, CategoryOrderSheet, CoinIcon, CompletionCollapse, CreatedTaskToast, DayContextRow, +45 more
 - `src/screens/UnattendedLogScreen.tsx` — ActivitySourceSheet, EmptyState, HubPills, InlineAction, ScreenHeader, ScreenSettingsSheet, ScrollToTopButton
 - `src/screens/WeightScreen.tsx` — EmptyState, HubPills, LogWeightSheet, ProgressBar, ScreenHeader, ScreenSettingsSheet, ScrollToTopButton, SegmentedControl, WeightChart, WeightGoalSheet
-- `src/screens/WorkoutsScreen.tsx` — ActionMenu, CardSheet, CsvExportSheet, EmptyState, HubPills, InlineAction, LazySheet, RoutineEditorSheet, ScreenHeader, SearchField, SegmentedControl, WorkoutImportSheet
-- `src/screens/WorkoutsScreen.tsx` — EmptyState, ExerciseDetailSheet, HubPills, InlineAction, LazySheet, RoutineEditorSheet, ScreenHeader, SearchField, SegmentedControl
+- `src/screens/WorkoutsScreen.tsx` — ActionMenu, CardSheet, CsvExportSheet, EmptyState, ExerciseDetailSheet, HubPills, InlineAction, LazySheet, RoutineEditorSheet, ScreenHeader, SearchField, SegmentedControl, +1 more
 
 ## Components
 
