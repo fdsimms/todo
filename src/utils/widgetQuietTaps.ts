@@ -3,7 +3,7 @@ import type { WatchSessionInput } from '../store/useWorkoutStore';
 import type { WeightUnit } from './weightLog';
 import { completionTapFor, offersMealLogOnCompletion } from './completionTap';
 import { workoutTaskEffect } from './workoutTask';
-import { WORKOUT_SET_KINDS, weightFromDisplay } from './workoutData';
+import { WORKOUT_SET_KINDS, weightFromDisplay, weightToDisplay } from './workoutData';
 
 /**
  * Taps on a widget that apply without bringing the app forward.
@@ -73,13 +73,29 @@ export interface QuietTap {
    * started, before the phone had said).
    */
   restId?: string;
-  /** `set`: the numbers the set was done at, already in kilograms. */
+  /**
+   * `set`: the numbers the person changed on the watch, already in
+   * kilograms. A number they didn't touch isn't sent, so the set keeps its own.
+   */
   values?: WatchTickValues;
+  /** `set`, `finish`: the unit the watch showed weights in, for `changedWatchValues`. */
+  unit?: WeightUnit;
+  /**
+   * `finish`: the sets the watch had done that the phone may not have heard
+   * of yet, in the order done, so a Finish that overtakes their own taps
+   * still records them (and their notes).
+   */
+  doneSets?: WatchDoneSet[];
+  /** `finish`: notes written on the watch the phone may not have heard of yet. */
+  notes?: { setId: string; note: string }[];
   /** `watchSession`: the workout the watch ran on its own, read (`parseWatchSession`). */
   workout?: WatchSessionInput;
   /** `setNote`: the words, trimmed. */
   note?: string;
-  /** `addSet`: the exercise the set is added to. */
+  /**
+   * `addSet`: the exercise the set is added to. `set`: the set's exercise, so
+   * a tick that overtakes the `addSet` of a set added on the watch can add it.
+   */
   exerciseId?: string;
   /** `addExercise`: the ids the watch gave the sets it laid out, in order. */
   setIds?: string[];
@@ -127,6 +143,14 @@ export interface WatchTickValues {
   distanceM?: number;
 }
 
+/** A set done on the watch, carried in its Finish. */
+export interface WatchDoneSet {
+  id: string;
+  exerciseId: string;
+  at: string;
+  values: WatchTickValues;
+}
+
 export type QuietTapAction =
   | { type: 'complete'; id: string; at: string }
   | { type: 'logUnit'; id: string }
@@ -160,8 +184,12 @@ export type QuietTapAction =
   | { type: 'addWorkoutExercise'; sessionId: string; exerciseId: string; setIds: string[] }
   /** `moveSessionExercise`. */
   | { type: 'moveWorkoutExercise'; sessionId: string; exerciseId: string; direction: 'up' | 'down' }
-  /** `applyProposal`, workout mode's own Use. */
-  | { type: 'useWorkoutSuggestion'; sessionId: string; exerciseId: string };
+  /**
+   * `applyProposal`, workout mode's own Use. `warmupIdPrefix` (the watch's tap
+   * id) names any warm-ups a ramp adds `<prefix>-w<i>`, the ids the watch drew
+   * them under.
+   */
+  | { type: 'useWorkoutSuggestion'; sessionId: string; exerciseId: string; warmupIdPrefix?: string };
 
 /**
  * The workouts a drain is judged against: the phone's one in progress, with
@@ -171,7 +199,7 @@ export interface QuietTapWorkouts {
   live: {
     id: string;
     taskId: string | null;
-    sets: readonly Pick<WorkoutSet, 'id' | 'exerciseId' | 'kind' | 'completedAt'>[];
+    sets: readonly Pick<WorkoutSet, 'id' | 'exerciseId' | 'kind' | 'completedAt' | 'weightKg' | 'reps' | 'durationSeconds' | 'distanceM'>[];
   } | null;
   sessionIds: ReadonlySet<string>;
 }
@@ -228,7 +256,19 @@ export function parseQuietTaps(json: string): QuietTap[] {
       tap.sessionId = sessionId;
       const restId = idOf(fields.restId);
       if (restId && (kind === 'restAdd' || kind === 'restSkip')) tap.restId = restId;
-      if (kind === 'set') tap.values = tickValuesFromWatch(fields, fields.unit);
+      if (kind === 'set') {
+        tap.values = tickValuesFromWatch(fields, fields.unit);
+        tap.unit = readUnit(fields.unit);
+        const exerciseId = idOf(fields.exerciseId);
+        if (exerciseId) tap.exerciseId = exerciseId;
+      }
+      if (kind === 'finish') {
+        tap.unit = readUnit(fields.unit);
+        const doneSets = parseDoneSets(fields.sets, fields.unit);
+        if (doneSets.length > 0) tap.doneSets = doneSets;
+        const notes = parseNotes(fields.notes);
+        if (notes.length > 0) tap.notes = notes;
+      }
       if (kind === 'setNote') {
         const note = typeof fields.note === 'string' ? fields.note.trim().slice(0, WATCH_NOTE_MAX) : '';
         if (note === '') continue;
@@ -291,25 +331,59 @@ export function planQuietTaps(
   const finished = new Set<string>();
   const written = new Set<string>();
   const live = workouts?.live ?? null;
-  const workingSets = new Map((live?.sets ?? []).map(s => [s.id, { exerciseId: s.exerciseId, kind: s.kind, done: s.completedAt !== null }]));
+  const workingSets = new Map<string, WorkingSet>((live?.sets ?? []).map(s => [s.id, {
+    exerciseId: s.exerciseId,
+    kind: s.kind,
+    done: s.completedAt !== null,
+    values: { weightKg: s.weightKg, reps: s.reps, durationSeconds: s.durationSeconds, distanceM: s.distanceM },
+  }]));
   const inSession = (exerciseId: string) => [...workingSets.values()].some(s => s.exerciseId === exerciseId);
   const isLive = (sessionId: string | undefined) => !!live && live.id === sessionId && !finished.has(sessionId);
+  // Use's warm-ups, by the prefix of the ids the watch drew them under.
+  const warmupPrefixes = new Map<string, string>();
+  /**
+   * The set a tap names, as this drain has it. A set the watch added whose
+   * own `addSet` hasn't arrived (a message can overtake a transfer, docs in
+   * workouts.md) is added here, under the watch's id, when its exercise is in
+   * the workout; a warm-up a Use earlier in the drain adds is known by its
+   * id. Anything else is a set the workout doesn't have: null.
+   */
+  const ensureSet = (sessionId: string, setId: string, exerciseId: string | undefined): WorkingSet | null => {
+    const found = workingSets.get(setId);
+    if (found) return found;
+    const ramp = /^(.*)-w\d+$/.exec(setId);
+    const rampExercise = ramp ? warmupPrefixes.get(ramp[1]) : undefined;
+    if (rampExercise) {
+      const warmup: WorkingSet = { exerciseId: rampExercise, kind: 'warmup', done: false, values: null };
+      workingSets.set(setId, warmup);
+      return warmup;
+    }
+    if (!exerciseId || !inSession(exerciseId)) return null;
+    const added: WorkingSet = { exerciseId, kind: 'working', done: false, values: null };
+    workingSets.set(setId, added);
+    actions.push({ type: 'addWorkoutSet', sessionId, exerciseId, setId });
+    return added;
+  };
+  const tick = (sessionId: string, setId: string, set: WorkingSet, at: string, sent: WatchTickValues, unit: WeightUnit) => {
+    set.done = true;
+    actions.push({ type: 'tickWorkoutSet', sessionId, setId, at, values: changedWatchValues(sent, set.values, unit) });
+  };
   const askFor = (taskId: string | null): Task | null => {
     const task = taskId ? byId.get(taskId) ?? null : null;
     return task && workoutTaskEffect(task) === 'ask' ? task : null;
   };
 
-  for (const tap of taps) {
+  for (const tap of inTimeOrder(taps)) {
     // ==== the Apple Watch's workout ====
     // Ahead of the task branch below, which would read a set's or a session's
     // id as a task's and find nothing. A tap about a workout that is no longer
     // the one in progress (finished, discarded, another one started since the
     // watch last heard) does nothing: tickSet's own guards say the same.
     if (tap.kind === 'set') {
-      const set = workingSets.get(tap.id);
-      if (!isLive(tap.sessionId) || !set || set.done) continue;
-      set.done = true;
-      actions.push({ type: 'tickWorkoutSet', sessionId: tap.sessionId!, setId: tap.id, at: tap.at, values: tap.values ?? {} });
+      if (!isLive(tap.sessionId)) continue;
+      const set = ensureSet(tap.sessionId!, tap.id, tap.exerciseId);
+      if (!set || set.done) continue;
+      tick(tap.sessionId!, tap.id, set, tap.at, tap.values ?? {}, tap.unit ?? 'kg');
       continue;
     }
     if (tap.kind === 'setNote') {
@@ -322,18 +396,18 @@ export function planQuietTaps(
       // To an exercise in the workout, under an id nothing in it has yet: a
       // repeat of the same addition adds nothing.
       if (!isLive(tap.sessionId) || !tap.exerciseId || !inSession(tap.exerciseId) || workingSets.has(tap.id)) continue;
-      workingSets.set(tap.id, { exerciseId: tap.exerciseId, kind: 'working', done: false });
+      workingSets.set(tap.id, { exerciseId: tap.exerciseId, kind: 'working', done: false, values: null });
       actions.push({ type: 'addWorkoutSet', sessionId: tap.sessionId!, exerciseId: tap.exerciseId, setId: tap.id });
       continue;
     }
     if (tap.kind === 'addExercise') {
       if (!isLive(tap.sessionId) || inSession(tap.id)) continue;
       const setIds = (tap.setIds ?? []).filter(id => !workingSets.has(id));
-      for (const id of setIds) workingSets.set(id, { exerciseId: tap.id, kind: 'working', done: false });
+      for (const id of setIds) workingSets.set(id, { exerciseId: tap.id, kind: 'working', done: false, values: null });
       // An exercise added with no sets named still lays its sets out; it is
       // in the workout from here on either way.
       // (A stand-in row, a warm-up so it never counts as a working set logged.)
-      if (setIds.length === 0) workingSets.set(`\u0000${tap.id}`, { exerciseId: tap.id, kind: 'warmup', done: true });
+      if (setIds.length === 0) workingSets.set(`\u0000${tap.id}`, { exerciseId: tap.id, kind: 'warmup', done: true, values: null });
       actions.push({ type: 'addWorkoutExercise', sessionId: tap.sessionId!, exerciseId: tap.id, setIds });
       continue;
     }
@@ -347,7 +421,11 @@ export function planQuietTaps(
       // working set of the exercise has been logged.
       const logged = [...workingSets.values()].some(s => s.exerciseId === tap.id && s.done && (s.kind === 'working' || s.kind === 'amrap'));
       if (!isLive(tap.sessionId) || !inSession(tap.id) || logged) continue;
-      actions.push({ type: 'useWorkoutSuggestion', sessionId: tap.sessionId!, exerciseId: tap.id });
+      if (tap.watchTapId) warmupPrefixes.set(tap.watchTapId, tap.id);
+      actions.push({
+        type: 'useWorkoutSuggestion', sessionId: tap.sessionId!, exerciseId: tap.id,
+        ...(tap.watchTapId ? { warmupIdPrefix: tap.watchTapId } : {}),
+      });
       continue;
     }
     if (tap.kind === 'restAdd' || tap.kind === 'restSkip') {
@@ -357,7 +435,27 @@ export function planQuietTaps(
     }
     if (tap.kind === 'finish') {
       if (!isLive(tap.sessionId)) continue;
-      finished.add(tap.sessionId!);
+      // The sets done on the watch, and the notes written there, that the
+      // phone may not have heard of: Finish carries them, so one that
+      // overtakes their own taps still records them. Each applies only if it
+      // hasn't already (a set already done is left, as `tickSet` leaves it).
+      const sessionId = tap.sessionId!;
+      for (const done of [...(tap.doneSets ?? [])].sort((a, b) => Date.parse(a.at) - Date.parse(b.at))) {
+        let set = ensureSet(sessionId, done.id, done.exerciseId);
+        if (!set && !inSession(done.exerciseId)) {
+          // An exercise added on the watch whose own addExercise hasn't
+          // arrived: added with this set's id, its other sets after it.
+          set = { exerciseId: done.exerciseId, kind: 'working', done: false, values: null };
+          workingSets.set(done.id, set);
+          actions.push({ type: 'addWorkoutExercise', sessionId, exerciseId: done.exerciseId, setIds: [done.id] });
+        }
+        if (!set || set.done) continue;
+        tick(sessionId, done.id, set, done.at, done.values, tap.unit ?? 'kg');
+      }
+      for (const { setId, note } of tap.notes ?? []) {
+        if (workingSets.has(setId)) actions.push({ type: 'noteWorkoutSet', sessionId, setId, note });
+      }
+      finished.add(sessionId);
       actions.push({ type: 'finishWorkout', sessionId: tap.sessionId!, at: tap.at });
       // Finishing completes the task the way its checkbox would; one that asks
       // a question is asked by the app, as a widget tap on it is.
@@ -489,6 +587,106 @@ export function tickValuesFromWatch(
   if (duration !== null) out.durationSeconds = Math.round(duration);
   const distance = finiteAtLeastZero(raw.distanceM);
   if (distance !== null) out.distanceM = distance;
+  return out;
+}
+
+/**
+ * What of a tick's numbers to write: the ones that change the set. The watch
+ * sends only the numbers the person turned the Crown on, and this is the
+ * phone's own guard on top of that: a weight that reads the same in the unit
+ * shown as the set's own is dropped (a weight sent back as 132.3 lb would
+ * otherwise turn 60 kg into 60.01 kg, and could read as a new record), and so
+ * is a 0 sent for a number the set doesn't have (an empty box is not a 0). A
+ * set this drain added has no numbers to compare yet, so everything sent goes.
+ */
+export function changedWatchValues(
+  sent: WatchTickValues,
+  current: WorkingSetValues | null,
+  unit: WeightUnit,
+): WatchTickValues {
+  if (!current) return { ...sent };
+  const out: WatchTickValues = {};
+  if (sent.weightKg !== undefined) {
+    const same = current.weightKg !== null && weightToDisplay(current.weightKg, unit) === weightToDisplay(sent.weightKg, unit);
+    if (!same && !(current.weightKg === null && sent.weightKg === 0)) out.weightKg = sent.weightKg;
+  }
+  if (sent.reps !== undefined && sent.reps !== current.reps && !(current.reps === null && sent.reps === 0)) out.reps = sent.reps;
+  if (sent.durationSeconds !== undefined && sent.durationSeconds !== current.durationSeconds
+    && !(current.durationSeconds === null && sent.durationSeconds === 0)) out.durationSeconds = sent.durationSeconds;
+  if (sent.distanceM !== undefined && sent.distanceM !== current.distanceM
+    && !(current.distanceM === null && sent.distanceM === 0)) out.distanceM = sent.distanceM;
+  return out;
+}
+
+/** A set's numbers as the drain has them, to compare a tick's against. */
+export interface WorkingSetValues {
+  weightKg: number | null;
+  reps: number | null;
+  durationSeconds: number | null;
+  distanceM: number | null;
+}
+
+/** A set of the live workout as a drain has it. `values` is null for one added in this drain. */
+interface WorkingSet {
+  exerciseId: string;
+  kind: WorkoutSetKind;
+  done: boolean;
+  values: WorkingSetValues | null;
+}
+
+/**
+ * The taps with each session's workout taps put in the order they were made
+ * (by `at`, ties kept in queue order), each in a slot one of them held, so
+ * the taps around them keep their places. Two channels carry the watch's
+ * taps, ordered within each but not across them, so the queue can hold a
+ * workout's taps out of order.
+ */
+export function inTimeOrder(taps: readonly QuietTap[]): QuietTap[] {
+  const out = [...taps];
+  const slots = new Map<string, number[]>();
+  taps.forEach((tap, i) => {
+    if (!SESSION_KINDS.has(tap.kind) || !tap.sessionId) return;
+    if (!slots.has(tap.sessionId)) slots.set(tap.sessionId, []);
+    slots.get(tap.sessionId)!.push(i);
+  });
+  for (const indices of slots.values()) {
+    const ordered = indices
+      .map(i => taps[i])
+      .map((tap, k) => ({ tap, k, ms: Date.parse(tap.at) }))
+      .sort((a, b) => a.ms - b.ms || a.k - b.k)
+      .map(x => x.tap);
+    indices.forEach((slot, k) => { out[slot] = ordered[k]; });
+  }
+  return out;
+}
+
+/** A Finish's carried sets, as the watch sent them (in `unit`). Malformed ones are dropped. */
+function parseDoneSets(raw: unknown, unit: unknown): WatchDoneSet[] {
+  if (!Array.isArray(raw)) return [];
+  const out: WatchDoneSet[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const s = entry as Record<string, unknown>;
+    const id = idOf(s.id);
+    const exerciseId = idOf(s.exerciseId);
+    const at = isoOf(s.at);
+    if (!id || !exerciseId || !at) continue;
+    out.push({ id, exerciseId, at, values: tickValuesFromWatch(s, unit) });
+  }
+  return out;
+}
+
+/** A Finish's carried notes. */
+function parseNotes(raw: unknown): { setId: string; note: string }[] {
+  if (!Array.isArray(raw)) return [];
+  const out: { setId: string; note: string }[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const s = entry as Record<string, unknown>;
+    const setId = idOf(s.id);
+    const note = typeof s.note === 'string' ? s.note.trim().slice(0, WATCH_NOTE_MAX) : '';
+    if (setId && note) out.push({ setId, note });
+  }
   return out;
 }
 

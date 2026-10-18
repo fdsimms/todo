@@ -20,6 +20,21 @@ struct WatchSetValues: Codable, Equatable {
     var distanceM: Double?
 }
 
+/// A set done on the watch, carried in a Finish on the phone's workout (see
+/// `WatchTap.doneSets`).
+struct WatchFinishedSet: Codable, Equatable {
+    let id: String
+    let exerciseId: String
+    let at: Date
+    let values: WatchSetValues
+}
+
+/// A note written on the watch, carried in a Finish the same way.
+struct WatchFinishedNote: Codable, Equatable {
+    let setId: String
+    let note: String
+}
+
 /// One tap made on the watch. `id` is the watch's own and travels with the
 /// tap, so the phone can say which ones it has received and applied.
 struct WatchTap: Codable, Identifiable {
@@ -57,8 +72,15 @@ struct WatchTap: Codable, Identifiable {
     var body: String? = nil
     /// "setNote": the words dictated.
     var note: String? = nil
-    /// "addSet": the exercise the set (`itemId`) goes on.
+    /// "addSet": the exercise the set (`itemId`) goes on. "set": the set's
+    /// exercise, so a tick that overtakes the `addSet` of a set added here can
+    /// add it on the phone.
     var exerciseId: String? = nil
+    /// "finish": the sets done here that the phone hadn't answered for yet,
+    /// so a Finish that overtakes their own taps still records them.
+    var doneSets: [WatchFinishedSet]? = nil
+    /// "finish": the notes written here that the phone hadn't answered for yet.
+    var notes: [WatchFinishedNote]? = nil
     /// "addExercise": the ids the watch gave the sets it laid out, in order,
     /// which the phone gives the sets it writes.
     var setIds: [String]? = nil
@@ -80,7 +102,7 @@ struct WatchTap: Codable, Identifiable {
         var info: [String: Any] = [
             "kind": kind,
             "watchTapId": id,
-            "at": ISO8601DateFormatter().string(from: at),
+            "at": Self.isoText(at),
         ]
         if !itemId.isEmpty { info["id"] = itemId }
         if let listId { info["listId"] = listId }
@@ -99,7 +121,28 @@ struct WatchTap: Codable, Identifiable {
         if let exerciseId { info["exerciseId"] = exerciseId }
         if let setIds { info["setIds"] = setIds }
         if let direction { info["direction"] = direction }
+        if let doneSets {
+            info["sets"] = doneSets.map { set -> [String: Any] in
+                var entry: [String: Any] = ["id": set.id, "exerciseId": set.exerciseId, "at": Self.isoText(set.at)]
+                if let weight = set.values.weight { entry["weight"] = weight }
+                if let reps = set.values.reps { entry["reps"] = reps }
+                if let durationSeconds = set.values.durationSeconds { entry["durationSeconds"] = durationSeconds }
+                if let distanceM = set.values.distanceM { entry["distanceM"] = distanceM }
+                return entry
+            }
+        }
+        if let notes {
+            info["notes"] = notes.map { ["id": $0.setId, "note": $0.note] }
+        }
         return info
+    }
+
+    /// ISO text with fractional seconds, so taps made within the same second
+    /// still sort in the order made (the phone orders a workout's taps by it).
+    static func isoText(_ date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.string(from: date)
     }
 }
 

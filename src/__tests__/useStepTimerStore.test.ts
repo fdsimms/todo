@@ -216,6 +216,28 @@ describe('rest timers', () => {
   });
 });
 
+describe('restFor', () => {
+  const rest = {
+    kind: 'rest', id: 'rest-1', sessionId: 'w1', exerciseId: 'lib:barbell-bench-press', sessionTitle: 'Push A', label: 'After set 1',
+    durationSeconds: 90, startedAt: new Date(Date.now() - 10_000).toISOString(), elapsedSeconds: 0,
+    createdAt: new Date(Date.now() - 10_000).toISOString(),
+  };
+
+  it('reads the stack back first on a launch that hasn’t, so a rest still counting down is found', () => {
+    mockGet.mockReturnValue(JSON.stringify([rest]));
+    expect(useStepTimerStore.getState().hydrated).toBe(false);
+    expect(useStepTimerStore.getState().restFor('w1')).toMatchObject({ id: 'rest-1' });
+    expect(useStepTimerStore.getState().hydrated).toBe(true);
+  });
+
+  it('finds only the session’s rest, and only the one named when a tap names one', () => {
+    mockGet.mockReturnValue(JSON.stringify([rest]));
+    expect(useStepTimerStore.getState().restFor('w0')).toBeNull();
+    expect(useStepTimerStore.getState().restFor('w1', 'rest-0')).toBeNull();
+    expect(useStepTimerStore.getState().restFor('w1', 'rest-1')).toMatchObject({ id: 'rest-1' });
+  });
+});
+
 describe('hydrate', () => {
   const stored = (overrides: Partial<RecipeStepTimer> = {}): RecipeStepTimer => ({
     kind: 'recipe',

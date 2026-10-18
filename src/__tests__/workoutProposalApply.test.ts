@@ -65,12 +65,14 @@ describe('applyProposal', () => {
   });
 
   it('gives the warm-ups the ids the watch drew, or ids of their own when those are taken', () => {
-    applyProposal('live', BENCH, { warmupIds: ['tap-1-w0', 'tap-1-w1', 'tap-1-w2'] });
+    applyProposal('live', BENCH, { warmupId: i => `tap-1-w${i}` });
     expect(mockAddPlannedWarmups).toHaveBeenCalledTimes(1);
-    expect(mockAddPlannedWarmups).toHaveBeenLastCalledWith('live', BENCH, expect.any(Array), { ids: ['tap-1-w0', 'tap-1-w1', 'tap-1-w2'] });
+    const [, , steps, options] = mockAddPlannedWarmups.mock.calls[0];
+    expect(options.ids).toEqual(steps.map((_: unknown, i: number) => `tap-1-w${i}`));
+    expect(steps.length).toBeGreaterThan(0);
     jest.clearAllMocks();
     mockAddPlannedWarmups.mockReturnValueOnce('taken').mockReturnValueOnce([]);
-    applyProposal('live', BENCH, { warmupIds: ['taken-id'] });
+    applyProposal('live', BENCH, { warmupId: () => 'taken-id' });
     expect(mockAddPlannedWarmups).toHaveBeenCalledTimes(2);
     expect(mockAddPlannedWarmups).toHaveBeenLastCalledWith('live', BENCH, expect.any(Array));
   });

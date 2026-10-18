@@ -457,7 +457,9 @@ async function processQuietWidgetTaps(handOff: 'app' | 'requeue' = 'app'): Promi
           useWorkoutStore.getState().moveSessionExercise(action.sessionId, action.exerciseId, action.direction);
           break;
         case 'useWorkoutSuggestion':
-          applyProposal(action.sessionId, action.exerciseId);
+          applyProposal(action.sessionId, action.exerciseId, {
+            ...(action.warmupIdPrefix ? { warmupId: (i: number) => `${action.warmupIdPrefix}-w${i}` } : {}),
+          });
           break;
       }
     }
@@ -495,8 +497,7 @@ function quietTapWorkouts(): QuietTapWorkouts {
 
 /** The live session's rest, and only the one named when a tap names one. */
 function sessionRest(sessionId: string, restId: string | null): RestTimer | null {
-  return useStepTimerStore.getState().timers.find((t): t is RestTimer =>
-    t.kind === 'rest' && t.sessionId === sessionId && (restId === null || t.id === restId)) ?? null;
+  return useStepTimerStore.getState().restFor(sessionId, restId);
 }
 
 /**
@@ -765,9 +766,10 @@ function watchWorkoutSection(): WatchWorkoutSnapshot | null {
   if (!workouts.initialized) return null;
   const settings = useSettingsStore.getState();
   const live = workouts.liveSession();
-  const rest = live
-    ? useStepTimerStore.getState().timers.find((t): t is RestTimer => t.kind === 'rest' && t.sessionId === live.id) ?? null
-    : null;
+  // Through restFor, which reads the timers back first: a cold launch in the
+  // background that ticked nothing (so the drain never hydrated them) would
+  // otherwise send no rest, and the watch's countdown would vanish.
+  const rest = live ? useStepTimerStore.getState().restFor(live.id) : null;
   return buildWatchWorkout({
     workoutsEnabled: settings.workoutsEnabled,
     unit: settings.workoutUnit,

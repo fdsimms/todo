@@ -258,6 +258,7 @@ final class WatchSession: NSObject, WCSessionDelegate {
             let sessionId = info["sessionId"] as? String, !sessionId.isEmpty else { return }
       var entry: [String: Any] = ["kind": kind, "id": setId, "sessionId": sessionId, "at": at, "watchTapId": tapId]
       if let unit = info["unit"] as? String, unit == "kg" || unit == "lb" { entry["unit"] = unit }
+      if let exerciseId = info["exerciseId"] as? String, !exerciseId.isEmpty { entry["exerciseId"] = exerciseId }
       for key in ["weight", "reps", "durationSeconds", "distanceM"] {
         if let value = info[key] as? NSNumber, value.doubleValue.isFinite, value.doubleValue >= 0 {
           entry[key] = value
@@ -266,9 +267,17 @@ final class WatchSession: NSObject, WCSessionDelegate {
       appendToQueue(watchQuietTapsFileName, entry)
     case "restAdd", "restSkip", "finish":
       // The rest's +30 s and Skip, and Finish workout, on the session named.
+      // A Finish carries the sets done and notes written on the watch that the
+      // phone may not have heard of (a message can overtake their own taps);
+      // the app records each once (planQuietTaps).
       guard let sessionId = info["sessionId"] as? String, !sessionId.isEmpty else { return }
       var entry: [String: Any] = ["kind": kind, "id": sessionId, "sessionId": sessionId, "at": at, "watchTapId": tapId]
       if kind != "finish", let restId = info["restId"] as? String, !restId.isEmpty { entry["restId"] = restId }
+      if kind == "finish" {
+        if let unit = info["unit"] as? String, unit == "kg" || unit == "lb" { entry["unit"] = unit }
+        if let sets = info["sets"] as? [[String: Any]] { entry["sets"] = sets }
+        if let notes = info["notes"] as? [[String: Any]] { entry["notes"] = notes }
+      }
       appendToQueue(watchQuietTapsFileName, entry)
     case "setNote", "addSet", "addExercise", "moveExercise", "useSuggestion":
       // What the watch adds to the phone's workout: a dictated note on a set

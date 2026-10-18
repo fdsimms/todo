@@ -32,10 +32,10 @@ export interface ApplyProposalOptions {
   /** The proposal shown, which "Use" writes. Read from the stores when left out. */
   proposal?: ExerciseProposal | null;
   /**
-   * Ids for any warm-ups a ramp adds (`addPlannedWarmups`' `ids`): the Apple
-   * Watch's Use draws them first, so a tick on one finds it.
+   * The id for the `index`th warm-up a ramp adds (`addPlannedWarmups`' `ids`):
+   * the Apple Watch's Use draws them first, so a tick on one finds it.
    */
-  warmupIds?: readonly string[];
+  warmupId?: (index: number) => string;
 }
 
 /**
@@ -53,7 +53,8 @@ export function applyProposal(sessionId: string, exerciseId: string, options: Ap
   const { edits, warmupsToAdd } = proposalWrites(sets, p);
   for (const e of edits) store.editSet(sessionId, e.setId, { weightKg: e.weightKg, reps: e.reps });
   if (warmupsToAdd.length > 0) {
-    const added = store.addPlannedWarmups(sessionId, exerciseId, warmupsToAdd, { ids: options.warmupIds });
+    const ids = options.warmupId ? warmupsToAdd.map((_, i) => options.warmupId!(i)) : undefined;
+    const added = store.addPlannedWarmups(sessionId, exerciseId, warmupsToAdd, { ids });
     // Ids another row already holds: the warm-ups go in under ids of their own.
     if (added === 'taken') store.addPlannedWarmups(sessionId, exerciseId, warmupsToAdd);
   }

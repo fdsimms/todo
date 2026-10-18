@@ -890,7 +890,10 @@ extension WatchStore {
             scheduleRestNotification(for: workout.rest, title: workout.title, quietHours: workout.quietHours)
         case .phone:
             guard !set.id.isEmpty, local.doneSets[set.id] == nil else { return }
-            recordWorkoutTap(kind: "set", itemId: set.id, sessionId: screen.sessionId, values: values, unit: screen.unit)
+            recordWorkoutTap(
+                kind: "set", itemId: set.id, sessionId: screen.sessionId, values: values, unit: screen.unit,
+                exerciseId: set.exerciseId
+            )
             // The phone rings for its own rest, and its notification reaches
             // the wrist while it is locked. Out of reach it starts nothing
             // until the tap arrives, so the watch rings for it then.
@@ -1035,7 +1038,24 @@ extension WatchStore {
             ownWorkout = nil
             WatchOwnWorkoutFile.save(nil)
         case .phone:
-            recordWorkoutTap(kind: "finish", itemId: screen.sessionId, sessionId: screen.sessionId)
+            // The sets done and notes written here that the phone hasn't
+            // answered for, carried in the Finish itself: a message can
+            // overtake their own taps, and the phone records each once.
+            let mine = local.workoutTaps.filter { $0.sessionId == screen.sessionId }
+            let doneSets = mine.compactMap { tap -> WatchFinishedSet? in
+                guard tap.kind == "set" else { return nil }
+                let exerciseId = tap.exerciseId ?? screen.sets.first(where: { $0.id == tap.itemId })?.exerciseId
+                guard let exerciseId else { return nil }
+                return WatchFinishedSet(id: tap.itemId, exerciseId: exerciseId, at: tap.at, values: tap.values ?? WatchSetValues())
+            }
+            let notes = mine.compactMap { tap -> WatchFinishedNote? in
+                guard tap.kind == "setNote", let note = tap.note else { return nil }
+                return WatchFinishedNote(setId: tap.itemId, note: note)
+            }
+            recordWorkoutTap(
+                kind: "finish", itemId: screen.sessionId, sessionId: screen.sessionId, unit: screen.unit,
+                doneSets: doneSets.isEmpty ? nil : doneSets, notes: notes.isEmpty ? nil : notes
+            )
             finishedSummary = WatchFinishedSummary(title: screen.title, elapsed: elapsed, setsDone: screen.setsDone, queued: queued)
         }
         dismissedRestKey = nil

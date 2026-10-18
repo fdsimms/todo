@@ -50,6 +50,13 @@ interface StepTimerState {
   /** Reads the persisted stack and re-arms its alarms. Safe to call twice. */
   hydrate: () => void;
   /**
+   * A workout session's rest, and only the one named when `restId` is given,
+   * reading the stack back first if nothing has this launch: a cold launch in
+   * the background (woken by the Apple Watch) has no React tree to have done
+   * it, and a rest still counting down must not read as none.
+   */
+  restFor: (sessionId: string, restId?: string | null) => RestTimer | null;
+  /**
    * Re-reads from whichever database is now live — what demo mode calls on the
    * way in and the way out, for the reason `useSharedLinkStore.reload` gives:
    * this is a store holding state in memory *and* writing through to
@@ -156,6 +163,12 @@ export const useStepTimerStore = create<StepTimerState>((set, get) => ({
     const timers = load();
     persist(timers);
     set({ timers, hydrated: true });
+  },
+
+  restFor: (sessionId, restId = null) => {
+    if (!get().hydrated) get().hydrate();
+    return get().timers.find((t): t is RestTimer =>
+      t.kind === 'rest' && t.sessionId === sessionId && (restId === null || t.id === restId)) ?? null;
   },
 
   reload: () => {

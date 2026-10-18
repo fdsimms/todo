@@ -183,6 +183,10 @@ struct WorkoutSetView: View {
 
     @State private var first: Double
     @State private var second: Double
+    /// The boxes the Crown has turned. Only their numbers are sent: a box
+    /// left alone keeps the set's own value (an empty one stays empty, not 0,
+    /// and a weight isn't sent back through a unit round trip).
+    @State private var touched: Set<Box> = []
     @FocusState private var focus: Box?
 
     init(screen: WatchWorkoutScreen, set: WatchWorkoutSet) {
@@ -260,6 +264,8 @@ struct WorkoutSetView: View {
         .onAppear {
             DispatchQueue.main.async { focus = .first }
         }
+        .onChange(of: first) { _ = touched.insert(.first) }
+        .onChange(of: second) { _ = touched.insert(.second) }
     }
 
     private var noteLabel: String { set.note == nil ? "Add a note" : "Change the note" }
@@ -341,10 +347,11 @@ struct WorkoutSetView: View {
         .accessibilityHint("Turn the Digital Crown to change it.")
     }
 
-    /// The numbers the set is done at: only the ones this exercise records.
+    /// The numbers the set is done at: only the ones this exercise records,
+    /// and of those only the ones the Crown changed.
     private var values: WatchSetValues {
         var out = WatchSetValues()
-        for (index, field) in fields.enumerated() {
+        for (index, field) in fields.enumerated() where touched.contains(index == 0 ? .first : .second) {
             let v = index == 0 ? first : second
             switch field {
             case .weight: out.weight = v
