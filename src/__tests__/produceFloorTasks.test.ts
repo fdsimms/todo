@@ -9,6 +9,7 @@ import {
   produceFloorTitle,
   restockSuggestions,
   stockedProduce,
+  stockedProduceNames,
 } from '../utils/produceFloorTasks';
 
 jest.mock('../store/useSettingsStore', () => ({
@@ -69,6 +70,14 @@ describe('stockedProduce', () => {
   });
 });
 
+describe('stockedProduceNames', () => {
+  it('names each stocked item once, matching the count', () => {
+    const entries = [entry('Peas'), entry('Peas', { kind: 'product' }), entry('Spinach', { freshness: 'over' }), entry('Bread')];
+    expect(stockedProduceNames(entries)).toEqual(['peas']);
+    expect(stockedProduceNames(entries)).toHaveLength(stockedProduce(entries).length);
+  });
+});
+
 describe('the floor', () => {
   it('applies only under the number', () => {
     expect(produceFloorApplies(3, 4)).toBe(true);
@@ -108,10 +117,15 @@ describe('produceFloorNotes', () => {
   it('names up to five and counts the rest', () => {
     const items = ['Kale', 'Leeks', 'Peas', 'Corn', 'Beans', 'Okra', 'Chard'].map(n => item(n));
     const notes = produceFloorNotes(items);
-    expect(notes).toContain('You have bought: kale, leeks, peas, corn, beans and 2 more.');
+    expect(notes).toContain('Bought before, not on hand: kale, leeks, peas, corn, beans and 2 more.');
+  });
+
+  it('lists what is on hand ahead of what to buy', () => {
+    const notes = produceFloorNotes([item('Kale')], ['peas', 'spinach', 'apples']);
+    expect(notes).toContain('On hand: peas, spinach, apples.\n\nBought before, not on hand: kale.');
   });
 
   it('is just the explanation with nothing to suggest', () => {
-    expect(produceFloorNotes([])).not.toContain('You have bought');
+    expect(produceFloorNotes([])).not.toContain('not on hand:');
   });
 });
