@@ -319,6 +319,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     workoutPrograms: () => [],
     workoutSessions: () => [],
     workoutSets: () => [],
+    workoutExerciseSets: () => [],
     workoutSession: () => null,
     saveRoutine: () => { throw new Error('not stubbed'); },
     deleteRoutine: () => { throw new Error('not stubbed'); },

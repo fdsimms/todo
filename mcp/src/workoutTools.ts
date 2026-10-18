@@ -24,6 +24,8 @@ import { atFrom } from './logTools';
 import { joinPrevious } from '../../src/utils/workoutRoutine';
 import type { SetInput } from '../../src/store/useWorkoutStore';
 import { catalogExercise, exerciseName, searchExercises, type CatalogExercise } from '../../src/utils/exerciseCatalog';
+import { analyzeExercise, countsForRecords, volumeUnit, type RecordSession, type RecordType } from '../../src/utils/workoutRecords';
+import { recordLabel } from '../../src/utils/workoutRecordText';
 
 /** How many exercises a list returns unless asked for more. */
 export const DEFAULT_EXERCISE_LIMIT = 50;
@@ -237,6 +239,129 @@ export function listWorkouts(
     ...(workouts.length === 0 ? { note: WITHHELD_NOTE } : {}),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Exercise history
+// ---------------------------------------------------------------------------
+
+/** How many points of the estimated 1RM trend one call returns. */
+export const TREND_POINTS = 26;
+
+export interface ExerciseHistoryInput {
+  /** From list_exercises. */
+  exerciseId: string;
+}
+
+export interface RecordRowOut {
+  /** What it is: "Estimated 1RM", "Heaviest weight", "Best set of 8", "Most volume in a session". */
+  record: string;
+  type: RecordType;
+  value: number;
+  /** kg for weights, otherwise what the exercise measures. */
+  unit: 'kg' | 'reps' | 'seconds' | 'm';
+  /** The set that holds it, for a record held by one set. */
+  reps?: number;
+  /** `YYYY-MM-DD`, the day it was set. */
+  date: string;
+  /** True for the estimated 1RM: a calculation, not a lift. */
+  estimated?: true;
+}
+
+/**
+ * One exercise's history: its personal records, the trend of the estimated 1RM
+ * and the last session's sets. Computed from the sets by the app's own
+ * `workoutRecords.ts`, so Claude and the phone's exercise page cannot disagree.
+ *
+ * **The estimated 1RM is an estimate and is labelled one.** Epley, from a set
+ * of ten reps or fewer; it is a calculation and never a lift the person did.
+ * Nothing here is relative to a body weight, and a bodyweight exercise's volume
+ * is its reps. Weights are kilograms whatever unit the phone shows.
+ *
+ * Sets are the health record, so with Include health logs off the history is
+ * empty and the note says that is not evidence nobody trained, the reading
+ * `list_workouts` gives.
+ */
+export function exerciseHistory(
+  replica: Replica,
+  input: ExerciseHistoryInput,
+): {
+  exercise: { id: string; name: string; kind: string; equipment: ExerciseEquipment; primaryMuscles: MuscleGroup[]; secondaryMuscles?: MuscleGroup[]; barKg?: number };
+  sessions: number;
+  firstDate?: string;
+  lastDate?: string;
+  personalRecords: RecordRowOut[];
+  estimatedOneRepMaxTrend?: { date: string; estimatedKg: number }[];
+  trendNote?: string;
+  lastSession?: { id: string; title: string; date: string; sets: WorkoutSetRow[] };
+  note?: string;
+} {
+  const rows = replica.exercises();
+  const info = catalogExercise(rows, input.exerciseId);
+  if (!info) throw new Error(`No exercise with id ${input.exerciseId}. list_exercises names them.`);
+
+  const sessions: RecordSession[] = replica.workoutSessions('0000-01-01', '9999-12-31')
+    .map(s => ({ id: s.id, startedAt: s.startedAt, dayKey: replica.logicalDayKeyOf(s.startedAt) }))
+    .sort((a, b) => a.startedAt.localeCompare(b.startedAt) || a.id.localeCompare(b.id));
+  const sets = replica.workoutExerciseSets(input.exerciseId);
+  const analysis = analyzeExercise(input.exerciseId, info.kind, sets, sessions);
+
+  const exercise = {
+    id: info.id,
+    name: info.name,
+    kind: info.kind,
+    equipment: info.equipment,
+    primaryMuscles: info.primaryMuscles,
+    ...(info.secondaryMuscles.length ? { secondaryMuscles: info.secondaryMuscles } : {}),
+    ...(info.barKg !== null ? { barKg: info.barKg } : {}),
+  };
+  if (analysis.points.length === 0) {
+    return { exercise, sessions: 0, personalRecords: [], note: WITHHELD_HISTORY_NOTE };
+  }
+
+  const unitOf = (type: RecordType): RecordRowOut['unit'] =>
+    type === 'volume' ? volumeUnit(info.kind) : type === 'best'
+      ? (info.kind === 'duration' ? 'seconds' : info.kind === 'distance' ? 'm' : 'reps')
+      : 'kg';
+  const personalRecords = analysis.records.map((r): RecordRowOut => ({
+    record: recordLabel(r.type, info.kind, r.reps),
+    type: r.type,
+    value: r.value,
+    unit: unitOf(r.type),
+    ...(r.type === 'repsAt' && r.reps !== undefined ? { reps: r.reps } : {}),
+    ...(r.type === 'weight' && r.set?.reps != null ? { reps: r.set.reps } : {}),
+    date: r.dayKey,
+    ...(r.type === 'e1rm' ? { estimated: true as const } : {}),
+  }));
+
+  const trend = analysis.points
+    .filter(p => p.e1rm !== null)
+    .slice(-TREND_POINTS)
+    .map(p => ({ date: p.dayKey, estimatedKg: p.e1rm as number }));
+
+  const lastPoint = analysis.points[analysis.points.length - 1];
+  const lastSessionRow = sessions.find(s => s.id === lastPoint.sessionId);
+  const lastSets = sets
+    .filter(st => st.sessionId === lastPoint.sessionId && st.completedAt !== null && (countsForRecords(st) || st.kind === 'warmup'))
+    .sort((a, b) => a.setIndex - b.setIndex)
+    .map(setRow);
+  const title = replica.workoutSession(lastPoint.sessionId)?.title ?? 'Workout';
+
+  return {
+    exercise,
+    sessions: analysis.points.length,
+    firstDate: analysis.points[0].dayKey,
+    lastDate: lastPoint.dayKey,
+    personalRecords,
+    ...(trend.length > 0 ? { estimatedOneRepMaxTrend: trend } : {}),
+    ...(trend.length > 0 ? {
+      trendNote: 'Estimated, not lifted: Epley, from each session\'s best set of 10 reps or fewer. Always call it estimated.',
+    } : {}),
+    ...(lastSessionRow ? { lastSession: { id: lastSessionRow.id, title, date: lastSessionRow.dayKey, sets: lastSets } } : {}),
+  };
+}
+
+const WITHHELD_HISTORY_NOTE =
+  'No sets logged for this exercise. Workout history is part of the health record: it reaches the server only with Settings › Data & reset › Sync › Include health logs turned on, so this may mean it was never sent.';
 
 // ---------------------------------------------------------------------------
 // Writes

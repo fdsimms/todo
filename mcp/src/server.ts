@@ -111,7 +111,7 @@ import { addCookware, deleteCookware, listCookware, updateCookware } from './coo
 import { listCopyFlags, resolveCopyFlag } from './copyFlagTools';
 import { deleteMeterReading, listMeterReadings, logMeterReading } from './meterTools';
 import {
-  DEFAULT_EXERCISE_LIMIT, MAX_EXERCISE_LIMIT, deleteRoutine, deleteWorkout, listExercises, listWorkouts, logWorkout,
+  DEFAULT_EXERCISE_LIMIT, MAX_EXERCISE_LIMIT, deleteRoutine, deleteWorkout, exerciseHistory, listExercises, listWorkouts, logWorkout,
   saveRoutine, updateWorkout,
 } from './workoutTools';
 import { EXERCISE_EQUIPMENT, MUSCLE_GROUPS } from '../../src/utils/workoutData';
@@ -588,6 +588,13 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     async input => json(await withFresh(() => listWorkouts(replica, input)))
   );
 
+  server.tool(
+    'exercise_history',
+    'One exercise\'s history: its personal records, the trend of its estimated 1RM, and the sets of the last session that did it. Take the id from list_exercises. The estimated 1RM is a calculation (Epley, from each session\'s best set of 10 reps or fewer), not a lift the person did: always call it estimated, and never present it as a number they lifted. Records are the heaviest weight, the best set at each rep count, and the most volume in a session; a first session sets no records, and warm-ups never count. Weights are kg, whatever unit the phone shows; a bodyweight exercise\'s volume is its reps and is never multiplied by a body weight. Never work anything out relative to body weight. Workout history is part of the health record: it is empty unless the person has turned on Include health logs for the sync server, so an empty history is not evidence that they did not train.',
+    { exerciseId: z.string().min(1).describe('From list_exercises.') },
+    async input => json(await withFresh(() => exerciseHistory(replica, input)))
+  );
+
   const routineSet = z.object({
     kind: z.enum(['warmup', 'working', 'drop', 'amrap']).optional().describe('Default working.'),
     repsMin: z.number().int().min(0).max(1000).nullable().optional(),
@@ -946,7 +953,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'mood_insights',
-    "The Mood screen's findings: mood against what got done, by category, by repeating task, by symptom, by context tag, by food, by time of day, and before and after each milestone the person marked. Every comparison is held to the app's minimum number of days and reports both sides' day counts. They are associations, never causes; read the rules field and stay inside it when explaining. Empty unless health logs reach this server.",
+    "The Mood screen's findings: mood against what got done, by category, by repeating task, by symptom, by context tag, by food, on days they finished a workout (when Workouts is on and workout history reaches this server; otherwise absent), by time of day, and before and after each milestone the person marked. Every comparison is held to the app's minimum number of days and reports both sides' day counts. They are associations, never causes; read the rules field and stay inside it when explaining. Empty unless health logs reach this server.",
     {},
     async () => json(await withFresh(() => moodInsights(replica)))
   );

@@ -7696,6 +7696,18 @@ export function dbGetWorkoutSetsForExercise(exerciseId: string): WorkoutSet[] {
     .map(rowToWorkoutSet);
 }
 
+/**
+ * Every set that was done, in every session, oldest first: what the Stats
+ * screen's workout read and the records are computed from. A planned set
+ * (no `completed_at`) is not a record of anything and is left out. About
+ * 5,000 rows a year, read once and held by the caller.
+ */
+export function dbGetAllDoneWorkoutSets(): WorkoutSet[] {
+  return db
+    .getAllSync<Record<string, unknown>>('SELECT * FROM workout_sets WHERE completed_at IS NOT NULL ORDER BY completed_at ASC, set_index ASC')
+    .map(rowToWorkoutSet);
+}
+
 /** How many sets each session holds, for a history list that doesn't load the sets themselves. */
 export function dbCountWorkoutSetsBySession(): Record<string, number> {
   const out: Record<string, number> = {};

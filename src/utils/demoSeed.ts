@@ -3230,9 +3230,12 @@ function seedMeterTask(today: Date): void {
 }
 
 /**
- * A week of training, so the Workouts area reads as a feature the app has: a
- * two-routine program, a custom exercise, notes on a built-in one, and three
- * finished workouts with their sets. The area ships switched off, so the demo
+ * Six weeks of training, so the Workouts area reads as a feature the app has: a
+ * two-routine program, a custom exercise, notes on a built-in one, and a dozen
+ * finished workouts with their sets. The bench press climbs from 50 to 62.5 kg
+ * with one flat week, so its page has a line to draw and the latest session
+ * sets a new estimated 1RM; the sessions sit across the mood log's days (six
+ * of them training days, eleven not) so mood on training days has both sides. The area ships switched off, so the demo
  * switches it on, the way the Rewards seed does for coins. Everything goes
  * through `useWorkoutStore`, in kilograms like every stored weight.
  */
@@ -3294,6 +3297,30 @@ function seedWorkouts(today: Date): void {
       effort,
     });
   };
+  // An ordinary upper day and lower day at a given load, so the weeks before
+  // the three hand-written ones below are a line of small steps rather than a
+  // pile of literals. Bench goes 50, 52.5, 55, 55 (a flat week), 57.5, 60, 62.5.
+  const upperDay = (bench: number, row: number, pushdown: number): DemoSet[] => [
+    ['lib:barbell-bench-press', bench, 8], ['lib:barbell-bench-press', bench, 8], ['lib:barbell-bench-press', bench, 7],
+    [rowId, row, 10], [rowId, row, 10], [rowId, row, 9],
+    ['lib:dumbbell-lateral-raise', 8, 15], ['lib:triceps-pushdown', pushdown, 12],
+    ['lib:dumbbell-lateral-raise', 8, 13], ['lib:triceps-pushdown', pushdown, 11],
+  ];
+  const lowerDay = (squat: number, reps: [number, number, number], rdl: number): DemoSet[] => [
+    ['lib:back-squat', 40, 5, undefined, true], ['lib:back-squat', squat, reps[0]], ['lib:back-squat', squat, reps[1]], ['lib:back-squat', squat, reps[2]],
+    ['lib:romanian-deadlift', rdl, 10], ['lib:romanian-deadlift', rdl, 9],
+    ['lib:plank', null, null, 55],
+  ];
+  session(41, upper, upperDay(50, 35, 20), 6);
+  session(38, lower, lowerDay(70, [6, 6, 5], 60), 7);
+  session(34, upper, upperDay(52.5, 35, 20), 7);
+  session(31, lower, lowerDay(72.5, [6, 6, 5], 62.5), 7);
+  session(27, upper, upperDay(55, 37.5, 22.5), 7);
+  session(24, lower, lowerDay(75, [6, 5, 5], 65), 8);
+  session(20, upper, upperDay(55, 37.5, 22.5), 6);
+  session(17, lower, lowerDay(77.5, [5, 5, 5], 65), 8);
+  session(13, upper, upperDay(57.5, 40, 25), 7);
+  session(10, lower, lowerDay(80, [5, 5, 5], 67.5), 8);
   session(6, upper, [
     ['lib:barbell-bench-press', 60, 8], ['lib:barbell-bench-press', 60, 7], ['lib:barbell-bench-press', 60, 6],
     [rowId, 40, 10], [rowId, 40, 10], [rowId, 40, 9],
@@ -3305,8 +3332,10 @@ function seedWorkouts(today: Date): void {
     ['lib:romanian-deadlift', 70, 10], ['lib:romanian-deadlift', 70, 9],
     ['lib:plank', null, null, 60],
   ], 8);
+  // The latest session: heavier on the bench than any before it, so its page
+  // opens with a new estimated 1RM and the finish summary has something to say.
   session(2, upper, [
-    ['lib:barbell-bench-press', 60, 8], ['lib:barbell-bench-press', 60, 8], ['lib:barbell-bench-press', 60, 7],
+    ['lib:barbell-bench-press', 62.5, 8], ['lib:barbell-bench-press', 62.5, 8], ['lib:barbell-bench-press', 62.5, 7],
     [rowId, 42.5, 10], [rowId, 42.5, 9], [rowId, 42.5, 9],
     ['lib:dumbbell-lateral-raise', 8, 15], ['lib:triceps-pushdown', 27.5, 12],
   ], 7);

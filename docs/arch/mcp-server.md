@@ -281,7 +281,9 @@ the rows carry; `mood_insights` composes `moodInsights.ts` the way `MoodScreen` 
 retention clipping and kitchen gate. So the floors (`MIN_PAIRED_DAYS`, `MIN_SAMPLES`), the
 no-coefficient rule and the missing medication-against-symptom contrast hold here by construction,
 and the result carries the rules in words so the model stays inside them when it explains a
-finding. The replica hands these modules out through `lib()`, one lazily required handle rather
+finding. Its training-day row (`byTrainingDay`, `trainingDayMoodContrast`) reads the replica's workout
+sessions, which are health-record data, so it is absent exactly when Workouts is off or the sessions
+are withheld from the server, the same as any missing data. The replica hands these modules out through `lib()`, one lazily required handle rather
 than a pass-through method per function, for the static-import reason at the top of `replica.ts`.
 
 **Changing several things has one path, and it previews** (`agentTools.ts`). `batch_update_tasks`
@@ -1519,6 +1521,13 @@ Four areas had no MCP read or write, and the shape of each answer follows from w
   ("Workout"), never by what was lifted, the mood entry's reason. Weights are kilograms on the wire.
   A task names its routine with `workoutRoutineId`, which `create_task` and `update_task` write and
   `get_task` reads back as `workout`, and the replica refuses a routine that isn't there.
+  `exercise_history` is the one read that computes: it hands one exercise's sets to the app's own
+  `analyzeExercise` (`src/utils/workoutRecords.ts`) and reports the records, the trend of the
+  estimated 1RM and the last session, so Claude and the phone's exercise page cannot disagree about
+  what a record is. The replica's only addition for it is `workoutExerciseSets`. The estimated 1RM
+  is labelled estimated in the field names and a note, in kilograms, because it is a calculation and
+  never a lift; nothing it returns is relative to a body weight. Like `list_workouts` it reads sets,
+  so it is empty without Include health logs and says that an empty history is not evidence.
 - **Saved views are read through the app's own matcher** (`filterTasksForView`, with the app's
   held-back rule and logical day), so a view's count here is the count the Saved Views screen shows.
   `create_saved_view` runs its clauses through `parseSavedViewClauses`, the tolerant parser the app

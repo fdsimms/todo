@@ -21,6 +21,7 @@ import type { Replica, ReplicaLib } from './replica';
 import { describeRepeat, type RepeatInput } from './taskFields';
 import { resolveRange, type DayRange, type LogRangeInput } from './tools';
 import type { FocusSummary } from '../../src/utils/focusStats';
+import { trainingDays } from '../../src/utils/workoutRecords';
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
 
@@ -211,6 +212,13 @@ export interface MoodInsights {
   byRepeatingTask: Contrast[];
   bySymptom: Contrast[];
   byContextTag: Contrast[];
+  /**
+   * Mood on the days a workout was finished in the app against the other days
+   * since the first one: one row, or none. Absent when Workouts is off, when
+   * workout history does not reach this server (it is part of the health
+   * record), or while either side is under the floor.
+   */
+  byTrainingDay: Contrast[];
   byFood: Contrast[];
   /** The app's own sentences about calories and sugar against mood and completions. */
   nutrients: string[];
@@ -259,6 +267,12 @@ export function moodInsights(replica: Replica): MoodInsights {
       moodWithout: round(r.moodWithout),
     }));
 
+  // Sessions are health-record data: when the phone withholds them there are none
+  // here, no training day, and the row is simply absent, like any missing data.
+  const trainingRow = settings.workoutsEnabled
+    ? mi.trainingDayMoodContrast(days, trainingDays(replica.workoutSessions('0000-01-01', '9999-12-31'), settings.dayResetTime))
+    : null;
+
   const summary = mi.moodSummary(days, today);
   const completion = mi.moodCompletionInsight(days);
   const seg = boundaries(replica);
@@ -268,6 +282,7 @@ export function moodInsights(replica: Replica): MoodInsights {
       `Associations, never causes. Say "on days you…", not "because".`,
       `Nothing is compared below ${mi.MIN_PAIRED_DAYS} days with both a mood and a record, and each side of a contrast needs ${mi.MIN_CONTRAST_DAYS} days.`,
       'A day nobody logged is unknown, not a zero.',
+      'Training days are the days a workout was finished in the app; a run or class that only Apple Health holds is not counted. Every other day with a mood since the first logged workout is a rest day. Like the rest, this is an association: people tend to train on days they already feel well.',
       'There is deliberately no medication-against-symptom comparison: you take a painkiller because something hurts, so the comparison would point backwards.',
     ],
     summary: {
@@ -295,6 +310,7 @@ export function moodInsights(replica: Replica): MoodInsights {
     byRepeatingTask: contrasts(mi.taskMoodContrasts(days), k => taskTitles.get(k) ?? k),
     bySymptom: contrasts(mi.symptomMoodContrasts(days), k => symptomNames.get(k) ?? k),
     byContextTag: contrasts(mi.contextTagMoodContrasts(days), k => tagNames.get(k) ?? k),
+    byTrainingDay: trainingRow ? contrasts([trainingRow], () => 'Days you finished a workout') : [],
     byFood: settings.kitchenEnabled ? contrasts(mi.foodMoodContrasts(days), k => foodNames.get(k) ?? k) : [],
     nutrients: settings.kitchenEnabled ? mi.nutrientFindings(days).map(f => f.text) : [],
     byTimeOfDay: mi.moodByTimeOfDay(logs, iso => lib.rhythms.segmentOf(new Date(iso), seg)).map(r => ({

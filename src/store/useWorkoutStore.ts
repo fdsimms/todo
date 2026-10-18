@@ -20,6 +20,7 @@ import {
   dbDeleteWorkoutRoutine,
   dbDeleteWorkoutSession,
   dbDeleteWorkoutSet,
+  dbGetAllDoneWorkoutSets,
   dbGetAllExercises,
   dbGetAllWorkoutPrograms,
   dbGetAllWorkoutRoutines,
@@ -45,6 +46,7 @@ import {
   type PlannedSetValues,
 } from '../utils/workoutSession';
 import { libraryExercise } from '../utils/exerciseLibrary';
+import { NEW_EXERCISE_PREFIX, indexAdd, indexExisting, indexHas, type PlannedImportSession } from '../utils/workoutCsv';
 import { buildCatalog } from '../utils/exerciseCatalog';
 import {
   cleanWorkoutName,
@@ -229,6 +231,19 @@ interface WorkoutStore {
    */
   addFinishedSession: (input: FinishedSessionInput) => { session: WorkoutSession; sets: WorkoutSet[] } | WorkoutRefusal;
   /**
+   * Writes the workouts an import plan names (`buildImportPlan`), and the
+   * custom exercises it needs, in one transaction. A session already in the
+   * log (same id, or the same start time, whatever it is called) is skipped
+   * again here, so a plan made before another device synced in the same
+   * workout can't double it.
+   * `creates` maps each `new:<key>` reference's key to the exercise to make;
+   * a name that has become taken since resolves to the exercise holding it.
+   */
+  importSessions: (
+    sessions: PlannedImportSession[],
+    creates: Record<string, ExerciseInput>,
+  ) => { sessions: number; sets: number; created: number; duplicates: number };
+  /**
    * Replaces every set of a session, for correcting a workout logged after the
    * fact. Refuses an unknown session or exercise (`notFound`).
    */
@@ -242,6 +257,12 @@ interface WorkoutStore {
   loadSets: (sessionId: string) => WorkoutSet[];
   /** Every set ever logged against one exercise, oldest first. Not cached: an exercise's page reads it once. */
   exerciseHistory: (exerciseId: string) => WorkoutSet[];
+  /**
+   * Every done set in every session, oldest first. Not cached here: the
+   * caller holds the array (keyed on `sessions`), which is what the records'
+   * own memoization is keyed on in turn.
+   */
+  allSets: () => WorkoutSet[];
   /**
    * Appends a set. An exercise already in the session keeps its place; a new
    * one goes after the rest. Refuses a session or exercise nobody knows.
@@ -744,6 +765,89 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       return { session, sets };
     },
 
+    importSessions(sessions, creates) {
+      // Exercises first, in memory: a set names one by the id it will have.
+      const created: Exercise[] = [];
+      const idForKey = new Map<string, string>();
+      const resolve = (ref: string): string | null => {
+        if (!ref.startsWith(NEW_EXERCISE_PREFIX)) return exerciseKnown(ref) ? ref : null;
+        const key = ref.slice(NEW_EXERCISE_PREFIX.length);
+        const known = idForKey.get(key);
+        if (known) return known;
+        const input = creates[key];
+        if (!input) return null;
+        const name = cleanWorkoutName(input.name);
+        if (!name) return null;
+        const holder = buildCatalog(get().exercises).find(e => exerciseNameKey(e.name) === exerciseNameKey(name));
+        if (holder) { idForKey.set(key, holder.id); return holder.id; }
+        const row: Exercise = {
+          id: generateId(),
+          name,
+          kind: input.kind,
+          primaryMuscles: readMuscles(input.primaryMuscles),
+          secondaryMuscles: readMuscles(input.secondaryMuscles ?? []),
+          equipment: input.equipment,
+          barKg: null,
+          notes: input.notes?.trim() ?? '',
+          archived: false,
+          isCustom: true,
+          createdAt: nowIso(),
+        };
+        created.push(row);
+        idForKey.set(key, row.id);
+        return row.id;
+      };
+
+      const index = indexExisting(get().sessions);
+      const rows: WorkoutSession[] = [];
+      const setRows: WorkoutSet[][] = [];
+      let duplicates = 0;
+      for (const planned of sessions) {
+        if (indexHas(index, planned)) { duplicates++; continue; }
+        const inputs: SetInput[] = [];
+        for (const st of planned.sets) {
+          const exerciseId = resolve(st.exerciseRef);
+          if (!exerciseId) continue;
+          inputs.push({
+            exerciseId, kind: st.kind, weightKg: st.weightKg, reps: st.reps,
+            durationSeconds: st.durationSeconds, distanceM: st.distanceM, rpe: st.rpe,
+            supersetKey: st.supersetKey, note: st.note, completedAt: planned.endedAt,
+          });
+        }
+        if (inputs.length === 0) continue;
+        indexAdd(index, planned.id, planned.startedAt);
+        rows.push({
+          id: planned.id,
+          routineId: null,
+          programId: null,
+          taskId: null,
+          title: cleanWorkoutName(planned.title) || 'Workout',
+          startedAt: planned.startedAt,
+          endedAt: planned.endedAt,
+          notes: planned.notes.trim(),
+          effort: null,
+          healthWorkoutId: null,
+          healthWritePending: false,
+        });
+        setRows.push(rowsFor(planned.id, inputs));
+      }
+      if (rows.length === 0) return { sessions: 0, sets: 0, created: 0, duplicates };
+
+      dbTransaction(() => {
+        for (const e of created) dbSaveExercise(e);
+        rows.forEach((session, i) => {
+          dbSaveWorkoutSession(session);
+          dbSaveWorkoutSets(setRows[i]);
+        });
+      });
+      set({
+        exercises: [...get().exercises, ...created],
+        sessions: [...get().sessions, ...rows].sort(byStartedDesc),
+      });
+      rows.forEach((session, i) => putSets(session.id, setRows[i]));
+      return { sessions: rows.length, sets: setRows.reduce((n, r) => n + r.length, 0), created: created.length, duplicates };
+    },
+
     replaceSets(sessionId, inputs) {
       const session = get().sessions.find(s => s.id === sessionId);
       if (!session) return 'notFound';
@@ -781,6 +885,10 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
 
     exerciseHistory(exerciseId) {
       return dbGetWorkoutSetsForExercise(exerciseId);
+    },
+
+    allSets() {
+      return dbGetAllDoneWorkoutSets();
     },
 
     logSet(sessionId, input) {

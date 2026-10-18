@@ -10,6 +10,13 @@ import { useWorkoutStore, workoutContentCount } from '../store/useWorkoutStore';
 import { catalogExercise } from '../utils/exerciseCatalog';
 import { newTaskFromDraft } from '../utils/taskDraft';
 import type { Task, TaskDraft } from '../types';
+import {
+  buildImportPlan,
+  distinctExerciseNames,
+  parseWorkoutCsv,
+  workoutExportCsv,
+  type PlannedImportSession,
+} from '../utils/workoutCsv';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mockRawDb: any;
@@ -427,6 +434,102 @@ describe('a workout logged after the fact', () => {
   });
 });
 
+describe('importing sessions from a file', () => {
+  const at = (h: number) => new Date(2026, 8, 5, h).toISOString();
+  const planned = (id: string, h: number, extra: Partial<PlannedImportSession> = {}): PlannedImportSession => ({
+    id, title: 'Push', startedAt: at(h), startPrecisionMs: 1000, endedAt: at(h + 1), notes: ' felt good ',
+    sets: [
+      { exerciseRef: 'lib:back-squat', kind: 'working', weightKg: 100, reps: 5, durationSeconds: null, distanceM: null, rpe: null, note: null, supersetKey: null },
+      { exerciseRef: 'new:sled drag', kind: 'working', weightKg: 40, reps: 10, durationSeconds: null, distanceM: null, rpe: null, note: null, supersetKey: null },
+      { exerciseRef: 'new:sled drag', kind: 'drop', weightKg: 30, reps: 10, durationSeconds: null, distanceM: null, rpe: null, note: null, supersetKey: null },
+    ],
+    ...extra,
+  });
+  const creates = { 'sled drag': { name: 'Sled drag', kind: 'weight_reps' as const, equipment: 'other' as const, primaryMuscles: [] } };
+
+  it('writes the sessions, their sets and the custom exercise together, and reads back after a reload', () => {
+    const result = state().importSessions([planned('imp-a', 7), planned('imp-b', 9)], creates);
+    expect(result).toEqual({ sessions: 2, sets: 6, created: 1, duplicates: 0 });
+    const sled = state().exercises.find(e => e.name === 'Sled drag')!;
+    expect(sled.isCustom).toBe(true);
+    reload();
+    expect(state().sessions.map(x => x.id)).toEqual(['imp-b', 'imp-a']);
+    expect(state().sessions[1]).toMatchObject({ title: 'Push', notes: 'felt good', routineId: null, taskId: null, endedAt: at(8) });
+    const sets = dbGetWorkoutSets('imp-a');
+    expect(sets.map(x => [x.exerciseId === sled.id ? 'sled' : x.exerciseId, x.position, x.setIndex, x.kind])).toEqual([
+      ['lib:back-squat', 0, 0, 'working'], ['sled', 1, 0, 'working'], ['sled', 1, 1, 'drop'],
+    ]);
+    expect(sets.every(x => x.completedAt === at(8))).toBe(true);
+    expect(state().setCounts['imp-a']).toBe(3);
+  });
+
+  it('adds nothing the second time', () => {
+    state().importSessions([planned('imp-a', 7)], creates);
+    const again = state().importSessions([planned('imp-a', 7), planned('another-id', 7)], creates);
+    expect(again).toEqual({ sessions: 0, sets: 0, created: 0, duplicates: 2 });
+    expect(state().sessions).toHaveLength(1);
+    expect(state().exercises.filter(e => e.name === 'Sled drag')).toHaveLength(1);
+  });
+
+  it('skips a workout that started at the same time under another title', () => {
+    state().importSessions([planned('imp-a', 7)], creates);
+    const again = state().importSessions([planned('imp-c', 7, { title: 'Renamed since' })], creates);
+    expect(again).toMatchObject({ sessions: 0, duplicates: 1 });
+  });
+
+  it('does not double the app\'s own export when it is imported back into the same log', () => {
+    // A session keeps its milliseconds; the export writes whole seconds.
+    const started = new Date(2026, 8, 5, 7, 15, 20, 789);
+    const first = ok(state().addFinishedSession({
+      title: 'Leg day', startedAt: started.toISOString(), endedAt: new Date(started.getTime() + 3_600_000).toISOString(),
+      sets: [
+        { exerciseId: 'lib:back-squat', weightKg: 100, reps: 5 },
+        { exerciseId: 'lib:leg-press', weightKg: 180, reps: 10 },
+      ],
+    }));
+    const second = ok(state().addFinishedSession({
+      title: 'Push', startedAt: new Date(2026, 8, 7, 18, 0, 0, 5).toISOString(), endedAt: new Date(2026, 8, 7, 19, 0, 0, 5).toISOString(),
+      sets: [{ exerciseId: 'lib:barbell-bench-press', weightKg: 80, reps: 8 }],
+    }));
+    const csv = workoutExportCsv(
+      [first, second].map(({ session }) => ({ session, sets: state().loadSets(session.id) })),
+      state().exercises,
+      'kg',
+    );
+    const parsed = parseWorkoutCsv(csv);
+    if (!parsed.ok) throw new Error('export did not parse');
+    expect(parsed.sessions).toHaveLength(2);
+    const resolutions = Object.fromEntries(
+      distinctExerciseNames(parsed.sessions).map(n => [n.key, { kind: 'create' as const }]),
+    );
+    const plan = buildImportPlan(parsed.sessions, resolutions, state().sessions);
+    expect(plan.sessions).toHaveLength(0);
+    expect(plan.duplicates).toBe(2);
+    // And the store's own check, for a plan made before the log had them.
+    const fresh = buildImportPlan(parsed.sessions, resolutions, []);
+    const creates2 = Object.fromEntries(fresh.createKeys.map(k => [k, { name: k, kind: 'weight_reps' as const, equipment: 'other' as const, primaryMuscles: [] }]));
+    expect(state().importSessions(fresh.sessions, creates2)).toEqual({ sessions: 0, sets: 0, created: 0, duplicates: 2 });
+    expect(state().sessions).toHaveLength(2);
+  });
+
+  it('uses the exercise already holding a name rather than making a second', () => {
+    ok(state().addExercise({ name: 'sled DRAG', kind: 'weight_reps', equipment: 'other', primaryMuscles: [] }));
+    const result = state().importSessions([planned('imp-a', 7)], creates);
+    expect(result.created).toBe(0);
+    expect(state().exercises.filter(e => e.name.toLowerCase() === 'sled drag')).toHaveLength(1);
+  });
+
+  it('drops a set whose exercise cannot be resolved, and a session left with none', () => {
+    const bad = planned('imp-bad', 11, {
+      sets: [{ exerciseRef: 'nobody', kind: 'working', weightKg: 1, reps: 1, durationSeconds: null, distanceM: null, rpe: null, note: null, supersetKey: null }],
+    });
+    const result = state().importSessions([bad, planned('imp-a', 7)], {});
+    expect(result.sessions).toBe(1);
+    expect(dbGetWorkoutSets('imp-a')).toHaveLength(1);
+    expect(state().sessions.map(x => x.id)).toEqual(['imp-a']);
+  });
+});
+
 describe('history', () => {
   it('lists sessions newest first and loads a finished one\'s sets on demand', () => {
     const older = ok(state().startSession({ title: 'Older', at: new Date(2026, 9, 1, 18) }));
@@ -440,6 +543,18 @@ describe('history', () => {
     expect(state().setCounts[older.id]).toBe(1);
     expect(state().loadSets(older.id)).toHaveLength(1);
     expect(state().exerciseHistory('lib:back-squat')).toHaveLength(1);
+  });
+
+  it('reads every done set across sessions, leaving planned ones out', () => {
+    const a = ok(state().startSession({ at: new Date(2026, 9, 1, 18) }));
+    ok(state().logSet(a.id, { exerciseId: 'lib:back-squat', reps: 5, completedAt: new Date(2026, 9, 1, 18, 5).toISOString() }));
+    ok(state().finishSession(a.id));
+    const b = ok(state().startSession({ at: new Date(2026, 9, 3, 18) }));
+    ok(state().logSet(b.id, { exerciseId: 'lib:barbell-bench-press', reps: 8, completedAt: new Date(2026, 9, 3, 18, 5).toISOString() }));
+    ok(state().logSet(b.id, { exerciseId: 'lib:barbell-bench-press', reps: 8, completedAt: null }));
+    const all = state().allSets();
+    expect(all.map(x => x.exerciseId)).toEqual(['lib:back-squat', 'lib:barbell-bench-press']);
+    expect(all.every(x => x.completedAt !== null)).toBe(true);
   });
 
   it('deletes a finished session and its sets', () => {

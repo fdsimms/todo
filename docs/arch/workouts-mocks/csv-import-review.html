@@ -1,0 +1,56 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="base.css">
+<style>
+.scroll{padding-bottom:12px}
+.sum{padding:14px 16px;display:flex;flex-direction:column;gap:6px}
+.sum .big{font-size:17px;font-weight:600}
+.badge{display:inline-block;font-size:11px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:var(--accentText)}
+.name{font-size:15px;font-weight:600}
+.opt{padding:12px 16px;display:flex;flex-direction:column;gap:8px}
+.opt + .opt{border-top:.5px solid var(--sep)}
+.chosen{font-size:13px;color:var(--accentText)}
+.bulk{display:flex;gap:8px;margin:0 0 8px}
+.matched{display:flex;align-items:center;gap:12px;padding:10px 16px}
+.matched + .matched{border-top:.5px solid var(--sep)}
+.matched .to{flex:1;min-width:0}
+.footer{padding:10px 16px 28px;background:var(--bg);border-top:.5px solid var(--sep)}
+.btn{background:var(--accent);color:var(--onAccent);border-radius:12px;text-align:center;padding:13px;font-weight:600;font-size:17px}
+.btn.off{opacity:.4}
+.note{font-size:12px;color:var(--text3);text-align:center;margin-top:8px}
+</style></head><body>
+<div class="phone light" id="p">
+  <div class="status"><span>9:41</span><span>●●●</span></div>
+  <div class="sheetHeader"><span class="side">Cancel</span><span class="title">Import workouts</span><span class="side r"></span></div>
+  <div class="scroll">
+    <div class="card sum">
+      <span class="badge">Strong export</span>
+      <span class="big">42 workouts, 1,018 sets</span>
+      <span class="sec">Mar 4, 2021 to Oct 2, 2026</span>
+      <span class="ter">3 workouts are already in your log and will be skipped.</span>
+    </div>
+    <div class="groupLabel">Weights in the file</div>
+    <div class="seg"><span>Kilograms</span><span class="on">Pounds</span></div>
+    <div class="ter" style="margin:6px 4px 0">This file doesn’t say which unit it uses.</div>
+    <div class="groupLabel">Needs a choice · 3</div>
+    <div class="bulk"><span class="pill">Create all</span><span class="pill neutral">Skip all</span></div>
+    <div class="card">
+      <div class="opt"><div><div class="name">Squat (Barbell)</div><div class="sec">51 sets in 17 workouts</div></div>
+        <div class="seg"><span class="on">Match</span><span>Create</span><span>Skip</span></div>
+        <div class="chosen">Barbell back squat ›</div></div>
+      <div class="opt"><div><div class="name">Sled Drag</div><div class="sec">12 sets in 4 workouts</div></div>
+        <div class="seg"><span>Match</span><span class="on">Create</span><span>Skip</span></div>
+        <div class="ter">Added as your own exercise, weight and reps.</div></div>
+      <div class="opt"><div><div class="name">Rowing (Cardio)</div><div class="sec">6 sets in 6 workouts</div></div>
+        <div class="seg"><span>Match</span><span>Create</span><span>Skip</span></div>
+        <div class="ter" style="color:var(--orangeText)">Choose one to continue.</div></div>
+    </div>
+    <div class="groupLabel">Matched · 18</div>
+    <div class="card">
+      <div class="matched"><div class="to"><div class="name">Bench Press (Barbell)</div><div class="sec">Barbell bench press</div></div><span class="chev">Change ›</span></div>
+      <div class="matched"><div class="to"><div class="name">Deadlift (Barbell)</div><div class="sec">Barbell deadlift</div></div><span class="chev">Change ›</span></div>
+      <div class="matched"><div class="to"><div class="name">Pull Up</div><div class="sec">Pull-up</div></div><span class="chev">Change ›</span></div>
+    </div>
+  </div>
+  <div class="footer"><div class="btn off">Import 39 workouts</div><div class="note">1 name still needs a choice</div></div>
+</div>
+<script>const p=document.getElementById('p'); const d=p.cloneNode(true); d.className='phone dark'; d.id=''; document.body.appendChild(d);</script>
+</body></html>

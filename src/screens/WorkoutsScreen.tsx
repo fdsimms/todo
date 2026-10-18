@@ -1,7 +1,8 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, FlatList, StyleSheet, Text, TouchableOpacity, View, type GestureResponderEvent } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { differenceInMinutes } from 'date-fns/differenceInMinutes';
 import type { WorkoutRoutine, WorkoutSession } from '../types';
@@ -18,11 +19,25 @@ import { useWorkoutModeStore } from '../store/useWorkoutModeStore';
 import { useStartWorkout } from '../hooks/useStartWorkout';
 import { InlineAction } from '../components/InlineAction';
 import { RoutineEditorSheet } from '../components/RoutineEditorSheet';
+import { ExerciseDetailSheet } from '../components/ExerciseDetailSheet';
 import { LazySheet } from '../components/LazySheet';
+import { ActionMenu } from '../components/ActionMenu';
+import type { CardAnchor } from '../components/CardSheet';
+import { CsvExportSheet } from '../components/CsvExportSheet';
+import { WorkoutImportSheet } from '../components/WorkoutImportSheet';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { pickBackupFile } from '../utils/backupFile';
+import {
+  parseWorkoutCsv,
+  workoutExportCsv,
+  workoutExportFileName,
+  workoutExportSummary,
+  type ExportedWorkout,
+} from '../utils/workoutCsv';
+import { dayKeyOf } from '../utils/dateUtils';
 import { useColors } from '../theme/ThemeContext';
-import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
+import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { animateLayout } from '../utils/layoutAnimation';
 import { catalogExercise, describeExercise, searchExercises, type CatalogExercise } from '../utils/exerciseCatalog';
 import { describeRoutine } from '../utils/workoutRoutine';
 import { formatTimeOfDay } from '../utils/dateUtils';
@@ -37,7 +52,8 @@ import { formatTimeOfDay } from '../utils/dateUtils';
  * routine starts with one tap on its row's Start; tapping the row edits it.
  *
  * The library search matches a name, a muscle or the equipment ("dumbbell
- * chest"). Behind its own switch (`workoutsEnabled`, off by default) and in
+ * chest"). Tapping an exercise opens its page (`ExerciseDetailSheet`): the
+ * chart, the personal records and every session that did it. Behind its own switch (`workoutsEnabled`, off by default) and in
  * the Health hub beside the other logs of what a body did.
  */
 
@@ -81,23 +97,36 @@ export function WorkoutsScreen() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorRoutineId, setEditorRoutineId] = useState<string | null>(null);
 
+  // The menu off the header's "…", the file picked to import (kept through the
+  // sheet's close so it doesn't empty while it slides away) and the export sheet.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuAnchor, setMenuAnchor] = useState<CardAnchor | null>(null);
+  const [importText, setImportText] = useState('');
+  const [importOpen, setImportOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const workoutUnit = useSettingsStore(s => s.workoutUnit);
+  const loadSets = useWorkoutStore(s => s.loadSets);
+
   const [view, setView] = useState<View_>('history');
   // Only the library has a field, so only its list listens for the keyboard.
   const keyboardScroll = useKeyboardInsetScroll<FlatList>({
     refreshing: pullSearch.pulling,
     listMounted: view === 'exercises',
   });
-  const [openId, setOpenId] = useState<string | null>(null);
+  // The exercise whose page is open, kept through the close so the sheet
+  // doesn't retitle itself while it slides away.
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailId, setDetailId] = useState<string | null>(null);
   const search = useFilterField();
   const results = useMemo(
     () => searchExercises(exercises, search.query).map(r => r.exercise),
     [exercises, search.query]
   );
 
-  const toggleOpen = useCallback((id: string) => {
+  const openExercise = useCallback((id: string) => {
     haptics.tap();
-    animateLayout();
-    setOpenId(prev => (prev === id ? null : id));
+    setDetailId(id);
+    setDetailOpen(true);
   }, []);
 
   const renderSession = useCallback(({ item }: { item: WorkoutSession }) => (
@@ -107,25 +136,22 @@ export function WorkoutsScreen() {
     </View>
   ), [styles, setCounts]);
 
-  const renderExercise = useCallback(({ item }: { item: CatalogExercise }) => {
-    const open = openId === item.id;
-    const about = item.notes || item.cue;
-    return (
-      <TouchableOpacity
-        style={styles.row}
-        activeOpacity={interaction.activeOpacity}
-        onPress={() => toggleOpen(item.id)}
-        accessibilityRole="button"
-        accessibilityState={{ expanded: open }}
-        accessibilityLabel={`${item.name}. ${describeExercise(item)}`}
-        accessibilityHint={about ? (open ? 'Hides how it is done' : 'Shows how it is done') : undefined}
-      >
+  const renderExercise = useCallback(({ item }: { item: CatalogExercise }) => (
+    <TouchableOpacity
+      style={[styles.row, styles.exerciseRow]}
+      activeOpacity={interaction.activeOpacity}
+      onPress={() => openExercise(item.id)}
+      accessibilityRole="button"
+      accessibilityLabel={`${item.name}. ${describeExercise(item)}`}
+      accessibilityHint="Opens its history and records"
+    >
+      <View style={styles.flex}>
         <Text style={styles.title}>{item.name}</Text>
         <Text style={styles.detail}>{describeExercise(item)}</Text>
-        {open && about ? <Text style={styles.cue}>{about}</Text> : null}
-      </TouchableOpacity>
-    );
-  }, [styles, openId, toggleOpen]);
+      </View>
+      <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
+    </TouchableOpacity>
+  ), [styles, colors, openExercise]);
 
   const listBottom = { paddingBottom: tabBarHeight + spacing.xl };
 
@@ -156,6 +182,40 @@ export function WorkoutsScreen() {
       />
     </TouchableOpacity>
   ), [styles, exercises, openEditor, startWorkout]);
+
+  // Reads the file before opening the review sheet, so a file that isn't a
+  // Strong or Hevy export is told so here, with what to do, rather than as an
+  // empty sheet. In demo mode the import writes to the demo database like any
+  // other change there, and is thrown away with it.
+  const startImport = useCallback(async () => {
+    let text: string | null;
+    try {
+      text = await pickBackupFile();
+    } catch {
+      Alert.alert('Couldn’t read the file', 'The file couldn’t be opened. Pick it again, or export it again from the app.');
+      return;
+    }
+    if (text === null) return;
+    const result = parseWorkoutCsv(text);
+    if (!result.ok) {
+      if (result.reason === 'unknown') {
+        Alert.alert('Not a Strong or Hevy export', 'In Strong or Hevy, export your workouts as a CSV file, then pick that file here.');
+      } else if (result.reason === 'empty') {
+        Alert.alert('That file is empty', 'Export your workouts again and pick the new file.');
+      } else {
+        Alert.alert('No workouts found', 'The file has the right columns but no workouts with sets in them.');
+      }
+      return;
+    }
+    setImportText(text);
+    setImportOpen(true);
+  }, []);
+
+  const selectForExport = useCallback((from: string | null): ExportedWorkout[] =>
+    sessions
+      .filter(s => s.endedAt !== null && (from === null || dayKeyOf(new Date(s.startedAt)) >= from))
+      .map(session => ({ session, sets: loadSets(session.id) })),
+  [sessions, loadSets]);
 
   const liveDone = (liveSets ?? []).filter(x => x.completedAt !== null).length;
   const liveCard = live ? (
@@ -191,6 +251,15 @@ export function WorkoutsScreen() {
       <ScreenHeader
         title="Workouts"
         subtitle={sessions.length > 0 ? `${sessions.length} ${sessions.length === 1 ? 'workout' : 'workouts'}` : undefined}
+        actions={[{
+          icon: 'ellipsis-horizontal' as const,
+          onPress: (e: GestureResponderEvent) => {
+            haptics.tap();
+            setMenuAnchor({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
+            setMenuOpen(true);
+          },
+          accessibilityLabel: 'More workout options',
+        }]}
       />
       <HubPills hub="health" active="Workouts" />
       <View style={styles.segments}>
@@ -278,6 +347,38 @@ export function WorkoutsScreen() {
         </>
       )}
       {pullSearch.sheet}
+      <LazySheet open={menuOpen}>
+        <ActionMenu
+          visible={menuOpen}
+          title="Workouts"
+          anchor={menuAnchor}
+          onClose={() => setMenuOpen(false)}
+          actions={[
+            { key: 'import', label: 'Import from Strong or Hevy', icon: 'download-outline', onPress: () => { void startImport(); } },
+            ...(sessions.some(s => s.endedAt !== null)
+              ? [{ key: 'export', label: 'Export as CSV', icon: 'share-outline' as const, onPress: () => setExportOpen(true) }]
+              : []),
+          ]}
+        />
+      </LazySheet>
+      <LazySheet open={importOpen}>
+        <WorkoutImportSheet visible={importOpen} onClose={() => setImportOpen(false)} fileText={importText} />
+      </LazySheet>
+      <LazySheet open={exportOpen}>
+        <CsvExportSheet
+          visible={exportOpen}
+          onClose={() => setExportOpen(false)}
+          hint={`A spreadsheet of your finished workouts, one row per set: date, workout, exercise, weight in ${workoutUnit}, reps, distance, time and notes.`}
+          dialogTitle="Share your workouts"
+          select={selectForExport}
+          toCsv={rows => workoutExportCsv(rows, exercises, workoutUnit)}
+          fileName={workoutExportFileName}
+          summary={workoutExportSummary}
+        />
+      </LazySheet>
+      <LazySheet open={detailOpen}>
+        <ExerciseDetailSheet visible={detailOpen} exerciseId={detailId} onClose={() => setDetailOpen(false)} />
+      </LazySheet>
       <LazySheet open={editorOpen}>
         <RoutineEditorSheet
           visible={editorOpen}
@@ -296,6 +397,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   list: { paddingHorizontal: spacing.md, paddingTop: spacing.xs, gap: spacing.sm },
   flex: { flex: 1 },
   routineRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd },
+  exerciseRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd },
   liveCard: {
     gap: spacing.smd,
     marginHorizontal: spacing.md, marginBottom: spacing.sm,
@@ -316,5 +418,4 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   title: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
   detail: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs },
-  cue: { color: colors.text, fontSize: font.sm, marginTop: spacing.sm },
 });
