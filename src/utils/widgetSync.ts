@@ -431,14 +431,14 @@ async function processQuietWidgetTaps(handOff: 'app' | 'requeue' = 'app'): Promi
           break;
         }
         case 'finishWorkout': {
-          useWorkoutStore.getState().finishSession(action.sessionId, { endedAt: action.at });
+          useWorkoutStore.getState().finishSession(action.sessionId, { endedAt: action.at, deferHealthWrite: handOff === 'requeue' });
           // WorkoutModeHost drops a finished workout's rest, but it is a
           // component, and this can run with no screen at all.
           useStepTimerStore.getState().removeRestsOutside(useWorkoutStore.getState().liveSession()?.id ?? null);
           break;
         }
         case 'addWatchSession':
-          useWorkoutStore.getState().addWatchSession(action.workout);
+          useWorkoutStore.getState().addWatchSession(action.workout, { deferHealthWrite: handOff === 'requeue' });
           break;
       }
     }

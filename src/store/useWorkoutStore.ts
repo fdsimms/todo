@@ -56,6 +56,7 @@ import {
   pendingWorkoutWriteAction,
   retractWorkoutFromHealth,
   workoutHealthWriteOn,
+  workoutSpanWritable,
   type WorkoutWriteResult,
 } from '../utils/healthWorkoutSync';
 import { NEW_EXERCISE_PREFIX, indexAdd, indexExisting, indexHas, type PlannedImportSession } from '../utils/workoutCsv';
@@ -154,6 +155,15 @@ export interface FinishOptions extends Omit<SessionPatch, 'endedAt'> {
    * question on completion, and asks it itself (the answer-first rule).
    */
   completeLinkedTask?: boolean;
+  /**
+   * Leave the Health write for the next pass with the app in front
+   * (`healthWritePending`, `writePendingHealthSessions`) rather than starting
+   * it now: for a finish applied in the background (a watch tap that woke the
+   * app), whose borrowed time ends before Health may have answered, which
+   * would leave a workout in Health with no id on the row to retract it by.
+   * Only while writing is on, so it is still exactly what Save would write.
+   */
+  deferHealthWrite?: boolean;
 }
 
 /** A workout logged after the fact, with what was done. */
@@ -344,8 +354,9 @@ interface WorkoutStore {
    * same switches, and leaves a task that asks a question alone for the app to
    * ask. Another session overlapping its span is recorded for the one question
    * the phone asks about it (`useWatchClashStore`), and named in `clashesWith`.
+   * `deferHealthWrite` is `FinishOptions`' own.
    */
-  addWatchSession: (input: WatchSessionInput, now?: Date) => WatchSessionResult | WorkoutRefusal;
+  addWatchSession: (input: WatchSessionInput, options?: { now?: Date; deferHealthWrite?: boolean }) => WatchSessionResult | WorkoutRefusal;
   importSessions: (
     sessions: PlannedImportSession[],
     creates: Record<string, ExerciseInput>,
@@ -592,9 +603,19 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
     stampHealth(fresh, { healthWorkoutId: result.workoutId, healthWritePending: false });
   };
 
-  /** Fired after a save; the session is already on disk, so nothing waits on Health. */
-  const writeToHealth = (session: WorkoutSession) => {
-    void logWorkoutToHealth(session).then(result => recordHealthWrite(session, result));
+  /**
+   * Fired after a save; the session is already on disk, so nothing waits on
+   * Health. Deferred, it is only flagged for the next pass in front, and only
+   * when the write would happen now (see `FinishOptions.deferHealthWrite`).
+   */
+  const writeToHealth = (session: WorkoutSession, defer = false) => {
+    if (!defer) {
+      void logWorkoutToHealth(session).then(result => recordHealthWrite(session, result));
+      return;
+    }
+    if (!workoutHealthWriteOn() || !workoutSpanWritable(session)) return;
+    const fresh = dbGetWorkoutSession(session.id);
+    if (fresh && fresh.healthWorkoutId === null) stampHealth(fresh, { healthWorkoutId: null, healthWritePending: true });
   };
 
   /** A set row from planned values, at a place the caller has worked out. */
@@ -1073,7 +1094,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       const existing = get().sessions.find(s => s.id === id);
       if (!existing) return 'notFound';
       if (existing.endedAt !== null) return 'finished';
-      const { completeLinkedTask = true, ...patch } = options;
+      const { completeLinkedTask = true, deferHealthWrite = false, ...patch } = options;
       // Refuse an end before the start (or a start after the end) before the
       // plan's unfinished sets are deleted, or a refused finish leaves the
       // session live with its plan gone.
@@ -1104,7 +1125,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         if (effect === 'complete') tasks.completeTask(task!.id);
         else if (effect === 'log-unit') tasks.logQuotaUnit(task!.id);
       }
-      writeToHealth(finished);
+      writeToHealth(finished, deferHealthWrite);
       return finished;
     },
 
@@ -1138,7 +1159,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       return { session, sets };
     },
 
-    addWatchSession(input, now = new Date()) {
+    addWatchSession(input, { now = new Date(), deferHealthWrite = false } = {}) {
       // A repeat delivery (the watch sends a finished workout once, but a
       // transfer and the message that wakes the phone can both arrive).
       const existing = get().sessions.find(s => s.id === input.id) ?? dbGetWorkoutSession(input.id);
@@ -1206,8 +1227,8 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         if (effect === 'complete') tasks.completeTask(task!.id, { completedAt: endedAt });
         else if (effect === 'log-unit' && endedToday) tasks.logQuotaUnit(task!.id);
       }
-      writeToHealth(session);
-      return { session, sets, duplicate: false, clashesWith };
+      writeToHealth(session, deferHealthWrite);
+      return { session: get().sessions.find(x => x.id === session.id) ?? session, sets, duplicate: false, clashesWith };
     },
 
     importSessions(sessions, creates) {
