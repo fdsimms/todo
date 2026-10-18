@@ -13,6 +13,7 @@ import {
   previousSets,
   restSecondsFor,
   sessionExercises,
+  sessionMinutes,
   sessionSummary,
   setFieldsFor,
   setLabels,
@@ -278,6 +279,18 @@ describe('what a set records, and how it reads', () => {
     expect(formatDistance(1500)).toBe('1.5 km');
   });
 
+  it('names the unit on the weight when asked, and an assisted weight as the assistance', () => {
+    const line = (weightKg: number | null, reps: number | null, kind: Parameters<typeof formatSetLine>[1], distanceM: number | null = null) =>
+      formatSetLine({ weightKg, reps, durationSeconds: null, distanceM }, kind, 'kg', true);
+    expect(line(82.5, 8, 'weight_reps')).toBe('82.5 kg × 8');
+    expect(formatSetLine({ weightKg: 61.235, reps: 5, durationSeconds: null, distanceM: null }, 'weight_reps', 'lb', true)).toBe('135 lb × 5');
+    expect(line(20, 8, 'assisted_reps')).toBe('−20 kg × 8');
+    expect(line(0, 8, 'assisted_reps')).toBe('0 kg × 8');
+    expect(line(24, null, 'weight_distance', 40)).toBe('24 kg × 40 m');
+    expect(line(null, 12, 'bodyweight_reps')).toBe('12 reps');
+    expect(line(null, null, 'weight_reps')).toBeNull();
+  });
+
   it('numbers the working sets and letters the rest', () => {
     const sets = [
       set('a', 0, 0, { kind: 'warmup' }), set('a', 0, 1), set('a', 0, 2, { kind: 'amrap' }), set('a', 0, 3, { kind: 'drop' }),
@@ -313,5 +326,11 @@ describe('finishing', () => {
     // The warm-up is heavier but is not the top set; ties on weight go to more reps.
     expect(summary.exercises[0]).toMatchObject({ sets: 4, heaviest: { weightKg: 82.5, reps: 7 } });
     expect(summary.exercises[1].heaviest).toBeNull();
+  });
+
+  it('counts a workout in whole minutes, to now while it is live, and never below zero', () => {
+    expect(sessionMinutes({ startedAt: '2026-10-07T18:00:00.000Z', endedAt: '2026-10-07T18:52:59.000Z' })).toBe(52);
+    expect(sessionMinutes({ startedAt: '2026-10-07T18:00:00.000Z', endedAt: null }, new Date('2026-10-07T18:10:30.000Z'))).toBe(10);
+    expect(sessionMinutes({ startedAt: '2026-10-07T18:00:00.000Z', endedAt: '2026-10-07T17:59:00.000Z' })).toBe(0);
   });
 });

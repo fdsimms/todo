@@ -1130,9 +1130,11 @@ and only while writing is on. With the switches off, an edit leaves Health as
 it is rather than retracting: the meal's correction is about a false figure in
 a medical record, and a workout moved by ten minutes is not that. An edit never
 writes a workout that was never written (one saved with the switch off, or
-imported), because an edit is not the person asking for it to be shared. The
-app itself has no time editor yet; today the edit arrives from an agent, and
-the MCP server refuses it (below).
+imported), because an edit is not the person asking for it to be shared. On
+the phone the edit is the workout page's Started and Finished rows
+(`WorkoutDetailSheet`), which refuse a span Health would not take back
+(longer than a day) rather than let the rewrite quietly drop it; an agent's
+edit of a workout in Health is refused by the MCP server (below).
 
 **`healthWorkoutId` syncs, the way `FoodLogEntry.healthSampleIds` does**, so it
 is not in `SYNC_DEVICE_LOCAL_COLUMNS` and stamping it restamps the row as a real

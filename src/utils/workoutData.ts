@@ -90,6 +90,14 @@ export const MUSCLE_LABELS: Record<MuscleGroup, string> = {
 export const WORKOUT_NAME_MAX_LENGTH = 80;
 
 /**
+ * How hard a workout felt, as the person rates it: a whole number from `min`
+ * to `max`, and `start` is where the stepper lands on the first tap. The
+ * store keeps only what falls in the range, and every stepper that sets it
+ * (workout mode's summary, the workout page) reads it from here.
+ */
+export const WORKOUT_EFFORT = { min: 1, max: 10, start: 7 } as const;
+
+/**
  * The key a custom exercise's name is unique on: trimmed, lowercased, inner
  * whitespace collapsed, so "Cable  fly" and "cable fly " are one exercise. The
  * store refuses a duplicate on it and the sync fold matches on it

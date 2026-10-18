@@ -4,7 +4,6 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
-import { differenceInMinutes } from 'date-fns/differenceInMinutes';
 import type { WorkoutProgram, WorkoutRoutine, WorkoutSession } from '../types';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { HubPills } from '../components/HubPills';
@@ -14,6 +13,7 @@ import { SegmentedControl } from '../components/SegmentedControl';
 import { useFilterField } from '../hooks/useFilterField';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { usePullToSearch } from '../hooks/usePullToSearch';
+import { useSheetSubject } from '../hooks/useSheetSubject';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useWorkoutModeStore } from '../store/useWorkoutModeStore';
 import { useStartWorkout } from '../hooks/useStartWorkout';
@@ -24,6 +24,7 @@ import { ProgramLibrarySheet } from '../components/ProgramLibrarySheet';
 import { EmptyNote } from '../components/EmptyNote';
 import { HelpText } from '../components/HelpText';
 import { ExerciseDetailSheet } from '../components/ExerciseDetailSheet';
+import { WorkoutDetailSheet } from '../components/WorkoutDetailSheet';
 import { LazySheet } from '../components/LazySheet';
 import { ActionMenu } from '../components/ActionMenu';
 import type { CardAnchor } from '../components/CardSheet';
@@ -48,6 +49,7 @@ import { describeProgress, programProgress } from '../utils/workoutProgram';
 import { trainingMaxRaises } from '../utils/workoutProgression';
 import { formatWeightNumber } from '../utils/workoutData';
 import { formatTimeOfDay } from '../utils/dateUtils';
+import { sessionMinutes } from '../utils/workoutSession';
 import { useHealthWorkoutHistory } from '../hooks/useHealthWorkoutHistory';
 import {
   healthWorkoutLine,
@@ -75,6 +77,10 @@ import {
  * chart, the personal records and every session that did it. Behind its own switch (`workoutsEnabled`, off by default) and in
  * the Health hub beside the other logs of what a body did.
  *
+ * Tapping a finished workout in History opens its page (`WorkoutDetailSheet`):
+ * its times, records, sets, effort and notes, and the way to delete it. The
+ * one still in progress opens workout mode instead, as Resume does.
+ *
  * The History view also lists workouts other apps recorded in Health, between
  * the sessions by date and marked "From Health" with the app that recorded
  * them (`useHealthWorkoutHistory`, `workoutHistory.ts`). They are read for the
@@ -94,12 +100,17 @@ const VIEW_OPTIONS = [
 ];
 
 
+/**
+ * "Tue, Oct 14 · 52 min · 17 sets". The set count is every set row the
+ * session has (`setCounts`), and the minutes are `sessionMinutes`: the
+ * workout page's tiles read the same two, so the row and the page agree.
+ */
 function sessionLine(session: WorkoutSession, sets: number): string {
   const parts = [format(new Date(session.startedAt), 'EEE, MMM d')];
   if (session.endedAt === null) {
     parts.push('In progress');
   } else {
-    const minutes = differenceInMinutes(new Date(session.endedAt), new Date(session.startedAt));
+    const minutes = sessionMinutes(session);
     if (minutes > 0) parts.push(`${minutes} min`);
   }
   parts.push(`${sets} ${sets === 1 ? 'set' : 'sets'}`);
@@ -162,6 +173,20 @@ export function WorkoutsScreen() {
     setDetailOpen(true);
   }, []);
 
+  // The workout whose page is open. Its sets are read before the page opens,
+  // so it never draws a frame without them.
+  const [openSessionId, setOpenSessionId] = useState<string | null>(null);
+  const shownSessionId = useSheetSubject(openSessionId);
+  const openSession = useCallback((session: WorkoutSession) => {
+    haptics.tap();
+    if (session.endedAt === null) {
+      useWorkoutModeStore.getState().show();
+      return;
+    }
+    useWorkoutStore.getState().loadSets(session.id);
+    setOpenSessionId(session.id);
+  }, []);
+
   const health = useHealthWorkoutHistory(sessions, view === 'history');
   const historyRows = useMemo(
     () => interleaveHistory(sessions, health.workouts, health.windowStart),
@@ -170,11 +195,19 @@ export function WorkoutsScreen() {
 
   const renderHistoryRow = useCallback(({ item }: { item: WorkoutHistoryRow }) => {
     if (item.kind === 'session') {
+      const line = sessionLine(item.session, setCounts[item.session.id] ?? 0);
       return (
-        <View style={styles.row}>
+        <TouchableOpacity
+          style={styles.row}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => openSession(item.session)}
+          accessibilityRole="button"
+          accessibilityLabel={`${item.session.title}, ${line}`}
+          accessibilityHint={item.session.endedAt === null ? 'Opens the workout in progress' : 'Opens its times, records and sets'}
+        >
           <Text style={styles.title}>{item.session.title}</Text>
-          <Text style={styles.detail}>{sessionLine(item.session, setCounts[item.session.id] ?? 0)}</Text>
-        </View>
+          <Text style={styles.detail}>{line}</Text>
+        </TouchableOpacity>
       );
     }
     // A reading, not an entry: it names the app that recorded it and what kind
@@ -192,7 +225,7 @@ export function WorkoutsScreen() {
         <Text style={styles.detail}>{line}</Text>
       </View>
     );
-  }, [styles, setCounts, colors]);
+  }, [styles, setCounts, colors, openSession]);
 
   const renderExercise = useCallback(({ item }: { item: CatalogExercise }) => (
     <TouchableOpacity
@@ -532,6 +565,13 @@ export function WorkoutsScreen() {
       <LazySheet open={detailOpen}>
         <ExerciseDetailSheet visible={detailOpen} exerciseId={detailId} onClose={() => setDetailOpen(false)} />
       </LazySheet>
+      {shownSessionId && (
+        <WorkoutDetailSheet
+          visible={openSessionId !== null}
+          sessionId={shownSessionId}
+          onClose={() => setOpenSessionId(null)}
+        />
+      )}
       <LazySheet open={libraryOpen}>
         <ProgramLibrarySheet
           visible={libraryOpen}

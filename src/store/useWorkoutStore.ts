@@ -67,6 +67,7 @@ import {
   readMuscles,
   readRoutineItems,
   readTrainingMaxes,
+  WORKOUT_EFFORT,
 } from '../utils/workoutData';
 
 /**
@@ -371,9 +372,9 @@ const whole = (v: number | null | undefined): number | null => (amount(v) === nu
 const rpeOf = (v: number | null | undefined): number | null =>
   typeof v === 'number' && Number.isFinite(v) && v >= 1 && v <= 10 ? Math.round(v * 2) / 2 : null;
 
-/** Effort is a whole number 1 to 10, as typed. */
+/** Effort is a whole number 1 to 10 (`WORKOUT_EFFORT`), as typed. */
 const effortOf = (v: number | null | undefined): number | null =>
-  typeof v === 'number' && Number.isFinite(v) && v >= 1 && v <= 10 ? Math.round(v) : null;
+  typeof v === 'number' && Number.isFinite(v) && v >= WORKOUT_EFFORT.min && v <= WORKOUT_EFFORT.max ? Math.round(v) : null;
 
 const byStartedDesc = (a: WorkoutSession, b: WorkoutSession) => b.startedAt.localeCompare(a.startedAt);
 const bySetOrder = (a: WorkoutSet, b: WorkoutSet) => a.position - b.position || a.setIndex - b.setIndex;
