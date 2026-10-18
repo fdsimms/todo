@@ -198,15 +198,18 @@ export function WorkoutsScreen() {
       const line = sessionLine(item.session, setCounts[item.session.id] ?? 0);
       return (
         <TouchableOpacity
-          style={styles.row}
+          style={[styles.row, styles.exerciseRow]}
           activeOpacity={interaction.activeOpacity}
           onPress={() => openSession(item.session)}
           accessibilityRole="button"
           accessibilityLabel={`${item.session.title}, ${line}`}
           accessibilityHint={item.session.endedAt === null ? 'Opens the workout in progress' : 'Opens its times, records and sets'}
         >
-          <Text style={styles.title}>{item.session.title}</Text>
-          <Text style={styles.detail}>{line}</Text>
+          <View style={styles.flex}>
+            <Text style={styles.title}>{item.session.title}</Text>
+            <Text style={styles.detail}>{line}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
         </TouchableOpacity>
       );
     }

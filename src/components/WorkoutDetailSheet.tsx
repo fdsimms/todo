@@ -164,6 +164,10 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose }: Props) {
   // Held through the picker's close, so its title doesn't change as it fades.
   const pickingShown = useSheetSubject(picking);
 
+  const orderMessage = (which: TimeEnd, start: Date, end: Date, picked: Date) => (which === 'end'
+    ? `A workout has to finish after it starts. Pick a time after ${timeLabel(start, picked)}.`
+    : `A workout has to start before it finishes. Pick a time before ${timeLabel(end, picked)}.`);
+
   const refuseTime = (message: string) => {
     haptics.warning();
     Alert.alert('Couldn’t change the time', message);
@@ -185,6 +189,13 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose }: Props) {
     if (Math.floor(picked.getTime() / 60000) === Math.floor(was.getTime() / 60000)) { setPicking(null); return; }
     const nextStart = which === 'start' ? picked : start;
     const nextEnd = which === 'end' ? picked : end;
+    // A finish at the start is refused along with one before it: it is no
+    // workout, and Health takes none of zero length, so one there would be
+    // retracted and not written again.
+    if (nextEnd.getTime() <= nextStart.getTime()) {
+      refuseTime(orderMessage(which, start, end, picked));
+      return;
+    }
     if (which === 'end' && picked.getTime() > Date.now()) {
       refuseTime('A workout can’t finish in the future. Pick a time before now.');
       return;
@@ -203,9 +214,7 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose }: Props) {
       which === 'start' ? { startedAt: picked.toISOString() } : { endedAt: picked.toISOString() },
     );
     if (result === 'order') {
-      refuseTime(which === 'end'
-        ? `A workout can’t finish before it starts. Pick a time after ${timeLabel(start, picked)}.`
-        : `A workout can’t start after it finishes. Pick a time before ${timeLabel(end, picked)}.`);
+      refuseTime(orderMessage(which, start, end, picked));
       return;
     }
     // Otherwise saved, or 'notFound' (the only other refusal for a patch with
