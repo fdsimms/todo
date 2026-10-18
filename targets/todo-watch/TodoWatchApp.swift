@@ -1,13 +1,17 @@
 import SwiftUI
 
 // The Apple Watch app: today's tasks and the grocery list, ticked off from the
-// wrist, plus a task added by dictation.
+// wrist, plus a task added by dictation, and a workout logged set by set
+// (WatchWorkout.swift), into the one going on the phone or, with none going,
+// run here on its own.
 //
 // Everything shown comes from the iPhone (WatchStore.swift has how), and
 // everything done here is a tap the iPhone applies with the code it already
 // has for the widget's own checkboxes. So this target holds no rules about
 // tasks at all: what a tap means, whether a task needs the app, what is on
-// Today, all of it was decided on the phone and arrives in the snapshot.
+// Today, all of it was decided on the phone and arrives in the snapshot. The
+// same goes for a workout's sets: their order, words and rests arrive worked
+// out.
 enum WatchPage: Hashable {
     case today
     case groceries
@@ -41,6 +45,10 @@ struct TodoWatchApp: App {
         // screen: lowered wrist, Undo out of reach, nothing left to wait for.
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { store.flush() }
+            // The rest's end taps the wrist from here only while the app is
+            // on screen; with it away, the notification does.
+            store.isActive = phase == .active
+            store.refreshRestAlarm()
         }
         // Lets WatchConnectivity wake the app in the background to hand over a
         // new snapshot, which is what keeps the complication current while

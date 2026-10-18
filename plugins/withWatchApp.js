@@ -49,6 +49,12 @@ const WATCH_SOURCES = [
   { dir: WATCH_DIR, name: 'TodoWatchApp.swift' },
   { dir: WATCH_DIR, name: 'WatchStore.swift' },
   { dir: WATCH_DIR, name: 'WatchScreens.swift' },
+  // The workout (phase 8): its model and actions, and its screens. The app's
+  // alone: the complication shows no workout, and the snapshot's workout
+  // section is decoded here rather than in the shared model, so the iPhone
+  // widget never carries it.
+  { dir: WATCH_DIR, name: 'WatchWorkout.swift' },
+  { dir: WATCH_DIR, name: 'WatchWorkoutScreens.swift' },
   TAP_LOG,
   SNAPSHOT_MODEL,
 ];

@@ -17,6 +17,12 @@ struct TodayView: View {
             // day turns over, without the phone writing again.
             TimelineView(.everyMinute) { context in
                 List {
+                    // The workout, at the top while the Workouts area is on
+                    // (or one is going here). A pushed screen, not a pager
+                    // page, so the Crown stays this list's.
+                    if store.workoutVisible {
+                        WorkoutTodayRow()
+                    }
                     tasks(at: context.date)
                     addSection
                     groceriesLink

@@ -245,7 +245,45 @@ final class WatchSession: NSObject, WCSessionDelegate {
       guard let title = (info["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
             !title.isEmpty else { return }
       appendToQueue(watchAddTasksFileName, title)
+    // The workout (phase 8, src/utils/watchWorkout.ts). All of it rides the
+    // quiet-tap queue, so it applies in order with the ticks around it and is
+    // settled on the watch by the same ids; parseQuietTaps checks it again.
+    case "set":
+      // A set of the phone's workout, done on the wrist, with its numbers in
+      // the unit the watch showed. It names the session so a stale watch can
+      // never log onto whatever workout happens to be going now.
+      guard let setId = info["id"] as? String, !setId.isEmpty,
+            let sessionId = info["sessionId"] as? String, !sessionId.isEmpty else { return }
+      var entry: [String: Any] = ["kind": kind, "id": setId, "sessionId": sessionId, "at": at, "watchTapId": tapId]
+      if let unit = info["unit"] as? String, unit == "kg" || unit == "lb" { entry["unit"] = unit }
+      for key in ["weight", "reps", "durationSeconds", "distanceM"] {
+        if let value = info[key] as? NSNumber, value.doubleValue.isFinite, value.doubleValue >= 0 {
+          entry[key] = value
+        }
+      }
+      appendToQueue(watchQuietTapsFileName, entry)
+    case "restAdd", "restSkip", "finish":
+      // The rest's +30 s and Skip, and Finish workout, on the session named.
+      guard let sessionId = info["sessionId"] as? String, !sessionId.isEmpty else { return }
+      var entry: [String: Any] = ["kind": kind, "id": sessionId, "sessionId": sessionId, "at": at, "watchTapId": tapId]
+      if kind != "finish", let restId = info["restId"] as? String, !restId.isEmpty { entry["restId"] = restId }
+      appendToQueue(watchQuietTapsFileName, entry)
+    case "watchSession":
+      // A whole workout the watch ran on its own, sent once when it was
+      // finished, as JSON text (a dictionary with no nulls in it can't be
+      // promised over a user-info transfer, which takes property-list types
+      // only). Kept as the object it parses to; the app writes it once by its
+      // id (addWatchSession), however many times it arrives.
+      guard let body = info["workout"] as? String,
+            let data = body.data(using: .utf8),
+            let workout = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+            let workoutId = workout["id"] as? String, !workoutId.isEmpty,
+            let sets = workout["sets"] as? [Any], !sets.isEmpty else { return }
+      let entry: [String: Any] = ["kind": kind, "id": workoutId, "workout": workout, "at": at, "watchTapId": tapId]
+      appendToQueue(watchQuietTapsFileName, entry)
     default:
+      // A kind this build doesn't know is dropped without its receipt, so a
+      // watch newer than this app keeps drawing it rather than settling it.
       return
     }
 

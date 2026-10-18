@@ -11,13 +11,25 @@ import Foundation
 // into the watch app and the complication, which share it through the watch's
 // App Group (a container on the watch, unrelated to the phone's).
 
+/// A set's numbers as the watch shows them (the weight in the unit shown),
+/// sent with a set done on the phone's workout.
+struct WatchSetValues: Codable, Equatable {
+    var weight: Double?
+    var reps: Int?
+    var durationSeconds: Int?
+    var distanceM: Double?
+}
+
 /// One tap made on the watch. `id` is the watch's own and travels with the
 /// tap, so the phone can say which ones it has received and applied.
 struct WatchTap: Codable, Identifiable {
     let id: String
-    /// "complete", "unit", "grocery", "choose", "add" or "groceryAdd".
+    /// "complete", "unit", "grocery", "choose", "add" or "groceryAdd", or one
+    /// of the workout's (`workoutKinds`).
     let kind: String
-    /// The task id or grocery item id. Empty for "add" and "groceryAdd".
+    /// The task id or grocery item id. Empty for "add" and "groceryAdd". A
+    /// workout tap's is the set ("set"), the phone's session ("restAdd",
+    /// "restSkip", "finish") or the watch's own workout ("watchSession").
     let itemId: String
     /// The grocery list the row was on; nil is the home list.
     let listId: String?
@@ -27,6 +39,27 @@ struct WatchTap: Codable, Identifiable {
     /// Handed to WatchConnectivity. False while the session wasn't active yet,
     /// so the tap is sent once it is.
     var sent: Bool
+
+    // The workout's (phase 8). Every one is optional and `var`, so a log
+    // written before they existed still decodes.
+
+    /// The phone's workout session the tap was made on.
+    var sessionId: String? = nil
+    /// The phone's rest the watch was showing, when it was the phone's.
+    var restId: String? = nil
+    /// "set": the numbers it was done at.
+    var values: WatchSetValues? = nil
+    /// "set": the unit `values.weight` is in.
+    var unit: String? = nil
+    /// "watchSession": the whole workout, as JSON text (WatchOwnWorkout.payload).
+    var body: String? = nil
+
+    /// The workout's kinds. Sent at once rather than held for Undo: a set's
+    /// rest starts on the phone from it, and the rest screen is the answer to
+    /// a tap made by mistake.
+    static let workoutKinds: Set<String> = ["set", "restAdd", "restSkip", "finish", "watchSession"]
+
+    var isWorkout: Bool { Self.workoutKinds.contains(kind) }
 
     /// What the phone's queue expects (see QuietTap in widgetQuietTaps.ts).
     var userInfo: [String: Any] {
@@ -38,6 +71,16 @@ struct WatchTap: Codable, Identifiable {
         if !itemId.isEmpty { info["id"] = itemId }
         if let listId { info["listId"] = listId }
         if let title { info["title"] = title }
+        if let sessionId { info["sessionId"] = sessionId }
+        if let restId { info["restId"] = restId }
+        if let unit { info["unit"] = unit }
+        if let values {
+            if let weight = values.weight { info["weight"] = weight }
+            if let reps = values.reps { info["reps"] = reps }
+            if let durationSeconds = values.durationSeconds { info["durationSeconds"] = durationSeconds }
+            if let distanceM = values.distanceM { info["distanceM"] = distanceM }
+        }
+        if let body { info["workout"] = body }
         return info
     }
 }
@@ -86,6 +129,15 @@ struct LocalTapState {
     let groceryAdded: [(listId: String?, title: String)]
     /// Either/or options picked here, as `groceryKey`s.
     let chosen: Set<String>
+    /// Sets of the phone's workout done here, by set id: the numbers and when.
+    let doneSets: [String: (values: WatchSetValues, at: Date)]
+    /// The workout's set and rest taps on the phone's workout, in the order
+    /// made, which is what the rest the watch shows is worked out from.
+    let workoutTaps: [WatchTap]
+    /// The phone's workouts finished here.
+    let finishedSessions: Set<String>
+    /// Workouts the watch ran on its own, sent and not yet received.
+    let sentWorkouts: [WatchTap]
 
     init(_ taps: [WatchTap]) {
         var completed = Set<String>()
@@ -94,8 +146,21 @@ struct LocalTapState {
         var added: [String] = []
         var groceryAdded: [(listId: String?, title: String)] = []
         var chosen = Set<String>()
+        var doneSets: [String: (values: WatchSetValues, at: Date)] = [:]
+        var workoutTaps: [WatchTap] = []
+        var finishedSessions = Set<String>()
+        var sentWorkouts: [WatchTap] = []
         for tap in taps {
             switch tap.kind {
+            case "set":
+                doneSets[tap.itemId] = (tap.values ?? WatchSetValues(), tap.at)
+                workoutTaps.append(tap)
+            case "restAdd", "restSkip":
+                workoutTaps.append(tap)
+            case "finish":
+                finishedSessions.insert(tap.sessionId ?? tap.itemId)
+            case "watchSession":
+                sentWorkouts.append(tap)
             case "complete": completed.insert(tap.itemId)
             case "unit": units[tap.itemId, default: 0] += 1
             case "grocery": groceries.insert(Self.groceryKey(itemId: tap.itemId, listId: tap.listId))
@@ -114,6 +179,10 @@ struct LocalTapState {
         self.added = added
         self.groceryAdded = groceryAdded
         self.chosen = chosen
+        self.doneSets = doneSets
+        self.workoutTaps = workoutTaps
+        self.finishedSessions = finishedSessions
+        self.sentWorkouts = sentWorkouts
     }
 
     static func groceryKey(itemId: String, listId: String?) -> String {
