@@ -29,9 +29,10 @@ interface Props {
  * empty. Reached from the weight field wherever one is typed, and from
  * Settings.
  *
- * Every row commits as it is edited (a name on leaving its field, a weight the
- * same), so there is nothing staged to lose and no discard guard. A weight that
- * isn't one puts the old value back rather than saving it.
+ * A saved item reads as a finished row. Tapping it opens its name and weight as
+ * fields, and the check commits both, so there is nothing staged to lose and no
+ * discard guard. A weight that isn't one puts the old value back rather than
+ * saving it.
  */
 export function CookwareSheet({ visible, onClose }: Props) {
   const colors = useColors();
@@ -44,6 +45,9 @@ export function CookwareSheet({ visible, onClose }: Props) {
   const [newName, setNewName] = useState('');
   const [newWeight, setNewWeight] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editWeight, setEditWeight] = useState('');
 
   const handleAdd = () => {
     if (!newName.trim()) { setError('Name it first, for example "Dutch oven".'); return; }
@@ -54,6 +58,25 @@ export function CookwareSheet({ visible, onClose }: Props) {
     setNewName('');
     setNewWeight('');
     setError(null);
+  };
+
+  const finishEdit = () => {
+    const current = cookware.find(c => c.id === editingId);
+    if (current) {
+      const patch: { name?: string; weightG?: number } = {};
+      if (editName.trim()) patch.name = editName;
+      const grams = clampCookwareWeight(parseWeightText(editWeight));
+      if (grams !== null) patch.weightG = grams;
+      updateCookware(current.id, patch);
+    }
+    setEditingId(null);
+  };
+
+  const startEdit = (id: string, name: string, weightG: number) => {
+    if (editingId && editingId !== id) finishEdit();
+    setEditName(name);
+    setEditWeight(String(weightG));
+    setEditingId(id);
   };
 
   const confirmDelete = (id: string, name: string) => {
@@ -125,39 +148,62 @@ export function CookwareSheet({ visible, onClose }: Props) {
       ) : (
         <View style={styles.card}>
           {cookware.map((c, i) => (
-            <View key={`${c.id}:${c.name}:${c.weightG}`} style={[styles.row, i > 0 && styles.rowDivider]}>
-              <View style={[styles.well, styles.rowName]}>
-                <TextField
-                  style={styles.input}
-                  defaultValue={c.name}
-                  onEndEditing={e => updateCookware(c.id, { name: e.nativeEvent.text })}
-                  maxLength={NAME_MAX_LENGTH}
-                  accessibilityLabel={`Name of ${c.name}`}
-                />
-              </View>
-              <View style={[styles.well, styles.rowWeight]}>
-                <TextField
-                  style={[styles.input, styles.rowWeightInput]}
-                  defaultValue={String(c.weightG)}
-                  keyboardType="decimal-pad"
-                  inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
-                  onEndEditing={e => {
-                    const grams = parseWeightText(e.nativeEvent.text);
-                    if (grams !== null) updateCookware(c.id, { weightG: grams });
-                  }}
-                  maxLength={6}
-                  accessibilityLabel={`Empty weight of ${c.name} in grams`}
-                />
-                <Text style={styles.unit}>g</Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => confirmDelete(c.id, c.name)}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={`Delete ${c.name}`}
-              >
-                <Ionicons name="trash-outline" size={20} color={colors.red} />
-              </TouchableOpacity>
+            <View key={c.id} style={[styles.row, i > 0 && styles.rowDivider]}>
+              {editingId === c.id ? (
+                <>
+                  <View style={[styles.well, styles.rowName]}>
+                    <TextField
+                      style={styles.input}
+                      value={editName}
+                      onChangeText={setEditName}
+                      maxLength={NAME_MAX_LENGTH}
+                      autoFocus
+                      accessibilityLabel={`Name of ${c.name}`}
+                    />
+                  </View>
+                  <View style={[styles.well, styles.rowWeight]}>
+                    <TextField
+                      style={[styles.input, styles.rowWeightInput]}
+                      value={editWeight}
+                      onChangeText={setEditWeight}
+                      keyboardType="decimal-pad"
+                      inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
+                      maxLength={6}
+                      accessibilityLabel={`Empty weight of ${c.name} in grams`}
+                    />
+                    <Text style={styles.unit}>g</Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={finishEdit}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Save ${c.name}`}
+                  >
+                    <Ionicons name="checkmark" size={22} color={colors.accentText} />
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <TouchableOpacity
+                    style={styles.rowTap}
+                    onPress={() => startEdit(c.id, c.name, c.weightG)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Edit ${c.name}, ${c.weightG} grams`}
+                  >
+                    <Text style={styles.rowTitle} numberOfLines={1}>{c.name}</Text>
+                    <Text style={styles.rowValue}>{c.weightG} g</Text>
+                    <Ionicons name="pencil-outline" size={18} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => confirmDelete(c.id, c.name)}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Delete ${c.name}`}
+                  >
+                    <Ionicons name="trash-outline" size={20} color={colors.red} />
+                  </TouchableOpacity>
+                </>
+              )}
             </View>
           ))}
         </View>
@@ -193,6 +239,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   add: { alignSelf: 'flex-start', marginTop: spacing.sm },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xs },
   rowDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator },
+  rowTap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 44 },
+  rowTitle: { flex: 1, color: colors.text, fontSize: font.md },
+  rowValue: { color: colors.textSecondary, fontSize: font.md, fontVariant: ['tabular-nums'] },
   rowName: { flex: 1, marginBottom: 0 },
   rowWeight: { width: 104, marginBottom: 0 },
   rowWeightInput: { textAlign: 'right' },
