@@ -27,8 +27,12 @@ export interface EditorGroupRow {
 }
 
 interface Props {
-  /** Uppercase group heading — SCHEDULE, ORGANIZE, … */
-  label: string;
+  /**
+   * Uppercase group heading — WHEN, FILED UNDER, … Left out for a card whose
+   * one row already names it (the task editor's Kind), which then needs a
+   * `groupKey`.
+   */
+  label?: string;
   rows: EditorGroupRow[];
   /**
    * Where the dividers start. `icon` clears the 18pt icon column the
@@ -62,7 +66,7 @@ const NO_TERMS: string[] = [];
 
 export function EditorGroup({
   label, rows: allRows, divider = 'icon',
-  searchTerms = NO_TERMS, groupKey = label, onMatchCount,
+  searchTerms = NO_TERMS, groupKey = label ?? '', onMatchCount,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -95,9 +99,9 @@ export function EditorGroup({
   useEffect(() => () => {
     reportRef.current.onMatchCount?.(reportRef.current.groupKey, 0);
   }, []);
-  // Simplified mode can empty a group outright — "Relationships" is Waiting on
-  // and Blocks and nothing else — and a card with no rows in it is worse than
-  // no card. The group goes with its last row.
+  // Simplified mode drops rows by key, so it can empty a group outright, and a
+  // card with no rows in it is worse than no card. The group goes with its
+  // last row.
   if (rows.length === 0) return null;
 
   // A group with no search hit disappears entirely — the rows left on screen
@@ -109,7 +113,7 @@ export function EditorGroup({
 
   return (
     <>
-      <Text style={styles.groupLabel}>{label}</Text>
+      {!!label && <Text style={styles.groupLabel}>{label}</Text>}
       <View style={styles.card}>
         {shown.map((r, i) => (
           <React.Fragment key={r.key}>
