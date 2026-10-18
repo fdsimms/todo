@@ -1,0 +1,92 @@
+<!doctype html><html><head><meta charset="utf-8">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, "SF Pro Text", "Inter", system-ui, sans-serif; background: #8E8A99; padding: 24px; display: flex; gap: 24px; -webkit-font-smoothing: antialiased; }
+.col { width: 390px; }
+.cap { font-size: 13px; font-weight: 600; color: #fff; margin: 0 4px 8px; letter-spacing: .3px; }
+.wall { background: linear-gradient(160deg, #3B2F5C 0%, #6C4E8F 45%, #C7768E 100%); border-radius: 36px; padding: 18px 15px 22px; }
+.clock { text-align: center; color: #fff; font-size: 64px; font-weight: 600; letter-spacing: -1px; margin: 4px 0 2px; }
+.date { text-align: center; color: rgba(255,255,255,.85); font-size: 17px; font-weight: 500; margin-bottom: 22px; }
+.la { background: #1B1820; border-radius: 22px; padding: 12px 16px; margin-bottom: 12px; }
+.la .top { display: flex; align-items: center; gap: 12px; }
+.la .bot { display: flex; justify-content: flex-end; gap: 6px; margin-top: 10px; }
+.la .clk2 { font-size: 20px; font-weight: 600; color: #F6F3F8; font-variant-numeric: tabular-nums; flex: none; }
+.la .clk2.dim { font-size: 15px; color: #B3ADBD; } .la .clk2.or { color: #FF9F0A; }
+.ic { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex: none; font-size: 17px; }
+.ic.gold { background: rgba(255,176,32,.15); color: #FFB020; } .ic.or { background: rgba(255,159,10,.15); color: #FF9F0A; }
+.tx { flex: 1; min-width: 0; }
+.t { font-size: 15px; font-weight: 600; color: #F6F3F8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.s { font-size: 12px; color: #B3ADBD; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.s .or { color: #FF9F0A; font-weight: 600; } .s .clk { color: #F6F3F8; font-weight: 600; }
+.btns { display: flex; gap: 6px; flex: none; }
+.b { border-radius: 9999px; padding: 8px 12px; font-size: 13px; font-weight: 600; white-space: nowrap; display: flex; align-items: center; gap: 4px; }
+.b.gold { background: #FFB020; color: #17131C; } .b.or { background: #FF9F0A; color: #17131C; } .b.q { background: #3A3541; color: #F6F3F8; }
+.lbl { font-size: 11px; color: rgba(255,255,255,.75); margin: 0 6px 6px; font-weight: 600; letter-spacing: .4px; text-transform: uppercase; }
+.island { background: #000; border-radius: 44px; padding: 16px 20px 14px; color: #F6F3F8; margin-bottom: 14px; }
+.ir { display: flex; align-items: center; justify-content: space-between; }
+.ir .c { text-align: center; flex: 1; } .ir .c .t { font-size: 15px; } .ir .c .s { font-size: 11px; }
+.big { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ib { display: flex; justify-content: center; gap: 8px; margin-top: 10px; }
+.compact { background: #000; border-radius: 9999px; height: 37px; width: 250px; margin: 0 auto 10px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; color: #FFB020; font-size: 13px; font-variant-numeric: tabular-nums; }
+.compact .cam { width: 120px; }
+.note { font-size: 12px; color: #fff; opacity: .9; margin: 10px 6px 0; line-height: 1.4; }
+</style></head><body>
+
+<div class="col">
+  <div class="cap">Lock Screen</div>
+  <div class="wall">
+    <div class="clock">6:31</div><div class="date">Tuesday, October 14</div>
+
+    <div class="lbl">During a set</div>
+    <div class="la">
+      <div class="top"><div class="ic gold">🏋</div>
+        <div class="tx"><div class="t">Barbell bench press</div><div class="s">Set 3 of 4 · 82.5 kg × 8</div></div>
+        <div class="clk2 dim">18:32</div></div>
+      <div class="bot"><div class="b gold">✓ Done set</div></div>
+    </div>
+
+    <div class="lbl">Resting</div>
+    <div class="la">
+      <div class="top"><div class="ic gold">⏱</div>
+        <div class="tx"><div class="t">Rest</div><div class="s">Next: Barbell bench press, set 3 of 4</div></div>
+        <div class="clk2">1:24</div></div>
+      <div class="bot"><div class="b q">+30 s</div><div class="b gold">Skip</div></div>
+    </div>
+
+    <div class="lbl">Rest is over (counts up, waits)</div>
+    <div class="la">
+      <div class="top"><div class="ic or">⏱</div>
+        <div class="tx"><div class="t">Rest over</div><div class="s">Next: Barbell bench press, set 3 of 4</div></div>
+        <div class="clk2 or">+0:12</div></div>
+      <div class="bot"><div class="b or">✓ Done set</div></div>
+    </div>
+  </div>
+  <div class="note">Every button opens the app on workout mode with the action already done. Tapping anywhere else just opens workout mode.</div>
+</div>
+
+<div class="col">
+  <div class="cap">Dynamic Island</div>
+  <div class="wall" style="padding-top:16px">
+    <div class="lbl">Compact: resting / during a set</div>
+    <div class="compact"><span>⏱</span><span class="cam"></span><span>1:24</span></div>
+    <div class="compact"><span>🏋</span><span class="cam"></span><span style="color:#B3ADBD">3 / 4</span></div>
+
+    <div class="lbl" style="margin-top:14px">Expanded, resting</div>
+    <div class="island">
+      <div class="ir"><span style="color:#FFB020;font-size:20px">⏱</span>
+        <div class="c"><div class="t">Rest</div><div class="s" style="color:#B3ADBD">Next: Barbell bench press, set 3</div></div>
+        <span class="big">1:24</span></div>
+      <div class="ib"><div class="b q">+30 s</div><div class="b gold">Skip</div></div>
+    </div>
+
+    <div class="lbl">Expanded, during a set</div>
+    <div class="island">
+      <div class="ir"><span style="color:#FFB020;font-size:20px">🏋</span>
+        <div class="c"><div class="t">Barbell bench press</div><div class="s" style="color:#B3ADBD">Set 3 of 4 · 82.5 kg × 8</div></div>
+        <span class="big" style="color:#B3ADBD">18:32</span></div>
+      <div class="ib"><div class="b gold">✓ Done set</div></div>
+    </div>
+  </div>
+  <div class="note">18:32 is the time since the workout started. A rest that runs out turns orange and counts up, as it does in the app. Icons here are stand-ins for the SF Symbols (dumbbell.fill, timer).</div>
+</div>
+</body></html>

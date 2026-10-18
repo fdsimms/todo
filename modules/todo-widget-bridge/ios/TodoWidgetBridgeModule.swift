@@ -41,6 +41,10 @@ private let pendingDreamsFileName = "pending_dreams.json"
 // Matching ToggleKeyLockIntent.swift. The key lock's own queue, drained by
 // processPendingKeyScans in src/utils/widgetSync.ts.
 private let pendingKeyScansFileName = "pending_key_scans.json"
+// Both matching StartWorkoutIntent.swift, the way the medication pair matches
+// LogMedicationIntent.swift. See src/utils/workoutSiri.ts.
+private let workoutRoutineIndexFileName = "siri_workout_routines.json"
+private let pendingWorkoutStartsFileName = "pending_workout_starts.json"
 // Must match QuietTapQueue.fileName in targets/todo-widget/WidgetQuietIntents.swift
 // (a separate target, so the literal can't be shared).
 private let quietTapsFileName = "widget_quiet_taps.json"
@@ -75,6 +79,16 @@ private struct PendingDreamPayload: Codable {
 // Shortcuts action; it is checked against the key list in the app, never here.
 private struct PendingKeyScanPayload: Codable {
   let code: String
+  let at: String
+}
+
+// Mirrors what StartWorkoutIntent and StartRoutineIntent queue and what
+// processPendingWorkoutStarts() in widgetSync.ts expects back. Both optional:
+// "start my workout" names no routine. `at` is the ISO 8601 moment Siri was
+// asked.
+private struct PendingWorkoutStartPayload: Codable {
+  let routineId: String?
+  let name: String?
   let at: String
 }
 
@@ -126,6 +140,70 @@ private struct FocusRunPayload: Codable {
   let advanceLabel: String
   let advanceUrl: String
   let hideTimers: Bool
+}
+
+// Mirrors the WorkoutRun shape written by src/utils/workoutLiveActivity.ts.
+private struct WorkoutRunPayload: Codable {
+  let key: String
+  let sessionId: String
+  let startedAtMs: Double
+  let phase: String
+  let title: String
+  let subtitle: String
+  let compact: String
+  let restStartedAtMs: Double?
+  let restEndsAtMs: Double?
+  let primaryLabel: String
+  let primaryUrl: String
+  let primarySymbol: String
+  let secondaryLabel: String
+  let secondaryUrl: String
+  let overTitle: String
+  let overLabel: String
+  let overUrl: String
+  let overSymbol: String
+}
+
+// Whether a stored date is the instant a JS payload names in milliseconds.
+// Within a millisecond rather than ==, since the date has been through
+// ActivityKit's own encoding and the JS side only ever speaks in whole ms.
+private func sameInstant(_ date: Date, ms: Double) -> Bool {
+  abs(date.timeIntervalSince1970 * 1000 - ms) < 1
+}
+
+// An activity that has ended can still be listed in `activities` for a moment,
+// and the system ignores updates to it, so it is never the one kept. Only
+// `.ended`: this module's own ends use `.immediate`, which leaves `.dismissed`,
+// and so does a card the person swiped away, which must not be put straight
+// back. See docs/native-targets.md. A switch rather than `==`, which would
+// lean on ActivityState's conformances.
+@available(iOS 16.1, *)
+private func hasEnded(_ state: ActivityState) -> Bool {
+  if case .ended = state { return true }
+  return false
+}
+
+// Whether a running-timer activity still draws exactly the run it was started
+// for. The key alone said "same timer", which is not "same countdown": "+1 min"
+// or a restart on a recipe step timer, and −15 s, +30 s or a restart on a rest,
+// keep the key and move the end, and an activity kept on its key alone went on
+// counting down to the old end on the Lock Screen.
+@available(iOS 16.1, *)
+private func timerActivityMatches(_ attributes: TimerActivityAttributes, _ run: TimerRunPayload) -> Bool {
+  guard attributes.key == run.key,
+        attributes.kind == run.kind,
+        attributes.itemId == run.itemId,
+        attributes.title == run.title,
+        attributes.subtitle == run.subtitle,
+        attributes.symbolName == run.symbolName,
+        attributes.hasTarget == (run.targetEndMs != nil),
+        sameInstant(attributes.startedAt, ms: run.startedAtMs) else {
+    return false
+  }
+  if let targetEndMs = run.targetEndMs {
+    return sameInstant(attributes.targetEndAt, ms: targetEndMs)
+  }
+  return true
 }
 
 public class TodoWidgetBridgeModule: Module {
@@ -246,6 +324,11 @@ public class TodoWidgetBridgeModule: Module {
         guard let data = jsonString.data(using: .utf8) else { return }
         try? data.write(to: fileURL, options: .atomic)
         succeeded = true
+
+        // Its names are what a "\(entity)" phrase can hear, so Siri is asked
+        // to read them again, as the routine index does. The JS side writes
+        // only when the list changed.
+        refreshAppShortcutParameters()
       }
       return succeeded
     }
@@ -270,6 +353,41 @@ public class TodoWidgetBridgeModule: Module {
         guard let data = jsonString.data(using: .utf8) else { return }
         try? data.write(to: fileURL, options: .atomic)
         succeeded = true
+
+        // Its names are what a "\(entity)" phrase can hear, so Siri is asked
+        // to read them again, as the routine index does. The JS side writes
+        // only when the list changed.
+        refreshAppShortcutParameters()
+      }
+      return succeeded
+    }
+
+    // The routines StartRoutineIntent's entity query matches a spoken name
+    // against (see workoutSiri.ts). Its own file for the reason the medication
+    // index is one. Each write also asks the system to read the shortcuts'
+    // parameters again: "Start \(routine)" is a phrase with an entity in it,
+    // and Siri learns the names it can hear from the query's suggestions,
+    // which it otherwise has no reason to ask for again. The JS side writes
+    // only when the list changed.
+    AsyncFunction("writeWorkoutRoutineIndex") { (jsonString: String) -> Bool in
+      var succeeded = false
+      TodoWidgetExceptionCatcher.runCatchingExceptions {
+        guard let containerURL = FileManager.default.containerURL(
+          forSecurityApplicationGroupIdentifier: appGroupID
+        ) else {
+          return
+        }
+
+        let directoryURL = containerURL.appendingPathComponent("Library/Application Support", isDirectory: true)
+        let fileURL = directoryURL.appendingPathComponent(workoutRoutineIndexFileName)
+
+        try? FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+
+        guard let data = jsonString.data(using: .utf8) else { return }
+        try? data.write(to: fileURL, options: .atomic)
+        succeeded = true
+
+        refreshAppShortcutParameters()
       }
       return succeeded
     }
@@ -476,6 +594,35 @@ public class TodoWidgetBridgeModule: Module {
       return json
     }
 
+    // Reads and clears the queue StartWorkoutIntent and StartRoutineIntent
+    // write ("start my workout", "start Push A"). The same read-and-delete
+    // shape as drainPendingDoses: a corrupt file is deleted rather than failing
+    // on every launch. Which entry acts, and what it starts, is decided in JS
+    // (resolveQueuedWorkoutStart in src/utils/workoutSiri.ts).
+    AsyncFunction("drainPendingWorkoutStarts") { () -> String in
+      var json = "[]"
+      TodoWidgetExceptionCatcher.runCatchingExceptions {
+        guard let containerURL = FileManager.default.containerURL(
+          forSecurityApplicationGroupIdentifier: appGroupID
+        ) else {
+          return
+        }
+
+        let fileURL = containerURL
+          .appendingPathComponent("Library/Application Support", isDirectory: true)
+          .appendingPathComponent(pendingWorkoutStartsFileName)
+
+        guard let data = try? Data(contentsOf: fileURL) else { return }
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+        guard let decoded = try? JSONDecoder().decode([PendingWorkoutStartPayload].self, from: data) else {
+          return
+        }
+        guard let reencoded = try? JSONEncoder().encode(decoded) else { return }
+        json = String(data: reencoded, encoding: .utf8) ?? "[]"
+      }
+      return json
+    }
+
     // Reads and clears the taps the widget applied without opening the app
     // (CompleteTaskQuietlyIntent and CheckGroceryItemIntent). Handed back as
     // the file's own text rather than decoded here: parseQuietTaps in
@@ -570,21 +717,32 @@ public class TodoWidgetBridgeModule: Module {
           return
         }
 
-        let existingByKey = Dictionary(uniqueKeysWithValues: existing.map { ($0.attributes.key, $0) })
-        let wantedKeys = Set(runs.map { $0.key })
+        let runsByKey = Dictionary(runs.map { ($0.key, $0) }, uniquingKeysWith: { first, _ in first })
 
-        // End every activity whose run has stopped, or that was never in the
-        // desired set (one left behind by a previous app process).
-        for activity in existing where !wantedKeys.contains(activity.attributes.key) {
-          Task { await activity.end(nil, dismissalPolicy: .immediate) }
+        // Keep an activity only while it still draws exactly its run
+        // (`timerActivityMatches`), one per key. Everything else ends: a run
+        // that stopped, one left behind by a previous app process, and one
+        // whose run changed under the same key — "+1 min" or a restart on a
+        // step timer, −15 s, +30 s or a restart on a rest — which used to be
+        // kept on its key and went on counting down to the old end. A changed
+        // run is still never updated in place (see TimerActivityAttributes'
+        // header): it shows up as the old activity ending and a new one
+        // starting below.
+        var kept = Set<String>()
+        for activity in existing {
+          if let run = runsByKey[activity.attributes.key],
+             !kept.contains(run.key),
+             !hasEnded(activity.activityState),
+             timerActivityMatches(activity.attributes, run) {
+            kept.insert(run.key)
+          } else {
+            Task { await activity.end(nil, dismissalPolicy: .immediate) }
+          }
         }
 
-        // Start every run that doesn't already have a live activity. A run
-        // whose key IS already live is left alone — see
-        // TimerActivityAttributes' header for why nothing about an in-flight
-        // run ever needs to change in place; a changed duration only ever
-        // shows up as the old run disappearing and a new one starting.
-        for run in runs where existingByKey[run.key] == nil {
+        // Start every run that has no matching activity.
+        for run in runs where !kept.contains(run.key) {
+          kept.insert(run.key)
           let attributes = TimerActivityAttributes(
             key: run.key,
             kind: run.kind,
@@ -837,6 +995,116 @@ public class TodoWidgetBridgeModule: Module {
         let staleDate: Date? = run.paused ? nil : max(targetEndAt, Date().addingTimeInterval(1))
         let content = ActivityContent(state: FocusActivityAttributes.ContentState(), staleDate: staleDate)
         _ = try? Activity.request(attributes: attributes, content: content, pushType: nil)
+
+        succeeded = true
+      }
+      return succeeded
+    }
+    .runOnQueue(.main)
+
+    // ─── Live Activity (workout) ──────────────────────────────────────────
+    // The same iOS 17.0 gate and zero-or-one shape as the three above, and an
+    // empty string still means "none wanted". What differs is that an activity
+    // already showing this session is **updated in place**: the first use of
+    // `Activity.update` in the app. A workout's state changes on every set and
+    // every weight stepped, and ending and requesting an activity that often
+    // flickers and reorders the Lock Screen. See WorkoutActivityAttributes'
+    // header and src/utils/workoutLiveActivity.ts.
+    //
+    //  • Kept: the one activity for this session (its id and start), not
+    //    ended. Every other one ends: another session's, a duplicate, one left
+    //    behind by a previous app process.
+    //  • Updated only when what it draws changed: the payload's `key`, or
+    //    whether the rest has run out. An unchanged sync sends nothing.
+    //  • The stale date is the rest's end, so the card turns to "Rest is over"
+    //    on its own at that moment, with the app closed, as the focus activity
+    //    does. A state sent after the end says so itself (`restOver`) and takes
+    //    no stale date, so the update can't turn the card back to a countdown.
+    AsyncFunction("syncWorkoutLiveActivity") { (jsonString: String) -> Bool in
+      var succeeded = false
+      TodoWidgetExceptionCatcher.runCatchingExceptions {
+        guard #available(iOS 17.0, *) else { return }
+
+        let existing = Activity<WorkoutActivityAttributes>.activities
+
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else {
+          for activity in existing {
+            Task { await activity.end(nil, dismissalPolicy: .immediate) }
+          }
+          succeeded = true
+          return
+        }
+
+        guard
+          !jsonString.isEmpty,
+          let data = jsonString.data(using: .utf8),
+          let run = try? JSONDecoder().decode(WorkoutRunPayload.self, from: data)
+        else {
+          for activity in existing {
+            Task { await activity.end(nil, dismissalPolicy: .immediate) }
+          }
+          succeeded = true
+          return
+        }
+
+        let now = Date()
+        let restStartedAt = run.restStartedAtMs.map { Date(timeIntervalSince1970: $0 / 1000) }
+        let restEndsAt = run.restEndsAtMs.map { Date(timeIntervalSince1970: $0 / 1000) }
+        var restOver = false
+        var staleDate: Date? = nil
+        if run.phase == "rest", let end = restEndsAt {
+          if end <= now {
+            restOver = true
+          } else {
+            staleDate = max(end, now.addingTimeInterval(1))
+          }
+        }
+
+        let state = WorkoutActivityAttributes.ContentState(
+          key: run.key,
+          phase: run.phase,
+          title: run.title,
+          subtitle: run.subtitle,
+          compact: run.compact,
+          restStartedAt: restStartedAt,
+          restEndsAt: restEndsAt,
+          restOver: restOver,
+          primaryLabel: run.primaryLabel,
+          primaryUrl: run.primaryUrl,
+          primarySymbol: run.primarySymbol,
+          secondaryLabel: run.secondaryLabel,
+          secondaryUrl: run.secondaryUrl,
+          overTitle: run.overTitle,
+          overLabel: run.overLabel,
+          overUrl: run.overUrl,
+          overSymbol: run.overSymbol
+        )
+        let content = ActivityContent(state: state, staleDate: staleDate)
+
+        var current: Activity<WorkoutActivityAttributes>? = nil
+        for activity in existing {
+          if current == nil,
+             !hasEnded(activity.activityState),
+             activity.attributes.sessionId == run.sessionId,
+             sameInstant(activity.attributes.startedAt, ms: run.startedAtMs) {
+            current = activity
+          } else {
+            Task { await activity.end(nil, dismissalPolicy: .immediate) }
+          }
+        }
+
+        if let current = current {
+          let shown = current.content.state
+          if shown.key != state.key || shown.restOver != state.restOver {
+            Task { await current.update(content) }
+          }
+        } else {
+          let attributes = WorkoutActivityAttributes(
+            sessionId: run.sessionId,
+            startedAt: Date(timeIntervalSince1970: run.startedAtMs / 1000)
+          )
+          _ = try? Activity.request(attributes: attributes, content: content, pushType: nil)
+        }
 
         succeeded = true
       }

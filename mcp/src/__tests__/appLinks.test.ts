@@ -12,6 +12,7 @@ jest.mock('../../../src/store/useFocusStore', () => ({ useFocusStore: {} }));
 jest.mock('../../../src/utils/releaseBlocks', () => ({ applyKeyScan: () => ({ outcome: 'unknown' }) }));
 jest.mock('../../../src/store/useWidgetCompletionStore', () => ({ useWidgetCompletionStore: {} }));
 jest.mock('../../../src/utils/haptics', () => ({ haptics: {} }));
+jest.mock('../../../src/utils/workoutLinkActions', () => ({}));
 
 const links = appLinks('https://dundundun-mcp.fly.dev/mcp')!;
 

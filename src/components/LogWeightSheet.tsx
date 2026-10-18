@@ -110,10 +110,10 @@ export function LogWeightSheet({ visible, onClose }: Props) {
     if (result === 'written') {
       haptics.success();
       void refreshWeight();
-      // Recording the weight *is* the task, so a live request for one is
-      // answered and must not stay on Today — the same tidy-up the mood sheet
-      // does for its own check-in. A no-op when nothing asked.
-      useTaskStore.getState().completeWeighInTaskForToday();
+      // Recording the weight answers a live request for one, which makes its
+      // row read ready; the tick, and the coins, stay the person's. A no-op
+      // when nothing asked.
+      useTaskStore.getState().markWeighInAnswered(dayKeyOf(day));
       close();
       return;
     }

@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, AppState } from 'react-native';
+import { View, AppState, Platform } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import type { HealthRequestStatus, HealthWriteStatus } from 'todo-health-bridge';
 import { useShallow } from 'zustand/react/shallow';
@@ -137,6 +137,8 @@ export function HealthSettings() {
   const setWorkoutUnit = useSettingsStore(s => s.setWorkoutUnit);
   const defaultRestSeconds = useSettingsStore(s => s.defaultRestSeconds);
   const setDefaultRestSeconds = useSettingsStore(s => s.setDefaultRestSeconds);
+  const workoutLiveActivity = useSettingsStore(s => s.workoutLiveActivity);
+  const setWorkoutLiveActivity = useSettingsStore(s => s.setWorkoutLiveActivity);
   const weightGoal = useSettingsStore(useShallow(s => s.weightGoal));
   const setWeightUnit = useSettingsStore(s => s.setWeightUnit);
   const sleepGoalMinutes = useSettingsStore(s => s.sleepGoalMinutes);
@@ -721,6 +723,22 @@ export function HealthSettings() {
             describeValue={n => (n === null ? 'not set' : `${n} seconds`)}
           />
         </View>
+        {Platform.OS === 'ios' && (
+          <>
+            <View style={styles.sep} />
+            <SettingsRow
+              entryId="workoutLiveActivity"
+              icon="phone-portrait-outline"
+              iconColor={workoutLiveActivity ? colors.accent : undefined}
+              label="Live Activity while working out"
+              hint={workoutLiveActivity
+                ? 'The set you’re on and the rest countdown show on the Lock Screen and Dynamic Island, with buttons to finish a set or skip the rest'
+                : 'Workouts stay in the app only'}
+              toggle={workoutLiveActivity}
+              onPress={() => setWorkoutLiveActivity(!workoutLiveActivity)}
+            />
+          </>
+        )}
       </SettingsSection>
     )}
 

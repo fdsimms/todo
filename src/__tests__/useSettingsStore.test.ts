@@ -517,6 +517,7 @@ describe('resetToDefaults', () => {
     useSettingsStore.getState().setHideHelpText(true);
     useSettingsStore.getState().setTimerLiveActivity(false);
     useSettingsStore.getState().setTripLiveActivity(false);
+    useSettingsStore.getState().setWorkoutLiveActivity(false);
 
     useSettingsStore.getState().resetToDefaults();
 
@@ -537,6 +538,7 @@ describe('resetToDefaults', () => {
     expect(state.hideHelpText).toBe(false);
     expect(state.timerLiveActivity).toBe(true);
     expect(state.tripLiveActivity).toBe(true);
+    expect(state.workoutLiveActivity).toBe(true);
   });
 
   /**
@@ -1796,6 +1798,28 @@ describe('leaveLiveActivity', () => {
     useSettingsStore.getState().setLeaveLiveActivity(false);
     expect(dbSetSetting).toHaveBeenCalledWith('leaveLiveActivity', 'false');
     expect(useSettingsStore.getState().leaveLiveActivity).toBe(false);
+  });
+});
+
+describe('workoutLiveActivity', () => {
+  // timerLiveActivity's reasoning: on unless someone turned it off.
+  it('defaults to on, including when nothing is stored', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().workoutLiveActivity).toBe(true);
+  });
+
+  it('only turns off for an explicit "false"', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'workoutLiveActivity' ? 'false' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().workoutLiveActivity).toBe(false);
+  });
+
+  it('round-trips through setWorkoutLiveActivity', () => {
+    useSettingsStore.getState().setWorkoutLiveActivity(false);
+    expect(dbSetSetting).toHaveBeenCalledWith('workoutLiveActivity', 'false');
+    expect(useSettingsStore.getState().workoutLiveActivity).toBe(false);
   });
 });
 

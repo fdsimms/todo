@@ -626,6 +626,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['kg', 'kilograms', 'lb', 'pounds', 'gym', 'lifting', 'barbell', 'plates', 'metric', 'imperial'] },
   { id: 'defaultRestSeconds', requires: 'workoutsEnabled', groupId: 'health', label: 'Rest between sets', section: 'Workouts',
     keywords: ['rest timer', 'break', 'seconds', 'gym', 'lifting', 'countdown'] },
+  { id: 'workoutLiveActivity', iosOnly: true, requires: 'workoutsEnabled', groupId: 'health', label: 'Live Activity while working out', section: 'Workouts',
+    keywords: ['lock screen', 'dynamic island', 'rest timer', 'sets', 'gym', 'lifting', 'countdown'] },
   { id: 'sleepGoal', groupId: 'health', label: 'Sleep goal', section: 'Sleep',
     keywords: ['hours', 'asleep', 'bedtime', 'night', 'rest', 'target'] },
   { id: 'shortNightNote', requires: 'healthRead', groupId: 'health', label: 'Short night note', section: 'Sleep',

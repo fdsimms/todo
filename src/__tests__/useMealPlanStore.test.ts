@@ -2573,10 +2573,9 @@ describe('meal tasks', () => {
     );
   });
 
-  it('marking cooked walks the whole chain, not just its current step', () => {
-    // A cook task answered "did this happen" by existing. A chain's first tick
-    // is "I have decided what to have", so ticking one step from here would
-    // leave "Eat dinner" outstanding on a night already marked cooked.
+  it('marking cooked makes the live step read ready and completes nothing', () => {
+    // Ticking is what earns the coins, so marking a meal cooked leaves that to
+    // the person. Each step after this one is spawned already marked.
     loadWeek();
     plantSlotTask('2026-08-05', 'dinner');
     const meal = useMealPlanStore.getState().planMeal({
@@ -2585,8 +2584,21 @@ describe('meal tasks', () => {
 
     useMealPlanStore.getState().setCooked(meal.id, true);
 
-    expect(slotTaskFor('2026-08-05', 'dinner')).toBeUndefined();
-    expect(mockTaskState.completeTask).toHaveBeenCalled();
+    expect(slotTaskFor('2026-08-05', 'dinner')?.generatedReadyAt).toEqual(expect.any(String));
+    expect(mockTaskState.completeTask).not.toHaveBeenCalled();
+  });
+
+  it('un-marking a cooked meal clears the ready mark', () => {
+    loadWeek();
+    plantSlotTask('2026-08-05', 'dinner');
+    const meal = useMealPlanStore.getState().planMeal({
+      date: '2026-08-05', slot: 'dinner', recipeId: 'r1', title: 'Ragu',
+    })!;
+    useMealPlanStore.getState().setCooked(meal.id, true);
+
+    useMealPlanStore.getState().setCooked(meal.id, false);
+
+    expect(slotTaskFor('2026-08-05', 'dinner')?.generatedReadyAt).toBeNull();
   });
 
   it('un-ticking a cooked meal reopens the step that ended the chain', () => {
@@ -2596,6 +2608,8 @@ describe('meal tasks', () => {
       date: '2026-08-05', slot: 'dinner', title: 'Takeaway',
     })!;
     useMealPlanStore.getState().setCooked(meal.id, true);
+    // The person ticks the step that ends the chain.
+    mockTaskState.completeTask(planted.id);
     mockTaskState.uncompleteTask.mockClear();
 
     useMealPlanStore.getState().setCooked(meal.id, false);

@@ -8,7 +8,7 @@ import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
-import { resetToKitchen, resetToToday } from '../navigation/navigationRef';
+import { resetToKitchen, resetToToday, resetToWorkouts } from '../navigation/navigationRef';
 import { buildWidgetSnapshot, WATCH_CAPS, type SnapshotInput } from './widgetSnapshot';
 import { completedOnDay } from './allClear';
 import { getDayStart, getLogicalDayKey } from './dateUtils';
@@ -39,6 +39,11 @@ import { applyKeyScan } from './releaseBlocks';
 import type { KeyScanResult } from '../store/useNfcKeyStore';
 import { useJournalStore } from '../store/useJournalStore';
 import { isProjectLocked } from '../store/useProjectLockStore';
+import { useWorkoutStore } from '../store/useWorkoutStore';
+import { useWorkoutModeStore } from '../store/useWorkoutModeStore';
+import { buildRoutineIndex, parseQueuedWorkoutStarts, resolveQueuedWorkoutStart } from './workoutSiri';
+import { startWorkout } from './startWorkout';
+import { requestDismissAllSheets } from './sheetModal';
 
 const DEBOUNCE_MS = 300;
 
@@ -188,9 +193,9 @@ async function processPendingDoses(): Promise<void> {
 // Dreams said to Siri or the Action Button (LogDreamIntent): written into the
 // dream log, filed under the day they were said. Silent on arrival, like the
 // task capture: no navigation, so the journal lock stays closed. Saying one
-// also answers today's "write down a dream" reminder, as saving it in the
-// sheet does. Written through the store's own addEntry, which refuses blank
-// text, so a malformed record costs nothing.
+// also makes today's "write down a dream" reminder read ready, as saving it in
+// the sheet does; the tick stays the person's. Written through the store's own
+// addEntry, which refuses blank text, so a malformed record costs nothing.
 async function processPendingDreams(): Promise<void> {
   const bridge = widgetBridge();
   // Optional on the bridge: a binary built before the intent has no drain.
@@ -202,13 +207,9 @@ async function processPendingDreams(): Promise<void> {
     // The store loads with the task store at startup; a drain that beats it
     // would otherwise sort the new row into an empty list.
     if (!journal.initialized) journal.initialize();
-    let wroteToday = false;
     for (const dream of queued) {
-      const entry = useJournalStore.getState().addEntry('dream', dream.text, dream.at ?? undefined);
-      if (entry && dream.at === null) wroteToday = true;
-      if (entry && dream.at !== null && getLogicalDayKey(dream.at) === getLogicalDayKey(new Date())) wroteToday = true;
+      useJournalStore.getState().addEntry('dream', dream.text, dream.at ?? undefined);
     }
-    if (wroteToday) useTaskStore.getState().completeJournalTaskForToday('dream');
     haptics.success();
   } catch {
     // A build predating drainPendingDreams — no-op.
@@ -245,6 +246,69 @@ async function processPendingKeyScans(): Promise<void> {
   }
 }
 
+// "Start my workout" and "Start Push A" (StartWorkoutIntent and
+// StartRoutineIntent). The same drain shape and demo-mode reasoning as the
+// others: widgetBridge() is null in demo mode, so a start said then waits for
+// the next real foreground rather than starting a workout in the throwaway
+// database. Only the newest entry acts (`resolveQueuedWorkoutStart`): several
+// queued starts must not start several workouts.
+//
+// Unlike the silent captures above, this one lands somewhere: the person asked
+// to start a workout and the app came forward for it. So any sheet left open
+// is asked to close first, the way an incoming link's destination is, or
+// workout mode would wait behind it unseen.
+async function processPendingWorkoutStarts(): Promise<void> {
+  const bridge = widgetBridge();
+  // Optional on the bridge: a binary built before the intents has no drain.
+  if (!bridge?.drainPendingWorkoutStarts) return;
+  // Read before draining: the drain deletes the file, so a store that hasn't
+  // loaded yet would cost the start rather than delay it.
+  if (!useWorkoutStore.getState().initialized) return;
+  try {
+    const queued = parseQueuedWorkoutStarts(await bridge.drainPendingWorkoutStarts());
+    if (queued.length === 0) return;
+    const workouts = useWorkoutStore.getState();
+    const plan = resolveQueuedWorkoutStart(queued, {
+      workoutsEnabled: useSettingsStore.getState().workoutsEnabled,
+      live: workouts.liveSession(),
+      routines: workouts.routines,
+      programs: workouts.programs,
+      sessions: workouts.sessions,
+      todayTasks: useTaskStore.getState().visibleTasks(),
+      now: new Date(),
+    });
+    if (plan.kind === 'none') return;
+    requestDismissAllSheets();
+    if (plan.kind === 'showLive') useWorkoutModeStore.getState().show();
+    else if (plan.kind === 'start') startWorkout(plan.input);
+    else resetToWorkouts();
+  } catch {
+    // A build predating drainPendingWorkoutStarts — no-op.
+  }
+}
+
+// The routines StartRoutineIntent can hear (workoutSiri.ts), on its own
+// debounce for the medication index's reason. Empty while the Workouts area is
+// off. Skipped before the store has loaded, since an empty file then reads as
+// "you have no routines", and skipped when nothing changed, because each write
+// also asks Siri to read the list again.
+let routineIndexTimer: ReturnType<typeof setTimeout> | null = null;
+let lastRoutineIndex: string | null = null;
+
+function scheduleRoutineIndexWrite(): void {
+  if (routineIndexTimer) clearTimeout(routineIndexTimer);
+  routineIndexTimer = setTimeout(() => {
+    const workouts = useWorkoutStore.getState();
+    if (!workouts.initialized) return;
+    const bridge = widgetBridge();
+    if (!bridge?.writeWorkoutRoutineIndex) return;
+    const json = JSON.stringify(buildRoutineIndex(workouts.routines, useSettingsStore.getState().workoutsEnabled));
+    if (json === lastRoutineIndex) return;
+    lastRoutineIndex = json;
+    bridge.writeWorkoutRoutineIndex(json).catch(() => { lastRoutineIndex = null; });
+  }, DEBOUNCE_MS);
+}
+
 // The medications LogMedicationIntent can hear (medicationIndex.ts). Its own
 // debounce rather than riding the widget snapshot's: a dose changes nothing on
 // a home screen, and the snapshot write reloads every widget timeline. Skipped
@@ -252,13 +316,22 @@ async function processPendingKeyScans(): Promise<void> {
 // file reads as "you take nothing" until the next dose.
 let medicationIndexTimer: ReturnType<typeof setTimeout> | null = null;
 
+// Written only when it changed, since each write also has Siri read the
+// shortcuts' names again (see the routine index below); the first write of a
+// launch always goes, so a name added under an older build is heard too.
+let lastMedicationIndex: string | null = null;
+
 function scheduleMedicationIndexWrite(): void {
   if (medicationIndexTimer) clearTimeout(medicationIndexTimer);
   medicationIndexTimer = setTimeout(() => {
     const meds = useMedicationStore.getState();
     if (!meds.initialized) return;
     const bridge = widgetBridge();
-    bridge?.writeMedicationIndex?.(JSON.stringify(buildMedicationIndex(meds.logs, meds.archived, meds.registered))).catch(() => {});
+    if (!bridge?.writeMedicationIndex) return;
+    const json = JSON.stringify(buildMedicationIndex(meds.logs, meds.archived, meds.registered));
+    if (json === lastMedicationIndex) return;
+    lastMedicationIndex = json;
+    bridge.writeMedicationIndex(json).catch(() => { lastMedicationIndex = null; });
   }, DEBOUNCE_MS);
 }
 
@@ -397,6 +470,9 @@ function widgetUpcoming(deferred: readonly Task[], now: Date): { task: Task; vis
   return deferred.map(task => ({ task, visibleAt: getVisibleAt(task, pass) }));
 }
 
+// The pantry index as last written (see the end of writeSnapshotNow).
+let lastPantryIndex: string | null = null;
+
 const notLocked = (t: Task) => !isProjectLocked(t.projectId);
 
 function writeSnapshotNow(): void {
@@ -489,8 +565,16 @@ function writeSnapshotNow(): void {
   // owns until the next grocery write happened to land. The snapshot above
   // handles the same gap by contributing null for a section it can't speak
   // for; a file has no null, so it keeps the last true one.
-  if (grocery.initialized) {
-    bridge?.writePantryIndex(JSON.stringify(buildPantryIndex(grocery.items))).catch(() => {});
+  //
+  // Written only when it changed, as the medication index is: each write has
+  // Siri read the shortcuts' names again, and the snapshot runs on every
+  // grocery change.
+  if (grocery.initialized && bridge) {
+    const json = JSON.stringify(buildPantryIndex(grocery.items));
+    if (json !== lastPantryIndex) {
+      lastPantryIndex = json;
+      bridge.writePantryIndex(json).catch(() => { lastPantryIndex = null; });
+    }
   }
 }
 
@@ -572,6 +656,14 @@ function subscribeToStores(): () => void {
         scheduleMedicationIndexWrite();
       }
     }),
+    // Siri's routine list: a routine added, renamed or deleted, or the area
+    // switched on or off.
+    useWorkoutStore.subscribe((s, p) => {
+      if (s.routines !== p.routines || s.initialized !== p.initialized) scheduleRoutineIndexWrite();
+    }),
+    useSettingsStore.subscribe((s, p) => {
+      if (s.workoutsEnabled !== p.workoutsEnabled) scheduleRoutineIndexWrite();
+    }),
   ];
   return () => {
     for (const unsubscribe of unsubscribers) unsubscribe();
@@ -594,6 +686,7 @@ export function useWidgetSync(): void {
       processPendingDoses(),
       processPendingDreams(),
       processPendingKeyScans(),
+      processPendingWorkoutStarts(),
       processQuietWidgetTaps(),
     ]).finally(() => {
       // Deferred rather than called synchronously during mount — avoids
@@ -601,6 +694,7 @@ export function useWidgetSync(): void {
       // native module registry) is still mid-launch.
       scheduleSnapshotWrite();
       scheduleMedicationIndexWrite();
+      scheduleRoutineIndexWrite();
     });
 
     // Tapping a checkbox in the widget (CompleteTaskIntent, in
@@ -618,6 +712,7 @@ export function useWidgetSync(): void {
           processPendingDoses(),
           processPendingDreams(),
           processPendingKeyScans(),
+          processPendingWorkoutStarts(),
           processQuietWidgetTaps(),
         ]).finally(scheduleSnapshotWrite);
       }

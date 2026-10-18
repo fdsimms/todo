@@ -232,7 +232,9 @@ position `calendarReview` is in), both firing from one pass
 (`checkMoodTasks`) because they read the same data. Both ship **off**.
 
 `moodLog` is ordinary: once a day, a task to write it down, cleared when the
-day is already logged and completed by logging (`completeMoodLogTaskForToday`).
+day is already logged. Logging makes the row read ready and the person ticks it
+(for the coins); nothing completes it for them, and a ready row from an earlier
+day or part of the day is kept rather than cleared (`isReadyRecordTask`).
 
 The pass lives in `catchUpPasses()` (`src/utils/maintenancePasses.ts`), so it
 runs at launch, on foreground, **and in a background refresh** — which is the

@@ -15,5 +15,6 @@ struct TodoWidgetBundle: WidgetBundle {
         TripLiveActivity()
         LeaveLiveActivity()
         FocusLiveActivity()
+        WorkoutLiveActivity()
     }
 }

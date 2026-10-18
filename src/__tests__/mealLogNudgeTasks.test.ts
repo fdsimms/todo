@@ -6,6 +6,7 @@ import {
   mealLogNudgeLinkUrl,
   mealLogNudgeTitle,
   staleMealLogNudgeTasks,
+  answeredMealLogNudgeTasks,
   wantedMealLogNudges,
   type MealLogRecord,
 } from '../utils/mealLogNudgeTasks';
@@ -254,5 +255,30 @@ describe('staleMealLogNudgeTasks', () => {
     const archived = task({ generatedSourceId: meal.id, archived: true });
     const other = task({ generatedSourceId: meal.id, generatedKind: 'mealShortfall' });
     expect(staleMealLogNudgeTasks([done, archived, other], [meal], NOTHING_LOGGED, TODAY)).toEqual([]);
+  });
+});
+
+describe('answeredMealLogNudgeTasks', () => {
+  it('names the rows whose meal has been logged, and only for that reason', () => {
+    const logged = entry('2026-08-21');
+    const unlogged = entry('2026-08-21', { slot: 'lunch' });
+    const told = entry('2026-08-21', { slot: 'breakfast', logMeal: false });
+    const old = entry('2026-08-15');
+    const tasks = [logged, unlogged, told, old].map(m => task({ generatedSourceId: m.id }));
+    const record = linked(logged.id, told.id, old.id);
+
+    const answered = answeredMealLogNudgeTasks(tasks, [logged, unlogged, told, old], record, TODAY);
+
+    // The declined and out-of-window meals are withdrawn, not answered.
+    expect(answered).toEqual([tasks[0]]);
+    // Everything answered is also stale, so the sweep can subtract it.
+    expect(staleMealLogNudgeTasks(tasks, [logged, unlogged, told, old], record, TODAY)).toEqual(
+      expect.arrayContaining(answered),
+    );
+  });
+
+  it('names nothing for a deleted meal', () => {
+    const t = task({ generatedSourceId: 'gone' });
+    expect(answeredMealLogNudgeTasks([t], [], NOTHING_LOGGED, TODAY)).toEqual([]);
   });
 });

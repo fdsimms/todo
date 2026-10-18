@@ -22,7 +22,7 @@
         "NSHealthUpdateUsageDescription": "dundundun saves an amount to Health, such as a glass of water or a coffee’s caffeine, when you complete a task you set up to log one. It saves a weight when you record one, a meal’s nutrition when you add the meal to the food log, and a strength workout when you choose to save a finished one. Nothing else is written. Deleting a food log entry or a workout removes what it saved.",
         "NSAlarmKitUsageDescription": "dundundun rings reminders as system alarms that sound even in silent mode.",
         "NSSupportsLiveActivities": true,
-        "NSSiriUsageDescription": "dundundun uses Siri to add a task by voice, including from the Action Button, without opening the app.",
+        "NSSiriUsageDescription": "dundundun uses Siri to add a task, log a dose or a dream, mark a grocery item used up, or start a workout by voice, including from the Action Button.",
         "NFCReaderUsageDescription": "dundundun reads an NFC tag so you can use it as a key that locks and unlocks the apps you chose to block."
       },
       "entitlements": {

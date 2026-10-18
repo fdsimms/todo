@@ -49,7 +49,7 @@ const NOT_EXPOSED: Record<string, string[]> = {
     'seenAt', 'sortOrder', 'pinnedOrder', 'backfillDismissedFields', 'recurrenceAnchorDay', 'recurrenceAnchorDate',
     'quotaStartedAt', 'rotationLog', 'rotationPeriodStart', 'rotationPlan', 'previousStreakCount',
     'previousStreakDate', 'priorBestStreak', 'previousFollowUpTaskTally', 'followUpTaskSourceId',
-    'followUpTaskSourceTitle', 'generatedSourceId', 'waitingFollowUpDeclinedAt', 'timerStartedAt',
+    'followUpTaskSourceTitle', 'generatedSourceId', 'generatedReadyAt', 'waitingFollowUpDeclinedAt', 'timerStartedAt',
     'timerElapsedSeconds', 'estimateBeforeTiming', 'seriesDefaults', 'pendingImport', 'reminderTimeAnchor',
     'reminderUtcOffsetMinutes', 'createdAt', 'archivedAt', 'previousOccurrenceId', 'rainSkippedOn',
   ],

@@ -112,7 +112,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/dayTimeline.ts` — MINUTES_IN_DAY, DEFAULT_FIRST_HOUR, DEFAULT_LAST_HOUR, TimelineEntry, DayTimeline, DayTimelineInput, clockToDayMinutes, instantToDayMinutes, buildDayTimeline, SLOT_STEP_MINUTES, +1 more
 - `src/utils/deadlineCalendarSync.ts` — syncDeadlineEvent, deadlineEventLink, deleteDeadlineEvent, TaskEventSyncPlan, taskEventsAfterSync
 - `src/utils/decisionReview.ts` — ReviewAfter, REVIEW_AFTER_OPTIONS, isReviewAfter, reviewDueDay, canReviewDecision, reviewTaskDraft, DecisionOutcome, decisionOutcomes, pendingReviewOf
-- `src/utils/deepLinks.ts` — AddTaskLink, parseAddTaskUrl, handleIncomingUrl, isQuickAddUrl, isAddEventUrl, isOpenAppUrl, isGroceriesUrl, groceriesUrlFinish, groceriesLinkUrl, groceriesUrlShop, +46 more
+- `src/utils/deepLinks.ts` — AddTaskLink, parseAddTaskUrl, handleIncomingUrl, isQuickAddUrl, isAddEventUrl, isOpenAppUrl, isGroceriesUrl, groceriesUrlFinish, groceriesLinkUrl, groceriesUrlShop, +48 more
 - `src/utils/deliverables.ts` — DELIVERABLE_TEXT_MAX_LENGTH, DeliverableReasoning, DELIVERABLE_REASONING_MAX_LENGTH, cleanDeliverableReasoning, reasoningOf, DELIVERABLE_META, YES_NO_OPTIONS, DELIVERABLE_OPTIONS_MAX, isTentativeAnswer, RSVP_OPTIONS, +12 more
 - `src/utils/deloadPlan.ts` — DeloadDestination, DeloadProposal, DeloadPlan, buildDeloadPlan
 - `src/utils/demoHold.ts` — runOrHoldForDemo, replayHeldForDemo
@@ -241,15 +241,15 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/mealIdeas.ts` — MIN_MEAL_IDEAS, MAX_MEAL_IDEAS, RECENT_MEAL_DAYS, MealIdea, RawMealIdea, mealTitleKey, clampIdeaCount, dedupeMealIdeas, MealSuggestion, mergeMealSuggestions, +7 more
 - `src/utils/mealLog.ts` — DishFigures, MealHelping, wantsMealLogPrompt, defaultHelpings, mealHelping, servingGrams, weighedHelping, cookedDishGrams, describeCookedWeight, COOKED_WEIGHT_MIN_G, +5 more
 - `src/utils/mealLogCoverage.ts` — SlotCoverage, countsAsMealLog, loggedMealSlotKeys, mealDayCoverage, describeSlotLog, describeDayCoverage, unloggedPlannedSlots, describePlannedSlot
-- `src/utils/mealLogNudgeTasks.ts` — MEAL_LOG_NUDGE_LOOKBACK_DAYS, mealLogNudgeTitle, mealLogNudgeEntryId, mealLogNudgeLinkUrl, isWithinLogNudgeWindow, MealLogRecord, isMealLogged, MealLogNudgeWant, wantedMealLogNudges, staleMealLogNudgeTasks
+- `src/utils/mealLogNudgeTasks.ts` — MEAL_LOG_NUDGE_LOOKBACK_DAYS, mealLogNudgeTitle, mealLogNudgeEntryId, mealLogNudgeLinkUrl, isWithinLogNudgeWindow, MealLogRecord, isMealLogged, MealLogNudgeWant, wantedMealLogNudges, staleMealLogNudgeTasks, +1 more
 - `src/utils/mealOverrides.ts` — OVERRIDE_NOTE_MAX_LENGTH, OverrideTarget, overrideTargets, overrideFromInput, withOverride, withoutOverride
 - `src/utils/mealPlan.ts` — slotRank, slotLabel, mealSlotKey, sortMealEntries, entriesForDay, cookEntryForRecipe, earliestUnplannedSlot, entriesForSlot, nextSortOrder, upcomingDays, +31 more
 - `src/utils/mealPlanGroceries.ts` — PlannedIngredient, collectPlannedIngredients, hasShoppableMeals, plannedIngredientsForRecipe, parseQuantityAmount, mergeQuantities, describeQuantities, PlanCategory, ClassifiedIngredient, PlannedCatalogIndex, +13 more
 - `src/utils/mealPlanNudge.ts` — DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY, DEFAULT_MEAL_PLAN_NUDGE_TIME, MEAL_PLAN_NUDGE_LINK_URL, mealPlanNudgeLinkUrl, MEAL_PLAN_NUDGE_SLOTS, MEAL_PLAN_NUDGE_SLOT_COUNT, countPlannedSlots, mealPlanNudgeDayKey, MealPlanNudgeDue, MealPlanNudgeDay, +3 more
 - `src/utils/mealProduceCheck.ts` — PRODUCE_CHECK_SLOTS, PRODUCE_SIDES_SHOWN, MealWithoutProduce, listsNoProduce, mealsWithoutProduce, producesOnHand, describeProduceGaps
-- `src/utils/mealShortfallTasks.ts` — MAX_MEAL_SHORTFALL_TASKS, mealShortfallTitle, mealShortfallEntryId, mealShortfallLinkUrl, isWithinShopWindow, mealShortfallRows, MealShortfallWant, wantedMealShortfalls, staleMealShortfallTasks
+- `src/utils/mealShortfallTasks.ts` — MAX_MEAL_SHORTFALL_TASKS, mealShortfallTitle, mealShortfallEntryId, mealShortfallLinkUrl, isWithinShopWindow, mealShortfallRows, MealShortfallWant, wantedMealShortfalls, staleMealShortfallTasks, answeredMealShortfallTasks
 - `src/utils/mealSlotTasks.ts` — MEAL_SLOT_SEGMENTS, mealSlotStepTimeSegments, MEAL_SLOT_TASK_DAYS, DEFAULT_MEAL_SLOTS_ENABLED, mealSlotSourceId, parseMealSlotSource, mealSlotOf, RECIPE_LINK_URL, recipeLinkUrl, mealSlotLinkUrl, +10 more
-- `src/utils/mealThawTasks.ts` — MEAL_THAW_LEAD_DAYS, MAX_MEAL_THAW_TASKS, mealThawTitle, mealThawEntryId, isWithinThawWindow, FrozenForMeal, frozenForMeal, mealThawLinkUrl, MealThawWant, wantedMealThaws, +1 more
+- `src/utils/mealThawTasks.ts` — MEAL_THAW_LEAD_DAYS, MAX_MEAL_THAW_TASKS, mealThawTitle, mealThawEntryId, isWithinThawWindow, FrozenForMeal, frozenForMeal, mealThawLinkUrl, MealThawWant, wantedMealThaws, +2 more
 - `src/utils/measuredHeight.ts` — HEIGHT_EPSILON, nextMeasuredHeight
 - `src/utils/medicationExport.ts` — MEDICATION_EXPORT_COLUMNS, medicationExportCsv, medicationExportFileName, medicationExportSummary
 - `src/utils/medicationIndex.ts` — MedicationIndexEntry, MAX_MEDICATION_INDEX_ENTRIES, buildMedicationIndex, QueuedDose, parseQueuedDoses, resolveQueuedDoseName
@@ -295,7 +295,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/openTasks.ts` — openTasksOf
 - `src/utils/ordinal.ts` — ordinal
 - `src/utils/paintSelect.ts` — PaintRowRect, PAINT_GUTTER_WIDTH, ROW_HIT_SLOP, isInPaintGutter, rowIdAtY, rowIdsBetween
-- `src/utils/pantryCheckTasks.ts` — MAX_PANTRY_CHECK_TASKS, PANTRY_CHECK_GRACE_DAYS, pantryCheckTitle, pantryCheckItemId, pantryCheckLinkUrl, pantryCheckLapse, pantryCheckAnswers, PantryCheckWant, wantedPantryChecks, stalePantryCheckTasks
+- `src/utils/pantryCheckTasks.ts` — MAX_PANTRY_CHECK_TASKS, PANTRY_CHECK_GRACE_DAYS, pantryCheckTitle, pantryCheckItemId, pantryCheckLinkUrl, pantryCheckLapse, pantryCheckAnswers, PantryCheckWant, wantedPantryChecks, stalePantryCheckTasks, +1 more
 - `src/utils/pantryIndex.ts` — PantryIndexEntry, MAX_PANTRY_INDEX_ENTRIES, buildPantryIndex, QueuedDisposal, parseQueuedDisposals, resolveQueuedPantryItem, PlannedDisposal, planQueuedDisposals
 - `src/utils/pantryReview.ts` — PantryReviewAnswer, MAX_PANTRY_REVIEW_CARDS, PANTRY_REVIEW_QUIET_DAYS, PANTRY_PAST_USE_BY_DAYS, PANTRY_GUESS_DOUBT_FRACTION, PantryDoubt, PantryReviewCard, PantryReviewDeck, buildPantryReviewDeck, describeLastPurchase, +2 more
 - `src/utils/pantryReviewTasks.ts` — PANTRY_REVIEW_TITLE, PANTRY_REVIEW_LINK_URL, MIN_PANTRY_REVIEW_CARDS, PANTRY_REVIEW_CADENCE_DAYS, pantryReviewDayKey, pantryReviewCadenceElapsed, wantsPantryReview, stalePantryReviewTasks
@@ -459,6 +459,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/snoozeEngine.ts` — SnoozeSuggestion, AWAY_PENALTY, computeSnoozeSuggestion
 - `src/utils/stableLists.ts` — reuseUnchangedLists
 - `src/utils/standingSwaps.ts` — StandingSwap, StandingSwapMap, NO_STANDING_SWAPS, standingSwaps, standingSwapMap, SwappedIngredient, applyStandingSwap, describeStandingSwap
+- `src/utils/startWorkout.ts` — StartWorkoutInput, StartWorkoutResult, startWorkout
 - `src/utils/startup.ts` — runStartupStep, runStartupSequence
 - `src/utils/stats.ts` — OnTimeSummary, onTimeSummary
 - `src/utils/stepGoal.ts` — STEP_GOAL_MIN, STEP_GOAL_MAX, STEP_GOAL_STEP, STEP_GOAL_DEFAULT, clampStepGoal, parseStepGoal
@@ -562,6 +563,9 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/workoutCsv.ts` — ImportSource, ImportedSet, ImportedSession, CsvParseResult, SkippedRows, describeSkipped, ParseOptions, parseCsv, readCsv, parseImportDate, +34 more
 - `src/utils/workoutData.ts` — EXERCISE_KINDS, EXERCISE_EQUIPMENT, MUSCLE_GROUPS, WORKOUT_SET_KINDS, PROGRESSION_SCHEMES, EQUIPMENT_LABELS, MUSCLE_LABELS, WORKOUT_NAME_MAX_LENGTH, WORKOUT_EFFORT, exerciseNameKey, +26 more
 - `src/utils/workoutHistory.ts` — HEALTH_HISTORY_MAX_DAYS, WorkoutHistoryRow, healthHistoryWindow, SAME_WORKOUT_START_MS, overlapsSession, interleaveHistory, healthWorkoutSource, healthWorkoutTitle, healthWorkoutLine
+- `src/utils/workoutLink.ts` — WORKOUT_LINK_VERBS, WorkoutLinkVerb, WorkoutLink, WORKOUT_OPEN_URL, workoutLinkUrl, WorkoutLinkPlan, planWorkoutLink
+- `src/utils/workoutLinkActions.ts` — applyWorkoutLink, skipRestFromLink
+- `src/utils/workoutLiveActivity.ts` — WorkoutRunPhase, WorkoutRun, buildWorkoutRun, workoutActivitySessionId
 - `src/utils/workoutProgram.ts` — ProgramProgress, liveRotation, programSessions, programProgress, weekLabel, describeProgress
 - `src/utils/workoutProgramLibrary.ts` — LibraryProgramRoutine, LibraryProgram, PROGRAM_LIBRARY, libraryProgram, percentExercises
 - `src/utils/workoutProgression.ts` — LINEAR_DELOAD_AFTER, DELOAD_FRACTION, DEFAULT_TARGET_RPE, RPE_LOAD_PER_POINT, DEFAULT_WAVE_PERCENTS, WAVE_STEP_POINTS, WAVE_DELOAD_POINTS, TRAINING_MAX_FRACTION, defaultIncrementKg, incrementFor, +26 more
@@ -569,12 +573,14 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/workoutRecords.ts` — E1RM_MAX_REPS, REP_RECORD_MAX, SECONDARY_MUSCLE_WEIGHT, NEW_RECORD_DAYS, RECENT_RECORD_DAYS, countsForRecords, estimatedOneRepMax, setVolume, VolumeUnit, volumeUnit, +31 more
 - `src/utils/workoutRoutine.ts` — RoutineItemShape, itemShape, MAX_ROUTINE_SETS, defaultTargets, newRoutineItem, withWorkingSets, withWarmups, WarmupMode, warmupMode, DEFAULT_WARMUP_SETS, +16 more
 - `src/utils/workoutSession.ts` — SessionExercise, sessionExercises, supersetGroup, roundRobin, walkOrder, nextSet, currentSetOf, AfterLog, afterLog, restSecondsFor, +20 more
+- `src/utils/workoutSiri.ts` — WorkoutRoutineIndexEntry, MAX_ROUTINE_INDEX_ENTRIES, buildRoutineIndex, QueuedWorkoutStart, parseQueuedWorkoutStarts, newestWorkoutStart, WorkoutStartPlan, QUEUED_START_MAX_AGE_MS, resolveQueuedWorkoutStart
 - `src/utils/workoutTask.ts` — WorkoutTaskEffect, workoutTaskEffect, linkedTaskLine
+- `src/utils/workoutTick.ts` — TickRest, TickOutcome, restLabelFor, tickOutcome, tickSet
 
 ## `src/store`
 
 - `src/store/generatedCategoryWriteBack.ts` — GeneratedCategoryOffer, generatedCategoryOffer, writeCategoryToSource
-- `src/store/generatedTaskSync.ts` — deleteGeneratedTaskQuietly, ReconcileGeneratedOptions, reconcileGeneratedTask, dropGeneratedTask, forfeitUseUpCoins, restoreUseUpCoins
+- `src/store/generatedTaskSync.ts` — deleteGeneratedTaskQuietly, markGeneratedReady, settleReadyMarks, ReconcileGeneratedOptions, reconcileGeneratedTask, dropGeneratedTask, forfeitUseUpCoins, restoreUseUpCoins
 - `src/store/generatorSwitch.ts` — setGeneratorEnabled
 - `src/store/useAppGroupStore.ts` — NewSchedule, ScheduleResult, useAppGroupStore, resolvedAssignments, allowGroupsNow, resolveGroupNow, expandGroupNow
 - `src/store/useAppLockStore.ts` — useAppLockStore, isAppLocked
@@ -700,7 +706,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useSheetSubject.ts` — useSheetSubject
 - `src/hooks/useShieldReasons.ts` — useShieldReasons
 - `src/hooks/useStableCallback.ts` — useStableCallback
-- `src/hooks/useStartWorkout.ts` — StartWorkoutInput, useStartWorkout
+- `src/hooks/useStartWorkout.ts` — useStartWorkout
 - `src/hooks/useStepTimers.ts` — StepTimersBinding, useStepTimers
 - `src/hooks/useStoreWhileOpen.ts` — useStoreWhileOpen
 - `src/hooks/useTaskSelection.ts` — useTaskSelection
@@ -713,6 +719,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useWeatherWaitSync.ts` — useWeatherWaitSync
 - `src/hooks/useWeighIn.ts` — useWeighIn, WeighIn
 - `src/hooks/useWithoutLockedTasks.ts` — useWithoutLockedTasks
+- `src/hooks/useWorkoutLiveActivitySync.ts` — useWorkoutLiveActivitySync
 - `src/hooks/useWorkoutStats.ts` — WORKOUT_STATS_WEEKS, WorkoutStatsRecord, WorkoutStats, useWorkoutStats
 
 ## `src/db`
