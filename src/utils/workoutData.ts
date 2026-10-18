@@ -205,12 +205,17 @@ export function readRoutineItems(raw: unknown): WorkoutRoutineItem[] {
     const targets = Array.isArray(i.targets)
       ? i.targets.map(readTarget).filter((t): t is RoutineSetTarget => t !== null)
       : [];
+    const ramp = i.warmupRamp === true;
     out.push({
       exerciseId: i.exerciseId,
       supersetKey: typeof i.supersetKey === 'string' && i.supersetKey ? i.supersetKey : null,
       restSeconds: int(i.restSeconds),
       progression: readProgression(i.progression),
-      targets,
+      // A ramp replaces the item's own warm-ups, so a row carrying both (two
+      // devices editing at once) reads as the ramp.
+      targets: ramp ? targets.filter(t => t.kind !== 'warmup') : targets,
+      // Written only when on, so an item from before it reads exactly as it did.
+      ...(ramp ? { warmupRamp: true } : {}),
     });
   }
   return out;

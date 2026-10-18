@@ -191,6 +191,19 @@ describe('since: features that are new to the person', () => {
     expect(ids([trip({ destination: 'Lisbon' })])).not.toContain('trip_destination');
     expect(ids([trip({ awayStart: null })])).not.toContain('trip_destination');
   });
+
+  it('suggests a program only with Workouts on, two or more routines and no program', () => {
+    const ids = (on: boolean, routines: number, programs: number) => unusedFeatures({
+      ...fakeReplica(),
+      settings: () => ({ simpleMode: false, kitchenEnabled: true, completedRetentionDays: null, rewardsEnabled: false, workoutsEnabled: on }),
+      workoutRoutines: () => Array.from({ length: routines }),
+      workoutPrograms: () => Array.from({ length: programs }),
+    } as unknown as Replica, { since: '2026-09-01', limit: 20 }).suggestions.map(s => s.id);
+    expect(ids(true, 2, 0)).toContain('workout_programs');
+    expect(ids(true, 2, 1)).not.toContain('workout_programs');
+    expect(ids(true, 1, 0)).not.toContain('workout_programs');
+    expect(ids(false, 3, 0)).not.toContain('workout_programs');
+  });
 });
 
 describe('ADOPTION_CHECKS', () => {

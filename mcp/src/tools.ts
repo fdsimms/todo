@@ -29,6 +29,7 @@ import { entryNovaGroup, processingMix } from '../../src/utils/processingStats';
 import * as negativeHabits from '../../src/utils/negativeHabits';
 import { checkTemplateLibrary, type LibraryCheck } from './templateLibrary';
 import { proratedFrom } from '../../src/utils/quotaSchedule';
+import { programProgress } from '../../src/utils/workoutProgram';
 import {
   describeDeadlineRule,
   describeHealthTarget,
@@ -248,9 +249,11 @@ export interface GetTaskResult {
   /**
    * The workout routine the task is for (`workoutRoutineId`): the row offers
    * Start workout, and finishing that workout on the phone completes the task.
-   * `name` is absent when the routine has since been deleted.
+   * `name` is absent when the routine has since been deleted. A task linked
+   * to a program instead carries `programId`, and `next` is the routine its
+   * Start workout would open now (derived from the program's sessions).
    */
-  workout?: { routineId: string; name?: string };
+  workout?: { routineId?: string; programId?: string; name?: string; next?: string };
   /** A countdown (`minutes`) or an Apple Health reading (`healthTarget`) the task reads as ready at; `measuredMinutes` is how long it actually took. */
   timer?: { minutes: number };
   measuredMinutes?: number;
@@ -331,7 +334,13 @@ function taskExtras(replica: Replica, task: Task): Partial<GetTaskResult> {
   if (task.logSavedMealId) onCompletion.logsSavedMealId = task.logSavedMealId;
   if (Object.keys(onCompletion).length > 0) out.onCompletion = onCompletion;
 
-  if (task.workoutRoutineId) {
+  if (task.workoutProgramId) {
+    const program = replica.workoutPrograms().find(p => p.id === task.workoutProgramId);
+    const routines = replica.workoutRoutines();
+    const nextId = program ? programProgress(program, replica.workoutSessions('0000-01-01', '9999-12-31'), routines).nextRoutineId : null;
+    const next = nextId ? routines.find(r => r.id === nextId)?.name : undefined;
+    out.workout = { programId: task.workoutProgramId, ...(program ? { name: program.name } : {}), ...(next ? { next } : {}) };
+  } else if (task.workoutRoutineId) {
     const routine = replica.workoutRoutines().find(r => r.id === task.workoutRoutineId);
     out.workout = { routineId: task.workoutRoutineId, ...(routine ? { name: routine.name } : {}) };
   }

@@ -46,8 +46,11 @@ import {
   type PlannedSetValues,
 } from '../utils/workoutSession';
 import { libraryExercise } from '../utils/exerciseLibrary';
+import { loadContextFor, rampSteps } from '../utils/workoutProgression';
+import { libraryProgram } from '../utils/workoutProgramLibrary';
+import { useSettingsStore } from './useSettingsStore';
 import { NEW_EXERCISE_PREFIX, indexAdd, indexExisting, indexHas, type PlannedImportSession } from '../utils/workoutCsv';
-import { buildCatalog } from '../utils/exerciseCatalog';
+import { buildCatalog, catalogExercise } from '../utils/exerciseCatalog';
 import {
   cleanWorkoutName,
   exerciseNameKey,
@@ -201,10 +204,22 @@ interface WorkoutStore {
   /** Also takes it out of any program's rotation. Sessions keep naming it, as provenance. */
   deleteRoutine: (id: string) => void;
 
+  /**
+   * A program. A rotation given here or to `updateProgram` also files its
+   * routines under the program (`WorkoutRoutine.programId`) where they belong
+   * to none, and frees the ones taken out of it, so a routine started on its
+   * own from the Routines list still counts toward its program.
+   */
   addProgram: (input: ProgramInput) => WorkoutProgram | WorkoutRefusal;
   updateProgram: (id: string, patch: ProgramPatch) => WorkoutProgram | WorkoutRefusal;
   /** Its routines stay, as routines on their own. */
   deleteProgram: (id: string) => void;
+  /**
+   * Writes a built-in program (`PROGRAM_LIBRARY`) as the person's own: its
+   * routines, then the program naming them in rotation, in one transaction.
+   * Refuses a key the library doesn't have (`notFound`).
+   */
+  addLibraryProgram: (key: string) => { program: WorkoutProgram; routines: WorkoutRoutine[] } | WorkoutRefusal;
 
   /** The session in progress, if there is one. */
   liveSession: () => WorkoutSession | null;
@@ -433,6 +448,41 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
     });
   };
 
+  /**
+   * The routines a rotation change re-files: those in the rotation that belong
+   * to no program join this one, and this one's routines taken out of it are
+   * freed. A routine filed under another program stays there.
+   */
+  const fileRotation = (program: WorkoutProgram, before: WorkoutProgram | null): WorkoutRoutine[] => {
+    const inRotation = new Set(program.rotation);
+    const was = new Set(before?.rotation ?? []);
+    const out: WorkoutRoutine[] = [];
+    for (const r of get().routines) {
+      if (inRotation.has(r.id) && r.programId === null) out.push({ ...r, programId: program.id });
+      else if (!inRotation.has(r.id) && was.has(r.id) && r.programId === program.id) out.push({ ...r, programId: null });
+    }
+    return out;
+  };
+
+  /** The routines with these rows swapped in. */
+  const withRoutines = (changed: WorkoutRoutine[]): WorkoutRoutine[] => {
+    if (changed.length === 0) return get().routines;
+    const byId = new Map(changed.map(r => [r.id, r]));
+    return get().routines.map(r => byId.get(r.id) ?? r);
+  };
+
+  /**
+   * The ramp an item's warm-ups are laid out from, for an exercise: worked out
+   * against the person's plates and unit, read when the workout starts.
+   */
+  const rampFor = (exerciseId: string, item: WorkoutRoutineItem) => {
+    const info = catalogExercise(get().exercises, exerciseId);
+    if (!info) return () => [];
+    const settings = useSettingsStore.getState();
+    const ctx = loadContextFor(info, settings.plateInventory, settings.workoutUnit, item);
+    return (workingKg: number | null) => rampSteps(workingKg, ctx);
+  };
+
   return {
     exercises: [],
     routines: [],
@@ -602,9 +652,46 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         archived: false,
         createdAt: nowIso(),
       };
-      dbSaveWorkoutProgram(row);
-      set({ programs: [...get().programs, row] });
+      const filed = input.rotation !== undefined ? fileRotation(row, null) : [];
+      dbTransaction(() => {
+        dbSaveWorkoutProgram(row);
+        for (const r of filed) dbSaveWorkoutRoutine(r);
+      });
+      set({ programs: [...get().programs, row], routines: withRoutines(filed) });
       return row;
+    },
+
+    addLibraryProgram(key) {
+      const lib = libraryProgram(key);
+      if (!lib) return 'notFound';
+      const programId = generateId();
+      let order = get().routines.reduce((max, r) => Math.max(max, r.sortOrder), -1);
+      const routines: WorkoutRoutine[] = lib.routines.map(r => ({
+        id: generateId(),
+        name: cleanWorkoutName(r.name),
+        notes: '',
+        programId,
+        sortOrder: ++order,
+        items: readRoutineItems(r.items),
+        createdAt: nowIso(),
+      }));
+      const program: WorkoutProgram = {
+        id: programId,
+        name: cleanWorkoutName(lib.name),
+        weeks: lib.weeks,
+        rotation: routines.map(r => r.id),
+        scheme: lib.scheme,
+        trainingMaxes: [],
+        startedAt: null,
+        archived: false,
+        createdAt: nowIso(),
+      };
+      dbTransaction(() => {
+        for (const r of routines) dbSaveWorkoutRoutine(r);
+        dbSaveWorkoutProgram(program);
+      });
+      set({ routines: [...get().routines, ...routines], programs: [...get().programs, program] });
+      return { program, routines };
     },
 
     updateProgram(id, patch) {
@@ -625,8 +712,12 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         startedAt: patch.startedAt !== undefined ? patch.startedAt : existing.startedAt,
         archived: patch.archived ?? existing.archived,
       };
-      dbSaveWorkoutProgram(row);
-      set({ programs: get().programs.map(p => (p.id === id ? row : p)) });
+      const filed = patch.rotation !== undefined ? fileRotation(row, existing) : [];
+      dbTransaction(() => {
+        dbSaveWorkoutProgram(row);
+        for (const r of filed) dbSaveWorkoutRoutine(r);
+      });
+      set({ programs: get().programs.map(p => (p.id === id ? row : p)), routines: withRoutines(filed) });
       return row;
     },
 
@@ -669,7 +760,8 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         if (!exerciseKnown(item.exerciseId) || planned.some(p => p.exerciseId === item.exerciseId)) continue;
         const position = planned.length === 0 ? 0 : planned[planned.length - 1].position + 1;
         const last = previousSets(dbGetWorkoutSetsForExercise(item.exerciseId), get().sessions, row.id);
-        plannedSetsFor(item, last).forEach((v, i) => planned.push(plannedRow(row.id, item.exerciseId, position, i, v)));
+        const ramp = item.warmupRamp ? rampFor(item.exerciseId, item) : undefined;
+        plannedSetsFor(item, last, ramp).forEach((v, i) => planned.push(plannedRow(row.id, item.exerciseId, position, i, v)));
       }
       if (planned.length > 0) dbSaveWorkoutSets(planned);
       putSets(row.id, planned);

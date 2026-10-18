@@ -21,9 +21,9 @@ import { formatDistance } from './workoutSession';
  * changing the reps or the weight writes that one field on each working
  * target and leaves the rest of every target as it was.
  *
- * **The progression is a choice stored on the item, and nothing reads it
- * yet.** Phase 4 of docs/arch/workouts.md proposes the next load from it; until
- * then the editor says so rather than implying it already does.
+ * **The progression is a choice stored on the item.** Workout mode proposes
+ * the next load from it (`workoutProgression.ts`), as a suggestion the person
+ * accepts with a tap; nothing here or there applies one unasked.
  */
 
 /** How the editor reads an item: the counts and the one value each control shows. */
@@ -84,16 +84,47 @@ export function withWorkingSets(item: WorkoutRoutineItem, n: number): WorkoutRou
   return { ...item, targets: [...warmups, ...next] };
 }
 
+/** The item without a ramp: the key dropped rather than set false, so it reads as an item from before ramps. */
+function noRamp(item: WorkoutRoutineItem): WorkoutRoutineItem {
+  if (!item.warmupRamp) return item;
+  const { warmupRamp: _ramp, ...rest } = item;
+  return rest;
+}
+
 /**
  * The item with `n` warm-up sets ahead of the work. A new warm-up names no
  * weight or reps: what a warm-up is lifted at is last time's warm-up, laid
- * out when the workout starts (a worked-out ramp is phase 3's plate math).
+ * out when the workout starts. Counting warm-ups turns a ramp off.
  */
 export function withWarmups(item: WorkoutRoutineItem, n: number): WorkoutRoutineItem {
   const want = clampCount(n);
   const warmups = item.targets.filter(isWarmup).slice(0, want);
   while (warmups.length < want) warmups.push({ kind: 'warmup', repsMin: null, repsMax: null });
-  return { ...item, targets: [...warmups, ...item.targets.filter(t => !isWarmup(t))] };
+  return { ...noRamp(item), targets: [...warmups, ...item.targets.filter(t => !isWarmup(t))] };
+}
+
+/** How an item warms up: not at all, with a ramp worked out from the working weight, or a count of its own warm-up sets. */
+export type WarmupMode = 'none' | 'ramp' | 'sets';
+
+export function warmupMode(item: Pick<WorkoutRoutineItem, 'targets' | 'warmupRamp'>): WarmupMode {
+  if (item.warmupRamp) return 'ramp';
+  return item.targets.some(isWarmup) ? 'sets' : 'none';
+}
+
+/** Warm-up sets "Sets" starts with when the item had none: two, a light and a middling one. */
+export const DEFAULT_WARMUP_SETS = 2;
+
+/**
+ * The item warming up this way. A ramp holds no warm-up targets (the ramp is
+ * laid out from the working weight when the workout starts), and switching to
+ * counted sets keeps any the item had, else starts at `DEFAULT_WARMUP_SETS`.
+ */
+export function withWarmupMode(item: WorkoutRoutineItem, mode: WarmupMode): WorkoutRoutineItem {
+  const work = item.targets.filter(t => !isWarmup(t));
+  if (mode === 'none') return { ...noRamp(item), targets: work };
+  if (mode === 'ramp') return { ...item, targets: work, warmupRamp: true };
+  const had = item.targets.filter(isWarmup).length;
+  return withWarmups(noRamp(item), had > 0 ? had : DEFAULT_WARMUP_SETS);
 }
 
 function onWorking(item: WorkoutRoutineItem, patch: Partial<RoutineSetTarget>): WorkoutRoutineItem {
@@ -138,14 +169,14 @@ export const PROGRESSION_LABELS: Record<ProgressionScheme, string> = {
 };
 
 /**
- * What each scheme means, in a sentence, under the control. Each says how the
- * load would move on; the editor adds that the app doesn't suggest one yet.
+ * What each scheme means, in a sentence, under the control. Each says how
+ * workout mode suggests the next load from it.
  */
 export const PROGRESSION_HINTS: Record<ProgressionScheme, string> = {
-  double: 'Add weight once every working set reaches the top of the rep range.',
-  linear: 'Add the same weight after every workout where each set is completed.',
-  percent: 'Each set is a percentage of a training max you set.',
-  rpe: 'Choose the weight by how hard the last top set felt, from 1 to 10.',
+  double: 'Workout mode suggests more weight once every working set reaches the top of the rep range.',
+  linear: 'Workout mode suggests more weight after every workout where each set reaches its reps, and about 10% less after three short workouts in a row.',
+  percent: 'Each set is a percentage of the training max set in the program.',
+  rpe: 'Workout mode suggests a weight from how hard the last top set felt, from 1 to 10.',
 };
 
 // ==== supersets ====
@@ -257,7 +288,8 @@ export function describeSets(item: Pick<WorkoutRoutineItem, 'targets'>, kind: Ex
 export function describeRoutineItem(item: WorkoutRoutineItem, opts: DescribeItemOptions): string {
   const shape = itemShape(item);
   const parts: string[] = [];
-  if (shape.warmups > 0) parts.push(`${shape.warmups} warm-up`);
+  if (item.warmupRamp) parts.push('ramp warm-up');
+  else if (shape.warmups > 0) parts.push(`${shape.warmups} warm-up`);
   parts.push(describeSets(item, opts.kind));
   if (shape.weightKg !== null) parts.push(formatWeightWithUnit(shape.weightKg, opts.unit));
   if (item.progression) parts.push(PROGRESSION_LABELS[item.progression.scheme].toLowerCase());

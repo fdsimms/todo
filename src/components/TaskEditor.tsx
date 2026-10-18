@@ -112,6 +112,7 @@ import { apportionedMinutes, timerSegments } from '../utils/timerSegments';
 import { CollapsibleField } from './CollapsibleField';
 import { PillGroup } from './PillGroup';
 import { EmptyNote } from './EmptyNote';
+import { HelpText } from './HelpText';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { pinnedPlaces } from '../utils/placeGate';
 import { readSavedPlaces } from '../utils/savedPlaces';
@@ -286,6 +287,7 @@ export interface TaskDraft {
   logSavedMealId?: string | null;
   logMealSlotByTime?: boolean;
   workoutRoutineId?: string | null;
+  workoutProgramId?: string | null;
   phoneNumber?: string | null;
   emailAddress?: string | null;
   location?: string | null;
@@ -840,11 +842,19 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     return t ? displayTitleFor(t) : '';
   })));
   const [showLinkPicker, setShowLinkPicker] = useState(false);
-  // Task.workoutRoutineId: the routine "Workout" on the row opens.
+  // Task.workoutRoutineId / workoutProgramId: the routine "Workout" on the
+  // row opens, or the program whose next routine it starts. One or the other,
+  // never both: picking either clears the other (`pickWorkout`).
   const [workoutRoutineId, setWorkoutRoutineId] = useState<string | null>(null);
+  const [workoutProgramId, setWorkoutProgramId] = useState<string | null>(null);
   const [showWorkoutPicker, setShowWorkoutPicker] = useState(false);
   const workoutsEnabled = useSettingsStore(s => s.workoutsEnabled);
   const workoutRoutines = useWorkoutStore(s => s.routines);
+  const workoutPrograms = useWorkoutStore(s => s.programs);
+  const pickWorkout = (link: { routineId?: string | null; programId?: string | null }) => {
+    setWorkoutRoutineId(link.routineId ?? null);
+    setWorkoutProgramId(link.programId ?? null);
+  };
   const [customLinkText, setCustomLinkText] = useState('');
   const [phoneNumber, setPhoneNumber] = useState<string | null>(null);
   const [showPhoneField, setShowPhoneField] = useState(false);
@@ -1215,6 +1225,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       setLogSavedMealId(task.logSavedMealId ?? null);
       setLogMealSlotByTime(task.logMealSlotByTime ?? false);
       setWorkoutRoutineId(task.workoutRoutineId ?? null);
+      setWorkoutProgramId(task.workoutProgramId ?? null);
       setPhoneNumber(task.phoneNumber ?? null);
       setEmailAddress(task.emailAddress ?? null);
       setLocation(task.location ?? null);
@@ -1290,6 +1301,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       setLogSavedMealId(initialDraft?.logSavedMealId ?? null);
       setLogMealSlotByTime(initialDraft?.logMealSlotByTime ?? false);
       setWorkoutRoutineId(initialDraft?.workoutRoutineId ?? null);
+      setWorkoutProgramId(initialDraft?.workoutProgramId ?? null);
       setPhoneNumber(initialDraft?.phoneNumber ?? null);
       setEmailAddress(initialDraft?.emailAddress ?? null);
       setLocation(initialDraft?.location ?? null);
@@ -1450,6 +1462,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       logSavedMealId: task ? (task.logSavedMealId ?? null) : (initialDraft?.logSavedMealId ?? null),
       logMealSlotByTime: task ? (task.logMealSlotByTime ?? false) : (initialDraft?.logMealSlotByTime ?? false),
       workoutRoutineId: task ? (task.workoutRoutineId ?? null) : (initialDraft?.workoutRoutineId ?? null),
+      workoutProgramId: task ? (task.workoutProgramId ?? null) : (initialDraft?.workoutProgramId ?? null),
       phoneNumber: task ? (task.phoneNumber ?? null) : (initialDraft?.phoneNumber ?? null),
       emailAddress: task ? (task.emailAddress ?? null) : (initialDraft?.emailAddress ?? null),
       location: task ? (task.location ?? null) : (initialDraft?.location ?? null),
@@ -2292,6 +2305,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       logSavedMealId: logMealSlot !== null ? logSavedMealId : null,
       logMealSlotByTime: logMealSlot !== null && logMealSlotByTime,
       workoutRoutineId,
+      workoutProgramId,
       phoneNumber: resolvePhoneNumber(),
       emailAddress: resolveEmailAddress(),
       location: resolveLocation(),
@@ -3134,6 +3148,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       logSavedMealId,
       logMealSlotByTime,
       workoutRoutineId,
+      workoutProgramId,
       phoneNumber,
       emailAddress,
       location,
@@ -8060,50 +8075,79 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             ),
           },
           // Shown while the area is on, or when the task already names a
-          // routine, so a link made before the switch went off can be seen
-          // and cleared rather than kept invisibly.
-          ...(workoutsEnabled || workoutRoutineId ? [{
-            key: 'workout', label: 'Workout', set: !!workoutRoutineId || showWorkoutPicker,
-            keywords: ['routine', 'gym', 'exercise', 'lift', 'training', 'sets', 'start workout'],
+          // routine or a program, so a link made before the switch went off
+          // can be seen and cleared rather than kept invisibly. One field for
+          // both: a task names a routine or a program, and picking one clears
+          // the other.
+          ...(workoutsEnabled || workoutRoutineId || workoutProgramId ? [{
+            key: 'workout', label: 'Workout', set: !!workoutRoutineId || !!workoutProgramId || showWorkoutPicker,
+            keywords: ['routine', 'program', 'gym', 'exercise', 'lift', 'training', 'sets', 'start workout'],
             node: (
               <>
             <EditorRow
               icon="barbell-outline"
               label="Workout"
-              hint="Open this routine from the task. Finishing the workout completes the task."
-              value={workoutRoutineId
-                ? workoutRoutines.find(r => r.id === workoutRoutineId)?.name ?? 'A deleted routine'
-                : undefined}
+              hint="Start this routine, or the next routine of this program, from the task. Finishing the workout completes the task."
+              value={workoutProgramId
+                ? workoutPrograms.find(p => p.id === workoutProgramId)?.name ?? 'A deleted program'
+                : workoutRoutineId
+                  ? workoutRoutines.find(r => r.id === workoutRoutineId)?.name ?? 'A deleted routine'
+                  : undefined}
               expanded={showWorkoutPicker}
               onPress={() => setShowWorkoutPicker(v => !v)}
-              onClear={workoutRoutineId ? () => { setWorkoutRoutineId(null); setShowWorkoutPicker(false); } : undefined}
+              onClear={workoutRoutineId || workoutProgramId ? () => { pickWorkout({}); setShowWorkoutPicker(false); } : undefined}
             />
-            {showWorkoutPicker && (
+            {showWorkoutPicker && (() => {
+              const programs = workoutPrograms.filter(p => !p.archived && p.rotation.length > 0);
+              const none = {
+                key: '__none__',
+                label: 'None',
+                pinned: true,
+                selected: workoutRoutineId === null && workoutProgramId === null,
+                onPress: () => { haptics.tap(); pickWorkout({}); setShowWorkoutPicker(false); },
+              };
+              return (
               <View style={styles.workoutPicker}>
                 {workoutRoutines.length === 0 ? (
                   <EmptyNote icon="barbell-outline">No routines yet. Make one on the Workouts screen, then link it here.</EmptyNote>
                 ) : (
-                  <PillGroup
-                    noun="routine"
-                    options={[
-                      {
-                        key: '__none__',
-                        label: 'None',
-                        pinned: true,
-                        selected: workoutRoutineId === null,
-                        onPress: () => { haptics.tap(); setWorkoutRoutineId(null); setShowWorkoutPicker(false); },
-                      },
-                      ...workoutRoutines.map(r => ({
-                        key: r.id,
-                        label: r.name,
-                        selected: r.id === workoutRoutineId,
-                        onPress: () => { haptics.tap(); setWorkoutRoutineId(r.id); setShowWorkoutPicker(false); },
-                      })),
-                    ]}
-                  />
+                  <>
+                    {programs.length > 0 && (
+                      <>
+                        <Text style={styles.workoutGroupLabel}>Programs</Text>
+                        <PillGroup
+                          noun="program"
+                          options={[
+                            none,
+                            ...programs.map(p => ({
+                              key: p.id,
+                              label: p.name,
+                              selected: p.id === workoutProgramId,
+                              onPress: () => { haptics.tap(); pickWorkout({ programId: p.id }); setShowWorkoutPicker(false); },
+                            })),
+                          ]}
+                        />
+                        <HelpText style={styles.workoutPickerHint}>A program starts its next routine each time.</HelpText>
+                        <Text style={styles.workoutGroupLabel}>Routines</Text>
+                      </>
+                    )}
+                    <PillGroup
+                      noun="routine"
+                      options={[
+                        ...(programs.length > 0 ? [] : [none]),
+                        ...workoutRoutines.map(r => ({
+                          key: r.id,
+                          label: r.name,
+                          selected: r.id === workoutRoutineId,
+                          onPress: () => { haptics.tap(); pickWorkout({ routineId: r.id }); setShowWorkoutPicker(false); },
+                        })),
+                      ]}
+                    />
+                  </>
                 )}
               </View>
-            )}
+              );
+            })()}
               </>
             ),
           }] : []),
@@ -8717,6 +8761,11 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     marginHorizontal: spacing.md, marginTop: spacing.sm, minHeight: 40,
   },
   workoutPicker: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.sm },
+  workoutGroupLabel: {
+    color: colors.textSecondary, fontSize: font.xs, fontWeight: '700',
+    textTransform: 'uppercase', letterSpacing: 0.8, marginTop: spacing.xs, marginBottom: spacing.sm,
+  },
+  workoutPickerHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xs, marginBottom: spacing.smd },
   linkPickerRow: {
     flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs,
     paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.sm,

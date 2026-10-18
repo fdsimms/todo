@@ -107,6 +107,8 @@ import { catalogExercise } from '../utils/exerciseCatalog';
 import { linkFor } from '../constants/linkApps';
 import { buildMoodDays, contextTagMoodContrasts, describeNutrientInsight, lowMoodRun, foodMoodContrasts, foodPairedDays, symptomFoodContrasts, milestoneMoodContrast, moodCompletionInsight, nutrientInsight, symptomMoodContrasts, taskContrastTitles, taskMoodContrasts, trainingDayMoodContrast, MIN_PAIRED_DAYS } from '../utils/moodInsights';
 import { analyzeExercise, recordSessions, trainingDays } from '../utils/workoutRecords';
+import { programProgress } from '../utils/workoutProgram';
+import { loadContextFor, proposeNext, schemeFor } from '../utils/workoutProgression';
 import { daysBetween } from '../utils/exerciseChart';
 import { contextTagVocabulary, symptomVocabulary } from '../utils/moodLog';
 import { MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogSourceId, moodNudgeNotes, wantsMoodNudge } from '../utils/moodTasks';
@@ -2308,18 +2310,48 @@ describe('demo seed — people', () => {
     expect(contrast!.withoutDays).toBeGreaterThanOrEqual(3);
   });
 
-  it('seeds a repeating task linked to a routine, due today, so its row offers the workout', () => {
-    const { routines, sessions } = useWorkoutStore.getState();
-    const linked = useTaskStore.getState().tasks.find(t => !t.completed && !!t.workoutRoutineId);
-    expect(linked).toBeDefined();
-    expect(linked!.recurrenceType).toBe('weekly');
-    expect(routines.some(r => r.id === linked!.workoutRoutineId)).toBe(true);
-    expect(isTaskVisible(linked!)).toBe(true);
+  it('seeds a repeating task linked to a program, due today, and one linked to a routine', () => {
+    const { routines, programs, sessions } = useWorkoutStore.getState();
+    const open = useTaskStore.getState().tasks.filter(t => !t.completed);
+    const lift = open.find(t => !!t.workoutProgramId);
+    expect(lift).toBeDefined();
+    expect(lift!.recurrenceType).toBe('weekly');
+    expect(lift!.workoutRoutineId ?? null).toBeNull();
+    expect(programs.some(p => p.id === lift!.workoutProgramId)).toBe(true);
+    expect(isTaskVisible(lift!)).toBe(true);
+    const legDay = open.find(t => !!t.workoutRoutineId);
+    expect(legDay).toBeDefined();
+    expect(legDay!.workoutProgramId ?? null).toBeNull();
+    expect(routines.some(r => r.id === legDay!.workoutRoutineId)).toBe(true);
     // Every logged workout is finished with only its done sets: a routine's
     // planned rows never outlive the session that laid them out.
     const sets = sessions.flatMap(s => useWorkoutStore.getState().loadSets(s.id));
     expect(sets.every(s => s.completedAt !== null)).toBe(true);
     expect(useWorkoutStore.getState().liveSession()).toBeNull();
+  });
+
+  it('seeds a program from the library whose next workout shows a suggestion today', () => {
+    const { routines, programs, sessions, exercises } = useWorkoutStore.getState();
+    const program = programs[0];
+    expect(program.name).toBe('Upper / Lower');
+    expect(program.rotation.map(id => routines.find(r => r.id === id)?.name)).toEqual(['Upper A', 'Lower A', 'Upper B', 'Lower B']);
+    // Where it is comes from its sessions: the last one was an upper day.
+    const progress = programProgress(program, sessions, routines);
+    expect(progress.sessionsDone).toBeGreaterThan(0);
+    const next = routines.find(r => r.id === progress.nextRoutineId)!;
+    expect(next.name).toBe('Lower A');
+    // Its first exercise warms up with a ramp, and has a suggestion to go up.
+    const item = next.items[0];
+    expect(item).toMatchObject({ exerciseId: 'lib:back-squat', warmupRamp: true });
+    const settings = useSettingsStore.getState();
+    const info = catalogExercise(exercises, item.exerciseId)!;
+    const proposal = proposeNext({
+      exerciseId: item.exerciseId, kind: info.kind, item, scheme: schemeFor(item, program),
+      history: useWorkoutStore.getState().exerciseHistory(item.exerciseId), sessions, exceptSessionId: null,
+      load: loadContextFor(info, settings.plateInventory, settings.workoutUnit, item),
+    });
+    expect(proposal).toMatchObject({ move: 'up', lastKg: 80 });
+    expect(proposal!.sets[0].weightKg).toBe(85);
   });
 
   it('seeds both halves of the medication log, so neither reads as missing', () => {

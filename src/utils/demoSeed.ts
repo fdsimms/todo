@@ -42,7 +42,7 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { useSharedLinkStore } from '../store/useSharedLinkStore';
 import { useUnattendedStore } from '../store/useUnattendedStore';
-import type { DeliverableKind, FocusSession, GroceryItem, MealSlot, MoodLevel, NovaGroup, Recipe, RecipeOverride, Shop, SymptomSeverity, TemplateItem } from '../types';
+import type { DeliverableKind, FocusSession, GroceryItem, MealSlot, MoodLevel, NovaGroup, Recipe, RecipeOverride, Shop, SymptomSeverity, TemplateItem, WorkoutRoutineItem } from '../types';
 import { dbGetFocusSessionLog, dbInsertFocusSessionRecord, dbSetGtinLookup } from '../db/database';
 import { advanceFocusSession, buildFocusPlan, closeFocusSession } from './focusPlan';
 import { buildWeekDays } from './calendarGrid';
@@ -3231,8 +3231,12 @@ function seedMeterTask(today: Date): void {
 
 /**
  * Six weeks of training, so the Workouts area reads as a feature the app has: a
- * two-routine program, a custom exercise, notes on a built-in one, and a dozen
- * finished workouts with their sets. The bench press climbs from 50 to 62.5 kg
+ * program added from the library ("Upper / Lower") with its first two routines
+ * made the person's own, a custom exercise, notes on a built-in one, and a
+ * dozen finished workouts with their sets. The last lower day got every squat
+ * set to the top of its range, so starting the program's next routine (Lower
+ * A, from the task "Lift") shows a suggestion to go up 5 kg, and the squat
+ * warms up with a ramp. The bench press climbs from 50 to 62.5 kg
  * with one flat week, so its page has a line to draw and the latest session
  * sets a new estimated 1RM; the sessions sit across the mood log's days (six
  * of them training days, eleven not) so mood on training days has both sides. The area ships switched off, so the demo
@@ -3255,9 +3259,17 @@ function seedWorkouts(today: Date): void {
 
   const working = (repsMin: number, repsMax: number, weightKg: number) =>
     ({ kind: 'working' as const, repsMin, repsMax, weightKg });
-  const program = workouts.addProgram({ name: 'Upper and lower', weeks: 8, scheme: 'double' });
-  const programId = typeof program === 'string' ? null : program.id;
-  const upper = workouts.addRoutine('Upper A', [
+  // From the library, as a person would add it, then the first two routines
+  // edited into the person's own: the landmine row for the barbell row, a
+  // superset, and target weights.
+  const added = workouts.addLibraryProgram('upper-lower');
+  const programId = typeof added === 'string' ? null : added.program.id;
+  const libraryRoutine = (name: string) => (typeof added === 'string' ? undefined : added.routines.find(r => r.name === name));
+  const ownRoutine = (name: string, items: WorkoutRoutineItem[]) => {
+    const existing = libraryRoutine(name);
+    return existing ? useWorkoutStore.getState().updateRoutine(existing.id, { items }) : workouts.addRoutine(name, items, programId);
+  };
+  const upper = ownRoutine('Upper A', [
     { exerciseId: 'lib:barbell-bench-press', restSeconds: 150, progression: { scheme: 'double', incrementKg: 2.5 },
       targets: [working(6, 8, 60), working(6, 8, 60), working(6, 8, 60)] },
     { exerciseId: rowId, restSeconds: 120, progression: { scheme: 'double', incrementKg: 2.5 },
@@ -3266,17 +3278,17 @@ function seedWorkouts(today: Date): void {
       targets: [working(12, 15, 8), working(12, 15, 8)] },
     { exerciseId: 'lib:triceps-pushdown', supersetKey: 'a', restSeconds: 60, progression: null,
       targets: [working(10, 12, 25), working(10, 12, 25)] },
-  ], programId);
-  const lower = workouts.addRoutine('Lower A', [
-    { exerciseId: 'lib:back-squat', restSeconds: 180, progression: { scheme: 'double', incrementKg: 5 },
-      targets: [{ kind: 'warmup', repsMin: 5, repsMax: 5, weightKg: 40 }, working(5, 6, 80), working(5, 6, 80), working(5, 6, 80)] },
+  ]);
+  const lower = ownRoutine('Lower A', [
+    { exerciseId: 'lib:back-squat', restSeconds: 180, progression: { scheme: 'double', incrementKg: 5 }, warmupRamp: true,
+      targets: [working(5, 6, 80), working(5, 6, 80), working(5, 6, 80)] },
     { exerciseId: 'lib:romanian-deadlift', restSeconds: 150, progression: { scheme: 'double', incrementKg: 5 },
       targets: [working(8, 10, 70), working(8, 10, 70)] },
     { exerciseId: 'lib:plank', restSeconds: 60, progression: null,
       targets: [{ kind: 'working', repsMin: null, repsMax: null, durationSeconds: 60 }] },
-  ], programId);
-  if (programId && typeof upper !== 'string' && typeof lower !== 'string') {
-    workouts.updateProgram(programId, { rotation: [upper.id, lower.id], startedAt: subDays(today, 6).toISOString() });
+  ]);
+  if (programId) {
+    useWorkoutStore.getState().updateProgram(programId, { weeks: 8, startedAt: subDays(today, 6).toISOString() });
   }
 
   type DemoSet = [exerciseId: string, weightKg: number | null, reps: number | null, durationSeconds?: number, warmup?: boolean];
@@ -3327,8 +3339,10 @@ function seedWorkouts(today: Date): void {
     ['lib:dumbbell-lateral-raise', 8, 15], ['lib:triceps-pushdown', 25, 12],
     ['lib:dumbbell-lateral-raise', 8, 13], ['lib:triceps-pushdown', 25, 11],
   ], 7);
+  // Every squat set at the top of its 5 to 6 range, which is what the
+  // suggestion to go up on the next lower day reads.
   session(4, lower, [
-    ['lib:back-squat', 40, 5, undefined, true], ['lib:back-squat', 80, 6], ['lib:back-squat', 80, 6], ['lib:back-squat', 80, 5],
+    ['lib:back-squat', 40, 5, undefined, true], ['lib:back-squat', 80, 6], ['lib:back-squat', 80, 6], ['lib:back-squat', 80, 6],
     ['lib:romanian-deadlift', 70, 10], ['lib:romanian-deadlift', 70, 9],
     ['lib:plank', null, null, 60],
   ], 8);
@@ -3340,18 +3354,32 @@ function seedWorkouts(today: Date): void {
     ['lib:dumbbell-lateral-raise', 8, 15], ['lib:triceps-pushdown', 27.5, 12],
   ], 7);
 
-  // A repeating task linked to a routine (Task.workoutRoutineId): its row
-  // offers Workout, and finishing that workout checks it off. Due today, so
-  // the button is on Today in the demo rather than waiting for its day.
-  if (typeof lower !== 'string') {
-    const day = today.getDay();
+  // A repeating task linked to the program (Task.workoutProgramId): its row's
+  // Workout starts the program's next routine, and finishing that workout
+  // checks it off. Due today, so the button and the suggestion it leads to are
+  // there in the demo rather than waiting for their day.
+  const day = today.getDay();
+  if (programId) {
     useTaskStore.getState().addTask({
-      title: 'Leg day',
-      notes: 'Lower A from the Upper and lower program.',
+      title: 'Lift',
+      notes: 'The next workout of the Upper / Lower program.',
       category: 'Health',
       recurrenceType: 'weekly',
-      recurrenceDays: [day, (day + 3) % 7].sort((a, b) => a - b),
+      recurrenceDays: [day, (day + 2) % 7, (day + 4) % 7].sort((a, b) => a - b),
       dueDate: today.toISOString(),
+      workoutProgramId: programId,
+    });
+  }
+  // And one linked to a single routine (Task.workoutRoutineId), later in the
+  // week, so both kinds of link are in the demo.
+  if (typeof lower !== 'string') {
+    useTaskStore.getState().addTask({
+      title: 'Leg day',
+      notes: 'Lower A on its own, on the weekend.',
+      category: 'Health',
+      recurrenceType: 'weekly',
+      recurrenceDays: [(day + 5) % 7],
+      dueDate: addDays(today, 5).toISOString(),
       workoutRoutineId: lower.id,
     });
   }

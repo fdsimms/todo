@@ -64,6 +64,16 @@ describe('readRoutineItems', () => {
     expect(item.targets[0]).toEqual({ kind: 'working', repsMin: 8, repsMax: 12 });
   });
 
+  it('reads a ramp, which replaces any warm-ups of the item’s own, and writes nothing for none', () => {
+    const [ramp, plain] = readRoutineItems([
+      { exerciseId: 'x', warmupRamp: true, targets: [{ kind: 'warmup', repsMin: 5, repsMax: 5 }, { kind: 'working', repsMin: 5, repsMax: 5 }] },
+      { exerciseId: 'y', warmupRamp: 'yes', targets: [] },
+    ]);
+    expect(ramp.warmupRamp).toBe(true);
+    expect(ramp.targets.map(t => t.kind)).toEqual(['working']);
+    expect('warmupRamp' in plain).toBe(false);
+  });
+
   it('drops a progression with no scheme it knows', () => {
     const [item] = readRoutineItems([{ exerciseId: 'x', targets: [], progression: { scheme: 'vibes' } }]);
     expect(item.progression).toBeNull();

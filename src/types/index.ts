@@ -1101,6 +1101,8 @@ export type UnattendedSubject =
   | 'cookware'
   // A workout routine (`WorkoutRoutine`) an agent saved or deleted. Record only.
   | 'routine'
+  // A workout program (`WorkoutProgram`) an agent saved or deleted. Record only.
+  | 'program'
   // A logged workout (`WorkoutSession`) an agent wrote after the fact, changed or deleted.
   // Titled by kind, never by what was lifted, for the mood entry's reason. Record only.
   | 'workout';
@@ -2066,6 +2068,14 @@ export interface WorkoutRoutineItem {
   restSeconds: number | null;
   progression: RoutineProgression | null;
   targets: RoutineSetTarget[];
+  /**
+   * Warm up with a ramp worked out from the working weight (about 40, 60 and
+   * 80 percent, rounded to loads the plates make) rather than warm-up targets
+   * of its own. The ramp is laid out when a workout starts, as planned sets
+   * the person can change; the item then holds no `warmup` targets. Absent
+   * (or false) for none, or for the warm-ups its targets list.
+   */
+  warmupRamp?: boolean;
 }
 
 /**
@@ -2776,6 +2786,17 @@ export interface Task {
    * occurrence. Optional so a row or fixture from before it reads as unlinked.
    */
   workoutRoutineId?: string | null;
+  /**
+   * The workout program (`WorkoutProgram.id`) this task is for: the row's
+   * "Workout" starts the program's next routine, worked out from its finished
+   * sessions (`programProgress`), and finishing that session completes this
+   * occurrence the way `workoutRoutineId`'s does. A task names a routine or a
+   * program, never both; the editor and the MCP server clear the other.
+   *
+   * Resolve-or-shrug: a program deleted since, or one with nothing in its
+   * rotation, offers nothing. Rides `...effective` onto the next occurrence.
+   */
+  workoutProgramId?: string | null;
   deferUntil: string | null;
   timeSegments: TimeOfDay[];
   windowStart: string | null; // "HH:MM" — task only becomes visible/active from this time on its day

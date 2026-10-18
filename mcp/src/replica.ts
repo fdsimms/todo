@@ -34,6 +34,7 @@ import { lastDayOfMonth } from 'date-fns/lastDayOfMonth';
 
 import { shimModule } from './expoSqliteShim';
 import type {
+  PlateInventory,
   CalendarRequest,
   CalendarRequestChanges,
   Category,
@@ -99,7 +100,7 @@ import type {
   TaskFieldDefaults,
   GeneratedTaskExtras,
 } from '../../src/types';
-import type { FinishedSessionInput, SessionPatch, SetInput } from '../../src/store/useWorkoutStore';
+import type { FinishedSessionInput, ProgramInput, SessionPatch, SetInput } from '../../src/store/useWorkoutStore';
 import { parseTaskFieldDefaults } from '../../src/utils/taskFieldDefaults';
 import { rotationItemFromInput, rotationMemberTitle, rotationMembers } from '../../src/utils/rotation';
 import { sunAnchorHHMM } from '../../src/utils/sunTimes';
@@ -1235,6 +1236,12 @@ export interface Replica {
   /** One session by id, live or finished, or null. */
   workoutSession(id: string): WorkoutSession | null;
   /**
+   * The unit the phone shows weights in and the plates the person has, which
+   * a proposed load is rounded against (`next_workout`), the way the phone's
+   * own suggestion is.
+   */
+  workoutLoads(): { unit: 'kg' | 'lb'; plateInventory: PlateInventory };
+  /**
    * Workout writes, through `useWorkoutStore`'s own actions (hydrated per
    * write, like the milestone store): its name rules, its set cleaning and its
    * refusals are the app's, and each throws with the reason in words.
@@ -1243,6 +1250,14 @@ export interface Replica {
    */
   saveRoutine(input: { id?: string; name?: string; notes?: string; items?: WorkoutRoutineItem[] }): WorkoutRoutine;
   deleteRoutine(id: string): WorkoutRoutine;
+  /**
+   * `saveProgram` creates (no `id`) or changes a program; fields left out
+   * stay. A rotation names routine ids, refused by name when one is unknown,
+   * and files its routines under the program the way the app's editor does.
+   */
+  saveProgram(input: { id?: string } & Partial<ProgramInput>): WorkoutProgram;
+  /** Deletes a program; its routines stay, as routines on their own. */
+  deleteProgram(id: string): WorkoutProgram;
   /** A workout that already happened, written finished with its sets. Never completes a task. */
   logWorkout(input: FinishedSessionInput): { session: WorkoutSession; sets: WorkoutSet[] };
   /** Changes a finished workout: its own fields, and its sets replaced whole when `sets` is given. */
@@ -3399,6 +3414,12 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         errors.push(`workoutRoutineId: no routine with id ${routineId}. list_workouts lists the routines, and save_routine makes one.`);
       }
     }
+    if (patch.workoutProgramId) {
+      const programId = patch.workoutProgramId;
+      if (!db.dbGetAllWorkoutPrograms().some(p => p.id === programId)) {
+        errors.push(`workoutProgramId: no program with id ${programId}. list_workouts lists the programs, and save_program makes one.`);
+      }
+    }
     if (patch.personIds !== undefined) {
       const known = new Set(people().map(p => p.id));
       const missing = patch.personIds.filter(id => !known.has(id));
@@ -4227,6 +4248,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     workoutSets: (sessionId: string) => db.dbGetWorkoutSets(sessionId),
     workoutExerciseSets: (exerciseId: string) => db.dbGetWorkoutSetsForExercise(exerciseId),
     workoutSession: (id: string) => db.dbGetAllWorkoutSessions().find(x => x.id === id) ?? null,
+    workoutLoads: () => {
+      const s = useSettingsStore.getState();
+      return { unit: s.workoutUnit, plateInventory: s.plateInventory };
+    },
     saveRoutine(input) {
       const store = workoutStore();
       if (input.id) {
@@ -4252,6 +4277,30 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (!routine) throw new Error(`No routine with id ${id}. list_workouts lists the routines.`);
       store.deleteRoutine(id);
       return routine;
+    },
+    saveProgram(input) {
+      const store = workoutStore();
+      if (input.rotation) {
+        const missing = [...new Set(input.rotation)].filter(id => !store.routines.some(r => r.id === id));
+        if (missing.length) throw new Error(`No routine with id ${missing.join(', ')}. list_workouts lists the routines, and save_routine makes one.`);
+      }
+      const { id, ...fields } = input;
+      if (id) {
+        if (!store.programs.some(p => p.id === id)) throw new Error(`No program with id ${id}. list_workouts lists the programs.`);
+        const result = store.updateProgram(id, fields);
+        if (typeof result === 'string') throw new Error(WORKOUT_REFUSALS[result]);
+        return result;
+      }
+      const made = store.addProgram({ ...fields, name: fields.name ?? '' });
+      if (typeof made === 'string') throw new Error(WORKOUT_REFUSALS[made]);
+      return made;
+    },
+    deleteProgram(id) {
+      const store = workoutStore();
+      const program = store.programs.find(p => p.id === id);
+      if (!program) throw new Error(`No program with id ${id}. list_workouts lists the programs.`);
+      store.deleteProgram(id);
+      return program;
     },
     logWorkout(input) {
       const result = workoutStore().addFinishedSession(input);

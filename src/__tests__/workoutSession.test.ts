@@ -228,6 +228,17 @@ describe('laying sets out', () => {
     expect(planned.every(p => p.supersetKey === 'ss')).toBe(true);
   });
 
+  it('lays out a ramp ahead of the work from the first working weight', () => {
+    const ramp = (kg: number | null) => (kg === null ? [] : [{ kg: kg / 2, reps: 8 }, { kg: kg * 0.75, reps: 4 }]);
+    const item = { warmupRamp: true, targets: [{ kind: 'working' as const, repsMin: 6, repsMax: 8, weightKg: 80 }] };
+    expect(plannedSetsFor(item, [], ramp).map(p => [p.kind, p.weightKg, p.reps])).toEqual([
+      ['warmup', 40, 8], ['warmup', 60, 4], ['working', 80, 8],
+    ]);
+    // No weight to ramp to, no ramp; and an item without one ignores it.
+    expect(plannedSetsFor({ ...item, targets: [{ kind: 'working', repsMin: 6, repsMax: 8 }] }, [], ramp)).toHaveLength(1);
+    expect(plannedSetsFor({ targets: item.targets }, [], ramp)).toHaveLength(1);
+  });
+
   it('lays out last time again for an exercise added mid-session, or one empty set', () => {
     expect(plannedSetsFromHistory(previous).map(p => p.weightKg)).toEqual([40, 80, 80]);
     expect(plannedSetsFromHistory([])).toEqual([

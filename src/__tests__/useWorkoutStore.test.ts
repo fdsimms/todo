@@ -192,6 +192,30 @@ describe('routines and programs', () => {
     expect(state().routines.find(x => x.id === r.id)?.programId).toBeNull();
   });
 
+  it('files a rotation\'s routines under the program, and frees the ones taken out of it', () => {
+    const a = ok(state().addRoutine('Upper'));
+    const b = ok(state().addRoutine('Lower'));
+    const other = ok(state().addProgram({ name: 'Other' }));
+    const c = ok(state().addRoutine('Elsewhere', [], other.id));
+    const p = ok(state().addProgram({ name: 'Upper and lower', rotation: [a.id, b.id, c.id] }));
+    const programOf = (id: string) => state().routines.find(r => r.id === id)?.programId;
+    expect([programOf(a.id), programOf(b.id), programOf(c.id)]).toEqual([p.id, p.id, other.id]);
+    ok(state().updateProgram(p.id, { rotation: [a.id] }));
+    reload();
+    expect([programOf(a.id), programOf(b.id), programOf(c.id)]).toEqual([p.id, null, other.id]);
+  });
+
+  it('adds a built-in program as routines and a program of the person\'s own', () => {
+    const added = ok(state().addLibraryProgram('push-pull-legs'));
+    reload();
+    const program = state().programs.find(x => x.id === added.program.id)!;
+    expect(program).toMatchObject({ name: 'Push / Pull / Legs', scheme: 'double', trainingMaxes: [], startedAt: null });
+    expect(program.rotation.map(id => state().routines.find(r => r.id === id)?.name)).toEqual(['Push', 'Pull', 'Legs']);
+    expect(state().routines.every(r => r.programId === program.id && r.items.length > 0)).toBe(true);
+    expect(state().routines.find(r => r.name === 'Legs')!.items[0]).toMatchObject({ exerciseId: 'lib:back-squat', warmupRamp: true });
+    expect(state().addLibraryProgram('nope')).toBe('notFound');
+  });
+
   it('edits a program, and refuses one nobody knows', () => {
     const p = ok(state().addProgram({ name: 'Wave' }));
     expect(ok(state().updateProgram(p.id, { weeks: 4, archived: true }))).toMatchObject({ weeks: 4, archived: true });
@@ -207,6 +231,17 @@ describe('a live session', () => {
     expect(s).toMatchObject({ title: 'Push A', endedAt: null, routineId: r.id });
     expect(state().liveSession()?.id).toBe(s.id);
     expect(state().startSession()).toBe('live');
+  });
+
+  it('lays out a ramp ahead of the work, from the working weight, on loadable plates', () => {
+    const r = ok(state().addRoutine('Squat day', [{
+      exerciseId: 'lib:back-squat', restSeconds: null, progression: null, warmupRamp: true,
+      targets: [{ kind: 'working', repsMin: 5, repsMax: 5, weightKg: 100 }],
+    }]));
+    const s = ok(state().startSession({ routineId: r.id }));
+    expect(state().loadSets(s.id).map(x => [x.kind, x.weightKg, x.reps, x.completedAt])).toEqual([
+      ['warmup', 40, 8, null], ['warmup', 60, 5, null], ['warmup', 80, 3, null], ['working', 100, 5, null],
+    ]);
   });
 
   it('reloads with the live session\'s sets already loaded', () => {

@@ -259,6 +259,20 @@ export const ADOPTION_CHECKS: readonly AdoptionCheck[] = [
     },
   },
   {
+    id: 'workout_programs',
+    title: 'Workout programs',
+    benefit: 'A program runs routines in turn and works out which one is next. Workout mode then suggests each exercise\'s next weight from what was lifted last time, as a suggestion to accept with a tap. The Programs view has four ready-made ones to start from.',
+    advanced: true,
+    since: '2026-10-18',
+    evidence: ({ replica }) => {
+      if (!replica.settings().workoutsEnabled) return null;
+      const routines = replica.workoutRoutines().length;
+      return routines >= 2 && replica.workoutPrograms().length === 0
+        ? `${routines} workout routines are saved and none is in a program.`
+        : null;
+    },
+  },
+  {
     id: 'holiday_repeats',
     title: 'Repeating tasks and holidays',
     benefit: 'A repeating task can skip a public holiday or move to the next day, like a trash pickup after a holiday. It is chosen under Repeat in the task editor.',

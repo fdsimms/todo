@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { differenceInMinutes } from 'date-fns/differenceInMinutes';
-import type { WorkoutRoutine, WorkoutSession } from '../types';
+import type { WorkoutProgram, WorkoutRoutine, WorkoutSession } from '../types';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
@@ -19,6 +19,10 @@ import { useWorkoutModeStore } from '../store/useWorkoutModeStore';
 import { useStartWorkout } from '../hooks/useStartWorkout';
 import { InlineAction } from '../components/InlineAction';
 import { RoutineEditorSheet } from '../components/RoutineEditorSheet';
+import { ProgramEditorSheet } from '../components/ProgramEditorSheet';
+import { ProgramLibrarySheet } from '../components/ProgramLibrarySheet';
+import { EmptyNote } from '../components/EmptyNote';
+import { HelpText } from '../components/HelpText';
 import { ExerciseDetailSheet } from '../components/ExerciseDetailSheet';
 import { LazySheet } from '../components/LazySheet';
 import { ActionMenu } from '../components/ActionMenu';
@@ -40,6 +44,9 @@ import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors }
 import { haptics } from '../utils/haptics';
 import { catalogExercise, describeExercise, searchExercises, type CatalogExercise } from '../utils/exerciseCatalog';
 import { describeRoutine } from '../utils/workoutRoutine';
+import { describeProgress, programProgress } from '../utils/workoutProgram';
+import { trainingMaxRaises } from '../utils/workoutProgression';
+import { formatWeightNumber } from '../utils/workoutData';
 import { formatTimeOfDay } from '../utils/dateUtils';
 
 /**
@@ -50,6 +57,10 @@ import { formatTimeOfDay } from '../utils/dateUtils';
  * A workout in progress shows above every view as a card with Resume, since
  * workout mode can be closed without ending it and this is the way back. A
  * routine starts with one tap on its row's Start; tapping the row edits it.
+ * A program's card starts its next routine (derived from its sessions,
+ * `programProgress`) and, when a percentage program has just finished a
+ * cycle, offers the raised training maxes for the next one: a proposal shown
+ * in full, written only on the tap.
  *
  * The library search matches a name, a muscle or the equipment ("dumbbell
  * chest"). Tapping an exercise opens its page (`ExerciseDetailSheet`): the
@@ -57,11 +68,12 @@ import { formatTimeOfDay } from '../utils/dateUtils';
  * the Health hub beside the other logs of what a body did.
  */
 
-type View_ = 'history' | 'routines' | 'exercises';
+type View_ = 'history' | 'routines' | 'programs' | 'exercises';
 
 const VIEW_OPTIONS = [
   { value: 'history' as const, label: 'History' },
   { value: 'routines' as const, label: 'Routines' },
+  { value: 'programs' as const, label: 'Programs' },
   { value: 'exercises' as const, label: 'Exercises' },
 ];
 
@@ -89,6 +101,7 @@ export function WorkoutsScreen() {
   const setCounts = useWorkoutStore(s => s.setCounts);
   const exercises = useWorkoutStore(s => s.exercises);
   const routines = useWorkoutStore(s => s.routines);
+  const programs = useWorkoutStore(s => s.programs);
   const live = useWorkoutStore(s => s.sessions.find(x => x.endedAt === null) ?? null);
   const liveSets = useWorkoutStore(s => (live ? s.setsBySession[live.id] : undefined));
   const startWorkout = useStartWorkout();
@@ -96,6 +109,10 @@ export function WorkoutsScreen() {
   // close so the sheet doesn't retitle itself while it slides away.
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorRoutineId, setEditorRoutineId] = useState<string | null>(null);
+  // The same for the program editor, and the library it can be opened from.
+  const [programEditorOpen, setProgramEditorOpen] = useState(false);
+  const [editorProgramId, setEditorProgramId] = useState<string | null>(null);
+  const [libraryOpen, setLibraryOpen] = useState(false);
 
   // The menu off the header's "…", the file picked to import (kept through the
   // sheet's close so it doesn't empty while it slides away) and the export sheet.
@@ -182,6 +199,84 @@ export function WorkoutsScreen() {
       />
     </TouchableOpacity>
   ), [styles, exercises, openEditor, startWorkout]);
+
+  const openProgram = useCallback((programId: string | null) => {
+    haptics.tap();
+    setEditorProgramId(programId);
+    setProgramEditorOpen(true);
+  }, []);
+
+  const routineName = useCallback((id: string) => routines.find(r => r.id === id)?.name ?? null, [routines]);
+  const livePrograms = useMemo(() => programs.filter(p => !p.archived), [programs]);
+
+  const renderProgram = useCallback(({ item }: { item: WorkoutProgram }) => {
+    const progress = programProgress(item, sessions, routines);
+    const next = progress.nextRoutineId ? routineName(progress.nextRoutineId) : null;
+    // The raised maxes for the next cycle of a percentage program, offered at
+    // the moment one ends; starting the next cycle writes them and counts the
+    // weeks again from now.
+    const raises = progress.cycleDone && item.scheme === 'percent'
+      ? trainingMaxRaises(item, id => catalogExercise(exercises, id)?.primaryMuscles ?? [], workoutUnit)
+      : [];
+    const startNextCycle = () => {
+      useWorkoutStore.getState().updateProgram(item.id, {
+        trainingMaxes: raises.map(r => ({ exerciseId: r.exerciseId, kg: r.toKg })),
+        startedAt: new Date().toISOString(),
+      });
+      haptics.success();
+    };
+    return (
+      <TouchableOpacity
+        style={styles.row}
+        activeOpacity={interaction.activeOpacity}
+        onPress={() => openProgram(item.id)}
+        accessibilityRole="button"
+        accessibilityLabel={`Edit ${item.name}`}
+      >
+        <Text style={styles.title}>{item.name}</Text>
+        <Text style={styles.detail}>{describeProgress(item, progress, routineName)}</Text>
+        {raises.length > 0 && (
+          <View style={styles.notice}>
+            <Text style={styles.noticeText}>Raise the training maxes for the next cycle:</Text>
+            {raises.map(r => (
+              <View key={r.exerciseId} style={styles.noticeLine}>
+                <Text style={styles.noticeName}>{catalogExercise(exercises, r.exerciseId)?.name ?? 'Unknown exercise'}</Text>
+                <Text style={styles.noticeValue}>
+                  {`${formatWeightNumber(r.fromKg, workoutUnit)} → ${formatWeightNumber(r.toKg, workoutUnit)} ${workoutUnit}`}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
+        {(next || raises.length > 0) && (
+          <View style={styles.actions}>
+            {raises.length > 0 && <InlineAction label="Start next cycle" onPress={startNextCycle} />}
+            {next && (
+              <InlineAction
+                icon="play"
+                label={`Start ${next}`}
+                variant={raises.length > 0 ? 'neutral' : undefined}
+                onPress={() => startWorkout({ programId: item.id })}
+                accessibilityLabel={`Start ${next}, the next workout of ${item.name}`}
+              />
+            )}
+          </View>
+        )}
+      </TouchableOpacity>
+    );
+  }, [styles, sessions, routines, routineName, exercises, workoutUnit, openProgram, startWorkout]);
+
+  const programActions = (
+    <View>
+      <View style={styles.actions}>
+        <InlineAction icon="add" label="New program" surface="page" onPress={() => openProgram(null)} />
+        <InlineAction label="From the library" variant="neutral" surface="page" onPress={() => { haptics.tap(); setLibraryOpen(true); }} />
+      </View>
+      <HelpText style={styles.footHint}>
+        A program is routines done in turn. A week is one pass through them, so a week off waits for you.
+      </HelpText>
+    </View>
+  );
 
   // Reads the file before opening the review sheet, so a file that isn't a
   // Strong or Hevy export is told so here, with what to do, rather than as an
@@ -274,7 +369,24 @@ export function WorkoutsScreen() {
 
       {liveCard}
 
-      {view === 'routines' ? (
+      {view === 'programs' ? (
+        <FlatList
+          data={livePrograms}
+          keyExtractor={p => p.id}
+          renderItem={renderProgram}
+          refreshControl={pullSearch.refreshControl}
+          contentContainerStyle={[styles.list, listBottom]}
+          ListHeaderComponent={livePrograms.length === 0 ? (
+            <View style={styles.row}>
+              <EmptyNote icon="calendar-outline">
+                No programs yet. Add one from the library, or make your own from your routines.
+              </EmptyNote>
+            </View>
+          ) : null}
+          ListFooterComponent={programActions}
+          showsVerticalScrollIndicator={false}
+        />
+      ) : view === 'routines' ? (
         routines.length === 0 ? (
           <EmptyState
             icon="list-outline"
@@ -379,6 +491,26 @@ export function WorkoutsScreen() {
       <LazySheet open={detailOpen}>
         <ExerciseDetailSheet visible={detailOpen} exerciseId={detailId} onClose={() => setDetailOpen(false)} />
       </LazySheet>
+      <LazySheet open={libraryOpen}>
+        <ProgramLibrarySheet
+          visible={libraryOpen}
+          onClose={() => setLibraryOpen(false)}
+          onAdded={id => {
+            // One sheet down and the next up in the same commit: SheetModal
+            // holds the open until the close has landed.
+            setLibraryOpen(false);
+            setEditorProgramId(id);
+            setProgramEditorOpen(true);
+          }}
+        />
+      </LazySheet>
+      <LazySheet open={programEditorOpen}>
+        <ProgramEditorSheet
+          visible={programEditorOpen}
+          programId={editorProgramId}
+          onClose={() => setProgramEditorOpen(false)}
+        />
+      </LazySheet>
       <LazySheet open={editorOpen}>
         <RoutineEditorSheet
           visible={editorOpen}
@@ -417,5 +549,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: spacing.smd,
   },
   title: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
+  notice: { backgroundColor: colors.bgTertiary, borderRadius: radius.md, paddingHorizontal: spacing.smd, paddingVertical: spacing.sm, marginTop: spacing.smd, gap: spacing.xs },
+  noticeText: { color: colors.text, fontSize: font.sm },
+  noticeLine: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: spacing.sm },
+  noticeName: { flex: 1, color: colors.textSecondary, fontSize: font.sm },
+  noticeValue: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold, fontVariant: ['tabular-nums'] },
+  footHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.sm, marginHorizontal: spacing.xs },
   detail: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs },
 });
