@@ -1,5 +1,5 @@
 import type { WorkoutRoutine, WorkoutSet } from '../types';
-import { useWorkoutStore } from '../store/useWorkoutStore';
+import { useWorkoutStore, type SetPatch } from '../store/useWorkoutStore';
 import { useStepTimerStore } from '../store/useStepTimerStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { catalogExercise } from './exerciseCatalog';
@@ -64,20 +64,32 @@ export function tickOutcome(
   return { ...next, restPlan: { kind: 'start', seconds, label: restLabelFor(set, label, ctx.exerciseName) } };
 }
 
+/** The numbers a tick writes with it (the Apple Watch's), in kilograms. Absent ones are left as they are. */
+export type TickValues = Pick<SetPatch, 'weightKg' | 'reps' | 'durationSeconds' | 'distanceM'>;
+
 /**
- * Ticks a set of the live session off now, and starts (or drops) the rest it
- * leads to. Returns where workout mode's card goes next, or null when nothing
- * was ticked: not the live session, a set it doesn't hold, a set already done,
- * or the store refusing the write.
+ * Ticks a set of the live session off at `now`, and starts (or drops) the rest
+ * it leads to. Returns where workout mode's card goes next, or null when
+ * nothing was ticked: not the live session, a set it doesn't hold, a set
+ * already done, or the store refusing the write.
+ *
+ * Three callers: workout mode's check, the Lock Screen's Done set, and a set
+ * done on the Apple Watch (`processQuietWidgetTaps`). The watch's tick carries
+ * the numbers it was done at (`values`, written in the same write as the tick)
+ * and the moment it was done, which can be a while before it is applied: the
+ * rest starts from that moment, and a rest that would already be over by now
+ * isn't started at all (the older one is dropped, as for an exercise that asks
+ * for none), since a phone ringing for a rest the lifter finished on the watch
+ * minutes ago is a rest about nothing.
  */
-export function tickSet(sessionId: string, setId: string, now: Date = new Date()): AfterLog | null {
+export function tickSet(sessionId: string, setId: string, now: Date = new Date(), values: TickValues = {}): AfterLog | null {
   const store = useWorkoutStore.getState();
   const session = store.sessions.find(s => s.id === sessionId);
   if (!session || session.endedAt !== null) return null;
   const before = store.setsBySession[sessionId] ?? store.loadSets(sessionId);
   const set = before.find(s => s.id === setId);
   if (!set || set.completedAt !== null) return null;
-  const done = store.editSet(sessionId, setId, { completedAt: now.toISOString() });
+  const done = store.editSet(sessionId, setId, { ...values, completedAt: now.toISOString() });
   if (typeof done === 'string') return null;
   const workouts = useWorkoutStore.getState();
   const routine = session.routineId ? workouts.routines.find(r => r.id === session.routineId) ?? null : null;
@@ -88,15 +100,17 @@ export function tickSet(sessionId: string, setId: string, now: Date = new Date()
   });
   if (!outcome) return null;
   const timers = useStepTimerStore.getState();
-  if (outcome.restPlan.kind === 'start') {
+  const restOverAlready = outcome.restPlan.kind === 'start' && now.getTime() + outcome.restPlan.seconds * 1000 <= Date.now();
+  if (outcome.restPlan.kind === 'start' && !restOverAlready) {
     timers.startRest({
       sessionId,
       exerciseId: set.exerciseId,
       sessionTitle: session.title,
       label: outcome.restPlan.label,
       durationSeconds: outcome.restPlan.seconds,
+      startedAt: now.toISOString(),
     });
-  } else if (outcome.restPlan.kind === 'clear') {
+  } else if (outcome.restPlan.kind === 'clear' || restOverAlready) {
     // No rest after this exercise: the last one's would otherwise keep running
     // in the footer, about a set that is no longer the latest.
     timers.removeRestsOutside(null);

@@ -1,4 +1,14 @@
-import { parseQuietTaps, tapsToRequeue, planQuietTaps, widgetTapNeedsApp, type QuietTap } from '../utils/widgetQuietTaps';
+import {
+  parseQuietTaps,
+  parseWatchSession,
+  planQuietTaps,
+  tapsToRequeue,
+  tickValuesFromWatch,
+  widgetTapNeedsApp,
+  workoutHandOffTaps,
+  type QuietTap,
+  type QuietTapWorkouts,
+} from '../utils/widgetQuietTaps';
 import type { GroceryListEntry, Task } from '../types';
 
 const mockSettingsState = {
@@ -361,6 +371,171 @@ describe('planQuietTaps', () => {
         { type: 'addGrocery', title: 'eggs', listId: 'away' },
         { type: 'checkGrocery', itemId: 'milk', listId: null },
       ]);
+    });
+  });
+});
+
+// ==== the Apple Watch's workout (phase 8) ====
+
+describe('watch workout taps', () => {
+  const STARTED = new Date(2025, 5, 10, 9, 0, 0).toISOString();
+  const ENDED = new Date(2025, 5, 10, 9, 50, 0).toISOString();
+  const workoutJson = (extra: Record<string, unknown> = {}) => ({
+    id: 'watch-w1',
+    routineId: 'r1',
+    programId: null,
+    taskId: 'lift',
+    title: 'Push A',
+    startedAt: STARTED,
+    endedAt: ENDED,
+    unit: 'lb',
+    sets: [
+      { id: 's1', exerciseId: 'lib:barbell-bench-press', position: 0, setIndex: 0, kind: 'working', weight: 185, reps: 8, completedAt: ENDED },
+      { id: 's2', exerciseId: 'lib:barbell-bench-press', position: 0, setIndex: 1, kind: 'working', weight: 185, reps: 8 },
+    ],
+    ...extra,
+  });
+
+  describe('parseQuietTaps', () => {
+    it('reads a set with its numbers in kilograms, and the session it was made on', () => {
+      const [t] = parseQuietTaps(JSON.stringify([
+        { kind: 'set', id: 'set-3', sessionId: 'w1', at: AT, watchTapId: 'wt1', unit: 'lb', weight: 135, reps: 8 },
+      ]));
+      expect(t).toEqual({
+        kind: 'set', id: 'set-3', sessionId: 'w1', listId: null, at: AT, watchTapId: 'wt1',
+        values: { weightKg: 61.235, reps: 8 },
+      });
+    });
+
+    it('drops a set that names no session, so a stale watch can never log onto whatever is going', () => {
+      expect(parseQuietTaps(JSON.stringify([{ kind: 'set', id: 'set-3', at: AT, weight: 60 }]))).toEqual([]);
+    });
+
+    it('reads the rest and finish taps against the session they name, and a rest id when given', () => {
+      const taps = parseQuietTaps(JSON.stringify([
+        { kind: 'restAdd', id: 'w1', sessionId: 'w1', restId: 'rest-1', at: AT },
+        { kind: 'restSkip', id: 'w1', at: AT },
+        { kind: 'finish', id: 'w1', sessionId: 'w1', restId: 'ignored', at: AT },
+      ]));
+      expect(taps.map(t => [t.kind, t.sessionId, t.restId])).toEqual([
+        ['restAdd', 'w1', 'rest-1'],
+        ['restSkip', 'w1', undefined],
+        ['finish', 'w1', undefined],
+      ]);
+    });
+
+    it('reads a watch workout whole, done sets only, and drops one whose id doesn’t match its tap', () => {
+      const [t] = parseQuietTaps(JSON.stringify([{ kind: 'watchSession', id: 'watch-w1', at: AT, workout: workoutJson() }]));
+      expect(t.workout).toMatchObject({ id: 'watch-w1', taskId: 'lift', title: 'Push A' });
+      expect(t.workout!.sets).toEqual([
+        { id: 's1', exerciseId: 'lib:barbell-bench-press', position: 0, setIndex: 0, kind: 'working', weightKg: 83.915, reps: 8, durationSeconds: null, distanceM: null, completedAt: ENDED },
+      ]);
+      expect(parseQuietTaps(JSON.stringify([{ kind: 'watchSession', id: 'other', at: AT, workout: workoutJson() }]))).toEqual([]);
+      expect(parseQuietTaps(JSON.stringify([{ kind: 'watchSession', id: 'watch-w1', at: AT }]))).toEqual([]);
+    });
+  });
+
+  describe('parseWatchSession', () => {
+    it('is null for anything that isn’t a workout with a set done', () => {
+      expect(parseWatchSession(null)).toBeNull();
+      expect(parseWatchSession(workoutJson({ startedAt: 'never' }))).toBeNull();
+      expect(parseWatchSession(workoutJson({ sets: [{ id: 's2', exerciseId: 'x', kind: 'working' }] }))).toBeNull();
+    });
+
+    it('reads kilograms as they are, and a kind it doesn’t know as a working set', () => {
+      const w = parseWatchSession(workoutJson({
+        unit: 'kg',
+        sets: [{ id: 's1', exerciseId: 'plank', kind: 'hold', durationSeconds: 45.4, completedAt: ENDED }],
+      }));
+      expect(w!.sets[0]).toMatchObject({ kind: 'working', weightKg: null, durationSeconds: 45 });
+    });
+  });
+
+  describe('tickValuesFromWatch', () => {
+    it('converts only what was sent, and ignores a number that can’t be a set’s', () => {
+      expect(tickValuesFromWatch({ weight: 100, reps: 5.4 }, 'kg')).toEqual({ weightKg: 100, reps: 5 });
+      expect(tickValuesFromWatch({ weight: -5, distanceM: 400 }, 'lb')).toEqual({ distanceM: 400 });
+      expect(tickValuesFromWatch({}, 'kg')).toEqual({});
+    });
+  });
+
+  describe('planQuietTaps', () => {
+    const live = (openSetIds: string[], taskId: string | null = null): QuietTapWorkouts => ({
+      live: { id: 'w1', taskId, openSetIds: new Set(openSetIds) },
+      sessionIds: new Set(['w1']),
+    });
+    const setTap = (id: string, sessionId = 'w1'): QuietTap => ({ ...tap('set', id), sessionId, values: { reps: 8 } });
+    const plan = (taps: QuietTap[], workouts: QuietTapWorkouts | null, tasks: Task[] = []) =>
+      planQuietTaps(taps, tasks, [], true, isCurrentDay, workouts);
+
+    it('ticks a set of the workout in progress with its numbers, once', () => {
+      expect(plan([setTap('a'), setTap('a')], live(['a', 'b']))).toEqual([
+        { type: 'tickWorkoutSet', sessionId: 'w1', setId: 'a', at: AT, values: { reps: 8 } },
+      ]);
+    });
+
+    it('does nothing to a set already done, another workout’s set, or with no workout going', () => {
+      expect(plan([setTap('done')], live(['a']))).toEqual([]);
+      expect(plan([setTap('a', 'w0')], live(['a']))).toEqual([]);
+      expect(plan([setTap('a')], { live: null, sessionIds: new Set() })).toEqual([]);
+      expect(plan([setTap('a')], null)).toEqual([]);
+    });
+
+    it('nudges and skips the rest of the workout in progress, naming the rest when the tap did', () => {
+      const taps: QuietTap[] = [
+        { ...tap('restAdd', 'w1'), sessionId: 'w1', restId: 'rest-1' },
+        { ...tap('restSkip', 'w1'), sessionId: 'w1' },
+        { ...tap('restSkip', 'w0'), sessionId: 'w0' },
+      ];
+      expect(plan(taps, live([]))).toEqual([
+        { type: 'nudgeRest', sessionId: 'w1', restId: 'rest-1' },
+        { type: 'skipRest', sessionId: 'w1', restId: null },
+      ]);
+    });
+
+    it('finishes the workout once, and applies nothing to it afterwards', () => {
+      const taps: QuietTap[] = [
+        { ...tap('finish', 'w1'), sessionId: 'w1' },
+        setTap('a'),
+        { ...tap('finish', 'w1'), sessionId: 'w1' },
+      ];
+      expect(plan(taps, live(['a']))).toEqual([{ type: 'finishWorkout', sessionId: 'w1', at: AT }]);
+    });
+
+    it('hands the finished workout’s task to the app when it asks a question', () => {
+      const asks = task({ id: 'lift', deliverableKind: 'text' });
+      expect(plan([{ ...tap('finish', 'w1'), sessionId: 'w1' }], live([], 'lift'), [asks])).toEqual([
+        { type: 'finishWorkout', sessionId: 'w1', at: AT },
+        { type: 'handToApp', id: 'lift', at: AT, fromWorkout: true },
+      ]);
+      // A task that just completes is finishSession's to complete, not the app's.
+      expect(plan([{ ...tap('finish', 'w1'), sessionId: 'w1' }], live([], 'lift'), [task({ id: 'lift' })])).toEqual([
+        { type: 'finishWorkout', sessionId: 'w1', at: AT },
+      ]);
+    });
+
+    it('writes a watch workout once, skips one already in the log, and hands an asking task over', () => {
+      const workout = parseWatchSession(workoutJson())!;
+      const t: QuietTap = { ...tap('watchSession', workout.id), workout };
+      const none = { live: null, sessionIds: new Set<string>() };
+      expect(plan([t, t], none, [task({ id: 'lift' })])).toEqual([{ type: 'addWatchSession', workout }]);
+      expect(plan([t], { live: null, sessionIds: new Set([workout.id]) })).toEqual([]);
+      expect(plan([t], none, [task({ id: 'lift', deliverableKind: 'text' })])).toEqual([
+        { type: 'addWatchSession', workout },
+        { type: 'handToApp', id: 'lift', at: workout.endedAt, fromWorkout: true },
+      ]);
+    });
+  });
+
+  describe('requeue', () => {
+    it('never puts a workout tap back, and queues a workout’s hand-off as a plain completion', () => {
+      const taps: QuietTap[] = [{ ...tap('set', 'lift'), sessionId: 'w1' }, tap('complete', 'lift')];
+      expect(tapsToRequeue(taps, new Set(['lift']))).toEqual([tap('complete', 'lift')]);
+      expect(workoutHandOffTaps([
+        { type: 'finishWorkout', sessionId: 'w1', at: AT },
+        { type: 'handToApp', id: 'lift', at: AT, fromWorkout: true },
+        { type: 'handToApp', id: 'other', at: AT },
+      ])).toEqual([{ kind: 'complete', id: 'lift', listId: null, at: AT }]);
     });
   });
 });

@@ -5,6 +5,7 @@ import {
   newestWorkoutStart,
   parseQueuedWorkoutStarts,
   QUEUED_START_MAX_AGE_MS,
+  myWorkoutStart,
   resolveQueuedWorkoutStart,
   type QueuedWorkoutStart,
 } from '../utils/workoutSiri';
@@ -101,6 +102,15 @@ describe('resolveQueuedWorkoutStart', () => {
     todayTasks: [],
     now: NOW,
     ...extra,
+  });
+
+  // The Apple Watch's "From Today" row reads the same answer, with no queue,
+  // no clock and no live workout in the way.
+  it('answers today’s workout on its own: a task first, else the one program, else nothing', () => {
+    const today = [task('t1', { workoutRoutineId: 'r2' })];
+    expect(myWorkoutStart({ routines, programs: [program()], sessions: [], todayTasks: today })).toEqual({ routineId: 'r2', taskId: 't1' });
+    expect(myWorkoutStart({ routines, programs: [program()], sessions: [], todayTasks: [] })).toEqual({ programId: 'p1' });
+    expect(myWorkoutStart({ routines, programs: [], sessions: [], todayTasks: [] })).toBeNull();
   });
 
   it('does nothing with the Workouts area off, or nothing queued', () => {

@@ -77,6 +77,12 @@ interface StepTimerState {
     sessionTitle: string;
     label: string;
     durationSeconds: number;
+    /**
+     * When the rest began, if not now: a set ticked on the Apple Watch and
+     * applied a moment later rests from the tick, as the watch's own countdown
+     * does (`tickSet`).
+     */
+    startedAt?: string;
   }) => RestTimer | null;
   pause: (id: string) => void;
   resume: (id: string) => void;
@@ -184,11 +190,15 @@ export const useStepTimerStore = create<StepTimerState>((set, get) => ({
     return timer;
   },
 
-  startRest: ({ sessionId, exerciseId, sessionTitle, label, durationSeconds }) => {
+  startRest: ({ sessionId, exerciseId, sessionTitle, label, durationSeconds, startedAt }) => {
     const seconds = Math.round(durationSeconds);
     if (!Number.isFinite(seconds)) return null;
     if (seconds < MIN_STEP_TIMER_SECONDS || seconds > MAX_STEP_TIMER_SECONDS) return null;
-    const now = new Date().toISOString();
+    // Never later than now: a start in the future would count down from a
+    // moment that hasn't come, and the elapsed time clamps at zero anyway.
+    const nowMs = Date.now();
+    const fromMs = startedAt ? Date.parse(startedAt) : NaN;
+    const now = new Date(Number.isFinite(fromMs) && fromMs < nowMs ? fromMs : nowMs).toISOString();
     const timer: RestTimer = {
       kind: 'rest',
       id: generateId(),

@@ -201,6 +201,15 @@ describe('rest timers', () => {
     expect(mockCancel).toHaveBeenCalledWith(rest.id);
   });
 
+  // A set ticked on the Apple Watch and applied a moment later (tickSet).
+  it('rests from a moment already past when told one, but never from the future', () => {
+    const earlier = new Date(Date.now() - 20_000).toISOString();
+    expect(useStepTimerStore.getState().startRest({ ...REST, startedAt: earlier })!.startedAt).toBe(earlier);
+    const later = new Date(Date.now() + 60_000).toISOString();
+    const rest = useStepTimerStore.getState().startRest({ ...REST, startedAt: later })!;
+    expect(Date.parse(rest.startedAt!)).toBeLessThanOrEqual(Date.now());
+  });
+
   it('refuses a rest outside what a timer can be', () => {
     expect(useStepTimerStore.getState().startRest({ ...REST, durationSeconds: 0 })).toBeNull();
     expect(useStepTimerStore.getState().timers).toEqual([]);

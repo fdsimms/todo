@@ -59,6 +59,9 @@ import {
   type WorkoutWriteResult,
 } from '../utils/healthWorkoutSync';
 import { NEW_EXERCISE_PREFIX, indexAdd, indexExisting, indexHas, type PlannedImportSession } from '../utils/workoutCsv';
+import { overlappingSessions } from '../utils/watchWorkoutClash';
+import { getLogicalDayKey } from '../utils/dateUtils';
+import { useWatchClashStore } from './useWatchClashStore';
 import { buildCatalog, catalogExercise } from '../utils/exerciseCatalog';
 import {
   cleanWorkoutName,
@@ -171,6 +174,46 @@ export interface FinishedSessionInput {
   sets: (SetInput & { completedAt?: string | null })[];
 }
 
+/** A planned set of a routine, at the place `startSession` gives it. */
+export interface PlannedRoutineSet {
+  exerciseId: string;
+  position: number;
+  setIndex: number;
+  values: PlannedSetValues;
+}
+
+/** A workout the watch ran on its own, as `parseWatchSession` reads it: kilograms, done sets only. */
+export interface WatchSessionInput {
+  id: string;
+  routineId: string | null;
+  programId: string | null;
+  taskId: string | null;
+  title: string;
+  startedAt: string;
+  endedAt: string;
+  sets: {
+    id: string;
+    exerciseId: string;
+    position: number;
+    setIndex: number;
+    kind: WorkoutSetKind;
+    weightKg: number | null;
+    reps: number | null;
+    durationSeconds: number | null;
+    distanceM: number | null;
+    completedAt: string;
+  }[];
+}
+
+export interface WatchSessionResult {
+  session: WorkoutSession;
+  sets: WorkoutSet[];
+  /** The session was already in the log, so nothing was written. */
+  duplicate: boolean;
+  /** Other sessions whose span overlaps this one's, newest first. */
+  clashesWith: string[];
+}
+
 export interface SetInput {
   exerciseId: string;
   kind?: WorkoutSetKind;
@@ -250,6 +293,14 @@ interface WorkoutStore {
    */
   startSession: (input?: StartSessionInput) => WorkoutSession | WorkoutRefusal;
   /**
+   * The sets starting this routine would lay out right now, in order, each
+   * with the place it takes: `startSession`'s own plan, read without writing
+   * anything. Last time is the newest session other than `exceptSessionId`.
+   * The Apple Watch's start list carries it, so a workout started there with
+   * no phone in reach lays out exactly what the phone would have.
+   */
+  plannedSetsForRoutine: (routineId: string, exceptSessionId?: string | null) => PlannedRoutineSet[];
+  /**
    * Edits a session. Refuses a blank title, and an end before the start
    * (`order`). Moving a finished session that is in Health retracts the
    * workout and writes it again at the new times, while writing is on; with
@@ -283,6 +334,18 @@ interface WorkoutStore {
    * Never written to Health: an imported workout came from an app that most
    * likely wrote it there already.
    */
+  /**
+   * Writes a workout the Apple Watch ran on its own (`watchWorkout.ts`), once:
+   * a session id already in the log is a repeat delivery and writes nothing
+   * (`duplicate`). The session and its sets keep the watch's ids, and its
+   * times are the watch's stamps however late it arrives. Like `finishSession`
+   * it answers the task it was started for (a target's unit only when it ended
+   * today, a completion at the time it ended), writes it to Health under the
+   * same switches, and leaves a task that asks a question alone for the app to
+   * ask. Another session overlapping its span is recorded for the one question
+   * the phone asks about it (`useWatchClashStore`), and named in `clashesWith`.
+   */
+  addWatchSession: (input: WatchSessionInput, now?: Date) => WatchSessionResult | WorkoutRefusal;
   importSessions: (
     sessions: PlannedImportSession[],
     creates: Record<string, ExerciseInput>,
@@ -926,17 +989,26 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         healthWritePending: false,
       };
       putSession(row);
-      const planned: WorkoutSet[] = [];
-      for (const item of routine?.items ?? []) {
-        if (!exerciseKnown(item.exerciseId) || planned.some(p => p.exerciseId === item.exerciseId)) continue;
-        const position = planned.length === 0 ? 0 : planned[planned.length - 1].position + 1;
-        const last = previousSets(dbGetWorkoutSetsForExercise(item.exerciseId), get().sessions, row.id);
-        const ramp = item.warmupRamp ? rampFor(item.exerciseId, item) : undefined;
-        plannedSetsFor(item, last, ramp).forEach((v, i) => planned.push(plannedRow(row.id, item.exerciseId, position, i, v)));
-      }
+      const planned = routine
+        ? get().plannedSetsForRoutine(routine.id, row.id).map(p => plannedRow(row.id, p.exerciseId, p.position, p.setIndex, p.values))
+        : [];
       if (planned.length > 0) dbSaveWorkoutSets(planned);
       putSets(row.id, planned);
       return row;
+    },
+
+    plannedSetsForRoutine(routineId, exceptSessionId = null) {
+      const routine = get().routines.find(r => r.id === routineId);
+      const planned: PlannedRoutineSet[] = [];
+      for (const item of routine?.items ?? []) {
+        if (!exerciseKnown(item.exerciseId) || planned.some(p => p.exerciseId === item.exerciseId)) continue;
+        const position = planned.length === 0 ? 0 : planned[planned.length - 1].position + 1;
+        const last = previousSets(dbGetWorkoutSetsForExercise(item.exerciseId), get().sessions, exceptSessionId);
+        const ramp = item.warmupRamp ? rampFor(item.exerciseId, item) : undefined;
+        plannedSetsFor(item, last, ramp).forEach((values, setIndex) =>
+          planned.push({ exerciseId: item.exerciseId, position, setIndex, values }));
+      }
+      return planned;
     },
 
     updateSession(id, patch) {
@@ -1064,6 +1136,78 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       set({ sessions: [...get().sessions, session].sort(byStartedDesc) });
       putSets(session.id, sets);
       return { session, sets };
+    },
+
+    addWatchSession(input, now = new Date()) {
+      // A repeat delivery (the watch sends a finished workout once, but a
+      // transfer and the message that wakes the phone can both arrive).
+      const existing = get().sessions.find(s => s.id === input.id) ?? dbGetWorkoutSession(input.id);
+      if (existing) return { session: existing, sets: [], duplicate: true, clashesWith: [] };
+      if (input.sets.length === 0) return 'empty';
+      const startMs = Date.parse(input.startedAt);
+      const endMs = Date.parse(input.endedAt);
+      if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return 'order';
+      const routine = input.routineId ? get().routines.find(r => r.id === input.routineId) : undefined;
+      // A watch clock that read an end before its start loses nothing: the
+      // workout is kept, as long as it took no time.
+      const endedAt = new Date(Math.max(startMs, endMs)).toISOString();
+      const session: WorkoutSession = {
+        id: input.id,
+        // Provenance, kept as the watch sent it even when the routine has gone
+        // since: every reader resolves it or shrugs.
+        routineId: input.routineId,
+        programId: input.programId ?? routine?.programId ?? null,
+        taskId: input.taskId,
+        title: cleanWorkoutName(input.title) || routine?.name || 'Workout',
+        startedAt: new Date(startMs).toISOString(),
+        endedAt,
+        notes: '',
+        effort: null,
+        healthWorkoutId: null,
+        healthWritePending: false,
+      };
+      const sets = renumber(input.sets.map((st): WorkoutSet => ({
+        id: st.id,
+        sessionId: session.id,
+        exerciseId: st.exerciseId,
+        position: st.position,
+        setIndex: st.setIndex,
+        kind: st.kind,
+        weightKg: amount(st.weightKg),
+        reps: whole(st.reps),
+        durationSeconds: whole(st.durationSeconds),
+        distanceM: amount(st.distanceM),
+        rpe: null,
+        completedAt: st.completedAt,
+        supersetKey: null,
+        note: null,
+      })));
+      const clashesWith = overlappingSessions(session, get().sessions, now);
+      dbTransaction(() => {
+        dbSaveWorkoutSession(session);
+        dbSaveWorkoutSets(sets);
+      });
+      set({ sessions: [...get().sessions, session].sort(byStartedDesc) });
+      putSets(session.id, sets);
+      const clashes = useWatchClashStore.getState();
+      for (const otherSessionId of clashesWith) clashes.record({ watchSessionId: session.id, otherSessionId });
+      // The task it was started for, answered as `finishSession` answers it,
+      // with two differences for a workout that can arrive days late: a
+      // completion is stamped when the workout ended, and a target's unit is
+      // logged only when it ended today, since the rollover has already closed
+      // an earlier day's count. A task that asks a question is the caller's to
+      // hand to the app (planQuietTaps does), since nothing here can ask.
+      if (session.taskId) {
+        const tasks = taskStore();
+        const task = tasks.tasks.find(t => t.id === session.taskId) ?? null;
+        const effect = workoutTaskEffect(task);
+        const { dayResetTime } = useSettingsStore.getState();
+        const endedToday = getLogicalDayKey(new Date(endedAt), dayResetTime) === getLogicalDayKey(now, dayResetTime);
+        if (effect === 'complete') tasks.completeTask(task!.id, { completedAt: endedAt });
+        else if (effect === 'log-unit' && endedToday) tasks.logQuotaUnit(task!.id);
+      }
+      writeToHealth(session);
+      return { session, sets, duplicate: false, clashesWith };
     },
 
     importSessions(sessions, creates) {
