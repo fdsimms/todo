@@ -52,3 +52,8 @@ says why). Splitting that countdown up — "violin practice" as 5 min scales, 10
   subtask order, and the rows are where that order is dragged. Duration shows the split read-only
   and totals it — two controls setting one number is the confusion, not the fix. `StepMinutes` is
   the shared field, the same one a chain step's estimate uses.
+- **Seconds are a fraction of a minute in the same field.** Duration's "sec" unit writes
+  `timedMinutes` as `seconds / 60` (45s is 0.75), so the countdown, alarm, Live Activity and widget
+  keep reading one number in one unit. `formatDuration` prints a fractional minute as seconds, and
+  the editor reopens a fractional value in "sec". Subtask stretches (`StepMinutes`) and the
+  per-unit stepper on a target are still whole minutes.

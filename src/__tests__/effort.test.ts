@@ -86,6 +86,12 @@ describe('formatDuration', () => {
     expect(formatDuration(59)).toBe('59m');
   });
 
+  it('writes a fractional minute as seconds', () => {
+    expect(formatDuration(0.75)).toBe('45s');
+    expect(formatDuration(1.5)).toBe('1m 30s');
+    expect(formatDuration(10 / 60)).toBe('10s');
+  });
+
   it('shows whole hours without a decimal', () => {
     expect(formatDuration(60)).toBe('1h');
     expect(formatDuration(120)).toBe('2h');

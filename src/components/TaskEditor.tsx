@@ -205,10 +205,16 @@ function kindSegmentsFor(simpleMode: boolean, current: TaskKind) {
     : TASK_KIND_SEGMENTS.filter(seg => kinds.includes(seg.value));
 }
 
-/** The unit beside a typed number — one set, used by Duration and by custom Effort. */
+/** The unit beside a typed number, used by custom Effort. */
 const DURATION_UNIT_SEGMENTS = [
   { value: 'min' as const, label: 'min' },
   { value: 'hr' as const, label: 'hr' },
+];
+
+/** Duration's units: a countdown can also be set in seconds. */
+const COUNTDOWN_UNIT_SEGMENTS = [
+  { value: 'sec' as const, label: 'sec' },
+  ...DURATION_UNIT_SEGMENTS,
 ];
 
 /** Pre-filled values carried over from the quick add modal when creating a new task. */
@@ -727,7 +733,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const [healthTarget, setHealthTarget] = useState<number | null>(null);
   const [healthFollowGoal, setHealthFollowGoal] = useState(false);
   const [durationText, setDurationText] = useState('');
-  const [durationUnit, setDurationUnit] = useState<'min' | 'hr'>('min');
+  const [durationUnit, setDurationUnit] = useState<'sec' | 'min' | 'hr'>('min');
   const [pinned, setPinned] = useState(false);
   const [pinEachOccurrence, setPinEachOccurrence] = useState(false);
   const [vacationPause, setVacationPause] = useState(false);
@@ -2741,7 +2747,10 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   // in the input, ready to be edited rather than retyped.
   const toggleDuration = () => {
     if (!fieldOpen('duration')) {
-      if (timedMinutes != null && timedMinutes % 60 === 0) {
+      if (timedMinutes != null && !Number.isInteger(timedMinutes)) {
+        setDurationUnit('sec');
+        setDurationText(String(Math.round(timedMinutes * 60)));
+      } else if (timedMinutes != null && timedMinutes % 60 === 0) {
         setDurationUnit('hr');
         setDurationText(String(timedMinutes / 60));
       } else {
@@ -3351,10 +3360,16 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   // The countdown target. Unlike logged time this deliberately leaves the
   // estimate alone — how long you mean to sit with a task and how long the task
   // is reckoned to take aren't always the same number.
-  const applyDuration = (text: string, unit: 'min' | 'hr') => {
+  const applyDuration = (text: string, unit: 'sec' | 'min' | 'hr') => {
     const n = parseFloat(text);
     if (!Number.isFinite(n) || n <= 0) {
       setTimedMinutes(null);
+      return;
+    }
+    if (unit === 'sec') {
+      // Whole seconds, stored as a fraction of a minute (45 sec is 0.75), so
+      // 60 sec comes out as the integer 1 and reads back as 1m.
+      setTimedMinutes(Math.max(1, Math.round(n)) / 60);
       return;
     }
     setTimedMinutes(Math.max(1, Math.round(unit === 'hr' ? n * 60 : n)));
@@ -4550,7 +4565,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                     label="Duration unit"
                     value={durationUnit}
                     onChange={u => { setDurationUnit(u); applyDuration(durationText, u); }}
-                    options={DURATION_UNIT_SEGMENTS}
+                    options={COUNTDOWN_UNIT_SEGMENTS}
                   />
                 </View>
               </View>

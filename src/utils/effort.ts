@@ -288,6 +288,15 @@ export function effortTimeLabel(e: Effort, fallback: string): string {
 }
 
 export function formatDuration(min: number): string {
+  // A countdown can be set in seconds (`timedMinutes` 0.75 is 45s), so a
+  // fractional minute reads as "1m 30s" rather than "1.5m".
+  if (min < 60 && !Number.isInteger(min)) {
+    const total = Math.round(min * 60);
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    if (m === 0) return `${s}s`;
+    return s === 0 ? `${m}m` : `${m}m ${s}s`;
+  }
   if (min < 60) return `${min}m`;
   const hours = min / 60;
   // Drop a trailing ".0" (2h, not 2.0h); keep one decimal otherwise (1.5h).
