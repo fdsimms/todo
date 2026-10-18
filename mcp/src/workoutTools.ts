@@ -486,6 +486,16 @@ export function saveRoutine(replica: Replica, input: SaveRoutineInput): { routin
     const unknown = unknownExercises(replica, input.exercises.map(e => e.exerciseId));
     if (unknown.length) throw unknownError(unknown);
     if (input.exercises.some(e => e.sets.length === 0)) throw new Error('Each exercise needs at least one set.');
+    // A ramp is worked out from a weight and moves it by plates or an
+    // increment, so it only means something for a weight and reps exercise
+    // (on an assisted one it would ramp the assistance).
+    const rows = replica.exercises();
+    const misplaced = input.exercises
+      .filter(e => e.warmupRamp && (catalogExercise(rows, e.exerciseId)?.kind ?? 'weight_reps') !== 'weight_reps')
+      .map(e => catalogExercise(rows, e.exerciseId)?.name ?? e.exerciseId);
+    if (misplaced.length) {
+      throw new Error(`A warm-up ramp is only for exercises that record weight and reps, and ${[...new Set(misplaced)].join(', ')} ${misplaced.length === 1 ? 'does' : 'do'} not. Leave warmupRamp off, or give ${misplaced.length === 1 ? 'it' : 'them'} warm-up sets of their own.`);
+    }
   }
   const routine = replica.saveRoutine({
     id: input.id,
@@ -652,10 +662,17 @@ export interface SaveProgramInput {
   weeks?: number | null;
   /** Training maxes in kg, for a percentage scheme. Replaces them all when given. */
   trainingMaxes?: { exerciseId: string; kg: number }[];
+  /**
+   * Counts the program's weeks again from now, as the phone's "Start next
+   * cycle" does. Without it a finished cycle stays finished after the training
+   * maxes are raised, and the phone offers the raise a second time.
+   */
+  startNextCycle?: true;
 }
 
-export function saveProgram(replica: Replica, input: SaveProgramInput): { program: ProgramRow; note: string } {
+export function saveProgram(replica: Replica, input: SaveProgramInput, now: Date = new Date()): { program: ProgramRow; note: string } {
   if (!input.id && !input.name?.trim()) throw new Error('A new program needs a name.');
+  if (input.startNextCycle && !input.id) throw new Error('startNextCycle restarts the count of a program that exists: give its id.');
   if (input.trainingMaxes) {
     const unknown = unknownExercises(replica, input.trainingMaxes.map(t => t.exerciseId));
     if (unknown.length) throw unknownError(unknown);
@@ -668,11 +685,12 @@ export function saveProgram(replica: Replica, input: SaveProgramInput): { progra
     ...(input.scheme !== undefined ? { scheme: input.scheme } : {}),
     ...(input.weeks !== undefined ? { weeks: input.weeks } : {}),
     ...(maxes !== undefined ? { trainingMaxes: maxes } : {}),
+    ...(input.startNextCycle ? { startedAt: now.toISOString() } : {}),
   });
   const routines = replica.workoutRoutines();
   return {
     program: programRow(program, programProgress(program, allSessions(replica), routines), replica.exercises(), new Map(routines.map(r => [r.id, r.name]))),
-    note: 'A plan. Which week it is and which routine is next are worked out from the workouts finished in it, never set. To put it on the schedule, create or update a task with workoutProgramId: its row then starts the next routine.',
+    note: `A plan. Which week it is and which routine is next are worked out from the workouts finished in it, never set${input.startNextCycle ? ', and the count now starts again from this moment' : ''}. To put it on the schedule, create or update a task with workoutProgramId: its row then starts the next routine.`,
   };
 }
 
@@ -729,6 +747,9 @@ export function nextWorkout(replica: Replica, input: NextWorkoutInput = {}): {
   const routines = replica.workoutRoutines();
   const programs = replica.workoutPrograms().filter(p => !p.archived);
   const sessions = allSessions(replica);
+  // "Last time" is a finished workout, as on the phone: one in progress there
+  // is passed over, so its done sets are not read as the last session.
+  const finished = sessions.filter(s => s.endedAt !== null);
   const rows = replica.exercises();
 
   let program: WorkoutProgram | null = null;
@@ -766,7 +787,7 @@ export function nextWorkout(replica: Replica, input: NextWorkoutInput = {}): {
     const history = replica.workoutExerciseSets(item.exerciseId);
     if (history.length === 0 && scheme !== 'percent') withheld = true;
     const p = proposeNext({
-      exerciseId: item.exerciseId, kind: info.kind, item, scheme, history, sessions, exceptSessionId: null, load,
+      exerciseId: item.exerciseId, kind: info.kind, item, scheme, history, sessions: finished, exceptSessionId: null, load,
       trainingMaxKg: program?.trainingMaxes.find(t => t.exerciseId === item.exerciseId)?.kg ?? null,
       week: progress ? { week: progress.week, weeks: progress.weeks } : null,
     });
@@ -804,8 +825,10 @@ export function nextWorkout(replica: Replica, input: NextWorkoutInput = {}): {
     note: [
       'Proposals only: the person sees the same suggestion in workout mode and decides whether to use it. Never write one into a routine unasked, and never log a workout to stand for one.',
       'weightKg is kilograms; headline and reason are the phone\'s words in the unit it shows.',
-      withheld ? 'Some exercises have no history here. Workout history reaches the server only with Include health logs on, so with it off the week and the next routine count no workouts, and loads that move on from history are missing.' : null,
-      raises.length ? 'A cycle just ended: trainingMaxRaises is what the phone proposes for the next one. Raise them with save_program only if the person agrees.' : null,
+      sessions.length === 0
+        ? 'This replica holds no workouts, so the week and workoutsDone shown count nothing and are not known facts, and the proposals that move on from history are missing. Workout history reaches the server only with Include health logs on; with it off the week and the next routine count no workouts.'
+        : withheld ? 'Some exercises have no history here. Workout history reaches the server only with Include health logs on, so with it off the week and the next routine count no workouts, and loads that move on from history are missing.' : null,
+      raises.length ? 'A cycle just ended: trainingMaxRaises is what the phone proposes for the next one. Raise them with save_program only if the person agrees, passing startNextCycle: true in the same call so the count starts again and the phone does not offer the raise a second time.' : null,
     ].filter(Boolean).join(' '),
   };
 }

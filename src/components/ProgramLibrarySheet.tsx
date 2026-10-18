@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SheetModal } from './SheetModal';
 import { SheetHeader } from './SheetHeader';
@@ -41,9 +41,25 @@ export function ProgramLibrarySheet({ visible, onClose, onAdded }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
+  // Adding writes a second set of routines if it runs twice, so a second tap
+  // is ignored until the sheet is opened again. The ref answers a double tap
+  // inside one frame, before the state has re-rendered the button.
+  const adding = useRef(false);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (visible) { adding.current = false; setBusy(false); }
+  }, [visible]);
+
   const add = (key: string) => {
+    if (adding.current) return;
+    adding.current = true;
+    setBusy(true);
     const result = useWorkoutStore.getState().addLibraryProgram(key);
-    if (typeof result === 'string') return;
+    if (typeof result === 'string') {
+      adding.current = false;
+      setBusy(false);
+      return;
+    }
     haptics.success();
     onAdded(result.program.id);
   };
@@ -64,7 +80,7 @@ export function ProgramLibrarySheet({ visible, onClose, onAdded }: Props) {
               <Text style={styles.summary}>{p.summary}</Text>
               <Text style={styles.meta}>{metaLine(p)}</Text>
               <View style={styles.actions}>
-                <InlineAction icon="add" label="Add" onPress={() => add(p.key)} accessibilityLabel={`Add ${p.name}`} />
+                <InlineAction icon="add" label="Add" disabled={busy} onPress={() => add(p.key)} accessibilityLabel={`Add ${p.name}`} />
               </View>
             </View>
           ))}

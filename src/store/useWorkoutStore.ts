@@ -54,6 +54,7 @@ import { buildCatalog, catalogExercise } from '../utils/exerciseCatalog';
 import {
   cleanWorkoutName,
   exerciseNameKey,
+  freeWorkoutName,
   readMuscles,
   readRoutineItems,
   readTrainingMaxes,
@@ -171,7 +172,10 @@ export interface SetInput {
 export type SetPatch = Partial<Omit<SetInput, 'exerciseId'>>;
 
 /** Why a write was refused, for the caller to say in its own words. */
-export type WorkoutRefusal = 'blank' | 'taken' | 'notFound' | 'hasHistory' | 'live' | 'finished' | 'empty' | 'order';
+export type WorkoutRefusal =
+  | 'blank' | 'taken' | 'notFound' | 'hasHistory' | 'live' | 'finished' | 'empty' | 'order'
+  /** A routine item asks for a warm-up ramp on an exercise that doesn't record weight and reps. */
+  | 'rampKind';
 
 interface WorkoutStore {
   exercises: Exercise[];
@@ -300,6 +304,13 @@ interface WorkoutStore {
   addSessionExercise: (sessionId: string, exerciseId: string) => WorkoutSet[] | WorkoutRefusal;
   /** "Add set": one more planned set like the exercise's last (`copyLastSet`). */
   addPlannedSet: (sessionId: string, exerciseId: string) => WorkoutSet | WorkoutRefusal;
+  /**
+   * Lays warm-up steps out as planned sets ahead of the exercise's other sets,
+   * which move down to make room. Refuses a session, or an exercise not in it,
+   * that nobody knows (`notFound`). What "Use" does for a ramp that had no
+   * weight to start from when the workout began.
+   */
+  addPlannedWarmups: (sessionId: string, exerciseId: string, steps: readonly { kg: number; reps: number }[]) => WorkoutSet[] | WorkoutRefusal;
 }
 
 const nowIso = () => new Date().toISOString();
@@ -483,6 +494,15 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
     return (workingKg: number | null) => rampSteps(workingKg, ctx);
   };
 
+  /**
+   * Whether any item asks for a warm-up ramp on an exercise known not to
+   * record weight and reps. A ramp is a share of a working weight, so on an
+   * assisted exercise it would ramp the assistance. An exercise this device
+   * doesn't know yet (a custom one still syncing in) is let through.
+   */
+  const rampMisplaced = (items: readonly WorkoutRoutineItem[]): boolean =>
+    items.some(i => i.warmupRamp === true && (catalogExercise(get().exercises, i.exerciseId)?.kind ?? 'weight_reps') !== 'weight_reps');
+
   return {
     exercises: [],
     routines: [],
@@ -555,6 +575,14 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         createdAt: nowIso(),
       };
       const custom = base.isCustom;
+      // What a set records is fixed once a set exists: a logged 60 kg × 8 read
+      // as a duration or a distance would have nothing to show, and the
+      // records, volume and progression all read the old shape. The sets of
+      // another device are not here to be counted, the same limit
+      // `deleteExercise` has.
+      if (custom && patch.kind !== undefined && patch.kind !== base.kind && dbGetWorkoutSetsForExercise(id).length > 0) {
+        return 'hasHistory';
+      }
       const row: Exercise = {
         ...base,
         name,
@@ -589,13 +617,15 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       const clean = cleanWorkoutName(name);
       if (!clean) return 'blank';
       const routines = get().routines;
+      const read = readRoutineItems(items);
+      if (rampMisplaced(read)) return 'rampKind';
       const row: WorkoutRoutine = {
         id: generateId(),
         name: clean,
         notes: '',
         programId,
         sortOrder: routines.reduce((max, r) => Math.max(max, r.sortOrder), -1) + 1,
-        items: readRoutineItems(items),
+        items: read,
         createdAt: nowIso(),
       };
       dbSaveWorkoutRoutine(row);
@@ -611,12 +641,14 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         name = cleanWorkoutName(patch.name);
         if (!name) return 'blank';
       }
+      const items = patch.items !== undefined ? readRoutineItems(patch.items) : existing.items;
+      if (patch.items !== undefined && rampMisplaced(items)) return 'rampKind';
       const row: WorkoutRoutine = {
         ...existing,
         name,
         notes: patch.notes !== undefined ? patch.notes.trim() : existing.notes,
         programId: patch.programId !== undefined ? patch.programId : existing.programId,
-        items: patch.items !== undefined ? readRoutineItems(patch.items) : existing.items,
+        items,
       };
       dbSaveWorkoutRoutine(row);
       set({ routines: get().routines.map(r => (r.id === id ? row : r)) });
@@ -666,9 +698,12 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       if (!lib) return 'notFound';
       const programId = generateId();
       let order = get().routines.reduce((max, r) => Math.max(max, r.sortOrder), -1);
+      // Adding one a second time makes a second set of routines and a second
+      // program, so a name already held gets "(2)" rather than a twin.
+      const heldRoutines = get().routines.map(r => r.name);
       const routines: WorkoutRoutine[] = lib.routines.map(r => ({
         id: generateId(),
-        name: cleanWorkoutName(r.name),
+        name: (() => { const free = freeWorkoutName(r.name, heldRoutines); heldRoutines.push(free); return free; })(),
         notes: '',
         programId,
         sortOrder: ++order,
@@ -677,7 +712,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       }));
       const program: WorkoutProgram = {
         id: programId,
-        name: cleanWorkoutName(lib.name),
+        name: freeWorkoutName(lib.name, get().programs.map(p => p.name)),
         weeks: lib.weeks,
         rotation: routines.map(r => r.id),
         scheme: lib.scheme,
@@ -1077,6 +1112,21 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         supersetKey: v.supersetKey,
         completedAt: null,
       });
+    },
+
+    addPlannedWarmups(sessionId, exerciseId, steps) {
+      if (!get().sessions.some(s => s.id === sessionId)) return 'notFound';
+      const sets = get().loadSets(sessionId);
+      const mine = sets.filter(s => s.exerciseId === exerciseId);
+      if (mine.length === 0) return 'notFound';
+      if (steps.length === 0) return [];
+      const added = steps.map((step, i) => plannedRow(sessionId, exerciseId, mine[0].position, i, {
+        kind: 'warmup', weightKg: step.kg, reps: step.reps, durationSeconds: null, distanceM: null, supersetKey: mine[0].supersetKey,
+      }));
+      const shifted = sets.map(s => (s.exerciseId === exerciseId ? { ...s, setIndex: s.setIndex + steps.length } : s));
+      dbSaveWorkoutSets([...added, ...shifted.filter(s => s.exerciseId === exerciseId)]);
+      putSets(sessionId, [...shifted, ...added].sort(bySetOrder));
+      return added;
     },
 
     reorderExercises(sessionId, exerciseIds) {

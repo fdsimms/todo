@@ -49,7 +49,7 @@ import { barKgFor, effectivePlateInventory, isPlateLoaded, plateLoad } from '../
 import { analyzeExercise, recordSessions, recordsInSession, summarizeRecords } from '../utils/workoutRecords';
 import { formatRecordChange, recordLabel } from '../utils/workoutRecordText';
 import {
-  loadContextFor, proposalActionLabel, proposalApplied, proposalEdits, proposalHeadline, proposeNext, rampSteps,
+  loadContextFor, proposalActionLabel, proposalApplied, proposalEdits, proposalHeadline, proposeNext, rampSteps, rampWarmupsToAdd,
   schemeFor, workingSetLogged, type Proposal,
 } from '../utils/workoutProgression';
 import { programProgress } from '../utils/workoutProgram';
@@ -225,6 +225,10 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     const ramp = routineItem?.warmupRamp && top !== null ? rampSteps(top, loadCtx) : null;
     haptics.success();
     for (const e of proposalEdits(viewed.sets, proposal, ramp)) edit(e.setId, { weightKg: e.weightKg, reps: e.reps });
+    // A ramp with no weight to start from (a percentage program's first
+    // session) laid out no warm-ups; the proposal names one now, so add them.
+    const missing = rampWarmupsToAdd(viewed.sets, ramp);
+    if (missing.length > 0) useWorkoutStore.getState().addPlannedWarmups(session.id, viewed.exerciseId, missing);
   };
   const upNext = exercises[viewIndex + 1] ?? null;
   const upNextInfo = upNext ? catalogExercise(exerciseRows, upNext.exerciseId) : null;

@@ -84,6 +84,19 @@ describe('the workout write tools', () => {
       expect(entries.map(e => e.action)).toEqual(['created', 'cleared']);
     });
 
+    it('refuses a warm-up ramp on an exercise that does not record weight and reps', () => {
+      expect(() => saveRoutine(ledgered, {
+        name: 'Pull', exercises: [{ exerciseId: 'lib:assisted-pull-up', warmupRamp: true, sets: [{ repsMin: 8 }] }],
+      })).toThrow(/warm-up ramp is only for exercises that record weight and reps, and Assisted pull-up does not/);
+      expect(() => saveRoutine(ledgered, { name: 'Core', exercises: [{ exerciseId: 'lib:copenhagen-plank', warmupRamp: true, sets: [{}] }] }))
+        .toThrow(/Copenhagen plank/);
+      expect(entries).toEqual([]);
+      const { routine } = saveRoutine(ledgered, { name: 'Push', exercises: [{ exerciseId: BENCH, warmupRamp: true, sets: [{ repsMin: 5 }] }] });
+      expect(routine.exercises[0].warmupRamp).toBe(true);
+      // The same assisted exercise without the ramp is fine.
+      expect(saveRoutine(ledgered, { name: 'Pull', exercises: [{ exerciseId: 'lib:assisted-pull-up', sets: [{ repsMin: 8 }] }] }).routine.exercises).toHaveLength(1);
+    });
+
     it('keys a superset of three as one run', () => {
       let n = 0;
       const items = routineItemsFrom([
@@ -165,7 +178,77 @@ describe('the workout write tools', () => {
     });
   });
 
+  describe('save_program, starting the next cycle', () => {
+    it('counts the weeks again from now, so a finished cycle stops offering its raise', () => {
+      const a = saveRoutine(replica, { name: 'Squat day', exercises: [{ exerciseId: 'lib:back-squat', sets: [{ repsMin: 5, repsMax: 5 }] }] }).routine;
+      const { program } = saveProgram(replica, {
+        name: 'Wave', routineIds: [a.id], scheme: 'percent', weeks: 1, trainingMaxes: [{ exerciseId: 'lib:back-squat', kg: 100 }],
+      });
+      logWorkout(replica, {
+        routineId: a.id, startedAt: new Date(2026, 9, 6, 18).toISOString(), exercises: [{ exerciseId: 'lib:back-squat', sets: [{ weightKg: 65, reps: 5 }] }],
+      }, new Date(2026, 9, 8, 20));
+      const ended = nextWorkout(replica, { programId: program.id });
+      expect(ended.program).toMatchObject({ cycleDone: true, trainingMaxRaises: [{ fromKg: 100, toKg: 105 }] });
+      expect(ended.note).toMatch(/startNextCycle: true/);
+
+      const started = saveProgram(ledgered, {
+        id: program.id, trainingMaxes: [{ exerciseId: 'lib:back-squat', kg: 105 }], startNextCycle: true,
+      }, new Date(2026, 9, 9, 9));
+      expect(started.note).toMatch(/starts again from this moment/);
+      expect(started.program.cycleDone).toBeUndefined();
+      expect(started.program).toMatchObject({ week: 1, workoutsDone: 0, trainingMaxes: [{ exerciseId: 'lib:back-squat', kg: 105 }] });
+      expect(replica.workoutPrograms()[0].startedAt).toBe(new Date(2026, 9, 9, 9).toISOString());
+      // No second raise is offered, and the next workout is read from the new maxes.
+      const after = nextWorkout(replica, { programId: program.id });
+      expect(after.program?.trainingMaxRaises).toBeUndefined();
+      expect(after.program?.cycleDone).toBeUndefined();
+      expect(after.exercises[0].proposal?.sets[0].weightKg).toBe(67.5);
+      expect(entries).toEqual([expect.objectContaining({ action: 'edited', subject: 'program', title: 'Wave' })]);
+    });
+
+    it('leaves the count alone without it, and needs a program that exists', () => {
+      const a = saveRoutine(replica, { name: 'A' }).routine;
+      const { program } = saveProgram(replica, { name: 'P', routineIds: [a.id] });
+      saveProgram(replica, { id: program.id, weeks: 4 });
+      expect(replica.workoutPrograms()[0].startedAt).toBeNull();
+      expect(() => saveProgram(replica, { name: 'New', startNextCycle: true })).toThrow(/give its id/);
+    });
+  });
+
   describe('next_workout', () => {
+    it('reads last time from finished workouts only, not one in progress on the phone', () => {
+      const a = saveRoutine(replica, { name: 'Upper A', exercises: [
+        { exerciseId: BENCH, progression: 'double', sets: [{ repsMin: 6, repsMax: 8 }, { repsMin: 6, repsMax: 8 }] },
+      ] }).routine;
+      logWorkout(replica, {
+        routineId: a.id, startedAt: new Date(2026, 9, 6, 18).toISOString(),
+        exercises: [{ exerciseId: BENCH, sets: [{ weightKg: 80, reps: 8 }, { weightKg: 80, reps: 8 }] }],
+      }, new Date(2026, 9, 8, 20));
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { useWorkoutStore } = require('../../../src/store/useWorkoutStore');
+      useWorkoutStore.getState().initialize();
+      const live = useWorkoutStore.getState().startSession({ title: 'Live', at: new Date(2026, 9, 9, 9) });
+      useWorkoutStore.getState().logSet(live.id, { exerciseId: BENCH, weightKg: 120, reps: 8 });
+      const next = nextWorkout(replica, { routineId: a.id });
+      expect(next.exercises[0].proposal?.sets.map(st => st.weightKg)).toEqual([82.5, 82.5]);
+      expect(next.exercises[0].proposal?.reason).toBe('Up 2.5 kg because every set last time reached 8.');
+    });
+
+    it('says the week and the history are unknown when the replica holds no workouts at all', () => {
+      const a = saveRoutine(replica, { name: 'Squat day', exercises: [{ exerciseId: 'lib:back-squat', progression: 'percent', sets: [{ repsMin: 5, repsMax: 5 }] }] }).routine;
+      const { program } = saveProgram(replica, { name: 'Wave', routineIds: [a.id], scheme: 'percent', trainingMaxes: [{ exerciseId: 'lib:back-squat', kg: 100 }] });
+      // A percentage lift needs no history, so the per-exercise note stays quiet; the empty log is what matters.
+      const none = nextWorkout(replica, { programId: program.id });
+      expect(none.program).toMatchObject({ week: 1, workoutsDone: 0 });
+      expect(none.note).toMatch(/holds no workouts/);
+      expect(none.note).toMatch(/Include health logs/);
+      logWorkout(replica, {
+        routineId: a.id, startedAt: new Date(2026, 9, 6, 18).toISOString(), exercises: [{ exerciseId: 'lib:back-squat', sets: [{ weightKg: 65, reps: 5 }] }],
+      }, new Date(2026, 9, 8, 20));
+      expect(nextWorkout(replica, { programId: program.id }).note).not.toMatch(/holds no workouts/);
+    });
+
+
     it('proposes the next routine\'s loads from history, and moves on as workouts are logged', () => {
       const a = saveRoutine(replica, { name: 'Upper A', exercises: [
         { exerciseId: BENCH, progression: 'double', warmupRamp: true, sets: [{ repsMin: 6, repsMax: 8 }, { repsMin: 6, repsMax: 8 }] },

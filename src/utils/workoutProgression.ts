@@ -41,7 +41,8 @@ import { barKgFor, effectivePlateInventory, isPlateLoaded, plateLoad, warmupRamp
  *   the weight and aim for more reps.
  * - **linear**: add the increment after a workout where every working set hit
  *   its reps. After `LINEAR_DELOAD_AFTER` short workouts in a row at the same
- *   weight, propose about 10% less (`DELOAD_FRACTION`).
+ *   weight, propose the nearest load at or under 90% of it (`DELOAD_FRACTION`),
+ *   or the same weight when nothing lighter can be loaded.
  * - **percent**: each working set is a percentage of the program's training
  *   max for the exercise, stepped through a wave by the program's week
  *   (`waveOffset`). Raising the training max at the end of a cycle is a
@@ -55,7 +56,7 @@ import { barKgFor, effectivePlateInventory, isPlateLoaded, plateLoad, warmupRamp
 /** Short workouts in a row at one weight before a linear scheme proposes going lighter. */
 export const LINEAR_DELOAD_AFTER = 3;
 
-/** What a deload keeps of the weight: about 10% off, the common reset. */
+/** What a deload keeps of the weight at most: it rounds down to a load somebody can make, so the drop can be a little more than 10%. */
 export const DELOAD_FRACTION = 0.9;
 
 /** The effort an RPE item aims for when its targets don't say: two reps left in the tank. */
@@ -216,7 +217,9 @@ function stepUp(kg: number, ctx: LoadContext): number {
 }
 
 function stepDown(kg: number, ctx: LoadContext): number {
-  if (!isPlateLoaded(ctx.equipment)) return Math.max(0, kg - ctx.incrementKg);
+  // A dumbbell, machine or cable never steps down to nothing: the floor is one
+  // increment, or the weight itself when it is already lighter than that.
+  if (!isPlateLoaded(ctx.equipment)) return Math.min(kg, Math.max(ctx.incrementKg, kg - ctx.incrementKg));
   const t = roundLoad(kg - ctx.incrementKg, ctx);
   return hundredths(t, ctx.unit) < hundredths(kg, ctx.unit) ? t : loadBelow(kg, ctx);
 }
@@ -423,16 +426,24 @@ export function proposeNext(input: ProposalInput): Proposal | null {
       misses++;
     }
     if (misses >= LINEAR_DELOAD_AFTER) {
-      let next = roundLoad(lastKg * DELOAD_FRACTION, load, 'down');
-      if (!(hundredths(next, unit) < hundredths(lastKg, unit))) next = stepDown(lastKg, load);
+      // The nearest load somebody can make at or under 90%, which can be a
+      // little more or less than a step down; nothing lighter than the bar (or
+      // a dumbbell's first increment) can be loaded, so there the weight stays.
+      const next = roundLoad(lastKg * DELOAD_FRACTION, load, 'down');
+      if (!(next > 0) || !(hundredths(next, unit) < hundredths(lastKg, unit))) {
+        return {
+          ...base, move: 'same', sets: sets(lastKg, reps), repsMin: reps, repsMax: reps, lastKg,
+          reason: `Same weight. ${formatWeightNumber(lastKg, unit)} ${unit} is already the lightest load, so there is nothing lighter to go down to after ${misses} workouts short of ${reps} reps.`,
+        };
+      }
       return {
         ...base, move: 'deload', sets: sets(next, reps), repsMin: reps, repsMax: reps, lastKg,
-        reason: `Down ${deltaText(lastKg, next, unit)}, about 10% lighter, because the last ${misses} workouts at ${formatWeightNumber(lastKg, unit)} ${unit} fell short of ${reps} reps.`,
+        reason: `Down ${deltaText(lastKg, next, unit)} after ${misses} workouts in a row short of ${reps} reps at ${formatWeightNumber(lastKg, unit)} ${unit}.`,
       };
     }
     return {
       ...base, move: 'same', sets: sets(lastKg, reps), repsMin: reps, repsMax: reps, lastKg,
-      reason: `Same weight, because a set last time fell short of ${reps}. After ${LINEAR_DELOAD_AFTER} short workouts in a row, the suggestion is about 10% lighter.`,
+      reason: `Same weight, because a set last time fell short of ${reps}. After ${LINEAR_DELOAD_AFTER} short workouts in a row, the suggestion goes down to the closest load at or under 90% of this weight.`,
     };
   }
 
@@ -466,7 +477,13 @@ export function proposeNext(input: ProposalInput): Proposal | null {
     };
   }
   let next = roundLoad(lastKg * (1 + RPE_LOAD_PER_POINT * diff), load);
-  if (!(hundredths(next, unit) < hundredths(lastKg, unit))) next = stepDown(lastKg, load);
+  if (!(next > 0) || !(hundredths(next, unit) < hundredths(lastKg, unit))) next = stepDown(lastKg, load);
+  if (!(hundredths(next, unit) < hundredths(lastKg, unit))) {
+    return {
+      ...base, move: 'same', sets: sets(lastKg, reps), repsMin: min, repsMax: max, lastKg,
+      reason: `Same weight. The top set last time was RPE ${felt}, over the ${target} planned, but ${formatWeightNumber(lastKg, unit)} ${unit} is already the lightest load.`,
+    };
+  }
   return {
     ...base, move: 'down', sets: sets(next, reps), repsMin: min, repsMax: max, lastKg,
     reason: `Down ${deltaText(lastKg, next, unit)} because the top set last time was RPE ${felt}, over the ${target} planned.`,
@@ -550,7 +567,6 @@ export interface SetEdit {
 }
 
 const isPlannedWorking = (s: WorkoutSet) => s.completedAt === null && isWorkingKind(s.kind);
-const isPlannedWarmup = (s: WorkoutSet) => s.completedAt === null && s.kind === 'warmup';
 
 /** Whether a working set of this exercise has been logged in the session: the proposal is then shown, not offered. */
 export function workingSetLogged(exerciseSets: readonly WorkoutSet[]): boolean {
@@ -574,12 +590,28 @@ export function proposalEdits(
     if (want) out.push({ setId: s.id, weightKg: want.weightKg, reps: want.reps });
   });
   if (ramp) {
-    exerciseSets.filter(isPlannedWarmup).forEach((s, i) => {
+    // A step belongs to its place among all the warm-ups, done ones included:
+    // with the first already logged, the planned ones are the second step on,
+    // not the ramp over again from its lightest.
+    exerciseSets.filter(s => s.kind === 'warmup').forEach((s, i) => {
+      if (s.completedAt !== null) return;
       const step = ramp[i];
       if (step) out.push({ setId: s.id, weightKg: step.kg, reps: step.reps });
     });
   }
   return out;
+}
+
+/**
+ * The warm-ups "Use" adds when an exercise that ramps has none laid out: a
+ * percentage program's first session has no weight to ramp to when the
+ * workout starts, so the ramp is added once the proposal names one. Empty
+ * when the exercise already has a warm-up row (done or planned), since a
+ * person who took them out, or began them, has decided.
+ */
+export function rampWarmupsToAdd(exerciseSets: readonly WorkoutSet[], ramp: readonly RampStep[] | null): RampStep[] {
+  if (!ramp || ramp.length === 0) return [];
+  return exerciseSets.some(s => s.kind === 'warmup') ? [] : [...ramp];
 }
 
 /** Whether the planned working sets already ask for what the proposal does: nothing to offer then. */

@@ -108,6 +108,19 @@ describe('custom exercises', () => {
     expect(state().updateExercise('nobody', { name: 'x' })).toBe('notFound');
   });
 
+  it('refuses to change what a set records once a set is logged, but not before', () => {
+    const e = ok(state().addExercise(fly));
+    // No sets yet: the kind can still change.
+    expect(ok(state().updateExercise(e.id, { kind: 'duration' })).kind).toBe('duration');
+    const s = ok(state().startSession());
+    ok(state().logSet(s.id, { exerciseId: e.id, durationSeconds: 45 }));
+    expect(state().updateExercise(e.id, { kind: 'weight_reps' })).toBe('hasHistory');
+    expect(state().exercises.find(x => x.id === e.id)?.kind).toBe('duration');
+    // Naming the kind it already has is not a change, and the rest stays editable.
+    expect(ok(state().updateExercise(e.id, { kind: 'duration', equipment: 'band', primaryMuscles: ['lats'], name: 'Standing fly' })))
+      .toMatchObject({ kind: 'duration', equipment: 'band', primaryMuscles: ['lats'], name: 'Standing fly' });
+  });
+
   it('archives a custom exercise rather than removing it, with or without sets here', () => {
     // Another device's sets never arrive over iCloud, so "no sets" on this
     // device is not evidence there are none: a removal would sync out and
@@ -214,6 +227,36 @@ describe('routines and programs', () => {
     expect(state().routines.every(r => r.programId === program.id && r.items.length > 0)).toBe(true);
     expect(state().routines.find(r => r.name === 'Legs')!.items[0]).toMatchObject({ exerciseId: 'lib:back-squat', warmupRamp: true });
     expect(state().addLibraryProgram('nope')).toBe('notFound');
+  });
+
+  it('names a second copy of a library program apart rather than writing twins', () => {
+    const first = ok(state().addLibraryProgram('push-pull-legs'));
+    const second = ok(state().addLibraryProgram('push-pull-legs'));
+    const third = ok(state().addLibraryProgram('push-pull-legs'));
+    expect(first.program.name).toBe('Push / Pull / Legs');
+    expect(second.program.name).toBe('Push / Pull / Legs (2)');
+    expect(third.program.name).toBe('Push / Pull / Legs (3)');
+    expect(second.routines.map(r => r.name)).toEqual(['Push (2)', 'Pull (2)', 'Legs (2)']);
+    reload();
+    const names = state().routines.map(r => r.name);
+    expect(new Set(names.map(n => n.toLowerCase())).size).toBe(names.length);
+    // A name held with other spacing or case still counts as taken.
+    ok(state().updateRoutine(second.routines[0].id, { name: 'Chest day' }));
+    ok(state().updateRoutine(third.routines[0].id, { name: '  PUSH   (2) ' }));
+    expect(ok(state().addLibraryProgram('push-pull-legs')).routines[0].name).toBe('Push (3)');
+  });
+
+  it('refuses a warm-up ramp on an exercise that does not record weight and reps', () => {
+    const ramp = (exerciseId: string) => [{ exerciseId, supersetKey: null, restSeconds: null, progression: null, warmupRamp: true, targets: [{ kind: 'working' as const, repsMin: 8, repsMax: 8 }] }];
+    expect(state().addRoutine('Assisted', ramp('lib:assisted-pull-up'))).toBe('rampKind');
+    expect(state().addRoutine('Plank', ramp('lib:plank'))).toBe('rampKind');
+    expect(state().routines).toEqual([]);
+    const ok1 = ok(state().addRoutine('Squat', ramp('lib:back-squat')));
+    expect(ok1.items[0].warmupRamp).toBe(true);
+    expect(state().updateRoutine(ok1.id, { items: ramp('lib:assisted-pull-up') })).toBe('rampKind');
+    expect(state().routines[0].items[0].exerciseId).toBe('lib:back-squat');
+    // Without the ramp the same exercise is fine.
+    expect(ok(state().addRoutine('Pull-ups', [{ ...ramp('lib:assisted-pull-up')[0], warmupRamp: undefined }])).items).toHaveLength(1);
   });
 
   it('edits a program, and refuses one nobody knows', () => {
@@ -418,6 +461,24 @@ describe('a session from a routine', () => {
     expect(added.map(x => [x.position, x.setIndex, x.kind, x.completedAt])).toEqual([[0, 0, 'working', null]]);
     expect(state().addSessionExercise(s.id, 'lib:back-squat')).toBe('taken');
     expect(state().addSessionExercise(s.id, 'nobody')).toBe('notFound');
+  });
+
+  it('lays warm-ups out ahead of an exercise\'s sets, which move down to make room', () => {
+    const s = ok(state().startSession());
+    ok(state().logSet(s.id, { exerciseId: 'lib:back-squat', weightKg: 100, reps: 5, completedAt: null }));
+    ok(state().logSet(s.id, { exerciseId: 'lib:back-squat', weightKg: 100, reps: 5, completedAt: null }));
+    ok(state().logSet(s.id, { exerciseId: 'lib:leg-press', weightKg: 150, reps: 10, completedAt: null }));
+    const added = ok(state().addPlannedWarmups(s.id, 'lib:back-squat', [{ kg: 40, reps: 8 }, { kg: 60, reps: 5 }]));
+    expect(added.map(x => [x.kind, x.weightKg, x.completedAt])).toEqual([['warmup', 40, null], ['warmup', 60, null]]);
+    const rows = dbGetWorkoutSets(s.id);
+    expect(rows.map(x => [x.exerciseId, x.position, x.setIndex, x.kind, x.weightKg])).toEqual([
+      ['lib:back-squat', 0, 0, 'warmup', 40], ['lib:back-squat', 0, 1, 'warmup', 60],
+      ['lib:back-squat', 0, 2, 'working', 100], ['lib:back-squat', 0, 3, 'working', 100],
+      ['lib:leg-press', 1, 0, 'working', 150],
+    ]);
+    expect(state().setsBySession[s.id]).toHaveLength(5);
+    expect(state().addPlannedWarmups(s.id, 'lib:pec-deck', [{ kg: 10, reps: 8 }])).toBe('notFound');
+    expect(state().addPlannedWarmups('nope', 'lib:back-squat', [{ kg: 10, reps: 8 }])).toBe('notFound');
   });
 
   it('adds a set like the exercise\'s last', () => {

@@ -1254,8 +1254,10 @@ export interface Replica {
    * `saveProgram` creates (no `id`) or changes a program; fields left out
    * stay. A rotation names routine ids, refused by name when one is unknown,
    * and files its routines under the program the way the app's editor does.
+   * `startedAt` (changing a program only) restarts its count from then, which
+   * is what the phone's "Start next cycle" writes.
    */
-  saveProgram(input: { id?: string } & Partial<ProgramInput>): WorkoutProgram;
+  saveProgram(input: { id?: string; startedAt?: string } & Partial<ProgramInput>): WorkoutProgram;
   /** Deletes a program; its routines stay, as routines on their own. */
   deleteProgram(id: string): WorkoutProgram;
   /** A workout that already happened, written finished with its sets. Never completes a task. */
@@ -2283,7 +2285,8 @@ const WORKOUT_REFUSALS: Record<string, string> = {
   blank: 'A name or title cannot be blank.',
   taken: 'That name is already taken.',
   notFound: 'An exercise id is not one list_exercises knows, or the row is gone.',
-  hasHistory: 'It has history, so it is archived rather than deleted.',
+  hasHistory: 'It has sets logged against it, so it is archived rather than deleted, and what a set records cannot change.',
+  rampKind: 'A warm-up ramp is only for exercises that record weight and reps.',
   live: 'A workout is already in progress on the phone.',
   finished: 'That workout is already finished.',
   empty: 'A logged workout needs at least one set. Log only what the person did.',
@@ -4284,10 +4287,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         const missing = [...new Set(input.rotation)].filter(id => !store.routines.some(r => r.id === id));
         if (missing.length) throw new Error(`No routine with id ${missing.join(', ')}. list_workouts lists the routines, and save_routine makes one.`);
       }
-      const { id, ...fields } = input;
+      const { id, startedAt, ...fields } = input;
       if (id) {
         if (!store.programs.some(p => p.id === id)) throw new Error(`No program with id ${id}. list_workouts lists the programs.`);
-        const result = store.updateProgram(id, fields);
+        const result = store.updateProgram(id, startedAt !== undefined ? { ...fields, startedAt } : fields);
         if (typeof result === 'string') throw new Error(WORKOUT_REFUSALS[result]);
         return result;
       }

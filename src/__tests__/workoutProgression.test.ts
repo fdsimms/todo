@@ -14,6 +14,7 @@ import {
   proposalHeadline,
   proposeNext,
   rampSteps,
+  rampWarmupsToAdd,
   roundLoad,
   sameLoad,
   schemeFor,
@@ -216,7 +217,7 @@ describe('proposeNext, linear', () => {
     const p = proposeNext(input({ scheme: 'linear', item: lin, history: day('s5', 100, [5, 5, 4]) }))!;
     expect(p.move).toBe('same');
     expect(p.sets[0].weightKg).toBe(100);
-    expect(p.reason).toBe(`Same weight, because a set last time fell short of 5. After ${LINEAR_DELOAD_AFTER} short workouts in a row, the suggestion is about 10% lighter.`);
+    expect(p.reason).toBe(`Same weight, because a set last time fell short of 5. After ${LINEAR_DELOAD_AFTER} short workouts in a row, the suggestion goes down to the closest load at or under 90% of this weight.`);
   });
 
   it('proposes about 10% less after three short workouts in a row at one weight', () => {
@@ -224,7 +225,7 @@ describe('proposeNext, linear', () => {
     const p = proposeNext(input({ scheme: 'linear', item: lin, history }))!;
     expect(p.move).toBe('deload');
     expect(p.sets[0].weightKg).toBe(90);
-    expect(p.reason).toBe('Down 10 kg, about 10% lighter, because the last 3 workouts at 100 kg fell short of 5 reps.');
+    expect(p.reason).toBe('Down 10 kg after 3 workouts in a row short of 5 reps at 100 kg.');
   });
 
   it('counts only the misses at the same weight', () => {
@@ -241,6 +242,32 @@ describe('proposeNext, linear', () => {
     const history = [...day('s3', 30, [5, 5, 4]), ...day('s4', 30, [5, 4, 4]), ...day('s5', 30, [4, 4, 3])];
     const p = proposeNext(input({ scheme: 'linear', item: lin, history, load: dumbbell }))!;
     expect(p.sets[0].weightKg).toBe(25);
+    // The reason states the change that was made, not "about 10%" of it.
+    expect(p.reason).toBe('Down 5 kg after 3 workouts in a row short of 5 reps at 30 kg.');
+  });
+
+  it('rounds a light dumbbell down to the nearest load at or under 90%, not a whole step', () => {
+    const history = [...day('s3', 10, [5, 5, 4]), ...day('s4', 10, [5, 4, 4]), ...day('s5', 10, [4, 4, 3])];
+    const p = proposeNext(input({ scheme: 'linear', item: lin, history, load: dumbbell }))!;
+    expect(p).toMatchObject({ move: 'deload' });
+    expect(p.sets[0].weightKg).toBe(7.5);
+    expect(p.reason).toBe('Down 2.5 kg after 3 workouts in a row short of 5 reps at 10 kg.');
+  });
+
+  it('stays put at the bare bar, where nothing lighter can be loaded, and says so', () => {
+    const history = [...day('s3', 20, [5, 5, 4]), ...day('s4', 20, [5, 4, 4]), ...day('s5', 20, [4, 4, 3])];
+    const p = proposeNext(input({ scheme: 'linear', item: lin, history }))!;
+    expect(p.move).toBe('same');
+    expect(p.sets[0].weightKg).toBe(20);
+    expect(p.reason).toBe('Same weight. 20 kg is already the lightest load, so there is nothing lighter to go down to after 3 workouts short of 5 reps.');
+    expect(p.reason).not.toMatch(/Down 0/);
+  });
+
+  it('never deloads a dumbbell to nothing', () => {
+    const history = [...day('s3', 2.5, [5, 5, 4]), ...day('s4', 2.5, [5, 4, 4]), ...day('s5', 2.5, [4, 4, 3])];
+    const p = proposeNext(input({ scheme: 'linear', item: lin, history, load: dumbbell }))!;
+    expect(p.move).toBe('same');
+    expect(p.sets[0].weightKg).toBe(2.5);
   });
 });
 
@@ -266,6 +293,16 @@ describe('proposeNext, RPE', () => {
     expect(proposeNext(input({ scheme: 'rpe', item: rpeItem(8), history: day([8, 8, 8.5]) }))!.move).toBe('same');
     const p = proposeNext(input({ scheme: 'rpe', item: rpeItem(8), history: day([7, 7, 7], 40) }))!;
     expect(p.sets[0].weightKg).toBe(42.5);
+  });
+
+  it('never proposes nothing for a light dumbbell that felt too hard', () => {
+    const p = proposeNext(input({ scheme: 'rpe', item: rpeItem(7), history: day([10, 10, 10], 2.5), load: dumbbell }))!;
+    expect(p.sets[0].weightKg).toBeGreaterThan(0);
+    expect(p.move).toBe('same');
+    expect(p.sets[0].weightKg).toBe(2.5);
+    const heavier = proposeNext(input({ scheme: 'rpe', item: rpeItem(7), history: day([10, 10, 10], 5), load: dumbbell }))!;
+    expect(heavier.move).toBe('down');
+    expect(heavier.sets[0].weightKg).toBe(2.5);
   });
 
   it('aims for RPE 8 when the targets don’t say, and asks for a rating when there is none', () => {
@@ -339,6 +376,29 @@ describe('applying a proposal', () => {
       { setId: 'w1', weightKg: 32.5, reps: 8 },
     ]);
     expect(proposalEdits(sets, p)).toHaveLength(3);
+  });
+
+  it('gives each planned warm-up the ramp step at its place among all the warm-ups, done ones included', () => {
+    // Laid out for 100 kg (40, 60, 80), the 40 done, then "Use 105 kg".
+    const sets = [
+      planned('w1', 'warmup', 40, 8, true), planned('w2', 'warmup', 60, 5), planned('w3', 'warmup', 80, 3),
+      planned('a', 'working', 100, 5),
+    ];
+    const ramp = rampSteps(105, barbell);
+    expect(ramp.map(r => r.kg)).toEqual([42.5, 62.5, 85]);
+    const edits = proposalEdits(sets, p, ramp);
+    expect(edits.filter(e => e.setId.startsWith('w'))).toEqual([
+      { setId: 'w2', weightKg: 62.5, reps: 5 }, { setId: 'w3', weightKg: 85, reps: 3 },
+    ]);
+  });
+
+  it('adds the ramp when an exercise that ramps has no warm-up row at all', () => {
+    const ramp = rampSteps(100, barbell);
+    expect(rampWarmupsToAdd([planned('a', 'working', null, 5)], ramp)).toEqual(ramp);
+    expect(rampWarmupsToAdd([planned('w1', 'warmup', 40, 8), planned('a', 'working', 100, 5)], ramp)).toEqual([]);
+    expect(rampWarmupsToAdd([planned('w1', 'warmup', 40, 8, true), planned('a', 'working', 100, 5)], ramp)).toEqual([]);
+    expect(rampWarmupsToAdd([planned('a', 'working', null, 5)], null)).toEqual([]);
+    expect(rampWarmupsToAdd([planned('a', 'working', null, 5)], [])).toEqual([]);
   });
 
   it('never touches a done set', () => {

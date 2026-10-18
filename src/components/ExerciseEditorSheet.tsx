@@ -37,6 +37,7 @@ const REFUSED: Record<string, string> = {
   blank: 'Give the exercise a name.',
   taken: 'That name is taken.',
   notFound: 'This exercise is no longer in the library.',
+  hasHistory: 'Kind can’t change once sets are logged with this exercise.',
 };
 
 /** The bar weight steps by half a kilogram, or a pound: bars come in odd weights. */
@@ -80,6 +81,9 @@ export function ExerciseEditorSheet({ visible, exerciseId, onClose }: Props) {
     name: '', kind: 'weight_reps', equipment: 'barbell', primary: [], secondary: [], barKg: null, notes: '',
   });
   const [refusal, setRefusal] = useState<string | null>(null);
+  // Whether a set is logged on this device with the exercise: what a set
+  // records is then fixed (`updateExercise` refuses it too).
+  const [kindLocked, setKindLocked] = useState(false);
   const baseline = useRef('');
 
   useEffect(() => {
@@ -95,6 +99,7 @@ export function ExerciseEditorSheet({ visible, exerciseId, onClose }: Props) {
     };
     setV(next);
     setRefusal(null);
+    setKindLocked(!!exerciseId && useWorkoutStore.getState().exerciseHistory(exerciseId).length > 0);
     baseline.current = snapshotOf(next);
     // On open only: a sync landing mid-edit must not overwrite what is typed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -176,8 +181,17 @@ export function ExerciseEditorSheet({ visible, exerciseId, onClose }: Props) {
           {!builtIn && (
             <>
               <Text style={styles.label}>What a set records</Text>
-              <SegmentedControl options={KIND_OPTIONS} value={v.kind} onChange={k => patch({ kind: k })} columns={3} label="What a set records" surface="page" />
-              <HelpText style={styles.hint}>Sets already logged keep what they recorded.</HelpText>
+              <SegmentedControl
+                options={kindLocked ? KIND_OPTIONS.map(o => ({ ...o, disabled: o.value !== v.kind })) : KIND_OPTIONS}
+                value={v.kind}
+                onChange={k => patch({ kind: k })}
+                columns={3}
+                label="What a set records"
+                surface="page"
+              />
+              <HelpText style={styles.hint}>
+                {kindLocked ? 'Kind can’t change once sets are logged with this exercise.' : 'This can’t be changed once a set is logged with the exercise.'}
+              </HelpText>
               <Text style={styles.label}>Equipment</Text>
               <PillGroup
                 noun="piece of equipment"

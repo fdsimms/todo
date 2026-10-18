@@ -3375,7 +3375,7 @@ function seedWorkouts(today: Date): void {
   if (typeof lower !== 'string') {
     useTaskStore.getState().addTask({
       title: 'Leg day',
-      notes: 'Lower A on its own, on the weekend.',
+      notes: 'Lower A on its own, later in the week.',
       category: 'Health',
       recurrenceType: 'weekly',
       recurrenceDays: [(day + 5) % 7],

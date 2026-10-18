@@ -675,7 +675,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'save_program',
-    'Create a workout program (no id) or change one (id from list_workouts). A program is routines done in turn (routineIds, in order; a routine may come round more than once), the scheme its exercises move on by when their routine does not choose one (double: rep range, linear, percent of a training max, rpe), how many passes through the rotation make a cycle (weeks; null for open-ended), and training maxes in kg for a percentage scheme. Make the routines first with save_routine. Fields left out stay; routineIds and trainingMaxes replace the whole list when given. Which week it is and which routine is next are worked out from finished workouts, never set. Never raise a training max the person did not agree to. To put it on the schedule, create or update a task with workoutProgramId.',
+    'Create a workout program (no id) or change one (id from list_workouts). A program is routines done in turn (routineIds, in order; a routine may come round more than once), the scheme its exercises move on by when their routine does not choose one (double: rep range, linear, percent of a training max, rpe), how many passes through the rotation make a cycle (weeks; null for open-ended), and training maxes in kg for a percentage scheme. Make the routines first with save_routine. Fields left out stay; routineIds and trainingMaxes replace the whole list when given. Which week it is and which routine is next are worked out from finished workouts, never set. Never raise a training max the person did not agree to. When a cycle has ended and they agree to the raised maxes next_workout lists, send the new trainingMaxes with startNextCycle: true in one call, as the phone\'s "Start next cycle" does. To put it on the schedule, create or update a task with workoutProgramId.',
     {
       id: z.string().min(1).optional().describe('A program id from list_workouts, to change it. Leave out to create one.'),
       name: z.string().min(1).max(80).optional().describe('Required to create one.'),
@@ -686,6 +686,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
         exerciseId: z.string().min(1).describe('From list_exercises.'),
         kg: z.number().positive().max(1000).describe('In kg, whatever unit the person said; convert pounds.'),
       })).max(30).optional().describe('For a percentage scheme: the weight its sets are percentages of. Replaces them all when given.'),
+      startNextCycle: z.literal(true).optional().describe('Needs id. Counts the program\'s weeks again from now, which is what the phone\'s "Start next cycle" does after a cycle ends. Use it with the raised trainingMaxes once the person agrees; without it the cycle stays finished and the phone offers the raise again.'),
     },
     async input => {
       try {

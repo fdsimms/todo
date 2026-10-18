@@ -104,6 +104,23 @@ export function cleanWorkoutName(name: string): string {
   return name.trim().replace(/\s+/g, ' ').slice(0, WORKOUT_NAME_MAX_LENGTH);
 }
 
+/**
+ * A name nobody else holds: the one given, else "Upper A (2)", "Upper A (3)"
+ * and on. Clashes are judged on `exerciseNameKey`, the key this area's names
+ * are unique on, so "upper  a" counts as "Upper A". The suffix is kept whole
+ * when the cap shortens a long name.
+ */
+export function freeWorkoutName(name: string, existing: readonly string[]): string {
+  const taken = new Set(existing.map(exerciseNameKey));
+  const clean = cleanWorkoutName(name);
+  if (!taken.has(exerciseNameKey(clean))) return clean;
+  for (let n = 2; ; n++) {
+    const suffix = ` (${n})`;
+    const candidate = `${clean.slice(0, WORKOUT_NAME_MAX_LENGTH - suffix.length).trimEnd()}${suffix}`;
+    if (!taken.has(exerciseNameKey(candidate))) return candidate;
+  }
+}
+
 function oneOf<T extends string>(values: readonly T[], raw: unknown, fallback: T): T {
   return typeof raw === 'string' && (values as readonly string[]).includes(raw) ? (raw as T) : fallback;
 }

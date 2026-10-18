@@ -1,6 +1,6 @@
 import {
   DEFAULT_PLATE_INVENTORY, DEFAULT_REST_SECONDS, REST_SECONDS_MAX, REST_SECONDS_MIN, WORKOUT_NAME_MAX_LENGTH,
-  clampRestSeconds, cleanWorkoutName, exerciseNameKey, normalizePlateInventory, parsePlateInventory, parseRestSeconds,
+  clampRestSeconds, cleanWorkoutName, exerciseNameKey, freeWorkoutName, normalizePlateInventory, parsePlateInventory, parseRestSeconds,
   readEquipment, readExerciseKind, readIdList, readMuscles, readRoutineItems, readScheme, readSetKind, readTrainingMaxes,
   WEIGHT_STEP, formatRestSeconds, formatWeightNumber, formatWeightWithUnit, weightFromDisplay, weightToDisplay,
 } from '../utils/workoutData';
@@ -15,6 +15,18 @@ describe('names', () => {
     expect(cleanWorkoutName('  Push   A ')).toBe('Push A');
     expect(cleanWorkoutName('   ')).toBe('');
     expect(cleanWorkoutName('x'.repeat(200))).toHaveLength(WORKOUT_NAME_MAX_LENGTH);
+  });
+
+  it('suffixes a name another holds, on the same key the exercise names use', () => {
+    expect(freeWorkoutName('Upper A', [])).toBe('Upper A');
+    expect(freeWorkoutName('Upper A', ['Lower A'])).toBe('Upper A');
+    expect(freeWorkoutName('Upper A', ['upper  a'])).toBe('Upper A (2)');
+    expect(freeWorkoutName(' Upper  A ', ['Upper A', 'Upper A (2)'])).toBe('Upper A (3)');
+    // A long name gives up characters, never the suffix.
+    const long = 'x'.repeat(WORKOUT_NAME_MAX_LENGTH);
+    const free = freeWorkoutName(long, [long]);
+    expect(free).toHaveLength(WORKOUT_NAME_MAX_LENGTH);
+    expect(free.endsWith(' (2)')).toBe(true);
   });
 });
 
