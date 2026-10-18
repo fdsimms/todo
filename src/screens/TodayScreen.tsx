@@ -1682,6 +1682,9 @@ export function TodayScreen() {
           // by time passing, and so does the length of a low run.
           useTaskStore.getState().checkMoodTasks();
           useTaskStore.getState().checkJournalTasks();
+          // Lets a held WaniKani task's hour pass; useWaniKaniSync reads the
+          // account on the same foreground and runs the rest when it lands.
+          useTaskStore.getState().checkWaniKaniTasks();
           // And the weigh-in, which shares the mood check-in's shape: a day
           // rolling over is its whole trigger, so a phone that stays open for
           // days would otherwise never be asked. Async (it takes its own

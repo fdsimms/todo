@@ -127,6 +127,12 @@ export const GO_UPC_KEY_SECURE_KEY = 'goUpcApiKey';
  * would be handed to every device through the very store it authenticates.
  */
 export const SYNC_TOKEN_SECURE_KEY = 'syncServerToken';
+/**
+ * The person's WaniKani API token (`src/services/wanikani.ts`). Read-only is
+ * all it needs. Device-local for the sync token's reason: a credential for
+ * someone's account on another service has no business riding the sync.
+ */
+export const WANIKANI_TOKEN_SECURE_KEY = 'wanikaniApiToken';
 
 export async function loadSecureKey(name: string): Promise<string> {
   try {

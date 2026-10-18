@@ -438,6 +438,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'limitWarningTasks',
   'goalTargetTasks',
   'bookEventTasks',
+  'wanikaniTasks',
 
   // Behaviour.
   'newTaskDefaults',
@@ -561,6 +562,14 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'travelWalkUnderMinutes',
   'useUpTaskCap',
   'waitingFollowUpTaskCategory',
+  // The WaniKani task's options. The token is the keychain's and never syncs,
+  // and neither do the review state or the lessons day mark, which say what
+  // this device has seen.
+  'wanikaniTaskCategory',
+  'wanikaniReviewThreshold',
+  'wanikaniLessonsPerDay',
+  'wanikaniApprenticeCap',
+  'wanikaniNotify',
   'waterShortfallTaskCategory',
   'weatherTaskCategory',
   'weekendNudgeTaskCategory',
