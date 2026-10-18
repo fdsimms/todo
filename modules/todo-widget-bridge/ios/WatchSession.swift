@@ -118,18 +118,20 @@ final class WatchSession: NSObject, WCSessionDelegate {
     queue.async {
       let entries = Self.decodeEntries(tapsData)
       guard !entries.isEmpty, let url = Self.appGroupFile(watchQuietTapsFileName) else { return }
-      var existing: [Any] = []
-      if let data = try? Data(contentsOf: url),
-         let decoded = (try? JSONSerialization.jsonObject(with: data)) as? [Any] {
-        existing = decoded
+      coordinatedQueueWrite(url) { url in
+        var existing: [Any] = []
+        if let data = try? Data(contentsOf: url),
+           let decoded = (try? JSONSerialization.jsonObject(with: data)) as? [Any] {
+          existing = decoded
+        }
+        let requeued: [Any] = entries.map { $0 as Any }
+        guard let merged = try? JSONSerialization.data(withJSONObject: requeued + existing) else { return }
+        try? FileManager.default.createDirectory(
+          at: url.deletingLastPathComponent(),
+          withIntermediateDirectories: true
+        )
+        try? merged.write(to: url, options: .atomic)
       }
-      let requeued: [Any] = entries.map { $0 as Any }
-      guard let merged = try? JSONSerialization.data(withJSONObject: requeued + existing) else { return }
-      try? FileManager.default.createDirectory(
-        at: url.deletingLastPathComponent(),
-        withIntermediateDirectories: true
-      )
-      try? merged.write(to: url, options: .atomic)
       self.pushContext()
     }
   }
@@ -323,20 +325,26 @@ final class WatchSession: NSObject, WCSessionDelegate {
   /// JSONSerialization rather than a Codable struct so entries written by
   /// another target, in a shape this file doesn't spell out, survive the
   /// rewrite untouched.
+  ///
+  /// The read and the write are one coordinated write (`coordinatedQueueWrite`),
+  /// so the widget's own appends (another process), a requeue and the app's
+  /// drain can't land in between and be written over or deleted unread.
   private func appendToQueue(_ fileName: String, _ entry: Any) {
     guard let url = Self.appGroupFile(fileName) else { return }
-    var entries: [Any] = []
-    if let data = try? Data(contentsOf: url),
-       let existing = (try? JSONSerialization.jsonObject(with: data)) as? [Any] {
-      entries = existing
+    coordinatedQueueWrite(url) { url in
+      var entries: [Any] = []
+      if let data = try? Data(contentsOf: url),
+         let existing = (try? JSONSerialization.jsonObject(with: data)) as? [Any] {
+        entries = existing
+      }
+      entries.append(entry)
+      guard let data = try? JSONSerialization.data(withJSONObject: entries) else { return }
+      try? FileManager.default.createDirectory(
+        at: url.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+      )
+      try? data.write(to: url, options: .atomic)
     }
-    entries.append(entry)
-    guard let data = try? JSONSerialization.data(withJSONObject: entries) else { return }
-    try? FileManager.default.createDirectory(
-      at: url.deletingLastPathComponent(),
-      withIntermediateDirectories: true
-    )
-    try? data.write(to: url, options: .atomic)
   }
 
   // ==== Session lifecycle ====
@@ -379,6 +387,31 @@ final class WatchSession: NSObject, WCSessionDelegate {
   private static func decodeEntries(_ data: Data) -> [[String: Any]] {
     ((try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]]) ?? []
   }
+}
+
+/// Runs `body` on a queue file in the App Group with every other coordinated
+/// reader-and-writer of it held off until it returns: in this process (the
+/// session's queue against the module's drain) and in others (the widget's
+/// `QuietTapQueue.append`). Each of them reads the whole file and writes it
+/// back, or reads it and deletes it, so two at once lose an entry: one written
+/// over, or appended between a drain's read and its delete. One coordinated
+/// *write* for all of them, with no options, since each changes the file and
+/// all of them name the file itself (Apple: a write on a file "waits for other
+/// readers and writers of the exact same file"). The accessor gets the URL to
+/// use, which may differ from the one passed.
+///
+/// If coordination itself fails, Apple documents that the accessor never
+/// runs, so the body then runs uncoordinated, which is how every one of these
+/// ran before: a tap is never dropped for want of a lock. Never call it from
+/// inside another coordinated block (Foundation throws on that nesting).
+func coordinatedQueueWrite(_ url: URL, _ body: (URL) -> Void) {
+  var ran = false
+  var error: NSError?
+  NSFileCoordinator(filePresenter: nil).coordinate(writingItemAt: url, options: [], error: &error) { coordinated in
+    ran = true
+    body(coordinated)
+  }
+  if !ran { body(url) }
 }
 
 // Starts the session as the app launches, foreground or background, so the

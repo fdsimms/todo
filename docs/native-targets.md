@@ -67,6 +67,13 @@ the two runs compare exactly, which is how to prove a refactor left a target unc
   checkboxes (`QuietTapQueue`) and the phone's `WatchSession` for the watch's taps, so both read
   and rewrite it through `JSONSerialization` and leave entries they don't recognise untouched.
   Decoding it as a Codable array and writing that back is what used to strip the watch's fields.
+  **And every read-and-rewrite of it, and the app's read-and-delete (`drainQuietTaps`), is one
+  coordinated write** (`NSFileCoordinator`, `coordinatedQueueWrite` in `WatchSession.swift` and its
+  copy in `WidgetQuietIntents.swift`): the widget appends from another process, so without it an
+  append could be written over by another, or land between the drain's read and its delete and be
+  deleted unread. A new writer of the file goes through the same helper. If coordination itself
+  fails the accessor never runs, so the helper then runs the body uncoordinated rather than drop a
+  tap; never call it inside another coordinated block, which Foundation refuses.
 - **A share extension's `NSExtensionPrincipalClass` failing to resolve is a silent no-op**, not
   a build error: iOS instantiates the named class when the row is tapped, and if the name is
   wrong nothing at all happens. A Swift class's Objective-C name is module-qualified, so the

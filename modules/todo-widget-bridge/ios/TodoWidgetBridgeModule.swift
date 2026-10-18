@@ -642,12 +642,18 @@ public class TodoWidgetBridgeModule: Module {
           .appendingPathComponent("Library/Application Support", isDirectory: true)
           .appendingPathComponent(quietTapsFileName)
 
-        guard let data = try? Data(contentsOf: fileURL) else { return }
-        defer { try? FileManager.default.removeItem(at: fileURL) }
-        json = String(data: data, encoding: .utf8) ?? "[]"
-        // Watch taps in what was just read stay "waiting" for the watch
-        // until the snapshot that includes them is written.
-        WatchSession.shared.noteDrained(data)
+        // The read and the delete are one coordinated write, so an append
+        // (the widget's, or a watch tap queued by WatchSession) waits for the
+        // delete and starts a fresh file, rather than landing between the two
+        // and being deleted unread (coordinatedQueueWrite, WatchSession.swift).
+        coordinatedQueueWrite(fileURL) { url in
+          guard let data = try? Data(contentsOf: url) else { return }
+          defer { try? FileManager.default.removeItem(at: url) }
+          json = String(data: data, encoding: .utf8) ?? "[]"
+          // Watch taps in what was just read stay "waiting" for the watch
+          // until the snapshot that includes them is written.
+          WatchSession.shared.noteDrained(data)
+        }
       }
       return json
     }
