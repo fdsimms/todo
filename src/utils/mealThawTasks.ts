@@ -260,3 +260,32 @@ export function staleMealThawTasks<
     return !frozen || frozen.names.length === 0;
   });
 }
+
+/**
+ * The live rows whose food is out of the freezer: the meal is still planned and
+ * in the window, and nothing in it is frozen any more. Marked ready by the
+ * sweep instead of deleted; a subset of `staleMealThawTasks`.
+ */
+export function answeredMealThawTasks<
+  T extends Pick<Task, 'generatedKind' | 'generatedSourceId' | 'completed' | 'archived'>
+>(
+  tasks: readonly T[],
+  entries: readonly MealPlanEntry[],
+  recipesById: ReadonlyMap<string, Recipe>,
+  leftovers: readonly Leftover[],
+  items: readonly GroceryItem[],
+  itemSubs: readonly ItemSubLink[],
+  swaps: StandingSwapMap,
+  todayKey: string,
+  now: Date,
+  products: readonly ItemProduct[] = []
+): T[] {
+  const byId = new Map(entries.map(entry => [entry.id, entry]));
+  return liveGeneratedTasksOfKind(tasks, 'mealThaw').filter(task => {
+    const entryId = mealThawEntryId(task);
+    const entry = entryId ? byId.get(entryId) : undefined;
+    if (!entry || declinedThaw(entry) || !isWithinThawWindow(entry.date, todayKey)) return false;
+    const frozen = frozenForMeal(entry, recipesById, leftovers, items, itemSubs, swaps, now, products);
+    return !!frozen && frozen.names.length === 0;
+  });
+}

@@ -215,3 +215,29 @@ export function staleMealLogNudgeTasks<
     return isMealLogged(entry, logged);
   });
 }
+
+/**
+ * The live rows whose meal has been logged since they were raised, the one
+ * reason a nudge goes that is the person doing what it asked. The sweep marks
+ * these ready instead of deleting them, so the tick (and its coins) is theirs;
+ * every other stale reading still deletes. A subset of `staleMealLogNudgeTasks`.
+ */
+export function answeredMealLogNudgeTasks<
+  T extends Pick<Task, 'generatedKind' | 'generatedSourceId' | 'completed' | 'archived'>
+>(
+  tasks: readonly T[],
+  entries: readonly MealPlanEntry[],
+  logged: MealLogRecord,
+  todayKey: string,
+  lookbackDays: number = MEAL_LOG_NUDGE_LOOKBACK_DAYS
+): T[] {
+  const byId = new Map(entries.map(entry => [entry.id, entry]));
+  return liveGeneratedTasksOfKind(tasks, 'mealLogNudge').filter(task => {
+    const entryId = mealLogNudgeEntryId(task);
+    const entry = entryId ? byId.get(entryId) : undefined;
+    return !!entry
+      && !declinedLog(entry)
+      && isWithinLogNudgeWindow(entry.date, todayKey, lookbackDays)
+      && isMealLogged(entry, logged);
+  });
+}

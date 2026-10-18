@@ -3581,6 +3581,15 @@ export interface Task {
   // square on the calendar, not a row (see generatedTasks.ts).
   generatedKind: GeneratedKind | null;
   generatedSourceId: string | null;
+  /**
+   * When the thing this generated task asks for was seen to be done: the food
+   * was logged, the item restocked, the goal reached. The row stays and reads
+   * ready (`circleReady`) so the person ticks it and the coins are theirs; a
+   * sweep that used to delete or complete it for them sets this instead. Only
+   * a generator that finds the reason wanted again clears it. Display only: it
+   * gates nothing, and null on every other task.
+   */
+  generatedReadyAt?: string | null;
 
   // The id of the all-day calendar event mirroring this task's deadline, or
   // null when deadlineOnCalendar is off or the write hasn't happened (yet, or

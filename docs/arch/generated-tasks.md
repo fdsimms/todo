@@ -730,6 +730,38 @@ one. Those three rules and the reasoning behind them are in
   - **There is no row cap**: unlike a shortfall it isn't competing for shelf space, and the window
     already bounds it.
 
+## A satisfied task stays, and reads ready
+
+A sweep that finds the thing a generated task asks for already done does **not
+delete the row and does not tick it for the person**. It sets
+`Task.generatedReadyAt`, the row draws its checkbox in the ready colour
+(`generatedReady` in `TaskItem`), and the tick, with its coins, is the person's.
+Deleting lost the coins and ticking for them invented a claim, so neither is
+allowed once the person has done the work. The mark is display only and gates
+nothing (the four record kinds below are the one gated family).
+
+- **Only satisfaction marks; withdrawal still deletes.** A source that went away,
+  was declined, is out of its window or has its setting off is not "done", so those
+  paths are unchanged. Each kind's sweep splits the two: `answered*Tasks` beside
+  `stale*Tasks` for the ones with a source row, a `satisfied` flag on
+  `reconcileGeneratedTask` / `dropGeneratedTask` for the rest.
+- **`settleReadyMarks` is the other half**: it marks the answered rows and takes the
+  mark off any live row that no longer is, so a deleted food entry or a total back
+  under the goal stops the row saying it is done. `reconcileGeneratedTask`'s
+  `satisfied` does the same for a row that stays wanted (`goalTarget`).
+- **A ready row survives the rollover** (a day or part of the day passing, a week
+  ending), for the record kinds and for `waterShortfall`, `snackNudge`,
+  `produceNudge`, `goalTarget`, `produceFloor` and `mealSlot`, or the coins would
+  be lost overnight.
+- **A tick on a ready `waterShortfall` logs nothing**: its tick normally logs the
+  water, and the water is already in the log.
+- **Marking a meal cooked** (`setCooked`) now marks its cook and meal-slot rows
+  instead of completing every chain step; each step ticked spawns the next
+  already marked (`buildCompletion` carries the mark along a chain).
+- **Not covered, on purpose**: a workout's linked task (finishing a session says
+  so on its summary and is gated by `completeLinkedTask`) and a water quota task
+  filling from the log (it is a meter, not a generated row).
+
 ## A generated row links back to where it is defined
 
 Every row with a `generatedKind` carries a sparkles button in its expanded panel (beside duplicate, not on the collapsed row) that opens its generator on the

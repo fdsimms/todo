@@ -801,6 +801,9 @@ export function buildCompletion(
         // the first generator whose task is a chain.
         generatedKind: chainAdvances && !atChainEnd ? effective.generatedKind : null,
         generatedSourceId: chainAdvances && !atChainEnd ? effective.generatedSourceId : null,
+        // A meal already logged or cooked is still so for the step after this
+        // one, so it reads ready too; see Task.generatedReadyAt.
+        generatedReadyAt: chainAdvances && !atChainEnd ? effective.generatedReadyAt ?? null : null,
         // Never carried forward: the old occurrence's device event still
         // shows the old deadline, and this is a fresh row with a fresh
         // deadline (nextDeadline above) that needs its own event, created
