@@ -45,7 +45,7 @@ struct WorkoutTodayRow: View {
     private var subtitle: String? {
         if let screen = store.workoutScreen {
             if let next = screen.nextSet { return next.label }
-            return screen.moreSets > 0 ? "More sets on your iPhone" : "All sets done"
+            return screen.noSetsLeftText
         }
         if let today = store.startRoutines.first(where: \.fromToday) {
             return "\(today.name) is on today"
@@ -84,7 +84,12 @@ struct WorkoutStartView: View {
     var body: some View {
         List {
             let routines = store.startRoutines
-            if store.workoutSection == nil {
+            if let finishing = finishingOnPhone {
+                // Finished here, not yet applied on the phone: its routines
+                // come back with the phone's answer.
+                let name = finishing.title.isEmpty ? "Your workout" : finishing.title
+                WatchNote(text: "\(name) is finished. It moves to your iPhone the next time it's nearby.")
+            } else if store.workoutSection == nil {
                 WatchNote(text: "Open dundundun on your iPhone to load your routines.")
             } else if routines.isEmpty {
                 WatchNote(text: "Add a routine in dundundun on your iPhone to start it here.")
@@ -102,6 +107,12 @@ struct WorkoutStartView: View {
             }
         }
         .navigationTitle("Start")
+    }
+
+    /// The phone's workout, finished here and not yet applied there.
+    private var finishingOnPhone: WatchLiveWorkout? {
+        guard let live = store.workoutSection?.live, store.local.finishedSessions.contains(live.sessionId) else { return nil }
+        return live
     }
 
     private func routineRow(_ routine: WatchRoutine, detail: String) -> some View {
@@ -159,7 +170,7 @@ struct WorkoutCurrentPage: View {
                 Image(systemName: "checkmark")
                     .font(.title2)
                     .foregroundStyle(palette.done)
-                Text(screen.moreSets > 0 ? "More sets on your iPhone" : "All sets done")
+                Text(screen.noSetsLeftText)
                     .font(.headline)
                     .multilineTextAlignment(.center)
                 WatchNote(text: "Scroll down for Finish workout.")
@@ -471,7 +482,7 @@ struct WorkoutRestView: View {
     }
 
     private var nextLine: some View {
-        Text(screen.nextSet?.next ?? (screen.moreSets > 0 ? "More sets on your iPhone" : "All sets done"))
+        Text(screen.nextSet?.next ?? screen.noSetsLeftText)
             .font(.footnote)
             .lineLimit(2)
             .multilineTextAlignment(.center)
@@ -535,8 +546,8 @@ struct WorkoutListPage: View {
                 Label("Add exercise", systemImage: "plus")
                     .foregroundStyle(palette.accent)
             }
-            if screen.moreSets > 0 {
-                WatchNote(text: "\(screen.moreSets) more sets are on your iPhone.")
+            if let note = screen.moreSetsNote {
+                WatchNote(text: note)
             }
             Section {
                 Button {
@@ -580,7 +591,11 @@ struct WorkoutListPage: View {
         if endsWithNothing(screen) { return "No sets are done, so nothing is saved." }
         if screen.setsDone == 0 { return "No sets are done yet." }
         let sets = screen.setsDone == 1 ? "1 set" : "\(screen.setsDone) sets"
-        return "\(sets) done. Sets you haven't done are left off."
+        let done = "\(sets) done. Sets you haven't done are left off."
+        // A workout run here says what never reached the watch, so it doesn't
+        // read as the whole routine done.
+        if screen.source == .own, let note = screen.moreSetsNote { return "\(done) \(note)" }
+        return done
     }
 }
 

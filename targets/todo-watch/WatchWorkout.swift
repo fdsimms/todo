@@ -35,6 +35,30 @@ enum WatchSetField: Hashable {
     case weight, reps, duration, distance
 }
 
+/// Accepts any element, so an element that failed to decode can be passed
+/// over: an unkeyed container moves on only after a decode that succeeds.
+private struct WatchSkippedElement: Decodable {
+    init(from decoder: Decoder) throws {}
+}
+
+extension KeyedDecodingContainer {
+    /// An array of `T` with any element that doesn't decode left out, rather
+    /// than failing the whole section over one bad set. Empty when the key is
+    /// missing or isn't an array.
+    func decodeLossy<T: Decodable>(_ type: T.Type, forKey key: Key) -> [T] {
+        guard var items = try? nestedUnkeyedContainer(forKey: key) else { return [] }
+        var out: [T] = []
+        while !items.isAtEnd {
+            if let value = try? items.decode(T.self) {
+                out.append(value)
+            } else if (try? items.decode(WatchSkippedElement.self)) == nil {
+                break
+            }
+        }
+        return out
+    }
+}
+
 /// The next load for an exercise, worked out on the phone by the rules
 /// workout mode's card uses (`WatchSuggestion` in watchWorkout.ts), in the
 /// unit shown. Applied only on a tap of Use.
@@ -62,8 +86,8 @@ struct WatchSuggestion: Codable, Equatable {
         weight = try c.decodeIfPresent(Double.self, forKey: .weight) ?? 0
         use = try c.decodeIfPresent(String.self, forKey: .use) ?? "Use"
         reason = try c.decodeIfPresent(String.self, forKey: .reason) ?? ""
-        sets = try c.decodeIfPresent([Step].self, forKey: .sets) ?? []
-        ramp = try c.decodeIfPresent([Step].self, forKey: .ramp) ?? []
+        sets = c.decodeLossy(Step.self, forKey: .sets)
+        ramp = c.decodeLossy(Step.self, forKey: .ramp)
     }
 }
 
@@ -93,7 +117,7 @@ struct WatchWorkoutExercise: Codable, Identifiable, Equatable {
         name = try c.decodeIfPresent(String.self, forKey: .name) ?? ""
         kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? "weight_reps"
         rest = try c.decodeIfPresent(Int.self, forKey: .rest) ?? 90
-        suggestion = try c.decodeIfPresent(WatchSuggestion.self, forKey: .suggestion)
+        suggestion = try? c.decodeIfPresent(WatchSuggestion.self, forKey: .suggestion)
     }
 
     var fields: [WatchSetField] {
@@ -138,15 +162,18 @@ struct WatchWorkoutSet: Codable, Identifiable, Equatable {
     var doneAt: String?
     /// The note written on it, dictated here or typed on the phone.
     var note: String?
+    /// The superset it belongs to: its exercise is done round by round with
+    /// the others sharing it, and a workout run here brings it back.
+    var supersetKey: String?
 
     enum CodingKeys: String, CodingKey {
         case id, exerciseId, position, setIndex, kind, label, badge, next, rest
-        case weight, reps, durationSeconds, distanceM, doneAt, note
+        case weight, reps, durationSeconds, distanceM, doneAt, note, supersetKey
     }
 
     /// A set laid out here ("Add set", "Add exercise", a ramp's warm-up),
     /// worded by `WatchWorkoutList.relabel` once it is in the list.
-    init(id: String, exerciseId: String, kind: String, rest: Int, values: WatchSetValues) {
+    init(id: String, exerciseId: String, kind: String, rest: Int, values: WatchSetValues, supersetKey: String? = nil) {
         self.id = id
         self.exerciseId = exerciseId
         position = 0
@@ -162,6 +189,7 @@ struct WatchWorkoutSet: Codable, Identifiable, Equatable {
         distanceM = values.distanceM
         doneAt = nil
         note = nil
+        self.supersetKey = supersetKey
     }
 
     init(from decoder: Decoder) throws {
@@ -181,6 +209,7 @@ struct WatchWorkoutSet: Codable, Identifiable, Equatable {
         distanceM = try c.decodeIfPresent(Double.self, forKey: .distanceM)
         doneAt = try c.decodeIfPresent(String.self, forKey: .doneAt)
         note = try c.decodeIfPresent(String.self, forKey: .note)
+        supersetKey = try c.decodeIfPresent(String.self, forKey: .supersetKey)
     }
 
     var isDone: Bool { doneAt != nil }
@@ -228,10 +257,10 @@ struct WatchLiveWorkout: Decodable {
         sessionId = try c.decode(String.self, forKey: .sessionId)
         title = try c.decodeIfPresent(String.self, forKey: .title) ?? ""
         startedAt = try c.decodeIfPresent(String.self, forKey: .startedAt) ?? ""
-        exercises = try c.decodeIfPresent([WatchWorkoutExercise].self, forKey: .exercises) ?? []
-        sets = try c.decodeIfPresent([WatchWorkoutSet].self, forKey: .sets) ?? []
-        moreSets = try c.decodeIfPresent(Int.self, forKey: .moreSets) ?? 0
-        rest = try c.decodeIfPresent(WatchPhoneRest.self, forKey: .rest)
+        exercises = c.decodeLossy(WatchWorkoutExercise.self, forKey: .exercises)
+        sets = c.decodeLossy(WatchWorkoutSet.self, forKey: .sets)
+        moreSets = (try? c.decodeIfPresent(Int.self, forKey: .moreSets)) ?? 0
+        rest = try? c.decodeIfPresent(WatchPhoneRest.self, forKey: .rest)
     }
 }
 
@@ -245,8 +274,11 @@ struct WatchRoutine: Decodable, Identifiable {
     let programId: String?
     let exercises: [WatchWorkoutExercise]
     let plan: [WatchWorkoutSet]
+    /// Sets of the routine the phone left off (whole exercises past its cap),
+    /// which a workout started here says it doesn't have.
+    let moreSets: Int
 
-    enum CodingKeys: String, CodingKey { case id, name, exerciseCount, fromToday, taskId, programId, exercises, plan }
+    enum CodingKeys: String, CodingKey { case id, name, exerciseCount, fromToday, taskId, programId, exercises, plan, moreSets }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -256,8 +288,9 @@ struct WatchRoutine: Decodable, Identifiable {
         fromToday = try c.decodeIfPresent(Bool.self, forKey: .fromToday) ?? false
         taskId = try c.decodeIfPresent(String.self, forKey: .taskId)
         programId = try c.decodeIfPresent(String.self, forKey: .programId)
-        exercises = try c.decodeIfPresent([WatchWorkoutExercise].self, forKey: .exercises) ?? []
-        plan = try c.decodeIfPresent([WatchWorkoutSet].self, forKey: .plan) ?? []
+        exercises = c.decodeLossy(WatchWorkoutExercise.self, forKey: .exercises)
+        plan = c.decodeLossy(WatchWorkoutSet.self, forKey: .plan)
+        moreSets = (try? c.decodeIfPresent(Int.self, forKey: .moreSets)) ?? 0
     }
 }
 
@@ -286,7 +319,7 @@ struct WatchQuietHours: Codable, Equatable {
 struct WatchRecentExercise: Decodable, Identifiable, Equatable {
     struct PlannedSet: Decodable, Equatable {
         let kind: String
-        let weight: Double?
+        var weight: Double?
         let reps: Int?
         let durationSeconds: Int?
         let distanceM: Double?
@@ -296,7 +329,7 @@ struct WatchRecentExercise: Decodable, Identifiable, Equatable {
     let name: String
     let kind: String
     let rest: Int
-    let sets: [PlannedSet]
+    var sets: [PlannedSet]
 
     enum CodingKeys: String, CodingKey { case id, name, kind, rest, sets }
 
@@ -306,10 +339,34 @@ struct WatchRecentExercise: Decodable, Identifiable, Equatable {
         name = try c.decodeIfPresent(String.self, forKey: .name) ?? ""
         kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? "weight_reps"
         rest = try c.decodeIfPresent(Int.self, forKey: .rest) ?? 90
-        sets = try c.decodeIfPresent([PlannedSet].self, forKey: .sets) ?? []
+        sets = c.decodeLossy(PlannedSet.self, forKey: .sets)
     }
 
     var exercise: WatchWorkoutExercise { WatchWorkoutExercise(id: id, name: name, kind: kind, rest: rest) }
+
+    /// Its weights in `unit`, from the unit the list was sent in (`shown`). A
+    /// workout run here keeps the unit it started in, and the phone's unit can
+    /// change while it runs.
+    func inUnit(_ unit: String, from shown: String) -> WatchRecentExercise {
+        guard unit != shown else { return self }
+        var copy = self
+        copy.sets = sets.map { set in
+            var converted = set
+            converted.weight = set.weight.map { watchConvertWeight($0, from: shown, to: unit) }
+            return converted
+        }
+        return copy
+    }
+}
+
+/// A weight shown in one unit, as the other unit shows it, rounded the way the
+/// app rounds (`weightFromDisplay`: three places of a kilogram;
+/// `weightToDisplay`: two places of a kilogram, one of a pound).
+func watchConvertWeight(_ value: Double, from: String, to: String) -> Double {
+    guard from != to else { return value }
+    let kgPerLb = 0.45359237
+    let kg = from == "lb" ? (value * kgPerLb * 1000).rounded() / 1000 : value
+    return to == "lb" ? (kg / kgPerLb * 10).rounded() / 10 : (kg * 100).rounded() / 100
 }
 
 struct WatchWorkoutSection: Decodable {
@@ -326,12 +383,12 @@ struct WatchWorkoutSection: Decodable {
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        unit = try c.decodeIfPresent(String.self, forKey: .unit) ?? "kg"
-        weightStep = try c.decodeIfPresent(Double.self, forKey: .weightStep) ?? 2.5
-        live = try c.decodeIfPresent(WatchLiveWorkout.self, forKey: .live)
-        routines = try c.decodeIfPresent([WatchRoutine].self, forKey: .routines) ?? []
-        recent = try c.decodeIfPresent([WatchRecentExercise].self, forKey: .recent) ?? []
-        quietHours = try c.decodeIfPresent(WatchQuietHours.self, forKey: .quietHours)
+        unit = (try? c.decodeIfPresent(String.self, forKey: .unit)) ?? "kg"
+        weightStep = (try? c.decodeIfPresent(Double.self, forKey: .weightStep)) ?? 2.5
+        live = try? c.decodeIfPresent(WatchLiveWorkout.self, forKey: .live)
+        routines = c.decodeLossy(WatchRoutine.self, forKey: .routines)
+        recent = c.decodeLossy(WatchRecentExercise.self, forKey: .recent)
+        quietHours = try? c.decodeIfPresent(WatchQuietHours.self, forKey: .quietHours)
     }
 }
 
@@ -375,6 +432,9 @@ struct WatchOwnWorkout: Codable {
     var sets: [WatchWorkoutSet]
     var rest: WatchRestSpan?
     let quietHours: WatchQuietHours?
+    /// Sets of the routine the watch never got (`WatchRoutine.moreSets`).
+    /// Optional so a workout saved before it existed still reads back.
+    var moreSets: Int?
 
     /// What Finish sends: the done sets, in the unit shown (the phone
     /// converts), as JSON text (`parseWatchSession` in widgetQuietTaps.ts).
@@ -394,6 +454,7 @@ struct WatchOwnWorkout: Codable {
             if let durationSeconds = set.durationSeconds { entry["durationSeconds"] = durationSeconds }
             if let distanceM = set.distanceM { entry["distanceM"] = distanceM }
             if let note = set.note { entry["note"] = note }
+            if let supersetKey = set.supersetKey { entry["supersetKey"] = supersetKey }
             return entry
         }
         var body: [String: Any] = [
@@ -531,9 +592,13 @@ struct WatchWorkoutList {
             let last = sets[lastIndex]
             let added = WatchWorkoutSet(
                 id: setId, exerciseId: exerciseId, kind: last.kind == "warmup" ? "working" : last.kind,
-                rest: exercise.rest, values: last.values
+                rest: exercise.rest, values: last.values, supersetKey: last.supersetKey
             )
             sets.insert(added, at: lastIndex + 1)
+            // In a superset, the phone's walking order (`walkOrder`): round by
+            // round, so a third set of the first exercise comes after the
+            // second round, not straight after its own second set.
+            if last.supersetKey != nil { rewalkSuperset(of: exerciseId) }
             relabel(exerciseId)
             return true
 
@@ -593,7 +658,7 @@ struct WatchWorkoutList {
                 let added = suggestion.ramp.enumerated().map { step, value in
                     WatchWorkoutSet(
                         id: "\(idSeed)-w\(step)", exerciseId: exerciseId, kind: "warmup", rest: exercise.rest,
-                        values: WatchSetValues(weight: value.weight, reps: value.reps)
+                        values: WatchSetValues(weight: value.weight, reps: value.reps), supersetKey: sets[first].supersetKey
                     )
                 }
                 sets.insert(contentsOf: added, at: first)
@@ -640,6 +705,35 @@ struct WatchWorkoutList {
         guard all.indices.contains(to) else { return nil }
         all.swapAt(from, to)
         return all.flatMap { $0 }
+    }
+
+    /// Lays the superset `exerciseId` is in back out round by round
+    /// (`roundRobin` in workoutSession.ts): the run of exercises, in order,
+    /// that share its superset key, each exercise's sets in their own order.
+    private mutating func rewalkSuperset(of exerciseId: String) {
+        // Each exercise's key is the first one its sets carry (`sessionExercises`).
+        var order: [String] = []
+        var keyOf: [String: String] = [:]
+        for set in sets {
+            if !order.contains(set.exerciseId) { order.append(set.exerciseId) }
+            if keyOf[set.exerciseId] == nil, let key = set.supersetKey { keyOf[set.exerciseId] = key }
+        }
+        guard let key = keyOf[exerciseId], let at = order.firstIndex(of: exerciseId) else { return }
+        var start = at
+        while start > 0, keyOf[order[start - 1]] == key { start -= 1 }
+        var end = at
+        while end < order.count - 1, keyOf[order[end + 1]] == key { end += 1 }
+        let group = Array(order[start...end])
+        let members = Set(group)
+        let indices = sets.indices.filter { members.contains(sets[$0].exerciseId) }
+        guard let lo = indices.first, let hi = indices.last, hi - lo + 1 == indices.count else { return }
+        let byExercise = group.map { id in sets[lo...hi].filter { $0.exerciseId == id } }
+        var walked: [WatchWorkoutSet] = []
+        let rounds = byExercise.map(\.count).max() ?? 0
+        for round in 0..<rounds {
+            for exerciseSets in byExercise where round < exerciseSets.count { walked.append(exerciseSets[round]) }
+        }
+        sets.replaceSubrange(lo...hi, with: walked)
     }
 
     /// Words an exercise's sets as the phone does (`setLabels`, `setName`):
@@ -711,6 +805,26 @@ struct WatchWorkoutScreen {
     var nextSet: WatchWorkoutSet? { sets.first { !$0.isDone } }
     var setsDone: Int { sets.filter(\.isDone).count }
 
+    /// What the screens say once every set the watch has is done: never
+    /// "All sets done" while sets it never got are still to do.
+    var noSetsLeftText: String {
+        guard moreSets > 0 else { return "All sets done" }
+        return source == .phone ? "More sets on your iPhone" : "No more sets on your watch"
+    }
+
+    /// The line under the list about the sets the watch doesn't have, or nil.
+    var moreSetsNote: String? {
+        guard moreSets > 0 else { return nil }
+        switch source {
+        case .phone:
+            return moreSets == 1 ? "1 more set is on your iPhone." : "\(moreSets) more sets are on your iPhone."
+        case .own:
+            return moreSets == 1
+                ? "1 set of this routine didn't fit on your watch, so it isn't saved."
+                : "\(moreSets) sets of this routine didn't fit on your watch, so they aren't saved."
+        }
+    }
+
     func exercise(_ id: String) -> WatchWorkoutExercise? { exercises.first { $0.id == id } }
 
     var list: WatchWorkoutList { WatchWorkoutList(exercises: exercises, sets: sets) }
@@ -756,7 +870,7 @@ extension WatchStore {
                 weightStep: own.weightStep,
                 exercises: own.exercises,
                 sets: own.sets,
-                moreSets: 0,
+                moreSets: own.moreSets ?? 0,
                 rest: WatchWorkoutScreen.shownRest(own.rest, sets: own.sets, dismissedKey: dismissedRestKey)
             )
         }
@@ -860,7 +974,8 @@ extension WatchStore {
             exercises: routine.exercises,
             sets: sets,
             rest: nil,
-            quietHours: section.quietHours
+            quietHours: section.quietHours,
+            moreSets: routine.moreSets > 0 ? routine.moreSets : nil
         )
         ownWorkout = workout
         dismissedRestKey = nil
@@ -972,6 +1087,9 @@ extension WatchStore {
     /// The ids the watch gives those sets travel with the tap, so the phone's
     /// rows are the ones drawn here.
     func addExercise(_ recent: WatchRecentExercise, in screen: WatchWorkoutScreen) {
+        // The list comes in the unit the phone shows now; a workout run here
+        // keeps the unit it started in.
+        let recent = recent.inUnit(screen.unit, from: workoutSection?.unit ?? screen.unit)
         let setIds = (0..<max(recent.sets.count, 1)).map { _ in UUID().uuidString }
         change(.addExercise(recent, setIds: setIds), in: screen) {
             _ = recordWorkoutTap(kind: "addExercise", itemId: recent.id, sessionId: screen.sessionId, setIds: setIds)

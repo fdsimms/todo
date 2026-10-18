@@ -187,6 +187,9 @@ final class WatchStore: NSObject, ObservableObject {
         sendDue(force: true)
     }
 
+    /// The newest taps `sendDue` may send again (see there).
+    static let resendWindow = 100
+
     /// Hands each held tap whose undo window has passed (or every one, when
     /// `force`) to WatchConnectivity, which queues it and delivers it once, in
     /// order, whenever the phone is reachable. A tap due before the session
@@ -207,11 +210,23 @@ final class WatchStore: NSObject, ObservableObject {
     /// the phone hasn't got yet and be dropped. So before the first new
     /// message, every tap whose transfer is still outstanding goes again as a
     /// message, in the order made, and the message copies arrive in order.
+    /// (The phone's planner no longer depends on this for a workout's sets:
+    /// a tick names its exercise and Finish carries its sets.)
+    ///
+    /// **Only the newest `resendWindow` taps are ever sent again**, half the
+    /// phone's memory of tap ids (`receivedIdLimit`, 200), which is what
+    /// drops the second copy of a tap. A copy arriving after the phone has
+    /// forgotten the first would be applied twice, and for that the phone
+    /// would have to receive more than 100 other taps while this one's
+    /// transfer was still outstanding here, which transfers delivered in
+    /// order and messages sent only while in reach don't leave room for.
     private func sendDue(force: Bool) {
         let session = WCSession.default
         guard WCSession.isSupported(), session.activationState == .activated else { return }
         let due = Date().addingTimeInterval(-Self.undoWindow)
+        let recent = Set(taps.suffix(Self.resendWindow).map(\.id))
         let waiting = Set(session.outstandingUserInfoTransfers.compactMap { $0.userInfo["watchTapId"] as? String })
+            .intersection(recent)
         var caughtUp = false
         var changed = false
         for index in taps.indices where !taps[index].sent && (force || taps[index].isWorkout || taps[index].at <= due) {
