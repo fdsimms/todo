@@ -135,3 +135,70 @@ export function recentlyFinished(
     .slice(0, RECENTLY_FINISHED_LIMIT)
     .map(s => ({ sessionId: s.id, endedAt: new Date(Date.parse(s.endedAt)).toISOString() }));
 }
+
+/**
+ * The times the watch saved a workout at, as its `healthWorkout` tap reports
+ * them (ISO). Absent from a save made locked, which has no workout to read
+ * them from, and from a watch older than this field.
+ */
+export interface WatchWorkoutSpan {
+  start: string;
+  end: string;
+}
+
+/**
+ * How far the watch's saved times may sit from the row's and still be the
+ * same workout. The watch saves at the times the phone gave it, read from
+ * the snapshot, so they match to the millisecond unless the person moved one
+ * meanwhile; the slack covers the two clocks' rounding and nothing more.
+ */
+export const WATCH_SPAN_TOLERANCE_MS = 2000;
+
+/**
+ * Whether the workout the watch saved spans times this finished row no
+ * longer has: the person retimed it while the phone was waiting for the
+ * watch's copy. False when there is nothing to compare (no span, a workout
+ * still going, a time that doesn't read).
+ */
+export function watchSpanDiffers(
+  row: Pick<WorkoutSession, 'startedAt' | 'endedAt'>,
+  span: WatchWorkoutSpan | null | undefined,
+): boolean {
+  if (!span || row.endedAt === null) return false;
+  const apart = (a: string, b: string) => {
+    const x = Date.parse(a);
+    const y = Date.parse(b);
+    return Number.isFinite(x) && Number.isFinite(y) && Math.abs(x - y) > WATCH_SPAN_TOLERANCE_MS;
+  };
+  return apart(row.startedAt, span.start) || apart(row.endedAt, span.end);
+}
+
+/**
+ * Whether a drain in the background applies the watch's `healthWorkout` tap
+ * now, or leaves it for the next drain in front. What decides it is whether
+ * applying it means a HealthKit call on the phone, which may be locked:
+ *
+ * - the phone wrote its own copy and the watch's matches the row: the
+ *   phone's is retracted, a delete HealthKit refuses with the phone locked,
+ *   which would leave it in Health with nothing pointing at it;
+ * - the watch's spans times the row no longer has (`watchSpanDiffers`): the
+ *   phone writes its own at the row's times, and a save made locked returns
+ *   no id, so the row couldn't keep track of it.
+ *
+ * Everything else (the watch's taken, a second one retracted by the watch,
+ * the phone's copy kept and the watch's stale one retracted by the watch)
+ * needs nothing of the phone's HealthKit and applies at once.
+ */
+export function watchWorkoutTapTiming(
+  row: Pick<WorkoutSession, 'startedAt' | 'endedAt' | 'healthWorkoutId' | 'measuredOnWatch'> | null | undefined,
+  workoutId: string | null,
+  span: WatchWorkoutSpan | null | undefined,
+): 'now' | 'front' {
+  if (!row) return 'now';
+  const stale = workoutId !== null && watchSpanDiffers(row, span);
+  if (row.healthWorkoutId !== null) {
+    if (row.measuredOnWatch) return 'now';
+    return stale ? 'now' : 'front';
+  }
+  return stale ? 'front' : 'now';
+}

@@ -311,13 +311,20 @@ final class WatchSession: NSObject, WCSessionDelegate {
     // it started measuring the phone's session ("on" true) or stopped without
     // saving (false), so the app holds its own Health write back or lets it
     // go; it saved a session's workout to Health ("workoutId", absent for a
-    // save made locked); or it retracted a workout the app asked about ("id").
+    // save made locked, with the "start" and "end" it saved at); or it
+    // retracted a workout the app asked about ("id").
     case "measuring", "healthWorkout":
       guard let sessionId = info["sessionId"] as? String, !sessionId.isEmpty else { return }
       var entry: [String: Any] = ["kind": kind, "id": sessionId, "sessionId": sessionId, "at": at, "watchTapId": tapId]
       if kind == "measuring", let on = info["on"] as? Bool { entry["on"] = on }
       if kind == "healthWorkout", let workoutId = info["workoutId"] as? String, !workoutId.isEmpty {
         entry["workoutId"] = workoutId
+        // The times it was saved at, so the app can tell a copy made before
+        // the person retimed the workout. Read as ISO there; both or neither.
+        if let start = info["start"] as? String, let end = info["end"] as? String {
+          entry["start"] = start
+          entry["end"] = end
+        }
       }
       appendToQueue(watchQuietTapsFileName, entry)
     case "healthRetracted":

@@ -502,8 +502,27 @@ describe('watch workout taps', () => {
     });
 
     it('reads a saved workout the app put back on the queue for a drain in front, by its own key', () => {
-      const [t] = parseQuietTaps(JSON.stringify([{ kind: 'healthWorkout', id: 'w1', sessionId: 'w1', healthWorkoutId: 'HK-W', listId: null, at: AT }]));
-      expect(t).toMatchObject({ kind: 'healthWorkout', sessionId: 'w1', healthWorkoutId: 'HK-W' });
+      const [t] = parseQuietTaps(JSON.stringify([{
+        kind: 'healthWorkout', id: 'w1', sessionId: 'w1', healthWorkoutId: 'HK-W', listId: null, at: AT,
+        workoutStart: '2026-10-18T17:00:00.000Z', workoutEnd: '2026-10-18T18:00:00.000Z',
+      }]));
+      expect(t).toMatchObject({
+        kind: 'healthWorkout', sessionId: 'w1', healthWorkoutId: 'HK-W',
+        workoutStart: '2026-10-18T17:00:00.000Z', workoutEnd: '2026-10-18T18:00:00.000Z',
+      });
+    });
+
+    it('reads the times a saved workout spans, both or neither', () => {
+      const taps = parseQuietTaps(JSON.stringify([
+        { kind: 'healthWorkout', id: 'w1', workoutId: 'HK-1', start: '2026-10-18T17:00:00.123Z', end: '2026-10-18T18:00:00Z', at: AT },
+        { kind: 'healthWorkout', id: 'w2', workoutId: 'HK-2', start: '2026-10-18T17:00:00Z', at: AT },
+        { kind: 'healthWorkout', id: 'w3', workoutId: 'HK-3', start: 'soon', end: '2026-10-18T18:00:00Z', at: AT },
+      ]));
+      expect(taps.map(t => [t.id, t.workoutStart, t.workoutEnd])).toEqual([
+        ['w1', '2026-10-18T17:00:00.123Z', '2026-10-18T18:00:00.000Z'],
+        ['w2', undefined, undefined],
+        ['w3', undefined, undefined],
+      ]);
     });
 
     it('caps a dictated note', () => {
@@ -816,9 +835,9 @@ describe('watch workout taps', () => {
         t('healthWorkout', 'gone', 4, { sessionId: 'gone', healthWorkoutId: null }),
       ], none)).toEqual([
         { type: 'watchMeasuring', sessionId: 'w1', on: true },
-        { type: 'watchHealthWorkout', sessionId: 'w1', workoutId: 'HK-W' },
+        { type: 'watchHealthWorkout', sessionId: 'w1', workoutId: 'HK-W', span: null },
         { type: 'watchHealthRetracted', workoutId: 'HK-OLD' },
-        { type: 'watchHealthWorkout', sessionId: 'gone', workoutId: null },
+        { type: 'watchHealthWorkout', sessionId: 'gone', workoutId: null, span: null },
       ]);
     });
 
@@ -829,7 +848,15 @@ describe('watch workout taps', () => {
         t('finish', 'w1', 5, { sessionId: 'w1' }),
       ], workouts)).toEqual([
         { type: 'finishWorkout', sessionId: 'w1', at: at(5) },
-        { type: 'watchHealthWorkout', sessionId: 'w1', workoutId: 'HK-W' },
+        { type: 'watchHealthWorkout', sessionId: 'w1', workoutId: 'HK-W', span: null },
+      ]);
+    });
+
+    it('passes on the times the watch saved its workout at, for the store to compare with the row', () => {
+      expect(plan([
+        t('healthWorkout', 'w1', 2, { sessionId: 'w1', healthWorkoutId: 'HK-W', workoutStart: at(0), workoutEnd: at(1) }),
+      ], none)).toEqual([
+        { type: 'watchHealthWorkout', sessionId: 'w1', workoutId: 'HK-W', span: { start: at(0), end: at(1) } },
       ]);
     });
   });

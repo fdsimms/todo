@@ -20,12 +20,19 @@ jest.mock('../store/useSettingsStore', () => ({ useSettingsStore: { getState: ()
 let mockDemo = false;
 jest.mock('../utils/demoState', () => ({ isDemoModeActive: () => mockDemo }));
 
+// The two lists the phone keeps for the watch, as fakes: the store behind
+// them opens the database, and what is under test is the gate in front.
+const mockWatchHealth = { retract: jest.fn(), drop: jest.fn() };
+jest.mock('../store/useWatchHealthStore', () => ({ useWatchHealthStore: { getState: () => mockWatchHealth } }));
+
 import {
   PENDING_WORKOUT_WRITE_MAX_AGE_DAYS,
   WATCH_WORKOUT_WAIT_MINUTES,
   WORKOUT_HEALTH_ACTIVITY,
   logWorkoutToHealth,
+  dropWatchMeasurement,
   pendingWorkoutWriteAction,
+  retractWatchWorkouts,
   retractWorkoutFromHealth,
   workoutHealthWriteOn,
   workoutSpanWritable,
@@ -171,5 +178,24 @@ describe('demo mode', () => {
   it('reads through the same gate once demo mode is off', async () => {
     await readHealthWorkouts(new Date(2026, 9, 1), 30);
     expect(mockNative.readWorkouts).toHaveBeenCalledTimes(1);
+  });
+
+  // A seeded workout deleted in demo mode must not put a real workout's id
+  // on the list the watch acts on, or tell it to drop a real measurement.
+  it('asks the watch for nothing', () => {
+    mockDemo = true;
+    retractWatchWorkouts(['HK-WATCH']);
+    dropWatchMeasurement('s1');
+    expect(mockWatchHealth.retract).not.toHaveBeenCalled();
+    expect(mockWatchHealth.drop).not.toHaveBeenCalled();
+  });
+
+  it('asks the watch once demo mode is off, leaving out blank ids', () => {
+    retractWatchWorkouts(['HK-WATCH', ' ', '']);
+    retractWatchWorkouts(['']);
+    dropWatchMeasurement('s1');
+    expect(mockWatchHealth.retract).toHaveBeenCalledTimes(1);
+    expect(mockWatchHealth.retract).toHaveBeenCalledWith(['HK-WATCH']);
+    expect(mockWatchHealth.drop).toHaveBeenCalledWith('s1');
   });
 });

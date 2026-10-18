@@ -46,6 +46,7 @@ import { startWorkout } from './startWorkout';
 import { requestDismissAllSheets } from './sheetModal';
 import { useStepTimerStore } from '../store/useStepTimerStore';
 import { useWatchHealthStore } from '../store/useWatchHealthStore';
+import { watchWorkoutTapTiming } from './watchHealthWorkout';
 import { workoutHealthWriteOn } from './healthWorkoutSync';
 import { WATCH_RECENT_DAYS, buildWatchWorkout, todaysWatchWorkout, type WatchWorkoutSnapshot } from './watchWorkout';
 import { tickSet } from './workoutTick';
@@ -447,20 +448,20 @@ async function processQuietWidgetTaps(handOff: 'app' | 'requeue' = 'app'): Promi
           useWorkoutStore.getState().markWatchMeasuring(action.sessionId, action.on);
           break;
         case 'watchHealthWorkout': {
-          // Taking over from a copy the phone wrote means retracting that
-          // copy, and HealthKit refuses a delete with the phone locked, which
-          // a drain with nobody looking may well be: the phone's copy would
-          // stay in Health with nothing pointing at it. So that one waits for
-          // a drain in front; everything else applies here.
+          // One that needs the phone's own HealthKit (retracting the phone's
+          // copy, or writing one at times the watch's no longer has) waits for
+          // a drain in front, since a drain with nobody looking may well be
+          // running locked (`watchWorkoutTapTiming`); everything else applies here.
           const row = useWorkoutStore.getState().sessions.find(x => x.id === action.sessionId);
-          if (handOff === 'requeue' && row && row.healthWorkoutId !== null && !row.measuredOnWatch) {
+          if (handOff === 'requeue' && watchWorkoutTapTiming(row, action.workoutId, action.span) === 'front') {
             forFront.push({
               kind: 'healthWorkout', id: action.sessionId, sessionId: action.sessionId, listId: null,
               at: new Date().toISOString(), healthWorkoutId: action.workoutId,
+              ...(action.span ? { workoutStart: action.span.start, workoutEnd: action.span.end } : {}),
             });
             break;
           }
-          useWorkoutStore.getState().recordWatchHealthWorkout(action.sessionId, action.workoutId);
+          useWorkoutStore.getState().recordWatchHealthWorkout(action.sessionId, action.workoutId, action.span);
           break;
         }
         case 'watchHealthRetracted':

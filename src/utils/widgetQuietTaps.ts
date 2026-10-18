@@ -4,6 +4,7 @@ import type { WeightUnit } from './weightLog';
 import { completionTapFor, offersMealLogOnCompletion } from './completionTap';
 import { workoutTaskEffect } from './workoutTask';
 import { WORKOUT_SET_KINDS, weightFromDisplay, weightToDisplay } from './workoutData';
+import type { WatchWorkoutSpan } from './watchHealthWorkout';
 
 /**
  * Taps on a widget that apply without bringing the app forward.
@@ -106,6 +107,12 @@ export interface QuietTap {
   on?: boolean;
   /** `healthWorkout`: the id of the workout the watch saved, or null when it saved locked with no id to give. */
   healthWorkoutId?: string | null;
+  /**
+   * `healthWorkout`: the times the watch saved it at, ISO, both or neither
+   * (`WatchWorkoutSpan`). Absent for a save made locked.
+   */
+  workoutStart?: string;
+  workoutEnd?: string;
 }
 
 /**
@@ -198,7 +205,7 @@ export type QuietTapAction =
   /** `markWatchMeasuring`: the watch started or stopped measuring a session. */
   | { type: 'watchMeasuring'; sessionId: string; on: boolean }
   /** `recordWatchHealthWorkout`: the watch saved a session's workout to Health. */
-  | { type: 'watchHealthWorkout'; sessionId: string; workoutId: string | null }
+  | { type: 'watchHealthWorkout'; sessionId: string; workoutId: string | null; span: WatchWorkoutSpan | null }
   /** The watch dealt with a workout the phone asked it to retract (`useWatchHealthStore.retracted`). */
   | { type: 'watchHealthRetracted'; workoutId: string }
   /** `addPlannedSet` with the watch's id. */
@@ -316,7 +323,16 @@ export function parseQuietTaps(json: string): QuietTap[] {
       }
       // `workoutId` from the watch; `healthWorkoutId` from a tap the app put
       // back on the queue itself for a drain in front (widgetSync.ts).
-      if (kind === 'healthWorkout') tap.healthWorkoutId = idOf(fields.workoutId) ?? idOf(fields.healthWorkoutId);
+      if (kind === 'healthWorkout') {
+        tap.healthWorkoutId = idOf(fields.workoutId) ?? idOf(fields.healthWorkoutId);
+        // `start`/`end` from the watch, the long names from a requeued tap.
+        const start = isoOf(fields.start) ?? isoOf(fields.workoutStart);
+        const end = isoOf(fields.end) ?? isoOf(fields.workoutEnd);
+        if (start && end) {
+          tap.workoutStart = start;
+          tap.workoutEnd = end;
+        }
+      }
     }
     if (kind === 'watchSession') {
       const workout = parseWatchSession(fields.workout);
@@ -503,7 +519,10 @@ export function planQuietTaps(
       continue;
     }
     if (tap.kind === 'healthWorkout') {
-      actions.push({ type: 'watchHealthWorkout', sessionId: tap.sessionId!, workoutId: tap.healthWorkoutId ?? null });
+      actions.push({
+        type: 'watchHealthWorkout', sessionId: tap.sessionId!, workoutId: tap.healthWorkoutId ?? null,
+        span: tap.workoutStart && tap.workoutEnd ? { start: tap.workoutStart, end: tap.workoutEnd } : null,
+      });
       continue;
     }
     if (tap.kind === 'healthRetracted') {

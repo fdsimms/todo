@@ -2,9 +2,12 @@ import {
   NO_WATCH_HEALTH_REQUESTS,
   RECENTLY_FINISHED_LIMIT,
   WATCH_RETRACT_LIMIT,
+  WATCH_SPAN_TOLERANCE_MS,
   currentWatchHealthRequests,
   parseWatchHealthRequests,
   recentlyFinished,
+  watchSpanDiffers,
+  watchWorkoutTapTiming,
   withDrop,
   withRetractions,
   withoutRetraction,
@@ -81,5 +84,47 @@ describe('the phone’s workouts finished lately', () => {
   it('keeps it short', () => {
     const many = Array.from({ length: RECENTLY_FINISHED_LIMIT + 3 }, (_, i) => ({ id: `s${i}`, endedAt: hoursAgo(i + 1) }));
     expect(recentlyFinished(many, NOW)).toHaveLength(RECENTLY_FINISHED_LIMIT);
+  });
+});
+
+describe('the times the watch saved a workout at', () => {
+  const row = { startedAt: hoursAgo(2), endedAt: hoursAgo(1) };
+  const shifted = (iso: string, ms: number) => new Date(Date.parse(iso) + ms).toISOString();
+
+  it('match the row within the clocks’ rounding, and not past it', () => {
+    expect(watchSpanDiffers(row, { start: row.startedAt, end: row.endedAt })).toBe(false);
+    expect(watchSpanDiffers(row, { start: shifted(row.startedAt, 900), end: shifted(row.endedAt, -WATCH_SPAN_TOLERANCE_MS) })).toBe(false);
+    expect(watchSpanDiffers(row, { start: row.startedAt, end: shifted(row.endedAt, 5 * 60_000) })).toBe(true);
+    expect(watchSpanDiffers(row, { start: shifted(row.startedAt, -60_000), end: row.endedAt })).toBe(true);
+  });
+
+  it('can’t differ with nothing to compare: no span, a workout still going, a time that doesn’t read', () => {
+    expect(watchSpanDiffers(row, null)).toBe(false);
+    expect(watchSpanDiffers({ ...row, endedAt: null }, { start: row.startedAt, end: hoursAgo(0) })).toBe(false);
+    expect(watchSpanDiffers(row, { start: 'soon', end: 'later' })).toBe(false);
+  });
+});
+
+describe('when a drain in the background applies the watch’s saved workout', () => {
+  const finished = { startedAt: hoursAgo(2), endedAt: hoursAgo(1) };
+  const same = { start: finished.startedAt, end: finished.endedAt };
+  const old = { start: finished.startedAt, end: hoursAgo(1.5) };
+  const waiting = { ...finished, healthWorkoutId: null, measuredOnWatch: true };
+  const phoneCopy = { ...finished, healthWorkoutId: 'HK-PHONE', measuredOnWatch: false };
+  const watchCopy = { ...finished, healthWorkoutId: 'HK-WATCH', measuredOnWatch: true };
+
+  it('applies at once when it needs nothing of the phone’s HealthKit', () => {
+    expect(watchWorkoutTapTiming(undefined, 'HK-W', same)).toBe('now');
+    expect(watchWorkoutTapTiming(waiting, 'HK-W', same)).toBe('now');
+    expect(watchWorkoutTapTiming(waiting, null, old)).toBe('now');
+    expect(watchWorkoutTapTiming(watchCopy, 'HK-W2', old)).toBe('now');
+    // The phone's copy is at the row's times: the watch retracts its own.
+    expect(watchWorkoutTapTiming(phoneCopy, 'HK-W', old)).toBe('now');
+  });
+
+  it('waits for the app in front to retract the phone’s copy, or to write one at times the watch’s no longer has', () => {
+    expect(watchWorkoutTapTiming(phoneCopy, 'HK-W', same)).toBe('front');
+    expect(watchWorkoutTapTiming(phoneCopy, null, null)).toBe('front');
+    expect(watchWorkoutTapTiming(waiting, 'HK-W', old)).toBe('front');
   });
 });
