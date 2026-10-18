@@ -36,7 +36,8 @@ interface Props {
   addedLabel?: string;
 }
 
-const KIND_OPTIONS: SegmentOption<ExerciseKind>[] = [
+/** What a set records, as the create form and the exercise editor offer it. */
+export const KIND_OPTIONS: SegmentOption<ExerciseKind>[] = [
   { value: 'weight_reps', label: 'Weight and reps' },
   { value: 'bodyweight_reps', label: 'Reps only' },
   { value: 'assisted_reps', label: 'Assisted' },

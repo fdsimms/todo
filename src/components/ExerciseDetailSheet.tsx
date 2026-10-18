@@ -10,6 +10,8 @@ import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
 import { HelpText } from './HelpText';
 import { ExerciseProgressChart, type ExerciseChartPoint } from './ExerciseProgressChart';
+import { ExerciseEditorSheet } from './ExerciseEditorSheet';
+import { haptics } from '../utils/haptics';
 import { chartPoints as toChartPoints, chartSegments } from '../utils/exerciseChart';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -48,6 +50,10 @@ import type { WorkoutSet } from '../types';
  * handler cancel a JS touch in flight (CLAUDE.md, "A drag cannot live inside a
  * pageSheet"). With no swipe-down to dismiss it, the Done button is the way
  * out, and nothing on it is staged, so `onRequestClose` is the plain close.
+ *
+ * Its Edit opens `ExerciseEditorSheet`, rendered inside this sheet's Modal
+ * (a sibling sheet would never appear), so editing from inside workout mode
+ * comes back to the exercise page and then to the workout.
  */
 
 interface Props {
@@ -80,9 +86,10 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
   const [chosen, setChosen] = useState<RecordMetric>('e1rm');
   const metric = metrics.includes(chosen) ? chosen : metrics[0];
   const [shown, setShown] = useState(HISTORY_STEP);
+  const [editing, setEditing] = useState(false);
 
   useEffect(() => {
-    if (visible) { setChosen(metricsFor(kind)[0]); setShown(HISTORY_STEP); }
+    if (visible) { setChosen(metricsFor(kind)[0]); setShown(HISTORY_STEP); setEditing(false); }
     // On open only: the kind is the opened exercise's.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, exerciseId]);
@@ -146,6 +153,18 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
       <Text style={styles.name}>{name}</Text>
       {!!subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
       {!!about && <Text style={styles.about}>{about}</Text>}
+      {!!info && (
+        <View style={styles.editRow}>
+          <InlineAction
+            icon="create-outline"
+            label="Edit"
+            variant="neutral"
+            surface="page"
+            onPress={() => { haptics.tap(); setEditing(true); }}
+            accessibilityLabel={`Edit ${name}`}
+          />
+        </View>
+      )}
     </View>
   );
 
@@ -251,6 +270,7 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
           </ScrollView>
         )}
       </View>
+      <ExerciseEditorSheet visible={visible && editing} exerciseId={exerciseId} onClose={() => setEditing(false)} />
     </SheetModal>
   );
 }
@@ -264,6 +284,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   name: { color: colors.text, fontSize: font.xxl, fontWeight: fontWeight.bold, letterSpacing: -0.3 },
   subtitle: { color: colors.textSecondary, fontSize: font.sm },
   about: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xs },
+  editRow: { flexDirection: 'row', marginTop: spacing.xs },
   card: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden', marginTop: spacing.md },
   headline: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md, marginHorizontal: spacing.md },
   headlineValue: { color: colors.text, fontSize: font.xxl, fontWeight: fontWeight.bold, fontVariant: ['tabular-nums'] },

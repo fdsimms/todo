@@ -1855,11 +1855,15 @@ const TaskItemRow = React.memo(function TaskItem({
   const guardTitle = useRewardStore(s =>
     rewardsEnabled && isNegative ? guardingReward(s.rewards, task.id)?.title ?? null : null);
   // The routine "Workout" in the expanded panel opens (Task.workoutRoutineId),
-  // when the area is on and the routine still exists: a link to a deleted
-  // routine offers nothing. A boolean, so the row re-renders only when it flips.
+  // or the program whose next routine it starts (Task.workoutProgramId), when
+  // the area is on and the link still leads somewhere: a deleted routine, or a
+  // program deleted or with nothing in its rotation, offers nothing. A boolean,
+  // so the row re-renders only when it flips.
   const workoutsEnabled = useSettingsStore(s => s.workoutsEnabled);
-  const hasWorkout = useWorkoutStore(s =>
-    workoutsEnabled && !!task.workoutRoutineId && s.routines.some(r => r.id === task.workoutRoutineId));
+  const hasWorkout = useWorkoutStore(s => workoutsEnabled && (
+    task.workoutProgramId
+      ? s.programs.some(p => p.id === task.workoutProgramId && p.rotation.some(id => s.routines.some(r => r.id === id)))
+      : !!task.workoutRoutineId && s.routines.some(r => r.id === task.workoutRoutineId)));
   const startWorkout = useStartWorkout();
 
   const activeChainItem =
@@ -4665,7 +4669,9 @@ const TaskItemRow = React.memo(function TaskItem({
                   {showActions && hasWorkout && !task.completed && (
                     <PressableScale
                       style={styles.workoutBtn}
-                      onPress={() => startWorkout({ routineId: task.workoutRoutineId, taskId: task.id })}
+                      onPress={() => startWorkout(task.workoutProgramId
+                        ? { programId: task.workoutProgramId, taskId: task.id }
+                        : { routineId: task.workoutRoutineId, taskId: task.id })}
                       hitSlop={8}
                       accessibilityLabel={`Start the workout for ${task.title}`}
                     >

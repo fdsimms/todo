@@ -15,8 +15,8 @@
  * Every weight is kilograms, whatever unit the person's phone shows.
  */
 import type {
-  Exercise, ExerciseEquipment, MuscleGroup, ProgressionScheme, RoutineSetTarget, WorkoutRoutine, WorkoutRoutineItem,
-  WorkoutSession, WorkoutSet, WorkoutSetKind,
+  Exercise, ExerciseEquipment, MuscleGroup, ProgressionScheme, RoutineSetTarget, TrainingMax, WorkoutProgram, WorkoutRoutine,
+  WorkoutRoutineItem, WorkoutSession, WorkoutSet, WorkoutSetKind,
 } from '../../src/types';
 import type { Replica } from './replica';
 import { resolveRange, type DayRange, type LogRangeInput } from './tools';
@@ -26,6 +26,10 @@ import type { SetInput } from '../../src/store/useWorkoutStore';
 import { catalogExercise, exerciseName, searchExercises, type CatalogExercise } from '../../src/utils/exerciseCatalog';
 import { analyzeExercise, countsForRecords, volumeUnit, type RecordSession, type RecordType } from '../../src/utils/workoutRecords';
 import { recordLabel } from '../../src/utils/workoutRecordText';
+import { programProgress, type ProgramProgress } from '../../src/utils/workoutProgram';
+import {
+  loadContextFor, proposalHeadline, proposeNext, rampSteps, schemeFor, trainingMaxRaises, type SetProposal,
+} from '../../src/utils/workoutProgression';
 
 /** How many exercises a list returns unless asked for more. */
 export const DEFAULT_EXERCISE_LIMIT = 50;
@@ -181,8 +185,10 @@ export interface RoutineRow {
     name: string;
     supersetKey?: string;
     restSeconds?: number;
-    /** The scheme chosen for moving on. Stored only: nothing proposes a load from it yet. */
+    /** The scheme chosen for moving on. next_workout reads the proposal it makes. */
     progression?: ProgressionScheme;
+    /** Warm-ups are a ramp worked out from the working weight when the workout starts. */
+    warmupRamp?: true;
     targets: WorkoutRoutine['items'][number]['targets'];
   }[];
 }
@@ -199,6 +205,7 @@ function routineRow(r: WorkoutRoutine, rows: readonly Exercise[], programName: R
       ...(i.supersetKey ? { supersetKey: i.supersetKey } : {}),
       ...(i.restSeconds !== null ? { restSeconds: i.restSeconds } : {}),
       ...(i.progression ? { progression: i.progression.scheme } : {}),
+      ...(i.warmupRamp ? { warmupRamp: true as const } : {}),
       targets: i.targets,
     })),
   };
@@ -207,10 +214,56 @@ function routineRow(r: WorkoutRoutine, rows: readonly Exercise[], programName: R
 const WITHHELD_NOTE =
   'No workouts in this range. Workout history is part of the health record: it reaches the server only with Settings › Data & reset › Sync › Include health logs turned on, so this may mean it was never sent. Routines and programs travel either way.';
 
+export interface ProgramRow {
+  id: string;
+  name: string;
+  weeks?: number;
+  scheme: ProgressionScheme;
+  /** Routine names, in the order they come round. */
+  rotation: string[];
+  /** The routine ids, in the same order, for save_program. */
+  rotationIds: string[];
+  trainingMaxes?: { exerciseId: string; name: string; kg: number }[];
+  startedAt?: string;
+  /** Derived from its finished workouts, never stored: which pass it is on ("week"), and the routine that comes next. */
+  week: number;
+  workoutsDone: number;
+  next?: { routineId: string; name: string };
+  /** A whole cycle was just finished: the moment a percentage program's training maxes are raised. */
+  cycleDone?: true;
+}
+
+function programRow(
+  p: WorkoutProgram,
+  progress: ProgramProgress,
+  rows: readonly Exercise[],
+  routineName: ReadonlyMap<string, string>,
+): ProgramRow {
+  return {
+    id: p.id,
+    name: p.name,
+    ...(p.weeks !== null ? { weeks: p.weeks } : {}),
+    scheme: p.scheme,
+    rotation: p.rotation.map(id => routineName.get(id) ?? 'A deleted routine'),
+    rotationIds: [...p.rotation],
+    ...(p.trainingMaxes.length ? {
+      trainingMaxes: p.trainingMaxes.map(t => ({ exerciseId: t.exerciseId, name: exerciseName(rows, t.exerciseId), kg: t.kg })),
+    } : {}),
+    ...(p.startedAt ? { startedAt: p.startedAt } : {}),
+    week: progress.week,
+    workoutsDone: progress.sessionsDone,
+    ...(progress.nextRoutineId ? { next: { routineId: progress.nextRoutineId, name: routineName.get(progress.nextRoutineId) ?? 'A deleted routine' } } : {}),
+    ...(progress.cycleDone ? { cycleDone: true as const } : {}),
+  };
+}
+
+/** Every session the replica holds, for a program's progress. */
+const allSessions = (replica: Replica) => replica.workoutSessions('0000-01-01', '9999-12-31');
+
 export function listWorkouts(
   replica: Replica,
   input: LogRangeInput = {},
-): { range: DayRange; workouts: WorkoutRow[]; routines: RoutineRow[]; programs: unknown[]; note?: string } {
+): { range: DayRange; workouts: WorkoutRow[]; routines: RoutineRow[]; programs: ProgramRow[]; note?: string } {
   const range = resolveRange(replica, input);
   const rows = replica.exercises();
   const routines = replica.workoutRoutines();
@@ -225,17 +278,8 @@ export function listWorkouts(
     range,
     workouts,
     routines: routines.map(r => routineRow(r, rows, programName)),
-    programs: programs.filter(p => !p.archived).map(p => ({
-      id: p.id,
-      name: p.name,
-      ...(p.weeks !== null ? { weeks: p.weeks } : {}),
-      scheme: p.scheme,
-      rotation: p.rotation.map(id => routineName.get(id) ?? 'A deleted routine'),
-      ...(p.trainingMaxes.length ? {
-        trainingMaxes: p.trainingMaxes.map(t => ({ exerciseId: t.exerciseId, name: exerciseName(rows, t.exerciseId), kg: t.kg })),
-      } : {}),
-      ...(p.startedAt ? { startedAt: p.startedAt } : {}),
-    })),
+    programs: programs.filter(p => !p.archived)
+      .map(p => programRow(p, programProgress(p, allSessions(replica), routines), rows, routineName)),
     ...(workouts.length === 0 ? { note: WITHHELD_NOTE } : {}),
   };
 }
@@ -387,6 +431,8 @@ export interface RoutineExerciseInput {
   /** Done as a superset with the exercise before it, set by set, back to back. */
   supersetWithPrevious?: boolean;
   progression?: ProgressionScheme | null;
+  /** Warm up with a ramp worked out from the working weight, in place of warm-up sets of its own. */
+  warmupRamp?: boolean;
 }
 
 export interface SaveRoutineInput {
@@ -425,6 +471,7 @@ export function routineItemsFrom(input: readonly RoutineExerciseInput[], newKey:
       ...(t.rpe != null ? { rpe: t.rpe } : {}),
       ...(t.pctOfTm != null ? { pctOfTm: t.pctOfTm } : {}),
     })),
+    ...(e.warmupRamp ? { warmupRamp: true } : {}),
   }));
   input.forEach((e, i) => { if (e.supersetWithPrevious) items = joinPrevious(items, i, newKey()); });
   return items;
@@ -439,6 +486,16 @@ export function saveRoutine(replica: Replica, input: SaveRoutineInput): { routin
     const unknown = unknownExercises(replica, input.exercises.map(e => e.exerciseId));
     if (unknown.length) throw unknownError(unknown);
     if (input.exercises.some(e => e.sets.length === 0)) throw new Error('Each exercise needs at least one set.');
+    // A ramp is worked out from a weight and moves it by plates or an
+    // increment, so it only means something for a weight and reps exercise
+    // (on an assisted one it would ramp the assistance).
+    const rows = replica.exercises();
+    const misplaced = input.exercises
+      .filter(e => e.warmupRamp && (catalogExercise(rows, e.exerciseId)?.kind ?? 'weight_reps') !== 'weight_reps')
+      .map(e => catalogExercise(rows, e.exerciseId)?.name ?? e.exerciseId);
+    if (misplaced.length) {
+      throw new Error(`A warm-up ramp is only for exercises that record weight and reps, and ${[...new Set(misplaced)].join(', ')} ${misplaced.length === 1 ? 'does' : 'do'} not. Leave warmupRamp off, or give ${misplaced.length === 1 ? 'it' : 'them'} warm-up sets of their own.`);
+    }
   }
   const routine = replica.saveRoutine({
     id: input.id,
@@ -449,7 +506,7 @@ export function saveRoutine(replica: Replica, input: SaveRoutineInput): { routin
   const names = namesOf(replica);
   return {
     routine: routineRow(routine, names.rows, names.programName),
-    note: 'A plan, not a record. A progression is stored as the person\'s choice and nothing proposes a load from it yet. To put it on their schedule, create or update a task with workoutRoutineId.',
+    note: 'A plan, not a record. A progression is the person\'s choice of how loads move on: workout mode shows the next load it proposes, and next_workout reads it, but nothing applies one unasked. To put it on their schedule, create or update a task with workoutRoutineId, or put it in a program (save_program).',
   };
 }
 
@@ -587,5 +644,191 @@ export function deleteWorkout(replica: Replica, id: string): { removed: WorkoutR
   return {
     removed: workoutRow(replica, session, sets, namesOf(replica)),
     note: 'Deleted with its sets. It cannot be restored from here. A task it completed stays completed.',
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Programs
+// ---------------------------------------------------------------------------
+
+export interface SaveProgramInput {
+  /** Absent to create one. */
+  id?: string;
+  name?: string;
+  /** Routine ids in the order they come round; a routine may come round more than once. Replaces the rotation when given. */
+  routineIds?: string[];
+  scheme?: ProgressionScheme;
+  /** Passes through the rotation in a cycle; null for open-ended. */
+  weeks?: number | null;
+  /** Training maxes in kg, for a percentage scheme. Replaces them all when given. */
+  trainingMaxes?: { exerciseId: string; kg: number }[];
+  /**
+   * Counts the program's weeks again from now, as the phone's "Start next
+   * cycle" does. Without it a finished cycle stays finished after the training
+   * maxes are raised, and the phone offers the raise a second time.
+   */
+  startNextCycle?: true;
+}
+
+export function saveProgram(replica: Replica, input: SaveProgramInput, now: Date = new Date()): { program: ProgramRow; note: string } {
+  if (!input.id && !input.name?.trim()) throw new Error('A new program needs a name.');
+  if (input.startNextCycle && !input.id) throw new Error('startNextCycle restarts the count of a program that exists: give its id.');
+  if (input.trainingMaxes) {
+    const unknown = unknownExercises(replica, input.trainingMaxes.map(t => t.exerciseId));
+    if (unknown.length) throw unknownError(unknown);
+  }
+  const maxes: TrainingMax[] | undefined = input.trainingMaxes?.map(t => ({ exerciseId: t.exerciseId, kg: t.kg }));
+  const program = replica.saveProgram({
+    id: input.id,
+    ...(input.name !== undefined ? { name: input.name } : {}),
+    ...(input.routineIds !== undefined ? { rotation: input.routineIds } : {}),
+    ...(input.scheme !== undefined ? { scheme: input.scheme } : {}),
+    ...(input.weeks !== undefined ? { weeks: input.weeks } : {}),
+    ...(maxes !== undefined ? { trainingMaxes: maxes } : {}),
+    ...(input.startNextCycle ? { startedAt: now.toISOString() } : {}),
+  });
+  const routines = replica.workoutRoutines();
+  return {
+    program: programRow(program, programProgress(program, allSessions(replica), routines), replica.exercises(), new Map(routines.map(r => [r.id, r.name]))),
+    note: `A plan. Which week it is and which routine is next are worked out from the workouts finished in it, never set${input.startNextCycle ? ', and the count now starts again from this moment' : ''}. To put it on the schedule, create or update a task with workoutProgramId: its row then starts the next routine.`,
+  };
+}
+
+export function deleteProgram(replica: Replica, id: string): { removed: { id: string; name: string }; note: string } {
+  const program = replica.deleteProgram(id);
+  return {
+    removed: { id: program.id, name: program.name },
+    note: 'Its routines stay, as routines on their own, and workouts logged from it keep their history. Tasks linked to it stop offering it.',
+  };
+}
+
+export interface NextWorkoutInput {
+  /** A program, for its next routine. */
+  programId?: string;
+  /** A routine, for its own exercises. */
+  routineId?: string;
+}
+
+export interface NextExerciseRow {
+  exerciseId: string;
+  name: string;
+  scheme?: ProgressionScheme;
+  /** The proposed working sets, weights in kg. Absent when there is nothing to propose from yet. */
+  proposal?: {
+    move: string;
+    sets: SetProposal[];
+    /** The phone's own words for it ("Today 3 × 6–8 at 82.5 kg."), in the unit the phone shows. */
+    headline?: string;
+    /** Why, in the phone's words and unit. */
+    reason: string;
+    /** For a routine that warms up with a ramp: the warm-ups for the proposed weight, in kg. */
+    warmups?: { weightKg: number; reps: number }[];
+  };
+}
+
+/**
+ * The next workout, with each exercise's proposed sets: the program's next
+ * routine (derived from its finished workouts) or a routine named directly,
+ * and for each weight and reps exercise what workout mode will suggest.
+ * One call rather than an `exercise_history` per exercise, since "what should
+ * I lift on Thursday" is about the whole workout.
+ *
+ * **A proposal, never a plan change.** It is computed by the phone's own
+ * `workoutProgression.ts` against the person's plates and unit; nothing here
+ * writes a routine, a target or a session.
+ */
+export function nextWorkout(replica: Replica, input: NextWorkoutInput = {}): {
+  routine: { id: string; name: string };
+  program?: { id: string; name: string; week: number; weeks?: number; workoutsDone: number; cycleDone?: true; trainingMaxRaises?: { exerciseId: string; name: string; fromKg: number; toKg: number }[] };
+  phoneUnit: 'kg' | 'lb';
+  exercises: NextExerciseRow[];
+  note: string;
+} {
+  const routines = replica.workoutRoutines();
+  const programs = replica.workoutPrograms().filter(p => !p.archived);
+  const sessions = allSessions(replica);
+  // "Last time" is a finished workout, as on the phone: one in progress there
+  // is passed over, so its done sets are not read as the last session.
+  const finished = sessions.filter(s => s.endedAt !== null);
+  const rows = replica.exercises();
+
+  let program: WorkoutProgram | null = null;
+  let routine: WorkoutRoutine | null = null;
+  if (input.programId) {
+    program = programs.find(p => p.id === input.programId) ?? null;
+    if (!program) throw new Error(`No program with id ${input.programId}. list_workouts lists the programs.`);
+  } else if (input.routineId) {
+    routine = routines.find(r => r.id === input.routineId) ?? null;
+    if (!routine) throw new Error(`No routine with id ${input.routineId}. list_workouts lists the routines.`);
+    program = routine.programId ? programs.find(p => p.id === routine!.programId) ?? null : null;
+  } else {
+    const running = programs.filter(p => p.rotation.length > 0);
+    if (running.length !== 1) {
+      throw new Error(running.length === 0
+        ? 'No program to read the next workout of. Name a routineId, or make a program with save_program.'
+        : `Several programs: name one with programId (${running.map(p => `${p.name}: ${p.id}`).join('; ')}).`);
+    }
+    program = running[0];
+  }
+  const progress = program ? programProgress(program, sessions, routines) : null;
+  if (!routine) {
+    routine = progress?.nextRoutineId ? routines.find(r => r.id === progress.nextRoutineId) ?? null : null;
+    if (!routine) throw new Error('That program has no routines in its rotation. Add some with save_program.');
+  }
+
+  const { unit, plateInventory } = replica.workoutLoads();
+  let withheld = false;
+  const exercises: NextExerciseRow[] = routine.items.map(item => {
+    const info = catalogExercise(rows, item.exerciseId);
+    const name = info?.name ?? 'Unknown exercise';
+    const scheme = schemeFor(item, program);
+    if (!info || !scheme) return { exerciseId: item.exerciseId, name, ...(scheme ? { scheme } : {}) };
+    const load = loadContextFor(info, plateInventory, unit, item);
+    const history = replica.workoutExerciseSets(item.exerciseId);
+    if (history.length === 0 && scheme !== 'percent') withheld = true;
+    const p = proposeNext({
+      exerciseId: item.exerciseId, kind: info.kind, item, scheme, history, sessions: finished, exceptSessionId: null, load,
+      trainingMaxKg: program?.trainingMaxes.find(t => t.exerciseId === item.exerciseId)?.kg ?? null,
+      week: progress ? { week: progress.week, weeks: progress.weeks } : null,
+    });
+    if (!p) return { exerciseId: item.exerciseId, name, scheme };
+    const headline = proposalHeadline(p, unit);
+    const top = p.sets[0]?.weightKg ?? null;
+    const warmups = item.warmupRamp && top !== null ? rampSteps(top, load).map(st => ({ weightKg: st.kg, reps: st.reps })) : [];
+    return {
+      exerciseId: item.exerciseId, name, scheme,
+      proposal: {
+        move: p.move, sets: p.sets, reason: p.reason,
+        ...(headline ? { headline } : {}),
+        ...(warmups.length ? { warmups } : {}),
+      },
+    };
+  });
+
+  const raises = program && progress?.cycleDone && program.scheme === 'percent'
+    ? trainingMaxRaises(program, id => catalogExercise(rows, id)?.primaryMuscles ?? [], unit)
+      .map(r => ({ ...r, name: exerciseName(rows, r.exerciseId) }))
+    : [];
+  return {
+    routine: { id: routine.id, name: routine.name },
+    ...(program && progress ? {
+      program: {
+        id: program.id, name: program.name, week: progress.week,
+        ...(progress.weeks !== null ? { weeks: progress.weeks } : {}),
+        workoutsDone: progress.sessionsDone,
+        ...(progress.cycleDone ? { cycleDone: true as const } : {}),
+        ...(raises.length ? { trainingMaxRaises: raises } : {}),
+      },
+    } : {}),
+    phoneUnit: unit,
+    exercises,
+    note: [
+      'Proposals only: the person sees the same suggestion in workout mode and decides whether to use it. Never write one into a routine unasked, and never log a workout to stand for one.',
+      'weightKg is kilograms; headline and reason are the phone\'s words in the unit it shows.',
+      sessions.length === 0
+        ? 'This replica holds no workouts, so the week and workoutsDone shown count nothing and are not known facts, and the proposals that move on from history are missing. Workout history reaches the server only with Include health logs on; with it off the week and the next routine count no workouts.'
+        : withheld ? 'Some exercises have no history here. Workout history reaches the server only with Include health logs on, so with it off the week and the next routine count no workouts, and loads that move on from history are missing.' : null,
+      raises.length ? 'A cycle just ended: trainingMaxRaises is what the phone proposes for the next one. Raise them with save_program only if the person agrees, passing startNextCycle: true in the same call so the count starts again and the phone does not offer the raise a second time.' : null,
+    ].filter(Boolean).join(' '),
   };
 }

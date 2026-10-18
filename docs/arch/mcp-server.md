@@ -1511,16 +1511,28 @@ Four areas had no MCP read or write, and the shape of each answer follows from w
   never does, and leaves the rest timer to `WorkoutModeHost` on the phone. `save_routine` and
   `delete_routine` write plans: an exercise id the catalog doesn't know is refused by name, a
   superset is given as `supersetWithPrevious` and keyed by `joinPrevious`, the editor's own rule,
-  and a progression is stored as the person's choice with nothing proposing a load from it (phase 4
-  of `workouts.md`). `log_workout` writes a workout the person describes, after the fact, finished
+  and a progression is the person's choice of how loads move on, which only ever becomes a proposal.
+  `save_program` and `delete_program` write the plan above routines: a rotation of routine ids
+  (refused by name when one is unknown), a scheme, a cycle length and training maxes in kg, through
+  `addProgram`/`updateProgram`, which file the rotation's routines under the program the way the
+  editor does. Where a program is (its week and next routine) is never written: `list_workouts` and
+  `next_workout` derive it with the app's own `programProgress`. `next_workout` is one read for the
+  whole next workout rather than an `exercise_history` per exercise, since "what do I lift on
+  Thursday" is about every exercise at once: it runs `proposeNext` against the person's plates and
+  unit (`workoutLoads`), returns the proposed sets in kg beside the phone's own words for them, and
+  says that a proposal is the person's to accept. `log_workout` writes a workout the person describes, after the fact, finished
   and with every set done, through `addFinishedSession`; it refuses one with no sets, one that
   starts in the future and one that ends before it starts, and it never completes a task, since a
   record of a workout is not the person ticking the task off. `update_workout` and
   `delete_workout` refuse the session in progress on the phone, which only the person ends. Each
   write is recorded in Activity, a routine under its name and a workout titled by kind
   ("Workout"), never by what was lifted, the mood entry's reason. Weights are kilograms on the wire.
-  A task names its routine with `workoutRoutineId`, which `create_task` and `update_task` write and
-  `get_task` reads back as `workout`, and the replica refuses a routine that isn't there.
+  A task names its routine with `workoutRoutineId`, or a program with `workoutProgramId` (never
+  both: naming one clears the other, naming both is refused), which `create_task` and `update_task`
+  write and `get_task` reads back as `workout` (a program's with the routine it would start now),
+  and the replica refuses a routine or program that isn't there. With Include health logs off the
+  replica has no sessions, so a program reads as on its first routine and history-based proposals
+  are missing; `next_workout` says so.
   `exercise_history` is the one read that computes: it hands one exercise's sets to the app's own
   `analyzeExercise` (`src/utils/workoutRecords.ts`) and reports the records, the trend of the
   estimated 1RM and the last session, so Claude and the phone's exercise page cannot disagree about

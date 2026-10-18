@@ -79,6 +79,9 @@ const NOT_SEEDED: Record<string, string[]> = {
   // would carry an id that names nothing. The link is one row in the task
   // editor once the task exists.
   'names a workout routine outside the template': ['workoutRoutineId'],
+  // The same reason: a program is a row of this person's own, which a shared
+  // template (or one run before the program synced) would name and not find.
+  'names a workout program outside the template': ['workoutProgramId'],
 
   // The reading a task is due at is where one meter stood at one moment. A run
   // can't know where the odometer is now, so a seeded "due at 45,000" would be

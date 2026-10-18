@@ -280,6 +280,8 @@ export interface TaskFieldsInput {
   vacationPause?: boolean;
   /** The workout routine (list_workouts' routines) Start workout on the task opens. null removes the link. Checked by the replica. */
   workoutRoutineId?: string | null;
+  /** The workout program whose next routine Start workout on the task opens. A task names a routine or a program: setting one clears the other. Checked by the replica. */
+  workoutProgramId?: string | null;
   /** Completing it also records a dose of this medicine, in get_task's own shape. null stops it. */
   medication?: { name: string; amount?: number | null; unit?: string | null } | null;
   /** A deadline worked out from the date on every occurrence, in get_task's own shape. null drops the rule. */
@@ -918,10 +920,19 @@ export function taskFieldsPatch(
     if (context.isSubtask && input.vacationPause) errors.push('vacationPause is set on the task a checklist item belongs to, not on the item.');
     else patch.vacationPause = input.vacationPause;
   }
-  if (input.workoutRoutineId !== undefined) {
-    const id = input.workoutRoutineId?.trim() || null;
-    if (id && context.isSubtask) errors.push('workoutRoutineId goes on a top-level task, not a checklist item.');
-    else patch.workoutRoutineId = id;
+  // A task names a routine or a program, never both, the editor's rule:
+  // naming one clears the other, and naming both is refused.
+  const routineLink = input.workoutRoutineId !== undefined ? input.workoutRoutineId?.trim() || null : undefined;
+  const programLink = input.workoutProgramId !== undefined ? input.workoutProgramId?.trim() || null : undefined;
+  if (routineLink && programLink) {
+    errors.push('Name a workoutRoutineId or a workoutProgramId, not both: a task starts one routine, or the next routine of one program.');
+  } else if ((routineLink || programLink) && context.isSubtask) {
+    errors.push(`${routineLink ? 'workoutRoutineId' : 'workoutProgramId'} goes on a top-level task, not a checklist item.`);
+  } else {
+    if (routineLink !== undefined) patch.workoutRoutineId = routineLink;
+    if (programLink !== undefined) patch.workoutProgramId = programLink;
+    if (routineLink) patch.workoutProgramId = null;
+    if (programLink) patch.workoutRoutineId = null;
   }
   if (input.medication !== undefined) {
     const m = input.medication;

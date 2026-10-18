@@ -14,6 +14,8 @@ import {
   withReps,
   withTargetDuration,
   withTargetWeight,
+  warmupMode,
+  withWarmupMode,
   withWarmups,
   withWorkingSets,
 } from '../utils/workoutRoutine';
@@ -58,6 +60,23 @@ describe('editing an item', () => {
       { kind: 'warmup', repsMin: null, repsMax: null },
     ]);
     expect(withWarmups(bench, 0).targets.map(t => t.kind)).toEqual(['working', 'working', 'amrap']);
+  });
+
+  it('switches between no warm-up, a ramp and a count of warm-ups', () => {
+    expect(warmupMode(bench)).toBe('sets');
+    const ramp = withWarmupMode(bench, 'ramp');
+    expect(ramp.warmupRamp).toBe(true);
+    expect(ramp.targets.map(t => t.kind)).toEqual(['working', 'working', 'amrap']);
+    expect(warmupMode(ramp)).toBe('ramp');
+    // Counting warm-ups again starts at two, and the ramp key goes rather than turning false.
+    const sets = withWarmupMode(ramp, 'sets');
+    expect('warmupRamp' in sets).toBe(false);
+    expect(itemShape(sets).warmups).toBe(2);
+    expect(itemShape(withWarmupMode(bench, 'sets')).warmups).toBe(1);
+    const none = withWarmupMode(ramp, 'none');
+    expect(warmupMode(none)).toBe('none');
+    expect('warmupRamp' in none).toBe(false);
+    expect('warmupRamp' in withWarmups(ramp, 3)).toBe(false);
   });
 
   it('writes reps and weight onto every working set and nothing else of them', () => {
@@ -124,6 +143,7 @@ describe('describing an item', () => {
 
   it('reads warm-ups, sets, weight, the scheme and the rest', () => {
     expect(describeRoutineItem(bench, opts)).toBe('1 warm-up · 3 × 6–8 · 80 kg · rep range · rest 2:30');
+    expect(describeRoutineItem(withWarmupMode(bench, 'ramp'), opts)).toBe('ramp warm-up · 3 × 6–8 · 80 kg · rep range · rest 2:30');
     expect(describeRoutineItem(newRoutineItem('a', 'weight_reps'), opts)).toBe('3 × 8–12 · rest 1:30');
     expect(describeRoutineItem({ ...newRoutineItem('a', 'weight_reps'), restSeconds: 0 }, opts)).toBe('3 × 8–12 · no rest');
     expect(describeRoutineItem(withTargetWeight(bench, 61.235), { ...opts, unit: 'lb' })).toContain('135 lb');

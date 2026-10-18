@@ -438,6 +438,7 @@ export function newTaskFromDraft(
     logSavedMealId: draft.logSavedMealId ?? null,
     logMealSlotByTime: draft.logMealSlotByTime ?? false,
     workoutRoutineId: draft.workoutRoutineId ?? null,
+    workoutProgramId: draft.workoutProgramId ?? null,
     previousOccurrenceId: draft.previousOccurrenceId ?? null,
     generatedKind: draft.generatedKind ?? null,
     generatedSourceId: draft.generatedSourceId ?? null,

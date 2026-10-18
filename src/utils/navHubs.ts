@@ -198,7 +198,7 @@ const HEALTH_HUB: NavHub = {
       route: 'Workouts',
       label: 'Workouts',
       icon: 'barbell-outline',
-      keywords: ['gym', 'lifting', 'strength', 'training', 'exercise', 'exercises', 'sets', 'reps', 'weights', 'routine'],
+      keywords: ['gym', 'lifting', 'strength', 'training', 'exercise', 'exercises', 'sets', 'reps', 'weights', 'routine', 'program'],
       workouts: true,
     },
   ],
