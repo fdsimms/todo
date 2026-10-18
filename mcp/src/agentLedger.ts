@@ -1466,9 +1466,9 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return result;
     },
 
-    addCookware(name, weightG) {
-      const item = replica.addCookware(name, weightG);
-      log({ action: 'created', subject: 'cookware', title: item.name, taskId: null, recordId: item.id, note: `Add the cookware "${item.name}" at ${item.weightG} g empty` });
+    addCookware(name, weightG, kind) {
+      const item = replica.addCookware(name, weightG, kind);
+      log({ action: 'created', subject: 'cookware', title: item.name, taskId: null, recordId: item.id, note: `Add the cookware "${item.name}" at ${item.weightG} g empty${item.kind ? ` under ${item.kind}` : ''}` });
       return item;
     },
 
@@ -1478,6 +1478,7 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       const changes = [
         ...(before && before.name !== item.name ? [`name from "${before.name}" to "${item.name}"`] : []),
         ...(before && before.weightG !== item.weightG ? [`empty weight from ${before.weightG} g to ${item.weightG} g`] : []),
+        ...(before && before.kind !== item.kind ? [`type from ${before.kind ?? 'read from the name'} to ${item.kind ?? 'read from the name'}`] : []),
       ];
       log({ action: 'edited', subject: 'cookware', title: item.name, taskId: null, recordId: item.id, note: changes.length ? `Change the cookware "${before!.name}": ${changes.join('; ')}` : `Leave the cookware "${item.name}" as it is` });
       return item;
