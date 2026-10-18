@@ -488,7 +488,10 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
    */
   const rampFor = (exerciseId: string, item: WorkoutRoutineItem) => {
     const info = catalogExercise(get().exercises, exerciseId);
-    if (!info) return () => [];
+    // A ramp is refused on any other kind when a routine is saved, but a kind
+    // changed afterwards (before any set) can leave one on an item: on an
+    // assisted exercise the weight is the help, and ramping it would be harder.
+    if (!info || info.kind !== 'weight_reps') return () => [];
     const settings = useSettingsStore.getState();
     const ctx = loadContextFor(info, settings.plateInventory, settings.workoutUnit, item);
     return (workingKg: number | null) => rampSteps(workingKg, ctx);

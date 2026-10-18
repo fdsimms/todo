@@ -222,7 +222,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const applyProposal = () => {
     if (!session || !viewed || !proposal || !loadCtx) return;
     const top = proposal.sets[0]?.weightKg ?? null;
-    const ramp = routineItem?.warmupRamp && top !== null ? rampSteps(top, loadCtx) : null;
+    const ramp = routineItem?.warmupRamp && viewedInfo?.kind === 'weight_reps' && top !== null ? rampSteps(top, loadCtx) : null;
     haptics.success();
     for (const e of proposalEdits(viewed.sets, proposal, ramp)) edit(e.setId, { weightKg: e.weightKg, reps: e.reps });
     // A ramp with no weight to start from (a percentage program's first

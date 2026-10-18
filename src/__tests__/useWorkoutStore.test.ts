@@ -287,6 +287,19 @@ describe('a live session', () => {
     ]);
   });
 
+  it('lays out no ramp for an exercise whose kind changed away from weight and reps', () => {
+    // The kind can still change before any set is logged, and the routine's
+    // ramp was accepted while it was weight and reps.
+    const e = ok(state().addExercise({ name: 'Garage press variant', kind: 'weight_reps', equipment: 'barbell', primaryMuscles: ['front_delts'] }));
+    const r = ok(state().addRoutine('Press day', [{
+      exerciseId: e.id, restSeconds: null, progression: null, warmupRamp: true,
+      targets: [{ kind: 'working', repsMin: 8, repsMax: 8, weightKg: 30 }],
+    }]));
+    ok(state().updateExercise(e.id, { kind: 'assisted_reps' }));
+    const s = ok(state().startSession({ routineId: r.id }));
+    expect(state().loadSets(s.id).map(x => x.kind)).toEqual(['working']);
+  });
+
   it('reloads with the live session\'s sets already loaded', () => {
     const s = ok(state().startSession());
     ok(state().logSet(s.id, { exerciseId: 'lib:back-squat', weightKg: 100, reps: 5 }));
