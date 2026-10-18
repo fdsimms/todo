@@ -388,11 +388,17 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
 
   const flatLeaves = flattenApplyTree(tree);
   const selectedCount = flatLeaves.filter(l => selectedIds.has(l.item.id)).length;
-  const anchorless = flatLeaves.some(({ item: i }) => {
-    if (!selectedIds.has(i.id)) return false;
-    if (i.dueOffsetDays === null && i.deferOffsetDays === null) return false;
-    return i.anchor === 'end' ? endAnchor === null : startAnchor === null;
-  });
+  // A selected item that counts days from a date nobody has set would be
+  // created with no date at all, silently landing in Unscheduled. Adding is
+  // blocked until that date is picked, and the hint names which one.
+  const missingAnchors = (['start', 'end'] as const).filter(which =>
+    (which === 'end' ? endAnchor === null : startAnchor === null)
+    && flatLeaves.some(({ item: i }) =>
+      selectedIds.has(i.id)
+      && i.anchor === which
+      && (i.dueOffsetDays !== null || i.deferOffsetDays !== null)));
+  const anchorless = missingAnchors.length > 0;
+  const canApply = selectedCount > 0 && !anchorless;
 
   // Derived off the whole tree rather than the current selection, so the field
   // and its hint don't appear and disappear as items are ticked.
@@ -416,7 +422,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
   const createsProject = container === 'project' && runName.trim() !== '';
 
   const handleApply = () => {
-    if (selectedCount === 0) return;
+    if (!canApply) return;
     haptics.success();
     const flatSelection = expandSelectionWithAncestors(tree, selectedIds);
     const created = applyTemplate(template.id, flatSelection, anchors, {
@@ -703,23 +709,25 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
 
           {anchorless && (
             <Text style={styles.anchorlessHint}>
-              Items that count days from a date you haven’t set are added without dates.
+              Some tasks count days from {missingAnchors.map(a => anchorLabel(a, away).toLowerCase()).join(' and ')}, which isn’t set yet.
             </Text>
           )}
           </ScrollView>
 
           <TouchableOpacity
-            style={[styles.applyBtn, selectedCount === 0 && styles.applyBtnDisabled]}
+            style={[styles.applyBtn, !canApply && styles.applyBtnDisabled]}
             onPress={handleApply}
-            disabled={selectedCount === 0}
+            disabled={!canApply}
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="button"
-            accessibilityState={{ disabled: selectedCount === 0 }}
+            accessibilityState={{ disabled: !canApply }}
           >
-            <Text style={[styles.applyBtnText, selectedCount === 0 && styles.applyBtnTextDisabled]}>
+            <Text style={[styles.applyBtnText, !canApply && styles.applyBtnTextDisabled]}>
               {selectedCount === 0
                 ? 'No tasks selected'
-                : `Add ${selectedCount} task${selectedCount === 1 ? '' : 's'}`}
+                : anchorless
+                  ? `Set ${missingAnchors.map(a => anchorLabel(a, away).toLowerCase()).join(' and ')} first`
+                  : `Add ${selectedCount} task${selectedCount === 1 ? '' : 's'}`}
             </Text>
           </TouchableOpacity>
         </View>
