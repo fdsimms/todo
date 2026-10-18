@@ -17,6 +17,7 @@ import {
   sessionSummary,
   setFieldsFor,
   setLabels,
+  setName,
   supersetGroup,
   valuesFromLastDone,
   walkOrder,
@@ -297,6 +298,7 @@ describe('what a set records, and how it reads', () => {
     ];
     const labels = setLabels(sets);
     expect(sets.map(s => labels.get(s.id))).toEqual(['W', '1', '2', 'D']);
+    expect(sets.map(s => setName(s.kind, labels.get(s.id)!))).toEqual(['Warm-up', 'Set 1', 'Set 2', 'Drop set']);
   });
 });
 

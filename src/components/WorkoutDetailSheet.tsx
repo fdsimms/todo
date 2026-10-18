@@ -28,7 +28,7 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { formatTimeOfDay } from '../utils/dateUtils';
 import { catalogExercise } from '../utils/exerciseCatalog';
 import { sessionRecordSummary } from '../utils/workoutRecords';
-import { formatSetLine, sessionExercises, sessionMinutes, setLabels } from '../utils/workoutSession';
+import { formatSetLine, sessionExercises, sessionMinutes, setLabels, setName } from '../utils/workoutSession';
 import { WORKOUT_EFFORT } from '../utils/workoutData';
 import { workoutSpanWritable } from '../utils/healthWorkoutSync';
 import { BUTTON_LABEL } from '../copy/shared';
@@ -346,10 +346,13 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose }: Props) {
                                 key={set.id}
                                 style={styles.setLine}
                                 accessible
-                                accessibilityLabel={`${set.kind === 'warmup' ? 'Warm-up' : set.kind === 'drop' ? 'Drop set' : `Set ${label}`}, ${line}`}
+                                accessibilityLabel={`${setName(set.kind, label)}, ${line}${set.note ? `. ${set.note}` : ''}`}
                               >
                                 <Text style={[styles.setLabel, { minWidth: labelWidth }, lettered && styles.setBadge]}>{label}</Text>
-                                <Text style={styles.setValue}>{line}</Text>
+                                <View style={styles.setBody}>
+                                  <Text style={styles.setValue}>{line}</Text>
+                                  {!!set.note && <Text style={styles.setNote}>{set.note}</Text>}
+                                </View>
                               </View>
                             );
                           })}
@@ -449,7 +452,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   setLine: { flexDirection: 'row', alignItems: 'baseline' },
   setLabel: { color: colors.textSecondary, fontSize: font.sm, fontVariant: ['tabular-nums'] },
   setBadge: { color: colors.orangeText, fontWeight: fontWeight.bold },
-  setValue: { flex: 1, color: colors.textSecondary, fontSize: font.sm, fontVariant: ['tabular-nums'] },
+  setBody: { flex: 1 },
+  setValue: { color: colors.textSecondary, fontSize: font.sm, fontVariant: ['tabular-nums'] },
+  setNote: { color: colors.text, fontSize: font.sm, marginTop: spacing.xxs, marginBottom: spacing.xs },
   notesInput: { color: colors.text, fontSize: font.md, paddingHorizontal: spacing.md, paddingVertical: spacing.smd, minHeight: 64 },
   deleteRow: {
     alignItems: 'center', justifyContent: 'center', minHeight: 48, marginTop: spacing.lg,

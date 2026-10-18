@@ -300,6 +300,17 @@ export function setLabels(sets: readonly WorkoutSet[]): Map<string, string> {
   return out;
 }
 
+/**
+ * A set named in words, from its `setLabels` entry: "Set 2", "Warm-up" or
+ * "Drop set". What a screen reader hears, and what a set's note is filed under
+ * once the workout is over.
+ */
+export function setName(kind: WorkoutSetKind, label: string): string {
+  if (kind === 'warmup') return 'Warm-up';
+  if (kind === 'drop') return 'Drop set';
+  return `Set ${label}`;
+}
+
 // ==== laying sets out ====
 
 /** What a new set is written with: the store's `SetInput`, minus the exercise. */
