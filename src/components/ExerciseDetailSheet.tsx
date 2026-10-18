@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format } from 'date-fns/format';
 import { SheetModal } from './SheetModal';
 import { SheetHeader } from './SheetHeader';
@@ -18,7 +19,7 @@ import { BUTTON_LABEL } from '../copy/shared';
 import { getLogicalDayKey } from '../utils/dateUtils';
 import { catalogExercise, describeExercise } from '../utils/exerciseCatalog';
 import {
-  analyzeExercise, countsForRecords, isNewRecord, metricsFor, recordSessions, type RecordMetric,
+  analyzeExercise, countsForRecords, isNewRecordRow, metricsFor, recordSessions, type RecordMetric,
 } from '../utils/workoutRecords';
 import {
   formatAxisValue, formatMetricPoint, formatRecordValue, metricCaption, metricLabel, metricNote, metricNumber,
@@ -42,8 +43,11 @@ import type { WorkoutSet } from '../types';
  * Nothing is relative to a body weight, and the estimated 1RM says
  * "estimated" wherever it shows (docs/arch/workouts.md).
  *
- * Nothing on it is staged, so there is nothing to lose to a swipe-down and
- * `onRequestClose` is the plain close.
+ * **Full screen, not a page sheet.** The chart is scrubbed by dragging a
+ * finger across it, and a page sheet's pull-down pan makes RN's modal touch
+ * handler cancel a JS touch in flight (CLAUDE.md, "A drag cannot live inside a
+ * pageSheet"). With no swipe-down to dismiss it, the Done button is the way
+ * out, and nothing on it is staged, so `onRequestClose` is the plain close.
  */
 
 interface Props {
@@ -63,6 +67,7 @@ function shortDate(dayKey: string, todayKey: string): string {
 
 export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
   const colors = useColors();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const exercises = useWorkoutStore(s => s.exercises);
   const sessions = useWorkoutStore(s => s.sessions);
@@ -84,8 +89,11 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
 
   const todayKey = useMemo(() => getLogicalDayKey(new Date(), dayResetTime), [dayResetTime, visible]);
   const sets = useMemo(
-    () => (visible && exerciseId ? useWorkoutStore.getState().exerciseHistory(exerciseId) : []),
+    // Not gated on `visible`: the host keeps `exerciseId` through the close, and an
+    // empty array while the sheet slides away would flash "No history yet".
+    // `visible` is only a dependency, so each open re-reads the history.
     // `sessions`: a session finished or deleted elsewhere changes what the history holds.
+    () => (exerciseId ? useWorkoutStore.getState().exerciseHistory(exerciseId) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [visible, exerciseId, sessions],
   );
@@ -142,8 +150,8 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
   );
 
   return (
-    <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose} name="ExerciseDetailSheet">
-      <View style={styles.root}>
+    <SheetModal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose} name="ExerciseDetailSheet">
+      <View style={[styles.root, { paddingTop: insets.top }]}>
         <SheetHeader
           title="Exercise"
           left={<View style={styles.spacer} />}
@@ -200,7 +208,7 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
                     <View key={`${r.type}-${r.reps ?? 0}`} style={[styles.recordRow, i > 0 && styles.rowSep]}>
                       <View style={styles.recordLabelWrap}>
                         <Text style={styles.recordLabel}>{recordLabel(r.type, kind, r.reps)}</Text>
-                        {isNewRecord(r.dayKey, todayKey) && (
+                        {isNewRecordRow(r, analysis!.events, todayKey) && (
                           <View style={styles.badge}><Text style={styles.badgeText}>New</Text></View>
                         )}
                       </View>

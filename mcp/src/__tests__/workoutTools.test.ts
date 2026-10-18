@@ -30,6 +30,9 @@ const allSets: WorkoutSet[] = [
   set('a', 'lib:barbell-bench-press', { weightKg: 82.5, reps: 8 }),
   set('b', 'lib:barbell-bench-press', { setIndex: 1, weightKg: 82.5, reps: 7 }),
   set('p', 'lib:barbell-bench-press', { setIndex: 2, weightKg: 82.5, reps: 8, completedAt: null }),
+  // The live session's warm-ups: one checked off, one still planned.
+  set('w1', 'lib:barbell-bench-press', { kind: 'warmup', setIndex: -2, weightKg: 30, reps: 10 }),
+  set('w2', 'lib:barbell-bench-press', { kind: 'warmup', setIndex: -1, weightKg: 50, reps: 5, completedAt: null }),
 ];
 
 function fakeReplica(over: Partial<Replica> = {}): Replica {
@@ -134,10 +137,14 @@ describe('exercise_history', () => {
     expect(result.trendNote).toMatch(/Estimated, not lifted/);
   });
 
-  it('shows the last session\'s sets, planned ones marked not done, warm-ups kept', () => {
+  it('shows the last session\'s done sets, keeping a completed warm-up and dropping anything unchecked', () => {
     const { lastSession } = exerciseHistory(fakeReplica(), { exerciseId: BENCH });
     expect(lastSession).toMatchObject({ id: 's1', title: 'Upper A', date: '2026-10-07' });
-    expect(lastSession!.sets.map(s => [s.weightKg, s.reps])).toEqual([[82.5, 8], [82.5, 7]]);
+    // The completed 30 kg warm-up is kept, the unchecked 50 kg warm-up and the
+    // unchecked 82.5 x 8 working set are not.
+    expect(lastSession!.sets.map(s => [s.kind, s.weightKg, s.reps])).toEqual([
+      ['warmup', 30, 10], ['working', 82.5, 8], ['working', 82.5, 7],
+    ]);
   });
 
   it('keeps warm-ups out of the records', () => {

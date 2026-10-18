@@ -1,4 +1,4 @@
-import type { PlateInventory } from '../types';
+import type { ExerciseEquipment, PlateInventory } from '../types';
 import { kgToUnit, unitToKg, type WeightUnit } from './weightLog';
 import { DEFAULT_PLATE_INVENTORY, formatWeightNumber, weightToDisplay } from './workoutData';
 
@@ -68,9 +68,35 @@ export function effectivePlateInventory(inventory: PlateInventory, unit: WeightU
   return unit === 'lb' && sameInventory(inventory, DEFAULT_PLATE_INVENTORY) ? DEFAULT_PLATE_INVENTORY_LB : inventory;
 }
 
-/** The bar a barbell exercise is loaded on: its own `barKg` where it has one, else the inventory's heaviest bar. */
-export function barKgFor(exerciseBarKg: number | null | undefined, inventory: PlateInventory): number {
+/** The equipment that is loaded with plates on a bar: the line shows for these and nothing else. */
+export function isPlateLoaded(equipment: ExerciseEquipment): boolean {
+  return equipment === 'barbell' || equipment === 'ez_bar' || equipment === 'trap_bar';
+}
+
+/**
+ * What an EZ bar and a trap bar weigh when the exercise names no bar of its
+ * own: about 10 kg or 25 lb, and about 25 kg or 55 lb. They are stocked in the
+ * unit the gym uses, so the default follows the unit shown. A barbell isn't
+ * here: its bar is the inventory's.
+ */
+const OTHER_BAR_KG: Record<'ez_bar' | 'trap_bar', Record<WeightUnit, number>> = {
+  ez_bar: { kg: 10, lb: unitToKg(25, 'lb') },
+  trap_bar: { kg: 25, lb: unitToKg(55, 'lb') },
+};
+
+/**
+ * The bar a plate-loaded exercise is loaded on: its own `barKg` where it has
+ * one, else the default for its equipment. A barbell's default is the
+ * inventory's heaviest bar; an EZ bar's and a trap bar's are fixed per unit.
+ */
+export function barKgFor(
+  exerciseBarKg: number | null | undefined,
+  inventory: PlateInventory,
+  equipment: ExerciseEquipment = 'barbell',
+  unit: WeightUnit = 'kg',
+): number {
   if (typeof exerciseBarKg === 'number' && exerciseBarKg > 0) return exerciseBarKg;
+  if (equipment === 'ez_bar' || equipment === 'trap_bar') return OTHER_BAR_KG[equipment][unit];
   return inventory.barsKg[0] ?? 20;
 }
 

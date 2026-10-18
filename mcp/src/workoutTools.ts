@@ -341,7 +341,7 @@ export function exerciseHistory(
   const lastPoint = analysis.points[analysis.points.length - 1];
   const lastSessionRow = sessions.find(s => s.id === lastPoint.sessionId);
   const lastSets = sets
-    .filter(st => st.sessionId === lastPoint.sessionId && (countsForRecords(st) || st.kind === 'warmup'))
+    .filter(st => st.sessionId === lastPoint.sessionId && st.completedAt !== null && (countsForRecords(st) || st.kind === 'warmup'))
     .sort((a, b) => a.setIndex - b.setIndex)
     .map(setRow);
   const title = replica.workoutSession(lastPoint.sessionId)?.title ?? 'Workout';

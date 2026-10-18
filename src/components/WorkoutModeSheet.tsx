@@ -43,7 +43,7 @@ import { formatStopwatch } from '../utils/effort';
 import { linkedTaskLine, workoutTaskEffect } from '../utils/workoutTask';
 import { displayTitleFor } from '../utils/visibilityUtils';
 import { catalogExercise } from '../utils/exerciseCatalog';
-import { barKgFor, effectivePlateInventory, plateLoad } from '../utils/plateMath';
+import { barKgFor, effectivePlateInventory, isPlateLoaded, plateLoad } from '../utils/plateMath';
 import { analyzeExercise, recordSessions, recordsInSession, summarizeRecords } from '../utils/workoutRecords';
 import { formatRecordChange, recordLabel } from '../utils/workoutRecordText';
 import {
@@ -155,13 +155,13 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const current = viewed ? currentSetOf(viewed) : null;
   const openSet = viewed?.sets.find(s => s.id === (openSetId ?? current?.id)) ?? null;
 
-  // The plates for the open set's weight, for a barbell exercise only: a
+  // The plates for the open set's weight, for a barbell, EZ bar or trap bar: a
   // dumbbell or a machine has nothing to load. A pound lifter who never set an
   // inventory gets the pound default (`effectivePlateInventory`).
   const plate = useMemo(() => {
-    if (!openSet || !viewedInfo || viewedInfo.equipment !== 'barbell' || kind !== 'weight_reps' || !openSet.weightKg) return null;
+    if (!openSet || !viewedInfo || !isPlateLoaded(viewedInfo.equipment) || kind !== 'weight_reps' || !openSet.weightKg) return null;
     const inventory = effectivePlateInventory(plateInventory, unit);
-    return plateLoad(openSet.weightKg, barKgFor(viewedInfo.barKg, inventory), inventory, unit);
+    return plateLoad(openSet.weightKg, barKgFor(viewedInfo.barKg, inventory, viewedInfo.equipment, unit), inventory, unit);
   }, [openSet, viewedInfo, kind, plateInventory, unit]);
 
   // Last time, for the shown exercise: one read per exercise shown, not per row.

@@ -4,6 +4,7 @@ import {
   barKgFor,
   describePlateLoad,
   effectivePlateInventory,
+  isPlateLoaded,
   plateLoad,
   platesOnSide,
   warmupRamp,
@@ -140,6 +141,35 @@ describe('the inventory in use', () => {
     expect(barKgFor(null, DEFAULT_PLATE_INVENTORY)).toBe(20);
     expect(barKgFor(undefined, { barsKg: [], plates: [] })).toBe(20);
     expect(barKgFor(0, { barsKg: [25], plates: [] })).toBe(25);
+  });
+
+  it('defaults an EZ bar to about 10 kg or 25 lb and a trap bar to about 25 kg or 55 lb', () => {
+    expect(barKgFor(null, DEFAULT_PLATE_INVENTORY, 'ez_bar', 'kg')).toBe(10);
+    expect(barKgFor(null, DEFAULT_PLATE_INVENTORY, 'ez_bar', 'lb')).toBeCloseTo(unitToKg(25, 'lb'), 6);
+    expect(barKgFor(null, DEFAULT_PLATE_INVENTORY, 'trap_bar', 'kg')).toBe(25);
+    expect(barKgFor(null, DEFAULT_PLATE_INVENTORY, 'trap_bar', 'lb')).toBeCloseTo(unitToKg(55, 'lb'), 6);
+  });
+
+  it('keeps the exercise\'s own bar over the equipment default, and the inventory bar for a barbell', () => {
+    expect(barKgFor(12, DEFAULT_PLATE_INVENTORY, 'ez_bar', 'kg')).toBe(12);
+    expect(barKgFor(null, { barsKg: [15], plates: [] }, 'barbell', 'kg')).toBe(15);
+    expect(barKgFor(null, { barsKg: [15], plates: [] }, 'trap_bar', 'kg')).toBe(25);
+  });
+
+  it('loads an EZ bar from its own weight in pounds', () => {
+    const inventory = effectivePlateInventory(DEFAULT_PLATE_INVENTORY, 'lb');
+    const load = plateLoad(unitToKg(65, 'lb'), barKgFor(null, inventory, 'ez_bar', 'lb'), inventory, 'lb')!;
+    expect(load.exact).toBe(true);
+    expect(load.perSide.map(p => [Math.round(p.kg * 2.20462 * 10) / 10, p.count])).toEqual([[10, 2]]);
+  });
+
+  it('plate-loads a barbell, an EZ bar and a trap bar and nothing else', () => {
+    expect(isPlateLoaded('barbell')).toBe(true);
+    expect(isPlateLoaded('ez_bar')).toBe(true);
+    expect(isPlateLoaded('trap_bar')).toBe(true);
+    for (const e of ['dumbbell', 'kettlebell', 'machine', 'cable', 'smith_machine', 'band', 'bodyweight', 'cardio_machine', 'other'] as const) {
+      expect(isPlateLoaded(e)).toBe(false);
+    }
   });
 });
 

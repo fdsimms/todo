@@ -59,6 +59,8 @@ beforeAll(() => {
 beforeEach(() => {
   mockRaw.runSync('DELETE FROM tasks');
   mockRaw.runSync('DELETE FROM mood_logs');
+  mockRaw.runSync('DELETE FROM workout_sessions');
+  mockRaw.runSync("DELETE FROM settings WHERE key = 'workoutsEnabled'");
   replica.refresh();
 });
 
@@ -124,6 +126,47 @@ describe('moodInsights', () => {
     replica.refresh();
     const [milestone] = moodInsights(replica).milestones;
     expect(milestone).toMatchObject({ label: 'New job', date: dayKey(3) });
+  });
+});
+
+describe('moodInsights, training days', () => {
+  function workout(daysAgo: number): void {
+    mockRaw.runSync(
+      'INSERT INTO workout_sessions (id, title, started_at, ended_at) VALUES (?,?,?,?)',
+      [`w${daysAgo}`, 'Upper A', at(daysAgo, 18), at(daysAgo, 19)]
+    );
+  }
+  // Fourteen days of mood, a workout on the even ones, which are the good days.
+  function seed(): void {
+    for (let i = 0; i < 14; i++) {
+      mood(i, i % 2 === 0 ? 4 : 2);
+      if (i % 2 === 0) workout(i);
+    }
+  }
+  const enable = () => mockRaw.runSync("INSERT OR REPLACE INTO settings (key, value) VALUES ('workoutsEnabled', 'true')");
+
+  it('compares mood on workout days with the other days since the first, as an association', () => {
+    seed();
+    enable();
+    replica.refresh();
+    const result = moodInsights(replica);
+    expect(result.byTrainingDay).toEqual([
+      { label: 'Days you finished a workout', daysWith: 7, daysWithout: 6, moodWith: 4, moodWithout: 2 },
+    ]);
+    expect(result.rules.join(' ')).toMatch(/only Apple Health holds/);
+  });
+
+  it('is absent when workout history is withheld from the server', () => {
+    for (let i = 0; i < 14; i++) mood(i, i % 2 === 0 ? 4 : 2);
+    enable();
+    replica.refresh();
+    expect(moodInsights(replica).byTrainingDay).toEqual([]);
+  });
+
+  it('is absent while Workouts is switched off', () => {
+    seed();
+    replica.refresh();
+    expect(moodInsights(replica).byTrainingDay).toEqual([]);
   });
 });
 

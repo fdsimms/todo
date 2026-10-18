@@ -7,6 +7,7 @@ import {
   countsForRecords,
   estimatedOneRepMax,
   isNewRecord,
+  isNewRecordRow,
   metricsFor,
   muscleWeeks,
   recentRecords,
@@ -176,6 +177,25 @@ describe('analyzeExercise, weight and reps', () => {
     expect(events.filter(e => e.type === 'weight')).toEqual([expect.objectContaining({ value: 87.5, previous: 80 })]);
   });
 
+  it('holds no record and fires no event for a set with no reps (a failed 140 x 0)', () => {
+    const sets = [set('s1', { weightKg: 100, reps: 5 }), set('s2', { weightKg: 140, reps: 0 }), set('s3', { weightKg: 140, reps: null })];
+    const a = analyzeExercise(BENCH, 'weight_reps', sets, sessions);
+    expect(a.events).toEqual([]);
+    expect(a.records.find(r => r.type === 'weight')?.value).toBe(100);
+    expect(a.points.find(p => p.sessionId === 's2')?.best).toBeNull();
+    expect(a.points.find(p => p.sessionId === 's3')?.best).toBeNull();
+  });
+
+  it('holds no record for a loaded carry with no distance', () => {
+    const sets = [
+      set('s1', { exerciseId: 'c', weightKg: 32, reps: null, distanceM: 40 }),
+      set('s2', { exerciseId: 'c', weightKg: 60, reps: null, distanceM: 0 }),
+    ];
+    const a = analyzeExercise('c', 'weight_distance', sets, sessions);
+    expect(a.events).toEqual([]);
+    expect(a.records.find(r => r.type === 'weight')?.value).toBe(32);
+  });
+
   it('announces nothing for a session that only ties', () => {
     const sets = [set('s1'), set('s2')];
     expect(analyzeExercise(BENCH, 'weight_reps', sets, sessions).events).toEqual([]);
@@ -329,6 +349,36 @@ describe('analyzeAll and the readings of it', () => {
     expect(isNewRecord('2026-10-01', '2026-10-14')).toBe(true);
     expect(isNewRecord('2026-09-29', '2026-10-14')).toBe(false);
     expect(isNewRecord('2026-10-20', '2026-10-14')).toBe(false);
+  });
+});
+
+describe('isNewRecordRow', () => {
+  const s1 = session('s1', 10, 1);
+  const s2 = session('s2', 10, 8);
+  const today = '2026-10-10';
+  const badged = (sets: WorkoutSet[]) => {
+    const a = analyzeExercise(BENCH, 'weight_reps', sets, [s1, s2]);
+    return a.records.filter(r => isNewRecordRow(r, a.events, today)).map(r => r.type + (r.reps ?? ''));
+  };
+
+  it('badges nothing after a first session, however recent', () => {
+    expect(badged([set('s1', { weightKg: 100, reps: 5 })])).toEqual([]);
+  });
+
+  it('does not badge heaviest weight when the same weight was done for more reps', () => {
+    const rows = badged([set('s1', { weightKg: 100, reps: 3 }), set('s2', { weightKg: 100, reps: 5 })]);
+    expect(rows).not.toContain('weight');
+    expect(rows).toContain('e1rm');
+  });
+
+  it('badges the rows a recent session really broke', () => {
+    const rows = badged([set('s1', { weightKg: 100, reps: 3 }), set('s2', { weightKg: 105, reps: 3 })]);
+    expect(rows).toEqual(expect.arrayContaining(['weight', 'e1rm', 'repsAt3']));
+  });
+
+  it('lets the badge lapse once the record is older than the window', () => {
+    const a = analyzeExercise(BENCH, 'weight_reps', [set('s1', { weightKg: 100, reps: 3 }), set('s2', { weightKg: 105, reps: 3 })], [s1, s2]);
+    expect(a.records.some(r => isNewRecordRow(r, a.events, '2026-11-30'))).toBe(false);
   });
 });
 

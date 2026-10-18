@@ -953,7 +953,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'mood_insights',
-    "The Mood screen's findings: mood against what got done, by category, by repeating task, by symptom, by context tag, by food, by time of day, and before and after each milestone the person marked. Every comparison is held to the app's minimum number of days and reports both sides' day counts. They are associations, never causes; read the rules field and stay inside it when explaining. Empty unless health logs reach this server.",
+    "The Mood screen's findings: mood against what got done, by category, by repeating task, by symptom, by context tag, by food, on days they finished a workout (when Workouts is on and workout history reaches this server; otherwise absent), by time of day, and before and after each milestone the person marked. Every comparison is held to the app's minimum number of days and reports both sides' day counts. They are associations, never causes; read the rules field and stay inside it when explaining. Empty unless health logs reach this server.",
     {},
     async () => json(await withFresh(() => moodInsights(replica)))
   );

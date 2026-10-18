@@ -255,8 +255,9 @@ function heavier(a: WorkoutSet, b: WorkoutSet): boolean {
 /** The figure `best` ranks sets by, per kind. Null when the set has none. */
 function bestFigure(set: WorkoutSet, kind: ExerciseKind): number | null {
   switch (kind) {
-    case 'weight_reps':
-    case 'weight_distance': return set.weightKg !== null && set.weightKg > 0 ? set.weightKg : null;
+    // A set with no reps (a failed 140 x 0) or no distance is an attempt, not a lift.
+    case 'weight_reps': return set.weightKg !== null && set.weightKg > 0 && set.reps !== null && set.reps >= 1 ? set.weightKg : null;
+    case 'weight_distance': return set.weightKg !== null && set.weightKg > 0 && set.distanceM !== null && set.distanceM > 0 ? set.weightKg : null;
     case 'bodyweight_reps':
     case 'assisted_reps': return set.reps !== null && set.reps > 0 ? set.reps : null;
     case 'duration': return set.durationSeconds !== null && set.durationSeconds > 0 ? set.durationSeconds : null;
@@ -306,7 +307,7 @@ function sessionBests(group: SessionGroup, kind: ExerciseKind) {
     if (v !== null) volume = (volume ?? 0) + v;
     if (bestFigure(set, kind) !== null && (best === null || betterBest(set, best, kind))) best = set;
     if (kind !== 'weight_reps' && kind !== 'weight_distance') continue;
-    if (set.weightKg === null || !(set.weightKg > 0)) continue;
+    if (bestFigure(set, kind) === null) continue;
     if (heaviest === null || heavier(set, heaviest)) heaviest = set;
     if (kind !== 'weight_reps' || set.reps === null) continue;
     const est = estimatedOneRepMax(set.weightKg, set.reps);
@@ -554,6 +555,20 @@ export function recentRecords(
 export function isNewRecord(dayKey: string, todayKey: string): boolean {
   const days = Math.round((dayKeyToDate(todayKey).getTime() - dayKeyToDate(dayKey).getTime()) / 86400000);
   return days >= 0 && days <= NEW_RECORD_DAYS;
+}
+
+/**
+ * Whether a standing record row deserves the "New" badge: a recent session
+ * broke exactly this record. The badge follows the record events and not the
+ * row's day, because the events are where "a record" is defined: a first
+ * session, or an equal weight with more reps, holds a row but broke nothing.
+ */
+export function isNewRecordRow(row: RecordRow, events: readonly RecordEvent[], todayKey: string): boolean {
+  return events.some(e => e.type === row.type
+    && e.reps === row.reps
+    && e.value === row.value
+    && e.sessionId === row.sessionId
+    && isNewRecord(e.dayKey, todayKey));
 }
 
 // ==== muscles ====
