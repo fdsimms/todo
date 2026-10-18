@@ -105,8 +105,12 @@ export interface HeartRateZone {
   zone: number;
   /** The lowest whole bpm in the zone. */
   low: number;
-  /** The highest whole bpm in the zone, for the label. Zone 5 runs to the maximum, and takes anything above it too. */
-  high: number;
+  /**
+   * The highest whole bpm in the zone, or null for zone 5, which is open at
+   * the top: it takes every reading from 90 percent up, the maximum and
+   * anything above it included, so it is labeled "168+", never "168–186".
+   */
+  high: number | null;
 }
 
 /**
@@ -120,7 +124,7 @@ export function heartRateZones(maxBpm: number): HeartRateZone[] {
   return lows.map((low, i) => ({
     zone: i + 1,
     low,
-    high: i + 1 < lows.length ? lows[i + 1] - 1 : maxBpm,
+    high: i + 1 < lows.length ? lows[i + 1] - 1 : null,
   }));
 }
 
@@ -135,10 +139,25 @@ export function zoneOf(bpm: number, zones: readonly HeartRateZone[]): number | n
 
 // ==== the readings ====
 
-/** One heart-rate reading: when (epoch milliseconds) and beats per minute. */
+/**
+ * One heart-rate sample: when (epoch milliseconds) and beats per minute.
+ *
+ * **A sample can be a series** (`HKQuantitySample.count` above 1): several
+ * readings stored as one, from `at` to `until`, whose `bpm` is their average
+ * (Apple's `quantity` page: "average for discrete") and whose `max` is the
+ * highest of them. The readings inside aren't sent (that is
+ * `HKQuantitySeriesSampleQuery`, deliberately not used, see
+ * docs/arch/workouts.md), so the average stands across the series' own span.
+ */
 export interface HeartRateSample {
   at: number;
   bpm: number;
+  /** When the sample's last reading was taken; `at` for a single reading. */
+  until: number;
+  /** How many readings the sample holds; 1 for a single one. */
+  count: number;
+  /** The highest reading in it; `bpm` for a single one. */
+  max: number;
 }
 
 /** A workout's heart rate as Health answered for it. */
@@ -161,7 +180,9 @@ const inReadingRange = (v: number | null): number | null =>
  * The bridge's answer (`readWorkoutHeartRate`), read: null for every reason
  * there is nothing to show (no workout, no heart rate, a refused read, a
  * build without the call), which is one answer by Apple's design. A broken
- * reading is dropped, never read as a zero.
+ * reading is dropped, never read as a zero. Each sample is
+ * `[startMs, bpm, endMs?, count?, maxBpm?]`; a sample from a build that sent
+ * only the first two is one reading.
  */
 export function parseWorkoutHeartRate(json: string | null | undefined): WorkoutHeartRate | null {
   if (!json) return null;
@@ -183,7 +204,16 @@ export function parseWorkoutHeartRate(json: string | null | undefined): WorkoutH
       const at = finite(entry[0]);
       const bpm = inReadingRange(finite(entry[1]));
       if (at === null || bpm === null) continue;
-      samples.push({ at, bpm });
+      const until = finite(entry[2]);
+      const count = finite(entry[3]);
+      const max = inReadingRange(finite(entry[4]));
+      samples.push({
+        at,
+        bpm,
+        until: until !== null && until >= at ? until : at,
+        count: count !== null && count >= 1 ? Math.round(count) : 1,
+        max: max !== null && max >= bpm ? max : bpm,
+      });
     }
   }
   samples.sort((a, b) => a.at - b.at);
@@ -196,13 +226,14 @@ export function parseWorkoutHeartRate(json: string | null | undefined): WorkoutH
 /**
  * The average and the maximum, in whole beats: Health's own figures for the
  * workout when it gave them (what the Fitness app shows), else worked out
- * from the readings (their plain mean, which is how Health averages a
- * discrete type, and the largest).
+ * from the samples: the mean of every reading (a series counts as its count
+ * of readings at its average), which is how Health averages a discrete type,
+ * and the highest reading (a series' own maximum).
  */
 export function heartRateSummary(read: WorkoutHeartRate): { average: number | null; max: number | null } {
-  const values = read.samples.map(s => s.bpm);
-  const mean = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : null;
-  const largest = values.length > 0 ? Math.max(...values) : null;
+  const readings = read.samples.reduce((n, s) => n + s.count, 0);
+  const mean = readings > 0 ? read.samples.reduce((sum, s) => sum + s.bpm * s.count, 0) / readings : null;
+  const largest = read.samples.length > 0 ? Math.max(...read.samples.map(s => s.max)) : null;
   const average = read.average ?? mean;
   const max = read.max ?? largest;
   return {
@@ -212,23 +243,36 @@ export function heartRateSummary(read: WorkoutHeartRate): { average: number | nu
 }
 
 /**
- * Seconds spent in each zone, zone 1 first. Each reading stands for the time
- * until the next one, at most `MAX_READING_GAP_SECONDS`, and the last one
- * until the workout ended, under the same cap; every stretch is clipped to the
- * workout's span. A longer silence is in no zone, and so is a reading below
- * zone 1, so the five need not add up to the workout's length.
+ * Seconds spent in each zone, zone 1 first.
+ *
+ * A single reading stands for the time until the next sample, at most
+ * `MAX_READING_GAP_SECONDS`, and the last one until the workout ended, under
+ * the same cap. A series stands, at its average, across its own span (from its
+ * first reading to its last), then like a single reading after its last; but
+ * the gap rule holds inside it too, so a series whose readings are on average
+ * further apart than the cap counts no more than the cap per gap between them.
+ * Nothing is counted past the next sample's start, and every stretch is
+ * clipped to the workout's span. A longer silence is in no zone, and so is a
+ * reading below zone 1, so the five need not add up to the workout's length.
  */
 export function secondsInZones(read: WorkoutHeartRate, zones: readonly HeartRateZone[]): number[] {
   const out = zones.map(() => 0);
   const cap = MAX_READING_GAP_SECONDS * 1000;
   const { samples, startMs, endMs } = read;
+  const clip = (from: number, to: number) => Math.max(0, Math.min(to, endMs) - Math.max(from, startMs));
   for (let i = 0; i < samples.length; i++) {
-    const from = Math.max(samples[i].at, startMs);
-    const until = Math.min(i + 1 < samples.length ? samples[i + 1].at : endMs, samples[i].at + cap, endMs);
-    if (until <= from) continue;
-    const zone = zoneOf(samples[i].bpm, zones);
+    const s = samples[i];
+    const zone = zoneOf(s.bpm, zones);
     if (zone === null) continue;
-    out[zone - 1] += (until - from) / 1000;
+    const next = i + 1 < samples.length ? samples[i + 1].at : endMs;
+    // Across the series' own span, scaled down when its readings are sparser than the gap rule allows.
+    const spanEnd = Math.min(s.until, next);
+    const span = clip(s.at, spanEnd);
+    const allowed = s.count > 1 ? (s.count - 1) * cap : 0;
+    const inside = s.until > s.at && span > 0 ? span * Math.min(1, allowed / (s.until - s.at)) : 0;
+    // After its last reading, as any single reading stands.
+    const after = clip(spanEnd, Math.min(next, s.until + cap));
+    out[zone - 1] += (inside + after) / 1000;
   }
   return out;
 }
@@ -250,7 +294,7 @@ function spokenMinutes(seconds: number): string {
 /** One row of the card, zone 5 first, as the mock draws them. */
 export interface ZoneRow {
   zone: number;
-  /** "Zone 2 · 112–130" */
+  /** "Zone 2 · 112–130", or "Zone 5 · 168+" for the top zone, which is open at the top. */
   label: string;
   minutes: string;
   /** What a screen reader says for the row: "Zone 2, 112 to 130 beats per minute, 15 minutes". */
@@ -272,13 +316,26 @@ export function zoneRows(read: WorkoutHeartRate, max: MaxHeartRate | null): Zone
   return zones
     .map((z, i) => {
       const minutes = formatZoneMinutes(seconds[i]);
+      const range = z.high === null ? `${z.low}+` : `${z.low}–${z.high}`;
+      const spokenRange = z.high === null ? `${z.low} beats per minute and above` : `${z.low} to ${z.high} beats per minute`;
       return {
         zone: z.zone,
-        label: `Zone ${z.zone} · ${z.low}–${z.high}`,
+        label: `Zone ${z.zone} · ${range}`,
         minutes,
-        spoken: `Zone ${z.zone}, ${z.low} to ${z.high} beats per minute, ${spokenMinutes(seconds[i])}`,
+        spoken: `Zone ${z.zone}, ${spokenRange}, ${spokenMinutes(seconds[i])}`,
         fraction: total > 0 ? seconds[i] / total : 0,
       };
     })
     .reverse();
+}
+
+/**
+ * The line under the card, or null for none: what the zones are shares of
+ * when zones are drawn, and how to get zones when there are readings to divide
+ * but no maximum. A card with only an average and a maximum (no readings) has
+ * no zones to explain and no way to draw them, so it gets no line.
+ */
+export function zoneBasisLine(read: WorkoutHeartRate, max: MaxHeartRate | null): string | null {
+  if (read.samples.length === 0) return null;
+  return describeZoneBasis(max);
 }

@@ -1989,8 +1989,19 @@ public class TodoHealthBridgeModule: Module {
 
     /// Heart rate during one workout, for the workout page's card, as JSON:
     /// `{"start":"…","end":"…","average":128.4,"max":171,
-    /// "samples":[[1760464800000,121],…]}` (each reading as epoch
-    /// milliseconds and beats per minute, oldest first), or `null`.
+    /// "samples":[[1760464800000,121,1760464800000,1,121],…]}`, or `null`.
+    /// Each sample, oldest first, is its start (epoch milliseconds), its
+    /// beats per minute, its end, its `count` and its highest reading.
+    ///
+    /// **A sample can hold a series of readings** (`HKQuantitySample.count`,
+    /// iOS 12: "Samples created using an HKQuantitySeriesSampleBuilder may
+    /// have a count greater than 1"), and then its `quantity` is their
+    /// average ("average for discrete"). The readings inside are not walked
+    /// (`HKQuantitySeriesSampleQuery` would, and isn't used until a device has
+    /// shown what the watch's session actually stores); the end, the count and
+    /// the series' own maximum (`HKDiscreteQuantitySample.maximumQuantity`,
+    /// iOS 13) go across instead, and `secondsInZones` spreads the average
+    /// over the series' span under the gap rule.
     ///
     /// **The readings are the ones the workout itself carries**
     /// (`HKQuery.predicateForObjects(from:)`: "objects that have been added to
@@ -2066,8 +2077,15 @@ public class TodoHealthBridgeModule: Module {
                   let value = sample.quantity.doubleValue(for: perMinute)
                   guard value.isFinite, value > 0 else { continue }
                   let ms = (sample.startDate.timeIntervalSince1970 * 1000).rounded()
-                  guard ms.isFinite else { continue }
-                  points.append([Int64(ms), value])
+                  let endMs = (sample.endDate.timeIntervalSince1970 * 1000).rounded()
+                  guard ms.isFinite, endMs.isFinite else { continue }
+                  // A series' own highest reading; a single reading's is itself.
+                  var highest = value
+                  if let discrete = sample as? HKDiscreteQuantitySample {
+                    let top = discrete.maximumQuantity.doubleValue(for: perMinute)
+                    if top.isFinite, top >= value { highest = top }
+                  }
+                  points.append([Int64(ms), value, Int64(max(endMs, ms)), max(sample.count, 1), highest])
                 }
               }
               var body: [String: Any] = ["start": startISO, "end": endISO, "samples": points]

@@ -4,8 +4,8 @@ import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, radius, spacing, type Colors } from '../theme';
 import { useTextScale } from '../hooks/useTextScale';
 import {
-  describeZoneBasis,
   heartRateSummary,
+  zoneBasisLine,
   zoneRows,
   type MaxHeartRate,
   type WorkoutHeartRate,
@@ -29,7 +29,8 @@ interface Props {
  * `Text`, not `HelpText`, because it is the label that keeps an estimated
  * maximum from reading as a measurement, which Hide help text must not take
  * away. Without a maximum the card has the two figures and that line says how
- * to get zones.
+ * to get zones; with only the two figures and no readings, there are no zones
+ * to explain or to get, so there is no line (`zoneBasisLine`).
  */
 export function WorkoutHeartRateCard({ read, max }: Props) {
   const colors = useColors();
@@ -37,6 +38,7 @@ export function WorkoutHeartRateCard({ read, max }: Props) {
   const textScale = useTextScale();
   const summary = heartRateSummary(read);
   const rows = zoneRows(read, max);
+  const basis = zoneBasisLine(read, max);
   // Wide enough for "Zone 5 · 168–186" at the size text is drawn at.
   const labelWidth = Math.round(118 * textScale);
   const minutesWidth = Math.round(48 * textScale);
@@ -78,7 +80,7 @@ export function WorkoutHeartRateCard({ read, max }: Props) {
           </View>
         )}
       </View>
-      <Text style={styles.basis}>{describeZoneBasis(max)}</Text>
+      {basis !== null && <Text style={styles.basis}>{basis}</Text>}
     </>
   );
 }
