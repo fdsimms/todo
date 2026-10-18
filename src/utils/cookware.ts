@@ -1,4 +1,5 @@
 import { COOKED_WEIGHT_MAX_G } from './mealLog';
+import type { CookwareType } from '../types';
 
 /**
  * Pots, pans, lids and tubs, kept so a dish can be weighed with its pot.
@@ -65,8 +66,11 @@ export function netWeight(
 }
 
 /** The kinds cookware is shown under, in the order the sheet lists them. */
-export const COOKWARE_TYPES = ['Pots', 'Pans', 'Baking', 'Bowls', 'Plates', 'Glasses', 'Other'] as const;
-export type CookwareType = (typeof COOKWARE_TYPES)[number];
+export const COOKWARE_TYPES: readonly CookwareType[] = ['Pots', 'Pans', 'Baking', 'Bowls', 'Plates', 'Glasses', 'Other'];
+
+export function isCookwareType(value: unknown): value is CookwareType {
+  return typeof value === 'string' && (COOKWARE_TYPES as readonly string[]).includes(value);
+}
 
 // Order matters: the first match wins, so "sheet pan" is Baking before "pan"
 // is Pans, "saucier" is a pot before "pan" could claim it, and "glass tub" is
@@ -82,22 +86,27 @@ const TYPE_RULES: readonly [CookwareType, RegExp][] = [
 ];
 
 /**
- * Which kind a piece of cookware is, read from its name. Derived rather than
- * stored, so every piece already saved sorts correctly and nothing needs a
- * migration or a sync field; a name that matches nothing is Other.
+ * Which kind a piece of cookware looks like from its name alone; a name that
+ * matches nothing is Other. This is the guess a piece with no chosen type is
+ * listed under, so every piece saved before types existed still sorts.
  */
 export function cookwareTypeOf(name: string): CookwareType {
   for (const [type, pattern] of TYPE_RULES) if (pattern.test(name)) return type;
   return 'Other';
 }
 
+/** The type a piece is listed under: the one chosen for it, else the name's guess. */
+export function effectiveCookwareType(item: { name: string; kind?: CookwareType | null }): CookwareType {
+  return item.kind ?? cookwareTypeOf(item.name);
+}
+
 /** Cookware split by type in `COOKWARE_TYPES` order, empty types left out. Keeps each group's incoming order. */
-export function groupCookwareByType<T extends { name: string }>(
+export function groupCookwareByType<T extends { name: string; kind?: CookwareType | null }>(
   items: readonly T[],
 ): { type: CookwareType; items: T[] }[] {
   const buckets = new Map<CookwareType, T[]>();
   for (const item of items) {
-    const type = cookwareTypeOf(item.name);
+    const type = effectiveCookwareType(item);
     const list = buckets.get(type);
     if (list) list.push(item); else buckets.set(type, [item]);
   }

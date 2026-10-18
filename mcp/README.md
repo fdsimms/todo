@@ -90,7 +90,7 @@ only the fallback until the first sync.
 | `list_errors` | Unexpected failures the phone recorded, newest first: where each was caught, the error name, a trimmed message and the top of its stack. For working out why a feature failed. Read-only. |
 | `storage_report` | How much task data is stored: open and completed task counts (with the oldest completion), the completed-task retention window, and the largest areas of this server's copy by size. The phone's own file size doesn't sync, so it points to Settings › Data & reset › Storage for the exact figure. Read-only. |
 | `list_copy_flags` | Lines of on-screen copy the person flagged in the app as needing a manual pass (temporary dev tooling), with the text, screen, their note and a `find` command (`npm run copy -- --grep …`) to run in the source checkout, which lists the matching strings with file and line. |
-| `list_cookware` | The pots, pans, lids and tubs the person has weighed empty, each with its empty weight in grams. |
+| `list_cookware` | The pots, pans, lids and tubs the person has weighed empty, each with its empty weight in grams and the type it is listed under. |
 | `list_milestones` | The days something changed that the person marked on the mood log, each with its date. Empty unless health logs reach the server. |
 | `list_journal_entries` | Journal entries and dreams over a range of days, optionally one kind, a tag or a person, each with its word count, tags and people. Empty unless journal sync reaches the server. |
 | `search_journal_entries` | Journal entries and dreams containing every word of a query, across everything written unless a range is given. At most 50, newest first. |

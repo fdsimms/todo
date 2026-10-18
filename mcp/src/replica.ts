@@ -50,6 +50,7 @@ import type {
   HealthRule,
   Milestone,
   Cookware,
+  CookwareType,
   CopyFlag,
   MeterReading,
   JournalEntry,
@@ -1201,8 +1202,8 @@ export interface Replica {
    * Cookware through `useCookwareStore`'s own actions: a blank name or a
    * weight that is not above zero is refused as the sheet refuses it.
    */
-  addCookware(name: string, weightG: number): Cookware;
-  updateCookware(id: string, patch: { name?: string; weightG?: number }): Cookware;
+  addCookware(name: string, weightG: number, kind?: CookwareType | null): Cookware;
+  updateCookware(id: string, patch: { name?: string; weightG?: number; kind?: CookwareType | null }): Cookware;
   deleteCookware(id: string): Cookware;
   /** Every meter reading, oldest first. See src/utils/meters.ts. */
   meterReadings(): MeterReading[];
@@ -4209,16 +4210,16 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     cookware: () => db.dbGetAllCookware(),
     // Hydrated per write, like the milestone store above, so a dry run's
     // rollback cannot leave it holding a pot the database no longer has.
-    addCookware(name: string, weightG: number): Cookware {
+    addCookware(name: string, weightG: number, kind?: CookwareType | null): Cookware {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { useCookwareStore } = require('../../src/store/useCookwareStore') as typeof import('../../src/store/useCookwareStore');
       const store = useCookwareStore.getState();
       store.initialize();
-      const item = store.addCookware(name, weightG);
+      const item = store.addCookware(name, weightG, kind ?? null);
       if (!item) throw new Error('Cookware needs a name and an empty weight above zero, in grams.');
       return item;
     },
-    updateCookware(id: string, patch: { name?: string; weightG?: number }): Cookware {
+    updateCookware(id: string, patch: { name?: string; weightG?: number; kind?: CookwareType | null }): Cookware {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { useCookwareStore } = require('../../src/store/useCookwareStore') as typeof import('../../src/store/useCookwareStore');
       const store = useCookwareStore.getState();

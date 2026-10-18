@@ -1504,7 +1504,9 @@ Four areas had no MCP read or write, and the shape of each answer follows from w
   or a weight at or below zero is refused as the sheet refuses it. It is a convenience for typing a
   dish's weight and nothing points at it: `cookedWeightG` and a leftover's weight are the food
   alone, so an agent told a weight with the pot on subtracts the saved pot itself and never writes
-  the gross figure. Names are not unique (two devices can each add "Dutch oven" offline), and the
+  the gross figure. A piece's type (`type`, with `typeChosen` saying whether a person picked it) is
+  the chosen one or, when none is, what `cookwareTypeOf` reads from the name; `type: null` on an
+  update goes back to the name. Names are not unique (two devices can each add "Dutch oven" offline), and the
   Activity entry is a record only, titled by the item's name.
 - **Workouts go through `useWorkoutStore`'s own actions** (`workoutTools.ts`), loadable here
   because the store reaches the task store only when a live session is finished, which an agent

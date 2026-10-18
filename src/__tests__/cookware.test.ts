@@ -1,4 +1,4 @@
-import { clampCookwareWeight, parseWeightText, netWeight, COOKWARE_MAX_G, cookwareTypeOf, groupCookwareByType } from '../utils/cookware';
+import { clampCookwareWeight, parseWeightText, netWeight, COOKWARE_MAX_G, cookwareTypeOf, groupCookwareByType, effectiveCookwareType, isCookwareType } from '../utils/cookware';
 
 describe('clampCookwareWeight', () => {
   it('rounds to the gram', () => {
@@ -84,5 +84,24 @@ describe('cookwareTypeOf / groupCookwareByType', () => {
     ]);
     expect(groups.map(g => g.type)).toEqual(['Pans', 'Plates', 'Glasses']);
     expect(groups[0].items.map(i => i.name)).toEqual(['Wok', 'Skillet']);
+  });
+});
+
+describe('a chosen type', () => {
+  it('overrides what the name reads as, and null falls back to the name', () => {
+    expect(effectiveCookwareType({ name: 'Ramekin', kind: 'Baking' })).toBe('Baking');
+    expect(effectiveCookwareType({ name: 'Ramekin', kind: null })).toBe('Bowls');
+    expect(effectiveCookwareType({ name: 'Ramekin' })).toBe('Bowls');
+  });
+
+  it('groups by the chosen type', () => {
+    const groups = groupCookwareByType([{ name: 'Ramekin', kind: 'Baking' as const }, { name: 'Cereal bowl', kind: null }]);
+    expect(groups.map(g => g.type)).toEqual(['Baking', 'Bowls']);
+  });
+
+  it('knows which strings are types', () => {
+    expect(isCookwareType('Pots')).toBe(true);
+    expect(isCookwareType('pots')).toBe(false);
+    expect(isCookwareType(null)).toBe(false);
   });
 });
