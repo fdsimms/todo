@@ -43,7 +43,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/backfillBatch.ts` — BatchScopeKind, BatchScope, BatchOption, batchOptionsFor, taskBatchScopes, personBatchScopes, itemBatchScopes, recipeBatchScopes, canBatchApply, canBatchDismiss, +1 more
 - `src/utils/backfillDismissCopy.ts` — MAX_DISMISS_LABEL_LENGTH, KEEP_AS_IS_LABEL, TASK_DISMISS_LABELS, CATEGORY_DISMISS_LABELS, PROJECT_DISMISS_LABELS, PERSON_DISMISS_LABELS, ITEM_DISMISS_LABELS, RECIPE_DISMISS_LABELS
 - `src/utils/backfillSuggest.ts` — SuggestibleBackfillFieldId, SUGGESTIBLE_BACKFILL_FIELDS, isSuggestibleBackfillField, MAX_SUGGESTION_TASKS, MAX_SUGGESTION_EXAMPLES, SUGGESTION_NOTES_MAX_CHARS, SuggestionTask, SuggestionExample, BackfillSuggestion, TitleOf, +4 more
-- `src/utils/backgroundRefresh.ts` — BACKGROUND_REFRESH_TASK, BACKGROUND_REFRESH_INTERVAL_MINUTES, BackgroundRefreshOutcome, runBackgroundRefresh, runBackgroundSync, runWatchWork, useBackgroundRefresh
+- `src/utils/backgroundRefresh.ts` — BACKGROUND_REFRESH_TASK, BACKGROUND_REFRESH_INTERVAL_MINUTES, BackgroundRefreshOutcome, runBackgroundRefresh, runBackgroundSync, runBackgroundWaniKani, runWatchWork, useBackgroundRefresh, APP_REFRESH_INTERVAL_MINUTES, useAppRefresh
 - `src/utils/backup.ts` — BACKUP_FORMAT, REDACTED_SETTING_KEYS, isDeviceLocalSetting, BackupRow, Backup, ParseResult, redactSettings, buildBackup, serializeBackup, parseBackup, +4 more
 - `src/utils/backupFile.ts` — writeExportFile, canShare, shareExportFile, shareBackupFile, shareCsvFile, shareMarkdownFile, writePdfFile, sharePdfFile, discardBackupFile, pickBackupFile
 - `src/utils/beatMark.ts` — BeatMarkGeometry, beatMarkGeometry, BEAT_STEP_MS
@@ -433,7 +433,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/searchPantryRun.ts` — runPantry
 - `src/utils/sectionListLayout.ts` — CellLayout, sectionListCellLayout
 - `src/utils/sectionRegistry.ts` — registerSectionSource, sectionsNow, isChecklistRow
-- `src/utils/secureApiKey.ts` — API_KEY_SECURE_KEY, API_KEY_LEGACY_SETTING, loadAnthropicApiKey, saveAnthropicApiKey, FDC_KEY_SECURE_KEY, GO_UPC_KEY_SECURE_KEY, SYNC_TOKEN_SECURE_KEY, WANIKANI_TOKEN_SECURE_KEY, loadSecureKey, saveSecureKey
+- `src/utils/secureApiKey.ts` — API_KEY_SECURE_KEY, API_KEY_LEGACY_SETTING, loadAnthropicApiKey, saveAnthropicApiKey, FDC_KEY_SECURE_KEY, GO_UPC_KEY_SECURE_KEY, SYNC_TOKEN_SECURE_KEY, SYNC_TOKEN_READABLE_LOCKED_SETTING, WANIKANI_TOKEN_SECURE_KEY, loadSecureKey, +2 more
 - `src/utils/segmentColumns.ts` — segmentRows
 - `src/utils/settingsActiveRows.ts` — SettingsGateState, SyncGateState, activeSettingsEntryIds, searchableSettingsEntries
 - `src/utils/settingsFocusScroll.ts` — SETTINGS_FOCUS_PADDING, settingsFocusScrollTarget

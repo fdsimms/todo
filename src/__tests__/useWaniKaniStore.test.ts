@@ -152,7 +152,7 @@ describe('setToken', () => {
     useWaniKaniStore.setState({ snapshot: snapshot() as never, user: { username: 'old', level: 3 } });
     (fetchWaniKani as jest.Mock).mockResolvedValue({ ok: true, snapshot: snapshot({ reviewsNow: 1 }), user: { username: 'new', level: 9 } });
     expect(await useWaniKaniStore.getState().setToken('  abc  ')).toBe(true);
-    expect(saveSecureKey).toHaveBeenCalledWith('wanikaniApiToken', 'abc');
+    expect(saveSecureKey).toHaveBeenCalledWith('wanikaniApiToken', 'abc', { readableWhileLocked: true });
     await new Promise(resolve => setImmediate(resolve));
     expect(fetchWaniKani).toHaveBeenCalledTimes(1);
     expect(useWaniKaniStore.getState().user).toEqual({ username: 'new', level: 9 });
@@ -162,7 +162,7 @@ describe('setToken', () => {
   it('removes the token on an empty one, without reading', async () => {
     useWaniKaniStore.setState({ hasToken: true, snapshot: snapshot() as never });
     expect(await useWaniKaniStore.getState().setToken('')).toBe(true);
-    expect(saveSecureKey).toHaveBeenCalledWith('wanikaniApiToken', '');
+    expect(saveSecureKey).toHaveBeenCalledWith('wanikaniApiToken', '', { readableWhileLocked: true });
     expect(useWaniKaniStore.getState().hasToken).toBe(false);
     expect(useWaniKaniStore.getState().snapshot).toBeNull();
     expect(fetchWaniKani).not.toHaveBeenCalled();

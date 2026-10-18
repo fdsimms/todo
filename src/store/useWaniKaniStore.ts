@@ -75,7 +75,8 @@ export const useWaniKaniStore = create<WaniKaniState>((set, get) => ({
 
   async setToken(token: string) {
     const trimmed = token.trim();
-    const saved = await saveSecureKey(WANIKANI_TOKEN_SECURE_KEY, trimmed);
+    // Readable while locked: the background run reads it (backgroundRefresh.ts).
+    const saved = await saveSecureKey(WANIKANI_TOKEN_SECURE_KEY, trimmed, { readableWhileLocked: true });
     if (!saved) return false;
     // Whatever was read with the old token is about someone else's queue now.
     snapshotGuard.invalidate();

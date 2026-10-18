@@ -55,7 +55,7 @@ import { startDeviceMetrics } from './src/utils/deviceMetrics';
 import { backfillCalendarExternalIds } from './src/utils/calendarIdBackfill';
 import { drainCalendarRequests } from './src/utils/calendarRequestDrain';
 import { expiryPasses, catchUpPasses, retentionPasses } from './src/utils/maintenancePasses';
-import { useBackgroundRefresh } from './src/utils/backgroundRefresh';
+import { useAppRefresh, useBackgroundRefresh } from './src/utils/backgroundRefresh';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { preloadAppFont, preloadBrandFonts } from './src/theme/AppFont';
 import { animation } from './src/theme';
@@ -170,6 +170,7 @@ function AppGate() {
 function AppRoot() {
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const backgroundRefreshEnabled = useSettingsStore(s => s.backgroundRefreshEnabled);
+  const wanikaniTasks = useSettingsStore(s => s.wanikaniTasks);
   const initSecrets = useSettingsStore(s => s.initializeSecrets);
 
   useEffect(() => {
@@ -342,6 +343,9 @@ function AppRoot() {
   // so a device iOS never grants a background run to loses nothing but
   // punctuality. See src/utils/backgroundRefresh.ts.
   useBackgroundRefresh(backgroundRefreshEnabled);
+  // Short daytime refreshes on top of it, which run the same task. Asked for
+  // only while something in the day is worth reading: today, WaniKani's queue.
+  useAppRefresh(backgroundRefreshEnabled && wanikaniTasks);
 
   // Collects recipe pages saved from another app's share sheet (targets/todo-share)
   // into the queue the Recipes screen offers. Same ordering requirement as the

@@ -1848,8 +1848,16 @@ with a token they paste in (read-only is enough; it lives in the keychain as
 calls `checkWaniKaniTasks` when a read lands. The rules are in `src/utils/wanikaniTasks.ts`.
 Doing reviews in the app itself is a separate, unbuilt piece (#3875).
 
-- **The forecast places the task; nothing polls.** Nothing reads WaniKani while the app is closed,
-  so a task wanted at 3 PM is written ahead and held until then with `dueDate` + `windowStart`
+**It also reads while the app is closed, when iOS allows.** The background run
+(`runBackgroundWaniKani` in `backgroundRefresh.ts`) reads and checks before its sync. iOS starts
+that run overnight on the charger, and, while this generator and background refresh are both on,
+in short daytime refreshes too (`modules/todo-app-refresh`, `useAppRefresh`). iOS picks those
+times from how often the app is used and never promises one, so the forecast below still does
+the work between reads. The token is saved readable while the phone is locked, or a run on the
+charger would read "no token".
+
+- **The forecast places the task; nothing polls.** Between reads, a task wanted at 3 PM is written
+  ahead and held until then with `dueDate` + `windowStart`
   (`wanikaniHoldFields`). A same-day `deferUntil` would hold nothing: `deferBlocksNow` compares
   days, not hours. The hour sits on its logical day through `onLogicalDay`, so an hour after
   midnight under a later reset lands where the visibility gate reads it.
@@ -1874,7 +1882,7 @@ Doing reviews in the app itself is a separate, unbuilt piece (#3875).
   the first, so a reviews task left undone overnight would otherwise hide again until that hour
   the next day. That step needs no read, so `checkWaniKaniTasks` is also in `maintenancePasses.ts`
   and the Today foreground sweep, where it does only that. Everything else waits for a read, which
-  only `useWaniKaniSync` makes.
+  `useWaniKaniSync` and the background run make.
 - Pauses on vacation (it is work), refuses in demo mode, and files under its own category setting
   (default Study). Source ids are `reviews:<local hour>` and `lessons:<day>`; a delete writes
   nothing, since the close is the decision.

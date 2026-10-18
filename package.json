@@ -107,6 +107,7 @@
     "react-native-svg": "15.15.4",
     "react-native-worklets": "0.10.1",
     "todo-alarmkit-bridge": "file:./modules/todo-alarmkit-bridge",
+    "todo-app-refresh": "file:./modules/todo-app-refresh",
     "todo-cloudkit-bridge": "file:./modules/todo-cloudkit-bridge",
     "todo-datascanner-bridge": "file:./modules/todo-datascanner-bridge",
     "todo-eventkit-bridge": "file:./modules/todo-eventkit-bridge",
