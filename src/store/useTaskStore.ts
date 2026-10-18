@@ -430,6 +430,7 @@ import {
   healthRuleDirection,
   healthTaskNote,
   ruleCanBeJudgedYet,
+  isWithinActiveHours,
   ruleShortfallToday,
   healthTaskLinkUrl,
   healthRuleIdOf,
@@ -7869,6 +7870,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         return !parsed || parsed.dayKey !== todayKey || !activeRuleIds.has(parsed.ruleId);
       })
       .forEach(task => deleteGeneratedTaskQuietly(task.id));
+
+    // Nothing new is written outside the person's active hours. Deliberately
+    // after the clean-up above (a stale task should still go) and before any
+    // mark is spent, so a rule is judged afresh once the hours open.
+    if (!isWithinActiveHours(new Date(), settings.activeHoursStart, settings.activeHoursEnd)) return;
 
     const reading = useHealthStore.getState().today;
     // A reading from a day that has already turned over is not an answer about
