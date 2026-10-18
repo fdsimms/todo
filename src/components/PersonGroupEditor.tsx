@@ -11,6 +11,7 @@ import { EditorSheet } from './EditorSheet';
 import { PillGroup } from './PillGroup';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
+import { fieldWell } from '../theme/textStyles';
 import { haptics } from '../utils/haptics';
 import { TextField } from './TextField';
 import { Toggle } from './Toggle';
@@ -200,15 +201,17 @@ export function PersonGroupEditor({ visible, person, onClose }: Props) {
       <Text style={styles.groupLabel}>NEW GROUP</Text>
       <View style={styles.sectionCard}>
         <View style={styles.fieldRow}>
-          <TextField
-            ref={newGroupInputRef}
-            style={styles.newGroupInput}
-            value={newGroupName}
-            onChangeText={setNewGroupName}
-            placeholder="e.g. The Ortegas"
-            placeholderTextColor={colors.textTertiary}
-            maxLength={TITLE_MAX_LENGTH}
-          />
+          <View style={styles.newGroupWell}>
+            <TextField
+              ref={newGroupInputRef}
+              style={styles.newGroupInput}
+              value={newGroupName}
+              onChangeText={setNewGroupName}
+              placeholder="e.g. The Ortegas"
+              placeholderTextColor={colors.textTertiary}
+              maxLength={TITLE_MAX_LENGTH}
+            />
+          </View>
         </View>
       </View>
       <TouchableOpacity
@@ -270,11 +273,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.md,
     overflow: 'hidden',
   },
-  fieldRow: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.md,
-    paddingHorizontal: spacing.md, paddingVertical: spacing.smd,
-  },
-  newGroupInput: { flex: 1, color: colors.text, fontSize: font.md, minHeight: 24 },
+  fieldRow: { padding: spacing.smd },
+  // The card is bgSecondary, so the field steps up to bgTertiary.
+  newGroupWell: fieldWell(colors),
+  newGroupInput: { flex: 1, color: colors.text, fontSize: font.md, padding: 0, minHeight: 44 },
   createButton: {
     marginTop: spacing.md,
     paddingVertical: spacing.smd,
