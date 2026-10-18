@@ -28,6 +28,8 @@ import { MedicationScreen } from '../screens/MedicationScreen';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { useJournalStore } from '../store/useJournalStore';
 import { WeightScreen } from '../screens/WeightScreen';
+import { WorkoutsScreen } from '../screens/WorkoutsScreen';
+import { useWorkoutStore, workoutContentCount } from '../store/useWorkoutStore';
 import { SleepScreen } from '../screens/SleepScreen';
 import { JournalScreen, DreamsScreen } from '../screens/JournalScreen';
 import { MoodHistoryScreen } from '../screens/MoodHistoryScreen';
@@ -157,6 +159,7 @@ const TAB_SCREENS: Record<string, React.ComponentType<any>> = {
   Sleep: freezeWhenBlurred(SleepScreen),
   Journal: freezeWhenBlurred(JournalScreen),
   Dreams: freezeWhenBlurred(DreamsScreen),
+  Workouts: freezeWhenBlurred(WorkoutsScreen),
   FoodLog: freezeWhenBlurred(FoodLogScreen),
   Stuck: freezeWhenBlurred(StuckScreen),
   Backfill: freezeWhenBlurred(BackfillScreen),
@@ -192,6 +195,11 @@ function tabIconFor(icon: string): React.ComponentProps<typeof Ionicons>['name']
 // since turning it off removes the only way to reach them.
 const KITCHEN_SCREENS: ReadonlySet<string> = new Set(
   (NAV_HUBS.find(h => h.id === 'kitchen')?.members ?? []).map(m => m.route)
+);
+
+// The screens the Workouts switch takes out of the menu, for the same guard.
+const WORKOUT_SCREENS: ReadonlySet<string> = new Set(
+  NAV_HUBS.flatMap(h => h.members).filter(m => m.workouts).map(m => m.route)
 );
 
 // RootStack cards, not tabs. Pushing one must leave the drawer's highlight on
@@ -380,7 +388,7 @@ const MainTabs = React.memo(function MainTabs({
 // re-render MainTabs) on every tab switch for the rest of the session, which
 // is exactly what MainTabs's own React.memo exists to prevent.
 function initialScreenFromSettings(): string {
-  const { kitchenEnabled, simpleMode } = useSettingsStore.getState();
+  const { kitchenEnabled, simpleMode, workoutsEnabled } = useSettingsStore.getState();
   // A screen the last launch never got past (see launchGuard.ts) is not
   // restored, or a screen that crashes on open would crash every cold start.
   const { screen: lastVisitedScreen, tripped } = screenToRestore(
@@ -393,6 +401,8 @@ function initialScreenFromSettings(): string {
   }
   if (!lastVisitedScreen || !RESTORABLE_SCREENS.has(lastVisitedScreen)) return 'Today';
   if (KITCHEN_SCREENS.has(lastVisitedScreen) && !kitchenEnabled) return 'Today';
+  // The Workouts switch, on the kitchen guard's reasoning.
+  if (WORKOUT_SCREENS.has(lastVisitedScreen) && !workoutsEnabled) return 'Today';
   // Same question the drawer asks, with the same counts — reopening onto a
   // screen the menu no longer lists would be the kitchen guard's problem all
   // over again. Safe to read the stores here: `useTaskStore.initialize()`
@@ -408,6 +418,7 @@ function initialScreenFromSettings(): string {
     dreams: useJournalStore.getState().entries.filter(e => e.kind === 'dream').length,
     foodLog: useFoodLogStore.getState().totalCount,
     meters: useMeterReadingStore.getState().readings.length,
+    workouts: workoutContentCount(useWorkoutStore.getState()),
   })) return 'Today';
   // Restored but unproven until it has stayed up (a restore to Today needs no guard).
   if (lastVisitedScreen !== 'Today') markScreenUnproven(lastVisitedScreen);

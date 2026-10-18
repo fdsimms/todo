@@ -17,6 +17,11 @@ import type {
   Cookware,
   CopyFlag,
   MeterReading,
+  Exercise,
+  WorkoutRoutine,
+  WorkoutProgram,
+  WorkoutSession,
+  WorkoutSet,
   JournalEntry,
   EventPeopleLink,
   CalendarRequest,
@@ -99,6 +104,10 @@ import { normalizeScale } from '../utils/recipeScale';
 import { normalizeTemplateItem, normalizeTemplateQuestion } from '../utils/templateUtils';
 import { isDeviceLocalSetting, projectRow, type BackupRow } from '../utils/backup';
 import { foldRows, foldWinner, NATURAL_KEYS, REFERENCES, SETTING_REFERENCES } from '../utils/naturalKeyFold';
+import {
+  exerciseNameKey, readEquipment, readExerciseKind, readIdList, readMuscles, readRoutineItems, readScheme,
+  readSetKind, readTrainingMaxes,
+} from '../utils/workoutData';
 import {
   SYNC_DELETIONS_TABLE,
   SYNC_ALIASES_TABLE,
@@ -548,6 +557,88 @@ function runInitDatabase(): void {
       value REAL NOT NULL,
       read_at TEXT NOT NULL,
       created_at TEXT NOT NULL
+    );
+
+    -- Workouts (docs/arch/workouts.md). The built-in exercise library is code
+    -- (utils/exerciseLibrary.ts); exercises holds custom exercises and the
+    -- person's changes to a built-in one, which reuse its id. name_key is set
+    -- on custom rows only and is unique (a partial index in the migrations),
+    -- so two devices that each create "Cable fly" fold into one row
+    -- (NATURAL_KEYS); an override row leaves it null. Muscles are JSON arrays.
+    CREATE TABLE IF NOT EXISTS exercises (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      name_key TEXT,
+      kind TEXT NOT NULL,
+      primary_muscles TEXT NOT NULL DEFAULT '[]',
+      secondary_muscles TEXT NOT NULL DEFAULT '[]',
+      equipment TEXT NOT NULL,
+      bar_kg REAL,
+      notes TEXT NOT NULL DEFAULT '',
+      archived INTEGER NOT NULL DEFAULT 0,
+      is_custom INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL
+    );
+
+    -- A routine's items are one JSON blob read and written whole, the
+    -- saved_meals call: a routine is edited as a unit. See WorkoutRoutine.
+    CREATE TABLE IF NOT EXISTS workout_routines (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      notes TEXT NOT NULL DEFAULT '',
+      program_id TEXT,
+      sort_order REAL NOT NULL DEFAULT 0,
+      items TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL
+    );
+
+    -- Routines in rotation. rotation (routine ids) and training_maxes are JSON.
+    -- The current week and next routine are derived from sessions, never kept.
+    CREATE TABLE IF NOT EXISTS workout_programs (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      weeks INTEGER,
+      rotation TEXT NOT NULL DEFAULT '[]',
+      scheme TEXT NOT NULL,
+      training_maxes TEXT NOT NULL DEFAULT '[]',
+      started_at TEXT,
+      archived INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
+
+    -- The health record: these two are in HEALTH_SYNC_TABLES. ended_at is null
+    -- while a session is live. Sets are rows of their own because they are
+    -- appended one at a time and sync by id; deleting a session deletes its
+    -- sets explicitly (nothing here declares a foreign key).
+    CREATE TABLE IF NOT EXISTS workout_sessions (
+      id TEXT PRIMARY KEY NOT NULL,
+      routine_id TEXT,
+      program_id TEXT,
+      task_id TEXT,
+      title TEXT NOT NULL,
+      started_at TEXT NOT NULL,
+      ended_at TEXT,
+      notes TEXT NOT NULL DEFAULT '',
+      effort INTEGER,
+      health_workout_id TEXT,
+      health_write_pending INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS workout_sets (
+      id TEXT PRIMARY KEY NOT NULL,
+      session_id TEXT NOT NULL,
+      exercise_id TEXT NOT NULL,
+      position INTEGER NOT NULL DEFAULT 0,
+      set_index INTEGER NOT NULL DEFAULT 0,
+      kind TEXT NOT NULL DEFAULT 'working',
+      weight_kg REAL,
+      reps INTEGER,
+      duration_seconds INTEGER,
+      distance_m REAL,
+      rpe REAL,
+      completed_at TEXT,
+      superset_key TEXT,
+      note TEXT
     );
 
     -- Who a calendar event occurrence is with — see EventPeopleLink in
@@ -2202,6 +2293,13 @@ function runInitDatabase(): void {
     // JSON array of placeholders filled from the kitchen, '[]' on every existing
     // recipe. See Recipe.blanks.
     "ALTER TABLE recipes ADD COLUMN blanks TEXT NOT NULL DEFAULT '[]'",
+    // Workouts (docs/arch/workouts.md). A custom exercise's name is unique, so
+    // two devices creating "Cable fly" offline fold into one row; an override
+    // of a built-in leaves name_key null and takes no part.
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_exercises_name_key ON exercises(name_key) WHERE name_key IS NOT NULL',
+    'CREATE INDEX IF NOT EXISTS idx_workout_sessions_started ON workout_sessions(started_at)',
+    'CREATE INDEX IF NOT EXISTS idx_workout_sets_session ON workout_sets(session_id)',
+    'CREATE INDEX IF NOT EXISTS idx_workout_sets_exercise ON workout_sets(exercise_id, completed_at)',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -2615,6 +2713,16 @@ export const BACKUP_TABLES = [
   'copy_flags',
   // Meter readings point at nothing: the meter is a name, not a row.
   'meter_readings',
+  // Workouts, parents first: a routine names a program and exercises, a
+  // session names a routine and a program, a set names a session and an
+  // exercise. All of them are ids that may dangle (a set on a built-in
+  // exercise names a library id with no row at all), so the order keeps
+  // related rows together rather than meeting a constraint.
+  'exercises',
+  'workout_programs',
+  'workout_routines',
+  'workout_sessions',
+  'workout_sets',
   // Journal and dream entries: standalone, beside the mood log they grew out of.
   'journal_entries',
   // After people: a link names people by id, so they are restored first.
@@ -3539,6 +3647,12 @@ export function dbApplySyncChanges(payload: SyncPayload, transport?: string): Ap
           WHERE table_name = ? AND row_key = ?`,
         [deletion.deletedAt, transport ?? null, deletion.table, deletion.rowKey]
       );
+      // A session's sets go with it, as in dbDeleteWorkoutSession. The peer
+      // tombstoned only the sets it had, so any this device logged before the
+      // delete arrived would otherwise be left pointing at no session.
+      if (deletion.table === 'workout_sessions') {
+        db.runSync('DELETE FROM workout_sets WHERE session_id = ?', [deletion.rowKey]);
+      }
       report.deleted++;
     }
 
@@ -7362,6 +7476,254 @@ export function dbInsertMeterReading(reading: MeterReading): void {
 
 export function dbDeleteMeterReading(id: string): void {
   db.runSync('DELETE FROM meter_readings WHERE id = ?', [id]);
+}
+
+// ─── Workouts ────────────────────────────────────────────────────────────────
+// See docs/arch/workouts.md. Every reader goes through utils/workoutData.ts, so
+// a value this build doesn't understand reads as the nearest one it does.
+
+const numOrNull = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
+const strOrNull = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
+
+function rowToExercise(row: Record<string, unknown>): Exercise {
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    kind: readExerciseKind(row.kind),
+    primaryMuscles: readMuscles(row.primary_muscles),
+    secondaryMuscles: readMuscles(row.secondary_muscles),
+    equipment: readEquipment(row.equipment),
+    barKg: numOrNull(row.bar_kg),
+    notes: String(row.notes ?? ''),
+    archived: Number(row.archived) === 1,
+    isCustom: Number(row.is_custom) === 1,
+    createdAt: String(row.created_at),
+  };
+}
+
+export function dbGetAllExercises(): Exercise[] {
+  return db
+    .getAllSync<Record<string, unknown>>('SELECT * FROM exercises ORDER BY created_at ASC')
+    .map(rowToExercise);
+}
+
+/**
+ * Writes a custom exercise or an override of a built-in one, new or edited.
+ * `name_key` is filled for a custom row only: an override shares its id with
+ * the built-in, so two devices renaming one built-in are one row already and
+ * need no natural key to meet on.
+ *
+ * An upsert on the id rather than INSERT OR REPLACE: REPLACE would resolve a
+ * clash on the unique name by silently deleting the *other* exercise, the
+ * failure naturalKeyFold.ts exists to prevent. A clash throws instead, and the
+ * store refuses a taken name before it gets here.
+ */
+export function dbSaveExercise(e: Exercise): void {
+  db.runSync(
+    `INSERT INTO exercises
+      (id, name, name_key, kind, primary_muscles, secondary_muscles, equipment, bar_kg, notes, archived, is_custom, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name, name_key = excluded.name_key, kind = excluded.kind,
+        primary_muscles = excluded.primary_muscles, secondary_muscles = excluded.secondary_muscles,
+        equipment = excluded.equipment, bar_kg = excluded.bar_kg, notes = excluded.notes,
+        archived = excluded.archived, is_custom = excluded.is_custom`,
+    [
+      e.id, e.name, e.isCustom ? exerciseNameKey(e.name) : null, e.kind,
+      JSON.stringify(e.primaryMuscles), JSON.stringify(e.secondaryMuscles), e.equipment, e.barKg,
+      e.notes, e.archived ? 1 : 0, e.isCustom ? 1 : 0, e.createdAt,
+    ]
+  );
+}
+
+export function dbDeleteExercise(id: string): void {
+  db.runSync('DELETE FROM exercises WHERE id = ?', [id]);
+}
+
+function rowToWorkoutRoutine(row: Record<string, unknown>): WorkoutRoutine {
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    notes: String(row.notes ?? ''),
+    programId: strOrNull(row.program_id),
+    sortOrder: Number(row.sort_order ?? 0),
+    items: readRoutineItems(row.items),
+    createdAt: String(row.created_at),
+  };
+}
+
+export function dbGetAllWorkoutRoutines(): WorkoutRoutine[] {
+  return db
+    .getAllSync<Record<string, unknown>>('SELECT * FROM workout_routines ORDER BY sort_order ASC, created_at ASC')
+    .map(rowToWorkoutRoutine);
+}
+
+export function dbSaveWorkoutRoutine(r: WorkoutRoutine): void {
+  db.runSync(
+    `INSERT OR REPLACE INTO workout_routines (id, name, notes, program_id, sort_order, items, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [r.id, r.name, r.notes, r.programId, r.sortOrder, JSON.stringify(r.items), r.createdAt]
+  );
+}
+
+export function dbDeleteWorkoutRoutine(id: string): void {
+  db.runSync('DELETE FROM workout_routines WHERE id = ?', [id]);
+}
+
+function rowToWorkoutProgram(row: Record<string, unknown>): WorkoutProgram {
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    weeks: numOrNull(row.weeks),
+    rotation: readIdList(row.rotation),
+    scheme: readScheme(row.scheme),
+    trainingMaxes: readTrainingMaxes(row.training_maxes),
+    startedAt: strOrNull(row.started_at),
+    archived: Number(row.archived) === 1,
+    createdAt: String(row.created_at),
+  };
+}
+
+export function dbGetAllWorkoutPrograms(): WorkoutProgram[] {
+  return db
+    .getAllSync<Record<string, unknown>>('SELECT * FROM workout_programs ORDER BY created_at ASC')
+    .map(rowToWorkoutProgram);
+}
+
+export function dbSaveWorkoutProgram(p: WorkoutProgram): void {
+  db.runSync(
+    `INSERT OR REPLACE INTO workout_programs (id, name, weeks, rotation, scheme, training_maxes, started_at, archived, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      p.id, p.name, p.weeks, JSON.stringify(p.rotation), p.scheme, JSON.stringify(p.trainingMaxes),
+      p.startedAt, p.archived ? 1 : 0, p.createdAt,
+    ]
+  );
+}
+
+export function dbDeleteWorkoutProgram(id: string): void {
+  db.runSync('DELETE FROM workout_programs WHERE id = ?', [id]);
+}
+
+function rowToWorkoutSession(row: Record<string, unknown>): WorkoutSession {
+  return {
+    id: String(row.id),
+    routineId: strOrNull(row.routine_id),
+    programId: strOrNull(row.program_id),
+    taskId: strOrNull(row.task_id),
+    title: String(row.title),
+    startedAt: String(row.started_at),
+    endedAt: strOrNull(row.ended_at),
+    notes: String(row.notes ?? ''),
+    effort: numOrNull(row.effort),
+    healthWorkoutId: strOrNull(row.health_workout_id),
+    healthWritePending: Number(row.health_write_pending) === 1,
+  };
+}
+
+/** Every session, newest first. A few a week is a few hundred rows a year, so this is loaded whole. */
+export function dbGetAllWorkoutSessions(): WorkoutSession[] {
+  return db
+    .getAllSync<Record<string, unknown>>('SELECT * FROM workout_sessions ORDER BY started_at DESC')
+    .map(rowToWorkoutSession);
+}
+
+export function dbSaveWorkoutSession(s: WorkoutSession): void {
+  db.runSync(
+    `INSERT OR REPLACE INTO workout_sessions
+      (id, routine_id, program_id, task_id, title, started_at, ended_at, notes, effort, health_workout_id, health_write_pending)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      s.id, s.routineId, s.programId, s.taskId, s.title, s.startedAt, s.endedAt, s.notes, s.effort,
+      s.healthWorkoutId, s.healthWritePending ? 1 : 0,
+    ]
+  );
+}
+
+/**
+ * Deletes a session and every set in it, in one transaction. Nothing here
+ * declares a foreign key, so the cascade is spelled out: a set whose session
+ * is gone would otherwise sit in every exercise's history for good.
+ */
+export function dbDeleteWorkoutSession(id: string): void {
+  withTransaction(() => {
+    db.runSync('DELETE FROM workout_sets WHERE session_id = ?', [id]);
+    db.runSync('DELETE FROM workout_sessions WHERE id = ?', [id]);
+  });
+}
+
+function rowToWorkoutSet(row: Record<string, unknown>): WorkoutSet {
+  return {
+    id: String(row.id),
+    sessionId: String(row.session_id),
+    exerciseId: String(row.exercise_id),
+    position: Number(row.position ?? 0),
+    setIndex: Number(row.set_index ?? 0),
+    kind: readSetKind(row.kind),
+    weightKg: numOrNull(row.weight_kg),
+    reps: numOrNull(row.reps),
+    durationSeconds: numOrNull(row.duration_seconds),
+    distanceM: numOrNull(row.distance_m),
+    rpe: numOrNull(row.rpe),
+    completedAt: strOrNull(row.completed_at),
+    supersetKey: strOrNull(row.superset_key),
+    note: strOrNull(row.note),
+  };
+}
+
+const SET_ORDER = 'ORDER BY position ASC, set_index ASC';
+
+/** One session's sets, in the order they are done. */
+export function dbGetWorkoutSets(sessionId: string): WorkoutSet[] {
+  return db
+    .getAllSync<Record<string, unknown>>(`SELECT * FROM workout_sets WHERE session_id = ? ${SET_ORDER}`, [sessionId])
+    .map(rowToWorkoutSet);
+}
+
+/** Every set ever logged against one exercise, oldest first: its history. */
+export function dbGetWorkoutSetsForExercise(exerciseId: string): WorkoutSet[] {
+  return db
+    .getAllSync<Record<string, unknown>>(
+      'SELECT * FROM workout_sets WHERE exercise_id = ? ORDER BY completed_at ASC, set_index ASC',
+      [exerciseId]
+    )
+    .map(rowToWorkoutSet);
+}
+
+/** How many sets each session holds, for a history list that doesn't load the sets themselves. */
+export function dbCountWorkoutSetsBySession(): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const r of db.getAllSync<{ session_id: string; n: number }>(
+    'SELECT session_id, COUNT(*) AS n FROM workout_sets GROUP BY session_id'
+  )) {
+    out[r.session_id] = r.n;
+  }
+  return out;
+}
+
+export function dbSaveWorkoutSet(s: WorkoutSet): void {
+  db.runSync(
+    `INSERT OR REPLACE INTO workout_sets
+      (id, session_id, exercise_id, position, set_index, kind, weight_kg, reps, duration_seconds, distance_m, rpe,
+       completed_at, superset_key, note)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      s.id, s.sessionId, s.exerciseId, s.position, s.setIndex, s.kind, s.weightKg, s.reps, s.durationSeconds,
+      s.distanceM, s.rpe, s.completedAt, s.supersetKey, s.note,
+    ]
+  );
+}
+
+/** Writes several sets in one transaction: a reorder, or the renumbering after a delete. */
+export function dbSaveWorkoutSets(sets: readonly WorkoutSet[]): void {
+  if (sets.length === 0) return;
+  withTransaction(() => {
+    for (const s of sets) dbSaveWorkoutSet(s);
+  });
+}
+
+export function dbDeleteWorkoutSet(id: string): void {
+  db.runSync('DELETE FROM workout_sets WHERE id = ?', [id]);
 }
 
 function rowToEventPeopleLink(row: Record<string, unknown>): EventPeopleLink {

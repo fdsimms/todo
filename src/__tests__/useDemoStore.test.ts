@@ -102,6 +102,8 @@ import { frequencyTrend, medicationFor, milestoneOffers } from '../utils/medicat
 import { limitStatus, prefsFor, supplyRemaining } from '../utils/medicationSettings';
 import { canClaimReward, isBountyLive } from '../utils/rewards';
 import { useRewardStore } from '../store/useRewardStore';
+import { useWorkoutStore } from '../store/useWorkoutStore';
+import { catalogExercise } from '../utils/exerciseCatalog';
 import { linkFor } from '../constants/linkApps';
 import { buildMoodDays, contextTagMoodContrasts, describeNutrientInsight, lowMoodRun, foodMoodContrasts, foodPairedDays, symptomFoodContrasts, milestoneMoodContrast, moodCompletionInsight, nutrientInsight, symptomMoodContrasts, taskContrastTitles, taskMoodContrasts, MIN_PAIRED_DAYS } from '../utils/moodInsights';
 import { contextTagVocabulary, symptomVocabulary } from '../utils/moodLog';
@@ -2249,6 +2251,27 @@ describe('demo seed — people', () => {
     // And one rated trivial, which earns nothing.
     const chore = useTaskStore.getState().tasks.find(t => t.title === 'Water the desk plant');
     expect(chore?.difficulty).toBe('trivial');
+  });
+
+  it('seeds a program of workouts switched on, with sets, a custom exercise and notes on a built-in', () => {
+    // Off by default, so without this the Workouts screen isn't even in the menu.
+    expect(useSettingsStore.getState().workoutsEnabled).toBe(true);
+    const { sessions, routines, programs, exercises, setCounts } = useWorkoutStore.getState();
+    expect(sessions.length).toBe(3);
+    expect(sessions.every(s => s.endedAt !== null && s.routineId !== null)).toBe(true);
+    expect(sessions.every(s => (setCounts[s.id] ?? 0) > 0)).toBe(true);
+    const program = programs[0];
+    expect(program.rotation).toEqual(routines.map(r => r.id));
+    expect(routines.every(r => r.programId === program.id && r.items.length > 0)).toBe(true);
+    // A superset, so the routine shape shows its pairing.
+    expect(routines.some(r => r.items.filter(i => i.supersetKey === 'a').length === 2)).toBe(true);
+    const custom = exercises.find(e => e.isCustom);
+    expect(custom?.name).toBe('Landmine row');
+    expect(catalogExercise(exercises, 'lib:barbell-bench-press')?.notes).toBe('Pause each rep on the chest.');
+    // The custom exercise has history, so it reads as one in use.
+    const sets = sessions.flatMap(s => useWorkoutStore.getState().loadSets(s.id));
+    expect(sets.some(s => s.exerciseId === custom?.id)).toBe(true);
+    expect(sets.some(s => s.kind === 'warmup')).toBe(true);
   });
 
   it('seeds both halves of the medication log, so neither reads as missing', () => {

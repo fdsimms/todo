@@ -5,6 +5,8 @@ import { dbGetAllSettings, dbGetDeviceId, dbGetSetting, dbSetSetting } from '../
 import type { ThemeMode } from '../theme';
 import type { WeightUnit } from '../utils/weightLog';
 import type { WaterUnit } from '../utils/waterLog';
+import type { PlateInventory } from '../types';
+import { DEFAULT_PLATE_INVENTORY, clampRestSeconds, normalizePlateInventory, parsePlateInventory, parseRestSeconds, DEFAULT_REST_SECONDS } from '../utils/workoutData';
 import { getLogicalToday } from '../utils/dateUtils';
 import {
   autoCalorieTargetKcal,
@@ -1182,6 +1184,29 @@ interface SettingsStore {
   waterUnit: WaterUnit;
 
   /**
+   * The Workouts area (docs/arch/workouts.md). Off by default, since a large
+   * area nobody asked for is clutter; while off, its screen leaves the menu and
+   * the tab bar. Kept out of DEFAULT_SETTINGS for kitchenEnabled's reason:
+   * "reset appearance and formatting" is not a request to add or remove a
+   * whole feature area.
+   */
+  workoutsEnabled: boolean;
+  /**
+   * Kilograms or pounds, for every weight the Workouts area shows and steps.
+   * **Stored in kg either way**, the split `weightUnit` keeps: this decides
+   * what a screen displays, never what a set's `weightKg` holds.
+   */
+  workoutUnit: WeightUnit;
+  /**
+   * The bars and plates the person has, in kg, for working a load out as
+   * plates. Kept out of DEFAULT_SETTINGS/resetToDefaults for the mechanical
+   * reason (an object can't round-trip through String()).
+   */
+  plateInventory: PlateInventory;
+  /** The rest a set gets when its routine doesn't say, in seconds. */
+  defaultRestSeconds: number;
+
+  /**
    * Which day facts the mood log may offer as pre-picked context tags
    * (`moodDayContext.ts`). Every one is off until turned on.
    */
@@ -2129,6 +2154,10 @@ interface SettingsStore {
   setKeepOpenAfterFoodLog: (on: boolean) => void;
   setWeightUnit: (unit: WeightUnit) => void;
   setWaterUnit: (unit: WaterUnit) => void;
+  setWorkoutsEnabled: (on: boolean) => void;
+  setWorkoutUnit: (unit: WeightUnit) => void;
+  setPlateInventory: (inventory: PlateInventory) => void;
+  setDefaultRestSeconds: (seconds: number) => void;
   setMoodContextSource: (key: keyof MoodContextSources, on: boolean) => void;
   /** Sets the weight goal, or clears it with null. */
   setWeightGoal: (goal: WeightGoal | null) => void;
@@ -2475,6 +2504,8 @@ const DEFAULT_SETTINGS = {
   healthFoodWriteRefusalSeen: false,
   weightUnit: 'kg' as WeightUnit,
   waterUnit: 'ml' as WaterUnit,
+  workoutUnit: 'kg' as WeightUnit,
+  defaultRestSeconds: DEFAULT_REST_SECONDS,
   moodContextSources: NO_MOOD_CONTEXT_SOURCES,
   healthTasks: false,
   reminderMeetingNudgeEnabled: true,
@@ -2954,6 +2985,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   healthFoodWriteRefusalSeen: false,
   weightUnit: 'kg',
   waterUnit: 'ml',
+  workoutsEnabled: false,
+  workoutUnit: 'kg',
+  plateInventory: DEFAULT_PLATE_INVENTORY,
+  defaultRestSeconds: DEFAULT_REST_SECONDS,
   moodContextSources: NO_MOOD_CONTEXT_SOURCES,
   weightGoal: null,
   sleepGoalMinutes: null,
@@ -3366,6 +3401,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // than to undefined.
     const weightUnit: WeightUnit = dbGetSetting('weightUnit') === 'lb' ? 'lb' : 'kg';
     const waterUnit: WaterUnit = dbGetSetting('waterUnit') === 'flOz' ? 'flOz' : 'ml';
+    const workoutsEnabled = dbGetSetting('workoutsEnabled') === 'true';
+    // As weightUnit: anything that isn't 'lb' reads as kilograms.
+    const workoutUnit: WeightUnit = dbGetSetting('workoutUnit') === 'lb' ? 'lb' : 'kg';
+    const plateInventory = parsePlateInventory(dbGetSetting('plateInventory'));
+    const defaultRestSeconds = parseRestSeconds(dbGetSetting('defaultRestSeconds'));
     const moodContextSources = parseMoodContextSources(dbGetSetting('moodContextSources'));
     // Both parsers salvage rather than throw: an unreadable goal reads back as
     // no goal, and an unreadable profile as an empty one, so a blob written by
@@ -3767,6 +3807,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       deadlineCalendarId,
       defaultProjectNudgeCadenceDays,
       defaultReminderLeadMinutes,
+      defaultRestSeconds,
       destinationForecastEnabled,
       dreamLogLastDayKey,
       dreamLogTaskCategory,
@@ -3899,6 +3940,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       penaltyShieldReason,
       penaltyShieldUntil,
       placeSuggestionsEnabled,
+      plateInventory,
       postponeCheckEnabled,
       postponeCheckThreshold,
       produceFloorCount,
@@ -4012,6 +4054,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       weighInTasks,
       weightGoal,
       weightUnit,
+      workoutsEnabled,
+      workoutUnit,
       initialized: true,
     });
   },
@@ -5555,6 +5599,28 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setWaterUnit(unit: WaterUnit) {
     dbSetSetting('waterUnit', unit);
     set({ waterUnit: unit });
+  },
+
+  setWorkoutsEnabled(on: boolean) {
+    dbSetSetting('workoutsEnabled', on ? 'true' : 'false');
+    set({ workoutsEnabled: on });
+  },
+
+  setWorkoutUnit(unit: WeightUnit) {
+    dbSetSetting('workoutUnit', unit);
+    set({ workoutUnit: unit });
+  },
+
+  setPlateInventory(inventory: PlateInventory) {
+    const next = normalizePlateInventory(inventory);
+    dbSetSetting('plateInventory', JSON.stringify(next));
+    set({ plateInventory: next });
+  },
+
+  setDefaultRestSeconds(seconds: number) {
+    const next = clampRestSeconds(seconds);
+    dbSetSetting('defaultRestSeconds', String(next));
+    set({ defaultRestSeconds: next });
   },
 
   setMoodContextSource(key: keyof MoodContextSources, on: boolean) {

@@ -57,6 +57,22 @@ import {
   dbTableColumns,
   dbExportTables,
   dbReplaceAllData,
+  dbGetAllExercises,
+  dbSaveExercise,
+  dbDeleteExercise,
+  dbGetAllWorkoutRoutines,
+  dbSaveWorkoutRoutine,
+  dbGetAllWorkoutPrograms,
+  dbSaveWorkoutProgram,
+  dbGetAllWorkoutSessions,
+  dbSaveWorkoutSession,
+  dbDeleteWorkoutSession,
+  dbGetWorkoutSets,
+  dbGetWorkoutSetsForExercise,
+  dbCountWorkoutSetsBySession,
+  dbSaveWorkoutSet,
+  dbSaveWorkoutSets,
+  dbDeleteWorkoutSet,
   dbGetGtinLookup,
   dbSetGtinLookup,
   dbCountGtinLookups,
@@ -6259,3 +6275,133 @@ describe('reclaiming freed pages at launch', () => {
     expect(reclaimed).toBeLessThan(before.freeBytes);
   });
 });
+
+describe('workouts', () => {
+  const exercise = {
+    id: 'c1', name: 'Landmine row', kind: 'weight_reps' as const, primaryMuscles: ['upper_back' as const],
+    secondaryMuscles: ['biceps' as const], equipment: 'barbell' as const, barKg: null, notes: 'V handle',
+    archived: false, isCustom: true, createdAt: '2026-10-01T10:00:00.000Z',
+  };
+  const session = {
+    id: 's1', routineId: 'r1', programId: null, taskId: null, title: 'Upper A', startedAt: '2026-10-10T22:00:00.000Z',
+    endedAt: '2026-10-10T23:00:00.000Z', notes: '', effort: 7, healthWorkoutId: null, healthWritePending: false,
+  };
+  const set = (id: string, extra: Partial<Parameters<typeof dbSaveWorkoutSet>[0]> = {}) => ({
+    id, sessionId: 's1', exerciseId: 'lib:back-squat', position: 0, setIndex: 0, kind: 'working' as const,
+    weightKg: 100, reps: 5, durationSeconds: null, distanceM: null, rpe: 8, completedAt: '2026-10-10T22:10:00.000Z',
+    supersetKey: null, note: null, ...extra,
+  });
+
+  it('round-trips an exercise, keying the name of a custom one only', () => {
+    dbSaveExercise(exercise);
+    dbSaveExercise({ ...exercise, id: 'lib:back-squat', name: 'High-bar squat', isCustom: false });
+    expect(dbGetAllExercises()).toEqual(expect.arrayContaining([exercise]));
+    expect(mockRawDb.prepare('SELECT id, name_key FROM exercises ORDER BY id').all()).toEqual([
+      { id: 'c1', name_key: 'landmine row' },
+      { id: 'lib:back-squat', name_key: null },
+    ]);
+    dbDeleteExercise('c1');
+    expect(dbGetAllExercises().map(e => e.id)).toEqual(['lib:back-squat']);
+  });
+
+  it('refuses a second custom exercise by the same name, whatever the spacing or case', () => {
+    dbSaveExercise(exercise);
+    expect(() => dbSaveExercise({ ...exercise, id: 'c2', name: 'landmine  ROW' })).toThrow();
+  });
+
+  it('round-trips a routine and a program, JSON and all', () => {
+    const routine = {
+      id: 'r1', name: 'Upper A', notes: '', programId: 'p1', sortOrder: 0, createdAt: '2026-10-01T10:00:00.000Z',
+      items: [{ exerciseId: 'c1', supersetKey: 'a', restSeconds: 90, progression: { scheme: 'double' as const, incrementKg: 2.5 },
+        targets: [{ kind: 'working' as const, repsMin: 8, repsMax: 10, weightKg: 40 }] }],
+    };
+    const program = {
+      id: 'p1', name: 'Upper and lower', weeks: 8, rotation: ['r1', 'r2'], scheme: 'double' as const,
+      trainingMaxes: [{ exerciseId: 'lib:back-squat', kg: 120 }], startedAt: null, archived: false, createdAt: '2026-10-01T10:00:00.000Z',
+    };
+    dbSaveWorkoutRoutine(routine);
+    dbSaveWorkoutProgram(program);
+    expect(dbGetAllWorkoutRoutines()).toEqual([routine]);
+    expect(dbGetAllWorkoutPrograms()).toEqual([program]);
+  });
+
+  it('round-trips sessions and sets, in the order they are done', () => {
+    dbSaveWorkoutSession(session);
+    dbSaveWorkoutSets([set('b', { setIndex: 1 }), set('a'), set('c', { exerciseId: 'c1', position: 1, completedAt: null })]);
+    expect(dbGetAllWorkoutSessions()).toEqual([session]);
+    expect(dbGetWorkoutSets('s1').map(x => x.id)).toEqual(['a', 'b', 'c']);
+    expect(dbGetWorkoutSets('s1')[2].completedAt).toBeNull();
+    expect(dbGetWorkoutSetsForExercise('lib:back-squat').map(x => x.id)).toEqual(['a', 'b']);
+    expect(dbCountWorkoutSetsBySession()).toEqual({ s1: 3 });
+    dbDeleteWorkoutSet('b');
+    expect(dbCountWorkoutSetsBySession()).toEqual({ s1: 2 });
+  });
+
+  it('deletes a session\'s sets with it, and nobody else\'s', () => {
+    dbSaveWorkoutSession(session);
+    dbSaveWorkoutSession({ ...session, id: 's2' });
+    dbSaveWorkoutSet(set('a'));
+    dbSaveWorkoutSet(set('b', { sessionId: 's2' }));
+    dbDeleteWorkoutSession('s1');
+    expect(dbGetAllWorkoutSessions().map(x => x.id)).toEqual(['s2']);
+    expect(mockRawDb.prepare('SELECT id FROM workout_sets').all()).toEqual([{ id: 'b' }]);
+  });
+
+  it('takes a session\'s sets with it when the delete arrives from a peer', () => {
+    // The peer tombstoned only the sets it had; 'a' was logged here before the
+    // session's delete arrived, and would otherwise be left with no session.
+    dbSaveWorkoutSession(session);
+    dbSaveWorkoutSession({ ...session, id: 's2' });
+    dbSaveWorkoutSet(set('a'));
+    dbSaveWorkoutSet(set('b', { sessionId: 's2' }));
+    mockRawDb.prepare("UPDATE workout_sessions SET updated_at = '2026-01-01T00:00:00.000Z' WHERE id = 's1'").run();
+
+    const report = dbApplySyncChanges({
+      format: SYNC_FORMAT, deviceId: 'peer', since: null, until: '2030-01-01T00:00:00.000Z', tables: {},
+      deletions: [{ table: 'workout_sessions', rowKey: 's1', deletedAt: '2026-06-01T00:00:00.000Z' }],
+    });
+
+    expect(report.deleted).toBe(1);
+    expect(dbGetAllWorkoutSessions().map(x => x.id)).toEqual(['s2']);
+    expect(mockRawDb.prepare('SELECT id FROM workout_sets').all()).toEqual([{ id: 'b' }]);
+  });
+
+  it('goes into a backup, every table of it', () => {
+    dbSaveExercise(exercise);
+    dbSaveWorkoutSession(session);
+    dbSaveWorkoutSet(set('a'));
+    const tables = dbExportTables();
+    for (const t of ['exercises', 'workout_routines', 'workout_programs', 'workout_sessions', 'workout_sets']) {
+      expect(Object.keys(tables)).toContain(t);
+    }
+    expect(tables.workout_sets).toHaveLength(1);
+  });
+
+  // Two phones that each created the same custom exercise before they synced.
+  it('folds two custom exercises with one name into one, and the sets follow', () => {
+    dbReplaceAllData({
+      exercises: [
+        { ...rowOf(exercise), id: 'a1', name: 'Landmine row', name_key: 'landmine row' },
+        { ...rowOf(exercise), id: 'b2', name: 'landmine row', name_key: 'landmine row', created_at: '2026-09-01T10:00:00.000Z' },
+      ],
+      workout_sessions: [{ id: 's1', title: 'Upper', started_at: '2026-10-10T22:00:00.000Z' }],
+      workout_sets: [{ id: 'x', session_id: 's1', exercise_id: 'b2' }],
+    });
+    expect(dbGetAllExercises().map(e => [e.id, e.createdAt])).toEqual([['a1', '2026-09-01T10:00:00.000Z']]);
+    expect(dbGetWorkoutSets('s1').map(x => x.exerciseId)).toEqual(['a1']);
+  });
+
+  it('never folds an override of a built-in, which has no name key', () => {
+    dbSaveExercise({ ...exercise, id: 'lib:barbell-row', name: 'Landmine row', isCustom: false });
+    dbSaveExercise(exercise);
+    expect(dbGetAllExercises()).toHaveLength(2);
+  });
+});
+
+function rowOf(e: { id: string; name: string; kind: string; primaryMuscles: string[]; secondaryMuscles: string[]; equipment: string; barKg: number | null; notes: string; archived: boolean; isCustom: boolean; createdAt: string }) {
+  return {
+    id: e.id, name: e.name, kind: e.kind, primary_muscles: JSON.stringify(e.primaryMuscles),
+    secondary_muscles: JSON.stringify(e.secondaryMuscles), equipment: e.equipment, bar_kg: e.barKg, notes: e.notes,
+    archived: e.archived ? 1 : 0, is_custom: e.isCustom ? 1 : 0, created_at: e.createdAt,
+  };
+}

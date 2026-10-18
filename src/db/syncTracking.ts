@@ -83,6 +83,18 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   // inserted or deleted, never edited, so two devices logging at once both
   // keep theirs.
   { name: 'meter_readings', key: ['id'] },
+  // Workouts (docs/arch/workouts.md). Custom exercises, routines and programs
+  // are plans, and travel like any other synced data; a custom exercise's name
+  // is a natural key (NATURAL_KEYS), so the same one made on two phones folds
+  // into one. Sessions and sets are the health record and are tracked like the
+  // food log, withheld from iCloud by HEALTH_SYNC_TABLES below. Sets are rows of
+  // their own so a set appended on one device merges with one appended on
+  // another by id, rather than one session blob overwriting the other.
+  { name: 'exercises', key: ['id'] },
+  { name: 'workout_routines', key: ['id'] },
+  { name: 'workout_programs', key: ['id'] },
+  { name: 'workout_sessions', key: ['id'] },
+  { name: 'workout_sets', key: ['id'] },
   // Journal and dream entries (JournalEntry). Same reasoning as mood_logs: a
   // diary that reads differently on each phone is half a diary on each, and an
   // entry is written once and rarely edited.
@@ -585,6 +597,13 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // The goals whose Aim for task was deleted or switched off.
   'goalTargetDeclined',
   'waterUnit',
+  // Workouts: the area's switch, the unit weights are shown in (stored in kg
+  // either way), the bars and plates owned, and the rest a set gets when its
+  // routine doesn't say. Preferences about the person's training, not the phone.
+  'workoutsEnabled',
+  'workoutUnit',
+  'plateInventory',
+  'defaultRestSeconds',
 
   // Vocabularies the user builds. These are data as much as preference — a
   // tag that exists but is unused, and the walk round the shop — and a device
@@ -735,11 +754,18 @@ export function isSyncedSettingKey(key: string): boolean {
  * and why: a task's `medication_name` rides on a task, and a task titled "Take
  * sertraline" says the same thing whatever column is withheld; `saved_meals`
  * are shortcuts for logging, not a record of what was eaten.
+ * `workout_sessions` and `workout_sets` are here because a workout log is a
+ * record of what a body did, and once a session carries heart rate and energy
+ * from HealthKit it is plainly health information (docs/arch/workouts.md).
+ * Custom exercises, routines and programs are not: they are plans, the same
+ * reason `saved_meals` isn't.
  *
  * Pushes only. A row of these arriving from a transport is still applied, so
  * a peer on an older build that still sends them does no harm.
  */
-export const HEALTH_SYNC_TABLES: readonly string[] = ['mood_logs', 'milestones', 'medication_logs', 'food_logs'];
+export const HEALTH_SYNC_TABLES: readonly string[] = [
+  'mood_logs', 'milestones', 'medication_logs', 'food_logs', 'workout_sessions', 'workout_sets',
+];
 export const HEALTH_SYNC_SETTING_KEYS: readonly string[] = [
   'medication_archived', 'medication_registered', 'medication_settings', 'medication_summary_last',
   'medication_milestone_dismissed', 'nutritionTargets', 'nutritionLimits', 'limitWarnPercent',

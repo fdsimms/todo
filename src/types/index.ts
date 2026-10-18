@@ -1971,6 +1971,195 @@ export interface MeterReading {
   createdAt: string;
 }
 
+// ─── Workouts ────────────────────────────────────────────────────────────────
+// See docs/arch/workouts.md. The library of built-in exercises is code
+// (src/utils/exerciseLibrary.ts); these are the rows the person writes. Every
+// weight is in kilograms, whatever `workoutUnit` displays.
+
+/**
+ * What a set of an exercise records, which decides the fields a set row uses:
+ * weight and reps, reps alone (a pull-up), reps with assistance taken off
+ * (`weightKg` is the assistance), a hold or a run measured in time, a distance,
+ * or a load carried over a distance (a farmer's carry).
+ */
+export type ExerciseKind =
+  'weight_reps' | 'bodyweight_reps' | 'assisted_reps' | 'duration' | 'distance' | 'weight_distance';
+
+/** What an exercise is done with. A closed set so a filter can offer every value. */
+export type ExerciseEquipment =
+  | 'barbell' | 'dumbbell' | 'kettlebell' | 'machine' | 'cable' | 'smith_machine'
+  | 'ez_bar' | 'trap_bar' | 'band' | 'bodyweight' | 'cardio_machine' | 'other';
+
+/** The muscles an exercise is filed under. A closed set, for the same reason. */
+export type MuscleGroup =
+  | 'chest' | 'lats' | 'upper_back' | 'lower_back' | 'traps'
+  | 'front_delts' | 'side_delts' | 'rear_delts'
+  | 'biceps' | 'triceps' | 'forearms'
+  | 'abs' | 'obliques'
+  | 'quads' | 'hamstrings' | 'glutes' | 'adductors' | 'abductors' | 'calves'
+  | 'neck';
+
+/**
+ * A custom exercise, or the person's changes to a built-in one.
+ *
+ * A custom row has a fresh `generateId()` id and `isCustom: true`. An override
+ * row reuses the built-in's id (`lib:barbell-bench-press`) with `isCustom:
+ * false`, so renaming "Barbell bench press" to "Flat bench" is one row and
+ * every set already logged against the id keeps pointing at it. From an
+ * override, the catalog takes only `name`, `notes`, `barKg` and `archived`
+ * (`src/utils/exerciseCatalog.ts`): what the movement is stays the library's,
+ * so a corrected muscle list in a later build still reaches it.
+ */
+export interface Exercise {
+  id: string;
+  name: string;
+  kind: ExerciseKind;
+  primaryMuscles: MuscleGroup[];
+  secondaryMuscles: MuscleGroup[];
+  equipment: ExerciseEquipment;
+  /** The bar's own weight where it isn't the default for the equipment. Null for the default. */
+  barKg: number | null;
+  notes: string;
+  /** Hidden from the library and pickers; its history stays. */
+  archived: boolean;
+  isCustom: boolean;
+  createdAt: string;
+}
+
+/** What a set is for. A warm-up and a drop set don't count toward a working target. */
+export type WorkoutSetKind = 'warmup' | 'working' | 'drop' | 'amrap';
+
+/** How a routine item's next targets are proposed (phase 4 of docs/arch/workouts.md). */
+export type ProgressionScheme = 'double' | 'linear' | 'percent' | 'rpe';
+
+/** One planned set of a routine item. Every field is a target, never a record. */
+export interface RoutineSetTarget {
+  kind: WorkoutSetKind;
+  repsMin: number | null;
+  repsMax: number | null;
+  weightKg?: number | null;
+  /** Percent of the program's training max for this exercise, for a `percent` scheme. */
+  pctOfTm?: number | null;
+  rpe?: number | null;
+  durationSeconds?: number | null;
+  distanceM?: number | null;
+}
+
+/** How one item moves on from session to session. A proposal only: nothing applies it unasked. */
+export interface RoutineProgression {
+  scheme: ProgressionScheme;
+  /** The step a success adds. Null for the scheme's default. */
+  incrementKg: number | null;
+}
+
+/** One exercise in a routine, with its planned sets. Rides inside `WorkoutRoutine.items`. */
+export interface WorkoutRoutineItem {
+  exerciseId: string;
+  /** Items sharing a key are done as a superset, alternating set by set. */
+  supersetKey?: string | null;
+  /** Rest after each set. Null for the `defaultRestSeconds` setting. */
+  restSeconds: number | null;
+  progression: RoutineProgression | null;
+  targets: RoutineSetTarget[];
+}
+
+/**
+ * A named list of exercises with planned sets ("Push A"). Edited as a unit, so
+ * `items` is one JSON column (the `saved_meals.items` call), not a child table.
+ */
+export interface WorkoutRoutine {
+  id: string;
+  name: string;
+  notes: string;
+  /** The program it belongs to, or null for a routine on its own. */
+  programId: string | null;
+  sortOrder: number;
+  items: WorkoutRoutineItem[];
+  createdAt: string;
+}
+
+/** A training max for one exercise, which a `percent` scheme's sets are measured from. */
+export interface TrainingMax {
+  exerciseId: string;
+  kg: number;
+}
+
+/**
+ * Several routines in rotation over a number of weeks. Which week it is and
+ * which routine is next are derived from its sessions, never stored.
+ */
+export interface WorkoutProgram {
+  id: string;
+  name: string;
+  /** How long a cycle runs. Null for an open-ended program. */
+  weeks: number | null;
+  /** Routine ids in the order they come round. */
+  rotation: string[];
+  scheme: ProgressionScheme;
+  trainingMaxes: TrainingMax[];
+  startedAt: string | null;
+  archived: boolean;
+  createdAt: string;
+}
+
+/**
+ * One workout, live or finished. Part of the health record (`HEALTH_SYNC_TABLES`):
+ * iCloud never receives it, and a sync server only with `syncServerHealthLogs` on.
+ */
+export interface WorkoutSession {
+  id: string;
+  routineId: string | null;
+  programId: string | null;
+  /** The task occurrence it completed. Provenance only: allowed to dangle. */
+  taskId: string | null;
+  title: string;
+  startedAt: string;
+  /** Null while the session is live. */
+  endedAt: string | null;
+  notes: string;
+  /** How hard it felt, 1 to 10, as the person typed it. Never derived. */
+  effort: number | null;
+  /** The `HKWorkout` it was written to Health as (phase 5). */
+  healthWorkoutId: string | null;
+  healthWritePending: boolean;
+}
+
+/**
+ * One set of one exercise in a session. Its own row rather than JSON on the
+ * session, because sets are appended one at a time (from the phone, later the
+ * watch) and have to sync and dedupe by id. Weight is kilograms. The fields a
+ * set uses follow its exercise's `ExerciseKind`; the rest stay null.
+ */
+export interface WorkoutSet {
+  id: string;
+  sessionId: string;
+  exerciseId: string;
+  /** Where the exercise sits in the session. Sets of one exercise share it. */
+  position: number;
+  /** The set's order within its exercise, from 0. */
+  setIndex: number;
+  kind: WorkoutSetKind;
+  weightKg: number | null;
+  reps: number | null;
+  durationSeconds: number | null;
+  distanceM: number | null;
+  rpe: number | null;
+  /** When it was ticked off. Null for a set laid out but not done yet. */
+  completedAt: string | null;
+  supersetKey: string | null;
+  note: string | null;
+}
+
+/**
+ * The bars and plates the person has, for working out a load as plates
+ * (phase 3). Kilograms throughout, like every weight.
+ */
+export interface PlateInventory {
+  barsKg: number[];
+  /** Each plate size and how many of it there are in total (both sides together). */
+  plates: { kg: number; count: number }[];
+}
+
 /**
  * A dated marker for something that changed — starting or stopping a
  * medicine, a new job, moving house — read by `moodInsights.ts` as a

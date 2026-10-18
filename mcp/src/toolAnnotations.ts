@@ -58,6 +58,8 @@ export const READ_TOOLS: Record<string, string> = {
   list_cookware: 'Cookware weights',
   list_copy_flags: 'Copy flags',
   list_meter_readings: 'Meter readings',
+  list_exercises: 'Exercise library',
+  list_workouts: 'Workout log',
   list_saved_views: 'Saved views',
   get_saved_view: 'One saved view',
   list_pantry: 'What is in the pantry',

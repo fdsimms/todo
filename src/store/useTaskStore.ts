@@ -157,6 +157,7 @@ import { useMilestoneStore } from './useMilestoneStore';
 import { useCookwareStore } from './useCookwareStore';
 import { useCopyFlagStore } from './useCopyFlagStore';
 import { useMeterReadingStore } from './useMeterReadingStore';
+import { useWorkoutStore } from './useWorkoutStore';
 import { useMedicationStore } from './useMedicationStore';
 import { useRewardStore } from './useRewardStore';
 import { guardChargeSeed, guardingReward } from '../utils/rewardGuard';
@@ -3088,6 +3089,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Meter readings: a task due at 45,000 miles is held or released on them,
     // so they have to swap with the database the tasks came from.
     useMeterReadingStore.getState().initialize();
+    // Workouts: custom exercises, routines, programs and sessions. A session is
+    // part of the health record, so after a demo swap or a restore it has to
+    // be read from the database the rest came from, never kept from the last.
+    useWorkoutStore.getState().initialize();
     // The journal grew out of the mood entry's note, so it sits beside it on
     // the fan-out for the same swap-the-database reason.
     useJournalStore.getState().initialize();

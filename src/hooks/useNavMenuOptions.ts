@@ -10,13 +10,14 @@ import { useMeterReadingStore } from '../store/useMeterReadingStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { useJournalStore } from '../store/useJournalStore';
+import { useWorkoutStore, workoutContentCount } from '../store/useWorkoutStore';
 import type { NavMenuOptions } from '../utils/navHubs';
 import { isScreenTimeSupported } from '../utils/screenTimeBridge';
 
 /**
  * What `visibleMenuRows`/`menuDestinations` need to decide which screens are
- * reachable: the kitchen switch, simplified mode, whether Screen Time can work
- * here, and the content counts `screenShown` reads.
+ * reachable: the kitchen and workouts switches, simplified mode, whether Screen
+ * Time can work here, and the content counts `screenShown` reads.
  *
  * Shared by the side menu and the pull-down quick search, which both search
  * the same destinations. Two copies of this would be two answers to "is
@@ -28,6 +29,7 @@ import { isScreenTimeSupported } from '../utils/screenTimeBridge';
  */
 export function useNavMenuOptions(): NavMenuOptions {
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
+  const workoutsEnabled = useSettingsStore(s => s.workoutsEnabled);
   const simpleMode = useSettingsStore(s => s.simpleMode);
   const stackCount = useTaskGroupStore(s => s.groups.length);
   const templateCount = useTemplateStore(s => s.templates.length);
@@ -39,6 +41,7 @@ export function useNavMenuOptions(): NavMenuOptions {
   // The whole history, not today's rows — see useFoodLogStore.totalCount.
   const foodLogCount = useFoodLogStore(s => s.totalCount);
   const meterCount = useMeterReadingStore(s => s.readings.length);
+  const workoutCount = useWorkoutStore(workoutContentCount);
   // Asked once: whether this build has the native half, on a phone new enough,
   // cannot change while the app runs. Demo mode answers yes on iOS even though
   // the bridge itself is refused there, because the page is built from stores
@@ -52,6 +55,7 @@ export function useNavMenuOptions(): NavMenuOptions {
     kitchenEnabled,
     simpleMode,
     screenTimeSupported,
-    counts: { stacks: stackCount, templates: templateCount, people: peopleCount, mood: moodCount, medications: medicationCount, foodLog: foodLogCount, journal: journalCount, dreams: dreamCount, meters: meterCount },
-  }), [kitchenEnabled, simpleMode, screenTimeSupported, stackCount, templateCount, peopleCount, moodCount, medicationCount, foodLogCount, journalCount, dreamCount, meterCount]);
+    workoutsEnabled,
+    counts: { stacks: stackCount, templates: templateCount, people: peopleCount, mood: moodCount, medications: medicationCount, foodLog: foodLogCount, journal: journalCount, dreams: dreamCount, meters: meterCount, workouts: workoutCount },
+  }), [kitchenEnabled, simpleMode, screenTimeSupported, workoutsEnabled, stackCount, templateCount, peopleCount, moodCount, medicationCount, foodLogCount, journalCount, dreamCount, meterCount, workoutCount]);
 }

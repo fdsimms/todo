@@ -75,6 +75,11 @@ import type {
   MealSlot,
   MedicationLog,
   MoodLog,
+  Exercise,
+  WorkoutProgram,
+  WorkoutRoutine,
+  WorkoutSession,
+  WorkoutSet,
   Person,
   PersonGroup,
   PersonNote,
@@ -240,6 +245,8 @@ export interface ReplicaSettings {
   /** Simplified mode: the advanced half of the app is hidden. */
   simpleMode: boolean;
   rewardsEnabled: boolean;
+  /** The Workouts area. Off by default; off means its screen is not in the app's menu. */
+  workoutsEnabled: boolean;
   /** The reward being saved for, or null. */
   rewardGoalId: string | null;
   /** Weekly reward spend in minor units, which with the earning rate sets the coin-to-dollar rate. Null when unset. */
@@ -1203,6 +1210,24 @@ export interface Replica {
    */
   logMeterReading(name: string, value: number, readAt: Date): MeterReading;
   deleteMeterReading(id: string): MeterReading;
+  /**
+   * The person's custom exercises and their changes to built-in ones: the rows
+   * `src/utils/exerciseCatalog.ts` merges over the library. Plans, so they
+   * reach the server whatever the health switch says.
+   */
+  exercises(): Exercise[];
+  /** Workout routines, in the person's order. Plans, like exercises. */
+  workoutRoutines(): WorkoutRoutine[];
+  /** Workout programs. Plans, like exercises. */
+  workoutPrograms(): WorkoutProgram[];
+  /**
+   * Workout sessions started between two day keys, inclusive, newest first.
+   * Part of the health record: empty unless the phone sends health logs to the
+   * server (`syncServerHealthLogs`).
+   */
+  workoutSessions(fromDayKey: string, toDayKey: string): WorkoutSession[];
+  /** One session's sets, in the order they were done. Withheld with the sessions. */
+  workoutSets(sessionId: string): WorkoutSet[];
   /** The daily word goal for the journal, or null when none is set. */
   journalWordGoal(): number | null;
   /** Journal and dream entries between two day keys, inclusive, newest first. */
@@ -3959,6 +3984,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         kitchenEnabled: s.kitchenEnabled,
         simpleMode: s.simpleMode,
         rewardsEnabled: s.rewardsEnabled,
+        workoutsEnabled: s.workoutsEnabled,
         rewardGoalId: s.rewardGoalId,
         rewardWeeklyBudgetMinor: s.rewardWeeklyBudgetMinor,
         bountyLimit: s.bountyLimit,
@@ -4137,6 +4163,15 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return item;
     },
     meterReadings: () => db.dbGetAllMeterReadings(),
+    exercises: () => db.dbGetAllExercises(),
+    workoutRoutines: () => db.dbGetAllWorkoutRoutines(),
+    workoutPrograms: () => db.dbGetAllWorkoutPrograms(),
+    workoutSessions: (from: string, to: string) =>
+      db.dbGetAllWorkoutSessions().filter(s => {
+        const day = dates.getLogicalDayKey(new Date(s.startedAt), useSettingsStore.getState().dayResetTime);
+        return day >= from && day <= to;
+      }),
+    workoutSets: (sessionId: string) => db.dbGetWorkoutSets(sessionId),
     logMeterReading(name: string, value: number, readAt: Date): MeterReading {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { useMeterReadingStore } = require('../../src/store/useMeterReadingStore') as typeof import('../../src/store/useMeterReadingStore');

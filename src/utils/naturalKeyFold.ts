@@ -53,6 +53,11 @@ export const NATURAL_KEYS: Record<string, NaturalKey[]> = {
     { columns: ['item_id', 'product_key'] },
     { columns: ['gtin'], ignoreNull: true },
   ],
+  // A custom exercise's name (exerciseNameKey). Null on a row overriding a
+  // built-in, which shares the built-in's id and so needs no key to meet on:
+  // two devices that both create "Cable fly" offline hold one exercise, and
+  // the sets each logged against it end up under the one id.
+  exercises: [{ columns: ['name_key'], ignoreNull: true }],
 };
 
 /** A blank value a fold may fill from the other side. */
@@ -184,6 +189,9 @@ const FOLD_RULES: Record<string, FoldRule> = {
     groups: [{ by: 'last_used_at', pick: 'latest', columns: ['item_id', 'last_used_at'] }],
   },
   cookbooks: { earliest: ['created_at'] },
+  // Archived only if both copies say so: hiding an exercise somebody is still
+  // using on the other phone would be the surprise, not keeping it.
+  exercises: { earliest: ['created_at'], and: ['archived'] },
 };
 
 /**
@@ -345,6 +353,11 @@ export const REFERENCES: Reference[] = [
   jsonArrayField('grocery_item_products', 'grocery_items', 'price_history', 'productId'),
   jsonArrayField('grocery_item_products', 'grocery_item_shops', 'price_history', 'productId'),
   jsonArrayField('grocery_item_products', 'saved_meals', 'items', 'productId'),
+  // A custom exercise: the sets logged against it, the routines that plan it,
+  // and the training max a program keeps for it.
+  idColumn('exercises', 'workout_sets', 'exercise_id'),
+  jsonArrayField('exercises', 'workout_routines', 'items', 'exerciseId'),
+  jsonArrayField('exercises', 'workout_programs', 'training_maxes', 'exerciseId'),
 ];
 
 /**

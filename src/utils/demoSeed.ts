@@ -20,6 +20,7 @@ import { useMoodStore } from '../store/useMoodStore';
 import { useMilestoneStore } from '../store/useMilestoneStore';
 import { useCookwareStore } from '../store/useCookwareStore';
 import { useMeterReadingStore } from '../store/useMeterReadingStore';
+import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useJournalStore } from '../store/useJournalStore';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { installSupplementDoseEffects } from './supplementDoseSync';
@@ -2328,6 +2329,7 @@ export function seedDemoData(): void {
   seedMilestone(today);
   seedCookware();
   seedMeterTask(today);
+  seedWorkouts(today);
   seedJournal(today);
   seedAsNeededDoses(today);
   seedRewards(today);
@@ -3225,6 +3227,89 @@ function seedMeterTask(today: Date): void {
     meterName: 'Car', meterUnit: 'miles', meterEvery: 5000, meterDueAt: 40500, meterLimitMonths: 6,
   });
   applyMeterHolds();
+}
+
+/**
+ * A week of training, so the Workouts area reads as a feature the app has: a
+ * two-routine program, a custom exercise, notes on a built-in one, and three
+ * finished workouts with their sets. The area ships switched off, so the demo
+ * switches it on, the way the Rewards seed does for coins. Everything goes
+ * through `useWorkoutStore`, in kilograms like every stored weight.
+ */
+function seedWorkouts(today: Date): void {
+  useSettingsStore.getState().setWorkoutsEnabled(true);
+  const workouts = useWorkoutStore.getState();
+  const landmineRow = workouts.addExercise({
+    name: 'Landmine row',
+    kind: 'weight_reps',
+    equipment: 'barbell',
+    primaryMuscles: ['upper_back', 'lats'],
+    secondaryMuscles: ['rear_delts', 'biceps'],
+    notes: 'Straddle the bar and row the end to your chest with a V handle.',
+  });
+  workouts.updateExercise('lib:barbell-bench-press', { notes: 'Pause each rep on the chest.' });
+  const rowId = typeof landmineRow === 'string' ? 'lib:barbell-row' : landmineRow.id;
+
+  const working = (repsMin: number, repsMax: number, weightKg: number) =>
+    ({ kind: 'working' as const, repsMin, repsMax, weightKg });
+  const program = workouts.addProgram({ name: 'Upper and lower', weeks: 8, scheme: 'double' });
+  const programId = typeof program === 'string' ? null : program.id;
+  const upper = workouts.addRoutine('Upper A', [
+    { exerciseId: 'lib:barbell-bench-press', restSeconds: 150, progression: { scheme: 'double', incrementKg: 2.5 },
+      targets: [working(6, 8, 60), working(6, 8, 60), working(6, 8, 60)] },
+    { exerciseId: rowId, restSeconds: 120, progression: { scheme: 'double', incrementKg: 2.5 },
+      targets: [working(8, 10, 40), working(8, 10, 40), working(8, 10, 40)] },
+    { exerciseId: 'lib:dumbbell-lateral-raise', supersetKey: 'a', restSeconds: 60, progression: null,
+      targets: [working(12, 15, 8), working(12, 15, 8)] },
+    { exerciseId: 'lib:triceps-pushdown', supersetKey: 'a', restSeconds: 60, progression: null,
+      targets: [working(10, 12, 25), working(10, 12, 25)] },
+  ], programId);
+  const lower = workouts.addRoutine('Lower A', [
+    { exerciseId: 'lib:back-squat', restSeconds: 180, progression: { scheme: 'double', incrementKg: 5 },
+      targets: [{ kind: 'warmup', repsMin: 5, repsMax: 5, weightKg: 40 }, working(5, 6, 80), working(5, 6, 80), working(5, 6, 80)] },
+    { exerciseId: 'lib:romanian-deadlift', restSeconds: 150, progression: { scheme: 'double', incrementKg: 5 },
+      targets: [working(8, 10, 70), working(8, 10, 70)] },
+    { exerciseId: 'lib:plank', restSeconds: 60, progression: null,
+      targets: [{ kind: 'working', repsMin: null, repsMax: null, durationSeconds: 60 }] },
+  ], programId);
+  if (programId && typeof upper !== 'string' && typeof lower !== 'string') {
+    workouts.updateProgram(programId, { rotation: [upper.id, lower.id], startedAt: subDays(today, 6).toISOString() });
+  }
+
+  type DemoSet = [exerciseId: string, weightKg: number | null, reps: number | null, durationSeconds?: number, warmup?: boolean];
+  const session = (daysAgo: number, routine: typeof upper, sets: DemoSet[], effort: number) => {
+    if (typeof routine === 'string') return;
+    const start = subDays(today, daysAgo);
+    start.setHours(18, 0, 0, 0);
+    const started = useWorkoutStore.getState().startSession({ routineId: routine.id, at: start });
+    if (typeof started === 'string') return;
+    sets.forEach(([exerciseId, weightKg, reps, durationSeconds, warmup], i) => {
+      useWorkoutStore.getState().logSet(started.id, {
+        exerciseId, weightKg, reps, durationSeconds: durationSeconds ?? null, kind: warmup ? 'warmup' : 'working',
+        completedAt: new Date(start.getTime() + (i + 1) * 3 * 60_000).toISOString(),
+      });
+    });
+    useWorkoutStore.getState().finishSession(started.id, {
+      endedAt: new Date(start.getTime() + (sets.length * 3 + 5) * 60_000).toISOString(),
+      effort,
+    });
+  };
+  session(6, upper, [
+    ['lib:barbell-bench-press', 60, 8], ['lib:barbell-bench-press', 60, 7], ['lib:barbell-bench-press', 60, 6],
+    [rowId, 40, 10], [rowId, 40, 10], [rowId, 40, 9],
+    ['lib:dumbbell-lateral-raise', 8, 15], ['lib:triceps-pushdown', 25, 12],
+    ['lib:dumbbell-lateral-raise', 8, 13], ['lib:triceps-pushdown', 25, 11],
+  ], 7);
+  session(4, lower, [
+    ['lib:back-squat', 40, 5, undefined, true], ['lib:back-squat', 80, 6], ['lib:back-squat', 80, 6], ['lib:back-squat', 80, 5],
+    ['lib:romanian-deadlift', 70, 10], ['lib:romanian-deadlift', 70, 9],
+    ['lib:plank', null, null, 60],
+  ], 8);
+  session(2, upper, [
+    ['lib:barbell-bench-press', 60, 8], ['lib:barbell-bench-press', 60, 8], ['lib:barbell-bench-press', 60, 7],
+    [rowId, 42.5, 10], [rowId, 42.5, 9], [rowId, 42.5, 9],
+    ['lib:dumbbell-lateral-raise', 8, 15], ['lib:triceps-pushdown', 27.5, 12],
+  ], 7);
 }
 
 /**

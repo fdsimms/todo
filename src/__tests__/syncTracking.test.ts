@@ -15,6 +15,8 @@ import {
   SYNC_TRACKED_TABLES,
   SYNCED_SETTING_KEYS,
   SYNC_DEVICE_LOCAL_COLUMNS,
+  HEALTH_SYNC_TABLES,
+  JOURNAL_SYNC_TABLES,
   isSyncedSettingKey,
   isDeviceLocalColumn,
   withoutDeviceLocalColumns,
@@ -132,6 +134,27 @@ describe('table definitions', () => {
     const firstUse = statements.findIndex(s => s.includes(`INSERT OR REPLACE INTO ${SYNC_DELETIONS_TABLE}`));
     expect(created).toBeGreaterThanOrEqual(0);
     expect(firstUse).toBeGreaterThan(created);
+  });
+});
+
+describe('the health record', () => {
+  // Nothing else checks this list, and a table missing from it is not a red
+  // build anywhere: it simply starts going to iCloud. So the membership is
+  // pinned here, and adding or removing one is a decision this test makes
+  // somebody state (App Review 5.1.3(ii); see HEALTH_SYNC_TABLES).
+  it('withholds exactly the logs of what a body did, and nothing that is a plan', () => {
+    expect([...HEALTH_SYNC_TABLES].sort()).toEqual([
+      'food_logs', 'medication_logs', 'milestones', 'mood_logs', 'workout_sessions', 'workout_sets',
+    ]);
+    // Workout plans travel like any other data; only the record is withheld.
+    for (const plan of ['exercises', 'workout_routines', 'workout_programs', 'saved_meals']) {
+      expect(HEALTH_SYNC_TABLES).not.toContain(plan);
+    }
+  });
+
+  it('withholds only tables that are tracked at all', () => {
+    const tracked = new Set(SYNC_TRACKED_TABLES.map(t => t.name));
+    expect([...HEALTH_SYNC_TABLES, ...JOURNAL_SYNC_TABLES].filter(t => !tracked.has(t))).toEqual([]);
   });
 });
 

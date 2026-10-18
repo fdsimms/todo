@@ -1,4 +1,4 @@
-import { foldRows, foldWinner, REFERENCES, SETTING_REFERENCES } from '../utils/naturalKeyFold';
+import { foldRows, foldWinner, NATURAL_KEYS, REFERENCES, SETTING_REFERENCES } from '../utils/naturalKeyFold';
 
 describe('foldRows', () => {
   const phone = {
@@ -107,6 +107,31 @@ describe('REFERENCES', () => {
     const r = ref('saved_meals', 'items');
     const out = r.rewrite({ items: JSON.stringify([{ itemId: 'b2', label: 'milk' }, { itemId: 'x' }]) }, 'b2', 'a1');
     expect(JSON.parse(String(out?.items))).toEqual([{ itemId: 'a1', label: 'milk' }, { itemId: 'x' }]);
+  });
+});
+
+describe('custom exercises', () => {
+  // Two phones that each created "Cable fly" offline: one exercise, and every
+  // set, routine and training max either phone wrote follows the survivor.
+  it('meet on a custom name only, so an override of a built-in takes no part', () => {
+    expect(NATURAL_KEYS.exercises).toEqual([{ columns: ['name_key'], ignoreNull: true }]);
+  });
+
+  it('keep the earlier creation date, and stay listed unless both copies were archived', () => {
+    const a = { id: 'a1', name: 'Cable fly', name_key: 'cable fly', archived: 1, created_at: '2026-05-02', notes: '' };
+    const b = { id: 'b2', name: 'cable fly', name_key: 'cable fly', archived: 0, created_at: '2026-05-01', notes: 'Low pulley' };
+    expect(foldRows('exercises', a, b)).toMatchObject({ id: 'a1', created_at: '2026-05-01', archived: 0, notes: 'Low pulley' });
+  });
+
+  it('move the sets, routine items and training maxes that named the loser', () => {
+    const refs = REFERENCES.filter(r => r.target === 'exercises');
+    const byTable = (table: string) => refs.find(r => r.table === table)!;
+    expect(byTable('workout_sets').rewrite({ id: 's', exercise_id: 'b2' }, 'b2', 'a1')).toEqual({ id: 's', exercise_id: 'a1' });
+    const routine = byTable('workout_routines').rewrite(
+      { items: JSON.stringify([{ exerciseId: 'b2', targets: [] }, { exerciseId: 'lib:barbell-squat', targets: [] }]) }, 'b2', 'a1');
+    expect(JSON.parse(String(routine?.items)).map((i: { exerciseId: string }) => i.exerciseId)).toEqual(['a1', 'lib:barbell-squat']);
+    const program = byTable('workout_programs').rewrite({ training_maxes: JSON.stringify([{ exerciseId: 'b2', kg: 100 }]) }, 'b2', 'a1');
+    expect(JSON.parse(String(program?.training_maxes))).toEqual([{ exerciseId: 'a1', kg: 100 }]);
   });
 });
 
