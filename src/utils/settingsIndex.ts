@@ -383,6 +383,8 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
     'generated', 'automatic'],
   journalLog: ['diary', 'write', 'writing', 'reflect', 'entry', 'track', 'generated', 'automatic'],
   dreamLog: ['dream journal', 'dreams', 'nightmare', 'sleep', 'woke', 'write', 'generated', 'automatic'],
+  wanikani: ['japanese', 'kanji', 'srs', 'lessons', 'flashcards', 'study', 'language', 'generated',
+    'automatic'],
 };
 
 /**
@@ -924,6 +926,16 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'journalLogTimeSegments', requires: 'gen:journalLog', groupId: 'generated', label: 'Show the task', section: 'Journal reminder',
     keywords: ['morning', 'afternoon', 'evening', 'night', 'time of day', 'hold back', 'when',
       'diary', 'write', 'multiple', 'several', 'twice', 'once a day'] },
+  { id: 'wanikaniToken', requires: 'gen:wanikani', groupId: 'generated', label: 'API token', section: 'WaniKani reviews',
+    keywords: ['key', 'secret', 'password', 'account', 'connect', 'sign in', 'japanese'] },
+  { id: 'wanikaniReviewThreshold', requires: 'gen:wanikani', groupId: 'generated', label: 'Add the task at', section: 'WaniKani reviews',
+    keywords: ['reviews waiting', 'queue', 'how many', 'number', 'forecast', 'japanese'] },
+  { id: 'wanikaniLessonsPerDay', requires: 'gen:wanikani', groupId: 'generated', label: 'Lessons', section: 'WaniKani reviews',
+    keywords: ['new items', 'daily', 'per day', 'how many', 'japanese', 'kanji'] },
+  { id: 'wanikaniApprenticeCap', requires: 'gen:wanikani', groupId: 'generated', label: 'Skip lessons at', section: 'WaniKani reviews',
+    keywords: ['apprentice', 'limit', 'cap', 'workload', 'too many', 'japanese'] },
+  { id: 'wanikaniNotify', requires: 'gen:wanikani', groupId: 'generated', label: 'Notify when reviews arrive', section: 'WaniKani reviews',
+    keywords: ['notification', 'alert', 'remind', 'ping', 'japanese'] },
   // Spans both use-up generators, so it sits below the loop rather than inside
   // either one's extras — and so its section can't be one generator's name.
   { id: 'useUpTaskCap', requires: ['gen:groceryUseUp', 'gen:leftoverUseUp'], groupId: 'generated', label: 'Limit use-up tasks', section: 'Automations',

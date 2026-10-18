@@ -62,6 +62,7 @@ describe('the three maintenance groups', () => {
       'check health tasks',
       'check mood tasks',
       'check journal tasks',
+      'check WaniKani tasks',
       'check weekend nudge tasks',
       'check weigh-in tasks',
       'check birthday tasks',

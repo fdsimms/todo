@@ -197,6 +197,9 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   // shape; the dream one is once a day. See src/utils/journalTasks.ts.
   'journalLog',
   'dreamLog',
+  // Appended: the one generator fed by an account on another service (the
+  // person's WaniKani reviews and lessons). See src/utils/wanikaniTasks.ts.
+  'wanikani',
 ];
 
 /**
@@ -266,7 +269,8 @@ export type GeneratedEnabledKey =
   | 'goalTargetTasks'
   | 'bookEventTasks'
   | 'journalLogTasks'
-  | 'dreamLogTasks';
+  | 'dreamLogTasks'
+  | 'wanikaniTasks';
 
 export interface GeneratedKindSpec {
   kind: GeneratedKind;
@@ -1148,6 +1152,23 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     kitchen: false,
     categorized: true,
     defaultCategory: 'Personal',
+  },
+  wanikani: {
+    kind: 'wanikani',
+    // Reviews and lessons are work, so it stands down: "sunscreen, not work".
+    // WaniKani has its own vacation mode for the queue itself.
+    pausedOnVacation: true,
+    enabledKey: 'wanikaniTasks',
+    label: 'WaniKani reviews',
+    onHint: 'Adds a task when reviews are waiting on WaniKani',
+    offHint: 'WaniKani adds no tasks',
+    icon: 'language-outline',
+    // Its source id names a wave of reviews or a day of lessons, not a row.
+    sourced: false,
+    notice: false,
+    kitchen: false,
+    categorized: true,
+    defaultCategory: 'Study',
   },
 };
 

@@ -219,6 +219,10 @@ export function catchUpPasses(): MaintenanceStep[] {
     // The journal and dream reminders, the check-in's shape over the journal
     // store, so the same trigger and the same real work at launch.
     ['check journal tasks', () => tasks().checkJournalTasks()],
+    // The WaniKani tasks. Fed by a read only useWaniKaniSync makes, so all a
+    // launch or background run can do is let a held task's hour pass: a task
+    // left undone overnight keeps its window, which gates every day.
+    ['check WaniKani tasks', () => tasks().checkWaniKaniTasks()],
     // Beside it, same trigger: which weekend is next rolls over purely by time
     // passing. After useSettingsStore.initialize for the reason the meal pass is — which day
     // is Friday is a question about the logical day. It reads the calendar
