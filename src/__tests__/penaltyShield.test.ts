@@ -56,6 +56,24 @@ describe('penaltyCutoffAt', () => {
     expect(penaltyCutoffAt(task({ dueDate: null }), '00:00')).toBeNull();
   });
 
+  // A defer is a floor over dueDate: a task pushed to Friday is late for
+  // Friday. Reading dueDate alone charged it on the day it had left.
+  it('lays the cutoff over the day a deferred task now sits on', () => {
+    const t = task({
+      dueDate: '2026-08-22T12:00:00', deferUntil: '2026-08-25T00:00:00', penaltyCutoffTime: '08:00',
+    });
+    const cutoff = penaltyCutoffAt(t, '00:00')!;
+    expect(cutoff.getDate()).toBe(25);
+    expect(cutoff.getHours()).toBe(8);
+  });
+
+  it('ignores a defer that is not later than the due day', () => {
+    const t = task({
+      dueDate: '2026-08-22T12:00:00', deferUntil: '2026-08-20T00:00:00', penaltyCutoffTime: '08:00',
+    });
+    expect(penaltyCutoffAt(t, '00:00')!.getDate()).toBe(22);
+  });
+
   it('lays the cutoff time over the day the task is due', () => {
     const t = task({ dueDate: '2026-08-22T12:00:00', penaltyCutoffTime: '08:00' });
     const cutoff = penaltyCutoffAt(t, '00:00')!;

@@ -4877,7 +4877,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       const due = negativeHabitDuePatch(t, todayStart, resetTime);
       // A "don't" task with no repeat covers one day and is finished once it
       // has passed, after the clean-day credit above has been applied.
-      const ended = oneDayEndPatch(rolled, todayStart, getTaskDayStart(new Date(t.dueDate ?? t.createdAt), resetTime));
+      // The day it covers is where it now sits: a one-off held with deferUntil
+      // keeps its old dueDate, and closing it when that day passed finished a
+      // commitment still hidden until its real day.
+      const ended = oneDayEndPatch(rolled, todayStart, getTaskDayStart(new Date(getEffectiveTaskDate(t, resetTime) ?? t.createdAt), resetTime));
       if (!streak && !closing && !due && !ended) return [];
       // Days nobody collected by hand are collected here, so every clean day
       // pays once whether or not the person got to it.
@@ -5506,7 +5509,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // import or a synced row, closing it on the day test would end its week
       // six days early. Left daily, it is merely closed on time.
       t.quotaPeriod === 'day' &&
-      getTaskDayStart(new Date(t.dueDate), dayResetTime) < todayStart
+      getTaskDayStart(new Date(t.dueDate), dayResetTime) < todayStart &&
+      // The count is the dueDate day's, but a row the person pushed to a day
+      // that hasn't come is held until then, and closing it now spawned the
+      // successor on today, undoing the push (rolloverQuotas keeps the same
+      // rule for the same row).
+      getTaskDayStart(new Date(getEffectiveTaskDate(t, dayResetTime)!), dayResetTime) <= todayStart
     );
     // neutral on a day the task's own category schedule didn't cover — see
     // #2201, isCategoryScheduledDay, and rolloverQuotas' own note above.

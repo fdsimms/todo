@@ -15405,6 +15405,26 @@ describe('quota tasks', () => {
       expect(new Date(next.dueDate!).toDateString()).toBe('Tue Jun 10 2025');
     });
 
+    // The count is the dueDate day's, but a row pushed to a day that hasn't
+    // come is held until then: closing it now spawned the successor on today.
+    it('leaves a row alone while it is deferred to a day that has not come', () => {
+      useTaskStore.setState({
+        tasks: [quota({
+          allowOvershoot: true,
+          quotaIntervalMinutes: null,
+          quotaReminders: false,
+          quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
+          progressCount: 5,
+          dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
+          deferUntil: new Date(2025, 5, 12, 0, 0, 0).toISOString(),
+        })],
+      });
+      useTaskStore.getState().sweepOvershootQuotas();
+
+      expect(useTaskStore.getState().tasks).toHaveLength(1);
+      expect(useTaskStore.getState().tasks[0].completed).toBe(false);
+    });
+
     it('completes an overshot day with the high count', () => {
       useTaskStore.setState({
         tasks: [quota({
@@ -19494,6 +19514,19 @@ describe('negative habits', () => {
       const finished = get('once');
       useTaskStore.getState().rolloverNegativeStreaks();
       expect(get('once')).toEqual(finished);
+    });
+
+    // A one-off held with deferUntil keeps its old dueDate, so the day it
+    // covers is where it now sits, not the day it left.
+    it('does not finish a non-repeating one while it is deferred to a day that has not come', () => {
+      const made = new Date(2026, 0, 5, 15).toISOString();
+      seed(avoid({
+        id: 'once', recurrenceType: 'none', createdAt: made, streakCount: 0, streakDate: made,
+        dueDate: new Date(2026, 0, 8, 12).toISOString(),
+        deferUntil: new Date(2026, 0, 14).toISOString(),
+      }));
+      useTaskStore.getState().rolloverNegativeStreaks();
+      expect(get('once').completed).toBe(false);
     });
 
     it('credits the clean days that have gone by', () => {
