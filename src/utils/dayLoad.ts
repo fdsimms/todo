@@ -49,11 +49,7 @@ import { calibrationFrom, calibratedAssumedMinutes } from './estimateCalibration
 /**
  * Above this much, a day reads as already busy.
  *
- * `PULL_TODAY_BUDGET_MINUTES` (projectPull.ts) is the same judgement about
- * today — above three hours already planned, a pull lands somewhere else — and
- * a cue that disagreed with where the app is willing to put work would be two
- * answers to one question. Kept in step by hand; see the note above for why
- * it can't be imported.
+ * Three hours is the app's own line for a day that is already spoken for.
  */
 export const BUSY_DAY_MINUTES = 180;
 

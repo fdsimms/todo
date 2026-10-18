@@ -692,6 +692,21 @@ describe('isCompletionOnTime', () => {
     expect(isCompletionOnTime(nightHabit)).toBe(false);
   });
 
+  // The window sits on the day the task was moved to. Measured from the old
+  // dueDate, a completion inside Thursday's window read as late.
+  it('measures a deferred task\'s window on the day it was moved to', () => {
+    const deferred = {
+      ...baseTask, windowStart: '08:00', windowEnd: '13:00',
+      dueDate: new Date(2025, 5, 9, 0, 0, 0).toISOString(),
+      deferUntil: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+    };
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 10, 12, 0, 0));
+    expect(isCompletionOnTime(deferred)).toBe(true);
+    jest.setSystemTime(new Date(2025, 5, 10, 13, 0, 0));
+    expect(isCompletionOnTime(deferred)).toBe(false);
+  });
+
   it('an explicit windowEnd takes precedence over timeSegments when both are set', () => {
     const both: Task = { ...baseTask, timeSegments: ['morning'], windowStart: '08:00', windowEnd: '20:00' };
     jest.useFakeTimers();
@@ -755,6 +770,22 @@ describe('isTaskSweepable', () => {
     expect(isTaskSweepable(task, 7)).toBe(false);
 
     jest.setSystemTime(new Date(2025, 5, 10, 10, 0, 0)); // 7 days later — grace elapsed
+    expect(isTaskSweepable(task, 7)).toBe(true);
+  });
+
+  // The grace clock starts on the day the window closed *for the task as it now
+  // sits*. Anchored on the stale dueDate, a task deferred from June 3 to June 8
+  // was swept the moment it expired instead of 7 days after June 8.
+  it('starts the grace period on the day a deferred task was moved to', () => {
+    const task = {
+      ...baseTask, windowStart: '07:00', windowEnd: '09:00',
+      dueDate: new Date(2025, 5, 3, 0, 0, 0).toISOString(),
+      deferUntil: new Date(2025, 5, 8, 0, 0, 0).toISOString(),
+    };
+    expect(isTaskExpired(task)).toBe(true); // June 10, 10:00; window closed 09:00
+    expect(isTaskSweepable(task, 7)).toBe(false);
+
+    jest.setSystemTime(new Date(2025, 5, 15, 10, 0, 0)); // 7 days after June 8
     expect(isTaskSweepable(task, 7)).toBe(true);
   });
 

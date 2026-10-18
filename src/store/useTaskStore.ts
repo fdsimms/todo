@@ -430,6 +430,7 @@ import {
   healthRuleDirection,
   healthTaskNote,
   ruleCanBeJudgedYet,
+  isWithinActiveHours,
   ruleShortfallToday,
   healthTaskLinkUrl,
   healthRuleIdOf,
@@ -4867,9 +4868,24 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // every other streak here makes. Read through isWithheld so a category
       // paused for vacation, or a paused project, covers its habits too,
       // exactly as it does for the tasks the quota rollover skips.
-      const paused = isWithheld(t);
-      const streak = cleanDayPatch(t, todayStart, { paused });
-      const rolled = streak ? { ...t, ...streak } : t;
+      //
+      // A habit deferred to a day that hasn't come is held the same way: it is
+      // off Today, so no slip can be logged against it, and crediting those days
+      // paid coins for a stretch nobody could report on. The anchor still moves,
+      // so the days are skipped rather than banked into a lump when it returns.
+      //
+      // The same goes for a pass that only runs after the hold ended (the app
+      // was closed through it): the days before the defer day are skipped by
+      // starting the count the day before it, so no run of passes can credit them.
+      const deferDay = t.deferUntil != null ? getTaskDayStart(new Date(t.deferUntil), resetTime) : null;
+      const heldByDefer = deferDay !== null && deferDay > todayStart;
+      const paused = isWithheld(t) || heldByDefer;
+      const counted: Task =
+        deferDay !== null && !heldByDefer && t.streakDate && deferDay > new Date(t.streakDate)
+          ? { ...t, streakDate: addDays(deferDay, -1).toISOString() }
+          : t;
+      const streak = cleanDayPatch(counted, todayStart, { paused });
+      const rolled = streak ? { ...counted, ...streak } : t;
       // The habit's own end time counts today as clean once it passes, on the
       // rolled row so a catch-up and a close land in one write.
       const end = effectiveWindowEnd(t);
@@ -4877,11 +4893,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       const due = negativeHabitDuePatch(t, todayStart, resetTime);
       // A "don't" task with no repeat covers one day and is finished once it
       // has passed, after the clean-day credit above has been applied.
-      const ended = oneDayEndPatch(rolled, todayStart, getTaskDayStart(new Date(t.dueDate ?? t.createdAt), resetTime));
+      // The day it covers is where it now sits: a one-off held with deferUntil
+      // keeps its old dueDate, and closing it when that day passed finished a
+      // commitment still hidden until its real day.
+      const ended = oneDayEndPatch(rolled, todayStart, getTaskDayStart(new Date(getEffectiveTaskDate(t, resetTime) ?? t.createdAt), resetTime));
       if (!streak && !closing && !due && !ended) return [];
       // Days nobody collected by hand are collected here, so every clean day
       // pays once whether or not the person got to it.
-      if (streak) toPay.push({ before: t, patch: streak });
+      if (streak) toPay.push({ before: counted, patch: streak });
       if (closing) toPay.push({ before: rolled, patch: closing });
       return [{ ...rolled, ...closing, ...due, ...ended }];
     });
@@ -5253,7 +5272,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // spawned for today — reappearing on Today despite having just been
       // rescheduled later, and duplicating it once the deferred date itself
       // arrived and rolled over a second time.
-      periodStartOf(new Date(getEffectiveTaskDate(t, dayResetTime)!), t.quotaPeriod) <
+      //
+      // The effective date only decides whether the row is still *ahead of*
+      // today's period, though. The count on it was logged in the period its
+      // dueDate belongs to, so once that period is over and the deferred day
+      // has arrived in a later one, the count is last period's and closes out
+      // here. Left alone, a weekly target pushed from Monday to the next
+      // Sunday opened the new week still showing last week's 1/5.
+      periodStartOf(new Date(t.dueDate), t.quotaPeriod) < periodStartOf(todayStart, t.quotaPeriod) &&
+      periodStartOf(new Date(getEffectiveTaskDate(t, dayResetTime)!), t.quotaPeriod) <=
         periodStartOf(todayStart, t.quotaPeriod)
     );
     if (stale.length === 0) return;
@@ -5300,7 +5327,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // *whether* it continues, since its answer for *when* would still be in
       // the past if the app sat closed for a week.
       if (getNextDueDate(task, dayResetTime) === null) continue;
-      const nextDue = new Date(todayStart);
+      // Today, unless the person had pushed this occurrence to a later day of
+      // the current period: the successor keeps that day rather than
+      // reappearing on Today.
+      const heldDay = getTaskDayStart(new Date(getEffectiveTaskDate(task, dayResetTime)!), dayResetTime);
+      const nextDue = new Date(heldDay > todayStart ? heldDay : todayStart);
       nextDue.setHours(12, 0, 0, 0);
       const effective: Task = { ...task, ...(task.seriesDefaults ?? {}) };
       spawned.push({
@@ -5494,7 +5525,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // import or a synced row, closing it on the day test would end its week
       // six days early. Left daily, it is merely closed on time.
       t.quotaPeriod === 'day' &&
-      getTaskDayStart(new Date(t.dueDate), dayResetTime) < todayStart
+      getTaskDayStart(new Date(t.dueDate), dayResetTime) < todayStart &&
+      // The count is the dueDate day's, but a row the person pushed to a day
+      // that hasn't come is held until then, and closing it now spawned the
+      // successor on today, undoing the push (rolloverQuotas keeps the same
+      // rule for the same row).
+      getTaskDayStart(new Date(getEffectiveTaskDate(t, dayResetTime)!), dayResetTime) <= todayStart
     );
     // neutral on a day the task's own category schedule didn't cover — see
     // #2201, isCategoryScheduledDay, and rolloverQuotas' own note above.
@@ -7869,6 +7905,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         return !parsed || parsed.dayKey !== todayKey || !activeRuleIds.has(parsed.ruleId);
       })
       .forEach(task => deleteGeneratedTaskQuietly(task.id));
+
+    // Nothing new is written outside the person's active hours. Deliberately
+    // after the clean-up above (a stale task should still go) and before any
+    // mark is spent, so a rule is judged afresh once the hours open.
+    if (!isWithinActiveHours(new Date(), settings.activeHoursStart, settings.activeHoursEnd)) return;
 
     const reading = useHealthStore.getState().today;
     // A reading from a day that has already turned over is not an answer about

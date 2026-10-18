@@ -22,6 +22,18 @@ const DAY = new Date(2026, 7, 6, 8, 0, 0); // Thu Aug 6 2026, 8 AM
 const iso = (y: number, m: number, d: number, h = 12) => new Date(y, m, d, h).toISOString();
 
 describe('agendaCounts', () => {
+  // A defer is a floor over dueDate, so a deferred task is on its later day.
+  it('does not count a task deferred to a later day as due or carried over', () => {
+    const dueToday = makeTask({ id: 'a', dueDate: iso(2026, 7, 6), deferUntil: iso(2026, 7, 8) } as Partial<Task>);
+    const carried = makeTask({ id: 'b', dueDate: iso(2026, 7, 1), deferUntil: iso(2026, 7, 8) } as Partial<Task>);
+    expect(agendaCounts([dueToday, carried], DAY, '00:00')).toEqual({ due: 0, carriedOver: 0, deadlines: 0 });
+  });
+
+  it('counts a task as due on the day its defer lands', () => {
+    const task = makeTask({ dueDate: iso(2026, 7, 1), deferUntil: iso(2026, 7, 6) } as Partial<Task>);
+    expect(agendaCounts([task], DAY, '00:00')).toEqual({ due: 1, carriedOver: 0, deadlines: 0 });
+  });
+
   it('counts tasks due on the target day', () => {
     const tasks = [
       makeTask({ id: 'a', dueDate: iso(2026, 7, 6) }),
