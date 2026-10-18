@@ -567,6 +567,17 @@ describe('a session from a routine', () => {
     expect(state().addPlannedWarmups('nope', 'lib:back-squat', [{ kg: 10, reps: 8 }])).toBe('notFound');
   });
 
+  it('lays warm-ups out under the ids given, and refuses ids already in the session', () => {
+    const s = ok(state().startSession());
+    const first = ok(state().logSet(s.id, { exerciseId: 'lib:back-squat', weightKg: 100, reps: 5 }));
+    const added = ok(state().addPlannedWarmups(s.id, 'lib:back-squat', [{ kg: 40, reps: 8 }, { kg: 60, reps: 5 }], { ids: ['tap-w0'] }));
+    expect(added.map(x => x.id)).toEqual(['tap-w0', expect.any(String)]);
+    expect(added[1].id).not.toBe('tap-w0');
+    expect(state().addPlannedWarmups(s.id, 'lib:back-squat', [{ kg: 20, reps: 8 }], { ids: [first.id] })).toBe('taken');
+    expect(state().addPlannedWarmups(s.id, 'lib:back-squat', [{ kg: 20, reps: 8 }], { ids: ['x', 'x'] })).toBe('taken');
+    expect(dbGetWorkoutSets(s.id)).toHaveLength(3);
+  });
+
   it('adds a set like the exercise\'s last', () => {
     const s = ok(state().startSession());
     ok(state().logSet(s.id, { exerciseId: 'lib:back-squat', kind: 'warmup', weightKg: 60, reps: 5 }));

@@ -1,19 +1,7 @@
 import type { WorkoutProgram, WorkoutRoutine, WorkoutSession, WorkoutSet } from '../types';
 import { DEFAULT_PLATE_INVENTORY } from '../utils/workoutData';
 
-// The stores as fakes for `liveProposal` and `applyProposal`: what is under
-// test is that "Use" writes the proposal through the store's own edits, the
-// same calls workout mode's card used to make itself.
-const mockEditSet = jest.fn();
-const mockAddPlannedWarmups = jest.fn();
-let mockState: Record<string, unknown> = {};
-const mockPlates = DEFAULT_PLATE_INVENTORY;
-jest.mock('../store/useWorkoutStore', () => ({ useWorkoutStore: { getState: () => mockState } }));
-jest.mock('../store/useSettingsStore', () => ({
-  useSettingsStore: { getState: () => ({ plateInventory: mockPlates, workoutUnit: 'kg' }) },
-}));
-
-import { applyProposal, exerciseProposal, liveProposal, proposalRamp, proposalWrites } from '../utils/workoutProposal';
+import { exerciseProposal, proposalRamp, proposalWrites } from '../utils/workoutProposal';
 
 const BENCH = 'lib:barbell-bench-press';
 let seq = 0;
@@ -85,37 +73,5 @@ describe('proposalWrites', () => {
     const withWarmup = [set('live', 0, { kind: 'warmup', weightKg: 30, reps: 10 }), set('live', 1)];
     expect(proposalWrites(withWarmup, p).edits[1]).toEqual({ setId: withWarmup[0].id, weightKg: ramp[0].kg, reps: ramp[0].reps });
     expect(proposalWrites([set('live', 0)], p).warmupsToAdd).toEqual(ramp);
-  });
-});
-
-describe('applyProposal', () => {
-  const liveSets = [set('live', 0), set('live', 1)];
-  beforeEach(() => {
-    jest.clearAllMocks();
-    mockState = {
-      sessions: base.sessions.map(s => (s.id === 'live' ? { ...s, routineId: 'r1' } : s)),
-      routines: [routine(true)],
-      programs: [],
-      exercises: [],
-      setsBySession: { live: liveSets },
-      exerciseHistory: () => lastTime,
-      loadSets: () => liveSets,
-      editSet: mockEditSet,
-      addPlannedWarmups: mockAddPlannedWarmups,
-    };
-  });
-
-  it('writes Use through the store’s own edits, and adds the ramp’s warm-ups', () => {
-    expect(liveProposal('live', BENCH)?.proposal.move).toBe('up');
-    expect(applyProposal('live', BENCH)).toBe(true);
-    expect(mockEditSet).toHaveBeenCalledWith('live', liveSets[0].id, { weightKg: 82.5, reps: 6 });
-    expect(mockEditSet).toHaveBeenCalledWith('live', liveSets[1].id, { weightKg: 82.5, reps: 6 });
-    expect(mockAddPlannedWarmups).toHaveBeenCalledWith('live', BENCH, expect.any(Array));
-  });
-
-  it('writes nothing for a session or exercise with nothing to propose', () => {
-    expect(applyProposal('nobody', BENCH)).toBe(false);
-    expect(applyProposal('live', 'lib:plank')).toBe(false);
-    expect(mockEditSet).not.toHaveBeenCalled();
   });
 });

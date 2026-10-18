@@ -27,9 +27,8 @@ import { catalogExercise, exerciseName, searchExercises, type CatalogExercise } 
 import { analyzeExercise, countsForRecords, volumeUnit, type RecordSession, type RecordType } from '../../src/utils/workoutRecords';
 import { recordLabel } from '../../src/utils/workoutRecordText';
 import { programProgress, type ProgramProgress } from '../../src/utils/workoutProgram';
-import {
-  loadContextFor, proposalHeadline, proposeNext, rampSteps, schemeFor, trainingMaxRaises, type SetProposal,
-} from '../../src/utils/workoutProgression';
+import { proposalHeadline, schemeFor, trainingMaxRaises, type SetProposal } from '../../src/utils/workoutProgression';
+import { exerciseProposal, proposalRamp } from '../../src/utils/workoutProposal';
 
 /** How many exercises a list returns unless asked for more. */
 export const DEFAULT_EXERCISE_LIMIT = 50;
@@ -738,7 +737,7 @@ export interface NextExerciseRow {
  * I lift on Thursday" is about the whole workout.
  *
  * **A proposal, never a plan change.** It is computed by the phone's own
- * `workoutProgression.ts` against the person's plates and unit; nothing here
+ * `exerciseProposal` (`workoutProposal.ts`, what workout mode's card and the watch read) against the person's plates and unit; nothing here
  * writes a routine, a target or a session.
  */
 export function nextWorkout(replica: Replica, input: NextWorkoutInput = {}): {
@@ -787,18 +786,19 @@ export function nextWorkout(replica: Replica, input: NextWorkoutInput = {}): {
     const name = info?.name ?? 'Unknown exercise';
     const scheme = schemeFor(item, program);
     if (!info || !scheme) return { exerciseId: item.exerciseId, name, ...(scheme ? { scheme } : {}) };
-    const load = loadContextFor(info, plateInventory, unit, item);
     const history = replica.workoutExerciseSets(item.exerciseId);
     if (history.length === 0 && scheme !== 'percent') withheld = true;
-    const p = proposeNext({
-      exerciseId: item.exerciseId, kind: info.kind, item, scheme, history, sessions: finished, exceptSessionId: null, load,
-      trainingMaxKg: program?.trainingMaxes.find(t => t.exerciseId === item.exerciseId)?.kg ?? null,
-      week: progress ? { week: progress.week, weeks: progress.weeks } : null,
+    // The phone's own proposal (`exerciseProposal`, what workout mode's card
+    // and the Apple Watch's both read), so the three can't drift. "Last time"
+    // is a finished workout, so the sessions are the finished ones.
+    const shown = exerciseProposal({
+      exerciseId: item.exerciseId, exercises: rows, routine, program, sessions: finished, routines, history,
+      exceptSessionId: null, plateInventory, unit,
     });
-    if (!p) return { exerciseId: item.exerciseId, name, scheme };
+    if (!shown) return { exerciseId: item.exerciseId, name, scheme };
+    const p = shown.proposal;
     const headline = proposalHeadline(p, unit);
-    const top = p.sets[0]?.weightKg ?? null;
-    const warmups = item.warmupRamp && top !== null ? rampSteps(top, load).map(st => ({ weightKg: st.kg, reps: st.reps })) : [];
+    const warmups = (proposalRamp(shown) ?? []).map(st => ({ weightKg: st.kg, reps: st.reps }));
     return {
       exerciseId: item.exerciseId, name, scheme,
       proposal: {

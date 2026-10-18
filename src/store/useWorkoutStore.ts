@@ -430,9 +430,16 @@ interface WorkoutStore {
    * Lays warm-up steps out as planned sets ahead of the exercise's other sets,
    * which move down to make room. Refuses a session, or an exercise not in it,
    * that nobody knows (`notFound`). What "Use" does for a ramp that had no
-   * weight to start from when the workout began.
+   * weight to start from when the workout began. `ids` names the warm-ups,
+   * in order, as `addSessionExercise`'s does (the Apple Watch's Use draws
+   * them first): one already in the session refuses the lot (`taken`).
    */
-  addPlannedWarmups: (sessionId: string, exerciseId: string, steps: readonly { kg: number; reps: number }[]) => WorkoutSet[] | WorkoutRefusal;
+  addPlannedWarmups: (
+    sessionId: string,
+    exerciseId: string,
+    steps: readonly { kg: number; reps: number }[],
+    options?: { ids?: readonly string[] },
+  ) => WorkoutSet[] | WorkoutRefusal;
 
   /**
    * Writes to Health the workouts an agent logged over MCP
@@ -1509,15 +1516,17 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       });
     },
 
-    addPlannedWarmups(sessionId, exerciseId, steps) {
+    addPlannedWarmups(sessionId, exerciseId, steps, options = {}) {
       if (!get().sessions.some(s => s.id === sessionId)) return 'notFound';
       const sets = get().loadSets(sessionId);
       const mine = sets.filter(s => s.exerciseId === exerciseId);
       if (mine.length === 0) return 'notFound';
       if (steps.length === 0) return [];
+      const ids = (options.ids ?? []).filter(id => typeof id === 'string' && id.trim() !== '');
+      if (ids.some(id => sets.some(s => s.id === id)) || new Set(ids).size !== ids.length) return 'taken';
       const added = steps.map((step, i) => plannedRow(sessionId, exerciseId, mine[0].position, i, {
         kind: 'warmup', weightKg: step.kg, reps: step.reps, durationSeconds: null, distanceM: null, supersetKey: mine[0].supersetKey,
-      }));
+      }, ids[i]));
       const shifted = sets.map(s => (s.exerciseId === exerciseId ? { ...s, setIndex: s.setIndex + steps.length } : s));
       dbSaveWorkoutSets([...added, ...shifted.filter(s => s.exerciseId === exerciseId)]);
       putSets(sessionId, [...shifted, ...added].sort(bySetOrder));

@@ -52,7 +52,8 @@ import { catalogExercise } from '../utils/exerciseCatalog';
 import { barKgFor, effectivePlateInventory, isPlateLoaded, plateLoad } from '../utils/plateMath';
 import { sessionRecordSummary } from '../utils/workoutRecords';
 import { proposalActionLabel, proposalApplied, proposalHeadline, workingSetLogged, type Proposal } from '../utils/workoutProgression';
-import { applyProposal, exerciseProposal, type ExerciseProposal } from '../utils/workoutProposal';
+import { exerciseProposal, type ExerciseProposal } from '../utils/workoutProposal';
+import { applyProposal } from '../utils/workoutProposalApply';
 import {
   MUSCLE_LABELS, WEIGHT_PLACES, WEIGHT_STEP, WORKOUT_EFFORT, formatRestSeconds, formatWeightNumber, weightFromDisplay,
   weightToDisplay,
@@ -233,7 +234,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const useProposal = () => {
     if (!session || !viewed || !shownProposal) return;
     haptics.success();
-    applyProposal(session.id, viewed.exerciseId, shownProposal);
+    applyProposal(session.id, viewed.exerciseId, { proposal: shownProposal });
   };
   const upNext = exercises[viewIndex + 1] ?? null;
   const upNextInfo = upNext ? catalogExercise(exerciseRows, upNext.exerciseId) : null;

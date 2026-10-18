@@ -47,7 +47,7 @@ import { requestDismissAllSheets } from './sheetModal';
 import { useStepTimerStore } from '../store/useStepTimerStore';
 import { WATCH_RECENT_DAYS, buildWatchWorkout, todaysWatchWorkout, type WatchWorkoutSnapshot } from './watchWorkout';
 import { tickSet } from './workoutTick';
-import { applyProposal } from './workoutProposal';
+import { applyProposal } from './workoutProposalApply';
 import { REST_NUDGE_FORWARD_SECONDS } from './stepTimers';
 import type { PlannedRoutineSet } from '../store/useWorkoutStore';
 import type { RestTimer, WorkoutSet } from '../types';

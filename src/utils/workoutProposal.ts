@@ -9,8 +9,6 @@ import type {
   WorkoutSet,
 } from '../types';
 import type { WeightUnit } from './weightLog';
-import { useWorkoutStore } from '../store/useWorkoutStore';
-import { useSettingsStore } from '../store/useSettingsStore';
 import { catalogExercise } from './exerciseCatalog';
 import { programProgress } from './workoutProgram';
 import {
@@ -32,8 +30,9 @@ import {
  * Watch's suggestion (its snapshot, and its `useSuggestion` tap) is the same
  * proposal applied by the same function, never a copy of either.
  *
- * `exerciseProposal` and `proposalWrites` are pure; `liveProposal` and
- * `applyProposal` read and write the stores. The rules themselves are
+ * Pure, and reaching no store, so the MCP server's `next_workout` reads
+ * the same proposal (`workoutProposalApply.ts` is the half that reads and
+ * writes the stores). The rules themselves are
  * `workoutProgression.ts`'s (docs/arch/workouts.md, "Phase 4, as built"):
  * a proposal is never applied unasked, and "Use" is a person's tap.
  */
@@ -110,41 +109,4 @@ export function proposalRamp(p: ExerciseProposal): RampStep[] | null {
 export function proposalWrites(exerciseSets: readonly WorkoutSet[], p: ExerciseProposal): { edits: SetEdit[]; warmupsToAdd: RampStep[] } {
   const ramp = proposalRamp(p);
   return { edits: proposalEdits(exerciseSets, p.proposal, ramp), warmupsToAdd: rampWarmupsToAdd(exerciseSets, ramp) };
-}
-
-/** The proposal for an exercise of a session, read from the stores as they are now. */
-export function liveProposal(sessionId: string, exerciseId: string): ExerciseProposal | null {
-  const workouts = useWorkoutStore.getState();
-  const session = workouts.sessions.find(s => s.id === sessionId);
-  if (!session) return null;
-  const settings = useSettingsStore.getState();
-  return exerciseProposal({
-    exerciseId,
-    exercises: workouts.exercises,
-    routine: session.routineId ? workouts.routines.find(r => r.id === session.routineId) ?? null : null,
-    program: session.programId ? workouts.programs.find(p => p.id === session.programId) ?? null : null,
-    sessions: workouts.sessions,
-    routines: workouts.routines,
-    history: workouts.exerciseHistory(exerciseId),
-    exceptSessionId: session.id,
-    plateInventory: settings.plateInventory,
-    unit: settings.workoutUnit,
-  });
-}
-
-/**
- * "Use 82.5 kg": the proposal written onto the session's planned sets of the
- * exercise, each an ordinary edit, as if typed, and every one still editable.
- * Workout mode's card and the Apple Watch's `useSuggestion` tap both come
- * through here. False when there was nothing to apply.
- */
-export function applyProposal(sessionId: string, exerciseId: string, p: ExerciseProposal | null = liveProposal(sessionId, exerciseId)): boolean {
-  if (!p || p.proposal.sets.length === 0) return false;
-  const store = useWorkoutStore.getState();
-  const sets = (store.setsBySession[sessionId] ?? store.loadSets(sessionId)).filter(s => s.exerciseId === exerciseId);
-  if (sets.length === 0) return false;
-  const { edits, warmupsToAdd } = proposalWrites(sets, p);
-  for (const e of edits) store.editSet(sessionId, e.setId, { weightKg: e.weightKg, reps: e.reps });
-  if (warmupsToAdd.length > 0) store.addPlannedWarmups(sessionId, exerciseId, warmupsToAdd);
-  return true;
 }
