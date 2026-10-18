@@ -164,6 +164,16 @@ import {
   type TravelMode,
 } from '../utils/travelTasks';
 import { parseTransitLines } from '../utils/transitAlerts';
+import {
+  WANIKANI_APPRENTICE_CAP_DEFAULT,
+  WANIKANI_INITIAL_REVIEW_STATE,
+  WANIKANI_REVIEW_THRESHOLD_DEFAULT,
+  clampWaniKaniApprenticeCap,
+  clampWaniKaniLessonsPerDay,
+  clampWaniKaniReviewThreshold,
+  parseWaniKaniReviewState,
+  type WaniKaniReviewState,
+} from '../utils/wanikaniTasks';
 import { parseScreenTimeRules, defaultScreenTimeRules, serializeScreenTimeRules } from '../utils/screenTimeRules';
 import { parseHealthRules, defaultHealthRules, serializeHealthRules } from '../utils/healthRules';
 import { parseReminderCaptures, serializeReminderCaptures } from '../utils/reminderCaptures';
@@ -1223,6 +1233,11 @@ interface SettingsStore {
   plateInventory: PlateInventory;
   /** The rest a set gets when its routine doesn't say, in seconds. */
   defaultRestSeconds: number;
+  // The workout's Live Activity: the set you're on and the rest, on the Lock
+  // Screen and in the Dynamic Island — see src/utils/workoutLiveActivity.ts.
+  // timerLiveActivity's shape: iOS 17+ only, device-local, defaults on, and
+  // shown only inside the Workouts area.
+  workoutLiveActivity: boolean;
 
   /**
    * Which day facts the mood log may offer as pre-picked context tags
@@ -1808,6 +1823,20 @@ interface SettingsStore {
   dreamLogTasks: boolean;
   dreamLogTaskCategory: string | null;
   dreamLogLastDayKey: string | null;
+  // The WaniKani reviews and lessons tasks (src/utils/wanikaniTasks.ts). Off by
+  // default, and inert without a token in the keychain (useWaniKaniStore), so
+  // nothing reads the person's account until they turn it on and give it one.
+  // The threshold is how many reviews have to be waiting; lessons per day null
+  // means no lessons task; the Apprentice cap null means no cap. The review
+  // state and the lessons day mark are this device's own and never sync.
+  wanikaniTasks: boolean;
+  wanikaniTaskCategory: string | null;
+  wanikaniReviewThreshold: number;
+  wanikaniLessonsPerDay: number | null;
+  wanikaniApprenticeCap: number | null;
+  wanikaniNotify: boolean;
+  wanikaniReviewState: WaniKaniReviewState;
+  wanikaniLessonsLastDayKey: string | null;
   // Whether a run of low-mood days adds a task to plan something you enjoy.
   // Off by default and deliberately harder to reach than the rest: it is the
   // only generator that fires on a trend in the user's own answers, so opting
@@ -2178,6 +2207,7 @@ interface SettingsStore {
   setWorkoutUnit: (unit: WeightUnit) => void;
   setPlateInventory: (inventory: PlateInventory) => void;
   setDefaultRestSeconds: (seconds: number) => void;
+  setWorkoutLiveActivity: (on: boolean) => void;
   setMoodContextSource: (key: keyof MoodContextSources, on: boolean) => void;
   /** Sets the weight goal, or clears it with null. */
   setWeightGoal: (goal: WeightGoal | null) => void;
@@ -2328,6 +2358,14 @@ interface SettingsStore {
   setDreamLogTasks: (on: boolean) => void;
   setDreamLogTaskCategory: (category: string | null) => void;
   setDreamLogLastDayKey: (key: string | null) => void;
+  setWanikaniTasks: (on: boolean) => void;
+  setWanikaniTaskCategory: (category: string | null) => void;
+  setWanikaniReviewThreshold: (count: number) => void;
+  setWanikaniLessonsPerDay: (count: number | null) => void;
+  setWanikaniApprenticeCap: (count: number | null) => void;
+  setWanikaniNotify: (on: boolean) => void;
+  setWanikaniReviewState: (state: WaniKaniReviewState) => void;
+  setWanikaniLessonsLastDayKey: (key: string | null) => void;
   setMoodNudgeTasks: (on: boolean) => void;
   setMoodNudgeTaskCategory: (category: string | null) => void;
   setMoodNudgeAfterDays: (days: number) => void;
@@ -2478,6 +2516,7 @@ const DEFAULT_SETTINGS = {
   leaveLiveActivity: true,
   leaveWindowMinutes: LEAVE_WINDOW_MINUTES_DEFAULT,
   focusLiveActivity: true,
+  workoutLiveActivity: true,
   focusHideTimers: false,
   focusBreaksEnabled: true,
   collapsedCategories: [] as string[],
@@ -2928,6 +2967,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   leaveLiveActivity: true,
   leaveWindowMinutes: LEAVE_WINDOW_MINUTES_DEFAULT,
   focusLiveActivity: true,
+  workoutLiveActivity: true,
   focusHideTimers: false,
   focusBreaksEnabled: true,
   collapsedCategories: [],
@@ -3094,6 +3134,14 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   dreamLogTasks: false,
   dreamLogTaskCategory: null,
   dreamLogLastDayKey: null,
+  wanikaniTasks: false,
+  wanikaniTaskCategory: null,
+  wanikaniReviewThreshold: WANIKANI_REVIEW_THRESHOLD_DEFAULT,
+  wanikaniLessonsPerDay: null,
+  wanikaniApprenticeCap: WANIKANI_APPRENTICE_CAP_DEFAULT,
+  wanikaniNotify: false,
+  wanikaniReviewState: WANIKANI_INITIAL_REVIEW_STATE,
+  wanikaniLessonsLastDayKey: null,
   moodNudgeTasks: false,
   moodNudgeTaskCategory: null,
   moodNudgeAfterDays: DEFAULT_MOOD_NUDGE_AFTER_DAYS,
@@ -3282,6 +3330,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const leaveWindowMinutes = clampLeaveWindowMinutes(Number.isFinite(storedLeaveWindow) ? storedLeaveWindow : undefined);
     // And again for the focus session's.
     const focusLiveActivity = dbGetSetting('focusLiveActivity') !== 'false';
+    // And for the workout's.
+    const workoutLiveActivity = dbGetSetting('workoutLiveActivity') !== 'false';
     const focusHideTimers = dbGetSetting('focusHideTimers') === 'true';
     const focusBreaksEnabled = dbGetSetting('focusBreaksEnabled') !== 'false';
     // Same `!== 'false'`: the groceries/recipes/meal plan area is on unless
@@ -3613,6 +3663,23 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const dreamLogTasks = dbGetSetting('dreamLogTasks') === 'true';
     const dreamLogTaskCategory = dbGetSetting('dreamLogTaskCategory') || null;
     const dreamLogLastDayKey = dbGetSetting('dreamLogLastDayKey') || null;
+    const wanikaniTasks = dbGetSetting('wanikaniTasks') === 'true';
+    const wanikaniTaskCategory = dbGetSetting('wanikaniTaskCategory') || null;
+    const storedWanikaniThreshold = parseInt(dbGetSetting('wanikaniReviewThreshold') ?? '', 10);
+    const wanikaniReviewThreshold = clampWaniKaniReviewThreshold(
+      Number.isFinite(storedWanikaniThreshold) ? storedWanikaniThreshold : undefined);
+    // An empty or missing row is "no lessons task", the default.
+    const storedWanikaniLessons = parseInt(dbGetSetting('wanikaniLessonsPerDay') ?? '', 10);
+    const wanikaniLessonsPerDay = clampWaniKaniLessonsPerDay(
+      Number.isFinite(storedWanikaniLessons) ? storedWanikaniLessons : null);
+    // Missing is the default cap; a stored 'none' is the person choosing no cap.
+    const storedWanikaniCap = dbGetSetting('wanikaniApprenticeCap');
+    const wanikaniApprenticeCap = storedWanikaniCap === 'none'
+      ? null
+      : clampWaniKaniApprenticeCap(storedWanikaniCap ? parseInt(storedWanikaniCap, 10) : undefined);
+    const wanikaniNotify = dbGetSetting('wanikaniNotify') === 'true';
+    const wanikaniReviewState = parseWaniKaniReviewState(dbGetSetting('wanikaniReviewState'));
+    const wanikaniLessonsLastDayKey = dbGetSetting('wanikaniLessonsLastDayKey') || null;
     const moodNudgeTasks = dbGetSetting('moodNudgeTasks') === 'true';
     const moodNudgeTaskCategory = dbGetSetting('moodNudgeTaskCategory') || null;
     const storedMoodNudgeAfterDays = parseInt(dbGetSetting('moodNudgeAfterDays') ?? '', 10);
@@ -4060,6 +4127,14 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       vacationStart,
       waitingFollowUpTaskCategory,
       waitingFollowUpTasks,
+      wanikaniApprenticeCap,
+      wanikaniLessonsLastDayKey,
+      wanikaniLessonsPerDay,
+      wanikaniNotify,
+      wanikaniReviewState,
+      wanikaniReviewThreshold,
+      wanikaniTaskCategory,
+      wanikaniTasks,
       waterExerciseBoost,
       waterShortfallDeclinedDayKey,
       waterShortfallTaskCategory,
@@ -4082,6 +4157,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       weightGoal,
       weightUnit,
       workoutHealthWrite,
+      workoutLiveActivity,
       workoutsEnabled,
       workoutUnit,
       initialized: true,
@@ -4899,6 +4975,54 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ dreamLogLastDayKey: key });
   },
 
+  // Turning it on starts the next wave from zero, so a task the person deleted
+  // before switching off isn't read as a close that sets the baseline.
+  setWanikaniTasks(on: boolean) {
+    dbSetSetting('wanikaniTasks', on ? 'true' : 'false');
+    if (on) dbSetSetting('wanikaniReviewState', JSON.stringify(WANIKANI_INITIAL_REVIEW_STATE));
+    set(on
+      ? { wanikaniTasks: on, wanikaniReviewState: WANIKANI_INITIAL_REVIEW_STATE }
+      : { wanikaniTasks: on });
+  },
+
+  setWanikaniTaskCategory(category: string | null) {
+    dbSetSetting('wanikaniTaskCategory', category ?? '');
+    set({ wanikaniTaskCategory: category });
+  },
+
+  setWanikaniReviewThreshold(count: number) {
+    const clamped = clampWaniKaniReviewThreshold(count);
+    dbSetSetting('wanikaniReviewThreshold', String(clamped));
+    set({ wanikaniReviewThreshold: clamped });
+  },
+
+  setWanikaniLessonsPerDay(count: number | null) {
+    const clamped = clampWaniKaniLessonsPerDay(count);
+    dbSetSetting('wanikaniLessonsPerDay', clamped === null ? '' : String(clamped));
+    set({ wanikaniLessonsPerDay: clamped });
+  },
+
+  setWanikaniApprenticeCap(count: number | null) {
+    const clamped = clampWaniKaniApprenticeCap(count);
+    dbSetSetting('wanikaniApprenticeCap', clamped === null ? 'none' : String(clamped));
+    set({ wanikaniApprenticeCap: clamped });
+  },
+
+  setWanikaniNotify(on: boolean) {
+    dbSetSetting('wanikaniNotify', on ? 'true' : 'false');
+    set({ wanikaniNotify: on });
+  },
+
+  setWanikaniReviewState(state: WaniKaniReviewState) {
+    dbSetSetting('wanikaniReviewState', JSON.stringify(state));
+    set({ wanikaniReviewState: state });
+  },
+
+  setWanikaniLessonsLastDayKey(key: string | null) {
+    dbSetSetting('wanikaniLessonsLastDayKey', key ?? '');
+    set({ wanikaniLessonsLastDayKey: key });
+  },
+
   setMoodNudgeTasks(on: boolean) {
     dbSetSetting('moodNudgeTasks', on ? 'true' : 'false');
     set({ moodNudgeTasks: on });
@@ -5659,6 +5783,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const next = clampRestSeconds(seconds);
     dbSetSetting('defaultRestSeconds', String(next));
     set({ defaultRestSeconds: next });
+  },
+
+  setWorkoutLiveActivity(on: boolean) {
+    dbSetSetting('workoutLiveActivity', on ? 'true' : 'false');
+    set({ workoutLiveActivity: on });
   },
 
   setMoodContextSource(key: keyof MoodContextSources, on: boolean) {

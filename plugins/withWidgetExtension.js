@@ -31,6 +31,7 @@ const SWIFT_FILES = [
   'TripLiveActivity.swift',
   'LeaveLiveActivity.swift',
   'FocusLiveActivity.swift',
+  'WorkoutLiveActivity.swift',
 ];
 // Files that must compile into BOTH this extension and the app. The
 // canonical copy lives with the bridge module, where TodoWidgetBridge.podspec's
@@ -39,7 +40,7 @@ const SWIFT_FILES = [
 //
 // Two unrelated reasons land a file in this list:
 //
-// - The three ActivityAttributes files: ActivityKit pairs an Activity started
+// - The ActivityAttributes files: ActivityKit pairs an Activity started
 //   by the app with the ActivityConfiguration that renders it by the attributes
 //   type's *name* and a Codable round-trip of its properties, so any drift
 //   between two hand-maintained copies would show up only as a Live Activity
@@ -55,6 +56,7 @@ const SHARED_SWIFT_FILES = [
   'TripActivityAttributes.swift',
   'LeaveActivityAttributes.swift',
   'FocusActivityAttributes.swift',
+  'WorkoutActivityAttributes.swift',
   'CompleteTaskIntent.swift',
   // The Medications widget's buttons name LogMedicationIntent, which opens
   // the app, so it compiles into both targets exactly as CompleteTaskIntent

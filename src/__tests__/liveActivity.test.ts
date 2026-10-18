@@ -10,6 +10,7 @@ jest.mock('../store/useTaskStore', () => ({ useTaskStore: { subscribe: jest.fn()
 jest.mock('../store/useRecipeStore', () => ({ useRecipeStore: { subscribe: jest.fn(), getState: jest.fn() } }));
 jest.mock('../store/useSettingsStore', () => ({ useSettingsStore: { subscribe: jest.fn(), getState: jest.fn() } }));
 jest.mock('../store/useStepTimerStore', () => ({ useStepTimerStore: { subscribe: jest.fn(), getState: jest.fn() } }));
+jest.mock('../store/useWorkoutStore', () => ({ useWorkoutStore: { subscribe: jest.fn(), getState: jest.fn() } }));
 // Pulled in transitively via visibilityUtils.ts (displayTitleFor); this
 // suite's tasks never carry a category, so a stub that resolves nothing is
 // enough — mirrors snoozeEngine.test.ts's own mock of the same store.
@@ -451,6 +452,23 @@ describe('buildTimerRuns', () => {
       startedAtMs: NOW - 30_000,
       targetEndMs: NOW - 30_000 + 150_000,
     }]);
+  });
+
+  it('leaves a rest out while the workout activity carries it, so one workout is one activity', () => {
+    const rest = (id: string, sessionId: string): RestTimer => ({
+      kind: 'rest', id, sessionId, exerciseId: 'lib:barbell-bench-press',
+      sessionTitle: 'Push A', label: 'After set 2 of Barbell bench press',
+      durationSeconds: 150, startedAt: startedAgo(30), elapsedSeconds: 0, createdAt: startedAgo(30),
+    });
+    const step = makeStepTimer({ id: 'st1', startedAt: startedAgo(10) });
+    expect(buildTimerRuns([], [], [rest('rt1', 'w1'), step], { enabled: true, restsShownElsewhere: 'w1' }).map(r => r.key))
+      .toEqual(['step:st1']);
+    // Another session's rest isn't the workout activity's to carry.
+    expect(buildTimerRuns([], [], [rest('rt2', 'w2')], { enabled: true, restsShownElsewhere: 'w1' }).map(r => r.key))
+      .toEqual(['rest:rt2']);
+    // With no workout activity, the rest is shown here as before.
+    expect(buildTimerRuns([], [], [rest('rt1', 'w1')], { enabled: true, restsShownElsewhere: null }).map(r => r.key))
+      .toEqual(['rest:rt1']);
   });
 
   it('never hands SwiftUI an inverted range for a step timer resumed past its end', () => {

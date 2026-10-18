@@ -2,7 +2,8 @@ import ActivityKit
 import Foundation
 
 // The single source of truth for the "running timer" Live Activity's
-// payload — a task's stopwatch/countdown, or a recipe's cook/prep timer. This
+// payload — a task's stopwatch/countdown, a recipe's cook/prep timer, a cooking
+// step timer, a completion timer's countdown, or a workout's rest. This
 // exact file is compiled into TWO Swift modules:
 //   • TodoWidgetBridge — this pod, which starts and ends activities
 //     (TodoWidgetBridgeModule.swift). Picked up by the podspec's existing
@@ -29,14 +30,21 @@ import Foundation
 // src/utils/liveActivity.ts's header for why a run's start/end times are
 // fixed at request time rather than pushed via ContentState updates — so
 // ContentState stays the same empty placeholder the old link-tap activity
-// used.
+// used. A run that does change under the same key ("+1 min", a restart, a
+// rest's −15 s or +30 s) is ended and requested again: the bridge keeps an
+// activity only while every field below still matches its run
+// (timerActivityMatches in TodoWidgetBridgeModule.swift).
+//
+// The workout's own activity (WorkoutActivityAttributes.swift) is the one kind
+// that is updated in place instead; while it shows, a workout's rest doesn't
+// come here at all.
 @available(iOS 16.1, *)
 struct TimerActivityAttributes: ActivityAttributes {
     struct ContentState: Codable, Hashable {}
 
-    let key: String        // 'task:<id>' | 'cook:<id>' | 'prep:<id>' | 'step:<id>' | 'completionTimer:<id>' — see src/utils/liveActivity.ts
-    let kind: String       // "task" | "cook" | "prep" | "step" | "completionTimer" — which Done-button behavior to use
-    let itemId: String     // task id, or recipe id for cook/prep
+    let key: String        // 'task:<id>' | 'cook:<id>' | 'prep:<id>' | 'step:<id>' | 'rest:<id>' | 'completionTimer:<id>' — see src/utils/liveActivity.ts
+    let kind: String       // "task" | "cook" | "prep" | "step" | "rest" | "completionTimer" — which Done-button behavior to use
+    let itemId: String     // task id, recipe id for cook/prep, or the step or rest timer's id
     let title: String      // pre-truncated JS-side
     let subtitle: String   // "" / "Cooking" / "Prep" — never nil
     let symbolName: String // SF Symbol name

@@ -125,6 +125,21 @@ import { isAnsweredByRecord, isRecordAnswered } from '../utils/recordTasks';
 import { MOOD_LOG_LINK_URL, MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogDayKey, moodLogSourceId, moodNudgeNotes, wantsMoodNudge } from '../utils/moodTasks';
 import { DREAM_LOG_TITLE, JOURNAL_TASK_KIND, journalLogTitle, journalLogUrl, journalTaskDayKey, journalTaskSourceId } from '../utils/journalTasks';
 import {
+  WANIKANI_LESSON_URL,
+  WANIKANI_REVIEW_NOTES,
+  WANIKANI_REVIEW_URL,
+  decideWaniKaniReviews,
+  wanikaniHeldUntil,
+  wanikaniHoldFields,
+  wanikaniLessonTitle,
+  wanikaniLessonsDayKey,
+  wanikaniLessonsLeft,
+  wanikaniLessonsSourceId,
+  wanikaniReviewTitle,
+  wanikaniTaskKind,
+  wantsWaniKaniLessonsTask,
+} from '../utils/wanikaniTasks';
+import {
   WEIGH_IN_LINK_URL,
   WEIGH_IN_TITLE,
   clampWeighInEveryDays,
@@ -423,6 +438,7 @@ import { deadlineOnto, reminderOnto as reminderOntoDay, skipPatch } from '../uti
 import { datesAnchorStep, datesReconcile } from '../utils/taskDates';
 import { duplicateRows } from '../utils/taskDuplicate';
 import { useTransitStore } from './useTransitStore';
+import { useWaniKaniStore } from './useWaniKaniStore';
 import { travelOriginOfEvent, useTravelTimeStore } from './useTravelTimeStore';
 import { useScreenTimeStore } from './useScreenTimeStore';
 import { useHealthStore } from './useHealthStore';
@@ -2114,6 +2130,11 @@ interface TaskStore extends UndoHistoryActions {
    * and the daily dream reminder. See src/utils/journalTasks.ts.
    */
   checkJournalTasks: () => void;
+  /**
+   * The WaniKani reviews and lessons tasks, from the last read of the
+   * person's account (useWaniKaniStore). See src/utils/wanikaniTasks.ts.
+   */
+  checkWaniKaniTasks: () => void;
   /** The bare-weekend offer — see src/utils/weekendTasks.ts. */
   checkWeekendNudgeTasks: () => void;
   /**
@@ -8277,6 +8298,159 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (settings.dreamLogTasks && settings.dreamLogTaskCategory) {
       run('dream', settings.dreamLogTaskCategory, [],
         settings.dreamLogLastDayKey, settings.setDreamLogLastDayKey, DREAM_LOG_TITLE);
+    }
+  },
+
+  /**
+   * The WaniKani tasks. The rules (when a wave starts, where a task is held,
+   * when a day's lessons are wanted) are all in `src/utils/wanikaniTasks.ts`;
+   * this reads the last snapshot, applies them and writes. It never fetches:
+   * `useWaniKaniSync` reads the account and calls this when the read lands.
+   * The launch, background and foreground passes call it too, for the one
+   * step that needs no read (releasing a hold whose hour has come).
+   */
+  checkWaniKaniTasks() {
+    const settings = useSettingsStore.getState();
+    // A demo session's tasks are fiction; the real queue doesn't belong in them.
+    if (isDemoModeActive()) return;
+
+    const now = new Date();
+    const reset = settings.dayResetTime;
+    // A held task gives up its window once the hour has come. A window gates
+    // every day, not just the first, so a task left undone overnight would
+    // otherwise hide again until that hour tomorrow. Ahead of the switch and
+    // the read: it only lets go of what this pass wrote.
+    liveGeneratedTasksOfKind(get().tasks, 'wanikani').forEach(task => {
+      const heldUntil = wanikaniHeldUntil(task, reset);
+      if (heldUntil && heldUntil.getTime() <= now.getTime()) {
+        get().updateTask(task.id, { windowStart: null }, { skipPostponeCount: true });
+      }
+    });
+
+    if (!settings.wanikaniTasks) return;
+    if (!settings.wanikaniTaskCategory) return;
+    // At the top and spending nothing, so the first pass after a trip picks
+    // the queue up as it stands then.
+    if (generatorPausedForVacation('wanikani', settings.vacationMode)) return;
+    const snapshot = useWaniKaniStore.getState().snapshot;
+    // An unread queue is not an empty one, so without a read nothing moves.
+    if (!snapshot) return;
+
+    const todayKey = dayKeyOf(getCurrentDayStart());
+    const category = settings.wanikaniTaskCategory;
+    const todayNoon = getCurrentDayStart();
+    todayNoon.setHours(12, 0, 0, 0);
+
+    // ==== reviews ====
+    const liveReviews = liveGeneratedTasksOfKind(get().tasks, 'wanikani')
+      .filter(task => wanikaniTaskKind(task) === 'reviews')
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    // Only one wave is ever open. A second (two phones placing one wave on
+    // different hours) goes, and the older keeps any edits made to it.
+    liveReviews.slice(1).forEach(task => deleteGeneratedTaskQuietly(task.id));
+    const open = liveReviews[0] ?? null;
+    const decision = decideWaniKaniReviews({
+      snapshot,
+      now,
+      threshold: settings.wanikaniReviewThreshold,
+      live: open && open.generatedSourceId
+        ? { sourceId: open.generatedSourceId, heldUntil: wanikaniHeldUntil(open, reset) }
+        : null,
+      state: settings.wanikaniReviewState,
+    });
+    const action = decision.action;
+    if (action.type === 'drop' && open) deleteGeneratedTaskQuietly(open.id);
+    if (action.type === 'write') {
+      const title = wanikaniReviewTitle(action.count);
+      const hold = action.holdUntil ? wanikaniHoldFields(action.holdUntil, reset) : null;
+      const holdIso = action.holdUntil ? action.holdUntil.toISOString() : null;
+      const reminderTime = holdIso && settings.wanikaniNotify ? holdIso : null;
+      reconcileGeneratedTask({
+        kind: 'wanikani',
+        sourceId: action.sourceId,
+        wanted: true,
+        // The title follows the queue. While the task is still held, its hour
+        // (the date, the window's start and the reminder) follows the forecast:
+        // that hour is this source's own date, so the #1953 rule is kept. Once
+        // it is on Today, nothing but the count moves.
+        drift: existing => {
+          const patch: Partial<Task> = {};
+          if (existing.title !== title) patch.title = title;
+          const heldUntil = wanikaniHeldUntil(existing, reset);
+          const isHeld = heldUntil !== null && heldUntil.getTime() > now.getTime();
+          if (hold) {
+            if (existing.dueDate !== hold.dueDate) patch.dueDate = hold.dueDate;
+            if (existing.windowStart !== hold.windowStart) patch.windowStart = hold.windowStart;
+            if (existing.reminderTime !== reminderTime) patch.reminderTime = reminderTime;
+            // The notification's body, added with a reminder turned on later.
+            // Never over a note somebody wrote.
+            if (reminderTime && !existing.notes) patch.notes = WANIKANI_REVIEW_NOTES;
+          } else if (isHeld) {
+            // The queue got there before the hour it was held for.
+            patch.dueDate = todayNoon.toISOString();
+            patch.windowStart = null;
+            if (existing.reminderTime === heldUntil.toISOString()) patch.reminderTime = null;
+          }
+          return Object.keys(patch).length > 0 ? patch : null;
+        },
+        draft: () => ({
+          title,
+          dueDate: hold ? hold.dueDate : todayNoon.toISOString(),
+          windowStart: hold ? hold.windowStart : null,
+          reminderTime,
+          ...(reminderTime ? { notes: WANIKANI_REVIEW_NOTES } : {}),
+          category,
+          linkUrl: WANIKANI_REVIEW_URL,
+          ...generatedBy('wanikani', action.sourceId),
+        }),
+      });
+    }
+    // A task counts as open only once it exists, so a create the reconcile
+    // refused can't read as a close on the next pass and move the baseline.
+    const nextState = decision.state.openSourceId !== null
+      && !liveGeneratedTask(get().tasks, 'wanikani', decision.state.openSourceId)
+      ? { ...decision.state, openSourceId: null }
+      : decision.state;
+    if (nextState.baseline !== settings.wanikaniReviewState.baseline
+      || nextState.openSourceId !== settings.wanikaniReviewState.openSourceId) {
+      settings.setWanikaniReviewState(nextState);
+    }
+
+    // ==== lessons ====
+    // A day's lessons are that day's: yesterday's unfinished task makes way.
+    liveGeneratedTasksOfKind(get().tasks, 'wanikani')
+      .filter(task => wanikaniTaskKind(task) === 'lessons' && wanikaniLessonsDayKey(task) !== todayKey)
+      .forEach(task => deleteGeneratedTaskQuietly(task.id));
+    const perDay = settings.wanikaniLessonsPerDay;
+    if (perDay === null || snapshot.dayKey !== todayKey) return;
+    const left = wanikaniLessonsLeft(snapshot, perDay);
+    if (left === null) return;
+    const lessonsSourceId = wanikaniLessonsSourceId(todayKey);
+    const liveLessons = liveGeneratedTask(get().tasks, 'wanikani', lessonsSourceId);
+    if (!liveLessons && !wantsWaniKaniLessonsTask({
+      snapshot,
+      todayKey,
+      perDay,
+      apprenticeCap: settings.wanikaniApprenticeCap,
+      lastDayKey: settings.wanikaniLessonsLastDayKey,
+    })) return;
+    const lessonTitle = wanikaniLessonTitle(left);
+    reconcileGeneratedTask({
+      kind: 'wanikani',
+      sourceId: lessonsSourceId,
+      wanted: true,
+      drift: existing => (existing.title === lessonTitle ? null : { title: lessonTitle }),
+      draft: () => ({
+        title: lessonTitle,
+        dueDate: todayNoon.toISOString(),
+        category,
+        linkUrl: WANIKANI_LESSON_URL,
+        ...generatedBy('wanikani', lessonsSourceId),
+      }),
+    });
+    // Spent only by writing it, so a checked-off or deleted one stays gone today.
+    if (!liveLessons && liveGeneratedTask(get().tasks, 'wanikani', lessonsSourceId)) {
+      settings.setWanikaniLessonsLastDayKey(todayKey);
     }
   },
 

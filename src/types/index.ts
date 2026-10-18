@@ -2611,7 +2611,13 @@ export type GeneratedKind =
   // "Book Optometrist" once a saved event's own interval has nearly passed
   // since the last one — see src/utils/savedEventTasks.ts. Sourced by the saved
   // event and the cycle (`key|day`), and declined on the saved event itself.
-  | 'bookEvent';
+  | 'bookEvent'
+  // "WaniKani: 42 reviews" when the person's WaniKani review queue reaches a
+  // number, and "WaniKani: 5 lessons" once a day — see src/utils/wanikaniTasks.ts.
+  // Fed by a fetch of their own WaniKani account (src/services/wanikani.ts).
+  // Sourced by the wave (`reviews:<hour>`) or the day (`lessons:<day>`), with
+  // no source row; deleting one closes that wave and writes nothing.
+  | 'wanikani';
 
 /** "Only if <question> is answered one of <answers>" — see `Task.answerGate`. */
 export interface AnswerGate {

@@ -127,6 +127,19 @@ export const GO_UPC_KEY_SECURE_KEY = 'goUpcApiKey';
  * would be handed to every device through the very store it authenticates.
  */
 export const SYNC_TOKEN_SECURE_KEY = 'syncServerToken';
+/**
+ * Set once the sync token has been re-saved readable while locked (see
+ * `makeSecureKeyReadableWhileLocked`). A background sync reads the token on a
+ * locked phone, and a token saved the default way reads as "no token" there,
+ * so the server was quietly skipped. Per device, like the keychain itself.
+ */
+export const SYNC_TOKEN_READABLE_LOCKED_SETTING = 'syncTokenReadableWhileLocked';
+/**
+ * The person's WaniKani API token (`src/services/wanikani.ts`). Read-only is
+ * all it needs. Device-local for the sync token's reason: a credential for
+ * someone's account on another service has no business riding the sync.
+ */
+export const WANIKANI_TOKEN_SECURE_KEY = 'wanikaniApiToken';
 
 export async function loadSecureKey(name: string): Promise<string> {
   try {
@@ -136,12 +149,70 @@ export async function loadSecureKey(name: string): Promise<string> {
   }
 }
 
-/** Writes or clears one key. Reports whether it stuck, like saveAnthropicApiKey. */
-export async function saveSecureKey(name: string, key: string): Promise<boolean> {
+/**
+ * Re-saves a key written before `readableWhileLocked` existed, so a background
+ * run can read it. Call it while the phone is unlocked (a launch): a read that
+ * fails, as it does while locked, returns false and changes nothing, so a later
+ * call tries again. The key is never lost on the way: if adding it back with
+ * the new setting fails, it goes back with the old one. Returns whether it
+ * moved.
+ */
+export async function makeSecureKeyReadableWhileLocked(name: string): Promise<boolean> {
+  if (isDemoModeActive()) return false; // See saveAnthropicApiKey.
+  const store = secureStore();
+  let value: string | null;
+  try {
+    value = await store.getItemAsync(name);
+  } catch {
+    return false;
+  }
+  if (!value) return false;
+  try {
+    await store.deleteItemAsync(name);
+  } catch {
+    return false;
+  }
+  try {
+    await store.setItemAsync(name, value, { keychainAccessible: store.AFTER_FIRST_UNLOCK });
+    return true;
+  } catch {
+    try {
+      await store.setItemAsync(name, value);
+    } catch {
+      // Nothing more to try from here. Logged without the value.
+      console.error(`Couldn’t put the ${name} key back in the keychain`);
+    }
+    return false;
+  }
+}
+
+/**
+ * Writes or clears one key. Reports whether it stuck, like saveAnthropicApiKey.
+ *
+ * `readableWhileLocked` is for a key a background run needs. expo-secure-store
+ * saves an item readable only while the phone is unlocked, and iOS runs
+ * background work mostly while it sits locked on a charger, where reading
+ * such a key fails and reads as "no key". This saves it readable from the
+ * first unlock after a restart instead. The keychain keeps the setting an
+ * item was first added with (an update changes only the value), so the old
+ * item is deleted and the key added fresh.
+ */
+export async function saveSecureKey(
+  name: string,
+  key: string,
+  options: { readableWhileLocked?: boolean } = {},
+): Promise<boolean> {
   if (isDemoModeActive()) return false; // See saveAnthropicApiKey.
   try {
-    if (key) await secureStore().setItemAsync(name, key);
-    else await secureStore().deleteItemAsync(name);
+    const store = secureStore();
+    if (key && options.readableWhileLocked) {
+      await store.deleteItemAsync(name);
+      await store.setItemAsync(name, key, { keychainAccessible: store.AFTER_FIRST_UNLOCK });
+    } else if (key) {
+      await store.setItemAsync(name, key);
+    } else {
+      await store.deleteItemAsync(name);
+    }
     return true;
   } catch {
     return false;

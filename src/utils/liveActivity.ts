@@ -5,7 +5,9 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useStepTimerStore } from '../store/useStepTimerStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useWorkoutStore } from '../store/useWorkoutStore';
 import { widgetBridge } from './widgetBridge';
+import { workoutActivitySessionId } from './workoutLiveActivity';
 import { isTimedTask, timerRemaining } from './timer';
 import { isStepTimerRunning, stepTimerRemaining } from './stepTimers';
 import { displayTitleFor } from './visibilityUtils';
@@ -58,12 +60,17 @@ export interface TimerRun {
  * setting is off — the caller is then a single JSON.stringify away from the
  * native reconciliation call, and every rule here is unit-testable under the
  * node env.
+ *
+ * `restsShownElsewhere` names the workout session whose rest the workout's own
+ * activity is carrying (`workoutActivitySessionId`): its rest is left out here,
+ * so one workout is one activity on the Lock Screen, not a second one counting
+ * the same rest down.
  */
 export function buildTimerRuns(
   tasks: Task[],
   recipes: Recipe[],
   stepTimers: StepTimer[],
-  opts: { enabled: boolean },
+  opts: { enabled: boolean; restsShownElsewhere?: string | null },
 ): TimerRun[] {
   if (!opts.enabled) return [];
   const runs: TimerRun[] = [];
@@ -151,6 +158,7 @@ export function buildTimerRuns(
   for (const timer of stepTimers) {
     if (!isStepTimerRunning(timer)) continue;
     if (timer.kind === 'rest') {
+      if (opts.restsShownElsewhere && timer.sessionId === opts.restsShownElsewhere) continue;
       runs.push(restRun(timer));
       continue;
     }
@@ -186,8 +194,9 @@ export function buildTimerRuns(
  * countdown with a title and a line under it is all a rest needs, so it rides
  * the existing attributes from here and no native code knows it is a rest.
  * Its Done is the `stopTimer` link with this key, which skips the rest (see
- * `rest:` in deepLinks.ts). The workout's own activity, with the set and its
- * buttons, is phase 6 of docs/arch/workouts.md.
+ * `rest:` in deepLinks.ts). Shown only while the workout's own activity
+ * (workoutLiveActivity.ts, with the set and its buttons) isn't: that one
+ * carries the rest itself.
  */
 function restRun(timer: RestTimer): TimerRun {
   const startedAtMs = new Date(timer.startedAt as string).getTime();
@@ -236,12 +245,19 @@ export function useTimerLiveActivitySync(): void {
     if (Platform.OS !== 'ios') return;
 
     const sync = () => {
-      const enabled = useSettingsStore.getState().timerLiveActivity;
+      const settings = useSettingsStore.getState();
       const runs = buildTimerRuns(
         useTaskStore.getState().tasks,
         useRecipeStore.getState().recipes,
         useStepTimerStore.getState().timers,
-        { enabled },
+        {
+          enabled: settings.timerLiveActivity,
+          // The workout's own activity carries the live session's rest.
+          restsShownElsewhere: workoutActivitySessionId(useWorkoutStore.getState().liveSession(), {
+            enabled: settings.workoutLiveActivity,
+            workoutsEnabled: settings.workoutsEnabled,
+          }),
+        },
       );
       scheduleSync(runs);
     };
@@ -256,7 +272,17 @@ export function useTimerLiveActivitySync(): void {
       if (state.timers !== prevState.timers) sync();
     });
     const unsubSettings = useSettingsStore.subscribe((state, prevState) => {
-      if (state.timerLiveActivity !== prevState.timerLiveActivity) sync();
+      if (
+        state.timerLiveActivity !== prevState.timerLiveActivity ||
+        state.workoutLiveActivity !== prevState.workoutLiveActivity ||
+        state.workoutsEnabled !== prevState.workoutsEnabled
+      ) {
+        sync();
+      }
+    });
+    // A session starting or ending decides whether its rest is shown here.
+    const unsubWorkouts = useWorkoutStore.subscribe((state, prevState) => {
+      if (state.sessions !== prevState.sessions) sync();
     });
 
     sync();
@@ -266,6 +292,7 @@ export function useTimerLiveActivitySync(): void {
       unsubRecipes();
       unsubStepTimers();
       unsubSettings();
+      unsubWorkouts();
     };
   }, []);
 }

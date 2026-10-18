@@ -438,6 +438,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'limitWarningTasks',
   'goalTargetTasks',
   'bookEventTasks',
+  'wanikaniTasks',
 
   // Behaviour.
   'newTaskDefaults',
@@ -561,6 +562,14 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'travelWalkUnderMinutes',
   'useUpTaskCap',
   'waitingFollowUpTaskCategory',
+  // The WaniKani task's options. The token is the keychain's and never syncs,
+  // and neither do the review state or the lessons day mark, which say what
+  // this device has seen.
+  'wanikaniTaskCategory',
+  'wanikaniReviewThreshold',
+  'wanikaniLessonsPerDay',
+  'wanikaniApprenticeCap',
+  'wanikaniNotify',
   'waterShortfallTaskCategory',
   'weatherTaskCategory',
   'weekendNudgeTaskCategory',
@@ -658,7 +667,8 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
  *
  * - `hapticsEnabled`, `shakeToUndoEnabled`, `beatSoundEnabled`,
  *   `beatLastDayKey`, `timerLiveActivity`,
- *   `tripLiveActivity`, `leaveLiveActivity`, `leaveWindowMinutes`, `focusLiveActivity`, `fabHand`, `mapsApp`,
+ *   `tripLiveActivity`, `leaveLiveActivity`, `leaveWindowMinutes`, `focusLiveActivity`,
+ *   `workoutLiveActivity`, `fabHand`, `mapsApp`,
  *   `mirroringMode` — capabilities and
  *   ergonomics of one device. A Mac has no haptics and no thumb reach, and
  *   which maps apps are installed differs from phone to phone. Whether a phone

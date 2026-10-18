@@ -151,5 +151,28 @@ struct DundundunShortcuts: AppShortcutsProvider {
             shortTitle: "Log a Dream",
             systemImageName: "moon.stars"
         )
+        // Nothing to fill in: which workout "my workout" is gets worked out in
+        // the app (StartWorkoutIntent.swift).
+        AppShortcut(
+            intent: StartWorkoutIntent(),
+            phrases: [
+                "Start my workout in \(.applicationName)",
+                "Start a workout in \(.applicationName)",
+            ],
+            shortTitle: "Start Workout",
+            systemImageName: "dumbbell.fill"
+        )
+        // The routine is an AppEntity, so it can be said inside the sentence,
+        // the way the pantry item and the medication are above. The app asks
+        // the system to read the names again whenever the routine list changes
+        // (writeWorkoutRoutineIndex in TodoWidgetBridgeModule.swift).
+        AppShortcut(
+            intent: StartRoutineIntent(),
+            phrases: [
+                "Start \(\.$routine) in \(.applicationName)",
+            ],
+            shortTitle: "Start a Routine",
+            systemImageName: "dumbbell"
+        )
     }
 }

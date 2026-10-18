@@ -9,6 +9,8 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useStepTimerStore } from '../store/useStepTimerStore';
 import { useFocusStore } from '../store/useFocusStore';
+import { WORKOUT_LINK_VERBS, type WorkoutLink, type WorkoutLinkVerb } from './workoutLink';
+import { applyWorkoutLink, skipRestFromLink } from './workoutLinkActions';
 import { applyKeyScan } from './releaseBlocks';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { haptics } from './haptics';
@@ -702,6 +704,39 @@ export function focusUrlAction(url: string): FocusLinkAction | null {
   return (FOCUS_ACTIONS as readonly string[]).includes(action) ? (action as FocusLinkAction) : null;
 }
 
+// `dundundun://workout[?do=set-done|rest-add|skip-rest&session=…&set=…&rest=…]`
+// — the workout's Live Activity (targets/todo-widget/WorkoutLiveActivity.swift,
+// payload in workoutLiveActivity.ts). The focus link's shape: one host, an
+// action param, and the bare link for a tap anywhere else on the activity.
+// Every one of them opens workout mode, with the action done first when it
+// still applies (`planWorkoutLink` decides that, against the workout as it is
+// now rather than as the Lock Screen last drew it).
+const WORKOUT_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?workout\\/?(?:\\?(.*))?$`, 'i');
+
+export function isWorkoutUrl(url: string): boolean {
+  return typeof url === 'string' && WORKOUT_RE.test(url.trim());
+}
+
+/**
+ * A workout link's parts, or null for a URL that isn't one. The verb is checked
+ * against `WORKOUT_LINK_VERBS` rather than passed through, `focusUrlAction`'s
+ * rule: an unknown verb reads as the bare link, "just open".
+ */
+export function workoutUrlLink(url: string): WorkoutLink | null {
+  if (typeof url !== 'string') return null;
+  const match = WORKOUT_RE.exec(url.trim());
+  if (!match) return null;
+  const params = parseQuery(match[1] ?? '');
+  const verb = (params.do ?? '').trim();
+  const id = (key: string) => (params[key] ?? '').trim() || null;
+  return {
+    verb: (WORKOUT_LINK_VERBS as readonly string[]).includes(verb) ? (verb as WorkoutLinkVerb) : null,
+    sessionId: id('session'),
+    setId: id('set'),
+    restId: id('rest'),
+  };
+}
+
 /**
  * The specific pantry item or fridge container a kitchen link asks to open,
  * or null for the bare link.
@@ -890,6 +925,11 @@ export function openInAppUrl(url: string | null | undefined): boolean {
     resetToFocusSession();
     return true;
   }
+  const workoutLink = workoutUrlLink(url);
+  if (workoutLink) {
+    applyWorkoutLink(workoutLink);
+    return true;
+  }
   if (isStopTimerUrl(url)) {
     const key = stopTimerUrlKey(url);
     if (key?.startsWith('cook:')) {
@@ -926,8 +966,8 @@ export function openInAppUrl(url: string | null | undefined): boolean {
     else if (key?.startsWith('step:')) useStepTimerStore.getState().remove(key.slice('step:'.length));
     // A workout's rest: Done skips it, the way the footer's Skip rest does.
     // The session is untouched and nothing moves on; the next set is logged
-    // from the workout itself.
-    else if (key?.startsWith('rest:')) useStepTimerStore.getState().remove(key.slice('rest:'.length));
+    // from the workout itself, which opens again if it was the one resting.
+    else if (key?.startsWith('rest:')) skipRestFromLink(key.slice('rest:'.length));
     // A completion timer's Done ends its countdown early without touching
     // the task (already completed, long before this fired) or the pending
     // notification scheduleCompletionTimer set up alongside it — same

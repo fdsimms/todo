@@ -62,7 +62,10 @@ the two runs compare exactly, which is how to prove a refactor left a target unc
 - **The App Group container path convention already in use**: `<container>/Library/Application
   Support/<name>.json`, single-writer (app) / many-reader (extensions), no locking needed.
   Reuse this path shape for anything new sharing the group rather than inventing another
-  location.
+  location. **`widget_quiet_taps.json` is the exception with two writers**, the widget's
+  checkboxes (`QuietTapQueue`) and the phone's `WatchSession` for the watch's taps, so both read
+  and rewrite it through `JSONSerialization` and leave entries they don't recognise untouched.
+  Decoding it as a Codable array and writing that back is what used to strip the watch's fields.
 - **A share extension's `NSExtensionPrincipalClass` failing to resolve is a silent no-op**, not
   a build error: iOS instantiates the named class when the row is tapped, and if the name is
   wrong nothing at all happens. A Swift class's Objective-C name is module-qualified, so the
@@ -80,6 +83,35 @@ the two runs compare exactly, which is how to prove a refactor left a target unc
   writes to the App Group and the app drains it on launch and on foreground; the queue is
   *persisted on the app side* immediately, because the drain deletes the file it read and would
   otherwise be the only copy (see `src/store/useSharedLinkStore.ts`).
+- **The workout activity is the one kind updated in place, and the model for any activity whose
+  content moves while it is alive.** The other kinds hold everything in their attributes and are
+  ended and requested again on a change. `WorkoutActivityAttributes` holds only what is fixed for
+  the activity's life (the session and its start), everything drawn is the `ContentState`, and
+  `syncWorkoutLiveActivity` compares the payload's `key` against `activity.content.state` and calls
+  `activity.update(ActivityContent(state:staleDate:))` only on a change. Checked against Apple's
+  JSON docs: `func update(_ content: ActivityContent<Activity<Attributes>.ContentState>) async`
+  and `var content: ActivityContent<Activity<Attributes>.ContentState> { get }`, both iOS 16.2,
+  async and non-throwing ("The system ignores attempts to update a Live Activity that ended").
+  Two things follow. An activity whose `activityState` is `.ended` is never the one kept. That
+  guard does not cover the app's own ends: `end(_:dismissalPolicy: .immediate)` moves an activity
+  to `.dismissed`, not `.ended`, and `.dismissed` is deliberately still matched, because it is also
+  what a card the person swiped away reads as, and treating it as gone would put that card straight
+  back on the next sync. The cost is narrow: an activity ended moments ago and still listed can be
+  matched by a run that returns to exactly its attributes (the workout switch turned off and on
+  again quickly), which then shows nothing until the next change. And an update replaces the stale date,
+  so a state sent after the stale moment has passed has to carry that fact itself (`restOver`), or
+  the update turns the card back to the state before it.
+- **A bridge function added after the first release is exported as `undefined` when the binary
+  lacks it** (`hasNative` in `modules/todo-widget-bridge/index.ts`), not as a wrapper that throws.
+  That is what `WidgetBridge` typing it optional means, and what lets a caller's `bridge?.fn?.()`
+  skip it on a dev client built before it. A new function goes in that list and in the type as
+  optional together.
+- **A restarted kind keeps an activity only while every attribute still matches its run, never on
+  its key alone.** `syncTimerLiveActivities` used to, so "+1 min", a restart or a rest's nudge,
+  which keep the key, left the Lock Screen counting to the old end (`timerActivityMatches`). And
+  never build `Dictionary(uniqueKeysWithValues:)` over `Activity.activities`: an ending activity can
+  be listed beside its replacement under the same key, a duplicate key is a Swift trap, and
+  `TodoWidgetExceptionCatcher` catches only Objective-C exceptions.
 - **A Live Activity needs `NSSupportsLiveActivities: true` in the *main app's* Info.plist**
   (`expo.ios.infoPlist` in `app.json`) — not the widget extension's. Without it,
   `Activity.request` throws at runtime on the very device it's meant to work on; nothing at
@@ -144,6 +176,22 @@ the two runs compare exactly, which is how to prove a refactor left a target unc
   Written without a compiler: it copies the two intents above line for line, and a build is
   the first check on it.
 - **`ToggleKeyLockIntent` (`modules/todo-widget-bridge/ios/ToggleKeyLockIntent.swift`) is `LogDreamIntent`'s shape with a code in place of the text.** One `String` parameter, the key's token; `perform()` appends `{ code, at }` to `pending_key_scans.json` and the app checks it against the key list on the next foreground (`processPendingKeyScans`, `src/utils/keyScanQueue.ts`). **It is deliberately not in `DundundunShortcuts`**: an intent in no provider still shows as an action in the Shortcuts app, which is the one place it should be, and has no Siri phrase. Why a code rather than the tag is in `docs/arch/nfc-key.md`. Written without a compiler, as the one above was.
+- **`StartWorkoutIntent.swift` holds two intents and one queue.** `StartWorkoutIntent` takes
+  nothing ("Start my workout in dundundun") and `StartRoutineIntent` names a routine inside the
+  phrase, so its routine is an `AppEntity` with `MarkDisposedIntent`'s query over an index
+  (`siri_workout_routines.json`, `src/utils/workoutSiri.ts`). Both append `{ routineId, name, at }`
+  to `pending_workout_starts.json` and open the app, which starts the newest one
+  (`processPendingWorkoutStarts`). Main app only: no widget names them. Written without a
+  compiler, copying `LogMedicationIntent.swift` line for line.
+- **A phrase with an entity in it learns the names it can say from the query's
+  `suggestedEntities()`, and `updateAppShortcutParameters()` is how the app asks for them to be read
+  again.** `writeWorkoutRoutineIndex` calls `DundundunShortcuts.updateAppShortcutParameters()`
+  after each write (declared `static func updateAppShortcutParameters()`, iOS 16.0, on
+  `AppShortcutsProvider`), and the JS side writes only when the list changed. Apple's page has no
+  discussion text; the "call it when the values change" rule is from the WWDC22 App Shortcuts
+  session, so treat Siri hearing a routine added after install as unverified until a device says so.
+  The call is provider-wide, so it refreshes the pantry and medication phrases too, whose own index
+  writers don't make it.
 - **A spoken Siri phrase for an `AppShortcut` needs the `com.apple.developer.siri` entitlement
   *and* `NSSiriUsageDescription`, even though App Intents otherwise needs neither.** Without the
   entitlement (`plugins/withSiriShortcuts.js`, added via `withEntitlementsPlist`), the same
