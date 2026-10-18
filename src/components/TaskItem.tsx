@@ -221,6 +221,9 @@ const EMPTY_ITEM_SUBS: ItemSubLink[] = [];
 const EMPTY_RECIPES: Recipe[] = [];
 const EMPTY_ITEM_PRODUCTS: ItemProduct[] = [];
 
+/** What `completeTask` records instead of an ordinary completion, for a send-off that plays the same animation. */
+type CompletionOutcome = { missed?: boolean; missChain?: boolean; byOther?: boolean };
+
 interface Props {
   task: Task;
   // The row hands its own id back to these rather than the caller closing over
@@ -753,6 +756,10 @@ const TaskItemRow = React.memo(function TaskItem({
   const pendingReasoningRef = useRef<DeliverableReasoning | undefined>(undefined);
   // And when to ask how that answer turned out (decisionReview.ts), likewise.
   const pendingReviewAfterRef = useRef<ReviewAfter | undefined>(undefined);
+  // Missed / done by someone else, when the in-flight send-off is one of those
+  // rather than an ordinary completion. Held for the same reason as the answer
+  // above: the unmount salvage must record the same outcome, not a real tick.
+  const pendingOutcomeRef = useRef<CompletionOutcome | undefined>(undefined);
   // Set for the span of one completion that was confirmed through the
   // "log early" prompt below, so whichever runCompletion call eventually
   // fires it (the deliverable prompt and the completion-timer alert both
@@ -1076,7 +1083,12 @@ const TaskItemRow = React.memo(function TaskItem({
     pendingDeliverableRef.current = undefined;
     pendingReasoningRef.current = undefined;
     pendingReviewAfterRef.current = undefined;
-    completeTask(task.id, deliverableValue !== undefined ? { deliverableValue, deliverableReasoning, reviewAfter } : undefined);
+    const outcome = pendingOutcomeRef.current;
+    pendingOutcomeRef.current = undefined;
+    completeTask(task.id, {
+      ...(deliverableValue !== undefined ? { deliverableValue, deliverableReasoning, reviewAfter } : {}),
+      ...outcome,
+    });
   }, []);
 
   useEffect(() => {
@@ -2062,7 +2074,7 @@ const TaskItemRow = React.memo(function TaskItem({
    * the store's completion is what stamps it onto the row, and a separate
    * write would leave a window where the task is answered but not done.
    */
-  const runCompletion = async (deliverableValue?: string | null, deliverableReasoning?: DeliverableReasoning, reviewAfter?: ReviewAfter) => {
+  const runCompletion = async (deliverableValue?: string | null, deliverableReasoning?: DeliverableReasoning, reviewAfter?: ReviewAfter, outcome?: CompletionOutcome) => {
     if (completingRef.current || pacingOutRef.current) return;
     // A "Maybe" leaves the task open (see completeTask), so it skips the
     // send-off: the row fading out would say it had gone when it hasn't.
@@ -2089,7 +2101,9 @@ const TaskItemRow = React.memo(function TaskItem({
     // separate row to slide in below — see chainStepAdvancesInPlace. Mutually
     // exclusive with viaMeter in practice (a chain step isn't a daily target),
     // but guarded anyway rather than assumed.
-    const chainNextItem = !viaMeter && chainStepAdvancesInPlace(task) ? nextChainStep(task) : null;
+    // A missed or someone-else's step has no answer to place the next step
+    // from, so it never previews in place: it takes the ordinary hold.
+    const chainNextItem = !viaMeter && !outcome && chainStepAdvancesInPlace(task) ? nextChainStep(task) : null;
     // The unit that meets the target can land inside a linger window (log the
     // seventh, then the eighth). The completion owns the row from here, so the
     // send-off queued behind that seventh unit must not fire over it — the hold
@@ -2102,6 +2116,7 @@ const TaskItemRow = React.memo(function TaskItem({
     pendingDeliverableRef.current = deliverableValue;
     pendingReasoningRef.current = deliverableReasoning;
     pendingReviewAfterRef.current = reviewAfter;
+    pendingOutcomeRef.current = outcome;
     // Told up front, not at the end: the batched collapse holds for a row that
     // is still animating, so tapping the next task keeps the previous one's gap
     // open even though it finished a moment ago.
@@ -2118,7 +2133,9 @@ const TaskItemRow = React.memo(function TaskItem({
     setCompleting(true);
     // Asked of the same function completeTask records it with, so the number
     // that rolls in is the number that gets stored.
-    if (showStreakChip && !nutrientRow) {
+    // Not for a missed or someone-else's one: the preview would roll in the
+    // number a real completion makes, and neither of those makes it.
+    if (showStreakChip && !nutrientRow && !outcome) {
       const state = useTaskStore.getState();
       const built = buildCompletion(task, undefined, {
         ...completionSettings(),
@@ -2229,6 +2246,7 @@ const TaskItemRow = React.memo(function TaskItem({
         pendingDeliverableRef.current = undefined;
         pendingReasoningRef.current = undefined;
         pendingReviewAfterRef.current = undefined;
+        pendingOutcomeRef.current = undefined;
         // Leaves the row checked and fully visible, holding its slot: the send-off
         // is the batched collapse (see the collapseSignal effect above), which
         // fades and closes every row of the burst at once. The completed look has
@@ -2240,6 +2258,7 @@ const TaskItemRow = React.memo(function TaskItem({
         completeTask(task.id, {
           ...(deliverableValue !== undefined ? { deliverableValue, deliverableReasoning, reviewAfter } : {}),
           ...(logEarly ? { logEarly: true } : {}),
+          ...outcome,
         });
         endQuotaHold();
         // The row leaves the list via the batched collapse above rather than an
@@ -2340,6 +2359,22 @@ const TaskItemRow = React.memo(function TaskItem({
     setNegativeMenuHold(hold);
     setNegativeMenuAnchor({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
     setShowNegativeMenu(true);
+  };
+
+  // Mark missed with the completion's own send-off. A row that can't be missed
+  // yet (it's showing in Later ahead of its day) keeps going through markMissed,
+  // which degrades that to a silent roll forward with nothing to animate.
+  const handleMiss = (wholeChain?: boolean) => {
+    if (recurrenceNotYetDue || completingRef.current || pacingOutRef.current) {
+      markMissed(task.id, wholeChain ? { wholeChain: true } : undefined);
+      if (expandedRef.current) onPress(rowId);
+      return;
+    }
+    void runCompletion(undefined, undefined, undefined, { missed: true, ...(wholeChain ? { missChain: true } : {}) });
+  };
+
+  const handleSomeoneElse = () => {
+    void runCompletion(undefined, undefined, undefined, { byOther: true });
   };
 
   const handleComplete = async () => {
@@ -2740,6 +2775,7 @@ const TaskItemRow = React.memo(function TaskItem({
     pendingDeliverableRef.current = undefined;
     pendingReasoningRef.current = undefined;
     pendingReviewAfterRef.current = undefined;
+    pendingOutcomeRef.current = undefined;
     // Played backwards (the check fades, the gold drains back to the centre,
     // the strike leaves) unless the row already collapsed, in which case it's
     // remounting below and there's nothing on screen to unwind.
@@ -2790,6 +2826,7 @@ const TaskItemRow = React.memo(function TaskItem({
     pendingDeliverableRef.current = undefined;
     pendingReasoningRef.current = undefined;
     pendingReviewAfterRef.current = undefined;
+    pendingOutcomeRef.current = undefined;
     // Nothing was completed, so the batch shouldn't keep waiting on this row.
     cancelCompletionAnimation(task.id);
     haptics.tap();
@@ -4795,11 +4832,9 @@ const TaskItemRow = React.memo(function TaskItem({
                       style={styles.iconActionBtn}
                       onPress={async () => {
                         await haptics.impactMedium();
-                        markMissed(task.id);
-                        // The task disappears from the list immediately, but nothing
-                        // else clears the parent's expanded-row state — collapse it
-                        // ourselves so the spotlight overlay doesn't get stuck.
-                        if (expandedRef.current) onPress(rowId);
+                        // Plays the completion send-off; the expanded-row spotlight
+                        // is cleared when that ends (or at once on the silent roll).
+                        handleMiss();
                       }}
                       hitSlop={8}
                       // The same control does two things depending on where the
@@ -4835,8 +4870,7 @@ const TaskItemRow = React.memo(function TaskItem({
                       style={styles.iconActionBtn}
                       onPress={async () => {
                         await haptics.impactMedium();
-                        markMissed(task.id, { wholeChain: true });
-                        if (expandedRef.current) onPress(rowId);
+                        handleMiss(true);
                       }}
                       hitSlop={8}
                       accessibilityLabel={`Mark ${task.title} missed and end the rest of its chain for today`}
@@ -5127,8 +5161,8 @@ const TaskItemRow = React.memo(function TaskItem({
           anchor={completionMenuAnchor}
           onClose={() => setShowCompletionMenu(false)}
           onSkip={completionMenuRepeats ? () => { skipNextRecurrence(task.id); afterCompletionMenuChoice(); } : undefined}
-          onMiss={completionMenuRepeats ? () => { markMissed(task.id); afterCompletionMenuChoice(); } : undefined}
-          onSomeoneElse={() => { completeTask(task.id, { byOther: true }); afterCompletionMenuChoice(); }}
+          onMiss={completionMenuRepeats ? () => handleMiss() : undefined}
+          onSomeoneElse={handleSomeoneElse}
         />
       )}
       {mountNegativeMenu && (
