@@ -8,6 +8,8 @@ import { InlineAction } from './InlineAction';
 import { LazySheet } from './LazySheet';
 import { FoodLogEntrySheet } from './FoodLogEntrySheet';
 import { TextField } from './TextField';
+import { UnitMenuChip, OTHER_UNIT_KEY } from './UnitMenuChip';
+import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
@@ -29,6 +31,7 @@ import {
   type ReviewLine,
 } from '../utils/savedMealReview';
 import { confirmDiscard } from '../utils/confirmDiscard';
+import { composeFoodAmount, foodUnitOptionsFor, parseFoodAmount } from '../utils/foodLog';
 import type { FoodNutrition, MealSlot, SavedMeal, SavedMealItem } from '../types';
 import { BUTTON_LABEL } from '../copy/shared';
 
@@ -74,6 +77,13 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
   /** Amount text typed but not yet applied, by line key. */
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
+  /**
+   * The unit and number a line's amount is split into, by line key. Kept apart
+   * from `drafts` (the composed text) so a unit picked before a number is typed,
+   * or "Something else", survives re-renders instead of being re-parsed away.
+   */
+  const [units, setUnits] = useState<Record<string, string>>({});
+  const [numbers, setNumbers] = useState<Record<string, string>>({});
   const [pickTarget, setPickTarget] = useState<PickTarget | null>(null);
   const nextKey = useRef(0);
 
@@ -83,6 +93,8 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
     setLines(reviewLinesFor(meal));
     setDrafts({});
     setErrors({});
+    setUnits({});
+    setNumbers({});
     setPickTarget(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, meal.id]);
@@ -234,22 +246,65 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
                 ) : edit.kind === 'measure' ? (
                   <View>
                     <Text style={styles.fieldLabel}>AMOUNT</Text>
-                    <TextField
-                      style={styles.input}
-                      value={draft ?? edit.amount}
-                      onChangeText={text => {
-                        setDrafts(prev => ({ ...prev, [line.key]: text }));
-                        setErrors(prev => { const { [line.key]: _gone, ...rest } = prev; return rest; });
-                      }}
-                      onEndEditing={e => {
-                        if (drafts[line.key] !== undefined) applyDraft(line, e.nativeEvent.text);
-                      }}
-                      returnKeyType="done"
-                      autoCorrect={false}
-                      placeholder="Amount"
-                      placeholderTextColor={colors.textTertiary}
-                      accessibilityLabel={`Amount of ${line.item.label}`}
-                    />
+                    {(() => {
+                      // The food's own panel decides which units are offered, so
+                      // an amount it can't measure isn't one to type. A food with
+                      // no panel to read units from keeps the free-text field.
+                      const panel = panelFor(line.item);
+                      const unitOptions = panel ? foodUnitOptionsFor(panel) : [];
+                      const text = draft ?? edit.amount;
+                      const parsed = unitOptions.length > 0 ? parseFoodAmount(text, unitOptions) : null;
+                      // An amount the units can't reconstruct (a fraction, a
+                      // weighed one-off) opens on "Something else" with its text
+                      // intact, rather than a blank number.
+                      const unitKey = units[line.key] ?? parsed?.unitKey ?? OTHER_UNIT_KEY;
+                      const usingPills = unitOptions.length > 0 && unitKey !== OTHER_UNIT_KEY;
+                      const unit = unitOptions.find(o => o.key === unitKey);
+                      const clearError = () => setErrors(prev => { const { [line.key]: _gone, ...rest } = prev; return rest; });
+                      return (
+                        <View style={styles.inputRow}>
+                          <TextField
+                            style={styles.inputInRow}
+                            value={usingPills ? (numbers[line.key] ?? parsed?.number ?? '') : text}
+                            onChangeText={typed => {
+                              if (usingPills) setNumbers(prev => ({ ...prev, [line.key]: typed }));
+                              setDrafts(prev => ({ ...prev, [line.key]: usingPills ? composeFoodAmount(typed, unit) : typed }));
+                              clearError();
+                            }}
+                            onEndEditing={e => {
+                              if (drafts[line.key] === undefined) return;
+                              applyDraft(line, usingPills ? composeFoodAmount(e.nativeEvent.text, unit) : e.nativeEvent.text);
+                            }}
+                            returnKeyType="done"
+                            autoCorrect={false}
+                            keyboardType={usingPills ? 'decimal-pad' : 'default'}
+                            inputAccessoryViewID={usingPills ? NUMBER_PAD_ACCESSORY_ID : undefined}
+                            placeholder="Amount"
+                            placeholderTextColor={colors.textTertiary}
+                            accessibilityLabel={`Amount of ${line.item.label}`}
+                          />
+                          {unitOptions.length > 0 && (
+                            <UnitMenuChip
+                              name="SavedMealReviewSheet unit menu"
+                              options={unitOptions}
+                              selectedKey={unitKey}
+                              chipBackground={colors.bgSecondary}
+                              onSelect={key => {
+                                setUnits(prev => ({ ...prev, [line.key]: key }));
+                                if (key === OTHER_UNIT_KEY) return;
+                                const option = unitOptions.find(o => o.key === key);
+                                const number = numbers[line.key] ?? parsed?.number ?? '';
+                                setNumbers(prev => ({ ...prev, [line.key]: number }));
+                                const composed = composeFoodAmount(number, option);
+                                if (!composed) return;
+                                setDrafts(prev => ({ ...prev, [line.key]: composed }));
+                                applyDraft(line, composed);
+                              }}
+                            />
+                          )}
+                        </View>
+                      );
+                    })()}
                     {!!error && <Text style={styles.error}>{error}</Text>}
                   </View>
                 ) : edit.kind === 'estimate' ? (
@@ -344,6 +399,7 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
             onClose={() => setPickTarget(null)}
           />
         </LazySheet>
+        <NumberPadAccessory />
       </View>
     </SheetModal>
   );
@@ -373,13 +429,20 @@ function makeStyles(colors: Colors) {
       marginTop: spacing.smd,
       marginBottom: spacing.xs,
     },
-    input: {
+    inputRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      backgroundColor: colors.bgTertiary,
+      borderRadius: radius.md,
+      paddingLeft: spacing.md,
+      paddingRight: spacing.sm,
+    },
+    inputInRow: {
+      flex: 1,
+      paddingVertical: spacing.smd,
       color: colors.text,
       fontSize: font.md,
-      backgroundColor: colors.bgTertiary,
-      borderRadius: radius.sm,
-      paddingHorizontal: spacing.smd,
-      paddingVertical: spacing.smd,
     },
     error: { color: colors.redText, fontSize: font.sm, marginTop: spacing.xs },
     choices: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xsm },
