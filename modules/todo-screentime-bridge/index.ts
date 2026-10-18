@@ -58,6 +58,7 @@ interface TodoScreenTimeNativeModule {
   clearSelection(groupId: string): boolean;
   applyShield(groupIdsJson: string): boolean;
   clearShield(): boolean;
+  shieldedCounts(): ScreenTimeSelectionCount;
   setShieldOptions(denyAppRemoval: boolean): boolean;
   setAllowGroups(groupIdsJson: string): boolean;
   setAllowSets(setsJson: string): boolean;
@@ -175,6 +176,15 @@ export function applyShield(groupIds: readonly string[]): boolean {
 
 export function clearShield(): boolean {
   return degradeOnThrow(() => nativeModule!.clearShield(), false);
+}
+
+/**
+ * What the system shield holds right now, read from the store itself. Null when
+ * the build predates the readback or the read threw, which a caller must treat
+ * as "unknown", never as "nothing is blocked".
+ */
+export function shieldedCounts(): ScreenTimeSelectionCount | null {
+  return degradeOnThrow(() => nativeModule!.shieldedCounts(), null);
 }
 
 /**

@@ -487,6 +487,16 @@ extension ScreenTimeShared {
     activeSchedules(now: now).flatMap { $0.heldGroupIds }
   }
 
+  /// How early an end callback may be delivered and still count as the end. The
+  /// monitor's clock is whole seconds and delivery is not exact, so a callback
+  /// a moment ahead of `end` has to lift the block; one minutes ahead of it is
+  /// not that block's end.
+  static let endCallbackSlack: TimeInterval = 60
+
+  static func endIsDue(_ end: Date, now: Date) -> Bool {
+    end <= now.addingTimeInterval(endCallbackSlack)
+  }
+
   /// Every group the shield should hold at `now`, rebuilt from what the app last
   /// wrote and the schedules' own clocks.
   ///
@@ -510,12 +520,17 @@ extension ScreenTimeShared {
       return [defaultGroupID] + activeScheduleGroupIds(now: now)
     }
     var ids = state.groups?.otherGroupIds ?? (state.otherReasonWantsShield ? [defaultGroupID] : [])
-    if !penaltyEnded,
-       let end = parseIso(state.groups?.penaltyEndIso), end > now {
+    // An end callback only counts when the stored end has really arrived. The
+    // app re-arms both windows on every reconcile, and a callback left over
+    // from an earlier window (or from the re-arm itself) can reach this with a
+    // newer block already running: dropping its group then lifted a block the
+    // app still believed was up.
+    if let end = parseIso(state.groups?.penaltyEndIso), end > now,
+       !(penaltyEnded && endIsDue(end, now: now)) {
       ids.append(contentsOf: state.groups?.penaltyHeldGroupIds ?? [])
     }
-    if !manualEnded,
-       let end = parseIso(state.groups?.manualEndIso), end > now {
+    if let end = parseIso(state.groups?.manualEndIso), end > now,
+       !(manualEnded && endIsDue(end, now: now)) {
       ids.append(contentsOf: state.groups?.manualHeldGroupIds ?? [])
     }
     if let groups = state.groups?.pendingGateGroupIds,

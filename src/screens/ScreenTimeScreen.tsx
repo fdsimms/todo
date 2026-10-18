@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, AppState } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
@@ -25,7 +25,7 @@ import { clockTimeToken } from '../utils/clockTime';
 import { blockedForMs, formatBlockedFor, spokenBlockedFor } from '../utils/blockTimer';
 import { useBlockTimerStore } from '../store/useBlockTimerStore';
 import {
-  selectionLabel, shieldHeadline, shieldHeadlineNote, shieldReasonLines,
+  selectionLabel, shieldHeadline, shieldHeadlineNote, shieldNotEnforced, shieldReasonLines,
 } from '../utils/shieldReasonText';
 import { ScreenTimeSettings } from './settings/ScreenTimeSettings';
 import { SettingsFocusProvider, useSettingsFocusScroll } from './settings/SettingsFocus';
@@ -169,6 +169,34 @@ export function ScreenTimeScreen() {
   const total = applications + categories + websites;
   const label = selectionLabel(applications, categories, websites);
   const blocked = reasons.length > 0 && total > 0;
+  // What iOS actually holds, read back from the system shield. The card above is
+  // built from the app's own state, so without this a block lifted behind the
+  // app's back (an extension callback, iOS) still reads "blocked".
+  const [held, setHeld] = useState<GroupCount | null>(null);
+  const readHeld = useCallback(() => setHeld(screenTimeBridge()?.shieldedCounts() ?? null), []);
+  useEffect(() => {
+    readHeld();
+    if (!blocked) return undefined;
+    const timer = setInterval(readHeld, 3000);
+    const sub = AppState.addEventListener('change', state => { if (state === 'active') readHeld(); });
+    return () => { clearInterval(timer); sub.remove(); };
+  }, [blocked, readHeld, reasons]);
+  const notEnforced = shieldNotEnforced(blocked, held);
+  // Putting the same shield back is idempotent, so the first sign of a mismatch
+  // is repaired at once; the warning below stays only if that didn't take.
+  const [repairTried, setRepairTried] = useState(false);
+  useEffect(() => {
+    if (!notEnforced) { setRepairTried(false); return; }
+    if (repairTried) return;
+    setRepairTried(true);
+    reconcileAppShield();
+    readHeld();
+  }, [notEnforced, repairTried, readHeld]);
+  const applyAgain = () => {
+    haptics.tap();
+    reconcileAppShield();
+    readHeld();
+  };
   const headline = shieldHeadline(reasons.length, total);
   const note = shieldHeadlineNote(reasons.length, total);
   const formatTime = useCallback((iso: string) => {
@@ -237,6 +265,24 @@ export function ScreenTimeScreen() {
                 {note && <Text style={styles.note}>{note}</Text>}
               </View>
             </View>
+            {notEnforced && repairTried && (
+              <View style={styles.warning} accessible accessibilityRole="alert">
+                <Ionicons name="warning-outline" size={20} color={colors.warningText} />
+                <View style={styles.warningBody}>
+                  <Text style={styles.warningText}>
+                    iOS isn’t blocking these apps right now, even though the block is on.
+                  </Text>
+                  <TouchableOpacity
+                    onPress={applyAgain}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityLabel="Apply the block again"
+                  >
+                    <Text style={styles.warningAction}>Apply the block again</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
             {showTagCta && (
               canScanInApp ? (
                 <TouchableOpacity
@@ -309,5 +355,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // wrapped sentence keeps its dot beside the line it starts.
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.accent, marginTop: 7 },
   reasonText: { flex: 1, color: colors.textSecondary, fontSize: font.md, lineHeight: 20 },
+  warning: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm,
+    marginTop: spacing.md, padding: spacing.smd, borderRadius: radius.md, backgroundColor: colors.bgTertiary,
+  },
+  warningBody: { flex: 1, gap: spacing.xsm },
+  warningText: { color: colors.text, fontSize: font.md, lineHeight: 20 },
+  warningAction: { color: colors.accentText, fontSize: font.md, fontWeight: fontWeight.semibold },
   note: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.sm, lineHeight: 18 },
 });
