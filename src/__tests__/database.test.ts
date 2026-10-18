@@ -6284,7 +6284,7 @@ describe('workouts', () => {
   };
   const session = {
     id: 's1', routineId: 'r1', programId: null, taskId: null, title: 'Upper A', startedAt: '2026-10-10T22:00:00.000Z',
-    endedAt: '2026-10-10T23:00:00.000Z', notes: '', effort: 7, healthWorkoutId: null, healthWritePending: false, measuredOnWatch: false,
+    endedAt: '2026-10-10T23:00:00.000Z', notes: '', effort: 7, healthWorkoutId: null, healthWritePending: false, measuredOnWatch: false, timesEdited: false,
   };
   const set = (id: string, extra: Partial<Parameters<typeof dbSaveWorkoutSet>[0]> = {}) => ({
     id, sessionId: 's1', exerciseId: 'lib:back-squat', position: 0, setIndex: 0, kind: 'working' as const,
@@ -6373,7 +6373,7 @@ describe('workouts', () => {
     // the phone wrote itself, and one whose delete is refused for a later edit.
     dbSaveWorkoutSession({ ...session, id: 'w1', healthWorkoutId: 'HK-WATCH', measuredOnWatch: true });
     dbSaveWorkoutSession({ ...session, id: 'w2', healthWorkoutId: null, measuredOnWatch: true });
-    dbSaveWorkoutSession({ ...session, id: 'p1', healthWorkoutId: 'HK-PHONE', measuredOnWatch: false });
+    dbSaveWorkoutSession({ ...session, id: 'p1', healthWorkoutId: 'HK-PHONE', measuredOnWatch: false, timesEdited: false });
     dbSaveWorkoutSession({ ...session, id: 'w3', healthWorkoutId: 'HK-KEPT', measuredOnWatch: true });
     mockRawDb.prepare("UPDATE workout_sessions SET updated_at = '2026-01-01T00:00:00.000Z' WHERE id IN ('w1', 'w2', 'p1')").run();
     mockRawDb.prepare("UPDATE workout_sessions SET updated_at = '2026-09-01T00:00:00.000Z' WHERE id = 'w3'").run();

@@ -7,6 +7,7 @@
  */
 import { initDatabase, dbGetWorkoutSets, dbGetAllExercises, dbGetWorkoutSession, dbSaveWorkoutSession } from '../db/database';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { WATCH_FINISH_SKEW_MS } from '../utils/watchHealthWorkout';
 import {
   WATCH_WORKOUT_WAIT_MINUTES,
   dropWatchMeasurement,
@@ -1312,6 +1313,93 @@ describe('a workout the Apple Watch measured', () => {
       expect(mockWatchRetract).not.toHaveBeenCalled();
       expect(row(live.id)).toMatchObject({ healthWorkoutId: 'HK-WATCH', measuredOnWatch: true });
     });
+  });
+
+  describe('a copy whose end is a little off the row’s', () => {
+    // Finished ten minutes ago with the watch measuring. The watch's copy
+    // starts when the row does and ends `offMs` from it.
+    const finishedWithWatch = () => {
+      const live = going();
+      state().markWatchMeasuring(live.id, true);
+      ok(state().finishSession(live.id, { endedAt: endedAgo(10) }));
+      return live.id;
+    };
+    const copy = (id: string, offMs: number, startOffMs = 0) => ({
+      start: new Date(Date.parse(row(id).startedAt) + startOffMs).toISOString(),
+      end: new Date(Date.parse(row(id).endedAt!) + offMs).toISOString(),
+    });
+
+    it('keeps the watch’s copy, heart rate and all, when a Finish tapped on both devices left the end within the bound', async () => {
+      const id = finishedWithWatch();
+      const endedAt = row(id).endedAt;
+      state().recordWatchHealthWorkout(id, 'HK-WATCH', copy(id, 90_000));
+      await flush();
+      expect(mockWrite).not.toHaveBeenCalled();
+      expect(mockWatchRetract).not.toHaveBeenCalled();
+      expect(mockRetract).not.toHaveBeenCalled();
+      // The row keeps its own end; nothing is rewritten.
+      expect(row(id)).toMatchObject({ healthWorkoutId: 'HK-WATCH', measuredOnWatch: true, healthWritePending: false, endedAt, timesEdited: false });
+    });
+
+    it('lets that copy take over from one the phone wrote meanwhile', () => {
+      const id = finishedWithWatch();
+      dbSaveWorkoutSession({ ...row(id), healthWorkoutId: 'HK-PHONE', measuredOnWatch: false, healthWritePending: false });
+      reload();
+      state().recordWatchHealthWorkout(id, 'HK-WATCH', copy(id, -60_000));
+      expect(mockRetract).toHaveBeenCalledWith(['HK-PHONE']);
+      expect(mockWatchRetract).not.toHaveBeenCalled();
+      expect(row(id)).toMatchObject({ healthWorkoutId: 'HK-WATCH', measuredOnWatch: true });
+    });
+
+    it('rewrites it as now when the end is further off than the bound', async () => {
+      const id = finishedWithWatch();
+      mockWrite.mockResolvedValue(written('HK-PHONE'));
+      state().recordWatchHealthWorkout(id, 'HK-WATCH', copy(id, WATCH_FINISH_SKEW_MS + 60_000));
+      expect(mockWrite).toHaveBeenCalledTimes(1);
+      await flush();
+      expect(mockWatchRetract).toHaveBeenCalledWith(['HK-WATCH']);
+      expect(row(id)).toMatchObject({ healthWorkoutId: 'HK-PHONE', measuredOnWatch: false });
+    });
+
+    it('rewrites it as now when the person moved the times, however little', async () => {
+      const id = finishedWithWatch();
+      // The watch saved at the end the phone first had; the person then
+      // moved it a minute, which is within the bound but is an edit.
+      const savedAt = copy(id, 0);
+      ok(state().updateSession(id, { endedAt: new Date(Date.parse(row(id).endedAt!) + 60_000).toISOString() }));
+      expect(row(id).timesEdited).toBe(true);
+      mockWrite.mockResolvedValue(written('HK-PHONE'));
+      state().recordWatchHealthWorkout(id, 'HK-WATCH', savedAt);
+      expect(mockWrite).toHaveBeenCalledTimes(1);
+      await flush();
+      expect(mockWatchRetract).toHaveBeenCalledWith(['HK-WATCH']);
+      expect(row(id)).toMatchObject({ healthWorkoutId: 'HK-PHONE', measuredOnWatch: false });
+    });
+
+    it('rewrites it as now when the start differs, whatever the end', async () => {
+      const id = finishedWithWatch();
+      mockWrite.mockResolvedValue(written('HK-PHONE'));
+      state().recordWatchHealthWorkout(id, 'HK-WATCH', copy(id, 0, -60_000));
+      expect(mockWrite).toHaveBeenCalledTimes(1);
+      await flush();
+      expect(mockWatchRetract).toHaveBeenCalledWith(['HK-WATCH']);
+      expect(row(id)).toMatchObject({ healthWorkoutId: 'HK-PHONE', measuredOnWatch: false });
+    });
+  });
+
+  it('records that the times were edited only when an edit moves them', () => {
+    const live = going();
+    ok(state().finishSession(live.id, { endedAt: endedAgo(10) }));
+    // Finishing writes the first end through the same action, and isn't an edit.
+    expect(row(live.id).timesEdited).toBe(false);
+    ok(state().updateSession(live.id, { title: 'Push B', notes: 'Felt strong' }));
+    ok(state().updateSession(live.id, { endedAt: row(live.id).endedAt }));
+    expect(row(live.id).timesEdited).toBe(false);
+    ok(state().updateSession(live.id, { startedAt: new Date(Date.parse(row(live.id).startedAt) - 60_000).toISOString() }));
+    expect(row(live.id).timesEdited).toBe(true);
+    // Never cleared by a later edit that leaves the times alone.
+    ok(state().updateSession(live.id, { title: 'Push C' }));
+    expect(row(live.id).timesEdited).toBe(true);
   });
 });
 

@@ -1427,7 +1427,10 @@ this file holds it to:
   retime made while the phone was still waiting for the watch's copy ends the
   same way: the copy arrives with the times it was saved at, and when they are
   no longer the row's, the phone writes its own and the watch retracts its
-  copy. The workout page says so under the times before the change, and only
+  copy. Whether the times were edited is recorded on the row
+  (`WorkoutSession.timesEdited`), since an end a few minutes off with no edit
+  is a Finish tapped on both devices, not a retime: the watch's copy is kept
+  then, heart rate and all, and the row keeps its own end. The workout page says so under the times before the change, and only
   for a workout the watch measured: "Changing the times also changes the
   workout in Apple Health, and it loses its heart rate and energy." A plain
   `Text`, for the import note's reason: it is a consequence to see before

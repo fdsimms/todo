@@ -2147,6 +2147,16 @@ export interface WorkoutSession {
    * know which device to ask (docs/arch/workouts.md, "Phase 9, as built").
    */
   measuredOnWatch: boolean;
+  /**
+   * Somebody changed the start or the end after the session began: the
+   * workout page's Started and Finished rows, or an agent's `update_workout`,
+   * both through `updateSession`. Never cleared. Recorded because nothing else
+   * says it: a watch's copy that ends a little after the row's is a Finish
+   * tapped on both devices unless the person moved the end
+   * (`watchCopyStale` in src/utils/watchHealthWorkout.ts). Synced with the
+   * row, so an agent's edit carries it to the phone.
+   */
+  timesEdited: boolean;
 }
 
 /**

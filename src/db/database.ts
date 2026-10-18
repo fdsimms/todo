@@ -2315,6 +2315,10 @@ function runInitDatabase(): void {
     // saves it to Health itself. 0 on every existing row, none of which a
     // watch session measured (phase 9 is the first that does).
     'ALTER TABLE workout_sessions ADD COLUMN measured_on_watch INTEGER NOT NULL DEFAULT 0',
+    // WorkoutSession.timesEdited: somebody changed the session's times. 0 on
+    // every existing row, which nothing reads until a watch's copy arrives for
+    // it, and none can be waiting for one from before phase 9.
+    'ALTER TABLE workout_sessions ADD COLUMN times_edited INTEGER NOT NULL DEFAULT 0',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -7656,6 +7660,7 @@ function rowToWorkoutSession(row: Record<string, unknown>): WorkoutSession {
     healthWorkoutId: strOrNull(row.health_workout_id),
     healthWritePending: Number(row.health_write_pending) === 1,
     measuredOnWatch: Number(row.measured_on_watch) === 1,
+    timesEdited: Number(row.times_edited) === 1,
   };
 }
 
@@ -7696,11 +7701,11 @@ export function dbSaveWorkoutSession(s: WorkoutSession): void {
   db.runSync(
     `INSERT OR REPLACE INTO workout_sessions
       (id, routine_id, program_id, task_id, title, started_at, ended_at, notes, effort, health_workout_id, health_write_pending,
-       measured_on_watch)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       measured_on_watch, times_edited)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       s.id, s.routineId, s.programId, s.taskId, s.title, s.startedAt, s.endedAt, s.notes, s.effort,
-      s.healthWorkoutId, s.healthWritePending ? 1 : 0, s.measuredOnWatch ? 1 : 0,
+      s.healthWorkoutId, s.healthWritePending ? 1 : 0, s.measuredOnWatch ? 1 : 0, s.timesEdited ? 1 : 0,
     ]
   );
 }

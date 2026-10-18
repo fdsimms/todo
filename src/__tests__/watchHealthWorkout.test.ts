@@ -2,11 +2,12 @@ import {
   NO_WATCH_HEALTH_REQUESTS,
   RECENTLY_FINISHED_LIMIT,
   WATCH_RETRACT_LIMIT,
+  WATCH_FINISH_SKEW_MS,
   WATCH_SPAN_TOLERANCE_MS,
   currentWatchHealthRequests,
   parseWatchHealthRequests,
   recentlyFinished,
-  watchSpanDiffers,
+  watchCopyStale,
   watchWorkoutTapTiming,
   withDrop,
   withRetractions,
@@ -87,28 +88,54 @@ describe('the phone’s workouts finished lately', () => {
   });
 });
 
-describe('the times the watch saved a workout at', () => {
-  const row = { startedAt: hoursAgo(2), endedAt: hoursAgo(1) };
+describe('whether the watch’s saved workout is out of date for the row', () => {
+  const row = { startedAt: hoursAgo(2), endedAt: hoursAgo(1), timesEdited: false };
+  const edited = { ...row, timesEdited: true };
   const shifted = (iso: string, ms: number) => new Date(Date.parse(iso) + ms).toISOString();
+  const endOff = (ms: number) => ({ start: row.startedAt, end: shifted(row.endedAt, ms) });
 
-  it('match the row within the clocks’ rounding, and not past it', () => {
-    expect(watchSpanDiffers(row, { start: row.startedAt, end: row.endedAt })).toBe(false);
-    expect(watchSpanDiffers(row, { start: shifted(row.startedAt, 900), end: shifted(row.endedAt, -WATCH_SPAN_TOLERANCE_MS) })).toBe(false);
-    expect(watchSpanDiffers(row, { start: row.startedAt, end: shifted(row.endedAt, 5 * 60_000) })).toBe(true);
-    expect(watchSpanDiffers(row, { start: shifted(row.startedAt, -60_000), end: row.endedAt })).toBe(true);
+  it('is not, at the row’s own times within the clocks’ rounding, edited or not', () => {
+    const rounded = { start: shifted(row.startedAt, 900), end: shifted(row.endedAt, -WATCH_SPAN_TOLERANCE_MS) };
+    expect(watchCopyStale(row, { start: row.startedAt, end: row.endedAt })).toBe(false);
+    expect(watchCopyStale(row, rounded)).toBe(false);
+    expect(watchCopyStale(edited, rounded)).toBe(false);
   });
 
-  it('can’t differ with nothing to compare: no span, a workout still going, a time that doesn’t read', () => {
-    expect(watchSpanDiffers(row, null)).toBe(false);
-    expect(watchSpanDiffers({ ...row, endedAt: null }, { start: row.startedAt, end: hoursAgo(0) })).toBe(false);
-    expect(watchSpanDiffers(row, { start: 'soon', end: 'later' })).toBe(false);
+  // A Finish tapped on both devices: either end can be the later one.
+  it('is not, when only the end is off by up to the bound on a row nobody retimed', () => {
+    expect(watchCopyStale(row, endOff(40_000))).toBe(false);
+    expect(watchCopyStale(row, endOff(-90_000))).toBe(false);
+    expect(watchCopyStale(row, endOff(WATCH_FINISH_SKEW_MS))).toBe(false);
+    expect(watchCopyStale(row, endOff(-WATCH_FINISH_SKEW_MS))).toBe(false);
+  });
+
+  it('is, when the end is off by more than the bound', () => {
+    expect(watchCopyStale(row, endOff(WATCH_FINISH_SKEW_MS + 1000))).toBe(true);
+    expect(watchCopyStale(row, endOff(-(WATCH_FINISH_SKEW_MS + 1000)))).toBe(true);
+  });
+
+  it('is, when the person changed the times, however little the end is off', () => {
+    expect(watchCopyStale(edited, endOff(40_000))).toBe(true);
+    expect(watchCopyStale(edited, endOff(WATCH_SPAN_TOLERANCE_MS + 1000))).toBe(true);
+  });
+
+  it('is, when the start differs past the clocks’ rounding, edited or not', () => {
+    expect(watchCopyStale(row, { start: shifted(row.startedAt, -60_000), end: row.endedAt })).toBe(true);
+    expect(watchCopyStale(row, { start: shifted(row.startedAt, WATCH_SPAN_TOLERANCE_MS + 1000), end: row.endedAt })).toBe(true);
+  });
+
+  it('can’t be, with nothing to compare: no span, a workout still going, a time that doesn’t read', () => {
+    expect(watchCopyStale(row, null)).toBe(false);
+    expect(watchCopyStale({ ...row, endedAt: null }, { start: row.startedAt, end: hoursAgo(0) })).toBe(false);
+    expect(watchCopyStale(edited, { start: 'soon', end: 'later' })).toBe(false);
   });
 });
 
 describe('when a drain in the background applies the watch’s saved workout', () => {
-  const finished = { startedAt: hoursAgo(2), endedAt: hoursAgo(1) };
+  const finished = { startedAt: hoursAgo(2), endedAt: hoursAgo(1), timesEdited: false };
   const same = { start: finished.startedAt, end: finished.endedAt };
   const old = { start: finished.startedAt, end: hoursAgo(1.5) };
+  const skewed = { start: finished.startedAt, end: hoursAgo(1 - 1 / 60) };
   const waiting = { ...finished, healthWorkoutId: null, measuredOnWatch: true };
   const phoneCopy = { ...finished, healthWorkoutId: 'HK-PHONE', measuredOnWatch: false };
   const watchCopy = { ...finished, healthWorkoutId: 'HK-WATCH', measuredOnWatch: true };
@@ -126,5 +153,13 @@ describe('when a drain in the background applies the watch’s saved workout', (
     expect(watchWorkoutTapTiming(phoneCopy, 'HK-W', same)).toBe('front');
     expect(watchWorkoutTapTiming(phoneCopy, null, null)).toBe('front');
     expect(watchWorkoutTapTiming(waiting, 'HK-W', old)).toBe('front');
+  });
+
+  it('treats a copy a Finish on both devices left a minute off as matching the row', () => {
+    // Taken as it is, so nothing of the phone's HealthKit unless its own copy goes.
+    expect(watchWorkoutTapTiming(waiting, 'HK-W', skewed)).toBe('now');
+    expect(watchWorkoutTapTiming(phoneCopy, 'HK-W', skewed)).toBe('front');
+    // The same minute on a row the person retimed is a rewrite.
+    expect(watchWorkoutTapTiming({ ...waiting, timesEdited: true }, 'HK-W', skewed)).toBe('front');
   });
 });

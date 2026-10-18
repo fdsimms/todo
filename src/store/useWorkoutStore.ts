@@ -65,7 +65,7 @@ import {
 } from '../utils/healthWorkoutSync';
 import { NEW_EXERCISE_PREFIX, indexAdd, indexExisting, indexHas, type PlannedImportSession } from '../utils/workoutCsv';
 import { overlappingSessions } from '../utils/watchWorkoutClash';
-import { watchSpanDiffers, type WatchWorkoutSpan } from '../utils/watchHealthWorkout';
+import { watchCopyStale, type WatchWorkoutSpan } from '../utils/watchHealthWorkout';
 import { getLogicalDayKey } from '../utils/dateUtils';
 import { useWatchClashStore } from './useWatchClashStore';
 import { buildCatalog, catalogExercise } from '../utils/exerciseCatalog';
@@ -483,14 +483,17 @@ interface WorkoutStore {
    * workout retracted by the watch; a second watch workout for one session is
    * retracted the same way.
    *
-   * `span` is the times the watch saved it at. When they are no longer the
-   * row's (the person retimed it while the phone waited, `watchSpanDiffers`),
-   * the watch's copy is out of date, and it ends as a retime does: the phone
+   * `span` is the times the watch saved it at. When the copy is out of date
+   * for the row (`watchCopyStale`: the person retimed it while the phone
+   * waited, or the times are further apart than a Finish tapped on both
+   * devices leaves them), it ends as a retime does: the phone
    * writes its own at the row's times, without heart rate or energy, and the
    * watch retracts its copy once that write lands (`recordHealthWrite`'s
    * take-over). A copy the phone already wrote at those times stays, and the
    * watch's is retracted. With writing off, or Health refusing, the watch's
-   * stays at its old times: one copy, never two.
+   * stays at its old times: one copy, never two. An end a few minutes off on
+   * a row nobody retimed is not out of date: the watch's copy is taken as it
+   * is, heart rate and all, and the row keeps its own end.
    */
   recordWatchHealthWorkout: (sessionId: string, workoutId: string | null, span?: WatchWorkoutSpan | null) => void;
   /**
@@ -1138,6 +1141,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         healthWorkoutId: null,
         healthWritePending: false,
         measuredOnWatch: false,
+        timesEdited: false,
       };
       putSession(row);
       const planned = routine
@@ -1186,6 +1190,14 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       // into Health twice).
       if (row.title === existing.title && row.notes === existing.notes && row.effort === existing.effort && sameSpan(row, existing)) {
         return existing;
+      }
+      // Recorded, since nothing else says the times were moved by a person
+      // rather than ended a little off by a watch (`watchCopyStale`). A start
+      // moved at any point counts; an end only once there was one, because
+      // `finishSession` writes the first end through here and that is the
+      // finish, not an edit.
+      if (row.startedAt !== existing.startedAt || (existing.endedAt !== null && row.endedAt !== existing.endedAt)) {
+        row.timesEdited = true;
       }
       // Health holds the span and nothing else, so only a finished workout in
       // Health whose times moved is rewritten, and only while writing is on:
@@ -1289,6 +1301,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         healthWorkoutId: null,
         healthWritePending: input.healthWritePending === true,
         measuredOnWatch: false,
+        timesEdited: false,
       };
       // Done when it ended unless a set says otherwise: a set logged after the
       // fact was done, and a planned set has no place in a record.
@@ -1332,6 +1345,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         healthWorkoutId: input.health ? input.health.workoutId : null,
         healthWritePending: false,
         measuredOnWatch: !!input.health,
+        timesEdited: false,
       };
       const sets = renumber(input.sets.map((st): WorkoutSet => ({
         id: st.id,
@@ -1449,6 +1463,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
           healthWorkoutId: null,
           healthWritePending: false,
           measuredOnWatch: false,
+          timesEdited: false,
         });
         setRows.push(rowsFor(planned.id, inputs));
       }
@@ -1562,8 +1577,9 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         if (workoutId) retractWatchWorkouts([workoutId]);
         return;
       }
-      // Saved at times the row no longer has: retimed while the phone waited.
-      const stale = workoutId !== null && watchSpanDiffers(fresh, span);
+      // Out of date for the row: retimed while the phone waited, or further
+      // apart than a Finish tapped on both devices leaves them.
+      const stale = workoutId !== null && watchCopyStale(fresh, span);
       if (fresh.healthWorkoutId !== null) {
         // The phone's own copy, written meanwhile (the fallback, or a write
         // started before the watch said it was measuring), is at the row's

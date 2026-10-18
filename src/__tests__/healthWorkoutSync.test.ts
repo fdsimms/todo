@@ -47,7 +47,7 @@ function session(over: Partial<WorkoutSession> = {}): WorkoutSession {
     id: 's1', routineId: null, programId: null, taskId: null, title: 'Upper A',
     startedAt: new Date(2026, 9, 18, 9).toISOString(),
     endedAt: new Date(2026, 9, 18, 10).toISOString(),
-    notes: '', effort: null, healthWorkoutId: null, healthWritePending: false, measuredOnWatch: false,
+    notes: '', effort: null, healthWorkoutId: null, healthWritePending: false, measuredOnWatch: false, timesEdited: false,
     ...over,
   };
 }

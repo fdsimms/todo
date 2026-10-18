@@ -151,28 +151,57 @@ export interface WatchWorkoutSpan {
 /**
  * How far the watch's saved times may sit from the row's and still be the
  * same workout. The watch saves at the times the phone gave it, read from
- * the snapshot, so they match to the millisecond unless the person moved one
- * meanwhile; the slack covers the two clocks' rounding and nothing more.
+ * the snapshot, so they match to the millisecond unless something moved one
+ * meanwhile; the slack covers the two clocks' rounding and nothing more. The
+ * start is held to this always, since nothing but an edit moves it.
  */
 export const WATCH_SPAN_TOLERANCE_MS = 2000;
 
 /**
- * Whether the workout the watch saved spans times this finished row no
- * longer has: the person retimed it while the phone was waiting for the
- * watch's copy. False when there is nothing to compare (no span, a workout
- * still going, a time that doesn't read).
+ * How far the watch's saved end may sit from the end of a row nobody retimed
+ * and still be kept, with its heart rate: five minutes.
+ *
+ * The one way the ends part without an edit is a Finish tapped on both
+ * devices. The phone's Finish reaches the watch in the snapshot, seconds
+ * later with the two in reach, and a Finish tapped on the watch before that
+ * saves at its own moment while the phone keeps the first. Either can be the
+ * later one. Both taps come at the end of the same workout, so the gap is
+ * seconds to a minute or two, and five minutes covers a watch slow to hear.
+ * It is kept short because the copy kept is Health's record of how long the
+ * workout took: past about the length of one long rest between heavy sets, a
+ * copy that much longer or shorter than the workout misstates it, and the
+ * phone's own at the row's times is the better record despite losing the
+ * heart rate.
  */
-export function watchSpanDiffers(
-  row: Pick<WorkoutSession, 'startedAt' | 'endedAt'>,
+export const WATCH_FINISH_SKEW_MS = 5 * 60_000;
+
+/**
+ * Whether the workout the watch saved is out of date for this finished row,
+ * so the phone writes its own at the row's times in its place (the outcome a
+ * retime has). True when the start differs beyond `WATCH_SPAN_TOLERANCE_MS`,
+ * or the end does and either the person changed the times
+ * (`WorkoutSession.timesEdited`) or the gap is past `WATCH_FINISH_SKEW_MS`.
+ * An end that differs by less on a row nobody retimed is a Finish tapped on
+ * both devices: the watch's copy stands as the session's, heart rate and
+ * all, and the row keeps its own end.
+ *
+ * False when there is nothing to compare (no span, a workout still going, a
+ * time that doesn't read).
+ */
+export function watchCopyStale(
+  row: Pick<WorkoutSession, 'startedAt' | 'endedAt' | 'timesEdited'>,
   span: WatchWorkoutSpan | null | undefined,
 ): boolean {
   if (!span || row.endedAt === null) return false;
-  const apart = (a: string, b: string) => {
+  const gap = (a: string, b: string) => {
     const x = Date.parse(a);
     const y = Date.parse(b);
-    return Number.isFinite(x) && Number.isFinite(y) && Math.abs(x - y) > WATCH_SPAN_TOLERANCE_MS;
+    return Number.isFinite(x) && Number.isFinite(y) ? Math.abs(x - y) : 0;
   };
-  return apart(row.startedAt, span.start) || apart(row.endedAt, span.end);
+  if (gap(row.startedAt, span.start) > WATCH_SPAN_TOLERANCE_MS) return true;
+  const endGap = gap(row.endedAt, span.end);
+  if (endGap <= WATCH_SPAN_TOLERANCE_MS) return false;
+  return row.timesEdited || endGap > WATCH_FINISH_SKEW_MS;
 }
 
 /**
@@ -183,7 +212,7 @@ export function watchSpanDiffers(
  * - the phone wrote its own copy and the watch's matches the row: the
  *   phone's is retracted, a delete HealthKit refuses with the phone locked,
  *   which would leave it in Health with nothing pointing at it;
- * - the watch's spans times the row no longer has (`watchSpanDiffers`): the
+ * - the watch's is out of date for the row (`watchCopyStale`): the
  *   phone writes its own at the row's times, and a save made locked returns
  *   no id, so the row couldn't keep track of it.
  *
@@ -192,12 +221,12 @@ export function watchSpanDiffers(
  * needs nothing of the phone's HealthKit and applies at once.
  */
 export function watchWorkoutTapTiming(
-  row: Pick<WorkoutSession, 'startedAt' | 'endedAt' | 'healthWorkoutId' | 'measuredOnWatch'> | null | undefined,
+  row: Pick<WorkoutSession, 'startedAt' | 'endedAt' | 'timesEdited' | 'healthWorkoutId' | 'measuredOnWatch'> | null | undefined,
   workoutId: string | null,
   span: WatchWorkoutSpan | null | undefined,
 ): 'now' | 'front' {
   if (!row) return 'now';
-  const stale = workoutId !== null && watchSpanDiffers(row, span);
+  const stale = workoutId !== null && watchCopyStale(row, span);
   if (row.healthWorkoutId !== null) {
     if (row.measuredOnWatch) return 'now';
     return stale ? 'now' : 'front';
