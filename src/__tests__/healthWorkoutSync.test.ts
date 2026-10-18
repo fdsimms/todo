@@ -22,6 +22,7 @@ jest.mock('../utils/demoState', () => ({ isDemoModeActive: () => mockDemo }));
 
 import {
   PENDING_WORKOUT_WRITE_MAX_AGE_DAYS,
+  WATCH_WORKOUT_WAIT_MINUTES,
   WORKOUT_HEALTH_ACTIVITY,
   logWorkoutToHealth,
   pendingWorkoutWriteAction,
@@ -38,7 +39,7 @@ function session(over: Partial<WorkoutSession> = {}): WorkoutSession {
     id: 's1', routineId: null, programId: null, taskId: null, title: 'Upper A',
     startedAt: new Date(2026, 9, 18, 9).toISOString(),
     endedAt: new Date(2026, 9, 18, 10).toISOString(),
-    notes: '', effort: null, healthWorkoutId: null, healthWritePending: false,
+    notes: '', effort: null, healthWorkoutId: null, healthWritePending: false, measuredOnWatch: false,
     ...over,
   };
 }
@@ -77,6 +78,19 @@ describe('pendingWorkoutWriteAction', () => {
     expect(pendingWorkoutWriteAction(session({ endedAt: null }), NOW)).toBe('drop');
     const old = new Date(NOW.getTime() - (PENDING_WORKOUT_WRITE_MAX_AGE_DAYS * 86_400_000 + 60_000));
     expect(pendingWorkoutWriteAction(session({ startedAt: new Date(old.getTime() - 3_600_000).toISOString(), endedAt: old.toISOString() }), NOW)).toBe('drop');
+  });
+
+  // Phase 9: the watch saves its own copy, with the heart rate and energy.
+  it('waits for the Apple Watch’s copy of a workout it measured, then writes the phone’s own', () => {
+    const ended = (minutesAgo: number) => {
+      const end = new Date(NOW.getTime() - minutesAgo * 60_000);
+      return session({ measuredOnWatch: true, startedAt: new Date(end.getTime() - 3_600_000).toISOString(), endedAt: end.toISOString() });
+    };
+    expect(pendingWorkoutWriteAction(ended(5), NOW)).toBe('wait');
+    expect(pendingWorkoutWriteAction(ended(WATCH_WORKOUT_WAIT_MINUTES - 1), NOW)).toBe('wait');
+    expect(pendingWorkoutWriteAction(ended(WATCH_WORKOUT_WAIT_MINUTES + 1), NOW)).toBe('write');
+    // Arrived: nothing for the phone to write.
+    expect(pendingWorkoutWriteAction({ ...ended(5), healthWorkoutId: 'HK-W' }, NOW)).toBe('drop');
   });
 
   it('waits on a span the bridge would refuse, such as one logged with no length, until the limit drops it', () => {

@@ -25,7 +25,7 @@ function set(sessionId: string, setIndex: number, extra: Partial<WorkoutSet> = {
 }
 const session = (id: string, day: number, extra: Partial<WorkoutSession> = {}): WorkoutSession => ({
   id, routineId: 'r1', programId: null, taskId: null, title: 'Push A', startedAt: new Date(2026, 9, day, 18).toISOString(),
-  endedAt: new Date(2026, 9, day, 19).toISOString(), notes: '', effort: null, healthWorkoutId: null, healthWritePending: false, ...extra,
+  endedAt: new Date(2026, 9, day, 19).toISOString(), notes: '', effort: null, healthWorkoutId: null, healthWritePending: false, measuredOnWatch: false, ...extra,
 });
 const routine = (warmupRamp: boolean): WorkoutRoutine => ({
   id: 'r1', name: 'Push A', notes: '', programId: null, sortOrder: 0, createdAt: '2026-10-01T00:00:00.000Z',

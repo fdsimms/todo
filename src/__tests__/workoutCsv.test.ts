@@ -766,7 +766,7 @@ describe('export', () => {
     id: 's1', routineId: null, programId: null, taskId: null, title: 'Push, heavy',
     startedAt: new Date(2024, 0, 9, 18, 30, 0).toISOString(),
     endedAt: new Date(2024, 0, 9, 19, 35, 0).toISOString(),
-    notes: 'Felt "good", slept well', effort: null, healthWorkoutId: null, healthWritePending: false, ...over,
+    notes: 'Felt "good", slept well', effort: null, healthWorkoutId: null, healthWritePending: false, measuredOnWatch: false, ...over,
   });
   const set = (over: Partial<WorkoutSet>): WorkoutSet => ({
     id: 'x', sessionId: 's1', exerciseId: 'lib:barbell-bench-press', position: 0, setIndex: 0, kind: 'working',

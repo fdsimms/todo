@@ -6284,7 +6284,7 @@ describe('workouts', () => {
   };
   const session = {
     id: 's1', routineId: 'r1', programId: null, taskId: null, title: 'Upper A', startedAt: '2026-10-10T22:00:00.000Z',
-    endedAt: '2026-10-10T23:00:00.000Z', notes: '', effort: 7, healthWorkoutId: null, healthWritePending: false,
+    endedAt: '2026-10-10T23:00:00.000Z', notes: '', effort: 7, healthWorkoutId: null, healthWritePending: false, measuredOnWatch: false,
   };
   const set = (id: string, extra: Partial<Parameters<typeof dbSaveWorkoutSet>[0]> = {}) => ({
     id, sessionId: 's1', exerciseId: 'lib:back-squat', position: 0, setIndex: 0, kind: 'working' as const,

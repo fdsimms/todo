@@ -2309,6 +2309,10 @@ function runInitDatabase(): void {
     // Task.generatedReadyAt: when the thing a generated task asks for was seen
     // to be done. NULL on every existing row, which reads as not done yet.
     'ALTER TABLE tasks ADD COLUMN generated_ready_at TEXT',
+    // WorkoutSession.measuredOnWatch: the Apple Watch measured the workout and
+    // saves it to Health itself. 0 on every existing row, none of which a
+    // watch session measured (phase 9 is the first that does).
+    'ALTER TABLE workout_sessions ADD COLUMN measured_on_watch INTEGER NOT NULL DEFAULT 0',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -7636,6 +7640,7 @@ function rowToWorkoutSession(row: Record<string, unknown>): WorkoutSession {
     effort: numOrNull(row.effort),
     healthWorkoutId: strOrNull(row.health_workout_id),
     healthWritePending: Number(row.health_write_pending) === 1,
+    measuredOnWatch: Number(row.measured_on_watch) === 1,
   };
 }
 
@@ -7675,11 +7680,12 @@ export function dbGetPendingHealthWorkoutSessions(): WorkoutSession[] {
 export function dbSaveWorkoutSession(s: WorkoutSession): void {
   db.runSync(
     `INSERT OR REPLACE INTO workout_sessions
-      (id, routine_id, program_id, task_id, title, started_at, ended_at, notes, effort, health_workout_id, health_write_pending)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (id, routine_id, program_id, task_id, title, started_at, ended_at, notes, effort, health_workout_id, health_write_pending,
+       measured_on_watch)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       s.id, s.routineId, s.programId, s.taskId, s.title, s.startedAt, s.endedAt, s.notes, s.effort,
-      s.healthWorkoutId, s.healthWritePending ? 1 : 0,
+      s.healthWorkoutId, s.healthWritePending ? 1 : 0, s.measuredOnWatch ? 1 : 0,
     ]
   );
 }

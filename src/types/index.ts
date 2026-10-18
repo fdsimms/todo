@@ -2134,9 +2134,19 @@ export interface WorkoutSession {
   notes: string;
   /** How hard it felt, 1 to 10, as the person typed it. Never derived. */
   effort: number | null;
-  /** The `HKWorkout` it was written to Health as (phase 5). */
+  /** The `HKWorkout` it was written to Health as (phase 5), by the phone or by the Apple Watch that measured it. */
   healthWorkoutId: string | null;
   healthWritePending: boolean;
+  /**
+   * The Apple Watch measured this workout (heart rate and energy) and saves
+   * it to Health itself (phase 9): `healthWorkoutId` is the watch's, or will
+   * be once it arrives, so the phone holds its own write back and asks the
+   * watch to retract it. False once the phone has written its own copy in
+   * its place. Not derived from a Health read, since the workout page has to
+   * say a retime loses the heart rate with reading off, and a delete has to
+   * know which device to ask (docs/arch/workouts.md, "Phase 9, as built").
+   */
+  measuredOnWatch: boolean;
 }
 
 /**

@@ -45,6 +45,8 @@ import { buildRoutineIndex, parseQueuedWorkoutStarts, resolveQueuedWorkoutStart 
 import { startWorkout } from './startWorkout';
 import { requestDismissAllSheets } from './sheetModal';
 import { useStepTimerStore } from '../store/useStepTimerStore';
+import { useWatchHealthStore } from '../store/useWatchHealthStore';
+import { workoutHealthWriteOn } from './healthWorkoutSync';
 import { WATCH_RECENT_DAYS, buildWatchWorkout, todaysWatchWorkout, type WatchWorkoutSnapshot } from './watchWorkout';
 import { tickSet } from './workoutTick';
 import { applyProposal } from './workoutProposalApply';
@@ -437,6 +439,17 @@ async function processQuietWidgetTaps(handOff: 'app' | 'requeue' = 'app'): Promi
         case 'addWatchSession':
           useWorkoutStore.getState().addWatchSession(action.workout, { deferHealthWrite: handOff === 'requeue' });
           break;
+        // The watch's HealthKit session (phase 9): it is measuring a session,
+        // it saved one's workout, or it retracted one the phone asked about.
+        case 'watchMeasuring':
+          useWorkoutStore.getState().markWatchMeasuring(action.sessionId, action.on);
+          break;
+        case 'watchHealthWorkout':
+          useWorkoutStore.getState().recordWatchHealthWorkout(action.sessionId, action.workoutId);
+          break;
+        case 'watchHealthRetracted':
+          useWatchHealthStore.getState().retracted(action.workoutId);
+          break;
         // What the watch adds to the phone's workout, each through the store
         // action workout mode itself uses, with the watch's ids where it made
         // some, so the watch settles what it drew by them.
@@ -768,6 +781,9 @@ function watchWorkoutSection(): WatchWorkoutSnapshot | null {
   const rest = live ? useStepTimerStore.getState().restFor(live.id) : null;
   return buildWatchWorkout({
     workoutsEnabled: settings.workoutsEnabled,
+    healthWrite: workoutHealthWriteOn(),
+    watchRequests: useWatchHealthStore.getState().requests,
+    now: new Date(),
     unit: settings.workoutUnit,
     quietHoursStart: settings.quietHoursStart,
     quietHoursEnd: settings.quietHoursEnd,
@@ -841,6 +857,9 @@ function scheduleWatchWorkoutWrite(): void {
 // stores at once (finishing a shop writes entries, items and the trip) still
 // costs one write.
 function subscribeToStores(): () => void {
+  // The watch's workout section carries these lists; read them from the
+  // database once, as the clash prompt does its own.
+  useWatchHealthStore.getState().reload();
   const unsubscribers = [
     useTaskStore.subscribe((s, p) => {
       if (s.tasks !== p.tasks) scheduleSnapshotWrite();
@@ -926,9 +945,16 @@ function subscribeToStores(): () => void {
     useStepTimerStore.subscribe((s, p) => {
       if (s.timers !== p.timers) scheduleWatchWorkoutWrite();
     }),
+    // What the phone asks of the watch's HealthKit session (phase 9).
+    useWatchHealthStore.subscribe((s, p) => {
+      if (s.requests !== p.requests) scheduleWatchWorkoutWrite();
+    }),
     useSettingsStore.subscribe((s, p) => {
       if (
         s.workoutsEnabled !== p.workoutsEnabled ||
+        // The three switches a workout on the watch is measured and saved under.
+        s.healthWriteEnabled !== p.healthWriteEnabled ||
+        s.workoutHealthWrite !== p.workoutHealthWrite ||
         s.workoutUnit !== p.workoutUnit ||
         s.defaultRestSeconds !== p.defaultRestSeconds ||
         s.plateInventory !== p.plateInventory ||

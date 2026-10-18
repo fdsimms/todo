@@ -25,7 +25,7 @@ const session = (id: string, startedAt: string, endedAt: string | null, extra: P
   notes: '',
   effort: null,
   healthWorkoutId: null,
-  healthWritePending: false,
+  healthWritePending: false, measuredOnWatch: false,
   ...extra,
 });
 

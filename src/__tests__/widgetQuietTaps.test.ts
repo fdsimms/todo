@@ -480,6 +480,27 @@ describe('watch workout taps', () => {
       expect(taps.every(t => t.sessionId === 'w1')).toBe(true);
     });
 
+    // Phase 9: the watch's HealthKit session.
+    it('reads the watch’s Health taps against the session they name, the id of what it saved, and a retraction', () => {
+      const taps = parseQuietTaps(JSON.stringify([
+        { kind: 'measuring', id: 'w1', sessionId: 'w1', on: true, at: AT },
+        { kind: 'measuring', id: 'w1', on: false, at: AT },
+        { kind: 'measuring', id: 'w1', at: AT },
+        { kind: 'healthWorkout', id: 'w1', sessionId: 'w1', workoutId: 'HK-W', at: AT },
+        { kind: 'healthWorkout', id: 'w1', at: AT },
+        { kind: 'healthRetracted', id: 'HK-OLD', at: AT },
+        { kind: 'healthRetracted', id: '', at: AT },
+      ]));
+      expect(taps.map(t => [t.kind, t.id, t.sessionId, t.on, t.healthWorkoutId])).toEqual([
+        ['measuring', 'w1', 'w1', true, undefined],
+        ['measuring', 'w1', 'w1', false, undefined],
+        ['measuring', 'w1', 'w1', true, undefined],
+        ['healthWorkout', 'w1', 'w1', undefined, 'HK-W'],
+        ['healthWorkout', 'w1', 'w1', undefined, null],
+        ['healthRetracted', 'HK-OLD', undefined, undefined, undefined],
+      ]);
+    });
+
     it('caps a dictated note', () => {
       const [t] = parseQuietTaps(JSON.stringify([{ kind: 'setNote', id: 's', sessionId: 'w1', note: 'x'.repeat(WATCH_NOTE_MAX + 50), at: AT }]));
       expect(t.note).toHaveLength(WATCH_NOTE_MAX);
@@ -499,6 +520,13 @@ describe('watch workout taps', () => {
       expect(parseWatchSession(null)).toBeNull();
       expect(parseWatchSession(workoutJson({ startedAt: 'never' }))).toBeNull();
       expect(parseWatchSession(workoutJson({ sets: [{ id: 's2', exerciseId: 'x', kind: 'working' }] }))).toBeNull();
+    });
+
+    it('reads what the watch saved to Health itself, a save made locked included, and nothing when it measured nothing', () => {
+      expect(parseWatchSession(workoutJson({ health: { workoutId: 'HK-W' } }))!.health).toEqual({ workoutId: 'HK-W' });
+      expect(parseWatchSession(workoutJson({ health: {} }))!.health).toEqual({ workoutId: null });
+      expect(parseWatchSession(workoutJson())!.health).toBeUndefined();
+      expect(parseWatchSession(workoutJson({ health: 'yes' }))!.health).toBeUndefined();
     });
 
     it('reads kilograms as they are, and a kind it doesn’t know as a working set', () => {
@@ -764,6 +792,39 @@ describe('watch workout taps', () => {
       expect(plan([t], none, [task({ id: 'lift', deliverableKind: 'text' })])).toEqual([
         { type: 'addWatchSession', workout },
         { type: 'handToApp', id: 'lift', at: workout.endedAt, fromWorkout: true },
+      ]);
+    });
+  });
+
+  describe('the watch’s HealthKit session', () => {
+    const at = (minute: number) => new Date(2026, 9, 18, 18, minute).toISOString();
+    const t = (kind: QuietTap['kind'], id: string, minute: number, extra: Partial<QuietTap> = {}): QuietTap =>
+      ({ kind, id, listId: null, at: at(minute), ...extra });
+    const plan = (taps: QuietTap[], workouts: QuietTapWorkouts | null) => planQuietTaps(taps, [], [], true, () => true, workouts);
+    const none = { live: null, sessionIds: new Set<string>() };
+
+    it('passes each on, for any session in the log or none: the store reads the row again and decides', () => {
+      expect(plan([
+        t('measuring', 'w1', 1, { sessionId: 'w1', on: true }),
+        t('healthWorkout', 'w1', 2, { sessionId: 'w1', healthWorkoutId: 'HK-W' }),
+        t('healthRetracted', 'HK-OLD', 3),
+        t('healthWorkout', 'gone', 4, { sessionId: 'gone', healthWorkoutId: null }),
+      ], none)).toEqual([
+        { type: 'watchMeasuring', sessionId: 'w1', on: true },
+        { type: 'watchHealthWorkout', sessionId: 'w1', workoutId: 'HK-W' },
+        { type: 'watchHealthRetracted', workoutId: 'HK-OLD' },
+        { type: 'watchHealthWorkout', sessionId: 'gone', workoutId: null },
+      ]);
+    });
+
+    it('puts a saved workout back after the Finish it overtook, so it lands on a finished session', () => {
+      const workouts: QuietTapWorkouts = { live: { id: 'w1', taskId: null, sets: [] }, sessionIds: new Set(['w1']) };
+      expect(plan([
+        t('healthWorkout', 'w1', 6, { sessionId: 'w1', healthWorkoutId: 'HK-W' }),
+        t('finish', 'w1', 5, { sessionId: 'w1' }),
+      ], workouts)).toEqual([
+        { type: 'finishWorkout', sessionId: 'w1', at: at(5) },
+        { type: 'watchHealthWorkout', sessionId: 'w1', workoutId: 'HK-W' },
       ]);
     });
   });
