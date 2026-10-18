@@ -111,8 +111,8 @@ import { addCookware, deleteCookware, listCookware, updateCookware } from './coo
 import { listCopyFlags, resolveCopyFlag } from './copyFlagTools';
 import { deleteMeterReading, listMeterReadings, logMeterReading } from './meterTools';
 import {
-  DEFAULT_EXERCISE_LIMIT, MAX_EXERCISE_LIMIT, deleteRoutine, deleteWorkout, listExercises, listWorkouts, logWorkout,
-  saveRoutine, updateWorkout,
+  DEFAULT_EXERCISE_LIMIT, MAX_EXERCISE_LIMIT, deleteProgram, deleteRoutine, deleteWorkout, exerciseHistory, listExercises,
+  listWorkouts, logWorkout, nextWorkout, saveProgram, saveRoutine, updateWorkout,
 } from './workoutTools';
 import { EXERCISE_EQUIPMENT, MUSCLE_GROUPS } from '../../src/utils/workoutData';
 import { deleteJournalEntry, listJournalEntries, logJournalEntry, searchJournalEntries, updateJournalEntry } from './journalTools';
@@ -588,6 +588,29 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     async input => json(await withFresh(() => listWorkouts(replica, input)))
   );
 
+  server.tool(
+    'exercise_history',
+    'One exercise\'s history: its personal records, the trend of its estimated 1RM, and the sets of the last session that did it. Take the id from list_exercises. The estimated 1RM is a calculation (Epley, from each session\'s best set of 10 reps or fewer), not a lift the person did: always call it estimated, and never present it as a number they lifted. Records are the heaviest weight, the best set at each rep count, and the most volume in a session; a first session sets no records, and warm-ups never count. Weights are kg, whatever unit the phone shows; a bodyweight exercise\'s volume is its reps and is never multiplied by a body weight. Never work anything out relative to body weight. Workout history is part of the health record: it is empty unless the person has turned on Include health logs for the sync server, so an empty history is not evidence that they did not train.',
+    { exerciseId: z.string().min(1).describe('From list_exercises.') },
+    async input => json(await withFresh(() => exerciseHistory(replica, input)))
+  );
+
+  server.tool(
+    'next_workout',
+    'The next workout and the load proposed for each exercise in it, in one call: a program\'s next routine (worked out from the workouts finished in it, so the week and the next routine are never set by hand), or a routine named directly. With neither, the one program in use. Each weight and reps exercise carries the proposal workout mode shows ("Up 2.5 kg because every set last time reached 8"), from its routine\'s progression or the program\'s scheme: rep range, linear (about 10% lighter after 3 short workouts in a row), percent of a training max (a wave by week), or RPE. weightKg is kilograms; headline and reason are the phone\'s words in its own unit. A proposal is a suggestion the person confirms on the phone: never write it into a routine or log it as done. A percentage program that has just finished a cycle carries trainingMaxRaises, a proposal too. Workout history arrives only with Include health logs on; without it, loads that move on from history are missing.',
+    {
+      programId: z.string().min(1).optional().describe('A program from list_workouts, for its next routine.'),
+      routineId: z.string().min(1).optional().describe('A routine from list_workouts, for its own exercises.'),
+    },
+    async input => {
+      try {
+        return json(await withFresh(() => nextWorkout(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not read the next workout.' });
+      }
+    }
+  );
+
   const routineSet = z.object({
     kind: z.enum(['warmup', 'working', 'drop', 'amrap']).optional().describe('Default working.'),
     repsMin: z.number().int().min(0).max(1000).nullable().optional(),
@@ -614,7 +637,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'save_routine',
-    'Create a workout routine (no id) or change one (id from list_workouts). A routine is a plan: a name and its exercises in order, each with its planned sets (kind, a rep range, an optional target weight in kg), its rest in seconds, whether it is a superset with the exercise before it, and the progression scheme the person chose. A progression is stored as their choice only; nothing proposes or applies a new load from it, so never say it will. Exercise ids come from list_exercises. exercises replaces the whole list when given; fields left out stay. To put a routine on the schedule, create or update a task with workoutRoutineId.',
+    'Create a workout routine (no id) or change one (id from list_workouts). A routine is a plan: a name and its exercises in order, each with its planned sets (kind, a rep range, an optional target weight in kg), its rest in seconds, whether it is a superset with the exercise before it, whether it warms up with a ramp, and the progression scheme the person chose. A progression is how workout mode proposes the next load (next_workout reads the proposal); it is a suggestion the person accepts on the phone and nothing applies it unasked. Exercise ids come from list_exercises. exercises replaces the whole list when given; fields left out stay. To put a routine on the schedule, create or update a task with workoutRoutineId.',
     {
       id: z.string().min(1).optional().describe('A routine id from list_workouts, to change it. Leave out to create one.'),
       name: z.string().min(1).max(80).optional().describe('Required to create one.'),
@@ -624,7 +647,8 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
         sets: z.array(routineSet).min(1).max(20),
         restSeconds: z.number().int().min(0).max(600).nullable().optional().describe('Rest after each set. Leave out for the person\'s default; 0 for none.'),
         supersetWithPrevious: z.boolean().optional().describe('Done with the exercise before it as a superset: set by set, back to back, resting after the last.'),
-        progression: z.enum(['double', 'linear', 'percent', 'rpe']).nullable().optional().describe('double: add weight once every set reaches the top of the range. linear: add weight after each completed workout. percent: sets from a training max. rpe: by how hard the top set felt.'),
+        progression: z.enum(['double', 'linear', 'percent', 'rpe']).nullable().optional().describe('double: add weight once every set reaches the top of the range. linear: add weight after each completed workout. percent: sets from a training max. rpe: by how hard the top set felt. Leave out to follow the program\'s scheme.'),
+        warmupRamp: z.boolean().optional().describe('Warm up with sets at about 40, 60 and 80% of the working weight, worked out when the workout starts, in place of warm-up sets of its own. Weight and reps exercises only.'),
       })).max(30).optional().describe('Replaces every exercise when given.'),
     },
     async input => {
@@ -645,6 +669,43 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
         return json(await withWrite(() => deleteRoutine(replica, id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not delete the routine.' });
+      }
+    }
+  );
+
+  server.tool(
+    'save_program',
+    'Create a workout program (no id) or change one (id from list_workouts). A program is routines done in turn (routineIds, in order; a routine may come round more than once), the scheme its exercises move on by when their routine does not choose one (double: rep range, linear, percent of a training max, rpe), how many passes through the rotation make a cycle (weeks; null for open-ended), and training maxes in kg for a percentage scheme. Make the routines first with save_routine. Fields left out stay; routineIds and trainingMaxes replace the whole list when given. Which week it is and which routine is next are worked out from finished workouts, never set. Never raise a training max the person did not agree to. When a cycle has ended and they agree to the raised maxes next_workout lists, send the new trainingMaxes with startNextCycle: true in one call, as the phone\'s "Start next cycle" does. To put it on the schedule, create or update a task with workoutProgramId.',
+    {
+      id: z.string().min(1).optional().describe('A program id from list_workouts, to change it. Leave out to create one.'),
+      name: z.string().min(1).max(80).optional().describe('Required to create one.'),
+      routineIds: z.array(z.string().min(1)).max(30).optional().describe('Routine ids from list_workouts, in the order they come round.'),
+      scheme: z.enum(['double', 'linear', 'percent', 'rpe']).optional().describe('Default double for a new program.'),
+      weeks: z.number().int().min(1).max(52).nullable().optional().describe('Passes through the rotation in a cycle. null for open-ended.'),
+      trainingMaxes: z.array(z.object({
+        exerciseId: z.string().min(1).describe('From list_exercises.'),
+        kg: z.number().positive().max(1000).describe('In kg, whatever unit the person said; convert pounds.'),
+      })).max(30).optional().describe('For a percentage scheme: the weight its sets are percentages of. Replaces them all when given.'),
+      startNextCycle: z.literal(true).optional().describe('Needs id. Counts the program\'s weeks again from now, which is what the phone\'s "Start next cycle" does after a cycle ends. Use it with the raised trainingMaxes once the person agrees; without it the cycle stays finished and the phone offers the raise again.'),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => saveProgram(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not save the program.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_program',
+    'Delete a workout program by its id from list_workouts. Its routines stay, as routines on their own, and workouts logged from it keep their history; tasks linked to it stop offering it. It cannot be restored from here.',
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => deleteProgram(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete the program.' });
       }
     }
   );
@@ -946,7 +1007,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'mood_insights',
-    "The Mood screen's findings: mood against what got done, by category, by repeating task, by symptom, by context tag, by food, by time of day, and before and after each milestone the person marked. Every comparison is held to the app's minimum number of days and reports both sides' day counts. They are associations, never causes; read the rules field and stay inside it when explaining. Empty unless health logs reach this server.",
+    "The Mood screen's findings: mood against what got done, by category, by repeating task, by symptom, by context tag, by food, on days they finished a workout (when Workouts is on and workout history reaches this server; otherwise absent), by time of day, and before and after each milestone the person marked. Every comparison is held to the app's minimum number of days and reports both sides' day counts. They are associations, never causes; read the rules field and stay inside it when explaining. Empty unless health logs reach this server.",
     {},
     async () => json(await withFresh(() => moodInsights(replica)))
   );
@@ -1392,7 +1453,9 @@ const taskFieldsShape = {
   vacationPause: z.boolean().optional()
     .describe('Hide this task, and keep its streak, while vacation mode is on (get_overview says whether it is).'),
   workoutRoutineId: z.string().nullable().optional()
-    .describe('A workout routine id (list_workouts lists routines; save_routine makes one). The task row then offers Start workout, and finishing that workout on the phone completes the task. Completing the task never logs a workout. null removes the link.'),
+    .describe('A workout routine id (list_workouts lists routines; save_routine makes one). The task row then offers Start workout, and finishing that workout on the phone completes the task. Completing the task never logs a workout. null removes the link. Setting it clears workoutProgramId.'),
+  workoutProgramId: z.string().nullable().optional()
+    .describe('A workout program id (list_workouts lists programs; save_program makes one), in place of a routine: the task row then starts the program\'s next routine, worked out from its finished workouts, and finishing it completes the task. null removes the link. Setting it clears workoutRoutineId.'),
   medication: z.object({
     name: z.string().describe('Use the spelling list_medication_logs already has.'),
     amount: z.number().nullable().optional(),

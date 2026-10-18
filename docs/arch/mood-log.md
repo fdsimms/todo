@@ -1050,6 +1050,19 @@ before any comparison is offered at all, `MIN_CONTRAST_DAYS` on each side of
 the split. **The milestone's own day counts as "after"**: it dates the day
 the thing started or stopped, not the day it took effect.
 
+**`trainingDayMoodContrast` is one `contrastsFor` row, with two rules of its own**
+(docs/arch/workouts.md). A training day is a workout the app itself logged and
+finished, never a Health workout: a day with no Health workout is ambiguous in
+the way every Health absence is, so it could not honestly be called a rest day.
+And a rest day is a day with a mood logged **on or after the first logged
+workout**. Before that the person wasn't using the workout log at all, so every
+one of those days would read as a rest day, and the contrast would say when
+they started the feature rather than anything about rest. The usual gates
+apply on top (`MIN_PAIRED_DAYS` counted from that first workout,
+`MIN_CONTRAST_DAYS` each side), a day with a workout but no mood is on neither
+side, and the caption says it doesn't show cause and effect, because people
+tend to train on days they already feel well.
+
 **The Mood screen's MILESTONES card is a directory, like SYMPTOMS, not a
 ranked top-four like the with/without cards above it.** Every milestone the
 user has logged gets its own row — either a `ContrastBars` "Before"/"After"

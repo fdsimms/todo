@@ -105,7 +105,11 @@ import { useRewardStore } from '../store/useRewardStore';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { catalogExercise } from '../utils/exerciseCatalog';
 import { linkFor } from '../constants/linkApps';
-import { buildMoodDays, contextTagMoodContrasts, describeNutrientInsight, lowMoodRun, foodMoodContrasts, foodPairedDays, symptomFoodContrasts, milestoneMoodContrast, moodCompletionInsight, nutrientInsight, symptomMoodContrasts, taskContrastTitles, taskMoodContrasts, MIN_PAIRED_DAYS } from '../utils/moodInsights';
+import { buildMoodDays, contextTagMoodContrasts, describeNutrientInsight, lowMoodRun, foodMoodContrasts, foodPairedDays, symptomFoodContrasts, milestoneMoodContrast, moodCompletionInsight, nutrientInsight, symptomMoodContrasts, taskContrastTitles, taskMoodContrasts, trainingDayMoodContrast, MIN_PAIRED_DAYS } from '../utils/moodInsights';
+import { analyzeExercise, recordSessions, trainingDays } from '../utils/workoutRecords';
+import { programProgress } from '../utils/workoutProgram';
+import { loadContextFor, proposeNext, schemeFor } from '../utils/workoutProgression';
+import { daysBetween } from '../utils/exerciseChart';
 import { contextTagVocabulary, symptomVocabulary } from '../utils/moodLog';
 import { MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogSourceId, moodNudgeNotes, wantsMoodNudge } from '../utils/moodTasks';
 import { followedWaterTaskDoneOn, WATER_SHORTFALL_NOTES, waterShortfallTitle } from '../utils/waterShortfallTasks';
@@ -2257,7 +2261,7 @@ describe('demo seed — people', () => {
     // Off by default, so without this the Workouts screen isn't even in the menu.
     expect(useSettingsStore.getState().workoutsEnabled).toBe(true);
     const { sessions, routines, programs, exercises, setCounts } = useWorkoutStore.getState();
-    expect(sessions.length).toBe(3);
+    expect(sessions.length).toBe(13);
     expect(sessions.every(s => s.endedAt !== null && s.routineId !== null)).toBe(true);
     expect(sessions.every(s => (setCounts[s.id] ?? 0) > 0)).toBe(true);
     const program = programs[0];
@@ -2274,18 +2278,80 @@ describe('demo seed — people', () => {
     expect(sets.some(s => s.kind === 'warmup')).toBe(true);
   });
 
-  it('seeds a repeating task linked to a routine, due today, so its row offers the workout', () => {
-    const { routines, sessions } = useWorkoutStore.getState();
-    const linked = useTaskStore.getState().tasks.find(t => !t.completed && !!t.workoutRoutineId);
-    expect(linked).toBeDefined();
-    expect(linked!.recurrenceType).toBe('weekly');
-    expect(routines.some(r => r.id === linked!.workoutRoutineId)).toBe(true);
-    expect(isTaskVisible(linked!)).toBe(true);
+  it('seeds weeks of bench history that climb, with the latest session setting a record', () => {
+    const { sessions, exercises } = useWorkoutStore.getState();
+    const dayResetTime = useSettingsStore.getState().dayResetTime;
+    const bench = 'lib:barbell-bench-press';
+    const kind = catalogExercise(exercises, bench)!.kind;
+    const analysis = analyzeExercise(bench, kind, useWorkoutStore.getState().exerciseHistory(bench), recordSessions(sessions, dayResetTime));
+    // A line to draw: seven sessions over six weeks, rising.
+    expect(analysis.points.length).toBe(7);
+    const first = analysis.points[0];
+    const last = analysis.points[analysis.points.length - 1];
+    expect(last.e1rm!).toBeGreaterThan(first.e1rm!);
+    expect(daysBetween(first.dayKey, last.dayKey)).toBeGreaterThanOrEqual(35);
+    // The latest session is a personal best, announced against the ones before it.
+    const latest = analysis.events.filter(e => e.sessionId === last.sessionId).map(e => e.type);
+    expect(latest).toContain('e1rm');
+    expect(latest).toContain('weight');
+    // And the flat week in the middle (the same load twice running) sets no record, which is what a tie is.
+    const flat = analysis.points[3];
+    expect(flat.e1rm).toBe(analysis.points[2].e1rm);
+    expect(analysis.events.some(e => e.type === 'e1rm' && e.sessionId === flat.sessionId)).toBe(false);
+  });
+
+  it('seeds enough logged days around the training days for mood on training days to show', () => {
+    const { sessions } = useWorkoutStore.getState();
+    const dayResetTime = useSettingsStore.getState().dayResetTime;
+    const days = buildMoodDays(useMoodStore.getState().logs, useTaskStore.getState().tasks, dayResetTime);
+    const contrast = trainingDayMoodContrast(days, trainingDays(sessions, dayResetTime));
+    expect(contrast).not.toBeNull();
+    expect(contrast!.withDays).toBeGreaterThanOrEqual(3);
+    expect(contrast!.withoutDays).toBeGreaterThanOrEqual(3);
+  });
+
+  it('seeds a repeating task linked to a program, due today, and one linked to a routine', () => {
+    const { routines, programs, sessions } = useWorkoutStore.getState();
+    const open = useTaskStore.getState().tasks.filter(t => !t.completed);
+    const lift = open.find(t => !!t.workoutProgramId);
+    expect(lift).toBeDefined();
+    expect(lift!.recurrenceType).toBe('weekly');
+    expect(lift!.workoutRoutineId ?? null).toBeNull();
+    expect(programs.some(p => p.id === lift!.workoutProgramId)).toBe(true);
+    expect(isTaskVisible(lift!)).toBe(true);
+    const legDay = open.find(t => !!t.workoutRoutineId);
+    expect(legDay).toBeDefined();
+    expect(legDay!.workoutProgramId ?? null).toBeNull();
+    expect(routines.some(r => r.id === legDay!.workoutRoutineId)).toBe(true);
     // Every logged workout is finished with only its done sets: a routine's
     // planned rows never outlive the session that laid them out.
     const sets = sessions.flatMap(s => useWorkoutStore.getState().loadSets(s.id));
     expect(sets.every(s => s.completedAt !== null)).toBe(true);
     expect(useWorkoutStore.getState().liveSession()).toBeNull();
+  });
+
+  it('seeds a program from the library whose next workout shows a suggestion today', () => {
+    const { routines, programs, sessions, exercises } = useWorkoutStore.getState();
+    const program = programs[0];
+    expect(program.name).toBe('Upper / Lower');
+    expect(program.rotation.map(id => routines.find(r => r.id === id)?.name)).toEqual(['Upper A', 'Lower A', 'Upper B', 'Lower B']);
+    // Where it is comes from its sessions: the last one was an upper day.
+    const progress = programProgress(program, sessions, routines);
+    expect(progress.sessionsDone).toBeGreaterThan(0);
+    const next = routines.find(r => r.id === progress.nextRoutineId)!;
+    expect(next.name).toBe('Lower A');
+    // Its first exercise warms up with a ramp, and has a suggestion to go up.
+    const item = next.items[0];
+    expect(item).toMatchObject({ exerciseId: 'lib:back-squat', warmupRamp: true });
+    const settings = useSettingsStore.getState();
+    const info = catalogExercise(exercises, item.exerciseId)!;
+    const proposal = proposeNext({
+      exerciseId: item.exerciseId, kind: info.kind, item, scheme: schemeFor(item, program),
+      history: useWorkoutStore.getState().exerciseHistory(item.exerciseId), sessions, exceptSessionId: null,
+      load: loadContextFor(info, settings.plateInventory, settings.workoutUnit, item),
+    });
+    expect(proposal).toMatchObject({ move: 'up', lastKg: 80 });
+    expect(proposal!.sets[0].weightKg).toBe(85);
   });
 
   it('seeds both halves of the medication log, so neither reads as missing', () => {

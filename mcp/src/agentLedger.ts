@@ -1430,6 +1430,23 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return routine;
     },
 
+    // A program is a plan like a routine, named by its own name.
+    saveProgram(input) {
+      const before = input.id ? replica.workoutPrograms().find(p => p.id === input.id) ?? null : null;
+      const program = replica.saveProgram(input);
+      const routines = `${program.rotation.length} ${program.rotation.length === 1 ? 'routine' : 'routines'}`;
+      log(before
+        ? { action: 'edited', subject: 'program', title: program.name, taskId: null, recordId: program.id, note: `Change the program "${before.name}"${before.name !== program.name ? ` to "${program.name}"` : ''} (${routines})` }
+        : { action: 'created', subject: 'program', title: program.name, taskId: null, recordId: program.id, note: `Add the program "${program.name}" (${routines})` });
+      return program;
+    },
+
+    deleteProgram(id) {
+      const program = replica.deleteProgram(id);
+      log({ action: 'cleared', subject: 'program', title: program.name, taskId: null, recordId: program.id, note: `Delete the program "${program.name}". Its routines stay, and workouts logged from it keep their history. It cannot be restored from here.` });
+      return program;
+    },
+
     logWorkout(input) {
       const result = replica.logWorkout(input);
       const n = result.sets.length;

@@ -41,9 +41,11 @@ import {
 } from '../utils/workoutData';
 import {
   MAX_ROUTINE_SETS, PROGRESSION_HINTS, PROGRESSION_LABELS, describeRoutineItem, itemShape, joinPrevious,
-  leaveSuperset, newRoutineItem, normalizeSupersets, supersetRoles, withProgression, withReps,
-  withTargetDuration, withTargetWeight, withWarmups, withWorkingSets, type SupersetRole,
+  leaveSuperset, newRoutineItem, normalizeSupersets, supersetRoles, warmupMode, withProgression, withReps,
+  withTargetDuration, withTargetWeight, withWarmupMode, withWarmups, withWorkingSets, type SupersetRole, type WarmupMode,
 } from '../utils/workoutRoutine';
+import { joinAnd, loadContextFor, rampSteps } from '../utils/workoutProgression';
+import { formatWeightNumber } from '../utils/workoutData';
 import { setFieldsFor } from '../utils/workoutSession';
 import type { WeightUnit } from '../utils/weightLog';
 import { BUTTON_LABEL } from '../copy/shared';
@@ -60,6 +62,12 @@ interface Row {
   id: string;
   item: WorkoutRoutineItem;
 }
+
+const WARMUP_OPTIONS: SegmentOption<WarmupMode>[] = [
+  { value: 'none', label: 'None' },
+  { value: 'ramp', label: 'Ramp' },
+  { value: 'sets', label: 'Sets' },
+];
 
 const PROGRESSION_OPTIONS: SegmentOption<ProgressionScheme | null>[] = (
   ['double', 'linear', 'percent', 'rpe'] as const
@@ -86,6 +94,7 @@ export function RoutineEditorSheet({ visible, routineId, onClose }: Props) {
   const exercises = useWorkoutStore(s => s.exercises);
   const unit = useSettingsStore(s => s.workoutUnit);
   const defaultRest = useSettingsStore(s => s.defaultRestSeconds);
+  const plateInventory = useSettingsStore(s => s.plateInventory);
   const routine = routineId ? routines.find(r => r.id === routineId) ?? null : null;
 
   // ==== staged state, loaded each time the sheet opens ====
@@ -118,6 +127,19 @@ export function RoutineEditorSheet({ visible, routineId, onClose }: Props) {
   const roles = useMemo(() => supersetRoles(rows.map(r => r.item)), [rows]);
   const kindOf = (exerciseId: string): ExerciseKind => catalogExercise(exercises, exerciseId)?.kind ?? 'weight_reps';
   const nameOf = (exerciseId: string) => catalogExercise(exercises, exerciseId)?.name ?? 'Unknown exercise';
+  /**
+   * "For 82.5 kg: 32.5, 50 and 65 kg.": the ramp an item's target weight
+   * would lay out, worked out the way workout mode will (`rampSteps`), so the
+   * hint shows real loads. Null with no target weight to ramp to.
+   */
+  const rampExample = (item: WorkoutRoutineItem): string | null => {
+    const info = catalogExercise(exercises, item.exerciseId);
+    const kg = itemShape(item).weightKg;
+    if (!info || kg === null) return null;
+    const steps = rampSteps(kg, loadContextFor(info, plateInventory, unit, item));
+    if (steps.length === 0) return null;
+    return `For ${formatWeightNumber(kg, unit)} ${unit}: ${joinAnd(steps.map(st => formatWeightNumber(st.kg, unit)))} ${unit}.`;
+  };
 
   // ==== editing the list ====
   const setItems = (next: Row[]) => setRows(next);
@@ -317,6 +339,7 @@ export function RoutineEditorSheet({ visible, routineId, onClose }: Props) {
                       unit={unit}
                       defaultRest={defaultRest}
                       canJoin={index > 0}
+                      rampExample={kind === 'weight_reps' ? rampExample(row.item) : null}
                       colors={colors}
                       styles={styles}
                       onChange={change => updateItem(row.id, change)}
@@ -368,6 +391,8 @@ interface ItemControlsProps {
   unit: WeightUnit;
   defaultRest: number;
   canJoin: boolean;
+  /** The ramp the target weight would lay out, for the Ramp hint. */
+  rampExample: string | null;
   colors: Colors;
   styles: ReturnType<typeof makeStyles>;
   onChange: (change: (item: WorkoutRoutineItem) => WorkoutRoutineItem) => void;
@@ -378,11 +403,12 @@ interface ItemControlsProps {
 
 /** One exercise's planned sets, unfolded under its row. */
 function ItemControls({
-  item, kind, role, unit, defaultRest, canJoin, colors, styles, onChange, onJoin, onLeave, onRemove,
+  item, kind, role, unit, defaultRest, canJoin, rampExample, colors, styles, onChange, onJoin, onLeave, onRemove,
 }: ItemControlsProps) {
   const shape = itemShape(item);
   const fields = setFieldsFor(kind);
   const scheme = item.progression?.scheme ?? null;
+  const warmup = warmupMode(item);
   const rests = role === 'none' || role === 'last';
   const shownWeight = shape.weightKg !== null ? weightToDisplay(shape.weightKg, unit) : null;
   return (
@@ -473,21 +499,37 @@ function ItemControls({
         />
         <HelpText style={styles.hint}>
           {scheme
-            ? `${PROGRESSION_HINTS[scheme]} Saved with the routine; the app doesn’t suggest weights from it yet.`
-            : 'How this exercise moves on from one workout to the next. Saved with the routine; the app doesn’t suggest weights from it yet.'}
+            ? PROGRESSION_HINTS[scheme]
+            : 'How this exercise moves on from one workout to the next. With none chosen here, the program’s choice applies. Workout mode shows its suggestion, and you choose whether to use it.'}
         </HelpText>
       </View>
 
       {fields.includes('weight') && (
-        <View style={styles.kv}>
-          <Text style={styles.cap}>Warm-up sets</Text>
-          <CountStepper
-            value={shape.warmups}
-            onChange={n => onChange(i => withWarmups(i, n ?? 0))}
-            min={0}
-            max={10}
-            label="Warm-up sets"
+        <View>
+          <Text style={[styles.cap, styles.capAbove]}>Warm-up</Text>
+          <SegmentedControl
+            options={kind === 'weight_reps' ? WARMUP_OPTIONS : WARMUP_OPTIONS.filter(o => o.value !== 'ramp')}
+            value={warmup}
+            onChange={m => onChange(i => withWarmupMode(i, m))}
+            label="Warm-up"
           />
+          {warmup === 'ramp' && (
+            <HelpText style={styles.hint}>
+              {`Sets at about 40, 60 and 80% of the working weight, rounded to your plates.${rampExample ? ` ${rampExample}` : ' With no target weight, the ramp is worked out from last time’s.'}`}
+            </HelpText>
+          )}
+          {warmup === 'sets' && (
+            <View style={[styles.kv, styles.below]}>
+              <Text style={styles.cap}>Warm-up sets</Text>
+              <CountStepper
+                value={shape.warmups}
+                onChange={n => onChange(i => (n === null || n === 0 ? withWarmupMode(i, 'none') : withWarmups(i, n)))}
+                min={0}
+                max={10}
+                label="Warm-up sets"
+              />
+            </View>
+          )}
         </View>
       )}
 
@@ -564,6 +606,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     textTransform: 'uppercase', letterSpacing: 0.8,
   },
   capAbove: { marginBottom: spacing.sm },
+  below: { marginTop: spacing.md },
   range: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   to: { color: colors.textSecondary, fontSize: font.sm },
   hint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xs },

@@ -10,6 +10,13 @@ import { useWorkoutStore, workoutContentCount } from '../store/useWorkoutStore';
 import { catalogExercise } from '../utils/exerciseCatalog';
 import { newTaskFromDraft } from '../utils/taskDraft';
 import type { Task, TaskDraft } from '../types';
+import {
+  buildImportPlan,
+  distinctExerciseNames,
+  parseWorkoutCsv,
+  workoutExportCsv,
+  type PlannedImportSession,
+} from '../utils/workoutCsv';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mockRawDb: any;
@@ -101,6 +108,19 @@ describe('custom exercises', () => {
     expect(state().updateExercise('nobody', { name: 'x' })).toBe('notFound');
   });
 
+  it('refuses to change what a set records once a set is logged, but not before', () => {
+    const e = ok(state().addExercise(fly));
+    // No sets yet: the kind can still change.
+    expect(ok(state().updateExercise(e.id, { kind: 'duration' })).kind).toBe('duration');
+    const s = ok(state().startSession());
+    ok(state().logSet(s.id, { exerciseId: e.id, durationSeconds: 45 }));
+    expect(state().updateExercise(e.id, { kind: 'weight_reps' })).toBe('hasHistory');
+    expect(state().exercises.find(x => x.id === e.id)?.kind).toBe('duration');
+    // Naming the kind it already has is not a change, and the rest stays editable.
+    expect(ok(state().updateExercise(e.id, { kind: 'duration', equipment: 'band', primaryMuscles: ['lats'], name: 'Standing fly' })))
+      .toMatchObject({ kind: 'duration', equipment: 'band', primaryMuscles: ['lats'], name: 'Standing fly' });
+  });
+
   it('archives a custom exercise rather than removing it, with or without sets here', () => {
     // Another device's sets never arrive over iCloud, so "no sets" on this
     // device is not evidence there are none: a removal would sync out and
@@ -185,6 +205,60 @@ describe('routines and programs', () => {
     expect(state().routines.find(x => x.id === r.id)?.programId).toBeNull();
   });
 
+  it('files a rotation\'s routines under the program, and frees the ones taken out of it', () => {
+    const a = ok(state().addRoutine('Upper'));
+    const b = ok(state().addRoutine('Lower'));
+    const other = ok(state().addProgram({ name: 'Other' }));
+    const c = ok(state().addRoutine('Elsewhere', [], other.id));
+    const p = ok(state().addProgram({ name: 'Upper and lower', rotation: [a.id, b.id, c.id] }));
+    const programOf = (id: string) => state().routines.find(r => r.id === id)?.programId;
+    expect([programOf(a.id), programOf(b.id), programOf(c.id)]).toEqual([p.id, p.id, other.id]);
+    ok(state().updateProgram(p.id, { rotation: [a.id] }));
+    reload();
+    expect([programOf(a.id), programOf(b.id), programOf(c.id)]).toEqual([p.id, null, other.id]);
+  });
+
+  it('adds a built-in program as routines and a program of the person\'s own', () => {
+    const added = ok(state().addLibraryProgram('push-pull-legs'));
+    reload();
+    const program = state().programs.find(x => x.id === added.program.id)!;
+    expect(program).toMatchObject({ name: 'Push / Pull / Legs', scheme: 'double', trainingMaxes: [], startedAt: null });
+    expect(program.rotation.map(id => state().routines.find(r => r.id === id)?.name)).toEqual(['Push', 'Pull', 'Legs']);
+    expect(state().routines.every(r => r.programId === program.id && r.items.length > 0)).toBe(true);
+    expect(state().routines.find(r => r.name === 'Legs')!.items[0]).toMatchObject({ exerciseId: 'lib:back-squat', warmupRamp: true });
+    expect(state().addLibraryProgram('nope')).toBe('notFound');
+  });
+
+  it('names a second copy of a library program apart rather than writing twins', () => {
+    const first = ok(state().addLibraryProgram('push-pull-legs'));
+    const second = ok(state().addLibraryProgram('push-pull-legs'));
+    const third = ok(state().addLibraryProgram('push-pull-legs'));
+    expect(first.program.name).toBe('Push / Pull / Legs');
+    expect(second.program.name).toBe('Push / Pull / Legs (2)');
+    expect(third.program.name).toBe('Push / Pull / Legs (3)');
+    expect(second.routines.map(r => r.name)).toEqual(['Push (2)', 'Pull (2)', 'Legs (2)']);
+    reload();
+    const names = state().routines.map(r => r.name);
+    expect(new Set(names.map(n => n.toLowerCase())).size).toBe(names.length);
+    // A name held with other spacing or case still counts as taken.
+    ok(state().updateRoutine(second.routines[0].id, { name: 'Chest day' }));
+    ok(state().updateRoutine(third.routines[0].id, { name: '  PUSH   (2) ' }));
+    expect(ok(state().addLibraryProgram('push-pull-legs')).routines[0].name).toBe('Push (3)');
+  });
+
+  it('refuses a warm-up ramp on an exercise that does not record weight and reps', () => {
+    const ramp = (exerciseId: string) => [{ exerciseId, supersetKey: null, restSeconds: null, progression: null, warmupRamp: true, targets: [{ kind: 'working' as const, repsMin: 8, repsMax: 8 }] }];
+    expect(state().addRoutine('Assisted', ramp('lib:assisted-pull-up'))).toBe('rampKind');
+    expect(state().addRoutine('Plank', ramp('lib:plank'))).toBe('rampKind');
+    expect(state().routines).toEqual([]);
+    const ok1 = ok(state().addRoutine('Squat', ramp('lib:back-squat')));
+    expect(ok1.items[0].warmupRamp).toBe(true);
+    expect(state().updateRoutine(ok1.id, { items: ramp('lib:assisted-pull-up') })).toBe('rampKind');
+    expect(state().routines[0].items[0].exerciseId).toBe('lib:back-squat');
+    // Without the ramp the same exercise is fine.
+    expect(ok(state().addRoutine('Pull-ups', [{ ...ramp('lib:assisted-pull-up')[0], warmupRamp: undefined }])).items).toHaveLength(1);
+  });
+
   it('edits a program, and refuses one nobody knows', () => {
     const p = ok(state().addProgram({ name: 'Wave' }));
     expect(ok(state().updateProgram(p.id, { weeks: 4, archived: true }))).toMatchObject({ weeks: 4, archived: true });
@@ -200,6 +274,30 @@ describe('a live session', () => {
     expect(s).toMatchObject({ title: 'Push A', endedAt: null, routineId: r.id });
     expect(state().liveSession()?.id).toBe(s.id);
     expect(state().startSession()).toBe('live');
+  });
+
+  it('lays out a ramp ahead of the work, from the working weight, on loadable plates', () => {
+    const r = ok(state().addRoutine('Squat day', [{
+      exerciseId: 'lib:back-squat', restSeconds: null, progression: null, warmupRamp: true,
+      targets: [{ kind: 'working', repsMin: 5, repsMax: 5, weightKg: 100 }],
+    }]));
+    const s = ok(state().startSession({ routineId: r.id }));
+    expect(state().loadSets(s.id).map(x => [x.kind, x.weightKg, x.reps, x.completedAt])).toEqual([
+      ['warmup', 40, 8, null], ['warmup', 60, 5, null], ['warmup', 80, 3, null], ['working', 100, 5, null],
+    ]);
+  });
+
+  it('lays out no ramp for an exercise whose kind changed away from weight and reps', () => {
+    // The kind can still change before any set is logged, and the routine's
+    // ramp was accepted while it was weight and reps.
+    const e = ok(state().addExercise({ name: 'Garage press variant', kind: 'weight_reps', equipment: 'barbell', primaryMuscles: ['front_delts'] }));
+    const r = ok(state().addRoutine('Press day', [{
+      exerciseId: e.id, restSeconds: null, progression: null, warmupRamp: true,
+      targets: [{ kind: 'working', repsMin: 8, repsMax: 8, weightKg: 30 }],
+    }]));
+    ok(state().updateExercise(e.id, { kind: 'assisted_reps' }));
+    const s = ok(state().startSession({ routineId: r.id }));
+    expect(state().loadSets(s.id).map(x => x.kind)).toEqual(['working']);
   });
 
   it('reloads with the live session\'s sets already loaded', () => {
@@ -378,6 +476,24 @@ describe('a session from a routine', () => {
     expect(state().addSessionExercise(s.id, 'nobody')).toBe('notFound');
   });
 
+  it('lays warm-ups out ahead of an exercise\'s sets, which move down to make room', () => {
+    const s = ok(state().startSession());
+    ok(state().logSet(s.id, { exerciseId: 'lib:back-squat', weightKg: 100, reps: 5, completedAt: null }));
+    ok(state().logSet(s.id, { exerciseId: 'lib:back-squat', weightKg: 100, reps: 5, completedAt: null }));
+    ok(state().logSet(s.id, { exerciseId: 'lib:leg-press', weightKg: 150, reps: 10, completedAt: null }));
+    const added = ok(state().addPlannedWarmups(s.id, 'lib:back-squat', [{ kg: 40, reps: 8 }, { kg: 60, reps: 5 }]));
+    expect(added.map(x => [x.kind, x.weightKg, x.completedAt])).toEqual([['warmup', 40, null], ['warmup', 60, null]]);
+    const rows = dbGetWorkoutSets(s.id);
+    expect(rows.map(x => [x.exerciseId, x.position, x.setIndex, x.kind, x.weightKg])).toEqual([
+      ['lib:back-squat', 0, 0, 'warmup', 40], ['lib:back-squat', 0, 1, 'warmup', 60],
+      ['lib:back-squat', 0, 2, 'working', 100], ['lib:back-squat', 0, 3, 'working', 100],
+      ['lib:leg-press', 1, 0, 'working', 150],
+    ]);
+    expect(state().setsBySession[s.id]).toHaveLength(5);
+    expect(state().addPlannedWarmups(s.id, 'lib:pec-deck', [{ kg: 10, reps: 8 }])).toBe('notFound');
+    expect(state().addPlannedWarmups('nope', 'lib:back-squat', [{ kg: 10, reps: 8 }])).toBe('notFound');
+  });
+
   it('adds a set like the exercise\'s last', () => {
     const s = ok(state().startSession());
     ok(state().logSet(s.id, { exerciseId: 'lib:back-squat', kind: 'warmup', weightKg: 60, reps: 5 }));
@@ -427,6 +543,102 @@ describe('a workout logged after the fact', () => {
   });
 });
 
+describe('importing sessions from a file', () => {
+  const at = (h: number) => new Date(2026, 8, 5, h).toISOString();
+  const planned = (id: string, h: number, extra: Partial<PlannedImportSession> = {}): PlannedImportSession => ({
+    id, title: 'Push', startedAt: at(h), startPrecisionMs: 1000, endedAt: at(h + 1), notes: ' felt good ',
+    sets: [
+      { exerciseRef: 'lib:back-squat', kind: 'working', weightKg: 100, reps: 5, durationSeconds: null, distanceM: null, rpe: null, note: null, supersetKey: null },
+      { exerciseRef: 'new:sled drag', kind: 'working', weightKg: 40, reps: 10, durationSeconds: null, distanceM: null, rpe: null, note: null, supersetKey: null },
+      { exerciseRef: 'new:sled drag', kind: 'drop', weightKg: 30, reps: 10, durationSeconds: null, distanceM: null, rpe: null, note: null, supersetKey: null },
+    ],
+    ...extra,
+  });
+  const creates = { 'sled drag': { name: 'Sled drag', kind: 'weight_reps' as const, equipment: 'other' as const, primaryMuscles: [] } };
+
+  it('writes the sessions, their sets and the custom exercise together, and reads back after a reload', () => {
+    const result = state().importSessions([planned('imp-a', 7), planned('imp-b', 9)], creates);
+    expect(result).toEqual({ sessions: 2, sets: 6, created: 1, duplicates: 0 });
+    const sled = state().exercises.find(e => e.name === 'Sled drag')!;
+    expect(sled.isCustom).toBe(true);
+    reload();
+    expect(state().sessions.map(x => x.id)).toEqual(['imp-b', 'imp-a']);
+    expect(state().sessions[1]).toMatchObject({ title: 'Push', notes: 'felt good', routineId: null, taskId: null, endedAt: at(8) });
+    const sets = dbGetWorkoutSets('imp-a');
+    expect(sets.map(x => [x.exerciseId === sled.id ? 'sled' : x.exerciseId, x.position, x.setIndex, x.kind])).toEqual([
+      ['lib:back-squat', 0, 0, 'working'], ['sled', 1, 0, 'working'], ['sled', 1, 1, 'drop'],
+    ]);
+    expect(sets.every(x => x.completedAt === at(8))).toBe(true);
+    expect(state().setCounts['imp-a']).toBe(3);
+  });
+
+  it('adds nothing the second time', () => {
+    state().importSessions([planned('imp-a', 7)], creates);
+    const again = state().importSessions([planned('imp-a', 7), planned('another-id', 7)], creates);
+    expect(again).toEqual({ sessions: 0, sets: 0, created: 0, duplicates: 2 });
+    expect(state().sessions).toHaveLength(1);
+    expect(state().exercises.filter(e => e.name === 'Sled drag')).toHaveLength(1);
+  });
+
+  it('skips a workout that started at the same time under another title', () => {
+    state().importSessions([planned('imp-a', 7)], creates);
+    const again = state().importSessions([planned('imp-c', 7, { title: 'Renamed since' })], creates);
+    expect(again).toMatchObject({ sessions: 0, duplicates: 1 });
+  });
+
+  it('does not double the app\'s own export when it is imported back into the same log', () => {
+    // A session keeps its milliseconds; the export writes whole seconds.
+    const started = new Date(2026, 8, 5, 7, 15, 20, 789);
+    const first = ok(state().addFinishedSession({
+      title: 'Leg day', startedAt: started.toISOString(), endedAt: new Date(started.getTime() + 3_600_000).toISOString(),
+      sets: [
+        { exerciseId: 'lib:back-squat', weightKg: 100, reps: 5 },
+        { exerciseId: 'lib:leg-press', weightKg: 180, reps: 10 },
+      ],
+    }));
+    const second = ok(state().addFinishedSession({
+      title: 'Push', startedAt: new Date(2026, 8, 7, 18, 0, 0, 5).toISOString(), endedAt: new Date(2026, 8, 7, 19, 0, 0, 5).toISOString(),
+      sets: [{ exerciseId: 'lib:barbell-bench-press', weightKg: 80, reps: 8 }],
+    }));
+    const csv = workoutExportCsv(
+      [first, second].map(({ session }) => ({ session, sets: state().loadSets(session.id) })),
+      state().exercises,
+      'kg',
+    );
+    const parsed = parseWorkoutCsv(csv);
+    if (!parsed.ok) throw new Error('export did not parse');
+    expect(parsed.sessions).toHaveLength(2);
+    const resolutions = Object.fromEntries(
+      distinctExerciseNames(parsed.sessions).map(n => [n.key, { kind: 'create' as const }]),
+    );
+    const plan = buildImportPlan(parsed.sessions, resolutions, state().sessions);
+    expect(plan.sessions).toHaveLength(0);
+    expect(plan.duplicates).toBe(2);
+    // And the store's own check, for a plan made before the log had them.
+    const fresh = buildImportPlan(parsed.sessions, resolutions, []);
+    const creates2 = Object.fromEntries(fresh.createKeys.map(k => [k, { name: k, kind: 'weight_reps' as const, equipment: 'other' as const, primaryMuscles: [] }]));
+    expect(state().importSessions(fresh.sessions, creates2)).toEqual({ sessions: 0, sets: 0, created: 0, duplicates: 2 });
+    expect(state().sessions).toHaveLength(2);
+  });
+
+  it('uses the exercise already holding a name rather than making a second', () => {
+    ok(state().addExercise({ name: 'sled DRAG', kind: 'weight_reps', equipment: 'other', primaryMuscles: [] }));
+    const result = state().importSessions([planned('imp-a', 7)], creates);
+    expect(result.created).toBe(0);
+    expect(state().exercises.filter(e => e.name.toLowerCase() === 'sled drag')).toHaveLength(1);
+  });
+
+  it('drops a set whose exercise cannot be resolved, and a session left with none', () => {
+    const bad = planned('imp-bad', 11, {
+      sets: [{ exerciseRef: 'nobody', kind: 'working', weightKg: 1, reps: 1, durationSeconds: null, distanceM: null, rpe: null, note: null, supersetKey: null }],
+    });
+    const result = state().importSessions([bad, planned('imp-a', 7)], {});
+    expect(result.sessions).toBe(1);
+    expect(dbGetWorkoutSets('imp-a')).toHaveLength(1);
+    expect(state().sessions.map(x => x.id)).toEqual(['imp-a']);
+  });
+});
+
 describe('history', () => {
   it('lists sessions newest first and loads a finished one\'s sets on demand', () => {
     const older = ok(state().startSession({ title: 'Older', at: new Date(2026, 9, 1, 18) }));
@@ -440,6 +652,18 @@ describe('history', () => {
     expect(state().setCounts[older.id]).toBe(1);
     expect(state().loadSets(older.id)).toHaveLength(1);
     expect(state().exerciseHistory('lib:back-squat')).toHaveLength(1);
+  });
+
+  it('reads every done set across sessions, leaving planned ones out', () => {
+    const a = ok(state().startSession({ at: new Date(2026, 9, 1, 18) }));
+    ok(state().logSet(a.id, { exerciseId: 'lib:back-squat', reps: 5, completedAt: new Date(2026, 9, 1, 18, 5).toISOString() }));
+    ok(state().finishSession(a.id));
+    const b = ok(state().startSession({ at: new Date(2026, 9, 3, 18) }));
+    ok(state().logSet(b.id, { exerciseId: 'lib:barbell-bench-press', reps: 8, completedAt: new Date(2026, 9, 3, 18, 5).toISOString() }));
+    ok(state().logSet(b.id, { exerciseId: 'lib:barbell-bench-press', reps: 8, completedAt: null }));
+    const all = state().allSets();
+    expect(all.map(x => x.exerciseId)).toEqual(['lib:back-squat', 'lib:barbell-bench-press']);
+    expect(all.every(x => x.completedAt !== null)).toBe(true);
   });
 
   it('deletes a finished session and its sets', () => {

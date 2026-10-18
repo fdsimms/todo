@@ -48,7 +48,7 @@ export const CONTENT_FIELDS: (keyof Task)[] = [
   // What "Start workout" opens, the way linkUrl is what the row's link opens: a
   // scope:'occurrence' change to one date's routine must not become the default
   // for every date after it.
-  'workoutRoutineId',
+  'workoutRoutineId', 'workoutProgramId',
   // The question, not the answer — `deliverableValue` is per-occurrence data
   // like progressCount and is deliberately absent, or a scope:'occurrence'
   // edit would capture one date's answer as the default for every date after.

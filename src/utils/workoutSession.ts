@@ -304,14 +304,17 @@ export interface PlannedSetValues {
  * on screen are ones the person has already lifted or planned. Reps come from
  * last time, else the top of the range. Nothing here is a progression: the
  * target is what the routine says and last time is what happened, and moving
- * on from either is phase 4's proposal, never applied unasked.
+ * on from either is `workoutProgression.ts`'s proposal, never applied unasked.
+ * An item that warms up with a ramp gets its warm-ups from `ramp`, worked out
+ * from the first working weight laid out.
  */
 export function plannedSetsFor(
-  item: { targets: readonly RoutineSetTarget[]; supersetKey?: string | null },
+  item: { targets: readonly RoutineSetTarget[]; supersetKey?: string | null; warmupRamp?: boolean },
   previous: readonly WorkoutSet[],
+  ramp?: (workingKg: number | null) => readonly { kg: number; reps: number }[],
 ): PlannedSetValues[] {
   const matched = matchPrevious(item.targets.map((t, i) => ({ id: String(i), kind: t.kind })), previous);
-  return item.targets.map((t, i) => {
+  const planned = item.targets.map((t, i): PlannedSetValues => {
     const last = matched.get(String(i)) ?? null;
     return {
       kind: t.kind,
@@ -322,6 +325,16 @@ export function plannedSetsFor(
       supersetKey: item.supersetKey ?? null,
     };
   });
+  // A ramp is worked out from the first working set's weight as laid out
+  // here, so it ramps to what is on screen; with no weight there is nothing
+  // to ramp to, and no warm-ups are laid out.
+  if (!item.warmupRamp || !ramp) return planned;
+  const workingKg = planned.find(p => p.kind !== 'warmup')?.weightKg ?? null;
+  const warmups = ramp(workingKg).map((step): PlannedSetValues => ({
+    kind: 'warmup', weightKg: step.kg, reps: step.reps, durationSeconds: null, distanceM: null,
+    supersetKey: item.supersetKey ?? null,
+  }));
+  return [...warmups, ...planned];
 }
 
 /**

@@ -141,6 +141,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/eventTasks.ts` — EVENT_RULE_TITLE_MAX_LENGTH, EVENT_MATCH_MAX_LENGTH, EVENT_MATCH_MIN_LENGTH, EVENT_RULE_MAX_MATCHES, EVENT_LEAD_DAYS_MAX, FOLLOW_UP_LOOKBACK_DAYS, FOLLOW_UP_AHEAD_DAYS, defaultEventRules, parseEventRules, ruleMatchesTitle, +22 more
 - `src/utils/eventTextParse.ts` — MAX_EVENT_TEXT_CHARS, ParsedEventText, parseEventText
 - `src/utils/exerciseCatalog.ts` — CatalogExercise, buildCatalog, activeExercises, catalogExercise, exerciseName, ExerciseFilters, ExerciseSearchResult, searchExercises, muscleFilterOptions, equipmentFilterOptions, +1 more
+- `src/utils/exerciseChart.ts` — ChartInput, ChartPoint, CHART_GAP_DAYS, daysBetween, chartPoints, chartSegments, recordIndexes, ChartDomain, chartDomain, domainFraction, +3 more
 - `src/utils/exerciseLibrary.ts` — LibraryExercise, LIBRARY_ID_PREFIX, EXERCISE_LIBRARY, libraryExercise, isLibraryId
 - `src/utils/expiredTaskGrace.ts` — ExpiredTaskGraceDays, EXPIRED_TASK_GRACE_OPTIONS, expiredTaskGraceLabel, parseExpiredTaskGrace, serializeExpiredTaskGrace
 - `src/utils/fabDrop.ts` — ScheduleInfo, DropZone, ZoneRect, FabDropIntent, zoneKey, ZONE_HIT_SLOP, TAIL_HIT_SLOP, zoneAtY, DEFAULT_DROP_SLOT, slotAtX, +13 more
@@ -262,7 +263,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/moodDayOffers.ts` — moodDayOffersFor
 - `src/utils/moodExport.ts` — MOOD_EXPORT_COLUMNS, csvCell, moodExportCsv, moodExportFileName, moodExportSummary
 - `src/utils/moodHistory.ts` — MoodFilter, EMPTY_MOOD_FILTER, isMoodFilterActive, hasWrittenNote, toggleFilterValue, filterMoodLogs, searchMoodLogs, textMatchesQuery, adjacentLogDays, MoodLogDay, +10 more
-- `src/utils/moodInsights.ts` — MIN_PAIRED_DAYS, MIN_CONTRAST_DAYS, MoodDay, taskIdentityKey, HealthDayInput, FoodDayInput, NUTRIENT_INSIGHT_KEYS, InsightNutrient, completionDayKey, buildMoodDays, +43 more
+- `src/utils/moodInsights.ts` — MIN_PAIRED_DAYS, MIN_CONTRAST_DAYS, MoodDay, taskIdentityKey, HealthDayInput, FoodDayInput, NUTRIENT_INSIGHT_KEYS, InsightNutrient, completionDayKey, buildMoodDays, +44 more
 - `src/utils/moodLog.ts` — MOOD_LEVELS, LOW_MOOD_AT_OR_BELOW, DEFAULT_CONTEXT_TAGS, SYMPTOM_SEVERITIES, moodLabel, moodEmoji, severityLabel, symptomKey, withSymptom, withoutSymptom, +14 more
 - `src/utils/moodPlaceNow.ts` — moodPlaceTagNow
 - `src/utils/moodPlaces.ts` — PLACE_MATCH_RADIUS_M, PLACE_MAX_FIX_ERROR_M, PlaceFix, distanceMeters, moodPlacesOf, placeTagName, placeAt, placeTagAt
@@ -318,6 +319,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/placeGate.ts` — PLACE_FIX_TTL_MS, PLACE_FIX_KEY, StoredPlaceFix, pinnedPlaces, placeIdAt, isPlaceLimited, placeGateAllows, placeTrustedUntil, readPlaceFix, writePlaceFix, +1 more
 - `src/utils/places.ts` — PlaceResult, parsePlaceResults, placeLocationText, placeSubtitle, placeRowTitle, PLACE_SUGGESTION_LIMIT, PLACE_QUERY_MIN_LENGTH
 - `src/utils/plannedDayNutrition.ts` — PlannedDayNutrition, plannedDayNutrition
+- `src/utils/plateMath.ts` — PlateSlot, PlateLoad, DEFAULT_PLATE_INVENTORY_LB, effectivePlateInventory, isPlateLoaded, barKgFor, plateLoad, platesOnSide, describePlateLoad, WarmupStep, +2 more
 - `src/utils/plu.ts` — normalizePlu, splitOrganicPlu, pluNameFor
 - `src/utils/postpone.ts` — PostponeOutcome, DEFAULT_POSTPONE_THRESHOLD, MIN_POSTPONE_THRESHOLD, MAX_POSTPONE_THRESHOLD, parsePostponeThreshold, postponeOutcome, nextPostponeCount, nextDriftingSince, DriftEntry, isDriftingTask, +3 more
 - `src/utils/priceHistory.ts` — PRICE_HISTORY_LIMIT, parsePriceHistory, appendPriceObservation, PRODUCT_RUN_MIN, priceRunForProduct, priceBaseline, PriceStanding, priceStanding, mergePriceHistories
@@ -551,8 +553,14 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/widgetQuietTaps.ts` — QuietTap, QuietTapAction, widgetTapNeedsApp, parseQuietTaps, planQuietTaps, tapsToRequeue
 - `src/utils/widgetSnapshot.ts` — SnapshotCaps, WIDGET_CAPS, WATCH_CAPS, WidgetTask, WidgetUpcomingTask, WidgetGroceryList, WidgetGroceryRow, WidgetGroceries, WidgetMeal, WidgetKitchenItem, +19 more
 - `src/utils/widgetSync.ts` — drainWatchQueues, writeWidgetSnapshotNow, useWidgetSync
-- `src/utils/workoutData.ts` — EXERCISE_KINDS, EXERCISE_EQUIPMENT, MUSCLE_GROUPS, WORKOUT_SET_KINDS, PROGRESSION_SCHEMES, EQUIPMENT_LABELS, MUSCLE_LABELS, WORKOUT_NAME_MAX_LENGTH, exerciseNameKey, cleanWorkoutName, +24 more
-- `src/utils/workoutRoutine.ts` — RoutineItemShape, itemShape, MAX_ROUTINE_SETS, defaultTargets, newRoutineItem, withWorkingSets, withWarmups, withReps, withTargetWeight, withTargetDuration, +12 more
+- `src/utils/workoutCsv.ts` — ImportSource, ImportedSet, ImportedSession, CsvParseResult, SkippedRows, describeSkipped, ParseOptions, parseCsv, readCsv, parseImportDate, +34 more
+- `src/utils/workoutData.ts` — EXERCISE_KINDS, EXERCISE_EQUIPMENT, MUSCLE_GROUPS, WORKOUT_SET_KINDS, PROGRESSION_SCHEMES, EQUIPMENT_LABELS, MUSCLE_LABELS, WORKOUT_NAME_MAX_LENGTH, exerciseNameKey, cleanWorkoutName, +25 more
+- `src/utils/workoutProgram.ts` — ProgramProgress, liveRotation, programSessions, programProgress, weekLabel, describeProgress
+- `src/utils/workoutProgramLibrary.ts` — LibraryProgramRoutine, LibraryProgram, PROGRAM_LIBRARY, libraryProgram, percentExercises
+- `src/utils/workoutProgression.ts` — LINEAR_DELOAD_AFTER, DELOAD_FRACTION, DEFAULT_TARGET_RPE, RPE_LOAD_PER_POINT, DEFAULT_WAVE_PERCENTS, WAVE_STEP_POINTS, WAVE_DELOAD_POINTS, TRAINING_MAX_FRACTION, defaultIncrementKg, incrementFor, +26 more
+- `src/utils/workoutRecordText.ts` — withThousands, recordLabel, formatVolume, formatRecordFigure, formatRecordValue, formatRecordChange, metricLabel, metricNote, metricCaption, formatBestPoint, +3 more
+- `src/utils/workoutRecords.ts` — E1RM_MAX_REPS, REP_RECORD_MAX, SECONDARY_MUSCLE_WEIGHT, NEW_RECORD_DAYS, RECENT_RECORD_DAYS, countsForRecords, estimatedOneRepMax, setVolume, VolumeUnit, volumeUnit, +30 more
+- `src/utils/workoutRoutine.ts` — RoutineItemShape, itemShape, MAX_ROUTINE_SETS, defaultTargets, newRoutineItem, withWorkingSets, withWarmups, WarmupMode, warmupMode, DEFAULT_WARMUP_SETS, +16 more
 - `src/utils/workoutSession.ts` — SessionExercise, sessionExercises, supersetGroup, roundRobin, walkOrder, nextSet, currentSetOf, AfterLog, afterLog, restSecondsFor, +18 more
 - `src/utils/workoutTask.ts` — WorkoutTaskEffect, workoutTaskEffect, linkedTaskLine
 
@@ -695,10 +703,11 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useWeatherWaitSync.ts` — useWeatherWaitSync
 - `src/hooks/useWeighIn.ts` — useWeighIn, WeighIn
 - `src/hooks/useWithoutLockedTasks.ts` — useWithoutLockedTasks
+- `src/hooks/useWorkoutStats.ts` — WORKOUT_STATS_WEEKS, WorkoutStatsRecord, WorkoutStats, useWorkoutStats
 
 ## `src/db`
 
-- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, ensureDatabaseReady, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, +289 more
+- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, ensureDatabaseReady, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, +290 more
 - `src/db/syncTracking.ts` — SyncTable, KEY_SEPARATOR, SYNC_TRACKED_TABLES, SYNC_DEVICE_LOCAL_COLUMNS, isDeviceLocalColumn, withoutDeviceLocalColumns, SYNC_EXCLUDED_TABLES, SYNCED_SETTING_KEYS, isSyncedSettingKey, HEALTH_SYNC_TABLES, +16 more
 
 ## `src/services`

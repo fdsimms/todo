@@ -1,15 +1,17 @@
 // Workout mode: the live session, one exercise at a time, with the rest in
-// the footer, then a summary to save it from. One component of ~900 lines, so
+// the footer, then a summary to save it from. One component of ~1,000 lines, so
 // grep a landmark rather than reading it start to finish:
 //
 //   ==== <name> ====        the section banners through the logic half
+//   SuggestionCard          the progression's proposal on the exercise's card
 //   SessionClock            the header's running time, its own tick
 //   RestFooter              the rest countdown and its three buttons
 //   ScreenAwake             the keep-awake helper
 //   makeStyles              styles, at the bottom
 //
 // The rules (what's next, what a tick does, what finishing writes) live in
-// src/utils/workoutSession.ts; the design in docs/arch/workouts.md, the mocks
+// src/utils/workoutSession.ts, the suggested next load in
+// src/utils/workoutProgression.ts; the design in docs/arch/workouts.md, the mocks
 // in docs/arch/workouts-mocks/workout-mode.png.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Keyboard, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -25,6 +27,8 @@ import { ProgressBar } from './ProgressBar';
 import { EmptyNote } from './EmptyNote';
 import { TextField } from './TextField';
 import { ExercisePickerSheet } from './ExercisePickerSheet';
+import { ExerciseDetailSheet } from './ExerciseDetailSheet';
+import { PlateLine } from './PlateLine';
 import type { ExerciseKind, WorkoutSet } from '../types';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -41,6 +45,14 @@ import { formatStopwatch } from '../utils/effort';
 import { linkedTaskLine, workoutTaskEffect } from '../utils/workoutTask';
 import { displayTitleFor } from '../utils/visibilityUtils';
 import { catalogExercise } from '../utils/exerciseCatalog';
+import { barKgFor, effectivePlateInventory, isPlateLoaded, plateLoad } from '../utils/plateMath';
+import { analyzeExercise, recordSessions, recordsInSession, summarizeRecords } from '../utils/workoutRecords';
+import { formatRecordChange, recordLabel } from '../utils/workoutRecordText';
+import {
+  loadContextFor, proposalActionLabel, proposalApplied, proposalEdits, proposalHeadline, proposeNext, rampSteps, rampWarmupsToAdd,
+  schemeFor, workingSetLogged, type Proposal,
+} from '../utils/workoutProgression';
+import { programProgress } from '../utils/workoutProgram';
 import {
   MUSCLE_LABELS, WEIGHT_PLACES, WEIGHT_STEP, formatRestSeconds, formatWeightNumber, weightFromDisplay, weightToDisplay,
 } from '../utils/workoutData';
@@ -94,10 +106,13 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const session = useWorkoutStore(s => s.sessions.find(x => x.endedAt === null) ?? null);
   const cachedSets = useWorkoutStore(s => (session ? s.setsBySession[session.id] : undefined));
   const routines = useWorkoutStore(s => s.routines);
+  const programs = useWorkoutStore(s => s.programs);
   const exerciseRows = useWorkoutStore(s => s.exercises);
   const sessionsList = useWorkoutStore(s => s.sessions);
   const unit = useSettingsStore(s => s.workoutUnit);
   const defaultRest = useSettingsStore(s => s.defaultRestSeconds);
+  const plateInventory = useSettingsStore(s => s.plateInventory);
+  const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const linkedTask = useTaskStore(s => (session?.taskId ? s.tasks.find(t => t.id === session.taskId) ?? null : null));
   const sets = useMemo(() => cachedSets ?? [], [cachedSets]);
   const routine = session?.routineId ? routines.find(r => r.id === session.routineId) ?? null : null;
@@ -121,6 +136,9 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const [effort, setEffort] = useState<number | null>(null);
   const [sessionNotes, setSessionNotes] = useState('');
   const [picking, setPicking] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
+  // The exercise the detail sheet is on, kept through its close so it doesn't retitle while it slides away.
+  const [detailId, setDetailId] = useState<string | null>(null);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
   useEffect(() => {
@@ -132,6 +150,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     setEffort(session?.effort ?? null);
     setSessionNotes(session?.notes ?? '');
     setPicking(false);
+    setDetailOpen(false);
     // On open only: a tick re-derives the view through its own handler.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, session?.id]);
@@ -144,6 +163,15 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const current = viewed ? currentSetOf(viewed) : null;
   const openSet = viewed?.sets.find(s => s.id === (openSetId ?? current?.id)) ?? null;
 
+  // The plates for the open set's weight, for a barbell, EZ bar or trap bar: a
+  // dumbbell or a machine has nothing to load. A pound lifter who never set an
+  // inventory gets the pound default (`effectivePlateInventory`).
+  const plate = useMemo(() => {
+    if (!openSet || !viewedInfo || !isPlateLoaded(viewedInfo.equipment) || kind !== 'weight_reps' || !openSet.weightKg) return null;
+    const inventory = effectivePlateInventory(plateInventory, unit);
+    return plateLoad(openSet.weightKg, barKgFor(viewedInfo.barKg, inventory, viewedInfo.equipment, unit), inventory, unit);
+  }, [openSet, viewedInfo, kind, plateInventory, unit]);
+
   // Last time, for the shown exercise: one read per exercise shown, not per row.
   const previous = useMemo(
     () => (viewed && session ? useWorkoutStore.getState().lastTimeFor(viewed.exerciseId, session.id) : []),
@@ -152,6 +180,56 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     [viewed?.exerciseId, session?.id, sessionsList],
   );
   const previousBySet = useMemo(() => matchPrevious(viewed?.sets ?? [], previous), [viewed, previous]);
+
+  // ==== the suggestion: the next load, proposed and never applied unasked ====
+  // The routine item the shown exercise was laid out from, and the program the
+  // workout belongs to: between them they say which scheme moves it on.
+  const program = session?.programId ? programs.find(p => p.id === session.programId) ?? null : null;
+  const routineItem = viewed ? routine?.items.find(i => i.exerciseId === viewed.exerciseId) ?? null : null;
+  const loadCtx = useMemo(
+    () => (viewedInfo ? loadContextFor(viewedInfo, plateInventory, unit, routineItem) : null),
+    [viewedInfo, plateInventory, unit, routineItem],
+  );
+  const proposal = useMemo<Proposal | null>(() => {
+    if (!viewed || !session || !viewedInfo || !loadCtx) return null;
+    const scheme = schemeFor(routineItem, program);
+    if (!scheme) return null;
+    // The week the program is in: this workout isn't finished, so it isn't
+    // counted, and the finished ones say where it stands.
+    const progress = program ? programProgress(program, sessionsList, routines) : null;
+    return proposeNext({
+      exerciseId: viewed.exerciseId,
+      kind: viewedInfo.kind,
+      item: routineItem,
+      scheme,
+      history: useWorkoutStore.getState().exerciseHistory(viewed.exerciseId),
+      sessions: sessionsList,
+      exceptSessionId: session.id,
+      load: loadCtx,
+      trainingMaxKg: program?.trainingMaxes.find(t => t.exerciseId === viewed.exerciseId)?.kg ?? null,
+      week: progress ? { week: progress.week, weeks: progress.weeks } : null,
+    });
+    // Keyed on the exercise and what decides its history, not on its sets: a
+    // set edited this session doesn't change what was lifted before.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewed?.exerciseId, session?.id, viewedInfo, loadCtx, routineItem, program, sessionsList, routines]);
+
+  /**
+   * "Use 82.5 kg": the proposal written onto the planned working sets, and a
+   * ramp's planned warm-ups worked out again from the new weight. Each is an
+   * ordinary edit, as if typed, and every one stays editable.
+   */
+  const applyProposal = () => {
+    if (!session || !viewed || !proposal || !loadCtx) return;
+    const top = proposal.sets[0]?.weightKg ?? null;
+    const ramp = routineItem?.warmupRamp && viewedInfo?.kind === 'weight_reps' && top !== null ? rampSteps(top, loadCtx) : null;
+    haptics.success();
+    for (const e of proposalEdits(viewed.sets, proposal, ramp)) edit(e.setId, { weightKg: e.weightKg, reps: e.reps });
+    // A ramp with no weight to start from (a percentage program's first
+    // session) laid out no warm-ups; the proposal names one now, so add them.
+    const missing = rampWarmupsToAdd(viewed.sets, ramp);
+    if (missing.length > 0) useWorkoutStore.getState().addPlannedWarmups(session.id, viewed.exerciseId, missing);
+  };
   const upNext = exercises[viewIndex + 1] ?? null;
   const upNextInfo = upNext ? catalogExercise(exerciseRows, upNext.exerciseId) : null;
 
@@ -298,6 +376,23 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     [finishing, session, sets],
   );
 
+  // What this workout beat, against everything before it. Read from each
+  // exercise's own history (the live session's sets are in the database as
+  // they are edited), and only while the summary is up.
+  const sessionRecords = useMemo(() => {
+    if (!finishing || !session) return [];
+    const recSessions = recordSessions(sessionsList, dayResetTime);
+    const analyses = exercises.map(e => analyzeExercise(
+      e.exerciseId,
+      catalogExercise(exerciseRows, e.exerciseId)?.kind ?? 'weight_reps',
+      useWorkoutStore.getState().exerciseHistory(e.exerciseId),
+      recSessions,
+    ));
+    return summarizeRecords(recordsInSession(analyses, session.id));
+    // `sets`: an edit made before finishing changes what the records are.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [finishing, session, sets, exercises, exerciseRows, sessionsList, dayResetTime]);
+
   const save = () => {
     if (!session) return;
     const finished = useWorkoutStore.getState().finishSession(session.id, {
@@ -360,6 +455,42 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
             </View>
             {summary.exercises.length > 0 && (
               <>
+                {sessionRecords.length > 0 && (
+                  <>
+                    <Text style={styles.groupLabel}>Personal records</Text>
+                    <View style={styles.card}>
+                      {sessionRecords.map((r, i) => {
+                        const info = catalogExercise(exerciseRows, r.exerciseId);
+                        const recordKind = info?.kind ?? 'weight_reps';
+                        return (
+                          <View
+                            key={r.exerciseId}
+                            style={[styles.summaryRow, i > 0 && styles.rowSep]}
+                            accessible
+                            accessibilityLabel={`${info?.name ?? 'Unknown exercise'}. ${r.records.map(e => {
+                              const change = formatRecordChange(e, recordKind, unit);
+                              return `${recordLabel(e.type, recordKind, e.reps)}, up from ${change.before} to ${change.after}`;
+                            }).join('. ')}`}
+                          >
+                            <Text style={styles.summaryName}>{info?.name ?? 'Unknown exercise'}</Text>
+                            {r.records.map(e => {
+                              const change = formatRecordChange(e, recordKind, unit);
+                              return (
+                                <View key={`${e.type}-${e.reps ?? 0}`} style={styles.recordLine}>
+                                  <Text style={styles.recordLabel}>{recordLabel(e.type, recordKind, e.reps)}</Text>
+                                  <Text style={styles.recordValue}>
+                                    <Text style={styles.recordBefore}>{`${change.before} → `}</Text>
+                                    {change.after}
+                                  </Text>
+                                </View>
+                              );
+                            })}
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </>
+                )}
                 <Text style={styles.groupLabel}>Exercises</Text>
                 <View style={styles.card}>
                   {summary.exercises.map((e, i) => {
@@ -463,11 +594,32 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
             {viewed ? (
               <View style={styles.card}>
                 <View style={styles.exHead}>
-                  <Text style={styles.exName}>{viewedInfo?.name ?? 'Unknown exercise'}</Text>
+                  <TouchableOpacity
+                    style={styles.exNameRow}
+                    onPress={() => { haptics.tap(); setDetailId(viewed.exerciseId); setDetailOpen(true); }}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${viewedInfo?.name ?? 'Unknown exercise'}, open its history and records`}
+                  >
+                    <Text style={styles.exName}>{viewedInfo?.name ?? 'Unknown exercise'}</Text>
+                    <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
+                  </TouchableOpacity>
                   {!!viewedInfo && viewedInfo.primaryMuscles.length > 0 && (
                     <Text style={styles.exMuscles}>
                       {viewedInfo.primaryMuscles.map(m => MUSCLE_LABELS[m]).join(', ')}
                     </Text>
+                  )}
+                  {proposal && (
+                    <SuggestionCard
+                      proposal={proposal}
+                      unit={unit}
+                      // Offered until a working set is logged or the plan
+                      // already asks for it; after that it is shown plainly,
+                      // as the target being worked to.
+                      offer={!workingSetLogged(viewed.sets) && !proposalApplied(viewed.sets, proposal, unit)}
+                      onUse={applyProposal}
+                      styles={styles}
+                    />
                   )}
                 </View>
 
@@ -528,6 +680,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                               <FieldStepper set={set} field={f} unit={unit} onEdit={patch => edit(set.id, patch)} stepperStyle={styles.editStepper} />
                             </View>
                           ))}
+                          {!!plate && <PlateLine load={plate} unit={unit} />}
                           <View style={styles.editActions}>
                             {!!valuesFromLastDone(viewed.sets, set.id) && (
                               <InlineAction label="Same as last set" variant="neutral" surface="tray" onPress={() => sameAsLast(set)} />
@@ -634,6 +787,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
         addedIds={exercises.map(e => e.exerciseId)}
         addedLabel="In workout"
       />
+      <ExerciseDetailSheet visible={visible && detailOpen} exerciseId={detailId} onClose={() => setDetailOpen(false)} />
     </SheetModal>
   );
 }
@@ -741,6 +895,39 @@ function FieldStepper({ set, field, unit, onEdit, stepperStyle }: {
       label="Distance in meters"
       style={stepperStyle}
     />
+  );
+}
+
+/**
+ * The proposal for the shown exercise, as the mock draws it: "Today 3 × 6–8 at
+ * 82.5 kg." in bold, then the reason, and a "Use 82.5 kg" button while it is
+ * on offer. A proposal with nothing to propose yet (a percentage set with no
+ * training max) shows only what is missing.
+ */
+function SuggestionCard({ proposal, unit, offer, onUse, styles }: {
+  proposal: Proposal;
+  unit: WeightUnit;
+  offer: boolean;
+  onUse: () => void;
+  styles: ReturnType<typeof makeStyles>;
+}) {
+  const headline = proposalHeadline(proposal, unit);
+  return (
+    <View style={styles.suggest}>
+      <Text style={styles.suggestText}>
+        {headline && <Text style={styles.suggestHead}>{`${headline} `}</Text>}
+        {proposal.reason}
+      </Text>
+      {offer && headline && (
+        <View style={styles.suggestActions}>
+          <InlineAction
+            label={proposalActionLabel(proposal, unit)}
+            onPress={onUse}
+            accessibilityLabel={`${proposalActionLabel(proposal, unit)} on the sets not done yet`}
+          />
+        </View>
+      )}
+    </View>
   );
 }
 
@@ -855,8 +1042,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   dotOn: { width: 18, backgroundColor: colors.accent },
   card: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden' },
   exHead: { paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.xs },
-  exName: { color: colors.text, fontSize: font.xl, fontWeight: fontWeight.bold },
+  exNameRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  exName: { flexShrink: 1, color: colors.text, fontSize: font.xl, fontWeight: fontWeight.bold },
   exMuscles: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xs },
+  suggest: { backgroundColor: colors.bgTertiary, borderRadius: radius.md, padding: spacing.smd, marginTop: spacing.smd, gap: spacing.sm },
+  suggestText: { color: colors.text, fontSize: font.sm },
+  suggestHead: { fontWeight: fontWeight.semibold },
+  suggestActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   setHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, paddingTop: spacing.smd, paddingBottom: spacing.xsm },
   headCell: {
     color: colors.textSecondary, fontSize: font.xxs, fontWeight: fontWeight.semibold, letterSpacing: 0.8, textTransform: 'uppercase',
@@ -924,6 +1116,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   summaryRow: { paddingHorizontal: spacing.md, paddingVertical: spacing.smd },
   rowSep: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator },
   summaryName: { color: colors.text, fontSize: font.md },
+  recordLine: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: spacing.smd, marginTop: spacing.xs },
+  recordLabel: { flex: 1, color: colors.textSecondary, fontSize: font.sm },
+  recordValue: { flexShrink: 0, color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold, fontVariant: ['tabular-nums'], textAlign: 'right' },
+  recordBefore: { color: colors.textSecondary, fontWeight: fontWeight.regular },
   summaryMeta: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs },
   kv: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   kvLabel: { color: colors.text, fontSize: font.md },
