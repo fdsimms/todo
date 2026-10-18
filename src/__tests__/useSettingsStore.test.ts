@@ -576,6 +576,14 @@ describe('resetToDefaults', () => {
     expect(dbSetSetting).toHaveBeenCalledWith('dayResetTime', '00:00');
   });
 
+  it('writes an object default as JSON, never as "[object Object]"', () => {
+    useSettingsStore.getState().resetToDefaults();
+    const written = (dbSetSetting as jest.Mock).mock.calls.filter(([key]) => key === 'moodContextSources');
+    expect(written).toHaveLength(1);
+    expect(written[0][1]).not.toContain('[object');
+    expect(JSON.parse(written[0][1])).toEqual(useSettingsStore.getState().moodContextSources);
+  });
+
   it('resets the font to system and randomize off, but keeps the chosen pool', () => {
     useSettingsStore.getState().setAppFont('nunito');
     useSettingsStore.getState().setAppFontRandomize(true);

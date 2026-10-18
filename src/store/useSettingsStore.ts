@@ -5997,8 +5997,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // Today a section header to match. '' is the stored form of "no category"
     // everywhere else in this file, and this is what keeps that true for any
     // future null default too.
+    // An object default (moodContextSources) goes through JSON for the same
+    // reason: String() of one is the text "[object Object]", which its parser
+    // only happens to read as the default because the default is all-off.
     Object.entries(DEFAULT_SETTINGS).forEach(([key, value]) => {
-      dbSetSetting(key, value === null ? '' : String(value));
+      dbSetSetting(key, value === null ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value));
     });
     // Back to following the week start, rather than a pick of Sunday that the
     // loop above would otherwise have written for it (see pickedNudgeWeekday).
