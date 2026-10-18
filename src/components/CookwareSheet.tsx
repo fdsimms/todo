@@ -12,7 +12,7 @@ import { EmptyNote } from './EmptyNote';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, type Colors } from '../theme';
-import { parseWeightText, clampCookwareWeight } from '../utils/cookware';
+import { parseWeightText, clampCookwareWeight, groupCookwareByType } from '../utils/cookware';
 import { haptics } from '../utils/haptics';
 import { BUTTON_LABEL } from '../copy/shared';
 
@@ -25,7 +25,7 @@ interface Props {
 
 /**
  * The pots, pans, lids and tubs a dish can be weighed in, and what each weighs
- * empty. Reached from the weight field wherever one is typed, and from
+ * empty, listed under their type (`groupCookwareByType`). Reached from the weight field wherever one is typed, and from
  * Settings.
  *
  * Every row commits as it is edited (a name on leaving its field, a weight the
@@ -39,6 +39,8 @@ export function CookwareSheet({ visible, onClose }: Props) {
   const addCookware = useCookwareStore(s => s.addCookware);
   const updateCookware = useCookwareStore(s => s.updateCookware);
   const removeCookware = useCookwareStore(s => s.removeCookware);
+
+  const groups = useMemo(() => groupCookwareByType(cookware), [cookware]);
 
   const [newName, setNewName] = useState('');
   const [newWeight, setNewWeight] = useState('');
@@ -114,46 +116,53 @@ export function CookwareSheet({ visible, onClose }: Props) {
         <InlineAction label="Add" icon="add" onPress={handleAdd} style={styles.add} />
       </View>
 
-      <Text style={styles.groupLabel}>Your cookware</Text>
       {cookware.length === 0 ? (
-        <EmptyNote icon="restaurant-outline">
-          Nothing saved yet. Add a pot or plate above and it will show up next to the weight field.
-        </EmptyNote>
+        <>
+          <Text style={styles.groupLabel}>Your cookware</Text>
+          <EmptyNote icon="restaurant-outline">
+            Nothing saved yet. Add a pot or plate above and it will show up next to the weight field.
+          </EmptyNote>
+        </>
       ) : (
-        <View style={styles.card}>
-          {cookware.map((c, i) => (
-            <View key={`${c.id}:${c.name}:${c.weightG}`} style={[styles.row, i > 0 && styles.rowDivider]}>
-              <TextField
-                style={styles.rowName}
-                defaultValue={c.name}
-                onEndEditing={e => updateCookware(c.id, { name: e.nativeEvent.text })}
-                maxLength={NAME_MAX_LENGTH}
-                accessibilityLabel={`Name of ${c.name}`}
-              />
-              <TextField
-                style={styles.rowWeight}
-                defaultValue={String(c.weightG)}
-                keyboardType="decimal-pad"
-                inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
-                onEndEditing={e => {
-                  const grams = parseWeightText(e.nativeEvent.text);
-                  if (grams !== null) updateCookware(c.id, { weightG: grams });
-                }}
-                maxLength={6}
-                accessibilityLabel={`Empty weight of ${c.name} in grams`}
-              />
-              <Text style={styles.unit}>g</Text>
-              <TouchableOpacity
-                onPress={() => confirmDelete(c.id, c.name)}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={`Delete ${c.name}`}
-              >
-                <Ionicons name="trash-outline" size={20} color={colors.red} />
-              </TouchableOpacity>
+        groups.map(group => (
+          <React.Fragment key={group.type}>
+            <Text style={styles.groupLabel}>{group.type}</Text>
+            <View style={styles.card}>
+              {group.items.map((c, i) => (
+                <View key={`${c.id}:${c.name}:${c.weightG}`} style={[styles.row, i > 0 && styles.rowDivider]}>
+                  <TextField
+                    style={styles.rowName}
+                    defaultValue={c.name}
+                    onEndEditing={e => updateCookware(c.id, { name: e.nativeEvent.text })}
+                    maxLength={NAME_MAX_LENGTH}
+                    accessibilityLabel={`Name of ${c.name}`}
+                  />
+                  <TextField
+                    style={styles.rowWeight}
+                    defaultValue={String(c.weightG)}
+                    keyboardType="decimal-pad"
+                    inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
+                    onEndEditing={e => {
+                      const grams = parseWeightText(e.nativeEvent.text);
+                      if (grams !== null) updateCookware(c.id, { weightG: grams });
+                    }}
+                    maxLength={6}
+                    accessibilityLabel={`Empty weight of ${c.name} in grams`}
+                  />
+                  <Text style={styles.unit}>g</Text>
+                  <TouchableOpacity
+                    onPress={() => confirmDelete(c.id, c.name)}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Delete ${c.name}`}
+                  >
+                    <Ionicons name="trash-outline" size={20} color={colors.red} />
+                  </TouchableOpacity>
+                </View>
+              ))}
             </View>
-          ))}
-        </View>
+          </React.Fragment>
+        ))
       )}
     </EditorSheet>
   );

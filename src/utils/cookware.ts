@@ -63,3 +63,43 @@ export function netWeight(
   }
   return { ok: true, grams: Math.round(net) };
 }
+
+/** The kinds cookware is shown under, in the order the sheet lists them. */
+export const COOKWARE_TYPES = ['Pots', 'Pans', 'Baking', 'Bowls', 'Plates', 'Glasses', 'Other'] as const;
+export type CookwareType = (typeof COOKWARE_TYPES)[number];
+
+// Order matters: the first match wins, so "sheet pan" is Baking before "pan"
+// is Pans, "saucier" is a pot before "pan" could claim it, and "glass tub" is
+// a container (Other) rather than a glass.
+const TYPE_RULES: readonly [CookwareType, RegExp][] = [
+  ['Other', /\b(tub|container|jar|lid only)\b/i],
+  ['Baking', /\b(sheet pan|baking|cookie sheet|loaf|muffin|casserole)\b/i],
+  ['Pots', /\b(pot|crock|crockpot|oven|saucier|saucepan|stockpot|kettle|lid)\b/i],
+  ['Pans', /\b(pan|skillet|wok|griddle)\b/i],
+  ['Glasses', /\b(glass|glasses|mug|cup|tumbler)\b/i],
+  ['Bowls', /\b(bowl|ramekin|dish)\b/i],
+  ['Plates', /\b(plate|platter|saucer)\b/i],
+];
+
+/**
+ * Which kind a piece of cookware is, read from its name. Derived rather than
+ * stored, so every piece already saved sorts correctly and nothing needs a
+ * migration or a sync field; a name that matches nothing is Other.
+ */
+export function cookwareTypeOf(name: string): CookwareType {
+  for (const [type, pattern] of TYPE_RULES) if (pattern.test(name)) return type;
+  return 'Other';
+}
+
+/** Cookware split by type in `COOKWARE_TYPES` order, empty types left out. Keeps each group's incoming order. */
+export function groupCookwareByType<T extends { name: string }>(
+  items: readonly T[],
+): { type: CookwareType; items: T[] }[] {
+  const buckets = new Map<CookwareType, T[]>();
+  for (const item of items) {
+    const type = cookwareTypeOf(item.name);
+    const list = buckets.get(type);
+    if (list) list.push(item); else buckets.set(type, [item]);
+  }
+  return COOKWARE_TYPES.filter(t => buckets.has(t)).map(type => ({ type, items: buckets.get(type)! }));
+}

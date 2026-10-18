@@ -1,4 +1,4 @@
-import { clampCookwareWeight, parseWeightText, netWeight, COOKWARE_MAX_G } from '../utils/cookware';
+import { clampCookwareWeight, parseWeightText, netWeight, COOKWARE_MAX_G, cookwareTypeOf, groupCookwareByType } from '../utils/cookware';
 
 describe('clampCookwareWeight', () => {
   it('rounds to the gram', () => {
@@ -54,5 +54,35 @@ describe('netWeight', () => {
     expect(plate.ok || plate.reason).toBe(
       "That's less than the plate weighs (280 g). Check the reading or pick a different plate.",
     );
+  });
+});
+
+describe('cookwareTypeOf / groupCookwareByType', () => {
+  const cases: [string, string][] = [
+    ['Staub crockpot (no lid)', 'Pots'],
+    ['Stainless steel crock pot', 'Pots'],
+    ['All-Clad Saucier', 'Pots'],
+    ['Dutch oven lid', 'Pots'],
+    ['Lodge cast-iron skillet', 'Pans'],
+    ['All-Clad 12” frying pan', 'Pans'],
+    ['Nordic Ware Half Sheet Pan', 'Baking'],
+    ['Smallest Pyrex bowl', 'Bowls'],
+    ['Ramekin', 'Bowls'],
+    ['Ice cream dish', 'Bowls'],
+    ['Dinner plate', 'Plates'],
+    ['Rocks glass', 'Glasses'],
+    ['Glass tub', 'Other'],
+    ['Mystery thing', 'Other'],
+  ];
+  it.each(cases)('files %s under %s', (name, type) => {
+    expect(cookwareTypeOf(name)).toBe(type);
+  });
+
+  it('groups in type order, drops empty types and keeps incoming order', () => {
+    const groups = groupCookwareByType([
+      { name: 'Dinner plate' }, { name: 'Wok' }, { name: 'Rocks glass' }, { name: 'Skillet' },
+    ]);
+    expect(groups.map(g => g.type)).toEqual(['Pans', 'Plates', 'Glasses']);
+    expect(groups[0].items.map(i => i.name)).toEqual(['Wok', 'Skillet']);
   });
 });
