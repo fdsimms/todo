@@ -1,7 +1,9 @@
 import {
   dropGeneratedTask,
+  markGeneratedReady,
   reconcileGeneratedTask,
   deleteGeneratedTaskQuietly,
+  settleReadyMarks,
 } from '../store/generatedTaskSync';
 import { derivedId, spawnSeed } from '../utils/syncIds';
 import type { Task } from '../types';
@@ -515,5 +517,67 @@ describe('the unattended ledger', () => {
   it('records nothing when the row it was asked to delete is already gone', () => {
     deleteGeneratedTaskQuietly('missing');
     expect(mockLedgerState.recordGenerated).not.toHaveBeenCalled();
+  });
+});
+
+describe('satisfied sources', () => {
+  it('marks the row ready instead of deleting it when the source is satisfied and unwanted', () => {
+    seedTask();
+
+    reconcileGeneratedTask(opts({ wanted: false, satisfied: true }));
+
+    expect(mockTaskState.deleteTask).not.toHaveBeenCalled();
+    expect(mockTaskState.tasks[0].generatedReadyAt).toEqual(expect.any(String));
+    // The app writing, not the person moving the task.
+    expect(mockTaskState.updateTask).toHaveBeenCalledWith(
+      'existing', { generatedReadyAt: expect.any(String) }, { skipPostponeCount: true },
+    );
+  });
+
+  it('still deletes when the source is unwanted for any other reason', () => {
+    seedTask();
+    reconcileGeneratedTask(opts({ wanted: false }));
+    expect(mockTaskState.tasks).toHaveLength(0);
+  });
+
+  it('marks a wanted row ready while satisfied, and takes the mark off when it stops holding', () => {
+    seedTask();
+
+    reconcileGeneratedTask(opts({ satisfied: true }));
+    expect(mockTaskState.tasks[0].generatedReadyAt).toEqual(expect.any(String));
+
+    reconcileGeneratedTask(opts({ satisfied: false }));
+    expect(mockTaskState.tasks[0].generatedReadyAt).toBeNull();
+  });
+
+  it('does not rewrite a row that is already marked', () => {
+    seedTask({ generatedReadyAt: '2026-08-01T00:00:00.000Z' });
+    reconcileGeneratedTask(opts({ wanted: false, satisfied: true }));
+    expect(mockTaskState.updateTask).not.toHaveBeenCalled();
+  });
+
+  it('never marks a completed row', () => {
+    markGeneratedReady({ id: 'x', completed: true, generatedReadyAt: null });
+    expect(mockTaskState.updateTask).not.toHaveBeenCalled();
+  });
+
+  it('marks through dropGeneratedTask when asked, and deletes when not', () => {
+    seedTask();
+    dropGeneratedTask('groceryUseUp', 'g-1', { satisfied: true });
+    expect(mockTaskState.tasks[0].generatedReadyAt).toEqual(expect.any(String));
+
+    dropGeneratedTask('groceryUseUp', 'g-1');
+    expect(mockTaskState.tasks).toHaveLength(0);
+  });
+
+  it('settleReadyMarks marks the answered rows and clears the mark on the rest', () => {
+    const a = seedTask({ id: 'a', generatedSourceId: 'a' });
+    const b = seedTask({ id: 'b', generatedSourceId: 'b', generatedReadyAt: '2026-08-01T00:00:00.000Z' });
+
+    settleReadyMarks([a, b], [a]);
+
+    const byId = new Map(mockTaskState.tasks.map(t => [t.id, t]));
+    expect(byId.get('a')!.generatedReadyAt).toEqual(expect.any(String));
+    expect(byId.get('b')!.generatedReadyAt).toBeNull();
   });
 });

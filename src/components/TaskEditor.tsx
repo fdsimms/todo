@@ -8,7 +8,10 @@
 //                           repeats, Priority & effort, Filed under, Waits
 //                           for, Who and where, Opens from the task, When you
 //                           check it off. Subtasks sit above them, under the
-//                           notes
+//                           notes, then the summary sentence (TaskSummaryCard).
+//                           The jump bar over the cards is the sheet's
+//                           subheader; its wiring is the "summary and the jump
+//                           bar" banner
 //   makeStyles              styles, at the bottom
 //
 // Adding a field? Read "Editors are progressive disclosure" and "The task
@@ -28,6 +31,10 @@ import {
 import { SortableList } from './SortableList';
 import { DeliverableKindPicker } from './DeliverableKindPicker';
 import { EditorSheet } from './EditorSheet';
+import { EditorJumpBar, EDITOR_CARD_SECTIONS } from './EditorJumpBar';
+import { TaskSummaryCard } from './TaskSummaryCard';
+import { EditorJumpTracker, scrollTargetFor, type ScrollMetrics } from '../utils/editorJump';
+import { buildTaskSummary } from '../utils/taskSummary';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from './PinIcon';
 import { CoinIcon } from './CoinIcon';
@@ -556,6 +563,11 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   // did: the sheet is dense enough that a permanent bar would cost every task
   // edit to serve the ones that need it.
   const [searchOpen, setSearchOpen] = useState(false);
+  // Where each card and row sits, for the jump bar and the summary's links.
+  // Kept off state (see editorJump.ts) so a scroll re-renders only the bar.
+  const jump = useMemo(() => new EditorJumpTracker(EDITOR_CARD_SECTIONS.map(s => s.key)), []);
+  const scrollToRef = useRef<((y: number) => void) | null>(null);
+  const onScrollMetrics = useCallback((m: ScrollMetrics) => jump.setScroll(m), [jump]);
   const searchFilter = useFilterField();
   const searchQuery = searchFilter.query;
   const searchTerms = useMemo(
@@ -3628,6 +3640,104 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     }
   };
 
+  // ==== the summary and the jump bar ====
+  // Values a row and the summary both show, worked out once so the two can't
+  // say one value two ways.
+  const reminderValue = reminderTime
+    ? reminderTracksVisibility
+      ? describeReminderTracksVisibility()
+      : reminderOffsetDays !== null
+        ? `${describeReminderOffset(reminderOffsetDays)}, ${formatTimeOfDay(reminderTime)}`
+        : `${format(reminderTime, 'MMM d')} at ${formatTimeOfDay(reminderTime)}`
+    : undefined;
+  const repeatValue = recurrenceType !== 'none' ? describeRecurrence({
+    type: recurrenceType,
+    interval: recurrenceInterval,
+    days: recurrenceDays,
+    monthDay: recurrenceMonthDay,
+    weekOrdinal: recurrenceWeekOrdinal,
+    month: recurrenceMonth,
+  }) : undefined;
+  const peopleSummary = personIds.length > 0
+    ? people.filter(p => personIds.includes(p.id)).map(displayNameOf).join(', ')
+    : undefined;
+  const linkValue = knownLinkAppFor(linkUrl)?.name ?? (linkUrl ?? undefined);
+  const workoutValue = workoutProgramId
+    ? workoutPrograms.find(p => p.id === workoutProgramId)?.name ?? 'A deleted program'
+    : workoutRoutineId
+      ? workoutRoutines.find(r => r.id === workoutRoutineId)?.name ?? 'A deleted routine'
+      : undefined;
+
+  const summaryParts = buildTaskSummary({
+    date: dueDate ? formatScheduledDate(dueDate.toISOString()) : undefined,
+    timesOfDay: timeSegments,
+    windowStart: polarity === 'negative' ? undefined : windowBoundLabel(windowStart, windowStartSun) ?? undefined,
+    windowEnd: polarity === 'negative' ? undefined : windowBoundLabel(windowEnd, windowEndSun) ?? undefined,
+    deadline: deadline ? formatDeadlineLabel(deadline.toISOString(), deadlineTime) : undefined,
+    reminder: reminderValue,
+    repeat: repeatValue,
+    streak: liveStreakTask?.streakCount,
+    priority: priority > 0 ? PRIORITY_LABELS[priority] : undefined,
+    pinned,
+    effort: effortSummary,
+    category: category ? categoryLabel(category, categories) : undefined,
+    project: projects.find(p => p.id === project)?.title,
+    stack: selectedGroup?.title,
+    tags,
+    waitingOn: describeBlocks(blockerTitles),
+    waitingOnPerson: waitingPerson ? displayNameOf(waitingPerson) : undefined,
+    people: peopleSummary,
+    location: location ?? undefined,
+    workout: workoutValue,
+    link: linkValue,
+    phone: phoneNumber ?? undefined,
+    email: emailAddress ?? undefined,
+    asks: deliverableKind ?? undefined,
+  });
+
+  const openField = (key: FieldKey) => {
+    animateLayout();
+    setOpenFields(prev => ({ ...prev, [key]: true }));
+  };
+  // What tapping a value in the summary opens: what tapping its row does, but
+  // only ever opening it, where a row's own tap toggles. A row left out here is
+  // scrolled to and left alone: Repeat, whose controls are already open under
+  // it, and a switch (Pin to Today) or the streak, which a tap would change.
+  const summaryOpeners: Partial<Record<string, () => void>> = {
+    date: () => setShowWhenPicker(true),
+    timeOfDay: () => { animateLayout(); setShowTimeOfDay(true); },
+    timeWindow: () => { animateLayout(); setShowTimeWindow(true); },
+    deadline: () => { if (deadlineOffsetDays === null && deadlineMonthDay === null) setShowDeadlinePicker(true); },
+    remindMe: () => openPicker('reminder'),
+    priority: () => openField('priority'),
+    effort: () => openField('effort'),
+    category: () => openField('category'),
+    project: () => openField('project'),
+    stack: () => openField('stack'),
+    tags: () => openField('tags'),
+    waitingOn: () => { animateLayout(); setShowBlockers(true); },
+    waitingOnPerson: () => openField('waitingOnPerson'),
+    people: () => openField('people'),
+    location: () => { setLocationText(location ?? ''); setShowLocationField(true); },
+    workout: () => setShowWorkoutPicker(true),
+    link: () => {
+      if (linkUrl && !knownLinkAppFor(linkUrl)) setCustomLinkText(linkUrl);
+      setShowLinkPicker(true);
+    },
+    phone: () => { setPhoneText(phoneNumber ?? ''); setShowPhoneField(true); },
+    email: () => { setEmailText(emailAddress ?? ''); setShowEmailField(true); },
+    deliverable: () => openField('deliverable'),
+  };
+  const openFromSummary = (key: string) => {
+    const y = jump.rowY(key);
+    if (y !== null) scrollToRef.current?.(scrollTargetFor(y, jump.getMetrics()));
+    summaryOpeners[key]?.();
+  };
+  const jumpToCard = (key: string) => {
+    const y = jump.jumpTo(key);
+    if (y !== null) scrollToRef.current?.(y);
+  };
+
   // ==== render. Everything below is JSX; grep `label="…"` for a card ====
   // The Start / End pills and their pickers, shared by the Time window row and
   // a daily target's Pace window row: both edit the same windowStart/windowEnd.
@@ -3712,6 +3822,13 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       scrollStyle={styles.scroll}
       scrollContentStyle={styles.scrollContent}
       scrollEnabled={!draggingRow}
+      // Gone while the field search is open: the search field is then the way
+      // round the form, and the cards it hides would leave the bar half empty.
+      subheader={searchOpen ? null : (
+        <EditorJumpBar tracker={jump} sections={EDITOR_CARD_SECTIONS} onJump={jumpToCard} />
+      )}
+      onScrollMetrics={onScrollMetrics}
+      scrollToRef={scrollToRef}
       header={
         <SheetHeader
           bare
@@ -4350,6 +4467,11 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           </View>
       </View>
       )}
+
+      {/* What the task does, as a sentence whose values open their rows (see
+          taskSummary.ts). Gone while searching, when the rows left below are
+          the answer. */}
+      {!searching && <TaskSummaryCard parts={summaryParts} onPressPart={openFromSummary} />}
 
       {/* Kind — what shape of task this is, as one row naming the current kind.
           This used to be the whole six-way control, open, because a timed
@@ -5453,11 +5575,13 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           to hold four of these questions at once. */}
       <EditorGroup
         label="When"
+        groupKey="when"
+        jump={jump}
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
         rows={[
           {
-            key: 'date', label: 'Date',
+            key: 'date', label: 'Date', set: !!dueDate,
             keywords: ['when', 'schedule', 'today', 'tomorrow', 'defer', 'start', 'do it', 'due', 'due date', 'postpone', 'reschedule', 'push', 'move', 'snooze'],
             node: (
               <>
@@ -5698,7 +5822,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             ),
           },
           {
-            key: 'timeOfDay', label: 'Time of day',
+            key: 'timeOfDay', label: 'Time of day', set: timeSegments.length > 0,
             keywords: ['morning', 'afternoon', 'evening', 'segment', 'hide until', 'snooze'],
             node: (
               <>
@@ -5738,7 +5862,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             ),
           },
           {
-            key: 'remindMe', label: 'Remind me',
+            key: 'remindMe', label: 'Remind me', set: !!reminderTime,
             keywords: ['reminder', 'notification', 'notify', 'alert', 'alarm', 'ping', 'time'],
             node: (
               <>
@@ -5752,15 +5876,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                     ? 'Ring an alarm at this time'
                     : 'Send a notification at this time'
               }
-              value={
-                reminderTime
-                  ? reminderTracksVisibility
-                    ? describeReminderTracksVisibility()
-                    : reminderOffsetDays !== null
-                      ? `${describeReminderOffset(reminderOffsetDays)}, ${formatTimeOfDay(reminderTime)}`
-                      : `${format(reminderTime, 'MMM d')} at ${formatTimeOfDay(reminderTime)}`
-                  : undefined
-              }
+              value={reminderValue}
               caption={reminderNudge
                 ? `Sends at ${formatTimeOfDay(reminderNudge.time, use24HourTime)}, moved past ${reminderNudge.meetingTitle ? `“${reminderNudge.meetingTitle}”` : 'a calendar event'}`
                 : undefined}
@@ -6115,11 +6231,13 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           Relationships and a Streaks card of their own. */}
       <EditorGroup
         label="How it repeats"
+        groupKey="repeat"
+        jump={jump}
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
         rows={[
           {
-            key: 'repeat', label: 'Repeat',
+            key: 'repeat', label: 'Repeat', set: recurrenceType !== 'none',
             keywords: ['recurring', 'recurrence', 'every', 'daily', 'weekly', 'monthly', 'schedule', 'after completion', 'from completion', 'interval', 'ends', 'weekdays', 'count'],
             node: (
               <>
@@ -6129,14 +6247,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
               hint="Comes back on a schedule after each completion. For a few set days, use More dates."
               // The picker has no read-back line of its own — this row, sitting
               // directly above it, is where the whole rule reads as a sentence.
-              value={recurrenceType !== 'none' ? describeRecurrence({
-                type: recurrenceType,
-                interval: recurrenceInterval,
-                days: recurrenceDays,
-                monthDay: recurrenceMonthDay,
-                weekOrdinal: recurrenceWeekOrdinal,
-                month: recurrenceMonth,
-              }) : undefined}
+              value={repeatValue}
               onPress={enableRecurrence}
               onClear={recurrenceType !== 'none' ? () => setRecurrenceType('none') : undefined}
             />
@@ -6748,11 +6859,13 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           whose label lists its contents says so here. */}
       <EditorGroup
         label={featureShown('effortRating', simpleMode, !!effort) ? 'Priority & effort' : 'Priority'}
+        groupKey="priority"
+        jump={jump}
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
         rows={[
           {
-            key: 'priority', label: 'Priority',
+            key: 'priority', label: 'Priority', set: priority > 0,
             keywords: ['important', 'urgent', 'rank', 'flag', 'high', 'low'],
             node: (
               <>
@@ -6779,7 +6892,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             ),
           },
           {
-            key: 'pin', label: 'Pin to Today',
+            key: 'pin', label: 'Pin to Today', set: pinned,
             keywords: ['pinned', 'top', 'stick', 'favourite', 'favorite', 'repeat', 'recurring', 'every', 'occurrence', 'always'],
             node: (
               <>
@@ -7075,7 +7188,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             ),
           }] : []),
           ...(rewardsEnabled && task && (isBountyLive(task) || canPostBounty(task)) && polarity !== 'negative' ? [{
-            key: 'bounty', label: 'Bounty',
+            key: 'bounty', label: 'Bounty', set: bounty,
             keywords: ['reward', 'coins', 'dread', 'procrastinate', 'putting off', 'incentive', 'bonus'],
             node: (
               <>
@@ -7126,11 +7239,13 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           stack. Each is collapsed to the chosen value until you tap in. */}
       <EditorGroup
         label="Filed under"
+        groupKey="filed"
+        jump={jump}
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
         rows={[
           {
-            key: 'category', label: 'Category',
+            key: 'category', label: 'Category', set: !!category,
             keywords: ['section', 'bucket', 'list'],
             node: (
               <>
@@ -7162,7 +7277,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             ),
           },
           {
-            key: 'tags', label: 'Tags',
+            key: 'tags', label: 'Tags', set: tags.length > 0,
             keywords: ['labels', 'hashtag', 'filter'],
             node: (
               <>
@@ -7221,7 +7336,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             ),
           },
           ...(projects.length > 0 ? [{
-            key: 'project', label: 'Project',
+            key: 'project', label: 'Project', set: !!project,
             keywords: ['progress', 'goal'],
             node: (
               <>
@@ -7322,6 +7437,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           recording anything here. */}
       <EditorGroup
         label="Waits for"
+        groupKey="waits"
+        jump={jump}
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
         rows={[
@@ -7599,6 +7716,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           Information about the task rather than a rule for it. */}
       <EditorGroup
         label="Who and where"
+        groupKey="who"
+        jump={jump}
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
         rows={[
@@ -7610,9 +7729,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
               <CollapsibleField
                 label="People"
                 icon="people-outline"
-                summary={personIds.length > 0
-                  ? people.filter(p => personIds.includes(p.id)).map(displayNameOf).join(', ')
-                  : undefined}
+                summary={peopleSummary}
                 hint="Who this is with. Checking it off adds it to their history."
                 expanded={fieldOpen('people')}
                 onToggle={() => toggleField('people')}
@@ -7645,7 +7762,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             ),
           }] : []),
           {
-            key: 'location', label: 'Location',
+            key: 'location', label: 'Location', set: !!location,
             keywords: ['address', 'place', 'venue', 'where'],
             node: (
               <>
@@ -7692,6 +7809,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           is one of them, since starting the routine is how the task gets done. */}
       <EditorGroup
         label="Opens from the task"
+        groupKey="opens"
+        jump={jump}
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
         rows={[
@@ -7709,11 +7828,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
               icon="barbell-outline"
               label="Workout"
               hint="Start this routine, or the next routine of this program, from the task. Finishing the workout completes the task."
-              value={workoutProgramId
-                ? workoutPrograms.find(p => p.id === workoutProgramId)?.name ?? 'A deleted program'
-                : workoutRoutineId
-                  ? workoutRoutines.find(r => r.id === workoutRoutineId)?.name ?? 'A deleted routine'
-                  : undefined}
+              value={workoutValue}
               expanded={showWorkoutPicker}
               onPress={() => setShowWorkoutPicker(v => !v)}
               onClear={workoutRoutineId || workoutProgramId ? () => { pickWorkout({}); setShowWorkoutPicker(false); } : undefined}
@@ -7781,10 +7896,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
               icon="link-outline"
               label="Link"
               hint="Open an app or link from the task."
-              value={
-                knownLinkAppFor(linkUrl)?.name
-                  ?? (linkUrl ?? undefined)
-              }
+              value={linkValue}
               expanded={showLinkPicker}
               onPress={() => {
                 if (linkUrl && !knownLinkAppFor(linkUrl)) {
@@ -7940,6 +8052,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           These only matter to some tasks, so they come last. */}
       <EditorGroup
         label="When you check it off"
+        groupKey="finish"
+        jump={jump}
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
         rows={[

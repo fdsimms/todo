@@ -344,3 +344,33 @@ export function staleMealShortfallTasks<
     return !rows || rows.length === 0;
   });
 }
+
+/**
+ * The live rows whose shopping got done: the meal is still planned, still in
+ * the window, and nothing is left to buy. The sweep marks these ready instead
+ * of deleting them, so the tick (and its coins) is the person's. A subset of
+ * `staleMealShortfallTasks`; every other reading there still deletes.
+ */
+export function answeredMealShortfallTasks<
+  T extends Pick<Task, 'generatedKind' | 'generatedSourceId' | 'completed' | 'archived'>
+>(
+  tasks: readonly T[],
+  entries: readonly MealPlanEntry[],
+  recipesById: ReadonlyMap<string, Recipe>,
+  items: readonly GroceryItem[],
+  itemSubs: readonly ItemSubLink[],
+  swaps: StandingSwapMap,
+  todayKey: string,
+  now: Date,
+  leadDays: number = MEAL_SHORTFALL_LEAD_DAYS_DEFAULT,
+  products: readonly ItemProduct[] = []
+): T[] {
+  const byId = new Map(entries.map(entry => [entry.id, entry]));
+  return liveGeneratedTasksOfKind(tasks, 'mealShortfall').filter(task => {
+    const entryId = mealShortfallEntryId(task);
+    const entry = entryId ? byId.get(entryId) : undefined;
+    if (!entry || declinedShop(entry) || !isWithinShopWindow(entry.date, todayKey, leadDays)) return false;
+    const rows = mealShortfallRows(entry, recipesById, items, itemSubs, swaps, now, products);
+    return !!rows && rows.length === 0;
+  });
+}

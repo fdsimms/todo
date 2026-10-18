@@ -66,6 +66,39 @@ export function deleteGeneratedTaskQuietly(
   if (going) useUnattendedStore.getState().recordGenerated('cleared', going);
 }
 
+/**
+ * Mark a generated task as done-for-the-person: the thing it asks for has
+ * happened, so the row stays and reads ready, and the tick (with its coins) is
+ * theirs. This is what a sweep does in place of deleting the row, or of ticking
+ * it for them, when the reason the task existed was satisfied rather than
+ * withdrawn. A no-op on a row that is already marked.
+ *
+ * `skipPostponeCount` for `reconcileGeneratedTask`'s reason: this is the app
+ * writing, not the person moving the task.
+ */
+export function markGeneratedReady(task: Pick<Task, 'id' | 'generatedReadyAt' | 'completed'>): void {
+  if (task.completed || task.generatedReadyAt) return;
+  useTaskStore.getState().updateTask(
+    task.id,
+    { generatedReadyAt: new Date().toISOString() },
+    { skipPostponeCount: true },
+  );
+}
+
+/**
+ * Bring a kind's ready marks into line with a sweep's verdict: the `ready` rows
+ * (their reason satisfied) are marked, and any other live row of the kind that
+ * still carries a mark loses it, because what made it ready no longer holds (a
+ * log entry deleted, an item bought and then used up again).
+ */
+export function settleReadyMarks(live: readonly Task[], ready: readonly Task[]): void {
+  ready.forEach(markGeneratedReady);
+  const { updateTask } = useTaskStore.getState();
+  live
+    .filter(task => task.generatedReadyAt && !ready.includes(task))
+    .forEach(task => updateTask(task.id, { generatedReadyAt: null }, { skipPostponeCount: true }));
+}
+
 export interface ReconcileGeneratedOptions {
   kind: GeneratedKind;
   /** The row this task is projected from; null for a generator with no source. */
@@ -116,6 +149,16 @@ export interface ReconcileGeneratedOptions {
    * the items one trip re-dates).
    */
   useUpCap?: number | null;
+  /**
+   * What the task asks for has been done (the water was drunk, the goal
+   * reached), as against the source going away or being switched off.
+   *
+   * With `wanted: false` the live row is marked ready instead of deleted. With
+   * `wanted: true` (a task that stays until it is ticked) it is marked ready
+   * while this holds and has the mark taken off when it stops holding, so a
+   * deleted food entry doesn't leave a row saying the goal is met.
+   */
+  satisfied?: boolean;
 }
 
 /**
@@ -134,24 +177,32 @@ export interface ReconcileGeneratedOptions {
  * `skipOptOut` exactly as `dropGeneratedTask` does.
  */
 export function reconcileGeneratedTask(options: ReconcileGeneratedOptions): void {
-  const { kind, sourceId, wanted, drift, draft, blocksOnFinished = false, useUpCap = null } = options;
+  const { kind, sourceId, wanted, drift, draft, blocksOnFinished = false, useUpCap = null, satisfied = false } = options;
   const { tasks, addTask, updateTask } = useTaskStore.getState();
   const existing = liveGeneratedTask(tasks, kind, sourceId);
 
   if (!wanted) {
     // Only the live one goes. A completed generated task is a record of a thing
     // that was done, and the source changing its mind is not a claim it wasn't.
-    if (existing) deleteGeneratedTaskQuietly(existing.id, { skipOptOut: true });
+    if (existing) {
+      if (satisfied) markGeneratedReady(existing);
+      else deleteGeneratedTaskQuietly(existing.id, { skipOptOut: true });
+    }
     return;
   }
 
   if (existing) {
-    const updates = drift(existing);
+    // Not satisfied (any more): a food entry deleted, a total back under the
+    // goal. What made the row ready no longer holds, so it stops saying so.
+    const unready = !satisfied && existing.generatedReadyAt ? { generatedReadyAt: null } : null;
+    const drifted = drift(existing);
+    const updates = drifted || unready ? { ...drifted, ...unready } : null;
     // skipPostponeCount: this row's date is the source's date, not a schedule
     // the user picked for the task — dragging Tuesday's dinner to Friday moves
     // this row with it, and a fresher bag moving a use-by date out is not the
     // user ducking anything. See utils/postpone.ts.
     if (updates) updateTask(existing.id, updates, { skipPostponeCount: true });
+    if (satisfied) markGeneratedReady(existing);
     return;
   }
 
@@ -218,9 +269,17 @@ export function reconcileGeneratedTask(options: ReconcileGeneratedOptions): void
  * own tidying up, and suppress tomorrow's offer. Only a delete the *user*
  * performs is an instruction to the source.
  */
-export function dropGeneratedTask(kind: GeneratedKind, sourceId: string | null): void {
+export function dropGeneratedTask(
+  kind: GeneratedKind,
+  sourceId: string | null,
+  opts: { satisfied?: boolean } = {}
+): void {
   const existing = liveGeneratedTask(useTaskStore.getState().tasks, kind, sourceId);
-  if (existing) deleteGeneratedTaskQuietly(existing.id, { skipOptOut: true });
+  if (!existing) return;
+  // Satisfied rather than withdrawn: the person did the thing, so the row is
+  // theirs to tick. See markGeneratedReady.
+  if (opts.satisfied) markGeneratedReady(existing);
+  else deleteGeneratedTaskQuietly(existing.id, { skipOptOut: true });
 }
 
 /**

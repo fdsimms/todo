@@ -32,7 +32,7 @@ const NOT_SEEDED: Record<string, string[]> = {
     'completionTimerStartedAt', 'previousOccurrenceId', 'pendingImport', 'postponeCount', 'postponeMuted',
     'driftingSince', 'bountyPushes', 'deliverableValue', 'deliverableWhy', 'deliverableRevisitIf',
     'followUpTaskTally', 'previousFollowUpTaskTally', 'followUpTaskSourceTitle', 'followUpTaskSourceId',
-    'waitingOnPersonSince', 'waitingFollowUpDeclinedAt', 'generatedKind', 'generatedSourceId', 'calendarEventId',
+    'waitingOnPersonSince', 'waitingFollowUpDeclinedAt', 'generatedKind', 'generatedSourceId', 'generatedReadyAt', 'calendarEventId',
     'calendarEventExternalId', 'completionCalendarEventId', 'completionCalendarEventExternalId', 'timeBlockEventId',
     'timeBlockExternalId', 'reminderUtcOffsetMinutes', 'recurrenceAnchorDay', 'recurrenceAnchorDate',
     'meterHeldUntil', 'rainSkippedOn', 'reviewOfTaskId',

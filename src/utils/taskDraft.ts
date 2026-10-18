@@ -442,6 +442,7 @@ export function newTaskFromDraft(
     previousOccurrenceId: draft.previousOccurrenceId ?? null,
     generatedKind: draft.generatedKind ?? null,
     generatedSourceId: draft.generatedSourceId ?? null,
+    generatedReadyAt: null,
     deadlineOnCalendar: draft.deadlineOnCalendar ?? false,
     logCompletionToCalendar: draft.logCompletionToCalendar ?? false,
     // Never read off the draft, same reasoning as deliverableValue just
