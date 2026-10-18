@@ -13,11 +13,46 @@ import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessor
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { fieldWell } from '../theme/textStyles';
-import { parseWeightText, clampCookwareWeight } from '../utils/cookware';
+import { ChoiceMenuChip, type ChoiceGroup } from './ChoiceMenuChip';
+import { parseWeightText, clampCookwareWeight, groupCookwareByType, cookwareTypeOf, isCookwareType, COOKWARE_TYPES } from '../utils/cookware';
+import type { CookwareType } from '../types';
 import { haptics } from '../utils/haptics';
 import { BUTTON_LABEL } from '../copy/shared';
 
 const NAME_MAX_LENGTH = 40;
+
+/** The key for "read the type from the name", which is a state rather than a type. */
+const AUTO_KEY = 'auto';
+
+const TYPE_MENU: ChoiceGroup[] = [
+  { options: [{ key: AUTO_KEY, label: 'From the name' }] },
+  { heading: 'TYPE', options: COOKWARE_TYPES.map(t => ({ key: t, label: t })) },
+];
+
+/** A menu key as the stored value: null for "from the name". */
+const kindOfKey = (key: string): CookwareType | null => (isCookwareType(key) ? key : null);
+
+/**
+ * The type dropdown. A piece with no chosen type shows what its name reads as,
+ * so the chip never claims a choice nobody made.
+ */
+function TypeChip({ name, kind, onSelect, label }: {
+  name: string;
+  kind: CookwareType | null;
+  onSelect: (kind: CookwareType | null) => void;
+  label: string;
+}) {
+  return (
+    <ChoiceMenuChip
+      groups={TYPE_MENU}
+      selectedKey={kind ?? AUTO_KEY}
+      onSelect={key => onSelect(kindOfKey(key))}
+      noun={label}
+      name={`CookwareType:${name}`}
+      labelOverride={kind ? undefined : `${cookwareTypeOf(name)} (from the name)`}
+    />
+  );
+}
 
 interface Props {
   visible: boolean;
@@ -26,7 +61,8 @@ interface Props {
 
 /**
  * The pots, pans, lids and tubs a dish can be weighed in, and what each weighs
- * empty. Reached from the weight field wherever one is typed, and from
+ * empty, listed under their type (`groupCookwareByType`), which is the one picked
+ * from each piece's dropdown or, until one is picked, what its name reads as. Reached from the weight field wherever one is typed, and from
  * Settings.
  *
  * A saved item reads as a finished row. Tapping it opens its name and weight as
@@ -42,8 +78,11 @@ export function CookwareSheet({ visible, onClose }: Props) {
   const updateCookware = useCookwareStore(s => s.updateCookware);
   const removeCookware = useCookwareStore(s => s.removeCookware);
 
+  const groups = useMemo(() => groupCookwareByType(cookware), [cookware]);
+
   const [newName, setNewName] = useState('');
   const [newWeight, setNewWeight] = useState('');
+  const [newKind, setNewKind] = useState<CookwareType | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
@@ -53,10 +92,11 @@ export function CookwareSheet({ visible, onClose }: Props) {
     if (!newName.trim()) { setError('Name it first, for example "Dutch oven".'); return; }
     const grams = clampCookwareWeight(parseWeightText(newWeight));
     if (grams === null) { setError('Weigh it empty and type the number in grams.'); return; }
-    addCookware(newName, grams);
+    addCookware(newName, grams, newKind);
     haptics.success();
     setNewName('');
     setNewWeight('');
+    setNewKind(null);
     setError(null);
   };
 
@@ -136,77 +176,97 @@ export function CookwareSheet({ visible, onClose }: Props) {
           />
           <Text style={styles.unit}>g</Text>
         </View>
+        <View style={styles.typeRow}>
+          <TypeChip name={newName} kind={newKind} onSelect={setNewKind} label="Type of new cookware" />
+        </View>
         {error && <Text style={styles.error}>{error}</Text>}
         <InlineAction label="Add" icon="add" onPress={handleAdd} style={styles.add} />
       </View>
 
-      <Text style={styles.groupLabel}>Your cookware</Text>
       {cookware.length === 0 ? (
-        <EmptyNote icon="restaurant-outline">
-          Nothing saved yet. Add a pot or plate above and it will show up next to the weight field.
-        </EmptyNote>
+        <>
+          <Text style={styles.groupLabel}>Your cookware</Text>
+          <EmptyNote icon="restaurant-outline">
+            Nothing saved yet. Add a pot or plate above and it will show up next to the weight field.
+          </EmptyNote>
+        </>
       ) : (
-        <View style={styles.card}>
-          {cookware.map((c, i) => (
-            <View key={c.id} style={[styles.row, i > 0 && styles.rowDivider]}>
-              {editingId === c.id ? (
-                <>
-                  <View style={[styles.well, styles.rowName]}>
-                    <TextField
-                      style={styles.input}
-                      value={editName}
-                      onChangeText={setEditName}
-                      maxLength={NAME_MAX_LENGTH}
-                      autoFocus
-                      accessibilityLabel={`Name of ${c.name}`}
+        groups.map(group => (
+          <React.Fragment key={group.type}>
+            <Text style={styles.groupLabel}>{group.type}</Text>
+            <View style={styles.card}>
+              {group.items.map((c, i) => (
+                <View key={c.id} style={[styles.rowBlock, i > 0 && styles.rowDivider]}>
+                  <View style={styles.row}>
+                    {editingId === c.id ? (
+                      <>
+                        <View style={[styles.well, styles.rowName]}>
+                          <TextField
+                            style={styles.input}
+                            value={editName}
+                            onChangeText={setEditName}
+                            maxLength={NAME_MAX_LENGTH}
+                            autoFocus
+                            accessibilityLabel={`Name of ${c.name}`}
+                          />
+                        </View>
+                        <View style={[styles.well, styles.rowWeight]}>
+                          <TextField
+                            style={[styles.input, styles.rowWeightInput]}
+                            value={editWeight}
+                            onChangeText={setEditWeight}
+                            keyboardType="decimal-pad"
+                            inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
+                            maxLength={6}
+                            accessibilityLabel={`Empty weight of ${c.name} in grams`}
+                          />
+                          <Text style={styles.unit}>g</Text>
+                        </View>
+                        <TouchableOpacity
+                          onPress={finishEdit}
+                          hitSlop={8}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Save ${c.name}`}
+                        >
+                          <Ionicons name="checkmark" size={22} color={colors.accentText} />
+                        </TouchableOpacity>
+                      </>
+                    ) : (
+                      <>
+                        <TouchableOpacity
+                          style={styles.rowTap}
+                          onPress={() => startEdit(c.id, c.name, c.weightG)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Edit ${c.name}, ${c.weightG} grams`}
+                        >
+                          <Text style={styles.rowTitle} numberOfLines={1}>{c.name}</Text>
+                          <Text style={styles.rowValue}>{c.weightG} g</Text>
+                          <Ionicons name="pencil-outline" size={18} color={colors.textSecondary} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => confirmDelete(c.id, c.name)}
+                          hitSlop={8}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Delete ${c.name}`}
+                        >
+                          <Ionicons name="trash-outline" size={20} color={colors.red} />
+                        </TouchableOpacity>
+                      </>
+                    )}
+                  </View>
+                  <View style={styles.typeRow}>
+                    <TypeChip
+                      name={c.name}
+                      kind={c.kind}
+                      onSelect={kind => updateCookware(c.id, { kind })}
+                      label={`Type of ${c.name}`}
                     />
                   </View>
-                  <View style={[styles.well, styles.rowWeight]}>
-                    <TextField
-                      style={[styles.input, styles.rowWeightInput]}
-                      value={editWeight}
-                      onChangeText={setEditWeight}
-                      keyboardType="decimal-pad"
-                      inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
-                      maxLength={6}
-                      accessibilityLabel={`Empty weight of ${c.name} in grams`}
-                    />
-                    <Text style={styles.unit}>g</Text>
-                  </View>
-                  <TouchableOpacity
-                    onPress={finishEdit}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Save ${c.name}`}
-                  >
-                    <Ionicons name="checkmark" size={22} color={colors.accentText} />
-                  </TouchableOpacity>
-                </>
-              ) : (
-                <>
-                  <TouchableOpacity
-                    style={styles.rowTap}
-                    onPress={() => startEdit(c.id, c.name, c.weightG)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Edit ${c.name}, ${c.weightG} grams`}
-                  >
-                    <Text style={styles.rowTitle} numberOfLines={1}>{c.name}</Text>
-                    <Text style={styles.rowValue}>{c.weightG} g</Text>
-                    <Ionicons name="pencil-outline" size={18} color={colors.textSecondary} />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => confirmDelete(c.id, c.name)}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Delete ${c.name}`}
-                  >
-                    <Ionicons name="trash-outline" size={20} color={colors.red} />
-                  </TouchableOpacity>
-                </>
-              )}
+                </View>
+              ))}
             </View>
-          ))}
-        </View>
+          </React.Fragment>
+        ))
       )}
     </EditorSheet>
   );
@@ -237,6 +297,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   unit: { color: colors.textSecondary, fontSize: font.sm },
   error: { color: colors.redText, fontSize: font.sm, marginTop: spacing.xs },
   add: { alignSelf: 'flex-start', marginTop: spacing.sm },
+  rowBlock: { paddingVertical: spacing.xs },
+  typeRow: { flexDirection: 'row', marginTop: spacing.xs, marginBottom: spacing.xs },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xs },
   rowDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator },
   rowTap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 44 },

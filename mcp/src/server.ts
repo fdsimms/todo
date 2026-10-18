@@ -125,6 +125,8 @@ import { MAX_BATCH, MAX_QUICK_ADD, batchUpdateTasks, planDay, quickAdd, rebalanc
 import { SERVER_ICONS } from './serverIcon';
 import { generateId } from '../../src/utils/id';
 
+const COOKWARE_TYPE = z.enum(['Pots', 'Pans', 'Baking', 'Bowls', 'Plates', 'Glasses', 'Other']);
+
 /** `YYYY-MM-DD`, the shape every day-keyed table stores and sorts on. */
 // A rotation member: a name, or a name with how many times a week.
 const rotationMemberSchema = z.union([
@@ -542,7 +544,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_cookware',
-    'The pots, pans, lids and tubs the person has weighed empty, each with its empty weight in grams. Use it when they tell you what a dish weighed with its pot on: subtract the saved pot (and lid) yourself, because a recipe\'s cookedWeightG is the food alone.',
+    'The pots, pans, lids and tubs the person has weighed empty, each with its empty weight in grams and the type it is listed under. Use it when they tell you what a dish weighed with its pot on: subtract the saved pot (and lid) yourself, because a recipe\'s cookedWeightG is the food alone.',
     {},
     async () => json(await withFresh(() => listCookware(replica)))
   );
@@ -2154,6 +2156,7 @@ function registerWriteTools(
     {
       name: z.string().min(1).max(40).describe('What it is called, e.g. "Dutch oven".'),
       weightG: z.number().positive().max(50000).describe('Its empty weight in grams.'),
+      type: COOKWARE_TYPE.optional().describe('Which section it is listed under. Leave out to let the phone read it from the name.'),
     },
     async input => {
       try {
@@ -2166,11 +2169,12 @@ function registerWriteTools(
 
   server.tool(
     'update_cookware',
-    'Rename a piece of cookware or change its empty weight, by its id from list_cookware. Only what you name changes. Recipes already weighed keep their weight.',
+    'Rename a piece of cookware, change its empty weight or the type it is listed under (null goes back to reading it from the name), by its id from list_cookware. Only what you name changes. Recipes already weighed keep their weight.',
     {
       id: z.string().min(1),
       name: z.string().min(1).max(40).optional(),
       weightG: z.number().positive().max(50000).optional(),
+      type: COOKWARE_TYPE.nullable().optional(),
     },
     async ({ id, ...patch }) => {
       try {

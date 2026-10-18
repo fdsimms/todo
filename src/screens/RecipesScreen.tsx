@@ -13,6 +13,7 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { ThumbIcon } from '../components/ThumbIcon';
 import { useShallow } from 'zustand/react/shallow';
 import type { GroceryItem, Recipe, RecipeMealType } from '../types';
 import { RECIPE_MEAL_TYPES, RECIPE_MEAL_TYPE_LABELS } from '../types';
@@ -1131,7 +1132,7 @@ const RecipeRow = React.memo(function RecipeRow({
         </Text>
       </View>
       {recipe.vote === 'loved' && (
-        <Ionicons name="thumbs-up" size={iconSize.sm} color={colors.orangeText} />
+        <ThumbIcon size={iconSize.sm} color={colors.orangeText} />
       )}
       {/* The third of the row's icon buttons, and the quietest of them:
           tertiary until tapped, where Plan is accent. A button rather than a

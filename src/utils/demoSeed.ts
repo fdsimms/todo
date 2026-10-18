@@ -3405,17 +3405,40 @@ function seedWorkouts(today: Date): void {
 }
 
 /**
- * A few pots with their empty weights, so the weight field on a recipe offers
- * "Dutch oven" rather than only a link to add one. Through `addCookware` like
- * everything else here.
+ * A kitchen's worth of cookware with empty weights, spread across every type the
+ * sheet groups by, so the weight field offers real pieces and the Cookware
+ * sheet shows its sections. Through `addCookware` like everything else here.
  */
 function seedCookware(): void {
   const { addCookware } = useCookwareStore.getState();
-  addCookware('Dutch oven', 4310);
-  addCookware('Dutch oven lid', 1150);
-  addCookware('Sauté pan', 1820);
-  addCookware('Glass tub', 310);
-  addCookware('Dinner plate', 280);
+  const pieces: [string, number][] = [
+    ['Staub crockpot (no lid)', 2888],
+    ['Stainless steel crock pot', 1178],
+    ['All-Clad Saucier', 859],
+    ['Lodge cast-iron skillet', 3523],
+    ['All-Clad 12” frying pan', 1271],
+    ['All-Clad 8” Pan', 728],
+    ['8” nonstick pan', 576],
+    ['Nordic Ware Half Sheet Pan', 714],
+    ['Nordic Ware Quarter Sheet Pan', 453],
+    ['Large Pyrex bowl', 1613],
+    ['Medium Pyrex Bowl', 1061],
+    ['Smallest Pyrex bowl', 772],
+    ['Rimmed bowl', 601],
+    ['Split bowl', 541],
+    ['Coupe bowl', 478],
+    ['Cereal bowl', 397],
+    ['Small ceramic bowl in Pale Seaweed', 240],
+    ['Ramekin', 153],
+    ['Ice cream dish', 148],
+    ['Dinner plate', 693],
+    ['Small plate', 329],
+    ['Rocks glass', 371],
+    ['Duralex glass', 320],
+    ['Stemless wine glass', 184],
+    ['Sake Akishika glass', 157],
+  ];
+  for (const [name, grams] of pieces) addCookware(name, grams);
 }
 
 function seedMilestone(today: Date): void {

@@ -100,7 +100,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/cookQuestions.ts` — COOK_QUESTION_MAX_LENGTH, COOK_ANSWER_MAX_LINES, COOK_ANSWER_MAX_CHARS, CookContextIngredient, CookQuestionContext, cookQuestionContext, suggestedCookQuestions, clampCookAnswer
 - `src/utils/cookbookRecipes.ts` — CookbookPageKey, cookbookPageKey, compareCookbookRecipes, recipesInCookbook, CookbookLinkEffect, cookbookLinkEffect, pageAfterCookbookLink, CookbookLinkCandidate, COOKBOOK_LINK_LIMIT, cookbookLinkCandidates, +1 more
 - `src/utils/cookingStats.ts` — CookingWindow, MealCookCounts, CookedRecipe, EMPTY_MEAL_COOK_COUNTS, cookingWindow, lastDaysOf, mealCookCounts, leftoversFinishedIn, leftoverHistoryIn, mostCookedRecipes, +1 more
-- `src/utils/cookware.ts` — COOKWARE_MAX_G, clampCookwareWeight, parseWeightText, CookwareNoun, NetWeight, netWeight
+- `src/utils/cookware.ts` — COOKWARE_MAX_G, clampCookwareWeight, parseWeightText, CookwareNoun, NetWeight, netWeight, COOKWARE_TYPES, isCookwareType, cookwareTypeOf, effectiveCookwareType, +1 more
 - `src/utils/copyFlagMode.ts` — isFlagMode, setFlagMode, getFlagModeVersion, subscribeFlagMode, setFlaggedTexts, isTextFlagged, setCaptureListener, requestCapture, flaggableText
 - `src/utils/createdTaskPlacement.ts` — CreatedTaskDestination, describeCreatedTaskPlacement, describeMovedTaskPlacement
 - `src/utils/dailyAgenda.ts` — AgendaCounts, AgendaMeetings, agendaMeetings, agendaCounts, agendaBody, agendaSpokenBody, nextAgendaTime

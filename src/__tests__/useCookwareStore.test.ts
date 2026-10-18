@@ -23,6 +23,12 @@ describe('addCookware', () => {
     expect(state().cookware).toHaveLength(1);
   });
 
+  it('holds no type until one is chosen, and keeps the one it is given', () => {
+    expect(state().addCookware('Pan', 1000)!.kind).toBeNull();
+    expect(state().addCookware('Ramekin', 150, 'Baking')!.kind).toBe('Baking');
+    expect(dbInsertCookware).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'Baking' }));
+  });
+
   it('refuses a blank name or a weight that is not one', () => {
     expect(state().addCookware('   ', 100)).toBeNull();
     expect(state().addCookware('Pan', 0)).toBeNull();
@@ -44,6 +50,15 @@ describe('addCookware', () => {
 });
 
 describe('updateCookware', () => {
+  it('sets a type and clears it back to null', () => {
+    const pot = state().addCookware('Ramekin', 150)!;
+    state().updateCookware(pot.id, { kind: 'Baking' });
+    expect(state().cookware[0].kind).toBe('Baking');
+    expect(dbUpdateCookware).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'Baking' }));
+    state().updateCookware(pot.id, { kind: null });
+    expect(state().cookware[0].kind).toBeNull();
+  });
+
   it('patches and writes back', () => {
     const pot = state().addCookware('Pan', 1000)!;
     state().updateCookware(pot.id, { weightG: 1820, name: 'Sauté pan' });

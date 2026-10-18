@@ -96,6 +96,7 @@ import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { useMilestoneStore } from '../store/useMilestoneStore';
 import { useCookwareStore } from '../store/useCookwareStore';
+import { effectiveCookwareType } from '../utils/cookware';
 import { useJournalStore } from '../store/useJournalStore';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { frequencyTrend, medicationFor, milestoneOffers } from '../utils/medicationLog';
@@ -2500,6 +2501,8 @@ describe('demo seed — people', () => {
     expect(cookware.length).toBeGreaterThan(0);
     expect(cookware.every(c => c.weightG > 0)).toBe(true);
     expect(cookware.some(c => c.name === 'Dinner plate')).toBe(true);
+    // Every type the sheet groups by has at least one piece to show.
+    expect(new Set(cookware.map(c => effectiveCookwareType(c)))).toEqual(new Set(['Pots', 'Pans', 'Baking', 'Bowls', 'Plates', 'Glasses']));
   });
 
   it('seeds a milestone with enough days on each side for the before/after card to draw', () => {
