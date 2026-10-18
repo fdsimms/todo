@@ -7640,6 +7640,32 @@ export function dbGetAllWorkoutSessions(): WorkoutSession[] {
     .map(rowToWorkoutSession);
 }
 
+/**
+ * One session, read from the database rather than from the store. A Health
+ * write re-reads its row with this once HealthKit answers, since the session
+ * can be edited or deleted while the write is in flight.
+ */
+export function dbGetWorkoutSession(id: string): WorkoutSession | null {
+  const row = db.getFirstSync<Record<string, unknown>>('SELECT * FROM workout_sessions WHERE id = ?', [id]);
+  return row ? rowToWorkoutSession(row) : null;
+}
+
+/**
+ * Finished sessions waiting for the phone to write them to Health
+ * (`healthWritePending`, set on a workout an agent logged over MCP), oldest
+ * first. One already holding a Health id is left out even if the flag is set:
+ * writing it again would put the workout in Health twice.
+ */
+export function dbGetPendingHealthWorkoutSessions(): WorkoutSession[] {
+  return db
+    .getAllSync<Record<string, unknown>>(
+      `SELECT * FROM workout_sessions
+        WHERE health_write_pending = 1 AND health_workout_id IS NULL AND ended_at IS NOT NULL
+        ORDER BY started_at ASC`
+    )
+    .map(rowToWorkoutSession);
+}
+
 export function dbSaveWorkoutSession(s: WorkoutSession): void {
   db.runSync(
     `INSERT OR REPLACE INTO workout_sessions

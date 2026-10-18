@@ -121,6 +121,8 @@ export interface WorkoutRow {
   /** How hard it felt, 1 to 10, as the person typed it. */
   effort?: number;
   notes?: string;
+  /** Written to Apple Health by the phone; its times can't be changed, nor it deleted, from here. */
+  inAppleHealth?: true;
   exercises: { exerciseId: string; name: string; sets: WorkoutSetRow[] }[];
 }
 
@@ -146,6 +148,8 @@ function workoutRow(replica: Replica, s: WorkoutSession, sets: readonly WorkoutS
     ...(s.programId && names.programName.has(s.programId) ? { program: names.programName.get(s.programId)! } : {}),
     ...(s.effort !== null ? { effort: s.effort } : {}),
     ...(s.notes ? { notes: s.notes } : {}),
+    // In Apple Health: the phone wrote it there, so only the phone can move or delete it.
+    ...(s.healthWorkoutId ? { inAppleHealth: true as const } : {}),
     exercises: [...byExercise.entries()].map(([exerciseId, list]) => ({
       exerciseId,
       name: exerciseName(names.rows, exerciseId),

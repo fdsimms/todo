@@ -29,9 +29,12 @@ import { TextField } from './TextField';
 import { ExercisePickerSheet } from './ExercisePickerSheet';
 import { ExerciseDetailSheet } from './ExerciseDetailSheet';
 import { PlateLine } from './PlateLine';
+import { WorkoutRecordsCard } from './WorkoutRecordsCard';
+import { WorkoutStatTiles } from './WorkoutStatTiles';
 import type { ExerciseKind, WorkoutSet } from '../types';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useDemoStore } from '../store/useDemoStore';
 import { useStepTimerStore } from '../store/useStepTimerStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useRestTimer } from '../hooks/useRestTimer';
@@ -46,15 +49,15 @@ import { linkedTaskLine, workoutTaskEffect } from '../utils/workoutTask';
 import { displayTitleFor } from '../utils/visibilityUtils';
 import { catalogExercise } from '../utils/exerciseCatalog';
 import { barKgFor, effectivePlateInventory, isPlateLoaded, plateLoad } from '../utils/plateMath';
-import { analyzeExercise, recordSessions, recordsInSession, summarizeRecords } from '../utils/workoutRecords';
-import { formatRecordChange, recordLabel } from '../utils/workoutRecordText';
+import { sessionRecordSummary } from '../utils/workoutRecords';
 import {
   loadContextFor, proposalActionLabel, proposalApplied, proposalEdits, proposalHeadline, proposeNext, rampSteps, rampWarmupsToAdd,
   schemeFor, workingSetLogged, type Proposal,
 } from '../utils/workoutProgression';
 import { programProgress } from '../utils/workoutProgram';
 import {
-  MUSCLE_LABELS, WEIGHT_PLACES, WEIGHT_STEP, formatRestSeconds, formatWeightNumber, weightFromDisplay, weightToDisplay,
+  MUSCLE_LABELS, WEIGHT_PLACES, WEIGHT_STEP, WORKOUT_EFFORT, formatRestSeconds, formatWeightNumber, weightFromDisplay,
+  weightToDisplay,
 } from '../utils/workoutData';
 import {
   REST_NUDGE_BACK_SECONDS, REST_NUDGE_FORWARD_SECONDS, isStepTimerReady, stepTimerOverSeconds, stepTimerProgress,
@@ -65,6 +68,7 @@ import {
   sessionExercises, sessionSummary, setFieldsFor, setLabels, valuesFromLastDone, type SetField,
 } from '../utils/workoutSession';
 import type { WeightUnit } from '../utils/weightLog';
+import { workoutSpanWritable } from '../utils/healthWorkoutSync';
 import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
@@ -113,6 +117,11 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const defaultRest = useSettingsStore(s => s.defaultRestSeconds);
   const plateInventory = useSettingsStore(s => s.plateInventory);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  // Whether Save also writes the workout to Health (`workoutHealthWriteOn`,
+  // read reactively here so the summary says so). Demo mode never writes.
+  const healthWriteOn = useSettingsStore(s => s.healthWriteEnabled && s.workoutHealthWrite && s.workoutsEnabled);
+  const demoActive = useDemoStore(s => s.active);
+  const writesToHealth = healthWriteOn && !demoActive;
   const linkedTask = useTaskStore(s => (session?.taskId ? s.tasks.find(t => t.id === session.taskId) ?? null : null));
   const sets = useMemo(() => cachedSets ?? [], [cachedSets]);
   const routine = session?.routineId ? routines.find(r => r.id === session.routineId) ?? null : null;
@@ -378,17 +387,18 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
 
   // What this workout beat, against everything before it. Read from each
   // exercise's own history (the live session's sets are in the database as
-  // they are edited), and only while the summary is up.
+  // they are edited), and only while the summary is up. The workout page
+  // reads the same helper, so the two say the same about one workout.
   const sessionRecords = useMemo(() => {
     if (!finishing || !session) return [];
-    const recSessions = recordSessions(sessionsList, dayResetTime);
-    const analyses = exercises.map(e => analyzeExercise(
-      e.exerciseId,
-      catalogExercise(exerciseRows, e.exerciseId)?.kind ?? 'weight_reps',
-      useWorkoutStore.getState().exerciseHistory(e.exerciseId),
-      recSessions,
-    ));
-    return summarizeRecords(recordsInSession(analyses, session.id));
+    return sessionRecordSummary(
+      session.id,
+      exercises.map(e => e.exerciseId),
+      id => catalogExercise(exerciseRows, id)?.kind ?? 'weight_reps',
+      id => useWorkoutStore.getState().exerciseHistory(id),
+      sessionsList,
+      dayResetTime,
+    );
     // `sets`: an edit made before finishing changes what the records are.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [finishing, session, sets, exercises, exerciseRows, sessionsList, dayResetTime]);
@@ -448,47 +458,18 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
             ref={keyboardScroll.ref}
           >
             <Text style={styles.summaryTitle}>Workout summary</Text>
-            <View style={styles.stats}>
-              <Stat value={`${summary.minutes} min`} label="Time" styles={styles} />
-              <Stat value={String(summary.exercises.length)} label={summary.exercises.length === 1 ? 'Exercise' : 'Exercises'} styles={styles} />
-              <Stat value={String(summary.setsDone)} label={summary.setsDone === 1 ? 'Set' : 'Sets'} styles={styles} />
-            </View>
+            <WorkoutStatTiles
+              minutes={summary.minutes}
+              exercises={summary.exercises.length}
+              sets={summary.setsDone}
+              style={styles.stats}
+            />
             {summary.exercises.length > 0 && (
               <>
                 {sessionRecords.length > 0 && (
                   <>
                     <Text style={styles.groupLabel}>Personal records</Text>
-                    <View style={styles.card}>
-                      {sessionRecords.map((r, i) => {
-                        const info = catalogExercise(exerciseRows, r.exerciseId);
-                        const recordKind = info?.kind ?? 'weight_reps';
-                        return (
-                          <View
-                            key={r.exerciseId}
-                            style={[styles.summaryRow, i > 0 && styles.rowSep]}
-                            accessible
-                            accessibilityLabel={`${info?.name ?? 'Unknown exercise'}. ${r.records.map(e => {
-                              const change = formatRecordChange(e, recordKind, unit);
-                              return `${recordLabel(e.type, recordKind, e.reps)}, up from ${change.before} to ${change.after}`;
-                            }).join('. ')}`}
-                          >
-                            <Text style={styles.summaryName}>{info?.name ?? 'Unknown exercise'}</Text>
-                            {r.records.map(e => {
-                              const change = formatRecordChange(e, recordKind, unit);
-                              return (
-                                <View key={`${e.type}-${e.reps ?? 0}`} style={styles.recordLine}>
-                                  <Text style={styles.recordLabel}>{recordLabel(e.type, recordKind, e.reps)}</Text>
-                                  <Text style={styles.recordValue}>
-                                    <Text style={styles.recordBefore}>{`${change.before} → `}</Text>
-                                    {change.after}
-                                  </Text>
-                                </View>
-                              );
-                            })}
-                          </View>
-                        );
-                      })}
-                    </View>
+                    <WorkoutRecordsCard records={sessionRecords} exercises={exerciseRows} unit={unit} />
                   </>
                 )}
                 <Text style={styles.groupLabel}>Exercises</Text>
@@ -513,13 +494,13 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                     <CountStepper
                       value={effort}
                       onChange={setEffort}
-                      min={1}
-                      max={10}
-                      start={7}
+                      min={WORKOUT_EFFORT.min}
+                      max={WORKOUT_EFFORT.max}
+                      start={WORKOUT_EFFORT.start}
                       allowNull
                       emptyLabel="Not set"
                       label="Effort"
-                      describeValue={n => (n === null ? 'not set' : `${n} out of 10`)}
+                      describeValue={n => (n === null ? 'not set' : `${n} out of ${WORKOUT_EFFORT.max}`)}
                     />
                   </View>
                   <View style={styles.rowSep} />
@@ -544,6 +525,14 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                     : null,
                 plan.loggedCount > 0 && linkedTask && !linkedTask.completed && !linkedTask.archived
                   ? linkedTaskLine(taskEffect, displayTitleFor(linkedTask))
+                  : null,
+                // Only for a span the write would accept: Save ends the
+                // session now, so a workout left running past a day is saved
+                // here and refused by Health's write, and the line would
+                // promise something that doesn't happen.
+                plan.loggedCount > 0 && writesToHealth && session
+                  && workoutSpanWritable({ startedAt: session.startedAt, endedAt: new Date().toISOString() })
+                  ? 'Saving also writes it to Apple Health as a strength workout.'
                   : null,
               ].filter(Boolean).join(' ')}
             </Text>
@@ -931,15 +920,6 @@ function SuggestionCard({ proposal, unit, offer, onUse, styles }: {
   );
 }
 
-function Stat({ value, label, styles }: { value: string; label: string; styles: ReturnType<typeof makeStyles> }) {
-  return (
-    <View style={styles.stat} accessible accessibilityLabel={`${label}: ${value}`}>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
-  );
-}
-
 /**
  * "Started 6:12 PM · 32:14", moving once a second. Its own component so the
  * tick re-renders this line and not the whole sheet.
@@ -1109,17 +1089,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   restButtons: { flexDirection: 'row', gap: spacing.sm },
   restButton: { flex: 1, justifyContent: 'center', minHeight: 44 },
   summaryTitle: { color: colors.text, fontSize: font.xxl, fontWeight: fontWeight.bold, marginTop: spacing.xs, marginHorizontal: spacing.xs },
-  stats: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.smd },
-  stat: { flex: 1, backgroundColor: colors.bgSecondary, borderRadius: radius.md, paddingHorizontal: spacing.smd, paddingVertical: spacing.smd },
-  statValue: { color: colors.text, fontSize: font.xl, fontWeight: fontWeight.bold, fontVariant: ['tabular-nums'] },
-  statLabel: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs },
+  stats: { marginTop: spacing.smd },
   summaryRow: { paddingHorizontal: spacing.md, paddingVertical: spacing.smd },
   rowSep: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator },
   summaryName: { color: colors.text, fontSize: font.md },
-  recordLine: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: spacing.smd, marginTop: spacing.xs },
-  recordLabel: { flex: 1, color: colors.textSecondary, fontSize: font.sm },
-  recordValue: { flexShrink: 0, color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold, fontVariant: ['tabular-nums'], textAlign: 'right' },
-  recordBefore: { color: colors.textSecondary, fontWeight: fontWeight.regular },
   summaryMeta: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs },
   kv: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   kvLabel: { color: colors.text, fontSize: font.md },

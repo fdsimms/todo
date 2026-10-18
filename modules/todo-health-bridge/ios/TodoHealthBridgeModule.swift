@@ -13,7 +13,8 @@ import HealthKit
 /// records any of them. The exceptions are a handful of writes — a nutrient,
 /// logged when a task that opted into it completes (`writeNutrientSample`
 /// below, `healthCompletionSync.ts` on the JS side), a logged meal
-/// (`writeFoodSamples`), and a body-mass sample — which have their own type
+/// (`writeFoodSamples`), a body-mass sample, and a finished strength session
+/// (`writeWorkout`) — which have their own type
 /// list (`writeTypes`) reviewed on its own terms, a real sample landing in
 /// somebody's actual Health record being a bigger deal than a read. See
 /// `docs/arch/health-data.md` for why these are the types that earned a
@@ -151,10 +152,19 @@ public class TodoHealthBridgeModule: Module {
     // `writeTypes`. Like every addition here, an install that already answered
     // the sheet gets no rings until somebody taps the access row again.
     types.insert(HKObjectType.activitySummaryType())
+    // Workouts other apps recorded (a run, a ride), for the Workouts history's
+    // "From Health" rows (`readWorkouts`). Asked for on its own terms rather
+    // than inferred from exercise minutes: those are a day's total, and a
+    // workout is a thing somebody did with a start and an end. Like every
+    // addition here, an install that already answered the sheet gets none
+    // until somebody taps the access row again. Non-optional, unlike the
+    // quantity types above (`workoutType()`, Apple's doc:
+    // https://developer.apple.com/tutorials/data/documentation/healthkit/hkobjecttype/workouttype().json).
+    types.insert(HKObjectType.workoutType())
     return types
   }
 
-  /// Every type this app will ever ask to *write* — two, today. Deliberately
+  /// Every type this app will ever ask to *write*. Deliberately
   /// its own set rather than folded into `readTypes`: a share type is a real
   /// consequence (a sample landing in somebody's actual Health record) that a
   /// read type isn't, so it's requested on its own (see `requestWriteAuthorization`)
@@ -181,7 +191,81 @@ public class TodoHealthBridgeModule: Module {
         types.insert(type)
       }
     }
+    // A finished strength session (`writeWorkout`), its own review in
+    // `docs/arch/health-data.md`. `HKWorkoutType` inherits from
+    // `HKSampleType`, so it belongs in this set as it stands. Active energy is
+    // deliberately *not* added beside it: nothing on the phone measures it
+    // for a session, and a share row for a figure the app never writes would
+    // be a question asked for nothing. See `writeWorkout`'s energy note.
+    types.insert(HKObjectType.workoutType())
     return types
+  }
+
+  /// The activity types `readWorkouts` names, each under a stable string the
+  /// JS side keys on (`HealthWorkoutActivity` in `src/utils/healthWorkouts.ts`).
+  ///
+  /// A closed table rather than the enum's raw value, because the raw value is
+  /// an integer Apple never promised to anybody and a name is what a screen
+  /// needs anyway. Anything not listed reads as `"other"`, which is honest: it
+  /// is a workout, of a kind this table doesn't name. Every case here is iOS 14
+  /// or older, under the pod's 15.1 floor, so none needs an availability check
+  /// (each case's page under
+  /// https://developer.apple.com/tutorials/data/documentation/healthkit/hkworkoutactivitytype/
+  /// was checked for its introduction). The deprecated `.dance` is left out on
+  /// purpose and falls through to `"other"`.
+  private static let workoutActivityTable: [(name: String, type: HKWorkoutActivityType)] = [
+    ("traditionalStrengthTraining", .traditionalStrengthTraining),
+    ("functionalStrengthTraining", .functionalStrengthTraining),
+    ("coreTraining", .coreTraining),
+    ("highIntensityIntervalTraining", .highIntensityIntervalTraining),
+    ("crossTraining", .crossTraining),
+    ("mixedCardio", .mixedCardio),
+    ("running", .running),
+    ("walking", .walking),
+    ("hiking", .hiking),
+    ("cycling", .cycling),
+    ("swimming", .swimming),
+    ("rowing", .rowing),
+    ("elliptical", .elliptical),
+    ("stairClimbing", .stairClimbing),
+    ("stairs", .stairs),
+    ("stepTraining", .stepTraining),
+    ("jumpRope", .jumpRope),
+    ("yoga", .yoga),
+    ("pilates", .pilates),
+    ("barre", .barre),
+    ("flexibility", .flexibility),
+    ("cooldown", .cooldown),
+    ("mindAndBody", .mindAndBody),
+    ("taiChi", .taiChi),
+    ("cardioDance", .cardioDance),
+    ("socialDance", .socialDance),
+    ("boxing", .boxing),
+    ("kickboxing", .kickboxing),
+    ("martialArts", .martialArts),
+    ("climbing", .climbing),
+    ("tennis", .tennis),
+    ("pickleball", .pickleball),
+    ("soccer", .soccer),
+    ("basketball", .basketball),
+    ("golf", .golf),
+    ("downhillSkiing", .downhillSkiing),
+    ("snowboarding", .snowboarding),
+    ("crossCountrySkiing", .crossCountrySkiing),
+    ("fitnessGaming", .fitnessGaming),
+  ]
+
+  /// The two activity types `writeWorkout` will record. This app logs sets of
+  /// weight and reps, so a strength session is the only kind of workout it
+  /// can truthfully say happened; a name outside these two is refused rather
+  /// than written under some other kind.
+  private static let writableWorkoutActivities: Set<String> = [
+    "traditionalStrengthTraining",
+    "functionalStrengthTraining",
+  ]
+
+  private static func workoutActivityName(_ type: HKWorkoutActivityType) -> String {
+    return workoutActivityTable.first(where: { $0.type == type })?.name ?? "other"
   }
 
   /// Every nutrient a logged meal writes, with the identifier and unit each one
@@ -271,7 +355,11 @@ public class TodoHealthBridgeModule: Module {
   /// about each share type separately inside that one sheet. What the settings
   /// row does with thirteen answers is `writeAuthorizationStatus`'s problem,
   /// not this one's.
-  private static func writeTypes(for key: String) -> [HKQuantityType] {
+  ///
+  /// `[HKObjectType]` rather than `[HKQuantityType]` since `"workout"` joined:
+  /// a workout type is not a quantity type, and `authorizationStatus(for:)`,
+  /// the only thing the result is handed to, takes any `HKObjectType`.
+  private static func writeTypes(for key: String) -> [HKObjectType] {
     switch key {
     case "water":
       return [HKQuantityType.quantityType(forIdentifier: .dietaryWater)].compactMap { $0 }
@@ -279,6 +367,8 @@ public class TodoHealthBridgeModule: Module {
       return [HKQuantityType.quantityType(forIdentifier: .bodyMass)].compactMap { $0 }
     case "nutrition":
       return nutrientWriteTable.compactMap { HKQuantityType.quantityType(forIdentifier: $0.identifier) }
+    case "workout":
+      return [HKObjectType.workoutType()]
     default:
       return []
     }
@@ -585,7 +675,8 @@ public class TodoHealthBridgeModule: Module {
     // ─── Writing (dietary water and body mass) ─────────────────────────────
 
     /// "unavailable" | "notDetermined" | "sharingDenied" | "sharingAuthorized",
-    /// for the one share type named by `kind` ("water" | "weight").
+    /// for the share types named by `kind` ("water" | "weight" | "nutrition" |
+    /// "workout").
     ///
     /// The write mirror of `authorizationRequestStatus` above, and able to say
     /// something that one structurally cannot: `authorizationStatus(for:)` is
@@ -918,14 +1009,40 @@ public class TodoHealthBridgeModule: Module {
         return
       }
 
-      var types: [HKObjectType] = Self.nutrientWriteTable.compactMap {
+      let candidates: [HKObjectType] = Self.nutrientWriteTable.compactMap {
         HKQuantityType.quantityType(forIdentifier: $0.identifier)
+      }
+      guard !candidates.isEmpty else {
+        promise.resolve(false)
+        return
+      }
+      // A nutrient type this install was never asked to share is one the app
+      // never wrote, and deleting from it fails rather than matching nothing:
+      // an install that allowed nutrition before a type joined the table (the
+      // vitamins, cholesterol) would otherwise report every retraction as a
+      // failure. Skipped, as `deleteWorkout` does.
+      //
+      // The filter runs over the quantity types only. The food correlation is
+      // never in `writeTypes` (an app shares a correlation's member types, not
+      // the correlation type), so its status is `notDetermined` on every
+      // install, or the call raises; filtered with the rest, the meal's
+      // correlation object would never be deleted and the Health app would
+      // keep an empty meal. It is appended after the filter, unconditionally.
+      var types: [HKObjectType] = []
+      var checked = false
+      TodoHealthExceptionCatcher.runCatchingExceptions {
+        types = candidates.filter { self.store.authorizationStatus(for: $0) != .notDetermined }
+        checked = true
+      }
+      guard checked else {
+        promise.resolve(false)
+        return
       }
       if let correlationType = HKObjectType.correlationType(forIdentifier: .food) {
         types.append(correlationType)
       }
       guard !types.isEmpty else {
-        promise.resolve(false)
+        promise.resolve(true)
         return
       }
 
@@ -947,6 +1064,324 @@ public class TodoHealthBridgeModule: Module {
               // "No objects matched" is reported as a failure by HealthKit and
               // is not one here: a type this meal never wrote is the ordinary
               // case, since a given entry states some of the ten, not all.
+              if !success, (error as NSError?)?.code != HKError.errorNoData.rawValue {
+                allSucceeded = false
+              }
+              remaining -= 1
+              if remaining == 0 { promise.resolve(allSucceeded) }
+            }
+          }
+        }
+        started = true
+      }
+      if !started { promise.resolve(false) }
+      #else
+      promise.resolve(false)
+      #endif
+    }
+
+    // ─── Workouts ───────────────────────────────────────────────────────────
+
+    /// Writes one finished strength session as an `HKWorkout`, and resolves
+    /// what it saved as JSON: `{"workoutId":"…","sampleIds":["…"]}`, or the
+    /// string `"null"` when nothing was saved.
+    ///
+    /// **Built with `HKWorkoutBuilder`, not `HKWorkout(activityType:start:end:)`.**
+    /// That initializer is deprecated as of iOS 17 with "Use HKWorkoutBuilder"
+    /// as Apple's replacement note
+    /// (https://developer.apple.com/tutorials/data/documentation/healthkit/hkworkout/init(activitytype:start:end:).json),
+    /// and the builder's completion-handler forms are the shape everything else
+    /// in this file already uses. The sequence is Apple's: begin collection at
+    /// the start, add what there is, end collection at the end, finish. Every
+    /// declaration below was read off its documentation JSON
+    /// (`…/healthkit/hkworkoutbuilder/<member>.json`): `init(healthStore:configuration:device:)`,
+    /// `beginCollection(withStart:completion:)`, `add(_:completion:)`,
+    /// `addMetadata(_:completion:)`, `endCollection(withEnd:completion:)`,
+    /// `finishWorkout(completion:)` and `discardWorkout()`.
+    ///
+    /// **`workoutId` can be null on a write that worked.** `finishWorkout`
+    /// hands back a nil workout with no error when it saved one the locked
+    /// device can't read back (Apple's own note on that page). The workout is
+    /// in Health then and this has no id for it, which is a different answer
+    /// from "nothing was written" and is reported as one: the caller must not
+    /// retry, or the session lands in Health twice.
+    ///
+    /// **Energy is attached only when a measured figure is passed, and only
+    /// when active-energy sharing is already allowed.** Absent stays absent: a
+    /// session with no measured energy writes none, and nothing here estimates
+    /// one from sets. Today the second condition is never true, because active
+    /// energy is not in `writeTypes` (nothing on the phone measures it for a
+    /// session). The branch exists for the watch phase, whose review is where
+    /// that share type gets argued for. A zero is treated as no measurement,
+    /// the body-mass write's reasoning: no session burns nothing.
+    ///
+    /// Refuses (`"null"`) without asking anything: an unknown activity, an end
+    /// that isn't after the start, a session over a day long or ending in the
+    /// future (absurdity checks, like the body-mass ceiling), or workout
+    /// sharing not allowed. The last one mirrors `writeFoodSamples`' check of
+    /// `authorizationStatus(for:)`, which Apple documents as truthful for
+    /// share types.
+    ///
+    /// `metadataJSON` is a flat object of string or number values saved with
+    /// the workout under the app's own keys. A key starting with `HK` is
+    /// dropped: those are HealthKit's names, and the ones this sets
+    /// (`HKMetadataKeyIndoorWorkout`, and the sync pair below) it sets itself.
+    ///
+    /// **`syncIdentifier` makes a rewrite replace rather than duplicate.** When
+    /// one is passed (the session's id), it is saved as
+    /// `HKMetadataKeySyncIdentifier` with an `HKMetadataKeySyncVersion` of the
+    /// milliseconds since 1970 at this write. Apple documents the pair on any
+    /// `HKObject` saved with them: a save whose identifier matches an existing
+    /// object's replaces it when its version is greater
+    /// (https://developer.apple.com/tutorials/data/documentation/healthkit/hkmetadatakeysyncidentifier.json,
+    /// `let HKMetadataKeySyncIdentifier: String`, a String value, iOS 11.0+;
+    /// https://developer.apple.com/tutorials/data/documentation/healthkit/hkmetadatakeysyncversion.json,
+    /// `let HKMetadataKeySyncVersion: String`, an NSNumber value, iOS 11.0+;
+    /// the identifier's page says adding one requires adding the version).
+    /// The version is a clock rather than a fingerprint of the span, because a
+    /// workout moved earlier would carry a smaller fingerprint and its rewrite
+    /// would lose to the copy it was meant to replace. Whether the builder's
+    /// saved workout honours the pair is not stated on the builder's pages;
+    /// the identifier's page says any `HKObject`, which a workout is. Set from
+    /// its own argument because JS metadata may not name `HK` keys.
+    AsyncFunction("writeWorkout") { (startISO: String, endISO: String, activity: String, energyKcal: Double?, metadataJSON: String?, syncIdentifier: String?, promise: Promise) in
+      #if canImport(HealthKit)
+      guard HKHealthStore.isHealthDataAvailable(),
+            Self.writableWorkoutActivities.contains(activity),
+            let activityType = Self.workoutActivityTable.first(where: { $0.name == activity })?.type,
+            let start = Self.parseISO(startISO),
+            let end = Self.parseISO(endISO),
+            end > start,
+            end.timeIntervalSince(start) <= 24 * 60 * 60,
+            end <= Date().addingTimeInterval(5 * 60) else {
+        promise.resolve("null")
+        return
+      }
+
+      // Inside the catcher for `writeFoodSamples`' reason: this is HealthKit,
+      // and Swift cannot catch the NSException it raises.
+      var workoutShareable = false
+      var energyShareable = false
+      TodoHealthExceptionCatcher.runCatchingExceptions {
+        workoutShareable = self.store.authorizationStatus(for: HKObjectType.workoutType()) == .sharingAuthorized
+        if let energyType = HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned) {
+          energyShareable = self.store.authorizationStatus(for: energyType) == .sharingAuthorized
+        }
+      }
+      guard workoutShareable else {
+        promise.resolve("null")
+        return
+      }
+
+      let energySample: HKQuantitySample?
+      if let kcal = energyKcal, kcal.isFinite, kcal > 0, kcal < 10_000, energyShareable,
+         let energyType = HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned) {
+        energySample = HKQuantitySample(
+          type: energyType,
+          quantity: HKQuantity(unit: HKUnit.kilocalorie(), doubleValue: kcal),
+          start: start,
+          end: end
+        )
+      } else {
+        energySample = nil
+      }
+
+      // `HKMetadataKeyIndoorWorkout` is a Bool in an NSNumber (its page:
+      // https://developer.apple.com/tutorials/data/documentation/healthkit/hkmetadatakeyindoorworkout.json).
+      // Set explicitly rather than trusting the configuration's `locationType`
+      // to produce it, which nothing documents.
+      var metadataBuilt: [String: Any] = [HKMetadataKeyIndoorWorkout: NSNumber(value: true)]
+      if let json = metadataJSON, let data = json.data(using: .utf8),
+         let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+        for (key, value) in parsed where !key.isEmpty && !key.hasPrefix("HK") {
+          if let text = value as? String {
+            metadataBuilt[key] = text
+          } else if let number = value as? NSNumber {
+            metadataBuilt[key] = number
+          }
+        }
+      }
+      if let identifier = syncIdentifier, !identifier.isEmpty {
+        metadataBuilt[HKMetadataKeySyncIdentifier] = identifier
+        metadataBuilt[HKMetadataKeySyncVersion] = NSNumber(value: Int64((Date().timeIntervalSince1970 * 1000).rounded()))
+      }
+      let metadata = metadataBuilt
+
+      // `HKWorkoutConfiguration()` is NSObject's init, which is how Apple's
+      // own sample code makes one (running-workout-sessions.json).
+      let configuration = HKWorkoutConfiguration()
+      configuration.activityType = activityType
+      configuration.locationType = .indoor
+
+      var builderMade: HKWorkoutBuilder? = nil
+      TodoHealthExceptionCatcher.runCatchingExceptions {
+        builderMade = HKWorkoutBuilder(healthStore: self.store, configuration: configuration, device: nil)
+      }
+      guard let builder = builderMade else {
+        promise.resolve("null")
+        return
+      }
+
+      // Each step starts the next from its own completion handler, and each
+      // start is inside the catcher with a fallback, so the promise settles
+      // exactly once on every path (the module note's `started` rule, applied
+      // per step). A step that fails before the finish discards the builder,
+      // so a half-built workout is never left behind.
+      let abandon: () -> Void = {
+        TodoHealthExceptionCatcher.runCatchingExceptions {
+          builder.discardWorkout()
+        }
+        promise.resolve("null")
+      }
+
+      let finish: () -> Void = {
+        var started = false
+        TodoHealthExceptionCatcher.runCatchingExceptions {
+          builder.endCollection(withEnd: end) { ended, _ in
+            guard ended else {
+              abandon()
+              return
+            }
+            var finishing = false
+            TodoHealthExceptionCatcher.runCatchingExceptions {
+              builder.finishWorkout { workout, error in
+                guard error == nil else {
+                  promise.resolve("null")
+                  return
+                }
+                // The energy sample's id is carried whether or not the
+                // workout's is readable: deleting a workout is not documented
+                // to take the samples added to it along, so a retraction
+                // names both.
+                var result: [String: Any] = [
+                  "sampleIds": energySample.map { [$0.uuid.uuidString] } ?? [String](),
+                ]
+                if let workoutId = workout?.uuid.uuidString {
+                  result["workoutId"] = workoutId
+                } else {
+                  result["workoutId"] = NSNull()
+                }
+                let encoded = (try? JSONSerialization.data(withJSONObject: result))
+                  .flatMap { String(data: $0, encoding: .utf8) }
+                promise.resolve(encoded ?? "null")
+              }
+              finishing = true
+            }
+            if !finishing { abandon() }
+          }
+          started = true
+        }
+        if !started { abandon() }
+      }
+
+      // Metadata failing to save costs the indoor flag, the sync pair and the
+      // app's own keys, not the session, so the workout is still finished. A
+      // workout saved without the sync pair is one a later rewrite sits
+      // beside rather than replaces, which the caller's retraction of the old
+      // id still covers.
+      let saveMetadata: () -> Void = {
+        var started = false
+        TodoHealthExceptionCatcher.runCatchingExceptions {
+          builder.addMetadata(metadata) { _, _ in finish() }
+          started = true
+        }
+        if !started { finish() }
+      }
+
+      // Energy failing to attach leaves the workout without energy, which is
+      // the absent-stays-absent answer rather than a reason to write nothing.
+      let addEnergy: () -> Void = {
+        guard let sample = energySample else {
+          saveMetadata()
+          return
+        }
+        var started = false
+        TodoHealthExceptionCatcher.runCatchingExceptions {
+          builder.add([sample]) { _, _ in saveMetadata() }
+          started = true
+        }
+        if !started { saveMetadata() }
+      }
+
+      var started = false
+      TodoHealthExceptionCatcher.runCatchingExceptions {
+        builder.beginCollection(withStart: start) { began, _ in
+          guard began else {
+            abandon()
+            return
+          }
+          addEnergy()
+        }
+        started = true
+      }
+      if !started { abandon() }
+      #else
+      promise.resolve("null")
+      #endif
+    }
+
+    /// Deletes a workout `writeWorkout` saved, and any sample saved with it,
+    /// named by `idsJSON` (a JSON array of UUID strings: the workout's id and
+    /// the `sampleIds` that came back beside it).
+    ///
+    /// **Its own function rather than two more types in `deleteHealthSamples`.**
+    /// Apple documents `deleteObjects(of:predicate:withCompletion:)` as failing
+    /// when the app "has not requested permission to share" the type
+    /// (https://developer.apple.com/tutorials/data/documentation/healthkit/hkhealthstore/deleteobjects(of:predicate:withcompletion:).json),
+    /// so adding the workout type there would turn every meal's retraction
+    /// into a reported failure on an install that never allowed workouts.
+    /// For the same reason a type still `notDetermined` is skipped here: this
+    /// app can't have saved anything of a type it was never allowed to share.
+    /// A type that was allowed and is now refused is still tried, and its
+    /// failure is reported, since that is a sample this app wrote and can no
+    /// longer take back.
+    ///
+    /// Same serial-queue tally and the same "no objects matched is not a
+    /// failure" rule as `deleteHealthSamples`, for its reasons. Resolves true
+    /// when nothing went wrong, a workout the person already deleted in the
+    /// Health app included.
+    AsyncFunction("deleteWorkout") { (idsJSON: String, promise: Promise) in
+      #if canImport(HealthKit)
+      guard HKHealthStore.isHealthDataAvailable(),
+            let data = idsJSON.data(using: .utf8),
+            let raw = try? JSONSerialization.jsonObject(with: data) as? [String] else {
+        promise.resolve(false)
+        return
+      }
+      let uuids = Set(raw.compactMap { UUID(uuidString: $0) })
+      guard !uuids.isEmpty else {
+        promise.resolve(true)
+        return
+      }
+
+      var candidates: [HKObjectType] = [HKObjectType.workoutType()]
+      if let energyType = HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned) {
+        candidates.append(energyType)
+      }
+      var types: [HKObjectType] = []
+      var checked = false
+      TodoHealthExceptionCatcher.runCatchingExceptions {
+        types = candidates.filter { self.store.authorizationStatus(for: $0) != .notDetermined }
+        checked = true
+      }
+      guard checked else {
+        promise.resolve(false)
+        return
+      }
+      guard !types.isEmpty else {
+        promise.resolve(true)
+        return
+      }
+
+      let predicate = HKQuery.predicateForObjects(with: uuids)
+      let tally = DispatchQueue(label: "TodoHealthBridge.deleteWorkout")
+      var remaining = types.count
+      var allSucceeded = true
+      var started = false
+      TodoHealthExceptionCatcher.runCatchingExceptions {
+        for type in types {
+          self.store.deleteObjects(of: type, predicate: predicate) { success, _, error in
+            tally.async {
               if !success, (error as NSError?)?.code != HKError.errorNoData.rawValue {
                 allSucceeded = false
               }
@@ -1446,6 +1881,99 @@ public class TodoHealthBridgeModule: Module {
       if !started { promise.resolve("null") }
       #else
       promise.resolve("null")
+      #endif
+    }
+
+    /// Every workout another app recorded that overlaps the `days` days
+    /// starting at `anchorISO`, as JSON sorted by start:
+    /// `[{"start":"…","end":"…","activity":"running","durationSeconds":1830,
+    /// "source":"Strava","energyKcal":312}, …]`.
+    ///
+    /// **This app's own workouts are left out**, by the bundle identifier of
+    /// the app that saved each one (`sourceRevision.source.bundleIdentifier`),
+    /// so a session written by `writeWorkout` isn't listed a second time as
+    /// "From Health" beside the session it came from. A bundle identifier that
+    /// starts with this app's own and a dot is left out too, which is how a
+    /// watch app's identifier is formed (`plugins/withWatchApp.js`), so the
+    /// watch phase's sessions are covered before they exist.
+    ///
+    /// **`energyKcal` is omitted when the workout carries none**, never sent as
+    /// zero: plenty of workouts are recorded with no energy, and a missing
+    /// figure is absent rather than small. It comes from `statistics(for:)`,
+    /// iOS 16+, because `totalEnergyBurned` is deprecated as of iOS 18; below
+    /// 16 the figure is simply absent. A present zero survives as zero.
+    ///
+    /// `source` is the recording app's display name, for the "From Health"
+    /// attribution. Unlike `readSleepSeries`, which sends an index to keep
+    /// another developer's text out of hand-built JSON, this goes through
+    /// `JSONSerialization`, which escapes it.
+    ///
+    /// `[]` for every reason there is nothing to say, a refused read included:
+    /// Health serves a refused read as an empty store. Nothing is stored.
+    AsyncFunction("readWorkouts") { (anchorISO: String, days: Int, promise: Promise) in
+      #if canImport(HealthKit)
+      let calendar = Calendar.current
+      guard HKHealthStore.isHealthDataAvailable(),
+            days > 0, days <= 400,
+            let anchor = Self.parseISO(anchorISO),
+            let end = calendar.date(byAdding: .day, value: days, to: anchor) else {
+        promise.resolve("[]")
+        return
+      }
+      let ownBundle = Bundle.main.bundleIdentifier ?? ""
+      let energyType = HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned)
+
+      var started = false
+      TodoHealthExceptionCatcher.runCatchingExceptions {
+        let query = HKSampleQuery(
+          sampleType: HKObjectType.workoutType(),
+          predicate: HKQuery.predicateForSamples(withStart: anchor, end: end, options: []),
+          limit: HKObjectQueryNoLimit,
+          sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)]
+        ) { _, samples, _ in
+          // The handler runs after the catcher above has returned, so it gets
+          // its own: an exception here would otherwise take the app down.
+          var entries: [[String: Any]] = []
+          var finished = false
+          TodoHealthExceptionCatcher.runCatchingExceptions {
+            for sample in samples ?? [] {
+              guard let workout = sample as? HKWorkout else { continue }
+              let source = workout.sourceRevision.source
+              let bundle = source.bundleIdentifier
+              if !ownBundle.isEmpty, bundle == ownBundle || bundle.hasPrefix(ownBundle + ".") { continue }
+              let duration = workout.duration
+              var entry: [String: Any] = [
+                "start": Self.formatISO(workout.startDate),
+                "end": Self.formatISO(workout.endDate),
+                "activity": Self.workoutActivityName(workout.workoutActivityType),
+                "source": source.name,
+              ]
+              if duration.isFinite, duration >= 0 {
+                entry["durationSeconds"] = Int(duration.rounded())
+              }
+              if #available(iOS 16.0, *), let energyType = energyType,
+                 let kcal = workout.statistics(for: energyType)?.sumQuantity()?.doubleValue(for: HKUnit.kilocalorie()),
+                 kcal.isFinite, kcal >= 0 {
+                entry["energyKcal"] = Int(kcal.rounded())
+              }
+              entries.append(entry)
+            }
+            finished = true
+          }
+          guard finished else {
+            promise.resolve("[]")
+            return
+          }
+          let encoded = (try? JSONSerialization.data(withJSONObject: entries))
+            .flatMap { String(data: $0, encoding: .utf8) }
+          promise.resolve(encoded ?? "[]")
+        }
+        self.store.execute(query)
+        started = true
+      }
+      if !started { promise.resolve("[]") }
+      #else
+      promise.resolve("[]")
       #endif
     }
   }

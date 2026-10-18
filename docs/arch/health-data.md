@@ -1,16 +1,18 @@
-# Reading (mostly) and writing (three times) Apple Health
+# Reading (mostly) and writing (four times) Apple Health
 
 The whole of it: the bridge, the store, the Settings section, the row on Today,
 the Mood screen's health axis, the Activity rings, the `health` generator, the short-night line
-under "Lighten today", the Weight screen and its chart, the Sleep screen, and the three things
+under "Lighten today", the Weight screen and its chart, the Sleep screen, and the four things
 this app writes back — a nutrient sample, on completion of a task that opted
-into logging one; a body-mass sample, when somebody records a weight; and a
-meal's nutrition, when somebody adds it to the food log — plus the rules any
+into logging one; a body-mass sample, when somebody records a weight; a
+meal's nutrition, when somebody adds it to the food log; and a finished
+strength workout, when somebody saves one — plus the rules any
 further reader or writer has to be built against.
 
 Read this before touching `modules/todo-health-bridge/`,
 `src/utils/healthBridge.ts`, `src/utils/healthCompletionSync.ts`,
 `src/utils/healthWeightSync.ts`, `src/utils/healthFoodSync.ts`,
+`src/utils/healthWorkouts.ts`, `src/utils/healthWorkoutSync.ts`,
 `src/utils/weightLog.ts`, `src/store/useFoodLogStore.ts`,
 `src/store/useHealthStore.ts`, `src/screens/settings/HealthSettings.tsx`,
 `src/screens/WeightScreen.tsx`, `src/utils/sleepLog.ts`,
@@ -623,6 +625,13 @@ looking for. So:
 - **The correlation's own UUID is stored alongside its members'.** Deleting the
   correlation is what retracts the meal; the members are carried so a partial
   save still leaves something to clean up.
+- **A nutrient type still `notDetermined` is skipped, and the correlation type
+  never is.** Deleting from a type the app was never asked to share fails, so an
+  install that allowed nutrition before a type joined the table would report
+  every retraction as failed. The food correlation is never a share type (an
+  app shares a correlation's members), so it reads `notDetermined` everywhere;
+  filtered with the rest, no meal's correlation would ever be deleted and Health
+  would keep empty meals. It is added after the filter, unconditionally.
 - **The delete tallies its results on a serial queue.** One delete per type
   reports back on arbitrary background queues, and getting the count wrong means
   telling the app a retraction succeeded when it did not, leaving a sample in a
@@ -1041,6 +1050,208 @@ shows it again; a newer ask for the recipe replaces it. It is still never writte
 to the recipe or the catalog, and it is not seeded in demo mode because the
 sheet builds the key from live catalog data.
 
+## The fourth write, and a read beside it: workouts
+
+A strength session logged in the Workouts screen can be saved to Health as a
+workout, and workouts other apps recorded (a run, a ride, a class) can be read
+back for the Workouts history. The bridge half is `writeWorkout`,
+`deleteWorkout` and `readWorkouts`; the app half is
+`src/utils/healthWorkoutSync.ts` (the write and its rules),
+`src/utils/healthWorkouts.ts` (the read), `src/utils/workoutHistory.ts` (the
+rows in the history) and the calls in `useWorkoutStore` (`docs/arch/workouts.md`,
+"Phase 5, as built"). Everything
+the meal write says about writing being a different kind of risk from reading
+holds here. What follows is where a workout differs.
+
+### What is written, and when
+
+**One `HKWorkout` per finished session, on the person's tap of "Save workout"**
+on workout mode's summary (`finishSession`), and only while three switches are
+on: Log to Health (`healthWriteEnabled`), its Workouts row (`workoutHealthWrite`,
+off by default) and the Workouts area the row sits in. The second is its own
+switch rather than riding the first because somebody who already logs meals to
+Health must not start writing workouts by turning the Workouts area on. The
+summary says it will happen ("Saving also writes it to Apple Health as a
+strength workout.") so the tap is an informed one. It is
+licensed by the meal write's argument: a session exists because a person
+logged the sets, so recording that it happened is writing down their
+statement, not the app forming an opinion about a body. The trigger rule is
+the food log's unchanged: a person acting on one session, no sweep, and no pass
+over the history of sessions logged before this shipped.
+
+- **An import is never written.** A workout read from a Strong or Hevy file
+  came from an app that most likely wrote it to Health already, and writing it
+  again would double it there. The import sheet says so while writing is on.
+- **It is a strength workout and nothing else.** The bridge refuses any
+  activity but `.traditionalStrengthTraining` and `.functionalStrengthTraining`,
+  indoor. Sets of weight and reps are all this app can truthfully say happened.
+- **Built with `HKWorkoutBuilder`, not the `HKWorkout(activityType:start:end:)`
+  initializer**, which is deprecated as of iOS 17 with the builder named as its
+  replacement. Begin collection at the start, end it at the end, finish. A step
+  that fails before the finish discards the builder, so a half-built workout is
+  never left behind.
+- **It is skipped, not attempted, when workout sharing isn't allowed**, read off
+  `authorizationStatus(for:)` exactly as `writeFoodSamples` reads its own types.
+  `writeAuthorizationStatus('workout')` gives Settings its own access row.
+- **Absurdity checks, not judgments.** An end that isn't after the start, a
+  session over a day long, or one ending in the future is refused, for the
+  body-mass ceiling's reason: a mistyped clock should not put a permanent
+  outlier in somebody's record. `workoutSpanWritable` makes the same checks on
+  the JS side first, because the bridge answers all of them and a real
+  refusal with the same null, and only the refusal may raise the notice below.
+- **A refused write raises the meal write's notice, with its own words and its
+  own "already said" flag** (`healthWorkoutWriteRefusalSeen`).
+  `HealthWriteRefusedNotice` watches both stores. Workout sharing is allowed or
+  refused apart from nutrition, so one flag for both would let a meal's notice
+  swallow the workout's.
+- **A workout an agent logged waits for the phone**, the meal write's
+  exception (`WorkoutSession.healthWritePending`, `writePendingHealthSessions`,
+  run wherever the food log's runs: at launch, on foreground and after a sync
+  that applied rows, in front only). A session has no creation stamp, so the
+  seven-day limit counts from when it ended. One logged with no length has no
+  span to write yet and keeps its flag, so a length added later is written by
+  the next pass; the limit ages it out otherwise.
+
+### What is retracted
+
+`writeWorkout` returns the workout's UUID (for `workout_sessions.healthWorkoutId`)
+and the ids of any samples saved with it. `deleteWorkout` takes them back, under
+`deleteHealthSamples`' rules: the same serial-queue tally, "no objects matched"
+counted as success, and **not gated on the switch**, because removing what was
+written is what somebody who turned writing off is asking for. Deleting a
+session retracts it (`deleteSession`, which reads the id off the row before it
+goes).
+
+**An edit rewrites less than `reviseEntry` does, on purpose.** Health holds the
+span and the activity and nothing else (no title, no sets, and no metadata
+beyond the sync pair below), so
+only a change to a written workout's start or end retracts and rewrites it,
+and only while writing is on. With the switches off, an edit leaves Health as
+it is rather than retracting: the meal's correction is about a false figure in
+a medical record, and a workout moved by ten minutes is not that. An edit never
+writes a workout that was never written (one saved with the switch off, or
+imported), because an edit is not the person asking for it to be shared. On
+the phone the edit is the workout page's Started and Finished rows
+(`WorkoutDetailSheet`), which refuse a span Health would not take back
+(longer than a day) rather than let the rewrite quietly drop it; an agent's
+edit of a workout in Health is refused by the MCP server (below).
+
+**`healthWorkoutId` syncs, the way `FoodLogEntry.healthSampleIds` does**, so it
+is not in `SYNC_DEVICE_LOCAL_COLUMNS` and stamping it restamps the row as a real
+change. Any of the person's own devices may retract it: HealthKit lets an app
+delete only what that app saved, and the same app on another device is the same
+source. The MCP server has no HealthKit, so `update_workout` refuses a new time
+for a workout marked `inAppleHealth` and `delete_workout` refuses to delete one,
+exactly as the food tools refuse for a meal with sample ids. The write switches
+are device-local, like `healthWriteEnabled`: they say what this phone may put in
+Health.
+
+**One session is one workout in Health, however many times it is written.**
+Each write carries the session's id as `HKMetadataKeySyncIdentifier` and the
+milliseconds at the write as `HKMetadataKeySyncVersion`, set natively from
+their own argument (JS metadata may not name `HK` keys). Apple documents the
+pair on any `HKObject` saved with them: a save matching an existing object's
+identifier with a greater version replaces it
+(`healthkit/hkmetadatakeysyncidentifier.json`, `…/hkmetadatakeysyncversion.json`,
+both iOS 11). That is the guard against a sync handing the phone back a stale,
+unwritten copy of a session already in Health, which would otherwise be written
+twice. The version is a clock, not a fingerprint of the span, because a workout
+moved earlier would carry a smaller fingerprint and lose to the copy it was
+replacing. It changes one store rule: a write that lands on a row already
+stamped by another write of the same times has replaced that workout, so the
+row takes the new id and the older id is retracted (a no-op once replaced),
+where before the new write retracted itself. The builder's own pages don't say
+the pair applies to a workout it saves, only that it applies to any object;
+the first device build is where that is seen. An edit that changes nothing
+saves nothing, and an agent's sets-only edit leaves the session row alone, so
+neither restamps a row a sync could then send over the phone's.
+
+**There is no column for sample ids.** The bridge can hand back ids of samples
+saved beside the workout, but only for measured energy, which nothing passes,
+so they are always empty. The watch phase that passes energy adds the column
+(`health_sample_ids`, the food log's shape) in the same change.
+
+**It is a separate delete rather than two more types in `deleteHealthSamples`.**
+Apple documents `deleteObjects(of:predicate:)` as failing for a type the app
+never asked to share, so folding the workout type in would have turned every
+meal's retraction into a reported failure on an install that never allowed
+workouts. For the same reason `deleteWorkout` skips a type still
+`notDetermined`: this app cannot have saved anything of a type it was never
+allowed to share.
+
+**A write can succeed with no id.** `finishWorkout` hands back a nil workout
+with no error when it saved one the locked phone can't read back. The bridge
+reports that as written with a null `workoutId`, distinct from nothing written,
+so a caller doesn't retry and put the session in Health twice. It cannot be
+retracted from here; that is the one case the person deletes in the Health app.
+
+### Energy: absent stays absent
+
+**A session with no measured energy writes none, and nothing estimates one from
+sets.** The bridge attaches energy only when a measured figure is passed *and*
+active-energy sharing is already allowed. Today the second never holds: active
+energy is not in `writeTypes`, because nothing on the phone measures it for a
+session, and a share row for a figure the app never writes is a question asked
+for nothing. The branch is there for the watch phase, whose review is where
+that share type is argued for. A zero is treated as no measurement (no session
+burns nothing), the body-mass reasoning. Whether deleting a workout also
+deletes the samples added to it is not documented, which is why any such
+sample's id comes back for the retraction to name.
+
+### What the read may claim
+
+Other apps' workouts are **readings**, and the reading rules apply in full:
+
+- **"From Health" attributes the source and never asserts.** Each row carries
+  the recording app's name (`sourceName`), and copy says a run was recorded by
+  that app, not that the person ran. A workout logged by a watch left on a bike
+  is as possible as a nap counted as a night.
+- **Absent energy stays absent.** `energyKcal` is null when a workout carries
+  none, never 0, read through `statistics(for:)` (iOS 16+) because
+  `totalEnergyBurned` is deprecated as of iOS 18. A missing duration is null
+  too, not worked out from the two ends, since a paused workout's duration is
+  shorter than its span.
+- **This app's own workouts are left out**, by the saving app's bundle
+  identifier (and any identifier under it, which is how a watch app's is
+  formed), so a session written from the Workouts screen isn't listed again
+  beside itself. A workout from another app that overlaps a session logged
+  here is left out of the history too (`overlapsSession`), which is an
+  imported Strong or Hevy session that app also saved to Health.
+- **An empty answer can't say why.** A refused read, no workouts, and an install
+  that hasn't asked since the type was added all read `[]`, so nothing may say
+  "no workouts this week" from it. Mood on training days already counts only
+  the app's own sessions for this reason (`docs/arch/workouts.md`).
+
+**They are never stored**, for the reasons this file opens with: Health already
+syncs them, a copy would be someone else's record in this app's backup file,
+and a reading never becomes user data. The history queries the window it shows,
+each time it shows it (`useHealthWorkoutHistory`: on focus, on foreground and
+when the window moves, with "today" taken again at each focus and foreground), from the day of the oldest session listed and no more
+than `HEALTH_HISTORY_MAX_DAYS` (90) back, and only while Read Apple Health is
+on. They are not counted in the header, records, Stats or the mood contrast,
+and an empty read adds nothing to the list: no "connect Health" row, since a
+refusal looks the same as a person who only lifts.
+
+### The re-ask, and the strings
+
+`HKObjectType.workoutType()` joins both `readTypes` and `writeTypes`, so the
+one combined sheet (share and read together, for the revocation note in the
+bridge) now lists workouts on both sides. **An install that already answered
+the sheet gets no workouts until somebody taps the access row in Health
+settings again**, and nothing can tell them that is why: the read is
+unobservable, and the app never raises the sheet by itself. The write side at
+least shows it: `writeAuthorizationStatus('workout')` reads `notDetermined`
+until then, which is the state the row renders an ask for.
+`NSHealthShareUsageDescription` and `NSHealthUpdateUsageDescription` both name
+workouts now.
+
+### Not in this phase: heart rate
+
+**Heart rate is not read.** This file has turned away resting heart rate and
+HRV, and heart rate during a session the person started is a narrower claim
+that still needs its own argument. The watch phase, which is where a heart rate
+would be measured, owes this file that section before any code reads one.
+
 ## The Activity rings
 
 Move, Exercise and Stand are a reading like steps is, and every rule above
@@ -1458,7 +1669,9 @@ only when a person saves the result in that sheet.
 
 Steps, sleep, exercise minutes, active energy, eight nutrients (sodium,
 protein, saturated fat, fiber, sugar, caffeine, water, calories) and body mass
-— nothing past those thirteen. The
+— nothing past those thirteen, plus time in daylight, the Activity rings, and
+other apps' workouts (read for the Workouts history only, which no rule or
+generator consults; see the workouts section above). The
 read-type list is one place (`readTypes`) and the note beside it says what
 adding to it costs; every metric this file still rules out — resting heart
 rate, HRV, glucose, cycle tracking — stays ruled out for the reason given

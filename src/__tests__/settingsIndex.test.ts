@@ -284,7 +284,7 @@ describe('settings index', () => {
     it('names a real row in every requires', () => {
       const ids = new Set(SETTINGS_ENTRIES.map(e => e.id));
       for (const entry of SETTINGS_ENTRIES) {
-        for (const parent of entry.requires === undefined ? [] : [entry.requires].flat()) {
+        for (const parent of [entry.requires ?? [], entry.requiresAll ?? []].flat()) {
           expect(ids.has(parent)).toBe(true);
         }
       }

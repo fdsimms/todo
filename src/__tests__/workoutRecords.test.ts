@@ -15,6 +15,7 @@ import {
   recordSessions,
   recordsInSession,
   sessionDayKey,
+  sessionRecordSummary,
   sessionsPerWeek,
   setVolume,
   summarizeRecords,
@@ -349,6 +350,48 @@ describe('analyzeAll and the readings of it', () => {
     expect(isNewRecord('2026-10-01', '2026-10-14')).toBe(true);
     expect(isNewRecord('2026-09-29', '2026-10-14')).toBe(false);
     expect(isNewRecord('2026-10-20', '2026-10-14')).toBe(false);
+  });
+});
+
+describe('sessionRecordSummary', () => {
+  const ROW = 'lib:barbell-row';
+  // Raw sessions, as the store holds them: the helper works out the days itself.
+  const sessions = [
+    { id: 's1', startedAt: new Date(2026, 8, 1, 18).toISOString() },
+    { id: 's2', startedAt: new Date(2026, 8, 8, 18).toISOString() },
+    { id: 's3', startedAt: new Date(2026, 9, 6, 18).toISOString() },
+  ];
+  const history: Record<string, WorkoutSet[]> = {
+    [BENCH]: [set('s1', { weightKg: 80, reps: 8 }), set('s2', { weightKg: 82.5, reps: 8 }), set('s3', { weightKg: 90, reps: 8 })],
+    [ROW]: [set('s1', { exerciseId: ROW, weightKg: 60, reps: 8 }), set('s2', { exerciseId: ROW, weightKg: 55, reps: 8 })],
+  };
+  const kindOf = () => 'weight_reps' as const;
+  const historyOf = (id: string) => history[id] ?? [];
+
+  it('lists what the session beat, grouped by exercise, as the finish summary does', () => {
+    const [bench, ...rest] = sessionRecordSummary('s2', [BENCH, ROW], kindOf, historyOf, sessions, '00:00');
+    expect(rest).toEqual([]);
+    expect(bench.exerciseId).toBe(BENCH);
+    expect(bench.records[0]).toMatchObject({ type: 'e1rm', previous: 101.3, value: 104.5 });
+    expect(bench.records.length).toBeLessThanOrEqual(3);
+  });
+
+  it('keeps an old workout\'s records although a later one has beaten them', () => {
+    expect(sessionRecordSummary('s2', [BENCH], kindOf, historyOf, sessions, '00:00')).toHaveLength(1);
+    expect(sessionRecordSummary('s3', [BENCH], kindOf, historyOf, sessions, '00:00')).toHaveLength(1);
+  });
+
+  it('is empty for a first time, a session that beat nothing, and no exercises', () => {
+    expect(sessionRecordSummary('s1', [BENCH, ROW], kindOf, historyOf, sessions, '00:00')).toEqual([]);
+    expect(sessionRecordSummary('s2', [ROW], kindOf, historyOf, sessions, '00:00')).toEqual([]);
+    expect(sessionRecordSummary('s2', [], kindOf, historyOf, sessions, '00:00')).toEqual([]);
+  });
+
+  it('reads each exercise as its own kind', () => {
+    // As a bodyweight exercise the weight is not looked at, so a heavier set
+    // at the same reps is no record at all.
+    const asBodyweight = sessionRecordSummary('s2', [BENCH], () => 'bodyweight_reps', historyOf, sessions, '00:00');
+    expect(asBodyweight).toEqual([]);
   });
 });
 

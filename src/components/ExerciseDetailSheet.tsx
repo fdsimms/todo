@@ -27,7 +27,7 @@ import {
   formatAxisValue, formatMetricPoint, formatRecordValue, metricCaption, metricLabel, metricNote, metricNumber,
   recordLabel,
 } from '../utils/workoutRecordText';
-import { formatSetLine } from '../utils/workoutSession';
+import { formatSetLine, setLabels, setName } from '../utils/workoutSession';
 import type { WorkoutSet } from '../types';
 
 /**
@@ -118,6 +118,20 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
       if (!out.has(s.sessionId)) out.set(s.sessionId, []);
       out.get(s.sessionId)!.push(s);
     }
+    return out;
+  }, [sets]);
+  // Every set done, warm-ups included, for the notes: a note written on a
+  // warm-up is as much the person's as one on a working set.
+  const doneBySession = useMemo(() => {
+    const out = new Map<string, WorkoutSet[]>();
+    for (const s of sets) {
+      if (s.completedAt === null) continue;
+      if (!out.has(s.sessionId)) out.set(s.sessionId, []);
+      out.get(s.sessionId)!.push(s);
+    }
+    // In the plan's order, which is how the workout page numbers them; the
+    // query returns them in the order they were ticked.
+    for (const list of out.values()) list.sort((a, b) => a.setIndex - b.setIndex);
     return out;
   }, [sets]);
 
@@ -246,12 +260,23 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
               {history.slice(0, shown).map((p, i) => {
                 const list = setsBySession.get(p.sessionId) ?? [];
                 const line = list.map(s => formatSetLine(s, kind, unit)).filter(Boolean).join(', ');
+                // A set's note, filed under the set it was written on, so
+                // "left shoulder twinged" outlives the workout it was said in.
+                const done = doneBySession.get(p.sessionId) ?? [];
+                const labels = setLabels(done);
+                const notes = done.filter(s => !!s.note);
                 return (
                   <View key={p.sessionId} style={[styles.historyRow, i > 0 && styles.rowSep]}>
                     <Text style={styles.historyTitle}>
                       {`${format(new Date(`${p.dayKey}T12:00:00`), 'EEE, MMM d')} · ${titleOf.get(p.sessionId) ?? 'Workout'}`}
                     </Text>
                     {!!line && <Text style={styles.historySets}>{line}</Text>}
+                    {notes.map(s => (
+                      <Text key={s.id} style={styles.historyNote}>
+                        <Text style={styles.historyNoteSet}>{`${setName(s.kind, labels.get(s.id) ?? '')}: `}</Text>
+                        {s.note}
+                      </Text>
+                    ))}
                   </View>
                 );
               })}
@@ -308,5 +333,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   historyRow: { paddingHorizontal: spacing.md, paddingVertical: spacing.smd },
   historyTitle: { color: colors.text, fontSize: font.md },
   historySets: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs, fontVariant: ['tabular-nums'] },
+  historyNote: { color: colors.text, fontSize: font.sm, marginTop: spacing.xs },
+  historyNoteSet: { color: colors.textSecondary },
   more: { flexDirection: 'row', marginTop: spacing.smd },
 });

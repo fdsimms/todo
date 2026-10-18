@@ -307,6 +307,15 @@ describe('the workout write tools', () => {
       expect(entries).toEqual([expect.objectContaining({ action: 'created', subject: 'workout', title: 'Workout' })]);
     });
 
+    it('leaves it flagged for the phone to write to Apple Health, which this process cannot reach', () => {
+      const { workout } = logWorkout(ledgered, {
+        startedAt: new Date(2026, 9, 7, 18).toISOString(), durationMinutes: 30,
+        exercises: [{ exerciseId: BENCH, sets: [{ reps: 5 }] }],
+      }, now);
+      expect(replica.workoutSession(workout.id)).toMatchObject({ healthWritePending: true, healthWorkoutId: null });
+      expect(workout.inAppleHealth).toBeUndefined();
+    });
+
     it('takes its title from the routine it followed', () => {
       const { routine } = saveRoutine(ledgered, { name: 'Push A' });
       const { workout } = logWorkout(ledgered, {
@@ -373,6 +382,33 @@ describe('the workout write tools', () => {
       const live = useWorkoutStore.getState().startSession({ title: 'Live' });
       expect(() => updateWorkout(ledgered, live.id, { notes: 'x' })).toThrow(/in progress on the phone/);
       expect(() => deleteWorkout(ledgered, live.id)).toThrow(/in progress on the phone/);
+    });
+
+    it('refuses a new time for, or a delete of, a workout the phone wrote to Apple Health, and allows the rest', () => {
+      const w = log();
+      // As the phone leaves it once Health has the workout.
+      mockRaw.runSync('UPDATE workout_sessions SET health_workout_id = ?, health_write_pending = 0 WHERE id = ?', ['HK-1', w.id]);
+      replica.refresh();
+      expect(() => updateWorkout(ledgered, w.id, { startedAt: new Date(2026, 9, 6, 7).toISOString() }, new Date(2026, 9, 8)))
+        .toThrow(/only the phone can correct/);
+      expect(() => updateWorkout(ledgered, w.id, { durationMinutes: 55 })).toThrow(/only the phone can correct/);
+      expect(updateWorkout(ledgered, w.id, { notes: 'Felt strong', effort: 8 }).workout)
+        .toMatchObject({ notes: 'Felt strong', effort: 8, inAppleHealth: true });
+      expect(() => deleteWorkout(ledgered, w.id)).toThrow(/only the phone can remove/);
+      expect(replica.workoutSession(w.id)).toMatchObject({ healthWorkoutId: 'HK-1' });
+    });
+
+    it('leaves the workout row alone for a sets-only change, so a sync cannot send a stale copy over the phone\'s', () => {
+      const w = log();
+      const stamp = '2000-01-01T00:00:00.000Z';
+      mockRaw.runSync('UPDATE workout_sessions SET updated_at = ? WHERE id = ?', [stamp, w.id]);
+      replica.refresh();
+      const updated = updateWorkout(ledgered, w.id, { exercises: [{ exerciseId: FLY, sets: [{ weightKg: 10, reps: 15 }] }] }).workout;
+      expect(updated.exercises.map(e => e.exerciseId)).toEqual([FLY]);
+      const row = () => mockRaw.getFirstSync<{ updated_at: string }>('SELECT updated_at FROM workout_sessions WHERE id = ?', [w.id]);
+      expect(row()?.updated_at).toBe(stamp);
+      updateWorkout(ledgered, w.id, { notes: 'Felt strong' });
+      expect(row()?.updated_at).not.toBe(stamp);
     });
 
     it('deletes a finished workout with its sets, naming what it removed', () => {

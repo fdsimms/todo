@@ -1,0 +1,60 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="base.css">
+<style>
+.nav { display: flex; align-items: center; padding: 6px 16px 4px; color: var(--accentText); font-size: 17px; }
+.nav h2 { flex: 1; text-align: center; color: var(--text); font-size: 17px; font-weight: 600; margin-right: 50px; }
+.sec { padding: 0 16px; margin-top: 24px; }
+.slabel { color: var(--text2); font-size: 12px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; margin-bottom: 8px; padding: 0 8px; }
+.scard { background: var(--bg2); border-radius: 12px; overflow: hidden; }
+.srow { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+.srow.tight { padding-bottom: 8px; }
+.srow .ic { width: 22px; height: 22px; flex: none; color: var(--text2); font-size: 18px; text-align: center; line-height: 22px; }
+.srow .ic.on { color: var(--accent); }
+.srow .body { flex: 1; min-width: 0; }
+.srow .lbl { font-size: 15px; }
+.srow .hint { font-size: 12px; color: var(--text2); margin-top: 2px; }
+.srow .val { color: var(--accentText); font-size: 15px; }
+.sep { height: 0.5px; background: var(--sep); margin-left: 0; }
+.tog { width: 51px; height: 31px; border-radius: 16px; background: var(--bg4); position: relative; flex: none; }
+.tog::after { content: ''; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25); }
+.tog.on { background: var(--accent); }
+.tog.on::after { left: 22px; }
+.pills { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 8px 8px; }
+.pills span { font-size: 13px; padding: 6px 12px; border-radius: 9999px; background: var(--bg3); }
+.pills span.on { background: var(--accentSubtle); color: var(--accentText); font-weight: 600; }
+.foot { color: var(--text2); font-size: 13px; line-height: 19px; padding: 0 8px; margin-top: 8px; }
+.new { box-shadow: inset 3px 0 0 var(--done); }
+.cap { position: absolute; top: 30px; left: 0; right: 0; text-align: center; font-size: 10px; color: var(--text3); } .x { left: 0; right: 0; text-align: center; font-size: 11px; color: var(--text3); }
+</style></head>
+<body>
+<script>
+function phone(theme) {
+  return `<div class="phone ${theme}">
+    <div class="status"><span>9:41</span><span>●●●</span></div>
+    <div class="nav"><span>‹ Settings</span><h2>Apple Health</h2></div>
+    <div class="sec">
+      <div class="slabel">Log to Health</div>
+      <div class="scard">
+        <div class="srow"><div class="ic on">✎</div><div class="body"><div class="lbl">Log to Health</div><div class="hint">Water from tasks set up to log it, weights you record, meals you log and workouts you save</div></div><div class="tog on"></div></div>
+        <div class="sep"></div>
+        <div class="srow"><div class="ic on">🔓︎</div><div class="body"><div class="lbl">Water-write access</div><div class="hint">Allowed</div></div></div>
+        <div class="sep"></div>
+        <div class="srow"><div class="ic on">🔓︎</div><div class="body"><div class="lbl">Weight-write access</div><div class="hint">Allowed</div></div></div>
+        <div class="sep"></div>
+        <div class="srow"><div class="ic on">🔓︎</div><div class="body"><div class="lbl">Nutrition-write access</div><div class="hint">Allowed</div></div></div>
+        <div class="sep"></div>
+        <div class="srow tight"><div class="ic">◍</div><div class="body"><div class="lbl">Nutrients written per meal</div><div class="hint">Which of these a logged meal is allowed to carry into Health</div></div></div>
+        <div class="pills"><span class="on">Calories</span><span class="on">Protein</span><span class="on">Carbs</span><span class="on">Fat</span><span class="on">Fiber</span><span class="on">Sugar</span><span class="on">Sodium</span><span class="on">Water</span><span>8 more</span></div>
+        <div class="sep"></div>
+        <div class="srow new"><div class="ic on">🏋︎</div><div class="body"><div class="lbl">Workouts</div><div class="hint">A workout you save is written to Health as strength training</div></div><div class="tog on"></div></div>
+        <div class="sep"></div>
+        <div class="srow new"><div class="ic">🔒︎</div><div class="body"><div class="lbl">Workout-write access</div><div class="hint">Not asked yet. Allowing this also asks to read Apple Health, in the same sheet</div></div><div class="val">Allow</div></div>
+      </div>
+      <div class="foot">Writes water when a task you’ve set up to log it is completed, your weight when you record it, a meal’s nutrition when you add it to the food log, and a workout when you save it with Workouts on. Deleting a food log entry or a workout removes what it wrote. A nutrient a meal doesn’t state is never written, even if it is selected.</div>
+    </div>
+    <div class="cap">Proxy mock. Gold edge: new rows</div>
+  </div>`;
+}
+document.body.innerHTML = phone('light') + phone('dark');
+</script>
+</body></html>
