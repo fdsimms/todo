@@ -14931,6 +14931,59 @@ describe('quota tasks', () => {
       expect(next.progressCount).toBe(0);
     });
 
+    // The count belongs to the week it was logged in. Pushing last week's row
+    // to the first day of this one used to carry its 1/3 into the new week,
+    // because the sweep judged the row by where it now sat.
+    it('restarts the count when last week’s row was deferred into this week', () => {
+      useTaskStore.setState({
+        tasks: [weekly({
+          progressCount: 1,
+          dueDate: new Date(2025, 5, 3, 12, 0, 0).toISOString(),
+          deferUntil: new Date(2025, 5, 8, 0, 0, 0).toISOString(), // Sun June 8, this week's first day
+        })],
+      });
+      useTaskStore.getState().rolloverQuotas();
+
+      const closed = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(closed.completed).toBe(true);
+      expect(closed.progressCount).toBe(1); // the record of the week it was logged in
+      expect(new Date(closed.completedAt!).getDate()).toBe(7);
+      const live = useTaskStore.getState().tasks.filter(t => !t.completed);
+      expect(live).toHaveLength(1);
+      expect(live[0].progressCount).toBe(0);
+    });
+
+    it('keeps a deferred later day of this week for the fresh row', () => {
+      useTaskStore.setState({
+        tasks: [weekly({
+          progressCount: 1,
+          dueDate: new Date(2025, 5, 3, 12, 0, 0).toISOString(),
+          deferUntil: new Date(2025, 5, 12, 0, 0, 0).toISOString(), // Thu June 12
+        })],
+      });
+      useTaskStore.getState().rolloverQuotas();
+
+      const live = useTaskStore.getState().tasks.filter(t => !t.completed);
+      expect(live).toHaveLength(1);
+      expect(live[0].progressCount).toBe(0);
+      expect(new Date(live[0].dueDate!).getDate()).toBe(12);
+      expect(live[0].deferUntil).toBeNull();
+    });
+
+    it('leaves last week’s row alone while it is deferred into a later week', () => {
+      useTaskStore.setState({
+        tasks: [weekly({
+          progressCount: 1,
+          dueDate: new Date(2025, 5, 3, 12, 0, 0).toISOString(),
+          deferUntil: new Date(2025, 5, 16, 0, 0, 0).toISOString(), // Mon June 16, next week
+        })],
+      });
+      useTaskStore.getState().rolloverQuotas();
+
+      expect(useTaskStore.getState().tasks).toHaveLength(1);
+      expect(useTaskStore.getState().tasks[0].completed).toBe(false);
+    });
+
     // The regression guard on the other side: making the sweep period-aware
     // must not stop it closing an ordinary daily target every night.
     it('still closes a daily target the next day', () => {

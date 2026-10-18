@@ -5253,7 +5253,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // spawned for today — reappearing on Today despite having just been
       // rescheduled later, and duplicating it once the deferred date itself
       // arrived and rolled over a second time.
-      periodStartOf(new Date(getEffectiveTaskDate(t, dayResetTime)!), t.quotaPeriod) <
+      //
+      // The effective date only decides whether the row is still *ahead of*
+      // today's period, though. The count on it was logged in the period its
+      // dueDate belongs to, so once that period is over and the deferred day
+      // has arrived in a later one, the count is last period's and closes out
+      // here. Left alone, a weekly target pushed from Monday to the next
+      // Sunday opened the new week still showing last week's 1/5.
+      periodStartOf(new Date(t.dueDate), t.quotaPeriod) < periodStartOf(todayStart, t.quotaPeriod) &&
+      periodStartOf(new Date(getEffectiveTaskDate(t, dayResetTime)!), t.quotaPeriod) <=
         periodStartOf(todayStart, t.quotaPeriod)
     );
     if (stale.length === 0) return;
@@ -5300,7 +5308,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // *whether* it continues, since its answer for *when* would still be in
       // the past if the app sat closed for a week.
       if (getNextDueDate(task, dayResetTime) === null) continue;
-      const nextDue = new Date(todayStart);
+      // Today, unless the person had pushed this occurrence to a later day of
+      // the current period: the successor keeps that day rather than
+      // reappearing on Today.
+      const heldDay = getTaskDayStart(new Date(getEffectiveTaskDate(task, dayResetTime)!), dayResetTime);
+      const nextDue = new Date(heldDay > todayStart ? heldDay : todayStart);
       nextDue.setHours(12, 0, 0, 0);
       const effective: Task = { ...task, ...(task.seriesDefaults ?? {}) };
       spawned.push({
