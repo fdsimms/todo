@@ -55,5 +55,6 @@ says why). Splitting that countdown up — "violin practice" as 5 min scales, 10
 - **Seconds are a fraction of a minute in the same field.** Duration's "sec" unit writes
   `timedMinutes` as `seconds / 60` (45s is 0.75), so the countdown, alarm, Live Activity and widget
   keep reading one number in one unit. `formatDuration` prints a fractional minute as seconds, and
-  the editor reopens a fractional value in "sec". Subtask stretches (`StepMinutes`) and the
-  per-unit stepper on a target are still whole minutes.
+  the editor reopens a fractional value in "sec", and the MCP `timed` input takes `seconds` as an
+  alternative to `minutes`. Subtask stretches (`StepMinutes`), the per-unit stepper on a target and
+  quick add's custom field are still whole minutes.

@@ -372,6 +372,18 @@ describe('timed', () => {
     expect(taskFieldsPatch({ timed: { minutes: 10 } }, null, deps, { isSubtask: true }).errors.join(' ')).toMatch(/share of its parent/);
   });
 
+  it('takes seconds as a fraction of a minute', () => {
+    expect(ok({ timed: { seconds: 45 } })).toMatchObject({ timedMinutes: 0.75, estimatedMinutes: 1 });
+    expect(ok({ timed: { seconds: 90 } }).timedMinutes).toBe(1.5);
+  });
+
+  it('refuses seconds and minutes together, or neither, or a fraction of a second', () => {
+    expect(errorsOf({ timed: { minutes: 1, seconds: 30 } })).toMatch(/not both/);
+    expect(errorsOf({ timed: {} })).toMatch(/seconds/);
+    expect(errorsOf({ timed: { seconds: 0 } })).toMatch(/seconds/);
+    expect(errorsOf({ timed: { seconds: 1.5 } })).toMatch(/seconds/);
+  });
+
   it('null removes it', () => {
     expect(ok({ timed: null }, existing({ timedMinutes: 15 } as Partial<Task>)).timedMinutes).toBeNull();
   });
