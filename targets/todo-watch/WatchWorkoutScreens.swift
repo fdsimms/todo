@@ -591,7 +591,7 @@ struct WorkoutExerciseSetsView: View {
             let sets = screen.sets.filter { $0.exerciseId == exerciseId }
             List {
                 ForEach(Array(numbered(sets).enumerated()), id: \.offset) { _, entry in
-                    row(entry.set, number: entry.number, exercise: exercise, unit: screen.unit)
+                    row(entry.set, number: entry.number, exercise: exercise)
                 }
                 Button {
                     store.addSet(to: exerciseId, in: screen)
@@ -616,7 +616,7 @@ struct WorkoutExerciseSetsView: View {
         }
     }
 
-    private func row(_ set: WatchWorkoutSet, number: String, exercise: WatchWorkoutExercise, unit: String) -> some View {
+    private func row(_ set: WatchWorkoutSet, number: String, exercise: WatchWorkoutExercise) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
                 Text(number)
