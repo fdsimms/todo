@@ -4867,9 +4867,24 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // every other streak here makes. Read through isWithheld so a category
       // paused for vacation, or a paused project, covers its habits too,
       // exactly as it does for the tasks the quota rollover skips.
-      const paused = isWithheld(t);
-      const streak = cleanDayPatch(t, todayStart, { paused });
-      const rolled = streak ? { ...t, ...streak } : t;
+      //
+      // A habit deferred to a day that hasn't come is held the same way: it is
+      // off Today, so no slip can be logged against it, and crediting those days
+      // paid coins for a stretch nobody could report on. The anchor still moves,
+      // so the days are skipped rather than banked into a lump when it returns.
+      //
+      // The same goes for a pass that only runs after the hold ended (the app
+      // was closed through it): the days before the defer day are skipped by
+      // starting the count the day before it, so no run of passes can credit them.
+      const deferDay = t.deferUntil != null ? getTaskDayStart(new Date(t.deferUntil), resetTime) : null;
+      const heldByDefer = deferDay !== null && deferDay > todayStart;
+      const paused = isWithheld(t) || heldByDefer;
+      const counted: Task =
+        deferDay !== null && !heldByDefer && t.streakDate && deferDay > new Date(t.streakDate)
+          ? { ...t, streakDate: addDays(deferDay, -1).toISOString() }
+          : t;
+      const streak = cleanDayPatch(counted, todayStart, { paused });
+      const rolled = streak ? { ...counted, ...streak } : t;
       // The habit's own end time counts today as clean once it passes, on the
       // rolled row so a catch-up and a close land in one write.
       const end = effectiveWindowEnd(t);
@@ -4884,7 +4899,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       if (!streak && !closing && !due && !ended) return [];
       // Days nobody collected by hand are collected here, so every clean day
       // pays once whether or not the person got to it.
-      if (streak) toPay.push({ before: t, patch: streak });
+      if (streak) toPay.push({ before: counted, patch: streak });
       if (closing) toPay.push({ before: rolled, patch: closing });
       return [{ ...rolled, ...closing, ...due, ...ended }];
     });

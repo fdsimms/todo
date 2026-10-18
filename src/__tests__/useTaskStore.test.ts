@@ -19535,6 +19535,36 @@ describe('negative habits', () => {
       expect(get().streakCount).toBe(5); // Jan 6..9 are four whole clean days
     });
 
+    // A habit pushed to a later day is off Today, so no slip can be logged
+    // against it. Those days are skipped, not credited and not banked.
+    it('credits nothing while the habit is deferred to a day that has not come', () => {
+      seed(avoid({
+        streakCount: 1,
+        streakDate: new Date(2026, 0, 5).toISOString(),
+        deferUntil: new Date(2026, 0, 14).toISOString(),
+      }));
+      useTaskStore.getState().rolloverNegativeStreaks();
+      expect(get().streakCount).toBe(1);
+
+      // The days under the hold stay consumed: only Jan 14 onward credits.
+      jest.setSystemTime(new Date(2026, 0, 16, 10, 0, 0));
+      useTaskStore.getState().rolloverNegativeStreaks();
+      expect(get().streakCount).toBe(3); // Jan 14 and 15
+    });
+
+    // The app can sit closed through the whole hold, so the first pass after it
+    // finds the defer day already behind it. Held days still must not credit.
+    it('does not credit the held days when the first pass comes after the hold ended', () => {
+      seed(avoid({
+        streakCount: 1,
+        streakDate: new Date(2026, 0, 5).toISOString(),
+        deferUntil: new Date(2026, 0, 14).toISOString(),
+      }));
+      jest.setSystemTime(new Date(2026, 0, 16, 10, 0, 0));
+      useTaskStore.getState().rolloverNegativeStreaks();
+      expect(get().streakCount).toBe(3); // Jan 14 and 15, not Jan 6..15
+    });
+
     it('is a no-op on the second call the same day', () => {
       seed(avoid({ streakCount: 1, streakDate: new Date(2026, 0, 5).toISOString() }));
       useTaskStore.getState().rolloverNegativeStreaks();
