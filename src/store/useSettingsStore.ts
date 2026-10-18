@@ -1333,9 +1333,16 @@ interface SettingsStore {
   proteinPerWeight: ProteinPerWeight | null;
 
   /**
-   * Height, year of birth, sex and activity level — the inputs the calorie
-   * estimate needs, and nothing else in the app reads them. See
-   * src/utils/energyBudget.ts.
+   * Height, year of birth, sex and activity level: the inputs the calorie
+   * estimate needs (src/utils/energyBudget.ts). The one other reader is the
+   * heart-rate zones, which take 220 minus the age from the year of birth when
+   * no maximum is typed (`resolveMaxHeartRate` in src/utils/heartRateZones.ts).
+   *
+   * Synced with the health record (`SYNCED_SETTING_KEYS` and
+   * `HEALTH_SYNC_SETTING_KEYS`): to a sync server once the person has said
+   * the health logs may go there, never to iCloud. It used to stay on the
+   * device it was typed on only because it was never listed, which let the
+   * same workout's zones come out differently on two devices.
    *
    * **Every field ships empty and nothing fills one in.** An absent height is
    * absent rather than average, which is the whole of that module's discipline
