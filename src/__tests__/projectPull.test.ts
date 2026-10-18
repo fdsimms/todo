@@ -12,13 +12,11 @@ import {
   rankPullCandidates,
   MAX_PULLED_PROJECTS,
   MAX_CANDIDATES_PER_PROJECT,
-  PULL_TODAY_BUDGET_MINUTES,
   suggestPullDate,
 } from '../utils/projectPull';
 import { registerTaskSource } from '../utils/blockerRegistry';
 import { registerSectionSource } from '../utils/sectionRegistry';
 import type { Project, Task, TaskGroup } from '../types';
-import type { BusyEvent } from '../utils/calendarBusy';
 
 const settingsState = { dayResetTime: '00:00', vacationMode: false, morningStart: '06:00', afternoonStart: '12:00', eveningStart: '18:00', nightStart: '21:00' };
 
@@ -568,8 +566,8 @@ describe('rankPullCandidates', () => {
 });
 
 describe('suggestPullDate', () => {
-  it('lands on today when today is light', () => {
-    const result = suggestPullDate(makeTask(), [], [], 20);
+  it('lands on today', () => {
+    const result = suggestPullDate(20);
 
     expect(result.dayLabel).toBe('Today');
     expect(result.reason).toBe('quiet 20 days');
@@ -577,40 +575,8 @@ describe('suggestPullDate', () => {
   });
 
   it('gets the singular right, and gives no reason at all for a project touched today', () => {
-    expect(suggestPullDate(makeTask(), [], [], 1).reason).toBe('quiet 1 day');
-    expect(suggestPullDate(makeTask(), [], [], 0).reason).toBe('');
-  });
-
-  it('falls back to a future day when today is already loaded', () => {
-    const task = makeTask({ id: 'pull' });
-    // Enough estimated minutes on today to blow the budget.
-    const heavy = [makeTask({ id: 'h1', estimatedMinutes: PULL_TODAY_BUDGET_MINUTES + 30 })];
-
-    const result = suggestPullDate(task, [task, ...heavy], heavy, 20);
-
-    expect(result.dayLabel).not.toBe('Today');
-    expect(result.date.getTime()).toBeGreaterThan(Date.now());
-  });
-
-  it('weighs meetings on the days it falls back to', () => {
-    const task = makeTask({ id: 'pull' });
-    const heavy = [makeTask({ id: 'h1', estimatedMinutes: PULL_TODAY_BUDGET_MINUTES + 30 })];
-    const free = suggestPullDate(task, [task, ...heavy], heavy, 20);
-
-    // Fill the day it picked with meetings: the same engine Suggest uses then
-    // moves the pull elsewhere, instead of scoring that day by tasks alone.
-    const start = new Date(free.date);
-    start.setHours(8, 0, 0, 0);
-    const end = new Date(free.date);
-    end.setHours(20, 0, 0, 0);
-    const meeting: BusyEvent = {
-      id: 'm1', title: 'Offsite', start: start.toISOString(), end: end.toISOString(), allDay: false,
-      calendarId: 'c1', location: null, status: 'confirmed', availability: 'busy',
-    };
-    const busy = suggestPullDate(task, [task, ...heavy], heavy, 20, null, [meeting]);
-
-    expect(busy.dayLabel).not.toBe('Today');
-    expect(busy.date.toDateString()).not.toBe(free.date.toDateString());
+    expect(suggestPullDate(1).reason).toBe('quiet 1 day');
+    expect(suggestPullDate(0).reason).toBe('');
   });
 
   it('honours dayResetTime during the early-morning grace window', () => {
@@ -621,7 +587,7 @@ describe('suggestPullDate', () => {
     jest.setSystemTime(new Date(2025, 5, 11, 1, 30, 0));
 
     try {
-      const result = suggestPullDate(makeTask(), [], [], 20);
+      const result = suggestPullDate(20);
 
       expect(result.dayLabel).toBe('Today');
       expect(result.date.getDate()).toBe(10);
@@ -640,7 +606,7 @@ describe('buildProjectPullPlan', () => {
     );
     const tasks = projects.map(p => makeTask({ id: `t-${p.id}`, projectId: p.id }));
 
-    const plan = buildProjectPullPlan(projects, tasks, []);
+    const plan = buildProjectPullPlan(projects, tasks);
 
     expect(plan.proposals).toHaveLength(MAX_PULLED_PROJECTS);
     expect(plan.overflowCount).toBe(2);
@@ -654,7 +620,7 @@ describe('buildProjectPullPlan', () => {
       makeTask({ id: 't-auto', projectId: 'auto' }),
     ];
 
-    const plan = buildProjectPullPlan([manual, auto], tasks, []);
+    const plan = buildProjectPullPlan([manual, auto], tasks);
 
     expect(plan.proposals.map(p => p.project.id)).toEqual(['manual']);
     expect(plan.overflowCount).toBe(0);
@@ -663,7 +629,7 @@ describe('buildProjectPullPlan', () => {
   it('pre-selects every proposal and offers up to three candidates each', () => {
     const tasks = [0, 1, 2, 3].map(i => makeTask({ id: `t${i}`, sortOrder: i }));
 
-    const plan = buildProjectPullPlan([makeProject()], tasks, []);
+    const plan = buildProjectPullPlan([makeProject()], tasks);
 
     expect(plan.proposals[0].selected).toBe(true);
     expect(plan.proposals[0].candidates).toHaveLength(MAX_CANDIDATES_PER_PROJECT);
@@ -673,37 +639,19 @@ describe('buildProjectPullPlan', () => {
   it('is empty when nothing is quiet', () => {
     const tasks = [makeTask({ id: 'a', dueDate: new Date().toISOString() })];
 
-    expect(buildProjectPullPlan([makeProject()], tasks, tasks).proposals).toEqual([]);
+    expect(buildProjectPullPlan([makeProject()], tasks).proposals).toEqual([]);
   });
 
-  // Every proposal starts selected, so each one sent to today counts against
-  // the budget the next is checked with.
-  it('stops sending proposals to today once the ones before them fill it', () => {
+  // However full today already is, the sheet's default is still today.
+  it('sends every proposal to today', () => {
     const projects = [0, 1, 2].map(i =>
       makeProject({ id: `p${i}`, sortOrder: i, createdAt: subDays(new Date(), 60 - i).toISOString() })
     );
-    const half = Math.ceil(PULL_TODAY_BUDGET_MINUTES / 2);
-    const tasks = projects.map(p => makeTask({ id: `t-${p.id}`, projectId: p.id, estimatedMinutes: half }));
+    const tasks = projects.map(p => makeTask({ id: `t-${p.id}`, projectId: p.id, estimatedMinutes: 120 }));
 
-    const labels = buildProjectPullPlan(projects, tasks, []).proposals.map(p => p.suggestion.dayLabel);
+    const labels = buildProjectPullPlan(projects, tasks).proposals.map(p => p.suggestion.dayLabel);
 
-    expect(labels.slice(0, 2)).toEqual(['Today', 'Today']);
-    expect(labels[2]).not.toBe('Today');
-  });
-
-  // Past today it is the snooze engine choosing, and it has to see the pulls
-  // before this one or it names the same lightest day for all of them.
-  it('spreads pulls past a full today over different days', () => {
-    const projects = [0, 1, 2].map(i =>
-      makeProject({ id: `p${i}`, sortOrder: i, createdAt: subDays(new Date(), 60 - i).toISOString() })
-    );
-    const tasks = projects.map(p => makeTask({ id: `t-${p.id}`, projectId: p.id, estimatedMinutes: 60 }));
-    const heavy = [makeTask({ id: 'h1', estimatedMinutes: PULL_TODAY_BUDGET_MINUTES + 30 })];
-
-    const days = buildProjectPullPlan(projects, [...tasks, ...heavy], heavy)
-      .proposals.map(p => p.suggestion.date.toDateString());
-
-    expect(new Set(days).size).toBe(days.length);
+    expect(labels).toEqual(['Today', 'Today', 'Today']);
   });
 
   // Opened for one project, the sheet's empty message has to be about that
@@ -715,7 +663,7 @@ describe('buildProjectPullPlan', () => {
       makeTask({ id: 'b', projectId: 'p2', dueDate: new Date().toISOString() }),
       makeTask({ id: 'c', projectId: 'p3', dueDate: new Date().toISOString() }),
     ];
-    expect(buildProjectPullPlan(projects, tasks, [], ['p1']).empty).toEqual({
+    expect(buildProjectPullPlan(projects, tasks, ['p1']).empty).toEqual({
       reason: 'has-schedule',
       count: 1,
       total: 1,
@@ -726,8 +674,8 @@ describe('buildProjectPullPlan', () => {
     const undated = [makeTask({ id: 'a' })];
     const dated = [makeTask({ id: 'a', dueDate: new Date().toISOString() })];
 
-    expect(buildProjectPullPlan([makeProject()], undated, []).empty).toBeNull();
-    expect(buildProjectPullPlan([makeProject()], dated, []).empty).toEqual({
+    expect(buildProjectPullPlan([makeProject()], undated).empty).toBeNull();
+    expect(buildProjectPullPlan([makeProject()], dated).empty).toEqual({
       reason: 'has-schedule',
       count: 1,
       total: 1,
@@ -747,7 +695,7 @@ describe('buildProjectPullPlan', () => {
       makeTask({ id: 'b', projectId: 'p2' }),
     ];
 
-    const plan = buildProjectPullPlan(projects, tasks, []);
+    const plan = buildProjectPullPlan(projects, tasks);
 
     expect(plan.proposals.map(p => p.project.id)).toEqual(['p1', 'p2']);
     expect(plan.empty).toBeNull();
@@ -970,7 +918,7 @@ describe('a paused project', () => {
   it('is left out of Pull, even when asked, until its day', () => {
     const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
     const key = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
-    const plan = buildProjectPullPlan([makeProject({ pausedUntil: key })], [makeTask({ id: 'a' })], []);
+    const plan = buildProjectPullPlan([makeProject({ pausedUntil: key })], [makeTask({ id: 'a' })]);
     expect(plan.proposals).toEqual([]);
     expect(plan.empty?.reason).toBe('paused');
   });
@@ -992,7 +940,7 @@ describe('nextPullCandidate', () => {
 describe('buildProjectPullPlan with a landing day', () => {
   it('puts every proposal on that day, and shows a named auto-scheduling project', () => {
     const project = makeProject({ id: 'p1', autoSchedule: true });
-    const plan = buildProjectPullPlan([project], [makeTask({ id: 'a', projectId: 'p1' })], [], ['p1'], '2030-10-05');
+    const plan = buildProjectPullPlan([project], [makeTask({ id: 'a', projectId: 'p1' })], ['p1'], '2030-10-05');
     expect(plan.proposals).toHaveLength(1);
     expect(plan.proposals[0].suggestion.date.getDate()).toBe(5);
     expect(plan.proposals[0].suggestion.dayLabel).toBe('Saturday');
@@ -1107,7 +1055,7 @@ describe('a declined project and the sheet', () => {
       makeTask({ id: 'a', sortOrder: 0, dueDate: null, autoScheduledAt: new Date().toISOString() }),
     ];
 
-    const plan = buildProjectPullPlan([project], tasks, []);
+    const plan = buildProjectPullPlan([project], tasks);
     expect(plan.proposals.map(p => p.candidates[0].id)).toEqual(['a']);
   });
 
@@ -1153,7 +1101,7 @@ describe('working a project in order', () => {
   it('offers only the first open task on the page', () => {
     const tasks = [makeTask({ id: 'patch', sortOrder: 1 }), makeTask({ id: 'paint', sortOrder: 2, priority: 4 })];
     expect(nextPullCandidate(makeProject({ inOrder: true }), tasks)?.id).toBe('patch');
-    const plan = buildProjectPullPlan([makeProject({ inOrder: true })], tasks, [], ['p1']);
+    const plan = buildProjectPullPlan([makeProject({ inOrder: true })], tasks, ['p1']);
     expect(plan.proposals[0].candidates.map(t => t.id)).toEqual(['patch']);
   });
 

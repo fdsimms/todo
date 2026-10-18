@@ -394,10 +394,9 @@ export function awayEntries(
  * Deadlines in the window that the days before them are already too full for.
  *
  * The threshold is `BUSY_DAY_MINUTES` per day — the app's own existing
- * judgement about when a day is spoken for, kept in step with
- * `PULL_TODAY_BUDGET_MINUTES` — rather than a capacity constant invented here.
- * Above it, a day is one the app already declines to put more work on, so a
- * span averaging above it is a span with nowhere left to put this.
+ * judgement about when a day is spoken for — rather than a capacity constant
+ * invented here. A span averaging above it is a span with nowhere left to put
+ * this.
  *
  * The comparison reads `rankedMinutes`, which folds in meetings, projections
  * and a stand-in for unestimated rows. That is a rank and it stays one: the
