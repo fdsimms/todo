@@ -1,1 +1,1 @@
-{ "message": "A meal cooked at a multiple of its recipe now reads \"2× batch\" instead of \"2×\". The line under each day in the meal plan now says \"under all nutrition limits\" or \"over 2 nutrition limits\" instead of \"within limits\".", "date": "2026-10-18" }
+{ "message": "A meal cooked at a multiple of its recipe now reads \"2× batch\" instead of \"2×\", in the meal plan and the Logbook. The line under each day in the meal plan now says \"under all nutrition limits\" or \"over 2 nutrition limits\" instead of \"within limits\".", "date": "2026-10-18" }
