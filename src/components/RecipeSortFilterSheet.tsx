@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { ThumbIcon } from './ThumbIcon';
 import type { RecipeSortOption } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, animation, type Colors } from '../theme';
@@ -180,8 +181,7 @@ export function RecipeSortFilterSheet({
                 accessibilityRole="button"
                 accessibilityState={{ selected: lovedOnly }}
               >
-                <Ionicons
-                  name="thumbs-up"
+                <ThumbIcon
                   size={13}
                   color={lovedOnly ? colors.onAccent : colors.orangeText}
                 />

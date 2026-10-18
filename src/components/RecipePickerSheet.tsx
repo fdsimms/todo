@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { ThumbIcon } from './ThumbIcon';
 import { useShallow } from 'zustand/react/shallow';
 import { SafeBlurView } from './SafeBlurView';
 import { EmptyState } from './EmptyState';
@@ -504,7 +505,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
                       </View>
                       {pickedId
                         ? <Ionicons name="checkmark-circle" size={16} color={colors.accent} />
-                        : recipe.vote === 'loved' && <Ionicons name="thumbs-up" size={13} color={colors.orangeText} />}
+                        : recipe.vote === 'loved' && <ThumbIcon size={13} color={colors.orangeText} />}
                     </TouchableOpacity>
                   </React.Fragment>
                 );

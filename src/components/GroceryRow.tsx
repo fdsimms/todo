@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { Platform, View, Text, TextInput, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { ThumbIcon } from './ThumbIcon';
 import { useColors } from '../theme/ThemeContext';
 import {
   spacing,
@@ -500,10 +501,10 @@ export const GroceryRow = React.memo(function GroceryRow({
                   the whole point is seeing it here, right before you'd pick
                   the same one up again. */}
               {preferredProduct?.rating === 'loved' && (
-                <Ionicons name="thumbs-up" size={iconSize.xs} color={colors.orangeText} />
+                <ThumbIcon size={iconSize.xs} color={colors.orangeText} />
               )}
               {preferredProduct?.rating === 'avoid' && (
-                <Ionicons name="thumbs-down" size={iconSize.xs} color={colors.red} />
+                <ThumbIcon down size={iconSize.xs} color={colors.red} />
               )}
               <Text style={styles.brand} numberOfLines={1}>
                 {product}

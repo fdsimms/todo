@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { ThumbIcon } from './ThumbIcon';
 import { useShallow } from 'zustand/react/shallow';
 import { SafeBlurView } from './SafeBlurView';
 import { SheetScrim } from './SheetScrim';
@@ -240,7 +241,7 @@ export function MealReplaceItemSheet({ visible, count, title, hint, onReplace, o
                       <Text style={styles.rowName} numberOfLines={1}>{recipe.name}</Text>
                       <Text style={styles.rowHint} numberOfLines={1}>{describeRecipe(recipe, null, { sharedName: sharedNames.has(recipe.nameKey), recipesById: libraryById })}</Text>
                     </View>
-                    {recipe.vote === 'loved' && <Ionicons name="thumbs-up" size={13} color={colors.orangeText} />}
+                    {recipe.vote === 'loved' && <ThumbIcon size={13} color={colors.orangeText} />}
                   </TouchableOpacity>
                 </React.Fragment>
               ))
