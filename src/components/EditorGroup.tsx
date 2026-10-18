@@ -5,6 +5,7 @@ import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { filterEditorRows } from '../utils/editorSearch';
 import { editorRowShown } from '../utils/simpleMode';
 import { useSettingsStore } from '../store/useSettingsStore';
+import type { EditorJumpTracker } from '../utils/editorJump';
 
 export interface EditorGroupRow {
   key: string;
@@ -54,6 +55,14 @@ interface Props {
    * that says why.
    */
   onMatchCount?: (groupKey: string, count: number) => void;
+  /**
+   * Told, under `groupKey`, where this card and each of its rows sit in the
+   * scroll and whether any row holds a value: what the jump bar reads, and what
+   * the task editor's summary scrolls to a row by. The positions come from
+   * wrapping the group and each row in a plain View, which happens only with
+   * this set.
+   */
+  jump?: EditorJumpTracker;
 }
 
 /**
@@ -66,7 +75,7 @@ const NO_TERMS: string[] = [];
 
 export function EditorGroup({
   label, rows: allRows, divider = 'icon',
-  searchTerms = NO_TERMS, groupKey = label ?? '', onMatchCount,
+  searchTerms = NO_TERMS, groupKey = label ?? '', onMatchCount, jump,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -94,35 +103,49 @@ export function EditorGroup({
   // sit in the tally for a task that doesn't render them and stop "nothing
   // matched" from ever showing. Through a ref so it runs on unmount alone,
   // rather than re-reporting zero every time the query changes.
-  const reportRef = useRef({ groupKey, onMatchCount });
-  reportRef.current = { groupKey, onMatchCount };
+  const reportRef = useRef({ groupKey, onMatchCount, jump });
+  reportRef.current = { groupKey, onMatchCount, jump };
   useEffect(() => () => {
     reportRef.current.onMatchCount?.(reportRef.current.groupKey, 0);
+    reportRef.current.jump?.setSectionY(reportRef.current.groupKey, null);
   }, []);
-  // Simplified mode drops rows by key, so it can empty a group outright, and a
-  // card with no rows in it is worse than no card. The group goes with its
-  // last row.
-  if (rows.length === 0) return null;
 
   // A group with no search hit disappears entirely — the rows left on screen
   // are the answer, so a card standing there empty would be noise around it.
   const shown = searching ? matches : rows;
-  if (shown.length === 0) return null;
+  // Simplified mode drops rows by key, so it can empty a group outright, and a
+  // card with no rows in it is worse than no card. The group goes with its
+  // last row.
+  const rendered = rows.length > 0 && shown.length > 0;
+  const hasValue = rows.some(r => r.set);
+  useEffect(() => { jump?.setHasValue(groupKey, hasValue); }, [jump, groupKey, hasValue]);
+  // A card that stops rendering has no place in the bar. One that renders
+  // reports its place from onLayout, below.
+  useEffect(() => { if (!rendered) jump?.setSectionY(groupKey, null); }, [jump, groupKey, rendered]);
+  if (!rendered) return null;
 
   const sep = divider === 'full' ? styles.sepFull : styles.sep;
 
-  return (
+  const content = (
     <>
       {!!label && <Text style={styles.groupLabel}>{label}</Text>}
-      <View style={styles.card}>
+      <View style={styles.card} onLayout={jump ? e => jump.setCardY(groupKey, e.nativeEvent.layout.y) : undefined}>
         {shown.map((r, i) => (
           <React.Fragment key={r.key}>
             {i > 0 && <View style={sep} />}
-            {r.node}
+            {jump
+              ? <View onLayout={e => jump.setRowY(groupKey, r.key, e.nativeEvent.layout.y)}>{r.node}</View>
+              : r.node}
           </React.Fragment>
         ))}
       </View>
     </>
+  );
+  if (!jump) return content;
+  return (
+    <View onLayout={e => jump.setSectionY(groupKey, e.nativeEvent.layout.y)}>
+      {content}
+    </View>
   );
 }
 

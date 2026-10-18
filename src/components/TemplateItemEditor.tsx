@@ -6,7 +6,7 @@
 //   OffsetRow, makeStyles   the offset row and styles, at the bottom
 //
 // What a run asks before it creates anything is docs/arch/template-questions.md.
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   Alert,
   View,
@@ -15,6 +15,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Platform,
+  type LayoutChangeEvent,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from './PinIcon';
@@ -75,6 +76,8 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorRow } from './EditorRow';
 import { linkHost, parseLabelledLink } from '../utils/textLinks';
 import { EditorSheet } from './EditorSheet';
+import { EditorJumpBar, EDITOR_CARD_SECTIONS } from './EditorJumpBar';
+import { EditorJumpTracker, type ScrollMetrics } from '../utils/editorJump';
 import { NumberPadAccessory } from './NumberPadAccessory';
 import { CountStepper } from './CountStepper';
 import { SunBoundPanel } from './SunBoundPanel';
@@ -484,6 +487,38 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   // The two halves of Waits for, each hidden while there's nothing to pick.
   const showWaitsOn = waitCandidates.length > 0 || blockedByItemIds.length > 0;
   const showOnlyIf = questionItems.length > 0 || answerGate !== null;
+
+  // The jump bar under the header, over the same eight cards the task editor
+  // has. The cards here are hand-built rather than EditorGroups, so each one is
+  // wrapped below to report where it sits, and what counts as set is spelled
+  // out per card.
+  const jump = useMemo(() => new EditorJumpTracker(EDITOR_CARD_SECTIONS.map(s => s.key)), []);
+  const scrollToRef = useRef<((y: number) => void) | null>(null);
+  const onScrollMetrics = useCallback((m: ScrollMetrics) => jump.setScroll(m), [jump]);
+  const jumpToCard = (key: string) => {
+    const y = jump.jumpTo(key);
+    if (y !== null) scrollToRef.current?.(y);
+  };
+  const placeCard = (key: string) => (e: LayoutChangeEvent) => jump.setSectionY(key, e.nativeEvent.layout.y);
+  const cardHasValue: Record<string, boolean> = {
+    when: dueOffsetDays !== null || deferOffsetDays !== null || deadlineOffsetDays !== null
+      || timeSegments.length > 0 || !!windowStart || !!windowEnd || reminderOffsetMinutes !== null
+      || weatherWait !== null || vacationPause,
+    repeat: recurrenceType !== 'none',
+    priority: priority > 0 || pinEachOccurrence || excludeFromSuggestions || gatesApps || penaltyMinutes !== null
+      || effort > 0 || estimatedMinutes !== null || difficulty !== null,
+    filed: !!category || tags.length > 0,
+    waits: blockedByItemIds.length > 0 || answerGate !== null,
+    who: locationText.trim() !== '',
+    opens: linkText.trim() !== '' || phoneText.trim() !== '' || emailText.trim() !== '',
+    finish: deliverableKind !== null || completionTimerMinutes !== null || medicationName !== null || logMealSlot !== null,
+  };
+  // Every render, and cheap: the tracker only tells the bar when a dot changes.
+  useEffect(() => {
+    for (const [key, has] of Object.entries(cardHasValue)) jump.setHasValue(key, has);
+  });
+  // The one card that can stop rendering, which then has no place in the bar.
+  useEffect(() => { if (!showWaitsOn && !showOnlyIf) jump.setSectionY('waits', null); }, [jump, showWaitsOn, showOnlyIf]);
   const toggleField = (key: FieldKey, fallback = false) =>
     setOpenFields(prev => ({ ...prev, [key]: !(prev[key] ?? fallback) }));
   const closeField = (key: FieldKey) => {
@@ -836,6 +871,9 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       scrollStyle={styles.scroll}
       scrollContentStyle={styles.scrollContent}
       scrollEnabled={!draggingRow}
+      subheader={<EditorJumpBar tracker={jump} sections={EDITOR_CARD_SECTIONS} onJump={jumpToCard} />}
+      onScrollMetrics={onScrollMetrics}
+      scrollToRef={scrollToRef}
       header={
         <>
           <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={onClose} />
@@ -1744,531 +1782,109 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       {/* The cards from here down are the task editor's, in its order and
           under its names, so a field sits in the same place in both. Each is
           named for a question rather than for the data. */}
-      <Text style={styles.groupLabel}>When</Text>
-      <View style={styles.optionsCard}>
-        <View style={styles.optionRow}>
-          <Ionicons name="pin-outline" size={18} color={colors.textSecondary} />
-          <View style={styles.optionContent}>
-            <Text style={styles.optionLabel}>Count days from</Text>
-            <Text style={styles.optionHint}>
-              Template items have no fixed date. Every offset below counts from this date, which you pick when applying the template.
-            </Text>
-          </View>
-        </View>
-        <View style={styles.anchorRow}>
-          <SegmentedControl
-            label="Count days from"
-            value={anchor}
-            onChange={setAnchor}
-            options={(['start', 'end'] as TemplateAnchor[]).map(a => ({ value: a, label: anchorLabel(a, tripTemplate) }))}
-          />
-        </View>
-        <View style={styles.sep} />
-        <OffsetRow
-          icon="calendar"
-          label="Due date"
-          hint="When the task is due."
-          offset={dueOffsetDays}
-          anchor={anchor}
-          away={tripTemplate}
-          onChange={setDueOffsetDays}
-          colors={colors}
-          styles={styles}
-        />
-        <View style={styles.sep} />
-        <OffsetRow
-          icon="eye-off-outline"
-          label="Hide until"
-          hint="Keeps the task off Today until this day."
-          offset={deferOffsetDays}
-          anchor={anchor}
-          away={tripTemplate}
-          onChange={setDeferOffsetDays}
-          colors={colors}
-          styles={styles}
-        />
-        <View style={styles.sep} />
-        <OffsetRow
-          icon="flag-outline"
-          label="Deadline"
-          hint="A hard cutoff, shown separately from the due date."
-          offset={deadlineOffsetDays}
-          anchor={anchor}
-          away={tripTemplate}
-          onChange={v => { setDeadlineOffsetDays(v); if (v === null) { setDeadlineTime(null); setDeadlineTimePickerOpen(false); } }}
-          colors={colors}
-          styles={styles}
-        />
-        {deadlineOffsetDays !== null && (
-          <>
-            <View style={styles.timePillRow}>
-              <TouchableOpacity
-                style={[styles.timePill, !!deadlineTime && styles.timePillActive]}
-                onPress={openDeadlineTimePicker}
-                accessibilityRole="button"
-                accessibilityLabel={deadlineTime ? `Deadline time ${formatHHMM(deadlineTime)}` : 'Add a time to the deadline'}
-              >
-                <Text style={[styles.timePillText, !!deadlineTime && styles.timePillTextActive]}>
-                  {deadlineTime ? formatHHMM(deadlineTime) : 'Add a time'}
-                </Text>
-              </TouchableOpacity>
-              {deadlineTime !== null && (
-                <TouchableOpacity
-                  style={styles.timePill}
-                  onPress={() => { setDeadlineTime(null); setDeadlineTimePickerOpen(false); }}
-                  accessibilityRole="button"
-                  accessibilityLabel="Make the deadline the whole day"
-                >
-                  <Text style={styles.timePillText}>Clear</Text>
-                </TouchableOpacity>
-              )}
+      <View onLayout={placeCard('when')}>
+        <Text style={styles.groupLabel}>When</Text>
+        <View style={styles.optionsCard}>
+          <View style={styles.optionRow}>
+            <Ionicons name="pin-outline" size={18} color={colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Count days from</Text>
+              <Text style={styles.optionHint}>
+                Template items have no fixed date. Every offset below counts from this date, which you pick when applying the template.
+              </Text>
             </View>
-            {deadlineTimePickerOpen && (
-              <>
-                <DateTimePicker
-                  value={deadlineTimePickerDate}
-                  mode="time"
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  onChange={(_e, d) => d && setDeadlineTimePickerDate(d)}
-                  themeVariant={isDark ? 'dark' : 'light'}
-                />
-                <View style={styles.intervalRow}>
-                  <TouchableOpacity hitSlop={8}
-                    style={styles.intervalBtn}
-                    onPress={() => setDeadlineTimePickerOpen(false)}
-                    accessibilityRole="button"
-                    accessibilityLabel="Cancel deadline time"
-                  >
-                    <Ionicons name="close" size={16} color={colors.textSecondary} />
-                  </TouchableOpacity>
-                  <TouchableOpacity hitSlop={8}
-                    style={styles.intervalBtn}
-                    onPress={confirmDeadlineTimePicker}
-                    accessibilityRole="button"
-                    accessibilityLabel="Confirm deadline time"
-                  >
-                    <Ionicons name="checkmark" size={16} color={colors.accent} />
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
-          </>
-        )}
-        <View style={styles.sep} />
-        <EditorRow
-          icon="time-outline"
-          label="Time of day"
-          hint="Keeps the task off Today until a part of the day."
-          value={timeOfDaySummary}
-          expanded={showTimeOfDay}
-          onPress={() => { animateLayout(); setShowTimeOfDay(v => !v); }}
-          onClear={timeSegments.length > 0 ? () => setTimeSegments([]) : undefined}
-        />
-        {showTimeOfDay && (
-          <View style={styles.timePillRow}>
-            {(['morning', 'afternoon', 'evening', 'night'] as TimeOfDay[]).map(tod => {
-              const active = timeSegments.includes(tod);
-              return (
-                <TouchableOpacity
-                  key={tod}
-                  style={[styles.timePill, active && styles.timePillActive]}
-                  onPress={() => {
-                    haptics.tap();
-                    setTimeSegments(prev => prev.includes(tod) ? [] : [tod]);
-                  }}
-                >
-                  <Text style={[styles.timePillText, active && styles.timePillTextActive]}>
-                    {capitalize(tod)}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
           </View>
-        )}
-        <View style={styles.sep} />
-        <View style={styles.optionRow}>
-          <Ionicons
-            name="notifications"
-            size={18}
-            color={reminderOffsetMinutes !== null ? colors.accent : colors.textSecondary}
-          />
-          <View style={styles.optionContent}>
-            <Text style={styles.optionLabel}>Remind me</Text>
-            {dueOffsetDays === null ? (
-              <Text style={styles.optionHint}>Set a due date first</Text>
-            ) : reminderOffsetMinutes === null ? (
-              <Text style={styles.optionHint}>Minutes before the due date</Text>
-            ) : null}
-          </View>
-          {dueOffsetDays !== null && (
-            reminderOffsetMinutes !== null ? (
-              <TouchableOpacity
-                onPress={() => setReminderOffsetMinutes(null)}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Clear reminder"
-              >
-                <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
-                style={styles.setBtn}
-                onPress={() => { haptics.tap(); setReminderOffsetMinutes(60); }}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Set a reminder"
-              >
-                <Text style={styles.setOffsetText}>Set</Text>
-              </TouchableOpacity>
-            )
-          )}
-        </View>
-        {dueOffsetDays !== null && reminderOffsetMinutes !== null && (
-          <View style={styles.intervalRow}>
-            <CountStepper
-              value={reminderOffsetMinutes}
-              onChange={m => setReminderOffsetMinutes(m ?? 60)}
-              min={5}
-              max={MAX_REMINDER_OFFSET_MINUTES}
-              step={15}
-              format={formatMinutesOffset}
-              label="Reminder lead time"
+          <View style={styles.anchorRow}>
+            <SegmentedControl
+              label="Count days from"
+              value={anchor}
+              onChange={setAnchor}
+              options={(['start', 'end'] as TemplateAnchor[]).map(a => ({ value: a, label: anchorLabel(a, tripTemplate) }))}
             />
           </View>
-        )}
-        {recurrenceType === 'none' && !chainEnabled && (weatherTasksOn || weatherWait !== null) && (
-          <>
-            <View style={styles.sep} />
-            <CollapsibleField
-              label="Wait for weather"
-              summary={weatherWait ? weatherConditionLabel(weatherWait) : undefined}
-              emptySummary="Off"
-              hint={weatherTasksOn
-                ? 'Holds tasks made from this item until the first day in the next 14 with this forecast.'
-                : 'Turn on Weather-based tasks in Settings, with location access. Until then, these tasks aren’t held.'}
-              expanded={fieldOpen('weatherWait')}
-              onToggle={() => toggleField('weatherWait')}
-            >
-              <SegmentedControl
-                label="Wait for a day that is"
-                value={weatherWait}
-                onChange={next => setWeatherWait(next === weatherWait ? null : next)}
-                options={WEATHER_CONDITIONS.map(c => ({ value: c, label: weatherConditionLabel(c) }))}
-              />
-            </CollapsibleField>
-          </>
-        )}
-        <View style={styles.sep} />
-        <EditorRow
-          icon="timer-outline"
-          label="Time window"
-          hint="Only active for part of the day, then expires."
-          value={timeWindowSummary}
-          expanded={showTimeWindow}
-          onPress={() => { animateLayout(); setShowTimeWindow(v => !v); }}
-          onClear={(windowStart || windowEnd)
-            ? () => { setWindowStart(null); setWindowEnd(null); setWindowStartSun(null); setWindowEndSun(null); setWindowPickerMode('none'); }
-            : undefined}
-        />
-        {showTimeWindow && (
-          <>
-            <View style={styles.timePillRow}>
-              <TouchableOpacity
-                style={[styles.timePill, !!windowStart && styles.timePillActive]}
-                onPress={() => openWindowPicker('start')}
-              >
-                <Text style={[styles.timePillText, !!windowStart && styles.timePillTextActive]}>
-                  {windowBoundLabel(windowStart, windowStartSun) ?? 'Start'}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.timePill, !!windowEnd && styles.timePillActive]}
-                onPress={() => openWindowPicker('end')}
-              >
-                <Text style={[styles.timePillText, !!windowEnd && styles.timePillTextActive]}>
-                  {windowBoundLabel(windowEnd, windowEndSun) ?? 'End'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-            {windowPickerMode !== 'none' && (
-              <View style={styles.windowKindRow}>
-                <SegmentedControl
-                  options={WINDOW_KIND_OPTIONS}
-                  value={windowPickerKind}
-                  onChange={chooseWindowKind}
-                  label={windowPickerMode === 'start' ? 'Start at' : 'End at'}
-                />
-              </View>
-            )}
-            {windowPickerMode !== 'none' && windowPickerKind !== 'time' && (
-              <SunBoundPanel
-                event={windowPickerKind}
-                anchor={parseSunAnchor(windowSunOf(windowPickerMode))}
-                resolved={windowPickerMode === 'start' ? windowStart : windowEnd}
-                dayLabel="Today"
-                hasLocation={!!sunLocation}
-                locationStatus={sunLocationStatus}
-                unavailable={sunUnavailable}
-                onSide={setWindowSunSide}
-                onMinutes={setWindowSunMinutes}
-                onUseLocation={saveCurrentLocationForSun}
-                onDone={() => setWindowPickerMode('none')}
-              />
-            )}
-            {windowPickerMode !== 'none' && windowPickerKind === 'time' && (
-              <>
-                <DateTimePicker
-                  value={windowPickerDate}
-                  mode="time"
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  onChange={(_e, d) => d && setWindowPickerDate(d)}
-                  themeVariant={isDark ? 'dark' : 'light'}
-                />
-                <View style={styles.intervalRow}>
-                  <TouchableOpacity hitSlop={8}
-                    style={styles.intervalBtn}
-                    onPress={() => setWindowPickerMode('none')}
-                    accessibilityRole="button"
-                    accessibilityLabel="Cancel time window"
-                  >
-                    <Ionicons name="close" size={16} color={colors.textSecondary} />
-                  </TouchableOpacity>
-                  <TouchableOpacity hitSlop={8}
-                    style={styles.intervalBtn}
-                    onPress={confirmWindowPicker}
-                    accessibilityRole="button"
-                    accessibilityLabel="Confirm time window"
-                  >
-                    <Ionicons name="checkmark" size={16} color={colors.accent} />
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
-          </>
-        )}
-        <View style={styles.sep} />
-        <TouchableOpacity
-          style={styles.optionRow}
-          onPress={() => { haptics.tap(); setVacationPause(!vacationPause); }}
-          activeOpacity={interaction.activeOpacity}
-          accessibilityRole="switch"
-          accessibilityLabel="Pause on vacation"
-          accessibilityState={{ checked: vacationPause }}
-        >
-          <Ionicons name="airplane-outline" size={18} color={vacationPause ? colors.accent : colors.textSecondary} />
-          <View style={styles.optionContent}>
-            <Text style={styles.optionLabel}>Pause on vacation</Text>
-            <Text style={styles.optionHint}>Hidden while vacation mode is on</Text>
-          </View>
-          <Toggle value={vacationPause} />
-        </TouchableOpacity>
-      </View>
-
-      <Text style={styles.groupLabel}>How it repeats</Text>
-      <View style={styles.optionsCard}>
-        <View style={styles.optionRow}>
-          <Ionicons name="repeat" size={18} color={recurrenceType !== 'none' ? colors.accent : colors.textSecondary} />
-          <View style={styles.optionContent}>
-            <Text style={styles.optionLabel}>Repeat</Text>
-            {recurrenceType === 'none' && <Text style={styles.optionHint}>Recreates on this schedule when applied and completed</Text>}
-          </View>
-          {recurrenceType !== 'none' ? (
-            <TouchableOpacity
-              onPress={() => setRecurrenceType('none')}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel="Clear repeat schedule"
-            >
-              <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              style={styles.setBtn}
-              onPress={() => { haptics.tap(); setRecurrenceType('daily'); }}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel="Set a repeat schedule"
-            >
-              <Text style={styles.setOffsetText}>Set</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-        {recurrenceType !== 'none' && (
-          <RecurrencePicker
-            recurrenceType={recurrenceType}
-            onChangeType={setRecurrenceType}
-            recurrenceInterval={recurrenceInterval}
-            onChangeInterval={setRecurrenceInterval}
-            recurrenceDays={recurrenceDays}
-            onChangeDays={setRecurrenceDays}
-            recurrenceMonthDay={recurrenceMonthDay}
-            onChangeMonthDay={setRecurrenceMonthDay}
-            seedMonthDay={() => 1}
-            recurrenceMonth={recurrenceMonth}
-            onChangeMonth={setRecurrenceMonth}
-            seedMonth={() => 1}
-            recurrenceFromCompletion={recurrenceFromCompletion}
-            recurrenceHolidays={recurrenceHolidays}
-            onChangeHolidays={setRecurrenceHolidays}
-            rainSkipMm={rainSkipMm}
-            onChangeRainSkip={setRainSkipMm}
-            onChangeFromCompletion={setRecurrenceFromCompletion}
-            recurrenceCount={recurrenceCount}
-            onChangeCount={setRecurrenceCount}
-            countUnitLabel={() => 'times'}
-            neverEndsLabel="Never ends"
-            afterCountLabel="After N"
-            onSelectEndNever={() => setRecurrenceCount(null)}
-            onSelectEndCount={() => setRecurrenceCount(c => c ?? 5)}
-            // A template has no date of its own to seed the weekday from, so
-            // "the Nth weekday" starts on Monday and the author picks.
-            weekOrdinal={{ value: recurrenceWeekOrdinal, onChange: setRecurrenceWeekOrdinal, seedWeekday: () => 1 }}
+          <View style={styles.sep} />
+          <OffsetRow
+            icon="calendar"
+            label="Due date"
+            hint="When the task is due."
+            offset={dueOffsetDays}
+            anchor={anchor}
+            away={tripTemplate}
+            onChange={setDueOffsetDays}
+            colors={colors}
+            styles={styles}
           />
-        )}
-      </View>
-
-      {/* Pin every occurrence and Skip in suggestions are the two halves of
-          one question, what gets pushed onto Today, and the Screen Time
-          blocks are the strongest form of that push. */}
-      <Text style={styles.groupLabel}>Priority & effort</Text>
-      <View style={styles.optionsCard}>
-        <CollapsibleField
-          label="Priority"
-          summary={priority > 0 ? PRIORITY_LABELS[priority] : undefined}
-          hint="Ranks the task against everything else on Today."
-          expanded={fieldOpen('priority')}
-          onToggle={() => toggleField('priority')}
-        >
-          <SegmentedControl
-            label="Priority"
-            value={priority}
-            onChange={p => { setPriority(p); closeField('priority'); }}
-            columns={3}
-            options={PRIORITY_SEGMENTS}
+          <View style={styles.sep} />
+          <OffsetRow
+            icon="eye-off-outline"
+            label="Hide until"
+            hint="Keeps the task off Today until this day."
+            offset={deferOffsetDays}
+            anchor={anchor}
+            away={tripTemplate}
+            onChange={setDeferOffsetDays}
+            colors={colors}
+            styles={styles}
           />
-        </CollapsibleField>
-        {recurrenceType !== 'none' && (
-          <>
-            <View style={styles.sep} />
-            <TouchableOpacity
-              style={styles.optionRow}
-              onPress={() => { haptics.tap(); setPinEachOccurrence(!pinEachOccurrence); }}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="switch"
-              accessibilityLabel="Pin every occurrence"
-              accessibilityState={{ checked: pinEachOccurrence }}
-            >
-              <PinIcon filled={pinEachOccurrence} size={18} color={pinEachOccurrence ? colors.orangeText : colors.textSecondary} />
-              <View style={styles.optionContent}>
-                <Text style={styles.optionLabel}>Pin every occurrence</Text>
-                <Text style={styles.optionHint}>Each occurrence of a task made from this item starts pinned to Today</Text>
-              </View>
-              <Toggle value={pinEachOccurrence} />
-            </TouchableOpacity>
-          </>
-        )}
-        <View style={styles.sep} />
-        <TouchableOpacity
-          style={styles.optionRow}
-          onPress={() => { haptics.tap(); setExcludeFromSuggestions(!excludeFromSuggestions); }}
-          activeOpacity={interaction.activeOpacity}
-          accessibilityRole="switch"
-          accessibilityLabel="Skip in suggestions"
-          accessibilityState={{ checked: excludeFromSuggestions }}
-        >
-          <Ionicons name="color-wand-outline" size={18} color={excludeFromSuggestions ? colors.accent : colors.textSecondary} />
-          <View style={styles.optionContent}>
-            <Text style={styles.optionLabel}>Skip in suggestions</Text>
-            <Text style={styles.optionHint}>Keeps tasks made from this item out of suggested pins and focus sessions</Text>
-          </View>
-          <Toggle value={excludeFromSuggestions} />
-        </TouchableOpacity>
-        <View style={styles.sep} />
-        <TouchableOpacity
-          style={styles.optionRow}
-          onPress={() => { haptics.tap(); setGatesApps(!gatesApps); }}
-          activeOpacity={interaction.activeOpacity}
-          accessibilityRole="switch"
-          accessibilityLabel="Block apps until done"
-          accessibilityState={{ checked: gatesApps }}
-        >
-          <View style={styles.optionContent}>
-            <Text style={styles.optionLabel}>Block apps until done</Text>
-            <Text style={styles.optionHint}>Blocks the apps you picked in Screen Time until tasks made from this item are done</Text>
-          </View>
-          <Toggle value={gatesApps} />
-        </TouchableOpacity>
-        <View style={styles.sep} />
-        <CollapsibleField
-          label={polarity === 'negative' ? 'Block apps on a slip' : 'Block apps if missed'}
-          summary={penaltyMinutes === null
-            ? undefined
-            : polarity === 'negative'
-              ? `${formatDuration(penaltyMinutes)} each time`
-              : penaltyCutoffTime
-                ? `${formatDuration(penaltyMinutes)} after ${formatHHMM(penaltyCutoffTime)}`
-                : `${formatDuration(penaltyMinutes)} if not done that day`}
-          hint="Sets how long apps are blocked for tasks made from this item. Nothing is blocked until “When you fail a task” is turned on in Screen Time."
-          expanded={fieldOpen('penalty')}
-          onToggle={() => toggleField('penalty')}
-        >
-          <CountStepper
-            value={penaltyMinutes}
-            onChange={setPenaltyMinutes}
-            min={PENALTY_MIN_MINUTES}
-            max={PENALTY_MAX_MINUTES}
-            step={PENALTY_STEP_MINUTES}
-            allowNull
-            emptyLabel="No block"
-            label="Block length"
-            format={formatDuration}
-            describeValue={n => (n === null ? 'no block' : formatDuration(n))}
+          <View style={styles.sep} />
+          <OffsetRow
+            icon="flag-outline"
+            label="Deadline"
+            hint="A hard cutoff, shown separately from the due date."
+            offset={deadlineOffsetDays}
+            anchor={anchor}
+            away={tripTemplate}
+            onChange={v => { setDeadlineOffsetDays(v); if (v === null) { setDeadlineTime(null); setDeadlineTimePickerOpen(false); } }}
+            colors={colors}
+            styles={styles}
           />
-          {polarity !== 'negative' && penaltyMinutes !== null && (
+          {deadlineOffsetDays !== null && (
             <>
               <View style={styles.timePillRow}>
                 <TouchableOpacity
-                  style={[styles.timePill, !!penaltyCutoffTime && styles.timePillActive]}
-                  onPress={openPenaltyPicker}
+                  style={[styles.timePill, !!deadlineTime && styles.timePillActive]}
+                  onPress={openDeadlineTimePicker}
+                  accessibilityRole="button"
+                  accessibilityLabel={deadlineTime ? `Deadline time ${formatHHMM(deadlineTime)}` : 'Add a time to the deadline'}
                 >
-                  <Text style={[styles.timePillText, !!penaltyCutoffTime && styles.timePillTextActive]}>
-                    {penaltyCutoffTime ? formatHHMM(penaltyCutoffTime) : 'End of day'}
+                  <Text style={[styles.timePillText, !!deadlineTime && styles.timePillTextActive]}>
+                    {deadlineTime ? formatHHMM(deadlineTime) : 'Add a time'}
                   </Text>
                 </TouchableOpacity>
-                {penaltyCutoffTime !== null && (
+                {deadlineTime !== null && (
                   <TouchableOpacity
                     style={styles.timePill}
-                    onPress={() => { setPenaltyCutoffTime(null); setPenaltyPickerOpen(false); }}
+                    onPress={() => { setDeadlineTime(null); setDeadlineTimePickerOpen(false); }}
                     accessibilityRole="button"
-                    accessibilityLabel="Judge at the end of the day instead"
+                    accessibilityLabel="Make the deadline the whole day"
                   >
                     <Text style={styles.timePillText}>Clear</Text>
                   </TouchableOpacity>
                 )}
               </View>
-              {penaltyPickerOpen && (
+              {deadlineTimePickerOpen && (
                 <>
                   <DateTimePicker
-                    value={penaltyPickerDate}
+                    value={deadlineTimePickerDate}
                     mode="time"
                     display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                    onChange={(_e, d) => d && setPenaltyPickerDate(d)}
+                    onChange={(_e, d) => d && setDeadlineTimePickerDate(d)}
                     themeVariant={isDark ? 'dark' : 'light'}
                   />
                   <View style={styles.intervalRow}>
                     <TouchableOpacity hitSlop={8}
                       style={styles.intervalBtn}
-                      onPress={() => setPenaltyPickerOpen(false)}
+                      onPress={() => setDeadlineTimePickerOpen(false)}
                       accessibilityRole="button"
-                      accessibilityLabel="Cancel cutoff time"
+                      accessibilityLabel="Cancel deadline time"
                     >
                       <Ionicons name="close" size={16} color={colors.textSecondary} />
                     </TouchableOpacity>
                     <TouchableOpacity hitSlop={8}
                       style={styles.intervalBtn}
-                      onPress={confirmPenaltyPicker}
+                      onPress={confirmDeadlineTimePicker}
                       accessibilityRole="button"
-                      accessibilityLabel="Confirm cutoff time"
+                      accessibilityLabel="Confirm deadline time"
                     >
                       <Ionicons name="checkmark" size={16} color={colors.accent} />
                     </TouchableOpacity>
@@ -2277,176 +1893,606 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               )}
             </>
           )}
-        </CollapsibleField>
-        <View style={styles.sep} />
-        <CollapsibleField
-          label="Effort"
-          summary={estimatedMinutes !== null ? formatDuration(estimatedMinutes) : effort > 0 ? effortTimeLabel(effort, '') : undefined}
-          emptySummary="Not set"
-          hint="Roughly how long this takes, so a day’s list can be sized realistically."
-          expanded={fieldOpen('effort')}
-          onToggle={() => toggleField('effort')}
-        >
-          <View style={styles.pillRow}>
-            <TouchableOpacity
-              style={[styles.pill, effort === 0 && estimatedMinutes === null && styles.pillActiveNeutral]}
-              onPress={() => { haptics.tap(); setEffort(0); setEstimatedMinutes(null); }}
-            >
-              <Text style={[styles.pillText, effort === 0 && estimatedMinutes === null && styles.pillTextActive]}>—</Text>
-            </TouchableOpacity>
-            {ESTIMATE_PRESET_MINUTES.map(mins => {
-              const active = chosenEstimateMinutes({ estimatedMinutes, effort }) === mins;
-              return (
+          <View style={styles.sep} />
+          <EditorRow
+            icon="time-outline"
+            label="Time of day"
+            hint="Keeps the task off Today until a part of the day."
+            value={timeOfDaySummary}
+            expanded={showTimeOfDay}
+            onPress={() => { animateLayout(); setShowTimeOfDay(v => !v); }}
+            onClear={timeSegments.length > 0 ? () => setTimeSegments([]) : undefined}
+          />
+          {showTimeOfDay && (
+            <View style={styles.timePillRow}>
+              {(['morning', 'afternoon', 'evening', 'night'] as TimeOfDay[]).map(tod => {
+                const active = timeSegments.includes(tod);
+                return (
+                  <TouchableOpacity
+                    key={tod}
+                    style={[styles.timePill, active && styles.timePillActive]}
+                    onPress={() => {
+                      haptics.tap();
+                      setTimeSegments(prev => prev.includes(tod) ? [] : [tod]);
+                    }}
+                  >
+                    <Text style={[styles.timePillText, active && styles.timePillTextActive]}>
+                      {capitalize(tod)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+          <View style={styles.sep} />
+          <View style={styles.optionRow}>
+            <Ionicons
+              name="notifications"
+              size={18}
+              color={reminderOffsetMinutes !== null ? colors.accent : colors.textSecondary}
+            />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Remind me</Text>
+              {dueOffsetDays === null ? (
+                <Text style={styles.optionHint}>Set a due date first</Text>
+              ) : reminderOffsetMinutes === null ? (
+                <Text style={styles.optionHint}>Minutes before the due date</Text>
+              ) : null}
+            </View>
+            {dueOffsetDays !== null && (
+              reminderOffsetMinutes !== null ? (
                 <TouchableOpacity
-                  key={mins}
-                  style={[styles.pill, active && styles.pillActiveNeutral]}
-                  onPress={() => {
-                    haptics.tap();
-                    const patch = estimatePatchForMinutes(mins);
-                    setEffort(patch.effort);
-                    setEstimatedMinutes(patch.estimatedMinutes);
-                  }}
-                >
-                  <Text style={[styles.pillText, active && styles.pillTextActive]}>{formatDuration(mins)}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-          <View style={styles.intervalRow}>
-            {estimatedMinutes !== null && !ESTIMATE_PRESET_MINUTES.includes(estimatedMinutes) ? (
-              <>
-                <CountStepper
-                  value={estimatedMinutes}
-                  onChange={m => setEstimatedMinutes(m ?? 30)}
-                  min={5}
-                  max={MAX_CUSTOM_ESTIMATE_MINUTES}
-                  step={5}
-                  format={n => `${n} min`}
-                  label="Estimate"
-                />
-                <Text style={styles.intervalValueSm}>(custom)</Text>
-                <TouchableOpacity
-                  onPress={() => setEstimatedMinutes(null)}
+                  onPress={() => setReminderOffsetMinutes(null)}
                   hitSlop={8}
                   accessibilityRole="button"
-                  accessibilityLabel="Clear custom estimate"
+                  accessibilityLabel="Clear reminder"
                 >
                   <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
                 </TouchableOpacity>
-              </>
-            ) : (
-              <InlineAction
-                label="Set a custom estimate"
-                haptic
-                onPress={() => setEstimatedMinutes(30)}
-              />
+              ) : (
+                <TouchableOpacity
+                  style={styles.setBtn}
+                  onPress={() => { haptics.tap(); setReminderOffsetMinutes(60); }}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Set a reminder"
+                >
+                  <Text style={styles.setOffsetText}>Set</Text>
+                </TouchableOpacity>
+              )
             )}
           </View>
-        </CollapsibleField>
-        {/* Seeds Task.difficulty, and offered on the same terms the task
-            editor offers it: only while the coin rules that read it run. */}
-        {rewardsEnabled && polarity !== 'negative' && (
-          <>
-            <View style={styles.sep} />
-            <CollapsibleField
-              label="Difficulty"
-              summary={DIFFICULTY_SEGMENTS.find(d => d.value === difficulty)?.label}
-              emptySummary="Not set"
-              hint={DIFFICULTY_HINT}
-              expanded={fieldOpen('difficulty')}
-              onToggle={() => toggleField('difficulty')}
-            >
-              <SegmentedControl
-                label="Difficulty"
-                value={difficulty}
-                onChange={d => { setDifficulty(d); closeField('difficulty'); }}
-                options={DIFFICULTY_PICKER_SEGMENTS}
+          {dueOffsetDays !== null && reminderOffsetMinutes !== null && (
+            <View style={styles.intervalRow}>
+              <CountStepper
+                value={reminderOffsetMinutes}
+                onChange={m => setReminderOffsetMinutes(m ?? 60)}
+                min={5}
+                max={MAX_REMINDER_OFFSET_MINUTES}
+                step={15}
+                format={formatMinutesOffset}
+                label="Reminder lead time"
               />
-            </CollapsibleField>
-          </>
-        )}
+            </View>
+          )}
+          {recurrenceType === 'none' && !chainEnabled && (weatherTasksOn || weatherWait !== null) && (
+            <>
+              <View style={styles.sep} />
+              <CollapsibleField
+                label="Wait for weather"
+                summary={weatherWait ? weatherConditionLabel(weatherWait) : undefined}
+                emptySummary="Off"
+                hint={weatherTasksOn
+                  ? 'Holds tasks made from this item until the first day in the next 14 with this forecast.'
+                  : 'Turn on Weather-based tasks in Settings, with location access. Until then, these tasks aren’t held.'}
+                expanded={fieldOpen('weatherWait')}
+                onToggle={() => toggleField('weatherWait')}
+              >
+                <SegmentedControl
+                  label="Wait for a day that is"
+                  value={weatherWait}
+                  onChange={next => setWeatherWait(next === weatherWait ? null : next)}
+                  options={WEATHER_CONDITIONS.map(c => ({ value: c, label: weatherConditionLabel(c) }))}
+                />
+              </CollapsibleField>
+            </>
+          )}
+          <View style={styles.sep} />
+          <EditorRow
+            icon="timer-outline"
+            label="Time window"
+            hint="Only active for part of the day, then expires."
+            value={timeWindowSummary}
+            expanded={showTimeWindow}
+            onPress={() => { animateLayout(); setShowTimeWindow(v => !v); }}
+            onClear={(windowStart || windowEnd)
+              ? () => { setWindowStart(null); setWindowEnd(null); setWindowStartSun(null); setWindowEndSun(null); setWindowPickerMode('none'); }
+              : undefined}
+          />
+          {showTimeWindow && (
+            <>
+              <View style={styles.timePillRow}>
+                <TouchableOpacity
+                  style={[styles.timePill, !!windowStart && styles.timePillActive]}
+                  onPress={() => openWindowPicker('start')}
+                >
+                  <Text style={[styles.timePillText, !!windowStart && styles.timePillTextActive]}>
+                    {windowBoundLabel(windowStart, windowStartSun) ?? 'Start'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.timePill, !!windowEnd && styles.timePillActive]}
+                  onPress={() => openWindowPicker('end')}
+                >
+                  <Text style={[styles.timePillText, !!windowEnd && styles.timePillTextActive]}>
+                    {windowBoundLabel(windowEnd, windowEndSun) ?? 'End'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              {windowPickerMode !== 'none' && (
+                <View style={styles.windowKindRow}>
+                  <SegmentedControl
+                    options={WINDOW_KIND_OPTIONS}
+                    value={windowPickerKind}
+                    onChange={chooseWindowKind}
+                    label={windowPickerMode === 'start' ? 'Start at' : 'End at'}
+                  />
+                </View>
+              )}
+              {windowPickerMode !== 'none' && windowPickerKind !== 'time' && (
+                <SunBoundPanel
+                  event={windowPickerKind}
+                  anchor={parseSunAnchor(windowSunOf(windowPickerMode))}
+                  resolved={windowPickerMode === 'start' ? windowStart : windowEnd}
+                  dayLabel="Today"
+                  hasLocation={!!sunLocation}
+                  locationStatus={sunLocationStatus}
+                  unavailable={sunUnavailable}
+                  onSide={setWindowSunSide}
+                  onMinutes={setWindowSunMinutes}
+                  onUseLocation={saveCurrentLocationForSun}
+                  onDone={() => setWindowPickerMode('none')}
+                />
+              )}
+              {windowPickerMode !== 'none' && windowPickerKind === 'time' && (
+                <>
+                  <DateTimePicker
+                    value={windowPickerDate}
+                    mode="time"
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    onChange={(_e, d) => d && setWindowPickerDate(d)}
+                    themeVariant={isDark ? 'dark' : 'light'}
+                  />
+                  <View style={styles.intervalRow}>
+                    <TouchableOpacity hitSlop={8}
+                      style={styles.intervalBtn}
+                      onPress={() => setWindowPickerMode('none')}
+                      accessibilityRole="button"
+                      accessibilityLabel="Cancel time window"
+                    >
+                      <Ionicons name="close" size={16} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                    <TouchableOpacity hitSlop={8}
+                      style={styles.intervalBtn}
+                      onPress={confirmWindowPicker}
+                      accessibilityRole="button"
+                      accessibilityLabel="Confirm time window"
+                    >
+                      <Ionicons name="checkmark" size={16} color={colors.accent} />
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+            </>
+          )}
+          <View style={styles.sep} />
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => { haptics.tap(); setVacationPause(!vacationPause); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="switch"
+            accessibilityLabel="Pause on vacation"
+            accessibilityState={{ checked: vacationPause }}
+          >
+            <Ionicons name="airplane-outline" size={18} color={vacationPause ? colors.accent : colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Pause on vacation</Text>
+              <Text style={styles.optionHint}>Hidden while vacation mode is on</Text>
+            </View>
+            <Toggle value={vacationPause} />
+          </TouchableOpacity>
+        </View>
       </View>
 
-      <Text style={styles.groupLabel}>Filed under</Text>
-      <View style={styles.sectionCard}>
-        <CollapsibleField
-          label="Category"
-          summary={category ? categoryLabel(category, categories) : undefined}
-          hint="One home for the task. Drives the Categories screen and its filters."
-          expanded={fieldOpen('category')}
-          onToggle={() => toggleField('category')}
-        >
-          <View style={styles.pillRow}>
-            <TouchableOpacity
-              style={[styles.pill, !category && styles.pillActiveNeutral]}
-              onPress={() => { haptics.tap(); setCategory(null); closeField('category'); }}
-            >
-              <Text style={[styles.pillText, !category && styles.pillTextActive]}>None</Text>
-            </TouchableOpacity>
-            {allCategories.map(cat => (
+      <View onLayout={placeCard('repeat')}>
+        <Text style={styles.groupLabel}>How it repeats</Text>
+        <View style={styles.optionsCard}>
+          <View style={styles.optionRow}>
+            <Ionicons name="repeat" size={18} color={recurrenceType !== 'none' ? colors.accent : colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Repeat</Text>
+              {recurrenceType === 'none' && <Text style={styles.optionHint}>Recreates on this schedule when applied and completed</Text>}
+            </View>
+            {recurrenceType !== 'none' ? (
               <TouchableOpacity
-                key={cat}
-                style={[styles.pill, category === cat && styles.pillActiveNeutral]}
-                onPress={() => { haptics.tap(); setCategory(cat); closeField('category'); }}
+                onPress={() => setRecurrenceType('none')}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Clear repeat schedule"
               >
-                <Text style={[styles.pillText, category === cat && styles.pillTextActive]}>{categoryLabel(cat, categories)}</Text>
+                <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
               </TouchableOpacity>
-            ))}
-          </View>
-        </CollapsibleField>
-
-        <View style={styles.cardSep} />
-
-        <CollapsibleField
-          label="Tags"
-          summary={tags.length > 0 ? tags.join(', ') : undefined}
-          hint="Free-form labels. A task can carry several, and you can filter or search by them."
-          expanded={fieldOpen('tags')}
-          onToggle={() => toggleField('tags')}
-        >
-          <View style={styles.tagRow}>
-            {tags.map(tag => (
-              <TouchableOpacity
-                key={tag}
-                style={[styles.tagChip, { backgroundColor: tagColor(tag) + '33' }]}
-                onPress={() => setTags(prev => prev.filter(t => t !== tag))}
-              >
-                <View style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
-                <Text style={[styles.tagChipText, { color: tagColor(tag) }]}>{tag}</Text>
-                <Ionicons name="close" size={12} color={tagColor(tag)} />
-              </TouchableOpacity>
-            ))}
-            {addingTag ? (
-              <TextField
-                autoFocus
-                style={styles.tagInput}
-                value={newTag}
-                onChangeText={setNewTag}
-                onSubmitEditing={addTagFromInput}
-                onBlur={addTagFromInput}
-                placeholder="Tag name"
-                placeholderTextColor={colors.textTertiary}
-                returnKeyType="done"
-                autoCapitalize="none"
-              />
             ) : (
-              <InlineAction icon="add" label="Add tag" variant="neutral" onPress={() => setAddingTag(true)} />
+              <TouchableOpacity
+                style={styles.setBtn}
+                onPress={() => { haptics.tap(); setRecurrenceType('daily'); }}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Set a repeat schedule"
+              >
+                <Text style={styles.setOffsetText}>Set</Text>
+              </TouchableOpacity>
             )}
           </View>
-          {allTags.filter(t => !tags.includes(t)).length > 0 && (
-            <View style={styles.tagSuggestions}>
-              {allTags.filter(t => !tags.includes(t)).slice(0, 6).map(tag => (
+          {recurrenceType !== 'none' && (
+            <RecurrencePicker
+              recurrenceType={recurrenceType}
+              onChangeType={setRecurrenceType}
+              recurrenceInterval={recurrenceInterval}
+              onChangeInterval={setRecurrenceInterval}
+              recurrenceDays={recurrenceDays}
+              onChangeDays={setRecurrenceDays}
+              recurrenceMonthDay={recurrenceMonthDay}
+              onChangeMonthDay={setRecurrenceMonthDay}
+              seedMonthDay={() => 1}
+              recurrenceMonth={recurrenceMonth}
+              onChangeMonth={setRecurrenceMonth}
+              seedMonth={() => 1}
+              recurrenceFromCompletion={recurrenceFromCompletion}
+              recurrenceHolidays={recurrenceHolidays}
+              onChangeHolidays={setRecurrenceHolidays}
+              rainSkipMm={rainSkipMm}
+              onChangeRainSkip={setRainSkipMm}
+              onChangeFromCompletion={setRecurrenceFromCompletion}
+              recurrenceCount={recurrenceCount}
+              onChangeCount={setRecurrenceCount}
+              countUnitLabel={() => 'times'}
+              neverEndsLabel="Never ends"
+              afterCountLabel="After N"
+              onSelectEndNever={() => setRecurrenceCount(null)}
+              onSelectEndCount={() => setRecurrenceCount(c => c ?? 5)}
+              // A template has no date of its own to seed the weekday from, so
+              // "the Nth weekday" starts on Monday and the author picks.
+              weekOrdinal={{ value: recurrenceWeekOrdinal, onChange: setRecurrenceWeekOrdinal, seedWeekday: () => 1 }}
+            />
+          )}
+        </View>
+      </View>
+
+      {/* Pin every occurrence and Skip in suggestions are the two halves of
+          one question, what gets pushed onto Today, and the Screen Time
+          blocks are the strongest form of that push. */}
+      <View onLayout={placeCard('priority')}>
+        <Text style={styles.groupLabel}>Priority & effort</Text>
+        <View style={styles.optionsCard}>
+          <CollapsibleField
+            label="Priority"
+            summary={priority > 0 ? PRIORITY_LABELS[priority] : undefined}
+            hint="Ranks the task against everything else on Today."
+            expanded={fieldOpen('priority')}
+            onToggle={() => toggleField('priority')}
+          >
+            <SegmentedControl
+              label="Priority"
+              value={priority}
+              onChange={p => { setPriority(p); closeField('priority'); }}
+              columns={3}
+              options={PRIORITY_SEGMENTS}
+            />
+          </CollapsibleField>
+          {recurrenceType !== 'none' && (
+            <>
+              <View style={styles.sep} />
+              <TouchableOpacity
+                style={styles.optionRow}
+                onPress={() => { haptics.tap(); setPinEachOccurrence(!pinEachOccurrence); }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="switch"
+                accessibilityLabel="Pin every occurrence"
+                accessibilityState={{ checked: pinEachOccurrence }}
+              >
+                <PinIcon filled={pinEachOccurrence} size={18} color={pinEachOccurrence ? colors.orangeText : colors.textSecondary} />
+                <View style={styles.optionContent}>
+                  <Text style={styles.optionLabel}>Pin every occurrence</Text>
+                  <Text style={styles.optionHint}>Each occurrence of a task made from this item starts pinned to Today</Text>
+                </View>
+                <Toggle value={pinEachOccurrence} />
+              </TouchableOpacity>
+            </>
+          )}
+          <View style={styles.sep} />
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => { haptics.tap(); setExcludeFromSuggestions(!excludeFromSuggestions); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="switch"
+            accessibilityLabel="Skip in suggestions"
+            accessibilityState={{ checked: excludeFromSuggestions }}
+          >
+            <Ionicons name="color-wand-outline" size={18} color={excludeFromSuggestions ? colors.accent : colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Skip in suggestions</Text>
+              <Text style={styles.optionHint}>Keeps tasks made from this item out of suggested pins and focus sessions</Text>
+            </View>
+            <Toggle value={excludeFromSuggestions} />
+          </TouchableOpacity>
+          <View style={styles.sep} />
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => { haptics.tap(); setGatesApps(!gatesApps); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="switch"
+            accessibilityLabel="Block apps until done"
+            accessibilityState={{ checked: gatesApps }}
+          >
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Block apps until done</Text>
+              <Text style={styles.optionHint}>Blocks the apps you picked in Screen Time until tasks made from this item are done</Text>
+            </View>
+            <Toggle value={gatesApps} />
+          </TouchableOpacity>
+          <View style={styles.sep} />
+          <CollapsibleField
+            label={polarity === 'negative' ? 'Block apps on a slip' : 'Block apps if missed'}
+            summary={penaltyMinutes === null
+              ? undefined
+              : polarity === 'negative'
+                ? `${formatDuration(penaltyMinutes)} each time`
+                : penaltyCutoffTime
+                  ? `${formatDuration(penaltyMinutes)} after ${formatHHMM(penaltyCutoffTime)}`
+                  : `${formatDuration(penaltyMinutes)} if not done that day`}
+            hint="Sets how long apps are blocked for tasks made from this item. Nothing is blocked until “When you fail a task” is turned on in Screen Time."
+            expanded={fieldOpen('penalty')}
+            onToggle={() => toggleField('penalty')}
+          >
+            <CountStepper
+              value={penaltyMinutes}
+              onChange={setPenaltyMinutes}
+              min={PENALTY_MIN_MINUTES}
+              max={PENALTY_MAX_MINUTES}
+              step={PENALTY_STEP_MINUTES}
+              allowNull
+              emptyLabel="No block"
+              label="Block length"
+              format={formatDuration}
+              describeValue={n => (n === null ? 'no block' : formatDuration(n))}
+            />
+            {polarity !== 'negative' && penaltyMinutes !== null && (
+              <>
+                <View style={styles.timePillRow}>
+                  <TouchableOpacity
+                    style={[styles.timePill, !!penaltyCutoffTime && styles.timePillActive]}
+                    onPress={openPenaltyPicker}
+                  >
+                    <Text style={[styles.timePillText, !!penaltyCutoffTime && styles.timePillTextActive]}>
+                      {penaltyCutoffTime ? formatHHMM(penaltyCutoffTime) : 'End of day'}
+                    </Text>
+                  </TouchableOpacity>
+                  {penaltyCutoffTime !== null && (
+                    <TouchableOpacity
+                      style={styles.timePill}
+                      onPress={() => { setPenaltyCutoffTime(null); setPenaltyPickerOpen(false); }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Judge at the end of the day instead"
+                    >
+                      <Text style={styles.timePillText}>Clear</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                {penaltyPickerOpen && (
+                  <>
+                    <DateTimePicker
+                      value={penaltyPickerDate}
+                      mode="time"
+                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                      onChange={(_e, d) => d && setPenaltyPickerDate(d)}
+                      themeVariant={isDark ? 'dark' : 'light'}
+                    />
+                    <View style={styles.intervalRow}>
+                      <TouchableOpacity hitSlop={8}
+                        style={styles.intervalBtn}
+                        onPress={() => setPenaltyPickerOpen(false)}
+                        accessibilityRole="button"
+                        accessibilityLabel="Cancel cutoff time"
+                      >
+                        <Ionicons name="close" size={16} color={colors.textSecondary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity hitSlop={8}
+                        style={styles.intervalBtn}
+                        onPress={confirmPenaltyPicker}
+                        accessibilityRole="button"
+                        accessibilityLabel="Confirm cutoff time"
+                      >
+                        <Ionicons name="checkmark" size={16} color={colors.accent} />
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
+              </>
+            )}
+          </CollapsibleField>
+          <View style={styles.sep} />
+          <CollapsibleField
+            label="Effort"
+            summary={estimatedMinutes !== null ? formatDuration(estimatedMinutes) : effort > 0 ? effortTimeLabel(effort, '') : undefined}
+            emptySummary="Not set"
+            hint="Roughly how long this takes, so a day’s list can be sized realistically."
+            expanded={fieldOpen('effort')}
+            onToggle={() => toggleField('effort')}
+          >
+            <View style={styles.pillRow}>
+              <TouchableOpacity
+                style={[styles.pill, effort === 0 && estimatedMinutes === null && styles.pillActiveNeutral]}
+                onPress={() => { haptics.tap(); setEffort(0); setEstimatedMinutes(null); }}
+              >
+                <Text style={[styles.pillText, effort === 0 && estimatedMinutes === null && styles.pillTextActive]}>—</Text>
+              </TouchableOpacity>
+              {ESTIMATE_PRESET_MINUTES.map(mins => {
+                const active = chosenEstimateMinutes({ estimatedMinutes, effort }) === mins;
+                return (
+                  <TouchableOpacity
+                    key={mins}
+                    style={[styles.pill, active && styles.pillActiveNeutral]}
+                    onPress={() => {
+                      haptics.tap();
+                      const patch = estimatePatchForMinutes(mins);
+                      setEffort(patch.effort);
+                      setEstimatedMinutes(patch.estimatedMinutes);
+                    }}
+                  >
+                    <Text style={[styles.pillText, active && styles.pillTextActive]}>{formatDuration(mins)}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <View style={styles.intervalRow}>
+              {estimatedMinutes !== null && !ESTIMATE_PRESET_MINUTES.includes(estimatedMinutes) ? (
+                <>
+                  <CountStepper
+                    value={estimatedMinutes}
+                    onChange={m => setEstimatedMinutes(m ?? 30)}
+                    min={5}
+                    max={MAX_CUSTOM_ESTIMATE_MINUTES}
+                    step={5}
+                    format={n => `${n} min`}
+                    label="Estimate"
+                  />
+                  <Text style={styles.intervalValueSm}>(custom)</Text>
+                  <TouchableOpacity
+                    onPress={() => setEstimatedMinutes(null)}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Clear custom estimate"
+                  >
+                    <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <InlineAction
+                  label="Set a custom estimate"
+                  haptic
+                  onPress={() => setEstimatedMinutes(30)}
+                />
+              )}
+            </View>
+          </CollapsibleField>
+          {/* Seeds Task.difficulty, and offered on the same terms the task
+              editor offers it: only while the coin rules that read it run. */}
+          {rewardsEnabled && polarity !== 'negative' && (
+            <>
+              <View style={styles.sep} />
+              <CollapsibleField
+                label="Difficulty"
+                summary={DIFFICULTY_SEGMENTS.find(d => d.value === difficulty)?.label}
+                emptySummary="Not set"
+                hint={DIFFICULTY_HINT}
+                expanded={fieldOpen('difficulty')}
+                onToggle={() => toggleField('difficulty')}
+              >
+                <SegmentedControl
+                  label="Difficulty"
+                  value={difficulty}
+                  onChange={d => { setDifficulty(d); closeField('difficulty'); }}
+                  options={DIFFICULTY_PICKER_SEGMENTS}
+                />
+              </CollapsibleField>
+            </>
+          )}
+        </View>
+      </View>
+
+      <View onLayout={placeCard('filed')}>
+        <Text style={styles.groupLabel}>Filed under</Text>
+        <View style={styles.sectionCard}>
+          <CollapsibleField
+            label="Category"
+            summary={category ? categoryLabel(category, categories) : undefined}
+            hint="One home for the task. Drives the Categories screen and its filters."
+            expanded={fieldOpen('category')}
+            onToggle={() => toggleField('category')}
+          >
+            <View style={styles.pillRow}>
+              <TouchableOpacity
+                style={[styles.pill, !category && styles.pillActiveNeutral]}
+                onPress={() => { haptics.tap(); setCategory(null); closeField('category'); }}
+              >
+                <Text style={[styles.pillText, !category && styles.pillTextActive]}>None</Text>
+              </TouchableOpacity>
+              {allCategories.map(cat => (
                 <TouchableOpacity
-                  key={tag}
-                  style={styles.tagSuggestion}
-                  onPress={() => setTags(prev => [...prev, tag])}
+                  key={cat}
+                  style={[styles.pill, category === cat && styles.pillActiveNeutral]}
+                  onPress={() => { haptics.tap(); setCategory(cat); closeField('category'); }}
                 >
-                  <Text style={styles.tagSuggestionText}>{tag}</Text>
+                  <Text style={[styles.pillText, category === cat && styles.pillTextActive]}>{categoryLabel(cat, categories)}</Text>
                 </TouchableOpacity>
               ))}
             </View>
-          )}
-        </CollapsibleField>
+          </CollapsibleField>
+
+          <View style={styles.cardSep} />
+
+          <CollapsibleField
+            label="Tags"
+            summary={tags.length > 0 ? tags.join(', ') : undefined}
+            hint="Free-form labels. A task can carry several, and you can filter or search by them."
+            expanded={fieldOpen('tags')}
+            onToggle={() => toggleField('tags')}
+          >
+            <View style={styles.tagRow}>
+              {tags.map(tag => (
+                <TouchableOpacity
+                  key={tag}
+                  style={[styles.tagChip, { backgroundColor: tagColor(tag) + '33' }]}
+                  onPress={() => setTags(prev => prev.filter(t => t !== tag))}
+                >
+                  <View style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
+                  <Text style={[styles.tagChipText, { color: tagColor(tag) }]}>{tag}</Text>
+                  <Ionicons name="close" size={12} color={tagColor(tag)} />
+                </TouchableOpacity>
+              ))}
+              {addingTag ? (
+                <TextField
+                  autoFocus
+                  style={styles.tagInput}
+                  value={newTag}
+                  onChangeText={setNewTag}
+                  onSubmitEditing={addTagFromInput}
+                  onBlur={addTagFromInput}
+                  placeholder="Tag name"
+                  placeholderTextColor={colors.textTertiary}
+                  returnKeyType="done"
+                  autoCapitalize="none"
+                />
+              ) : (
+                <InlineAction icon="add" label="Add tag" variant="neutral" onPress={() => setAddingTag(true)} />
+              )}
+            </View>
+            {allTags.filter(t => !tags.includes(t)).length > 0 && (
+              <View style={styles.tagSuggestions}>
+                {allTags.filter(t => !tags.includes(t)).slice(0, 6).map(tag => (
+                  <TouchableOpacity
+                    key={tag}
+                    style={styles.tagSuggestion}
+                    onPress={() => setTags(prev => [...prev, tag])}
+                  >
+                    <Text style={styles.tagSuggestionText}>{tag}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </CollapsibleField>
+        </View>
       </View>
 
       {/* Waits for: "Waits on" is the task editor's "Waiting on", pointed at
@@ -2456,7 +2502,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           pick (for Only if, for the reason "Checked by default for" hides
           itself), and the heading goes with the last of them. */}
       {(showWaitsOn || showOnlyIf) && (
-        <>
+        <View onLayout={placeCard('waits')}>
           <Text style={styles.groupLabel}>Waits for</Text>
           <View style={styles.sectionCard}>
             {showWaitsOn && (
@@ -2529,311 +2575,317 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               </CollapsibleField>
             )}
           </View>
-        </>
+        </View>
       )}
 
-      <Text style={styles.groupLabel}>Who and where</Text>
-      <View style={styles.sectionCard}>
-        <CollapsibleField
-          label="Location"
-          summary={locationText.trim() || undefined}
-          hint="Where each task made from this item happens, like an appointment’s address or a venue."
-          expanded={fieldOpen('location')}
-          onToggle={() => toggleField('location')}
-        >
-          <TextField
-            style={[styles.fieldBox, styles.deliverableOptionsInput]}
-            value={locationText}
-            onChangeText={setLocationText}
-            placeholder="e.g. 156 William Street"
-            placeholderTextColor={colors.textTertiary}
-            autoCorrect={false}
-            returnKeyType="done"
-            accessibilityLabel="Location"
-          />
-        </CollapsibleField>
+      <View onLayout={placeCard('who')}>
+        <Text style={styles.groupLabel}>Who and where</Text>
+        <View style={styles.sectionCard}>
+          <CollapsibleField
+            label="Location"
+            summary={locationText.trim() || undefined}
+            hint="Where each task made from this item happens, like an appointment’s address or a venue."
+            expanded={fieldOpen('location')}
+            onToggle={() => toggleField('location')}
+          >
+            <TextField
+              style={[styles.fieldBox, styles.deliverableOptionsInput]}
+              value={locationText}
+              onChangeText={setLocationText}
+              placeholder="e.g. 156 William Street"
+              placeholderTextColor={colors.textTertiary}
+              autoCorrect={false}
+              returnKeyType="done"
+              accessibilityLabel="Location"
+            />
+          </CollapsibleField>
+        </View>
       </View>
 
-      <Text style={styles.groupLabel}>Opens from the task</Text>
-      <View style={styles.sectionCard}>
-        <CollapsibleField
-          label="Link"
-          summary={parseLabelledLink(linkText) ? linkHost(parseLabelledLink(linkText)!.url) : undefined}
-          hint="A page each task made from this item opens from its row, like a booking page or a form."
-          expanded={fieldOpen('link')}
-          onToggle={() => toggleField('link')}
-        >
-          <TextField
-            style={[styles.fieldBox, styles.deliverableOptionsInput]}
-            value={linkText}
-            onChangeText={setLinkText}
-            placeholder="e.g. https://example.com/booking"
-            placeholderTextColor={colors.textTertiary}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="url"
-            returnKeyType="done"
-            accessibilityLabel="Link"
-          />
-          {/* Said here rather than dropped on save without a word. */}
-          {linkText.trim() !== '' && !parseLabelledLink(linkText) && (
-            <Text style={styles.choiceOptionsHint}>That isn’t a link yet, so it won’t be saved.</Text>
-          )}
-        </CollapsibleField>
+      <View onLayout={placeCard('opens')}>
+        <Text style={styles.groupLabel}>Opens from the task</Text>
+        <View style={styles.sectionCard}>
+          <CollapsibleField
+            label="Link"
+            summary={parseLabelledLink(linkText) ? linkHost(parseLabelledLink(linkText)!.url) : undefined}
+            hint="A page each task made from this item opens from its row, like a booking page or a form."
+            expanded={fieldOpen('link')}
+            onToggle={() => toggleField('link')}
+          >
+            <TextField
+              style={[styles.fieldBox, styles.deliverableOptionsInput]}
+              value={linkText}
+              onChangeText={setLinkText}
+              placeholder="e.g. https://example.com/booking"
+              placeholderTextColor={colors.textTertiary}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+              returnKeyType="done"
+              accessibilityLabel="Link"
+            />
+            {/* Said here rather than dropped on save without a word. */}
+            {linkText.trim() !== '' && !parseLabelledLink(linkText) && (
+              <Text style={styles.choiceOptionsHint}>That isn’t a link yet, so it won’t be saved.</Text>
+            )}
+          </CollapsibleField>
 
-        <View style={styles.cardSep} />
+          <View style={styles.cardSep} />
 
-        <CollapsibleField
-          label="Phone"
-          summary={phoneText.trim() || undefined}
-          hint="A number each task made from this item can call, like the clinic or the office."
-          expanded={fieldOpen('phone')}
-          onToggle={() => toggleField('phone')}
-        >
-          <TextField
-            style={[styles.fieldBox, styles.deliverableOptionsInput]}
-            value={phoneText}
-            onChangeText={t => setPhoneText(formatPhoneInput(t))}
-            placeholder="e.g. (555) 010-0199"
-            placeholderTextColor={colors.textTertiary}
-            keyboardType="phone-pad"
-            returnKeyType="done"
-            accessibilityLabel="Phone number"
-          />
-        </CollapsibleField>
+          <CollapsibleField
+            label="Phone"
+            summary={phoneText.trim() || undefined}
+            hint="A number each task made from this item can call, like the clinic or the office."
+            expanded={fieldOpen('phone')}
+            onToggle={() => toggleField('phone')}
+          >
+            <TextField
+              style={[styles.fieldBox, styles.deliverableOptionsInput]}
+              value={phoneText}
+              onChangeText={t => setPhoneText(formatPhoneInput(t))}
+              placeholder="e.g. (555) 010-0199"
+              placeholderTextColor={colors.textTertiary}
+              keyboardType="phone-pad"
+              returnKeyType="done"
+              accessibilityLabel="Phone number"
+            />
+          </CollapsibleField>
 
-        <View style={styles.cardSep} />
+          <View style={styles.cardSep} />
 
-        <CollapsibleField
-          label="Email"
-          summary={emailText.trim() || undefined}
-          hint="An address each task made from this item can write to."
-          expanded={fieldOpen('email')}
-          onToggle={() => toggleField('email')}
-        >
-          <TextField
-            style={[styles.fieldBox, styles.deliverableOptionsInput]}
-            value={emailText}
-            onChangeText={setEmailText}
-            placeholder="e.g. office@example.com"
-            placeholderTextColor={colors.textTertiary}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoCorrect={false}
-            returnKeyType="done"
-            accessibilityLabel="Email address"
-          />
-        </CollapsibleField>
+          <CollapsibleField
+            label="Email"
+            summary={emailText.trim() || undefined}
+            hint="An address each task made from this item can write to."
+            expanded={fieldOpen('email')}
+            onToggle={() => toggleField('email')}
+          >
+            <TextField
+              style={[styles.fieldBox, styles.deliverableOptionsInput]}
+              value={emailText}
+              onChangeText={setEmailText}
+              placeholder="e.g. office@example.com"
+              placeholderTextColor={colors.textTertiary}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="done"
+              accessibilityLabel="Email address"
+            />
+          </CollapsibleField>
+        </View>
       </View>
 
       {/* Ask on completion answers the same question the kinds do, what
           finishing this task means, and a chained or repeating item can end in
           a decision too. The completion timer offers a reminder once it's done. */}
-      <Text style={styles.groupLabel}>When you check it off</Text>
-      <View style={styles.sectionCard}>
-        <CollapsibleField
-          label="Ask on completion"
-          summary={deliverableKind ? deliverableMeta(deliverableKind).label : undefined}
-          emptySummary="Nothing"
-          hint={
-            deliverableKind
-              ? deliverableMeta(deliverableKind).hint
-              : 'Asks for an answer when the task is completed and keeps it in the Logbook.'
-          }
-          expanded={fieldOpen('deliverable')}
-          onToggle={() => toggleField('deliverable')}
-        >
-          <DeliverableKindPicker
-            value={deliverableKind}
-            onChange={kind => { setDeliverableKind(kind); closeField('deliverable'); }}
-          />
-        </CollapsibleField>
-        {deliverableKind === 'choice' && (
-          <TextField
-            style={[styles.fieldBox, styles.deliverableOptionsInput]}
-            value={deliverableOptionsText}
-            onChangeText={setDeliverableOptionsText}
-            placeholder="e.g. Yes, No, Maybe"
-            placeholderTextColor={colors.textTertiary}
-            returnKeyType="done"
-            accessibilityLabel="Options to pick from, separated by commas"
-          />
-        )}
-        {/* Fewer than two options and completing asks nothing
-            (deliverableOptionsFor), so say so where they're typed. */}
-        {deliverableKind === 'choice' && parseDeliverableOptions(deliverableOptionsText).length < 2 && (
-          <Text style={styles.choiceOptionsHint}>
-            Add at least two options, separated by commas. With fewer, completing the task asks nothing.
-          </Text>
-        )}
-        {/* Only on a trip template: "Pick dates" answered with the 14th is
-            the trip leaving on the 14th, so the project it lands in can
-            learn its Leaving date from the answer. */}
-        {deliverableKind === 'date' && tripTemplate && (
-          <TouchableOpacity
-            style={styles.optionRow}
-            onPress={() => { haptics.tap(); setDeliverableSetsAway(!deliverableSetsAway); }}
-            activeOpacity={interaction.activeOpacity}
-            accessibilityRole="switch"
-            accessibilityLabel="Use the answer as the trip’s leaving date"
-            accessibilityState={{ checked: deliverableSetsAway }}
+      <View onLayout={placeCard('finish')}>
+        <Text style={styles.groupLabel}>When you check it off</Text>
+        <View style={styles.sectionCard}>
+          <CollapsibleField
+            label="Ask on completion"
+            summary={deliverableKind ? deliverableMeta(deliverableKind).label : undefined}
+            emptySummary="Nothing"
+            hint={
+              deliverableKind
+                ? deliverableMeta(deliverableKind).hint
+                : 'Asks for an answer when the task is completed and keeps it in the Logbook.'
+            }
+            expanded={fieldOpen('deliverable')}
+            onToggle={() => toggleField('deliverable')}
           >
-            <Ionicons name="airplane-outline" size={18} color={deliverableSetsAway ? colors.accent : colors.textSecondary} />
-            <View style={styles.optionContent}>
-              <Text style={styles.optionLabel}>Sets the leaving date</Text>
-              <Text style={styles.optionHint}>The date you answer becomes the trip’s Leaving date, if it doesn’t have one yet</Text>
-            </View>
-            <Toggle value={deliverableSetsAway} />
-          </TouchableOpacity>
-        )}
-
-        <View style={styles.cardSep} />
-
-        <CollapsibleField
-          label="Completion timer"
-          summary={completionTimerMinutes !== null
-            ? [`${formatDuration(completionTimerMinutes)} after completing`, completionTimerNote || null].filter(Boolean).join(': ')
-            : undefined}
-          hint="Offers to set a reminder this long after a task made from this item is completed, such as a two-hour wait before eating."
-          expanded={fieldOpen('completionTimer')}
-          onToggle={() => toggleField('completionTimer')}
-        >
-          <CountStepper
-            value={completionTimerMinutes}
-            onChange={setCompletionTimerMinutes}
-            min={COMPLETION_TIMER_STEP_MINUTES}
-            max={MAX_COMPLETION_TIMER_MINUTES}
-            step={COMPLETION_TIMER_STEP_MINUTES}
-            allowNull
-            emptyLabel="Off"
-            label="Completion timer"
-            format={formatDuration}
-            describeValue={n => (n === null ? 'off' : formatDuration(n))}
-          />
-          {completionTimerMinutes !== null && (
+            <DeliverableKindPicker
+              value={deliverableKind}
+              onChange={kind => { setDeliverableKind(kind); closeField('deliverable'); }}
+            />
+          </CollapsibleField>
+          {deliverableKind === 'choice' && (
             <TextField
-              style={[styles.fieldBox, styles.medicationAmountInput]}
-              value={completionTimerNote ?? ''}
-              onChangeText={text => setCompletionTimerNote(text || null)}
-              placeholder="e.g. Don’t eat for 2 hours"
+              style={[styles.fieldBox, styles.deliverableOptionsInput]}
+              value={deliverableOptionsText}
+              onChangeText={setDeliverableOptionsText}
+              placeholder="e.g. Yes, No, Maybe"
               placeholderTextColor={colors.textTertiary}
-              maxLength={COMPLETION_TIMER_NOTE_MAX_LENGTH}
               returnKeyType="done"
-              accessibilityLabel="What this reminder is for"
+              accessibilityLabel="Options to pick from, separated by commas"
             />
           )}
-        </CollapsibleField>
-
-        <View style={styles.cardSep} />
-
-        {/* Beside the completion timer, whose own hint already names a
-            recurring medication as its case. Seeds the task-side pair, so a
-            routine template hands out a task that records its dose rather than
-            one somebody has to set up again by hand. */}
-        <CollapsibleField
-          label="Log a dose"
-          summary={
-            medicationName
-              ? [medicationName, resolveMedicationAmount() !== null ? `${resolveMedicationAmount()} ${medicationUnit}` : null]
-                  .filter(Boolean).join(', ')
-              : undefined
-          }
-          hint="Completing a task made from this item adds a dose to your medication log. Unchecking it removes the dose."
-          expanded={fieldOpen('medication')}
-          onToggle={() => toggleField('medication')}
-        >
-          <Text style={styles.medicationLabel}>MEDICATION</Text>
-          <TextField
-            style={styles.fieldBox}
-            value={medicationName ?? ''}
-            onChangeText={text => setMedicationName(text || null)}
-            placeholder="e.g. Sertraline"
-            placeholderTextColor={colors.textTertiary}
-            maxLength={MEDICATION_NAME_MAX_LENGTH}
-            returnKeyType="done"
-            accessibilityLabel="What tasks from this item record a dose of"
-          />
-          {/* Picking one of these is what makes it the *same* medication as an
-              earlier dose — medicationKey does no fuzzy matching (see
-              docs/arch/mood-log.md), so retyping "Sertraline" as "sertraline"
-              would otherwise split one medicine's history into two untallied
-              entries. */}
-          {medicationSuggestions.length > 0 && (
-            <>
-              <Text style={styles.medicationCaption}>Or reuse one you’ve logged before</Text>
-              <PillGroup
-                noun="medication"
-                surface="card"
-                options={medicationSuggestions.map(name => ({
-                  key: medicationKey(name),
-                  label: name,
-                  selected: !!medicationName && medicationKey(name) === medicationKey(medicationName),
-                  onPress: () => {
-                    haptics.tap();
-                    // An amount typed for one medicine is not another's.
-                    if (!medicationName || medicationKey(name) !== medicationKey(medicationName)) {
-                      setMedicationAmount('');
-                      setMedicationUnit(null);
-                    }
-                    setMedicationName(name);
-                  },
-                }))}
-              />
-            </>
-          )}
-          {medicationName !== null && (
-            <TaskDoseAmount
-              menuName="TemplateItemEditor dose unit menu"
-              medication={medicationName}
-              amount={medicationAmount}
-              onChangeAmount={setMedicationAmount}
-              unit={medicationUnit}
-              onChangeUnit={setMedicationUnit}
-            />
-          )}
-        </CollapsibleField>
-
-        <View style={styles.cardSep} />
-
-        {/* Seeds Task.logMealSlot — same reasoning as the medication row
-            above: a "Log breakfast" routine template shouldn't need its slot
-            re-picked by hand on every application. */}
-        <CollapsibleField
-          label="Log to food log"
-          summary={logMealSlot ? `Offers to log ${MEAL_SLOT_LABELS[logMealSlot].toLowerCase()} when completed` : undefined}
-          hint="Tasks made from this item offer to add a food log entry for the meal below when completed."
-          expanded={fieldOpen('logMealSlot')}
-          onToggle={() => toggleField('logMealSlot')}
-        >
-          <SegmentedControl<MealSlot>
-            options={MEAL_SLOTS.map(slot => ({ value: slot, label: MEAL_SLOT_LABELS[slot] }))}
-            value={logMealSlot ?? 'breakfast'}
-            onChange={next => { haptics.tap(); setLogMealSlot(prev => (prev === next ? null : next)); setLogMealSlotByTime(false); }}
-            columns={2}
-            label="Meal"
-            surface="card"
-          />
-          <TouchableOpacity
-            style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.smd }}
-            onPress={() => {
-              haptics.tap();
-              if (logMealSlot === null) setLogMealSlot(slotForHour(new Date().getHours()));
-              setLogMealSlotByTime(!logMealSlotByTime);
-            }}
-            accessibilityRole="switch"
-            accessibilityState={{ checked: logMealSlotByTime }}
-            accessibilityLabel="Pick the meal from the time of day"
-          >
-            <Ionicons
-              name={logMealSlotByTime ? 'checkbox' : 'square-outline'}
-              size={22}
-              color={logMealSlotByTime ? colors.accent : colors.controlBorder}
-            />
-            <Text style={[styles.optionHint, { flex: 1 }]}>
-              Choose the meal from the time the task is completed: breakfast 5 to 11 AM, lunch 11 AM to 4 PM, dinner 4 to 10 PM, snack otherwise.
+          {/* Fewer than two options and completing asks nothing
+              (deliverableOptionsFor), so say so where they're typed. */}
+          {deliverableKind === 'choice' && parseDeliverableOptions(deliverableOptionsText).length < 2 && (
+            <Text style={styles.choiceOptionsHint}>
+              Add at least two options, separated by commas. With fewer, completing the task asks nothing.
             </Text>
-          </TouchableOpacity>
-        </CollapsibleField>
+          )}
+          {/* Only on a trip template: "Pick dates" answered with the 14th is
+              the trip leaving on the 14th, so the project it lands in can
+              learn its Leaving date from the answer. */}
+          {deliverableKind === 'date' && tripTemplate && (
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => { haptics.tap(); setDeliverableSetsAway(!deliverableSetsAway); }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="switch"
+              accessibilityLabel="Use the answer as the trip’s leaving date"
+              accessibilityState={{ checked: deliverableSetsAway }}
+            >
+              <Ionicons name="airplane-outline" size={18} color={deliverableSetsAway ? colors.accent : colors.textSecondary} />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Sets the leaving date</Text>
+                <Text style={styles.optionHint}>The date you answer becomes the trip’s Leaving date, if it doesn’t have one yet</Text>
+              </View>
+              <Toggle value={deliverableSetsAway} />
+            </TouchableOpacity>
+          )}
+
+          <View style={styles.cardSep} />
+
+          <CollapsibleField
+            label="Completion timer"
+            summary={completionTimerMinutes !== null
+              ? [`${formatDuration(completionTimerMinutes)} after completing`, completionTimerNote || null].filter(Boolean).join(': ')
+              : undefined}
+            hint="Offers to set a reminder this long after a task made from this item is completed, such as a two-hour wait before eating."
+            expanded={fieldOpen('completionTimer')}
+            onToggle={() => toggleField('completionTimer')}
+          >
+            <CountStepper
+              value={completionTimerMinutes}
+              onChange={setCompletionTimerMinutes}
+              min={COMPLETION_TIMER_STEP_MINUTES}
+              max={MAX_COMPLETION_TIMER_MINUTES}
+              step={COMPLETION_TIMER_STEP_MINUTES}
+              allowNull
+              emptyLabel="Off"
+              label="Completion timer"
+              format={formatDuration}
+              describeValue={n => (n === null ? 'off' : formatDuration(n))}
+            />
+            {completionTimerMinutes !== null && (
+              <TextField
+                style={[styles.fieldBox, styles.medicationAmountInput]}
+                value={completionTimerNote ?? ''}
+                onChangeText={text => setCompletionTimerNote(text || null)}
+                placeholder="e.g. Don’t eat for 2 hours"
+                placeholderTextColor={colors.textTertiary}
+                maxLength={COMPLETION_TIMER_NOTE_MAX_LENGTH}
+                returnKeyType="done"
+                accessibilityLabel="What this reminder is for"
+              />
+            )}
+          </CollapsibleField>
+
+          <View style={styles.cardSep} />
+
+          {/* Beside the completion timer, whose own hint already names a
+              recurring medication as its case. Seeds the task-side pair, so a
+              routine template hands out a task that records its dose rather than
+              one somebody has to set up again by hand. */}
+          <CollapsibleField
+            label="Log a dose"
+            summary={
+              medicationName
+                ? [medicationName, resolveMedicationAmount() !== null ? `${resolveMedicationAmount()} ${medicationUnit}` : null]
+                    .filter(Boolean).join(', ')
+                : undefined
+            }
+            hint="Completing a task made from this item adds a dose to your medication log. Unchecking it removes the dose."
+            expanded={fieldOpen('medication')}
+            onToggle={() => toggleField('medication')}
+          >
+            <Text style={styles.medicationLabel}>MEDICATION</Text>
+            <TextField
+              style={styles.fieldBox}
+              value={medicationName ?? ''}
+              onChangeText={text => setMedicationName(text || null)}
+              placeholder="e.g. Sertraline"
+              placeholderTextColor={colors.textTertiary}
+              maxLength={MEDICATION_NAME_MAX_LENGTH}
+              returnKeyType="done"
+              accessibilityLabel="What tasks from this item record a dose of"
+            />
+            {/* Picking one of these is what makes it the *same* medication as an
+                earlier dose — medicationKey does no fuzzy matching (see
+                docs/arch/mood-log.md), so retyping "Sertraline" as "sertraline"
+                would otherwise split one medicine's history into two untallied
+                entries. */}
+            {medicationSuggestions.length > 0 && (
+              <>
+                <Text style={styles.medicationCaption}>Or reuse one you’ve logged before</Text>
+                <PillGroup
+                  noun="medication"
+                  surface="card"
+                  options={medicationSuggestions.map(name => ({
+                    key: medicationKey(name),
+                    label: name,
+                    selected: !!medicationName && medicationKey(name) === medicationKey(medicationName),
+                    onPress: () => {
+                      haptics.tap();
+                      // An amount typed for one medicine is not another's.
+                      if (!medicationName || medicationKey(name) !== medicationKey(medicationName)) {
+                        setMedicationAmount('');
+                        setMedicationUnit(null);
+                      }
+                      setMedicationName(name);
+                    },
+                  }))}
+                />
+              </>
+            )}
+            {medicationName !== null && (
+              <TaskDoseAmount
+                menuName="TemplateItemEditor dose unit menu"
+                medication={medicationName}
+                amount={medicationAmount}
+                onChangeAmount={setMedicationAmount}
+                unit={medicationUnit}
+                onChangeUnit={setMedicationUnit}
+              />
+            )}
+          </CollapsibleField>
+
+          <View style={styles.cardSep} />
+
+          {/* Seeds Task.logMealSlot — same reasoning as the medication row
+              above: a "Log breakfast" routine template shouldn't need its slot
+              re-picked by hand on every application. */}
+          <CollapsibleField
+            label="Log to food log"
+            summary={logMealSlot ? `Offers to log ${MEAL_SLOT_LABELS[logMealSlot].toLowerCase()} when completed` : undefined}
+            hint="Tasks made from this item offer to add a food log entry for the meal below when completed."
+            expanded={fieldOpen('logMealSlot')}
+            onToggle={() => toggleField('logMealSlot')}
+          >
+            <SegmentedControl<MealSlot>
+              options={MEAL_SLOTS.map(slot => ({ value: slot, label: MEAL_SLOT_LABELS[slot] }))}
+              value={logMealSlot ?? 'breakfast'}
+              onChange={next => { haptics.tap(); setLogMealSlot(prev => (prev === next ? null : next)); setLogMealSlotByTime(false); }}
+              columns={2}
+              label="Meal"
+              surface="card"
+            />
+            <TouchableOpacity
+              style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.smd }}
+              onPress={() => {
+                haptics.tap();
+                if (logMealSlot === null) setLogMealSlot(slotForHour(new Date().getHours()));
+                setLogMealSlotByTime(!logMealSlotByTime);
+              }}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: logMealSlotByTime }}
+              accessibilityLabel="Pick the meal from the time of day"
+            >
+              <Ionicons
+                name={logMealSlotByTime ? 'checkbox' : 'square-outline'}
+                size={22}
+                color={logMealSlotByTime ? colors.accent : colors.controlBorder}
+              />
+              <Text style={[styles.optionHint, { flex: 1 }]}>
+                Choose the meal from the time the task is completed: breakfast 5 to 11 AM, lunch 11 AM to 4 PM, dinner 4 to 10 PM, snack otherwise.
+              </Text>
+            </TouchableOpacity>
+          </CollapsibleField>
+        </View>
       </View>
     </EditorSheet>
   );

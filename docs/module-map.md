@@ -123,6 +123,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/digitRoll.ts` — RollColumn, rollColumns, rollDirection
 - `src/utils/doseRecording.ts` — syncOkAgainNotification, allowOkAgainNotification, confirmWithinLimit, recordDose, unrecordDose, restoreDose
 - `src/utils/dreamQueue.ts` — QueuedDream, QUEUED_DREAM_MAX_LENGTH, parseQueuedDreams
+- `src/utils/editorJump.ts` — ScrollMetrics, ACTIVE_THRESHOLD, JUMP_PAD, JUMP_HOLD_MS, SectionOffset, activeSectionKey, scrollTargetFor, JumpSnapshot, EditorJumpTracker
 - `src/utils/editorSearch.ts` — EditorSearchable, editorSearchTerms, matchesEditorQuery, filterEditorRows
 - `src/utils/effort.ts` — MeasuredTimeUpdate, applyMeasuredTime, formatStopwatch, EFFORT_MINUTES, effortToMinutes, minutesToEffort, effortRangeLabel, ESTIMATE_PRESET_MINUTES, estimatePatchForMinutes, nearestPresetMinutes, +12 more
 - `src/utils/email.ts` — mailtoUrl, isEmailable
@@ -498,6 +499,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/taskMoves.ts` — DeloadBlocker, SOFT_DELOAD_BLOCKERS, isDateAnchored, deloadBlockerFor, wouldMissDeadline, dailyRepeatBlocker, deloadUpdates, scheduleMoveUpdates, PullForwardChoice, pullForwardChoice
 - `src/utils/taskReopen.ts` — reopenedTask
 - `src/utils/taskSkip.ts` — reminderOnto, deadlineOnto, skipPatch
+- `src/utils/taskSummary.ts` — SummaryPart, TaskSummaryInput, inSentence, buildTaskSummary
 - `src/utils/taskTypeFilter.ts` — TaskTypeFilter, TASK_TYPE_FILTERS, taskTypeFilterLabel, taskTypesOf, matchesTaskTypes, filterByTaskTypes, parseTaskTypeFilters
 - `src/utils/taskUpdate.ts` — CONTENT_FIELDS, hasLaterRows, SCHEDULE_FIELDS, QUOTA_SPAN_FIELDS, ROTATION_TARGET_FIELDS, derivedTargetCount, nextPinnedOrder, captureField, TaskUpdateContext, mergeTaskUpdate, +1 more
 - `src/utils/templateApply.ts` — TemplateRunOptions, RunDraft, TemplateRunSink, applyTemplateRun
