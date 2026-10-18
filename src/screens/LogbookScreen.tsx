@@ -1287,7 +1287,7 @@ const KitchenRow = React.memo(function KitchenRow({
   // describeOutcome makes in choosing "Thrown out" over "Wasted". Nothing here
   // is a grade.
   const glyphColor = cooked ? colors.accent : tossed ? colors.textSecondary : colors.green;
-  const scale = event.scale !== 1 ? formatScale(event.scale) : null;
+  const scale = event.scale !== 1 ? `${formatScale(event.scale)} batch` : null;
 
   const body = (
     <>
@@ -1311,7 +1311,7 @@ const KitchenRow = React.memo(function KitchenRow({
     </>
   );
 
-  const label = [event.title, event.detail, scale ? `scaled ${scale}` : null]
+  const label = [event.title, event.detail, scale]
     .filter(Boolean)
     .join(', ');
 
