@@ -123,6 +123,7 @@ import { MOOD_LOG_LINK_URL, MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogDayKey, moo
 import { DREAM_LOG_TITLE, JOURNAL_TASK_KIND, journalLogTitle, journalLogUrl, journalTaskDayKey, journalTaskSourceId } from '../utils/journalTasks';
 import {
   WANIKANI_LESSON_URL,
+  WANIKANI_REVIEW_NOTES,
   WANIKANI_REVIEW_URL,
   decideWaniKaniReviews,
   wanikaniHeldUntil,
@@ -8285,6 +8286,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
             if (existing.dueDate !== hold.dueDate) patch.dueDate = hold.dueDate;
             if (existing.windowStart !== hold.windowStart) patch.windowStart = hold.windowStart;
             if (existing.reminderTime !== reminderTime) patch.reminderTime = reminderTime;
+            // The notification's body, added with a reminder turned on later.
+            // Never over a note somebody wrote.
+            if (reminderTime && !existing.notes) patch.notes = WANIKANI_REVIEW_NOTES;
           } else if (isHeld) {
             // The queue got there before the hour it was held for.
             patch.dueDate = todayNoon.toISOString();
@@ -8298,6 +8302,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           dueDate: hold ? hold.dueDate : todayNoon.toISOString(),
           windowStart: hold ? hold.windowStart : null,
           reminderTime,
+          ...(reminderTime ? { notes: WANIKANI_REVIEW_NOTES } : {}),
           category,
           linkUrl: WANIKANI_REVIEW_URL,
           ...generatedBy('wanikani', action.sourceId),

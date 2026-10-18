@@ -79,6 +79,13 @@ export const WANIKANI_APPRENTICE_CAP_STEP = 10;
 /** The pages a task's link opens. The person can point a task elsewhere (another app) and it stays. */
 export const WANIKANI_REVIEW_URL = 'https://www.wanikani.com/subjects/review';
 export const WANIKANI_LESSON_URL = 'https://www.wanikani.com/subjects/lesson';
+/** Where a token is made, for the Settings row that asks for one. */
+export const WANIKANI_TOKEN_URL = 'https://www.wanikani.com/settings/personal_access_tokens';
+/**
+ * A held reviews task's note, written with its reminder: a task's notes are
+ * its notification's body, and without one it reads "You have a task coming up".
+ */
+export const WANIKANI_REVIEW_NOTES = 'Your reviews are up on WaniKani.';
 
 function clampInt(value: unknown, min: number, max: number, fallback: number, step = 1): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;

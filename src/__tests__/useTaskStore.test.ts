@@ -6193,6 +6193,13 @@ describe('checkWaniKaniTasks', () => {
     expect(task.windowStart).toBe('15:00');
     expect(new Date(task.dueDate!)).toEqual(new Date(2026, 9, 18, 12, 0));
     expect(task.reminderTime).toBe(at(15).toISOString());
+    // The note is the notification's body.
+    expect(task.notes).toBe('Your reviews are up on WaniKani.');
+  });
+
+  it('writes no note on a task with no reminder', () => {
+    check();
+    expect(live('reviews:')[0].notes).toBe('');
   });
 
   it('lets a held task go of its window once its hour has passed, with no read needed', () => {

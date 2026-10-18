@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, View } from 'react-native';
+import { Alert, Linking, View } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { useWaniKaniStore } from '../../store/useWaniKaniStore';
@@ -21,6 +21,7 @@ import {
   WANIKANI_REVIEW_THRESHOLD_DEFAULT,
   WANIKANI_REVIEW_THRESHOLD_MAX,
   WANIKANI_REVIEW_THRESHOLD_MIN,
+  WANIKANI_TOKEN_URL,
 } from '../../utils/wanikaniTasks';
 import { SettingsRow } from './SettingsRow';
 import { makeSettingsStyles } from './settingsStyles';
@@ -118,15 +119,26 @@ export function WaniKaniSettingsRows(): React.ReactElement {
           spellCheck={false}
           accessibilityLabel="WaniKani API token"
         />
-        {account.hasToken && (
-          <View style={{ alignItems: 'flex-start', marginTop: spacing.smd }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.smd }}>
+          {/* Where to make one, while there's none or the one saved was refused. */}
+          {(!account.hasToken || account.problem === 'unauthorized') && (
+            <InlineAction
+              label="Open WaniKani"
+              icon="open-outline"
+              onPress={() => {
+                haptics.tap();
+                void Linking.openURL(WANIKANI_TOKEN_URL).catch(() => {});
+              }}
+            />
+          )}
+          {account.hasToken && (
             <InlineAction
               label="Remove token"
               variant="neutral"
               onPress={() => { haptics.tap(); saveToken(''); }}
             />
-          </View>
-        )}
+          )}
+        </View>
       </SettingsRow>
       {account.hasToken && account.problem !== null && (
         <>
