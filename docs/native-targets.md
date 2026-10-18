@@ -62,7 +62,10 @@ the two runs compare exactly, which is how to prove a refactor left a target unc
 - **The App Group container path convention already in use**: `<container>/Library/Application
   Support/<name>.json`, single-writer (app) / many-reader (extensions), no locking needed.
   Reuse this path shape for anything new sharing the group rather than inventing another
-  location.
+  location. **`widget_quiet_taps.json` is the exception with two writers**, the widget's
+  checkboxes (`QuietTapQueue`) and the phone's `WatchSession` for the watch's taps, so both read
+  and rewrite it through `JSONSerialization` and leave entries they don't recognise untouched.
+  Decoding it as a Codable array and writing that back is what used to strip the watch's fields.
 - **A share extension's `NSExtensionPrincipalClass` failing to resolve is a silent no-op**, not
   a build error: iOS instantiates the named class when the row is tapped, and if the name is
   wrong nothing at all happens. A Swift class's Objective-C name is module-qualified, so the
