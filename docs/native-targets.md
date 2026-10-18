@@ -17,7 +17,8 @@ Targets are injected at prebuild time by custom config plugins rather than a che
   when a blocked app is opened, and the button on it, both added by
   `plugins/withShieldExtensions.js`.
 - **`targets/todo-watch/`** and **`targets/todo-watch-complication/`** — the Apple Watch app
-  (Today and the grocery list, ticked off from the wrist, and a workout logged set by set) and
+  (Today and the grocery list, ticked off from the wrist, and a workout logged set by set and
+  measured with a HealthKit session) and
   its watch face complication, both
   added by `plugins/withWatchApp.js`. See "The watch app" below.
 
@@ -283,8 +284,9 @@ whose comments carry the reasons. The rules worth knowing before touching them:
 - **Every new tap kind needs its own case in `WatchSession.receive`.** Its `default` drops an
   unknown kind *without* recording its receipt, which is deliberate (a watch newer than the app
   keeps drawing the tap rather than settling it) and means a kind added on the watch alone is
-  silently never applied. The workout's five kinds (`set`, `restAdd`, `restSkip`, `finish`,
-  `watchSession`) each validate there and again in `parseQuietTaps`.
+  silently never applied. The workout's kinds (`set`, `restAdd`, `restSkip`, `finish`,
+  `watchSession`, the four that change the list, and the HealthKit session's `measuring`,
+  `healthWorkout` and `healthRetracted`) each validate there and again in `parseQuietTaps`.
 - **A user-info transfer takes property-list types only**, so `NSNull` can't cross it. A payload
   shaped by data that may have gaps (a whole workout, `watchSession`) goes as JSON text under one
   key and is parsed on the phone (`JSONSerialization`), rather than as a nested dictionary whose
@@ -308,6 +310,38 @@ whose comments carry the reasons. The rules worth knowing before touching them:
   watch) and copes with a refusal (the rest's end is then a haptic, in front only). A
   `UNTimeIntervalNotificationTrigger` refuses an interval that isn't above zero, so a rest ending
   within the second schedules nothing.
+- **The watch app is a HealthKit app of its own, and needs three things the iPhone app's
+  HealthKit setup doesn't give it** (phase 9, `WatchHealthSession.swift`):
+  - **The entitlement**, `com.apple.developer.healthkit`, in the watch app's own entitlements
+    (`watchAppEntitlements` in `plugins/withWatchApp.js`) *and* in its `appExtensions` entry in
+    `app.json`, or EAS provisions it without HealthKit. The entitlement's page lists no watchOS,
+    but Apple's workout-session guide has the capability on the watch target, which is what Xcode
+    writes. The complication reads no Health and keeps the App Group alone.
+  - **Its own `NSHealthShareUsageDescription` and `NSHealthUpdateUsageDescription`**, in the watch
+    app's Info.plist: on watchOS 6 and later the watch app asks on the wrist ("this method displays
+    the permission form on Apple Watch", `requestAuthorization(toShare:read:completion:)`), and a
+    missing string ends the app at the ask. They say what the watch reads and saves, which is not
+    what the phone's say.
+  - **`WKBackgroundModes` with `workout-processing`**, which a workout session needs to keep the
+    app running with the wrist down. Without it the session starts and the app is suspended anyway.
+  `import HealthKit` links the framework by itself (module autolinking), so nothing is added to
+  the target's frameworks. The watch's floor (watchOS 11) is past every API it uses, so none needs
+  an availability check; the iPhone half can't use them at all below iOS 26
+  (`HKWorkoutSession(healthStore:configuration:)`, `HKLiveWorkoutBuilder`), which is why the
+  iPhone writes with `HKWorkoutBuilder`.
+- **A workout session starts only with the app in front, and recovers through the app
+  delegate.** `syncHealthSession` checks `WKApplication.shared().applicationState` as well as
+  the scene, because a launch in the background to take a snapshot starts with the store's own
+  flag at its default. After a crash mid-workout the system calls `handleActiveWorkoutRecovery()`
+  on the app's `WKApplicationDelegate`, which the SwiftUI app gets through
+  `@WKApplicationDelegateAdaptor` (`WatchAppDelegate`); the session is taken back with
+  `recoverActiveWorkoutSession` and its data source and delegates set up again, as Apple
+  documents. What it was measuring is kept in the watch's App Group (`watch_health_session.json`).
+- **What the watch saves to Health, the watch retracts.** HealthKit lets an app delete only
+  objects "that it has previously saved", and nothing Apple publishes says whether an iPhone app
+  counts as the saver of what its watch app saved. So the phone never tries: it lists the ids in
+  the watch's snapshot section (`retractWorkouts`) and the watch deletes them and says so
+  (`healthRetracted`). Any new kind of thing the watch saves has to be retracted the same way.
 - **The session is activated from an app delegate subscriber** (`WatchSessionAppDelegate`, in
   the bridge's `expo-module.config.json`), so a transfer delivered while the app is in the
   background lands in the queue before any JS has run. On the watch, `.backgroundTask(.watchConnectivity)`

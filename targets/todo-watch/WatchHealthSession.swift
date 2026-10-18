@@ -397,7 +397,10 @@ extension WatchStore {
         if let current = health.measuring, current.sessionId != want?.sessionId {
             endMeasurement(current)
         }
-        guard let want, isActive, !health.busy else { return }
+        // `isActive` follows the scene; the application's own state is also
+        // read, since a launch in the background to take a snapshot starts
+        // with `isActive` still at its default.
+        guard let want, isActive, WKApplication.shared().applicationState == .active, !health.busy else { return }
         health.start(want) { [weak self] started in
             guard let self, started, want.phone else { return }
             // So the phone holds its own Health write back for this one.

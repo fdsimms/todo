@@ -231,6 +231,7 @@ Where each component can appear.
 - `src/components/LogbookFilterSheet.tsx` — on LogbookScreen
 - `src/components/LookAheadSheet.tsx` — on ProjectDetailScreen, TodayScreen
 - `src/components/ManualBlockSheet.tsx` — on ScreenTimeScreen
+- `src/components/MaxHeartRateSheet.tsx` — on SettingsGroupScreen
 - `src/components/MealEntrySheet.tsx` — on MealPlanScreen
 - `src/components/MealOverrideSheet.tsx` — on MealPlanScreen
 - `src/components/MealReplaceItemSheet.tsx` — on MealPlanScreen
@@ -426,6 +427,7 @@ Where each component can appear.
 - `src/components/WeightGoalSheet.tsx` — on WeightScreen
 - `src/components/WhenPicker.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, JournalScreen, KitchenScreen, LogbookScreen, MealPlanScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, +20 more
 - `src/components/WorkoutDetailSheet.tsx` — on WorkoutsScreen
+- `src/components/WorkoutHeartRateCard.tsx` — on WorkoutsScreen
 - `src/components/WorkoutImportSheet.tsx` — on WorkoutsScreen
 - `src/components/WorkoutModeHost.tsx` — on app shell
 - `src/components/WorkoutModeSheet.tsx` — on app shell
