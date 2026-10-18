@@ -45,6 +45,7 @@ import {
   type PlannedSetValues,
 } from '../utils/workoutSession';
 import { libraryExercise } from '../utils/exerciseLibrary';
+import { NEW_EXERCISE_PREFIX, type PlannedImportSession } from '../utils/workoutCsv';
 import { buildCatalog } from '../utils/exerciseCatalog';
 import {
   cleanWorkoutName,
@@ -232,6 +233,18 @@ interface WorkoutStore {
    * Replaces every set of a session, for correcting a workout logged after the
    * fact. Refuses an unknown session or exercise (`notFound`).
    */
+  /**
+   * Writes the workouts an import plan names (`buildImportPlan`), and the
+   * custom exercises it needs, in one transaction. A session already in the
+   * log (same id, or same start and title) is skipped again here, so a plan
+   * made before another device synced in the same workout can't double it.
+   * `creates` maps each `new:<key>` reference's key to the exercise to make;
+   * a name that has become taken since resolves to the exercise holding it.
+   */
+  importSessions: (
+    sessions: PlannedImportSession[],
+    creates: Record<string, ExerciseInput>,
+  ) => { sessions: number; sets: number; created: number; duplicates: number };
   replaceSets: (sessionId: string, sets: (SetInput & { completedAt?: string | null })[]) => WorkoutSet[] | WorkoutRefusal;
   /** Deletes a session and its sets, live or finished. */
   deleteSession: (id: string) => void;
@@ -742,6 +755,93 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       set({ sessions: [...get().sessions, session].sort(byStartedDesc) });
       putSets(session.id, sets);
       return { session, sets };
+    },
+
+    importSessions(sessions, creates) {
+      // Exercises first, in memory: a set names one by the id it will have.
+      const created: Exercise[] = [];
+      const idForKey = new Map<string, string>();
+      const resolve = (ref: string): string | null => {
+        if (!ref.startsWith(NEW_EXERCISE_PREFIX)) return exerciseKnown(ref) ? ref : null;
+        const key = ref.slice(NEW_EXERCISE_PREFIX.length);
+        const known = idForKey.get(key);
+        if (known) return known;
+        const input = creates[key];
+        if (!input) return null;
+        const name = cleanWorkoutName(input.name);
+        if (!name) return null;
+        const holder = buildCatalog(get().exercises).find(e => exerciseNameKey(e.name) === exerciseNameKey(name));
+        if (holder) { idForKey.set(key, holder.id); return holder.id; }
+        const row: Exercise = {
+          id: generateId(),
+          name,
+          kind: input.kind,
+          primaryMuscles: readMuscles(input.primaryMuscles),
+          secondaryMuscles: readMuscles(input.secondaryMuscles ?? []),
+          equipment: input.equipment,
+          barKg: null,
+          notes: input.notes?.trim() ?? '',
+          archived: false,
+          isCustom: true,
+          createdAt: nowIso(),
+        };
+        created.push(row);
+        idForKey.set(key, row.id);
+        return row.id;
+      };
+
+      const have = get().sessions;
+      const ids = new Set(have.map(s => s.id));
+      const starts = new Set(have.map(s => `${s.startedAt}|${exerciseNameKey(s.title)}`));
+      const rows: WorkoutSession[] = [];
+      const setRows: WorkoutSet[][] = [];
+      let duplicates = 0;
+      for (const planned of sessions) {
+        const slot = `${planned.startedAt}|${exerciseNameKey(planned.title)}`;
+        if (ids.has(planned.id) || starts.has(slot)) { duplicates++; continue; }
+        const inputs: SetInput[] = [];
+        for (const st of planned.sets) {
+          const exerciseId = resolve(st.exerciseRef);
+          if (!exerciseId) continue;
+          inputs.push({
+            exerciseId, kind: st.kind, weightKg: st.weightKg, reps: st.reps,
+            durationSeconds: st.durationSeconds, distanceM: st.distanceM, rpe: st.rpe,
+            supersetKey: st.supersetKey, note: st.note, completedAt: planned.endedAt,
+          });
+        }
+        if (inputs.length === 0) continue;
+        ids.add(planned.id);
+        starts.add(slot);
+        rows.push({
+          id: planned.id,
+          routineId: null,
+          programId: null,
+          taskId: null,
+          title: cleanWorkoutName(planned.title) || 'Workout',
+          startedAt: planned.startedAt,
+          endedAt: planned.endedAt,
+          notes: planned.notes.trim(),
+          effort: null,
+          healthWorkoutId: null,
+          healthWritePending: false,
+        });
+        setRows.push(rowsFor(planned.id, inputs));
+      }
+      if (rows.length === 0) return { sessions: 0, sets: 0, created: 0, duplicates };
+
+      dbTransaction(() => {
+        for (const e of created) dbSaveExercise(e);
+        rows.forEach((session, i) => {
+          dbSaveWorkoutSession(session);
+          dbSaveWorkoutSets(setRows[i]);
+        });
+      });
+      set({
+        exercises: [...get().exercises, ...created],
+        sessions: [...get().sessions, ...rows].sort(byStartedDesc),
+      });
+      rows.forEach((session, i) => putSets(session.id, setRows[i]));
+      return { sessions: rows.length, sets: setRows.reduce((n, r) => n + r.length, 0), created: created.length, duplicates };
     },
 
     replaceSets(sessionId, inputs) {

@@ -10,6 +10,7 @@ import { useWorkoutStore, workoutContentCount } from '../store/useWorkoutStore';
 import { catalogExercise } from '../utils/exerciseCatalog';
 import { newTaskFromDraft } from '../utils/taskDraft';
 import type { Task, TaskDraft } from '../types';
+import type { PlannedImportSession } from '../utils/workoutCsv';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mockRawDb: any;
@@ -424,6 +425,61 @@ describe('a workout logged after the fact', () => {
     expect(dbGetWorkoutSets(session.id)).toEqual(sets);
     expect(sets[0]).toMatchObject({ exerciseId: 'lib:front-squat', completedAt: at(8) });
     expect(state().replaceSets('nope', [])).toBe('notFound');
+  });
+});
+
+describe('importing sessions from a file', () => {
+  const at = (h: number) => new Date(2026, 8, 5, h).toISOString();
+  const planned = (id: string, h: number, extra: Partial<PlannedImportSession> = {}): PlannedImportSession => ({
+    id, title: 'Push', startedAt: at(h), endedAt: at(h + 1), notes: ' felt good ',
+    sets: [
+      { exerciseRef: 'lib:back-squat', kind: 'working', weightKg: 100, reps: 5, durationSeconds: null, distanceM: null, rpe: null, note: null, supersetKey: null },
+      { exerciseRef: 'new:sled drag', kind: 'working', weightKg: 40, reps: 10, durationSeconds: null, distanceM: null, rpe: null, note: null, supersetKey: null },
+      { exerciseRef: 'new:sled drag', kind: 'drop', weightKg: 30, reps: 10, durationSeconds: null, distanceM: null, rpe: null, note: null, supersetKey: null },
+    ],
+    ...extra,
+  });
+  const creates = { 'sled drag': { name: 'Sled drag', kind: 'weight_reps' as const, equipment: 'other' as const, primaryMuscles: [] } };
+
+  it('writes the sessions, their sets and the custom exercise together, and reads back after a reload', () => {
+    const result = state().importSessions([planned('imp-a', 7), planned('imp-b', 9)], creates);
+    expect(result).toEqual({ sessions: 2, sets: 6, created: 1, duplicates: 0 });
+    const sled = state().exercises.find(e => e.name === 'Sled drag')!;
+    expect(sled.isCustom).toBe(true);
+    reload();
+    expect(state().sessions.map(x => x.id)).toEqual(['imp-b', 'imp-a']);
+    expect(state().sessions[1]).toMatchObject({ title: 'Push', notes: 'felt good', routineId: null, taskId: null, endedAt: at(8) });
+    const sets = dbGetWorkoutSets('imp-a');
+    expect(sets.map(x => [x.exerciseId === sled.id ? 'sled' : x.exerciseId, x.position, x.setIndex, x.kind])).toEqual([
+      ['lib:back-squat', 0, 0, 'working'], ['sled', 1, 0, 'working'], ['sled', 1, 1, 'drop'],
+    ]);
+    expect(sets.every(x => x.completedAt === at(8))).toBe(true);
+    expect(state().setCounts['imp-a']).toBe(3);
+  });
+
+  it('adds nothing the second time', () => {
+    state().importSessions([planned('imp-a', 7)], creates);
+    const again = state().importSessions([planned('imp-a', 7), planned('another-id', 7)], creates);
+    expect(again).toEqual({ sessions: 0, sets: 0, created: 0, duplicates: 2 });
+    expect(state().sessions).toHaveLength(1);
+    expect(state().exercises.filter(e => e.name === 'Sled drag')).toHaveLength(1);
+  });
+
+  it('uses the exercise already holding a name rather than making a second', () => {
+    ok(state().addExercise({ name: 'sled DRAG', kind: 'weight_reps', equipment: 'other', primaryMuscles: [] }));
+    const result = state().importSessions([planned('imp-a', 7)], creates);
+    expect(result.created).toBe(0);
+    expect(state().exercises.filter(e => e.name.toLowerCase() === 'sled drag')).toHaveLength(1);
+  });
+
+  it('drops a set whose exercise cannot be resolved, and a session left with none', () => {
+    const bad = planned('imp-bad', 11, {
+      sets: [{ exerciseRef: 'nobody', kind: 'working', weightKg: 1, reps: 1, durationSeconds: null, distanceM: null, rpe: null, note: null, supersetKey: null }],
+    });
+    const result = state().importSessions([bad, planned('imp-a', 7)], {});
+    expect(result.sessions).toBe(1);
+    expect(dbGetWorkoutSets('imp-a')).toHaveLength(1);
+    expect(state().sessions.map(x => x.id)).toEqual(['imp-a']);
   });
 });
 

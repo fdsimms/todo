@@ -75,7 +75,7 @@ New files in `src/utils/`, each with its test in `src/__tests__/`. The first thr
 - `src/utils/workoutSession.ts` (built): the live session's rules, shaped like `cookMode.ts` and `focusPlan.ts`: the walking order with supersets alternated round by round (`walkOrder`, `nextSet`), where a logged set leaves the screen and whether it rests (`afterLog`), a routine's planned sets (`plannedSetsFor`), last time's sets and their match to this time's (`previousSets`, `matchPrevious`), "Add set" and "Same as last set" (`copyLastSet`, `valuesFromLastDone`), what finishing drops (`finishPlan`) and the summary (`sessionSummary`).
 - `src/utils/workoutRoutine.ts` (built): the routine editor's edits (`withWorkingSets`, `withReps`, `withWarmups`, `withTargetWeight`, `withProgression`), supersets as runs of neighbours (`supersetRoles`, `joinPrevious`, `leaveSuperset`, `normalizeSupersets`) and the summary lines.
 - `src/utils/workoutTask.ts` (built): what finishing a workout does to the task it was started from (`workoutTaskEffect`).
-- `workoutCsv.ts`: imports Strong and Hevy CSV exports and exports a CSV of your own. Exercise names are matched like `ingredientCatalogMatch.ts`, with a review sheet for anything unmatched.
+- `src/utils/workoutCsv.ts` (built, phase 7): reads Strong and Hevy CSV exports, matches their exercise names to the catalog, plans an idempotent import and writes the person's own log as a CSV. See "Phase 7, as built".
 
 ### Store
 
@@ -174,6 +174,21 @@ What phase 2 settled that the plan above left open. Files: `RoutineEditorSheet.t
 - **Settings.** The Workouts switch is in Feature areas beside kitchen and rewards. The unit and the default rest are a Workouts section under Apple Health, shown while the area is on.
 - **Not built in phase 2:** reordering exercises inside a live session (the store has `reorderExercises`; workout mode has no drag yet), a floating bar for a live session on every screen (the Workouts screen's card is the way back), and the plate line and suggestion card in the mock (phases 3 and 4).
 
+## Phase 7, as built
+
+Files: `src/utils/workoutCsv.ts` (pure), `importSessions` in `useWorkoutStore`, `WorkoutImportSheet.tsx`, and the Workouts screen's "…" menu. It reuses `pickBackupFile` (the document picker) and `CsvExportSheet` with `writeExportFile`/`shareCsvFile` (the mood and food log exports). No native dependency and no network call. Nothing was added to the MCP server: the file is on the person's phone, and the sessions an import adds are read through the existing workout tools.
+
+- **Headers, never positions.** Both formats changed their columns between app versions, so a header is matched case-insensitively with punctuation ignored (`Weight (kg)`, `weight_kg`), an optional column that is missing reads as empty and an extra one is ignored. Strong is `Date, Workout Name, Duration, Exercise Name, Set Order, Weight, Weight Unit, Reps, RPE, Distance, Distance Unit, Seconds, Notes, Workout Notes`; Hevy is `title, start_time, end_time, description, exercise_title, superset_id, exercise_notes, set_index, set_type, weight_kg|weight_lbs, reps, distance_km|distance_miles, duration_seconds, rpe`.
+- **Kilograms at the edge.** Pounds and miles are converted while reading, so nothing past `parseWorkoutCsv` knows the file's unit. A file with weights and no unit anywhere (an older Strong export) is read in the person's own unit and says so (`unitAssumed`); the review sheet then asks, and re-reads on the answer.
+- **Dates are local wall-clock times, built from their parts.** Neither app writes a zone. A value that carries `Z` or an offset is honored as that instant. An unknown or impossible date (`3/4/2024`, Feb 31) is a skipped row, never a guess.
+- **Set markers.** Strong's `W`, `D` and `F` and Hevy's `warmup`, `dropset` and `failure` map to warm-up, drop and amrap (to failure). A rest-timer row, and a set with no weight, reps, time or distance, are skipped and counted on the sheet. A weight of 0 is no load, not a weight of zero. Hevy's sets are ordered by `set_index`; Strong's by the rows.
+- **Idempotent with no new column.** An imported session's id is a hash of source, start instant and title (`importSessionId`), so reading the same file again names ids already there. A session already in the log with the same start instant and title is skipped too, which catches one that came back under another id (a restore, another device's sync). The store checks again when it writes, so a plan made before a sync landed can't double a workout.
+- **Names are matched in three tiers, each stricter about deciding for the person** (`matchExerciseName`): the exact name key (archived exercises included, since a custom name is unique even archived); the same words in any order, with the equipment in brackets counted as words ("Bench Press (Barbell)" is "Barbell bench press"); then one clear near match (80% of the words, or one letter out on the whole name) that beats the next best by 15 points. Two plausible candidates is no match. Nothing is remembered between imports: only what the person confirms on the sheet is written, and the matching is the same each time.
+- **The review sheet shows every name, not only the unmatched ones.** The auto-matched names are listed with a Change button, because a near match is a guess and it is about to become history. Unmatched names each need a choice (Match opens `ExercisePickerSheet`, Create, Skip) before Import enables, with Create all and Skip all for a long list. Only workouts not already in the log count toward the names that need a decision. A created exercise takes the file's own spelling, the kind its sets imply (`inferExerciseKind`) and the equipment its words name (`guessEquipment`), with no muscles; it is editable like any custom exercise.
+- **One transaction.** `importSessions` writes the custom exercises, sessions and sets in one `dbTransaction`, then updates state. The exercise picker is rendered inside the sheet's own Modal (two sibling sheets can't both present), and Cancel and the swipe-down go through `confirmDiscard` once any choice is staged.
+- **Demo mode.** The import is not gated: it writes to the demo database like any other change there and goes with it. It touches nothing outside SQLite.
+- **Export** (`workoutExportCsv`): finished workouts only, oldest first, one row per set done, in Strong's columns so the file opens as it is and `parseWorkoutCsv` reads it back. Weights are in the unit shown with the unit in the header (`Weight (lb)`), distance is meters, and Set Order counts non-warm-up sets from 1 with W, D or F in place of a number. Nothing is derived (no volume, no estimated 1RM). The range picker is `CsvExportSheet`.
+
 ## Phases
 
 Each phase ships its own demo seed, patch note, MCP slice and regenerated docs.
@@ -187,7 +202,7 @@ Each phase ships its own demo seed, patch note, MCP slice and regenerated docs.
 | 4 | Programs: multi-week programs, rotation, the four progression schemes, deload proposals, built-in program library | opus, high | #3854 |
 | 5 | Health: HKWorkout write with retraction, read workouts from other apps (native; expect build cycles) | opus, high | #3855 |
 | 6 | Live Activity kind and Siri intents (native) | sonnet, high | #3856 |
-| 7 | Strong/Hevy CSV import and CSV export | sonnet, medium | #3857 |
+| 7 | Strong/Hevy CSV import and CSV export. Built | sonnet, medium | #3857 |
 | 8 | Watch W1: logging over WatchConnectivity (native) | opus, xhigh | #3858 |
 | 9 | Watch W2: `HKWorkoutSession`, heart rate, energy (native, needs a Health review first) | opus, xhigh | #3859 |
 

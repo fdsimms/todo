@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, FlatList, StyleSheet, Text, TouchableOpacity, View, type GestureResponderEvent } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format } from 'date-fns/format';
@@ -19,6 +19,20 @@ import { useStartWorkout } from '../hooks/useStartWorkout';
 import { InlineAction } from '../components/InlineAction';
 import { RoutineEditorSheet } from '../components/RoutineEditorSheet';
 import { LazySheet } from '../components/LazySheet';
+import { ActionMenu } from '../components/ActionMenu';
+import type { CardAnchor } from '../components/CardSheet';
+import { CsvExportSheet } from '../components/CsvExportSheet';
+import { WorkoutImportSheet } from '../components/WorkoutImportSheet';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { pickBackupFile } from '../utils/backupFile';
+import {
+  parseWorkoutCsv,
+  workoutExportCsv,
+  workoutExportFileName,
+  workoutExportSummary,
+  type ExportedWorkout,
+} from '../utils/workoutCsv';
+import { dayKeyOf } from '../utils/dateUtils';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -80,6 +94,16 @@ export function WorkoutsScreen() {
   // close so the sheet doesn't retitle itself while it slides away.
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorRoutineId, setEditorRoutineId] = useState<string | null>(null);
+
+  // The menu off the header's "…", the file picked to import (kept through the
+  // sheet's close so it doesn't empty while it slides away) and the export sheet.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuAnchor, setMenuAnchor] = useState<CardAnchor | null>(null);
+  const [importText, setImportText] = useState('');
+  const [importOpen, setImportOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const workoutUnit = useSettingsStore(s => s.workoutUnit);
+  const loadSets = useWorkoutStore(s => s.loadSets);
 
   const [view, setView] = useState<View_>('history');
   // Only the library has a field, so only its list listens for the keyboard.
@@ -157,6 +181,40 @@ export function WorkoutsScreen() {
     </TouchableOpacity>
   ), [styles, exercises, openEditor, startWorkout]);
 
+  // Reads the file before opening the review sheet, so a file that isn't a
+  // Strong or Hevy export is told so here, with what to do, rather than as an
+  // empty sheet. In demo mode the import writes to the demo database like any
+  // other change there, and is thrown away with it.
+  const startImport = useCallback(async () => {
+    let text: string | null;
+    try {
+      text = await pickBackupFile();
+    } catch {
+      Alert.alert('Couldn’t read the file', 'The file couldn’t be opened. Pick it again, or export it again from the app.');
+      return;
+    }
+    if (text === null) return;
+    const result = parseWorkoutCsv(text);
+    if (!result.ok) {
+      if (result.reason === 'unknown') {
+        Alert.alert('Not a Strong or Hevy export', 'In Strong or Hevy, export your workouts as a CSV file, then pick that file here.');
+      } else if (result.reason === 'empty') {
+        Alert.alert('That file is empty', 'Export your workouts again and pick the new file.');
+      } else {
+        Alert.alert('No workouts found', 'The file has the right columns but no workouts with sets in them.');
+      }
+      return;
+    }
+    setImportText(text);
+    setImportOpen(true);
+  }, []);
+
+  const selectForExport = useCallback((from: string | null): ExportedWorkout[] =>
+    sessions
+      .filter(s => s.endedAt !== null && (from === null || dayKeyOf(new Date(s.startedAt)) >= from))
+      .map(session => ({ session, sets: loadSets(session.id) })),
+  [sessions, loadSets]);
+
   const liveDone = (liveSets ?? []).filter(x => x.completedAt !== null).length;
   const liveCard = live ? (
     <View style={styles.liveCard}>
@@ -191,6 +249,15 @@ export function WorkoutsScreen() {
       <ScreenHeader
         title="Workouts"
         subtitle={sessions.length > 0 ? `${sessions.length} ${sessions.length === 1 ? 'workout' : 'workouts'}` : undefined}
+        actions={[{
+          icon: 'ellipsis-horizontal' as const,
+          onPress: (e: GestureResponderEvent) => {
+            haptics.tap();
+            setMenuAnchor({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
+            setMenuOpen(true);
+          },
+          accessibilityLabel: 'More workout options',
+        }]}
       />
       <HubPills hub="health" active="Workouts" />
       <View style={styles.segments}>
@@ -278,6 +345,35 @@ export function WorkoutsScreen() {
         </>
       )}
       {pullSearch.sheet}
+      <LazySheet open={menuOpen}>
+        <ActionMenu
+          visible={menuOpen}
+          title="Workouts"
+          anchor={menuAnchor}
+          onClose={() => setMenuOpen(false)}
+          actions={[
+            { key: 'import', label: 'Import from Strong or Hevy', icon: 'download-outline', onPress: () => { void startImport(); } },
+            ...(sessions.some(s => s.endedAt !== null)
+              ? [{ key: 'export', label: 'Export as CSV', icon: 'share-outline' as const, onPress: () => setExportOpen(true) }]
+              : []),
+          ]}
+        />
+      </LazySheet>
+      <LazySheet open={importOpen}>
+        <WorkoutImportSheet visible={importOpen} onClose={() => setImportOpen(false)} fileText={importText} />
+      </LazySheet>
+      <LazySheet open={exportOpen}>
+        <CsvExportSheet
+          visible={exportOpen}
+          onClose={() => setExportOpen(false)}
+          hint={`A spreadsheet of your finished workouts, one row per set: date, workout, exercise, weight in ${workoutUnit}, reps, distance, time and notes.`}
+          dialogTitle="Share your workouts"
+          select={selectForExport}
+          toCsv={rows => workoutExportCsv(rows, exercises, workoutUnit)}
+          fileName={workoutExportFileName}
+          summary={workoutExportSummary}
+        />
+      </LazySheet>
       <LazySheet open={editorOpen}>
         <RoutineEditorSheet
           visible={editorOpen}
