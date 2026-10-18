@@ -19,10 +19,12 @@ import { cleanWorkoutName } from '../utils/workoutData';
 import type { WeightUnit } from '../utils/weightLog';
 import {
   buildImportPlan,
+  describeSkipped,
   distinctExerciseNames,
   guessEquipment,
   importSummary,
   inferExerciseKind,
+  isAutoMatch,
   matchAll,
   parseWorkoutCsv,
   splitDuplicates,
@@ -31,6 +33,7 @@ import {
 } from '../utils/workoutCsv';
 import type { ExerciseInput } from '../store/useWorkoutStore';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HelpText } from './HelpText';
 
 interface Props {
   visible: boolean;
@@ -42,8 +45,8 @@ interface Props {
 type Choice = 'match' | 'create' | 'skip';
 
 const UNIT_OPTIONS = [
-  { value: 'kg' as const, label: 'Kilograms' },
-  { value: 'lb' as const, label: 'Pounds' },
+  { value: 'kg' as const, label: 'Kilograms, km' },
+  { value: 'lb' as const, label: 'Pounds, miles' },
 ];
 
 const CHOICE_OPTIONS = [
@@ -105,18 +108,25 @@ export function WorkoutImportSheet({ visible, onClose, fileText }: Props) {
   const names = useMemo(() => distinctExerciseNames(split.fresh), [split.fresh]);
   const auto = useMemo(() => matchAll(names, exercises), [names, exercises]);
 
-  const effective = (n: ExerciseNameUse): NameResolution | undefined => {
-    const chosen = choices[n.key];
-    if (chosen) return chosen;
+  // Only an exact name or the same words in another order is decided by the app.
+  // A near match is a suggestion: it waits under "Needs a choice" for a tap.
+  const autoResolution = (n: ExerciseNameUse): NameResolution | undefined => {
     const m = auto[n.key];
-    return m && m.kind !== 'none' ? { kind: 'exercise', exerciseId: m.exerciseId } : undefined;
+    return m && isAutoMatch(m) ? { kind: 'exercise', exerciseId: m.exerciseId } : undefined;
   };
+  const suggestionFor = (n: ExerciseNameUse) => {
+    const m = auto[n.key];
+    return m && m.kind === 'suggest' ? m : null;
+  };
+
+  const effective = (n: ExerciseNameUse): NameResolution | undefined => choices[n.key] ?? autoResolution(n);
 
   // Split on what the app matched by itself, not on what has been chosen since,
   // so changing a match doesn't move its row into the other list.
-  const matched = names.filter(n => auto[n.key] && auto[n.key].kind !== 'none');
+  const matched = names.filter(n => autoResolution(n) !== undefined);
   const needing = names.filter(n => !matched.includes(n));
   const undecided = needing.filter(n => choices[n.key] === undefined);
+  const undecidedSuggested = undecided.filter(n => suggestionFor(n) !== null);
 
   const resolutions = useMemo(() => {
     const out: Record<string, NameResolution> = {};
@@ -124,7 +134,7 @@ export function WorkoutImportSheet({ visible, onClose, fileText }: Props) {
       const chosen = choices[n.key];
       const m = auto[n.key];
       if (chosen) out[n.key] = chosen;
-      else if (m && m.kind !== 'none') out[n.key] = { kind: 'exercise', exerciseId: m.exerciseId };
+      else if (m && isAutoMatch(m)) out[n.key] = { kind: 'exercise', exerciseId: m.exerciseId };
     }
     return out;
   }, [names, choices, auto]);
@@ -154,6 +164,23 @@ export function WorkoutImportSheet({ visible, onClose, fileText }: Props) {
     setChoices(prev => {
       const next = { ...prev };
       for (const n of undecided) next[n.key] = { kind };
+      return next;
+    });
+  };
+
+  const acceptSuggestion = (key: string, exerciseId: string) => {
+    haptics.tap();
+    setChoices(prev => ({ ...prev, [key]: { kind: 'exercise', exerciseId } }));
+  };
+
+  const acceptAllSuggestions = () => {
+    haptics.tap();
+    setChoices(prev => {
+      const next = { ...prev };
+      for (const n of undecidedSuggested) {
+        const m = suggestionFor(n);
+        if (m) next[n.key] = { kind: 'exercise', exerciseId: m.exerciseId };
+      }
       return next;
     });
   };
@@ -235,22 +262,24 @@ export function WorkoutImportSheet({ visible, onClose, fileText }: Props) {
             ) : null}
             {ok && ok.skippedRows > 0 ? (
               <Text style={styles.quiet}>
-                {`${count(ok.skippedRows, 'row was', 'rows were')} left out: rest timers and sets with nothing recorded.`}
+                {`${count(ok.skippedRows, 'row was', 'rows were')} left out: ${describeSkipped(ok.skipped)}.`}
               </Text>
             ) : null}
           </View>
 
           {ok?.unitAssumed ? (
             <>
-              <Text style={styles.groupLabel}>Weights in the file</Text>
+              <Text style={styles.groupLabel}>Units in the file</Text>
               <SegmentedControl
-                label="Weight unit of the file"
+                label="Units used in the file"
                 options={UNIT_OPTIONS}
                 value={unit}
                 onChange={u => { setUnit(u); setUnitTouched(true); }}
                 surface="page"
               />
-              <Text style={styles.quietBelow}>This file doesn’t say which unit it uses.</Text>
+              <HelpText style={styles.quietBelow}>
+                This file doesn’t say which units it uses. Distances are read as kilometers or miles to match.
+              </HelpText>
             </>
           ) : null}
 
@@ -259,6 +288,9 @@ export function WorkoutImportSheet({ visible, onClose, fileText }: Props) {
               <Text style={styles.groupLabel}>{`Needs a choice · ${needing.length}`}</Text>
               {undecided.length > 1 ? (
                 <View style={styles.bulk}>
+                  {undecidedSuggested.length > 1 ? (
+                    <InlineAction label="Use all suggestions" surface="page" onPress={acceptAllSuggestions} />
+                  ) : null}
                   <InlineAction label="Create all" surface="page" onPress={() => setAll('create')} />
                   <InlineAction label="Skip all" variant="neutral" surface="page" onPress={() => setAll('skip')} />
                 </View>
@@ -267,6 +299,7 @@ export function WorkoutImportSheet({ visible, onClose, fileText }: Props) {
                 {needing.map((n, i) => {
                   const choice = choiceOf(n);
                   const resolution = choices[n.key];
+                  const suggestion = suggestionFor(n);
                   return (
                     <View key={n.key} style={[styles.opt, i > 0 && styles.optSep]}>
                       <View>
@@ -294,6 +327,18 @@ export function WorkoutImportSheet({ visible, onClose, fileText }: Props) {
                         <Text style={styles.quiet}>Added to your library as its own exercise.</Text>
                       ) : resolution?.kind === 'skip' ? (
                         <Text style={styles.quiet}>Its sets are left out of the import.</Text>
+                      ) : suggestion ? (
+                        <View style={styles.suggestion}>
+                          <View style={styles.flex}>
+                            <Text style={styles.detail}>Closest match</Text>
+                            <Text style={styles.chosen}>{suggestion.exerciseName}</Text>
+                          </View>
+                          <InlineAction
+                            label="Use this"
+                            surface="card"
+                            onPress={() => acceptSuggestion(n.key, suggestion.exerciseId)}
+                          />
+                        </View>
                       ) : (
                         <Text style={styles.warn}>Choose one to continue.</Text>
                       )}
@@ -394,6 +439,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   quietBelow: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xsm, marginHorizontal: spacing.xs },
   warn: { color: colors.warningText, fontSize: font.sm },
   chosen: { color: colors.accentText, fontSize: font.sm },
+  suggestion: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.smd },
   change: { color: colors.textSecondary, fontSize: font.sm },
   footer: {
     paddingHorizontal: spacing.md, paddingTop: spacing.smd, paddingBottom: spacing.lg,

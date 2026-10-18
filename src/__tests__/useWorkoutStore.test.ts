@@ -10,7 +10,13 @@ import { useWorkoutStore, workoutContentCount } from '../store/useWorkoutStore';
 import { catalogExercise } from '../utils/exerciseCatalog';
 import { newTaskFromDraft } from '../utils/taskDraft';
 import type { Task, TaskDraft } from '../types';
-import type { PlannedImportSession } from '../utils/workoutCsv';
+import {
+  buildImportPlan,
+  distinctExerciseNames,
+  parseWorkoutCsv,
+  workoutExportCsv,
+  type PlannedImportSession,
+} from '../utils/workoutCsv';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mockRawDb: any;
@@ -431,7 +437,7 @@ describe('a workout logged after the fact', () => {
 describe('importing sessions from a file', () => {
   const at = (h: number) => new Date(2026, 8, 5, h).toISOString();
   const planned = (id: string, h: number, extra: Partial<PlannedImportSession> = {}): PlannedImportSession => ({
-    id, title: 'Push', startedAt: at(h), endedAt: at(h + 1), notes: ' felt good ',
+    id, title: 'Push', startedAt: at(h), startPrecisionMs: 1000, endedAt: at(h + 1), notes: ' felt good ',
     sets: [
       { exerciseRef: 'lib:back-squat', kind: 'working', weightKg: 100, reps: 5, durationSeconds: null, distanceM: null, rpe: null, note: null, supersetKey: null },
       { exerciseRef: 'new:sled drag', kind: 'working', weightKg: 40, reps: 10, durationSeconds: null, distanceM: null, rpe: null, note: null, supersetKey: null },
@@ -463,6 +469,47 @@ describe('importing sessions from a file', () => {
     expect(again).toEqual({ sessions: 0, sets: 0, created: 0, duplicates: 2 });
     expect(state().sessions).toHaveLength(1);
     expect(state().exercises.filter(e => e.name === 'Sled drag')).toHaveLength(1);
+  });
+
+  it('skips a workout that started at the same time under another title', () => {
+    state().importSessions([planned('imp-a', 7)], creates);
+    const again = state().importSessions([planned('imp-c', 7, { title: 'Renamed since' })], creates);
+    expect(again).toMatchObject({ sessions: 0, duplicates: 1 });
+  });
+
+  it('does not double the app\'s own export when it is imported back into the same log', () => {
+    // A session keeps its milliseconds; the export writes whole seconds.
+    const started = new Date(2026, 8, 5, 7, 15, 20, 789);
+    const first = ok(state().addFinishedSession({
+      title: 'Leg day', startedAt: started.toISOString(), endedAt: new Date(started.getTime() + 3_600_000).toISOString(),
+      sets: [
+        { exerciseId: 'lib:back-squat', weightKg: 100, reps: 5 },
+        { exerciseId: 'lib:leg-press', weightKg: 180, reps: 10 },
+      ],
+    }));
+    const second = ok(state().addFinishedSession({
+      title: 'Push', startedAt: new Date(2026, 8, 7, 18, 0, 0, 5).toISOString(), endedAt: new Date(2026, 8, 7, 19, 0, 0, 5).toISOString(),
+      sets: [{ exerciseId: 'lib:barbell-bench-press', weightKg: 80, reps: 8 }],
+    }));
+    const csv = workoutExportCsv(
+      [first, second].map(({ session }) => ({ session, sets: state().loadSets(session.id) })),
+      state().exercises,
+      'kg',
+    );
+    const parsed = parseWorkoutCsv(csv);
+    if (!parsed.ok) throw new Error('export did not parse');
+    expect(parsed.sessions).toHaveLength(2);
+    const resolutions = Object.fromEntries(
+      distinctExerciseNames(parsed.sessions).map(n => [n.key, { kind: 'create' as const }]),
+    );
+    const plan = buildImportPlan(parsed.sessions, resolutions, state().sessions);
+    expect(plan.sessions).toHaveLength(0);
+    expect(plan.duplicates).toBe(2);
+    // And the store's own check, for a plan made before the log had them.
+    const fresh = buildImportPlan(parsed.sessions, resolutions, []);
+    const creates2 = Object.fromEntries(fresh.createKeys.map(k => [k, { name: k, kind: 'weight_reps' as const, equipment: 'other' as const, primaryMuscles: [] }]));
+    expect(state().importSessions(fresh.sessions, creates2)).toEqual({ sessions: 0, sets: 0, created: 0, duplicates: 2 });
+    expect(state().sessions).toHaveLength(2);
   });
 
   it('uses the exercise already holding a name rather than making a second', () => {

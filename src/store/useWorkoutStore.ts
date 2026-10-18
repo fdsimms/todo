@@ -45,7 +45,7 @@ import {
   type PlannedSetValues,
 } from '../utils/workoutSession';
 import { libraryExercise } from '../utils/exerciseLibrary';
-import { NEW_EXERCISE_PREFIX, type PlannedImportSession } from '../utils/workoutCsv';
+import { NEW_EXERCISE_PREFIX, indexAdd, indexExisting, indexHas, type PlannedImportSession } from '../utils/workoutCsv';
 import { buildCatalog } from '../utils/exerciseCatalog';
 import {
   cleanWorkoutName,
@@ -230,14 +230,11 @@ interface WorkoutStore {
    */
   addFinishedSession: (input: FinishedSessionInput) => { session: WorkoutSession; sets: WorkoutSet[] } | WorkoutRefusal;
   /**
-   * Replaces every set of a session, for correcting a workout logged after the
-   * fact. Refuses an unknown session or exercise (`notFound`).
-   */
-  /**
    * Writes the workouts an import plan names (`buildImportPlan`), and the
    * custom exercises it needs, in one transaction. A session already in the
-   * log (same id, or same start and title) is skipped again here, so a plan
-   * made before another device synced in the same workout can't double it.
+   * log (same id, or the same start time, whatever it is called) is skipped
+   * again here, so a plan made before another device synced in the same
+   * workout can't double it.
    * `creates` maps each `new:<key>` reference's key to the exercise to make;
    * a name that has become taken since resolves to the exercise holding it.
    */
@@ -245,6 +242,10 @@ interface WorkoutStore {
     sessions: PlannedImportSession[],
     creates: Record<string, ExerciseInput>,
   ) => { sessions: number; sets: number; created: number; duplicates: number };
+  /**
+   * Replaces every set of a session, for correcting a workout logged after the
+   * fact. Refuses an unknown session or exercise (`notFound`).
+   */
   replaceSets: (sessionId: string, sets: (SetInput & { completedAt?: string | null })[]) => WorkoutSet[] | WorkoutRefusal;
   /** Deletes a session and its sets, live or finished. */
   deleteSession: (id: string) => void;
@@ -790,15 +791,12 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         return row.id;
       };
 
-      const have = get().sessions;
-      const ids = new Set(have.map(s => s.id));
-      const starts = new Set(have.map(s => `${s.startedAt}|${exerciseNameKey(s.title)}`));
+      const index = indexExisting(get().sessions);
       const rows: WorkoutSession[] = [];
       const setRows: WorkoutSet[][] = [];
       let duplicates = 0;
       for (const planned of sessions) {
-        const slot = `${planned.startedAt}|${exerciseNameKey(planned.title)}`;
-        if (ids.has(planned.id) || starts.has(slot)) { duplicates++; continue; }
+        if (indexHas(index, planned)) { duplicates++; continue; }
         const inputs: SetInput[] = [];
         for (const st of planned.sets) {
           const exerciseId = resolve(st.exerciseRef);
@@ -810,8 +808,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
           });
         }
         if (inputs.length === 0) continue;
-        ids.add(planned.id);
-        starts.add(slot);
+        indexAdd(index, planned.id, planned.startedAt);
         rows.push({
           id: planned.id,
           routineId: null,
