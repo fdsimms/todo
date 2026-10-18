@@ -104,9 +104,9 @@ export interface CompletionOptions {
   reviewAfter?: ReviewAfter | null;
   neutral?: boolean;
   /**
-   * Internal: the record this task asks for was just saved. Only the four
-   * `complete…TaskForToday` actions set it; see `isAnsweredByRecord` for why no
-   * other completion of those tasks is allowed.
+   * Internal: the record this task asks for was just saved. Set by
+   * `completeTask` itself once the record exists; see `isAnsweredByRecord` for
+   * why no other completion of those tasks is allowed.
    */
   recorded?: boolean;
   /**
@@ -801,6 +801,9 @@ export function buildCompletion(
         // the first generator whose task is a chain.
         generatedKind: chainAdvances && !atChainEnd ? effective.generatedKind : null,
         generatedSourceId: chainAdvances && !atChainEnd ? effective.generatedSourceId : null,
+        // A meal already logged or cooked is still so for the step after this
+        // one, so it reads ready too; see Task.generatedReadyAt.
+        generatedReadyAt: chainAdvances && !atChainEnd ? effective.generatedReadyAt ?? null : null,
         // Never carried forward: the old occurrence's device event still
         // shows the old deadline, and this is a fresh row with a fresh
         // deadline (nextDeadline above) that needs its own event, created

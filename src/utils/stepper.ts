@@ -39,6 +39,13 @@ export interface StepRange {
    * 82.75 would land on 85.3 rather than 85.25. Defaults to the step's own.
    */
   places?: number;
+  /**
+   * The values a press moves between, ascending, for a counter whose step
+   * isn't one size (a countdown's 15s, 30s, 45s, then whole minutes). A press
+   * lands on the next rung past the current value, whether or not the value
+   * is on one; `step` and `places` then only matter for rounding.
+   */
+  ladder?: readonly number[];
 }
 
 /** How many digits after the decimal point `n` is expressed to. */
@@ -103,8 +110,22 @@ export function parseStepperInput(text: string, range?: StepRange): number | nul
  */
 export function stepCount(value: number | null, delta: number, range: StepRange): number | null {
   if (value === null) return delta > 0 ? (range.start ?? range.min) : null;
+  if (range.ladder) return stepLadder(value, delta > 0 ? 1 : -1, range);
   const places = placesFor(range, delta);
   const next = Number((value + delta).toFixed(places));
+  if (next > range.max) return range.max;
+  if (next < range.min) return range.allowNull ? null : range.min;
+  return next;
+}
+
+/** `stepCount` for a ladder: the nearest rung above or below, then the usual clamp. */
+function stepLadder(value: number, direction: 1 | -1, range: StepRange): number | null {
+  const ladder = range.ladder as readonly number[];
+  const eps = 1e-9;
+  const next = direction > 0
+    ? ladder.find(rung => rung > value + eps)
+    : [...ladder].reverse().find(rung => rung < value - eps);
+  if (next === undefined) return direction > 0 ? range.max : range.allowNull ? null : range.min;
   if (next > range.max) return range.max;
   if (next < range.min) return range.allowNull ? null : range.min;
   return next;

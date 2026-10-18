@@ -143,7 +143,10 @@ export interface TargetInput {
 
 /** A countdown the task runs once started. Subtask stretches are not settable here. */
 export interface TimedInput {
-  minutes: number;
+  /** Whole minutes. Give this or `seconds`. */
+  minutes?: number;
+  /** Whole seconds, for a countdown under a minute. Stored as seconds / 60. */
+  seconds?: number;
 }
 
 /** A set of named things, each done once a week in any order. */
@@ -642,8 +645,15 @@ export function taskFieldsPatch(
     if (input.timed === null) {
       patch.timedMinutes = null;
     } else {
-      const mins = input.timed.minutes;
-      if (!inRange(mins, LIMITS.timedMinutes)) errors.push(`timed.minutes must be a whole number from ${LIMITS.timedMinutes[0]} to ${LIMITS.timedMinutes[1]}.`);
+      const { minutes, seconds } = input.timed;
+      // Seconds are stored as a fraction of a minute (45s is 0.75), the same
+      // way the editor's "sec" unit writes them.
+      const wholeMinutes = minutes !== undefined && seconds === undefined;
+      const mins = seconds !== undefined && minutes === undefined ? seconds / 60 : (minutes as number);
+      if (minutes !== undefined && seconds !== undefined) errors.push('timed takes minutes or seconds, not both.');
+      else if (wholeMinutes ? !inRange(minutes, LIMITS.timedMinutes) : !(isInt(seconds) && (seconds as number) >= 1 && (seconds as number) <= LIMITS.timedMinutes[1] * 60)) {
+        errors.push(`timed.minutes must be a whole number from ${LIMITS.timedMinutes[0]} to ${LIMITS.timedMinutes[1]}, or timed.seconds a whole number from 1 to ${LIMITS.timedMinutes[1] * 60}.`);
+      }
       // A subtask's stretch is its share of the parent's run, and the parent's
       // total is the sum of them (docs/arch/timed-tasks.md). This writer has no
       // way to keep that sum, so it refuses rather than become a third one.
@@ -651,8 +661,8 @@ export function taskFieldsPatch(
       patch.timedMinutes = mins;
       // The editor hides Effort and Estimate for a timed task and derives both
       // from the countdown, so a caller that doesn't name them gets the same.
-      if (input.effort === undefined) patch.effort = minutesToEffort(mins);
-      if (input.estimatedMinutes === undefined) patch.estimatedMinutes = mins;
+      if (input.effort === undefined) patch.effort = minutesToEffort(Math.max(1, Math.round(mins)));
+      if (input.estimatedMinutes === undefined) patch.estimatedMinutes = Math.max(1, Math.round(mins));
     }
   }
 

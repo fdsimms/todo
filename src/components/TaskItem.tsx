@@ -1478,6 +1478,10 @@ const TaskItemRow = React.memo(function TaskItem({
   // staleMealShortfallTasks) hasn't run yet. Ready once the row resolves to a
   // real, still-imminent meal with nothing left to buy.
   const mealShortfallReady = shortfallRows !== null && shortfallRows.length === 0 && !task.completed;
+  // A generated task whose reason was satisfied (the water was drunk, the item
+  // restocked): a sweep marked the row rather than deleting or ticking it, so
+  // the tick, and its coins, are still the person's. See Task.generatedReadyAt.
+  const generatedReady = !!task.generatedReadyAt && !task.completed;
 
   // The stretches the subtasks split the countdown into, and which one the
   // clock is in. Empty for a timed task nobody apportioned, which is what keeps
@@ -3055,6 +3059,7 @@ const TaskItemRow = React.memo(function TaskItem({
               pantryReviewReady ||
               deloadReady ||
               mealShortfallReady ||
+              generatedReady ||
               wanikaniReady) &&
             styles.circleReady,
           !completing && hoursLoggable && styles.circleReady,

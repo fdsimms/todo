@@ -70,6 +70,7 @@ import {
   pantryCheckItemId,
   pantryCheckLinkUrl,
   stalePantryCheckTasks,
+  answeredPantryCheckTasks,
   wantedPantryChecks,
 } from '../utils/pantryCheckTasks';
 import { buildPantryReviewDeck } from '../utils/pantryReview';
@@ -86,15 +87,17 @@ import {
   mealShortfallEntryId,
   mealShortfallLinkUrl,
   staleMealShortfallTasks,
+  answeredMealShortfallTasks,
   wantedMealShortfalls,
 } from '../utils/mealShortfallTasks';
-import { mealThawEntryId, staleMealThawTasks, wantedMealThaws } from '../utils/mealThawTasks';
+import { answeredMealThawTasks, mealThawEntryId, staleMealThawTasks, wantedMealThaws } from '../utils/mealThawTasks';
 import {
   MEAL_LOG_NUDGE_LOOKBACK_DAYS,
   isMealLogged,
   mealLogNudgeEntryId,
   mealLogNudgeLinkUrl,
   staleMealLogNudgeTasks,
+  answeredMealLogNudgeTasks,
   wantedMealLogNudges,
   type MealLogRecord,
 } from '../utils/mealLogNudgeTasks';
@@ -109,7 +112,7 @@ import {
 // Imports this module back, like useMealPlanStore does — inert for the same
 // reason: the reference is inside an action body, by which time both modules
 // have finished loading.
-import { deleteGeneratedTaskQuietly, dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
+import { deleteGeneratedTaskQuietly, dropGeneratedTask, reconcileGeneratedTask, settleReadyMarks } from './generatedTaskSync';
 import { readSavedEvents, updateSavedEvent, writeSavedEvents, type SavedEvent } from '../utils/savedEvents';
 import { bookDueDay, bookSourceId, bookTaskNotes, bookTaskTitle, wantsBookTask } from '../utils/savedEventTasks';
 import { reopenedTask } from '../utils/taskReopen';
@@ -2140,20 +2143,13 @@ interface TaskStore extends UndoHistoryActions {
    * only one that is async.
    */
   checkWeighInTasks: () => Promise<void>;
-  /** Tick off today's weigh-in request, if one is live, after a weight is saved. */
-  completeWeighInTaskForToday: () => void;
   /**
-   * Tick off today's "Log how you're feeling" task, if one is live.
-   *
-   * Called by the logging sheet once an entry is saved — logging *is* the task,
-   * so leaving it on the list after the thing it asks for has been done would
-   * be the app not listening. Completed rather than deleted: it is a real
-   * record of something done, it belongs in the Logbook and in Stats like any
-   * other completion, and the tick is the feedback that the entry landed.
+   * Make today's weigh-in request read ready, if one is live, after a weight
+   * dated `dayKey` is saved. Completes nothing: the tick, and the coins, are
+   * the person's (see recordTasks.ts). Mood, journal and dream rows need no
+   * such call, since their readiness is derived from the entries themselves.
    */
-  completeMoodLogTaskForToday: () => void;
-  /** The same for the journal or dream reminder, once an entry of that kind is saved for today. */
-  completeJournalTaskForToday: (kind: JournalKind) => void;
+  markWeighInAnswered: (dayKey: string) => void;
   /**
    * Rolls a recurring task onto its next date in place, silently — no record,
    * no history row, nothing in the Logbook, streak left exactly as it was.
@@ -2508,13 +2504,18 @@ function reconcileWaterShortfall(args: {
   // A request from a day that has gone is dropped rather than deleted quietly
   // with an opt-out: nobody declined it, the day just ended.
   liveGeneratedTasksOfKind(args.tasks, 'waterShortfall')
-    .filter(t => t.generatedSourceId !== args.todayKey)
+    .filter(t => t.generatedSourceId !== args.todayKey && !t.generatedReadyAt)
     .forEach(t => dropGeneratedTask('waterShortfall', t.generatedSourceId));
 
   reconcileGeneratedTask({
     kind: 'waterShortfall',
     sourceId: args.todayKey,
     wanted,
+    // The water was logged by some other route, so the row stays, ready: a
+    // tick on a ready one logs nothing more (see completeTask).
+    satisfied: !wanted && targetMl !== undefined && targetMl > 0 && owedMl === null
+      && followedWaterTaskDoneOn(args.tasks, args.todayKey)
+      && settings.waterShortfallDeclinedDayKey !== args.todayKey,
     // A completed one blocks a second today, which is what stops completing it
     // (and logging only part of what it asked for) from asking again.
     blocksOnFinished: true,
@@ -2560,9 +2561,22 @@ function reconcileBookEvents(tasks: Task[]): void {
     if (id && wantsBookTask(event, today)) wanted.set(id, event);
   }
 
+  // The cycle each saved event is on now. A task whose cycle has been replaced
+  // by a newer one means the appointment was added, which is the thing it asked
+  // for; one whose event or interval is gone was withdrawn instead.
+  const currentCycle = new Map<string, string>();
+  for (const event of readSavedEvents()) {
+    const id = bookSourceId(event);
+    if (id) currentCycle.set(id.split('|')[0], id);
+  }
   liveGeneratedTasksOfKind(tasks, 'bookEvent')
     .filter(t => !t.generatedSourceId || !wanted.has(t.generatedSourceId))
-    .forEach(t => dropGeneratedTask('bookEvent', t.generatedSourceId));
+    .forEach(t => {
+      const now = t.generatedSourceId ? currentCycle.get(t.generatedSourceId.split('|')[0]) : undefined;
+      dropGeneratedTask('bookEvent', t.generatedSourceId, {
+        satisfied: now !== undefined && now !== t.generatedSourceId,
+      });
+    });
 
   const category = settings.bookEventTaskCategory;
   for (const [sourceId, event] of wanted) {
@@ -2628,13 +2642,15 @@ function reconcileSnackNudge(tasks: Task[]): void {
   // A request from a day that has gone is dropped rather than deleted quietly
   // with an opt-out: nobody declined it, the day just ended.
   liveGeneratedTasksOfKind(tasks, 'snackNudge')
-    .filter(t => t.generatedSourceId !== todayKey)
+    .filter(t => t.generatedSourceId !== todayKey && !t.generatedReadyAt)
     .forEach(t => dropGeneratedTask('snackNudge', t.generatedSourceId));
 
   reconcileGeneratedTask({
     kind: 'snackNudge',
     sourceId: todayKey,
     wanted,
+    // No longer applying means something was logged; the row stays, ready.
+    satisfied: !wanted && settings.snackNudgeDeclinedDayKey !== todayKey,
     // A completed one blocks a second today: eating the snack and logging it
     // should end the question, not ask it again at the next write.
     blocksOnFinished: true,
@@ -2683,7 +2699,7 @@ function reconcileProduceNudge(tasks: Task[]): void {
   dueDate.setHours(12, 0, 0, 0);
 
   liveGeneratedTasksOfKind(tasks, 'produceNudge')
-    .filter(t => t.generatedSourceId !== todayKey)
+    .filter(t => t.generatedSourceId !== todayKey && !t.generatedReadyAt)
     .forEach(t => dropGeneratedTask('produceNudge', t.generatedSourceId));
 
   // Only computed when a task will exist, since it walks every recipe.
@@ -2698,6 +2714,8 @@ function reconcileProduceNudge(tasks: Task[]): void {
     kind: 'produceNudge',
     sourceId: todayKey,
     wanted,
+    // No longer applying means produce was logged; the row stays, ready.
+    satisfied: !wanted && settings.produceNudgeDeclinedDayKey !== todayKey,
     blocksOnFinished: true,
     drift: existing => {
       if (reading === null) return null;
@@ -2810,8 +2828,8 @@ function reconcileGoalTargets(tasks: Task[]): void {
   // A day that has gone, or a nutrient that is no longer a goal: dropped
   // without an opt-out, since nobody declined it.
   liveGeneratedTasksOfKind(tasks, 'goalTarget')
-    .filter(t => goalTargetDayOf(t.generatedSourceId) !== todayKey
-      || !readings.some(r => r.key === goalTargetKeyOf(t.generatedSourceId)))
+    .filter(t => !t.generatedReadyAt && (goalTargetDayOf(t.generatedSourceId) !== todayKey
+      || !readings.some(r => r.key === goalTargetKeyOf(t.generatedSourceId))))
     .forEach(t => dropGeneratedTask('goalTarget', t.generatedSourceId));
 
   for (const reading of readings) {
@@ -2820,6 +2838,9 @@ function reconcileGoalTargets(tasks: Task[]): void {
       kind: 'goalTarget',
       sourceId,
       wanted: !settings.goalTargetDeclined.includes(reading.key),
+      // Reaching the goal makes the row ready; the person ticks it, which is
+      // what earns the coins.
+      satisfied: reading.reached,
       // A checked-off one blocks a second today.
       blocksOnFinished: true,
       drift: existing => {
@@ -2839,12 +2860,6 @@ function reconcileGoalTargets(tasks: Task[]): void {
         ...generatedBy('goalTarget', sourceId),
       }),
     });
-    if (!reading.reached) continue;
-    const live = liveGeneratedTask(useTaskStore.getState().tasks, 'goalTarget', sourceId);
-    // Not neutral: reaching the goal is the person's own doing (they logged the
-    // food), so it earns the completion's coins. One per nutrient per day, since
-    // the finished task blocks a second.
-    if (live) useTaskStore.getState().completeTask(live.id);
   }
 }
 
@@ -2960,6 +2975,16 @@ function recordTaskAnswered(task: Task): boolean {
     journalEntries: useJournalStore.getState().entries,
     weighInAnsweredOn: useHealthStore.getState().weighInAnsweredOn,
   });
+}
+
+/**
+ * A record task whose entry exists. The clear passes for these kinds delete a
+ * row once its day or part of the day has gone, which is right for a question
+ * nobody answered and wrong for one that was: the person did the work and the
+ * tick, with its coins, is still theirs to take.
+ */
+function isReadyRecordTask(task: Task): boolean {
+  return isAnsweredByRecord(task) && recordTaskAnswered(task);
 }
 
 /**
@@ -4169,7 +4194,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // still incomplete and try to complete it a second time. skipHealthLog is
     // for that same sync: a completion it already drove from the food log's
     // own total needs no second write of the amount that got it there.
-    if (task.logHealthMetric && !options?.skipHealthLog) void logTaskHealthValue(completed);
+    if (task.logHealthMetric && !options?.skipHealthLog && !task.generatedReadyAt) void logTaskHealthValue(completed);
 
     // Opt-in convenience only (autoCompleteProjectsOnDone, default off) —
     // finishing a project never happens automatically otherwise; the user
@@ -6013,7 +6038,22 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // stamp reviewDeclinedAt on a project the user never touched, and so
     // suppress tomorrow's task on the strength of the app's own tidying up.
     // Only a delete the *user* performs is an instruction to the source.
-    stale.forEach(task => dropGeneratedTask('projectReview', projectReviewProjectId(task)));
+    // A project that is still there and no longer quiet had a task dated or
+    // pulled: the row stays, ready, for the person to tick. One that is gone,
+    // finished, archived or on auto-schedule is cleared as before.
+    const liveProjects = new Map(
+      useProjectStore.getState().projects
+        .filter(p => !p.archived && !p.completed && !p.autoSchedule)
+        .map(p => [p.id, p]),
+    );
+    const answeredReviews = stale.filter(task => {
+      const projectId = projectReviewProjectId(task);
+      return !!projectId && liveProjects.has(projectId);
+    });
+    stale
+      .filter(task => !answeredReviews.includes(task))
+      .forEach(task => dropGeneratedTask('projectReview', projectReviewProjectId(task)));
+    settleReadyMarks(liveGeneratedTasksOfKind(tasks, 'projectReview'), answeredReviews);
 
     if (wanted.length === 0) return;
 
@@ -6278,9 +6318,24 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // routes through deleteTask, which stamps the source's opt-out. Here that
     // would record a decline the user never made and silence the person for a
     // week on the strength of the app's own tidying up.
-    staleReachOutTasks(tasks, stillDue).forEach(task =>
-      dropGeneratedTask('reachOut', reachOutPersonId(task))
-    );
+    // Nobody due and the person still opted in means something landed in their
+    // history: the row stays, ready, for the person to tick. Only a row for
+    // somebody who is gone or no longer opted in is cleared.
+    const nudged = new Set<string>();
+    for (const p of people) {
+      if (!p.nudgeOptIn || p.cadenceDays <= 0 || p.archived) continue;
+      nudged.add(p.id);
+      if (p.groupId) nudged.add(p.groupId);
+    }
+    const staleReachOuts = staleReachOutTasks(tasks, stillDue);
+    const answeredReachOuts = staleReachOuts.filter(task => {
+      const personId = reachOutPersonId(task);
+      return !!personId && nudged.has(personId);
+    });
+    staleReachOuts
+      .filter(task => !answeredReachOuts.includes(task))
+      .forEach(task => dropGeneratedTask('reachOut', reachOutPersonId(task)));
+    settleReadyMarks(liveGeneratedTasksOfKind(tasks, 'reachOut'), answeredReachOuts);
 
     if (wanted.length === 0) return;
 
@@ -6495,9 +6550,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // dropGeneratedTask writes no opt-out and the mark keeps the day from
     // being written again, so a row dropped here stays dropped even if the
     // entry is deleted later.
-    loggedMealSlotTasks(tasks, logged).forEach(task =>
-      dropGeneratedTask('mealSlot', task.generatedSourceId)
-    );
+    // Marked ready rather than dropped: logging the meal is what the chain
+    // asks for, and the ticks (and their coins) are the person's. A row whose
+    // slot is no longer logged (the entry was deleted) loses the mark.
+    settleReadyMarks(liveGeneratedTasksOfKind(tasks, 'mealSlot'), loggedMealSlotTasks(tasks, logged));
   },
 
   backfillMealSlotTasks(slots) {
@@ -6568,8 +6624,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // stamp pantryCheckDeclinedAt on an item the user never turned down, and so
     // suppress the question after the *next* purchase on the strength of the
     // app's own tidying up.
-    const stale = stalePantryCheckTasks(tasks, items, now, itemProducts, listed);
-    stale.forEach(task => dropGeneratedTask('pantryCheck', pantryCheckItemId(task)));
+    // Answered ones stay, ready (the tick is the person's); only a check for
+    // an item that has gone is cleared.
+    const answered = answeredPantryCheckTasks(tasks, items, now, itemProducts, listed);
+    stalePantryCheckTasks(tasks, items, now, itemProducts, listed)
+      .filter(task => !answered.includes(task))
+      .forEach(task => dropGeneratedTask('pantryCheck', pantryCheckItemId(task)));
+    settleReadyMarks(liveGeneratedTasksOfKind(tasks, 'pantryCheck'), answered);
     if (!creating) return;
 
     // One review row already asks about the whole cupboard, so the drip stands
@@ -6633,7 +6694,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // A task from a past week is dropped rather than deleted quietly with an
     // opt-out: nobody declined it, the week just ended.
     liveGeneratedTasksOfKind(tasks, 'produceFloor')
-      .filter(t => !creating || t.generatedSourceId !== weekKey)
+      .filter(t => (!creating || t.generatedSourceId !== weekKey) && !t.generatedReadyAt)
       .forEach(t => dropGeneratedTask('produceFloor', t.generatedSourceId));
     if (!creating) return;
 
@@ -6656,6 +6717,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       kind: 'produceFloor',
       sourceId: weekKey,
       wanted,
+      // Stocked up to the floor: the row stays, ready, for the person to tick.
+      satisfied: !wanted && settings.produceFloorDeclinedWeekKey !== weekKey,
       blocksOnFinished: true,
       drift: existing => {
         const title = produceFloorTitle(stocked.length, settings.produceFloorCount);
@@ -6705,8 +6768,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // at all (no source row), so the two would agree; it stays the honest call
     // for what this is, which is the app tidying up rather than the user
     // declining.
-    stalePantryReviewTasks(tasks, deck).forEach(task =>
-      dropGeneratedTask('pantryReview', pantryReviewDayKey(task))
+    // An emptied deck is what the row asked for, so it stays, ready; there is
+    // no source to go missing, so nothing here is ever deleted.
+    settleReadyMarks(
+      liveGeneratedTasksOfKind(tasks, 'pantryReview'),
+      stalePantryReviewTasks(tasks, deck),
     );
     // Before the mark below, which is spent only on a day the offer could
     // actually have been made.
@@ -6831,10 +6897,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // through deleteTask, which writes the source's opt-out — here it would
     // stamp shopTask: false on a meal the user never turned down, and so
     // suppress the offer for ever on the strength of the app's own tidying up.
-    const stale = staleMealShortfallTasks(
+    const answered = answeredMealShortfallTasks(
       tasks, entries, recipesById, items, itemSubs, swaps, todayKey, now, leadDays, itemProducts
     );
-    stale.forEach(task => dropGeneratedTask('mealShortfall', mealShortfallEntryId(task)));
+    staleMealShortfallTasks(
+      tasks, entries, recipesById, items, itemSubs, swaps, todayKey, now, leadDays, itemProducts
+    )
+      .filter(task => !answered.includes(task))
+      .forEach(task => dropGeneratedTask('mealShortfall', mealShortfallEntryId(task)));
+    // Everything bought: the row stays, ready, for the person to tick.
+    settleReadyMarks(liveGeneratedTasksOfKind(tasks, 'mealShortfall'), answered);
     if (!creating) return;
 
     const wanted = wantedMealShortfalls(
@@ -6916,9 +6988,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     // Clear first, then create, and through dropGeneratedTask so the app's own
     // tidying up never stamps thawTask: false on a meal nobody declined.
+    const answered = answeredMealThawTasks(
+      tasks, entries, recipesById, leftovers, items, itemSubs, swaps, todayKey, now, itemProducts
+    );
     staleMealThawTasks(
       tasks, entries, recipesById, leftovers, items, itemSubs, swaps, todayKey, now, itemProducts
-    ).forEach(task => dropGeneratedTask('mealThaw', mealThawEntryId(task)));
+    )
+      .filter(task => !answered.includes(task))
+      .forEach(task => dropGeneratedTask('mealThaw', mealThawEntryId(task)));
+    // Taken out of the freezer: the row stays, ready, for the person to tick.
+    settleReadyMarks(liveGeneratedTasksOfKind(tasks, 'mealThaw'), answered);
     if (!creating) return;
 
     const wanted = wantedMealThaws(
@@ -6993,8 +7072,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // runs on: the stale set includes the row for a meal just logged from
     // this very task, and a create pass running first would be deciding
     // against a list that still held it.
-    const stale = staleMealLogNudgeTasks(tasks, entries, logged, todayKey);
-    stale.forEach(task => dropGeneratedTask('mealLogNudge', mealLogNudgeEntryId(task)));
+    const answered = answeredMealLogNudgeTasks(tasks, entries, logged, todayKey);
+    staleMealLogNudgeTasks(tasks, entries, logged, todayKey)
+      .filter(task => !answered.includes(task))
+      .forEach(task => dropGeneratedTask('mealLogNudge', mealLogNudgeEntryId(task)));
+    // Logging the meal is what the row asked for: it stays, ready, and loses
+    // the mark if the log entry is deleted again.
+    settleReadyMarks(liveGeneratedTasksOfKind(tasks, 'mealLogNudge'), answered);
     if (!creating) return;
 
     const wanted = wantedMealLogNudges(entries, logged, todayKey);
@@ -7085,8 +7169,18 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const actingItemIds = !settings.kitchenEnabled
       ? new Set<string>()
       : grocery.initialized ? new Set(grocery.items.map(i => i.id)) : undefined;
+    // A supply that no longer wants more, whose source task is still there,
+    // was topped up: the row stays, ready, for the person to tick. Only a
+    // reorder whose source task has gone is cleared.
     const stale = staleSupplyReorderTasks(tasks, dayResetTime, actingItemIds);
-    stale.forEach(task => dropGeneratedTask('supplyReorder', supplyReorderSourceId(task)));
+    const answered = stale.filter(task => {
+      const sourceId = supplyReorderSourceId(task);
+      return !!sourceId && tasks.some(t => t.id === sourceId && !t.archived);
+    });
+    stale
+      .filter(task => !answered.includes(task))
+      .forEach(task => dropGeneratedTask('supplyReorder', supplyReorderSourceId(task)));
+    settleReadyMarks(liveGeneratedTasksOfKind(tasks, 'supplyReorder'), answered);
 
     const wanted = wantedSupplyReorders(get().tasks, dayResetTime, undefined, actingItemIds);
     if (wanted.length === 0) return;
@@ -8051,6 +8145,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // still owed, the same reasoning the day-to-day clear always used.
       liveGeneratedTasksOfKind(get().tasks, 'moodLog')
         .filter(task => moodLogDayKey(task) !== todayKey || task.generatedSourceId !== sourceId)
+        .filter(task => !isReadyRecordTask(task))
         .forEach(task => deleteGeneratedTaskQuietly(task.id));
 
       // Whether this slot is already answered. Read for the write below only: a
@@ -8167,6 +8262,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       const sourceId = noSlotYet ? null : journalTaskSourceId(todayKey, segment);
       liveGeneratedTasksOfKind(get().tasks, generatedKind)
         .filter(task => journalTaskDayKey(task, kind) !== todayKey || task.generatedSourceId !== sourceId)
+        .filter(task => !isReadyRecordTask(task))
         .forEach(task => deleteGeneratedTaskQuietly(task.id));
       if (sourceId === null) return;
       const written = entries.filter(e => e.kind === kind);
@@ -8418,9 +8514,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // projectReview's clear: this is the app tidying up after itself, and
     // stamping an opt-out for it would be reading the app's own housekeeping as
     // the user declining something.
-    for (const task of staleWeekendNudgeTasks(tasks, window, bare)) {
-      dropGeneratedTask('weekendNudge', weekendNudgeWeekendKey(task));
+    // Plans got made for this weekend (the row's own link is how): it stays,
+    // ready. A row for a weekend that has passed is cleared.
+    const staleWeekend = staleWeekendNudgeTasks(tasks, window, bare);
+    const plansMade = staleWeekend.filter(task => weekendNudgeWeekendKey(task) === window.saturdayKey);
+    for (const task of staleWeekend) {
+      if (!plansMade.includes(task)) dropGeneratedTask('weekendNudge', weekendNudgeWeekendKey(task));
     }
+    settleReadyMarks(liveGeneratedTasksOfKind(tasks, 'weekendNudge'), plansMade);
 
     // Rule 6: the mood nudge already asked for the same thing, off a more
     // specific signal. Read here rather than from a settings flag because what
@@ -8528,6 +8629,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // answered has not been declined.
     liveGeneratedTasksOfKind(get().tasks, 'weighIn')
       .filter(task => weighInDayKey(task) !== todayKey)
+      .filter(task => !isReadyRecordTask(task))
       .forEach(task => dropGeneratedTask('weighIn', task.generatedSourceId));
 
     const everyDays = clampWeighInEveryDays(settings.weighInEveryDays);
@@ -8595,36 +8697,20 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   /**
-   * Tick off today's weigh-in request, if there is one, because a weight was
-   * just recorded.
+   * A weight was just recorded, so today's weigh-in request (if there is one)
+   * is answered and its row reads ready. Nothing is completed here.
    *
-   * The counterpart to `completeMoodLogTaskForToday` below and called from the
-   * same place in spirit: the sheet that answers the question, on success.
-   * Without it, recording a weight leaves the task asking for one still sitting
-   * on Today.
+   * A reading dated today answers it outright. A backdated one may or may not
+   * fall inside the request's window, which only a Health read can say, so it
+   * re-runs the pass that makes that call instead of guessing.
    */
-  completeWeighInTaskForToday() {
+  markWeighInAnswered(dayKey) {
     const todayKey = dayKeyOf(getCurrentDayStart());
-    const task = liveGeneratedTasksOfKind(get().tasks, 'weighIn')
-      .find(t => weighInDayKey(t) === todayKey);
-    if (!task) return;
-    get().completeTask(task.id, { recorded: true });
-  },
-
-  completeJournalTaskForToday(kind) {
-    const todayKey = dayKeyOf(getCurrentDayStart());
-    const task = liveGeneratedTasksOfKind(get().tasks, JOURNAL_TASK_KIND[kind])
-      .find(t => journalTaskDayKey(t, kind) === todayKey);
-    if (!task) return;
-    get().completeTask(task.id, { recorded: true });
-  },
-
-  completeMoodLogTaskForToday() {
-    const todayKey = dayKeyOf(getCurrentDayStart());
-    const task = liveGeneratedTasksOfKind(get().tasks, 'moodLog')
-      .find(t => moodLogDayKey(t) === todayKey);
-    if (!task) return;
-    get().completeTask(task.id, { recorded: true });
+    const live = liveGeneratedTasksOfKind(get().tasks, 'weighIn')
+      .some(t => weighInDayKey(t) === todayKey);
+    if (!live) return;
+    if (dayKey === todayKey) useHealthStore.getState().setWeighInAnsweredOn(todayKey);
+    else void get().checkWeighInTasks();
   },
 
   skipNextRecurrence(id) {

@@ -19,7 +19,10 @@ default (`rewardsEnabled`), switched on from the Rewards screen (its own menu ro
   reaches, capped at `STREAK_BONUS_CAP`. Subtasks earn nothing, or splitting a task would be the way
   to earn more.
 - **Only a person moves it**, with one carve-out: the rollover collects clean days a person didn't
-  collect ("Clean days" below), because it only pays for days the streak already counts, and an Aim for goal task the app checks off once the day reaches the goal (the person logged the food). `neutral` completions (the overshoot and interval sweeps), the quota
+  collect ("Clean days" below), because it only pays for days the streak already counts. A generated
+  task whose reason was satisfied (the goal reached, the water drunk, the meal logged) is never ticked
+  for the person: it stays and reads ready (`Task.generatedReadyAt`, see `generated-tasks.md`), and
+  their tick is what pays. `neutral` completions (the overshoot and interval sweeps), the quota
   rollover (which bypasses `completeTask`) and the expiry sweep earn and cost nothing. Losses come
   from `markMissed` and `logSlip` only. The app never claims a miss on the user's behalf, so it
   doesn't charge for one: a task left undone costs nothing until you say you missed it. **Don't add a

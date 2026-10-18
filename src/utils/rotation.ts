@@ -40,6 +40,8 @@
 import type { RotationItem, RotationLogEntry, Task } from '../types';
 import { quotaWeekStart } from './quotaSchedule';
 import { format } from 'date-fns/format';
+import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
+import { startOfDay } from 'date-fns/startOfDay';
 
 /** A member paired with what the current period knows about it. */
 export interface RotationMember {
@@ -541,7 +543,12 @@ export function rotationLastDoneLabel(lastDoneAt: string | null, dayStart: Date)
   if (!lastDoneAt) return null;
   const then = new Date(lastDoneAt);
   if (Number.isNaN(+then)) return null;
-  const days = Math.floor((+dayStart - +then) / 86400000);
+  // Whole logical days, not elapsed hours: a lift at 6 PM yesterday is 14 hours
+  // before a midnight day start, which floored to 0 and read "today". Shifting
+  // `then` back by the day start's own offset (a 2 AM reset) puts it on the
+  // calendar date of the logical day it belongs to before counting.
+  const offset = +dayStart - +startOfDay(dayStart);
+  const days = differenceInCalendarDays(dayStart, new Date(+then - offset));
   if (days <= 0) return 'Today';
   if (days === 1) return 'Yesterday';
   if (days < 7) return `${days} days ago`;

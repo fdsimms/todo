@@ -499,6 +499,8 @@ export function mealSlotTaskDraft(
  *   decision about when to deal with it, and the day in its source id says
  *   nothing about that.
  * - **A finished or archived one**, which is not live and never listed here.
+ * - **A ready one** (`generatedReadyAt`): the meal was logged or cooked, so the
+ *   tick and its coins are still the person's.
  *
  * `todayKey` is the logical today. A stored date is compared by its calendar
  * day, the way `getTaskDayStart` reads one.
@@ -506,7 +508,7 @@ export function mealSlotTaskDraft(
 export function staleMealSlotTasks<
   T extends Pick<
     Task,
-    'generatedKind' | 'generatedSourceId' | 'completed' | 'archived' | 'chainIndex' | 'dueDate' | 'deferUntil'
+    'generatedKind' | 'generatedSourceId' | 'completed' | 'archived' | 'chainIndex' | 'dueDate' | 'deferUntil' | 'generatedReadyAt'
   >
 >(tasks: readonly T[], todayKey: string): T[] {
   const movedToToday = (iso: string | null) => iso !== null && dayKeyOf(new Date(iso)) >= todayKey;
@@ -514,6 +516,8 @@ export function staleMealSlotTasks<
     const source = parseMealSlotSource(task.generatedSourceId);
     if (!source || source.dayKey >= todayKey) return false;
     if ((task.chainIndex ?? 0) > 0) return false;
+    // Ready means the meal was logged or cooked: the tick is still owed.
+    if (task.generatedReadyAt) return false;
     return !movedToToday(task.dueDate) && !movedToToday(task.deferUntil);
   });
 }

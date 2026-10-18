@@ -12,6 +12,8 @@ import { SheetModal } from './SheetModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardScrollIntoViewContext, useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import type { DragScroller } from '../utils/fabDrop';
+import type { ScrollMetrics } from '../utils/editorJump';
+import { reduceMotionEnabled } from '../utils/useReduceMotion';
 
 interface Props {
   visible: boolean;
@@ -57,6 +59,18 @@ interface Props {
    * viewport rather than the content inside it (FabDropZoneProvider).
    */
   wrapScroll?: (scroll: React.ReactElement) => React.ReactNode;
+  /**
+   * Rendered between the header and the scroll, so it stays put while the form
+   * scrolls under it (the editors' jump bar).
+   */
+  subheader?: React.ReactNode;
+  /**
+   * Told the scroll's offset and sizes whenever any of them changes, for
+   * something tracking where the form is (`EditorJumpTracker`).
+   */
+  onScrollMetrics?: (metrics: ScrollMetrics) => void;
+  /** Filled with a function that scrolls the sheet to an offset, animated unless Reduce Motion is on. */
+  scrollToRef?: React.MutableRefObject<((y: number) => void) | null>;
 }
 
 /**
@@ -110,6 +124,9 @@ export function EditorSheet({
   keyboardAccessoryHeight = 0,
   dragScrollRef,
   wrapScroll,
+  subheader,
+  onScrollMetrics,
+  scrollToRef,
 }: Props) {
   const insets = useSafeAreaInsets();
   // Gives the ScrollView itself a correct bottom inset for the focused field
@@ -140,7 +157,15 @@ export function EditorSheet({
     };
     return () => { dragScrollRef.current = null; };
   }, [dragScrollRef, keyboardScroll.ref]);
-  const trackScroll = dragScrollRef
+  useEffect(() => {
+    if (!scrollToRef) return;
+    scrollToRef.current = (y: number) => {
+      keyboardScroll.ref.current?.scrollTo({ y, animated: !reduceMotionEnabled() });
+    };
+    return () => { scrollToRef.current = null; };
+  }, [scrollToRef, keyboardScroll.ref]);
+  const report = () => onScrollMetrics?.({ ...metrics.current });
+  const trackScroll = dragScrollRef || onScrollMetrics
     ? {
         scrollEventThrottle: 16,
         onScroll: (e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -151,9 +176,10 @@ export function EditorSheet({
             content: contentSize.height,
             viewport: layoutMeasurement.height,
           };
+          report();
         },
-        onContentSizeChange: (_w: number, h: number) => { metrics.current.content = h; },
-        onLayout: (e: LayoutChangeEvent) => { metrics.current.viewport = e.nativeEvent.layout.height; },
+        onContentSizeChange: (_w: number, h: number) => { metrics.current.content = h; report(); },
+        onLayout: (e: LayoutChangeEvent) => { metrics.current.viewport = e.nativeEvent.layout.height; report(); },
       }
     : null;
 
@@ -192,6 +218,7 @@ export function EditorSheet({
         <View style={{ paddingTop: insets.top }}>
           <View style={headerStyle}>{header}</View>
         </View>
+        {subheader}
 
         {wrapScroll ? wrapScroll(scroll) : scroll}
 

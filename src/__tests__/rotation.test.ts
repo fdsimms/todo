@@ -296,6 +296,21 @@ describe('rotationLastDoneLabel', () => {
   it('never reads as being in the future', () => {
     expect(rotationLastDoneLabel(ago(-3), WED)).toBe('Today');
   });
+
+  it('counts logical days, not hours since the day started', () => {
+    // 6 PM the evening before is 6 hours, not a day, before a midnight start.
+    expect(rotationLastDoneLabel(new Date('2026-09-15T18:00:00').toISOString(), WED)).toBe('Yesterday');
+    expect(rotationLastDoneLabel(new Date('2026-09-16T08:00:00').toISOString(), WED)).toBe('Today');
+  });
+
+  it('follows a day that starts after midnight', () => {
+    const wed2am = new Date('2026-09-16T02:00:00');
+    // 1 AM Wednesday still belongs to Tuesday's logical day, so it is yesterday.
+    expect(rotationLastDoneLabel(new Date('2026-09-16T01:00:00').toISOString(), wed2am)).toBe('Yesterday');
+    expect(rotationLastDoneLabel(new Date('2026-09-15T20:00:00').toISOString(), wed2am)).toBe('Yesterday');
+    expect(rotationLastDoneLabel(new Date('2026-09-14T23:00:00').toISOString(), wed2am)).toBe('2 days ago');
+    expect(rotationLastDoneLabel(new Date('2026-09-16T03:00:00').toISOString(), wed2am)).toBe('Today');
+  });
 });
 
 describe('rotationLastPick', () => {

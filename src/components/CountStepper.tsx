@@ -44,6 +44,8 @@ interface Props {
    * stepper whose value isn't a whole number: a weight in 2.5 kg steps.
    */
   places?: number;
+  /** Values a press moves between instead of a fixed `step`; see `StepRange.ladder`. */
+  ladder?: readonly number[];
   /** Shown in place of a number when `value` is null. */
   emptyLabel?: string;
   /** Renders the number — e.g. `n => `${n}×``. */
@@ -107,6 +109,7 @@ export function CountStepper({
   start,
   step = 1,
   places,
+  ladder,
   emptyLabel = 'Off',
   format = String,
   label,
@@ -116,7 +119,7 @@ export function CountStepper({
   const colors = useColors();
   const styles = makeStyles(colors);
 
-  const range: StepRange = { min, max, allowNull, start, step, places };
+  const range: StepRange = { min, max, allowNull, start, step, places, ladder };
   // A decimal field wherever the value can hold one; a whole-number counter
   // keeps the number pad, which has no point key to mistype.
   const decimal = (places ?? 0) > 0 || !Number.isInteger(step);

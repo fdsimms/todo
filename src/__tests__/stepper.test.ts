@@ -1,4 +1,5 @@
 import { canStep, clampCount, holdRepeatDelay, parseStepperInput, stepCount } from '../utils/stepper';
+import { COUNTDOWN_LADDER } from '../utils/taskKinds';
 
 const range = { min: 2, max: 99 };
 const clearable = { min: 2, max: 99, allowNull: true };
@@ -152,5 +153,28 @@ describe('holdRepeatDelay', () => {
     for (let i = 1; i < delays.length; i++) {
       expect(delays[i]).toBeLessThanOrEqual(delays[i - 1]);
     }
+  });
+});
+
+describe('stepCount with a ladder', () => {
+  const ladder = { min: 0.25, max: 180, allowNull: true, ladder: COUNTDOWN_LADDER };
+
+  it('steps 15 seconds under a minute, then whole minutes', () => {
+    expect(stepCount(0.5, 1, ladder)).toBe(0.75);
+    expect(stepCount(0.75, 1, ladder)).toBe(1);
+    expect(stepCount(1, 1, ladder)).toBe(2);
+    expect(stepCount(2, -1, ladder)).toBe(1);
+    expect(stepCount(1, -1, ladder)).toBe(0.75);
+  });
+
+  it('lands on the next rung from a value between them', () => {
+    expect(stepCount(1.5, 1, ladder)).toBe(2);
+    expect(stepCount(1.5, -1, ladder)).toBe(1);
+  });
+
+  it('clears below the floor and sticks at the ceiling', () => {
+    expect(stepCount(0.25, -1, ladder)).toBeNull();
+    expect(stepCount(180, 1, ladder)).toBe(180);
+    expect(stepCount(null, 1, ladder)).toBe(0.25);
   });
 });

@@ -4278,7 +4278,7 @@ describe('checkProjectReviewTasks', () => {
 
   // The drift the sweep exists for: acting on the offer is what makes it stale,
   // and nothing about dating that task knows a row is describing the old state.
-  it('clears a task whose project has stopped being quiet', () => {
+  it('keeps a task, ready, whose project has stopped being quiet', () => {
     useProjectStore.setState({ projects: [quietProject()] });
     useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
     useTaskStore.getState().checkProjectReviewTasks();
@@ -4288,13 +4288,25 @@ describe('checkProjectReviewTasks', () => {
     useTaskStore.getState().updateTask('a', { dueDate: new Date().toISOString() });
     useTaskStore.getState().checkProjectReviewTasks();
 
+    expect(reviewTasks()).toHaveLength(1);
+    expect(reviewTasks()[0].generatedReadyAt).toEqual(expect.any(String));
+  });
+
+  it('clears a task whose project is gone', () => {
+    useProjectStore.setState({ projects: [quietProject()] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+    useTaskStore.getState().checkProjectReviewTasks();
+
+    useProjectStore.setState({ projects: [] });
+    useTaskStore.getState().checkProjectReviewTasks();
+
     expect(reviewTasks()).toHaveLength(0);
   });
 
   // The real entry point for "acting on the offer": tapping the review task
   // opens the pull sheet, and pullProjectTasks is what commits it. That
   // action shouldn't need a separate sweep to notice it just answered itself.
-  it('is cleared by pullProjectTasks itself, not just a later sweep', () => {
+  it('is made ready by pullProjectTasks itself, not just a later sweep', () => {
     useProjectStore.setState({ projects: [quietProject()] });
     useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
     useTaskStore.getState().checkProjectReviewTasks();
@@ -4304,7 +4316,8 @@ describe('checkProjectReviewTasks', () => {
       { id: 'a', updates: { dueDate: new Date().toISOString(), deferUntil: null } },
     ]);
 
-    expect(reviewTasks()).toHaveLength(0);
+    expect(reviewTasks()).toHaveLength(1);
+    expect(reviewTasks()[0].generatedReadyAt).toEqual(expect.any(String));
   });
 
   // …and clearing it must not read as the user declining. The reconcile's own
@@ -4689,12 +4702,23 @@ describe('supplies', () => {
       expect(liveOrders()).toHaveLength(1);
     });
 
-    it('clears the order once the supply is topped back up', () => {
+    it('keeps the order, ready, once the supply is topped back up', () => {
       const task = addSupplyTask({ supplyCount: 1 });
       useTaskStore.getState().checkSupplyReorderTasks();
       expect(liveOrders()).toHaveLength(1);
 
       useTaskStore.getState().updateTask(task.id, { supplyCount: 8 });
+      useTaskStore.getState().checkSupplyReorderTasks();
+
+      expect(liveOrders()).toHaveLength(1);
+      expect(liveOrders()[0].generatedReadyAt).toEqual(expect.any(String));
+    });
+
+    it('clears the order when its supply task is gone', () => {
+      const task = addSupplyTask({ supplyCount: 1 });
+      useTaskStore.getState().checkSupplyReorderTasks();
+
+      useTaskStore.getState().deleteTask(task.id);
       useTaskStore.getState().checkSupplyReorderTasks();
 
       expect(liveOrders()).toHaveLength(0);
@@ -5030,12 +5054,12 @@ describe('checkPantryCheckTasks', () => {
   });
 
   // Off stops the asking, not the tidying up. Returning above the clear left
-  // a row about an item bought again (or deleted) on Today until somebody
-  // removed it by hand.
+  // a row about an item that was deleted on Today until somebody removed it by
+  // hand; one for an item bought again is marked ready instead.
   it.each([
     ['the setting', { pantryCheckTasks: false }],
     ['the whole grocery area', { kitchenEnabled: false }],
-  ])('still clears a row whose reason has gone with %s off', (_, off) => {
+  ])('still settles a row whose reason has gone with %s off', (_, off) => {
     seedItems(lapsedItem({ id: 'g-1' }), lapsedItem({ id: 'g-2', name: 'Rice', nameKey: 'rice' }));
     useTaskStore.getState().checkPantryCheckTasks();
     expect(checkTasks()).toHaveLength(2);
@@ -5045,9 +5069,10 @@ describe('checkPantryCheckTasks', () => {
     useSettingsStore.getState.mockReturnValue(settings(off));
     useTaskStore.getState().checkPantryCheckTasks();
 
-    // Only the row whose reason has gone: the rice row is still a true
-    // question, and switching the generator off is not a decline of it.
-    expect(checkTasks().map(t => t.generatedSourceId)).toEqual(['g-2']);
+    // The flour row is ready and the rice row is still a true question;
+    // switching the generator off is not a decline of either.
+    const ready = new Map(checkTasks().map(t => [t.generatedSourceId, !!t.generatedReadyAt]));
+    expect(ready).toEqual(new Map([['g-1', true], ['g-2', false]]));
   });
 
   it('does not pile up a second task on the next sweep', () => {
@@ -5072,27 +5097,54 @@ describe('checkPantryCheckTasks', () => {
   // The drift the sweep exists for. Answering happens on the item sheet, and
   // nothing about writing onHandUntil knows a task is sitting on Today asking
   // the question it just answered.
-  it('clears a task once the user says they still have it', () => {
+  // The row stays, ready, so the tick and its coins are still the person's.
+  it('keeps a task, ready, once the user says they still have it', () => {
     seedItems(lapsedItem());
     useTaskStore.getState().checkPantryCheckTasks();
     expect(checkTasks()).toHaveLength(1);
+    expect(checkTasks()[0].generatedReadyAt ?? null).toBeNull();
 
     useGroceryStore.setState({
       items: [lapsedItem({ onHandUntil: new Date(Date.now() + 30 * 86_400_000).toISOString() })],
     });
     useTaskStore.getState().checkPantryCheckTasks();
 
-    expect(checkTasks()).toHaveLength(0);
+    expect(checkTasks()).toHaveLength(1);
+    expect(checkTasks()[0].generatedReadyAt).toEqual(expect.any(String));
   });
 
-  it('clears a task once the user says they are out of it', () => {
+  it('keeps a task, ready, once the user says they are out of it', () => {
     seedItems(lapsedItem());
     useTaskStore.getState().checkPantryCheckTasks();
 
     useGroceryStore.setState({ items: [lapsedItem({ onHandUntil: OUT_OF_IT_UNTIL })] });
     useTaskStore.getState().checkPantryCheckTasks();
 
+    expect(checkTasks()).toHaveLength(1);
+    expect(checkTasks()[0].generatedReadyAt).toEqual(expect.any(String));
+  });
+
+  it('clears a task whose item has been deleted', () => {
+    seedItems(lapsedItem());
+    useTaskStore.getState().checkPantryCheckTasks();
+
+    seedItems();
+    useTaskStore.getState().checkPantryCheckTasks();
+
     expect(checkTasks()).toHaveLength(0);
+  });
+
+  it('takes the ready mark off when the question comes back', () => {
+    seedItems(lapsedItem());
+    useTaskStore.getState().checkPantryCheckTasks();
+    useGroceryStore.setState({ items: [lapsedItem({ onHandUntil: OUT_OF_IT_UNTIL })] });
+    useTaskStore.getState().checkPantryCheckTasks();
+    expect(checkTasks()[0].generatedReadyAt).toEqual(expect.any(String));
+
+    useGroceryStore.setState({ items: [lapsedItem()] });
+    useTaskStore.getState().checkPantryCheckTasks();
+
+    expect(checkTasks()[0].generatedReadyAt).toBeNull();
   });
 
   // …and clearing it must not read as the user declining, or the question would
@@ -5295,7 +5347,7 @@ describe('checkPantryReviewTasks', () => {
   it.each([
     ['the setting', { pantryReviewTasks: false }],
     ['the whole grocery area', { kitchenEnabled: false }],
-  ])('still clears its row once the deck empties with %s off', (_, off) => {
+  ])('still marks its row ready once the deck empties with %s off', (_, off) => {
     doubtfulCupboard();
     useTaskStore.getState().checkPantryReviewTasks();
     expect(reviewTasks()).toHaveLength(1);
@@ -5305,7 +5357,8 @@ describe('checkPantryReviewTasks', () => {
     useSettingsStore.getState.mockReturnValue(settings(off));
     useTaskStore.getState().checkPantryReviewTasks();
 
-    expect(reviewTasks()).toHaveLength(0);
+    expect(reviewTasks()).toHaveLength(1);
+    expect(reviewTasks()[0].generatedReadyAt).toEqual(expect.any(String));
     // And no day is spent on an offer that could not have been made.
     expect(setPantryReviewLastDayKey).not.toHaveBeenCalled();
   });
@@ -5345,7 +5398,7 @@ describe('checkPantryReviewTasks', () => {
     expect(reviewTasks()).toHaveLength(1);
   });
 
-  it('clears its row once the deck has nothing left in it', () => {
+  it('keeps its row, ready, once the deck has nothing left in it', () => {
     doubtfulCupboard();
     useTaskStore.getState().checkPantryReviewTasks();
     expect(reviewTasks()).toHaveLength(1);
@@ -5355,7 +5408,8 @@ describe('checkPantryReviewTasks', () => {
     seedItems(...Array.from({ length: 6 }, (_, i) => guessedItem(i, { onHandUntil: OUT_OF_IT_UNTIL })));
     useTaskStore.getState().checkPantryReviewTasks();
 
-    expect(reviewTasks()).toHaveLength(0);
+    expect(reviewTasks()).toHaveLength(1);
+    expect(reviewTasks()[0].generatedReadyAt).toEqual(expect.any(String));
   });
 
   // One review row already asks about the whole cupboard; three more questions
@@ -7238,6 +7292,18 @@ describe('checkMoodTasks', () => {
       expect(live[0].generatedSourceId).toBe('2026-08-26');
     });
 
+    it('keeps yesterday\'s check-in when it was answered, so the tick and its coins are still available', () => {
+      useSettingsStore.getState.mockReturnValue(settings());
+      useTaskStore.getState().checkMoodTasks();
+      setLogs([entry(TODAY, 4)]);
+
+      jest.setSystemTime(new Date(2026, 7, 26, 9, 0, 0));
+      useSettingsStore.getState.mockReturnValue(settings({ moodLogLastDayKey: TODAY }));
+      useTaskStore.getState().checkMoodTasks();
+
+      expect(tasksOfKind('moodLog').map(t => t.generatedSourceId).sort()).toEqual([TODAY, '2026-08-26']);
+    });
+
     it('writes nothing while switched off', () => {
       useSettingsStore.getState.mockReturnValue(settings({ moodLogTasks: false }));
 
@@ -7504,8 +7570,8 @@ describe('checkJournalTasks', () => {
     expect(morning.generatedSourceId).toBe(`${TODAY}:morning`);
     expect(morning.timeSegments).toEqual(['morning']);
 
-    // Evening arrives: the unanswered morning reminder is cleared, the evening one written,
-    // and a morning entry does not silence it.
+    // Evening arrives: the evening one is written and a morning entry does not silence it.
+    // The morning reminder was answered, so it stays ready to tick rather than being cleared.
     setEntries([written('journal', TODAY, 8)]);
     jest.setSystemTime(new Date(2026, 7, 25, 19, 0, 0));
     useSettingsStore.getState.mockReturnValue(settings({
@@ -7514,7 +7580,7 @@ describe('checkJournalTasks', () => {
     }));
     useTaskStore.getState().checkJournalTasks();
     const live = tasksOfKind('journalLog');
-    expect(live.map(t => t.generatedSourceId)).toEqual([`${TODAY}:evening`]);
+    expect(live.map(t => t.generatedSourceId).sort()).toEqual([`${TODAY}:evening`, `${TODAY}:morning`]);
   });
 
   it('writes the daily dream reminder with no part of the day', () => {
@@ -7527,12 +7593,28 @@ describe('checkJournalTasks', () => {
     expect(tasksOfKind('journalLog')).toHaveLength(0);
   });
 
-  it('completes today\'s reminder of the kind just written, and only that kind', () => {
+  it('leaves today\'s reminder on the list once its entry is written, ready for the person to tick', () => {
     useSettingsStore.getState.mockReturnValue(settings({ dreamLogTasks: true }));
     useTaskStore.getState().checkJournalTasks();
-    useTaskStore.getState().completeJournalTaskForToday('dream');
-    expect(tasksOfKind('dreamLog')).toHaveLength(0);
+    setEntries([written('dream', TODAY)]);
+    expect(tasksOfKind('dreamLog')).toHaveLength(1);
     expect(tasksOfKind('journalLog')).toHaveLength(1);
+  });
+
+  it('keeps an answered reminder past its day, so the tick and its coins are still available', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ dreamLogTasks: true, journalLogTasks: false }));
+    useTaskStore.getState().checkJournalTasks();
+    setEntries([written('dream', TODAY)]);
+
+    jest.setSystemTime(new Date(2026, 7, 26, 9, 0, 0));
+    useSettingsStore.getState.mockReturnValue(settings({
+      dreamLogTasks: true,
+      journalLogTasks: false,
+      dreamLogLastDayKey: TODAY,
+    }));
+    useTaskStore.getState().checkJournalTasks();
+
+    expect(tasksOfKind('dreamLog').map(t => t.generatedSourceId).sort()).toEqual([TODAY, '2026-08-26']);
   });
 
   it('refuses a tick on a reminder until its entry exists', () => {
@@ -7626,6 +7708,41 @@ describe('checkWeighInTasks', () => {
     expect(requests()).toHaveLength(1);
     useTaskStore.getState().completeTask(id);
     expect(requests()).toHaveLength(0);
+  });
+
+  it('makes a request ready when a weight is saved for today, and completes nothing', async () => {
+    await on(8);
+    useTaskStore.getState().markWeighInAnswered('2026-09-08');
+    expect(useHealthStore.getState().weighInAnsweredOn).toBe('2026-09-08');
+    expect(requests()).toHaveLength(1);
+
+    useTaskStore.getState().completeTask(requests()[0].id);
+    expect(requests()).toHaveLength(0);
+  });
+
+  it('asks Health again for a backdated weight instead of assuming it answers the request', async () => {
+    await on(8);
+    const read = useHealthStore.getState().readRecentWeights as jest.Mock;
+    read.mockClear();
+
+    useTaskStore.getState().markWeighInAnswered('2026-09-05');
+
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(useHealthStore.getState().weighInAnsweredOn).toBeNull();
+  });
+
+  it('does nothing when no request is live', () => {
+    useTaskStore.getState().markWeighInAnswered('2026-09-08');
+    expect(useHealthStore.getState().weighInAnsweredOn).toBeNull();
+  });
+
+  it('keeps an answered request past its day, so the tick and its coins are still available', async () => {
+    await on(8);
+    useTaskStore.getState().markWeighInAnswered('2026-09-08');
+
+    await on(9);
+
+    expect(requests().map(t => t.generatedSourceId).sort()).toEqual(['2026-09-08', '2026-09-09']);
   });
 
   it('holds a deleted request for the whole window rather than asking again tomorrow', async () => {
@@ -9001,14 +9118,15 @@ describe('checkMealThawTasks', () => {
     expect(thawRows()).toHaveLength(0);
   });
 
-  it('clears its row once the chicken is out of the freezer, without declining the meal', () => {
+  it('keeps its row, ready, once the chicken is out of the freezer, without declining the meal', () => {
     useTaskStore.getState().checkMealThawTasks();
     expect(thawRows()).toHaveLength(1);
 
     groceries(null);
     useTaskStore.getState().checkMealThawTasks();
 
-    expect(thawRows()).toHaveLength(0);
+    expect(thawRows()).toHaveLength(1);
+    expect(thawRows()[0].generatedReadyAt).toEqual(expect.any(String));
     expect(useMealPlanStore.getState().entries[0].thawTask ?? null).toBeNull();
   });
 
@@ -14386,6 +14504,36 @@ describe('quota tasks', () => {
           expect(shortfallTasks()[0].logHealthAmount).toBe(500);
         });
 
+        it('keeps it, ready, once the owed water is logged some other way, and a tick logs nothing more', () => {
+          withSettings({ ...on, nutritionTargets: { waterMl: 2500 } });
+          useTaskStore.setState({ tasks: [finished()] });
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(2000)]);
+          useTaskStore.getState().syncWaterQuotaTasks();
+          expect(shortfallTasks()[0].generatedReadyAt ?? null).toBeNull();
+
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(2500)]);
+          useTaskStore.getState().syncWaterQuotaTasks();
+          expect(shortfallTasks()).toHaveLength(1);
+          expect(shortfallTasks()[0].generatedReadyAt).toEqual(expect.any(String));
+
+          (logTaskHealthValue as jest.Mock).mockClear();
+          useTaskStore.getState().completeTask(shortfallTasks()[0].id);
+          expect(shortfallTasks()[0].completed).toBe(true);
+          expect(logTaskHealthValue).not.toHaveBeenCalled();
+        });
+
+        it('takes the ready mark off when the water entry is deleted again', () => {
+          withSettings({ ...on, nutritionTargets: { waterMl: 2500 } });
+          useTaskStore.setState({ tasks: [finished()] });
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(2000)]);
+          useTaskStore.getState().syncWaterQuotaTasks();
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(2500)]);
+          useTaskStore.getState().syncWaterQuotaTasks();
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(2000)]);
+          useTaskStore.getState().syncWaterQuotaTasks();
+          expect(shortfallTasks()[0].generatedReadyAt).toBeNull();
+        });
+
         it('writes nothing while the setting is off', () => {
           withSettings({ ...on, waterShortfallTasks: false, nutritionTargets: { waterMl: 2500 } });
           useTaskStore.setState({ tasks: [finished()] });
@@ -14471,11 +14619,21 @@ describe('quota tasks', () => {
           expect(bookTasks()).toHaveLength(0);
         });
 
-        it('drops the task once the next appointment is added', () => {
+        it('keeps the task, ready, once the next appointment is added', () => {
           withSettings(on);
           withSaved([saved()]);
           run();
           withSaved([saved({ lastStart: new Date(2026, 9, 20, 9).toISOString() })]);
+          run();
+          expect(bookTasks()).toHaveLength(1);
+          expect(bookTasks()[0].generatedReadyAt).toEqual(expect.any(String));
+        });
+
+        it('drops the task when the saved event is removed', () => {
+          withSettings(on);
+          withSaved([saved()]);
+          run();
+          withSaved([]);
           run();
           expect(bookTasks()).toHaveLength(0);
         });
@@ -14549,14 +14707,27 @@ describe('quota tasks', () => {
           expect(snackTasks()).toHaveLength(0);
         });
 
-        it('removes it once a logged snack brings the day past half', () => {
+        it('keeps it, ready, once a logged snack brings the day past half', () => {
           withSettings(on);
           (dbGetFoodLogEntries as jest.Mock).mockReturnValue([calorieEntry(600)]);
           run();
           expect(snackTasks()).toHaveLength(1);
           (dbGetFoodLogEntries as jest.Mock).mockReturnValue([calorieEntry(600), calorieEntry(500)]);
           run();
-          expect(snackTasks()).toHaveLength(0);
+          expect(snackTasks()).toHaveLength(1);
+          expect(snackTasks()[0].generatedReadyAt).toEqual(expect.any(String));
+        });
+
+        it('takes the ready mark off when the snack entry is deleted again', () => {
+          withSettings(on);
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([calorieEntry(600)]);
+          run();
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([calorieEntry(600), calorieEntry(500)]);
+          run();
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([calorieEntry(600)]);
+          run();
+          expect(snackTasks()).toHaveLength(1);
+          expect(snackTasks()[0].generatedReadyAt).toBeNull();
         });
 
         it('does not write one back the day it was deleted', () => {
@@ -14700,14 +14871,25 @@ describe('quota tasks', () => {
           expect(goalTasks()).toHaveLength(1);
         });
 
-        it('checks it off when the day reaches the goal, and keeps it checked', () => {
+        it('marks it ready when the day reaches the goal, and leaves the tick to the person', () => {
           withSettings(on());
           log(proteinEntry(80));
           run();
+          expect(goalTasks()[0].generatedReadyAt ?? null).toBeNull();
           log(proteinEntry(80), proteinEntry(45, 'p2'));
           run();
-          expect(goalTasks()[0].completed).toBe(true);
+          expect(goalTasks()[0].completed).toBe(false);
+          expect(goalTasks()[0].generatedReadyAt).toEqual(expect.any(String));
+
+          // An entry deleted again drops the day back under the goal.
           log(proteinEntry(80));
+          run();
+          expect(goalTasks()[0].generatedReadyAt).toBeNull();
+
+          // Once the person ticks it, it blocks a second one today.
+          log(proteinEntry(80), proteinEntry(45, 'p2'));
+          run();
+          useTaskStore.getState().completeTask(goalTasks()[0].id);
           run();
           expect(goalTasks()).toHaveLength(1);
           expect(goalTasks()[0].completed).toBe(true);
