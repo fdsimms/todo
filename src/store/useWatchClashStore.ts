@@ -9,7 +9,7 @@ import {
 } from '../utils/watchWorkoutClash';
 
 /**
- * The "Two workouts at the same time" questions still to ask (see
+ * The "Keep both workouts?" questions still to ask (see
  * `watchWorkoutClash.ts`). A watch workout can arrive with the app in the
  * background, where nobody can be asked, so the pair waits here, in the
  * settings table, until `useWatchClashPrompt` asks it with the app in front.

@@ -1049,8 +1049,8 @@ describe('a workout the Apple Watch ran on its own', () => {
     startedAt: at(6, 0),
     endedAt: at(6, 50),
     sets: [
-      { id: 'WS-2', exerciseId: squat, position: 0, setIndex: 2, kind: 'working', weightKg: 100, reps: 5, durationSeconds: null, distanceM: null, completedAt: at(6, 20), note: ' Knees in ' },
-      { id: 'WS-1', exerciseId: squat, position: 0, setIndex: 0, kind: 'warmup', weightKg: 60, reps: 5, durationSeconds: null, distanceM: null, completedAt: at(6, 10), note: null },
+      { id: 'WS-2', exerciseId: squat, position: 0, setIndex: 2, kind: 'working', weightKg: 100, reps: 5, durationSeconds: null, distanceM: null, completedAt: at(6, 20), note: ' Knees in ', supersetKey: 'ss-1' },
+      { id: 'WS-1', exerciseId: squat, position: 0, setIndex: 0, kind: 'warmup', weightKg: 60, reps: 5, durationSeconds: null, distanceM: null, completedAt: at(6, 10), note: null, supersetKey: null },
     ],
     ...extra,
   });
@@ -1069,9 +1069,9 @@ describe('a workout the Apple Watch ran on its own', () => {
     });
     reload();
     expect(state().sessions.map(x => x.id)).toEqual(['WATCH-1']);
-    expect(dbGetWorkoutSets('WATCH-1').map(x => [x.id, x.setIndex, x.kind, x.weightKg, x.completedAt, x.note])).toEqual([
-      ['WS-1', 0, 'warmup', 60, at(6, 10), null],
-      ['WS-2', 1, 'working', 100, at(6, 20), 'Knees in'],
+    expect(dbGetWorkoutSets('WATCH-1').map(x => [x.id, x.setIndex, x.kind, x.weightKg, x.completedAt, x.note, x.supersetKey])).toEqual([
+      ['WS-1', 0, 'warmup', 60, at(6, 10), null, null],
+      ['WS-2', 1, 'working', 100, at(6, 20), 'Knees in', 'ss-1'],
     ]);
   });
 
@@ -1093,6 +1093,18 @@ describe('a workout the Apple Watch ran on its own', () => {
   it('writes it to Health under Save’s switches', () => {
     const result = ok(state().addWatchSession(watchWorkout(), { now: NOW }));
     expect(mockWrite).toHaveBeenCalledWith(result.session);
+  });
+
+  it('leaves one that arrives more than a week late out of Health, in front as in the background', () => {
+    const late = new Date(2026, 9, 26, 8, 0);
+    mockWriteOn.mockReturnValue(true);
+    ok(state().addWatchSession(watchWorkout(), { now: late }));
+    ok(state().addWatchSession(watchWorkout({ id: 'WATCH-2' }), { now: late, deferHealthWrite: true }));
+    expect(mockWrite).not.toHaveBeenCalled();
+    expect(dbGetWorkoutSession('WATCH-2')?.healthWritePending).toBe(false);
+    // Six days is still written.
+    ok(state().addWatchSession(watchWorkout({ id: 'WATCH-3' }), { now: new Date(2026, 9, 24, 6, 0) }));
+    expect(mockWrite).toHaveBeenCalledTimes(1);
   });
 
   // Applied in the background, where the time borrowed ends before Health may

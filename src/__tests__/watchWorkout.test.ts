@@ -273,19 +273,52 @@ describe('buildWatchWorkout', () => {
       expect(out.routines[0].exercises).toEqual([{ id: BENCH, name: 'Barbell bench press', kind: 'weight_reps', rest: 150, suggestion: PROPOSED }]);
     });
 
-    it('leaves out a routine with nothing in it, and stops at the caps', () => {
+    it('leaves out a routine with nothing in it, and stops at the routine cap', () => {
       const routines = Array.from({ length: MAX_WATCH_ROUTINES + 2 }, (_, i) => routine(`r${i}`, { sortOrder: i }));
-      const out = buildWatchWorkout(input({
-        routines,
-        planFor: id => (id === 'r0' ? [] : planned(BENCH, 0, MAX_WATCH_PLAN_SETS + 5)),
-      }))!;
+      const out = buildWatchWorkout(input({ routines, planFor: id => (id === 'r0' ? [] : planned(BENCH, 0, 4)) }))!;
       expect(out.routines).toHaveLength(MAX_WATCH_ROUTINES);
       expect(out.routines.map(r => r.id)).not.toContain('r0');
-      expect(out.routines[0].plan).toHaveLength(MAX_WATCH_PLAN_SETS);
+      expect(out.routines[0].moreSets).toBeUndefined();
+    });
+
+    it('cuts a long routine between whole exercises, and says how many sets it left off', () => {
+      const ids = Array.from({ length: 12 }, (_, i) => `lib:exercise-${i}`);
+      const out = buildWatchWorkout(input({
+        routines: [routine('r1')],
+        planFor: () => ids.flatMap((id, position) => planned(id, position, 7)),
+      }))!;
+      // 12 exercises of 7 is 84 sets: eight whole exercises (56) fit in 60.
+      expect(out.routines[0].plan).toHaveLength(56);
+      expect(new Set(out.routines[0].plan.map(p => p.exerciseId)).size).toBe(8);
+      expect(out.routines[0].moreSets).toBe(28);
+      expect(out.routines[0].exerciseCount).toBe(12);
+    });
+
+    it('keeps a superset whole, and keeps the first exercise even when it alone is over the cap', () => {
+      const pair = (position: number, key: string) => [BENCH, ROW].flatMap((id, k) => planned(id, position + k, 4)
+        .map(p => ({ ...p, values: { ...p.values, supersetKey: key } })));
+      const rows = [...planned(PLANK, 0, MAX_WATCH_PLAN_SETS - 6), ...pair(1, 'ss-1')];
+      const out = buildWatchWorkout(input({ routines: [routine('r1')], planFor: () => rows }))!;
+      // The superset's eight sets don't fit beside the plank's 54, so both go.
+      expect(out.routines[0].plan.every(p => p.exerciseId === PLANK)).toBe(true);
+      expect(out.routines[0].moreSets).toBe(8);
+      const huge = buildWatchWorkout(input({ routines: [routine('r1')], planFor: () => planned(BENCH, 0, MAX_WATCH_PLAN_SETS + 5) }))!;
+      expect(huge.routines[0].plan).toHaveLength(MAX_WATCH_PLAN_SETS + 5);
+    });
+
+    it('carries a set’s superset, which a workout on the watch brings back', () => {
+      const rows = [BENCH, ROW].flatMap((id, k) => planned(id, k, 2).map(p => ({ ...p, values: { ...p.values, supersetKey: 'ss-1' } })));
+      const out = buildWatchWorkout(input({ routines: [routine('r1')], planFor: () => rows }))!;
+      expect(out.routines[0].plan.map(p => [p.exerciseId, p.supersetKey])).toEqual([
+        [BENCH, 'ss-1'], [ROW, 'ss-1'], [BENCH, 'ss-1'], [ROW, 'ss-1'],
+      ]);
     });
 
     it('stays well under the watch context’s size at the caps', () => {
-      const exercises = ['lib:barbell-bench-press', 'lib:barbell-row', 'lib:back-squat', 'lib:deadlift', 'lib:overhead-press', 'lib:lat-pulldown', 'lib:barbell-curl', 'lib:triceps-pushdown'];
+      const exercises = [
+        'lib:barbell-bench-press', 'lib:barbell-row', 'lib:back-squat', 'lib:deadlift', 'lib:overhead-press',
+        'lib:lat-pulldown', 'lib:barbell-curl', 'lib:triceps-pushdown', 'lib:romanian-deadlift', 'lib:leg-press',
+      ];
       // Every routine different and every load different, so the compression
       // has as little repetition to work with as a real start list would.
       const planOf = (r: number) => exercises.flatMap((id, position) => planned(id, position, MAX_WATCH_PLAN_SETS / exercises.length)
@@ -306,15 +339,17 @@ describe('buildWatchWorkout', () => {
         recent,
         exercises: recent.map(({ exerciseId }, i) => ({ id: exerciseId, name: `My exercise number ${i}`, kind: 'weight_reps' }) as never),
       }))!;
+      expect(out.routines[0].plan).toHaveLength(MAX_WATCH_PLAN_SETS);
       expect(out.routines[0].exercises.every(e => e.suggestion?.ramp)).toBe(true);
       expect(out.recent).toHaveLength(MAX_WATCH_RECENT);
       const json = JSON.stringify(out);
-      // About 95 KB written out and 4.3 KB deflated (zlib standing in for the
-      // LZFSE the phone sends, which is what travels), against a context the
-      // rest of the snapshot already fills a good part of. Before the
-      // suggestions and the Add exercise list it was 60 KB and 2.5 KB.
-      expect(json.length).toBeLessThan(120_000);
-      expect(deflateRawSync(json).length).toBeLessThan(8_000);
+      // About 128 KB written out and 5.4 KB deflated (zlib standing in for
+      // the LZFSE the phone sends, which is what travels), against a context
+      // the rest of the snapshot already fills a good part of. Before the
+      // suggestions, the Add exercise list and the 60-set plans it was 60 KB
+      // and 2.5 KB.
+      expect(json.length).toBeLessThan(150_000);
+      expect(deflateRawSync(json).length).toBeLessThan(9_000);
     });
   });
 });

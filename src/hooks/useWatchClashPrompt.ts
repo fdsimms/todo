@@ -10,7 +10,7 @@ import { clashPrompt, nextClash, sessionToDelete, type ClashChoice } from '../ut
 let asking = false;
 
 /**
- * Asks "Two workouts at the same time" for each watch workout that arrived
+ * Asks "Keep both workouts?" for each watch workout that arrived
  * overlapping another (`useWatchClashStore`), one at a time, while the app is
  * in front. Mounted once in App.tsx rather than on a screen: the workout can
  * arrive with any tab showing, and a frozen tab runs no effects.

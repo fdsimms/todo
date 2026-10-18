@@ -53,6 +53,7 @@ import { loadContextFor, rampSteps } from '../utils/workoutProgression';
 import { libraryProgram } from '../utils/workoutProgramLibrary';
 import { useSettingsStore } from './useSettingsStore';
 import {
+  PENDING_WORKOUT_WRITE_MAX_AGE_DAYS,
   logWorkoutToHealth,
   pendingWorkoutWriteAction,
   retractWorkoutFromHealth,
@@ -215,6 +216,8 @@ export interface WatchSessionInput {
     completedAt: string;
     /** A note written on the set on the watch. */
     note: string | null;
+    /** The superset it belonged to in the plan, kept so history shows the pair. */
+    supersetKey: string | null;
   }[];
 }
 
@@ -1227,7 +1230,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         distanceM: amount(st.distanceM),
         rpe: null,
         completedAt: st.completedAt,
-        supersetKey: null,
+        supersetKey: st.supersetKey?.trim() || null,
         note: st.note?.trim() || null,
       })));
       const clashesWith = overlappingSessions(session, get().sessions, now);
@@ -1254,7 +1257,11 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         if (effect === 'complete') tasks.completeTask(task!.id, { completedAt: endedAt });
         else if (effect === 'log-unit' && endedToday) tasks.logQuotaUnit(task!.id);
       }
-      writeToHealth(session, deferHealthWrite);
+      // A workout that reaches the phone more than a week after it ended is
+      // history, not something to write now: the same answer the background
+      // path gets, where the pending pass drops a flag that old
+      // (`pendingWorkoutWriteAction`), so when it arrives decides nothing.
+      if (now.getTime() - endMs <= PENDING_WORKOUT_WRITE_MAX_AGE_DAYS * 86_400_000) writeToHealth(session, deferHealthWrite);
       return { session: get().sessions.find(x => x.id === session.id) ?? session, sets, duplicate: false, clashesWith };
     },
 

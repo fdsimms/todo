@@ -229,6 +229,7 @@ describe('proposeNext, linear', () => {
     expect(p.move).toBe('deload');
     expect(p.sets[0].weightKg).toBe(90);
     expect(p.reason).toBe('Down 10 kg after 3 workouts in a row short of 5 reps at 100 kg.');
+    expect(p.brief).toBe('Short of 5 reps 3 times in a row');
   });
 
   it('counts only the misses at the same weight', () => {

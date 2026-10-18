@@ -732,6 +732,7 @@ export function parseWatchSession(raw: unknown): WatchSessionInput | null {
       distanceM: values.distanceM ?? null,
       completedAt,
       note: typeof s.note === 'string' && s.note.trim() !== '' ? s.note.trim().slice(0, WATCH_NOTE_MAX) : null,
+      supersetKey: idOf(s.supersetKey),
     });
   }
   if (sets.length === 0) return null;

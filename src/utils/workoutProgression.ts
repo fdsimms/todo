@@ -448,7 +448,7 @@ export function proposeNext(input: ProposalInput): Proposal | null {
       return {
         ...base, move: 'deload', sets: sets(next, reps), repsMin: reps, repsMax: reps, lastKg,
         reason: `Down ${deltaText(lastKg, next, unit)} after ${misses} workouts in a row short of ${reps} reps at ${formatWeightNumber(lastKg, unit)} ${unit}.`,
-        brief: `Short of ${reps} ${misses} times in a row`,
+        brief: `Short of ${reps} reps ${misses} times in a row`,
       };
     }
     return {

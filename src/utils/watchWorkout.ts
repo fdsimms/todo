@@ -49,17 +49,22 @@ import { programProgress } from './workoutProgram';
  *
  * **Capped**, because the watch's copy travels as one compressed
  * WatchConnectivity context: at most `MAX_WATCH_ROUTINES` routines with
- * `MAX_WATCH_PLAN_SETS` sets each, and `MAX_WATCH_LIVE_SETS` sets of a live
- * workout (`moreSets` counts the rest, so the watch can say they're on the
- * phone rather than call the workout done). The routines are left out while a
+ * about `MAX_WATCH_PLAN_SETS` sets each, cut only between whole exercises (a
+ * superset as one), and `MAX_WATCH_LIVE_SETS` sets of a live workout. Both
+ * carry `moreSets`, counting what was left off, so the watch never calls a
+ * workout done while sets it never got are still to do. The routines are left out while a
  * workout is going on the phone: the watch logs into that one, so it has no
  * start list to show, and the plans are the expensive part to read.
  */
 
 /** Routines on the watch's start list, "From Today" included. */
 export const MAX_WATCH_ROUTINES = 8;
-/** Planned sets carried per routine: eight exercises of five sets. */
-export const MAX_WATCH_PLAN_SETS = 40;
+/**
+ * Planned sets carried per routine: ten exercises of six. Whole exercises
+ * only (`wholeExercises`), so a routine is cut between two exercises, never
+ * partway through one.
+ */
+export const MAX_WATCH_PLAN_SETS = 60;
 /** Sets of the phone's live workout carried to the watch. */
 export const MAX_WATCH_LIVE_SETS = 100;
 /** Exercises on the watch's "Add exercise" list. */
@@ -144,6 +149,8 @@ export interface WatchWorkoutSet {
   doneAt?: string;
   /** The note written on the set, if any. */
   note?: string;
+  /** The superset it belongs to, which a workout run on the watch brings back with it. */
+  supersetKey?: string;
 }
 
 export interface WatchLiveWorkout {
@@ -171,8 +178,13 @@ export interface WatchRoutine {
   /** The program it counts toward. */
   programId?: string;
   exercises: WatchWorkoutExercise[];
-  /** What starting it lays out, in walking order, at most `MAX_WATCH_PLAN_SETS`. */
+  /** What starting it lays out, in walking order, whole exercises up to `MAX_WATCH_PLAN_SETS`. */
   plan: WatchWorkoutSet[];
+  /**
+   * Sets of the routine past the cap, left off whole exercises at a time.
+   * The watch's own workout says so rather than calling itself done.
+   */
+  moreSets?: number;
 }
 
 export interface WatchWorkoutSnapshot {
@@ -279,6 +291,7 @@ export function watchSetRows(
     if (s.distanceM !== null) row.distanceM = s.distanceM;
     if (s.completedAt !== null) row.doneAt = s.completedAt;
     if (s.note) row.note = s.note;
+    if (s.supersetKey) row.supersetKey = s.supersetKey;
     return row;
   });
 }
@@ -387,6 +400,28 @@ export function watchRecentExercises(
     }))
     .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
     .slice(0, MAX_WATCH_RECENT);
+}
+
+/**
+ * The rows of the first exercises that fit in `cap` sets, whole: a routine is
+ * cut between two exercises, never partway through one, and a superset (its
+ * exercises' sets alternate in the walk) is cut as one. The first exercise is
+ * kept even if it alone is over the cap, so no routine comes back empty.
+ */
+export function wholeExercises<T extends { exerciseId: string }>(rows: readonly T[], cap: number): T[] {
+  const lastIndex = new Map<string, number>();
+  rows.forEach((row, i) => lastIndex.set(row.exerciseId, i));
+  let end = -1;
+  let kept = 0;
+  for (let i = 0; i < rows.length; i++) {
+    end = Math.max(end, lastIndex.get(rows[i].exerciseId)!);
+    if (i === end) {
+      // A block closes here: rows kept..i are one exercise, or one superset.
+      if (i + 1 > cap && kept > 0) break;
+      kept = i + 1;
+    }
+  }
+  return rows.slice(0, kept);
 }
 
 /** A plan's rows as unsaved sets, so the session rules can read them. */
@@ -509,9 +544,10 @@ export function buildWatchWorkout(input: WatchWorkoutInput): WatchWorkoutSnapsho
     const planned = plannedAsSets(input.planFor(routine.id));
     // A routine with nothing in it has nothing to log on the watch.
     if (planned.length === 0) continue;
-    const plan = watchSetRows(planned, {
+    const rows = watchSetRows(planned, {
       exercises: input.exercises, unit: input.unit, routine, defaultRestSeconds: input.defaultRestSeconds,
-    }).slice(0, MAX_WATCH_PLAN_SETS).map(({ id: _id, doneAt: _doneAt, ...row }) => row);
+    });
+    const plan = wholeExercises(rows, MAX_WATCH_PLAN_SETS).map(({ id: _id, doneAt: _doneAt, ...row }) => row);
     const programId = today ? today.programId : routine.programId;
     const entry: WatchRoutine = {
       id: routine.id,
@@ -523,6 +559,7 @@ export function buildWatchWorkout(input: WatchWorkoutInput): WatchWorkoutSnapsho
     };
     if (today?.taskId) entry.taskId = today.taskId;
     if (programId) entry.programId = programId;
+    if (rows.length > plan.length) entry.moreSets = rows.length - plan.length;
     routines.push(entry);
   }
   return { ...base, live: null, routines };

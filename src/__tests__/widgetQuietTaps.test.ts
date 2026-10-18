@@ -431,7 +431,7 @@ describe('watch workout taps', () => {
       const [t] = parseQuietTaps(JSON.stringify([{ kind: 'watchSession', id: 'watch-w1', at: AT, workout: workoutJson() }]));
       expect(t.workout).toMatchObject({ id: 'watch-w1', taskId: 'lift', title: 'Push A' });
       expect(t.workout!.sets).toEqual([
-        { id: 's1', exerciseId: 'lib:barbell-bench-press', position: 0, setIndex: 0, kind: 'working', weightKg: 83.915, reps: 8, durationSeconds: null, distanceM: null, completedAt: ENDED, note: null },
+        { id: 's1', exerciseId: 'lib:barbell-bench-press', position: 0, setIndex: 0, kind: 'working', weightKg: 83.915, reps: 8, durationSeconds: null, distanceM: null, completedAt: ENDED, note: null, supersetKey: null },
       ]);
       expect(parseQuietTaps(JSON.stringify([{ kind: 'watchSession', id: 'other', at: AT, workout: workoutJson() }]))).toEqual([]);
       expect(parseQuietTaps(JSON.stringify([{ kind: 'watchSession', id: 'watch-w1', at: AT }]))).toEqual([]);
@@ -485,12 +485,12 @@ describe('watch workout taps', () => {
       expect(t.note).toHaveLength(WATCH_NOTE_MAX);
     });
 
-    it('reads a watch workout’s set notes', () => {
+    it('reads a watch workout’s set notes and supersets', () => {
       const workout = workoutJson({
-        sets: [{ id: 's1', exerciseId: 'x', position: 0, setIndex: 0, kind: 'working', weight: 100, reps: 5, completedAt: ENDED, note: ' Belt on ' }],
+        sets: [{ id: 's1', exerciseId: 'x', position: 0, setIndex: 0, kind: 'working', weight: 100, reps: 5, completedAt: ENDED, note: ' Belt on ', supersetKey: 'ss-1' }],
       });
       const [t] = parseQuietTaps(JSON.stringify([{ kind: 'watchSession', id: 'watch-w1', at: AT, workout }]));
-      expect(t.workout!.sets[0].note).toBe('Belt on');
+      expect(t.workout!.sets[0]).toMatchObject({ note: 'Belt on', supersetKey: 'ss-1' });
     });
   });
 

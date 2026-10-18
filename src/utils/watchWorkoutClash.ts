@@ -148,7 +148,7 @@ export function clashPrompt(
     ? `Your iPhone has “${other.title}” going ${describeSpan(other, now, use24Hour)}.`
     : `Your iPhone has “${other.title}” from ${describeSpan(other, now, use24Hour)}.`;
   return {
-    title: 'Two workouts at the same time',
+    title: 'Keep both workouts?',
     message:
       `Your Apple Watch saved “${watch.title}” from ${describeSpan(watch, now, use24Hour)}. ${theirs} ` +
       'Keep both, or delete the one you don’t want.' +

@@ -122,7 +122,7 @@ describe('the question', () => {
       false,
     );
     expect(words).toEqual({
-      title: 'Two workouts at the same time',
+      title: 'Keep both workouts?',
       message: 'Your Apple Watch saved “Push A” from 6:02 PM to 6:54 PM. Your iPhone has “Pull A” from 6:05 PM to 6:50 PM. Keep both, or delete the one you don’t want.',
       keepBoth: 'Keep both',
       deleteWatch: 'Delete the watch’s',
