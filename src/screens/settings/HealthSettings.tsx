@@ -365,7 +365,7 @@ export function HealthSettings() {
         label="Read Apple Health"
         hint={healthReadEnabled
           ? workoutsEnabled
-            ? "Reads today’s steps, active calories and Activity rings for Today, and other apps’ workouts for your workout history"
+            ? "Reads today’s steps, active calories and Activity rings for Today, other apps’ workouts for your workout history, and the heart rate your Apple Watch measured during a workout"
             : "Reads today’s steps, active calories and Activity rings, and shows them on Today"
           : 'Nothing is read from Health'}
         toggle={healthReadEnabled}
