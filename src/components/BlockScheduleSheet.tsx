@@ -13,6 +13,7 @@ import { useAppGroupStore } from '../store/useAppGroupStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, radius, spacing, type Colors } from '../theme';
+import { fieldWell } from '../theme/textStyles';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
@@ -216,17 +217,19 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
         >
           <SettingsSection label="Name">
             <View style={styles.nameWrap}>
-              <TextField
-                style={styles.nameInput}
-                value={draft.name}
-                onChangeText={name => setDraft(d => ({ ...d, name }))}
-                placeholder="Schedule name"
-                placeholderTextColor={colors.textTertiary}
-                autoCapitalize="sentences"
-                returnKeyType="done"
-                maxLength={24}
-                accessibilityLabel="Schedule name"
-              />
+              <View style={styles.nameWell}>
+                <TextField
+                  style={styles.nameInput}
+                  value={draft.name}
+                  onChangeText={name => setDraft(d => ({ ...d, name }))}
+                  placeholder="Schedule name"
+                  placeholderTextColor={colors.textTertiary}
+                  autoCapitalize="sentences"
+                  returnKeyType="done"
+                  maxLength={24}
+                  accessibilityLabel="Schedule name"
+                />
+              </View>
             </View>
           </SettingsSection>
 
@@ -313,7 +316,9 @@ function makeStyles(colors: Colors) {
     root: { flex: 1, backgroundColor: colors.bg },
     content: { paddingBottom: spacing.xl },
     nameWrap: { padding: spacing.md },
-    nameInput: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium, minHeight: 36 },
+    // The settings card is bgSecondary, so the field steps up to bgTertiary.
+    nameWell: fieldWell(colors),
+    nameInput: { flex: 1, color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium, padding: 0, minHeight: 44 },
     dayRow: { flexDirection: 'row', gap: spacing.xs, padding: spacing.md },
     dayPill: { paddingHorizontal: 0, borderRadius: radius.sm },
     problem: {

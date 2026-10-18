@@ -1752,10 +1752,44 @@ export function FoodLogEntrySheet({
     </View>
   ) : null;
 
-  // What the two lookup buttons answer, at the top of the list: the estimate
+  // What the two lookups answer, at the top of the list: the estimate
   // first, since it is about everything typed, then the database's matches.
   const dbRows = dbShowAll ? db.ranked : db.ranked.slice(0, DB_ROWS_SHOWN);
-  const dbStale = dbOpen && !!db.searchedFor && query.trim() !== '' && query.trim() !== db.searchedFor;
+  const hasQuery = query.trim() !== '';
+  const dbStale = dbOpen && !!db.searchedFor && hasQuery && query.trim() !== db.searchedFor;
+  // The way past the foods this app already has figures for, offered as the
+  // first rows of the list once there is text to send. Always offered apart
+  // from the estimate's own gate: the list only holds foods that already have
+  // figures, and these are the way to one that doesn't. Each leaves while its
+  // own results are open, which have their own way to search again.
+  const offerDatabase = hasQuery && !dbOpen;
+  const offerEstimate = hasQuery && !!canEstimate && !estimateOpen;
+  const lookupOffers = offerDatabase || offerEstimate ? (
+    <View style={styles.lookupOffers}>
+      {offerDatabase && (
+        <LookupOffer
+          styles={styles}
+          colors={colors}
+          icon="search-outline"
+          label={hasFdcKey ? `Search a food database for “${query.trim()}”` : 'Add a food database key'}
+          onPress={openFoodDatabase}
+          accessibilityLabel={hasFdcKey
+            ? `Search a food database for ${query.trim()}`
+            : 'Add a food database key in Settings'}
+        />
+      )}
+      {offerEstimate && (
+        <LookupOffer
+          styles={styles}
+          colors={colors}
+          icon="sparkles-outline"
+          label={`Estimate “${query.trim()}”`}
+          onPress={openEstimate}
+          accessibilityLabel={`Estimate the nutrition of ${query.trim()}`}
+        />
+      )}
+    </View>
+  ) : null;
   const lookupBlock = (estimateOpen || dbOpen) ? (
     <View style={styles.lookupBlock}>
       {estimateOpen && (
@@ -2228,8 +2262,9 @@ export function FoodLogEntrySheet({
               />
               {/* In the field rather than in a row of its own: a packet in hand
                   is most often reached for after a search has come up empty,
-                  and this is where the eye already is. */}
-              {!!onScan && (
+                  and this is where the eye already is. With nothing typed it
+                  is the first tile below instead, so it is never offered twice. */}
+              {!!onScan && hasQuery && (
                 <PressableScale
                   style={styles.scanButton}
                   onPress={() => { haptics.tap(); Keyboard.dismiss(); onScan(); }}
@@ -2239,59 +2274,45 @@ export function FoodLogEntrySheet({
                 </PressableScale>
               )}
             </View>
-            {/* The two ways past what this app already has figures for, both
-                acting on the field above and both answered in the list below
-                rather than in a sheet of their own. Dimmed with nothing typed,
-                since there is nothing yet for either to look up. Always offered
-                apart from the estimate's own gate: the list only holds foods
-                that already have figures, and these are the way to one that
-                doesn't. */}
-            <View style={styles.lookupRow}>
-              <LookupButton
-                styles={styles}
-                colors={colors}
-                icon="search-outline"
-                label={hasFdcKey ? 'Food database' : 'Add database key'}
-                active={dbOpen}
-                busy={db.searching}
-                disabled={hasFdcKey && !query.trim()}
-                onPress={openFoodDatabase}
-                accessibilityLabel={hasFdcKey
-                  ? (query.trim() ? `Search a food database for ${query.trim()}` : 'Search a food database. Type a food first')
-                  : 'Add a food database key in Settings'}
-              />
-              {!!canEstimate && (
-                <LookupButton
-                  styles={styles}
-                  colors={colors}
-                  icon="sparkles-outline"
-                  label="Estimate"
-                  active={estimateOpen}
-                  disabled={!query.trim()}
-                  onPress={openEstimate}
-                  accessibilityLabel={query.trim() ? `Estimate the nutrition of ${query.trim()}` : 'Estimate from a description. Type what you ate first'}
-                />
-              )}
-            </View>
-            {(!!onSavedMeal || !!onPhotographLabel) && (
-            <View style={styles.actionRow}>
-              {!!onPhotographLabel && (
-                <InlineAction
-                  label="Photograph a label"
-                  icon="camera-outline"
-                  variant="neutral"
-                  onPress={startLabelPhoto}
-                />
-              )}
-              {!!onSavedMeal && (
-                <InlineAction
-                  label="Log a saved meal"
-                  icon="bookmark-outline"
-                  variant="neutral"
-                  onPress={() => { haptics.tap(); Keyboard.dismiss(); onSavedMeal(); }}
-                />
-              )}
-            </View>
+            {/* The ways to start that need no text, as one row of tiles. They
+                are only here while the field is empty: once something is typed
+                the keyboard is up and the space under the field belongs to
+                the list. The two ways past what this app has figures for are
+                what the typed text can be sent to, and they appear then, as
+                the first rows of the list (`lookupOffers`). */}
+            {!hasQuery && (!!onScan || !!onPhotographLabel || !!onSavedMeal) && (
+              <>
+                <Text style={styles.startLabel}>OR START FROM</Text>
+                <View style={styles.startRow}>
+                  {!!onScan && (
+                    <StartTile
+                      styles={styles}
+                      colors={colors}
+                      icon="barcode-outline"
+                      label="Scan a barcode"
+                      onPress={() => { haptics.tap(); Keyboard.dismiss(); onScan(); }}
+                    />
+                  )}
+                  {!!onPhotographLabel && (
+                    <StartTile
+                      styles={styles}
+                      colors={colors}
+                      icon="camera-outline"
+                      label="Photograph a label"
+                      onPress={startLabelPhoto}
+                    />
+                  )}
+                  {!!onSavedMeal && (
+                    <StartTile
+                      styles={styles}
+                      colors={colors}
+                      icon="bookmark-outline"
+                      label="Log a saved meal"
+                      onPress={() => { haptics.tap(); Keyboard.dismiss(); onSavedMeal(); }}
+                    />
+                  )}
+                </View>
+              </>
             )}
             {!!onDeclineMeal && (
               <TouchableOpacity
@@ -2320,6 +2341,7 @@ export function FoodLogEntrySheet({
               {...listScroll.props}
               ListHeaderComponent={
                 <>
+                  {lookupOffers}
                   {lookupBlock}
                   {savedBlock}
                   {usualBlock}
@@ -2350,8 +2372,8 @@ export function FoodLogEntrySheet({
                       : 'Only foods and recipes with nutrition can be logged.')
                     + (hasFdcKey
                       ? (candidates.length === 0
-                        ? ' Type a food above and tap Food database, or add nutrition to a grocery item.'
-                        : ' Tap Food database to search for it, or add nutrition to a grocery item.')
+                        ? ' Type a food above and search a food database, or add nutrition to a grocery item.'
+                        : ' Search a food database for it, or add nutrition to a grocery item.')
                       // Without a key the search can only fail, so the next
                       // step is the key, not the search.
                       : ' To search a food database, add a free FoodData Central key in Settings. You can also add nutrition to a grocery item.')
@@ -2435,39 +2457,52 @@ export function FoodLogEntrySheet({
 /** How many database matches show before "Show N more". */
 const DB_ROWS_SHOWN = 4;
 
-interface LookupButtonProps {
+interface StartTileProps {
   styles: ReturnType<typeof makeStyles>;
   colors: Colors;
   icon: React.ComponentProps<typeof Ionicons>['name'];
   label: string;
-  /** Its results are open in the list below. */
-  active: boolean;
-  busy?: boolean;
-  disabled: boolean;
+  onPress: () => void;
+}
+
+/**
+ * One of the ways to start that need no text (scan, photograph a label, a
+ * saved meal): equal thirds of one row, icon over label.
+ */
+function StartTile({ styles, colors, icon, label, onPress }: StartTileProps) {
+  return (
+    <PressableScale style={styles.startTile} onPress={onPress} accessibilityRole="button" accessibilityLabel={label}>
+      <Ionicons name={icon} size={iconSize.md} color={colors.accentText} />
+      <Text style={styles.startTileText} numberOfLines={2}>{label}</Text>
+    </PressableScale>
+  );
+}
+
+interface LookupOfferProps {
+  styles: ReturnType<typeof makeStyles>;
+  colors: Colors;
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  label: string;
   onPress: () => void;
   accessibilityLabel: string;
 }
 
 /**
- * One of the two buttons under the search field (Food database, Estimate).
- * Equal halves of one row, tinted while their results are open below, so the
- * button says which section it answered.
+ * Something the typed text can be sent to (the food database, an estimate),
+ * drawn as a row of the list it adds to rather than a button beside it.
  */
-function LookupButton({ styles, colors, icon, label, active, busy, disabled, onPress, accessibilityLabel }: LookupButtonProps) {
+function LookupOffer({ styles, colors, icon, label, onPress, accessibilityLabel }: LookupOfferProps) {
   return (
-    <PressableScale
-      style={[styles.lookupButton, active && styles.lookupButtonOn, disabled && styles.lookupButtonOff]}
+    <TouchableOpacity
+      style={styles.row}
+      activeOpacity={interaction.activeOpacity}
       onPress={onPress}
-      disabled={disabled}
       accessibilityRole="button"
-      accessibilityState={{ disabled, selected: active }}
       accessibilityLabel={accessibilityLabel}
     >
-      {busy
-        ? <ActivityIndicator size="small" color={active ? colors.accentText : colors.textSecondary} />
-        : <Ionicons name={icon} size={iconSize.sm} color={active ? colors.accentText : colors.text} />}
-      <Text style={[styles.lookupButtonText, active && styles.lookupButtonTextOn]} numberOfLines={1}>{label}</Text>
-    </PressableScale>
+      <Ionicons name={icon} size={iconSize.sm} color={colors.accentText} />
+      <Text style={styles.lookupOfferText} numberOfLines={2}>{label}</Text>
+    </TouchableOpacity>
   );
 }
 
@@ -2659,46 +2694,45 @@ function makeStyles(colors: Colors) {
       color: colors.textSecondary,
       fontSize: font.sm,
     },
-    // The three blocks above the list — field, actions, results — sat
-    // spacing.sm apart, which is the same gap the result rows keep between
-    // themselves, so the actions read as one more row of the list rather than
-    // as a separate offer. spacing.md is the stacked-block default, and it is
-    // what separates them. Wraps because both labels together are wider than a
-    // phone.
-    actionRow: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      // Or a row's default stretch gives a wrapped pill the height of its
-      // line rather than its own.
-      alignItems: 'flex-start',
-      gap: spacing.sm,
+    // The tiles under an empty field. spacing.md below, as the field above
+    // keeps, so the list's first block doesn't sit against them.
+    startLabel: {
+      color: colors.textSecondary,
+      fontSize: font.xs,
+      fontWeight: fontWeight.semibold,
+      letterSpacing: 0.8,
       marginHorizontal: spacing.md,
-      marginBottom: spacing.md,
+      marginBottom: spacing.sm,
     },
-    // The Food database / Estimate pair under the field. Same block gap below
-    // as the field above it keeps.
-    lookupRow: {
+    startRow: {
       flexDirection: 'row',
       gap: spacing.sm,
       marginHorizontal: spacing.md,
       marginBottom: spacing.md,
     },
-    lookupButton: {
+    // minHeight, not height: a larger system text size wraps the label onto a
+    // third line and the tile has to grow with it.
+    startTile: {
       flex: 1,
-      flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
       gap: spacing.xsm,
-      minHeight: 40,
-      paddingHorizontal: spacing.sm,
-      paddingVertical: spacing.sm,
+      minHeight: 76,
+      paddingHorizontal: spacing.xsm,
+      paddingVertical: spacing.smd,
       borderRadius: radius.md,
-      backgroundColor: colors.bgTertiary,
+      backgroundColor: colors.bgSecondary,
     },
-    lookupButtonOn: { backgroundColor: colors.accentSubtle },
-    lookupButtonOff: { opacity: 0.45 },
-    lookupButtonText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold, flexShrink: 1 },
-    lookupButtonTextOn: { color: colors.accentText },
+    startTileText: {
+      color: colors.text,
+      fontSize: font.sm,
+      fontWeight: fontWeight.semibold,
+      textAlign: 'center',
+    },
+    // Rows of the list, so the list's own gap (the row's marginBottom) is what
+    // spaces them from what follows.
+    lookupOffers: { marginBottom: spacing.xxs },
+    lookupOfferText: { flex: 1, color: colors.accentText, fontSize: font.md, fontWeight: fontWeight.semibold },
     // The estimate and the database matches, above the list's own rows, with
     // a block gap between them and before what follows.
     lookupBlock: { gap: spacing.md, marginBottom: spacing.md },

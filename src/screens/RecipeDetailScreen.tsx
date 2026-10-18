@@ -27,6 +27,7 @@ import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { useMeasuredTextWidth } from '../hooks/useMeasuredTextWidth';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { ThumbIcon } from '../components/ThumbIcon';
 import { useShallow } from 'zustand/react/shallow';
 import type { ComponentPlacement, RecipeBlank, RecipeIngredient, RecipeOverride, RecipePrepTask, RecipeStep } from '../types';
 import { GROCERY_NAME_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH, RECIPE_STEP_NOTE_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
@@ -2059,8 +2060,8 @@ export function RecipeDetailScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={recipe.vote === 'loved' ? 'Unmark loved' : 'Mark loved'}
               >
-                <Ionicons
-                  name={recipe.vote === 'loved' ? 'thumbs-up' : 'thumbs-up-outline'}
+                <ThumbIcon
+                  filled={recipe.vote === 'loved'}
                   size={iconSize.md}
                   color={recipe.vote === 'loved' ? colors.orangeText : colors.textSecondary}
                 />

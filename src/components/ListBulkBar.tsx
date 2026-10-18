@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView, Animated } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { NamedIcon } from './CoinIcon';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { PressableScale } from './PressableScale';
 import { useTheme } from '../theme/ThemeContext';
@@ -185,7 +186,7 @@ export function ListBulkBar({
                   }}
                   accessibilityLabel={action.label}
                 >
-                  <Ionicons name={action.icon} size={24} color={tint} />
+                  <NamedIcon name={action.icon} size={24} color={tint} />
                   <Text style={[styles.actionLabel, { color: tint }]}>{action.label}</Text>
                 </PressableScale>
               );

@@ -5,6 +5,7 @@ import { TITLE_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, type Colors } from '../theme';
+import { fieldWell } from '../theme/textStyles';
 import { formatOffsetLabel, formatMinutesOffset } from '../utils/templateUtils';
 import { PREP_OFFSET_MIN, PREP_OFFSET_MAX } from '../utils/recipeUtils';
 import { CountStepper } from './CountStepper';
@@ -97,15 +98,17 @@ export function PrepTaskSheet({ visible, recipeId, prepTask: livePrepTask, onClo
     >
       <View style={styles.sectionCard}>
         <Text style={styles.groupLabel}>What to do</Text>
-        <TextField
-          style={styles.input}
-          value={title}
-          onChangeText={setTitle}
-          placeholder="e.g. Marinate the chicken"
-          placeholderTextColor={colors.textTertiary}
-          maxLength={TITLE_MAX_LENGTH}
-          accessibilityLabel="Prep task title"
-        />
+        <View style={styles.well}>
+          <TextField
+            style={styles.input}
+            value={title}
+            onChangeText={setTitle}
+            placeholder="e.g. Marinate the chicken"
+            placeholderTextColor={colors.textTertiary}
+            maxLength={TITLE_MAX_LENGTH}
+            accessibilityLabel="Prep task title"
+          />
+        </View>
       </View>
 
       <View style={styles.sectionCard}>
@@ -179,11 +182,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
-  input: {
-    color: colors.text,
-    fontSize: font.md,
-    minHeight: 36,
-  },
+  // The card is bgSecondary, so the field steps up to bgTertiary.
+  well: { ...fieldWell(colors), marginTop: spacing.xs },
+  input: { flex: 1, color: colors.text, fontSize: font.md, padding: 0, minHeight: 44 },
   hint: {
     color: colors.textTertiary,
     fontSize: font.xs,

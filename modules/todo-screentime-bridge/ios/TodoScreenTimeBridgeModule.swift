@@ -591,6 +591,27 @@ public class TodoScreenTimeBridgeModule: Module {
       return false
     }
 
+    /// What the system shield holds right now, read back from the store rather
+    /// than from what the app last asked for. `applyShield` returning true only
+    /// says a write was made; this is how the Screen Time page can tell a block
+    /// that is up from one that was lifted behind the app's back. `categories`
+    /// counts an allowlist (everything except some apps) as one.
+    Function("shieldedCounts") { () -> [String: Int] in
+      var counts = ["applications": 0, "categories": 0, "websites": 0]
+      #if canImport(ManagedSettings)
+      if #available(iOS 16.0, *) {
+        TodoScreenTimeExceptionCatcher.runCatchingExceptions {
+          let store = ManagedSettingsStore(named: .init(Self.shieldStoreName))
+          counts["applications"] = store.shield.applications?.count ?? 0
+          counts["categories"] = store.shield.applicationCategories == nil ? 0 : 1
+          counts["websites"] = (store.shield.webDomains?.count ?? 0)
+            + (store.shield.webDomainCategories == nil ? 0 : 1)
+        }
+      }
+      #endif
+      return counts
+    }
+
     // ─── Usage thresholds ─────────────────────────────────────────────────
 
     /// Arm the monitor for today: one DeviceActivityEvent per rule, each

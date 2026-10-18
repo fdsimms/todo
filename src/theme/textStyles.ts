@@ -1,5 +1,5 @@
-import type { TextStyle } from 'react-native';
-import { font, fontWeight, type Colors } from './index';
+import type { TextStyle, ViewStyle } from 'react-native';
+import { font, fontWeight, radius, spacing, type Colors } from './index';
 
 /**
  * The right-aligned "here's what this is currently set to" text — `EditorRow`'s
@@ -19,4 +19,25 @@ export const disclosureValue = (colors: Colors): TextStyle => ({
   color: colors.accentText,
   fontSize: font.sm,
   fontWeight: fontWeight.medium,
+});
+
+/**
+ * The box a text field sits in when the field is on a card: a `bgTertiary`
+ * well, one step up from the card's `bgSecondary`, with no outline. Without
+ * it a field on a card is bare text, and nothing says it can be typed into.
+ * Put the `TextField` inside a `View` with this style (so a unit or an icon
+ * can live in the box too), give the input `flex: 1` and no padding, and
+ * never a `lineHeight` (see the TextInput note in CLAUDE.md).
+ *
+ * A field already on `bgTertiary` or on the page itself needs a different
+ * step, so check what it sits on before reusing this.
+ */
+export const fieldWell = (colors: Colors): ViewStyle => ({
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: spacing.xs,
+  backgroundColor: colors.bgTertiary,
+  borderRadius: radius.md,
+  paddingHorizontal: spacing.md,
+  minHeight: 44,
 });

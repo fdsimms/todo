@@ -52,6 +52,16 @@ export function stockedProduce(entries: readonly KitchenEntry[]): string[] {
   return [...keys];
 }
 
+/** The names behind `stockedProduce`'s count, one per catalog key, in the order the pantry lists them. */
+export function stockedProduceNames(entries: readonly KitchenEntry[]): string[] {
+  const names = new Map<string, string>();
+  for (const key of stockedProduce(entries)) {
+    const entry = entries.find(e => e.kind !== 'leftover' && e.matchKey === key && e.freshness !== 'over');
+    if (entry) names.set(key, entry.title.toLowerCase());
+  }
+  return [...names.values()];
+}
+
 /** Whether the pantry is under the floor. */
 export function produceFloorApplies(stockedCount: number, floor: number): boolean {
   return stockedCount < clampProduceFloor(floor);
@@ -92,10 +102,17 @@ export function restockSuggestions(
     );
 }
 
-export function produceFloorNotes(suggestions: readonly GroceryItem[]): string {
-  const head = 'Counted from what the pantry lists as on hand. Dismiss it if you already have enough.';
-  if (suggestions.length === 0) return head;
-  const names = suggestions.slice(0, PRODUCE_FLOOR_SUGGESTIONS_SHOWN).map(i => i.name.toLowerCase());
-  const more = suggestions.length - names.length;
-  return `${head}\n\nYou have bought: ${names.join(', ')}${more > 0 ? ` and ${more} more` : ''}.`;
+export function produceFloorNotes(
+  suggestions: readonly GroceryItem[],
+  onHand: readonly string[] = [],
+): string {
+  const parts = ['Counted from what the pantry lists as on hand. Dismiss it if you already have enough.'];
+  // The whole list: it is shorter than the floor, which is capped at 20.
+  if (onHand.length > 0) parts.push(`On hand: ${onHand.join(', ')}.`);
+  if (suggestions.length > 0) {
+    const names = suggestions.slice(0, PRODUCE_FLOOR_SUGGESTIONS_SHOWN).map(i => i.name.toLowerCase());
+    const more = suggestions.length - names.length;
+    parts.push(`Bought before, not on hand: ${names.join(', ')}${more > 0 ? ` and ${more} more` : ''}.`);
+  }
+  return parts.join('\n\n');
 }

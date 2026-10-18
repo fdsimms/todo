@@ -81,7 +81,7 @@ export function StorageSettings() {
   return (
     <SettingsSection
       label="Storage"
-      footer="Deleting data frees space inside the database file but doesn’t make the file smaller. Compacting rewrites it, takes a few seconds and needs free space on your phone about the size of your data. Nothing is deleted. After you compact once, space freed by deleted data is given back each time the app opens."
+      footer="Deleting data doesn’t make the database file smaller. Compacting rewrites it, which takes a few seconds and needs free space about the size of your data. Nothing is deleted. After that, freed space is given back each time the app opens."
     >
       <SettingsRow
         entryId="storageUsage"

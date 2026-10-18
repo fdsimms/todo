@@ -370,7 +370,7 @@ import {
 } from '../utils/produceNudgeTasks';
 import { recipeProduceResolver } from '../utils/recipeProduce';
 import {
-  produceFloorApplies, produceFloorNotes, produceFloorTitle, restockSuggestions, stockedProduce,
+  produceFloorApplies, produceFloorNotes, produceFloorTitle, restockSuggestions, stockedProduce, stockedProduceNames,
 } from '../utils/produceFloorTasks';
 import { kitchenInventory } from '../utils/kitchenInventory';
 import {
@@ -6709,7 +6709,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       settings.produceFloorDeclinedWeekKey !== weekKey;
     if (wanted) ensureGeneratedTaskCategory('produceFloor');
     const category = useSettingsStore.getState().produceFloorTaskCategory;
-    const notes = produceFloorNotes(restockSuggestions(grocery.items, stocked));
+    const notes = produceFloorNotes(restockSuggestions(grocery.items, stocked), stockedProduceNames(entries));
     const dueDate = getCurrentDayStart();
     dueDate.setHours(12, 0, 0, 0);
 
