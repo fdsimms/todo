@@ -195,6 +195,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/healthRules.ts` — HEALTH_NUTRIENT_METRICS, usesCheckpoint, HEALTH_RULE_TITLE_MAX_LENGTH, HEALTH_THRESHOLDS, HEALTH_METRIC_DIRECTION, healthRuleDirection, HEALTH_METRIC_EARLIEST_HOUR, HEALTH_METRICS, healthRuleCheckpointHour, HealthRuleReading, +22 more
 - `src/utils/healthTarget.ts` — HEALTH_TARGET_METRICS, HealthTargetState, HealthTargetReading, HEALTH_TARGET_RANGES, hasHealthTarget, healthTargetValue, followsRingGoal, effectiveHealthTarget, healthTargetProgress, isHealthTargetReady, +3 more
 - `src/utils/healthWeightSync.ts` — WeightWriteResult, logWeightToHealth
+- `src/utils/healthWorkoutSync.ts` — WORKOUT_HEALTH_ACTIVITY, PENDING_WORKOUT_WRITE_MAX_AGE_DAYS, workoutSpanWritable, pendingWorkoutWriteAction, workoutHealthWriteOn, WorkoutWriteResult, logWorkoutToHealth, retractWorkoutFromHealth
 - `src/utils/healthWorkouts.ts` — HEALTH_WORKOUT_ACTIVITIES, HealthWorkoutActivity, HEALTH_WORKOUT_ACTIVITY_LABEL, HealthWorkout, parseHealthWorkouts, readHealthWorkouts
 - `src/utils/hiddenEvents.ts` — HiddenEvent, hiddenEventKey, hiddenEventFromEvent, isHiddenEventStale, pruneStaleHiddenEvents
 - `src/utils/holidays.ts` — HolidaySet, HOLIDAY_SETS, HOLIDAY_SET_LABELS, Holiday, HolidayConfig, holidaysInYear, holidayOn, hasAnyHolidays, nextHoliday, parseHolidaySet, +1 more
@@ -304,6 +305,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/patchNotes.ts` — PatchNote
 - `src/utils/penaltyShield.ts` — penaltyCutoffAt, PenaltyCharge, penaltyChargeFor, slipPenaltyUntil, extendShieldUntil, penaltyCreditFor, uncreditShieldUntil, creditShieldUntil, penaltyShieldWanted
 - `src/utils/pendingHealthFoodWrites.ts` — runPendingHealthFoodWrites
+- `src/utils/pendingHealthWorkoutWrites.ts` — runPendingHealthWorkoutWrites
 - `src/utils/peopleBackfill.ts` — PersonBackfillFieldId, PersonBackfillFieldDef, PERSON_BACKFILL_FIELDS, isPersonFieldMissing, isPersonFieldApplicable, isPersonBackfillDismissed, personBackfillCandidates, personBackfillFieldCounts, dismissPersonBackfillField, personCadencePatch, +2 more
 - `src/utils/peopleList.ts` — PeopleSectionKind, PeopleSection, sortPeopleAlphabetically, peopleSections, PersonContactKind, PersonContactAction, personContactActions
 - `src/utils/peopleLocations.ts` — peopleNearLocation, anyoneHasLocation
@@ -556,6 +558,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/widgetSync.ts` — drainWatchQueues, writeWidgetSnapshotNow, useWidgetSync
 - `src/utils/workoutCsv.ts` — ImportSource, ImportedSet, ImportedSession, CsvParseResult, SkippedRows, describeSkipped, ParseOptions, parseCsv, readCsv, parseImportDate, +34 more
 - `src/utils/workoutData.ts` — EXERCISE_KINDS, EXERCISE_EQUIPMENT, MUSCLE_GROUPS, WORKOUT_SET_KINDS, PROGRESSION_SCHEMES, EQUIPMENT_LABELS, MUSCLE_LABELS, WORKOUT_NAME_MAX_LENGTH, exerciseNameKey, cleanWorkoutName, +25 more
+- `src/utils/workoutData.ts` — EXERCISE_KINDS, EXERCISE_EQUIPMENT, MUSCLE_GROUPS, WORKOUT_SET_KINDS, PROGRESSION_SCHEMES, EQUIPMENT_LABELS, MUSCLE_LABELS, WORKOUT_NAME_MAX_LENGTH, exerciseNameKey, cleanWorkoutName, +24 more
+- `src/utils/workoutHistory.ts` — HEALTH_HISTORY_MAX_DAYS, WorkoutHistoryRow, healthHistoryWindow, interleaveHistory, healthWorkoutSource, healthWorkoutTitle, healthWorkoutLine
 - `src/utils/workoutProgram.ts` — ProgramProgress, liveRotation, programSessions, programProgress, weekLabel, describeProgress
 - `src/utils/workoutProgramLibrary.ts` — LibraryProgramRoutine, LibraryProgram, PROGRAM_LIBRARY, libraryProgram, percentExercises
 - `src/utils/workoutProgression.ts` — LINEAR_DELOAD_AFTER, DELOAD_FRACTION, DEFAULT_TARGET_RPE, RPE_LOAD_PER_POINT, DEFAULT_WAVE_PERCENTS, WAVE_STEP_POINTS, WAVE_DELOAD_POINTS, TRAINING_MAX_FRACTION, defaultIncrementKg, incrementFor, +26 more
@@ -648,6 +652,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useFocusRefreshedRead.ts` — useFocusRefreshedRead
 - `src/hooks/useFocusSession.ts` — useFocusSession, useFocusStepDoneHaptic, useFocusPlanReconcile
 - `src/hooks/useFoodDatabaseSearch.ts` — FoodDatabaseSearch, useFoodDatabaseSearch
+- `src/hooks/useHealthWorkoutHistory.ts` — useHealthWorkoutHistory
 - `src/hooks/useJournalAccess.ts` — useJournalAccess
 - `src/hooks/useKeyShortcuts.ts` — useKeyShortcuts
 - `src/hooks/useKeyboardHeight.ts` — useKeyboardHeight
@@ -708,7 +713,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 
 ## `src/db`
 
-- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, ensureDatabaseReady, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, +290 more
+- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, ensureDatabaseReady, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, +292 more
 - `src/db/syncTracking.ts` — SyncTable, KEY_SEPARATOR, SYNC_TRACKED_TABLES, SYNC_DEVICE_LOCAL_COLUMNS, isDeviceLocalColumn, withoutDeviceLocalColumns, SYNC_EXCLUDED_TABLES, SYNCED_SETTING_KEYS, isSyncedSettingKey, HEALTH_SYNC_TABLES, +16 more
 
 ## `src/services`

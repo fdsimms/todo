@@ -12,7 +12,7 @@ further reader or writer has to be built against.
 Read this before touching `modules/todo-health-bridge/`,
 `src/utils/healthBridge.ts`, `src/utils/healthCompletionSync.ts`,
 `src/utils/healthWeightSync.ts`, `src/utils/healthFoodSync.ts`,
-`src/utils/healthWorkouts.ts`,
+`src/utils/healthWorkouts.ts`, `src/utils/healthWorkoutSync.ts`,
 `src/utils/weightLog.ts`, `src/store/useFoodLogStore.ts`,
 `src/store/useHealthStore.ts`, `src/screens/settings/HealthSettings.tsx`,
 `src/screens/WeightScreen.tsx`, `src/utils/sleepLog.ts`,
@@ -1047,24 +1047,34 @@ sheet builds the key from live catalog data.
 
 A strength session logged in the Workouts screen can be saved to Health as a
 workout, and workouts other apps recorded (a run, a ride, a class) can be read
-back for the Workouts history. The native half is built
-(`writeWorkout`, `deleteWorkout` and `readWorkouts` in the bridge, and
-`src/utils/healthWorkouts.ts` for the read); the wiring that calls them comes
-with the Workouts screen's phase 4 work (`docs/arch/workouts.md`). Everything
+back for the Workouts history. The bridge half is `writeWorkout`,
+`deleteWorkout` and `readWorkouts`; the app half is
+`src/utils/healthWorkoutSync.ts` (the write and its rules),
+`src/utils/healthWorkouts.ts` (the read), `src/utils/workoutHistory.ts` (the
+rows in the history) and the calls in `useWorkoutStore` (`docs/arch/workouts.md`,
+"Phase 5, as built"). Everything
 the meal write says about writing being a different kind of risk from reading
 holds here. What follows is where a workout differs.
 
 ### What is written, and when
 
-**One `HKWorkout` per finished session, on the person's tap of "Write to
-Health"**, and only while its own switch is on (`workoutHealthWrite`, planned in
-`docs/arch/workouts.md` and added with the wiring). It is
+**One `HKWorkout` per finished session, on the person's tap of "Save workout"**
+on workout mode's summary (`finishSession`), and only while three switches are
+on: Log to Health (`healthWriteEnabled`), its Workouts row (`workoutHealthWrite`,
+off by default) and the Workouts area the row sits in. The second is its own
+switch rather than riding the first because somebody who already logs meals to
+Health must not start writing workouts by turning the Workouts area on. The
+summary says it will happen ("Saving also writes it to Apple Health as a
+strength workout.") so the tap is an informed one. It is
 licensed by the meal write's argument: a session exists because a person
 logged the sets, so recording that it happened is writing down their
 statement, not the app forming an opinion about a body. The trigger rule is
 the food log's unchanged: a person acting on one session, no sweep, and no pass
 over the history of sessions logged before this shipped.
 
+- **An import is never written.** A workout read from a Strong or Hevy file
+  came from an app that most likely wrote it to Health already, and writing it
+  again would double it there. The import sheet says so while writing is on.
 - **It is a strength workout and nothing else.** The bridge refuses any
   activity but `.traditionalStrengthTraining` and `.functionalStrengthTraining`,
   indoor. Sets of weight and reps are all this app can truthfully say happened.
@@ -1079,7 +1089,19 @@ over the history of sessions logged before this shipped.
 - **Absurdity checks, not judgments.** An end that isn't after the start, a
   session over a day long, or one ending in the future is refused, for the
   body-mass ceiling's reason: a mistyped clock should not put a permanent
-  outlier in somebody's record.
+  outlier in somebody's record. `workoutSpanWritable` makes the same checks on
+  the JS side first, because the bridge answers all of them and a real
+  refusal with the same null, and only the refusal may raise the notice below.
+- **A refused write raises the meal write's notice, with its own words and its
+  own "already said" flag** (`healthWorkoutWriteRefusalSeen`).
+  `HealthWriteRefusedNotice` watches both stores. Workout sharing is allowed or
+  refused apart from nutrition, so one flag for both would let a meal's notice
+  swallow the workout's.
+- **A workout an agent logged waits for the phone**, the meal write's
+  exception (`WorkoutSession.healthWritePending`, `writePendingHealthSessions`,
+  run beside the food log's after a sync that applied rows, in front only). A
+  session has no creation stamp, so the seven-day limit counts from when it
+  ended. One logged with no length has no span to write and is dropped.
 
 ### What is retracted
 
@@ -1088,8 +1110,34 @@ and the ids of any samples saved with it. `deleteWorkout` takes them back, under
 `deleteHealthSamples`' rules: the same serial-queue tally, "no objects matched"
 counted as success, and **not gated on the switch**, because removing what was
 written is what somebody who turned writing off is asking for. Deleting a
-session, or an edit that changes what was written, retracts and rewrites it the
-way `reviseEntry` does for a meal.
+session retracts it (`deleteSession`, which reads the id off the row before it
+goes).
+
+**An edit rewrites less than `reviseEntry` does, on purpose.** Health holds the
+span and the activity and nothing else (no title, no sets, no metadata), so
+only a change to a written workout's start or end retracts and rewrites it,
+and only while writing is on. With the switches off, an edit leaves Health as
+it is rather than retracting: the meal's correction is about a false figure in
+a medical record, and a workout moved by ten minutes is not that. An edit never
+writes a workout that was never written (one saved with the switch off, or
+imported), because an edit is not the person asking for it to be shared. The
+app itself has no time editor yet; today the edit arrives from an agent, and
+the MCP server refuses it (below).
+
+**`healthWorkoutId` syncs, the way `FoodLogEntry.healthSampleIds` does**, so it
+is not in `SYNC_DEVICE_LOCAL_COLUMNS` and stamping it restamps the row as a real
+change. Any of the person's own devices may retract it: HealthKit lets an app
+delete only what that app saved, and the same app on another device is the same
+source. The MCP server has no HealthKit, so `update_workout` refuses a new time
+for a workout marked `inAppleHealth` and `delete_workout` refuses to delete one,
+exactly as the food tools refuse for a meal with sample ids. The write switches
+are device-local, like `healthWriteEnabled`: they say what this phone may put in
+Health.
+
+**There is no column for sample ids.** The bridge can hand back ids of samples
+saved beside the workout, but only for measured energy, which nothing passes,
+so they are always empty. The watch phase that passes energy adds the column
+(`health_sample_ids`, the food log's shape) in the same change.
 
 **It is a separate delete rather than two more types in `deleteHealthSamples`.**
 Apple documents `deleteObjects(of:predicate:)` as failing for a type the app
@@ -1143,7 +1191,12 @@ Other apps' workouts are **readings**, and the reading rules apply in full:
 **They are never stored**, for the reasons this file opens with: Health already
 syncs them, a copy would be someone else's record in this app's backup file,
 and a reading never becomes user data. The history queries the window it shows,
-each time it shows it.
+each time it shows it (`useHealthWorkoutHistory`: on focus, on foreground and
+when the window moves), from the day of the oldest session listed and no more
+than `HEALTH_HISTORY_MAX_DAYS` (90) back, and only while Read Apple Health is
+on. They are not counted in the header, records, Stats or the mood contrast,
+and an empty read adds nothing to the list: no "connect Health" row, since a
+refusal looks the same as a person who only lifts.
 
 ### The re-ask, and the strings
 

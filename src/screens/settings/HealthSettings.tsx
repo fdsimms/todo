@@ -117,6 +117,8 @@ export function HealthSettings() {
   const setHealthReadEnabled = useSettingsStore(s => s.setHealthReadEnabled);
   const healthWriteEnabled = useSettingsStore(s => s.healthWriteEnabled);
   const setHealthWriteEnabled = useSettingsStore(s => s.setHealthWriteEnabled);
+  const workoutHealthWrite = useSettingsStore(s => s.workoutHealthWrite);
+  const setWorkoutHealthWrite = useSettingsStore(s => s.setWorkoutHealthWrite);
   const healthWriteNutrients = useSettingsStore(useShallow(s => s.healthWriteNutrients));
   const setHealthWriteNutrients = useSettingsStore(s => s.setHealthWriteNutrients);
   const healthCategory = useSettingsStore(s => s.healthCategory);
@@ -166,6 +168,9 @@ export function HealthSettings() {
   // fourteen of them, and this reads as allowed only when every one is. See the
   // native `writeAuthorizationStatus`.
   const [nutritionWriteStatus, setNutritionWriteStatus] = useState<HealthWriteStatus | null>(null);
+  // A fourth: the workout share type, read whether or not the Workouts area is
+  // on, since the one combined sheet asks about it either way.
+  const [workoutWriteStatus, setWorkoutWriteStatus] = useState<HealthWriteStatus | null>(null);
 
   // Re-read on focus *and* on foreground, for the reason the calendar rows
   // give: the access row can send someone to the system Settings app, which
@@ -186,6 +191,7 @@ export function HealthSettings() {
     setWaterWriteStatus(bridge ? bridge.healthWriteAuthorizationStatus('water') : null);
     setWeightWriteStatus(bridge ? bridge.healthWriteAuthorizationStatus('weight') : null);
     setNutritionWriteStatus(bridge ? bridge.healthWriteAuthorizationStatus('nutrition') : null);
+    setWorkoutWriteStatus(bridge ? bridge.healthWriteAuthorizationStatus('workout') : null);
   }, []);
 
   useFocusEffect(
@@ -247,7 +253,7 @@ export function HealthSettings() {
     // passes the whole of `writeTypes`), so it is worth raising if *any* is
     // still unanswered.
     if (next && (waterWriteStatus === 'notDetermined' || weightWriteStatus === 'notDetermined'
-      || nutritionWriteStatus === 'notDetermined')) {
+      || nutritionWriteStatus === 'notDetermined' || workoutWriteStatus === 'notDetermined')) {
       const bridge = healthBridge();
       bridge?.requestHealthWriteAuthorization()
         .then(() => {
@@ -260,6 +266,18 @@ export function HealthSettings() {
           void refresh();
         })
         .catch(() => refreshWriteStatus());
+    }
+  };
+
+  // The Workouts row under Log to Health. Turning it on is the moment to ask
+  // about workout sharing if it is still unanswered (an install that answered
+  // the sheet before workouts joined it): the same one combined sheet, raised
+  // on the same kind of tap as the switch above.
+  const onToggleWorkoutWrite = () => {
+    const next = !workoutHealthWrite;
+    setWorkoutHealthWrite(next);
+    if (next && workoutWriteStatus === 'notDetermined') {
+      void askForWriteAccess();
     }
   };
 
@@ -277,6 +295,9 @@ export function HealthSettings() {
     if (!bridge) return;
     await bridge.requestHealthWriteAuthorization();
     refreshWriteStatus();
+    // The sheet asks to read as well, workouts included, so the read access
+    // row can change from here too.
+    refreshStatus();
   };
 
   // A reading from a day that has already turned over is not an answer about
@@ -336,7 +357,9 @@ export function HealthSettings() {
         iconColor={healthReadEnabled ? colors.accent : undefined}
         label="Read Apple Health"
         hint={healthReadEnabled
-          ? "Reads today’s steps, active calories and Activity rings, and shows them on Today"
+          ? workoutsEnabled
+            ? "Reads today’s steps, active calories and Activity rings for Today, and other apps’ workouts for your workout history"
+            : "Reads today’s steps, active calories and Activity rings, and shows them on Today"
           : 'Nothing is read from Health'}
         toggle={healthReadEnabled}
         onPress={onToggle}
@@ -362,7 +385,7 @@ export function HealthSettings() {
                 // reading — see the module note in modules/todo-health-bridge/
                 // index.ts for why. Said here so the extra rows in that sheet
                 // aren't a surprise, whether or not Log to Health is even on.
-                ? "Not asked yet. Allowing this also asks about writing to Health (water, weight, meals), in the same sheet"
+                ? "Not asked yet. Allowing this also asks about writing to Health (water, weight, meals, workouts), in the same sheet"
                 : requestStatus === 'unnecessary'
                   ? "Already asked. To change what’s shared, open Health, tap your profile picture, then Privacy, then Apps, then dundundun"
                   : requestStatus === 'unavailable'
@@ -507,7 +530,7 @@ export function HealthSettings() {
 
     <SettingsSection
       label="Log to Health"
-      footer="Writes water when a task you’ve set up to log it is completed, your weight when you record it, and a meal’s nutrition when you add it to the food log. Nothing else is written to Health. Deleting a food log entry removes what it wrote. Choose below which nutrients a logged meal can carry into Health. A nutrient a meal doesn’t state is never written, even if it is selected."
+      footer={`Writes water when a task you’ve set up to log it is completed, your weight when you record it, and a meal’s nutrition when you add it to the food log${workoutsEnabled ? ', and a workout when you save it with Workouts on' : ''}. Nothing else is written to Health. Deleting a food log entry${workoutsEnabled ? ' or a workout' : ''} removes what it wrote. Choose below which nutrients a logged meal can carry into Health. A nutrient a meal doesn’t state is never written, even if it is selected.`}
     >
       <SettingsRow
         entryId="healthWrite"
@@ -515,7 +538,9 @@ export function HealthSettings() {
         iconColor={healthWriteEnabled ? colors.accent : undefined}
         label="Log to Health"
         hint={healthWriteEnabled
-          ? 'Water from tasks set up to log it, weights you record, and meals you log'
+          ? workoutsEnabled && workoutHealthWrite
+            ? 'Water from tasks set up to log it, weights you record, meals you log and workouts you save'
+            : 'Water from tasks set up to log it, weights you record, and meals you log'
           : 'Nothing is written to Health'}
         toggle={healthWriteEnabled}
         onPress={onToggleWrite}
@@ -574,6 +599,39 @@ export function HealthSettings() {
               }))}
             />
           </View>
+          {/* Only inside the Workouts area: a switch for something the app
+              can't do while the area is off would be a row about nothing. */}
+          {workoutsEnabled && (
+            <>
+              <View style={styles.sep} />
+              <SettingsRow
+                entryId="workoutHealthWrite"
+                icon="barbell-outline"
+                iconColor={workoutHealthWrite ? colors.accent : undefined}
+                label="Workouts"
+                hint={workoutHealthWrite
+                  ? 'A workout you save is written to Health as strength training'
+                  : 'Saved workouts stay in this app'}
+                toggle={workoutHealthWrite}
+                onPress={onToggleWorkoutWrite}
+                accessibilityLabel="Write workouts to Health"
+              />
+              {workoutHealthWrite && (
+                <>
+                  <View style={styles.sep} />
+                  <WriteAccessRow
+                    entryId="healthWorkoutWriteAccess"
+                    label="Workout-write access"
+                    deniedHint="Not allowed. To save workouts to Health, open Health, tap your profile picture, then Privacy, then Apps, then dundundun"
+                    status={workoutWriteStatus}
+                    demoActive={demoActive}
+                    colors={colors}
+                    onAsk={askForWriteAccess}
+                  />
+                </>
+              )}
+            </>
+          )}
         </>
       )}
     </SettingsSection>

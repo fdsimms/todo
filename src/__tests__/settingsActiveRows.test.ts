@@ -27,6 +27,8 @@ function settings(overrides: Partial<SettingsGateState> = {}): SettingsGateState
     remindersImportEnabled: false,
     travelEstimates: false,
     transitAlerts: false,
+    workoutsEnabled: false,
+    workoutHealthWrite: false,
     ...overrides,
   } as SettingsGateState;
 }
@@ -75,6 +77,16 @@ describe('searchableSettingsEntries', () => {
     expect(off).not.toContain('quietHoursStart');
     const on = searchableSettingsEntries('ios', settings({ quietHoursStart: '22:00' }), noSync).map(e => e.id);
     expect(on).toContain('quietHoursStart');
+  });
+
+  it('shows the workout write rows only while Log to Health and the Workouts area are both on', () => {
+    const ids = (o: Partial<SettingsGateState>) => searchableSettingsEntries('ios', settings(o), noSync).map(e => e.id);
+    expect(ids({ healthWriteEnabled: true } as Partial<SettingsGateState>)).not.toContain('workoutHealthWrite');
+    expect(ids({ workoutsEnabled: true, workoutHealthWrite: true })).not.toContain('workoutHealthWrite');
+    const both = { healthWriteEnabled: true, workoutsEnabled: true } as Partial<SettingsGateState>;
+    expect(ids(both)).toContain('workoutHealthWrite');
+    expect(ids(both)).not.toContain('healthWorkoutWriteAccess');
+    expect(ids({ ...both, workoutHealthWrite: true })).toContain('healthWorkoutWriteAccess');
   });
 
   it('takes the kitchen rows away with the kitchen', () => {

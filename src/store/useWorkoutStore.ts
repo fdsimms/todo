@@ -25,6 +25,8 @@ import {
   dbGetAllWorkoutPrograms,
   dbGetAllWorkoutRoutines,
   dbGetAllWorkoutSessions,
+  dbGetPendingHealthWorkoutSessions,
+  dbGetWorkoutSession,
   dbGetWorkoutSets,
   dbGetWorkoutSetsForExercise,
   dbSaveExercise,
@@ -49,6 +51,13 @@ import { libraryExercise } from '../utils/exerciseLibrary';
 import { loadContextFor, rampSteps } from '../utils/workoutProgression';
 import { libraryProgram } from '../utils/workoutProgramLibrary';
 import { useSettingsStore } from './useSettingsStore';
+import {
+  logWorkoutToHealth,
+  pendingWorkoutWriteAction,
+  retractWorkoutFromHealth,
+  workoutHealthWriteOn,
+  type WorkoutWriteResult,
+} from '../utils/healthWorkoutSync';
 import { NEW_EXERCISE_PREFIX, indexAdd, indexExisting, indexHas, type PlannedImportSession } from '../utils/workoutCsv';
 import { buildCatalog, catalogExercise } from '../utils/exerciseCatalog';
 import {
@@ -151,6 +160,12 @@ export interface FinishedSessionInput {
   endedAt: string;
   notes?: string;
   effort?: number | null;
+  /**
+   * Leave the workout for the phone to write to Health on its next foreground
+   * (`WorkoutSession.healthWritePending`). Set by the MCP server, which has no
+   * HealthKit; the app's own paths write at the moment of saving instead.
+   */
+  healthWritePending?: boolean;
   /** In the order they were done; an exercise's sets keep its first set's place. */
   sets: (SetInput & { completedAt?: string | null })[];
 }
@@ -233,12 +248,19 @@ interface WorkoutStore {
    * the numbers from the routine or from last time (`plannedSetsFor`).
    */
   startSession: (input?: StartSessionInput) => WorkoutSession | WorkoutRefusal;
-  /** Edits a session. Refuses a blank title, and an end before the start (`order`). */
+  /**
+   * Edits a session. Refuses a blank title, and an end before the start
+   * (`order`). Moving a finished session that is in Health retracts the
+   * workout and writes it again at the new times, while writing is on; with
+   * it off, Health is left as it is.
+   */
   updateSession: (id: string, patch: SessionPatch) => WorkoutSession | WorkoutRefusal;
   /**
    * Ends a session now (or at `endedAt`). Refuses one already finished
    * (`finished`). Deletes the planned sets never ticked and completes the
-   * task it was started from (see `FinishOptions`).
+   * task it was started from (see `FinishOptions`). This is workout mode's
+   * Save, a person's tap, so it is also what writes the workout to Health
+   * while writing is on (`logWorkoutToHealth`).
    */
   finishSession: (id: string, patch?: FinishOptions) => WorkoutSession | WorkoutRefusal;
   /**
@@ -257,6 +279,8 @@ interface WorkoutStore {
    * workout can't double it.
    * `creates` maps each `new:<key>` reference's key to the exercise to make;
    * a name that has become taken since resolves to the exercise holding it.
+   * Never written to Health: an imported workout came from an app that most
+   * likely wrote it there already.
    */
   importSessions: (
     sessions: PlannedImportSession[],
@@ -267,7 +291,11 @@ interface WorkoutStore {
    * fact. Refuses an unknown session or exercise (`notFound`).
    */
   replaceSets: (sessionId: string, sets: (SetInput & { completedAt?: string | null })[]) => WorkoutSet[] | WorkoutRefusal;
-  /** Deletes a session and its sets, live or finished. */
+  /**
+   * Deletes a session and its sets, live or finished, and takes back the
+   * workout it wrote to Health (ungated by the write switches, like every
+   * retraction).
+   */
   deleteSession: (id: string) => void;
   /** Throws away the live session and its sets. */
   discardSession: () => void;
@@ -311,6 +339,23 @@ interface WorkoutStore {
    * weight to start from when the workout began.
    */
   addPlannedWarmups: (sessionId: string, exerciseId: string, steps: readonly { kg: number; reps: number }[]) => WorkoutSet[] | WorkoutRefusal;
+
+  /**
+   * Writes to Health the workouts an agent logged over MCP
+   * (`WorkoutSession.healthWritePending`), which cannot reach HealthKit
+   * itself. The food log's `writePendingHealthEntries`, for sessions: the same
+   * guards a saved workout gets, a flag older than
+   * `PENDING_WORKOUT_WRITE_MAX_AGE_DAYS` dropped unwritten, and one pass at a
+   * time. Callers gate on the app being in front (`runPendingHealthWorkoutWrites`).
+   */
+  writePendingHealthSessions: () => Promise<void>;
+  /**
+   * True when Health has just refused a workout and the person has not been
+   * told. Watched by `HealthWriteRefusedNotice`, which says it once; whether it
+   * has already been said is `healthWorkoutWriteRefusalSeen` in settings.
+   */
+  pendingHealthWriteRefusal: boolean;
+  setPendingHealthWriteRefusal: (pending: boolean) => void;
 }
 
 const nowIso = () => new Date().toISOString();
@@ -369,6 +414,10 @@ function taskStore() {
   return (require('./useTaskStore') as typeof import('./useTaskStore')).useTaskStore.getState();
 }
 
+let pendingHealthWriteRunning = false;
+
+const sameSpan = (a: WorkoutSession, b: WorkoutSession) => a.startedAt === b.startedAt && a.endedAt === b.endedAt;
+
 export const useWorkoutStore = create<WorkoutStore>((set, get) => {
   /**
    * Whether a name is already somebody's: an exercise on offer goes by it, or
@@ -401,6 +450,65 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
   };
 
   const exerciseKnown = (id: string) => !!libraryExercise(id) || get().exercises.some(e => e.id === id);
+
+  /** Writes a row's Health fields back as it stands now, on disk and in memory. */
+  const stampHealth = (fresh: WorkoutSession, fields: Pick<WorkoutSession, 'healthWorkoutId' | 'healthWritePending'>) => {
+    putSession({ ...fresh, ...fields });
+  };
+
+  /**
+   * Files what Health said about one write: the workout's id, or the one
+   * refusal worth saying out loud. `recordHealthWrite` in `useFoodLogStore`,
+   * for sessions, and for the same reasons.
+   *
+   * **The row is read again first**, since the write is a round trip and the
+   * session can be deleted, edited or written by another pass meanwhile. A
+   * row that is gone, already holds an id, or now spans other times takes the
+   * workout just written back out; a re-timed one with no id is then written
+   * again at its new times, since nothing else will.
+   *
+   * Only `healthWorkoutId` is kept. The sample ids the bridge can hand back
+   * are always empty here (no energy is passed), so there is no column for
+   * them; the watch phase that passes measured energy adds one.
+   */
+  const recordHealthWrite = (written: WorkoutSession, result: WorkoutWriteResult) => {
+    const settings = useSettingsStore.getState();
+    if (result.outcome === 'refused') {
+      if (!settings.healthWorkoutWriteRefusalSeen) {
+        settings.setHealthWorkoutWriteRefusalSeen(true);
+        set({ pendingHealthWriteRefusal: true });
+      }
+      return;
+    }
+    // A span the bridge would refuse can never be written, so waiting on it
+    // would only retry the same answer.
+    if (result.outcome === 'notWritable') {
+      const fresh = dbGetWorkoutSession(written.id);
+      if (fresh?.healthWritePending) stampHealth(fresh, { healthWorkoutId: fresh.healthWorkoutId, healthWritePending: false });
+      return;
+    }
+    if (result.outcome !== 'written') return;
+    if (settings.healthWorkoutWriteRefusalSeen) settings.setHealthWorkoutWriteRefusalSeen(false);
+
+    const ids = [result.workoutId, ...result.sampleIds].filter((id): id is string => !!id);
+    const fresh = dbGetWorkoutSession(written.id);
+    if (!fresh || fresh.healthWorkoutId !== null || !sameSpan(fresh, written)) {
+      if (ids.length > 0) void retractWorkoutFromHealth(ids);
+      if (fresh && fresh.healthWorkoutId === null && fresh.endedAt !== null && !sameSpan(fresh, written)) {
+        void logWorkoutToHealth(fresh).then(next => recordHealthWrite(fresh, next));
+      }
+      return;
+    }
+    // A null id is a workout saved while the phone was locked: in Health, with
+    // nothing to keep. The flag still clears, or the pending pass would write
+    // it a second time.
+    stampHealth(fresh, { healthWorkoutId: result.workoutId, healthWritePending: false });
+  };
+
+  /** Fired after a save; the session is already on disk, so nothing waits on Health. */
+  const writeToHealth = (session: WorkoutSession) => {
+    void logWorkoutToHealth(session).then(result => recordHealthWrite(session, result));
+  };
 
   /** A set row from planned values, at a place the caller has worked out. */
   const plannedRow = (
@@ -514,6 +622,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
     setsBySession: {},
     setCounts: {},
     initialized: false,
+    pendingHealthWriteRefusal: false,
 
     initialize() {
       const sessions = dbGetAllWorkoutSessions().sort(byStartedDesc);
@@ -823,7 +932,27 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         endedAt: patch.endedAt !== undefined ? patch.endedAt : existing.endedAt,
       };
       if (row.endedAt !== null && new Date(row.endedAt).getTime() < new Date(row.startedAt).getTime()) return 'order';
+      // Health holds the span and nothing else, so only a finished workout in
+      // Health whose times moved is rewritten, and only while writing is on:
+      // with it off an edit leaves Health alone. A workout never written stays
+      // unwritten (an imported one, or one saved with the switch off), since
+      // an edit is not the person asking for it to be shared. The id is
+      // cleared as the row is written, so nothing points at a workout already
+      // on its way out.
+      const stale = existing.healthWorkoutId;
+      const retimed = existing.endedAt !== null && row.endedAt !== null && !sameSpan(existing, row);
+      const rewrite = retimed && stale !== null && workoutHealthWriteOn();
+      if (rewrite) row.healthWorkoutId = null;
       putSession(row);
+      if (rewrite) {
+        void (async () => {
+          // In that order, and the write happens either way: a retract that
+          // fails leaves the old workout for the person to remove in Health,
+          // which beats Health holding neither.
+          await retractWorkoutFromHealth([stale]);
+          recordHealthWrite(row, await logWorkoutToHealth(row));
+        })();
+      }
       return row;
     },
 
@@ -862,6 +991,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         if (effect === 'complete') tasks.completeTask(task!.id);
         else if (effect === 'log-unit') tasks.logQuotaUnit(task!.id);
       }
+      writeToHealth(finished);
       return finished;
     },
 
@@ -881,7 +1011,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         notes: input.notes?.trim() ?? '',
         effort: effortOf(input.effort),
         healthWorkoutId: null,
-        healthWritePending: false,
+        healthWritePending: input.healthWritePending === true,
       };
       // Done when it ended unless a set says otherwise: a set logged after the
       // fact was done, and a planned set has no place in a record.
@@ -994,6 +1124,12 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
     },
 
     deleteSession(id) {
+      // Read from the database before the row goes, since the id is on it:
+      // a workout left in Health with nothing pointing at it is a record the
+      // person deleted here and still has there. Nothing is awaited and nothing
+      // is undone on failure; Health's own record is theirs to delete there.
+      const written = dbGetWorkoutSession(id)?.healthWorkoutId ?? null;
+      if (written) void retractWorkoutFromHealth([written]);
       dbDeleteWorkoutSession(id);
       const { [id]: _sets, ...setsBySession } = get().setsBySession;
       const { [id]: _count, ...setCounts } = get().setCounts;
@@ -1003,6 +1139,29 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
     discardSession() {
       const live = get().liveSession();
       if (live) get().deleteSession(live.id);
+    },
+
+    async writePendingHealthSessions() {
+      if (pendingHealthWriteRunning) return;
+      pendingHealthWriteRunning = true;
+      try {
+        for (const session of dbGetPendingHealthWorkoutSessions()) {
+          if (pendingWorkoutWriteAction(session) === 'drop') {
+            const fresh = dbGetWorkoutSession(session.id);
+            if (fresh?.healthWritePending) stampHealth(fresh, { healthWorkoutId: fresh.healthWorkoutId, healthWritePending: false });
+            continue;
+          }
+          // Off, unavailable and refused leave the flag, so turning writing on
+          // the same week still sends it.
+          recordHealthWrite(session, await logWorkoutToHealth(session));
+        }
+      } finally {
+        pendingHealthWriteRunning = false;
+      }
+    },
+
+    setPendingHealthWriteRefusal(pending) {
+      set({ pendingHealthWriteRefusal: pending });
     },
 
     loadSets(sessionId) {

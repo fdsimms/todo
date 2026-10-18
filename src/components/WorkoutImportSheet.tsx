@@ -80,6 +80,9 @@ export function WorkoutImportSheet({ visible, onClose, fileText }: Props) {
   const sessionsInLog = useWorkoutStore(s => s.sessions);
   const importSessions = useWorkoutStore(s => s.importSessions);
   const displayUnit = useSettingsStore(s => s.workoutUnit);
+  // An import never writes to Health (it came from another app, which most
+  // likely wrote it there already), so the sheet says so while saving does.
+  const writesToHealth = useSettingsStore(s => s.healthWriteEnabled && s.workoutHealthWrite);
 
   const [unit, setUnit] = useState<WeightUnit>(displayUnit);
   const [unitTouched, setUnitTouched] = useState(false);
@@ -266,6 +269,13 @@ export function WorkoutImportSheet({ visible, onClose, fileText }: Props) {
               </Text>
             ) : null}
           </View>
+          {/* Said only while saved workouts go to Health, which is when somebody
+              would expect these to follow them there. */}
+          {writesToHealth ? (
+            <HelpText style={styles.quietBelow}>
+              Imported workouts aren’t written to Apple Health. The app they came from may have saved them there already.
+            </HelpText>
+          ) : null}
 
           {ok?.unitAssumed ? (
             <>

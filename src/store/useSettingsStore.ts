@@ -1157,6 +1157,24 @@ interface SettingsStore {
    */
   healthFoodWriteRefusalSeen: boolean;
 
+  /**
+   * Whether saving a finished workout also writes it to Health as a strength
+   * workout (docs/arch/health-data.md, "The fourth write"). Off by default, and
+   * a second switch under `healthWriteEnabled` rather than riding it: an
+   * install that already logs meals to Health must not start writing workouts
+   * because the Workouts area was turned on. Both have to be on, and so does
+   * `workoutsEnabled`, since the row is shown only inside that area. Device-local
+   * like `healthWriteEnabled`: it answers what this phone may put in Health.
+   */
+  workoutHealthWrite: boolean;
+  /**
+   * `healthFoodWriteRefusalSeen` for workouts: the person has been told once
+   * that Health is refusing the workouts this app writes, and nothing has gone
+   * in since. Its own flag because workout sharing is allowed or refused apart
+   * from nutrition, so one refusal must not swallow the other's notice.
+   */
+  healthWorkoutWriteRefusalSeen: boolean;
+
   // Whether a weight is shown and typed in kilograms or pounds.
   //
   // Its own setting rather than a read of `unitSystem`, which is the recipe
@@ -2150,6 +2168,8 @@ interface SettingsStore {
   setHealthReadEnabled: (on: boolean) => void;
   setHealthWriteEnabled: (on: boolean) => void;
   setHealthFoodWriteRefusalSeen: (seen: boolean) => void;
+  setWorkoutHealthWrite: (on: boolean) => void;
+  setHealthWorkoutWriteRefusalSeen: (seen: boolean) => void;
   setHealthWriteNutrients: (keys: NutrientKey[]) => void;
   setKeepOpenAfterFoodLog: (on: boolean) => void;
   setWeightUnit: (unit: WeightUnit) => void;
@@ -2502,6 +2522,8 @@ const DEFAULT_SETTINGS = {
   healthReadEnabled: false,
   healthWriteEnabled: false,
   healthFoodWriteRefusalSeen: false,
+  workoutHealthWrite: false,
+  healthWorkoutWriteRefusalSeen: false,
   weightUnit: 'kg' as WeightUnit,
   waterUnit: 'ml' as WaterUnit,
   workoutUnit: 'kg' as WeightUnit,
@@ -2983,6 +3005,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   healthReadEnabled: false,
   healthWriteEnabled: false,
   healthFoodWriteRefusalSeen: false,
+  workoutHealthWrite: false,
+  healthWorkoutWriteRefusalSeen: false,
   weightUnit: 'kg',
   waterUnit: 'ml',
   workoutsEnabled: false,
@@ -3396,6 +3420,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const healthReadEnabled = dbGetSetting('healthReadEnabled') === 'true';
     const healthWriteEnabled = dbGetSetting('healthWriteEnabled') === 'true';
     const healthFoodWriteRefusalSeen = dbGetSetting('healthFoodWriteRefusalSeen') === 'true';
+    const workoutHealthWrite = dbGetSetting('workoutHealthWrite') === 'true';
+    const healthWorkoutWriteRefusalSeen = dbGetSetting('healthWorkoutWriteRefusalSeen') === 'true';
     // Anything that isn't 'lb' reads as kilograms, so a stored value from a
     // future unit this build doesn't know about degrades to the default rather
     // than to undefined.
@@ -3859,6 +3885,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       healthTaskCategory,
       healthTasks,
       healthTodayHidden,
+      healthWorkoutWriteRefusalSeen,
       healthWriteEnabled,
       healthWriteNutrients,
       hideCategories,
@@ -4054,6 +4081,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       weighInTasks,
       weightGoal,
       weightUnit,
+      workoutHealthWrite,
       workoutsEnabled,
       workoutUnit,
       initialized: true,
@@ -5589,6 +5617,16 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setHealthFoodWriteRefusalSeen(seen: boolean) {
     dbSetSetting('healthFoodWriteRefusalSeen', seen ? 'true' : 'false');
     set({ healthFoodWriteRefusalSeen: seen });
+  },
+
+  setWorkoutHealthWrite(on: boolean) {
+    dbSetSetting('workoutHealthWrite', on ? 'true' : 'false');
+    set({ workoutHealthWrite: on });
+  },
+
+  setHealthWorkoutWriteRefusalSeen(seen: boolean) {
+    dbSetSetting('healthWorkoutWriteRefusalSeen', seen ? 'true' : 'false');
+    set({ healthWorkoutWriteRefusalSeen: seen });
   },
 
   setWeightUnit(unit: WeightUnit) {

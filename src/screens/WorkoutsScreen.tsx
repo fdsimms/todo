@@ -48,6 +48,14 @@ import { describeProgress, programProgress } from '../utils/workoutProgram';
 import { trainingMaxRaises } from '../utils/workoutProgression';
 import { formatWeightNumber } from '../utils/workoutData';
 import { formatTimeOfDay } from '../utils/dateUtils';
+import { useHealthWorkoutHistory } from '../hooks/useHealthWorkoutHistory';
+import {
+  healthWorkoutLine,
+  healthWorkoutSource,
+  healthWorkoutTitle,
+  interleaveHistory,
+  type WorkoutHistoryRow,
+} from '../utils/workoutHistory';
 
 /**
  * The Workouts area: the workouts logged so far, the routines to start one
@@ -66,6 +74,14 @@ import { formatTimeOfDay } from '../utils/dateUtils';
  * chest"). Tapping an exercise opens its page (`ExerciseDetailSheet`): the
  * chart, the personal records and every session that did it. Behind its own switch (`workoutsEnabled`, off by default) and in
  * the Health hub beside the other logs of what a body did.
+ *
+ * The History view also lists workouts other apps recorded in Health, between
+ * the sessions by date and marked "From Health" with the app that recorded
+ * them (`useHealthWorkoutHistory`, `workoutHistory.ts`). They are read for the
+ * window the list shows and never stored or counted: the header's count is
+ * the app's own workouts, and records, Stats and the mood contrast never see
+ * them. An empty read adds nothing, not a prompt to connect Health, since a
+ * refused read and no workouts look the same.
  */
 
 type View_ = 'history' | 'routines' | 'programs' | 'exercises';
@@ -146,12 +162,37 @@ export function WorkoutsScreen() {
     setDetailOpen(true);
   }, []);
 
-  const renderSession = useCallback(({ item }: { item: WorkoutSession }) => (
-    <View style={styles.row}>
-      <Text style={styles.title}>{item.title}</Text>
-      <Text style={styles.detail}>{sessionLine(item, setCounts[item.id] ?? 0)}</Text>
-    </View>
-  ), [styles, setCounts]);
+  const health = useHealthWorkoutHistory(sessions, view === 'history');
+  const historyRows = useMemo(
+    () => interleaveHistory(sessions, health.workouts, health.windowStart),
+    [sessions, health.workouts, health.windowStart],
+  );
+
+  const renderHistoryRow = useCallback(({ item }: { item: WorkoutHistoryRow }) => {
+    if (item.kind === 'session') {
+      return (
+        <View style={styles.row}>
+          <Text style={styles.title}>{item.session.title}</Text>
+          <Text style={styles.detail}>{sessionLine(item.session, setCounts[item.session.id] ?? 0)}</Text>
+        </View>
+      );
+    }
+    // A reading, not an entry: it names the app that recorded it and what kind
+    // of workout it says it was, and offers nothing to tap.
+    const source = healthWorkoutSource(item.workout);
+    const title = healthWorkoutTitle(item.workout);
+    const line = healthWorkoutLine(item.workout);
+    return (
+      <View style={styles.row} accessible accessibilityLabel={`${title}, ${line}. ${source}`}>
+        <View style={styles.healthTagRow}>
+          <Ionicons name="heart" size={iconSize.xs} color={colors.textSecondary} />
+          <Text style={styles.healthTag} numberOfLines={1}>{source}</Text>
+        </View>
+        <Text style={styles.title}>{title}</Text>
+        <Text style={styles.detail}>{line}</Text>
+      </View>
+    );
+  }, [styles, setCounts, colors]);
 
   const renderExercise = useCallback(({ item }: { item: CatalogExercise }) => (
     <TouchableOpacity
@@ -419,9 +460,9 @@ export function WorkoutsScreen() {
           />
         ) : (
           <FlatList
-            data={sessions}
-            keyExtractor={s => s.id}
-            renderItem={renderSession}
+            data={historyRows}
+            keyExtractor={r => r.key}
+            renderItem={renderHistoryRow}
             refreshControl={pullSearch.refreshControl}
             contentContainerStyle={[styles.list, listBottom]}
             showsVerticalScrollIndicator={false}
@@ -556,4 +597,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   noticeValue: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold, fontVariant: ['tabular-nums'] },
   footHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.sm, marginHorizontal: spacing.xs },
   detail: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs },
+  healthTagRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.xxs },
+  healthTag: {
+    flexShrink: 1, color: colors.textSecondary, fontSize: font.xxs, fontWeight: fontWeight.semibold,
+    letterSpacing: 0.8, textTransform: 'uppercase',
+  },
 });

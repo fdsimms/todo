@@ -32,6 +32,7 @@ import { PlateLine } from './PlateLine';
 import type { ExerciseKind, WorkoutSet } from '../types';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useDemoStore } from '../store/useDemoStore';
 import { useStepTimerStore } from '../store/useStepTimerStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useRestTimer } from '../hooks/useRestTimer';
@@ -113,6 +114,11 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const defaultRest = useSettingsStore(s => s.defaultRestSeconds);
   const plateInventory = useSettingsStore(s => s.plateInventory);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  // Whether Save also writes the workout to Health (`workoutHealthWriteOn`,
+  // read reactively here so the summary says so). Demo mode never writes.
+  const healthWriteOn = useSettingsStore(s => s.healthWriteEnabled && s.workoutHealthWrite && s.workoutsEnabled);
+  const demoActive = useDemoStore(s => s.active);
+  const writesToHealth = healthWriteOn && !demoActive;
   const linkedTask = useTaskStore(s => (session?.taskId ? s.tasks.find(t => t.id === session.taskId) ?? null : null));
   const sets = useMemo(() => cachedSets ?? [], [cachedSets]);
   const routine = session?.routineId ? routines.find(r => r.id === session.routineId) ?? null : null;
@@ -544,6 +550,9 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                     : null,
                 plan.loggedCount > 0 && linkedTask && !linkedTask.completed && !linkedTask.archived
                   ? linkedTaskLine(taskEffect, displayTitleFor(linkedTask))
+                  : null,
+                plan.loggedCount > 0 && writesToHealth
+                  ? 'Saving also writes it to Apple Health as a strength workout.'
                   : null,
               ].filter(Boolean).join(' ')}
             </Text>

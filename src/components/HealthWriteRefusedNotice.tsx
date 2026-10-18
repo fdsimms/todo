@@ -1,10 +1,28 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useReducer, useRef } from 'react';
 import { Alert } from 'react-native';
 import { useFoodLogStore } from '../store/useFoodLogStore';
+import { useWorkoutStore } from '../store/useWorkoutStore';
 import { openHealthApp } from '../utils/healthBridge';
 
 /**
- * Says once that Health is refusing the meals this app tries to write.
+ * What each refusal says. A workout is refused apart from a meal (Health asks
+ * about each share type on its own), so each has its own words and its own
+ * "already said" flag, and the one alert below carries whichever came in.
+ */
+const REFUSALS = {
+  meal: {
+    title: 'Your meals are not reaching Health',
+    message: 'Health is not allowing this app to write nutrition, so logged meals stay here only. Open Health, find this app under Sharing, and allow it to write nutrition.',
+  },
+  workout: {
+    title: 'Your workouts are not reaching Health',
+    message: 'Health is not allowing this app to write workouts, so saved workouts stay here only. Open Health, find this app under Sharing, and allow it to write workouts.',
+  },
+} as const;
+
+/**
+ * Says once that Health is refusing the meals, or the workouts, this app
+ * tries to write.
  *
  * Renders nothing. It exists because a refused write is otherwise completely
  * invisible: `addEntry` saves the food log entry either way, which is right, so
@@ -32,33 +50,45 @@ import { openHealthApp } from '../utils/healthBridge';
  *   turn off the thing the person wanted.
  */
 export function HealthWriteRefusedNotice() {
-  const pending = useFoodLogStore(s => s.pendingHealthWriteRefusal);
-  const setPending = useFoodLogStore(s => s.setPendingHealthWriteRefusal);
+  const mealPending = useFoodLogStore(s => s.pendingHealthWriteRefusal);
+  const setMealPending = useFoodLogStore(s => s.setPendingHealthWriteRefusal);
+  // A saved workout is refused the same invisible way: the session saves
+  // either way, and only Health is missing it.
+  const workoutPending = useWorkoutStore(s => s.pendingHealthWriteRefusal);
+  const setWorkoutPending = useWorkoutStore(s => s.setPendingHealthWriteRefusal);
 
   // Alert.alert is imperative, so a re-render while one is up would stack a
   // second copy on top of the first. Same guard FinishLeftoverPrompt keeps.
   const showing = useRef(false);
+  // Bumped when an alert goes, so a second refusal that arrived while the
+  // first was up is said next rather than waiting for some later change.
+  const [dismissals, dismissed] = useReducer((n: number) => n + 1, 0);
 
   useEffect(() => {
-    if (!pending || showing.current) return;
+    if ((!mealPending && !workoutPending) || showing.current) return;
     showing.current = true;
+    // One at a time: a meal first, and a workout refused alongside it once
+    // this one is dismissed.
+    const kind = mealPending ? 'meal' : 'workout';
     // Cleared as the alert is raised rather than in the buttons, so dismissing
     // it by any route (including a system interruption) still counts as said.
-    setPending(false);
+    if (kind === 'meal') setMealPending(false);
+    else setWorkoutPending(false);
 
+    const done = () => { showing.current = false; dismissed(); };
     Alert.alert(
-      'Your meals are not reaching Health',
-      'Health is not allowing this app to write nutrition, so logged meals stay here only. Open Health, find this app under Sharing, and allow it to write nutrition.',
+      REFUSALS[kind].title,
+      REFUSALS[kind].message,
       [
-        { text: 'Not now', style: 'cancel', onPress: () => { showing.current = false; } },
+        { text: 'Not now', style: 'cancel', onPress: done },
         {
           text: 'Open Health',
-          onPress: () => { showing.current = false; void openHealthApp(); },
+          onPress: () => { done(); void openHealthApp(); },
         },
       ],
-      { onDismiss: () => { showing.current = false; } },
+      { onDismiss: done },
     );
-  }, [pending, setPending]);
+  }, [mealPending, workoutPending, setMealPending, setWorkoutPending, dismissals]);
 
   return null;
 }
