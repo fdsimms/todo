@@ -1,0 +1,108 @@
+<!doctype html><html><head><meta charset="utf-8">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, "SF Pro Rounded", "Inter", system-ui, sans-serif; background: #8E8A99; padding: 20px; -webkit-font-smoothing: antialiased; }
+.grid { display: grid; grid-template-columns: repeat(4, 214px); gap: 18px 16px; }
+.cap { color: #fff; font-size: 12px; font-weight: 600; margin: 0 4px 6px; height: 30px; line-height: 1.25; }
+.watch { width: 214px; height: 262px; background: #000; border-radius: 46px; padding: 8px; border: 6px solid #2a2830; }
+.screen { width: 100%; height: 100%; border-radius: 36px; overflow: hidden; color: #F6F3F8; padding: 10px 10px 0; position: relative; }
+.bar { display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; padding: 0 6px 6px; }
+.bar .t { color: #9B7BFF; } .bar .clock { color: #F6F3F8; }
+.row { background: #222025; border-radius: 12px; padding: 8px 10px; margin-bottom: 5px; font-size: 14px; }
+.row .s { font-size: 11px; color: #B3ADBD; margin-top: 1px; }
+.row.acc { display: flex; align-items: center; gap: 8px; }
+.ic { width: 20px; text-align: center; font-size: 13px; }
+.gold { color: #FFB020; } .vio { color: #9B7BFF; } .or { color: #FF9F0A; }
+.hdr { font-size: 11px; color: #B3ADBD; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; margin: 4px 4px 4px; }
+.ex { font-size: 15px; font-weight: 600; text-align: center; }
+.which { font-size: 11px; color: #B3ADBD; text-align: center; margin-top: 1px; }
+.vals { display: flex; gap: 6px; margin-top: 8px; }
+.val { flex: 1; border-radius: 12px; background: #222025; text-align: center; padding: 6px 2px 5px; border: 2px solid transparent; }
+.val.focus { border-color: #9B7BFF; }
+.val b { display: block; font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.5px; }
+.val span { font-size: 10px; color: #B3ADBD; }
+.btn { margin-top: 8px; border-radius: 9999px; text-align: center; padding: 9px; font-size: 14px; font-weight: 700; }
+.btn.gold { background: #FFB020; color: #17131C; } .btn.or { background: #FF9F0A; color: #17131C; } .btn.q { background: #3A3541; color: #F6F3F8; }
+.btns { display: flex; gap: 6px; } .btns .btn { flex: 1; }
+.big { font-size: 44px; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; margin-top: 6px; letter-spacing: -1px; }
+.mid { text-align: center; font-size: 12px; color: #B3ADBD; margin-top: 2px; }
+.pill { display: inline-block; font-size: 10px; border-radius: 9999px; padding: 2px 7px; background: #3A3541; color: #B3ADBD; margin-top: 4px; }
+.center { text-align: center; }
+.dots { position: absolute; right: 4px; top: 90px; display: flex; flex-direction: column; gap: 3px; } .dots i { width: 4px; height: 4px; border-radius: 2px; background: #555; display: block; } .dots i.on { background: #fff; }
+.note { color: #fff; font-size: 12px; margin-top: 14px; line-height: 1.45; max-width: 900px; }
+</style></head><body>
+<div class="grid">
+
+<div><div class="cap">1. Today, with a Workout row (no workout yet)</div>
+<div class="watch"><div class="screen">
+  <div class="bar"><span class="t">Today</span><span class="clock">6:02</span></div>
+  <div class="row acc"><span class="ic gold">🏋</span><div><div>Workout</div><div class="s">Push A is on today</div></div></div>
+  <div class="row acc"><span class="ic" style="color:#B3ADBD">○</span><div>Take vitamins</div></div>
+  <div class="row acc"><span class="ic" style="color:#B3ADBD">○</span><div>Water<div class="s">3 of 8 glasses</div></div></div>
+</div></div></div>
+
+<div><div class="cap">2. Start a workout (works with no iPhone nearby)</div>
+<div class="watch"><div class="screen">
+  <div class="bar"><span class="t">‹ Start</span><span class="clock">6:02</span></div>
+  <div class="row"><div>Push A</div><div class="s">From Today · 5 exercises</div></div>
+  <div class="hdr">Routines</div>
+  <div class="row"><div>Pull A</div><div class="s">5 exercises</div></div>
+  <div class="row"><div>Legs</div><div class="s">4 exercises</div></div>
+</div></div></div>
+
+<div><div class="cap">3. A set: the Crown changes the outlined number</div>
+<div class="watch"><div class="screen">
+  <div class="bar"><span class="t">‹ Push A</span><span class="clock">18:32</span></div>
+  <div class="ex">Bench press</div>
+  <div class="which">Set 3 of 4</div>
+  <div class="vals"><div class="val focus"><b>82.5</b><span>kg</span></div><div class="val"><b>8</b><span>reps</span></div></div>
+  <div class="btn gold">✓ Done set</div>
+</div></div></div>
+
+<div><div class="cap">3b. A warm-up set, marked W</div>
+<div class="watch"><div class="screen">
+  <div class="bar"><span class="t">‹ Push A</span><span class="clock">14:05</span></div>
+  <div class="ex">Bench press</div>
+  <div class="which"><span class="or" style="font-weight:700">W</span> Warm-up</div>
+  <div class="vals"><div class="val focus"><b>40</b><span>kg</span></div><div class="val"><b>10</b><span>reps</span></div></div>
+  <div class="btn gold">✓ Done set</div>
+</div></div></div>
+
+<div><div class="cap">4. Resting (the watch runs the countdown)</div>
+<div class="watch"><div class="screen">
+  <div class="bar"><span class="t">‹ Push A</span><span class="clock">19:40</span></div>
+  <div class="center" style="font-size:13px;font-weight:600;margin-top:2px">Rest</div>
+  <div class="big">1:24</div>
+  <div class="mid">Next: Bench press, set 4</div>
+  <div class="btns"><div class="btn q">+30 s</div><div class="btn gold">Skip</div></div>
+</div></div></div>
+
+<div><div class="cap">4b. Rest is over: counts up and waits, taps the wrist</div>
+<div class="watch"><div class="screen">
+  <div class="bar"><span class="t">‹ Push A</span><span class="clock">21:16</span></div>
+  <div class="center or" style="font-size:13px;font-weight:600;margin-top:2px">Rest is over</div>
+  <div class="big or">+0:12</div>
+  <div class="mid">Next: Bench press, set 4</div>
+  <div class="btn q">Go to the set</div>
+</div></div></div>
+
+<div><div class="cap">5. Swipe down the workout for the list (and Finish)</div>
+<div class="watch"><div class="screen">
+  <div class="bar"><span class="t">‹ Push A</span><span class="clock">48:10</span></div>
+  <div class="row acc"><span class="ic gold">✓</span><div>Bench press<div class="s">4 of 4</div></div></div>
+  <div class="row acc"><span class="ic" style="color:#B3ADBD">○</span><div>Incline DB press<div class="s">1 of 3</div></div></div>
+  <div class="btn gold" style="margin-top:6px">Finish workout</div>
+</div></div></div>
+
+<div><div class="cap">6. Finished with no iPhone nearby</div>
+<div class="watch"><div class="screen">
+  <div class="bar"><span class="t">Push A</span><span class="clock">7:04</span></div>
+  <div class="center" style="font-size:26px;margin-top:6px" ><span class="gold">✓</span></div>
+  <div class="center" style="font-size:15px;font-weight:600;margin-top:2px">Workout saved</div>
+  <div class="mid" style="margin:4px 6px 0">52 min · 17 sets. It moves to your iPhone the next time it's nearby.</div>
+  <div class="btn q">Done</div>
+</div></div></div>
+
+</div>
+<div class="note">Watch proxy at 45 mm (198×242 pt) in the watch's dark palette (accent #9B7BFF, gold #FFB020, orange #FF9F0A). Icons are stand-ins for SF Symbols. Tapping the other number moves the Crown to it. With the iPhone nearby, the watch shows and logs into the workout running on the phone, and each set travels back as it's done. With no iPhone, everything here runs on the watch and the whole workout travels back later.</div>
+</body></html>

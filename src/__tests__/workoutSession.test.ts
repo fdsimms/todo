@@ -7,6 +7,7 @@ import {
   formatDistance,
   formatSetLine,
   matchPrevious,
+  movedExerciseOrder,
   nextSet,
   plannedSetsFor,
   plannedSetsFromHistory,
@@ -96,6 +97,24 @@ describe('supersetGroup and walkOrder', () => {
       set('c', 2, 0, { supersetKey: 'k' }),
     ];
     expect(ids(walkOrder(sets))).toEqual(['a0', 'a1', 'b0', 'c0']);
+  });
+});
+
+describe('movedExerciseOrder', () => {
+  it('moves an exercise a place past its neighbour', () => {
+    expect(movedExerciseOrder(session(), 'bench', 'down')).toEqual(['incline', 'fly', 'bench', 'triceps']);
+    expect(movedExerciseOrder(session(), 'triceps', 'up')).toEqual(['bench', 'triceps', 'incline', 'fly']);
+  });
+
+  it('moves a superset as one block, from either partner, so the pair is never split', () => {
+    expect(movedExerciseOrder(session(), 'fly', 'up')).toEqual(['incline', 'fly', 'bench', 'triceps']);
+    expect(movedExerciseOrder(session(), 'incline', 'down')).toEqual(['bench', 'triceps', 'incline', 'fly']);
+  });
+
+  it('is null at the end it would move past, or for an exercise not in the workout', () => {
+    expect(movedExerciseOrder(session(), 'bench', 'up')).toBeNull();
+    expect(movedExerciseOrder(session(), 'triceps', 'down')).toBeNull();
+    expect(movedExerciseOrder(session(), 'squat', 'up')).toBeNull();
   });
 });
 

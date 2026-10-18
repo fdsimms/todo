@@ -141,8 +141,14 @@ describe('tickOutcome', () => {
 describe('tickSet', () => {
   let sets: WorkoutSet[];
 
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
+    // The clock the "is the rest already over" check reads.
+    jest.spyOn(Date, 'now').mockReturnValue(NOW.getTime());
     sets = [set('bench', 0, 0), set('bench', 0, 1)];
     mockSessions = [liveSession()];
     mockRoutines = [];
@@ -164,7 +170,25 @@ describe('tickSet', () => {
       sessionTitle: 'Push A',
       label: 'After set 1 of this exercise',
       durationSeconds: 90,
+      startedAt: NOW.toISOString(),
     });
+  });
+
+  // The Apple Watch's tick: done a moment ago, with the numbers it was done at.
+  it('writes the watch’s numbers in the same write as the tick, and rests from when it was done', () => {
+    const doneAt = new Date(NOW.getTime() - 20_000);
+    tickSet('w1', sets[0].id, doneAt, { weightKg: 82.5, reps: 6 });
+    expect(mockEditSet).toHaveBeenCalledTimes(1);
+    expect(mockEditSet).toHaveBeenCalledWith('w1', sets[0].id, { weightKg: 82.5, reps: 6, completedAt: doneAt.toISOString() });
+    expect(mockStartRest).toHaveBeenCalledWith(expect.objectContaining({ durationSeconds: 90, startedAt: doneAt.toISOString() }));
+  });
+
+  it('starts no rest that would already be over, and drops the older one', () => {
+    const longAgo = new Date(NOW.getTime() - 5 * 60_000);
+    expect(tickSet('w1', sets[0].id, longAgo)).toEqual({ showExerciseId: 'bench', rest: true });
+    expect(mockStartRest).not.toHaveBeenCalled();
+    expect(mockRemoveRestsOutside).toHaveBeenCalledWith(null);
+    expect(mockEditSet).toHaveBeenCalledWith('w1', sets[0].id, { completedAt: longAgo.toISOString() });
   });
 
   it('reads the rest from the session’s routine', () => {

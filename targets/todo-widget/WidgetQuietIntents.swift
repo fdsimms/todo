@@ -59,8 +59,12 @@ enum QuietTapQueue {
     /// rewrite kept only the new tap. WatchSession.appendToQueue reads it the
     /// same way.
     private static func loadEntries() -> [Any] {
-        guard let url = fileURL(),
-              let data = try? Data(contentsOf: url),
+        guard let url = fileURL() else { return [] }
+        return Self.entries(at: url)
+    }
+
+    private static func entries(at url: URL) -> [Any] {
+        guard let data = try? Data(contentsOf: url),
               let entries = (try? JSONSerialization.jsonObject(with: data)) as? [Any] else {
             return []
         }
@@ -85,24 +89,54 @@ enum QuietTapQueue {
     /// written. A repeat of a "complete" or "grocery" tap already queued is
     /// the same tap and is dropped; "unit" taps all count, since each one is
     /// another glass.
+    ///
+    /// **The read and the write are one coordinated write** (`NSFileCoordinator`),
+    /// as are the phone's own appends and requeues (WatchSession.swift) and the
+    /// app's drain (drainQuietTaps). Each reads the whole file and writes it
+    /// back, so two running at once, here and in the app's process, would each
+    /// write over the other's entry, and an append landing between the drain's
+    /// read and its delete was deleted unread.
     static func append(kind: String, id: String, listId: String? = nil) {
         guard let url = fileURL() else { return }
-        var entries = loadEntries()
-        if kind != "unit", load().contains(where: { $0.kind == kind && $0.id == id && $0.listId == listId }) {
-            return
+        coordinatedQuietTapWrite(url) { url in
+            var queued = Self.entries(at: url)
+            if kind != "unit", queued.contains(where: { entry in
+                guard let fields = entry as? [String: Any] else { return false }
+                return fields["kind"] as? String == kind && fields["id"] as? String == id
+                    && fields["listId"] as? String == listId
+            }) {
+                return
+            }
+            // The shape the struct's synthesized Encodable wrote: no listId key
+            // for the home list.
+            var entry: [String: Any] = ["kind": kind, "id": id, "at": ISO8601DateFormatter().string(from: Date())]
+            if let listId { entry["listId"] = listId }
+            queued.append(entry)
+            guard let data = try? JSONSerialization.data(withJSONObject: queued) else { return }
+            try? FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try? data.write(to: url, options: .atomic)
         }
-        // The shape the struct's synthesized Encodable wrote: no listId key
-        // for the home list.
-        var entry: [String: Any] = ["kind": kind, "id": id, "at": ISO8601DateFormatter().string(from: Date())]
-        if let listId { entry["listId"] = listId }
-        entries.append(entry)
-        guard let data = try? JSONSerialization.data(withJSONObject: entries) else { return }
-        try? FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        try? data.write(to: url, options: .atomic)
     }
+}
+
+/// Runs `body` on the queue file with every other coordinated writer of it,
+/// in this process or the app's, held off until it returns. If coordination
+/// itself fails, the accessor never runs (Apple's documented behavior), so the
+/// body runs uncoordinated instead, which is how every write here ran before:
+/// a tap is never dropped for want of a lock. This target's own copy of the
+/// app's `coordinatedQueueWrite` (WatchSession.swift), since the two compile
+/// into different targets.
+private func coordinatedQuietTapWrite(_ url: URL, _ body: (URL) -> Void) {
+    var ran = false
+    var error: NSError?
+    NSFileCoordinator(filePresenter: nil).coordinate(writingItemAt: url, options: [], error: &error) { coordinated in
+        ran = true
+        body(coordinated)
+    }
+    if !ran { body(url) }
 }
 
 /// What the widget draws for taps the app hasn't applied yet.

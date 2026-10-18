@@ -28,20 +28,28 @@ private func pendingAddTasksFileURL() -> URL? {
         .appendingPathComponent(pendingAddTasksFileName)
 }
 
+/// Appends a title to the queue. **The read and the write are one
+/// coordinated write** (`coordinatedQueueWrite`, WatchSession.swift), as are
+/// the watch's "add" appends (WatchSession's `appendToQueue`) and the app's
+/// drain (`drainPendingAddTasks`): each reads the whole file and writes it
+/// back or deletes it, so two at once would write over each other's title, or
+/// delete one appended between the drain's read and its delete.
 private func addPendingTaskTitle(_ title: String) {
     guard let fileURL = pendingAddTasksFileURL() else { return }
-    var titles: [String] = []
-    if let data = try? Data(contentsOf: fileURL),
-       let decoded = try? JSONDecoder().decode([String].self, from: data) {
-        titles = decoded
+    coordinatedQueueWrite(fileURL) { url in
+        var titles: [String] = []
+        if let data = try? Data(contentsOf: url),
+           let decoded = try? JSONDecoder().decode([String].self, from: data) {
+            titles = decoded
+        }
+        titles.append(title)
+        guard let data = try? JSONEncoder().encode(titles) else { return }
+        try? FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try? data.write(to: url, options: .atomic)
     }
-    titles.append(title)
-    guard let data = try? JSONEncoder().encode(titles) else { return }
-    try? FileManager.default.createDirectory(
-        at: fileURL.deletingLastPathComponent(),
-        withIntermediateDirectories: true
-    )
-    try? data.write(to: fileURL, options: .atomic)
 }
 
 // Backs the Action Button (and Siri, and the Shortcuts app) via the

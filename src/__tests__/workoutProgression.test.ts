@@ -130,6 +130,8 @@ describe('proposeNext, rep range (double)', () => {
     expect(p).toMatchObject({ move: 'up', repsMin: 6, repsMax: 8, lastKg: 80 });
     expect(p.sets).toEqual([0, 1, 2].map(() => ({ kind: 'working', weightKg: 82.5, reps: 6 })));
     expect(p.reason).toBe('Up 2.5 kg because every set last time reached 8.');
+    // The few words the Apple Watch's card has room for.
+    expect(p.brief).toBe('All sets hit 8 last time');
     expect(proposalHeadline(p, 'kg')).toBe('Today 3 × 6–8 at 82.5 kg.');
     expect(proposalActionLabel(p, 'kg')).toBe('Use 82.5 kg');
   });
@@ -140,6 +142,7 @@ describe('proposeNext, rep range (double)', () => {
     expect(p.move).toBe('same');
     expect(p.sets.every(s => s.weightKg === 80 && s.reps === 8)).toBe(true);
     expect(p.reason).toBe('Same weight. Last time reached 8, 7 and 6, so aim for 8 on every set before adding weight.');
+    expect(p.brief).toBe('Aim for 8 on every set');
   });
 
   it('counts a set skipped last time as short of the top', () => {
@@ -226,6 +229,7 @@ describe('proposeNext, linear', () => {
     expect(p.move).toBe('deload');
     expect(p.sets[0].weightKg).toBe(90);
     expect(p.reason).toBe('Down 10 kg after 3 workouts in a row short of 5 reps at 100 kg.');
+    expect(p.brief).toBe('Short of 5 reps 3 times in a row');
   });
 
   it('counts only the misses at the same weight', () => {

@@ -118,18 +118,20 @@ final class WatchSession: NSObject, WCSessionDelegate {
     queue.async {
       let entries = Self.decodeEntries(tapsData)
       guard !entries.isEmpty, let url = Self.appGroupFile(watchQuietTapsFileName) else { return }
-      var existing: [Any] = []
-      if let data = try? Data(contentsOf: url),
-         let decoded = (try? JSONSerialization.jsonObject(with: data)) as? [Any] {
-        existing = decoded
+      coordinatedQueueWrite(url) { url in
+        var existing: [Any] = []
+        if let data = try? Data(contentsOf: url),
+           let decoded = (try? JSONSerialization.jsonObject(with: data)) as? [Any] {
+          existing = decoded
+        }
+        let requeued: [Any] = entries.map { $0 as Any }
+        guard let merged = try? JSONSerialization.data(withJSONObject: requeued + existing) else { return }
+        try? FileManager.default.createDirectory(
+          at: url.deletingLastPathComponent(),
+          withIntermediateDirectories: true
+        )
+        try? merged.write(to: url, options: .atomic)
       }
-      let requeued: [Any] = entries.map { $0 as Any }
-      guard let merged = try? JSONSerialization.data(withJSONObject: requeued + existing) else { return }
-      try? FileManager.default.createDirectory(
-        at: url.deletingLastPathComponent(),
-        withIntermediateDirectories: true
-      )
-      try? merged.write(to: url, options: .atomic)
       self.pushContext()
     }
   }
@@ -245,7 +247,69 @@ final class WatchSession: NSObject, WCSessionDelegate {
       guard let title = (info["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
             !title.isEmpty else { return }
       appendToQueue(watchAddTasksFileName, title)
+    // The workout (phase 8, src/utils/watchWorkout.ts). All of it rides the
+    // quiet-tap queue, so it applies in order with the ticks around it and is
+    // settled on the watch by the same ids; parseQuietTaps checks it again.
+    case "set":
+      // A set of the phone's workout, done on the wrist, with its numbers in
+      // the unit the watch showed. It names the session so a stale watch can
+      // never log onto whatever workout happens to be going now.
+      guard let setId = info["id"] as? String, !setId.isEmpty,
+            let sessionId = info["sessionId"] as? String, !sessionId.isEmpty else { return }
+      var entry: [String: Any] = ["kind": kind, "id": setId, "sessionId": sessionId, "at": at, "watchTapId": tapId]
+      if let unit = info["unit"] as? String, unit == "kg" || unit == "lb" { entry["unit"] = unit }
+      if let exerciseId = info["exerciseId"] as? String, !exerciseId.isEmpty { entry["exerciseId"] = exerciseId }
+      for key in ["weight", "reps", "durationSeconds", "distanceM"] {
+        if let value = info[key] as? NSNumber, value.doubleValue.isFinite, value.doubleValue >= 0 {
+          entry[key] = value
+        }
+      }
+      appendToQueue(watchQuietTapsFileName, entry)
+    case "restAdd", "restSkip", "finish":
+      // The rest's +30 s and Skip, and Finish workout, on the session named.
+      // A Finish carries the sets done and notes written on the watch that the
+      // phone may not have heard of (a message can overtake their own taps);
+      // the app records each once (planQuietTaps).
+      guard let sessionId = info["sessionId"] as? String, !sessionId.isEmpty else { return }
+      var entry: [String: Any] = ["kind": kind, "id": sessionId, "sessionId": sessionId, "at": at, "watchTapId": tapId]
+      if kind != "finish", let restId = info["restId"] as? String, !restId.isEmpty { entry["restId"] = restId }
+      if kind == "finish" {
+        if let unit = info["unit"] as? String, unit == "kg" || unit == "lb" { entry["unit"] = unit }
+        if let sets = info["sets"] as? [[String: Any]] { entry["sets"] = sets }
+        if let notes = info["notes"] as? [[String: Any]] { entry["notes"] = notes }
+      }
+      appendToQueue(watchQuietTapsFileName, entry)
+    case "setNote", "addSet", "addExercise", "moveExercise", "useSuggestion":
+      // What the watch adds to the phone's workout: a dictated note on a set
+      // ("id" is the set), a set or an exercise added under the ids the watch
+      // gave it ("id" is the set, or the exercise with its sets' ids in
+      // "setIds"), an exercise moved a place ("direction"), and a load
+      // suggestion's Use ("id" is the exercise). The app applies each through
+      // the store action workout mode uses, against the session named.
+      guard let id = info["id"] as? String, !id.isEmpty,
+            let sessionId = info["sessionId"] as? String, !sessionId.isEmpty else { return }
+      var entry: [String: Any] = ["kind": kind, "id": id, "sessionId": sessionId, "at": at, "watchTapId": tapId]
+      if let note = info["note"] as? String { entry["note"] = note }
+      if let exerciseId = info["exerciseId"] as? String, !exerciseId.isEmpty { entry["exerciseId"] = exerciseId }
+      if let setIds = info["setIds"] as? [String] { entry["setIds"] = setIds }
+      if let direction = info["direction"] as? String { entry["direction"] = direction }
+      appendToQueue(watchQuietTapsFileName, entry)
+    case "watchSession":
+      // A whole workout the watch ran on its own, sent once when it was
+      // finished, as JSON text (a dictionary with no nulls in it can't be
+      // promised over a user-info transfer, which takes property-list types
+      // only). Kept as the object it parses to; the app writes it once by its
+      // id (addWatchSession), however many times it arrives.
+      guard let body = info["workout"] as? String,
+            let data = body.data(using: .utf8),
+            let workout = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+            let workoutId = workout["id"] as? String, !workoutId.isEmpty,
+            let sets = workout["sets"] as? [Any], !sets.isEmpty else { return }
+      let entry: [String: Any] = ["kind": kind, "id": workoutId, "workout": workout, "at": at, "watchTapId": tapId]
+      appendToQueue(watchQuietTapsFileName, entry)
     default:
+      // A kind this build doesn't know is dropped without its receipt, so a
+      // watch newer than this app keeps drawing it rather than settling it.
       return
     }
 
@@ -285,20 +349,26 @@ final class WatchSession: NSObject, WCSessionDelegate {
   /// JSONSerialization rather than a Codable struct so entries written by
   /// another target, in a shape this file doesn't spell out, survive the
   /// rewrite untouched.
+  ///
+  /// The read and the write are one coordinated write (`coordinatedQueueWrite`),
+  /// so the widget's own appends (another process), a requeue and the app's
+  /// drain can't land in between and be written over or deleted unread.
   private func appendToQueue(_ fileName: String, _ entry: Any) {
     guard let url = Self.appGroupFile(fileName) else { return }
-    var entries: [Any] = []
-    if let data = try? Data(contentsOf: url),
-       let existing = (try? JSONSerialization.jsonObject(with: data)) as? [Any] {
-      entries = existing
+    coordinatedQueueWrite(url) { url in
+      var entries: [Any] = []
+      if let data = try? Data(contentsOf: url),
+         let existing = (try? JSONSerialization.jsonObject(with: data)) as? [Any] {
+        entries = existing
+      }
+      entries.append(entry)
+      guard let data = try? JSONSerialization.data(withJSONObject: entries) else { return }
+      try? FileManager.default.createDirectory(
+        at: url.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+      )
+      try? data.write(to: url, options: .atomic)
     }
-    entries.append(entry)
-    guard let data = try? JSONSerialization.data(withJSONObject: entries) else { return }
-    try? FileManager.default.createDirectory(
-      at: url.deletingLastPathComponent(),
-      withIntermediateDirectories: true
-    )
-    try? data.write(to: url, options: .atomic)
   }
 
   // ==== Session lifecycle ====
@@ -341,6 +411,34 @@ final class WatchSession: NSObject, WCSessionDelegate {
   private static func decodeEntries(_ data: Data) -> [[String: Any]] {
     ((try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]]) ?? []
   }
+}
+
+/// Runs `body` on a queue file in the App Group with every other coordinated
+/// reader-and-writer of it held off until it returns: in this process (the
+/// session's queue against the module's drain) and in others (the widget's
+/// `QuietTapQueue.append`). The two queues with more than one writer use it:
+/// `widget_quiet_taps.json`, and `widget_pending_add_tasks.json`, which the
+/// watch's "add" taps and AddTaskIntent both append to and
+/// `drainPendingAddTasks` empties. Each of them reads the whole file and writes it
+/// back, or reads it and deletes it, so two at once lose an entry: one written
+/// over, or appended between a drain's read and its delete. One coordinated
+/// *write* for all of them, with no options, since each changes the file and
+/// all of them name the file itself (Apple: a write on a file "waits for other
+/// readers and writers of the exact same file"). The accessor gets the URL to
+/// use, which may differ from the one passed.
+///
+/// If coordination itself fails, Apple documents that the accessor never
+/// runs, so the body then runs uncoordinated, which is how every one of these
+/// ran before: a tap is never dropped for want of a lock. Never call it from
+/// inside another coordinated block (Foundation throws on that nesting).
+func coordinatedQueueWrite(_ url: URL, _ body: (URL) -> Void) {
+  var ran = false
+  var error: NSError?
+  NSFileCoordinator(filePresenter: nil).coordinate(writingItemAt: url, options: [], error: &error) { coordinated in
+    ran = true
+    body(coordinated)
+  }
+  if !ran { body(url) }
 }
 
 // Starts the session as the app launches, foreground or background, so the

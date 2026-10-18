@@ -8,7 +8,8 @@
 import { initDatabase, dbGetWorkoutSets, dbGetAllExercises, dbGetWorkoutSession, dbSaveWorkoutSession } from '../db/database';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { logWorkoutToHealth, retractWorkoutFromHealth, workoutHealthWriteOn } from '../utils/healthWorkoutSync';
-import { useWorkoutStore, workoutContentCount } from '../store/useWorkoutStore';
+import { useWorkoutStore, workoutContentCount, type WatchSessionInput } from '../store/useWorkoutStore';
+import { useWatchClashStore } from '../store/useWatchClashStore';
 import { catalogExercise } from '../utils/exerciseCatalog';
 import { newTaskFromDraft } from '../utils/taskDraft';
 import type { Task, TaskDraft } from '../types';
@@ -452,6 +453,57 @@ describe('a session from a routine', () => {
     expect(state().lastTimeFor(bench, s.id).map(x => x.weightKg)).toEqual([40, 80, 80]);
   });
 
+  // The Apple Watch's start list carries this plan, so a workout started
+  // there lays out what starting it here would.
+  it('plans exactly what starting the routine lays out, and writes nothing to plan', () => {
+    const r = ok(state().addRoutine('Push A', items));
+    const plan = state().plannedSetsForRoutine(r.id);
+    expect(state().sessions).toHaveLength(0);
+    const s = ok(state().startSession({ routineId: r.id }));
+    expect(dbGetWorkoutSets(s.id).map(x => [x.exerciseId, x.position, x.setIndex, x.kind, x.weightKg, x.reps, x.supersetKey]))
+      .toEqual(plan.map(p => [p.exerciseId, p.position, p.setIndex, p.values.kind, p.values.weightKg, p.values.reps, p.values.supersetKey]));
+    expect(state().plannedSetsForRoutine('nobody')).toEqual([]);
+  });
+
+  // What the Apple Watch adds to the phone's workout keeps the ids the watch
+  // drew it under, so the watch can settle its own drawing by them.
+  it('takes a set id from the caller, and refuses one the session already has', () => {
+    const s = ok(state().startSession());
+    const first = ok(state().logSet(s.id, { id: 'WATCH-SET-1', exerciseId: bench, weightKg: 60, reps: 8, completedAt: null }));
+    expect(first.id).toBe('WATCH-SET-1');
+    expect(state().logSet(s.id, { id: 'WATCH-SET-1', exerciseId: bench })).toBe('taken');
+    expect(state().logSet(s.id, { id: ' ', exerciseId: bench })).toBe('taken');
+    const added = ok(state().addPlannedSet(s.id, bench, { id: 'WATCH-SET-2' }));
+    expect(added).toMatchObject({ id: 'WATCH-SET-2', weightKg: 60, reps: 8, completedAt: null, setIndex: 1 });
+    expect(state().addPlannedSet(s.id, bench, { id: 'WATCH-SET-2' })).toBe('taken');
+    expect(dbGetWorkoutSets(s.id).map(x => x.id)).toEqual(['WATCH-SET-1', 'WATCH-SET-2']);
+  });
+
+  it('lays an added exercise out under the ids given, refusing any the session has', () => {
+    const r = ok(state().addRoutine('Push A', items));
+    const before = ok(state().startSession({ routineId: r.id }));
+    for (const x of state().loadSets(before.id)) ok(state().editSet(before.id, x.id, { completedAt: new Date().toISOString() }));
+    ok(state().finishSession(before.id));
+    const s = ok(state().startSession());
+    ok(state().logSet(s.id, { id: 'TAKEN', exerciseId: 'lib:back-squat' }));
+    expect(state().addSessionExercise(s.id, bench, { ids: ['TAKEN', 'B'] })).toBe('taken');
+    expect(state().addSessionExercise(s.id, bench, { ids: ['A', 'A'] })).toBe('taken');
+    const added = ok(state().addSessionExercise(s.id, bench, { ids: ['A', 'B'] }));
+    // Last time had three bench sets: two take the ids given, the third its own.
+    expect(added.map(x => x.id).slice(0, 2)).toEqual(['A', 'B']);
+    expect(added).toHaveLength(3);
+    expect(added[2].id).not.toMatch(/^[AB]$/);
+  });
+
+  it('moves an exercise a place, with its sets, and a superset as one block', () => {
+    const s = ok(state().startSession());
+    for (const id of ['lib:back-squat', bench, fly]) ok(state().logSet(s.id, { exerciseId: id, completedAt: null }));
+    expect(state().moveSessionExercise(s.id, fly, 'up')).toBe(true);
+    expect(dbGetWorkoutSets(s.id).sort((a, b) => a.position - b.position).map(x => x.exerciseId)).toEqual(['lib:back-squat', fly, bench]);
+    expect(state().moveSessionExercise(s.id, 'lib:back-squat', 'up')).toBe(false);
+    expect(state().moveSessionExercise('nobody', fly, 'up')).toBe(false);
+  });
+
   it('finishes by dropping the sets never ticked', () => {
     const r = ok(state().addRoutine('Push A', items));
     const s = ok(state().startSession({ routineId: r.id }));
@@ -513,6 +565,17 @@ describe('a session from a routine', () => {
     expect(state().setsBySession[s.id]).toHaveLength(5);
     expect(state().addPlannedWarmups(s.id, 'lib:pec-deck', [{ kg: 10, reps: 8 }])).toBe('notFound');
     expect(state().addPlannedWarmups('nope', 'lib:back-squat', [{ kg: 10, reps: 8 }])).toBe('notFound');
+  });
+
+  it('lays warm-ups out under the ids given, and refuses ids already in the session', () => {
+    const s = ok(state().startSession());
+    const first = ok(state().logSet(s.id, { exerciseId: 'lib:back-squat', weightKg: 100, reps: 5 }));
+    const added = ok(state().addPlannedWarmups(s.id, 'lib:back-squat', [{ kg: 40, reps: 8 }, { kg: 60, reps: 5 }], { ids: ['tap-w0'] }));
+    expect(added.map(x => x.id)).toEqual(['tap-w0', expect.any(String)]);
+    expect(added[1].id).not.toBe('tap-w0');
+    expect(state().addPlannedWarmups(s.id, 'lib:back-squat', [{ kg: 20, reps: 8 }], { ids: [first.id] })).toBe('taken');
+    expect(state().addPlannedWarmups(s.id, 'lib:back-squat', [{ kg: 20, reps: 8 }], { ids: ['x', 'x'] })).toBe('taken');
+    expect(dbGetWorkoutSets(s.id)).toHaveLength(3);
   });
 
   it('adds a set like the exercise\'s last', () => {
@@ -744,6 +807,16 @@ describe('Apple Health', () => {
     expect(state().sessions.find(x => x.id === done.id)?.healthWorkoutId).toBe('HK-1');
   });
 
+  // A Finish tapped on the watch and applied with the app in the background.
+  it('leaves Save’s write for the next pass in front when told to, while writing is on', () => {
+    mockWriteOn.mockReturnValue(true);
+    const live = ok(state().startSession({ title: 'Upper', at: new Date(2026, 9, 5, 9) }));
+    ok(state().logSet(live.id, { exerciseId: 'lib:back-squat', weightKg: 100, reps: 5 }));
+    ok(state().finishSession(live.id, { endedAt: at(10), deferHealthWrite: true }));
+    expect(mockWrite).not.toHaveBeenCalled();
+    expect(dbGetWorkoutSession(live.id)).toMatchObject({ healthWorkoutId: null, healthWritePending: true });
+  });
+
   it('takes the write back out when the workout was deleted before Health answered', async () => {
     let land: (v: unknown) => void = () => {};
     mockWrite.mockReturnValue(new Promise(r => { land = r; }));
@@ -961,5 +1034,130 @@ describe('Apple Health', () => {
       await Promise.all([state().writePendingHealthSessions(), state().writePendingHealthSessions()]);
       expect(mockWrite).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+describe('a workout the Apple Watch ran on its own', () => {
+  const squat = 'lib:back-squat';
+  const at = (h: number, m = 0, day = 18) => new Date(2026, 9, day, h, m).toISOString();
+  const watchWorkout = (extra: Partial<WatchSessionInput> = {}): WatchSessionInput => ({
+    id: 'WATCH-1',
+    routineId: 'r-gone',
+    programId: null,
+    taskId: null,
+    title: ' Legs ',
+    startedAt: at(6, 0),
+    endedAt: at(6, 50),
+    sets: [
+      { id: 'WS-2', exerciseId: squat, position: 0, setIndex: 2, kind: 'working', weightKg: 100, reps: 5, durationSeconds: null, distanceM: null, completedAt: at(6, 20), note: ' Knees in ', supersetKey: 'ss-1' },
+      { id: 'WS-1', exerciseId: squat, position: 0, setIndex: 0, kind: 'warmup', weightKg: 60, reps: 5, durationSeconds: null, distanceM: null, completedAt: at(6, 10), note: null, supersetKey: null },
+    ],
+    ...extra,
+  });
+  const NOW = new Date(2026, 9, 18, 8, 0);
+
+  beforeEach(() => {
+    mockRawDb.exec(`DELETE FROM settings WHERE key = 'watchWorkoutClashes'`);
+    useWatchClashStore.getState().reload();
+  });
+
+  it('writes it with the watch’s ids and stamps, finished, sets renumbered', () => {
+    const result = ok(state().addWatchSession(watchWorkout(), { now: NOW }));
+    expect(result.duplicate).toBe(false);
+    expect(result.session).toMatchObject({
+      id: 'WATCH-1', title: 'Legs', routineId: 'r-gone', startedAt: at(6, 0), endedAt: at(6, 50), healthWritePending: false,
+    });
+    reload();
+    expect(state().sessions.map(x => x.id)).toEqual(['WATCH-1']);
+    expect(dbGetWorkoutSets('WATCH-1').map(x => [x.id, x.setIndex, x.kind, x.weightKg, x.completedAt, x.note, x.supersetKey])).toEqual([
+      ['WS-1', 0, 'warmup', 60, at(6, 10), null, null],
+      ['WS-2', 1, 'working', 100, at(6, 20), 'Knees in', 'ss-1'],
+    ]);
+  });
+
+  it('writes a workout delivered twice once', () => {
+    ok(state().addWatchSession(watchWorkout(), { now: NOW }));
+    const again = ok(state().addWatchSession(watchWorkout({ title: 'Changed' }), { now: NOW }));
+    expect(again.duplicate).toBe(true);
+    expect(again.session.title).toBe('Legs');
+    expect(dbGetWorkoutSets('WATCH-1')).toHaveLength(2);
+    expect(mockWrite).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses one with no sets, and keeps one whose watch clock put the end first', () => {
+    expect(state().addWatchSession(watchWorkout({ sets: [] }), { now: NOW })).toBe('empty');
+    const backwards = ok(state().addWatchSession(watchWorkout({ endedAt: at(5, 0) }), { now: NOW }));
+    expect(backwards.session.endedAt).toBe(at(6, 0));
+  });
+
+  it('writes it to Health under Save’s switches', () => {
+    const result = ok(state().addWatchSession(watchWorkout(), { now: NOW }));
+    expect(mockWrite).toHaveBeenCalledWith(result.session);
+  });
+
+  it('leaves one that arrives more than a week late out of Health, in front as in the background', () => {
+    const late = new Date(2026, 9, 26, 8, 0);
+    mockWriteOn.mockReturnValue(true);
+    ok(state().addWatchSession(watchWorkout(), { now: late }));
+    ok(state().addWatchSession(watchWorkout({ id: 'WATCH-2' }), { now: late, deferHealthWrite: true }));
+    expect(mockWrite).not.toHaveBeenCalled();
+    expect(dbGetWorkoutSession('WATCH-2')?.healthWritePending).toBe(false);
+    // Six days is still written.
+    ok(state().addWatchSession(watchWorkout({ id: 'WATCH-3' }), { now: new Date(2026, 9, 24, 6, 0) }));
+    expect(mockWrite).toHaveBeenCalledTimes(1);
+  });
+
+  // Applied in the background, where the time borrowed ends before Health may
+  // answer: the write waits for the next pass in front, as an agent's does.
+  it('leaves the write pending in the background while writing is on, and not otherwise', () => {
+    mockWriteOn.mockReturnValue(true);
+    ok(state().addWatchSession(watchWorkout(), { now: NOW, deferHealthWrite: true }));
+    expect(mockWrite).not.toHaveBeenCalled();
+    expect(dbGetWorkoutSession('WATCH-1')?.healthWritePending).toBe(true);
+    mockWriteOn.mockReturnValue(false);
+    ok(state().addWatchSession(watchWorkout({ id: 'WATCH-2' }), { now: NOW, deferHealthWrite: true }));
+    expect(dbGetWorkoutSession('WATCH-2')?.healthWritePending).toBe(false);
+  });
+
+  it('completes its task at the time it ended, as finishing would', () => {
+    mockTasks = [task('lift')];
+    ok(state().addWatchSession(watchWorkout({ taskId: 'lift' }), { now: NOW }));
+    expect(mockCompleteTask).toHaveBeenCalledWith('lift', { completedAt: at(6, 50) });
+  });
+
+  it('logs a target’s unit only when the workout ended today', () => {
+    mockTasks = [task('three-a-week', { targetCount: 3 })];
+    ok(state().addWatchSession(watchWorkout({ taskId: 'three-a-week' }), { now: NOW }));
+    expect(mockLogQuotaUnit).toHaveBeenCalledWith('three-a-week');
+    mockLogQuotaUnit.mockClear();
+    ok(state().addWatchSession(watchWorkout({ id: 'WATCH-OLD', taskId: 'three-a-week', startedAt: at(6, 0, 15), endedAt: at(6, 50, 15) }), { now: NOW }));
+    expect(mockLogQuotaUnit).not.toHaveBeenCalled();
+  });
+
+  it('leaves a task already done, or one that asks a question, alone', () => {
+    mockTasks = [task('done', {}, { completed: true, completedAt: at(7) }), task('asks', { deliverableKind: 'text' })];
+    ok(state().addWatchSession(watchWorkout({ taskId: 'done' }), { now: NOW }));
+    ok(state().addWatchSession(watchWorkout({ id: 'WATCH-2', taskId: 'asks' }), { now: NOW }));
+    expect(mockCompleteTask).not.toHaveBeenCalled();
+    expect(mockLogQuotaUnit).not.toHaveBeenCalled();
+  });
+
+  it('keeps both when it overlaps a workout the phone logged, and records the pair once', () => {
+    const phone = ok(state().addFinishedSession({
+      startedAt: at(6, 30), endedAt: at(7, 10), sets: [{ exerciseId: squat, weightKg: 90, reps: 5 }],
+    })).session;
+    ok(state().addFinishedSession({ startedAt: at(9), endedAt: at(10), sets: [{ exerciseId: squat, weightKg: 90, reps: 5 }] }));
+    const result = ok(state().addWatchSession(watchWorkout(), { now: NOW }));
+    expect(result.clashesWith).toEqual([phone.id]);
+    expect(state().sessions).toHaveLength(3);
+    expect(useWatchClashStore.getState().pending).toEqual([{ watchSessionId: 'WATCH-1', otherSessionId: phone.id }]);
+    ok(state().addWatchSession(watchWorkout(), { now: NOW }));
+    useWatchClashStore.getState().reload();
+    expect(useWatchClashStore.getState().pending).toHaveLength(1);
+  });
+
+  it('counts a workout still going on the phone as overlapping', () => {
+    const going = ok(state().startSession({ at: new Date(2026, 9, 18, 6, 40) }));
+    expect(ok(state().addWatchSession(watchWorkout(), { now: NOW })).clashesWith).toEqual([going.id]);
   });
 });

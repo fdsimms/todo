@@ -33,15 +33,36 @@ final class WatchStore: NSObject, ObservableObject {
     @Published private(set) var snapshot: WidgetSnapshot? = nil
     @Published private(set) var taps: [WatchTap] = []
 
+    // ==== The workout (WatchWorkout.swift) ====
+
+    /// The snapshot's workout section: the phone's workout in progress, or the
+    /// routines to start one from. Nil while the Workouts area is off.
+    @Published var workoutSection: WatchWorkoutSection? = nil
+    /// A workout this watch is running on its own, kept in the watch's App
+    /// Group so it outlives the app being closed.
+    @Published var ownWorkout: WatchOwnWorkout? = nil
+    /// The finished screen, from Finish workout until Done.
+    @Published var finishedSummary: WatchFinishedSummary? = nil
+    /// The rest whose "Go to the set" was tapped, by `WatchRestSpan.key`.
+    @Published var dismissedRestKey: Int? = nil
+    /// Whether the app is on screen, which is when the rest's end taps the
+    /// wrist from here (a notification does it otherwise).
+    var isActive = true
+    /// The haptic at the end of the rest on screen.
+    var restAlarm: DispatchWorkItem? = nil
+
     var local: LocalTapState { LocalTapState(taps) }
 
     /// The most recent tap still being held, which the Undo button removes.
-    var undoableTap: WatchTap? { taps.last { !$0.sent } }
+    /// Workout taps are sent at once and never held.
+    var undoableTap: WatchTap? { taps.last { !$0.sent && !$0.isWorkout } }
 
     override init() {
         super.init()
         snapshot = loadWidgetSnapshot().snapshot
         taps = WatchTapLog.load()
+        workoutSection = Self.loadWorkoutSection()
+        ownWorkout = WatchOwnWorkoutFile.load()
     }
 
     func activate() {
@@ -115,9 +136,46 @@ final class WatchStore: NSObject, ObservableObject {
         }
     }
 
+    /// A workout tap (`WatchTap.workoutKinds`): logged, drawn, and sent at
+    /// once, with no Undo window. Returns the tap as recorded.
+    @discardableResult
+    func recordWorkoutTap(
+        kind: String,
+        itemId: String,
+        sessionId: String? = nil,
+        restId: String? = nil,
+        values: WatchSetValues? = nil,
+        unit: String? = nil,
+        title: String? = nil,
+        body: String? = nil,
+        note: String? = nil,
+        exerciseId: String? = nil,
+        setIds: [String]? = nil,
+        direction: String? = nil,
+        doneSets: [WatchFinishedSet]? = nil,
+        notes: [WatchFinishedNote]? = nil
+    ) -> WatchTap {
+        var tap = WatchTap(id: UUID().uuidString, kind: kind, itemId: itemId, listId: nil, title: title, at: Date(), sent: false)
+        tap.sessionId = sessionId
+        tap.restId = restId
+        tap.values = values
+        tap.unit = unit
+        tap.body = body
+        tap.note = note
+        tap.exerciseId = exerciseId
+        tap.setIds = setIds
+        tap.direction = direction
+        tap.doneSets = doneSets
+        tap.notes = notes
+        taps.append(tap)
+        WatchTapLog.save(taps)
+        sendDue(force: false)
+        return tap
+    }
+
     /// Drops the most recent tap that hasn't been sent yet.
     func undoLast() {
-        guard let index = taps.lastIndex(where: { !$0.sent }) else { return }
+        guard let index = taps.lastIndex(where: { !$0.sent && !$0.isWorkout }) else { return }
         taps.remove(at: index)
         WatchTapLog.save(taps)
         WidgetCenter.shared.reloadAllTimelines()
@@ -128,6 +186,9 @@ final class WatchStore: NSObject, ObservableObject {
     func flush() {
         sendDue(force: true)
     }
+
+    /// The newest taps `sendDue` may send again (see there).
+    static let resendWindow = 100
 
     /// Hands each held tap whose undo window has passed (or every one, when
     /// `force`) to WatchConnectivity, which queues it and delivers it once, in
@@ -140,15 +201,44 @@ final class WatchStore: NSObject, ObservableObject {
     /// thing of the queued transfer); the phone drops
     /// whichever copy arrives second, by the tap's id. A message that fails
     /// needs no handling, since the transfer is still on its way.
+    ///
+    /// **A message can overtake a transfer.** Apple promises messages arrive
+    /// in the order sent, and transfers in theirs, but nothing across the two.
+    /// A tap sent as a message now could reach the phone ahead of one queued
+    /// as a transfer while the phone was out of reach: a set ticked on a set
+    /// added then, or Finish ahead of the sets it finishes, would name what
+    /// the phone hasn't got yet and be dropped. So before the first new
+    /// message, every tap whose transfer is still outstanding goes again as a
+    /// message, in the order made, and the message copies arrive in order.
+    /// (The phone's planner no longer depends on this for a workout's sets:
+    /// a tick names its exercise and Finish carries its sets.)
+    ///
+    /// **Only the newest `resendWindow` taps are ever sent again**, half the
+    /// phone's memory of tap ids (`receivedIdLimit`, 200), which is what
+    /// drops the second copy of a tap. A copy arriving after the phone has
+    /// forgotten the first would be applied twice, and for that the phone
+    /// would have to receive more than 100 other taps while this one's
+    /// transfer was still outstanding here, which transfers delivered in
+    /// order and messages sent only while in reach don't leave room for.
     private func sendDue(force: Bool) {
         let session = WCSession.default
         guard WCSession.isSupported(), session.activationState == .activated else { return }
         let due = Date().addingTimeInterval(-Self.undoWindow)
+        let recent = Set(taps.suffix(Self.resendWindow).map(\.id))
+        let waiting = Set(session.outstandingUserInfoTransfers.compactMap { $0.userInfo["watchTapId"] as? String })
+            .intersection(recent)
+        var caughtUp = false
         var changed = false
-        for index in taps.indices where !taps[index].sent && (force || taps[index].at <= due) {
+        for index in taps.indices where !taps[index].sent && (force || taps[index].isWorkout || taps[index].at <= due) {
             let info = taps[index].userInfo
             _ = session.transferUserInfo(info)
             if session.isReachable {
+                if !caughtUp {
+                    caughtUp = true
+                    for earlier in taps where earlier.sent && waiting.contains(earlier.id) {
+                        session.sendMessage(earlier.userInfo, replyHandler: nil, errorHandler: nil)
+                    }
+                }
                 session.sendMessage(info, replyHandler: nil, errorHandler: nil)
             }
             taps[index].sent = true
@@ -166,18 +256,36 @@ final class WatchStore: NSObject, ObservableObject {
             return
         }
         Self.writeSnapshotFile(raw)
+        // A separate decode of the same bytes: the workout section is the
+        // watch's alone, so the shared WidgetSnapshot (which the iPhone widget
+        // compiles too) never carries it.
+        let workout = (try? JSONDecoder().decode(WatchWorkoutEnvelope.self, from: raw))?.workout
         let waiting = Set(context["pendingTapIds"] as? [String] ?? [])
         let received = Set(context["receivedTapIds"] as? [String] ?? [])
         let oldest = Date().addingTimeInterval(-WatchTapLog.maxAge)
 
         DispatchQueue.main.async {
             self.snapshot = decoded
+            self.workoutSection = workout
             self.taps.removeAll { tap in
                 (received.contains(tap.id) && !waiting.contains(tap.id)) || (tap.sent && tap.at < oldest)
             }
             WatchTapLog.save(self.taps)
             WidgetCenter.shared.reloadAllTimelines()
+            self.refreshRestAlarm()
         }
+    }
+
+    /// The workout section of the snapshot kept from the last context, for a
+    /// launch before the next one arrives.
+    private static func loadWorkoutSection() -> WatchWorkoutSection? {
+        guard let url = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID)?
+            .appendingPathComponent("Library/Application Support", isDirectory: true)
+            .appendingPathComponent(snapshotFileName),
+              let data = try? Data(contentsOf: url) else {
+            return nil
+        }
+        return (try? JSONDecoder().decode(WatchWorkoutEnvelope.self, from: data))?.workout
     }
 
     private static func writeSnapshotFile(_ data: Data) {

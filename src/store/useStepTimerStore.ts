@@ -50,6 +50,13 @@ interface StepTimerState {
   /** Reads the persisted stack and re-arms its alarms. Safe to call twice. */
   hydrate: () => void;
   /**
+   * A workout session's rest, and only the one named when `restId` is given,
+   * reading the stack back first if nothing has this launch: a cold launch in
+   * the background (woken by the Apple Watch) has no React tree to have done
+   * it, and a rest still counting down must not read as none.
+   */
+  restFor: (sessionId: string, restId?: string | null) => RestTimer | null;
+  /**
    * Re-reads from whichever database is now live — what demo mode calls on the
    * way in and the way out, for the reason `useSharedLinkStore.reload` gives:
    * this is a store holding state in memory *and* writing through to
@@ -77,6 +84,12 @@ interface StepTimerState {
     sessionTitle: string;
     label: string;
     durationSeconds: number;
+    /**
+     * When the rest began, if not now: a set ticked on the Apple Watch and
+     * applied a moment later rests from the tick, as the watch's own countdown
+     * does (`tickSet`).
+     */
+    startedAt?: string;
   }) => RestTimer | null;
   pause: (id: string) => void;
   resume: (id: string) => void;
@@ -152,6 +165,12 @@ export const useStepTimerStore = create<StepTimerState>((set, get) => ({
     set({ timers, hydrated: true });
   },
 
+  restFor: (sessionId, restId = null) => {
+    if (!get().hydrated) get().hydrate();
+    return get().timers.find((t): t is RestTimer =>
+      t.kind === 'rest' && t.sessionId === sessionId && (restId === null || t.id === restId)) ?? null;
+  },
+
   reload: () => {
     // Whatever was on screen belongs to the other database; its alarms go with
     // it. The load below re-arms only what the now-live database holds.
@@ -184,11 +203,15 @@ export const useStepTimerStore = create<StepTimerState>((set, get) => ({
     return timer;
   },
 
-  startRest: ({ sessionId, exerciseId, sessionTitle, label, durationSeconds }) => {
+  startRest: ({ sessionId, exerciseId, sessionTitle, label, durationSeconds, startedAt }) => {
     const seconds = Math.round(durationSeconds);
     if (!Number.isFinite(seconds)) return null;
     if (seconds < MIN_STEP_TIMER_SECONDS || seconds > MAX_STEP_TIMER_SECONDS) return null;
-    const now = new Date().toISOString();
+    // Never later than now: a start in the future would count down from a
+    // moment that hasn't come, and the elapsed time clamps at zero anyway.
+    const nowMs = Date.now();
+    const fromMs = startedAt ? Date.parse(startedAt) : NaN;
+    const now = new Date(Number.isFinite(fromMs) && fromMs < nowMs ? fromMs : nowMs).toISOString();
     const timer: RestTimer = {
       kind: 'rest',
       id: generateId(),

@@ -42,6 +42,7 @@ import { workoutTaskEffect } from '../utils/workoutTask';
 import {
   copyLastSet,
   finishPlan,
+  movedExerciseOrder,
   plannedSetsFor,
   plannedSetsFromHistory,
   previousSets,
@@ -52,13 +53,18 @@ import { loadContextFor, rampSteps } from '../utils/workoutProgression';
 import { libraryProgram } from '../utils/workoutProgramLibrary';
 import { useSettingsStore } from './useSettingsStore';
 import {
+  PENDING_WORKOUT_WRITE_MAX_AGE_DAYS,
   logWorkoutToHealth,
   pendingWorkoutWriteAction,
   retractWorkoutFromHealth,
   workoutHealthWriteOn,
+  workoutSpanWritable,
   type WorkoutWriteResult,
 } from '../utils/healthWorkoutSync';
 import { NEW_EXERCISE_PREFIX, indexAdd, indexExisting, indexHas, type PlannedImportSession } from '../utils/workoutCsv';
+import { overlappingSessions } from '../utils/watchWorkoutClash';
+import { getLogicalDayKey } from '../utils/dateUtils';
+import { useWatchClashStore } from './useWatchClashStore';
 import { buildCatalog, catalogExercise } from '../utils/exerciseCatalog';
 import {
   cleanWorkoutName,
@@ -151,6 +157,15 @@ export interface FinishOptions extends Omit<SessionPatch, 'endedAt'> {
    * question on completion, and asks it itself (the answer-first rule).
    */
   completeLinkedTask?: boolean;
+  /**
+   * Leave the Health write for the next pass with the app in front
+   * (`healthWritePending`, `writePendingHealthSessions`) rather than starting
+   * it now: for a finish applied in the background (a watch tap that woke the
+   * app), whose borrowed time ends before Health may have answered, which
+   * would leave a workout in Health with no id on the row to retract it by.
+   * Only while writing is on, so it is still exactly what Save would write.
+   */
+  deferHealthWrite?: boolean;
 }
 
 /** A workout logged after the fact, with what was done. */
@@ -171,6 +186,50 @@ export interface FinishedSessionInput {
   sets: (SetInput & { completedAt?: string | null })[];
 }
 
+/** A planned set of a routine, at the place `startSession` gives it. */
+export interface PlannedRoutineSet {
+  exerciseId: string;
+  position: number;
+  setIndex: number;
+  values: PlannedSetValues;
+}
+
+/** A workout the watch ran on its own, as `parseWatchSession` reads it: kilograms, done sets only. */
+export interface WatchSessionInput {
+  id: string;
+  routineId: string | null;
+  programId: string | null;
+  taskId: string | null;
+  title: string;
+  startedAt: string;
+  endedAt: string;
+  sets: {
+    id: string;
+    exerciseId: string;
+    position: number;
+    setIndex: number;
+    kind: WorkoutSetKind;
+    weightKg: number | null;
+    reps: number | null;
+    durationSeconds: number | null;
+    distanceM: number | null;
+    completedAt: string;
+    /** A note written on the set on the watch. */
+    note: string | null;
+    /** The superset it belonged to in the plan, kept so history shows the pair. */
+    supersetKey: string | null;
+  }[];
+}
+
+export interface WatchSessionResult {
+  session: WorkoutSession;
+  sets: WorkoutSet[];
+  /** The session was already in the log, so nothing was written. */
+  duplicate: boolean;
+  /** Other sessions whose span overlaps this one's, newest first. */
+  clashesWith: string[];
+}
+
 export interface SetInput {
   exerciseId: string;
   kind?: WorkoutSetKind;
@@ -183,9 +242,16 @@ export interface SetInput {
   note?: string | null;
   /** When it was done. Defaults to now; null lays the set out as planned, not done. */
   completedAt?: string | null;
+  /**
+   * The id to give the set, when the caller already has one: a set added on
+   * the Apple Watch keeps the watch's id, so the watch can settle what it
+   * drew by it. One already in the session is refused (`taken`), which makes
+   * a repeat of the same addition a no-op.
+   */
+  id?: string;
 }
 
-export type SetPatch = Partial<Omit<SetInput, 'exerciseId'>>;
+export type SetPatch = Partial<Omit<SetInput, 'exerciseId' | 'id'>>;
 
 /** Why a write was refused, for the caller to say in its own words. */
 export type WorkoutRefusal =
@@ -250,6 +316,14 @@ interface WorkoutStore {
    */
   startSession: (input?: StartSessionInput) => WorkoutSession | WorkoutRefusal;
   /**
+   * The sets starting this routine would lay out right now, in order, each
+   * with the place it takes: `startSession`'s own plan, read without writing
+   * anything. Last time is the newest session other than `exceptSessionId`.
+   * The Apple Watch's start list carries it, so a workout started there with
+   * no phone in reach lays out exactly what the phone would have.
+   */
+  plannedSetsForRoutine: (routineId: string, exceptSessionId?: string | null) => PlannedRoutineSet[];
+  /**
    * Edits a session. Refuses a blank title, and an end before the start
    * (`order`). Moving a finished session that is in Health retracts the
    * workout and writes it again at the new times, while writing is on; with
@@ -283,6 +357,19 @@ interface WorkoutStore {
    * Never written to Health: an imported workout came from an app that most
    * likely wrote it there already.
    */
+  /**
+   * Writes a workout the Apple Watch ran on its own (`watchWorkout.ts`), once:
+   * a session id already in the log is a repeat delivery and writes nothing
+   * (`duplicate`). The session and its sets keep the watch's ids, and its
+   * times are the watch's stamps however late it arrives. Like `finishSession`
+   * it answers the task it was started for (a target's unit only when it ended
+   * today, a completion at the time it ended), writes it to Health under the
+   * same switches, and leaves a task that asks a question alone for the app to
+   * ask. Another session overlapping its span is recorded for the one question
+   * the phone asks about it (`useWatchClashStore`), and named in `clashesWith`.
+   * `deferHealthWrite` is `FinishOptions`' own.
+   */
+  addWatchSession: (input: WatchSessionInput, options?: { now?: Date; deferHealthWrite?: boolean }) => WatchSessionResult | WorkoutRefusal;
   importSessions: (
     sessions: PlannedImportSession[],
     creates: Record<string, ExerciseInput>,
@@ -329,17 +416,33 @@ interface WorkoutStore {
   /**
    * Adds an exercise to a session, laid out like last time (or as one empty
    * set). Refuses one already in it (`taken`) or nobody knows (`notFound`).
+   * `ids` names the sets laid out, in order, for a caller that drew them
+   * already (the Apple Watch); one already in the session refuses the lot
+   * (`taken`), and sets past the ids given get ids of their own.
    */
-  addSessionExercise: (sessionId: string, exerciseId: string) => WorkoutSet[] | WorkoutRefusal;
-  /** "Add set": one more planned set like the exercise's last (`copyLastSet`). */
-  addPlannedSet: (sessionId: string, exerciseId: string) => WorkoutSet | WorkoutRefusal;
+  addSessionExercise: (sessionId: string, exerciseId: string, options?: { ids?: readonly string[] }) => WorkoutSet[] | WorkoutRefusal;
+  /** "Add set": one more planned set like the exercise's last (`copyLastSet`), with `id` as `SetInput.id`. */
+  addPlannedSet: (sessionId: string, exerciseId: string, options?: { id?: string }) => WorkoutSet | WorkoutRefusal;
+  /**
+   * Moves an exercise a place up or down in the session, with its sets, and a
+   * superset as one block (`movedExerciseOrder`, then `reorderExercises`).
+   * False when it can't move that way.
+   */
+  moveSessionExercise: (sessionId: string, exerciseId: string, direction: 'up' | 'down') => boolean;
   /**
    * Lays warm-up steps out as planned sets ahead of the exercise's other sets,
    * which move down to make room. Refuses a session, or an exercise not in it,
    * that nobody knows (`notFound`). What "Use" does for a ramp that had no
-   * weight to start from when the workout began.
+   * weight to start from when the workout began. `ids` names the warm-ups,
+   * in order, as `addSessionExercise`'s does (the Apple Watch's Use draws
+   * them first): one already in the session refuses the lot (`taken`).
    */
-  addPlannedWarmups: (sessionId: string, exerciseId: string, steps: readonly { kg: number; reps: number }[]) => WorkoutSet[] | WorkoutRefusal;
+  addPlannedWarmups: (
+    sessionId: string,
+    exerciseId: string,
+    steps: readonly { kg: number; reps: number }[],
+    options?: { ids?: readonly string[] },
+  ) => WorkoutSet[] | WorkoutRefusal;
 
   /**
    * Writes to Health the workouts an agent logged over MCP
@@ -529,9 +632,19 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
     stampHealth(fresh, { healthWorkoutId: result.workoutId, healthWritePending: false });
   };
 
-  /** Fired after a save; the session is already on disk, so nothing waits on Health. */
-  const writeToHealth = (session: WorkoutSession) => {
-    void logWorkoutToHealth(session).then(result => recordHealthWrite(session, result));
+  /**
+   * Fired after a save; the session is already on disk, so nothing waits on
+   * Health. Deferred, it is only flagged for the next pass in front, and only
+   * when the write would happen now (see `FinishOptions.deferHealthWrite`).
+   */
+  const writeToHealth = (session: WorkoutSession, defer = false) => {
+    if (!defer) {
+      void logWorkoutToHealth(session).then(result => recordHealthWrite(session, result));
+      return;
+    }
+    if (!workoutHealthWriteOn() || !workoutSpanWritable(session)) return;
+    const fresh = dbGetWorkoutSession(session.id);
+    if (fresh && fresh.healthWorkoutId === null) stampHealth(fresh, { healthWorkoutId: null, healthWritePending: true });
   };
 
   /** A set row from planned values, at a place the caller has worked out. */
@@ -541,8 +654,9 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
     position: number,
     setIndex: number,
     v: PlannedSetValues,
+    id: string = generateId(),
   ): WorkoutSet => ({
-    id: generateId(),
+    id,
     sessionId,
     exerciseId,
     position,
@@ -926,17 +1040,26 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         healthWritePending: false,
       };
       putSession(row);
-      const planned: WorkoutSet[] = [];
-      for (const item of routine?.items ?? []) {
-        if (!exerciseKnown(item.exerciseId) || planned.some(p => p.exerciseId === item.exerciseId)) continue;
-        const position = planned.length === 0 ? 0 : planned[planned.length - 1].position + 1;
-        const last = previousSets(dbGetWorkoutSetsForExercise(item.exerciseId), get().sessions, row.id);
-        const ramp = item.warmupRamp ? rampFor(item.exerciseId, item) : undefined;
-        plannedSetsFor(item, last, ramp).forEach((v, i) => planned.push(plannedRow(row.id, item.exerciseId, position, i, v)));
-      }
+      const planned = routine
+        ? get().plannedSetsForRoutine(routine.id, row.id).map(p => plannedRow(row.id, p.exerciseId, p.position, p.setIndex, p.values))
+        : [];
       if (planned.length > 0) dbSaveWorkoutSets(planned);
       putSets(row.id, planned);
       return row;
+    },
+
+    plannedSetsForRoutine(routineId, exceptSessionId = null) {
+      const routine = get().routines.find(r => r.id === routineId);
+      const planned: PlannedRoutineSet[] = [];
+      for (const item of routine?.items ?? []) {
+        if (!exerciseKnown(item.exerciseId) || planned.some(p => p.exerciseId === item.exerciseId)) continue;
+        const position = planned.length === 0 ? 0 : planned[planned.length - 1].position + 1;
+        const last = previousSets(dbGetWorkoutSetsForExercise(item.exerciseId), get().sessions, exceptSessionId);
+        const ramp = item.warmupRamp ? rampFor(item.exerciseId, item) : undefined;
+        plannedSetsFor(item, last, ramp).forEach((values, setIndex) =>
+          planned.push({ exerciseId: item.exerciseId, position, setIndex, values }));
+      }
+      return planned;
     },
 
     updateSession(id, patch) {
@@ -1001,7 +1124,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       const existing = get().sessions.find(s => s.id === id);
       if (!existing) return 'notFound';
       if (existing.endedAt !== null) return 'finished';
-      const { completeLinkedTask = true, ...patch } = options;
+      const { completeLinkedTask = true, deferHealthWrite = false, ...patch } = options;
       // Refuse an end before the start (or a start after the end) before the
       // plan's unfinished sets are deleted, or a refused finish leaves the
       // session live with its plan gone.
@@ -1032,7 +1155,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         if (effect === 'complete') tasks.completeTask(task!.id);
         else if (effect === 'log-unit') tasks.logQuotaUnit(task!.id);
       }
-      writeToHealth(finished);
+      writeToHealth(finished, deferHealthWrite);
       return finished;
     },
 
@@ -1064,6 +1187,82 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       set({ sessions: [...get().sessions, session].sort(byStartedDesc) });
       putSets(session.id, sets);
       return { session, sets };
+    },
+
+    addWatchSession(input, { now = new Date(), deferHealthWrite = false } = {}) {
+      // A repeat delivery (the watch sends a finished workout once, but a
+      // transfer and the message that wakes the phone can both arrive).
+      const existing = get().sessions.find(s => s.id === input.id) ?? dbGetWorkoutSession(input.id);
+      if (existing) return { session: existing, sets: [], duplicate: true, clashesWith: [] };
+      if (input.sets.length === 0) return 'empty';
+      const startMs = Date.parse(input.startedAt);
+      const endMs = Date.parse(input.endedAt);
+      if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return 'order';
+      const routine = input.routineId ? get().routines.find(r => r.id === input.routineId) : undefined;
+      // A watch clock that read an end before its start loses nothing: the
+      // workout is kept, as long as it took no time.
+      const endedAt = new Date(Math.max(startMs, endMs)).toISOString();
+      const session: WorkoutSession = {
+        id: input.id,
+        // Provenance, kept as the watch sent it even when the routine has gone
+        // since: every reader resolves it or shrugs.
+        routineId: input.routineId,
+        programId: input.programId ?? routine?.programId ?? null,
+        taskId: input.taskId,
+        title: cleanWorkoutName(input.title) || routine?.name || 'Workout',
+        startedAt: new Date(startMs).toISOString(),
+        endedAt,
+        notes: '',
+        effort: null,
+        healthWorkoutId: null,
+        healthWritePending: false,
+      };
+      const sets = renumber(input.sets.map((st): WorkoutSet => ({
+        id: st.id,
+        sessionId: session.id,
+        exerciseId: st.exerciseId,
+        position: st.position,
+        setIndex: st.setIndex,
+        kind: st.kind,
+        weightKg: amount(st.weightKg),
+        reps: whole(st.reps),
+        durationSeconds: whole(st.durationSeconds),
+        distanceM: amount(st.distanceM),
+        rpe: null,
+        completedAt: st.completedAt,
+        supersetKey: st.supersetKey?.trim() || null,
+        note: st.note?.trim() || null,
+      })));
+      const clashesWith = overlappingSessions(session, get().sessions, now);
+      dbTransaction(() => {
+        dbSaveWorkoutSession(session);
+        dbSaveWorkoutSets(sets);
+      });
+      set({ sessions: [...get().sessions, session].sort(byStartedDesc) });
+      putSets(session.id, sets);
+      const clashes = useWatchClashStore.getState();
+      for (const otherSessionId of clashesWith) clashes.record({ watchSessionId: session.id, otherSessionId });
+      // The task it was started for, answered as `finishSession` answers it,
+      // with two differences for a workout that can arrive days late: a
+      // completion is stamped when the workout ended, and a target's unit is
+      // logged only when it ended today, since the rollover has already closed
+      // an earlier day's count. A task that asks a question is the caller's to
+      // hand to the app (planQuietTaps does), since nothing here can ask.
+      if (session.taskId) {
+        const tasks = taskStore();
+        const task = tasks.tasks.find(t => t.id === session.taskId) ?? null;
+        const effect = workoutTaskEffect(task);
+        const { dayResetTime } = useSettingsStore.getState();
+        const endedToday = getLogicalDayKey(new Date(endedAt), dayResetTime) === getLogicalDayKey(now, dayResetTime);
+        if (effect === 'complete') tasks.completeTask(task!.id, { completedAt: endedAt });
+        else if (effect === 'log-unit' && endedToday) tasks.logQuotaUnit(task!.id);
+      }
+      // A workout that reaches the phone more than a week after it ended is
+      // history, not something to write now: the same answer the background
+      // path gets, where the pending pass drops a flag that old
+      // (`pendingWorkoutWriteAction`), so when it arrives decides nothing.
+      if (now.getTime() - endMs <= PENDING_WORKOUT_WRITE_MAX_AGE_DAYS * 86_400_000) writeToHealth(session, deferHealthWrite);
+      return { session: get().sessions.find(x => x.id === session.id) ?? session, sets, duplicate: false, clashesWith };
     },
 
     importSessions(sessions, creates) {
@@ -1228,12 +1427,13 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       if (!get().sessions.some(s => s.id === sessionId)) return 'notFound';
       if (!exerciseKnown(input.exerciseId)) return 'notFound';
       const sets = get().loadSets(sessionId);
+      if (input.id !== undefined && (input.id.trim() === '' || sets.some(s => s.id === input.id))) return 'taken';
       const same = sets.filter(s => s.exerciseId === input.exerciseId);
       const position = same.length > 0
         ? same[0].position
         : sets.reduce((max, s) => Math.max(max, s.position), -1) + 1;
       const row: WorkoutSet = {
-        id: generateId(),
+        id: input.id ?? generateId(),
         sessionId,
         exerciseId: input.exerciseId,
         position,
@@ -1290,25 +1490,28 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       return previousSets(dbGetWorkoutSetsForExercise(exerciseId), get().sessions, exceptSessionId);
     },
 
-    addSessionExercise(sessionId, exerciseId) {
+    addSessionExercise(sessionId, exerciseId, options = {}) {
       if (!get().sessions.some(s => s.id === sessionId)) return 'notFound';
       if (!exerciseKnown(exerciseId)) return 'notFound';
       const sets = get().loadSets(sessionId);
       if (sets.some(s => s.exerciseId === exerciseId)) return 'taken';
+      const ids = (options.ids ?? []).filter(id => typeof id === 'string' && id.trim() !== '');
+      if (ids.some(id => sets.some(s => s.id === id)) || new Set(ids).size !== ids.length) return 'taken';
       const position = sets.reduce((max, s) => Math.max(max, s.position), -1) + 1;
       const added = plannedSetsFromHistory(get().lastTimeFor(exerciseId, sessionId))
-        .map((v, i) => plannedRow(sessionId, exerciseId, position, i, v));
+        .map((v, i) => plannedRow(sessionId, exerciseId, position, i, v, ids[i]));
       dbSaveWorkoutSets(added);
       putSets(sessionId, [...sets, ...added].sort(bySetOrder));
       return added;
     },
 
-    addPlannedSet(sessionId, exerciseId) {
+    addPlannedSet(sessionId, exerciseId, options = {}) {
       const sets = get().loadSets(sessionId);
       const mine = sets.filter(s => s.exerciseId === exerciseId);
       if (mine.length === 0) return 'notFound';
       const v = copyLastSet(mine);
       return get().logSet(sessionId, {
+        ...(options.id !== undefined ? { id: options.id } : {}),
         exerciseId,
         kind: v.kind,
         weightKg: v.weightKg,
@@ -1320,19 +1523,29 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       });
     },
 
-    addPlannedWarmups(sessionId, exerciseId, steps) {
+    addPlannedWarmups(sessionId, exerciseId, steps, options = {}) {
       if (!get().sessions.some(s => s.id === sessionId)) return 'notFound';
       const sets = get().loadSets(sessionId);
       const mine = sets.filter(s => s.exerciseId === exerciseId);
       if (mine.length === 0) return 'notFound';
       if (steps.length === 0) return [];
+      const ids = (options.ids ?? []).filter(id => typeof id === 'string' && id.trim() !== '');
+      if (ids.some(id => sets.some(s => s.id === id)) || new Set(ids).size !== ids.length) return 'taken';
       const added = steps.map((step, i) => plannedRow(sessionId, exerciseId, mine[0].position, i, {
         kind: 'warmup', weightKg: step.kg, reps: step.reps, durationSeconds: null, distanceM: null, supersetKey: mine[0].supersetKey,
-      }));
+      }, ids[i]));
       const shifted = sets.map(s => (s.exerciseId === exerciseId ? { ...s, setIndex: s.setIndex + steps.length } : s));
       dbSaveWorkoutSets([...added, ...shifted.filter(s => s.exerciseId === exerciseId)]);
       putSets(sessionId, [...shifted, ...added].sort(bySetOrder));
       return added;
+    },
+
+    moveSessionExercise(sessionId, exerciseId, direction) {
+      if (!get().sessions.some(s => s.id === sessionId)) return false;
+      const order = movedExerciseOrder(get().loadSets(sessionId), exerciseId, direction);
+      if (!order) return false;
+      get().reorderExercises(sessionId, order);
+      return true;
     },
 
     reorderExercises(sessionId, exerciseIds) {

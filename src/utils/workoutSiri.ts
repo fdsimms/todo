@@ -190,19 +190,32 @@ export function resolveQueuedWorkoutStart(
 
   if (ctx.live) return { kind: 'showLive' };
 
+  const mine = myWorkoutStart(ctx);
+  return mine ? { kind: 'start', input: mine } : { kind: 'openWorkouts' };
+}
+
+/**
+ * Today's workout, in the order "my workout" picks it (steps 2 and 3 above):
+ * the first workout task on Today, else the next routine of the one program in
+ * use. Null when neither has anything to start. Shared with the Apple Watch's
+ * start list (`watchWorkout.ts`), whose "From Today" row is this answer, so the
+ * watch and Siri can't come to disagree about what today's workout is.
+ */
+export function myWorkoutStart(ctx: {
+  routines: readonly Pick<WorkoutRoutine, 'id'>[];
+  programs: readonly ProgramRow[];
+  sessions: readonly SessionRow[];
+  todayTasks: readonly Task[];
+}): StartWorkoutInput | null {
   const task = firstWorkoutTask(ctx.todayTasks, ctx.routines, ctx.programs, ctx.sessions);
   if (task) {
-    return {
-      kind: 'start',
-      input: task.workoutProgramId
-        ? { programId: task.workoutProgramId, taskId: task.id }
-        : { routineId: task.workoutRoutineId, taskId: task.id },
-    };
+    return task.workoutProgramId
+      ? { programId: task.workoutProgramId, taskId: task.id }
+      : { routineId: task.workoutRoutineId, taskId: task.id };
   }
-
   const inUse = ctx.programs.filter(p => !p.archived);
   if (inUse.length === 1 && programProgress(inUse[0], ctx.sessions, ctx.routines).nextRoutineId) {
-    return { kind: 'start', input: { programId: inUse[0].id } };
+    return { programId: inUse[0].id };
   }
-  return { kind: 'openWorkouts' };
+  return null;
 }

@@ -17,7 +17,8 @@ Targets are injected at prebuild time by custom config plugins rather than a che
   when a blocked app is opened, and the button on it, both added by
   `plugins/withShieldExtensions.js`.
 - **`targets/todo-watch/`** and **`targets/todo-watch-complication/`** — the Apple Watch app
-  (Today and the grocery list, ticked off from the wrist) and its watch face complication, both
+  (Today and the grocery list, ticked off from the wrist, and a workout logged set by set) and
+  its watch face complication, both
   added by `plugins/withWatchApp.js`. See "The watch app" below.
 
 `plugins/withAppGroup.js` puts the App Group on the main app and exports `APP_GROUP_ID`; each
@@ -66,6 +67,17 @@ the two runs compare exactly, which is how to prove a refactor left a target unc
   checkboxes (`QuietTapQueue`) and the phone's `WatchSession` for the watch's taps, so both read
   and rewrite it through `JSONSerialization` and leave entries they don't recognise untouched.
   Decoding it as a Codable array and writing that back is what used to strip the watch's fields.
+  **And every read-and-rewrite of it, and the app's read-and-delete (`drainQuietTaps`), is one
+  coordinated write** (`NSFileCoordinator`, `coordinatedQueueWrite` in `WatchSession.swift` and its
+  copy in `WidgetQuietIntents.swift`): the widget appends from another process, so without it an
+  append could be written over by another, or land between the drain's read and its delete and be
+  deleted unread. A new writer of the file goes through the same helper. If coordination itself
+  fails the accessor never runs, so the helper then runs the body uncoordinated rather than drop a
+  tap; never call it inside another coordinated block, which Foundation refuses.
+  **`widget_pending_add_tasks.json` is the other queue with more than one writer** (`AddTaskIntent`
+  and the watch's "add" taps through `WatchSession`, drained by `drainPendingAddTasks`), and every
+  append and the drain go through the same helper for the same reason. A file that gains a second
+  writer joins this list.
 - **A share extension's `NSExtensionPrincipalClass` failing to resolve is a silent no-op**, not
   a build error: iOS instantiates the named class when the row is tapped, and if the name is
   wrong nothing at all happens. A Swift class's Objective-C name is module-qualified, so the
@@ -268,6 +280,34 @@ whose comments carry the reasons. The rules worth knowing before touching them:
   snapshot in its own App Group under the widget's file name, so `loadWidgetSnapshot()` and the
   time-passing helpers (`visibleTasks(at:)`, `isStale`, `changeDates`) work there as they do in
   the widget. It must stay Foundation and SwiftUI only.
+- **Every new tap kind needs its own case in `WatchSession.receive`.** Its `default` drops an
+  unknown kind *without* recording its receipt, which is deliberate (a watch newer than the app
+  keeps drawing the tap rather than settling it) and means a kind added on the watch alone is
+  silently never applied. The workout's five kinds (`set`, `restAdd`, `restSkip`, `finish`,
+  `watchSession`) each validate there and again in `parseQuietTaps`.
+- **A user-info transfer takes property-list types only**, so `NSNull` can't cross it. A payload
+  shaped by data that may have gaps (a whole workout, `watchSession`) goes as JSON text under one
+  key and is parsed on the phone (`JSONSerialization`), rather than as a nested dictionary whose
+  optional fields would have to be left out by hand at every level.
+- **What only the watch app reads is decoded apart from `TodoWidgetData.swift`.** The workout
+  section rides the watch's copy of the snapshot, and `WatchWorkoutEnvelope` (in
+  `WatchWorkout.swift`) decodes it from the same bytes, so the shared model, which the iPhone
+  widget and the complication compile too, never carries it. A watch-only Swift file goes in
+  `WATCH_SOURCES` (`plugins/withWatchApp.js`), not `COMPLICATION_SOURCES`.
+- **State the watch keeps for itself goes in its App Group, under the usual path shape**
+  (`Library/Application Support/<name>.json`): the tap log, the snapshot, and a workout run on the
+  watch alone (`watch_workout.json`), so the app being closed loses none of it.
+- **A number turned by the Digital Crown is a focused view.** Each box is `.focusable()` with
+  `.digitalCrownRotation(_:from:through:by:sensitivity:isContinuous:isHapticFeedbackEnabled:)`
+  (watchOS 6) and `.focused(_:equals:)` on one `@FocusState`; a tap moves the focus, and so the
+  Crown, to the other box. A screen that turns numbers is pushed from a row, never added as a
+  pager page, since the pager and Today's list already use the Crown.
+- **The watch app asks for its own notification permission.** `UNUserNotificationCenter` is the
+  same API as on the iPhone (watchOS 3), but the watch app is its own app to the system: it calls
+  `requestAuthorization(options:completionHandler:)` itself (at the first workout started on the
+  watch) and copes with a refusal (the rest's end is then a haptic, in front only). A
+  `UNTimeIntervalNotificationTrigger` refuses an interval that isn't above zero, so a rest ending
+  within the second schedules nothing.
 - **The session is activated from an app delegate subscriber** (`WatchSessionAppDelegate`, in
   the bridge's `expo-module.config.json`), so a transfer delivered while the app is in the
   background lands in the queue before any JS has run. On the watch, `.backgroundTask(.watchConnectivity)`

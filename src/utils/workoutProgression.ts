@@ -283,6 +283,11 @@ export interface Proposal {
   repsMax: number | null;
   /** The plain reason, in the unit shown: "Up 2.5 kg because every set last time reached 8." */
   reason: string;
+  /**
+   * The same reason in a few words, for a card with room for a line or two
+   * (the Apple Watch's): "All sets hit 8 last time".
+   */
+  brief: string;
   /** The working weight last time, for a scheme that moves from it. */
   lastKg: number | null;
   /** The training max the sets were read off, for `percent`. */
@@ -398,11 +403,13 @@ export function proposeNext(input: ProposalInput): Proposal | null {
       return {
         ...base, move: 'up', sets: sets(next, min), repsMin: min, repsMax: max, lastKg,
         reason: `Up ${deltaText(lastKg, next, unit)} because every set last time reached ${max}.`,
+        brief: `All sets hit ${max} last time`,
       };
     }
     return {
       ...base, move: 'same', sets: sets(lastKg, max), repsMin: min, repsMax: max, lastKg,
       reason: `Same weight. Last time reached ${repsList(last.sets)}, so aim for ${max} on every set before adding weight.`,
+      brief: `Aim for ${max} on every set`,
     };
   }
 
@@ -415,6 +422,7 @@ export function proposeNext(input: ProposalInput): Proposal | null {
       return {
         ...base, move: 'up', sets: sets(next, reps), repsMin: reps, repsMax: reps, lastKg,
         reason: `Up ${deltaText(lastKg, next, unit)} because every set last time reached ${reps}.`,
+        brief: `All sets hit ${reps} last time`,
       };
     }
     // Short workouts in a row at this same weight: a lighter weight since
@@ -434,16 +442,19 @@ export function proposeNext(input: ProposalInput): Proposal | null {
         return {
           ...base, move: 'same', sets: sets(lastKg, reps), repsMin: reps, repsMax: reps, lastKg,
           reason: `Same weight. ${formatWeightNumber(lastKg, unit)} ${unit} is already the lightest load, so there is nothing lighter to go down to after ${misses} workouts short of ${reps} reps.`,
+          brief: 'Already the lightest load',
         };
       }
       return {
         ...base, move: 'deload', sets: sets(next, reps), repsMin: reps, repsMax: reps, lastKg,
         reason: `Down ${deltaText(lastKg, next, unit)} after ${misses} workouts in a row short of ${reps} reps at ${formatWeightNumber(lastKg, unit)} ${unit}.`,
+        brief: `Short of ${reps} reps ${misses} times in a row`,
       };
     }
     return {
       ...base, move: 'same', sets: sets(lastKg, reps), repsMin: reps, repsMax: reps, lastKg,
       reason: `Same weight, because a set last time fell short of ${reps}. After ${LINEAR_DELOAD_AFTER} short workouts in a row, the suggestion goes down to the closest load at or under 90% of this weight.`,
+      brief: `A set fell short of ${reps} last time`,
     };
   }
 
@@ -459,6 +470,7 @@ export function proposeNext(input: ProposalInput): Proposal | null {
     return {
       ...base, move: 'same', sets: sets(lastKg, reps), repsMin: min, repsMax: max, lastKg,
       reason: `Same weight. Rate how hard the top set felt (RPE, 1 to 10) and the next workout suggests a weight from it.`,
+      brief: 'No RPE on the top set last time',
     };
   }
   const diff = target - felt;
@@ -466,6 +478,7 @@ export function proposeNext(input: ProposalInput): Proposal | null {
     return {
       ...base, move: 'same', sets: sets(lastKg, reps), repsMin: min, repsMax: max, lastKg,
       reason: `Same weight, because the top set last time was RPE ${felt}, as planned.`,
+      brief: `Top set was RPE ${felt}, as planned`,
     };
   }
   if (diff > 0) {
@@ -474,6 +487,7 @@ export function proposeNext(input: ProposalInput): Proposal | null {
     return {
       ...base, move: 'up', sets: sets(next, reps), repsMin: min, repsMax: max, lastKg,
       reason: `Up ${deltaText(lastKg, next, unit)} because the top set last time was RPE ${felt}, under the ${target} planned.`,
+      brief: `Top set was RPE ${felt}, under ${target}`,
     };
   }
   let next = roundLoad(lastKg * (1 + RPE_LOAD_PER_POINT * diff), load);
@@ -482,11 +496,13 @@ export function proposeNext(input: ProposalInput): Proposal | null {
     return {
       ...base, move: 'same', sets: sets(lastKg, reps), repsMin: min, repsMax: max, lastKg,
       reason: `Same weight. The top set last time was RPE ${felt}, over the ${target} planned, but ${formatWeightNumber(lastKg, unit)} ${unit} is already the lightest load.`,
+      brief: 'Already the lightest load',
     };
   }
   return {
     ...base, move: 'down', sets: sets(next, reps), repsMin: min, repsMax: max, lastKg,
     reason: `Down ${deltaText(lastKg, next, unit)} because the top set last time was RPE ${felt}, over the ${target} planned.`,
+    brief: `Top set was RPE ${felt}, over ${target}`,
   };
 }
 
@@ -515,6 +531,7 @@ function proposePercent(input: ProposalInput, targets: RoutineSetTarget[]): Prop
     return {
       ...base, move: 'none', sets: [],
       reason: 'No training max for this exercise yet. Set one in the program to see the weights.',
+      brief: 'No training max yet',
     };
   }
   const week = input.week?.week ?? 1;
@@ -530,6 +547,7 @@ function proposePercent(input: ProposalInput, targets: RoutineSetTarget[]): Prop
   return {
     ...base, move: 'percent', sets, trainingMaxKg: tm,
     reason: `${when}${joinAnd(pcts.map(p => `${p}%`))} of a ${formatWeightNumber(tm, unit)} ${unit} training max.`,
+    brief: weeks !== null ? `Week ${week} of ${weeks} of the program` : `From a ${formatWeightNumber(tm, unit)} ${unit} training max`,
   };
 }
 

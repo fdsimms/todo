@@ -9,11 +9,11 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { resetToKitchen, resetToToday, resetToWorkouts } from '../navigation/navigationRef';
-import { buildWidgetSnapshot, WATCH_CAPS, type SnapshotInput } from './widgetSnapshot';
+import { buildWidgetSnapshot, WATCH_CAPS, type SnapshotInput, type WidgetSnapshot } from './widgetSnapshot';
 import { completedOnDay } from './allClear';
 import { getDayStart, getLogicalDayKey } from './dateUtils';
 import { beginVisibleAtPass, getVisibleAt } from './visibilityUtils';
-import { parseQuietTaps, planQuietTaps, tapsToRequeue } from './widgetQuietTaps';
+import { parseQuietTaps, planQuietTaps, tapsToRequeue, workoutHandOffTaps, type QuietTapWorkouts } from './widgetQuietTaps';
 import type { Task } from '../types';
 import { addDays } from 'date-fns/addDays';
 import { useCalendarStore } from '../store/useCalendarStore';
@@ -44,6 +44,13 @@ import { useWorkoutModeStore } from '../store/useWorkoutModeStore';
 import { buildRoutineIndex, parseQueuedWorkoutStarts, resolveQueuedWorkoutStart } from './workoutSiri';
 import { startWorkout } from './startWorkout';
 import { requestDismissAllSheets } from './sheetModal';
+import { useStepTimerStore } from '../store/useStepTimerStore';
+import { WATCH_RECENT_DAYS, buildWatchWorkout, todaysWatchWorkout, type WatchWorkoutSnapshot } from './watchWorkout';
+import { tickSet } from './workoutTick';
+import { applyProposal } from './workoutProposalApply';
+import { REST_NUDGE_FORWARD_SECONDS } from './stepTimers';
+import type { PlannedRoutineSet } from '../store/useWorkoutStore';
+import type { RestTimer, WorkoutSet } from '../types';
 
 const DEBOUNCE_MS = 300;
 
@@ -370,7 +377,14 @@ async function processQuietWidgetTaps(handOff: 'app' | 'requeue' = 'app'): Promi
       useGroceryStore.getState().listEntries,
       mealLogPrompt,
       iso => getLogicalDayKey(new Date(iso), dayResetTime) === todayKey,
+      quietTapWorkouts(),
     );
+    // A cold launch woken by the watch has no React tree, so nothing has read
+    // the step timers back yet: a rest started over an unread stack would be
+    // written over every timer still counting down (a recipe's included).
+    if (plan.some(a => a.type === 'tickWorkoutSet' || a.type === 'nudgeRest' || a.type === 'skipRest' || a.type === 'finishWorkout')) {
+      useStepTimerStore.getState().hydrate();
+    }
     const handedOver: Record<string, string> = {};
     for (const action of plan) {
       switch (action.type) {
@@ -397,12 +411,59 @@ async function processQuietWidgetTaps(handOff: 'app' | 'requeue' = 'app'): Promi
         case 'handToApp':
           handedOver[action.id] = action.at;
           break;
+        // The Apple Watch's workout (watchWorkout.ts). A set is ticked with
+        // the numbers and at the moment it was done, through the same tickSet
+        // workout mode and the Lock Screen use.
+        case 'tickWorkoutSet':
+          tickSet(action.sessionId, action.setId, new Date(action.at), action.values);
+          break;
+        case 'nudgeRest': {
+          const rest = sessionRest(action.sessionId, action.restId);
+          if (rest) useStepTimerStore.getState().addTime(rest.id, REST_NUDGE_FORWARD_SECONDS);
+          break;
+        }
+        case 'skipRest': {
+          const rest = sessionRest(action.sessionId, action.restId);
+          if (rest) useStepTimerStore.getState().remove(rest.id);
+          break;
+        }
+        case 'finishWorkout': {
+          useWorkoutStore.getState().finishSession(action.sessionId, { endedAt: action.at, deferHealthWrite: handOff === 'requeue' });
+          // WorkoutModeHost drops a finished workout's rest, but it is a
+          // component, and this can run with no screen at all.
+          useStepTimerStore.getState().removeRestsOutside(useWorkoutStore.getState().liveSession()?.id ?? null);
+          break;
+        }
+        case 'addWatchSession':
+          useWorkoutStore.getState().addWatchSession(action.workout, { deferHealthWrite: handOff === 'requeue' });
+          break;
+        // What the watch adds to the phone's workout, each through the store
+        // action workout mode itself uses, with the watch's ids where it made
+        // some, so the watch settles what it drew by them.
+        case 'noteWorkoutSet':
+          useWorkoutStore.getState().editSet(action.sessionId, action.setId, { note: action.note });
+          break;
+        case 'addWorkoutSet':
+          useWorkoutStore.getState().addPlannedSet(action.sessionId, action.exerciseId, { id: action.setId });
+          break;
+        case 'addWorkoutExercise':
+          useWorkoutStore.getState().addSessionExercise(action.sessionId, action.exerciseId, { ids: action.setIds });
+          break;
+        case 'moveWorkoutExercise':
+          useWorkoutStore.getState().moveSessionExercise(action.sessionId, action.exerciseId, action.direction);
+          break;
+        case 'useWorkoutSuggestion':
+          applyProposal(action.sessionId, action.exerciseId, {
+            ...(action.warmupIdPrefix ? { warmupId: (i: number) => `${action.warmupIdPrefix}-w${i}` } : {}),
+          });
+          break;
       }
     }
     const ids = Object.keys(handedOver);
     if (ids.length > 0) {
       if (handOff === 'requeue') {
-        await bridge.requeueQuietTaps(JSON.stringify(tapsToRequeue(taps, new Set(ids))));
+        const requeue = [...tapsToRequeue(taps, new Set(ids)), ...workoutHandOffTaps(plan)];
+        await bridge.requeueQuietTaps(JSON.stringify(requeue));
       } else {
         useWidgetCompletionStore.getState().enqueue(ids, handedOver);
       }
@@ -410,6 +471,29 @@ async function processQuietWidgetTaps(handOff: 'app' | 'requeue' = 'app'): Promi
   } catch {
     // A build predating drainQuietTaps — no-op.
   }
+}
+
+/**
+ * The workouts a drain judges the watch's workout taps against
+ * (`planQuietTaps`). Opens the workout store if nothing has: the taps it
+ * would otherwise drop are deleted with the queue file.
+ */
+function quietTapWorkouts(): QuietTapWorkouts {
+  let workouts = useWorkoutStore.getState();
+  if (!workouts.initialized) {
+    workouts.initialize();
+    workouts = useWorkoutStore.getState();
+  }
+  const live = workouts.liveSession();
+  return {
+    live: live ? { id: live.id, taskId: live.taskId, sets: workouts.setsBySession[live.id] ?? workouts.loadSets(live.id) } : null,
+    sessionIds: new Set(workouts.sessions.map(s => s.id)),
+  };
+}
+
+/** The live session's rest, and only the one named when a tap names one. */
+function sessionRest(sessionId: string, restId: string | null): RestTimer | null {
+  return useStepTimerStore.getState().restFor(sessionId, restId);
 }
 
 /**
@@ -548,11 +632,13 @@ function writeSnapshotNow(): void {
   writeToNativeBridge(JSON.stringify(buildWidgetSnapshot(input)));
 
   // The Apple Watch reads the same snapshot with room for a whole shopping
-  // list (see WATCH_CAPS). Same moment and the same gate as the widget's
-  // write, so the two never describe different states; the native half drops
-  // it when there's no paired watch with the app installed.
+  // list (see WATCH_CAPS), plus its workout section. Same moment and the same
+  // gate as the widget's write, so the two never describe different states;
+  // the native half drops it when there's no paired watch with the app
+  // installed.
   const bridge = widgetBridge();
-  bridge?.writeWatchSnapshot(JSON.stringify(buildWidgetSnapshot({ ...input, caps: WATCH_CAPS }))).catch(() => {});
+  lastWatchBase = buildWidgetSnapshot({ ...input, caps: WATCH_CAPS });
+  writeWatchCopy(lastWatchBase, false);
 
   // Rides the same debounce and the same store read rather than taking a
   // subscription of its own: every write that could change the index is a
@@ -582,7 +668,164 @@ let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 function scheduleSnapshotWrite(): void {
   if (debounceTimer) clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(writeSnapshotNow, DEBOUNCE_MS);
+  debounceTimer = setTimeout(() => {
+    debounceTimer = null;
+    writeSnapshotNow();
+  }, DEBOUNCE_MS);
+}
+
+// ==== The Apple Watch's workout ====
+//
+// The watch's copy carries a workout section the widget's doesn't
+// (watchWorkout.ts). A workout changes far more often than the rest of the
+// snapshot (every set, every weight stepped on the phone, every rest), and a
+// full write reloads every widget timeline on the home screen. So a change
+// that only moves the workout rewrites the watch's copy alone: the rest of it
+// as the last full write built it, with a fresh workout section.
+
+/** The watch's copy as the last full write built it, without its workout section. */
+let lastWatchBase: WidgetSnapshot | null = null;
+/** The last watch-only payload sent, so an unchanged one isn't sent again. */
+let lastWatchOnly: string | null = null;
+let watchWorkoutTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * What the workout section reads from the database (the routine plans, each
+ * exercise's history for its suggestion, the exercises logged lately and last
+ * time's sets of each), read once per state of what they depend on: the
+ * sessions, any set of a session other than the one in progress, the
+ * routines, the exercises, and the plates and unit a load is rounded to.
+ *
+ * The live session's own sets are left out on purpose: none of these reads
+ * counts them (a suggestion and last time both pass over the workout in
+ * progress, and an exercise already in it can't be added again), and they
+ * change on every weight stepped, which would read it all again each time.
+ */
+interface WorkoutReads {
+  deps: readonly unknown[];
+  plans: Map<string, PlannedRoutineSet[]>;
+  history: Map<string, WorkoutSet[]>;
+  lastTime: Map<string, WorkoutSet[]>;
+  recentIds: string[] | null;
+}
+let workoutReads: WorkoutReads | null = null;
+
+function currentWorkoutReads(): WorkoutReads {
+  const workouts = useWorkoutStore.getState();
+  const settings = useSettingsStore.getState();
+  const liveId = workouts.liveSession()?.id ?? null;
+  const otherSets = Object.entries(workouts.setsBySession).filter(([id]) => id !== liveId).map(([, sets]) => sets);
+  const deps = [workouts.sessions, workouts.routines, workouts.exercises, settings.workoutUnit, settings.plateInventory, ...otherSets];
+  if (!workoutReads || workoutReads.deps.length !== deps.length || workoutReads.deps.some((d, i) => d !== deps[i])) {
+    workoutReads = { deps, plans: new Map(), history: new Map(), lastTime: new Map(), recentIds: null };
+  }
+  return workoutReads;
+}
+
+function cachedRead<T>(map: Map<string, T>, key: string, read: () => T): T {
+  if (!map.has(key)) map.set(key, read());
+  return map.get(key)!;
+}
+
+function plannedFor(routineId: string): PlannedRoutineSet[] {
+  return cachedRead(currentWorkoutReads().plans, routineId, () => useWorkoutStore.getState().plannedSetsForRoutine(routineId, null));
+}
+
+function historyFor(exerciseId: string): WorkoutSet[] {
+  return cachedRead(currentWorkoutReads().history, exerciseId, () => useWorkoutStore.getState().exerciseHistory(exerciseId));
+}
+
+/**
+ * The exercises with a set done in the last `WATCH_RECENT_DAYS`, each with
+ * last time's sets as adding it to the workout in progress (or to none) would
+ * read them (`lastTimeFor`, `addSessionExercise`'s own source).
+ */
+function recentFor(liveId: string | null): { exerciseId: string; lastTime: WorkoutSet[] }[] {
+  const reads = currentWorkoutReads();
+  if (!reads.recentIds) {
+    const since = Date.now() - WATCH_RECENT_DAYS * 86_400_000;
+    const ids = new Set<string>();
+    for (const set of useWorkoutStore.getState().allSets()) {
+      if (set.completedAt !== null && Date.parse(set.completedAt) >= since) ids.add(set.exerciseId);
+    }
+    reads.recentIds = [...ids];
+  }
+  return reads.recentIds.map(exerciseId => ({
+    exerciseId,
+    lastTime: cachedRead(reads.lastTime, `${liveId ?? ''}\u0000${exerciseId}`, () => useWorkoutStore.getState().lastTimeFor(exerciseId, liveId)),
+  }));
+}
+
+/** The watch's workout section now, or null while the store hasn't loaded or the area is off. */
+function watchWorkoutSection(): WatchWorkoutSnapshot | null {
+  const workouts = useWorkoutStore.getState();
+  if (!workouts.initialized) return null;
+  const settings = useSettingsStore.getState();
+  const live = workouts.liveSession();
+  // Through restFor, which reads the timers back first: a cold launch in the
+  // background that ticked nothing (so the drain never hydrated them) would
+  // otherwise send no rest, and the watch's countdown would vanish.
+  const rest = live ? useStepTimerStore.getState().restFor(live.id) : null;
+  return buildWatchWorkout({
+    workoutsEnabled: settings.workoutsEnabled,
+    unit: settings.workoutUnit,
+    quietHoursStart: settings.quietHoursStart,
+    quietHoursEnd: settings.quietHoursEnd,
+    exercises: workouts.exercises,
+    defaultRestSeconds: settings.defaultRestSeconds,
+    live: live
+      ? {
+          session: live,
+          sets: workouts.setsBySession[live.id] ?? [],
+          routine: live.routineId ? workouts.routines.find(r => r.id === live.routineId) ?? null : null,
+          rest,
+        }
+      : null,
+    routines: workouts.routines,
+    programs: workouts.programs,
+    sessions: workouts.sessions,
+    plateInventory: settings.plateInventory,
+    todays: live
+      ? null
+      : todaysWatchWorkout({
+          routines: workouts.routines,
+          programs: workouts.programs,
+          sessions: workouts.sessions,
+          todayTasks: useTaskStore.getState().visibleTasks(),
+        }),
+    planFor: plannedFor,
+    historyFor,
+    recent: settings.workoutsEnabled ? recentFor(live?.id ?? null) : [],
+  });
+}
+
+/**
+ * Sends the watch its copy: `base` with the workout section as it is now.
+ * Through widgetBridge(), so demo mode sends nothing. A watch-only write that
+ * would send what the last one sent is skipped; a full write always goes,
+ * since it is also what tells the watch its taps have been applied.
+ */
+function writeWatchCopy(base: WidgetSnapshot, watchOnly: boolean): void {
+  const bridge = widgetBridge();
+  if (!bridge) return;
+  const json = JSON.stringify({ ...base, workout: watchWorkoutSection() });
+  if (watchOnly && json === lastWatchOnly) return;
+  lastWatchOnly = json;
+  bridge.writeWatchSnapshot(json).catch(() => {});
+}
+
+function scheduleWatchWorkoutWrite(): void {
+  if (Platform.OS !== 'ios') return;
+  if (watchWorkoutTimer) clearTimeout(watchWorkoutTimer);
+  watchWorkoutTimer = setTimeout(() => {
+    watchWorkoutTimer = null;
+    // A full write already on its way carries the workout too, and a
+    // watch-only one ahead of it would tell the watch its other taps were
+    // applied before the snapshot showing them had been written.
+    if (debounceTimer) return;
+    if (lastWatchBase) writeWatchCopy(lastWatchBase, true);
+    else writeSnapshotNow();
+  }, DEBOUNCE_MS);
 }
 
 // Keeps the iOS widgets' data fresh. Subscribes to the *identity* of each
@@ -663,6 +906,37 @@ function subscribeToStores(): () => void {
     }),
     useSettingsStore.subscribe((s, p) => {
       if (s.workoutsEnabled !== p.workoutsEnabled) scheduleRoutineIndexWrite();
+    }),
+    // The Apple Watch's workout section: the workout going on the phone (its
+    // sets and rest), the routines and plans it can start, and the settings
+    // either is read with. Today's tasks (for "From Today") ride the task
+    // store's own full write above.
+    useWorkoutStore.subscribe((s, p) => {
+      if (
+        s.sessions !== p.sessions ||
+        s.setsBySession !== p.setsBySession ||
+        s.routines !== p.routines ||
+        s.programs !== p.programs ||
+        s.exercises !== p.exercises ||
+        s.initialized !== p.initialized
+      ) {
+        scheduleWatchWorkoutWrite();
+      }
+    }),
+    useStepTimerStore.subscribe((s, p) => {
+      if (s.timers !== p.timers) scheduleWatchWorkoutWrite();
+    }),
+    useSettingsStore.subscribe((s, p) => {
+      if (
+        s.workoutsEnabled !== p.workoutsEnabled ||
+        s.workoutUnit !== p.workoutUnit ||
+        s.defaultRestSeconds !== p.defaultRestSeconds ||
+        s.plateInventory !== p.plateInventory ||
+        s.quietHoursStart !== p.quietHoursStart ||
+        s.quietHoursEnd !== p.quietHoursEnd
+      ) {
+        scheduleWatchWorkoutWrite();
+      }
     }),
   ];
   return () => {
