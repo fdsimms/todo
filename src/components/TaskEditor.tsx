@@ -69,6 +69,7 @@ import {
   bakedFields, taskKindOf, DEFAULT_TARGET_COUNT, DEFAULT_TIMED_MINUTES,
   MAX_TARGET_COUNT, MIN_TARGET_COUNT, MIN_QUOTA_INTERVAL_MINUTES, MAX_QUOTA_INTERVAL_MINUTES, TASK_KIND_META,
   type TaskKind,
+  COUNTDOWN_LADDER,
 } from '../utils/taskKinds';
 import {
   HEALTH_TARGET_LABELS, HEALTH_TARGET_METRICS, HEALTH_TARGET_RANGES, describeHealthGoalAmount, followsRingGoal,
@@ -4302,6 +4303,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                     value={sub.timedMinutes ?? null}
                     label={sub.title}
                     what="Timer"
+                    allowSeconds
                     onChange={mins => setSubtaskMinutes(sub.id, mins)}
                   />
                 )}
@@ -4744,13 +4746,15 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                             setDurationText(next !== null ? String(next) : '');
                             setDurationUnit('min');
                           }}
-                          min={1}
+                          min={COUNTDOWN_LADDER[0]}
                           max={180}
+                          ladder={COUNTDOWN_LADDER}
+                          places={4}
                           allowNull
                           emptyLabel="Off"
-                          format={n => `${n} min`}
+                          format={formatDuration}
                           label="Time per unit"
-                          describeValue={n => (n === null ? 'off' : `${n} minutes for each unit`)}
+                          describeValue={n => (n === null ? 'off' : `${formatDuration(n)} for each unit`)}
                         />
                       </View>
                       <Text style={styles.targetStepperCaption}>

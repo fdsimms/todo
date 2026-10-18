@@ -173,6 +173,14 @@ export const DEFAULT_TIMED_MINUTES = 15;
 /** Same for a quota — a target of 1 isn't a quota, so the floor is the default. */
 export const DEFAULT_TARGET_COUNT = 3;
 
+/**
+ * What the per-unit countdown stepper moves between: 15 second steps under a
+ * minute, then whole minutes. Values are minutes, so 45 seconds is 0.75.
+ */
+export const COUNTDOWN_LADDER: readonly number[] = [
+  0.25, 0.5, 0.75, ...Array.from({ length: 180 }, (_, i) => i + 1),
+];
+
 export const TIMED_MINUTE_OPTIONS = [5, 10, 15, 25, 30, 60] as const;
 /**
  * Range of the daily target stepper, shared with the editor's own Daily target
