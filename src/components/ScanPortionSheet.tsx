@@ -55,14 +55,14 @@ function formatServings(n: number): string {
  * reports 0) the same way `FoodLogEntrySheet` does.
  */
 function CardPlateWeighIn({ scaleText, onTareChange }: { scaleText: string; onTareChange: (g: number) => void }) {
-  const weighIn = useWeighIn('plate');
+  const weighIn = useWeighIn('cookware');
   const tare = weighIn.picked.reduce((sum, c) => sum + c.weightG, 0);
   useEffect(() => {
     onTareChange(tare);
     return () => onTareChange(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tare]);
-  return <CookwareWeighIn weighIn={weighIn} scaleText={scaleText} surface="card" noun="plate" />;
+  return <CookwareWeighIn weighIn={weighIn} scaleText={scaleText} surface="card" noun="cookware" />;
 }
 
 /**
@@ -220,7 +220,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
     if (unit?.key === 'g' && tare > 0) {
       const typed = parseWeightText(numberText);
       if (typed === null || typed <= 0) return '';
-      const net = netWeight(typed, [tare], 'plate');
+      const net = netWeight(typed, [tare], 'cookware');
       return net.ok ? composeFoodAmount(String(net.grams), unit) : '';
     }
     return composeFoodAmount(numberText, unit);
