@@ -65,11 +65,23 @@ export interface WidgetBridge {
    * keyScanQueue.ts. Optional for the reason the dose drain is.
    */
   drainPendingKeyScans?: () => Promise<string>;
+  /**
+   * The routines Siri can hear ("Start Push A"), and the workout starts it
+   * queued (`{ routineId, name, at }` as JSON) — see workoutSiri.ts. Optional
+   * for the reason the dose drain is.
+   */
+  writeWorkoutRoutineIndex?: (jsonString: string) => Promise<boolean>;
+  drainPendingWorkoutStarts?: () => Promise<string>;
   drainSharedLinks: () => Promise<string[]>;
   syncTimerLiveActivities: (jsonString: string) => Promise<boolean>;
   syncTripLiveActivity: (jsonString: string) => Promise<boolean>;
   syncLeaveLiveActivity: (jsonString: string) => Promise<boolean>;
   syncFocusLiveActivity: (jsonString: string) => Promise<boolean>;
+  /**
+   * The workout's Live Activity (`WorkoutRun` as JSON, or '' for none) — see
+   * workoutLiveActivity.ts. Optional for the reason the dose drain is.
+   */
+  syncWorkoutLiveActivity?: (jsonString: string) => Promise<boolean>;
   /** The Apple Watch's copy of the snapshot, built with `WATCH_CAPS`. */
   writeWatchSnapshot: (jsonString: string) => Promise<boolean>;
   /**

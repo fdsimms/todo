@@ -1223,6 +1223,11 @@ interface SettingsStore {
   plateInventory: PlateInventory;
   /** The rest a set gets when its routine doesn't say, in seconds. */
   defaultRestSeconds: number;
+  // The workout's Live Activity: the set you're on and the rest, on the Lock
+  // Screen and in the Dynamic Island — see src/utils/workoutLiveActivity.ts.
+  // timerLiveActivity's shape: iOS 17+ only, device-local, defaults on, and
+  // shown only inside the Workouts area.
+  workoutLiveActivity: boolean;
 
   /**
    * Which day facts the mood log may offer as pre-picked context tags
@@ -2178,6 +2183,7 @@ interface SettingsStore {
   setWorkoutUnit: (unit: WeightUnit) => void;
   setPlateInventory: (inventory: PlateInventory) => void;
   setDefaultRestSeconds: (seconds: number) => void;
+  setWorkoutLiveActivity: (on: boolean) => void;
   setMoodContextSource: (key: keyof MoodContextSources, on: boolean) => void;
   /** Sets the weight goal, or clears it with null. */
   setWeightGoal: (goal: WeightGoal | null) => void;
@@ -2478,6 +2484,7 @@ const DEFAULT_SETTINGS = {
   leaveLiveActivity: true,
   leaveWindowMinutes: LEAVE_WINDOW_MINUTES_DEFAULT,
   focusLiveActivity: true,
+  workoutLiveActivity: true,
   focusHideTimers: false,
   focusBreaksEnabled: true,
   collapsedCategories: [] as string[],
@@ -2928,6 +2935,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   leaveLiveActivity: true,
   leaveWindowMinutes: LEAVE_WINDOW_MINUTES_DEFAULT,
   focusLiveActivity: true,
+  workoutLiveActivity: true,
   focusHideTimers: false,
   focusBreaksEnabled: true,
   collapsedCategories: [],
@@ -3282,6 +3290,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const leaveWindowMinutes = clampLeaveWindowMinutes(Number.isFinite(storedLeaveWindow) ? storedLeaveWindow : undefined);
     // And again for the focus session's.
     const focusLiveActivity = dbGetSetting('focusLiveActivity') !== 'false';
+    // And for the workout's.
+    const workoutLiveActivity = dbGetSetting('workoutLiveActivity') !== 'false';
     const focusHideTimers = dbGetSetting('focusHideTimers') === 'true';
     const focusBreaksEnabled = dbGetSetting('focusBreaksEnabled') !== 'false';
     // Same `!== 'false'`: the groceries/recipes/meal plan area is on unless
@@ -4082,6 +4092,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       weightGoal,
       weightUnit,
       workoutHealthWrite,
+      workoutLiveActivity,
       workoutsEnabled,
       workoutUnit,
       initialized: true,
@@ -5659,6 +5670,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const next = clampRestSeconds(seconds);
     dbSetSetting('defaultRestSeconds', String(next));
     set({ defaultRestSeconds: next });
+  },
+
+  setWorkoutLiveActivity(on: boolean) {
+    dbSetSetting('workoutLiveActivity', on ? 'true' : 'false');
+    set({ workoutLiveActivity: on });
   },
 
   setMoodContextSource(key: keyof MoodContextSources, on: boolean) {

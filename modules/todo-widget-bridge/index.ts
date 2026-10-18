@@ -52,6 +52,17 @@ interface TodoWidgetBridgeNativeModule {
   // See src/utils/focusLiveActivity.ts for the JSON shape (FocusRun) and the
   // reconciliation this drives. Empty string means "no session wanted".
   syncFocusLiveActivity(jsonString: string): Promise<boolean>;
+  // See src/utils/workoutLiveActivity.ts for the JSON shape (WorkoutRun). The
+  // one activity updated in place rather than restarted. Empty string means
+  // "no workout wanted".
+  syncWorkoutLiveActivity(jsonString: string): Promise<boolean>;
+  // The routines StartRoutineIntent's entity query matches a spoken name
+  // against — see src/utils/workoutSiri.ts.
+  writeWorkoutRoutineIndex(jsonString: string): Promise<boolean>;
+  // Workout starts queued by StartWorkoutIntent and StartRoutineIntent. A
+  // JSON string of `{ routineId, name, at }` records, read-and-clear — see
+  // src/utils/widgetSync.ts.
+  drainPendingWorkoutStarts(): Promise<string>;
   // The Apple Watch's copy of the widget snapshot (WidgetSnapshot JSON, built
   // with WATCH_CAPS). Sent on over WatchConnectivity by WatchSession.swift;
   // a no-op without a paired watch that has the app.
@@ -129,6 +140,18 @@ export function syncLeaveLiveActivity(jsonString: string): Promise<boolean> {
 
 export function syncFocusLiveActivity(jsonString: string): Promise<boolean> {
   return TodoWidgetBridge.syncFocusLiveActivity(jsonString);
+}
+
+export function syncWorkoutLiveActivity(jsonString: string): Promise<boolean> {
+  return TodoWidgetBridge.syncWorkoutLiveActivity(jsonString);
+}
+
+export function writeWorkoutRoutineIndex(jsonString: string): Promise<boolean> {
+  return TodoWidgetBridge.writeWorkoutRoutineIndex(jsonString);
+}
+
+export function drainPendingWorkoutStarts(): Promise<string> {
+  return TodoWidgetBridge.drainPendingWorkoutStarts();
 }
 
 export function writeWatchSnapshot(jsonString: string): Promise<boolean> {

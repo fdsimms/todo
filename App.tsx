@@ -33,6 +33,7 @@ import { useTimerLiveActivitySync } from './src/utils/liveActivity';
 import { useTripLiveActivitySync } from './src/utils/tripLiveActivity';
 import { useLeaveLiveActivitySync } from './src/utils/leaveLiveActivity';
 import { useFocusLiveActivitySync } from './src/utils/focusLiveActivity';
+import { useWorkoutLiveActivitySync } from './src/hooks/useWorkoutLiveActivitySync';
 import { useRemindersImportSync } from './src/utils/remindersImportSync';
 import { useCalendarSync } from './src/store/useCalendarStore';
 import { useWeatherSync, useWeatherStore } from './src/store/useWeatherStore';
@@ -355,6 +356,10 @@ function AppRoot() {
 
   // Keeps the focus session's Lock Screen Live Activity in sync.
   useFocusLiveActivitySync();
+
+  // Keeps the live workout's Lock Screen Live Activity in sync: the set you're
+  // on and the rest, updated in place rather than restarted on every set.
+  useWorkoutLiveActivitySync();
 
   // Drops a completed, archived or deleted task out of a running focus plan, from
   // whichever tab did it. App-level because a blurred tab no longer renders.

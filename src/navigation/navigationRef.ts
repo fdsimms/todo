@@ -139,6 +139,13 @@ export function resetToMedications(): void {
   runWhenReady(() => navigateToTab('Medications'));
 }
 
+// Where a workout link or "Start my workout" lands when there is no workout to
+// open: the Workouts screen, to pick one. A live workout opens workout mode
+// instead, which is a sheet over whatever screen is showing.
+export function resetToWorkouts(): void {
+  runWhenReady(() => navigateToTab('Workouts'));
+}
+
 // Where `dundundun://recipe?id=…` lands — a meal-slot cook task's own link
 // once the slot holds a recipe (mealSlotTasks.recipeLinkUrl). Recipes first,
 // always, so the back chevron on RecipeDetail has somewhere to go — the same
