@@ -262,7 +262,7 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose }: Props) {
   // ==== deleting ====
   const remove = () => {
     if (!current) return;
-    const { id, healthWorkoutId, taskId } = current;
+    const { id, healthWorkoutId, taskId, measuredOnWatch: fromWatch } = current;
     // `deleteSession` never touches a task, so a task the workout completed
     // stays done. Said only when it is done: a target the workout logged one
     // unit on is still open, and "checked off" would be untrue of it.
@@ -271,7 +271,11 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose }: Props) {
       title: 'Delete this workout?',
       message: [
         'Its sets are deleted with it.',
-        healthWorkoutId ? 'It’s also removed from Apple Health.' : null,
+        // The watch retracts what it saved (the phone may not), so it is the
+        // one that takes it out, the next time it hears from this phone.
+        healthWorkoutId
+          ? (fromWatch ? 'Your Apple Watch, which saved it, also removes it from Apple Health.' : 'It’s also removed from Apple Health.')
+          : null,
         task?.completed ? 'The task it completed stays checked off.' : null,
       ].filter(Boolean).join(' '),
       onConfirm: () => {

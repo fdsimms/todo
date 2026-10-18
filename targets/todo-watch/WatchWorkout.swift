@@ -1190,6 +1190,9 @@ extension WatchStore {
             guard let workout = ownWorkout else { return }
             let done = workout.sets.filter(\.isDone).count
             let measured = health.measuring?.sessionId == workout.id
+            // Gone from the screens first, so nothing (the save's own callback
+            // included) can take it for a workout still to measure.
+            ownWorkout = nil
             // A workout with nothing done records nothing, as finishing on the
             // phone drops every set never done; there is nothing to send, and
             // nothing saved to Health either (`discardWorkout`).
@@ -1213,13 +1216,7 @@ extension WatchStore {
                 heartRate = nil
                 WatchOwnWorkoutFile.save(nil)
             }
-            ownWorkout = nil
         case .phone:
-            // The phone's workout ends here: the measurement of it is saved
-            // ending now, and its id follows the Finish to the phone.
-            if let measurement = health.measuring, measurement.phone, measurement.sessionId == screen.sessionId {
-                saveMeasurement(measurement, at: now)
-            }
             // The sets done and notes written here that the phone hasn't
             // answered for, carried in the Finish itself: a message can
             // overtake their own taps, and the phone records each once.
@@ -1239,6 +1236,13 @@ extension WatchStore {
                 doneSets: doneSets.isEmpty ? nil : doneSets, notes: notes.isEmpty ? nil : notes
             )
             finishedSummary = WatchFinishedSummary(title: screen.title, elapsed: elapsed, setsDone: screen.setsDone, queued: queued)
+            // The phone's workout ends here: the measurement of it is saved
+            // ending now, and its id follows the Finish to the phone. After
+            // the Finish is recorded, so the workout is already off the
+            // screens when the save calls back.
+            if let measurement = health.measuring, measurement.phone, measurement.sessionId == screen.sessionId {
+                saveMeasurement(measurement, at: now)
+            }
         }
         dismissedRestKey = nil
         cancelRestNotification()

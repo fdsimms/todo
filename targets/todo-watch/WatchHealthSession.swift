@@ -178,6 +178,10 @@ final class WatchHealthSession: NSObject, HKWorkoutSessionDelegate, HKLiveWorkou
     /// before it started, never in the future).
     func finish(at end: Date, completion: @escaping (WatchHealthOutcome) -> Void) {
         guard let session, builder != nil, finishing == nil, let measurement = measuring else {
+            // Still asking for access, so nothing started: let the ask's
+            // answer find the measurement gone, rather than start one for a
+            // workout that has already ended.
+            if session == nil { measuring = nil }
             completion(.notSaved)
             return
         }
