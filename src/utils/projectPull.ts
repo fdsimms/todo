@@ -8,10 +8,6 @@ import { projectPageOrder } from './projectStacks';
 import { format } from 'date-fns/format';
 import { hasNoDateSignal, isHeldBack } from './visibilityUtils';
 import { scoreTask, type PinContext } from './pinSuggest';
-import { computeSnoozeSuggestion } from './snoozeEngine';
-import type { BusyEvent } from './calendarBusy';
-import type { AwaySpan } from './awayDates';
-import { sumEstimatedMinutes } from './effort';
 import { useSettingsStore } from '../store/useSettingsStore';
 
 /**
@@ -43,13 +39,6 @@ export const MAX_PULLED_PROJECTS = 3;
 
 /** Candidate tasks offered per project row, cycled from the sheet. */
 export const MAX_CANDIDATES_PER_PROJECT = 3;
-
-/**
- * Above this much already planned today, a pull lands on a future day instead
- * of today. Matches PIN_BUDGET_MINUTES' spirit but is deliberately looser —
- * this is "is today already full", not "is this shortlist too long".
- */
-export const PULL_TODAY_BUDGET_MINUTES = 180;
 
 /**
  * Score bonus for sitting at the top of the project's own hand-sorted list,
@@ -492,46 +481,25 @@ export function rankPullCandidates(
 /**
  * Where a pulled task should land.
  *
- * Today by default, deliberately: computeSnoozeSuggestion only ever proposes
- * days +1..+7 (its candidates start at i + 1), so using it unconditionally
- * would make the whole sheet's output invisible for the rest of the day —
- * reproducing the exact silence this feature exists to fix, one day later.
- *
- * The engine is still used where it's genuinely right. When today is already
- * loaded, a pull would only make a heavy day heavier, so the destination falls
- * back to the same engine behind the date picker's Suggest button and inherits
- * its wording — a pulled task then reads like any other suggested date.
+ * Today, always, unless the caller already chose a day. The person opening the
+ * sheet expects what they pull to be on Today, and a "lighter day" picked by
+ * the snooze engine (up to a week out) read as the pull not having worked. A
+ * heavy today is still theirs to see on the list and move by hand from the
+ * row's date picker.
  */
 export function suggestPullDate(
-  task: Task,
-  allTasks: readonly Task[],
-  todaysTasks: readonly Task[],
   quietDays: number,
   /**
    * A day (`YYYY-MM-DD`) the caller has already chosen, which wins outright:
-   * the weekend nudge's link, whose pulls belong on that Saturday. Today's
-   * budget has nothing to say about a different day.
+   * the weekend nudge's link, whose pulls belong on that Saturday.
    */
   landOnDayKey?: string | null,
-  /**
-   * Calendar events for weighing each candidate day's meetings, exactly as
-   * the date picker's Suggest and the deload sheet pass them. Gated at the
-   * call site, like computeSnoozeSuggestion's own parameter.
-   */
-  busyEvents: readonly BusyEvent[] = [],
-  /** Trips, so a pull ranks the days you're away last. Same engine parameter. */
-  awaySpans: readonly AwaySpan[] = [],
 ): PullDate {
   if (landOnDayKey) {
     const date = dayKeyToDate(landOnDayKey);
     date.setHours(12, 0, 0, 0);
     return { date, dayLabel: format(date, 'EEEE'), reason: '' };
   }
-  if (sumEstimatedMinutes(todaysTasks) >= PULL_TODAY_BUDGET_MINUTES) {
-    const suggestion = computeSnoozeSuggestion(task, allTasks as Task[], busyEvents, awaySpans);
-    return { date: suggestion.date, dayLabel: suggestion.dayLabel, reason: suggestion.reason };
-  }
-
   const today = getCurrentDayStart();
   today.setHours(12, 0, 0, 0);
   return { date: today, dayLabel: 'Today', reason: describeQuietReason(quietDays) };
@@ -700,7 +668,6 @@ export function describePullEmpty(state: PullEmptyState): string {
 export function buildProjectPullPlan(
   projects: readonly Project[],
   allTasks: readonly Task[],
-  todaysTasks: readonly Task[],
   /**
    * When set, restricts the plan to these projects only — used when the sheet
    * is opened from the quiet-project nudge, which is already about a specific
@@ -714,10 +681,6 @@ export function buildProjectPullPlan(
    * default; "+N more waiting" raises it, when the person asks to see them.
    */
   limit: number = MAX_PULLED_PROJECTS,
-  /** Passed through to suggestPullDate. */
-  busyEvents: readonly BusyEvent[] = [],
-  /** Passed through to suggestPullDate. */
-  awaySpans: readonly AwaySpan[] = [],
 ): ProjectPullPlan {
   let stalls = findProjectStalls(projects, allTasks, 'ask');
   if (scopeProjectIds && scopeProjectIds.length > 0) {
@@ -731,29 +694,13 @@ export function buildProjectPullPlan(
   }
   const ctx = pullContext();
 
-  // Every proposal starts selected, so each one that lands on today counts
-  // against today's budget for the next. Checked one row at a time, five
-  // pulls could all land on a today that the first two had already filled.
-  const landingToday: Task[] = [...todaysTasks];
-  // The same holds a day later: once today is full, each pull goes to the
-  // snooze engine, which scores days off the task list. Scored against the
-  // unchanged list, every pull picked the same "lightest" day and the sheet
-  // stacked them all on it. So each pull is written into `working` where
-  // projectPullUpdates would put it, the way deloadPlan keeps its own.
-  let working: Task[] = [...allTasks];
   const proposals = stalls.slice(0, limit).map(stall => {
     const candidates = rankPullCandidates(stall.pullable, ctx);
-    const suggestion = suggestPullDate(candidates[0], working, landingToday, stall.quietDays, landOnDayKey, busyEvents, awaySpans);
-    if (suggestion.dayLabel === 'Today') landingToday.push(candidates[0]);
-    else {
-      const pulled = { ...candidates[0], ...projectPullUpdates(suggestion.date) };
-      working = working.map(t => (t.id === pulled.id ? pulled : t));
-    }
     return {
       project: stall.project,
       candidates,
       quietDays: stall.quietDays,
-      suggestion,
+      suggestion: suggestPullDate(stall.quietDays, landOnDayKey),
       selected: true,
     };
   });

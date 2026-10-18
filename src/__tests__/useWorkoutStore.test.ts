@@ -832,11 +832,53 @@ describe('Apple Health', () => {
     const s = logged();
     stampId(s.id, 'HK-7');
     ok(state().updateSession(s.id, { startedAt: at(6, 30) }));
-    expect(dbGetWorkoutSession(s.id)?.healthWorkoutId).toBeNull();
+    // Still in Health while the rewrite is on its way, so the page keeps
+    // saying so and a second edit is checked against Health's limits.
+    expect(dbGetWorkoutSession(s.id)?.healthWorkoutId).toBe('HK-7');
     await flush();
     expect(mockRetract).toHaveBeenCalledWith(['HK-7']);
     expect(mockWrite).toHaveBeenCalledWith(expect.objectContaining({ startedAt: at(6, 30), endedAt: at(8) }));
     expect(dbGetWorkoutSession(s.id)?.healthWorkoutId).toBe('HK-8');
+  });
+
+  it('keeps pointing at the old workout when a rewrite is refused and the retract failed', async () => {
+    mockWriteOn.mockReturnValue(true);
+    mockRetract.mockResolvedValue(false);
+    mockWrite.mockResolvedValue({ outcome: 'refused', workoutId: null, sampleIds: [] });
+    const s = logged();
+    stampId(s.id, 'HK-20');
+    ok(state().updateSession(s.id, { endedAt: at(9) }));
+    await flush();
+    expect(dbGetWorkoutSession(s.id)?.healthWorkoutId).toBe('HK-20');
+  });
+
+  it('lets go of the old id when a rewrite is refused after the retract took it out', async () => {
+    mockWriteOn.mockReturnValue(true);
+    mockWrite.mockResolvedValue({ outcome: 'refused', workoutId: null, sampleIds: [] });
+    const s = logged();
+    stampId(s.id, 'HK-21');
+    ok(state().updateSession(s.id, { endedAt: at(9) }));
+    await flush();
+    expect(mockRetract).toHaveBeenCalledWith(['HK-21']);
+    expect(dbGetWorkoutSession(s.id)?.healthWorkoutId).toBeNull();
+  });
+
+  it('rewrites again for a second retime while the first is on its way, and ends on one id', async () => {
+    mockWriteOn.mockReturnValue(true);
+    let land: (v: unknown) => void = () => {};
+    mockWrite.mockReturnValueOnce(new Promise(r => { land = r; })).mockResolvedValue(written('HK-23'));
+    const s = logged();
+    stampId(s.id, 'HK-22');
+    ok(state().updateSession(s.id, { endedAt: at(9) }));
+    await flush();
+    ok(state().updateSession(s.id, { endedAt: at(9, 30) }));
+    await flush();
+    land(written('HK-STALE'));
+    await flush();
+    await flush();
+    expect(mockWrite).toHaveBeenLastCalledWith(expect.objectContaining({ endedAt: at(9, 30) }));
+    expect(mockRetract).toHaveBeenCalledWith(['HK-STALE']);
+    expect(dbGetWorkoutSession(s.id)?.healthWorkoutId).toBe('HK-23');
   });
 
   it('leaves Health alone for an edit with writing off, one that keeps the times, and one never written', async () => {

@@ -1,7 +1,7 @@
 import { format } from 'date-fns/format';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Project, ProjectSortOption, Task, TaskGroup } from '../types';
-import { dayKeyToDate, formatDeadlineDate, getCurrentDayStart, getDayStart as getLogicalDayStart, getLogicalDayKey, getTaskDayStart } from './dateUtils';
+import { dayKeyToDate, formatDeadlineDate, getCurrentDayStart, getDayStart as getLogicalDayStart, getEffectiveTaskDate, getLogicalDayKey, getTaskDayStart } from './dateUtils';
 import { isPausedOn, isPlanning } from './projectPause';
 import { describeAwaySpan } from './awayDates';
 import { liveProjectSteps } from './projectOrder';
@@ -195,7 +195,9 @@ export function overdueRoutines(
   return tasks.filter(t =>
     t.projectId === projectId && t.parentId === null && !t.completed && !t.archived &&
     (t.recurrenceType ?? 'none') !== 'none' && t.dueDate != null &&
-    getTaskDayStart(new Date(t.dueDate), dayResetTime).getTime() < todayStart.getTime()
+    // The effective date: a routine the person pushed to a later day is not
+    // overdue, and offering to "move" it would undo that choice.
+    getTaskDayStart(new Date(getEffectiveTaskDate(t, dayResetTime)!), dayResetTime).getTime() < todayStart.getTime()
   );
 }
 

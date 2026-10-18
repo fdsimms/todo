@@ -53,7 +53,12 @@ export function penaltyCutoffAt(task: Task, dayResetTime: string): Date | null {
   if (task.polarity === 'negative') return null;
   if (!task.dueDate) return null;
 
-  const dayStart = taskDayStart(new Date(task.dueDate), dayResetTime);
+  // The day the task now sits on: a defer is a floor laid over dueDate, so a
+  // task pushed to Friday is late for Friday, not for the day it left. Restated
+  // from getEffectiveTaskDate, which this module can't import (see the header).
+  const dueStart = taskDayStart(new Date(task.dueDate), dayResetTime);
+  const deferStart = task.deferUntil ? taskDayStart(new Date(task.deferUntil), dayResetTime) : null;
+  const dayStart = deferStart && deferStart > dueStart ? deferStart : dueStart;
   if (task.penaltyCutoffTime === null) return addDays(dayStart, 1);
 
   const cutoff = hhmmToDate(task.penaltyCutoffTime, dayStart);

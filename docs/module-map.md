@@ -192,7 +192,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/healthBridge.ts` — HealthBridge, healthBridge, isHealthSupported, openHealthApp
 - `src/utils/healthCompletionSync.ts` — logTaskHealthValue, unlogTaskNutrientFromFoodLog
 - `src/utils/healthFoodSync.ts` — PENDING_WRITE_MAX_AGE_DAYS, pendingWriteAction, FoodWriteResult, writableFoodAmounts, logFoodEntryToHealth, retractFoodEntryFromHealth
-- `src/utils/healthRules.ts` — HEALTH_NUTRIENT_METRICS, usesCheckpoint, HEALTH_RULE_TITLE_MAX_LENGTH, HEALTH_THRESHOLDS, HEALTH_METRIC_DIRECTION, healthRuleDirection, HEALTH_METRIC_EARLIEST_HOUR, HEALTH_METRICS, healthRuleCheckpointHour, HealthRuleReading, +22 more
+- `src/utils/healthRules.ts` — HEALTH_NUTRIENT_METRICS, usesCheckpoint, HEALTH_RULE_TITLE_MAX_LENGTH, HEALTH_THRESHOLDS, HEALTH_METRIC_DIRECTION, healthRuleDirection, HEALTH_METRIC_EARLIEST_HOUR, HEALTH_METRICS, healthRuleCheckpointHour, HealthRuleReading, +23 more
 - `src/utils/healthTarget.ts` — HEALTH_TARGET_METRICS, HealthTargetState, HealthTargetReading, HEALTH_TARGET_RANGES, hasHealthTarget, healthTargetValue, followsRingGoal, effectiveHealthTarget, healthTargetProgress, isHealthTargetReady, +3 more
 - `src/utils/healthWeightSync.ts` — WeightWriteResult, logWeightToHealth
 - `src/utils/healthWorkoutSync.ts` — WORKOUT_HEALTH_ACTIVITY, PENDING_WORKOUT_WRITE_MAX_AGE_DAYS, workoutSpanWritable, pendingWorkoutWriteAction, workoutHealthWriteOn, WorkoutWriteResult, logWorkoutToHealth, retractWorkoutFromHealth
@@ -340,7 +340,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/projectLock.ts` — LOCKED_PROJECTS_SETTING, parseLockedProjectIds, isProjectLockedAway, isTaskLockedAway, lockedAwayCount, withProjectLocked, registerLockedProjectSource, isProjectLockedAtAll
 - `src/utils/projectOrder.ts` — liveProjectSteps, slotUpdates
 - `src/utils/projectPause.ts` — PLANNING_PAUSE_KEY, isPlanning, isPausedOn, registerPausedProjectSource, isProjectPaused, projectPausedUntil
-- `src/utils/projectPull.ts` — MAX_PULLED_PROJECTS, MAX_CANDIDATES_PER_PROJECT, PULL_TODAY_BUDGET_MINUTES, NEAR_SCHEDULE_DAYS, StallMode, ProjectStall, PullDate, ProjectPullProposal, PullEmptyReason, PullEmptyState, +13 more
+- `src/utils/projectPull.ts` — MAX_PULLED_PROJECTS, MAX_CANDIDATES_PER_PROJECT, NEAR_SCHEDULE_DAYS, StallMode, ProjectStall, PullDate, ProjectPullProposal, PullEmptyReason, PullEmptyState, ProjectPullPlan, +12 more
 - `src/utils/projectReviewTasks.ts` — MAX_PROJECT_REVIEW_TASKS, PROJECT_REVIEW_LINK_URL, projectReviewLinkUrl, projectReviewProjectId, projectReviewTitle, projectQuietDays, describeProjectQuiet, declinedToday, projectsReviewedToday, ProjectReviewWant, +2 more
 - `src/utils/projectStacks.ts` — ProjectListItem, buildProjectListItems, orderWithInserted, filterProjectListItems, filterTasksByTitle, projectPageOrder, projectCopyText
 - `src/utils/projectStats.ts` — RECENT_FINISHED_LIMIT, FinishedProject, ProjectStatsSummary, projectStats

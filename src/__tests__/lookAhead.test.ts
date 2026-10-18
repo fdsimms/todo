@@ -297,6 +297,17 @@ describe('carriedOverTasks', () => {
   it('ignores a task dated today', () => {
     expect(carriedOverTasks([makeTask({ dueDate: iso(2026, 8, 22) })], NOW, '00:00')).toEqual([]);
   });
+
+  // The day buckets already place a deferred row on its later day, so listing
+  // it here too showed one task in two places.
+  it('ignores a row deferred to a day that has not come, and orders by where a deferred one sits', () => {
+    const tasks = [
+      makeTask({ title: 'Held', dueDate: iso(2026, 8, 10), deferUntil: iso(2026, 8, 25) } as Partial<Task>),
+      makeTask({ title: 'Moved', dueDate: iso(2026, 8, 10), deferUntil: iso(2026, 8, 20) } as Partial<Task>),
+      makeTask({ title: 'Plain', dueDate: iso(2026, 8, 15) }),
+    ];
+    expect(carriedOverTasks(tasks, NOW, '00:00').map(t => t.title)).toEqual(['Plain', 'Moved']);
+  });
 });
 
 describe('awayEntries', () => {

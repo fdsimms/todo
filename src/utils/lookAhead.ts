@@ -12,7 +12,7 @@ import {
   type DayLoad,
   type DayWeight,
 } from './dayLoad';
-import { dayKeyOf, getDayStart, getTaskDayStart } from './dateUtils';
+import { dayKeyOf, getDayStart, getEffectiveTaskDate, getTaskDayStart } from './dateUtils';
 import {
   SOFT_DELOAD_BLOCKERS,
   dailyRepeatBlocker,
@@ -324,14 +324,16 @@ export function carriedOverTasks(
   // already-anchored midnight back a whole day), so a parameter that silently
   // required one was a trap for the next caller.
   const start = getDayStart(now, dayResetTime);
+  // Placed by the effective date: a row deferred to a later day is not behind
+  // yet, and the day buckets already read it that way. Listing it here too
+  // showed one task in two places.
+  const placedOf = (task: Task) => getEffectiveTaskDate(task, dayResetTime) as string;
   return tasks
     .filter(task => {
       if (!isCountable(task) || !task.dueDate) return false;
-      return getTaskDayStart(new Date(task.dueDate), dayResetTime) < start;
+      return getTaskDayStart(new Date(placedOf(task)), dayResetTime) < start;
     })
-    .sort(
-      (a, b) => new Date(a.dueDate as string).getTime() - new Date(b.dueDate as string).getTime(),
-    );
+    .sort((a, b) => new Date(placedOf(a)).getTime() - new Date(placedOf(b)).getTime());
 }
 
 /**
@@ -394,10 +396,9 @@ export function awayEntries(
  * Deadlines in the window that the days before them are already too full for.
  *
  * The threshold is `BUSY_DAY_MINUTES` per day — the app's own existing
- * judgement about when a day is spoken for, kept in step with
- * `PULL_TODAY_BUDGET_MINUTES` — rather than a capacity constant invented here.
- * Above it, a day is one the app already declines to put more work on, so a
- * span averaging above it is a span with nowhere left to put this.
+ * judgement about when a day is spoken for — rather than a capacity constant
+ * invented here. A span averaging above it is a span with nowhere left to put
+ * this.
  *
  * The comparison reads `rankedMinutes`, which folds in meetings, projections
  * and a stand-in for unestimated rows. That is a rank and it stays one: the

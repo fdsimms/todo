@@ -638,6 +638,34 @@ export function ruleCanBeJudgedYet(
 }
 
 /**
+ * Whether the wall clock reads inside the person's active hours
+ * (`activeHoursStart`/`activeHoursEnd`, "HH:MM").
+ *
+ * A rule's checkpoint hour only says when a shortfall starts to mean something;
+ * it has no upper bound, so a sodium rule set from noon fired at 1am for
+ * somebody who was up late. The pass holds a rule until the person is awake,
+ * and, as with a checkpoint that hasn't arrived, without spending its mark:
+ * the rule is judged again at the next sweep after active hours open.
+ *
+ * Wall-clock on purpose, like quiet hours: this is "what does my phone read
+ * right now", not which logical day a task belongs to. An equal start and end
+ * is treated as no restriction, and a start after the end wraps midnight.
+ */
+export function isWithinActiveHours(now: Date, start: string, end: string): boolean {
+  const toMinutes = (hhmm: string) => {
+    const [h, m] = hhmm.split(':').map(Number);
+    return h * 60 + m;
+  };
+  const startMin = toMinutes(start);
+  const endMin = toMinutes(end);
+  if (Number.isNaN(startMin) || Number.isNaN(endMin) || startMin === endMin) return true;
+  const minutes = now.getHours() * 60 + now.getMinutes();
+  return startMin < endMin
+    ? minutes >= startMin && minutes < endMin
+    : minutes >= startMin || minutes < endMin;
+}
+
+/**
  * Whether today's reading fails what this rule asks for — under its floor,
  * or over its ceiling. See `HEALTH_METRIC_DIRECTION`/`HealthRule.direction`.
  *

@@ -24,6 +24,7 @@ import {
   parseHealthRules,
   parseHealthSourceId,
   ruleCanBeJudgedYet,
+  isWithinActiveHours,
   ruleShortfallToday,
   serializeHealthRules,
   shortSleepDeloadNote,
@@ -235,6 +236,28 @@ describe('clearMarksOnRuleEdit', () => {
     const fresh = rule({ id: 'r3', lastFiredDayKey: '2026-09-30' });
     const out = clearMarksOnRuleEdit([judged, other], [judged, other, fresh]);
     expect(out.map(r => r.lastFiredDayKey)).toEqual(['2026-09-30', '2026-09-30', '2026-09-30']);
+  });
+});
+
+describe('isWithinActiveHours', () => {
+  const at = (h: number, m = 0) => new Date(2026, 9, 18, h, m);
+
+  it('is closed at 1am and open mid-day for the default 08:00 to 22:00', () => {
+    expect(isWithinActiveHours(at(1), '08:00', '22:00')).toBe(false);
+    expect(isWithinActiveHours(at(7, 59), '08:00', '22:00')).toBe(false);
+    expect(isWithinActiveHours(at(8), '08:00', '22:00')).toBe(true);
+    expect(isWithinActiveHours(at(21, 59), '08:00', '22:00')).toBe(true);
+    expect(isWithinActiveHours(at(22), '08:00', '22:00')).toBe(false);
+  });
+
+  it('wraps midnight when the end is before the start', () => {
+    expect(isWithinActiveHours(at(1), '10:00', '03:00')).toBe(true);
+    expect(isWithinActiveHours(at(5), '10:00', '03:00')).toBe(false);
+    expect(isWithinActiveHours(at(23), '10:00', '03:00')).toBe(true);
+  });
+
+  it('does not restrict when start equals end', () => {
+    expect(isWithinActiveHours(at(3), '08:00', '08:00')).toBe(true);
   });
 });
 

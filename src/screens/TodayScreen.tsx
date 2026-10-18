@@ -5900,7 +5900,6 @@ export function TodayScreen() {
         <LazySheet open={pullVisible}>
           <ProjectPullSheet
             visible={pullVisible}
-            todaysTasks={visibleTasks}
             scopeProjectIds={pullScopeProjectIds}
             landOnDayKey={pullOnDay}
             onOpenProject={projectId => navigation.navigate({ name: 'ProjectDetail', params: { projectId } } as never)}

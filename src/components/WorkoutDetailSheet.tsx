@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
@@ -137,15 +137,35 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose }: Props) {
 
   // ==== how it went: effort and notes, committed as they change ====
   const [notes, setNotes] = useState('');
+  // Which time the picker is choosing; declared here so the open effect below can put it away.
+  const [picking, setPicking] = useState<TimeEnd | null>(null);
+  // The saved text the field last took in. A close writes the field back only
+  // when it differs from this, so a page left untouched never writes the text
+  // it opened with over notes an agent or another device changed meanwhile.
+  const notesBaseline = useRef('');
   useEffect(() => {
-    if (visible) setNotes(current?.notes ?? '');
-    // On open only, and when another workout is opened.
+    // On open only, and when another workout is opened. A picker left open
+    // when the page last closed under it (the workout deleted elsewhere) is
+    // put away here too, or it would rise over the next workout's page.
+    if (visible) {
+      notesBaseline.current = current?.notes ?? '';
+      setNotes(notesBaseline.current);
+    }
+    setPicking(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, sessionId]);
+  // Notes changed elsewhere while the page is open reach an untouched field.
+  const savedNotes = current?.notes;
+  useEffect(() => {
+    if (savedNotes === undefined || savedNotes === notesBaseline.current) return;
+    setNotes(prev => (prev === notesBaseline.current ? savedNotes : prev));
+    notesBaseline.current = savedNotes;
+  }, [savedNotes]);
 
   const commitNotes = () => {
-    // updateSession writes nothing when the text is what's saved.
-    if (current) useWorkoutStore.getState().updateSession(current.id, { notes });
+    if (!current || notes === notesBaseline.current) return;
+    notesBaseline.current = notes;
+    useWorkoutStore.getState().updateSession(current.id, { notes });
   };
 
   const close = () => {
@@ -160,7 +180,6 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose }: Props) {
   };
 
   // ==== the times ====
-  const [picking, setPicking] = useState<TimeEnd | null>(null);
   // Held through the picker's close, so its title doesn't change as it fades.
   const pickingShown = useSheetSubject(picking);
 
@@ -313,7 +332,7 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose }: Props) {
                   {timeRow('end', 'Finished', endedAt)}
                 </View>
                 {timesReachHealth && (
-                  <HelpText style={styles.hint}>Changing the times also changes the workout in Apple Health.</HelpText>
+                  <Text style={styles.hint}>Changing the times also changes the workout in Apple Health.</Text>
                 )}
               </>
             )}
