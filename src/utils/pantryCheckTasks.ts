@@ -321,3 +321,26 @@ export function stalePantryCheckTasks<
     return !item || pantryCheckLapse(item, now, products, listed) === null;
   });
 }
+
+/**
+ * The live checks whose question has been answered: the item is still in the
+ * catalog and no longer has a lapse to ask about. The sweep marks these ready
+ * instead of deleting them. A subset of `stalePantryCheckTasks`, which still
+ * deletes the check for an item that is gone.
+ */
+export function answeredPantryCheckTasks<
+  T extends Pick<Task, 'generatedKind' | 'generatedSourceId' | 'completed' | 'archived'>
+>(
+  tasks: readonly T[],
+  items: readonly GroceryItem[],
+  now: Date,
+  products: readonly ItemProduct[],
+  listed: ReadonlySet<string> | null = null
+): T[] {
+  const byId = new Map(items.map(item => [item.id, item]));
+  return liveGeneratedTasksOfKind(tasks, 'pantryCheck').filter(task => {
+    const itemId = pantryCheckItemId(task);
+    const item = itemId ? byId.get(itemId) : undefined;
+    return !!item && pantryCheckLapse(item, now, products, listed) === null;
+  });
+}

@@ -25,7 +25,7 @@ import { useGroceryStore } from './useGroceryStore';
 import { generatedTaskCountOf, hasAnyGeneratedTask, liveGeneratedTask } from '../utils/generatedTasks';
 import { derivedId, spawnSeed } from '../utils/syncIds';
 import { ensureGeneratedTaskCategory } from './useCategoryStore';
-import { deleteGeneratedTaskQuietly, dropGeneratedTask } from './generatedTaskSync';
+import { deleteGeneratedTaskQuietly, dropGeneratedTask, markGeneratedReady } from './generatedTaskSync';
 import { mealEventsAfterSync, syncMealEvent, mealEventLink, deleteMealEvent } from '../utils/mealCalendarSync';
 import type { ApplyReport } from '../utils/syncMerge';
 import { getCalendarPermission } from '../utils/calendarSync';
@@ -1944,23 +1944,22 @@ function dropCookTask(entryId: string): void {
  * the state being asked for, so the call back into this store is a no-op.
  */
 function syncCookTaskCompletion(entry: MealPlanEntry, cooked: boolean): void {
-  const { tasks, completeTask, uncompleteTask } = useTaskStore.getState();
+  const { tasks, updateTask, uncompleteTask } = useTaskStore.getState();
   const entryId = entry.id;
   if (cooked) {
+    // The meal happened, which is what these tasks ask for, so they read ready
+    // and the person ticks them. Nothing is completed here: ticking is what
+    // earns the coins, and it spawns each chain step after this one already
+    // marked (see completeTask).
     const live = liveCookTaskFor(entryId);
-    if (live) completeTask(live.id);
-    // A meal task is a chain, so "the meal happened" can't be one tick: ticking
-    // "Prepare lunch" from here would leave "Eat lunch" outstanding on a night
-    // already marked cooked. Marking cooked says every remaining step happened,
-    // so every remaining step is completed — each spawning the next, which is
-    // what the loop walks. Bounded by the chain's own length rather than by
-    // `while (live)`, so a step that declines to complete can't spin.
-    let next = liveMealSlotTask(entry.date, entry.slot);
-    for (let i = 0; next && i <= (next.chainItems?.length || 1); i++) {
-      completeTask(next.id);
-      next = liveMealSlotTask(entry.date, entry.slot);
-    }
+    if (live) markGeneratedReady(live);
+    const step = liveMealSlotTask(entry.date, entry.slot);
+    if (step) markGeneratedReady(step);
     return;
+  }
+  // Marked not cooked again: whatever was ready because of it no longer is.
+  for (const t of [liveCookTaskFor(entryId), liveMealSlotTask(entry.date, entry.slot)]) {
+    if (t?.generatedReadyAt) updateTask(t.id, { generatedReadyAt: null }, { skipPostponeCount: true });
   }
   // Un-ticking only ever reaches the step that ended the chain — the one whose
   // completion marked the meal cooked in the first place (see completesMealSlot
