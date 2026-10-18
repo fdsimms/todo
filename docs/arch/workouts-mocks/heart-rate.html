@@ -1,0 +1,84 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="base.css">
+<style>
+body { display:flex; gap:24px; align-items:flex-start; }
+.col { display:flex; flex-direction:column; gap:16px; }
+.phone { height:auto; padding-bottom:20px; } .scroll { overflow:visible; }
+.hdr { display:flex; align-items:flex-start; padding: 10px 16px 6px; }
+.hdr .t { flex:1; text-align:center; } .hdr .t b { font-size:17px; } .hdr .t div { font-size:13px; color:var(--text2); margin-top:2px; }
+.hdr .side { min-width:56px; color:var(--accentText); font-size:17px; } .hdr .side.r { text-align:right; font-weight:600; }
+.kv { display:flex; justify-content:space-between; align-items:center; }
+.hrtop { display:flex; gap:24px; padding: 12px 16px 4px; }
+.hrtop div b { font-size:22px; font-weight:700; font-variant-numeric:tabular-nums; } .hrtop div span { display:block; font-size:12px; color:var(--text2); }
+.zones { padding: 6px 16px 12px; display:grid; grid-template-columns: 52px 1fr 44px; row-gap:7px; column-gap:10px; align-items:center; font-size:13px; }
+.zones .z { color:var(--text2); font-variant-numeric:tabular-nums; }
+.zones .bar { height:8px; border-radius:4px; background:var(--bg3); position:relative; overflow:hidden; }
+.zones .bar i { position:absolute; left:0; top:0; bottom:0; border-radius:4px; background:var(--accent); }
+.zones .m { text-align:right; font-variant-numeric:tabular-nums; color:var(--text2); }
+.est { font-size:12px; color:var(--text2); margin: 6px 4px 0; line-height:1.4; }
+.val { color: var(--accentText); }
+.hint { font-size:12px; color:var(--text3); margin: 6px 4px 0; }
+/* watch */
+.wcap { color:#fff; font-size:12px; font-weight:600; margin:0 4px 6px; }
+.watch { width:214px; height:262px; background:#000; border-radius:46px; padding:8px; border:6px solid #2a2830; }
+.wscreen { width:100%; height:100%; border-radius:36px; overflow:hidden; color:#F6F3F8; padding:10px 10px 0; font-family:-apple-system,"SF Pro Rounded","Inter",system-ui,sans-serif; }
+.wbar { display:flex; justify-content:space-between; font-size:13px; font-weight:600; padding:0 6px 4px; } .wbar .t { color:#9B7BFF; }
+.whr { text-align:center; font-size:12px; color:#FF6B6B; font-weight:600; font-variant-numeric:tabular-nums; }
+.whr span { color:#B3ADBD; font-weight:500; }
+.ex { font-size:15px; font-weight:600; text-align:center; margin-top:2px; } .which { font-size:11px; color:#B3ADBD; text-align:center; }
+.vals { display:flex; gap:6px; margin-top:6px; } .v { flex:1; border-radius:12px; background:#222025; text-align:center; padding:5px 2px 4px; border:2px solid transparent; } .v.f { border-color:#9B7BFF; }
+.v b { display:block; font-size:22px; font-weight:700; } .v span { font-size:10px; color:#B3ADBD; }
+.wbtn { margin-top:6px; border-radius:9999px; text-align:center; padding:8px; font-size:14px; font-weight:700; background:#FFB020; color:#17131C; }
+.big { font-size:42px; font-weight:700; text-align:center; font-variant-numeric:tabular-nums; margin-top:2px; }
+.mid { text-align:center; font-size:12px; color:#B3ADBD; }
+.wbtns { display:flex; gap:6px; } .wbtns div { flex:1; margin-top:6px; border-radius:9999px; text-align:center; padding:8px; font-size:14px; font-weight:700; }
+.q { background:#3A3541; color:#F6F3F8; } .g { background:#FFB020; color:#17131C; }
+.note { color:#fff; font-size:12px; max-width:230px; line-height:1.4; }
+</style></head><body>
+
+<div class="phone light" id="p">
+  <div class="status"><span>9:41</span><span>●●●</span></div>
+  <div class="hdr"><span class="side"></span><span class="t"><b>Push A</b><div>Tue, Oct 14</div></span><span class="side r">Done</span></div>
+  <div class="scroll">
+    <div class="groupLabel">Heart rate</div>
+    <div class="card">
+      <div class="hrtop"><div><b>128</b><span>Average bpm</span></div><div><b>171</b><span>Max bpm</span></div></div>
+      <div class="zones">
+        <span class="z">Zone 5 · 168–186</span><div class="bar"><i style="width:8%"></i></div><span class="m">2 min</span>
+        <span class="z">Zone 4</span><div class="bar"><i style="width:22%"></i></div><span class="m">6 min</span>
+        <span class="z">Zone 3</span><div class="bar"><i style="width:40%"></i></div><span class="m">11 min</span>
+        <span class="z">Zone 2</span><div class="bar"><i style="width:55%"></i></div><span class="m">15 min</span>
+        <span class="z">Zone 1</span><div class="bar"><i style="width:34%"></i></div><span class="m">9 min</span>
+      </div>
+    </div>
+    <div class="est">Zones are shares of a maximum of 186 bpm, estimated from your age (220 minus age). Set your own maximum in Settings › Apple Health › Workouts.</div>
+    <div class="groupLabel">Settings › Apple Health › Workouts</div>
+    <div class="card">
+      <div class="row kv"><span>Maximum heart rate</span><span class="val">186, from age ›</span></div>
+    </div>
+    <div class="hint">Used to split a workout's heart rate into five zones. Estimated as 220 minus your age until you set it. Your age comes from your year of birth in the calorie budget.</div>
+  </div>
+</div>
+
+<div class="phone dark" id="d"></div>
+
+<div class="col">
+  <div class="wcap">Watch: a set, with live heart rate</div>
+  <div class="watch"><div class="wscreen">
+    <div class="wbar"><span class="t">‹ Push A</span><span>18:32</span></div>
+    <div class="whr">♥ 142 <span>bpm</span></div>
+    <div class="ex">Bench press</div><div class="which">Set 3 of 4</div>
+    <div class="vals"><div class="v f"><b>82.5</b><span>kg</span></div><div class="v"><b>8</b><span>reps</span></div></div>
+    <div class="wbtn">✓ Done set</div>
+  </div></div>
+  <div class="wcap" style="margin-top:6px">Watch: resting</div>
+  <div class="watch"><div class="wscreen">
+    <div class="wbar"><span class="t">‹ Push A</span><span>19:40</span></div>
+    <div class="whr">♥ 118 <span>bpm</span></div>
+    <div class="big">1:24</div><div class="mid">Next: Bench press, set 4</div>
+    <div class="wbtns"><div class="q">+30 s</div><div class="g">Skip</div></div>
+  </div></div>
+  <div class="note">The number only: no zone color, no "high" or "low". The workout page's card shows only when Health has heart rate for that workout.</div>
+</div>
+
+<script>const p=document.getElementById('p'); const d=p.cloneNode(true); d.className='phone dark'; d.id=''; document.getElementById('d').replaceWith(d);</script>
+</body></html>
