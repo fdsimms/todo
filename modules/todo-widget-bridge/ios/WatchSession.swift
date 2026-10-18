@@ -270,6 +270,21 @@ final class WatchSession: NSObject, WCSessionDelegate {
       var entry: [String: Any] = ["kind": kind, "id": sessionId, "sessionId": sessionId, "at": at, "watchTapId": tapId]
       if kind != "finish", let restId = info["restId"] as? String, !restId.isEmpty { entry["restId"] = restId }
       appendToQueue(watchQuietTapsFileName, entry)
+    case "setNote", "addSet", "addExercise", "moveExercise", "useSuggestion":
+      // What the watch adds to the phone's workout: a dictated note on a set
+      // ("id" is the set), a set or an exercise added under the ids the watch
+      // gave it ("id" is the set, or the exercise with its sets' ids in
+      // "setIds"), an exercise moved a place ("direction"), and a load
+      // suggestion's Use ("id" is the exercise). The app applies each through
+      // the store action workout mode uses, against the session named.
+      guard let id = info["id"] as? String, !id.isEmpty,
+            let sessionId = info["sessionId"] as? String, !sessionId.isEmpty else { return }
+      var entry: [String: Any] = ["kind": kind, "id": id, "sessionId": sessionId, "at": at, "watchTapId": tapId]
+      if let note = info["note"] as? String { entry["note"] = note }
+      if let exerciseId = info["exerciseId"] as? String, !exerciseId.isEmpty { entry["exerciseId"] = exerciseId }
+      if let setIds = info["setIds"] as? [String] { entry["setIds"] = setIds }
+      if let direction = info["direction"] as? String { entry["direction"] = direction }
+      appendToQueue(watchQuietTapsFileName, entry)
     case "watchSession":
       // A whole workout the watch ran on its own, sent once when it was
       // finished, as JSON text (a dictionary with no nulls in it can't be

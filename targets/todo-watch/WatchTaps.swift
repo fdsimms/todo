@@ -28,8 +28,10 @@ struct WatchTap: Codable, Identifiable {
     /// of the workout's (`workoutKinds`).
     let kind: String
     /// The task id or grocery item id. Empty for "add" and "groceryAdd". A
-    /// workout tap's is the set ("set"), the phone's session ("restAdd",
-    /// "restSkip", "finish") or the watch's own workout ("watchSession").
+    /// workout tap's is the set ("set", "setNote", "addSet"), the phone's
+    /// session ("restAdd", "restSkip", "finish"), the exercise
+    /// ("addExercise", "moveExercise", "useSuggestion") or the watch's own
+    /// workout ("watchSession").
     let itemId: String
     /// The grocery list the row was on; nil is the home list.
     let listId: String?
@@ -53,11 +55,23 @@ struct WatchTap: Codable, Identifiable {
     var unit: String? = nil
     /// "watchSession": the whole workout, as JSON text (WatchOwnWorkout.payload).
     var body: String? = nil
+    /// "setNote": the words dictated.
+    var note: String? = nil
+    /// "addSet": the exercise the set (`itemId`) goes on.
+    var exerciseId: String? = nil
+    /// "addExercise": the ids the watch gave the sets it laid out, in order,
+    /// which the phone gives the sets it writes.
+    var setIds: [String]? = nil
+    /// "moveExercise": "up" or "down".
+    var direction: String? = nil
 
     /// The workout's kinds. Sent at once rather than held for Undo: a set's
     /// rest starts on the phone from it, and the rest screen is the answer to
     /// a tap made by mistake.
-    static let workoutKinds: Set<String> = ["set", "restAdd", "restSkip", "finish", "watchSession"]
+    static let workoutKinds: Set<String> = [
+        "set", "restAdd", "restSkip", "finish", "watchSession",
+        "setNote", "addSet", "addExercise", "moveExercise", "useSuggestion",
+    ]
 
     var isWorkout: Bool { Self.workoutKinds.contains(kind) }
 
@@ -81,6 +95,10 @@ struct WatchTap: Codable, Identifiable {
             if let distanceM = values.distanceM { info["distanceM"] = distanceM }
         }
         if let body { info["workout"] = body }
+        if let note { info["note"] = note }
+        if let exerciseId { info["exerciseId"] = exerciseId }
+        if let setIds { info["setIds"] = setIds }
+        if let direction { info["direction"] = direction }
         return info
     }
 }
@@ -131,8 +149,9 @@ struct LocalTapState {
     let chosen: Set<String>
     /// Sets of the phone's workout done here, by set id: the numbers and when.
     let doneSets: [String: (values: WatchSetValues, at: Date)]
-    /// The workout's set and rest taps on the phone's workout, in the order
-    /// made, which is what the rest the watch shows is worked out from.
+    /// The workout's taps on the phone's workout (sets, the rest, and what
+    /// was added, moved or noted), in the order made: the list and the rest
+    /// the watch shows are the snapshot's with these laid over it in turn.
     let workoutTaps: [WatchTap]
     /// The phone's workouts finished here.
     let finishedSessions: Set<String>
@@ -155,7 +174,7 @@ struct LocalTapState {
             case "set":
                 doneSets[tap.itemId] = (tap.values ?? WatchSetValues(), tap.at)
                 workoutTaps.append(tap)
-            case "restAdd", "restSkip":
+            case "restAdd", "restSkip", "setNote", "addSet", "addExercise", "moveExercise", "useSuggestion":
                 workoutTaps.append(tap)
             case "finish":
                 finishedSessions.insert(tap.sessionId ?? tap.itemId)

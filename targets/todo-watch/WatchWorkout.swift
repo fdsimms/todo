@@ -35,19 +35,65 @@ enum WatchSetField: Hashable {
     case weight, reps, duration, distance
 }
 
+/// The next load for an exercise, worked out on the phone by the rules
+/// workout mode's card uses (`WatchSuggestion` in watchWorkout.ts), in the
+/// unit shown. Applied only on a tap of Use.
+struct WatchSuggestion: Codable, Equatable {
+    struct Step: Codable, Equatable {
+        let weight: Double
+        let reps: Int?
+    }
+
+    /// The first working set's weight.
+    let weight: Double
+    /// "Use 82.5", or "Use these" when the sets differ.
+    let use: String
+    /// "All sets hit 8 last time".
+    let reason: String
+    /// The working sets proposed, in order.
+    let sets: [Step]
+    /// The warm-ups a ramp lays out from the new weight, when the exercise has one.
+    let ramp: [Step]
+
+    enum CodingKeys: String, CodingKey { case weight, use, reason, sets, ramp }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        weight = try c.decodeIfPresent(Double.self, forKey: .weight) ?? 0
+        use = try c.decodeIfPresent(String.self, forKey: .use) ?? "Use"
+        reason = try c.decodeIfPresent(String.self, forKey: .reason) ?? ""
+        sets = try c.decodeIfPresent([Step].self, forKey: .sets) ?? []
+        ramp = try c.decodeIfPresent([Step].self, forKey: .ramp) ?? []
+    }
+}
+
 struct WatchWorkoutExercise: Codable, Identifiable, Equatable {
     let id: String
     let name: String
     /// The app's `ExerciseKind`.
     let kind: String
+    /// The rest after one of its sets, which a set added here starts.
+    let rest: Int
+    /// The load card's proposal, when the phone has one.
+    let suggestion: WatchSuggestion?
 
-    enum CodingKeys: String, CodingKey { case id, name, kind }
+    enum CodingKeys: String, CodingKey { case id, name, kind, rest, suggestion }
+
+    init(id: String, name: String, kind: String, rest: Int, suggestion: WatchSuggestion? = nil) {
+        self.id = id
+        self.name = name
+        self.kind = kind
+        self.rest = rest
+        self.suggestion = suggestion
+    }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(String.self, forKey: .id)
         name = try c.decodeIfPresent(String.self, forKey: .name) ?? ""
         kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? "weight_reps"
+        rest = try c.decodeIfPresent(Int.self, forKey: .rest) ?? 90
+        suggestion = try c.decodeIfPresent(WatchSuggestion.self, forKey: .suggestion)
     }
 
     var fields: [WatchSetField] {
@@ -71,29 +117,51 @@ struct WatchWorkoutSet: Codable, Identifiable, Equatable {
     /// workout's. Empty on a routine's plan until Start gives it one.
     var id: String
     let exerciseId: String
-    let position: Int
-    let setIndex: Int
+    var position: Int
+    var setIndex: Int
     /// "warmup", "working", "drop" or "amrap".
-    let kind: String
+    var kind: String
     /// "Set 3 of 4", "Warm-up", "Drop set".
-    let label: String
+    var label: String
     /// "W" or "D", drawn in orange in front of the label.
-    let badge: String?
+    var badge: String?
     /// "Next: Bench press, set 4".
-    let next: String
+    var next: String
     /// The rest this set starts when it is done: more than 0 starts one, 0
     /// drops the one going, -1 leaves it as it is (mid superset round).
-    let rest: Int
+    var rest: Int
     var weight: Double?
     var reps: Int?
     var durationSeconds: Int?
     var distanceM: Double?
     /// When it was done, as ISO text, or nil while it is still to do.
     var doneAt: String?
+    /// The note written on it, dictated here or typed on the phone.
+    var note: String?
 
     enum CodingKeys: String, CodingKey {
         case id, exerciseId, position, setIndex, kind, label, badge, next, rest
-        case weight, reps, durationSeconds, distanceM, doneAt
+        case weight, reps, durationSeconds, distanceM, doneAt, note
+    }
+
+    /// A set laid out here ("Add set", "Add exercise", a ramp's warm-up),
+    /// worded by `WatchWorkoutList.relabel` once it is in the list.
+    init(id: String, exerciseId: String, kind: String, rest: Int, values: WatchSetValues) {
+        self.id = id
+        self.exerciseId = exerciseId
+        position = 0
+        setIndex = 0
+        self.kind = kind
+        label = ""
+        badge = nil
+        next = ""
+        self.rest = rest
+        weight = values.weight
+        reps = values.reps
+        durationSeconds = values.durationSeconds
+        distanceM = values.distanceM
+        doneAt = nil
+        note = nil
     }
 
     init(from decoder: Decoder) throws {
@@ -112,9 +180,12 @@ struct WatchWorkoutSet: Codable, Identifiable, Equatable {
         durationSeconds = try c.decodeIfPresent(Int.self, forKey: .durationSeconds)
         distanceM = try c.decodeIfPresent(Double.self, forKey: .distanceM)
         doneAt = try c.decodeIfPresent(String.self, forKey: .doneAt)
+        note = try c.decodeIfPresent(String.self, forKey: .note)
     }
 
     var isDone: Bool { doneAt != nil }
+    /// A set the load card counts as work: not a warm-up or a drop set.
+    var isWorking: Bool { kind == "working" || kind == "amrap" }
     var doneDate: Date? { doneAt.flatMap(isoDate) }
 
     var values: WatchSetValues {
@@ -210,15 +281,48 @@ struct WatchQuietHours: Codable, Equatable {
     }
 }
 
+/// An exercise logged lately, for "Add exercise", with the sets adding it
+/// lays out (last time's), so a workout here can add it with no phone in reach.
+struct WatchRecentExercise: Decodable, Identifiable, Equatable {
+    struct PlannedSet: Decodable, Equatable {
+        let kind: String
+        let weight: Double?
+        let reps: Int?
+        let durationSeconds: Int?
+        let distanceM: Double?
+    }
+
+    let id: String
+    let name: String
+    let kind: String
+    let rest: Int
+    let sets: [PlannedSet]
+
+    enum CodingKeys: String, CodingKey { case id, name, kind, rest, sets }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        name = try c.decodeIfPresent(String.self, forKey: .name) ?? ""
+        kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? "weight_reps"
+        rest = try c.decodeIfPresent(Int.self, forKey: .rest) ?? 90
+        sets = try c.decodeIfPresent([PlannedSet].self, forKey: .sets) ?? []
+    }
+
+    var exercise: WatchWorkoutExercise { WatchWorkoutExercise(id: id, name: name, kind: kind, rest: rest) }
+}
+
 struct WatchWorkoutSection: Decodable {
     let unit: String
     /// One click of the Crown on a weight, in `unit`.
     let weightStep: Double
     let live: WatchLiveWorkout?
     let routines: [WatchRoutine]
+    /// "Add exercise"'s list, A to Z.
+    let recent: [WatchRecentExercise]
     let quietHours: WatchQuietHours?
 
-    enum CodingKeys: String, CodingKey { case unit, weightStep, live, routines, quietHours }
+    enum CodingKeys: String, CodingKey { case unit, weightStep, live, routines, recent, quietHours }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -226,6 +330,7 @@ struct WatchWorkoutSection: Decodable {
         weightStep = try c.decodeIfPresent(Double.self, forKey: .weightStep) ?? 2.5
         live = try c.decodeIfPresent(WatchLiveWorkout.self, forKey: .live)
         routines = try c.decodeIfPresent([WatchRoutine].self, forKey: .routines) ?? []
+        recent = try c.decodeIfPresent([WatchRecentExercise].self, forKey: .recent) ?? []
         quietHours = try c.decodeIfPresent(WatchQuietHours.self, forKey: .quietHours)
     }
 }
@@ -266,7 +371,7 @@ struct WatchOwnWorkout: Codable {
     let startedAt: Date
     let unit: String
     let weightStep: Double
-    let exercises: [WatchWorkoutExercise]
+    var exercises: [WatchWorkoutExercise]
     var sets: [WatchWorkoutSet]
     var rest: WatchRestSpan?
     let quietHours: WatchQuietHours?
@@ -288,6 +393,7 @@ struct WatchOwnWorkout: Codable {
             if let reps = set.reps { entry["reps"] = reps }
             if let durationSeconds = set.durationSeconds { entry["durationSeconds"] = durationSeconds }
             if let distanceM = set.distanceM { entry["distanceM"] = distanceM }
+            if let note = set.note { entry["note"] = note }
             return entry
         }
         var body: [String: Any] = [
@@ -350,6 +456,236 @@ func watchISO(_ date: Date) -> String {
     return formatter.string(from: date)
 }
 
+// ==== Changing the list ====
+
+/// One change the watch makes to a workout's list: a note on a set, a set or
+/// an exercise added, an exercise moved a place, or a load suggestion used.
+/// On the watch's own workout it is the change. On the phone's it is also
+/// sent as a tap, which the phone makes with workout mode's own store action;
+/// this is only what the watch draws until then, and each is refused here
+/// where the phone's planner refuses it (`planQuietTaps`), so a repeat does
+/// nothing.
+enum WatchWorkoutEdit {
+    case note(setId: String, text: String)
+    case addSet(exerciseId: String, setId: String)
+    case addExercise(WatchRecentExercise, setIds: [String])
+    case move(exerciseId: String, up: Bool)
+    /// `idSeed` names any warm-ups a ramp adds, so they keep one id however
+    /// many times the change is drawn.
+    case useSuggestion(exerciseId: String, idSeed: String)
+}
+
+/// A workout's exercises and its sets in walking order, and the changes on them.
+struct WatchWorkoutList {
+    var exercises: [WatchWorkoutExercise]
+    var sets: [WatchWorkoutSet]
+
+    /// The longest note kept (WATCH_NOTE_MAX in widgetQuietTaps.ts).
+    static let noteMax = 500
+
+    func exerciseSets(_ exerciseId: String) -> [WatchWorkoutSet] { sets.filter { $0.exerciseId == exerciseId } }
+
+    /// The suggestion while the load card offers it, by workout mode's two
+    /// rules (`workingSetLogged`, `proposalApplied`): not once a working set of
+    /// the exercise is done, and not while its planned working sets already
+    /// ask for what it proposes.
+    func offeredSuggestion(_ exerciseId: String) -> WatchSuggestion? {
+        guard let suggestion = exercises.first(where: { $0.id == exerciseId })?.suggestion,
+              !suggestion.sets.isEmpty else { return nil }
+        let own = exerciseSets(exerciseId)
+        if own.contains(where: { $0.isDone && $0.isWorking }) { return nil }
+        let planned = own.filter { !$0.isDone && $0.isWorking }
+        guard !planned.isEmpty else { return nil }
+        let applied = planned.enumerated().allSatisfy { index, set in
+            guard index < suggestion.sets.count else { return true }
+            let want = suggestion.sets[index]
+            guard let weight = set.weight else { return false }
+            return Self.sameLoad(weight, want.weight) && (want.reps == nil || set.reps == want.reps)
+        }
+        return applied ? nil : suggestion
+    }
+
+    /// Two weights in the unit shown that load the same, to the hundredth (`sameLoad`).
+    static func sameLoad(_ a: Double, _ b: Double) -> Bool {
+        (a * 100).rounded() == (b * 100).rounded()
+    }
+
+    func canMove(_ exerciseId: String, up: Bool) -> Bool { moved(exerciseId, up: up) != nil }
+
+    /// Makes `edit`, and says whether it changed anything.
+    @discardableResult
+    mutating func apply(_ edit: WatchWorkoutEdit) -> Bool {
+        switch edit {
+        case let .note(setId, text):
+            let words = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !words.isEmpty, let index = sets.firstIndex(where: { $0.id == setId }) else { return false }
+            sets[index].note = String(words.prefix(Self.noteMax))
+            return true
+
+        case let .addSet(exerciseId, setId):
+            // `copyLastSet`: one more like the exercise's last, laid out after
+            // it, a warm-up copied as a working set.
+            guard !setId.isEmpty, !sets.contains(where: { $0.id == setId }),
+                  let exercise = exercises.first(where: { $0.id == exerciseId }),
+                  let lastIndex = sets.lastIndex(where: { $0.exerciseId == exerciseId }) else { return false }
+            let last = sets[lastIndex]
+            let added = WatchWorkoutSet(
+                id: setId, exerciseId: exerciseId, kind: last.kind == "warmup" ? "working" : last.kind,
+                rest: exercise.rest, values: last.values
+            )
+            sets.insert(added, at: lastIndex + 1)
+            relabel(exerciseId)
+            return true
+
+        case let .addExercise(recent, setIds):
+            // Last in the workout, with last time's sets, as
+            // `addSessionExercise` lays them out (one empty working set for an
+            // exercise with none to copy).
+            guard !exercises.contains(where: { $0.id == recent.id }) else { return false }
+            let planned = recent.sets.isEmpty
+                ? [WatchSetValues()]
+                : recent.sets.map { WatchSetValues(weight: $0.weight, reps: $0.reps, durationSeconds: $0.durationSeconds, distanceM: $0.distanceM) }
+            let kinds = recent.sets.isEmpty ? ["working"] : recent.sets.map(\.kind)
+            var taken = Set(sets.map(\.id))
+            for (index, values) in planned.enumerated() {
+                var id = index < setIds.count ? setIds[index] : ""
+                if id.isEmpty || taken.contains(id) { id = UUID().uuidString }
+                taken.insert(id)
+                sets.append(WatchWorkoutSet(id: id, exerciseId: recent.id, kind: kinds[index], rest: recent.rest, values: values))
+            }
+            exercises.append(recent.exercise)
+            relabel(recent.id)
+            return true
+
+        case let .move(exerciseId, up):
+            guard let reordered = moved(exerciseId, up: up) else { return false }
+            sets = reordered
+            let order = firstAppearance
+            exercises.sort { (order[$0.id] ?? Int.max) < (order[$1.id] ?? Int.max) }
+            return true
+
+        case let .useSuggestion(exerciseId, idSeed):
+            guard let suggestion = offeredSuggestion(exerciseId),
+                  let exercise = exercises.first(where: { $0.id == exerciseId }) else { return false }
+            // `proposalEdits`: the proposal onto the planned working sets, in
+            // order, and a ramp's planned warm-ups worked out again from the
+            // new weight, each by its place among all the warm-ups.
+            var working = 0
+            var warmups = 0
+            for index in sets.indices where sets[index].exerciseId == exerciseId {
+                if sets[index].kind == "warmup" {
+                    let step = warmups
+                    warmups += 1
+                    guard !sets[index].isDone, step < suggestion.ramp.count else { continue }
+                    sets[index].weight = suggestion.ramp[step].weight
+                    sets[index].reps = suggestion.ramp[step].reps
+                } else if sets[index].isWorking, !sets[index].isDone {
+                    let place = working
+                    working += 1
+                    guard place < suggestion.sets.count else { continue }
+                    sets[index].weight = suggestion.sets[place].weight
+                    sets[index].reps = suggestion.sets[place].reps
+                }
+            }
+            // `rampWarmupsToAdd`: a ramp's warm-ups, ahead of the exercise's
+            // sets, when it laid out none (no weight to ramp to at the start).
+            if warmups == 0, !suggestion.ramp.isEmpty, let first = sets.firstIndex(where: { $0.exerciseId == exerciseId }) {
+                let added = suggestion.ramp.enumerated().map { step, value in
+                    WatchWorkoutSet(
+                        id: "\(idSeed)-w\(step)", exerciseId: exerciseId, kind: "warmup", rest: exercise.rest,
+                        values: WatchSetValues(weight: value.weight, reps: value.reps)
+                    )
+                }
+                sets.insert(contentsOf: added, at: first)
+                relabel(exerciseId)
+            }
+            return true
+        }
+    }
+
+    /// Each exercise's first place in the walk.
+    private var firstAppearance: [String: Int] {
+        var out: [String: Int] = [:]
+        for (index, set) in sets.enumerated() where out[set.exerciseId] == nil { out[set.exerciseId] = index }
+        return out
+    }
+
+    /// The exercises as blocks, in walking order: a superset, whose sets
+    /// alternate, is one block, as the phone's `movedExerciseOrder` reads it.
+    private var blocks: [[WatchWorkoutSet]] {
+        var lastIndex: [String: Int] = [:]
+        for (index, set) in sets.enumerated() { lastIndex[set.exerciseId] = index }
+        var out: [[WatchWorkoutSet]] = []
+        var start = 0
+        var end = 0
+        for (index, set) in sets.enumerated() {
+            // Past the last set of every exercise seen since `start`: that
+            // block is whole.
+            if index > end {
+                out.append(Array(sets[start...end]))
+                start = index
+            }
+            end = max(end, lastIndex[set.exerciseId] ?? index)
+        }
+        if !sets.isEmpty { out.append(Array(sets[start...end])) }
+        return out
+    }
+
+    /// The sets with `exerciseId`'s block swapped with the one above or
+    /// below it, or nil when it is already first or last.
+    private func moved(_ exerciseId: String, up: Bool) -> [WatchWorkoutSet]? {
+        var all = blocks
+        guard let from = all.firstIndex(where: { block in block.contains { $0.exerciseId == exerciseId } }) else { return nil }
+        let to = up ? from - 1 : from + 1
+        guard all.indices.contains(to) else { return nil }
+        all.swapAt(from, to)
+        return all.flatMap { $0 }
+    }
+
+    /// Words an exercise's sets as the phone does (`setLabels`, `setName`):
+    /// working sets numbered "Set 2 of 4", warm-ups and drop sets lettered.
+    mutating func relabel(_ exerciseId: String) {
+        guard let name = exercises.first(where: { $0.id == exerciseId })?.name else { return }
+        let indices = sets.indices.filter { sets[$0].exerciseId == exerciseId }
+        let count = indices.filter { Self.badge(sets[$0].kind) == nil }.count
+        var number = 0
+        for index in indices {
+            let badge = Self.badge(sets[index].kind)
+            sets[index].badge = badge
+            if badge == nil {
+                number += 1
+                sets[index].label = "Set \(number) of \(count)"
+                sets[index].next = "Next: \(name), set \(number)"
+            } else {
+                let warmup = sets[index].kind == "warmup"
+                sets[index].label = warmup ? "Warm-up" : "Drop set"
+                sets[index].next = "Next: \(name), \(warmup ? "warm-up" : "drop set")"
+            }
+        }
+    }
+
+    static func badge(_ kind: String) -> String? {
+        switch kind {
+        case "warmup": return "W"
+        case "drop": return "D"
+        default: return nil
+        }
+    }
+
+    /// The order the sets carry to the phone with a workout run here: each
+    /// exercise's place, and each set's place in its exercise.
+    mutating func renumber() {
+        let order = firstAppearance.sorted { $0.value < $1.value }.map(\.key)
+        var counts: [String: Int] = [:]
+        for index in sets.indices {
+            let id = sets[index].exerciseId
+            sets[index].position = order.firstIndex(of: id) ?? 0
+            sets[index].setIndex = counts[id, default: 0]
+            counts[id, default: 0] += 1
+        }
+    }
+}
+
 // ==== What a screen draws ====
 
 enum WatchWorkoutSource {
@@ -376,6 +712,10 @@ struct WatchWorkoutScreen {
     var setsDone: Int { sets.filter(\.isDone).count }
 
     func exercise(_ id: String) -> WatchWorkoutExercise? { exercises.first { $0.id == id } }
+
+    var list: WatchWorkoutList { WatchWorkoutList(exercises: exercises, sets: sets) }
+    func offeredSuggestion(_ exerciseId: String) -> WatchSuggestion? { list.offeredSuggestion(exerciseId) }
+    func canMove(_ exerciseId: String, up: Bool) -> Bool { list.canMove(exerciseId, up: up) }
 
     /// A rest is shown only while it is about the newest set done: a rest
     /// older than that (left going by a superset partner) belongs to a set
@@ -423,10 +763,7 @@ extension WatchStore {
         guard let section = workoutSection, let live = section.live else { return nil }
         let local = self.local
         guard !local.finishedSessions.contains(live.sessionId) else { return nil }
-        let sets = live.sets.map { set -> WatchWorkoutSet in
-            guard !set.isDone, let done = local.doneSets[set.id] else { return set }
-            return set.done(done.values, at: done.at)
-        }
+        let (list, rest) = phoneOverlay(live, recent: section.recent, local)
         return WatchWorkoutScreen(
             source: .phone,
             sessionId: live.sessionId,
@@ -434,17 +771,24 @@ extension WatchStore {
             startedAt: isoDate(live.startedAt),
             unit: section.unit,
             weightStep: section.weightStep,
-            exercises: live.exercises,
-            sets: sets,
+            exercises: list.exercises,
+            sets: list.sets,
             moreSets: live.moreSets,
-            rest: WatchWorkoutScreen.shownRest(phoneRest(live, local), sets: sets, dismissedKey: dismissedRestKey)
+            rest: WatchWorkoutScreen.shownRest(rest, sets: list.sets, dismissedKey: dismissedRestKey)
         )
     }
 
-    /// The phone's rest as the snapshot has it, with the rest taps made here
-    /// since laid over it in order: a set done here starts its own (from the
-    /// moment it was done, as the phone will), +30 s moves the end, Skip ends it.
-    private func phoneRest(_ live: WatchLiveWorkout, _ local: LocalTapState) -> WatchRestSpan? {
+    /// The phone's workout and rest as the snapshot has them, with the taps
+    /// made here since laid over them in order: a set done here is drawn done
+    /// and starts its own rest (from the moment it was done, as the phone
+    /// will), +30 s moves the end, Skip ends it, and a note, a set or an
+    /// exercise added, a move and a suggestion used are made to the list.
+    private func phoneOverlay(
+        _ live: WatchLiveWorkout,
+        recent: [WatchRecentExercise],
+        _ local: LocalTapState
+    ) -> (WatchWorkoutList, WatchRestSpan?) {
+        var list = WatchWorkoutList(exercises: live.exercises, sets: live.sets)
         var rest: WatchRestSpan? = live.rest.flatMap { r in
             guard let start = isoDate(r.startedAt), let end = isoDate(r.endsAt) else { return nil }
             return WatchRestSpan(startedAt: start, endsAt: end, phoneRestId: r.id)
@@ -452,7 +796,9 @@ extension WatchStore {
         for tap in local.workoutTaps where tap.sessionId == live.sessionId {
             switch tap.kind {
             case "set":
-                guard let set = live.sets.first(where: { $0.id == tap.itemId }) else { continue }
+                guard let index = list.sets.firstIndex(where: { $0.id == tap.itemId }) else { continue }
+                let set = list.sets[index]
+                if !set.isDone { list.sets[index] = set.done(tap.values ?? WatchSetValues(), at: tap.at) }
                 if set.rest > 0 {
                     rest = WatchRestSpan(startedAt: tap.at, endsAt: tap.at.addingTimeInterval(TimeInterval(set.rest)), phoneRestId: nil)
                 } else if set.rest == 0 {
@@ -466,10 +812,23 @@ extension WatchStore {
             case "restSkip":
                 rest = nil
             default:
-                break
+                if let edit = Self.edit(for: tap, recent: recent) { list.apply(edit) }
             }
         }
-        return rest
+        return (list, rest)
+    }
+
+    /// The change a tap on the phone's workout makes to the list.
+    private static func edit(for tap: WatchTap, recent: [WatchRecentExercise]) -> WatchWorkoutEdit? {
+        switch tap.kind {
+        case "setNote": return tap.note.map { .note(setId: tap.itemId, text: $0) }
+        case "addSet": return tap.exerciseId.map { .addSet(exerciseId: $0, setId: tap.itemId) }
+        case "addExercise":
+            return recent.first(where: { $0.id == tap.itemId }).map { .addExercise($0, setIds: tap.setIds ?? []) }
+        case "moveExercise": return tap.direction.map { .move(exerciseId: tap.itemId, up: $0 == "up") }
+        case "useSuggestion": return .useSuggestion(exerciseId: tap.itemId, idSeed: tap.id)
+        default: return nil
+        }
     }
 
     private var phoneReachable: Bool {
@@ -584,6 +943,76 @@ extension WatchStore {
     func goToSet(from screen: WatchWorkoutScreen) {
         dismissedRestKey = screen.rest?.key
         cancelRestNotification()
+        refreshRestAlarm()
+    }
+
+    // ---- changing the list ----
+
+    /// A note on a set, dictated with the pencil.
+    func noteSet(_ set: WatchWorkoutSet, text: String, in screen: WatchWorkoutScreen) {
+        let words = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(WatchWorkoutList.noteMax))
+        guard !set.id.isEmpty, !words.isEmpty else { return }
+        change(.note(setId: set.id, text: words), in: screen) {
+            recordWorkoutTap(kind: "setNote", itemId: set.id, sessionId: screen.sessionId, note: words)
+        }
+    }
+
+    /// "Add set": one more like the exercise's last.
+    func addSet(to exerciseId: String, in screen: WatchWorkoutScreen) {
+        let setId = UUID().uuidString
+        change(.addSet(exerciseId: exerciseId, setId: setId), in: screen) {
+            recordWorkoutTap(kind: "addSet", itemId: setId, sessionId: screen.sessionId, exerciseId: exerciseId)
+        }
+    }
+
+    /// "Add exercise", from what was logged lately, with last time's sets.
+    /// The ids the watch gives those sets travel with the tap, so the phone's
+    /// rows are the ones drawn here.
+    func addExercise(_ recent: WatchRecentExercise, in screen: WatchWorkoutScreen) {
+        let setIds = (0..<max(recent.sets.count, 1)).map { _ in UUID().uuidString }
+        change(.addExercise(recent, setIds: setIds), in: screen) {
+            recordWorkoutTap(kind: "addExercise", itemId: recent.id, sessionId: screen.sessionId, setIds: setIds)
+        }
+    }
+
+    /// An exercise (a superset as one) moved a place, with its sets.
+    func moveExercise(_ exerciseId: String, up: Bool, in screen: WatchWorkoutScreen) {
+        change(.move(exerciseId: exerciseId, up: up), in: screen) {
+            recordWorkoutTap(kind: "moveExercise", itemId: exerciseId, sessionId: screen.sessionId, direction: up ? "up" : "down")
+        }
+    }
+
+    /// The load card's Use: the suggestion written onto the exercise's
+    /// planned sets. Never done without this tap.
+    func useSuggestion(for exerciseId: String, in screen: WatchWorkoutScreen) {
+        change(.useSuggestion(exerciseId: exerciseId, idSeed: UUID().uuidString), in: screen) {
+            recordWorkoutTap(kind: "useSuggestion", itemId: exerciseId, sessionId: screen.sessionId)
+        }
+    }
+
+    /// Makes `edit` on the workout on screen: on the watch's own, to the list
+    /// kept here; on the phone's, by sending the tap `send` records, which the
+    /// phone applies and the watch draws over the snapshot until it has. Tried
+    /// on the list on screen first either way, so a change it refuses (an
+    /// exercise already in the workout, a move past the end, a suggestion no
+    /// longer offered) sends nothing, as `tickSet` refuses a set already done.
+    private func change(_ edit: WatchWorkoutEdit, in screen: WatchWorkoutScreen, send: () -> Void) {
+        switch screen.source {
+        case .own:
+            guard var workout = ownWorkout else { return }
+            var list = WatchWorkoutList(exercises: workout.exercises, sets: workout.sets)
+            guard list.apply(edit) else { return }
+            list.renumber()
+            workout.exercises = list.exercises
+            workout.sets = list.sets
+            ownWorkout = workout
+            WatchOwnWorkoutFile.save(workout)
+        case .phone:
+            var list = screen.list
+            guard list.apply(edit) else { return }
+            send()
+        }
+        WKInterfaceDevice.current().play(.click)
         refreshRestAlarm()
     }
 

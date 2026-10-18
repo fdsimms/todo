@@ -147,7 +147,11 @@ final class WatchStore: NSObject, ObservableObject {
         values: WatchSetValues? = nil,
         unit: String? = nil,
         title: String? = nil,
-        body: String? = nil
+        body: String? = nil,
+        note: String? = nil,
+        exerciseId: String? = nil,
+        setIds: [String]? = nil,
+        direction: String? = nil
     ) -> WatchTap {
         var tap = WatchTap(id: UUID().uuidString, kind: kind, itemId: itemId, listId: nil, title: title, at: Date(), sent: false)
         tap.sessionId = sessionId
@@ -155,6 +159,10 @@ final class WatchStore: NSObject, ObservableObject {
         tap.values = values
         tap.unit = unit
         tap.body = body
+        tap.note = note
+        tap.exerciseId = exerciseId
+        tap.setIds = setIds
+        tap.direction = direction
         taps.append(tap)
         WatchTapLog.save(taps)
         sendDue(force: false)
