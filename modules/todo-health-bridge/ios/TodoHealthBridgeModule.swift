@@ -1009,14 +1009,33 @@ public class TodoHealthBridgeModule: Module {
         return
       }
 
-      var types: [HKObjectType] = Self.nutrientWriteTable.compactMap {
+      var candidates: [HKObjectType] = Self.nutrientWriteTable.compactMap {
         HKQuantityType.quantityType(forIdentifier: $0.identifier)
       }
       if let correlationType = HKObjectType.correlationType(forIdentifier: .food) {
-        types.append(correlationType)
+        candidates.append(correlationType)
+      }
+      guard !candidates.isEmpty else {
+        promise.resolve(false)
+        return
+      }
+      // A type this install was never asked to share is one the app never
+      // wrote, and deleting from it fails rather than matching nothing: an
+      // install that allowed nutrition before a type joined the table (the
+      // vitamins, cholesterol) would otherwise report every retraction as a
+      // failure. Skipped, as `deleteWorkout` does.
+      var types: [HKObjectType] = []
+      var checked = false
+      TodoHealthExceptionCatcher.runCatchingExceptions {
+        types = candidates.filter { self.store.authorizationStatus(for: $0) != .notDetermined }
+        checked = true
+      }
+      guard checked else {
+        promise.resolve(false)
+        return
       }
       guard !types.isEmpty else {
-        promise.resolve(false)
+        promise.resolve(true)
         return
       }
 
