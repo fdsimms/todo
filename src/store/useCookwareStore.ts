@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Cookware } from '../types';
+import type { Cookware, CookwareType } from '../types';
 import {
   dbGetAllCookware,
   dbInsertCookware,
@@ -17,13 +17,13 @@ import { clampCookwareWeight } from '../utils/cookware';
  * of these at most.
  */
 
-export type CookwarePatch = Partial<Pick<Cookware, 'name' | 'weightG'>>;
+export type CookwarePatch = Partial<Pick<Cookware, 'name' | 'weightG' | 'kind'>>;
 
 interface CookwareStore {
   cookware: Cookware[];
   initialized: boolean;
   initialize: () => void;
-  addCookware: (name: string, weightG: number) => Cookware | null;
+  addCookware: (name: string, weightG: number, kind?: CookwareType | null) => Cookware | null;
   updateCookware: (id: string, patch: CookwarePatch) => void;
   removeCookware: (id: string) => void;
 }
@@ -38,7 +38,7 @@ export const useCookwareStore = create<CookwareStore>((set, get) => ({
 
   // Refuses a blank name or a weight that isn't one; the sheet says why before
   // it ever calls this, so null here is a caller bug rather than a user path.
-  addCookware(name, weightG) {
+  addCookware(name, weightG, kind = null) {
     const trimmed = name.trim();
     const grams = clampCookwareWeight(weightG);
     if (!trimmed || grams === null) return null;
@@ -46,6 +46,7 @@ export const useCookwareStore = create<CookwareStore>((set, get) => ({
     const item: Cookware = {
       id: generateId(),
       name: trimmed,
+      kind,
       weightG: grams,
       sortOrder: maxOrder + 1,
       createdAt: new Date().toISOString(),
@@ -64,6 +65,7 @@ export const useCookwareStore = create<CookwareStore>((set, get) => ({
       if (!trimmed) return;
       next.name = trimmed;
     }
+    if (patch.kind !== undefined) next.kind = patch.kind;
     if (patch.weightG !== undefined) {
       const grams = clampCookwareWeight(patch.weightG);
       if (grams === null) return;

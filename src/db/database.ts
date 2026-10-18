@@ -82,6 +82,7 @@ import type {
 import { HEALTH_TARGET_METRICS } from '../utils/healthTarget';
 import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, NUTRIENT_KEYS, PERSON_NOTE_KINDS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES, isReceiptStyle } from '../types';
 import { generateId } from '../utils/id';
+import { isCookwareType } from '../utils/cookware';
 import type { PendingEstimate } from '../utils/estimateQueue';
 import type { PendingRecipeEstimate } from '../utils/recipeEstimateQueue';
 import { parseTaskFieldDefaults, serializeTaskFieldDefaults } from '../utils/taskFieldDefaults';
@@ -2309,6 +2310,7 @@ function runInitDatabase(): void {
     // Task.generatedReadyAt: when the thing a generated task asks for was seen
     // to be done. NULL on every existing row, which reads as not done yet.
     'ALTER TABLE tasks ADD COLUMN generated_ready_at TEXT',
+    'ALTER TABLE cookware ADD COLUMN kind TEXT',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -7400,6 +7402,7 @@ function rowToCookware(row: Record<string, unknown>): Cookware {
   return {
     id: row.id as string,
     name: row.name as string,
+    kind: isCookwareType(row.kind) ? row.kind : null,
     weightG: row.weight_g as number,
     sortOrder: row.sort_order as number,
     createdAt: row.created_at as string,
@@ -7415,14 +7418,14 @@ export function dbGetAllCookware(): Cookware[] {
 
 export function dbInsertCookware(item: Cookware): void {
   db.runSync(
-    'INSERT INTO cookware (id, name, weight_g, sort_order, created_at) VALUES (?, ?, ?, ?, ?)',
-    [item.id, item.name, item.weightG, item.sortOrder, item.createdAt]
+    'INSERT INTO cookware (id, name, kind, weight_g, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    [item.id, item.name, item.kind, item.weightG, item.sortOrder, item.createdAt]
   );
 }
 
 export function dbUpdateCookware(item: Cookware): void {
-  db.runSync('UPDATE cookware SET name=?, weight_g=?, sort_order=? WHERE id=?', [
-    item.name, item.weightG, item.sortOrder, item.id,
+  db.runSync('UPDATE cookware SET name=?, kind=?, weight_g=?, sort_order=? WHERE id=?', [
+    item.name, item.kind, item.weightG, item.sortOrder, item.id,
   ]);
 }
 

@@ -56,6 +56,14 @@ describe('the cookware tools', () => {
     expect(() => updateCookware(replica, 'nope', { weightG: 5 })).toThrow(/No cookware with id nope/);
   });
 
+  it('reports the type a piece is listed under and whether it was chosen', () => {
+    const { cookware } = addCookware(replica, { name: 'Ramekin', weightG: 153 });
+    expect(cookware).toMatchObject({ type: 'Bowls', typeChosen: false });
+    expect(updateCookware(replica, cookware.id, { type: 'Baking' }).cookware).toMatchObject({ type: 'Baking', typeChosen: true });
+    expect(updateCookware(replica, cookware.id, { type: null }).cookware).toMatchObject({ type: 'Bowls', typeChosen: false });
+    expect(addCookware(replica, { name: 'Tray', weightG: 300, type: 'Baking' }).cookware).toMatchObject({ type: 'Baking', typeChosen: true });
+  });
+
   it('deletes by id and names what it removed', () => {
     const { cookware } = addCookware(replica, { name: 'Glass tub', weightG: 310 });
     expect(deleteCookware(replica, cookware.id).removed).toEqual(cookware);
