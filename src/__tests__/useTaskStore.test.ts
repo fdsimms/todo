@@ -7009,6 +7009,18 @@ describe('checkMoodTasks', () => {
       expect(live[0].generatedSourceId).toBe('2026-08-26');
     });
 
+    it('keeps yesterday\'s check-in when it was answered, so the tick and its coins are still available', () => {
+      useSettingsStore.getState.mockReturnValue(settings());
+      useTaskStore.getState().checkMoodTasks();
+      setLogs([entry(TODAY, 4)]);
+
+      jest.setSystemTime(new Date(2026, 7, 26, 9, 0, 0));
+      useSettingsStore.getState.mockReturnValue(settings({ moodLogLastDayKey: TODAY }));
+      useTaskStore.getState().checkMoodTasks();
+
+      expect(tasksOfKind('moodLog').map(t => t.generatedSourceId).sort()).toEqual([TODAY, '2026-08-26']);
+    });
+
     it('writes nothing while switched off', () => {
       useSettingsStore.getState.mockReturnValue(settings({ moodLogTasks: false }));
 
@@ -7275,8 +7287,8 @@ describe('checkJournalTasks', () => {
     expect(morning.generatedSourceId).toBe(`${TODAY}:morning`);
     expect(morning.timeSegments).toEqual(['morning']);
 
-    // Evening arrives: the unanswered morning reminder is cleared, the evening one written,
-    // and a morning entry does not silence it.
+    // Evening arrives: the evening one is written and a morning entry does not silence it.
+    // The morning reminder was answered, so it stays ready to tick rather than being cleared.
     setEntries([written('journal', TODAY, 8)]);
     jest.setSystemTime(new Date(2026, 7, 25, 19, 0, 0));
     useSettingsStore.getState.mockReturnValue(settings({
@@ -7285,7 +7297,7 @@ describe('checkJournalTasks', () => {
     }));
     useTaskStore.getState().checkJournalTasks();
     const live = tasksOfKind('journalLog');
-    expect(live.map(t => t.generatedSourceId)).toEqual([`${TODAY}:evening`]);
+    expect(live.map(t => t.generatedSourceId).sort()).toEqual([`${TODAY}:evening`, `${TODAY}:morning`]);
   });
 
   it('writes the daily dream reminder with no part of the day', () => {
@@ -7298,12 +7310,28 @@ describe('checkJournalTasks', () => {
     expect(tasksOfKind('journalLog')).toHaveLength(0);
   });
 
-  it('completes today\'s reminder of the kind just written, and only that kind', () => {
+  it('leaves today\'s reminder on the list once its entry is written, ready for the person to tick', () => {
     useSettingsStore.getState.mockReturnValue(settings({ dreamLogTasks: true }));
     useTaskStore.getState().checkJournalTasks();
-    useTaskStore.getState().completeJournalTaskForToday('dream');
-    expect(tasksOfKind('dreamLog')).toHaveLength(0);
+    setEntries([written('dream', TODAY)]);
+    expect(tasksOfKind('dreamLog')).toHaveLength(1);
     expect(tasksOfKind('journalLog')).toHaveLength(1);
+  });
+
+  it('keeps an answered reminder past its day, so the tick and its coins are still available', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ dreamLogTasks: true, journalLogTasks: false }));
+    useTaskStore.getState().checkJournalTasks();
+    setEntries([written('dream', TODAY)]);
+
+    jest.setSystemTime(new Date(2026, 7, 26, 9, 0, 0));
+    useSettingsStore.getState.mockReturnValue(settings({
+      dreamLogTasks: true,
+      journalLogTasks: false,
+      dreamLogLastDayKey: TODAY,
+    }));
+    useTaskStore.getState().checkJournalTasks();
+
+    expect(tasksOfKind('dreamLog').map(t => t.generatedSourceId).sort()).toEqual([TODAY, '2026-08-26']);
   });
 
   it('refuses a tick on a reminder until its entry exists', () => {
@@ -7397,6 +7425,41 @@ describe('checkWeighInTasks', () => {
     expect(requests()).toHaveLength(1);
     useTaskStore.getState().completeTask(id);
     expect(requests()).toHaveLength(0);
+  });
+
+  it('makes a request ready when a weight is saved for today, and completes nothing', async () => {
+    await on(8);
+    useTaskStore.getState().markWeighInAnswered('2026-09-08');
+    expect(useHealthStore.getState().weighInAnsweredOn).toBe('2026-09-08');
+    expect(requests()).toHaveLength(1);
+
+    useTaskStore.getState().completeTask(requests()[0].id);
+    expect(requests()).toHaveLength(0);
+  });
+
+  it('asks Health again for a backdated weight instead of assuming it answers the request', async () => {
+    await on(8);
+    const read = useHealthStore.getState().readRecentWeights as jest.Mock;
+    read.mockClear();
+
+    useTaskStore.getState().markWeighInAnswered('2026-09-05');
+
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(useHealthStore.getState().weighInAnsweredOn).toBeNull();
+  });
+
+  it('does nothing when no request is live', () => {
+    useTaskStore.getState().markWeighInAnswered('2026-09-08');
+    expect(useHealthStore.getState().weighInAnsweredOn).toBeNull();
+  });
+
+  it('keeps an answered request past its day, so the tick and its coins are still available', async () => {
+    await on(8);
+    useTaskStore.getState().markWeighInAnswered('2026-09-08');
+
+    await on(9);
+
+    expect(requests().map(t => t.generatedSourceId).sort()).toEqual(['2026-09-08', '2026-09-09']);
   });
 
   it('holds a deleted request for the whole window rather than asking again tomorrow', async () => {

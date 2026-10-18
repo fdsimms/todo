@@ -29,7 +29,6 @@ import { dayKeyOf, getCurrentDayStart, getLogicalToday } from '../utils/dateUtil
 import { isAwayOn } from '../utils/awayDates';
 import { moodPlaceTagNow } from '../utils/moodPlaceNow';
 import { moodDayOffersFor } from '../utils/moodDayOffers';
-import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { EditorSheet } from './EditorSheet';
 import { SheetHeader } from './SheetHeader';
@@ -109,7 +108,6 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
   const updateLog = useMoodStore(s => s.updateLog);
   const removeLog = useMoodStore(s => s.removeLog);
   const renameContextTag = useMoodStore(s => s.renameContextTag);
-  const completeMoodLogTaskForToday = useTaskStore(s => s.completeMoodLogTaskForToday);
   // What this offers a suggestion from — see docs/arch/mood-log.md. Other data
   // the app already has (a missed-heavy day, and so on) can follow the same
   // offer-don't-decide shape later without redesigning this.
@@ -373,12 +371,9 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
       const isToday = isSameDay(day, getLogicalToday());
       const at = isToday ? undefined : noonOn(day);
       addLog(mood, symptoms, note, at, contextTags);
-      // Logging is what the daily task asks for, so answering it ticks it off.
-      // Only on a new entry for today: editing last Tuesday's note is not
-      // today's check-in, and neither is filling in the day you missed —
-      // completing today's task off either would be a lie about a day nobody
-      // logged.
-      if (isToday) completeMoodLogTaskForToday();
+      // The daily check-in task is not ticked here: the saved entry makes its
+      // row read ready (recordTasks.ts) and the person ticks it, which is what
+      // pays the coins.
     }
     onClose();
   };

@@ -188,9 +188,9 @@ async function processPendingDoses(): Promise<void> {
 // Dreams said to Siri or the Action Button (LogDreamIntent): written into the
 // dream log, filed under the day they were said. Silent on arrival, like the
 // task capture: no navigation, so the journal lock stays closed. Saying one
-// also answers today's "write down a dream" reminder, as saving it in the
-// sheet does. Written through the store's own addEntry, which refuses blank
-// text, so a malformed record costs nothing.
+// also makes today's "write down a dream" reminder read ready, as saving it in
+// the sheet does; the tick stays the person's. Written through the store's own
+// addEntry, which refuses blank text, so a malformed record costs nothing.
 async function processPendingDreams(): Promise<void> {
   const bridge = widgetBridge();
   // Optional on the bridge: a binary built before the intent has no drain.
@@ -202,13 +202,9 @@ async function processPendingDreams(): Promise<void> {
     // The store loads with the task store at startup; a drain that beats it
     // would otherwise sort the new row into an empty list.
     if (!journal.initialized) journal.initialize();
-    let wroteToday = false;
     for (const dream of queued) {
-      const entry = useJournalStore.getState().addEntry('dream', dream.text, dream.at ?? undefined);
-      if (entry && dream.at === null) wroteToday = true;
-      if (entry && dream.at !== null && getLogicalDayKey(dream.at) === getLogicalDayKey(new Date())) wroteToday = true;
+      useJournalStore.getState().addEntry('dream', dream.text, dream.at ?? undefined);
     }
-    if (wroteToday) useTaskStore.getState().completeJournalTaskForToday('dream');
     haptics.success();
   } catch {
     // A build predating drainPendingDreams — no-op.

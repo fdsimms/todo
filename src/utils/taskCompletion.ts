@@ -104,9 +104,9 @@ export interface CompletionOptions {
   reviewAfter?: ReviewAfter | null;
   neutral?: boolean;
   /**
-   * Internal: the record this task asks for was just saved. Only the four
-   * `complete…TaskForToday` actions set it; see `isAnsweredByRecord` for why no
-   * other completion of those tasks is allowed.
+   * Internal: the record this task asks for was just saved. Set by
+   * `completeTask` itself once the record exists; see `isAnsweredByRecord` for
+   * why no other completion of those tasks is allowed.
    */
   recorded?: boolean;
   /**

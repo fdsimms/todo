@@ -83,9 +83,9 @@ away, off by default, and each opens its sheet through
 - **The dream reminder is once a day, with no part of the day.** A dream is
   written once, on waking, and whenever the list is first looked at is close
   enough to that.
-- **Saving a new entry for today completes that kind's reminder**
-  (`completeJournalTaskForToday`); a backdated or edited one does not, for the
-  mood sheet's reason.
+- **Saving an entry never completes the reminder.** It makes the row read
+  ready and the person ticks it, which is what pays the coins; a ready row from
+  an earlier day or part of the day is kept (`isReadyRecordTask`).
   Until an entry exists the reminder's checkbox opens the sheet and
   `completeTask` refuses a tick; afterwards the row reads ready (`recordTasks.ts`;
   see the mood log's "The two generators").

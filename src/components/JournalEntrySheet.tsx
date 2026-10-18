@@ -111,7 +111,6 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
   const updateEntry = useJournalStore(s => s.updateEntry);
   const removeEntry = useJournalStore(s => s.removeEntry);
   const allEntries = useJournalStore(s => s.entries);
-  const completeJournalTaskForToday = useTaskStore(s => s.completeJournalTaskForToday);
   const setEntryMeta = useJournalStore(s => s.setEntryMeta);
   const wordGoal = useSettingsStore(s => s.journalWordGoal);
   const customPrompts = useSettingsStore(s => s.journalCustomPrompts);
@@ -293,9 +292,6 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
       const sealUntil = canSeal && openOn ? dayKeyOf(openOn) : null;
       const entry = addEntry(kind, text, isToday ? undefined : noonOn(day), sealUntil, { tags, personIds });
       if (entry?.openOn) addSealedNoteReminder(entry);
-      // Writing is what the reminder asks for. Only a new entry for today: the
-      // day you missed filled in later is not today's entry.
-      if (isToday) completeJournalTaskForToday(kind);
       // The same record the person's own "Add to history" row writes, for
       // everybody the page names, only when it was asked for here.
       if (offerHistory && historyKind) {

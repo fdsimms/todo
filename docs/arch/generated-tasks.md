@@ -1611,8 +1611,8 @@ Five things worth not re-deriving:
   not a decline: it comes back the next day, because it was never answered.
 
 The row carries `dundundun://weight?log=1` so its link button opens the sheet
-that answers it, and `completeWeighInTaskForToday` ticks the request off when a
-weight is saved. Both are copied from `moodLog`, and the reason is sharper
+that answers it, and `markWeighInAnswered` makes the request read ready when a
+weight is saved (the tick, and the coins, stay the person's). Both are copied from `moodLog`, and the reason is sharper
 here: a mood entry recorded late is still roughly true, while a weight that
 was never typed is a number nobody can reconstruct afterwards.
 

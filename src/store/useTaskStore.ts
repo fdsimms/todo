@@ -2119,20 +2119,13 @@ interface TaskStore extends UndoHistoryActions {
    * only one that is async.
    */
   checkWeighInTasks: () => Promise<void>;
-  /** Tick off today's weigh-in request, if one is live, after a weight is saved. */
-  completeWeighInTaskForToday: () => void;
   /**
-   * Tick off today's "Log how you're feeling" task, if one is live.
-   *
-   * Called by the logging sheet once an entry is saved — logging *is* the task,
-   * so leaving it on the list after the thing it asks for has been done would
-   * be the app not listening. Completed rather than deleted: it is a real
-   * record of something done, it belongs in the Logbook and in Stats like any
-   * other completion, and the tick is the feedback that the entry landed.
+   * Make today's weigh-in request read ready, if one is live, after a weight
+   * dated `dayKey` is saved. Completes nothing: the tick, and the coins, are
+   * the person's (see recordTasks.ts). Mood, journal and dream rows need no
+   * such call, since their readiness is derived from the entries themselves.
    */
-  completeMoodLogTaskForToday: () => void;
-  /** The same for the journal or dream reminder, once an entry of that kind is saved for today. */
-  completeJournalTaskForToday: (kind: JournalKind) => void;
+  markWeighInAnswered: (dayKey: string) => void;
   /**
    * Rolls a recurring task onto its next date in place, silently — no record,
    * no history row, nothing in the Logbook, streak left exactly as it was.
@@ -2939,6 +2932,16 @@ function recordTaskAnswered(task: Task): boolean {
     journalEntries: useJournalStore.getState().entries,
     weighInAnsweredOn: useHealthStore.getState().weighInAnsweredOn,
   });
+}
+
+/**
+ * A record task whose entry exists. The clear passes for these kinds delete a
+ * row once its day or part of the day has gone, which is right for a question
+ * nobody answered and wrong for one that was: the person did the work and the
+ * tick, with its coins, is still theirs to take.
+ */
+function isReadyRecordTask(task: Task): boolean {
+  return isAnsweredByRecord(task) && recordTaskAnswered(task);
 }
 
 /**
@@ -8030,6 +8033,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // still owed, the same reasoning the day-to-day clear always used.
       liveGeneratedTasksOfKind(get().tasks, 'moodLog')
         .filter(task => moodLogDayKey(task) !== todayKey || task.generatedSourceId !== sourceId)
+        .filter(task => !isReadyRecordTask(task))
         .forEach(task => deleteGeneratedTaskQuietly(task.id));
 
       // Whether this slot is already answered. Read for the write below only: a
@@ -8146,6 +8150,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       const sourceId = noSlotYet ? null : journalTaskSourceId(todayKey, segment);
       liveGeneratedTasksOfKind(get().tasks, generatedKind)
         .filter(task => journalTaskDayKey(task, kind) !== todayKey || task.generatedSourceId !== sourceId)
+        .filter(task => !isReadyRecordTask(task))
         .forEach(task => deleteGeneratedTaskQuietly(task.id));
       if (sourceId === null) return;
       const written = entries.filter(e => e.kind === kind);
@@ -8354,6 +8359,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // answered has not been declined.
     liveGeneratedTasksOfKind(get().tasks, 'weighIn')
       .filter(task => weighInDayKey(task) !== todayKey)
+      .filter(task => !isReadyRecordTask(task))
       .forEach(task => dropGeneratedTask('weighIn', task.generatedSourceId));
 
     const everyDays = clampWeighInEveryDays(settings.weighInEveryDays);
@@ -8421,36 +8427,20 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   /**
-   * Tick off today's weigh-in request, if there is one, because a weight was
-   * just recorded.
+   * A weight was just recorded, so today's weigh-in request (if there is one)
+   * is answered and its row reads ready. Nothing is completed here.
    *
-   * The counterpart to `completeMoodLogTaskForToday` below and called from the
-   * same place in spirit: the sheet that answers the question, on success.
-   * Without it, recording a weight leaves the task asking for one still sitting
-   * on Today.
+   * A reading dated today answers it outright. A backdated one may or may not
+   * fall inside the request's window, which only a Health read can say, so it
+   * re-runs the pass that makes that call instead of guessing.
    */
-  completeWeighInTaskForToday() {
+  markWeighInAnswered(dayKey) {
     const todayKey = dayKeyOf(getCurrentDayStart());
-    const task = liveGeneratedTasksOfKind(get().tasks, 'weighIn')
-      .find(t => weighInDayKey(t) === todayKey);
-    if (!task) return;
-    get().completeTask(task.id, { recorded: true });
-  },
-
-  completeJournalTaskForToday(kind) {
-    const todayKey = dayKeyOf(getCurrentDayStart());
-    const task = liveGeneratedTasksOfKind(get().tasks, JOURNAL_TASK_KIND[kind])
-      .find(t => journalTaskDayKey(t, kind) === todayKey);
-    if (!task) return;
-    get().completeTask(task.id, { recorded: true });
-  },
-
-  completeMoodLogTaskForToday() {
-    const todayKey = dayKeyOf(getCurrentDayStart());
-    const task = liveGeneratedTasksOfKind(get().tasks, 'moodLog')
-      .find(t => moodLogDayKey(t) === todayKey);
-    if (!task) return;
-    get().completeTask(task.id, { recorded: true });
+    const live = liveGeneratedTasksOfKind(get().tasks, 'weighIn')
+      .some(t => weighInDayKey(t) === todayKey);
+    if (!live) return;
+    if (dayKey === todayKey) useHealthStore.getState().setWeighInAnsweredOn(todayKey);
+    else void get().checkWeighInTasks();
   },
 
   skipNextRecurrence(id) {
