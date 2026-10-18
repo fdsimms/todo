@@ -22,6 +22,7 @@ import { dayKeyOf, getCurrentDayStart } from '../../utils/dateUtils';
 import { formatWeight } from '../../utils/weightLog';
 import { goalDirection } from '../../utils/weightGoal';
 import { formatSleepDuration } from '../../utils/sleepLog';
+import { REST_SECONDS_MAX, REST_SECONDS_MIN, formatRestSeconds } from '../../utils/workoutData';
 import { SleepGoalSheet } from '../../components/SleepGoalSheet';
 import { JournalWordGoalSheet } from '../../components/JournalWordGoalSheet';
 import { JournalPromptsSheet } from '../../components/JournalPromptsSheet';
@@ -129,6 +130,11 @@ export function HealthSettings() {
   const healthTodayHidden = useSettingsStore(s => s.healthTodayHidden);
   const setHealthTodayHidden = useSettingsStore(s => s.setHealthTodayHidden);
   const weightUnit = useSettingsStore(s => s.weightUnit);
+  const workoutsEnabled = useSettingsStore(s => s.workoutsEnabled);
+  const workoutUnit = useSettingsStore(s => s.workoutUnit);
+  const setWorkoutUnit = useSettingsStore(s => s.setWorkoutUnit);
+  const defaultRestSeconds = useSettingsStore(s => s.defaultRestSeconds);
+  const setDefaultRestSeconds = useSettingsStore(s => s.setDefaultRestSeconds);
   const weightGoal = useSettingsStore(useShallow(s => s.weightGoal));
   const setWeightUnit = useSettingsStore(s => s.setWeightUnit);
   const sleepGoalMinutes = useSettingsStore(s => s.sleepGoalMinutes);
@@ -613,6 +619,52 @@ export function HealthSettings() {
         accessibilityLabelFor={o => (o.value === 'kg' ? 'Kilograms' : 'Pounds')}
       />
     </SettingsSection>
+
+    {workoutsEnabled && (
+      <SettingsSection
+        label="Workouts"
+        footer="Weights are stored in kilograms either way, so switching units changes only what workouts show and step by."
+      >
+        <SettingsRow
+          entryId="workoutUnit"
+          icon="barbell-outline"
+          label="Workout weights"
+          value={workoutUnit === 'kg' ? 'Kilograms' : 'Pounds'}
+          tight
+        />
+        <SettingsSegments
+          attached
+          label="Workout weights"
+          options={[
+            { value: 'kg' as WeightUnit, label: 'kg' },
+            { value: 'lb' as WeightUnit, label: 'lb' },
+          ]}
+          selected={workoutUnit}
+          onSelect={unit => setWorkoutUnit(unit)}
+          accessibilityLabelFor={o => (o.value === 'kg' ? 'Kilograms' : 'Pounds')}
+        />
+        <View style={styles.sep} />
+        <SettingsRow
+          entryId="defaultRestSeconds"
+          icon="timer-outline"
+          label="Rest between sets"
+          hint="The rest timer after a set, for an exercise whose routine doesn’t set its own."
+          tight
+        />
+        <View style={styles.cadenceRow}>
+          <CountStepper
+            value={defaultRestSeconds}
+            onChange={next => { if (next !== null) setDefaultRestSeconds(next); }}
+            min={REST_SECONDS_MIN}
+            max={REST_SECONDS_MAX}
+            step={15}
+            format={formatRestSeconds}
+            label="Rest between sets"
+            describeValue={n => (n === null ? 'not set' : `${n} seconds`)}
+          />
+        </View>
+      </SettingsSection>
+    )}
 
     <SettingsSection
       label="Sleep"

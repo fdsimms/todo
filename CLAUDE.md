@@ -419,6 +419,7 @@ file: the two maps are indexes, not write-ups.
 | date math, recurrence | `src/utils/dateUtils.ts` |
 | a repeating task that skips or moves off holidays | `src/utils/holidays.ts` (the US set and your own days off, computed, never read from the calendar) + `recurrenceHolidays` in `getNextOccurrence` (`dateUtils.ts`) — see Recurrence below |
 | a time window that starts or ends at sunrise or sunset | `src/utils/sunTimes.ts` (computed on the device, never the forecast) + `windowBoundsFor`/`sunLocationOn` in `visibilityUtils.ts` (home's `sunLocation`, or a trip's `destinationLatitude` on its days). **A reader of a window's times goes through `windowBoundsFor`**, since `windowStart`/`windowEnd` hold only the time an anchor resolved to when it was set; see `Task.windowStartSun` |
+| logging a workout, routines, the rest timer, and what finishing one does to its task | `src/store/useWorkoutStore.ts` + `src/utils/workoutSession.ts` + `src/components/WorkoutModeSheet.tsx` (the rest timer is a `rest` kind of step timer, `src/utils/stepTimers.ts`) — see `docs/arch/workouts.md`. Sessions and sets are health-record tables that never go to iCloud, finishing a session completes its linked task (`Task.workoutRoutineId`) while ticking the task never invents a session, and a rest that ends waits rather than advancing |
 | a timed task's countdown, and splitting it across subtasks | `src/utils/timer.ts` + `src/utils/timerSegments.ts` — see `docs/arch/timed-tasks.md` |
 | a stock of something that runs down as a task repeats, and ordering more | `src/utils/supply.ts` — see `docs/arch/supplies.md` |
 | a target logged N times a day, its pace ramp, and the same thing counted per week | `src/utils/quotaSchedule.ts` (the span) + `Task.quotaPeriod`. A weekly target is a quota with a week-long span, deliberately not a `RecurrenceType` (see the file's header) |
@@ -722,7 +723,7 @@ decided, and the design system every screen is built from. Individual features a
 | `docs/arch/nfc-key.md` | Key tags: why a tag is one shield reason among four, the two kinds of key, and what isn't verified without a device |
 | `docs/arch/mcp-server.md` | The MCP server: why it is a syncing replica rather than an in-app or backup-file one, and what it costs the "no backend" promise |
 | `docs/arch/desktop-client.md` | A Mac desktop client (design only, not built): why Electron over the existing logic layer, and what the desktop leaves to the phone |
-| `docs/arch/workouts.md` | A strength-training tracker (design only, not built): what it stores against what it reads from Health, why sessions are part of the health record, and the phase plan |
+| `docs/arch/workouts.md` | The strength-training tracker (being built in phases): what it stores against what it reads from Health, why sessions are part of the health record, and the phase plan |
 | `docs/native-targets.md` | Adding an iOS native target (widget, Watch app, Live Activity) |
 
 ### Data flow

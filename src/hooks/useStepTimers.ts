@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import type { StepTimer } from '../types';
+import type { RecipeStepTimer } from '../types';
 import { useStepTimerStore } from '../store/useStepTimerStore';
 import { haptics } from '../utils/haptics';
 import { isStepTimerReady, isStepTimerRunning, sortStepTimers } from '../utils/stepTimers';
@@ -8,7 +8,7 @@ import { isStepTimerReady, isStepTimerRunning, sortStepTimers } from '../utils/s
 /** Everything a surface showing step timers draws and calls. */
 export interface StepTimersBinding {
   /** The stack, ordered by `sortStepTimers`. */
-  timers: StepTimer[];
+  timers: RecipeStepTimer[];
   /** The clock everything derived is measured against, moving once a second. */
   now: number;
   start: (input: {
@@ -19,7 +19,7 @@ export interface StepTimersBinding {
     stepExcerpt?: string;
     durationSeconds: number;
   }) => void;
-  toggle: (timer: StepTimer) => void;
+  toggle: (timer: RecipeStepTimer) => void;
   addTime: (id: string) => void;
   restart: (id: string) => void;
   remove: (id: string) => void;
@@ -45,7 +45,9 @@ export function useStepTimers(recipeId: string | undefined): StepTimersBinding {
   const store = useStepTimerStore.getState();
 
   const mine = useMemo(
-    () => (recipeId === undefined ? [] : all.filter(t => t.recipeId === recipeId)),
+    () => (recipeId === undefined
+      ? []
+      : all.filter((t): t is RecipeStepTimer => t.kind === 'recipe' && t.recipeId === recipeId)),
     [all, recipeId],
   );
   const anyRunning = mine.some(isStepTimerRunning);

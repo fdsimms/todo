@@ -2274,6 +2274,20 @@ describe('demo seed — people', () => {
     expect(sets.some(s => s.kind === 'warmup')).toBe(true);
   });
 
+  it('seeds a repeating task linked to a routine, due today, so its row offers the workout', () => {
+    const { routines, sessions } = useWorkoutStore.getState();
+    const linked = useTaskStore.getState().tasks.find(t => !t.completed && !!t.workoutRoutineId);
+    expect(linked).toBeDefined();
+    expect(linked!.recurrenceType).toBe('weekly');
+    expect(routines.some(r => r.id === linked!.workoutRoutineId)).toBe(true);
+    expect(isTaskVisible(linked!)).toBe(true);
+    // Every logged workout is finished with only its done sets: a routine's
+    // planned rows never outlive the session that laid them out.
+    const sets = sessions.flatMap(s => useWorkoutStore.getState().loadSets(s.id));
+    expect(sets.every(s => s.completedAt !== null)).toBe(true);
+    expect(useWorkoutStore.getState().liveSession()).toBeNull();
+  });
+
   it('seeds both halves of the medication log, so neither reads as missing', () => {
     // The scheduled half has to come from a task completion or the feature
     // reads as a second list you type the tablets into again; the as-needed
@@ -3341,6 +3355,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(timers.some(isStepTimerRunning)).toBe(false);
     expect(useRecipeStore.getState().recipes.some(r => r.timerStartedAt)).toBe(false);
     const [timer] = timers;
+    if (timer.kind !== 'recipe') throw new Error('expected a recipe step timer');
     expect(stepTimerRemaining(timer)).toBeGreaterThan(0);
     // Attached to a step of a recipe that really has one, and named so the row
     // reads without resolving anything.

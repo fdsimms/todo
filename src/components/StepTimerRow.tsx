@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { Alert, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import type { StepTimer } from '../types';
+import type { RecipeStepTimer } from '../types';
 import { ProgressBar } from './ProgressBar';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
@@ -15,7 +15,7 @@ import {
 } from '../utils/stepTimers';
 
 interface Props {
-  timer: StepTimer;
+  timer: RecipeStepTimer;
   /** The clock the row is drawn against, from `useStepTimers`. */
   now: number;
   /** True on the screen that owns the recipe, where the dish's name is already in the header. */

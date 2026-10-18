@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { StepTimer } from '../types';
+import type { RecipeStepTimer, RestTimer, StepTimer } from '../types';
 import { dbDeleteSetting, dbGetSetting, dbSetSetting } from '../db/database';
 import { generateId } from '../utils/id';
 import {
@@ -7,6 +7,7 @@ import {
   MIN_STEP_TIMER_SECONDS,
   STEP_TIMER_NUDGE_SECONDS,
   isStepTimerRunning,
+  nudgedDuration,
   parseStepTimerQueue,
   pruneStaleStepTimers,
   serializeStepTimerQueue,
@@ -16,7 +17,9 @@ import { cancelStepAlarm, scheduleStepAlarm } from '../utils/notifications';
 
 /**
  * The countdowns started from cooking steps — the stack cook mode shows in its
- * footer.
+ * footer — and the rest between two sets of a workout, which is the same kind
+ * of clock with a different alarm policy (see `StepTimer`). One store, two
+ * kinds: the rest is never a fourth timer system (docs/arch/workouts.md).
  *
  * **Its own store, and persisted, both for the same reason: a step timer has to
  * outlive the screen that started it.** The point of setting one is that you
@@ -63,10 +66,25 @@ interface StepTimerState {
     /** `stepTimerExcerpt` of the step, when there is one to read. */
     stepExcerpt?: string;
     durationSeconds: number;
-  }) => StepTimer | null;
+  }) => RecipeStepTimer | null;
+  /**
+   * Starts the rest after a set, replacing any rest already running: there is
+   * one rest at a time, and the newest set is the one being rested after.
+   */
+  startRest: (input: {
+    sessionId: string;
+    exerciseId: string;
+    sessionTitle: string;
+    label: string;
+    durationSeconds: number;
+  }) => RestTimer | null;
   pause: (id: string) => void;
   resume: (id: string) => void;
-  /** Adds a minute, from the row's "+1 min". Also un-rings a timer that just went off. */
+  /**
+   * Adds a minute, from the row's "+1 min", or moves it by `seconds` either way
+   * (a rest's −15 s and +30 s; see `nudgedDuration`). Forward also un-rings a
+   * timer that just went off.
+   */
   addTime: (id: string, seconds?: number) => void;
   /** Puts a timer back to its full length and starts it again — the answer to "per side". */
   restart: (id: string) => void;
@@ -74,6 +92,13 @@ interface StepTimerState {
   remove: (id: string) => void;
   /** Drops every timer belonging to one recipe, for "stop them all" at the end of a cook. */
   removeForRecipe: (recipeId: string) => void;
+  /**
+   * Drops every rest that doesn't belong to `liveSessionId` (all of them for
+   * null): a rest is about the workout in progress, and one left over from a
+   * session finished, thrown away or deleted on another device would ring
+   * about nothing. `WorkoutModeHost` runs it whenever the live session changes.
+   */
+  removeRestsOutside: (liveSessionId: string | null) => void;
 }
 
 function persist(timers: StepTimer[]): void {
@@ -140,7 +165,8 @@ export const useStepTimerStore = create<StepTimerState>((set, get) => ({
     if (!Number.isFinite(seconds)) return null;
     if (seconds < MIN_STEP_TIMER_SECONDS || seconds > MAX_STEP_TIMER_SECONDS) return null;
     const now = new Date().toISOString();
-    const timer: StepTimer = {
+    const timer: RecipeStepTimer = {
+      kind: 'recipe',
       id: generateId(),
       recipeId,
       recipeName,
@@ -155,6 +181,31 @@ export const useStepTimerStore = create<StepTimerState>((set, get) => ({
     // A step naming one duration can want two timers running against it (two
     // pans, two batches), so nothing here collapses onto an existing row.
     commit(set, [...get().timers, timer], timer);
+    return timer;
+  },
+
+  startRest: ({ sessionId, exerciseId, sessionTitle, label, durationSeconds }) => {
+    const seconds = Math.round(durationSeconds);
+    if (!Number.isFinite(seconds)) return null;
+    if (seconds < MIN_STEP_TIMER_SECONDS || seconds > MAX_STEP_TIMER_SECONDS) return null;
+    const now = new Date().toISOString();
+    const timer: RestTimer = {
+      kind: 'rest',
+      id: generateId(),
+      sessionId,
+      exerciseId,
+      sessionTitle,
+      label,
+      durationSeconds: seconds,
+      startedAt: now,
+      elapsedSeconds: 0,
+      createdAt: now,
+    };
+    // The rest it replaces goes with its alarm: a rest after set 2 still
+    // pending when set 3 is logged would otherwise ring halfway through it.
+    const replaced = get().timers.filter(t => t.kind === 'rest');
+    for (const old of replaced) cancelStepAlarm(old.id);
+    commit(set, [...get().timers.filter(t => t.kind !== 'rest'), timer], timer);
     return timer;
   },
 
@@ -175,15 +226,8 @@ export const useStepTimerStore = create<StepTimerState>((set, get) => ({
   addTime: (id, seconds = STEP_TIMER_NUDGE_SECONDS) => {
     const timer = get().timers.find(t => t.id === id);
     if (!timer) return;
-    // Measured from now, not from the original length: a timer four minutes
-    // past its seven is a cook saying "another minute from here", and adding
-    // to the duration alone would hand back a minute that had already gone.
-    const elapsed = stepTimerElapsed(timer);
-    const base = Math.max(timer.durationSeconds, elapsed);
-    const extended: StepTimer = {
-      ...timer,
-      durationSeconds: Math.min(MAX_STEP_TIMER_SECONDS, Math.round(base + seconds)),
-    };
+    // Measured from now, not from the original length; see nudgedDuration.
+    const extended: StepTimer = { ...timer, durationSeconds: nudgedDuration(timer, seconds) };
     commit(set, get().timers.map(t => (t.id === id ? extended : t)), extended);
   },
 
@@ -205,9 +249,18 @@ export const useStepTimerStore = create<StepTimerState>((set, get) => ({
   },
 
   removeForRecipe: recipeId => {
-    const going = get().timers.filter(t => t.recipeId === recipeId);
+    const mine = (t: StepTimer) => t.kind === 'recipe' && t.recipeId === recipeId;
+    const going = get().timers.filter(mine);
     if (going.length === 0) return;
     for (const timer of going) cancelStepAlarm(timer.id);
-    commit(set, get().timers.filter(t => t.recipeId !== recipeId), null);
+    commit(set, get().timers.filter(t => !mine(t)), null);
+  },
+
+  removeRestsOutside: liveSessionId => {
+    const stale = (t: StepTimer) => t.kind === 'rest' && t.sessionId !== liveSessionId;
+    const going = get().timers.filter(stale);
+    if (going.length === 0) return;
+    for (const timer of going) cancelStepAlarm(timer.id);
+    commit(set, get().timers.filter(t => !stale(t)), null);
   },
 }));

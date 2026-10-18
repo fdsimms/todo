@@ -78,6 +78,7 @@ import type {
   Exercise,
   WorkoutProgram,
   WorkoutRoutine,
+  WorkoutRoutineItem,
   WorkoutSession,
   WorkoutSet,
   Person,
@@ -98,6 +99,7 @@ import type {
   TaskFieldDefaults,
   GeneratedTaskExtras,
 } from '../../src/types';
+import type { FinishedSessionInput, SessionPatch, SetInput } from '../../src/store/useWorkoutStore';
 import { parseTaskFieldDefaults } from '../../src/utils/taskFieldDefaults';
 import { rotationItemFromInput, rotationMemberTitle, rotationMembers } from '../../src/utils/rotation';
 import { sunAnchorHHMM } from '../../src/utils/sunTimes';
@@ -1228,6 +1230,23 @@ export interface Replica {
   workoutSessions(fromDayKey: string, toDayKey: string): WorkoutSession[];
   /** One session's sets, in the order they were done. Withheld with the sessions. */
   workoutSets(sessionId: string): WorkoutSet[];
+  /** One session by id, live or finished, or null. */
+  workoutSession(id: string): WorkoutSession | null;
+  /**
+   * Workout writes, through `useWorkoutStore`'s own actions (hydrated per
+   * write, like the milestone store): its name rules, its set cleaning and its
+   * refusals are the app's, and each throws with the reason in words.
+   *
+   * `saveRoutine` creates (no `id`) or changes a routine; fields left out stay.
+   */
+  saveRoutine(input: { id?: string; name?: string; notes?: string; items?: WorkoutRoutineItem[] }): WorkoutRoutine;
+  deleteRoutine(id: string): WorkoutRoutine;
+  /** A workout that already happened, written finished with its sets. Never completes a task. */
+  logWorkout(input: FinishedSessionInput): { session: WorkoutSession; sets: WorkoutSet[] };
+  /** Changes a finished workout: its own fields, and its sets replaced whole when `sets` is given. */
+  updateWorkout(id: string, patch: SessionPatch & { sets?: SetInput[] }): { session: WorkoutSession; sets: WorkoutSet[] };
+  /** Deletes a finished workout and its sets. */
+  deleteWorkout(id: string): { session: WorkoutSession; sets: WorkoutSet[] };
   /** The daily word goal for the journal, or null when none is set. */
   journalWordGoal(): number | null;
   /** Journal and dream entries between two day keys, inclusive, newest first. */
@@ -2227,6 +2246,32 @@ function loggedTransport(transport: SyncTransport): SyncTransport {
 function stripUndefined<T extends object>(o: T): Partial<T> {
   return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as Partial<T>;
 }
+
+/**
+ * The workout store, loaded per write and hydrated before acting, like the
+ * milestone store: a dry run's rollback must not leave it holding rows the
+ * database no longer has. Required lazily, and safe to load here because it
+ * reaches the task store only when a live session is finished, which an
+ * agent never does.
+ */
+function workoutStore() {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { useWorkoutStore } = require('../../src/store/useWorkoutStore') as typeof import('../../src/store/useWorkoutStore');
+  useWorkoutStore.getState().initialize();
+  return useWorkoutStore.getState();
+}
+
+/** What each of the store's refusals means, in words an agent can act on. */
+const WORKOUT_REFUSALS: Record<string, string> = {
+  blank: 'A name or title cannot be blank.',
+  taken: 'That name is already taken.',
+  notFound: 'An exercise id is not one list_exercises knows, or the row is gone.',
+  hasHistory: 'It has history, so it is archived rather than deleted.',
+  live: 'A workout is already in progress on the phone.',
+  finished: 'That workout is already finished.',
+  empty: 'A logged workout needs at least one set. Log only what the person did.',
+  order: 'endedAt is before startedAt.',
+};
 
 export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Replica {
   /* eslint-disable @typescript-eslint/no-require-imports */
@@ -3346,6 +3391,12 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         if (gate) patch.answerGate = { taskId: question.id, answers: gate };
       }
     }
+    if (patch.workoutRoutineId) {
+      const routineId = patch.workoutRoutineId;
+      if (!db.dbGetAllWorkoutRoutines().some(r => r.id === routineId)) {
+        errors.push(`workoutRoutineId: no routine with id ${routineId}. list_workouts lists the routines, and save_routine makes one.`);
+      }
+    }
     if (patch.personIds !== undefined) {
       const known = new Set(people().map(p => p.id));
       const missing = patch.personIds.filter(id => !known.has(id));
@@ -4172,6 +4223,62 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         return day >= from && day <= to;
       }),
     workoutSets: (sessionId: string) => db.dbGetWorkoutSets(sessionId),
+    workoutSession: (id: string) => db.dbGetAllWorkoutSessions().find(x => x.id === id) ?? null,
+    saveRoutine(input) {
+      const store = workoutStore();
+      if (input.id) {
+        if (!store.routines.some(r => r.id === input.id)) throw new Error(`No routine with id ${input.id}. list_workouts lists the routines.`);
+        const result = store.updateRoutine(input.id, {
+          ...(input.name !== undefined ? { name: input.name } : {}),
+          ...(input.notes !== undefined ? { notes: input.notes } : {}),
+          ...(input.items !== undefined ? { items: input.items } : {}),
+        });
+        if (typeof result === 'string') throw new Error(WORKOUT_REFUSALS[result]);
+        return result;
+      }
+      const made = store.addRoutine(input.name ?? '', input.items ?? []);
+      if (typeof made === 'string') throw new Error(WORKOUT_REFUSALS[made]);
+      if (!input.notes?.trim()) return made;
+      const withNotes = store.updateRoutine(made.id, { notes: input.notes });
+      if (typeof withNotes === 'string') throw new Error(WORKOUT_REFUSALS[withNotes]);
+      return withNotes;
+    },
+    deleteRoutine(id) {
+      const store = workoutStore();
+      const routine = store.routines.find(r => r.id === id);
+      if (!routine) throw new Error(`No routine with id ${id}. list_workouts lists the routines.`);
+      store.deleteRoutine(id);
+      return routine;
+    },
+    logWorkout(input) {
+      const result = workoutStore().addFinishedSession(input);
+      if (typeof result === 'string') throw new Error(WORKOUT_REFUSALS[result]);
+      return result;
+    },
+    updateWorkout(id, patch) {
+      const store = workoutStore();
+      const session = store.sessions.find(x => x.id === id);
+      if (!session) throw new Error(`No workout with id ${id}. list_workouts lists them.`);
+      if (session.endedAt === null) throw new Error('That workout is still in progress on the phone. It can be changed once it is finished there.');
+      const { sets, ...fields } = patch;
+      const updated = store.updateSession(id, fields);
+      if (typeof updated === 'string') throw new Error(WORKOUT_REFUSALS[updated]);
+      if (sets !== undefined) {
+        if (sets.length === 0) throw new Error(WORKOUT_REFUSALS.empty);
+        const replaced = store.replaceSets(id, sets);
+        if (typeof replaced === 'string') throw new Error(WORKOUT_REFUSALS[replaced]);
+      }
+      return { session: updated, sets: store.loadSets(id) };
+    },
+    deleteWorkout(id) {
+      const store = workoutStore();
+      const session = store.sessions.find(x => x.id === id);
+      if (!session) throw new Error(`No workout with id ${id}. list_workouts lists them.`);
+      if (session.endedAt === null) throw new Error('That workout is still in progress on the phone. Only the person can end or discard it there.');
+      const sets = store.loadSets(id);
+      store.deleteSession(id);
+      return { session, sets };
+    },
     logMeterReading(name: string, value: number, readAt: Date): MeterReading {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { useMeterReadingStore } = require('../../src/store/useMeterReadingStore') as typeof import('../../src/store/useMeterReadingStore');

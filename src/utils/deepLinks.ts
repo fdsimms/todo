@@ -641,7 +641,7 @@ export function keyUrlToken(url: string): string | null {
   return normalizeLinkToken(parseQuery(match[1] ?? '').token);
 }
 
-// `dundundun://stopTimer?key=cook:<id>|prep:<id>|step:<id>` — the peer of
+// `dundundun://stopTimer?key=cook:<id>|prep:<id>|step:<id>|rest:<id>` — the peer of
 // completeTask above for the Done button on a recipe's cook/prep Live Activity
 // and on a cooking step timer's. The host is still named for stopping because
 // that is what the *timer* does in all three cases, but what Done means differs
@@ -924,6 +924,10 @@ export function openInAppUrl(url: string | null | undefined): boolean {
     // the key names the timer, and the pan it was set for is as likely to be
     // one step of a dish somebody is still cooking as the end of anything.
     else if (key?.startsWith('step:')) useStepTimerStore.getState().remove(key.slice('step:'.length));
+    // A workout's rest: Done skips it, the way the footer's Skip rest does.
+    // The session is untouched and nothing moves on; the next set is logged
+    // from the workout itself.
+    else if (key?.startsWith('rest:')) useStepTimerStore.getState().remove(key.slice('rest:'.length));
     // A completion timer's Done ends its countdown early without touching
     // the task (already completed, long before this fired) or the pending
     // notification scheduleCompletionTimer set up alongside it — same

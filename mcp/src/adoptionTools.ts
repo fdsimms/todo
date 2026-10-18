@@ -245,6 +245,20 @@ export const ADOPTION_CHECKS: readonly AdoptionCheck[] = [
     },
   },
   {
+    id: 'workout_task_link',
+    title: 'Workouts on the schedule',
+    benefit: 'A task can name a workout routine. Its row then starts the workout, and finishing the workout completes the task, with its streak and coins.',
+    advanced: true,
+    since: '2026-10-17',
+    evidence: ({ replica, all }) => {
+      if (!replica.settings().workoutsEnabled) return null;
+      const routines = replica.workoutRoutines().length;
+      return routines > 0 && !all.some(t => t.workoutRoutineId)
+        ? `${routines} workout ${routines === 1 ? 'routine is' : 'routines are'} saved and no task names one.`
+        : null;
+    },
+  },
+  {
     id: 'holiday_repeats',
     title: 'Repeating tasks and holidays',
     benefit: 'A repeating task can skip a public holiday or move to the next day, like a trash pickup after a holiday. It is chosen under Repeat in the task editor.',

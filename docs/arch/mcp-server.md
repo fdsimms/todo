@@ -1504,6 +1504,21 @@ Four areas had no MCP read or write, and the shape of each answer follows from w
   alone, so an agent told a weight with the pot on subtracts the saved pot itself and never writes
   the gross figure. Names are not unique (two devices can each add "Dutch oven" offline), and the
   Activity entry is a record only, titled by the item's name.
+- **Workouts go through `useWorkoutStore`'s own actions** (`workoutTools.ts`), loadable here
+  because the store reaches the task store only when a live session is finished, which an agent
+  never does, and leaves the rest timer to `WorkoutModeHost` on the phone. `save_routine` and
+  `delete_routine` write plans: an exercise id the catalog doesn't know is refused by name, a
+  superset is given as `supersetWithPrevious` and keyed by `joinPrevious`, the editor's own rule,
+  and a progression is stored as the person's choice with nothing proposing a load from it (phase 4
+  of `workouts.md`). `log_workout` writes a workout the person describes, after the fact, finished
+  and with every set done, through `addFinishedSession`; it refuses one with no sets, one that
+  starts in the future and one that ends before it starts, and it never completes a task, since a
+  record of a workout is not the person ticking the task off. `update_workout` and
+  `delete_workout` refuse the session in progress on the phone, which only the person ends. Each
+  write is recorded in Activity, a routine under its name and a workout titled by kind
+  ("Workout"), never by what was lifted, the mood entry's reason. Weights are kilograms on the wire.
+  A task names its routine with `workoutRoutineId`, which `create_task` and `update_task` write and
+  `get_task` reads back as `workout`, and the replica refuses a routine that isn't there.
 - **Saved views are read through the app's own matcher** (`filterTasksForView`, with the app's
   held-back rule and logical day), so a view's count here is the count the Saved Views screen shows.
   `create_saved_view` runs its clauses through `parseSavedViewClauses`, the tolerant parser the app

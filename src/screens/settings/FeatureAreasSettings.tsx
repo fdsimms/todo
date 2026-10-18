@@ -22,7 +22,8 @@ const DESTINATION_BY_ROUTE: ReadonlyMap<string, NavDestination> = new Map(
  * whole groceries/recipes/meal-plan area, its tab and its drawer hub) and
  * `simpleMode` (every advanced feature `SIMPLE_FEATURES` names), plus
  * `rewardsEnabled` (coins, bounties and the difficulty field), which had no way
- * off once the Rewards screen's own Turn on button was pressed.
+ * off once the Rewards screen's own Turn on button was pressed, and
+ * `workoutsEnabled` (the Workouts screen, docs/arch/workouts.md).
  *
  * This used to be the last section of Tasks & projects, the group that was
  * already the widest in Settings — eleven sections deep, so the two controls
@@ -38,6 +39,8 @@ export function FeatureAreasSettings() {
   const setKitchenEnabled = useSettingsStore(s => s.setKitchenEnabled);
   const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
   const setRewardsEnabled = useSettingsStore(s => s.setRewardsEnabled);
+  const workoutsEnabled = useSettingsStore(s => s.workoutsEnabled);
+  const setWorkoutsEnabled = useSettingsStore(s => s.setWorkoutsEnabled);
   const simpleMode = useSettingsStore(s => s.simpleMode);
   const setSimpleMode = useSettingsStore(s => s.setSimpleMode);
   const tabRoutes = useSettingsStore(s => s.tabRoutes);
@@ -89,6 +92,18 @@ export function FeatureAreasSettings() {
           : 'Off. No coins are earned or shown'}
         toggle={rewardsEnabled}
         onPress={() => setRewardsEnabled(!rewardsEnabled)}
+      />
+      <View style={styles.sep} />
+      <SettingsRow
+        entryId="workoutsEnabled"
+        icon="barbell-outline"
+        iconColor={workoutsEnabled ? colors.accent : undefined}
+        label="Workouts"
+        hint={workoutsEnabled
+          ? 'Log workouts from routines you make, under Health in the menu'
+          : 'Hidden from the menu and the tab bar'}
+        toggle={workoutsEnabled}
+        onPress={() => setWorkoutsEnabled(!workoutsEnabled)}
       />
       <View style={styles.sep} />
       <SettingsRow

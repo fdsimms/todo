@@ -110,7 +110,10 @@ import { addMilestone, deleteMilestone, listMilestones, updateMilestone } from '
 import { addCookware, deleteCookware, listCookware, updateCookware } from './cookwareTools';
 import { listCopyFlags, resolveCopyFlag } from './copyFlagTools';
 import { deleteMeterReading, listMeterReadings, logMeterReading } from './meterTools';
-import { DEFAULT_EXERCISE_LIMIT, MAX_EXERCISE_LIMIT, listExercises, listWorkouts } from './workoutTools';
+import {
+  DEFAULT_EXERCISE_LIMIT, MAX_EXERCISE_LIMIT, deleteRoutine, deleteWorkout, listExercises, listWorkouts, logWorkout,
+  saveRoutine, updateWorkout,
+} from './workoutTools';
 import { EXERCISE_EQUIPMENT, MUSCLE_GROUPS } from '../../src/utils/workoutData';
 import { deleteJournalEntry, listJournalEntries, logJournalEntry, searchJournalEntries, updateJournalEntry } from './journalTools';
 import { SAVED_VIEW_TASK_LIMIT, createSavedView, deleteSavedView, getSavedView, listSavedViews, updateSavedView } from './savedViewTools';
@@ -583,6 +586,122 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     'Workouts the person logged over a range of days, newest first, each with its exercises and sets (weights in kg, whatever unit the phone shows; done: false is a set laid out but not done), plus their routines (planned sets per exercise) and programs. Defaults to the last 7 days. Workout history is part of the health record: it is empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that they did not train. Routines and programs are plans and arrive either way. Report what was logged. Never estimate calories from sets, and never work anything out from body weight.',
     logRange,
     async input => json(await withFresh(() => listWorkouts(replica, input)))
+  );
+
+  const routineSet = z.object({
+    kind: z.enum(['warmup', 'working', 'drop', 'amrap']).optional().describe('Default working.'),
+    repsMin: z.number().int().min(0).max(1000).nullable().optional(),
+    repsMax: z.number().int().min(0).max(1000).nullable().optional().describe('With repsMin, a range ("6 to 8"); alone, a fixed count.'),
+    weightKg: z.number().positive().max(1000).nullable().optional().describe('A target weight in kg. Leave it out and the workout starts from the weight last lifted.'),
+    durationSeconds: z.number().int().positive().max(36000).nullable().optional().describe('For a hold or a timed set.'),
+    distanceM: z.number().positive().max(1000000).nullable().optional(),
+    rpe: z.number().min(1).max(10).nullable().optional(),
+    pctOfTm: z.number().positive().max(200).nullable().optional().describe('Percent of a training max, for a percentage program.'),
+  });
+  const loggedSet = z.object({
+    kind: z.enum(['warmup', 'working', 'drop', 'amrap']).optional().describe('Default working.'),
+    weightKg: z.number().min(0).max(1000).nullable().optional().describe('In kg, whatever unit the person said; convert pounds.'),
+    reps: z.number().int().min(0).max(1000).nullable().optional(),
+    durationSeconds: z.number().int().min(0).max(36000).nullable().optional(),
+    distanceM: z.number().min(0).max(1000000).nullable().optional(),
+    rpe: z.number().min(1).max(10).nullable().optional(),
+    note: z.string().max(500).nullable().optional(),
+  });
+  const loggedExercises = z.array(z.object({
+    exerciseId: z.string().min(1).describe('From list_exercises.'),
+    sets: z.array(loggedSet).min(1).max(50),
+  })).min(1).max(40);
+
+  server.tool(
+    'save_routine',
+    'Create a workout routine (no id) or change one (id from list_workouts). A routine is a plan: a name and its exercises in order, each with its planned sets (kind, a rep range, an optional target weight in kg), its rest in seconds, whether it is a superset with the exercise before it, and the progression scheme the person chose. A progression is stored as their choice only; nothing proposes or applies a new load from it, so never say it will. Exercise ids come from list_exercises. exercises replaces the whole list when given; fields left out stay. To put a routine on the schedule, create or update a task with workoutRoutineId.',
+    {
+      id: z.string().min(1).optional().describe('A routine id from list_workouts, to change it. Leave out to create one.'),
+      name: z.string().min(1).max(80).optional().describe('Required to create one.'),
+      notes: z.string().max(2000).optional(),
+      exercises: z.array(z.object({
+        exerciseId: z.string().min(1).describe('From list_exercises.'),
+        sets: z.array(routineSet).min(1).max(20),
+        restSeconds: z.number().int().min(0).max(600).nullable().optional().describe('Rest after each set. Leave out for the person\'s default; 0 for none.'),
+        supersetWithPrevious: z.boolean().optional().describe('Done with the exercise before it as a superset: set by set, back to back, resting after the last.'),
+        progression: z.enum(['double', 'linear', 'percent', 'rpe']).nullable().optional().describe('double: add weight once every set reaches the top of the range. linear: add weight after each completed workout. percent: sets from a training max. rpe: by how hard the top set felt.'),
+      })).max(30).optional().describe('Replaces every exercise when given.'),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => saveRoutine(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not save the routine.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_routine',
+    'Delete a workout routine by its id from list_workouts. Workouts already logged from it keep their history; tasks linked to it stop offering it. It cannot be restored from here.',
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => deleteRoutine(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete the routine.' });
+      }
+    }
+  );
+
+  server.tool(
+    'log_workout',
+    'Record a workout the person did and told you about, after the fact: when it started, how long it took if they said, and each exercise with the sets they did (weights in kg; convert pounds). Log only what they described. Never fill in sets, weights or reps they did not give, never log a workout that has not happened, and never log one to stand for a task being done. It does not complete any task: if the workout was a scheduled one, complete_task does that separately, and only if they ask. A workout in progress on the phone is the phone\'s; this never starts or finishes one. Workout history syncs to the phone only with Include health logs on.',
+    {
+      title: z.string().min(1).max(80).optional().describe('Default the routine\'s name, or "Workout".'),
+      routineId: z.string().min(1).nullable().optional().describe('The routine it followed, from list_workouts.'),
+      startedAt: z.string().min(1).describe('When it started: an ISO date-time, or YYYY-MM-DD for a day gone by.'),
+      durationMinutes: z.number().positive().max(1440).nullable().optional().describe('How long it took, only if they said.'),
+      notes: z.string().max(2000).optional(),
+      effort: z.number().int().min(1).max(10).nullable().optional().describe('How hard it felt, 1 to 10, only as they rated it.'),
+      exercises: loggedExercises,
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => logWorkout(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not log the workout.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_workout',
+    'Correct a finished workout by its id from list_workouts: its title, notes, effort, start or length, or its sets (exercises replaces every set when given; weights in kg). Only what the person tells you was wrong. A workout still in progress on the phone is refused.',
+    {
+      id: z.string().min(1),
+      title: z.string().min(1).max(80).optional(),
+      notes: z.string().max(2000).optional(),
+      effort: z.number().int().min(1).max(10).nullable().optional(),
+      startedAt: z.string().min(1).optional().describe('An ISO date-time, or YYYY-MM-DD. Keeps the length it had unless durationMinutes is given.'),
+      durationMinutes: z.number().min(0).max(1440).nullable().optional(),
+      exercises: loggedExercises.optional(),
+    },
+    async ({ id, ...input }) => {
+      try {
+        return json(await withWrite(() => updateWorkout(replica, id, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the workout.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_workout',
+    'Delete a finished workout and its sets by its id from list_workouts, when the person says it should not be there. A task it completed stays completed. A workout still in progress on the phone is refused; only the person can end it there. It cannot be restored from here.',
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => deleteWorkout(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete the workout.' });
+      }
+    }
   );
 
   server.tool(
@@ -1272,6 +1391,8 @@ const taskFieldsShape = {
   location: z.string().nullable().optional().describe('The place it happens, as free text. null clears it.'),
   vacationPause: z.boolean().optional()
     .describe('Hide this task, and keep its streak, while vacation mode is on (get_overview says whether it is).'),
+  workoutRoutineId: z.string().nullable().optional()
+    .describe('A workout routine id (list_workouts lists routines; save_routine makes one). The task row then offers Start workout, and finishing that workout on the phone completes the task. Completing the task never logs a workout. null removes the link.'),
   medication: z.object({
     name: z.string().describe('Use the spelling list_medication_logs already has.'),
     amount: z.number().nullable().optional(),

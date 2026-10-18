@@ -4,6 +4,7 @@ import {
   formatStepDuration,
   isStepTimerReady,
   isStepTimerRunning,
+  nudgedDuration,
   parseStepDurations,
   parseStepTimerQueue,
   sortStepTimers,
@@ -12,10 +13,11 @@ import {
   stepTimerElapsed,
   stepTimerExcerpt,
   stepTimerEndsAt,
+  stepTimerOverSeconds,
   stepTimerProgress,
   stepTimerRemaining,
 } from '../utils/stepTimers';
-import type { StepTimer } from '../types';
+import type { RecipeStepTimer, RestTimer } from '../types';
 
 const seconds = (text: string) => parseStepDurations(text).map(d => d.seconds);
 
@@ -171,7 +173,8 @@ describe('formatStepDuration', () => {
   });
 });
 
-const TIMER: StepTimer = {
+const TIMER: RecipeStepTimer = {
+  kind: 'recipe',
   id: 't1',
   recipeId: 'r1',
   stepId: 's1',
@@ -220,7 +223,7 @@ describe('step timer countdown', () => {
 });
 
 describe('sortStepTimers', () => {
-  const make = (id: string, createdAt: string, durationSeconds: number): StepTimer => ({
+  const make = (id: string, createdAt: string, durationSeconds: number): RecipeStepTimer => ({
     ...TIMER, id, createdAt, durationSeconds, startedAt: createdAt,
   });
 
@@ -294,11 +297,70 @@ describe('stepTimerCancelPrompt', () => {
   });
 });
 
+const REST: RestTimer = {
+  kind: 'rest',
+  id: 'rt1',
+  sessionId: 'w1',
+  exerciseId: 'lib:barbell-bench-press',
+  sessionTitle: 'Push A',
+  label: 'After set 2 of Barbell bench press',
+  durationSeconds: 90,
+  startedAt: '2026-08-25T12:00:00.000Z',
+  elapsedSeconds: 0,
+  createdAt: '2026-08-25T12:00:00.000Z',
+};
+
 describe('parseStepTimerQueue', () => {
   it('keeps a stored excerpt, and reads a timer from before it existed without one', () => {
     const raw = JSON.stringify([{ ...TIMER, stepExcerpt: 'Simmer the rice' }, { ...TIMER, id: 't2' }]);
     const [withExcerpt, without] = parseStepTimerQueue(raw);
-    expect(withExcerpt.stepExcerpt).toBe('Simmer the rice');
-    expect(without.stepExcerpt).toBeUndefined();
+    expect(withExcerpt.kind === 'recipe' && withExcerpt.stepExcerpt).toBe('Simmer the rice');
+    expect(without.kind === 'recipe' && without.stepExcerpt).toBeUndefined();
+  });
+
+  it('reads a timer stored before kinds existed as a recipe timer', () => {
+    const { kind: _kind, ...old } = TIMER;
+    expect(parseStepTimerQueue(JSON.stringify([old]))).toEqual([TIMER]);
+  });
+
+  it('reads a rest back whole, beside a recipe timer', () => {
+    expect(parseStepTimerQueue(JSON.stringify([TIMER, REST]))).toEqual([TIMER, REST]);
+  });
+
+  it('drops a rest with no session and a kind it does not know, keeping the rest', () => {
+    const raw = JSON.stringify([{ ...REST, sessionId: undefined }, { ...TIMER, kind: 'laundry' }, TIMER]);
+    expect(parseStepTimerQueue(raw)).toEqual([TIMER]);
+  });
+});
+
+describe('nudgedDuration', () => {
+  it('adds from now on a timer past its end, so the time added is all still to come', () => {
+    // 90 s rest, 2 minutes in: +30 s means 30 s from now, not 30 s past the end.
+    expect(nudgedDuration(REST, 30, at(2))).toBe(150);
+    expect(nudgedDuration(REST, 30, at(1))).toBe(120);
+  });
+
+  it('takes time off what is left, stopping at now', () => {
+    expect(nudgedDuration(REST, -15, at(0.5))).toBe(75);
+    // Ten seconds left: −15 s ends it now rather than banking a debt.
+    expect(nudgedDuration(REST, -15, at(80 / 60))).toBe(80);
+  });
+
+  it('leaves a timer that has already rung as it is when taking time off', () => {
+    expect(nudgedDuration(REST, -15, at(3))).toBe(90);
+  });
+});
+
+describe('stepTimerOverSeconds', () => {
+  it('is zero until the timer rings, then counts up in whole seconds', () => {
+    expect(stepTimerOverSeconds(REST, at(1))).toBe(0);
+    expect(stepTimerOverSeconds(REST, at(1.5))).toBe(0);
+    expect(stepTimerOverSeconds(REST, at(2))).toBe(30);
+  });
+});
+
+describe('stepTimerCancelPrompt for a rest', () => {
+  it('names the set the rest is after', () => {
+    expect(stepTimerCancelPrompt(REST, at(0.5))?.message).toBe('After set 2 of Barbell bench press\n1:00 left');
   });
 });

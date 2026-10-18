@@ -18,7 +18,7 @@ jest.mock('../store/useCategoryStore', () => ({
 }));
 
 import { buildTimerRuns } from '../utils/liveActivity';
-import type { Task, Recipe, ChainItem, StepTimer } from '../types';
+import type { Task, Recipe, ChainItem, RecipeStepTimer, RestTimer } from '../types';
 
 const NOW = new Date(2026, 7, 11, 12, 0, 0).getTime();
 
@@ -211,8 +211,9 @@ function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
 
 const startedAgo = (secondsAgo: number) => new Date(NOW - secondsAgo * 1000).toISOString();
 
-function makeStepTimer(overrides: Partial<StepTimer> = {}): StepTimer {
+function makeStepTimer(overrides: Partial<RecipeStepTimer> = {}): RecipeStepTimer {
   return {
+    kind: 'recipe',
     id: 'st1',
     recipeId: 'r1',
     stepId: 's2',
@@ -432,6 +433,24 @@ describe('buildTimerRuns', () => {
       makeStepTimer({ id: 'st2', startedAt: startedAgo(20) }),
     ];
     expect(buildTimerRuns([], [], timers, { enabled: true }).map(r => r.key)).toEqual(['step:st1', 'step:st2']);
+  });
+
+  it('carries a workout rest on the step timer activity, keyed so Done skips the rest', () => {
+    const rest: RestTimer = {
+      kind: 'rest', id: 'rt1', sessionId: 'w1', exerciseId: 'lib:barbell-bench-press',
+      sessionTitle: 'Push A', label: 'After set 2 of Barbell bench press',
+      durationSeconds: 150, startedAt: startedAgo(30), elapsedSeconds: 0, createdAt: startedAgo(30),
+    };
+    expect(buildTimerRuns([], [], [rest], { enabled: true })).toEqual([{
+      key: 'rest:rt1',
+      kind: 'rest',
+      itemId: 'rt1',
+      title: 'Push A',
+      subtitle: 'Rest after set 2 of Barbell bench press',
+      symbolName: 'timer',
+      startedAtMs: NOW - 30_000,
+      targetEndMs: NOW - 30_000 + 150_000,
+    }]);
   });
 
   it('never hands SwiftUI an inverted range for a step timer resumed past its end', () => {

@@ -1098,7 +1098,12 @@ export type UnattendedSubject =
   // A meter reading (`MeterReading`) an agent logged or deleted. Record only.
   | 'meter'
   // A pot, pan, lid or tub (`Cookware`) an agent added, changed or deleted. Record only.
-  | 'cookware';
+  | 'cookware'
+  // A workout routine (`WorkoutRoutine`) an agent saved or deleted. Record only.
+  | 'routine'
+  // A logged workout (`WorkoutSession`) an agent wrote after the fact, changed or deleted.
+  // Titled by kind, never by what was lifted, for the mood entry's reason. Record only.
+  | 'workout';
 
 /**
  * What an agent's edit or move changed: the fields it touched, as they were
@@ -2758,6 +2763,19 @@ export interface Task {
   // so a row or fixture from before it reads as off. Rides ...effective onto the
   // next occurrence like logMealSlot does.
   logMealSlotByTime?: boolean;
+  /**
+   * The workout routine (`WorkoutRoutine.id`) this task is for: the row offers
+   * "Start workout", which opens workout mode laid out from the routine, and
+   * finishing that session completes this occurrence through `completeTask`
+   * (docs/arch/workouts.md). The task owns *when* (its repeat, streak, coins);
+   * the session owns *what happened*. Ticking the task off without a session
+   * never invents one.
+   *
+   * Resolve-or-shrug like `logSavedMealId`: a routine deleted since reads as no
+   * link, and the row offers nothing. Rides `...effective` onto the next
+   * occurrence. Optional so a row or fixture from before it reads as unlinked.
+   */
+  workoutRoutineId?: string | null;
   deferUntil: string | null;
   timeSegments: TimeOfDay[];
   windowStart: string | null; // "HH:MM" — task only becomes visible/active from this time on its day
@@ -7783,6 +7801,38 @@ export interface RecipeStep {
 }
 
 /**
+ * One countdown that runs to the second, survives the app being closed, and
+ * rings when it is up: a cook's step timer, or the rest between two sets of a
+ * workout. One model and one store (`useStepTimerStore`) for both, told apart
+ * by `kind`, rather than a fourth timer system (docs/arch/workouts.md).
+ *
+ * The two raw fields are `startedAt`/`elapsedSeconds`, the same banked-segment
+ * pair `Task` and `Recipe` timers store — how much is left is always derived
+ * against the current clock (see `src/utils/stepTimers.ts`), so a phone
+ * backgrounded, killed or left face-down through the whole countdown comes
+ * back with the right answer.
+ *
+ * **The kind decides the alarm's policy**, which is the only real difference
+ * between the two: a recipe timer rings through quiet hours as a native alarm
+ * (a pan is on the heat), a rest timer is a plain notification that quiet
+ * hours suppress (see `scheduleStepAlarm`).
+ */
+export type StepTimer = RecipeStepTimer | RestTimer;
+
+/** The clock every timer kind shares. */
+interface TimerClock {
+  id: string;
+  /** What the countdown runs for. Fixed at start; "+1 min" (or a rest's −15 s / +30 s) moves it. */
+  durationSeconds: number;
+  /** ISO instant the current run segment began; null while paused. */
+  startedAt: string | null;
+  /** Seconds banked by earlier segments. */
+  elapsedSeconds: number;
+  /** ISO instant this was created, so the footer stack keeps a stable order. */
+  createdAt: string;
+}
+
+/**
  * One countdown a cook started from a step of a recipe.
  *
  * A recipe's cook and prep timers are two fixed clocks measuring the whole
@@ -7792,14 +7842,11 @@ export interface RecipeStep {
  * two live timers during one cooking of one recipe, and a field pair can only
  * ever hold one.
  *
- * The two raw fields are `startedAt`/`elapsedSeconds`, the same banked-segment
- * pair `Task` and `Recipe` timers store — how much is left is always derived
- * against the current clock (see `src/utils/stepTimers.ts`), so a phone
- * backgrounded, killed or left face-down through the whole countdown comes
- * back with the right answer.
+ * A timer stored before `kind` existed has none, and reads back as this
+ * (`parseStepTimerQueue`).
  */
-export interface StepTimer {
-  id: string;
+export interface RecipeStepTimer extends TimerClock {
+  kind: 'recipe';
   /** The recipe the step belongs to, so a running timer can name its dish. */
   recipeId: string;
   /**
@@ -7819,14 +7866,24 @@ export interface StepTimer {
    * Absent on a timer started before it existed, which falls back to the label.
    */
   stepExcerpt?: string;
-  /** What the countdown runs for. Fixed at start; "+1 min" adds to it. */
-  durationSeconds: number;
-  /** ISO instant the current run segment began; null while paused. */
-  startedAt: string | null;
-  /** Seconds banked by earlier segments. */
-  elapsedSeconds: number;
-  /** ISO instant this was created, so the footer stack keeps a stable order. */
-  createdAt: string;
+}
+
+/**
+ * The rest after a set of a workout. At most one at a time: logging the next
+ * set replaces it (`useStepTimerStore.startRest`). When it runs out it chimes
+ * and counts up; it never moves the workout on by itself (a step that runs out
+ * waits, `focus-sessions.md`).
+ */
+export interface RestTimer extends TimerClock {
+  kind: 'rest';
+  /** The `WorkoutSession` it belongs to. Resolve-or-shrug, like every pointer here. */
+  sessionId: string;
+  /** The exercise whose set started it. */
+  exerciseId: string;
+  /** The session's title when the rest started ("Push A"), so the Lock Screen reads without a lookup. */
+  sessionTitle: string;
+  /** "After set 2 of Barbell bench press", as it read when the rest started. */
+  label: string;
 }
 
 // Shorter than TITLE_MAX_LENGTH for the same reason a grocery item's is: this

@@ -3,7 +3,7 @@ import { isProjectLockedAtAll } from './projectLock';
 import { placeGateAllows, placeTrustedUntil, readPlaceFix } from './placeGate';
 import type { PermissionResponse } from 'expo-modules-core';
 import { Platform } from 'react-native';
-import type { StepTimer, Task } from '../types';
+import type { RestTimer, StepTimer, Task } from '../types';
 import type { FocusSession } from '../types';
 import { isTimedTask, isTimerRunning, timerRemaining } from './timer';
 import { formatStepDuration, isStepTimerRunning, stepTimerEndsAt } from './stepTimers';
@@ -1154,7 +1154,8 @@ export function quotaNudgeTasks(tasks: Task[]): Task[] {
 const stepAlarmNotificationId = (timerId: string): string => `step-timer:${timerId}`;
 
 /**
- * Ring when a cooking step timer runs out.
+ * Ring when a cooking step timer runs out. A workout's rest goes through here
+ * too and turns off below to `scheduleRestAlarm`, whose policy is the opposite.
  *
  * **Two deliberate divergences from every other alarm in this file**, both
  * following from the same fact: this is a countdown the user started seconds
@@ -1190,6 +1191,11 @@ export async function scheduleStepAlarm(timer: StepTimer): Promise<void> {
   const triggerDate = stepTimerEndsAt(timer);
   if (!triggerDate || triggerDate.getTime() <= Date.now()) return; // already up — the row says so on sight
 
+  if (timer.kind === 'rest') {
+    await scheduleRestAlarm(timer, triggerDate);
+    return;
+  }
+
   const length = formatStepDuration(timer.durationSeconds);
   const title = timer.recipeName || 'Cooking timer';
   const body = timer.stepLabel
@@ -1213,6 +1219,42 @@ export async function scheduleStepAlarm(timer: StepTimer): Promise<void> {
       sound: true,
       // Someone standing at a stove needs this the moment it fires — same
       // urgency as a reminder, see REMINDER_INTERRUPTION_LEVEL.
+      interruptionLevel: REMINDER_INTERRUPTION_LEVEL,
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      date: triggerDate,
+    },
+  });
+}
+
+/**
+ * The rest between two sets ringing: the step timer's policy turned round on
+ * both counts, deliberately (docs/arch/workouts.md, "Rest timers respect quiet
+ * hours"). A rest is ninety seconds someone is standing beside a bench for, a
+ * dozen times a session, so:
+ *
+ * - **Quiet hours suppress it**, as `scheduleTimerAlarm` does: nothing is
+ *   scheduled inside the window at all. The in-app buzz still comes when the
+ *   rest ends with the app in front (`useRestTimer`), which is the case a
+ *   6 AM session is.
+ * - **It is a plain notification with a sound, never an AlarmKit alarm.** A
+ *   full-screen alarm to dismiss after every set is the wrong weight for a
+ *   rest, and nothing burns if the next set starts thirty seconds late.
+ *
+ * Shares the step timer's identifier and cancel, so `cancelStepAlarm` and the
+ * store's cancel-before-schedule cover it unchanged.
+ */
+async function scheduleRestAlarm(timer: RestTimer, triggerDate: Date): Promise<void> {
+  const { quietHoursStart, quietHoursEnd } = useSettingsStore.getState();
+  if (isWithinQuietHours(triggerDate, quietHoursStart, quietHoursEnd)) return;
+  await Notifications.scheduleNotificationAsync({
+    identifier: stepAlarmNotificationId(timer.id),
+    content: {
+      title: 'Rest is over',
+      body: timer.sessionTitle ? `${timer.sessionTitle}: time for your next set.` : 'Time for your next set.',
+      data: { restTimerId: timer.id, workoutSessionId: timer.sessionId },
+      sound: true,
       interruptionLevel: REMINDER_INTERRUPTION_LEVEL,
     },
     trigger: {

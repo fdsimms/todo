@@ -76,6 +76,7 @@ import { LogMealPrompt } from '../components/LogMealPrompt';
 import { HealthWriteRefusedNotice } from '../components/HealthWriteRefusedNotice';
 import { LogMealEntrySheet } from '../components/LogMealEntrySheet';
 import { CookRecap } from '../components/CookRecap';
+import { WorkoutModeHost } from '../components/WorkoutModeHost';
 import { CookingBar } from '../components/CookingBar';
 import { FocusFloatingBar } from '../components/FocusBar';
 import { useColors } from '../theme/ThemeContext';
@@ -674,6 +675,10 @@ export default function AppNavigator() {
             still a sibling of the Navigator rather than a screen, so it stays
             mounted across every screen exactly as before. */}
         <LogMealEntrySheet />
+        {/* Workout mode, for the same reason: its sheets scroll with
+            useKeyboardInsetScroll, which needs a navigation object. Mounted
+            once so a task row on any screen opens the one sheet. */}
+        <WorkoutModeHost />
       </NavigationContainer>
       </MenuOpenContext.Provider>
       {/* TEMPORARY: the blank-tab diagnostic, drawn outside every tab. */}

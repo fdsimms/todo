@@ -10,6 +10,8 @@ import type {
   WorkoutRoutineItem,
   WorkoutSetKind,
 } from '../types';
+import { kgToUnit, unitToKg, type WeightUnit } from './weightLog';
+import { formatStopwatch } from './effort';
 
 /**
  * The closed vocabularies of the workout records, their labels, and the
@@ -303,4 +305,59 @@ export function normalizePlateInventory(input: Partial<PlateInventory>): PlateIn
 
 function clonePlates(inv: PlateInventory): PlateInventory {
   return { barsKg: [...inv.barsKg], plates: inv.plates.map(p => ({ ...p })) };
+}
+
+// ==== weights on screen ====
+//
+// Every weight is stored in kilograms; `workoutUnit` decides only what a
+// screen shows and steps in (the `waterUnit` split). These are the one place
+// a weight crosses that edge, so a set typed in pounds is stored, read back
+// and stepped the same way everywhere.
+
+/** One press of a weight stepper: a pair of the smallest common plates, in each unit. */
+export const WEIGHT_STEP: Record<WeightUnit, number> = { kg: 2.5, lb: 5 };
+
+/**
+ * Decimal places a weight is shown and typed to: two in kilograms, for a
+ * 1.25 kg plate a side, one in pounds, where nothing is finer than a quarter
+ * and a converted kilogram would otherwise read 44.09.
+ */
+export const WEIGHT_PLACES: Record<WeightUnit, number> = { kg: 2, lb: 1 };
+
+/** The heaviest load a set will hold, in kg: a typo check, not a judgement. */
+export const MAX_SET_WEIGHT_KG = 1000;
+
+const round = (n: number, places: number) => Number(n.toFixed(places));
+
+/** A stored weight in the unit shown, rounded to that unit's places. */
+export function weightToDisplay(kg: number, unit: WeightUnit): number {
+  return round(kgToUnit(kg, unit), WEIGHT_PLACES[unit]);
+}
+
+/**
+ * A weight typed or stepped in the unit shown, as stored. Kept to three
+ * places of a kilogram, so 135 lb is stored as 61.235 and reads back as 135
+ * rather than as 134.99.
+ */
+export function weightFromDisplay(value: number, unit: WeightUnit): number {
+  return round(unitToKg(value, unit), 3);
+}
+
+/** "82.5", "80", "1.25": a weight in the unit shown, with no trailing zeros and no unit. */
+export function formatWeightNumber(kg: number, unit: WeightUnit): string {
+  return String(weightToDisplay(kg, unit));
+}
+
+/** "82.5 kg", "185 lb". */
+export function formatWeightWithUnit(kg: number, unit: WeightUnit): string {
+  return `${formatWeightNumber(kg, unit)} ${unit}`;
+}
+
+/**
+ * "1:30", "2:00": a rest or a hold in minutes and seconds. `formatStopwatch`,
+ * so a rest planned in the routine editor and the rest counting down in
+ * workout mode are punctuated the same as every other clock in the app.
+ */
+export function formatRestSeconds(seconds: number): string {
+  return formatStopwatch(Math.round(seconds));
 }

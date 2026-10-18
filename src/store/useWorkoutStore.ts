@@ -35,6 +35,15 @@ import {
   dbTransaction,
 } from '../db/database';
 import { generateId } from '../utils/id';
+import { workoutTaskEffect } from '../utils/workoutTask';
+import {
+  copyLastSet,
+  finishPlan,
+  plannedSetsFor,
+  plannedSetsFromHistory,
+  previousSets,
+  type PlannedSetValues,
+} from '../utils/workoutSession';
 import { libraryExercise } from '../utils/exerciseLibrary';
 import { buildCatalog } from '../utils/exerciseCatalog';
 import {
@@ -60,8 +69,13 @@ import {
  * Every weight is kilograms. `workoutUnit` decides only what a screen shows.
  *
  * A session's `taskId` is provenance: finishing a session completes its task
- * (phase 2 wires that through `completeTask`, the one direction it goes), and
- * a task ticked off with no session never invents one.
+ * through `completeTask` (the one direction it goes, and the one that pays
+ * coins, as a person's action), and a task ticked off with no session never
+ * invents one.
+ *
+ * **Planned sets are rows with no `completedAt`.** Starting from a routine
+ * lays its sets out that way (`workoutSession.ts` decides the numbers), and
+ * finishing deletes the ones never ticked.
  */
 
 export interface ExerciseInput {
@@ -113,6 +127,28 @@ export interface SessionPatch {
   endedAt?: string | null;
 }
 
+export interface FinishOptions extends Omit<SessionPatch, 'endedAt'> {
+  endedAt?: string;
+  /**
+   * Whether finishing completes the task the session was started from.
+   * Default true. Workout mode passes false only when that task asks a
+   * question on completion, and asks it itself (the answer-first rule).
+   */
+  completeLinkedTask?: boolean;
+}
+
+/** A workout logged after the fact, with what was done. */
+export interface FinishedSessionInput {
+  title?: string;
+  routineId?: string | null;
+  startedAt: string;
+  endedAt: string;
+  notes?: string;
+  effort?: number | null;
+  /** In the order they were done; an exercise's sets keep its first set's place. */
+  sets: (SetInput & { completedAt?: string | null })[];
+}
+
 export interface SetInput {
   exerciseId: string;
   kind?: WorkoutSetKind;
@@ -130,7 +166,7 @@ export interface SetInput {
 export type SetPatch = Partial<Omit<SetInput, 'exerciseId'>>;
 
 /** Why a write was refused, for the caller to say in its own words. */
-export type WorkoutRefusal = 'blank' | 'taken' | 'notFound' | 'hasHistory' | 'live' | 'finished';
+export type WorkoutRefusal = 'blank' | 'taken' | 'notFound' | 'hasHistory' | 'live' | 'finished' | 'empty' | 'order';
 
 interface WorkoutStore {
   exercises: Exercise[];
@@ -170,11 +206,33 @@ interface WorkoutStore {
 
   /** The session in progress, if there is one. */
   liveSession: () => WorkoutSession | null;
-  /** Starts a session. Refuses (`live`) while another is in progress. */
+  /**
+   * Starts a session. Refuses (`live`) while another is in progress. Started
+   * from a routine, it lays the routine's sets out as planned (not done), with
+   * the numbers from the routine or from last time (`plannedSetsFor`).
+   */
   startSession: (input?: StartSessionInput) => WorkoutSession | WorkoutRefusal;
+  /** Edits a session. Refuses a blank title, and an end before the start (`order`). */
   updateSession: (id: string, patch: SessionPatch) => WorkoutSession | WorkoutRefusal;
-  /** Ends a session now (or at `endedAt`). Refuses one already finished (`finished`). */
-  finishSession: (id: string, patch?: Omit<SessionPatch, 'endedAt'> & { endedAt?: string }) => WorkoutSession | WorkoutRefusal;
+  /**
+   * Ends a session now (or at `endedAt`). Refuses one already finished
+   * (`finished`). Deletes the planned sets never ticked and completes the
+   * task it was started from (see `FinishOptions`).
+   */
+  finishSession: (id: string, patch?: FinishOptions) => WorkoutSession | WorkoutRefusal;
+  /**
+   * Writes a workout that already happened, finished, with its sets, in one
+   * go: what an agent's `log_workout` is. Refuses one with no sets (`empty`),
+   * one that ends before it starts (`order`), and a set on an exercise nobody
+   * knows (`notFound`). Never completes a task: a log after the fact is a
+   * record, and the task is completed (or not) on its own.
+   */
+  addFinishedSession: (input: FinishedSessionInput) => { session: WorkoutSession; sets: WorkoutSet[] } | WorkoutRefusal;
+  /**
+   * Replaces every set of a session, for correcting a workout logged after the
+   * fact. Refuses an unknown session or exercise (`notFound`).
+   */
+  replaceSets: (sessionId: string, sets: (SetInput & { completedAt?: string | null })[]) => WorkoutSet[] | WorkoutRefusal;
   /** Deletes a session and its sets, live or finished. */
   deleteSession: (id: string) => void;
   /** Throws away the live session and its sets. */
@@ -194,6 +252,18 @@ interface WorkoutStore {
   deleteSet: (sessionId: string, setId: string) => void;
   /** Puts a session's exercises in this order. Exercises not named keep their order, after these. */
   reorderExercises: (sessionId: string, exerciseIds: string[]) => void;
+  /**
+   * The sets of an exercise from the newest session that did it, other than
+   * `exceptSessionId`: what PREVIOUS shows. Read from the database each time.
+   */
+  lastTimeFor: (exerciseId: string, exceptSessionId: string | null) => WorkoutSet[];
+  /**
+   * Adds an exercise to a session, laid out like last time (or as one empty
+   * set). Refuses one already in it (`taken`) or nobody knows (`notFound`).
+   */
+  addSessionExercise: (sessionId: string, exerciseId: string) => WorkoutSet[] | WorkoutRefusal;
+  /** "Add set": one more planned set like the exercise's last (`copyLastSet`). */
+  addPlannedSet: (sessionId: string, exerciseId: string) => WorkoutSet | WorkoutRefusal;
 }
 
 const nowIso = () => new Date().toISOString();
@@ -235,6 +305,23 @@ function renumber(sets: WorkoutSet[]): WorkoutSet[] {
 
 const changed = (a: WorkoutSet, b: WorkoutSet) => a.position !== b.position || a.setIndex !== b.setIndex;
 
+/**
+ * The task store, required when first used rather than imported:
+ * `useTaskStore` reloads this store (so a top-level import would be a cycle),
+ * and it drags in the notification and native bridges, which this store,
+ * otherwise rows and arithmetic, has no reason to load. The MCP replica loads
+ * this store in Node and never finishes a session, so it never reaches it.
+ *
+ * The rest timer is deliberately not reached from here at all: a rest belongs
+ * to the live session, and `WorkoutModeHost` drops any rest whose session is
+ * no longer live, however it stopped being (finished, discarded, deleted on
+ * another device).
+ */
+function taskStore() {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return (require('./useTaskStore') as typeof import('./useTaskStore')).useTaskStore.getState();
+}
+
 export const useWorkoutStore = create<WorkoutStore>((set, get) => {
   /**
    * Whether a name is already somebody's: an exercise on offer goes by it, or
@@ -267,6 +354,63 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
   };
 
   const exerciseKnown = (id: string) => !!libraryExercise(id) || get().exercises.some(e => e.id === id);
+
+  /** A set row from planned values, at a place the caller has worked out. */
+  const plannedRow = (
+    sessionId: string,
+    exerciseId: string,
+    position: number,
+    setIndex: number,
+    v: PlannedSetValues,
+  ): WorkoutSet => ({
+    id: generateId(),
+    sessionId,
+    exerciseId,
+    position,
+    setIndex,
+    kind: v.kind,
+    weightKg: amount(v.weightKg),
+    reps: whole(v.reps),
+    durationSeconds: whole(v.durationSeconds),
+    distanceM: amount(v.distanceM),
+    rpe: null,
+    completedAt: null,
+    supersetKey: v.supersetKey,
+    note: null,
+  });
+
+  /** One set row from an input, at a place the caller has worked out. */
+  const inputRow = (sessionId: string, position: number, setIndex: number, input: SetInput): WorkoutSet => ({
+    id: generateId(),
+    sessionId,
+    exerciseId: input.exerciseId,
+    position,
+    setIndex,
+    kind: input.kind ?? 'working',
+    weightKg: amount(input.weightKg),
+    reps: whole(input.reps),
+    durationSeconds: whole(input.durationSeconds),
+    distanceM: amount(input.distanceM),
+    rpe: rpeOf(input.rpe),
+    completedAt: input.completedAt === undefined ? nowIso() : input.completedAt,
+    supersetKey: input.supersetKey ?? null,
+    note: input.note?.trim() || null,
+  });
+
+  /**
+   * Rows for a list of inputs in the order given: each exercise takes the
+   * place of its first set, and its sets count from 0.
+   */
+  const rowsFor = (sessionId: string, inputs: SetInput[]): WorkoutSet[] => {
+    const positionOf = new Map<string, number>();
+    const nextIndex = new Map<string, number>();
+    return inputs.map(input => {
+      if (!positionOf.has(input.exerciseId)) positionOf.set(input.exerciseId, positionOf.size);
+      const setIndex = nextIndex.get(input.exerciseId) ?? 0;
+      nextIndex.set(input.exerciseId, setIndex + 1);
+      return inputRow(sessionId, positionOf.get(input.exerciseId)!, setIndex, input);
+    });
+  };
 
   return {
     exercises: [],
@@ -499,7 +643,15 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         healthWritePending: false,
       };
       putSession(row);
-      putSets(row.id, []);
+      const planned: WorkoutSet[] = [];
+      for (const item of routine?.items ?? []) {
+        if (!exerciseKnown(item.exerciseId) || planned.some(p => p.exerciseId === item.exerciseId)) continue;
+        const position = planned.length === 0 ? 0 : planned[planned.length - 1].position + 1;
+        const last = previousSets(dbGetWorkoutSetsForExercise(item.exerciseId), get().sessions, row.id);
+        plannedSetsFor(item, last).forEach((v, i) => planned.push(plannedRow(row.id, item.exerciseId, position, i, v)));
+      }
+      if (planned.length > 0) dbSaveWorkoutSets(planned);
+      putSets(row.id, planned);
       return row;
     },
 
@@ -519,15 +671,92 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         startedAt: patch.startedAt ?? existing.startedAt,
         endedAt: patch.endedAt !== undefined ? patch.endedAt : existing.endedAt,
       };
+      if (row.endedAt !== null && new Date(row.endedAt).getTime() < new Date(row.startedAt).getTime()) return 'order';
       putSession(row);
       return row;
     },
 
-    finishSession(id, patch = {}) {
+    finishSession(id, options = {}) {
       const existing = get().sessions.find(s => s.id === id);
       if (!existing) return 'notFound';
       if (existing.endedAt !== null) return 'finished';
-      return get().updateSession(id, { ...patch, endedAt: patch.endedAt ?? nowIso() });
+      const { completeLinkedTask = true, ...patch } = options;
+      // Refuse an end before the start (or a start after the end) before the
+      // plan's unfinished sets are deleted, or a refused finish leaves the
+      // session live with its plan gone.
+      const endedAt = patch.endedAt ?? nowIso();
+      if (new Date(endedAt).getTime() < new Date(patch.startedAt ?? existing.startedAt).getTime()) return 'order';
+      const sets = get().loadSets(id);
+      const { dropSetIds } = finishPlan(sets);
+      if (dropSetIds.length > 0) {
+        const before = new Map(sets.map(s => [s.id, s]));
+        const kept = renumber(sets.filter(s => !dropSetIds.includes(s.id)));
+        dbTransaction(() => {
+          for (const setId of dropSetIds) dbDeleteWorkoutSet(setId);
+          dbSaveWorkoutSets(kept.filter(s => changed(s, before.get(s.id)!)));
+        });
+        putSets(id, kept);
+      }
+      const finished = get().updateSession(id, { ...patch, endedAt });
+      if (typeof finished === 'string') return finished;
+      // The task occurrence it was started from, answered the way its own
+      // checkbox would answer it (`workoutTaskEffect`): completed, with coins,
+      // streak and successor, or one unit logged on a target. A task already
+      // ticked, archived or deleted since is left alone, and so is one that
+      // asks a question, unless workout mode has asked it.
+      if (completeLinkedTask && existing.taskId) {
+        const tasks = taskStore();
+        const task = tasks.tasks.find(t => t.id === existing.taskId) ?? null;
+        const effect = workoutTaskEffect(task);
+        if (effect === 'complete') tasks.completeTask(task!.id);
+        else if (effect === 'log-unit') tasks.logQuotaUnit(task!.id);
+      }
+      return finished;
+    },
+
+    addFinishedSession(input) {
+      if (input.sets.length === 0) return 'empty';
+      if (input.sets.some(st => !exerciseKnown(st.exerciseId))) return 'notFound';
+      if (new Date(input.endedAt).getTime() < new Date(input.startedAt).getTime()) return 'order';
+      const routine = input.routineId ? get().routines.find(r => r.id === input.routineId) : undefined;
+      const session: WorkoutSession = {
+        id: generateId(),
+        routineId: routine?.id ?? null,
+        programId: routine?.programId ?? null,
+        taskId: null,
+        title: cleanWorkoutName(input.title ?? '') || routine?.name || 'Workout',
+        startedAt: input.startedAt,
+        endedAt: input.endedAt,
+        notes: input.notes?.trim() ?? '',
+        effort: effortOf(input.effort),
+        healthWorkoutId: null,
+        healthWritePending: false,
+      };
+      // Done when it ended unless a set says otherwise: a set logged after the
+      // fact was done, and a planned set has no place in a record.
+      const sets = rowsFor(session.id, input.sets.map(st => ({ ...st, completedAt: st.completedAt ?? input.endedAt })));
+      dbTransaction(() => {
+        dbSaveWorkoutSession(session);
+        dbSaveWorkoutSets(sets);
+      });
+      set({ sessions: [...get().sessions, session].sort(byStartedDesc) });
+      putSets(session.id, sets);
+      return { session, sets };
+    },
+
+    replaceSets(sessionId, inputs) {
+      const session = get().sessions.find(s => s.id === sessionId);
+      if (!session) return 'notFound';
+      if (inputs.some(st => !exerciseKnown(st.exerciseId))) return 'notFound';
+      const old = get().loadSets(sessionId);
+      const done = session.endedAt ?? nowIso();
+      const sets = rowsFor(sessionId, inputs.map(st => ({ ...st, completedAt: st.completedAt ?? done })));
+      dbTransaction(() => {
+        for (const s of old) dbDeleteWorkoutSet(s.id);
+        dbSaveWorkoutSets(sets);
+      });
+      putSets(sessionId, sets);
+      return sets;
     },
 
     deleteSession(id) {
@@ -614,6 +843,40 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         dbSaveWorkoutSets(next.filter(s => changed(s, before.get(s.id)!)));
       });
       putSets(sessionId, next);
+    },
+
+    lastTimeFor(exerciseId, exceptSessionId) {
+      return previousSets(dbGetWorkoutSetsForExercise(exerciseId), get().sessions, exceptSessionId);
+    },
+
+    addSessionExercise(sessionId, exerciseId) {
+      if (!get().sessions.some(s => s.id === sessionId)) return 'notFound';
+      if (!exerciseKnown(exerciseId)) return 'notFound';
+      const sets = get().loadSets(sessionId);
+      if (sets.some(s => s.exerciseId === exerciseId)) return 'taken';
+      const position = sets.reduce((max, s) => Math.max(max, s.position), -1) + 1;
+      const added = plannedSetsFromHistory(get().lastTimeFor(exerciseId, sessionId))
+        .map((v, i) => plannedRow(sessionId, exerciseId, position, i, v));
+      dbSaveWorkoutSets(added);
+      putSets(sessionId, [...sets, ...added].sort(bySetOrder));
+      return added;
+    },
+
+    addPlannedSet(sessionId, exerciseId) {
+      const sets = get().loadSets(sessionId);
+      const mine = sets.filter(s => s.exerciseId === exerciseId);
+      if (mine.length === 0) return 'notFound';
+      const v = copyLastSet(mine);
+      return get().logSet(sessionId, {
+        exerciseId,
+        kind: v.kind,
+        weightKg: v.weightKg,
+        reps: v.reps,
+        durationSeconds: v.durationSeconds,
+        distanceM: v.distanceM,
+        supersetKey: v.supersetKey,
+        completedAt: null,
+      });
     },
 
     reorderExercises(sessionId, exerciseIds) {

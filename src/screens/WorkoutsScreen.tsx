@@ -4,7 +4,7 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format } from 'date-fns/format';
 import { differenceInMinutes } from 'date-fns/differenceInMinutes';
-import type { WorkoutSession } from '../types';
+import type { WorkoutRoutine, WorkoutSession } from '../types';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
@@ -14,31 +14,41 @@ import { useFilterField } from '../hooks/useFilterField';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { useWorkoutStore } from '../store/useWorkoutStore';
+import { useWorkoutModeStore } from '../store/useWorkoutModeStore';
+import { useStartWorkout } from '../hooks/useStartWorkout';
+import { InlineAction } from '../components/InlineAction';
+import { RoutineEditorSheet } from '../components/RoutineEditorSheet';
+import { LazySheet } from '../components/LazySheet';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import { describeExercise, searchExercises, type CatalogExercise } from '../utils/exerciseCatalog';
+import { catalogExercise, describeExercise, searchExercises, type CatalogExercise } from '../utils/exerciseCatalog';
+import { describeRoutine } from '../utils/workoutRoutine';
+import { formatTimeOfDay } from '../utils/dateUtils';
 
 /**
- * The Workouts area, as far as phase 1 of docs/arch/workouts.md goes: the
- * workouts logged so far, newest first, and the exercise library to browse.
+ * The Workouts area: the workouts logged so far, the routines to start one
+ * from, and the exercise library. See docs/arch/workouts.md; the routine list
+ * and the in-progress card are mocked in the phase 2 PR.
  *
- * Logging is phase 2, so this is a reader. The library search matches a name,
- * a muscle or the equipment ("dumbbell chest"), which is the whole of its
- * filtering for now: the catalog's muscle and equipment filters wait for the
- * picker that needs them.
+ * A workout in progress shows above every view as a card with Resume, since
+ * workout mode can be closed without ending it and this is the way back. A
+ * routine starts with one tap on its row's Start; tapping the row edits it.
  *
- * Behind its own switch (`workoutsEnabled`, off by default) and in the Health
- * hub beside the other logs of what a body did.
+ * The library search matches a name, a muscle or the equipment ("dumbbell
+ * chest"). Behind its own switch (`workoutsEnabled`, off by default) and in
+ * the Health hub beside the other logs of what a body did.
  */
 
-type View_ = 'history' | 'exercises';
+type View_ = 'history' | 'routines' | 'exercises';
 
 const VIEW_OPTIONS = [
   { value: 'history' as const, label: 'History' },
+  { value: 'routines' as const, label: 'Routines' },
   { value: 'exercises' as const, label: 'Exercises' },
 ];
+
 
 function sessionLine(session: WorkoutSession, sets: number): string {
   const parts = [format(new Date(session.startedAt), 'EEE, MMM d')];
@@ -62,6 +72,14 @@ export function WorkoutsScreen() {
   const sessions = useWorkoutStore(s => s.sessions);
   const setCounts = useWorkoutStore(s => s.setCounts);
   const exercises = useWorkoutStore(s => s.exercises);
+  const routines = useWorkoutStore(s => s.routines);
+  const live = useWorkoutStore(s => s.sessions.find(x => x.endedAt === null) ?? null);
+  const liveSets = useWorkoutStore(s => (live ? s.setsBySession[live.id] : undefined));
+  const startWorkout = useStartWorkout();
+  // Which routine the editor is on (null for a new one), kept through the
+  // close so the sheet doesn't retitle itself while it slides away.
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorRoutineId, setEditorRoutineId] = useState<string | null>(null);
 
   const [view, setView] = useState<View_>('history');
   // Only the library has a field, so only its list listens for the keyboard.
@@ -111,6 +129,63 @@ export function WorkoutsScreen() {
 
   const listBottom = { paddingBottom: tabBarHeight + spacing.xl };
 
+  const openEditor = useCallback((routineId: string | null) => {
+    haptics.tap();
+    setEditorRoutineId(routineId);
+    setEditorOpen(true);
+  }, []);
+
+  const renderRoutine = useCallback(({ item }: { item: WorkoutRoutine }) => (
+    <TouchableOpacity
+      style={[styles.row, styles.routineRow]}
+      activeOpacity={interaction.activeOpacity}
+      onPress={() => openEditor(item.id)}
+      accessibilityRole="button"
+      accessibilityLabel={`Edit ${item.name}`}
+    >
+      <View style={styles.flex}>
+        <Text style={styles.title}>{item.name}</Text>
+        <Text style={styles.detail}>
+          {describeRoutine(item.items, id => catalogExercise(exercises, id)?.primaryMuscles ?? [])}
+        </Text>
+      </View>
+      <InlineAction
+        label="Start"
+        onPress={() => startWorkout({ routineId: item.id })}
+        accessibilityLabel={`Start a workout from ${item.name}`}
+      />
+    </TouchableOpacity>
+  ), [styles, exercises, openEditor, startWorkout]);
+
+  const liveDone = (liveSets ?? []).filter(x => x.completedAt !== null).length;
+  const liveCard = live ? (
+    <View style={styles.liveCard}>
+      <View>
+        <Text style={styles.liveTag}>In progress</Text>
+        <Text style={styles.title} numberOfLines={2}>{live.title}</Text>
+        <Text style={styles.detail}>
+          {`Started ${formatTimeOfDay(new Date(live.startedAt))} · ${liveDone} of ${(liveSets ?? []).length} sets`}
+        </Text>
+      </View>
+      <View style={styles.actions}>
+        <InlineAction
+          label="Resume"
+          onPress={() => { haptics.tap(); useWorkoutModeStore.getState().show(); }}
+          accessibilityLabel={`Resume ${live.title}`}
+        />
+      </View>
+    </View>
+  ) : null;
+
+  const routineActions = (
+    <View style={styles.actions}>
+      <InlineAction icon="add" label="New routine" surface="page" onPress={() => openEditor(null)} />
+      {!live && (
+        <InlineAction label="Empty workout" variant="neutral" surface="page" onPress={() => startWorkout()} />
+      )}
+    </View>
+  );
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader
@@ -128,12 +203,37 @@ export function WorkoutsScreen() {
         />
       </View>
 
-      {view === 'history' ? (
+      {liveCard}
+
+      {view === 'routines' ? (
+        routines.length === 0 ? (
+          <EmptyState
+            icon="list-outline"
+            title="No routines yet"
+            subtitle="A routine is a list of exercises with the sets you plan for each. Start a workout from it with one tap."
+            actionLabel="New routine"
+            onAction={() => openEditor(null)}
+            bottomOffset={tabBarHeight}
+          />
+        ) : (
+          <FlatList
+            data={routines}
+            keyExtractor={r => r.id}
+            renderItem={renderRoutine}
+            refreshControl={pullSearch.refreshControl}
+            contentContainerStyle={[styles.list, listBottom]}
+            ListFooterComponent={routineActions}
+            showsVerticalScrollIndicator={false}
+          />
+        )
+      ) : view === 'history' ? (
         sessions.length === 0 ? (
           <EmptyState
             icon="barbell-outline"
             title="No workouts yet"
-            subtitle="Workouts you log show here, newest first."
+            subtitle="Workouts you log show here, newest first. Start one from a routine, or start an empty one and add exercises as you go."
+            actionLabel={live ? undefined : 'Start a workout'}
+            onAction={live ? undefined : () => startWorkout()}
             bottomOffset={tabBarHeight}
           />
         ) : (
@@ -178,6 +278,13 @@ export function WorkoutsScreen() {
         </>
       )}
       {pullSearch.sheet}
+      <LazySheet open={editorOpen}>
+        <RoutineEditorSheet
+          visible={editorOpen}
+          routineId={editorRoutineId}
+          onClose={() => setEditorOpen(false)}
+        />
+      </LazySheet>
     </View>
   );
 }
@@ -187,6 +294,20 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   segments: { paddingHorizontal: spacing.md, marginTop: spacing.sm, marginBottom: spacing.sm },
   search: { marginHorizontal: spacing.md, marginBottom: spacing.sm },
   list: { paddingHorizontal: spacing.md, paddingTop: spacing.xs, gap: spacing.sm },
+  flex: { flex: 1 },
+  routineRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd },
+  liveCard: {
+    gap: spacing.smd,
+    marginHorizontal: spacing.md, marginBottom: spacing.sm,
+    backgroundColor: colors.bgSecondary, borderRadius: radius.lg,
+    borderWidth: 1.5, borderColor: colors.accent,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.smd,
+  },
+  liveTag: {
+    color: colors.accentText, fontSize: font.xxs, fontWeight: fontWeight.semibold,
+    letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: spacing.xxs,
+  },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.xs },
   row: {
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.lg,
