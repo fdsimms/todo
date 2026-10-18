@@ -609,7 +609,7 @@ struct WorkoutExerciseSetsView: View {
     /// Each set with what its row leads with: "W", "D", or the working set's number.
     private func numbered(_ sets: [WatchWorkoutSet]) -> [(set: WatchWorkoutSet, number: String)] {
         var count = 0
-        return sets.map { set in
+        return sets.map { set -> (set: WatchWorkoutSet, number: String) in
             if let badge = set.badge { return (set, badge) }
             count += 1
             return (set, String(count))

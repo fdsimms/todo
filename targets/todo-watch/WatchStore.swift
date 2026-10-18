@@ -194,15 +194,32 @@ final class WatchStore: NSObject, ObservableObject {
     /// thing of the queued transfer); the phone drops
     /// whichever copy arrives second, by the tap's id. A message that fails
     /// needs no handling, since the transfer is still on its way.
+    ///
+    /// **A message can overtake a transfer.** Apple promises messages arrive
+    /// in the order sent, and transfers in theirs, but nothing across the two.
+    /// A tap sent as a message now could reach the phone ahead of one queued
+    /// as a transfer while the phone was out of reach: a set ticked on a set
+    /// added then, or Finish ahead of the sets it finishes, would name what
+    /// the phone hasn't got yet and be dropped. So before the first new
+    /// message, every tap whose transfer is still outstanding goes again as a
+    /// message, in the order made, and the message copies arrive in order.
     private func sendDue(force: Bool) {
         let session = WCSession.default
         guard WCSession.isSupported(), session.activationState == .activated else { return }
         let due = Date().addingTimeInterval(-Self.undoWindow)
+        let waiting = Set(session.outstandingUserInfoTransfers.compactMap { $0.userInfo["watchTapId"] as? String })
+        var caughtUp = false
         var changed = false
         for index in taps.indices where !taps[index].sent && (force || taps[index].isWorkout || taps[index].at <= due) {
             let info = taps[index].userInfo
             _ = session.transferUserInfo(info)
             if session.isReachable {
+                if !caughtUp {
+                    caughtUp = true
+                    for earlier in taps where earlier.sent && waiting.contains(earlier.id) {
+                        session.sendMessage(earlier.userInfo, replyHandler: nil, errorHandler: nil)
+                    }
+                }
                 session.sendMessage(info, replyHandler: nil, errorHandler: nil)
             }
             taps[index].sent = true

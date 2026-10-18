@@ -953,7 +953,7 @@ extension WatchStore {
         let words = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(WatchWorkoutList.noteMax))
         guard !set.id.isEmpty, !words.isEmpty else { return }
         change(.note(setId: set.id, text: words), in: screen) {
-            recordWorkoutTap(kind: "setNote", itemId: set.id, sessionId: screen.sessionId, note: words)
+            _ = recordWorkoutTap(kind: "setNote", itemId: set.id, sessionId: screen.sessionId, note: words)
         }
     }
 
@@ -961,7 +961,7 @@ extension WatchStore {
     func addSet(to exerciseId: String, in screen: WatchWorkoutScreen) {
         let setId = UUID().uuidString
         change(.addSet(exerciseId: exerciseId, setId: setId), in: screen) {
-            recordWorkoutTap(kind: "addSet", itemId: setId, sessionId: screen.sessionId, exerciseId: exerciseId)
+            _ = recordWorkoutTap(kind: "addSet", itemId: setId, sessionId: screen.sessionId, exerciseId: exerciseId)
         }
     }
 
@@ -971,14 +971,14 @@ extension WatchStore {
     func addExercise(_ recent: WatchRecentExercise, in screen: WatchWorkoutScreen) {
         let setIds = (0..<max(recent.sets.count, 1)).map { _ in UUID().uuidString }
         change(.addExercise(recent, setIds: setIds), in: screen) {
-            recordWorkoutTap(kind: "addExercise", itemId: recent.id, sessionId: screen.sessionId, setIds: setIds)
+            _ = recordWorkoutTap(kind: "addExercise", itemId: recent.id, sessionId: screen.sessionId, setIds: setIds)
         }
     }
 
     /// An exercise (a superset as one) moved a place, with its sets.
     func moveExercise(_ exerciseId: String, up: Bool, in screen: WatchWorkoutScreen) {
         change(.move(exerciseId: exerciseId, up: up), in: screen) {
-            recordWorkoutTap(kind: "moveExercise", itemId: exerciseId, sessionId: screen.sessionId, direction: up ? "up" : "down")
+            _ = recordWorkoutTap(kind: "moveExercise", itemId: exerciseId, sessionId: screen.sessionId, direction: up ? "up" : "down")
         }
     }
 
@@ -986,7 +986,7 @@ extension WatchStore {
     /// planned sets. Never done without this tap.
     func useSuggestion(for exerciseId: String, in screen: WatchWorkoutScreen) {
         change(.useSuggestion(exerciseId: exerciseId, idSeed: UUID().uuidString), in: screen) {
-            recordWorkoutTap(kind: "useSuggestion", itemId: exerciseId, sessionId: screen.sessionId)
+            _ = recordWorkoutTap(kind: "useSuggestion", itemId: exerciseId, sessionId: screen.sessionId)
         }
     }
 
