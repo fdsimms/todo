@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Keyboard,
   ScrollView,
@@ -26,6 +26,9 @@ import {
 } from '../utils/foodLog';
 import { addCustomPortion } from '../utils/foodNutrition';
 import { weighableLine, type LineWeighing } from '../utils/ingredientGrams';
+import { netWeight, parseWeightText } from '../utils/cookware';
+import { useWeighIn } from '../hooks/useWeighIn';
+import { CookwareWeighIn } from './CookwareWeighIn';
 import { haptics } from '../utils/haptics';
 import type { PantryReviewAnswer } from '../utils/pantryReview';
 import { confirmDiscard } from '../utils/confirmDiscard';
@@ -42,6 +45,24 @@ import { BUTTON_LABEL } from '../copy/shared';
 /** "1.5" not "1.5000000000000002", and "2" not "2.0". */
 function formatServings(n: number): string {
   return Number.isInteger(n) ? String(n) : String(Math.round(n * 10) / 10);
+}
+
+/**
+ * One card's plate picker. The pick lives in `useWeighIn`, which holds a single
+ * selection, so each card needs its own copy of the hook; this reports the
+ * picked weight up and the sheet does the subtraction. It is only mounted while
+ * the card's unit is grams, so leaving grams drops the plate (the cleanup
+ * reports 0) the same way `FoodLogEntrySheet` does.
+ */
+function CardPlateWeighIn({ scaleText, onTareChange }: { scaleText: string; onTareChange: (g: number) => void }) {
+  const weighIn = useWeighIn('plate');
+  const tare = weighIn.picked.reduce((sum, c) => sum + c.weightG, 0);
+  useEffect(() => {
+    onTareChange(tare);
+    return () => onTareChange(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tare]);
+  return <CookwareWeighIn weighIn={weighIn} scaleText={scaleText} surface="card" noun="plate" />;
 }
 
 /**
@@ -144,9 +165,15 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
   // `panelFor` below. Starts empty; `food.panel` is what's shown until then.
   const [weighedPanels, setWeighedPanels] = useState<Record<string, FoodNutrition>>({});
   const [weighGrams, setWeighGrams] = useState<Record<string, string>>({});
+  // Per card, the weight of the plate a grams amount was weighed on. The typed
+  // number is what the scale read; `answers` always holds the food alone.
+  const [plateTare, setPlateTare] = useState<Record<string, number>>({});
+  const appliedTare = useRef<Record<string, number>>({});
 
   useEffect(() => {
     if (!visible) return;
+    setPlateTare({});
+    appliedTare.current = {};
     setAnswers({});
     setAmountUnits({});
     setAmountNumbers({});
@@ -170,6 +197,47 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
     const serving = foodUnitOptionsFor(panelFor(food)).find(o => o.key === 'serving');
     return serving ? { number: '1', answer: composeFoodAmount('1', serving) } : null;
   };
+
+  /** The unit a card is on: the one picked, else serving, else the first the panel offers. */
+  const unitKeyFor = (food: ScannedFood): string | null => {
+    const options = foodUnitOptionsFor(panelFor(food));
+    return amountUnits[food.key]
+      ?? (options.some(o => o.key === 'serving') ? 'serving' : options.length > 0 ? options[0].key : null);
+  };
+
+  /**
+   * What a card's answer becomes for a typed number and unit. In grams with a
+   * plate picked the number is the scale's reading and the plate comes off; a
+   * reading that comes to nothing leaves the answer blank, and the weigh-in
+   * row under the field says why.
+   */
+  const composeAnswer = (
+    food: ScannedFood,
+    numberText: string,
+    unit: ReturnType<typeof foodUnitOptionsFor>[number] | undefined,
+    tare: number = plateTare[food.key] ?? 0,
+  ): string => {
+    if (unit?.key === 'g' && tare > 0) {
+      const typed = parseWeightText(numberText);
+      if (typed === null || typed <= 0) return '';
+      const net = netWeight(typed, [tare], 'plate');
+      return net.ok ? composeFoodAmount(String(net.grams), unit) : '';
+    }
+    return composeFoodAmount(numberText, unit);
+  };
+
+  // Picking or dropping a plate re-measures the number already typed.
+  useEffect(() => {
+    for (const food of foods) {
+      const tare = plateTare[food.key] ?? 0;
+      if ((appliedTare.current[food.key] ?? 0) === tare) continue;
+      appliedTare.current[food.key] = tare;
+      if (unitKeyFor(food) !== 'g') continue;
+      const unit = foodUnitOptionsFor(panelFor(food)).find(o => o.key === 'g');
+      setAnswers(a => ({ ...a, [food.key]: composeAnswer(food, amountNumbers[food.key] ?? '', unit, tare) }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plateTare]);
 
   /**
    * What each answered card actually works out to. A typed amount that doesn't
@@ -317,8 +385,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
             const outcome = resolved.get(food.key);
             const unitOptions = foodUnitOptionsFor(panel);
             const hasServingUnit = unitOptions.some(o => o.key === 'serving');
-            const selectedUnitKey = amountUnits[food.key]
-              ?? (hasServingUnit ? 'serving' : unitOptions.length > 0 ? unitOptions[0].key : null);
+            const selectedUnitKey = unitKeyFor(food);
             const usingPills = unitOptions.length > 0 && selectedUnitKey !== 'other';
             const selectedUnit = unitOptions.find(o => o.key === selectedUnitKey);
             const servingSize = hasServingUnit ? servingDescription(panel) : null;
@@ -349,7 +416,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                     onChangeText={text => {
                       if (usingPills) {
                         setAmountNumbers(n => ({ ...n, [food.key]: text }));
-                        setAnswers(a => ({ ...a, [food.key]: composeFoodAmount(text, selectedUnit) }));
+                        setAnswers(a => ({ ...a, [food.key]: composeAnswer(food, text, selectedUnit) }));
                       } else {
                         setAnswers(a => ({ ...a, [food.key]: text }));
                       }
@@ -388,11 +455,19 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                         const number = key === 'serving' && !typed.trim() ? '1' : typed;
                         setAmountUnits(u => ({ ...u, [food.key]: key }));
                         setAmountNumbers(n => ({ ...n, [food.key]: number }));
-                        setAnswers(a => ({ ...a, [food.key]: composeFoodAmount(number, option) }));
+                        setAnswers(a => ({ ...a, [food.key]: composeAnswer(food, number, option) }));
                       }}
                     />
                   )}
                 </View>
+                {/* Weighed on a plate: the field holds what the scale read and
+                    the plate comes off. Only for grams, where it means something. */}
+                {usingPills && selectedUnitKey === 'g' && (
+                  <CardPlateWeighIn
+                    scaleText={amountNumbers[food.key] ?? ''}
+                    onTareChange={g => setPlateTare(t => (t[food.key] === g ? t : { ...t, [food.key]: g }))}
+                  />
+                )}
                 {/* What will actually resolve, said before it's typed rather
                     than only after a refusal. Only for the free-text field:
                     with a unit chosen there is nothing left to explain. */}
