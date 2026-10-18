@@ -559,9 +559,8 @@ export function parseStepTimerQueue(raw: string | null): StepTimer[] {
       out.push(rest);
       continue;
     }
-    // A timer written before `kind` existed is a recipe's, and so is any kind
-    // this build doesn't know only if it still carries a recipe: an unknown
-    // kind from a newer build with no recipe is dropped rather than misread.
+    // A timer written before `kind` existed is a recipe's. Any kind this build
+    // doesn't know is dropped, recipe id or not, rather than misread as one.
     if (t.kind !== undefined && t.kind !== 'recipe') continue;
     if (typeof t.recipeId !== 'string') continue;
     const recipe: RecipeStepTimer = {

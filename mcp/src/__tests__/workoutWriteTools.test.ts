@@ -137,6 +137,17 @@ describe('the workout write tools', () => {
       expect(workout).toMatchObject({ title: 'Push A', routine: 'Push A', date: '2026-10-05' });
     });
 
+    it('takes a bare date of today as now, not noon, so a morning workout can be logged', () => {
+      const morning = new Date(2026, 9, 18, 8);
+      const { workout } = logWorkout(ledgered, {
+        startedAt: '2026-10-18', exercises: [{ exerciseId: BENCH, sets: [{ reps: 5 }] }],
+      }, morning);
+      expect(new Date(workout.startedAt).getTime()).toBe(morning.getTime());
+      expect(() => logWorkout(ledgered, {
+        startedAt: '2026-10-19', exercises: [{ exerciseId: BENCH, sets: [{ reps: 5 }] }],
+      }, morning)).toThrow(/in the future/);
+    });
+
     it('refuses a workout that has not happened, an unknown exercise and an unknown routine', () => {
       expect(() => logWorkout(ledgered, {
         startedAt: new Date(2026, 9, 9, 18).toISOString(), exercises: [{ exerciseId: BENCH, sets: [{ reps: 5 }] }],
@@ -165,6 +176,16 @@ describe('the workout write tools', () => {
       expect(resetSets.exercises.map(e => e.exerciseId)).toEqual([FLY]);
       expect(() => updateWorkout(ledgered, w.id, {})).toThrow(/Nothing to change/);
       expect(() => updateWorkout(ledgered, 'gone', { notes: 'x' })).toThrow(/No workout with id gone/);
+    });
+
+    it('moves the sets with the start, and refuses a start in the future', () => {
+      const w = log();
+      const before = replica.workoutSets(w.id)[0].completedAt!;
+      updateWorkout(ledgered, w.id, { startedAt: new Date(2026, 9, 6, 18).toISOString() }, new Date(2026, 9, 8));
+      const after = replica.workoutSets(w.id)[0].completedAt!;
+      expect(new Date(before).getTime() - new Date(after).getTime()).toBe(24 * 3600 * 1000);
+      expect(() => updateWorkout(ledgered, w.id, { startedAt: new Date(2026, 9, 20, 9).toISOString() }, new Date(2026, 9, 8)))
+        .toThrow(/in the future/);
     });
 
     it('refuses to change or delete a workout in progress on the phone', () => {

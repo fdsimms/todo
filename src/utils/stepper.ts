@@ -66,13 +66,17 @@ export function clampCount(value: number, range: StepRange): number {
 
 /**
  * A number typed into a stepper's field, or null for anything that isn't one.
- * A decimal comma reads as a point ("82,5"), since that is what a phone set to
- * much of Europe types; grouping is not accepted, so "1,000" is refused rather
- * than read as one.
+ * On a stepper with decimal places a decimal comma reads as a point ("82,5"),
+ * since that is what a phone set to much of Europe types. An integer stepper
+ * has no decimal part, so a comma there is a thousands separator and the text
+ * is refused ("10,000" would otherwise read as 10). `range` omitted reads as a
+ * decimal stepper.
  */
-export function parseStepperInput(text: string): number | null {
+export function parseStepperInput(text: string, range?: StepRange): number | null {
   const trimmed = text.trim();
-  if (!/^-?\d*(?:[.,]\d*)?$/.test(trimmed) || !/\d/.test(trimmed)) return null;
+  const decimal = range === undefined || placesFor(range, 1) > 0;
+  const pattern = decimal ? /^-?\d*(?:[.,]\d*)?$/ : /^-?\d+$/;
+  if (!pattern.test(trimmed) || !/\d/.test(trimmed)) return null;
   const n = Number(trimmed.replace(',', '.'));
   return Number.isFinite(n) ? n : null;
 }

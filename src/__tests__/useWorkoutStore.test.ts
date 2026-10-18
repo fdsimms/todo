@@ -273,6 +273,17 @@ describe('a live session', () => {
     expect(state().finishSession(s.id)).toBe('finished');
   });
 
+  it('keeps the planned sets when a finish is refused for ending before it started', () => {
+    const s = ok(state().startSession());
+    ok(state().logSet(s.id, { exerciseId: 'lib:back-squat', reps: 5 }));
+    ok(state().logSet(s.id, { exerciseId: 'lib:back-squat', reps: 5, completedAt: null }));
+    const early = new Date(new Date(s.startedAt).getTime() - 60000).toISOString();
+    expect(state().finishSession(s.id, { endedAt: early })).toBe('order');
+    expect(state().liveSession()?.id).toBe(s.id);
+    expect(dbGetWorkoutSets(s.id)).toHaveLength(2);
+    expect(state().loadSets(s.id)).toHaveLength(2);
+  });
+
   it('throws the live session away with its sets', () => {
     const s = ok(state().startSession());
     ok(state().logSet(s.id, { exerciseId: 'lib:back-squat', reps: 5 }));

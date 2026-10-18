@@ -375,8 +375,18 @@ function setsFrom(exercises: LogWorkoutInput['exercises']): SetInput[] {
 /** How far ahead of the replica's clock a start may be and still be a workout that happened. */
 const FUTURE_SLACK_MS = 5 * 60 * 1000;
 
+/**
+ * The start a `startedAt` names. A bare day resolves to noon, which is still
+ * ahead of "this morning" when the day is today, so it is held to now instead.
+ */
+function startFrom(value: string, now: Date): Date {
+  const at = atFrom(value)!;
+  const bare = /^\d{4}-\d{2}-\d{2}$/.test(value.trim());
+  return bare && at.getTime() > now.getTime() && at.toDateString() === now.toDateString() ? new Date(now.getTime()) : at;
+}
+
 export function logWorkout(replica: Replica, input: LogWorkoutInput, now: Date = new Date()): { workout: WorkoutRow } {
-  const start = atFrom(input.startedAt)!;
+  const start = startFrom(input.startedAt, now);
   if (start.getTime() > now.getTime() + FUTURE_SLACK_MS) {
     throw new Error('A logged workout is one that happened: startedAt is in the future. Plan one with a task instead.');
   }
@@ -410,7 +420,7 @@ export interface UpdateWorkoutInput {
   exercises?: LogWorkoutInput['exercises'];
 }
 
-export function updateWorkout(replica: Replica, id: string, input: UpdateWorkoutInput): { workout: WorkoutRow } {
+export function updateWorkout(replica: Replica, id: string, input: UpdateWorkoutInput, now: Date = new Date()): { workout: WorkoutRow } {
   const existing = replica.workoutSession(id);
   if (!existing) throw new Error(`No workout with id ${id}. list_workouts lists them.`);
   if (Object.values(input).every(v => v === undefined)) throw new Error('Nothing to change: name a field.');
@@ -418,18 +428,31 @@ export function updateWorkout(replica: Replica, id: string, input: UpdateWorkout
     const unknown = unknownExercises(replica, input.exercises.map(e => e.exerciseId));
     if (unknown.length) throw unknownError(unknown);
   }
-  const start = input.startedAt ? atFrom(input.startedAt)! : new Date(existing.startedAt);
+  const start = input.startedAt ? startFrom(input.startedAt, now) : new Date(existing.startedAt);
+  if (input.startedAt && start.getTime() > now.getTime() + FUTURE_SLACK_MS) {
+    throw new Error('A logged workout is one that happened: startedAt is in the future. Plan one with a task instead.');
+  }
   const lengthMs = existing.endedAt ? new Date(existing.endedAt).getTime() - new Date(existing.startedAt).getTime() : 0;
   const end = input.durationMinutes !== undefined
     ? new Date(start.getTime() + Math.max(0, input.durationMinutes ?? 0) * 60000)
     : input.startedAt ? new Date(start.getTime() + lengthMs) : undefined;
+  // Moving the start moves the sets with it, or they would sit a day after the session.
+  const delta = start.getTime() - new Date(existing.startedAt).getTime();
+  const shifted: SetInput[] | undefined = input.startedAt && !input.exercises && delta !== 0
+    ? replica.workoutSets(id).map(st => ({
+      exerciseId: st.exerciseId, kind: st.kind, weightKg: st.weightKg, reps: st.reps,
+      durationSeconds: st.durationSeconds, distanceM: st.distanceM, rpe: st.rpe,
+      supersetKey: st.supersetKey, note: st.note,
+      completedAt: st.completedAt ? new Date(new Date(st.completedAt).getTime() + delta).toISOString() : null,
+    }))
+    : undefined;
   const { session, sets } = replica.updateWorkout(id, {
     ...(input.title !== undefined ? { title: input.title } : {}),
     ...(input.notes !== undefined ? { notes: input.notes } : {}),
     ...(input.effort !== undefined ? { effort: input.effort } : {}),
     ...(input.startedAt !== undefined ? { startedAt: start.toISOString() } : {}),
     ...(end ? { endedAt: end.toISOString() } : {}),
-    ...(input.exercises ? { sets: setsFrom(input.exercises) } : {}),
+    ...(input.exercises ? { sets: setsFrom(input.exercises) } : shifted && shifted.length ? { sets: shifted } : {}),
   });
   return { workout: workoutRow(replica, session, sets, namesOf(replica)) };
 }

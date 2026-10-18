@@ -112,6 +112,16 @@ describe('parseStepperInput', () => {
     expect(parseStepperInput('.5')).toBe(0.5);
   });
 
+  it('refuses a thousands separator on an integer stepper, and keeps a decimal comma on a decimal one', () => {
+    const steps = { min: 0, max: 100000, step: 500 };
+    expect(parseStepperInput('10,000', steps)).toBeNull();
+    expect(parseStepperInput('1,000', steps)).toBeNull();
+    expect(parseStepperInput('10000', steps)).toBe(10000);
+    expect(parseStepperInput('8.5', steps)).toBeNull();
+    const weight = { min: 0, max: 500, step: 2.5, places: 2 };
+    expect(parseStepperInput('82,5', weight)).toBe(82.5);
+  });
+
   it('refuses anything that is not one number', () => {
     expect(parseStepperInput('')).toBeNull();
     expect(parseStepperInput('.')).toBeNull();

@@ -1645,8 +1645,15 @@ describe('scheduleStepAlarm', () => {
     });
 
     it('schedules nothing inside quiet hours, the opposite of a recipe timer', async () => {
-      Object.assign(mockSettings, { quietHoursStart: '00:00', quietHoursEnd: '23:59' });
-      await scheduleStepAlarm(makeRest());
+      // Pinned to midday: the 00:00 to 23:59 window leaves out minute 23:59.
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date(2026, 0, 1, 12, 0));
+      try {
+        Object.assign(mockSettings, { quietHoursStart: '00:00', quietHoursEnd: '23:59' });
+        await scheduleStepAlarm(makeRest());
+      } finally {
+        jest.useRealTimers();
+      }
       expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
       // Still cancels what was pending, so a rest moved into quiet hours goes quiet.
       expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('step-timer:rt1');

@@ -198,7 +198,7 @@ export function CountStepper({
       if (range.allowNull) onChange(null);
       return;
     }
-    const parsed = parseStepperInput(trimmed);
+    const parsed = parseStepperInput(trimmed, range);
     if (parsed === null) return;
     const clamped = clampCount(parsed, range);
     if (clamped !== value) onChange(clamped);

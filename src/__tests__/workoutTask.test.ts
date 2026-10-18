@@ -1,5 +1,5 @@
 import type { Task, TaskDraft } from '../types';
-import { workoutTaskEffect } from '../utils/workoutTask';
+import { linkedTaskLine, workoutTaskEffect } from '../utils/workoutTask';
 import { newTaskFromDraft } from '../utils/taskDraft';
 import { initDatabase } from '../db/database';
 
@@ -52,5 +52,20 @@ describe('workoutTaskEffect', () => {
     expect(workoutTaskEffect(task({}, { archived: true }))).toBe('none');
     expect(workoutTaskEffect(null)).toBe('none');
     expect(workoutTaskEffect(task({ polarity: 'negative' }))).toBe('none');
+  });
+});
+
+describe('a repeating task that is not due yet', () => {
+  it('is locked, not left to its row', () => {
+    const future = new Date(2099, 0, 1).toISOString();
+    expect(workoutTaskEffect(task({ recurrenceType: 'daily', recurrenceInterval: 1 }, { dueDate: future }))).toBe('locked');
+  });
+});
+
+describe('linkedTaskLine', () => {
+  it('says a task that is not due yet stays open, instead of pointing at its locked checkbox', () => {
+    expect(linkedTaskLine('locked', 'Leg day')).toBe('“Leg day” isn’t due yet, so it stays open.');
+    expect(linkedTaskLine('none', 'Leg day')).toContain('Check it off from its row');
+    expect(linkedTaskLine('complete', 'Leg day')).toBe('Saving completes “Leg day”.');
   });
 });

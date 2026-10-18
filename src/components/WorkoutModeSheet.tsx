@@ -38,7 +38,7 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { formatTimeOfDay } from '../utils/dateUtils';
 import { formatStopwatch } from '../utils/effort';
-import { workoutTaskEffect, type WorkoutTaskEffect } from '../utils/workoutTask';
+import { linkedTaskLine, workoutTaskEffect } from '../utils/workoutTask';
 import { displayTitleFor } from '../utils/visibilityUtils';
 import { catalogExercise } from '../utils/exerciseCatalog';
 import {
@@ -190,6 +190,10 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
           label: restLabel(set, catalogExercise(exerciseRows, set.exerciseId)?.name ?? 'this exercise'),
           durationSeconds: seconds,
         });
+      } else {
+        // No rest after this exercise: the last one's would otherwise keep
+        // running in the footer, about a set that is no longer the latest.
+        useStepTimerStore.getState().removeRestsOutside(null);
       }
     }
     if (next.showExerciseId !== viewedId) animateLayout();
@@ -632,14 +636,6 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
       />
     </SheetModal>
   );
-}
-
-/** What the summary says saving will do to the task the workout is for. */
-function linkedTaskLine(effect: WorkoutTaskEffect, title: string): string {
-  if (effect === 'complete') return `Saving completes “${title}”.`;
-  if (effect === 'log-unit') return `Saving logs one on “${title}”.`;
-  if (effect === 'ask') return `Saving asks the question on “${title}”, then completes it.`;
-  return `Saving leaves “${title}” as it is. Check it off from its row.`;
 }
 
 // ==== the cells and their steppers ====

@@ -681,6 +681,11 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       if (!existing) return 'notFound';
       if (existing.endedAt !== null) return 'finished';
       const { completeLinkedTask = true, ...patch } = options;
+      // Refuse an end before the start (or a start after the end) before the
+      // plan's unfinished sets are deleted, or a refused finish leaves the
+      // session live with its plan gone.
+      const endedAt = patch.endedAt ?? nowIso();
+      if (new Date(endedAt).getTime() < new Date(patch.startedAt ?? existing.startedAt).getTime()) return 'order';
       const sets = get().loadSets(id);
       const { dropSetIds } = finishPlan(sets);
       if (dropSetIds.length > 0) {
@@ -692,7 +697,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         });
         putSets(id, kept);
       }
-      const finished = get().updateSession(id, { ...patch, endedAt: patch.endedAt ?? nowIso() });
+      const finished = get().updateSession(id, { ...patch, endedAt });
       if (typeof finished === 'string') return finished;
       // The task occurrence it was started from, answered the way its own
       // checkbox would answer it (`workoutTaskEffect`): completed, with coins,

@@ -160,18 +160,20 @@ export function WorkoutsScreen() {
   const liveDone = (liveSets ?? []).filter(x => x.completedAt !== null).length;
   const liveCard = live ? (
     <View style={styles.liveCard}>
-      <View style={styles.flex}>
+      <View>
         <Text style={styles.liveTag}>In progress</Text>
-        <Text style={styles.title} numberOfLines={1}>{live.title}</Text>
+        <Text style={styles.title} numberOfLines={2}>{live.title}</Text>
         <Text style={styles.detail}>
           {`Started ${formatTimeOfDay(new Date(live.startedAt))} · ${liveDone} of ${(liveSets ?? []).length} sets`}
         </Text>
       </View>
-      <InlineAction
-        label="Resume"
-        onPress={() => { haptics.tap(); useWorkoutModeStore.getState().show(); }}
-        accessibilityLabel={`Resume ${live.title}`}
-      />
+      <View style={styles.actions}>
+        <InlineAction
+          label="Resume"
+          onPress={() => { haptics.tap(); useWorkoutModeStore.getState().show(); }}
+          accessibilityLabel={`Resume ${live.title}`}
+        />
+      </View>
     </View>
   ) : null;
 
@@ -295,7 +297,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   flex: { flex: 1 },
   routineRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd },
   liveCard: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.smd,
+    gap: spacing.smd,
     marginHorizontal: spacing.md, marginBottom: spacing.sm,
     backgroundColor: colors.bgSecondary, borderRadius: radius.lg,
     borderWidth: 1.5, borderColor: colors.accent,
