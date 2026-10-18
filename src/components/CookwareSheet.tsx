@@ -12,6 +12,7 @@ import { EmptyNote } from './EmptyNote';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, type Colors } from '../theme';
+import { fieldWell } from '../theme/textStyles';
 import { parseWeightText, clampCookwareWeight } from '../utils/cookware';
 import { haptics } from '../utils/haptics';
 import { BUTTON_LABEL } from '../copy/shared';
@@ -87,18 +88,20 @@ export function CookwareSheet({ visible, onClose }: Props) {
 
       <Text style={styles.groupLabel}>New</Text>
       <View style={styles.card}>
-        <TextField
-          style={styles.nameInput}
-          value={newName}
-          onChangeText={setNewName}
-          placeholder="e.g. Dutch oven"
-          placeholderTextColor={colors.textTertiary}
-          maxLength={NAME_MAX_LENGTH}
-          accessibilityLabel="Cookware name"
-        />
-        <View style={styles.weightRow}>
+        <View style={styles.well}>
           <TextField
-            style={styles.weightInput}
+            style={styles.input}
+            value={newName}
+            onChangeText={setNewName}
+            placeholder="e.g. Dutch oven"
+            placeholderTextColor={colors.textTertiary}
+            maxLength={NAME_MAX_LENGTH}
+            accessibilityLabel="Cookware name"
+          />
+        </View>
+        <View style={styles.well}>
+          <TextField
+            style={styles.input}
             value={newWeight}
             onChangeText={setNewWeight}
             keyboardType="decimal-pad"
@@ -123,26 +126,30 @@ export function CookwareSheet({ visible, onClose }: Props) {
         <View style={styles.card}>
           {cookware.map((c, i) => (
             <View key={`${c.id}:${c.name}:${c.weightG}`} style={[styles.row, i > 0 && styles.rowDivider]}>
-              <TextField
-                style={styles.rowName}
-                defaultValue={c.name}
-                onEndEditing={e => updateCookware(c.id, { name: e.nativeEvent.text })}
-                maxLength={NAME_MAX_LENGTH}
-                accessibilityLabel={`Name of ${c.name}`}
-              />
-              <TextField
-                style={styles.rowWeight}
-                defaultValue={String(c.weightG)}
-                keyboardType="decimal-pad"
-                inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
-                onEndEditing={e => {
-                  const grams = parseWeightText(e.nativeEvent.text);
-                  if (grams !== null) updateCookware(c.id, { weightG: grams });
-                }}
-                maxLength={6}
-                accessibilityLabel={`Empty weight of ${c.name} in grams`}
-              />
-              <Text style={styles.unit}>g</Text>
+              <View style={[styles.well, styles.rowName]}>
+                <TextField
+                  style={styles.input}
+                  defaultValue={c.name}
+                  onEndEditing={e => updateCookware(c.id, { name: e.nativeEvent.text })}
+                  maxLength={NAME_MAX_LENGTH}
+                  accessibilityLabel={`Name of ${c.name}`}
+                />
+              </View>
+              <View style={[styles.well, styles.rowWeight]}>
+                <TextField
+                  style={[styles.input, styles.rowWeightInput]}
+                  defaultValue={String(c.weightG)}
+                  keyboardType="decimal-pad"
+                  inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
+                  onEndEditing={e => {
+                    const grams = parseWeightText(e.nativeEvent.text);
+                    if (grams !== null) updateCookware(c.id, { weightG: grams });
+                  }}
+                  maxLength={6}
+                  accessibilityLabel={`Empty weight of ${c.name} in grams`}
+                />
+                <Text style={styles.unit}>g</Text>
+              </View>
               <TouchableOpacity
                 onPress={() => confirmDelete(c.id, c.name)}
                 hitSlop={8}
@@ -178,14 +185,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary, borderRadius: radius.md, padding: spacing.smd,
     marginBottom: spacing.md,
   },
-  nameInput: { color: colors.text, fontSize: font.md, paddingVertical: spacing.sm },
-  weightRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  weightInput: { flex: 1, color: colors.text, fontSize: font.md, paddingVertical: spacing.sm },
+  // The card is bgSecondary, so the fields step up to bgTertiary (`fieldWell`).
+  well: { ...fieldWell(colors), marginBottom: spacing.sm },
+  input: { flex: 1, color: colors.text, fontSize: font.md, padding: 0, minHeight: 44 },
   unit: { color: colors.textSecondary, fontSize: font.sm },
   error: { color: colors.redText, fontSize: font.sm, marginTop: spacing.xs },
   add: { alignSelf: 'flex-start', marginTop: spacing.sm },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xs },
   rowDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator },
-  rowName: { flex: 1, color: colors.text, fontSize: font.md, paddingVertical: spacing.sm },
-  rowWeight: { width: 72, textAlign: 'right', color: colors.text, fontSize: font.md, paddingVertical: spacing.sm },
+  rowName: { flex: 1, marginBottom: 0 },
+  rowWeight: { width: 104, marginBottom: 0 },
+  rowWeightInput: { textAlign: 'right' },
 });

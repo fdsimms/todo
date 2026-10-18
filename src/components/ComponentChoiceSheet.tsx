@@ -6,6 +6,7 @@ import { GROCERY_QUANTITY_MAX_LENGTH, RECIPE_CHOICE_GROUP_MAX_LENGTH } from '../
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, type Colors } from '../theme';
+import { fieldWell } from '../theme/textStyles';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { cleanChoiceGroup } from '../utils/recipeUtils';
@@ -144,18 +145,20 @@ export function ComponentChoiceSheet({ visible, recipe, component: liveComponent
     >
       <View style={styles.sectionCard}>
         <Text style={styles.groupLabel}>Amount used</Text>
-        <TextField
-          style={styles.amountInput}
-          value={amount}
-          onChangeText={setAmount}
-          placeholder="e.g. 1 tbsp"
-          placeholderTextColor={colors.textTertiary}
-          maxLength={GROCERY_QUANTITY_MAX_LENGTH}
-          autoCapitalize="none"
-          autoCorrect={false}
-          returnKeyType="done"
-          accessibilityLabel={`Amount of ${name} this recipe uses`}
-        />
+        <View style={styles.well}>
+          <TextField
+            style={styles.amountInput}
+            value={amount}
+            onChangeText={setAmount}
+            placeholder="e.g. 1 tbsp"
+            placeholderTextColor={colors.textTertiary}
+            maxLength={GROCERY_QUANTITY_MAX_LENGTH}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="done"
+            accessibilityLabel={`Amount of ${name} this recipe uses`}
+          />
+        </View>
         <HelpText style={styles.hint}>
           How much of {name.toLowerCase()} goes into this recipe, like “1 tbsp”, “2 fillets” or
           “1/4” for a quarter of what it makes. Nutrition counts only this much. Leave it empty to
@@ -312,11 +315,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   defaultRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xs },
   defaultText: { color: colors.text, fontSize: font.sm },
-  amountInput: {
-    color: colors.text,
-    fontSize: font.md,
-    minHeight: 36,
-    paddingVertical: spacing.xs,
-  },
+  // The card is bgSecondary, so the field steps up to bgTertiary.
+  well: { ...fieldWell(colors), marginTop: spacing.xs },
+  amountInput: { flex: 1, color: colors.text, fontSize: font.md, padding: 0, minHeight: 44 },
   hint: { color: colors.textTertiary, fontSize: font.xs, lineHeight: font.xs * 1.4 },
 });
