@@ -1838,6 +1838,55 @@ start of the last event added from it. Rules are in `src/utils/savedEventTasks.t
 - Pauses on vacation, refuses in demo mode, files under its own category
   setting (default Personal).
 
+## `wanikani`: the review queue and a day's lessons, from the person's WaniKani account
+
+The one generator fed by an account on another service. `src/services/wanikani.ts` reads the
+person's WaniKani summary (reviews waiting now, and how many arrive in each of the next 24 hours)
+with a token they paste in (read-only is enough; it lives in the keychain as
+`WANIKANI_TOKEN_SECURE_KEY` and never syncs). `useWaniKaniStore` holds the read in memory,
+`useWaniKaniSync` reads on mount, on foreground and every ten minutes while the app is open, and
+calls `checkWaniKaniTasks` when a read lands. The rules are in `src/utils/wanikaniTasks.ts`.
+Doing reviews in the app itself is a separate, unbuilt piece (#3875).
+
+**It also reads while the app is closed, when iOS allows.** The background run
+(`runBackgroundWaniKani` in `backgroundRefresh.ts`) reads and checks before its sync. iOS starts
+that run overnight on the charger, and, while this generator and background refresh are both on,
+in short daytime refreshes too (`modules/todo-app-refresh`, `useAppRefresh`). iOS picks those
+times from how often the app is used and never promises one, so the forecast below still does
+the work between reads. The token is saved readable while the phone is locked, or a run on the
+charger would read "no token".
+
+- **The forecast places the task; nothing polls.** Between reads, a task wanted at 3 PM is written
+  ahead and held until then with `dueDate` + `windowStart`
+  (`wanikaniHoldFields`). A same-day `deferUntil` would hold nothing: `deferBlocksNow` compares
+  days, not hours. The hour sits on its logical day through `onLogicalDay`, so an hour after
+  midnight under a later reset lands where the visibility gate reads it.
+- **A wave is measured from the last task's close.** The next reviews task waits until the queue
+  is `wanikaniReviewThreshold` above the lowest it has been since the last one was checked off or
+  deleted (`WaniKaniReviewState.baseline`, per device). Without it, checking one off with reviews
+  left would bring a new one back on the next read. The device notices the close by its
+  `openSourceId` no longer being live, which is why a create the reconcile refused (vacation)
+  never records one.
+- **A held task follows the forecast; one on Today only changes its count.** Reviews done on the
+  website before the hour move the hold later (same source id) or drop the task. Once on Today it
+  stays until somebody checks it off, so it can't vanish out from under them. The held hour is this
+  source's own date, so moving it keeps the #1953 rule.
+- **Nothing completes it.** An empty queue drops the count from the title and gives the row the
+  green ready ring (`isWaniKaniTaskReady`, read in `TaskItem`), the `healthTarget.ts` rule.
+- **Lessons are once a day and optional** (`wanikaniLessonsPerDay`, null for none). The task asks
+  for that many, fewer if fewer are available, and its count follows the lessons done today (the
+  assignments started since the logical day began). It is written only while Apprentice is under
+  `wanikaniApprenticeCap`, and the day is spent by writing it, never by declining to, so a level-up
+  or a review session later in the day can still bring it. Yesterday's goes at the day's first read.
+- **A held task gives up its window once its hour has come.** A window gates every day, not just
+  the first, so a reviews task left undone overnight would otherwise hide again until that hour
+  the next day. That step needs no read, so `checkWaniKaniTasks` is also in `maintenancePasses.ts`
+  and the Today foreground sweep, where it does only that. Everything else waits for a read, which
+  `useWaniKaniSync` and the background run make.
+- Pauses on vacation (it is work), refuses in demo mode, and files under its own category setting
+  (default Study). Source ids are `reviews:<local hour>` and `lessons:<day>`; a delete writes
+  nothing, since the close is the decision.
+
 ## A rule's own category
 
 The four rule kinds (weather, Screen Time, Health, calendar events) each have one
