@@ -504,14 +504,22 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       return;
     }
     if (fresh.healthWorkoutId !== null && fresh.healthWorkoutId !== result.workoutId) {
-      // Another pass or device wrote this session meanwhile. Both writes
-      // carry the session's id as their sync identifier and this one the
-      // later version, so it replaced that workout rather than joining it:
-      // retracting it, as an unrelated duplicate would be, would leave Health
-      // with neither. The row moves to this id, and the older id is still
-      // retracted, which matches nothing once replaced and removes the copy
-      // if the replacement didn't happen. A locked save has no id to move to,
-      // so the row keeps the one it has.
+      // Another pass or device wrote this session meanwhile, or this is a
+      // retime's rewrite landing on the row that still holds the id it
+      // replaces. Both writes carry the session's id as their sync identifier,
+      // so the one with the later version replaced the other rather than
+      // joining it: retracting this one, as an unrelated duplicate would be,
+      // would leave Health with neither. The row moves to this id, and the
+      // older id is still retracted, which matches nothing once replaced and
+      // removes the copy if the replacement didn't happen. A locked save has
+      // no id to move to, so the row keeps the one it has.
+      //
+      // The version is the writing device's clock, not the order results
+      // land in, so across two devices writing one session at once this can
+      // pick the copy Health has already replaced. That needs both a phone and
+      // an iPad running the pending pass for the same workout within one
+      // round trip; returning the written version from the bridge and
+      // comparing would close it.
       if (result.workoutId === null) return;
       void retractWorkoutFromHealth([fresh.healthWorkoutId]);
     }
@@ -960,21 +968,30 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       // Health whose times moved is rewritten, and only while writing is on:
       // with it off an edit leaves Health alone. A workout never written stays
       // unwritten (an imported one, or one saved with the switch off), since
-      // an edit is not the person asking for it to be shared. The id is
-      // cleared as the row is written, so nothing points at a workout already
-      // on its way out.
+      // an edit is not the person asking for it to be shared.
+      //
+      // **The row keeps the old id until the rewrite lands.** Cleared up
+      // front, the workout read as not in Health for the round trip: a second
+      // edit in that window started no rewrite of its own and skipped the
+      // page's one-day check, and a rewrite Health then refused left the old
+      // workout there with nothing pointing at it. `recordHealthWrite` moves
+      // the row to the new id when the write lands (its take-over branch);
+      // when it doesn't, the old id goes only if the retract took it out.
       const stale = existing.healthWorkoutId;
       const retimed = existing.endedAt !== null && row.endedAt !== null && !sameSpan(existing, row);
       const rewrite = retimed && stale !== null && workoutHealthWriteOn();
-      if (rewrite) row.healthWorkoutId = null;
       putSession(row);
       if (rewrite) {
         void (async () => {
           // In that order, and the write happens either way: a retract that
           // fails leaves the old workout for the person to remove in Health,
           // which beats Health holding neither.
-          await retractWorkoutFromHealth([stale]);
-          recordHealthWrite(row, await logWorkoutToHealth(row));
+          const retracted = await retractWorkoutFromHealth([stale]);
+          const result = await logWorkoutToHealth(row);
+          recordHealthWrite(row, result);
+          if (result.outcome === 'written' || !retracted) return;
+          const fresh = dbGetWorkoutSession(row.id);
+          if (fresh && fresh.healthWorkoutId === stale) stampHealth(fresh, { healthWorkoutId: null, healthWritePending: fresh.healthWritePending });
         })();
       }
       return row;
