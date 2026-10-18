@@ -8,12 +8,9 @@ CI fails if it is out of date. Run it after adding or growing a file.
 **Read narrowly.** 106 files are over 1,000 lines, 76 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (10.7k), `db/database.ts` (9.3k), `components/TaskEditor.tsx` (9.0k),
-`types/index.ts` (8.6k), `mcp/src/replica.ts` (8.6k), `components/TaskItem.tsx` (6.2k),
-`screens/TodayScreen.tsx` (6.1k), `store/useSettingsStore.ts` (6.1k),
 `store/useTaskStore.ts` (10.9k), `db/database.ts` (9.3k), `components/TaskEditor.tsx` (9.0k),
 `types/index.ts` (8.7k), `mcp/src/replica.ts` (8.6k), `store/useSettingsStore.ts` (6.2k),
-`screens/TodayScreen.tsx` (6.2k), `components/TaskItem.tsx` (6.1k),
+`components/TaskItem.tsx` (6.2k), `screens/TodayScreen.tsx` (6.2k),
 `utils/demoSeed.ts` (6.1k), `store/useGroceryStore.ts` (5.6k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
