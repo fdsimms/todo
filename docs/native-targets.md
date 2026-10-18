@@ -74,6 +74,10 @@ the two runs compare exactly, which is how to prove a refactor left a target unc
   deleted unread. A new writer of the file goes through the same helper. If coordination itself
   fails the accessor never runs, so the helper then runs the body uncoordinated rather than drop a
   tap; never call it inside another coordinated block, which Foundation refuses.
+  **`widget_pending_add_tasks.json` is the other queue with more than one writer** (`AddTaskIntent`
+  and the watch's "add" taps through `WatchSession`, drained by `drainPendingAddTasks`), and every
+  append and the drain go through the same helper for the same reason. A file that gains a second
+  writer joins this list.
 - **A share extension's `NSExtensionPrincipalClass` failing to resolve is a silent no-op**, not
   a build error: iOS instantiates the named class when the row is tapped, and if the name is
   wrong nothing at all happens. A Swift class's Objective-C name is module-qualified, so the

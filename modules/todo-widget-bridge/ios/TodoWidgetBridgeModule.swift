@@ -467,10 +467,15 @@ public class TodoWidgetBridgeModule: Module {
           .appendingPathComponent("Library/Application Support", isDirectory: true)
           .appendingPathComponent(pendingAddTasksFileName)
 
-        guard let data = try? Data(contentsOf: fileURL) else { return }
-        guard let decoded = try? JSONDecoder().decode([String].self, from: data) else { return }
-        titles = decoded
-        try? FileManager.default.removeItem(at: fileURL)
+        // The read and the delete are one coordinated write, as every append
+        // to this file is (AddTaskIntent.swift, WatchSession's appendToQueue),
+        // so a title appended in between can't be deleted unread.
+        coordinatedQueueWrite(fileURL) { url in
+          guard let data = try? Data(contentsOf: url) else { return }
+          guard let decoded = try? JSONDecoder().decode([String].self, from: data) else { return }
+          titles = decoded
+          try? FileManager.default.removeItem(at: url)
+        }
       }
       return titles
     }

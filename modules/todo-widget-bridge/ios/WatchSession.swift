@@ -407,7 +407,10 @@ final class WatchSession: NSObject, WCSessionDelegate {
 /// Runs `body` on a queue file in the App Group with every other coordinated
 /// reader-and-writer of it held off until it returns: in this process (the
 /// session's queue against the module's drain) and in others (the widget's
-/// `QuietTapQueue.append`). Each of them reads the whole file and writes it
+/// `QuietTapQueue.append`). The two queues with more than one writer use it:
+/// `widget_quiet_taps.json`, and `widget_pending_add_tasks.json`, which the
+/// watch's "add" taps and AddTaskIntent both append to and
+/// `drainPendingAddTasks` empties. Each of them reads the whole file and writes it
 /// back, or reads it and deletes it, so two at once lose an entry: one written
 /// over, or appended between a drain's read and its delete. One coordinated
 /// *write* for all of them, with no options, since each changes the file and
