@@ -28,6 +28,8 @@ const defaults: SettingsSummaryInput = {
   retentionLabel: null,
   demoActive: false,
   appVersion: '1.0.0 (214)',
+  workoutUnit: 'kg',
+  workoutRestLabel: '1:30',
 };
 
 const summarise = (over: Partial<SettingsSummaryInput> = {}) =>
@@ -179,5 +181,12 @@ describe('settingsSummaries', () => {
     const none = summarise({ calendarReadEnabled: true, calendarIds: [] });
     expect(none.calendar).not.toContain('Reading');
     expect(none.calendar).toBe('Off. Your calendar is not read or written');
+  });
+
+  describe('workouts', () => {
+    it('names the unit and the default rest', () => {
+      expect(summarise().workouts).toBe('Kilograms · 1:30 rest');
+      expect(summarise({ workoutUnit: 'lb', workoutRestLabel: '2:00' }).workouts).toBe('Pounds · 2:00 rest');
+    });
   });
 });

@@ -23,6 +23,7 @@ import { VacationTripsSettings } from './settings/VacationTripsSettings';
 import { HealthSettings } from './settings/HealthSettings';
 import { PermissionsSettings } from './settings/PermissionsSettings';
 import { KitchenSettings } from './settings/KitchenSettings';
+import { WorkoutsSettings } from './settings/WorkoutsSettings';
 import { PrivacyAiSettings } from './settings/PrivacyAiSettings';
 import { DataResetSettings } from './settings/DataResetSettings';
 import { SyncSettings } from './settings/SyncSettings';
@@ -112,6 +113,8 @@ export function SettingsGroupScreen() {
           {/* No kitchenEnabled check: the whole group is `kitchenOnly`, so the
               index stops offering it and this route stops being reachable. */}
           {groupId === 'kitchen' && <KitchenSettings />}
+          {/* Nor a workoutsEnabled one, for the same reason: `workoutsOnly`. */}
+          {groupId === 'workouts' && <WorkoutsSettings />}
           {groupId === 'privacyAi' && <PrivacyAiSettings scrollRef={scrollRef} />}
           {groupId === 'dataReset' && <SyncSettings />}
           {groupId === 'dataReset' && <DataResetSettings />}

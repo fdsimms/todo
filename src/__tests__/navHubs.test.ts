@@ -39,9 +39,10 @@ describe('the menu as data', () => {
     }
   });
 
-  it('fits on a phone: fifteen rows with everything switched on, fourteen without Screen Time', () => {
-    expect(visibleMenuRows(FULL)).toHaveLength(15);
-    expect(visibleMenuRows({ ...FULL, screenTimeSupported: false })).toHaveLength(14);
+  it('fits on a phone: sixteen rows with everything switched on, fourteen without Screen Time and Workouts', () => {
+    expect(visibleMenuRows(FULL)).toHaveLength(16);
+    expect(visibleMenuRows({ ...FULL, screenTimeSupported: false })).toHaveLength(15);
+    expect(visibleMenuRows({ ...FULL, screenTimeSupported: false, workoutsEnabled: false })).toHaveLength(14);
   });
 
   it('opens a hub row on its first member', () => {
@@ -155,7 +156,7 @@ describe('the subtitle under a hub row', () => {
     const organize = NAV_HUBS.find(h => h.id === 'organize')!;
     expect(hubSubtitle(organize)).toBe('Categories, Tags, People, Meters, Stacks, Templates');
     const health = NAV_HUBS.find(h => h.id === 'health')!;
-    expect(hubSubtitle(health)).toBe('Mood, Medications, Weight, Sleep, Journal, Dreams, Workouts');
+    expect(hubSubtitle(health)).toBe('Mood, Medications, Weight, Sleep, Journal, Dreams');
   });
 
   // The whole point of building it from the members rather than writing it
@@ -351,15 +352,16 @@ describe('tab slots', () => {
 describe('Workouts', () => {
   const route = 'Workouts';
 
-  it('is a member of the Health hub rather than a row of its own', () => {
-    expect(hubForRoute(route)?.id).toBe('health');
-    expect(NAV_MENU_ROWS).toHaveLength(15);
+  it('has a row of its own, after Groceries & meals, and is in no hub', () => {
+    const routes = routesOf(visibleMenuRows(FULL));
+    expect(routes.indexOf(route)).toBe(routes.indexOf('Groceries') + 1);
+    expect(hubForRoute(route)).toBeUndefined();
+    expect(NAV_MENU_ROWS).toHaveLength(16);
   });
 
-  it('drops out with its switch off, from the hub, the find field and the tab bar', () => {
+  it('drops out with its switch off, from the menu, the find field and the tab bar', () => {
     const off = { ...FULL, workoutsEnabled: false };
-    const health = NAV_HUBS.find(h => h.id === 'health')!;
-    expect(visibleHubMembers(health, false, FULL.counts, false).map(m => m.route)).not.toContain(route);
+    expect(routesOf(visibleMenuRows(off))).not.toContain(route);
     expect(menuDestinations(off).map(d => d.route)).not.toContain(route);
     expect(visibleTabRoutes(['Today', 'Groceries', 'Projects', route], off)).toEqual(['Today', 'Groceries', 'Projects']);
     // Left out means off.
@@ -369,9 +371,9 @@ describe('Workouts', () => {
   });
 
   it('survives simplified mode only while it holds something the person made', () => {
-    const health = NAV_HUBS.find(h => h.id === 'health')!;
-    expect(visibleHubMembers(health, true, { ...FULL.counts, workouts: 0 }, true).map(m => m.route)).not.toContain(route);
-    expect(visibleHubMembers(health, true, { ...FULL.counts, workouts: 2 }, true).map(m => m.route)).toContain(route);
+    const simple = (workouts: number) => routesOf(visibleMenuRows({ ...FULL, simpleMode: true, counts: { ...FULL.counts, workouts } }));
+    expect(simple(0)).not.toContain(route);
+    expect(simple(2)).toContain(route);
   });
 });
 

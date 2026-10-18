@@ -238,6 +238,20 @@ describe('settings index', () => {
     });
   });
 
+  describe('workouts gating', () => {
+    it('drops the Workouts group while its switch is off, and offers it otherwise', () => {
+      expect(visibleSettingsGroups('ios', true, false, false).map(g => g.id)).not.toContain('workouts');
+      expect(visibleSettingsGroups('ios').map(g => g.id)).toContain('workouts');
+      expect(settingsIndexGroups('ios', true, false, false).map(g => g.id)).not.toContain('workouts');
+      expect(settingsIndexGroups('android', true, false, true).map(g => g.id)).toContain('workouts');
+    });
+
+    it('sits right after Groceries & meals, as its menu row does', () => {
+      const ids = settingsIndexGroups('ios').map(g => g.id);
+      expect(ids.indexOf('workouts')).toBe(ids.indexOf('kitchen') + 1);
+    });
+  });
+
   describe('per-row platform gating', () => {
     // SettingsGroup.iosOnly covers a whole group and was the only platform flag
     // there was, so rows sitting in cross-platform groups behind their own

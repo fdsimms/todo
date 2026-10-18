@@ -6,7 +6,6 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import type { WorkoutProgram, WorkoutRoutine, WorkoutSession } from '../types';
 import { ScreenHeader } from '../components/ScreenHeader';
-import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { SearchField } from '../components/SearchField';
 import { SegmentedControl } from '../components/SegmentedControl';
@@ -74,8 +73,8 @@ import {
  *
  * The library search matches a name, a muscle or the equipment ("dumbbell
  * chest"). Tapping an exercise opens its page (`ExerciseDetailSheet`): the
- * chart, the personal records and every session that did it. Behind its own switch (`workoutsEnabled`, off by default) and in
- * the Health hub beside the other logs of what a body did.
+ * chart, the personal records and every session that did it. Behind its own switch (`workoutsEnabled`, off by default), with
+ * a menu row of its own after Groceries & meals (it was a Health hub pill until it outgrew the logs there).
  *
  * Tapping a finished workout in History opens its page (`WorkoutDetailSheet`):
  * its times, records, sets, effort and notes, and the way to delete it. The
@@ -433,7 +432,6 @@ export function WorkoutsScreen() {
           accessibilityLabel: 'More workout options',
         }]}
       />
-      <HubPills hub="health" active="Workouts" />
       <View style={styles.segments}>
         <SegmentedControl
           options={VIEW_OPTIONS}

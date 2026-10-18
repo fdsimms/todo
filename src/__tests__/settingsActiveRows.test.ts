@@ -89,6 +89,18 @@ describe('searchableSettingsEntries', () => {
     expect(ids({ ...both, workoutHealthWrite: true })).toContain('healthWorkoutWriteAccess');
   });
 
+  // The Workouts group is gated on the switch as a whole (`workoutsOnly`), so
+  // its rows carry no `requires` of their own and leave with the group.
+  it('takes the Workouts group\'s rows away with the Workouts switch, on every platform', () => {
+    const ids = (os: string, o: Partial<SettingsGateState>) =>
+      searchableSettingsEntries(os, settings(o), noSync).filter(e => e.groupId === 'workouts').map(e => e.id);
+    expect(ids('ios', {})).toEqual([]);
+    expect(ids('ios', { workoutsEnabled: true })).toEqual(
+      ['workoutUnit', 'defaultRestSeconds', 'workoutLiveActivity', 'maxHeartRate']);
+    // Apple Health is iOS-only; this group isn't, and its iOS-only rows say so themselves.
+    expect(ids('android', { workoutsEnabled: true })).toEqual(['workoutUnit', 'defaultRestSeconds']);
+  });
+
   it('takes the kitchen rows away with the kitchen', () => {
     const withKitchen = searchableSettingsEntries('ios', settings(), noSync).length;
     const without = searchableSettingsEntries('ios', settings({ kitchenEnabled: false }), noSync).length;

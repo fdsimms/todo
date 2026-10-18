@@ -68,6 +68,9 @@ export interface SettingsSummaryInput {
   retentionLabel: string | null;
   demoActive: boolean;
   appVersion: string;
+  workoutUnit: 'kg' | 'lb';
+  /** Already-rendered, like `fontLabel`: "1:30". */
+  workoutRestLabel: string;
 }
 
 const THEME_LABELS: Record<string, string> = {
@@ -151,6 +154,11 @@ export function settingsSummaries(s: SettingsSummaryInput): Record<IndexedSettin
       s.mealsOnToday && 'Meals on Today',
       s.unitSystemLabel,
     ) || 'Meals on Today, amounts, swaps',
+
+    workouts: line(
+      s.workoutUnit === 'lb' ? 'Pounds' : 'Kilograms',
+      `${s.workoutRestLabel} rest`,
+    ),
 
     // No live status here, for the reason this file's own header comment
     // gives for every group: reading it would run permission probes on the

@@ -1,6 +1,6 @@
 /**
  * What the side menu contains, as data — fourteen rows, four of which are hubs,
- * and a fifteenth (Screen Time) wherever it can work.
+ * plus Screen Time wherever it can work and Workouts while that area is on.
  *
  * The menu used to be eighteen flat rows of equal weight, about twice what
  * fits on a phone, so half of it lived below a fold nothing announced. Reading
@@ -23,8 +23,9 @@
  * Projects, Calendar, Stuck and Reminders are the questions about your own
  * tasks — what is on today, where is that one, what falls when, what is not
  * moving, what will ring — and Automations, what the app adds to them on its
- * own, follows from the last of those. Groceries follows as the other working surface.
- * Organize and History are the two shelves: things a task can belong to, and
+ * own, follows from the last of those. Groceries follows as the other working surface,
+ * and Workouts after it as the third: a place you go to do something, not a
+ * shelf. Organize and History are the two shelves: things a task can belong to, and
  * things that already happened. Health comes right after — its own shelf, for
  * things logged about *you* rather than about a task — and Tips is last
  * because it's reference material, and sits next to Settings.
@@ -84,8 +85,8 @@ export interface NavDestination {
   keywords?: string[];
   /**
    * Dropped while `workoutsEnabled` is off, the way a kitchen row drops with
-   * `kitchenEnabled`. On the destination rather than the hub because it is one
-   * member of a hub whose other members stay.
+   * `kitchenEnabled`. On the destination rather than the row, so it would hold
+   * for a hub member too; Workouts was one, in Health, before it got a row.
    */
   workouts?: boolean;
 }
@@ -180,6 +181,10 @@ const HISTORY_HUB: NavHub = {
 // what you ate is a health record rather than a kitchen-shopping task; it
 // moved back to the kitchen hub (above) once that meant a tap from Meal plan
 // landed on a screen with no pill row back to Groceries/Recipes/Pantry.
+// Workouts was a member too, on the reasoning that a workout log is a record of
+// what a body did; it got a row of its own once it had grown into a place you
+// go to train (routines, programs, an exercise library) rather than a log you
+// look back at, and its pill was the widest-reaching thing on this row.
 const HEALTH_HUB: NavHub = {
   id: 'health',
   label: 'Health',
@@ -191,16 +196,6 @@ const HEALTH_HUB: NavHub = {
     { route: 'Sleep', label: 'Sleep', icon: 'moon-outline', keywords: ['bedtime', 'asleep', 'night', 'rest', 'tired', 'woke'] },
     { route: 'Journal', label: 'Journal', icon: 'book-outline', keywords: ['diary', 'write', 'writing', 'notes', 'reflect'] },
     { route: 'Dreams', label: 'Dreams', icon: 'cloudy-night-outline', keywords: ['dream journal', 'nightmare', 'asleep', 'woke'] },
-    // Here rather than a row of its own: a workout log is a record of what a
-    // body did, which is what this hub holds, and the menu stays at its rows.
-    // See docs/arch/workouts.md.
-    {
-      route: 'Workouts',
-      label: 'Workouts',
-      icon: 'barbell-outline',
-      keywords: ['gym', 'lifting', 'strength', 'training', 'exercise', 'exercises', 'sets', 'reps', 'weights', 'routine', 'program'],
-      workouts: true,
-    },
   ],
 };
 
@@ -314,6 +309,20 @@ export const NAV_MENU_ROWS: readonly NavMenuRow[] = [
     },
   },
   { kind: 'hub', hub: KITCHEN_HUB },
+  // The third working surface, after Tasks and Groceries & meals: routines,
+  // programs and the exercise library are somewhere you go to train, which is
+  // what moved it out of Health (see HEALTH_HUB). Behind its own switch, off by
+  // default, so a phone that never trains never sees the row.
+  {
+    kind: 'screen',
+    destination: {
+      route: 'Workouts',
+      label: 'Workouts',
+      icon: 'barbell-outline',
+      keywords: ['gym', 'lifting', 'strength', 'training', 'exercise', 'exercises', 'sets', 'reps', 'weights', 'routine', 'program'],
+      workouts: true,
+    },
+  },
   { kind: 'hub', hub: ORGANIZE_HUB },
   { kind: 'hub', hub: HISTORY_HUB },
   { kind: 'hub', hub: HEALTH_HUB },
