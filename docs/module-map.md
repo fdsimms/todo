@@ -496,7 +496,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/taskGrouping.ts` — CategoryListItem, ContextListItem, TodayListItem, LATER_TODAY_LABEL, makeCategoryGroups, DropResolution, resolveDrop, LaterListItem, LATER_STACK_FOLD_MIN, FlattenLaterOptions, +22 more
 - `src/utils/taskHome.ts` — TaskHome, taskHomeFor
 - `src/utils/taskInstances.ts` — InstanceGroup, normalizeTitle, getRepeatedInstances
-- `src/utils/taskKinds.ts` — TaskKind, TASK_KIND_META, taskKindOf, QuickAddChip, QUICK_ADD_CHIP_LABELS, QUICK_ADD_CHIP_LIMIT, TASK_KINDS, DEFAULT_TIMED_MINUTES, DEFAULT_TARGET_COUNT, TIMED_MINUTE_OPTIONS, +11 more
+- `src/utils/taskKinds.ts` — TaskKind, TASK_KIND_META, taskKindOf, QuickAddChip, QUICK_ADD_CHIP_LABELS, QUICK_ADD_CHIP_LIMIT, TASK_KINDS, DEFAULT_TIMED_MINUTES, DEFAULT_TARGET_COUNT, COUNTDOWN_LADDER, +12 more
 - `src/utils/taskMoves.ts` — DeloadBlocker, SOFT_DELOAD_BLOCKERS, isDateAnchored, deloadBlockerFor, wouldMissDeadline, dailyRepeatBlocker, deloadUpdates, scheduleMoveUpdates, PullForwardChoice, pullForwardChoice
 - `src/utils/taskReopen.ts` — reopenedTask
 - `src/utils/taskSkip.ts` — reminderOnto, deadlineOnto, skipPatch

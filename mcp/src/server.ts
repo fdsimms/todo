@@ -1389,7 +1389,8 @@ const taskFieldsShape = {
   }).nullable().optional()
     .describe('Something done several times: "drink water 8 times a day", "run 3 times a week". A daily target makes the task repeat daily if it did not; a weekly one makes it repeat weekly. null removes it.'),
   timed: z.object({
-    minutes: z.number().int().describe('1 to 1440.'),
+    minutes: z.number().int().optional().describe('1 to 1440.'),
+    seconds: z.number().int().optional().describe('For a countdown under a minute, e.g. 45. Use this or minutes, not both.'),
   }).nullable().optional()
     .describe('A countdown the task runs once it is started, e.g. "stretch for 15 minutes". Also sets the estimate and effort from the countdown unless you name them. Not for a subtask. null removes it.'),
   rotation: z.object({

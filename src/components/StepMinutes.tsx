@@ -1,7 +1,7 @@
-import React from 'react';
-import { Platform, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
-import { font, radius, spacing, type Colors } from '../theme';
+import { font, interaction, radius, spacing, type Colors } from '../theme';
 import { NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { TextField } from './TextField';
 
@@ -13,6 +13,13 @@ interface Props {
   /** What the number is for, for the accessibility label — "Time estimate", "Timer". */
   what?: string;
   onChange: (minutes: number | null) => void;
+  /**
+   * Offer a seconds unit: the unit letter becomes a button that flips m and s,
+   * and a value in seconds is stored as a fraction of a minute (45s is 0.75).
+   * For a subtask's stretch of a countdown; a chain step's estimate stays in
+   * whole minutes.
+   */
+  allowSeconds?: boolean;
 }
 
 /**
@@ -33,29 +40,56 @@ interface Props {
  * height mid-drag — the one thing that list's displacement math can't absorb.
  * The fixed height keeps the row from resizing as the value comes and goes.
  */
-export function StepMinutes({ value, label, what = 'Time estimate', onChange }: Props) {
+export function StepMinutes({ value, label, what = 'Time estimate', onChange, allowSeconds = false }: Props) {
   const colors = useColors();
   const styles = makeStyles(colors);
+  const fractional = allowSeconds && value != null && !Number.isInteger(value);
+  const [unit, setUnit] = useState<'m' | 's'>(fractional ? 's' : 'm');
+  // A value that arrives in seconds from outside (an undo, a sync) switches the
+  // unit to match; one already in seconds stays, so 60s doesn't flip to 1m.
+  useEffect(() => { if (fractional) setUnit('s'); }, [fractional]);
+  const inSeconds = allowSeconds && unit === 's';
+  const shown = value == null ? '' : String(inSeconds ? Math.round(value * 60) : value);
+  const toMinutes = (n: number, u: 'm' | 's') => (u === 's' ? n / 60 : n);
+  const flip = () => {
+    const next = unit === 's' ? 'm' : 's';
+    setUnit(next);
+    // The number typed keeps its digits and takes the new unit, as the
+    // editor's Duration field does.
+    const n = parseInt(shown, 10);
+    if (Number.isFinite(n) && n > 0) onChange(toMinutes(n, next));
+  };
 
   return (
     <View style={styles.wrap}>
       <TextField
         style={[styles.input, value != null && styles.inputSet]}
-        value={value != null ? String(value) : ''}
+        value={shown}
         onChangeText={text => {
           const digits = text.replace(/[^0-9]/g, '');
-          const minutes = parseInt(digits, 10);
-          onChange(Number.isFinite(minutes) && minutes > 0 ? minutes : null);
+          const n = parseInt(digits, 10);
+          onChange(Number.isFinite(n) && n > 0 ? toMinutes(n, inSeconds ? 's' : 'm') : null);
         }}
         keyboardType="number-pad"
-        placeholder="min"
+        placeholder={inSeconds ? 'sec' : 'min'}
         placeholderTextColor={colors.textTertiary}
         maxLength={4}
         returnKeyType="done"
         inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
-        accessibilityLabel={`${what} in minutes for ${label}`}
+        accessibilityLabel={`${what} in ${inSeconds ? 'seconds' : 'minutes'} for ${label}`}
       />
-      {value != null ? <Text style={styles.unit}>m</Text> : null}
+      {allowSeconds ? (
+        <TouchableOpacity
+          onPress={flip}
+          activeOpacity={interaction.activeOpacity}
+          hitSlop={8}
+          style={styles.unitButton}
+          accessibilityRole="button"
+          accessibilityLabel={`Unit for ${label}, ${inSeconds ? 'seconds' : 'minutes'}. Tap to switch.`}
+        >
+          <Text style={styles.unit}>{inSeconds ? 's' : 'm'}</Text>
+        </TouchableOpacity>
+      ) : value != null ? <Text style={styles.unit}>m</Text> : null}
     </View>
   );
 }
@@ -82,5 +116,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   unit: {
     color: colors.textTertiary, fontSize: font.sm,
     marginLeft: 1,
+  },
+  unitButton: {
+    minWidth: 22, minHeight: 22, marginLeft: spacing.xs,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: colors.controlBorder, borderRadius: radius.sm,
   },
 });

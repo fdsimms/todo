@@ -1060,7 +1060,7 @@ export function contactForMention(
 }
 
 export interface ParsedDuration {
-  /** The countdown target in whole minutes. */
+  /** The countdown target in minutes; a fraction when it was given in seconds. */
   minutes: number;
   /** Input minus the matched phrase, whitespace collapsed and trimmed. */
   cleanTitle: string;
@@ -1087,7 +1087,7 @@ const DURATION_WORD_ALT = Object.keys(DURATION_WORDS)
   .sort((a, b) => b.length - a.length)
   .map((w) => w.replace(' ', '\\s+'))
   .join('|');
-const DURATION_UNIT = '(minutes|minute|mins|min|m|hours|hour|hrs|hr|h)\\b';
+const DURATION_UNIT = '(seconds|second|secs|sec|s|minutes|minute|mins|min|m|hours|hour|hrs|hr|h)\\b';
 const DURATION_PATTERN = new RegExp(
   `\\bfor\\s+(?:(\\d+(?:\\.\\d+)?)\\s*|(half\\s+an|${DURATION_WORD_ALT})\\s+)${DURATION_UNIT}`,
   'i',
@@ -1106,7 +1106,8 @@ export function parseDurationTail(input: string): { start: number; minutes: numb
   const match = input.match(DURATION_TAIL_PATTERN);
   if (!match || match.index === undefined) return null;
   const minutes = durationMatchMinutes(match);
-  return minutes === null ? null : { start: match.index, minutes };
+  // An event's length is whole minutes; seconds are for a countdown.
+  return minutes === null || !Number.isInteger(minutes) ? null : { start: match.index, minutes };
 }
 
 /**
@@ -1118,6 +1119,7 @@ export function parseDurationTail(input: string): { start: number; minutes: numb
 function durationMatchMinutes(match: RegExpMatchArray): number | null {
   const unit = match[3];
   const isHours = /^h/i.test(unit);
+  const isSeconds = /^s/i.test(unit);
   let value: number;
   if (match[1] !== undefined) {
     value = parseFloat(match[1]);
@@ -1127,11 +1129,17 @@ function durationMatchMinutes(match: RegExpMatchArray): number | null {
       if (!/^hours?$/i.test(unit)) return null;
       value = 0.5;
     } else {
-      if ((word === 'a' || word === 'an') && !/^(minute|hour)$/i.test(unit)) return null;
+      if ((word === 'a' || word === 'an') && !/^(minute|hour|second)$/i.test(unit)) return null;
       value = DURATION_WORDS[word];
     }
   }
   if (!Number.isFinite(value) || value <= 0) return null;
+  if (isSeconds) {
+    // Whole seconds, kept as a fraction of a minute (45s is 0.75).
+    const seconds = Math.round(value);
+    if (seconds < 1 || seconds > 24 * 60 * 60) return null;
+    return seconds / 60;
+  }
   const minutes = Math.round(isHours ? value * 60 : value);
   if (minutes < 1 || minutes > 24 * 60) return null;
   return minutes;
