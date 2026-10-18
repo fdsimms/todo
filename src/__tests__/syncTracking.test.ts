@@ -15,6 +15,7 @@ import {
   SYNC_TRACKED_TABLES,
   SYNCED_SETTING_KEYS,
   SYNC_DEVICE_LOCAL_COLUMNS,
+  HEALTH_SYNC_SETTING_KEYS,
   HEALTH_SYNC_TABLES,
   JOURNAL_SYNC_TABLES,
   isSyncedSettingKey,
@@ -155,6 +156,13 @@ describe('the health record', () => {
   it('withholds only tables that are tracked at all', () => {
     const tracked = new Set(SYNC_TRACKED_TABLES.map(t => t.name));
     expect([...HEALTH_SYNC_TABLES, ...JOURNAL_SYNC_TABLES].filter(t => !tracked.has(t))).toEqual([]);
+  });
+
+  // The health list only withholds a setting from iCloud; a key synced at all
+  // must also be on SYNCED_SETTING_KEYS, or it never leaves the device by any
+  // route. The sleep goal sat on the health list alone and so never synced.
+  it('withholds only settings that are synced at all', () => {
+    expect(HEALTH_SYNC_SETTING_KEYS.filter(k => !SYNCED_SETTING_KEYS.includes(k))).toEqual([]);
   });
 });
 

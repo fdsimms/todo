@@ -8,7 +8,7 @@ const custom: Exercise = {
 };
 const session = (id: string, startedAt: string, extra: Partial<WorkoutSession> = {}): WorkoutSession => ({
   id, routineId: 'r1', programId: 'p1', taskId: null, title: 'Upper A', startedAt, endedAt: startedAt, notes: '',
-  effort: 7, healthWorkoutId: null, healthWritePending: false, ...extra,
+  effort: 7, healthWorkoutId: null, healthWritePending: false, measuredOnWatch: false, timesEdited: false, ...extra,
 });
 const set = (id: string, exerciseId: string, extra: Partial<WorkoutSet> = {}): WorkoutSet => ({
   id, sessionId: 's1', exerciseId, position: 0, setIndex: 0, kind: 'working', weightKg: 60, reps: 8,

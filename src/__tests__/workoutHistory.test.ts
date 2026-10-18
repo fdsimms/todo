@@ -19,7 +19,7 @@ function session(id: string, start: Date): WorkoutSession {
   return {
     id, routineId: null, programId: null, taskId: null, title: id,
     startedAt: start.toISOString(), endedAt: new Date(start.getTime() + 3_600_000).toISOString(),
-    notes: '', effort: null, healthWorkoutId: null, healthWritePending: false,
+    notes: '', effort: null, healthWorkoutId: null, healthWritePending: false, measuredOnWatch: false, timesEdited: false,
   };
 }
 

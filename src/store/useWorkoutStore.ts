@@ -54,8 +54,10 @@ import { libraryProgram } from '../utils/workoutProgramLibrary';
 import { useSettingsStore } from './useSettingsStore';
 import {
   PENDING_WORKOUT_WRITE_MAX_AGE_DAYS,
+  dropWatchMeasurement,
   logWorkoutToHealth,
   pendingWorkoutWriteAction,
+  retractWatchWorkouts,
   retractWorkoutFromHealth,
   workoutHealthWriteOn,
   workoutSpanWritable,
@@ -63,6 +65,7 @@ import {
 } from '../utils/healthWorkoutSync';
 import { NEW_EXERCISE_PREFIX, indexAdd, indexExisting, indexHas, type PlannedImportSession } from '../utils/workoutCsv';
 import { overlappingSessions } from '../utils/watchWorkoutClash';
+import { watchCopyStale, type WatchWorkoutSpan } from '../utils/watchHealthWorkout';
 import { getLogicalDayKey } from '../utils/dateUtils';
 import { useWatchClashStore } from './useWatchClashStore';
 import { buildCatalog, catalogExercise } from '../utils/exerciseCatalog';
@@ -219,6 +222,13 @@ export interface WatchSessionInput {
     /** The superset it belonged to in the plan, kept so history shows the pair. */
     supersetKey: string | null;
   }[];
+  /**
+   * Set when the watch measured the workout and saved it to Health itself
+   * (phase 9): the id of what it saved, null when it saved with the watch
+   * locked and has no id to give. The phone then writes nothing of its own.
+   * Absent when the watch measured nothing, and the phone writes it as Save does.
+   */
+  health?: { workoutId: string | null } | null;
 }
 
 export interface WatchSessionResult {
@@ -454,6 +464,39 @@ interface WorkoutStore {
    */
   writePendingHealthSessions: () => Promise<void>;
   /**
+   * The Apple Watch started (`on`) or stopped measuring this session (phase
+   * 9's `measuring` tap). Started, a session with nothing in Health yet is
+   * marked `measuredOnWatch`, so its Save holds the phone's own write back
+   * for the watch's. Stopped before saving (the watch's session failed, or
+   * workout writing went off there), the mark comes off, and a finished
+   * session is left for the pending pass to write as Save would have. A
+   * session the phone has already written keeps its copy: the watch's, when
+   * it comes, takes over (`recordWatchHealthWorkout`).
+   */
+  markWatchMeasuring: (sessionId: string, on: boolean) => void;
+  /**
+   * The Apple Watch saved its workout for this session to Health (phase 9's
+   * `healthWorkout` tap): `workoutId` is what it saved, null when it saved
+   * locked with no id to give. The row points at it from then on, and a copy
+   * the phone wrote meanwhile is retracted, since the watch's has the heart
+   * rate and energy. A session deleted here in the meantime has the watch's
+   * workout retracted by the watch; a second watch workout for one session is
+   * retracted the same way.
+   *
+   * `span` is the times the watch saved it at. When the copy is out of date
+   * for the row (`watchCopyStale`: the person retimed it while the phone
+   * waited, or the times are further apart than a Finish tapped on both
+   * devices leaves them), it ends as a retime does: the phone
+   * writes its own at the row's times, without heart rate or energy, and the
+   * watch retracts its copy once that write lands (`recordHealthWrite`'s
+   * take-over). A copy the phone already wrote at those times stays, and the
+   * watch's is retracted. With writing off, or Health refusing, the watch's
+   * stays at its old times: one copy, never two. An end a few minutes off on
+   * a row nobody retimed is not out of date: the watch's copy is taken as it
+   * is, heart rate and all, and the row keeps its own end.
+   */
+  recordWatchHealthWorkout: (sessionId: string, workoutId: string | null, span?: WatchWorkoutSpan | null) => void;
+  /**
    * True when Health has just refused a workout and the person has not been
    * told. Watched by `HealthWriteRefusedNotice`, which says it once; whether it
    * has already been said is `healthWorkoutWriteRefusalSeen` in settings.
@@ -556,8 +599,26 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
   const exerciseKnown = (id: string) => !!libraryExercise(id) || get().exercises.some(e => e.id === id);
 
   /** Writes a row's Health fields back as it stands now, on disk and in memory. */
-  const stampHealth = (fresh: WorkoutSession, fields: Pick<WorkoutSession, 'healthWorkoutId' | 'healthWritePending'>) => {
+  const stampHealth = (
+    fresh: WorkoutSession,
+    fields: Pick<WorkoutSession, 'healthWorkoutId' | 'healthWritePending'> & Partial<Pick<WorkoutSession, 'measuredOnWatch'>>,
+  ) => {
     putSession({ ...fresh, ...fields });
+  };
+
+  /**
+   * Retracts a workout this row points at, from whichever device saved it:
+   * the phone's own through the bridge, the watch's by asking the watch
+   * (`retractWatchWorkouts`), since the phone may not be allowed to delete
+   * what its watch app saved. True when it is gone or on its way out.
+   */
+  const retractFor = async (row: Pick<WorkoutSession, 'measuredOnWatch'>, ids: string[]): Promise<boolean> => {
+    if (ids.length === 0) return true;
+    if (row.measuredOnWatch) {
+      retractWatchWorkouts(ids);
+      return true;
+    }
+    return retractWorkoutFromHealth(ids);
   };
 
   /**
@@ -572,10 +633,19 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
    * again at its new times, since nothing else will.
    *
    * Only `healthWorkoutId` is kept. The sample ids the bridge can hand back
-   * are always empty here (no energy is passed), so there is no column for
-   * them; the watch phase that passes measured energy adds one.
+   * are always empty here (no energy is passed); a workout the watch measured
+   * carries its energy itself, saved by the watch, and the watch retracts it.
+   *
+   * **The watch's copy wins.** A row the Apple Watch measured whose watch
+   * workout has arrived (`measuredOnWatch` with an id) keeps it, and this
+   * write, the phone's, is taken back out: the watch's has the heart rate and
+   * energy. Except when this write is a retime's rewrite *replacing* that
+   * workout (`replacing`, the id it retracted first), which is the person
+   * moving it on purpose. A phone write landing on a row still waiting for
+   * the watch's (the fallback after `WATCH_WORKOUT_WAIT_MINUTES`) is kept, and
+   * the row says the workout in Health is the phone's from then on.
    */
-  const recordHealthWrite = (written: WorkoutSession, result: WorkoutWriteResult) => {
+  const recordHealthWrite = (written: WorkoutSession, result: WorkoutWriteResult, replacing: string | null = null) => {
     const settings = useSettingsStore.getState();
     if (result.outcome === 'refused') {
       if (!settings.healthWorkoutWriteRefusalSeen) {
@@ -602,8 +672,19 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       // Written at times the row no longer has. Taken back out, and the row
       // written again at its own times, which replaces whatever this session
       // has in Health under its sync identifier (see `logWorkoutToHealth`).
+      // Not when the watch's own workout has arrived meanwhile: that is the
+      // one Health keeps.
       if (ids.length > 0) void retractWorkoutFromHealth(ids);
-      if (fresh.endedAt !== null) void logWorkoutToHealth(fresh).then(next => recordHealthWrite(fresh, next));
+      const watchHas = fresh.measuredOnWatch && fresh.healthWorkoutId !== null && fresh.healthWorkoutId !== replacing;
+      if (fresh.endedAt !== null && !watchHas) void logWorkoutToHealth(fresh).then(next => recordHealthWrite(fresh, next, replacing));
+      return;
+    }
+    if (fresh.measuredOnWatch && fresh.healthWorkoutId !== null && fresh.healthWorkoutId !== replacing
+      && fresh.healthWorkoutId !== result.workoutId) {
+      // The watch's workout, with its heart rate and energy, is in Health
+      // already: this copy is the duplicate the phone must never leave there.
+      if (ids.length > 0) void retractWorkoutFromHealth(ids);
+      if (fresh.healthWritePending) stampHealth(fresh, { healthWorkoutId: fresh.healthWorkoutId, healthWritePending: false });
       return;
     }
     if (fresh.healthWorkoutId !== null && fresh.healthWorkoutId !== result.workoutId) {
@@ -623,21 +704,42 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       // an iPad running the pending pass for the same workout within one
       // round trip; returning the written version from the bridge and
       // comparing would close it.
-      if (result.workoutId === null) return;
-      void retractWorkoutFromHealth([fresh.healthWorkoutId]);
+      //
+      // The watch's copy is a different case: it has no sync identifier, so
+      // the phone's write sat beside it rather than replacing it, and it is
+      // retracted by the watch either way. A locked save of the phone's
+      // replacing it leaves the row with nothing to point at, as any locked
+      // save does.
+      if (result.workoutId === null) {
+        if (fresh.measuredOnWatch && fresh.healthWorkoutId === replacing) {
+          void retractFor(fresh, [fresh.healthWorkoutId]);
+          stampHealth(fresh, { healthWorkoutId: null, healthWritePending: false, measuredOnWatch: false });
+        }
+        return;
+      }
+      void retractFor(fresh, [fresh.healthWorkoutId]);
     }
     // A null id is a workout saved while the phone was locked: in Health, with
     // nothing to keep. The flag still clears, or the pending pass would write
-    // it a second time.
-    stampHealth(fresh, { healthWorkoutId: result.workoutId, healthWritePending: false });
+    // it a second time. What Health holds for the row is the phone's copy from
+    // here on, with no heart rate or energy, whatever measured it before.
+    stampHealth(fresh, { healthWorkoutId: result.workoutId, healthWritePending: false, measuredOnWatch: false });
   };
 
   /**
    * Fired after a save; the session is already on disk, so nothing waits on
    * Health. Deferred, it is only flagged for the next pass in front, and only
    * when the write would happen now (see `FinishOptions.deferHealthWrite`).
+   *
+   * **A workout the Apple Watch measured is always deferred**: the watch saves
+   * its own copy, with the heart rate and energy, and the pending pass writes
+   * the phone's only if none has arrived `WATCH_WORKOUT_WAIT_MINUTES` after it
+   * ended (`pendingWorkoutWriteAction`). One already holding an id (the
+   * watch's arrived before the finish did) writes nothing.
    */
   const writeToHealth = (session: WorkoutSession, defer = false) => {
+    if (session.healthWorkoutId !== null) return;
+    if (session.measuredOnWatch) defer = true;
     if (!defer) {
       void logWorkoutToHealth(session).then(result => recordHealthWrite(session, result));
       return;
@@ -1038,6 +1140,8 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         effort: null,
         healthWorkoutId: null,
         healthWritePending: false,
+        measuredOnWatch: false,
+        timesEdited: false,
       };
       putSession(row);
       const planned = routine
@@ -1087,6 +1191,14 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       if (row.title === existing.title && row.notes === existing.notes && row.effort === existing.effort && sameSpan(row, existing)) {
         return existing;
       }
+      // Recorded, since nothing else says the times were moved by a person
+      // rather than ended a little off by a watch (`watchCopyStale`). A start
+      // moved at any point counts; an end only once there was one, because
+      // `finishSession` writes the first end through here and that is the
+      // finish, not an edit.
+      if (row.startedAt !== existing.startedAt || (existing.endedAt !== null && row.endedAt !== existing.endedAt)) {
+        row.timesEdited = true;
+      }
       // Health holds the span and nothing else, so only a finished workout in
       // Health whose times moved is rewritten, and only while writing is on:
       // with it off an edit leaves Health alone. A workout never written stays
@@ -1100,6 +1212,16 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       // workout there with nothing pointing at it. `recordHealthWrite` moves
       // the row to the new id when the write lands (its take-over branch);
       // when it doesn't, the old id goes only if the retract took it out.
+      //
+      // **A workout the Apple Watch saved is rewritten as the phone's own**,
+      // without its heart rate and energy: Health can't move a workout, so the
+      // phone writes the new times and the watch retracts its copy. The
+      // workout page says so before the change. Not retracted up front, as
+      // the phone's own is: the watch's carries no sync identifier, so the
+      // new write can't replace it, and a write Health then refused would
+      // leave neither. `recordHealthWrite`'s take-over asks the watch once
+      // the phone's copy is in; until then, and for good if it never lands,
+      // the watch's stays.
       const stale = existing.healthWorkoutId;
       const retimed = existing.endedAt !== null && row.endedAt !== null && !sameSpan(existing, row);
       const rewrite = retimed && stale !== null && workoutHealthWriteOn();
@@ -1109,12 +1231,14 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
           // In that order, and the write happens either way: a retract that
           // fails leaves the old workout for the person to remove in Health,
           // which beats Health holding neither.
-          const retracted = await retractWorkoutFromHealth([stale]);
+          const retracted = existing.measuredOnWatch ? false : await retractFor(existing, [stale]);
           const result = await logWorkoutToHealth(row);
-          recordHealthWrite(row, result);
+          recordHealthWrite(row, result, stale);
           if (result.outcome === 'written' || !retracted) return;
           const fresh = dbGetWorkoutSession(row.id);
-          if (fresh && fresh.healthWorkoutId === stale) stampHealth(fresh, { healthWorkoutId: null, healthWritePending: fresh.healthWritePending });
+          if (fresh && fresh.healthWorkoutId === stale) {
+            stampHealth(fresh, { healthWorkoutId: null, healthWritePending: fresh.healthWritePending, measuredOnWatch: false });
+          }
         })();
       }
       return row;
@@ -1176,6 +1300,8 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         effort: effortOf(input.effort),
         healthWorkoutId: null,
         healthWritePending: input.healthWritePending === true,
+        measuredOnWatch: false,
+        timesEdited: false,
       };
       // Done when it ended unless a set says otherwise: a set logged after the
       // fact was done, and a planned set has no place in a record.
@@ -1214,8 +1340,12 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         endedAt,
         notes: '',
         effort: null,
-        healthWorkoutId: null,
+        // Saved by the watch with what it measured, when it measured anything;
+        // the phone then writes nothing of its own (below).
+        healthWorkoutId: input.health ? input.health.workoutId : null,
         healthWritePending: false,
+        measuredOnWatch: !!input.health,
+        timesEdited: false,
       };
       const sets = renumber(input.sets.map((st): WorkoutSet => ({
         id: st.id,
@@ -1261,7 +1391,11 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       // history, not something to write now: the same answer the background
       // path gets, where the pending pass drops a flag that old
       // (`pendingWorkoutWriteAction`), so when it arrives decides nothing.
-      if (now.getTime() - endMs <= PENDING_WORKOUT_WRITE_MAX_AGE_DAYS * 86_400_000) writeToHealth(session, deferHealthWrite);
+      // One the watch saved itself is in Health already, and the phone never
+      // writes a second copy.
+      if (!input.health && now.getTime() - endMs <= PENDING_WORKOUT_WRITE_MAX_AGE_DAYS * 86_400_000) {
+        writeToHealth(session, deferHealthWrite);
+      }
       return { session: get().sessions.find(x => x.id === session.id) ?? session, sets, duplicate: false, clashesWith };
     },
 
@@ -1328,6 +1462,8 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
           effort: null,
           healthWorkoutId: null,
           healthWritePending: false,
+          measuredOnWatch: false,
+          timesEdited: false,
         });
         setRows.push(rowsFor(planned.id, inputs));
       }
@@ -1368,8 +1504,11 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       // a workout left in Health with nothing pointing at it is a record the
       // person deleted here and still has there. Nothing is awaited and nothing
       // is undone on failure; Health's own record is theirs to delete there.
-      const written = dbGetWorkoutSession(id)?.healthWorkoutId ?? null;
-      if (written) void retractWorkoutFromHealth([written]);
+      // A workout the Apple Watch saved is the watch's to retract; one it is
+      // still measuring, or hasn't sent yet, it is told to throw away.
+      const row = dbGetWorkoutSession(id);
+      if (row?.healthWorkoutId) void retractFor(row, [row.healthWorkoutId]);
+      else if (row?.measuredOnWatch) dropWatchMeasurement(row.id);
       dbDeleteWorkoutSession(id);
       const { [id]: _sets, ...setsBySession } = get().setsBySession;
       const { [id]: _count, ...setCounts } = get().setCounts;
@@ -1385,11 +1524,17 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       if (pendingHealthWriteRunning) return;
       pendingHealthWriteRunning = true;
       try {
-        for (const session of dbGetPendingHealthWorkoutSessions()) {
+        for (const listed of dbGetPendingHealthWorkoutSessions()) {
+          // Read again: the list was read before the first write's round
+          // trip, and by now a row further down may have been deleted,
+          // written by another pass, or given the watch's copy (all of which
+          // clear the flag), or retimed. `recordHealthWrite` reads it once
+          // more after its own write.
+          const session = dbGetWorkoutSession(listed.id);
+          if (!session?.healthWritePending) continue;
           const action = pendingWorkoutWriteAction(session);
           if (action === 'drop') {
-            const fresh = dbGetWorkoutSession(session.id);
-            if (fresh?.healthWritePending) stampHealth(fresh, { healthWorkoutId: fresh.healthWorkoutId, healthWritePending: false });
+            stampHealth(session, { healthWorkoutId: session.healthWorkoutId, healthWritePending: false });
             continue;
           }
           // No length yet: flagged until one arrives or the limit passes.
@@ -1401,6 +1546,59 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       } finally {
         pendingHealthWriteRunning = false;
       }
+    },
+
+    markWatchMeasuring(sessionId, on) {
+      const fresh = dbGetWorkoutSession(sessionId);
+      if (!fresh || fresh.healthWorkoutId !== null) return;
+      if (on) {
+        if (!fresh.measuredOnWatch) stampHealth(fresh, { healthWorkoutId: null, healthWritePending: fresh.healthWritePending, measuredOnWatch: true });
+        return;
+      }
+      if (!fresh.measuredOnWatch) return;
+      // Finished and held back for the watch's copy: the pending pass writes
+      // it now, under Save's switches, since no watch workout is coming.
+      const pending = fresh.healthWritePending
+        || (fresh.endedAt !== null && workoutHealthWriteOn() && workoutSpanWritable(fresh));
+      stampHealth(fresh, { healthWorkoutId: null, healthWritePending: pending, measuredOnWatch: false });
+    },
+
+    recordWatchHealthWorkout(sessionId, workoutId, span = null) {
+      const fresh = dbGetWorkoutSession(sessionId);
+      if (!fresh) {
+        // Deleted here before the watch's workout arrived: it has nothing to
+        // point at, so the watch takes it back out.
+        if (workoutId) retractWatchWorkouts([workoutId]);
+        return;
+      }
+      if (workoutId !== null && fresh.healthWorkoutId === workoutId) return;
+      if (fresh.measuredOnWatch && fresh.healthWorkoutId !== null) {
+        // A second watch workout for one session: the first one stands.
+        if (workoutId) retractWatchWorkouts([workoutId]);
+        return;
+      }
+      // Out of date for the row: retimed while the phone waited, or further
+      // apart than a Finish tapped on both devices leaves them.
+      const stale = workoutId !== null && watchCopyStale(fresh, span);
+      if (fresh.healthWorkoutId !== null) {
+        // The phone's own copy, written meanwhile (the fallback, or a write
+        // started before the watch said it was measuring), is at the row's
+        // times. It is the duplicate now, unless the watch's is the one out
+        // of date, which the watch then retracts.
+        if (stale) {
+          retractWatchWorkouts([workoutId!]);
+          return;
+        }
+        void retractWorkoutFromHealth([fresh.healthWorkoutId]);
+      }
+      stampHealth(fresh, { healthWorkoutId: workoutId, healthWritePending: false, measuredOnWatch: true });
+      if (!stale || !workoutHealthWriteOn() || !workoutSpanWritable(fresh)) return;
+      // The retime's own outcome, as though it had come after the watch's
+      // copy: the phone writes the row's times, and the take-over has the
+      // watch retract its copy once that lands.
+      const holding = dbGetWorkoutSession(sessionId);
+      if (!holding) return;
+      void logWorkoutToHealth(holding).then(result => recordHealthWrite(holding, result, workoutId));
     },
 
     setPendingHealthWriteRefusal(pending) {

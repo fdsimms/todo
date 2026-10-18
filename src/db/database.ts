@@ -2311,6 +2311,14 @@ function runInitDatabase(): void {
     // to be done. NULL on every existing row, which reads as not done yet.
     'ALTER TABLE tasks ADD COLUMN generated_ready_at TEXT',
     'ALTER TABLE cookware ADD COLUMN kind TEXT',
+    // WorkoutSession.measuredOnWatch: the Apple Watch measured the workout and
+    // saves it to Health itself. 0 on every existing row, none of which a
+    // watch session measured (phase 9 is the first that does).
+    'ALTER TABLE workout_sessions ADD COLUMN measured_on_watch INTEGER NOT NULL DEFAULT 0',
+    // WorkoutSession.timesEdited: somebody changed the session's times. 0 on
+    // every existing row, which nothing reads until a watch's copy arrives for
+    // it, and none can be waiting for one from before phase 9.
+    'ALTER TABLE workout_sessions ADD COLUMN times_edited INTEGER NOT NULL DEFAULT 0',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -3645,6 +3653,18 @@ export function dbApplySyncChanges(payload: SyncPayload, transport?: string): Ap
             eventId: task.calendar_event_id,
             externalId: task.calendar_event_external_id ?? null,
           });
+        }
+      }
+      // A workout the Apple Watch measured is the watch's to retract, and only
+      // the phone it is paired with can ask it: a delete made on another
+      // device reaches it only here. Read before the delete, like the events.
+      if (deletion.table === 'workout_sessions') {
+        const session = db.getFirstSync<{ health_workout_id: string | null; measured_on_watch: number | null }>(
+          `SELECT health_workout_id, measured_on_watch FROM workout_sessions WHERE ${where.sql}`,
+          where.values
+        );
+        if (session && Number(session.measured_on_watch) === 1) {
+          report.removedWatchWorkouts.push({ sessionId: deletion.rowKey, healthWorkoutId: session.health_workout_id ?? null });
         }
       }
       db.runSync(`DELETE FROM "${deletion.table}" WHERE ${where.sql}`, where.values);
@@ -7639,6 +7659,8 @@ function rowToWorkoutSession(row: Record<string, unknown>): WorkoutSession {
     effort: numOrNull(row.effort),
     healthWorkoutId: strOrNull(row.health_workout_id),
     healthWritePending: Number(row.health_write_pending) === 1,
+    measuredOnWatch: Number(row.measured_on_watch) === 1,
+    timesEdited: Number(row.times_edited) === 1,
   };
 }
 
@@ -7678,11 +7700,12 @@ export function dbGetPendingHealthWorkoutSessions(): WorkoutSession[] {
 export function dbSaveWorkoutSession(s: WorkoutSession): void {
   db.runSync(
     `INSERT OR REPLACE INTO workout_sessions
-      (id, routine_id, program_id, task_id, title, started_at, ended_at, notes, effort, health_workout_id, health_write_pending)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (id, routine_id, program_id, task_id, title, started_at, ended_at, notes, effort, health_workout_id, health_write_pending,
+       measured_on_watch, times_edited)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       s.id, s.routineId, s.programId, s.taskId, s.title, s.startedAt, s.endedAt, s.notes, s.effort,
-      s.healthWorkoutId, s.healthWritePending ? 1 : 0,
+      s.healthWorkoutId, s.healthWritePending ? 1 : 0, s.measuredOnWatch ? 1 : 0, s.timesEdited ? 1 : 0,
     ]
   );
 }

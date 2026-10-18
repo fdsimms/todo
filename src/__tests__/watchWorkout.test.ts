@@ -9,6 +9,7 @@ jest.mock('../store/useStepTimerStore', () => ({ useStepTimerStore: { getState: 
 jest.mock('../store/useSettingsStore', () => ({ useSettingsStore: { getState: () => ({ defaultRestSeconds: 90 }) } }));
 
 import { DEFAULT_PLATE_INVENTORY, weightToDisplay } from '../utils/workoutData';
+import { NO_WATCH_HEALTH_REQUESTS } from '../utils/watchHealthWorkout';
 import {
   MAX_WATCH_LIVE_SETS,
   MAX_WATCH_PLAN_SETS,
@@ -72,7 +73,7 @@ const live = (extra: Partial<WorkoutSession> = {}): WorkoutSession => ({
   notes: '',
   effort: null,
   healthWorkoutId: null,
-  healthWritePending: false,
+  healthWritePending: false, measuredOnWatch: false, timesEdited: false,
   ...extra,
 });
 
@@ -86,6 +87,9 @@ const planned = (exerciseId: string, position: number, n: number, kind: WorkoutS
 
 const input = (extra: Partial<WatchWorkoutInput> = {}): WatchWorkoutInput => ({
   workoutsEnabled: true,
+  healthWrite: false,
+  watchRequests: NO_WATCH_HEALTH_REQUESTS,
+  now: new Date(2026, 9, 18, 12),
   unit: 'kg',
   quietHoursStart: null,
   quietHoursEnd: null,
@@ -174,6 +178,34 @@ describe('buildWatchWorkout', () => {
       .toMatchObject({ unit: 'lb', weightStep: 5, quietHours: { start: '22:00', end: '07:00' } });
     expect(buildWatchWorkout(input({ quietHoursStart: '22:00', quietHoursEnd: '22:00' }))!.quietHours).toBeNull();
     expect(buildWatchWorkout(input({ quietHoursStart: '22:00' }))!.quietHours).toBeNull();
+  });
+
+  // Phase 9: what the watch's HealthKit session reads.
+  it('carries whether the watch may measure and save, what finished lately, and what to retract or throw away', () => {
+    const now = new Date(2026, 9, 18, 12);
+    const out = buildWatchWorkout(input({
+      healthWrite: true,
+      now,
+      sessions: [
+        live({ id: 'old', startedAt: new Date(2026, 9, 16, 9).toISOString(), endedAt: new Date(2026, 9, 16, 10).toISOString() }),
+        live({ id: 'today', startedAt: new Date(2026, 9, 18, 9).toISOString(), endedAt: new Date(2026, 9, 18, 10).toISOString() }),
+        live({ id: 'going', startedAt: new Date(2026, 9, 18, 11).toISOString(), endedAt: null }),
+      ],
+      watchRequests: {
+        retract: [{ id: 'HK-1', at: new Date(2026, 9, 10).toISOString() }],
+        drop: [
+          { id: 'gone', at: new Date(2026, 9, 18, 11, 30).toISOString() },
+          { id: 'stale', at: new Date(2026, 9, 16).toISOString() },
+        ],
+      },
+    }))!;
+    expect(out).toMatchObject({
+      healthWrite: true,
+      finished: [{ sessionId: 'today', endedAt: new Date(2026, 9, 18, 10).toISOString() }],
+      retractWorkouts: ['HK-1'],
+      dropSessions: ['gone'],
+    });
+    expect(buildWatchWorkout(input())!).toMatchObject({ healthWrite: false, finished: [], retractWorkouts: [], dropSessions: [] });
   });
 
   describe('with a workout going on the phone', () => {

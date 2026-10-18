@@ -21,6 +21,7 @@ import { proposalApplied, workingSetLogged } from './workoutProgression';
 import { stepTimerRemaining, isStepTimerRunning } from './stepTimers';
 import { myWorkoutStart } from './workoutSiri';
 import { programProgress } from './workoutProgram';
+import { currentWatchHealthRequests, recentlyFinished, type WatchHealthRequests } from './watchHealthWorkout';
 
 /**
  * The Apple Watch's workout (phase 8, "Watch W1"): what the watch is told, and
@@ -34,6 +35,14 @@ import { programProgress } from './workoutProgram';
  * (`plannedSetsForRoutine`), so last time's numbers and the warm-up ramp travel
  * with it. Plus the quiet-hours window, which the watch's own rest alert keeps
  * to as the phone's rest does.
+ *
+ * **And what the watch's HealthKit session needs (phase 9):** whether a
+ * workout on the watch may be measured and saved to Health at all
+ * (`healthWrite`, the phone's own three switches, `workoutHealthWriteOn`),
+ * when the phone's recent workouts ended (`finished`, so a measurement of the
+ * phone's workout is saved ending when it did), and what the phone asks the
+ * watch to retract or throw away (`retractWorkouts`, `dropSessions`;
+ * `watchHealthWorkout.ts`).
  *
  * **Nothing here is a rule the watch has to know.** Each set arrives in the
  * order it is done (`walkOrder`, supersets alternated), worded ("Set 3 of 4",
@@ -198,6 +207,19 @@ export interface WatchWorkoutSnapshot {
   recent: WatchRecentExercise[];
   /** The quiet-hours window (`"HH:MM"`), or null when it's off. */
   quietHours: { start: string; end: string } | null;
+  /**
+   * Whether the watch measures a workout it runs (its own, or the phone's)
+   * with a HealthKit session and saves it to Health itself: Log to Health,
+   * its Workouts row and the Workouts area, all on. Off, the watch runs a
+   * workout as phase 8 did, with no session.
+   */
+  healthWrite: boolean;
+  /** The phone's workouts finished in the last day, newest first (`recentlyFinished`). */
+  finished: { sessionId: string; endedAt: string }[];
+  /** Health workouts the watch saved that the phone asks it to retract. */
+  retractWorkouts: string[];
+  /** Sessions deleted on the phone whose measurement the watch should throw away. */
+  dropSessions: string[];
 }
 
 /** What "From Today" starts, resolved to a routine. */
@@ -456,6 +478,12 @@ function liveRest(rest: RestTimer | null, sessionId: string): WatchLiveWorkout['
 
 export interface WatchWorkoutInput {
   workoutsEnabled: boolean;
+  /** `workoutHealthWriteOn()`. */
+  healthWrite: boolean;
+  /** What the phone is asking of the watch's Health session (`useWatchHealthStore`). */
+  watchRequests: WatchHealthRequests;
+  /** Now, for which workouts finished lately and which requests still stand. */
+  now: Date;
   unit: WeightUnit;
   quietHoursStart: string | null;
   quietHoursEnd: string | null;
@@ -491,11 +519,16 @@ export function buildWatchWorkout(input: WatchWorkoutInput): WatchWorkoutSnapsho
   const quietHours = input.quietHoursStart && input.quietHoursEnd && input.quietHoursStart !== input.quietHoursEnd
     ? { start: input.quietHoursStart, end: input.quietHoursEnd }
     : null;
+  const requests = currentWatchHealthRequests(input.watchRequests, input.now);
   const base = {
     unit: input.unit,
     weightStep: WEIGHT_STEP[input.unit],
     quietHours,
     recent: watchRecentExercises(input.recent, input),
+    healthWrite: input.healthWrite,
+    finished: recentlyFinished(input.sessions, input.now),
+    retractWorkouts: requests.retract.map(r => r.id),
+    dropSessions: requests.drop.map(d => d.id),
   };
   const contextFor = (routine: WorkoutRoutine | null, programId: string | null, exceptSessionId: string | null): ExerciseContext => ({
     exercises: input.exercises,

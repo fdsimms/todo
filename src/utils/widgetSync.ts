@@ -13,7 +13,7 @@ import { buildWidgetSnapshot, WATCH_CAPS, type SnapshotInput, type WidgetSnapsho
 import { completedOnDay } from './allClear';
 import { getDayStart, getLogicalDayKey } from './dateUtils';
 import { beginVisibleAtPass, getVisibleAt } from './visibilityUtils';
-import { parseQuietTaps, planQuietTaps, tapsToRequeue, workoutHandOffTaps, type QuietTapWorkouts } from './widgetQuietTaps';
+import { parseQuietTaps, planQuietTaps, tapsToRequeue, workoutHandOffTaps, type QuietTap, type QuietTapWorkouts } from './widgetQuietTaps';
 import type { Task } from '../types';
 import { addDays } from 'date-fns/addDays';
 import { useCalendarStore } from '../store/useCalendarStore';
@@ -45,6 +45,9 @@ import { buildRoutineIndex, parseQueuedWorkoutStarts, resolveQueuedWorkoutStart 
 import { startWorkout } from './startWorkout';
 import { requestDismissAllSheets } from './sheetModal';
 import { useStepTimerStore } from '../store/useStepTimerStore';
+import { useWatchHealthStore } from '../store/useWatchHealthStore';
+import { watchWorkoutTapTiming } from './watchHealthWorkout';
+import { workoutHealthWriteOn } from './healthWorkoutSync';
 import { WATCH_RECENT_DAYS, buildWatchWorkout, todaysWatchWorkout, type WatchWorkoutSnapshot } from './watchWorkout';
 import { tickSet } from './workoutTick';
 import { applyProposal } from './workoutProposalApply';
@@ -386,6 +389,8 @@ async function processQuietWidgetTaps(handOff: 'app' | 'requeue' = 'app'): Promi
       useStepTimerStore.getState().hydrate();
     }
     const handedOver: Record<string, string> = {};
+    // Health taps left for a drain in front (see 'watchHealthWorkout' below).
+    const forFront: QuietTap[] = [];
     for (const action of plan) {
       switch (action.type) {
         case 'complete':
@@ -437,6 +442,31 @@ async function processQuietWidgetTaps(handOff: 'app' | 'requeue' = 'app'): Promi
         case 'addWatchSession':
           useWorkoutStore.getState().addWatchSession(action.workout, { deferHealthWrite: handOff === 'requeue' });
           break;
+        // The watch's HealthKit session (phase 9): it is measuring a session,
+        // it saved one's workout, or it retracted one the phone asked about.
+        case 'watchMeasuring':
+          useWorkoutStore.getState().markWatchMeasuring(action.sessionId, action.on);
+          break;
+        case 'watchHealthWorkout': {
+          // One that needs the phone's own HealthKit (retracting the phone's
+          // copy, or writing one at times the watch's no longer has) waits for
+          // a drain in front, since a drain with nobody looking may well be
+          // running locked (`watchWorkoutTapTiming`); everything else applies here.
+          const row = useWorkoutStore.getState().sessions.find(x => x.id === action.sessionId);
+          if (handOff === 'requeue' && watchWorkoutTapTiming(row, action.workoutId, action.span) === 'front') {
+            forFront.push({
+              kind: 'healthWorkout', id: action.sessionId, sessionId: action.sessionId, listId: null,
+              at: new Date().toISOString(), healthWorkoutId: action.workoutId,
+              ...(action.span ? { workoutStart: action.span.start, workoutEnd: action.span.end } : {}),
+            });
+            break;
+          }
+          useWorkoutStore.getState().recordWatchHealthWorkout(action.sessionId, action.workoutId, action.span);
+          break;
+        }
+        case 'watchHealthRetracted':
+          useWatchHealthStore.getState().retracted(action.workoutId);
+          break;
         // What the watch adds to the phone's workout, each through the store
         // action workout mode itself uses, with the watch's ids where it made
         // some, so the watch settles what it drew by them.
@@ -460,9 +490,9 @@ async function processQuietWidgetTaps(handOff: 'app' | 'requeue' = 'app'): Promi
       }
     }
     const ids = Object.keys(handedOver);
-    if (ids.length > 0) {
+    if (ids.length > 0 || forFront.length > 0) {
       if (handOff === 'requeue') {
-        const requeue = [...tapsToRequeue(taps, new Set(ids)), ...workoutHandOffTaps(plan)];
+        const requeue = [...tapsToRequeue(taps, new Set(ids)), ...workoutHandOffTaps(plan), ...forFront];
         await bridge.requeueQuietTaps(JSON.stringify(requeue));
       } else {
         useWidgetCompletionStore.getState().enqueue(ids, handedOver);
@@ -768,6 +798,9 @@ function watchWorkoutSection(): WatchWorkoutSnapshot | null {
   const rest = live ? useStepTimerStore.getState().restFor(live.id) : null;
   return buildWatchWorkout({
     workoutsEnabled: settings.workoutsEnabled,
+    healthWrite: workoutHealthWriteOn(),
+    watchRequests: useWatchHealthStore.getState().requests,
+    now: new Date(),
     unit: settings.workoutUnit,
     quietHoursStart: settings.quietHoursStart,
     quietHoursEnd: settings.quietHoursEnd,
@@ -841,6 +874,9 @@ function scheduleWatchWorkoutWrite(): void {
 // stores at once (finishing a shop writes entries, items and the trip) still
 // costs one write.
 function subscribeToStores(): () => void {
+  // The watch's workout section carries these lists; read them from the
+  // database once, as the clash prompt does its own.
+  useWatchHealthStore.getState().reload();
   const unsubscribers = [
     useTaskStore.subscribe((s, p) => {
       if (s.tasks !== p.tasks) scheduleSnapshotWrite();
@@ -926,9 +962,16 @@ function subscribeToStores(): () => void {
     useStepTimerStore.subscribe((s, p) => {
       if (s.timers !== p.timers) scheduleWatchWorkoutWrite();
     }),
+    // What the phone asks of the watch's HealthKit session (phase 9).
+    useWatchHealthStore.subscribe((s, p) => {
+      if (s.requests !== p.requests) scheduleWatchWorkoutWrite();
+    }),
     useSettingsStore.subscribe((s, p) => {
       if (
         s.workoutsEnabled !== p.workoutsEnabled ||
+        // The three switches a workout on the watch is measured and saved under.
+        s.healthWriteEnabled !== p.healthWriteEnabled ||
+        s.workoutHealthWrite !== p.workoutHealthWrite ||
         s.workoutUnit !== p.workoutUnit ||
         s.defaultRestSeconds !== p.defaultRestSeconds ||
         s.plateInventory !== p.plateInventory ||

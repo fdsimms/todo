@@ -8,6 +8,7 @@ import { useSettingsStore } from './useSettingsStore';
 import { useSharedLinkStore } from './useSharedLinkStore';
 import { useStepTimerStore } from './useStepTimerStore';
 import { useWatchClashStore } from './useWatchClashStore';
+import { useWatchHealthStore } from './useWatchHealthStore';
 import { useNfcKeyStore } from './useNfcKeyStore';
 import { useAppGroupStore } from './useAppGroupStore';
 import { useShieldReleaseStore } from './useShieldReleaseStore';
@@ -100,6 +101,9 @@ export const useDemoStore = create<DemoStore>((set, get) => ({
     // A real watch workout's "two at the same time" question must not be asked
     // about the demo's sessions, nor the demo's left for the real ones.
     useWatchClashStore.getState().reload();
+    // What the phone asks of the watch's Health session lives in the settings
+    // table too, and names real workouts in Health.
+    useWatchHealthStore.getState().reload();
     seedDemoData();
     // After the seed, not before: the seed builds its rows through the normal
     // store actions, so it registers undo entries of its own on the way past.
@@ -130,6 +134,7 @@ export const useDemoStore = create<DemoStore>((set, get) => ({
     useManualBlockStore.getState().reload();
     useBlockTimerStore.getState().reload();
     useWatchClashStore.getState().reload();
+    useWatchHealthStore.getState().reload();
     // And the demo's own history leaves with the scratch database, rather than
     // staying armed to write invented rows into the user's real one.
     clearUndoHistories();

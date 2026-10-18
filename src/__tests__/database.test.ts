@@ -6284,7 +6284,7 @@ describe('workouts', () => {
   };
   const session = {
     id: 's1', routineId: 'r1', programId: null, taskId: null, title: 'Upper A', startedAt: '2026-10-10T22:00:00.000Z',
-    endedAt: '2026-10-10T23:00:00.000Z', notes: '', effort: 7, healthWorkoutId: null, healthWritePending: false,
+    endedAt: '2026-10-10T23:00:00.000Z', notes: '', effort: 7, healthWorkoutId: null, healthWritePending: false, measuredOnWatch: false, timesEdited: false,
   };
   const set = (id: string, extra: Partial<Parameters<typeof dbSaveWorkoutSet>[0]> = {}) => ({
     id, sessionId: 's1', exerciseId: 'lib:back-squat', position: 0, setIndex: 0, kind: 'working' as const,
@@ -6364,6 +6364,31 @@ describe('workouts', () => {
     expect(report.deleted).toBe(1);
     expect(dbGetAllWorkoutSessions().map(x => x.id)).toEqual(['s2']);
     expect(mockRawDb.prepare('SELECT id FROM workout_sets').all()).toEqual([{ id: 'b' }]);
+    // Measured by nothing but the phone: nothing for the watch.
+    expect(report.removedWatchWorkouts).toEqual([]);
+  });
+
+  it('hands back the sessions it deleted that the Apple Watch measured, read before the rows went', () => {
+    // One whose watch workout arrived, one the watch was still measuring, one
+    // the phone wrote itself, and one whose delete is refused for a later edit.
+    dbSaveWorkoutSession({ ...session, id: 'w1', healthWorkoutId: 'HK-WATCH', measuredOnWatch: true });
+    dbSaveWorkoutSession({ ...session, id: 'w2', healthWorkoutId: null, measuredOnWatch: true });
+    dbSaveWorkoutSession({ ...session, id: 'p1', healthWorkoutId: 'HK-PHONE', measuredOnWatch: false, timesEdited: false });
+    dbSaveWorkoutSession({ ...session, id: 'w3', healthWorkoutId: 'HK-KEPT', measuredOnWatch: true });
+    mockRawDb.prepare("UPDATE workout_sessions SET updated_at = '2026-01-01T00:00:00.000Z' WHERE id IN ('w1', 'w2', 'p1')").run();
+    mockRawDb.prepare("UPDATE workout_sessions SET updated_at = '2026-09-01T00:00:00.000Z' WHERE id = 'w3'").run();
+
+    const report = dbApplySyncChanges({
+      format: SYNC_FORMAT, deviceId: 'peer', since: null, until: '2030-01-01T00:00:00.000Z', tables: {},
+      deletions: ['w1', 'w2', 'p1', 'w3'].map(rowKey => ({ table: 'workout_sessions', rowKey, deletedAt: '2026-06-01T00:00:00.000Z' })),
+    });
+
+    expect(report.deleted).toBe(3);
+    expect(report.deletionsRefused).toBe(1);
+    expect(report.removedWatchWorkouts).toEqual([
+      { sessionId: 'w1', healthWorkoutId: 'HK-WATCH' },
+      { sessionId: 'w2', healthWorkoutId: null },
+    ]);
   });
 
   it('goes into a backup, every table of it', () => {

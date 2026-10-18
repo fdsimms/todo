@@ -1,4 +1,5 @@
 import type { WorkoutSession } from '../types';
+import type { RemovedWatchWorkout } from './syncMerge';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { isDemoModeActive } from './demoState';
 
@@ -63,6 +64,24 @@ export const WORKOUT_HEALTH_ACTIVITY = 'traditionalStrengthTraining' as const;
 export const PENDING_WORKOUT_WRITE_MAX_AGE_DAYS = 7;
 
 /**
+ * How long the phone waits for the Apple Watch's own copy of a workout the
+ * watch measured (`WorkoutSession.measuredOnWatch`) before it writes one of
+ * its own, counted from when the workout ended.
+ *
+ * The watch learns the phone's workout has finished from the next snapshot,
+ * which reaches it in seconds while the two are in reach, then saves its
+ * workout (a second or two) and sends the id back (a transfer, plus a message
+ * that wakes the phone). The wait only matters when that goes wrong: the
+ * watch carried out of reach of a phone left in a locker or a car, a transfer
+ * watchOS delivers at its own pace, or a watch whose app quit or whose battery
+ * died before it could save. Half an hour covers the first two, and is short
+ * enough that a workout whose watch never answers still reaches Health that
+ * day. Nothing is lost by getting it wrong either way: a watch workout that
+ * turns up later replaces the phone's copy, and the phone retracts its own.
+ */
+export const WATCH_WORKOUT_WAIT_MINUTES = 30;
+
+/**
  * The bridge's own absurdity checks, made here first so a span it would refuse
  * is never reported as Health refusing the write: an end after the start, at
  * most a day long, and not ending in the future (five minutes of clock skew
@@ -98,6 +117,10 @@ export function pendingWorkoutWriteAction(session: WorkoutSession, now: Date = n
   const age = now.getTime() - new Date(session.endedAt).getTime();
   if (!Number.isFinite(age) || age > PENDING_WORKOUT_WRITE_MAX_AGE_DAYS * 86_400_000) return 'drop';
   if (!workoutSpanWritable(session, now)) return 'wait';
+  // The Apple Watch measured it and saves it itself, with the heart rate and
+  // energy: the phone's copy is only the fallback for a watch that never
+  // answers (`WATCH_WORKOUT_WAIT_MINUTES`).
+  if (session.measuredOnWatch && age < WATCH_WORKOUT_WAIT_MINUTES * 60_000) return 'wait';
   return 'write';
 }
 
@@ -165,4 +188,50 @@ export async function retractWorkoutFromHealth(ids: readonly string[]): Promise<
   const health = bridge();
   if (!health) return false;
   return health.deleteHealthWorkout(ids);
+}
+
+/**
+ * Asks the Apple Watch to retract workouts it saved (`useWatchHealthStore`):
+ * the phone doesn't try them itself, since HealthKit lets an app delete only
+ * what it saved and nothing documents whether an iPhone app counts as the
+ * saver of what its watch app saved. Ungated by the switches, like every
+ * retraction; refused in demo mode, where the ids would belong to fiction.
+ */
+export function retractWatchWorkouts(ids: readonly string[]): void {
+  if (isDemoModeActive()) return;
+  const named = ids.filter(id => id.trim() !== '');
+  if (named.length > 0) watchHealthStore().retract(named);
+}
+
+/**
+ * Asks the Apple Watch to throw away its measurement of a session deleted on
+ * the phone, rather than save a workout nobody kept. Refused in demo mode.
+ */
+export function dropWatchMeasurement(sessionId: string): void {
+  if (isDemoModeActive()) return;
+  watchHealthStore().drop(sessionId);
+}
+
+/**
+ * A sync deleted sessions the Apple Watch measured (`ApplyReport.removedWatchWorkouts`):
+ * the person deleted them on another device. Asked of the watch exactly as a
+ * delete here asks it (`deleteSession`): what it saved is retracted, and a
+ * measurement it may still be taking is thrown away. On a device with no
+ * watch the lists are kept and never read, and they cap themselves.
+ */
+export function askWatchAboutSyncedDeletes(removed: readonly RemovedWatchWorkout[]): void {
+  if (isDemoModeActive()) return;
+  const retract = removed.map(r => r.healthWorkoutId).filter((id): id is string => !!id);
+  if (retract.length > 0) retractWatchWorkouts(retract);
+  for (const r of removed) if (!r.healthWorkoutId) dropWatchMeasurement(r.sessionId);
+}
+
+/**
+ * Required at the call rather than imported, as the bridge is: the workout
+ * page and workout mode import this file for its pure rules, and the store
+ * behind these two lists opens the database.
+ */
+function watchHealthStore() {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return (require('../store/useWatchHealthStore') as typeof import('../store/useWatchHealthStore')).useWatchHealthStore.getState();
 }

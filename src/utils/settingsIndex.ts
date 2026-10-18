@@ -628,6 +628,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['rest timer', 'break', 'seconds', 'gym', 'lifting', 'countdown'] },
   { id: 'workoutLiveActivity', iosOnly: true, requires: 'workoutsEnabled', groupId: 'health', label: 'Live Activity while working out', section: 'Workouts',
     keywords: ['lock screen', 'dynamic island', 'rest timer', 'sets', 'gym', 'lifting', 'countdown'] },
+  { id: 'maxHeartRate', iosOnly: true, requires: 'workoutsEnabled', groupId: 'health', label: 'Maximum heart rate', section: 'Workouts',
+    keywords: ['max hr', 'bpm', 'pulse', 'zones', 'apple watch', 'age', 'estimate'] },
   { id: 'sleepGoal', groupId: 'health', label: 'Sleep goal', section: 'Sleep',
     keywords: ['hours', 'asleep', 'bedtime', 'night', 'rest', 'target'] },
   { id: 'shortNightNote', requires: 'healthRead', groupId: 'health', label: 'Short night note', section: 'Sleep',

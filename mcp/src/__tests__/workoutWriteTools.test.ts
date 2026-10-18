@@ -357,8 +357,12 @@ describe('the workout write tools', () => {
 
     it('corrects the fields named, keeps the length when moving the start, and replaces sets whole', () => {
       const w = log();
+      expect(replica.workoutSession(w.id)?.timesEdited).toBe(false);
       const moved = updateWorkout(ledgered, w.id, { startedAt: new Date(2026, 9, 6, 7).toISOString(), effort: 6 }).workout;
       expect(moved).toMatchObject({ effort: 6, endedAt: new Date(2026, 9, 6, 7, 40).toISOString() });
+      // Recorded on the row, which carries it to the phone: a watch's copy
+      // arriving later at the old times is then rewritten, never kept.
+      expect(replica.workoutSession(w.id)?.timesEdited).toBe(true);
       const resetSets = updateWorkout(ledgered, w.id, { exercises: [{ exerciseId: FLY, sets: [{ weightKg: 10, reps: 15 }] }] }).workout;
       expect(resetSets.exercises.map(e => e.exerciseId)).toEqual([FLY]);
       expect(() => updateWorkout(ledgered, w.id, {})).toThrow(/Nothing to change/);

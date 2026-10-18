@@ -4,6 +4,7 @@ import type { WeightUnit } from './weightLog';
 import { completionTapFor, offersMealLogOnCompletion } from './completionTap';
 import { workoutTaskEffect } from './workoutTask';
 import { WORKOUT_SET_KINDS, weightFromDisplay, weightToDisplay } from './workoutData';
+import type { WatchWorkoutSpan } from './watchHealthWorkout';
 
 /**
  * Taps on a widget that apply without bringing the app forward.
@@ -50,7 +51,8 @@ export interface QuietTap {
    * The task id, or the grocery item id. A `groceryAdd` names no existing row,
    * so its id is the watch's own tap id, only to keep the entry well formed.
    * A workout tap's id is the set (`set`), the phone's session (`restAdd`,
-   * `restSkip`, `finish`) or the watch's own workout (`watchSession`).
+   * `restSkip`, `finish`, `measuring`, `healthWorkout`), the watch's own
+   * workout (`watchSession`) or a workout in Health (`healthRetracted`).
    */
   id: string;
   /** The words to add, for `groceryAdd` only. */
@@ -101,6 +103,16 @@ export interface QuietTap {
   setIds?: string[];
   /** `moveExercise`: which way. */
   direction?: 'up' | 'down';
+  /** `measuring`: whether the watch started measuring the session (true) or stopped without saving (false). */
+  on?: boolean;
+  /** `healthWorkout`: the id of the workout the watch saved, or null when it saved locked with no id to give. */
+  healthWorkoutId?: string | null;
+  /**
+   * `healthWorkout`: the times the watch saved it at, ISO, both or neither
+   * (`WatchWorkoutSpan`). Absent for a save made locked.
+   */
+  workoutStart?: string;
+  workoutEnd?: string;
 }
 
 /**
@@ -113,20 +125,32 @@ export interface QuietTap {
  * note on a set), `addSet` and `addExercise` (with the ids the watch gave
  * them), `moveExercise` (up or down), and `useSuggestion` (the load card's
  * Use).
+ *
+ * And the three of the watch's HealthKit session (phase 9): `measuring` (the
+ * watch started measuring the session, or stopped without saving), which
+ * holds the phone's own Health write back; `healthWorkout` (the watch saved
+ * the session's workout to Health, with this id); and `healthRetracted` (the
+ * watch dealt with a workout the phone asked it to retract, named by `id`).
  */
 export type QuietTapKind =
   | 'complete' | 'unit' | 'grocery' | 'choose' | 'groceryAdd'
   | 'set' | 'restAdd' | 'restSkip' | 'finish' | 'watchSession'
-  | 'setNote' | 'addSet' | 'addExercise' | 'moveExercise' | 'useSuggestion';
+  | 'setNote' | 'addSet' | 'addExercise' | 'moveExercise' | 'useSuggestion'
+  | 'measuring' | 'healthWorkout' | 'healthRetracted';
 
 const QUIET_TAP_KINDS: readonly QuietTapKind[] = [
   'complete', 'unit', 'grocery', 'choose', 'groceryAdd', 'set', 'restAdd', 'restSkip', 'finish', 'watchSession',
-  'setNote', 'addSet', 'addExercise', 'moveExercise', 'useSuggestion',
+  'setNote', 'addSet', 'addExercise', 'moveExercise', 'useSuggestion', 'measuring', 'healthWorkout', 'healthRetracted',
 ];
 
-/** The kinds made on the phone's workout in progress, each naming its session. */
+/**
+ * The kinds that name the phone's session they are about, put back in the
+ * order made (`inTimeOrder`). Most act only on the workout in progress; the
+ * Health two act on any session in the log, finished or not.
+ */
 const SESSION_KINDS: ReadonlySet<QuietTapKind> = new Set([
   'set', 'restAdd', 'restSkip', 'finish', 'setNote', 'addSet', 'addExercise', 'moveExercise', 'useSuggestion',
+  'measuring', 'healthWorkout',
 ]);
 
 /** The longest note a set keeps from the watch: dictation, not an essay. */
@@ -178,6 +202,12 @@ export type QuietTapAction =
   | { type: 'addWatchSession'; workout: WatchSessionInput }
   /** `editSet` with the note. */
   | { type: 'noteWorkoutSet'; sessionId: string; setId: string; note: string }
+  /** `markWatchMeasuring`: the watch started or stopped measuring a session. */
+  | { type: 'watchMeasuring'; sessionId: string; on: boolean }
+  /** `recordWatchHealthWorkout`: the watch saved a session's workout to Health. */
+  | { type: 'watchHealthWorkout'; sessionId: string; workoutId: string | null; span: WatchWorkoutSpan | null }
+  /** The watch dealt with a workout the phone asked it to retract (`useWatchHealthStore.retracted`). */
+  | { type: 'watchHealthRetracted'; workoutId: string }
   /** `addPlannedSet` with the watch's id. */
   | { type: 'addWorkoutSet'; sessionId: string; exerciseId: string; setId: string }
   /** `addSessionExercise` with the watch's ids. */
@@ -250,7 +280,7 @@ export function parseQuietTaps(json: string): QuietTap[] {
       // Every workout tap names the phone's session it was made on: a stale
       // watch must never log onto whatever workout happens to be going now.
       // The rest and finish taps' own id is the session, so they may leave it out.
-      const ownId = kind === 'restAdd' || kind === 'restSkip' || kind === 'finish';
+      const ownId = kind === 'restAdd' || kind === 'restSkip' || kind === 'finish' || kind === 'measuring' || kind === 'healthWorkout';
       const sessionId = idOf(fields.sessionId) ?? (ownId ? id : null);
       if (!sessionId) continue;
       tap.sessionId = sessionId;
@@ -285,6 +315,23 @@ export function parseQuietTaps(json: string): QuietTap[] {
       if (kind === 'moveExercise') {
         if (fields.direction !== 'up' && fields.direction !== 'down') continue;
         tap.direction = fields.direction;
+      }
+      if (kind === 'measuring') {
+        // Absent reads as started: an older watch that sends the kind at all
+        // only sends it when it starts.
+        tap.on = fields.on !== false;
+      }
+      // `workoutId` from the watch; `healthWorkoutId` from a tap the app put
+      // back on the queue itself for a drain in front (widgetSync.ts).
+      if (kind === 'healthWorkout') {
+        tap.healthWorkoutId = idOf(fields.workoutId) ?? idOf(fields.healthWorkoutId);
+        // `start`/`end` from the watch, the long names from a requeued tap.
+        const start = isoOf(fields.start) ?? isoOf(fields.workoutStart);
+        const end = isoOf(fields.end) ?? isoOf(fields.workoutEnd);
+        if (start && end) {
+          tap.workoutStart = start;
+          tap.workoutEnd = end;
+        }
       }
     }
     if (kind === 'watchSession') {
@@ -461,6 +508,25 @@ export function planQuietTaps(
       // a question is asked by the app, as a widget tap on it is.
       const ask = askFor(live!.taskId);
       if (ask) actions.push({ type: 'handToApp', id: ask.id, at: tap.at, fromWorkout: true });
+      continue;
+    }
+    // ==== the watch's HealthKit session ====
+    // Not limited to the workout in progress: the watch saves its workout as
+    // the phone's finishes, and can be heard from long after. The store reads
+    // the row again and decides (`markWatchMeasuring`, `recordWatchHealthWorkout`).
+    if (tap.kind === 'measuring') {
+      actions.push({ type: 'watchMeasuring', sessionId: tap.sessionId!, on: tap.on !== false });
+      continue;
+    }
+    if (tap.kind === 'healthWorkout') {
+      actions.push({
+        type: 'watchHealthWorkout', sessionId: tap.sessionId!, workoutId: tap.healthWorkoutId ?? null,
+        span: tap.workoutStart && tap.workoutEnd ? { start: tap.workoutStart, end: tap.workoutEnd } : null,
+      });
+      continue;
+    }
+    if (tap.kind === 'healthRetracted') {
+      actions.push({ type: 'watchHealthRetracted', workoutId: tap.id });
       continue;
     }
     if (tap.kind === 'watchSession') {
@@ -736,7 +802,7 @@ export function parseWatchSession(raw: unknown): WatchSessionInput | null {
     });
   }
   if (sets.length === 0) return null;
-  return {
+  const workout: WatchSessionInput = {
     id,
     routineId: idOf(r.routineId),
     programId: idOf(r.programId),
@@ -746,4 +812,11 @@ export function parseWatchSession(raw: unknown): WatchSessionInput | null {
     endedAt,
     sets,
   };
+  // Saved to Health by the watch itself, with what it measured (phase 9). An
+  // object with no id is a save made locked, which still means the phone
+  // writes nothing of its own.
+  if (typeof r.health === 'object' && r.health !== null && !Array.isArray(r.health)) {
+    workout.health = { workoutId: idOf((r.health as Record<string, unknown>).workoutId) };
+  }
+  return workout;
 }

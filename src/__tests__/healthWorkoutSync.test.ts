@@ -20,11 +20,20 @@ jest.mock('../store/useSettingsStore', () => ({ useSettingsStore: { getState: ()
 let mockDemo = false;
 jest.mock('../utils/demoState', () => ({ isDemoModeActive: () => mockDemo }));
 
+// The two lists the phone keeps for the watch, as fakes: the store behind
+// them opens the database, and what is under test is the gate in front.
+const mockWatchHealth = { retract: jest.fn(), drop: jest.fn() };
+jest.mock('../store/useWatchHealthStore', () => ({ useWatchHealthStore: { getState: () => mockWatchHealth } }));
+
 import {
   PENDING_WORKOUT_WRITE_MAX_AGE_DAYS,
+  askWatchAboutSyncedDeletes,
+  WATCH_WORKOUT_WAIT_MINUTES,
   WORKOUT_HEALTH_ACTIVITY,
   logWorkoutToHealth,
+  dropWatchMeasurement,
   pendingWorkoutWriteAction,
+  retractWatchWorkouts,
   retractWorkoutFromHealth,
   workoutHealthWriteOn,
   workoutSpanWritable,
@@ -38,7 +47,7 @@ function session(over: Partial<WorkoutSession> = {}): WorkoutSession {
     id: 's1', routineId: null, programId: null, taskId: null, title: 'Upper A',
     startedAt: new Date(2026, 9, 18, 9).toISOString(),
     endedAt: new Date(2026, 9, 18, 10).toISOString(),
-    notes: '', effort: null, healthWorkoutId: null, healthWritePending: false,
+    notes: '', effort: null, healthWorkoutId: null, healthWritePending: false, measuredOnWatch: false, timesEdited: false,
     ...over,
   };
 }
@@ -77,6 +86,19 @@ describe('pendingWorkoutWriteAction', () => {
     expect(pendingWorkoutWriteAction(session({ endedAt: null }), NOW)).toBe('drop');
     const old = new Date(NOW.getTime() - (PENDING_WORKOUT_WRITE_MAX_AGE_DAYS * 86_400_000 + 60_000));
     expect(pendingWorkoutWriteAction(session({ startedAt: new Date(old.getTime() - 3_600_000).toISOString(), endedAt: old.toISOString() }), NOW)).toBe('drop');
+  });
+
+  // Phase 9: the watch saves its own copy, with the heart rate and energy.
+  it('waits for the Apple Watch’s copy of a workout it measured, then writes the phone’s own', () => {
+    const ended = (minutesAgo: number) => {
+      const end = new Date(NOW.getTime() - minutesAgo * 60_000);
+      return session({ measuredOnWatch: true, startedAt: new Date(end.getTime() - 3_600_000).toISOString(), endedAt: end.toISOString() });
+    };
+    expect(pendingWorkoutWriteAction(ended(5), NOW)).toBe('wait');
+    expect(pendingWorkoutWriteAction(ended(WATCH_WORKOUT_WAIT_MINUTES - 1), NOW)).toBe('wait');
+    expect(pendingWorkoutWriteAction(ended(WATCH_WORKOUT_WAIT_MINUTES + 1), NOW)).toBe('write');
+    // Arrived: nothing for the phone to write.
+    expect(pendingWorkoutWriteAction({ ...ended(5), healthWorkoutId: 'HK-W' }, NOW)).toBe('drop');
   });
 
   it('waits on a span the bridge would refuse, such as one logged with no length, until the limit drops it', () => {
@@ -157,5 +179,45 @@ describe('demo mode', () => {
   it('reads through the same gate once demo mode is off', async () => {
     await readHealthWorkouts(new Date(2026, 9, 1), 30);
     expect(mockNative.readWorkouts).toHaveBeenCalledTimes(1);
+  });
+
+  // A seeded workout deleted in demo mode must not put a real workout's id
+  // on the list the watch acts on, or tell it to drop a real measurement.
+  it('asks the watch for nothing', () => {
+    mockDemo = true;
+    retractWatchWorkouts(['HK-WATCH']);
+    dropWatchMeasurement('s1');
+    expect(mockWatchHealth.retract).not.toHaveBeenCalled();
+    expect(mockWatchHealth.drop).not.toHaveBeenCalled();
+  });
+
+  it('asks the watch nothing about a sync’s deletes either', () => {
+    mockDemo = true;
+    askWatchAboutSyncedDeletes([{ sessionId: 's1', healthWorkoutId: 'HK-WATCH' }, { sessionId: 's2', healthWorkoutId: null }]);
+    expect(mockWatchHealth.retract).not.toHaveBeenCalled();
+    expect(mockWatchHealth.drop).not.toHaveBeenCalled();
+  });
+
+  it('asks the watch once demo mode is off, leaving out blank ids', () => {
+    retractWatchWorkouts(['HK-WATCH', ' ', '']);
+    retractWatchWorkouts(['']);
+    dropWatchMeasurement('s1');
+    expect(mockWatchHealth.retract).toHaveBeenCalledTimes(1);
+    expect(mockWatchHealth.retract).toHaveBeenCalledWith(['HK-WATCH']);
+    expect(mockWatchHealth.drop).toHaveBeenCalledWith('s1');
+  });
+});
+
+describe('a sync deleting workouts the watch measured', () => {
+  it('asks the watch to retract what it saved, and to throw away what it may still be measuring, as a delete here does', () => {
+    askWatchAboutSyncedDeletes([
+      { sessionId: 's1', healthWorkoutId: 'HK-1' },
+      { sessionId: 's2', healthWorkoutId: null },
+      { sessionId: 's3', healthWorkoutId: 'HK-3' },
+    ]);
+    expect(mockWatchHealth.retract).toHaveBeenCalledTimes(1);
+    expect(mockWatchHealth.retract).toHaveBeenCalledWith(['HK-1', 'HK-3']);
+    expect(mockWatchHealth.drop).toHaveBeenCalledTimes(1);
+    expect(mockWatchHealth.drop).toHaveBeenCalledWith('s2');
   });
 });

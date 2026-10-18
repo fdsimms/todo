@@ -79,7 +79,7 @@ const liveSession = (extra: Partial<WorkoutSession> = {}): WorkoutSession => ({
   notes: '',
   effort: null,
   healthWorkoutId: null,
-  healthWritePending: false,
+  healthWritePending: false, measuredOnWatch: false, timesEdited: false,
   ...extra,
 });
 

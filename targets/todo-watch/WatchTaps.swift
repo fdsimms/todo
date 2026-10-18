@@ -44,9 +44,10 @@ struct WatchTap: Codable, Identifiable {
     let kind: String
     /// The task id or grocery item id. Empty for "add" and "groceryAdd". A
     /// workout tap's is the set ("set", "setNote", "addSet"), the phone's
-    /// session ("restAdd", "restSkip", "finish"), the exercise
-    /// ("addExercise", "moveExercise", "useSuggestion") or the watch's own
-    /// workout ("watchSession").
+    /// session ("restAdd", "restSkip", "finish", "measuring",
+    /// "healthWorkout"), the exercise ("addExercise", "moveExercise",
+    /// "useSuggestion"), the watch's own workout ("watchSession") or a
+    /// workout in Health ("healthRetracted").
     let itemId: String
     /// The grocery list the row was on; nil is the home list.
     let listId: String?
@@ -86,6 +87,16 @@ struct WatchTap: Codable, Identifiable {
     var setIds: [String]? = nil
     /// "moveExercise": "up" or "down".
     var direction: String? = nil
+    /// "measuring" (phase 9): true when the watch started measuring the
+    /// phone's workout, false when it stopped without saving.
+    var on: Bool? = nil
+    /// "healthWorkout" (phase 9): the id of the workout the watch saved to
+    /// Health, nil when it saved locked with no id to give.
+    var healthWorkoutId: String? = nil
+    /// "healthWorkout": the times it was saved at, so the phone can tell a
+    /// copy made before the person retimed the workout there.
+    var workoutStart: Date? = nil
+    var workoutEnd: Date? = nil
 
     /// The workout's kinds. Sent at once rather than held for Undo: a set's
     /// rest starts on the phone from it, and the rest screen is the answer to
@@ -93,6 +104,8 @@ struct WatchTap: Codable, Identifiable {
     static let workoutKinds: Set<String> = [
         "set", "restAdd", "restSkip", "finish", "watchSession",
         "setNote", "addSet", "addExercise", "moveExercise", "useSuggestion",
+        // The HealthKit session's (phase 9, WatchHealthSession.swift).
+        "measuring", "healthWorkout", "healthRetracted",
     ]
 
     var isWorkout: Bool { Self.workoutKinds.contains(kind) }
@@ -121,6 +134,12 @@ struct WatchTap: Codable, Identifiable {
         if let exerciseId { info["exerciseId"] = exerciseId }
         if let setIds { info["setIds"] = setIds }
         if let direction { info["direction"] = direction }
+        if let on { info["on"] = on }
+        if let healthWorkoutId { info["workoutId"] = healthWorkoutId }
+        if let workoutStart, let workoutEnd {
+            info["start"] = Self.isoText(workoutStart)
+            info["end"] = Self.isoText(workoutEnd)
+        }
         if let doneSets {
             info["sets"] = doneSets.map { set -> [String: Any] in
                 var entry: [String: Any] = ["id": set.id, "exerciseId": set.exerciseId, "at": Self.isoText(set.at)]
@@ -200,6 +219,9 @@ struct LocalTapState {
     let finishedSessions: Set<String>
     /// Workouts the watch ran on its own, sent and not yet received.
     let sentWorkouts: [WatchTap]
+    /// Health workouts this watch has retracted for the phone, still
+    /// unsettled, so it doesn't delete them again while the phone catches up.
+    let retractedWorkouts: Set<String>
 
     init(_ taps: [WatchTap]) {
         var completed = Set<String>()
@@ -212,6 +234,7 @@ struct LocalTapState {
         var workoutTaps: [WatchTap] = []
         var finishedSessions = Set<String>()
         var sentWorkouts: [WatchTap] = []
+        var retractedWorkouts = Set<String>()
         for tap in taps {
             switch tap.kind {
             case "set":
@@ -223,6 +246,8 @@ struct LocalTapState {
                 finishedSessions.insert(tap.sessionId ?? tap.itemId)
             case "watchSession":
                 sentWorkouts.append(tap)
+            case "healthRetracted":
+                retractedWorkouts.insert(tap.itemId)
             case "complete": completed.insert(tap.itemId)
             case "unit": units[tap.itemId, default: 0] += 1
             case "grocery": groceries.insert(Self.groceryKey(itemId: tap.itemId, listId: tap.listId))
@@ -245,6 +270,7 @@ struct LocalTapState {
         self.workoutTaps = workoutTaps
         self.finishedSessions = finishedSessions
         self.sentWorkouts = sentWorkouts
+        self.retractedWorkouts = retractedWorkouts
     }
 
     static func groceryKey(itemId: String, listId: String?) -> String {

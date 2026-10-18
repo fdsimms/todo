@@ -2,18 +2,20 @@
 
 The whole of it: the bridge, the store, the Settings section, the row on Today,
 the Mood screen's health axis, the Activity rings, the `health` generator, the short-night line
-under "Lighten today", the Weight screen and its chart, the Sleep screen, and the four things
+under "Lighten today", the Weight screen and its chart, the Sleep screen, heart rate during a
+workout (measured on the Apple Watch, read back on the workout page), and the four things
 this app writes back — a nutrient sample, on completion of a task that opted
 into logging one; a body-mass sample, when somebody records a weight; a
 meal's nutrition, when somebody adds it to the food log; and a finished
-strength workout, when somebody saves one — plus the rules any
-further reader or writer has to be built against.
+strength workout, when somebody saves one (or the Apple Watch that measured it
+saves it) — plus the rules any further reader or writer has to be built against.
 
 Read this before touching `modules/todo-health-bridge/`,
 `src/utils/healthBridge.ts`, `src/utils/healthCompletionSync.ts`,
 `src/utils/healthWeightSync.ts`, `src/utils/healthFoodSync.ts`,
 `src/utils/healthWorkouts.ts`, `src/utils/healthWorkoutSync.ts`,
-`src/utils/weightLog.ts`, `src/store/useFoodLogStore.ts`,
+`src/utils/heartRateZones.ts`, `src/utils/watchHealthWorkout.ts`,
+`targets/todo-watch/WatchHealthSession.swift`, `src/utils/weightLog.ts`, `src/store/useFoodLogStore.ts`,
 `src/store/useHealthStore.ts`, `src/screens/settings/HealthSettings.tsx`,
 `src/screens/WeightScreen.tsx`, `src/utils/sleepLog.ts`,
 `src/screens/SleepScreen.tsx`, `healthContextRows` in
@@ -1166,10 +1168,13 @@ the first device build is where that is seen. An edit that changes nothing
 saves nothing, and an agent's sets-only edit leaves the session row alone, so
 neither restamps a row a sync could then send over the phone's.
 
-**There is no column for sample ids.** The bridge can hand back ids of samples
-saved beside the workout, but only for measured energy, which nothing passes,
-so they are always empty. The watch phase that passes energy adds the column
-(`health_sample_ids`, the food log's shape) in the same change.
+**There is no column for sample ids, and the watch phase didn't need one.** The
+bridge can hand back ids of samples saved beside the workout, but only for
+measured energy, which nothing on the phone passes, so they are always empty.
+The plan was a `health_sample_ids` column once the watch passed energy. It
+doesn't pass it: the watch's own session saves the workout with the energy and
+heart rate it measured attached (see "Heart rate during a workout" below), and
+the watch is what retracts them, by the workout's id.
 
 **It is a separate delete rather than two more types in `deleteHealthSamples`.**
 Apple documents `deleteObjects(of:predicate:)` as failing for a type the app
@@ -1189,14 +1194,17 @@ retracted from here; that is the one case the person deletes in the Health app.
 
 **A session with no measured energy writes none, and nothing estimates one from
 sets.** The bridge attaches energy only when a measured figure is passed *and*
-active-energy sharing is already allowed. Today the second never holds: active
-energy is not in `writeTypes`, because nothing on the phone measures it for a
-session, and a share row for a figure the app never writes is a question asked
-for nothing. The branch is there for the watch phase, whose review is where
-that share type is argued for. A zero is treated as no measurement (no session
-burns nothing), the body-mass reasoning. Whether deleting a workout also
-deletes the samples added to it is not documented, which is why any such
-sample's id comes back for the retraction to name.
+active-energy sharing is already allowed. On the phone the second never holds:
+active energy is not in the phone's `writeTypes`, because nothing on the phone
+measures it for a session, and a share row for a figure the app never writes is
+a question asked for nothing. The measured energy comes from the watch instead,
+whose session saves it with the workout; the watch asks for active-energy
+sharing itself, and "Heart rate during a workout" below is that share type's
+review. A zero is treated as no measurement (no session burns nothing), the
+body-mass reasoning. Whether deleting a workout also deletes the samples added
+to it is not documented, which is why any such sample's id comes back for the
+retraction to name, and why the watch's retraction deletes the energy saved
+with a workout by name rather than trusting the workout's delete to take it.
 
 ### What the read may claim
 
@@ -1245,12 +1253,188 @@ until then, which is the state the row renders an ask for.
 `NSHealthShareUsageDescription` and `NSHealthUpdateUsageDescription` both name
 workouts now.
 
-### Not in this phase: heart rate
+## Heart rate during a workout
 
-**Heart rate is not read.** This file has turned away resting heart rate and
-HRV, and heart rate during a session the person started is a narrower claim
-that still needs its own argument. The watch phase, which is where a heart rate
-would be measured, owes this file that section before any code reads one.
+The Apple Watch measures heart rate while it runs a workout session
+(`HKWorkoutSession`, phase 9 in `docs/arch/workouts.md`), and the workout page
+on the phone reads it back. It is the first heart-rate figure this app shows.
+Resting heart rate and HRV stay on the ruled-out list at the end of this file,
+and the difference between them and this is the whole of why this is allowed,
+so it comes first.
+
+### Why this one and not resting heart rate or HRV
+
+- **It is about the workout, not about the body.** A resting rate or an HRV
+  reading is a figure about a body that is very nearly the same every day, so
+  anything read from it is a reading of the person, and the only thing an app
+  can do with one is judge it ("low", "recovering"): a diagnosis built on a
+  number nobody chose. Heart rate during a workout is the case active energy
+  already is (see `basalEnergyBurned` in "What is deliberately not built yet"):
+  it is what happened during an hour the person can name, it moves with what
+  they did in it (a set, a rest), and the one claim on screen is about that
+  hour (how many minutes it spent in each share of a maximum), not about them.
+- **The person started the measurement.** A watch records resting heart rate
+  and HRV in the background, on its own initiative, every day. Nothing here is
+  measured unless somebody started a workout on the watch, or opened the
+  phone's workout's own screen there, with workout writing on. Opening the
+  watch app, or seeing the phone's workout on its Today list, starts nothing.
+  That is the line the nutrients cross: the figure exists because a person did
+  something to make it.
+- **It costs any other workout app's session.** The watch runs one workout
+  session at a time, across every app, and starting this one ends another
+  app's (the other gets `errorAnotherWorkoutSessionStarted` and ends). That is
+  a second reason the phone's workout waits for its screen to be opened: a
+  person running Apple's Workout app while the phone logs their sets must not
+  have it ended by glancing at the set on the wrist. And when another app's
+  session ends this one, it is not started again for that workout, so the two
+  can't end each other in turn; the phone writes its own copy, without heart
+  rate, as it does when the watch never measured.
+- **It is that workout's own record, shown back.** The heart rate lives in
+  Health with the workout the watch saved (the session's builder associates its
+  samples with the workout). The app keeps no copy and reads it for one workout
+  at a time, when its page opens, which is "It is a reading, not the app's
+  data" unchanged.
+
+### The rule: shown, never interpreted
+
+- **Shown.** Live on the watch while a workout runs: the number and a heart,
+  in one color, and nothing else. On the phone's workout page, the average, the
+  maximum and the minutes in each of five zones, read back from Apple Health
+  each time the page opens (`readWorkoutHeartRate`) and never stored.
+- **Never judged.** No "high", "low", "good", "fat burn", "cardio", "peak" or
+  "recovery", and no color that ranks one zone over another: every zone's bar
+  is the same accent, the way `ContrastBars` refuses to rank its two groups.
+  Nothing compares a figure to a norm, to an age's typical range, or to the
+  person's own past workouts.
+- **Never a rule and never a task.** Heart rate is not a `HealthRuleMetric`
+  (the `WithNutrientKeyHome` fence keeps that structural), nothing generated
+  fires off it, and nothing reads it outside the workout page: not Stats, not
+  the mood axis, not records, not the MCP server (which reads no Health).
+- **Absent stays absent, and a refusal is invisible.** The card shows only when
+  Health returns heart rate for that workout. A refused read, Read Apple Health
+  off, a workout the phone wrote without the watch, and a watch that recorded
+  nothing all show no card, because they are one answer ("Read authorization is
+  not observable"). Nothing says "no heart rate recorded".
+
+### The zones, and the one estimate the app makes about a body
+
+Time in zones needs a maximum heart rate. That is a figure about a body, and
+this file's rule is that nothing derives one. The zones are a deliberate
+carve-out from that rule, written down the way the weight goal's is, and
+allowed only for these four reasons together:
+
+- **The person chose it.** Zones appear only for somebody who typed a maximum
+  (Settings › Apple Health › Workouts › Maximum heart rate, `maxHeartRate`) or
+  typed a year of birth into the calorie budget (`bodyProfile.birthYear`).
+  Without either, the card's one line names where they are typed, and that is
+  all: no prompt, no sheet opened for it, no reminder, and nothing elsewhere
+  that asks for an age or a maximum for the zones' sake. Both sync with the
+  health record (`SYNCED_SETTING_KEYS` and `HEALTH_SYNC_SETTING_KEYS`), so the
+  same workout's zones come out the same on every device that shares the
+  health logs. With iCloud alone neither travels (the health record never goes
+  to iCloud), so each device has what was typed on it. The year of birth was
+  device-local at first only because the
+  calorie budget's setting was never listed; it syncs because the person chose
+  that.
+- **It is labeled as an estimate everywhere it shows.** Without a typed
+  maximum it is 220 minus the age from that year of birth (`ageFromBirthYear`),
+  and the line under the card says so in those words ("Zones are shares of a
+  maximum of 186 bpm, estimated from your age (220 minus age)…"), and the
+  setting's value reads "186, from age". That line is a plain `Text`, not
+  `HelpText`: Hide help text must not take the label off an estimate.
+- **A typed number replaces it.** 220 minus age is a population formula and is
+  wrong for plenty of people in either direction. The setting is where the
+  person overrules it, and clearing the setting goes back to the estimate.
+- **It only partitions what Health recorded.** Five zones at 50, 60, 70, 80 and
+  90 percent of the maximum divide the workout's own readings into minutes
+  (`heartRateZones.ts`). The maximum decides which bar a minute lands in and
+  nothing else: it is never shown as a verdict, never feeds a target, a rule,
+  a task or another screen. Zone 5 has no top ("Zone 5 · 168+"), since a
+  reading above the maximum is still zone 5 and a range ending at the maximum
+  would say otherwise. A sample that holds a series of readings
+  (`HKQuantitySample.count` above 1) carries only their average, so its
+  minutes go to the average's zone, spread over the series' own span under
+  the same one-minute gap rule a single reading gets; the readings inside are
+  not walked (`HKQuantitySeriesSampleQuery`) until a device shows what the
+  watch's session actually stores.
+
+**What is still not allowed:** a zone colored as good or bad, a named zone, a
+training load, a recovery or readiness score, VO₂ max, calories estimated from
+heart rate, a resting heart rate or HRV read to "personalize" the zones, an
+age guessed from anything but the year the person typed, and the estimate
+shown anywhere without its label. Without a typed maximum or a year of birth
+there are no zones: the card shows the average and the maximum, and one line
+names the two settings either is typed in (the line above about asking). The
+line naming where the maximum came from shows only when zones are drawn.
+
+### The new types, and what they cost
+
+- **Read, on the phone: `heartRate`.** One more type in `readTypes`, for the
+  workout page. Like every addition there, an install that already answered
+  the sheet gets no card until somebody taps Health access in Settings again,
+  and nothing can tell them that is why; a refused read is simply no card.
+- **On the watch, a request of its own:** share the workout and active energy,
+  read heart rate and active energy. On watchOS 6 and later a watch app asks on
+  the wrist (Apple's `requestAuthorization(toShare:read:completion:)` page: "In
+  watchOS 6 and later, this method displays the permission form on Apple
+  Watch"), so the watch asks the first time it starts measuring, which is
+  always a person starting a workout there or opening the phone's workout
+  screen there. Nothing is
+  measured when workout sharing isn't allowed on the watch: the workout runs as
+  it did before this phase.
+- **Active energy is a share type, on the watch only.** The phone's note above
+  ("a share row for a figure the app never writes is a question asked for
+  nothing") still holds for the phone, which never writes energy. The watch's
+  session measures it and saves it with the workout, so the watch asks for it.
+  Nothing estimates energy from sets, still.
+- **The strings.** The watch app has its own `NSHealthShareUsageDescription`
+  and `NSHealthUpdateUsageDescription` (`plugins/withWatchApp.js`), saying what
+  it reads and saves; the phone's share string says it reads heart rate during
+  a workout the watch measured in the app, to show on that workout's page.
+
+### One workout in Health, saved by the device that measured it
+
+The full mechanism is in `docs/arch/workouts.md`, "Phase 9, as built". What
+this file holds it to:
+
+- **The phone never writes a second copy of a workout the watch saved.** A
+  workout run on the watch arrives with the id of what the watch saved. For the
+  phone's own workout, the watch says it is measuring as it starts, so the
+  phone's Save holds its write back (`healthWritePending`) and writes only if
+  no watch workout has arrived 30 minutes after the workout ended. A watch
+  workout that turns up after that replaces the phone's copy, which the phone
+  retracts: the copy with the measurement is the one kept.
+- **Retracting it is the watch's job.** HealthKit lets an app delete only
+  "objects that it has previously saved", and whether an iPhone app counts as
+  the saver of what its watch app saved is not documented anywhere Apple
+  publishes (the delete pages, `HKSource` and the HealthKit guides say nothing
+  about a companion app either way). So the phone doesn't try. Deleting the
+  session, here or on another device (the delete reaches the phone by sync,
+  which asks its watch the same way), or changing its times, asks the watch
+  through the snapshot, and the watch deletes the workout and the active
+  energy saved with it, then says so. A delete the watch couldn't make (it was
+  locked) is not answered, and is tried again. The heart-rate readings taken
+  during it stay in Health as readings: they were real, and this app was never
+  allowed to share heart rate, so it can't delete them. A watch that never
+  runs the app again never answers, and that workout is the person's to delete
+  in Health.
+- **Changing the times rewrites it without its heart rate and energy.** Health
+  can't move a workout, so a retime writes the phone's own at the new times,
+  which has neither, and once that is in Health the watch retracts its copy.
+  Never the other way round: the watch's carries no sync identifier for the
+  phone's write to replace, so retracting it first would leave Health with
+  neither whenever Health refused the rewrite; refused, the watch's stays. A
+  retime made while the phone was still waiting for the watch's copy ends the
+  same way: the copy arrives with the times it was saved at, and when they are
+  no longer the row's, the phone writes its own and the watch retracts its
+  copy. Whether the times were edited is recorded on the row
+  (`WorkoutSession.timesEdited`), since an end a few minutes off with no edit
+  is a Finish tapped on both devices, not a retime: the watch's copy is kept
+  then, heart rate and all, and the row keeps its own end. The workout page says so under the times before the change, and only
+  for a workout the watch measured: "Changing the times also changes the
+  workout in Apple Health, and it loses its heart rate and energy." A plain
+  `Text`, for the import note's reason: it is a consequence to see before
+  confirming.
 
 ## The Activity rings
 
@@ -1669,14 +1853,19 @@ only when a person saves the result in that sheet.
 
 Steps, sleep, exercise minutes, active energy, eight nutrients (sodium,
 protein, saturated fat, fiber, sugar, caffeine, water, calories) and body mass
-— nothing past those thirteen, plus time in daylight, the Activity rings, and
+— nothing past those thirteen, plus time in daylight, the Activity rings,
 other apps' workouts (read for the Workouts history only, which no rule or
-generator consults; see the workouts section above). The
+generator consults; see the workouts section above), and heart rate during a
+workout the watch measured (read for that workout's page only, and never
+judged; see "Heart rate during a workout"). The
 read-type list is one place (`readTypes`) and the note beside it says what
 adding to it costs; every metric this file still rules out — resting heart
-rate, HRV, glucose, cycle tracking — stays ruled out for the reason given
-there, which is that a generator firing on one of them can be wrong about a
-body rather than about a day.
+rate, HRV, heart rate outside a workout the person started, glucose, cycle
+tracking — stays ruled out for the reason given there, which is that a
+generator firing on one of them can be wrong about a body rather than about a
+day. Reading heart rate for a workout did not open the door to the other
+two: it is allowed because the person started the measurement and the claim
+is about that hour, and neither is true of a resting rate or an HRV reading.
 
 **Active energy is the most recent addition and `basalEnergyBurned` beside it
 is not.** The two arrive together in HealthKit and it would have cost one more

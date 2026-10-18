@@ -190,6 +190,11 @@ jest.mock('../store/useSyncStore', () => {
 jest.mock('../utils/calendarRequestDrain', () => ({ drainCalendarRequests: () => Promise.resolve() }));
 jest.mock('../utils/pendingHealthFoodWrites', () => ({ runPendingHealthFoodWrites: () => {} }));
 jest.mock('../utils/pendingHealthWorkoutWrites', () => ({ runPendingHealthWorkoutWrites: () => {} }));
+let mockAskedWatch: unknown[] = [];
+jest.mock('../utils/healthWorkoutSync', () => ({
+  ...jest.requireActual('../utils/healthWorkoutSync'),
+  askWatchAboutSyncedDeletes: (removed: unknown[]) => { mockAskedWatch.push(...removed); },
+}));
 jest.mock('../utils/deviceTimeZone', () => ({ recordDeviceTimeZone: () => { mockCalls.push('recordDeviceTimeZone'); } }));
 jest.mock('../utils/notifications', () => ({
   rescheduleAllReminders: () => { mockCalls.push('rescheduleAllReminders'); },
@@ -450,7 +455,7 @@ describe('the reload after a sync', () => {
   // A task's deadline event and time block are the same shape, and are
   // reconciled from the same report after the same re-read.
   it('re-reads the stores, then reconciles task and meal events with what was applied', () => {
-    const applied = { mealEntryIds: ['m1'], removedMealEvents: [], taskIds: ['t1'], removedTaskEvents: [] };
+    const applied = { mealEntryIds: ['m1'], removedMealEvents: [], taskIds: ['t1'], removedTaskEvents: [], removedWatchWorkouts: [] };
 
     const { mockRegistered } = jest.requireMock<{ mockRegistered: { reload: SyncReload } }>('../store/useSyncStore');
     mockRegistered.reload(applied);
@@ -460,6 +465,20 @@ describe('the reload after a sync', () => {
     ]);
     expect(mockTaskReconciledWith).toBe(applied);
     expect(mockReconciledWith).toBe(applied);
+    expect(mockAskedWatch).toEqual([]);
+  });
+
+  // A workout the watch measured, deleted on another device: only the phone
+  // paired with the watch can ask it to retract what it saved.
+  it('asks the watch about workouts it measured that a sync deleted', () => {
+    mockAskedWatch = [];
+    const removedWatchWorkouts = [{ sessionId: 's1', healthWorkoutId: 'HK-WATCH' }, { sessionId: 's2', healthWorkoutId: null }];
+    const applied = { mealEntryIds: [], removedMealEvents: [], taskIds: [], removedTaskEvents: [], removedWatchWorkouts };
+
+    const { mockRegistered } = jest.requireMock<{ mockRegistered: { reload: SyncReload } }>('../store/useSyncStore');
+    mockRegistered.reload(applied);
+
+    expect(mockAskedWatch).toEqual(removedWatchWorkouts);
   });
 });
 

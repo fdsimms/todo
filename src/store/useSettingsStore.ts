@@ -15,6 +15,7 @@ import {
   type WeightGoal,
 } from '../utils/weightGoal';
 import { parseSleepGoal } from '../utils/sleepLog';
+import { parseMaxHeartRate } from '../utils/heartRateZones';
 import { parseJournalWordGoal, parseJournalCustomPrompts, cleanJournalPrompts } from '../utils/journal';
 import {
   parseWaterExerciseBoost,
@@ -1269,6 +1270,13 @@ interface SettingsStore {
    * a line on a chart and a count under it.
    */
   sleepGoalMinutes: number | null;
+  /**
+   * The maximum heart rate a workout's zones are shares of, typed by the
+   * person, or null to use 220 minus the age from the calorie budget's year
+   * of birth (src/utils/heartRateZones.ts, `resolveMaxHeartRate`). It
+   * partitions what Health recorded and feeds nothing else: no rule, no task.
+   */
+  maxHeartRate: number | null;
   /** Words a journal day is read against, or null for no goal. */
   journalWordGoal: number | null;
   /** The person's own writing prompts, offered before the built-in ones. */
@@ -1325,9 +1333,16 @@ interface SettingsStore {
   proteinPerWeight: ProteinPerWeight | null;
 
   /**
-   * Height, year of birth, sex and activity level — the inputs the calorie
-   * estimate needs, and nothing else in the app reads them. See
-   * src/utils/energyBudget.ts.
+   * Height, year of birth, sex and activity level: the inputs the calorie
+   * estimate needs (src/utils/energyBudget.ts). The one other reader is the
+   * heart-rate zones, which take 220 minus the age from the year of birth when
+   * no maximum is typed (`resolveMaxHeartRate` in src/utils/heartRateZones.ts).
+   *
+   * Synced with the health record (`SYNCED_SETTING_KEYS` and
+   * `HEALTH_SYNC_SETTING_KEYS`): to a sync server once the person has said
+   * the health logs may go there, never to iCloud. It used to stay on the
+   * device it was typed on only because it was never listed, which let the
+   * same workout's zones come out differently on two devices.
    *
    * **Every field ships empty and nothing fills one in.** An absent height is
    * absent rather than average, which is the whole of that module's discipline
@@ -2213,6 +2228,8 @@ interface SettingsStore {
   setWeightGoal: (goal: WeightGoal | null) => void;
   /** Sets the sleep goal in minutes, or clears it with null. */
   setSleepGoalMinutes: (minutes: number | null) => void;
+  /** Sets the maximum heart rate, or clears it with null to go back to the estimate. */
+  setMaxHeartRate: (bpm: number | null) => void;
   setJournalWordGoal: (words: number | null) => void;
   setJournalCustomPrompts: (prompts: string[]) => void;
   /** Sets the water exercise boost, or clears it with null. */
@@ -3056,6 +3073,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   moodContextSources: NO_MOOD_CONTEXT_SOURCES,
   weightGoal: null,
   sleepGoalMinutes: null,
+  maxHeartRate: null,
   journalWordGoal: null,
   journalCustomPrompts: [],
   waterExerciseBoost: null,
@@ -3488,6 +3506,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // a future build can never stop the settings loading.
     const weightGoal = parseWeightGoal(dbGetSetting('weightGoal'));
     const sleepGoalMinutes = parseSleepGoal(dbGetSetting('sleepGoalMinutes'));
+    const maxHeartRate = parseMaxHeartRate(dbGetSetting('maxHeartRate'));
     const journalWordGoal = parseJournalWordGoal(dbGetSetting('journalWordGoal'));
     const journalCustomPrompts = parseJournalCustomPrompts(dbGetSetting('journalCustomPrompts'));
     const waterExerciseBoost = parseWaterExerciseBoost(dbGetSetting('waterExerciseBoost'));
@@ -3983,6 +4002,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       limitWarningTasks,
       limitWarnPercent,
       mapsApp,
+      maxHeartRate,
       mealCalendarId,
       mealCookTaskCategory,
       mealCookTasks,
@@ -5808,6 +5828,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const value = minutes === null ? null : parseSleepGoal(String(minutes));
     dbSetSetting('sleepGoalMinutes', value === null ? '' : String(value));
     set({ sleepGoalMinutes: value });
+  },
+
+  setMaxHeartRate(bpm: number | null) {
+    const value = bpm === null ? null : parseMaxHeartRate(String(bpm));
+    dbSetSetting('maxHeartRate', value === null ? '' : String(value));
+    set({ maxHeartRate: value });
   },
 
   setJournalWordGoal(words: number | null) {
