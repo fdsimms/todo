@@ -1060,8 +1060,12 @@ export function GroceryItemSheet({
     || matchesEditorQuery({ key: 'brand', label: 'Brand', keywords: ['manufacturer', 'strict', 'only this brand', 'maker'] }, searchTerms);
   const variantVisible = !searching
     || matchesEditorQuery({ key: 'variant', label: 'Variant', keywords: ['type', 'style', 'kind', 'flavor'] }, searchTerms);
-  const quantityVisible = !searching
-    || matchesEditorQuery({ key: 'quantity', label: 'Quantity', keywords: ['amount', 'size', 'how much'] }, searchTerms);
+  // A quantity is how much to buy this trip, not a fact about the food: it is
+  // cleared when the row comes off the list, so a catalog item that isn't on
+  // the viewed list has nothing to hold and the field would only look like a
+  // standing amount.
+  const quantityVisible = onViewedList && (!searching
+    || matchesEditorQuery({ key: 'quantity', label: 'Quantity', keywords: ['amount', 'size', 'how much'] }, searchTerms));
   const priceVisible = !searching
     || matchesEditorQuery({ key: 'price', label: 'Last price', keywords: ['cost', 'spend', 'money', 'store price'] }, searchTerms);
   const noteVisible = !searching
