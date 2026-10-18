@@ -77,6 +77,9 @@ import { EditorRow } from './EditorRow';
 import { linkHost, parseLabelledLink } from '../utils/textLinks';
 import { EditorSheet } from './EditorSheet';
 import { EditorJumpBar, EDITOR_CARD_SECTIONS } from './EditorJumpBar';
+import { TaskSummaryCard } from './TaskSummaryCard';
+import { buildTaskSummary } from '../utils/taskSummary';
+import { describeRecurrence } from '../utils/recurrenceLabels';
 import { EditorJumpTracker, type ScrollMetrics } from '../utils/editorJump';
 import { NumberPadAccessory } from './NumberPadAccessory';
 import { CountStepper } from './CountStepper';
@@ -861,6 +864,79 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     ? `${windowBoundLabel(windowStart, windowStartSun) ?? 'Any'} to ${windowBoundLabel(windowEnd, windowEndSun) ?? 'Any'}`
     : undefined;
 
+  // ==== the summary ====
+  // The sentence about the task this item will make: the task editor's, with
+  // offsets where it has days (see taskSummary.ts). A value in it opens its
+  // field as the task editor's do, but scrolls to the field's card rather than
+  // its row, since these cards are hand-built and only the cards report where
+  // they are.
+  const offsetLabel = (days: number | null) => (days !== null ? formatOffsetWithAnchor(days, anchor, tripTemplate) : undefined);
+  const summaryParts = buildTaskSummary({
+    optional,
+    date: offsetLabel(dueOffsetDays),
+    hiddenUntil: offsetLabel(deferOffsetDays),
+    timesOfDay: timeSegments,
+    windowStart: windowBoundLabel(windowStart, windowStartSun) ?? undefined,
+    windowEnd: windowBoundLabel(windowEnd, windowEndSun) ?? undefined,
+    deadline: offsetLabel(deadlineOffsetDays),
+    reminder: dueOffsetDays !== null && reminderOffsetMinutes !== null
+      ? `${formatDuration(reminderOffsetMinutes)} before it’s due`
+      : undefined,
+    repeat: recurrenceType !== 'none' ? describeRecurrence({
+      type: recurrenceType,
+      interval: recurrenceInterval,
+      days: recurrenceDays,
+      monthDay: recurrenceMonthDay,
+      weekOrdinal: recurrenceWeekOrdinal,
+      month: recurrenceMonth,
+    }) : undefined,
+    priority: priority > 0 ? PRIORITY_LABELS[priority] : undefined,
+    pinned: recurrenceType !== 'none' && pinEachOccurrence,
+    effort: estimatedMinutes !== null ? formatDuration(estimatedMinutes) : effort > 0 ? effortTimeLabel(effort, '') : undefined,
+    category: category ? categoryLabel(category, categories) : undefined,
+    tags,
+    waitingOn: waitsOnSummary ?? undefined,
+    location: locationText.trim() || undefined,
+    link: parseLabelledLink(linkText) ? linkHost(parseLabelledLink(linkText)!.url) : undefined,
+    phone: phoneText.trim() || undefined,
+    email: emailText.trim() || undefined,
+    asks: deliverableKind ?? undefined,
+  });
+  const openField = (key: FieldKey) => {
+    animateLayout();
+    setOpenFields(prev => ({ ...prev, [key]: true }));
+  };
+  // The card each value sits in, and what opening it does. One with no opener
+  // (an offset, which sets inline; Repeat, whose controls are already open; a
+  // switch, which a tap would flip) is scrolled to and left alone.
+  const summaryTargets: Partial<Record<string, { card: string; open?: () => void }>> = {
+    optional: { card: 'optional' },
+    date: { card: 'when' },
+    hideUntil: { card: 'when' },
+    deadline: { card: 'when' },
+    remindMe: { card: 'when' },
+    timeOfDay: { card: 'when', open: () => { animateLayout(); setShowTimeOfDay(true); } },
+    timeWindow: { card: 'when', open: () => { animateLayout(); setShowTimeWindow(true); } },
+    repeat: { card: 'repeat' },
+    priority: { card: 'priority', open: () => openField('priority') },
+    pin: { card: 'priority' },
+    effort: { card: 'priority', open: () => openField('effort') },
+    category: { card: 'filed', open: () => openField('category') },
+    tags: { card: 'filed', open: () => openField('tags') },
+    waitingOn: { card: 'waits', open: () => openField('waitsOn') },
+    location: { card: 'who', open: () => openField('location') },
+    link: { card: 'opens', open: () => openField('link') },
+    phone: { card: 'opens', open: () => openField('phone') },
+    email: { card: 'opens', open: () => openField('email') },
+    deliverable: { card: 'finish', open: () => openField('deliverable') },
+  };
+  const openFromSummary = (key: string) => {
+    const target = summaryTargets[key];
+    if (!target) return;
+    jumpToCard(target.card);
+    target.open?.();
+  };
+
   // ==== render. Everything below is JSX ====
   return (
     <EditorSheet
@@ -1130,7 +1206,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
 
       {/* Optional sits with the run's own questions above it: it decides
           whether a run creates this item at all, not how the task behaves. */}
-      <View style={styles.optionsCard}>
+      <View style={styles.optionsCard} onLayout={placeCard('optional')}>
         <TouchableOpacity
           style={styles.optionRow}
           onPress={() => { haptics.tap(); setOptional(!optional); }}
@@ -1246,6 +1322,10 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           </TouchableOpacity>
         </CollapsibleField>
       </View>
+
+      {/* What the task this item makes will do, as a sentence whose values open
+          their fields (see the summary banner above). */}
+      <TaskSummaryCard parts={summaryParts} onPressPart={openFromSummary} />
 
       {/* The template-side half of Task.polarity. A "quit smoking" template
           that could only produce ordinary tasks would be missing the one

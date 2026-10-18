@@ -12,6 +12,11 @@
  * It only says what is set. A field with no value adds nothing, and a task
  * with nothing set has no sentence at all, rather than one claiming where an
  * unset task will turn up.
+ *
+ * The template item editor uses it too, for the task an item will make. Its
+ * dates are offsets, so it passes their labels ("3 days before start date")
+ * where the task editor passes a day, and it has two things only a template
+ * item can say: that the item starts unchecked, and how long it stays hidden.
  */
 import type { DeliverableKind, TimeOfDay } from '../types';
 
@@ -28,6 +33,10 @@ export interface TaskSummaryInput {
    * about whether the day has gone.
    */
   date?: string;
+  /** A template item's "Hide until" offset label. */
+  hiddenUntil?: string;
+  /** A template item that starts unchecked when the template is applied. */
+  optional?: boolean;
   timesOfDay?: TimeOfDay[];
   /** Either bound of the time window, as the row labels it. */
   windowStart?: string;
@@ -81,6 +90,14 @@ export function inSentence(value: string): string {
   return value.charAt(0).toLowerCase() + value.slice(1);
 }
 
+/**
+ * A value set after "until" or "by", where a template offset's own "On" ("On
+ * start date") would make "until on start date".
+ */
+function afterPreposition(value: string): string {
+  return inSentence(value.replace(/^On /, ''));
+}
+
 /** "3d ago" and "3d overdue", as the rows abbreviate them, spelled out for a sentence. */
 function spelledDays(n: number): string {
   return `${n} ${n === 1 ? 'day' : 'days'}`;
@@ -126,11 +143,19 @@ function whenSentence(i: TaskSummaryInput): Clause[] {
   return parts.length ? [parts] : [];
 }
 
+function optionalSentence(i: TaskSummaryInput): Clause[] {
+  return i.optional ? [[v('starts unchecked', 'optional'), w(' when the template is applied')]] : [];
+}
+
+function hiddenSentence(i: TaskSummaryInput): Clause[] {
+  return i.hiddenUntil ? [[w('hidden until '), v(afterPreposition(i.hiddenUntil), 'hideUntil')]] : [];
+}
+
 function deadlineSentence(i: TaskSummaryInput): Clause[] {
   if (!i.deadline) return [];
   const overdue = /^(\d+)d overdue$/.exec(i.deadline);
   if (overdue) return [[w('overdue by '), v(spelledDays(Number(overdue[1])), 'deadline')]];
-  return [[w('due by '), v(inSentence(i.deadline), 'deadline')]];
+  return [[w('due by '), v(afterPreposition(i.deadline), 'deadline')]];
 }
 
 function reminderSentence(i: TaskSummaryInput): Clause[] {
@@ -208,7 +233,7 @@ function sentence(clauses: Clause[]): SummaryPart[] {
  */
 export function buildTaskSummary(input: TaskSummaryInput): SummaryPart[] {
   const sentences = [
-    whenSentence(input), deadlineSentence(input), reminderSentence(input),
+    optionalSentence(input), whenSentence(input), hiddenSentence(input), deadlineSentence(input), reminderSentence(input),
     repeatSentence(input), prioritySentence(input), filedSentence(input),
     waitsSentence(input), whoSentence(input), opensSentence(input), finishSentence(input),
   ].filter(s => s.length > 0).map(sentence);

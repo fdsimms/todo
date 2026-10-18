@@ -81,6 +81,25 @@ describe('buildTaskSummary', () => {
     });
   });
 
+  describe('a template item', () => {
+    it('reads its offsets where a task has days', () => {
+      expect(text(buildTaskSummary({
+        date: '3 days before start date', hiddenUntil: '1 day before start date', deadline: 'The day you leave',
+      }))).toBe('Shows up 3 days before start date. Hidden until 1 day before start date. Due by the day you leave.');
+    });
+
+    it('drops an offset’s own "On" after "until" and "by", and keeps it after "shows up"', () => {
+      expect(text(buildTaskSummary({ date: 'On start date', hiddenUntil: 'On start date', deadline: 'On end date' })))
+        .toBe('Shows up on start date. Hidden until start date. Due by end date.');
+    });
+
+    it('says first that it starts unchecked, and links that to its row', () => {
+      const parts = buildTaskSummary({ optional: true, date: 'On start date' });
+      expect(text(parts)).toBe('Starts unchecked when the template is applied. Shows up on start date.');
+      expect(values(parts)[0]).toEqual(['optional', 'Starts unchecked']);
+    });
+  });
+
   it('leaves out a streak of nothing, and a streak on a task that doesn’t repeat', () => {
     expect(text(buildTaskSummary({ repeat: 'Every day', streak: 0 }))).toBe('Repeats every day.');
     expect(text(buildTaskSummary({ streak: 4 }))).toBe('');
