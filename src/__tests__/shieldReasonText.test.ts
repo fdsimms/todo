@@ -1,4 +1,4 @@
-import { MAX_NAMED_GATES, selectionLabel, shieldHeadline, shieldHeadlineNote, shieldReasonLines } from '../utils/shieldReasonText';
+import { MAX_NAMED_GATES, selectionLabel, shieldHeadline, shieldHeadlineNote, shieldNotEnforced, shieldReasonLines } from '../utils/shieldReasonText';
 
 const time = (iso: string) => (iso === 'bad' ? null : '10:30 AM');
 
@@ -91,5 +91,24 @@ describe('selectionLabel', () => {
     expect(selectionLabel(0, 2)).toBe('2 categories');
     expect(selectionLabel(0, 0, 1)).toBe('1 website');
     expect(selectionLabel(2, 0, 3)).toBe('2 apps, 3 websites');
+  });
+});
+
+describe('shieldNotEnforced', () => {
+  const none = { applications: 0, categories: 0, websites: 0 };
+
+  it('flags a block the app reports while iOS holds nothing', () => {
+    expect(shieldNotEnforced(true, none)).toBe(true);
+  });
+
+  it('is quiet when iOS holds apps, a category, an allowlist or a website', () => {
+    expect(shieldNotEnforced(true, { ...none, applications: 1 })).toBe(false);
+    expect(shieldNotEnforced(true, { ...none, categories: 1 })).toBe(false);
+    expect(shieldNotEnforced(true, { ...none, websites: 1 })).toBe(false);
+  });
+
+  it('treats an unreadable shield as unknown, and says nothing without a block', () => {
+    expect(shieldNotEnforced(true, null)).toBe(false);
+    expect(shieldNotEnforced(false, none)).toBe(false);
   });
 });

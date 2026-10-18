@@ -86,6 +86,19 @@ export function shieldHeadlineNote(reasonCount: number, selectedCount: number): 
   return 'The block lifts when every reason is gone, or when a key tag or the emergency button ends them.';
 }
 
+/**
+ * Whether iOS is holding nothing while the app says the apps are blocked.
+ * `held` is what the system shield reports (null when the build can't read it,
+ * which is "unknown" and never a mismatch). Only meaningful while `blocked`.
+ */
+export function shieldNotEnforced(
+  blocked: boolean,
+  held: { applications: number; categories: number; websites?: number } | null,
+): boolean {
+  if (!blocked || held === null) return false;
+  return held.applications + held.categories + (held.websites ?? 0) === 0;
+}
+
 /** The count of what is picked, as the page's subtitle and the apps row's value. */
 export function selectionLabel(applications: number, categories: number, websites = 0): string {
   const parts = [
