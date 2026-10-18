@@ -116,6 +116,13 @@ ${body}
 //   and …/nshealthupdateusagedescription.json.
 // - WKBackgroundModes with workout-processing, which a workout session needs
 //   to keep running, and the app with it, with the wrist down (…/wkbackgroundmodes.json).
+// - UIBackgroundModes with audio, for the tap on the wrist when a rest ends
+//   with the wrist down: "If your app plays audio or provides haptic feedback
+//   during the workout session, you must also add the Audio background mode"
+//   (…/healthkit/running-workout-sessions.json). On watchOS that mode is
+//   `audio` under UIBackgroundModes, not a WKBackgroundModes value
+//   (…/uibackgroundmodes.json, …/xcode/configuring-background-execution-modes.json).
+//   Nothing in the app plays sound.
 // GENERATE_INFOPLIST_FILE is also on (see below), so anything Xcode's own
 // watch template would add that isn't listed here is still generated, and
 // what is listed here wins.
@@ -137,6 +144,10 @@ function watchInfoPlist(companionBundleIdentifier) {
 	<key>WKBackgroundModes</key>
 	<array>
 		<string>workout-processing</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
 	</array>`);
 }
 

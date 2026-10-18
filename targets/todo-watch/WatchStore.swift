@@ -59,6 +59,14 @@ final class WatchStore: NSObject, ObservableObject {
     /// Health workouts being retracted for the phone right now, so a context
     /// arriving mid-delete doesn't start the same delete again.
     var retractionsInFlight = Set<String>()
+    /// The phone's workout whose screen was opened here, which is what starts
+    /// measuring it (`wantedMeasurement`).
+    var openedPhoneWorkout: String? = nil
+    /// Workouts whose session failed here, never measured again this launch.
+    var refusedMeasurements = Set<String>()
+    /// A rest whose end the watch taps the wrist for itself while a workout
+    /// session keeps the app running, in place of its notification.
+    var restBuzz: WatchRestBuzz? = nil
 
     var local: LocalTapState { LocalTapState(taps) }
 
@@ -165,7 +173,8 @@ final class WatchStore: NSObject, ObservableObject {
         doneSets: [WatchFinishedSet]? = nil,
         notes: [WatchFinishedNote]? = nil,
         on: Bool? = nil,
-        healthWorkoutId: String? = nil
+        healthWorkoutId: String? = nil,
+        workoutSpan: DateInterval? = nil
     ) -> WatchTap {
         var tap = WatchTap(id: UUID().uuidString, kind: kind, itemId: itemId, listId: nil, title: title, at: Date(), sent: false)
         tap.sessionId = sessionId
@@ -181,6 +190,8 @@ final class WatchStore: NSObject, ObservableObject {
         tap.notes = notes
         tap.on = on
         tap.healthWorkoutId = healthWorkoutId
+        tap.workoutStart = workoutSpan?.start
+        tap.workoutEnd = workoutSpan?.end
         taps.append(tap)
         WatchTapLog.save(taps)
         sendDue(force: false)

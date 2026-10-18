@@ -139,6 +139,7 @@ struct WorkoutStartView: View {
 
 /// The set (or the rest) on top, and the list with Finish a swipe below.
 struct WorkoutSessionView: View {
+    @EnvironmentObject private var store: WatchStore
     let screen: WatchWorkoutScreen
     let onEnded: () -> Void
 
@@ -149,6 +150,10 @@ struct WorkoutSessionView: View {
         }
         .tabViewStyle(.verticalPage)
         .navigationTitle(screen.title)
+        // Opening the phone's workout here is what starts measuring it
+        // (`wantedMeasurement`, WatchHealthSession.swift).
+        .onAppear { store.openedWorkoutScreen(screen) }
+        .onChange(of: screen.sessionId) { _, _ in store.openedWorkoutScreen(screen) }
     }
 }
 

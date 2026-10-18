@@ -93,6 +93,10 @@ struct WatchTap: Codable, Identifiable {
     /// "healthWorkout" (phase 9): the id of the workout the watch saved to
     /// Health, nil when it saved locked with no id to give.
     var healthWorkoutId: String? = nil
+    /// "healthWorkout": the times it was saved at, so the phone can tell a
+    /// copy made before the person retimed the workout there.
+    var workoutStart: Date? = nil
+    var workoutEnd: Date? = nil
 
     /// The workout's kinds. Sent at once rather than held for Undo: a set's
     /// rest starts on the phone from it, and the rest screen is the answer to
@@ -132,6 +136,10 @@ struct WatchTap: Codable, Identifiable {
         if let direction { info["direction"] = direction }
         if let on { info["on"] = on }
         if let healthWorkoutId { info["workoutId"] = healthWorkoutId }
+        if let workoutStart, let workoutEnd {
+            info["start"] = Self.isoText(workoutStart)
+            info["end"] = Self.isoText(workoutEnd)
+        }
         if let doneSets {
             info["sets"] = doneSets.map { set -> [String: Any] in
                 var entry: [String: Any] = ["id": set.id, "exerciseId": set.exerciseId, "at": Self.isoText(set.at)]

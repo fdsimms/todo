@@ -49,13 +49,17 @@ struct TodoWatchApp: App {
         // screen: lowered wrist, Undo out of reach, nothing left to wait for.
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { store.flush() }
-            // The rest's end taps the wrist from here only while the app is
-            // on screen; with it away, the notification does.
+            // The rest's end taps the wrist from here while the app is on
+            // screen, or while a workout session keeps it running; otherwise
+            // a notification does.
             store.isActive = phase == .active
             store.refreshRestAlarm()
-            // Opening the app while the phone's workout runs is what starts
-            // measuring it (phase 9); only ever with the app in front.
-            if phase == .active { store.syncHealthSession() }
+            // A measurement starts only with the app in front (phase 9), and
+            // a retraction refused while the watch was locked tries again.
+            if phase == .active {
+                store.syncHealthSession()
+                store.processRetractions()
+            }
         }
         // Lets WatchConnectivity wake the app in the background to hand over a
         // new snapshot, which is what keeps the complication current while

@@ -442,6 +442,17 @@ struct WatchRestSpan: Codable, Equatable {
     var key: Int { Int(startedAt.timeIntervalSince1970.rounded(.down)) }
 }
 
+/// A rest's end the watch taps the wrist for itself (`refreshRestAlarm`)
+/// while a workout session keeps the app running with the wrist down, in
+/// place of the notification it would otherwise schedule: what that
+/// notification needed, so it can go back if the session stops first.
+struct WatchRestBuzz: Equatable {
+    let sessionId: String
+    let rest: WatchRestSpan
+    let title: String
+    let quietHours: WatchQuietHours?
+}
+
 struct WatchOwnWorkout: Codable {
     let id: String
     let routineId: String
@@ -494,7 +505,7 @@ struct WatchOwnWorkout: Codable {
         ]
         if let programId { body["programId"] = programId }
         if let taskId { body["taskId"] = taskId }
-        if case .saved(let workoutId)? = health {
+        if case .saved(let workoutId, _)? = health {
             var saved: [String: Any] = [:]
             if let workoutId { saved["workoutId"] = workoutId }
             body["health"] = saved
@@ -1260,19 +1271,35 @@ extension WatchStore {
 
     // ---- the wrist ----
 
-    /// Taps the wrist when the rest on screen ends, while the app is in front
-    /// (a notification does it otherwise). Rescheduled on every change; a
-    /// late wake (the app was suspended through the end) stays silent.
+    /// Taps the wrist when the rest on screen ends: while the app is in
+    /// front, and with it in the background while a workout session keeps it
+    /// running and the rest is one the watch would have sent a notification
+    /// for (`restBuzz`). Otherwise a notification does it, or the phone's.
+    /// Rescheduled on every change; a late wake (the app was suspended
+    /// through the end) stays silent.
+    ///
+    /// In the background this relies on the session: `play(_:)` "has no
+    /// effect when called while your shared WKExtension object's
+    /// applicationState property is either background or inactive… The only
+    /// exception are apps with an active workout session", which also needs
+    /// the audio background mode (plugins/withWatchApp.js). The same page
+    /// says HealthKit "stops gathering heart rate data until after the haptic
+    /// engine finishes", so each buzz leaves a moment's gap in the readings,
+    /// which the zones' gap rule already allows for.
     func refreshRestAlarm() {
         restAlarm?.cancel()
         restAlarm = nil
-        guard let rest = workoutScreen?.rest else { return }
+        guard let screen = workoutScreen, let rest = screen.rest else { return }
         let delay = rest.endsAt.timeIntervalSinceNow
         guard delay > 0 else { return }
         let key = rest.key
+        let sessionId = screen.sessionId
         let item = DispatchWorkItem { [weak self] in
-            guard let self, self.isActive, let now = self.workoutScreen?.rest,
+            guard let self, let now = self.workoutScreen?.rest,
                   now.key == key, abs(now.endsAt.timeIntervalSinceNow) < 2 else { return }
+            let measured = self.restBuzz?.sessionId == sessionId && self.restBuzz?.rest.key == key
+                && WatchHealthSession.shared.running?.sessionId == sessionId
+            guard self.isActive || measured else { return }
             WKInterfaceDevice.current().play(.notification)
         }
         restAlarm = item
@@ -1281,12 +1308,21 @@ extension WatchStore {
 
     /// The notification for the end of a rest the watch is keeping, outside
     /// quiet hours. One at a time, replaced on every change.
+    ///
+    /// While a workout session runs for this workout, the watch taps the wrist
+    /// itself instead (`refreshRestAlarm`), under the same quiet hours, and
+    /// schedules no notification: both would tap it twice. The session
+    /// stopping first puts the notification back (`restoreRestNotification`).
     func scheduleRestNotification(for rest: WatchRestSpan?, title: String, quietHours: WatchQuietHours?) {
         cancelRestNotification()
         guard let rest else { return }
         let interval = rest.endsAt.timeIntervalSinceNow
         // A time-interval trigger refuses anything not above zero.
         guard interval >= 1, quietHours?.contains(rest.endsAt) != true else { return }
+        if let sessionId = workoutScreen?.sessionId, WatchHealthSession.shared.running?.sessionId == sessionId {
+            restBuzz = WatchRestBuzz(sessionId: sessionId, rest: rest, title: title, quietHours: quietHours)
+            return
+        }
         let content = UNMutableNotificationContent()
         content.title = "Rest is over"
         content.body = title.isEmpty ? "Time for your next set." : "\(title): time for your next set."
@@ -1297,6 +1333,17 @@ extension WatchStore {
     }
 
     func cancelRestNotification() {
+        restBuzz = nil
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [Self.restNotificationId])
+    }
+
+    /// The session stopped with a rest the watch meant to tap the wrist for
+    /// still to end: its notification goes back, as it was before phase 9.
+    func restoreRestNotification() {
+        guard let buzz = restBuzz else { return }
+        restBuzz = nil
+        guard let screen = workoutScreen, screen.sessionId == buzz.sessionId,
+              let rest = screen.rest, rest.key == buzz.rest.key else { return }
+        scheduleRestNotification(for: rest, title: buzz.title, quietHours: buzz.quietHours)
     }
 }

@@ -6,15 +6,21 @@ import WatchKit
 // "Phase 9, as built", and docs/arch/health-data.md, "Heart rate during a
 // workout").
 //
-// Whenever the watch runs a workout, its own or the phone's live one, and the
-// phone says workouts go to Apple Health (the section's `healthWrite`, the
-// phone's own three switches), it measures it with an `HKWorkoutSession` and an
-// `HKLiveWorkoutBuilder`. That gives live heart rate (shown as a number with a
-// heart, never judged), measured active energy, and the app kept in front on
-// the wrist through a rest. When the workout ends the builder saves an
-// `HKWorkout` with what it measured, and its id goes to the phone, which then
-// writes no copy of its own. With writing off, nothing here runs: the workout
-// is phase 8's.
+// Whenever the watch runs a workout, its own from Start or the phone's live one
+// once its screen is opened here, and the phone says workouts go to Apple
+// Health (the section's `healthWrite`, the phone's own three switches), it
+// measures it with an `HKWorkoutSession` and an `HKLiveWorkoutBuilder`. That
+// gives live heart rate (shown as a number with a heart, never judged),
+// measured active energy, the app kept in front on the wrist through a rest,
+// and the rest's end tapped on the wrist with the wrist down. When the workout
+// ends the builder saves an `HKWorkout` with what it measured, and its id and
+// times go to the phone, which then writes no copy of its own. With writing
+// off, nothing here runs: the workout is phase 8's.
+//
+// The watch runs one workout session at a time, across every app: starting
+// this one ends another app's, and another app starting one ends this
+// (`errorAnotherWorkoutSessionStarted`). Hence the screen-opened rule for the
+// phone's workout, and no second start for a workout whose session failed.
 //
 // **Every declaration here was checked against Apple's JSON docs**
 // (https://developer.apple.com/tutorials/data/documentation/healthkit/<symbol>.json),
@@ -26,7 +32,12 @@ import WatchKit
 // `finishWorkout(completion: (HKWorkout?, Error?) -> Void)` (nil workout with
 // no error is a save made locked), `discardWorkout()`, `statistics(for:) -> HKStatistics?`,
 // `mostRecentQuantity() -> HKQuantity?`, the two required methods of each
-// delegate, `recoverActiveWorkoutSession(completion:)`, and the deletes.
+// delegate, `recoverActiveWorkoutSession(completion:)`, the deletes
+// (`deleteObjects(of:predicate:withCompletion: (Bool, Int, (any Error)?) -> Void)`),
+// `HKErrorDomain`, `HKError.Code` (`init?(rawValue: Int)`, `errorNoData`,
+// `errorDatabaseInaccessible`, `errorAnotherWorkoutSessionStarted`),
+// `HKSample.startDate`/`endDate`, and Foundation's `DateInterval(start:end:)`
+// (precondition `end >= start`).
 //
 // Apple's order for ending (running-workout-sessions.json): `stopActivity`,
 // wait for `.stopped`, `endCollection`, `finishWorkout`, then `end()`.
@@ -68,9 +79,11 @@ enum WatchMeasurementFile {
 
 /// What came of ending a measurement.
 enum WatchHealthOutcome {
-    /// Saved, with the workout's id, or nil when it saved with the watch
-    /// locked and has no id to give (`finishWorkout`'s documented nil).
-    case saved(String?)
+    /// Saved, with the workout's id and the times it spans, or both nil when
+    /// it saved with the watch locked and has no workout to read them from
+    /// (`finishWorkout`'s documented nil). The times go to the phone, which
+    /// compares them with the session's own (a retime while it waited).
+    case saved(String?, DateInterval?)
     /// Nothing saved: it failed, or there was nothing to save.
     case notSaved
 }
@@ -91,15 +104,24 @@ final class WatchHealthSession: NSObject, HKWorkoutSessionDelegate, HKLiveWorkou
     /// The workout being measured, or nil. Cleared the moment a finish or a
     /// discard begins, so nothing asks twice to end the same one.
     private(set) var measuring: WatchMeasurement?
-    /// A session exists (measuring, or still saving one that just ended),
-    /// so another can't start yet.
-    var busy: Bool { session != nil || measuring != nil }
+    /// A session exists (measuring, or still saving one that just ended), or
+    /// one is being taken back after a crash, so another can't start yet.
+    var busy: Bool { session != nil || measuring != nil || recovering }
+    /// The measurement a running session is for: nil while the access sheet
+    /// is still up, and once a finish or a discard begins. A running session
+    /// is what keeps the app going with the wrist down.
+    var running: WatchMeasurement? { session == nil ? nil : measuring }
+    /// Asking the system for a session to take back after a crash.
+    private var recovering = false
 
     /// The newest heart rate, in beats per minute, on the main thread.
     var onHeartRate: ((Int) -> Void)?
     /// The session failed after it started, on the main thread: the
     /// measurement is gone and nothing was saved.
     var onFailure: ((WatchMeasurement) -> Void)?
+    /// A crashed session was taken back (or there was none), on the main
+    /// thread, so the store can match it to what is going on now.
+    var onRecovered: (() -> Void)?
 
     static var isAvailable: Bool { HKHealthStore.isHealthDataAvailable() }
 
@@ -214,18 +236,23 @@ final class WatchHealthSession: NSObject, HKWorkoutSessionDelegate, HKLiveWorkou
     private func save(_ which: HKWorkoutSession) {
         guard which === session, let pending = finishing, let builder else { return }
         finishing = nil
+        // Each callback tears down only the session it was saving: a discard
+        // meanwhile already let this one go, and the next one may be running
+        // by the time the save answers.
         builder.endCollection(withEnd: pending.end) { [weak self] ok, _ in
             guard ok else {
                 DispatchQueue.main.async {
-                    self?.tearDown(discarding: true)
+                    if let self, self.session === which { self.tearDown(discarding: true) }
                     pending.done(.notSaved)
                 }
                 return
             }
             builder.finishWorkout { workout, error in
                 DispatchQueue.main.async {
-                    self?.tearDown(discarding: false)
-                    pending.done(error == nil ? .saved(workout?.uuid.uuidString) : .notSaved)
+                    if let self, self.session === which { self.tearDown(discarding: false) }
+                    guard error == nil else { pending.done(.notSaved); return }
+                    let span = workout.map { DateInterval(start: $0.startDate, end: max($0.endDate, $0.startDate)) }
+                    pending.done(.saved(workout?.uuid.uuidString, span))
                 }
             }
         }
@@ -250,10 +277,20 @@ final class WatchHealthSession: NSObject, HKWorkoutSessionDelegate, HKLiveWorkou
     /// back and set its data source and delegates up again, as Apple
     /// documents. One whose workout this app no longer knows is ended unsaved.
     func recover() {
+        guard !recovering else { return }
+        // Busy until the system answers, so nothing starts a second session
+        // over the one being taken back.
+        recovering = true
         store.recoverActiveWorkoutSession { [weak self] recovered, _ in
             DispatchQueue.main.async {
-                guard let self, let recovered, self.session == nil else { return }
-                guard let measurement = WatchMeasurementFile.load() else {
+                guard let self else { return }
+                self.recovering = false
+                defer { self.onRecovered?() }
+                guard let recovered, recovered !== self.session else { return }
+                // A session of this app's is already running (it can't be,
+                // with `busy` held, but if it is it stays), or the file names
+                // no workout: the recovered one is ended unsaved.
+                guard self.session == nil, self.measuring == nil, let measurement = WatchMeasurementFile.load() else {
                     recovered.associatedWorkoutBuilder().discardWorkout()
                     recovered.end()
                     return
@@ -272,35 +309,41 @@ final class WatchHealthSession: NSObject, HKWorkoutSessionDelegate, HKLiveWorkou
     // ==== retracting for the phone ====
 
     /// Deletes workouts this app saved, by id, each with the active energy
-    /// saved with it, and calls back with the ids it dealt with. Each is tried
-    /// once: deleted, already gone, or refused, after which a workout still
-    /// there is the person's to delete in Health. Heart rate taken during one
-    /// stays in Health as readings: this app never shares heart rate, so it
-    /// may not delete it (`delete(_:withCompletion:)`: "Your app can delete
-    /// only those objects that it has previously saved").
+    /// saved with it, and calls back with the ids it dealt with: deleted, or
+    /// already gone (nothing matched, or `errorNoData`). Any other error
+    /// leaves the id out, so the phone's list keeps it and the next try
+    /// (the next snapshot, the app coming to the front) has another go: the
+    /// usual one is `errorDatabaseInaccessible`, the watch locked. Heart rate
+    /// taken during one stays in Health as readings: this app never shares
+    /// heart rate, so it may not delete it (`delete(_:withCompletion:)`:
+    /// "Your app can delete only those objects that it has previously saved").
     func retract(_ ids: [String], completion: @escaping ([String]) -> Void) {
-        guard Self.isAvailable, !ids.isEmpty else { completion(ids); return }
+        guard Self.isAvailable, !ids.isEmpty else { completion([]); return }
         let tally = DispatchQueue(label: "WatchHealthSession.retract")
         let group = DispatchGroup()
         var dealt: [String] = []
         for id in ids {
             guard let uuid = UUID(uuidString: id) else {
+                // Not an id HealthKit ever gave out: nothing will ever match it.
                 tally.sync { dealt.append(id) }
                 continue
             }
             group.enter()
-            let finished = { tally.async { dealt.append(id); group.leave() } }
+            let answered = { (gone: Bool) in tally.async { if gone { dealt.append(id) }; group.leave() } }
             let byId = HKQuery.predicateForObject(with: uuid)
             // The energy goes first, while the workout it hangs off is still
             // there to be found; then the workout itself, which needs no read.
-            let query = HKSampleQuery(sampleType: HKObjectType.workoutType(), predicate: byId, limit: 1, sortDescriptors: nil) { [weak self] _, samples, _ in
-                guard let self else { finished(); return }
-                let deleteWorkout = {
-                    self.store.deleteObjects(of: HKObjectType.workoutType(), predicate: byId) { _, _, _ in finished() }
-                }
-                guard let workout = samples?.first as? HKWorkout else { deleteWorkout(); return }
-                self.store.deleteObjects(of: Self.activeEnergyType, predicate: HKQuery.predicateForObjects(from: workout)) { _, _, _ in
-                    deleteWorkout()
+            // A step that fails stops there, so energy is never left behind
+            // with no workout to find it by.
+            let query = HKSampleQuery(sampleType: HKObjectType.workoutType(), predicate: byId, limit: 1, sortDescriptors: nil) { [weak self] _, samples, error in
+                guard let self else { answered(false); return }
+                if let error { answered(Self.isNoData(error)); return }
+                guard let workout = samples?.first as? HKWorkout else { answered(true); return }
+                self.store.deleteObjects(of: Self.activeEnergyType, predicate: HKQuery.predicateForObjects(from: workout)) { ok, _, error in
+                    guard ok || error.map(Self.isNoData) == true else { answered(false); return }
+                    self.store.deleteObjects(of: HKObjectType.workoutType(), predicate: byId) { ok, _, error in
+                        answered(ok || error.map(Self.isNoData) == true)
+                    }
                 }
             }
             store.execute(query)
@@ -309,6 +352,14 @@ final class WatchHealthSession: NSObject, HKWorkoutSessionDelegate, HKLiveWorkou
             let done = dealt
             DispatchQueue.main.async { completion(done) }
         }
+    }
+
+    /// HealthKit's "there is no data", which for a delete means already gone.
+    /// Read as an NSError (`HKErrorDomain`, `HKError.Code.errorNoData`), the
+    /// form every HealthKit callback's `Error` bridges from.
+    private static func isNoData(_ error: Error) -> Bool {
+        let ns = error as NSError
+        return ns.domain == HKErrorDomain && ns.code == HKError.Code.errorNoData.rawValue
     }
 
     // ==== HKWorkoutSessionDelegate ====
@@ -370,31 +421,61 @@ extension WatchStore {
         health.onFailure = { [weak self] lost in
             guard let self else { return }
             self.heartRate = nil
+            // Never started again for this workout. The usual failure is
+            // `errorAnotherWorkoutSessionStarted`: the person started another
+            // workout app, and the watch runs one session at a time
+            // ("the original session receives this error message and then
+            // ends"). Starting again would end theirs in turn.
+            self.refusedMeasurements.insert(lost.sessionId)
             // The phone held its own write back for the watch's: it writes
             // as Save would, since none is coming.
             if lost.phone {
                 self.recordWorkoutTap(kind: "measuring", itemId: lost.sessionId, sessionId: lost.sessionId, on: false)
             }
+            self.restoreRestNotification()
         }
+        health.onRecovered = { [weak self] in self?.syncHealthSession() }
     }
 
-    /// The workout the watch should be measuring now, if any: its own, or
-    /// the phone's live one it is showing, while the phone says workouts go
-    /// to Health.
+    /// The workout screen was opened on the phone's workout: from now on the
+    /// watch measures it (`wantedMeasurement`). Called by the screen itself.
+    func openedWorkoutScreen(_ screen: WatchWorkoutScreen) {
+        guard screen.source == .phone, openedPhoneWorkout != screen.sessionId else { return }
+        openedPhoneWorkout = screen.sessionId
+        syncHealthSession()
+    }
+
+    /// The workout the watch should be measuring now, if any, while the
+    /// phone says workouts go to Health: its own, from Start; or the phone's
+    /// live one, once its workout screen has been opened here.
+    ///
+    /// **Not before that screen opens**, because the watch runs one workout
+    /// session at a time and starting this app's ends any other app's (Apple's
+    /// Workout app's included). A phone workout merely showing on Today, with
+    /// the person running something else on the wrist, must not take over;
+    /// opening its screen is the person choosing this one. Once measuring,
+    /// it carries on wherever the screens go, and a relaunch that took the
+    /// session back counts as opened. A workout whose session failed here is
+    /// not started again (`refusedMeasurements`).
     var wantedMeasurement: WatchMeasurement? {
         guard WatchHealthSession.isAvailable, workoutSection?.healthWrite == true else { return nil }
         if let own = ownWorkout {
+            guard !refusedMeasurements.contains(own.id) else { return nil }
             return WatchMeasurement(sessionId: own.id, startedAt: own.startedAt, phone: false)
         }
-        guard let screen = workoutScreen, screen.source == .phone, let start = screen.startedAt else { return nil }
+        guard let screen = workoutScreen, screen.source == .phone, let start = screen.startedAt,
+              !refusedMeasurements.contains(screen.sessionId) else { return nil }
+        let opened = openedPhoneWorkout == screen.sessionId
+            || WatchHealthSession.shared.measuring?.sessionId == screen.sessionId
+        guard opened else { return nil }
         return WatchMeasurement(sessionId: screen.sessionId, startedAt: start, phone: true)
     }
 
     /// Starts, saves or throws away the measurement to match what is going
     /// on. Run when a snapshot arrives, when the app comes to the front and
     /// when a workout starts or ends here. A new one starts only with the app
-    /// in front (opening the watch app while the phone's workout runs is what
-    /// starts measuring it, as Apple's guidance has it); ending needs nothing.
+    /// in front (opening the phone's workout here is what starts measuring
+    /// it, as Apple's guidance has it); ending needs nothing.
     func syncHealthSession() {
         let health = WatchHealthSession.shared
         let want = wantedMeasurement
@@ -419,9 +500,17 @@ extension WatchStore {
     /// finished there: saved, ending when the phone's did.
     private func endMeasurement(_ measurement: WatchMeasurement) {
         let section = workoutSection
-        if !measurement.phone || section?.healthWrite != true || section?.dropSessions.contains(measurement.sessionId) == true {
+        let dropped = section?.dropSessions.contains(measurement.sessionId) == true
+        if !measurement.phone || section?.healthWrite != true || dropped {
             WatchHealthSession.shared.discard()
             heartRate = nil
+            // The phone held its own write back for this one. Writing went
+            // off there, so it writes nothing now, but the row comes off
+            // waiting for the watch, and a session deleted there needs nothing.
+            if measurement.phone && !dropped {
+                recordWorkoutTap(kind: "measuring", itemId: measurement.sessionId, sessionId: measurement.sessionId, on: false)
+            }
+            restoreRestNotification()
             return
         }
         let end = section?.finished.first(where: { $0.sessionId == measurement.sessionId }).flatMap { isoDate($0.endedAt) } ?? Date()
@@ -435,10 +524,10 @@ extension WatchStore {
             guard let self else { return }
             self.heartRate = nil
             switch outcome {
-            case .saved(let workoutId):
+            case .saved(let workoutId, let span):
                 self.recordWorkoutTap(
                     kind: "healthWorkout", itemId: measurement.sessionId, sessionId: measurement.sessionId,
-                    healthWorkoutId: workoutId
+                    healthWorkoutId: workoutId, workoutSpan: span
                 )
             case .notSaved:
                 self.recordWorkoutTap(kind: "measuring", itemId: measurement.sessionId, sessionId: measurement.sessionId, on: false)
@@ -447,8 +536,10 @@ extension WatchStore {
         }
     }
 
-    /// Retracts what the phone asks (`retractWorkouts`), once each, and says
-    /// so with a tap per workout, which takes it off the phone's list.
+    /// Retracts what the phone asks (`retractWorkouts`) and says so with a tap
+    /// per workout dealt with, which takes it off the phone's list. One the
+    /// delete couldn't reach (the watch locked) stays on it and is tried
+    /// again with the next snapshot or when the app comes to the front.
     func processRetractions() {
         guard let ids = workoutSection?.retractWorkouts, !ids.isEmpty else { return }
         let local = self.local
