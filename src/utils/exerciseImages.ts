@@ -16,9 +16,11 @@ import { LIBRARY_ID_PREFIX } from './exerciseLibrary';
  * **The map is written by hand and checked by hand.** Matching by name paired
  * "Barbell bench press" with the dumbbell one and "Dumbbell curl" with a
  * dumbbell clean, and a photo of the wrong movement is worse than none. So an
- * exercise with no confident match is left out (about a quarter of the
+ * exercise with no confident match is left out (about a seventh of the
  * library: isometrics, carries, cardio with no machine, the variations the set
- * has no photo of), and the page simply has no photos for it. A custom
+ * has no photo of), and the page simply has no photos for it. A handful of
+ * entries are the nearest variation rather than the same movement, and say so
+ * where they sit. A custom
  * exercise never has any, and neither does one the person has renamed away
  * from a built-in's id, since the key is the id and the id is forever.
  */
@@ -178,6 +180,26 @@ const FREE_EXERCISE_DB_IDS: Readonly<Record<string, string>> = {
   'elliptical': 'Elliptical_Trainer',
   'stair-climber': 'Stairmaster',
   'jump-rope': 'Rope_Jumping',
+  // The same movement, or the nearest the set has: a Pendlay row shows the
+  // barbell row it comes from, a pistol squat the kettlebell one, and so on.
+  'dumbbell-pullover': 'Bent-Arm_Dumbbell_Pullover',
+  'dumbbell-romanian-deadlift': 'Stiff-Legged_Dumbbell_Deadlift',
+  'pendlay-row': 'Bent_Over_Barbell_Row',
+  'machine-row': 'Leverage_Iso_Row',
+  'kettlebell-swing': 'One-Arm_Kettlebell_Swings',
+  'kettlebell-press': 'One-Arm_Kettlebell_Military_Press_To_The_Side',
+  'dumbbell-skull-crusher': 'Lying_Dumbbell_Tricep_Extension',
+  'pause-squat': 'Barbell_Squat',
+  'pistol-squat': 'Kettlebell_Pistol_Squat',
+  'sissy-squat': 'Weighted_Sissy_Squat',
+  'walking-lunge': 'Bodyweight_Walking_Lunge',
+  'hanging-knee-raise': 'Hanging_Leg_Raise',
+  'captains-chair-knee-raise': 'Knee_Hip_Raise_On_Parallel_Bars',
+  'toes-to-bar': 'Hanging_Pike',
+  'lying-leg-raise': 'Flat_Bench_Lying_Leg_Raise',
+  'v-up': 'Jackknife_Sit-Up',
+  'turkish-get-up': 'Kettlebell_Turkish_Get-Up_Squat_style',
+  'banded-lateral-walk': 'Monster_Walk',
 };
 
 /** Where the dataset's photos are served from: its README's own hosted address. */

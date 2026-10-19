@@ -28,6 +28,7 @@ import { EmptyNote } from './EmptyNote';
 import { TextField } from './TextField';
 import { ExercisePickerSheet } from './ExercisePickerSheet';
 import { ExerciseDetailSheet } from './ExerciseDetailSheet';
+import { ExercisePhotos } from './ExercisePhotos';
 import { PlateLine } from './PlateLine';
 import { WorkoutRecordsCard } from './WorkoutRecordsCard';
 import { WorkoutStatTiles } from './WorkoutStatTiles';
@@ -146,6 +147,9 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const [sessionNotes, setSessionNotes] = useState('');
   const [picking, setPicking] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
+  // Form photos shown under the exercise's name. Session-only, and shared across
+  // exercises so one tap keeps them open while moving through the workout.
+  const [photosOpen, setPhotosOpen] = useState(false);
   // The exercise the detail sheet is on, kept through its close so it doesn't retitle while it slides away.
   const [detailId, setDetailId] = useState<string | null>(null);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
@@ -573,6 +577,12 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                       {viewedInfo.primaryMuscles.map(m => MUSCLE_LABELS[m]).join(', ')}
                     </Text>
                   )}
+                  <ExercisePhotos
+                    exerciseId={viewed.exerciseId}
+                    name={viewedInfo?.name ?? 'this exercise'}
+                    open={photosOpen}
+                    onToggle={() => setPhotosOpen(o => !o)}
+                  />
                   {proposal && (
                     <SuggestionCard
                       proposal={proposal}
