@@ -641,8 +641,8 @@ export function PersonDetailScreen() {
             {/* "Nothing yet" and "0" are different claims — see the note on
                 daysSinceTogether. This says the first one. */}
             <Text style={styles.emptyHistory}>
-              Nothing here yet. Tasks you check off with {name} on them show up here. To put
-              them on a task, type @{name.split(' ')[0].toLowerCase()} in quick add.
+              Nothing here yet. Tasks you check off with {name} on them show up here, whether
+              that was a visit, a call or a text. To put them on a task, type @{name.split(' ')[0].toLowerCase()} in quick add.
             </Text>
           </View>
         ) : (
