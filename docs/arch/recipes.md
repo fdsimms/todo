@@ -1155,6 +1155,10 @@ ingredient panel's fold die with the modal.
   verbs sit behind one labelled "Made it" control rather than two glyphs; it is a menu even when
   only one of them applies, because `lastCookedAt` steers suggestions for weeks and a stray tap on
   a header icon shouldn't move it.
+- **Ingredient lines can be checked off, as screen state only.** Both the mise en place list and the
+  tray's panel carry a checkbox per line (`checkedLines` in `CookModeSheet`, keyed by node and line id
+  so a pick that reshuffles the list can't move a check). It writes nothing to the recipe, pantry or
+  list; it resets on close except while the cook timer runs, the same rule as the step position.
 - **Leaving does not cancel a cook; the header's trash button does.** Closing with the X keeps the
   cook timer running, because stepping away mid-cook is the ordinary case. Abandoning one is
   `cancelCook` in `CookModeSheet`: it appears only while the timer has time on it, asks first
