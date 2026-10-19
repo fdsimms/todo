@@ -692,6 +692,7 @@ export function GroceryScreen() {
           groupKey,
           count: notHere.length,
         });
+        if (collapsedGroups.has(`unavailable:${groupKey}`)) return;
         for (const item of notHere) {
           out.push({ type: 'item', key: item.id, item, inCart: false, unavailableHere: true });
         }
@@ -1488,15 +1489,28 @@ export function GroceryScreen() {
         // Same treatment as the aisle header above it, not a dimmer one —
         // every section header in this app reads the same way (see
         // CLAUDE.md's design-system note), so what tells this apart from a
-        // new aisle is the wording and the count, the same way "In cart (N)"
-        // already reads as a different kind of group without a style of its
-        // own. Not a button: unlike the cart, there's nothing to expand —
-        // hiding "not here" behind a tap would defeat the reason it exists,
-        // which is being visible while you're still standing in the aisle.
+        // new aisle is the wording and the count. It folds like the aisle
+        // does, remembered under its own key: once you know what the store
+        // doesn't have, the group is only in the way of the rest of the list.
+        const collapsed = collapsedGroups.has(row.key);
         return withZone(
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Not here ({row.count})</Text>
-          </View>
+          <TouchableOpacity
+            style={styles.groupSectionHeader}
+            activeOpacity={interaction.activeOpacity}
+            onPress={() => toggleGroupCollapsed(row.key)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: !collapsed }}
+            accessibilityLabel={`${collapsed ? 'Expand' : 'Collapse'} not here`}
+          >
+            <View style={styles.groupSectionHeaderLeft}>
+              <Text style={styles.sectionTitle}>Not here ({row.count})</Text>
+              <Ionicons
+                name={collapsed ? 'chevron-down' : 'chevron-up'}
+                size={iconSize.sm}
+                color={colors.textTertiary}
+              />
+            </View>
+          </TouchableOpacity>
         );
       }
       if (row.type === 'cartHeader') {
