@@ -24,7 +24,6 @@ import {
   panelFormFrom,
   servingWeightToGrams,
   type PanelFieldKey,
-  type NovaGroupText,
   type PanelForm,
   type ServingWeightUnit,
 } from '../utils/nutritionPanelForm';
@@ -71,6 +70,11 @@ import { BUTTON_LABEL } from '../copy/shared';
  * unrelated to `basis` (see that field's own doc comment in `types/index.ts`):
  * it describes the food, so the SERVING card holds only facts about the food
  * and nothing in it scopes the figures.
+ *
+ * **There is no NOVA control here.** Nobody copying a packet knows what the group
+ * is, and it is not printed on one. A barcode scan or an earlier edit still
+ * carries it: `panelFormFrom` seeds `novaGroup` and `buildPanelNutrition` writes
+ * it back, so saving this sheet never drops a group a source stated.
  *
  * **Every field is blank by default and stays blank if nothing is typed.** A
  * placeholder of "0" would read as a value already saved and would quietly
@@ -146,14 +150,6 @@ const BASIS_OPTIONS = (['per100g', 'per100ml', 'perServing'] as const).map(value
   value,
   label: NUTRITION_BASIS_LABEL[value],
 }));
-
-const NOVA_OPTIONS: { value: NovaGroupText; label: string }[] = [
-  { value: '', label: 'Not set' },
-  { value: '1', label: '1' },
-  { value: '2', label: '2' },
-  { value: '3', label: '3' },
-  { value: '4', label: '4' },
-];
 
 const WEIGHT_UNIT_OPTIONS: { value: ServingWeightUnit; label: string }[] = [
   { value: 'g', label: 'g' },
@@ -393,10 +389,10 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
 
   const basisCaption =
     form.basis === 'perServing'
-      ? `Type the column for one serving${form.servingText.trim() ? `: ${form.servingText.trim()}` : ''}.`
+      ? `Copy the “Amount per serving” numbers${form.servingText.trim() ? ` (for ${form.servingText.trim()})` : ''}.`
       : form.basis === 'per100g'
-        ? 'Type the column for 100 g.'
-        : 'Type the column for 100 ml.';
+        ? 'Copy the “per 100 g” numbers.'
+        : 'Copy the “per 100 ml” numbers.';
 
   const handleSave = () => {
     const invalid = invalidPanelFields(form);
@@ -527,11 +523,11 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
                   style={styles.textInput}
                   value={form.servingText}
                   onChangeText={t => setForm(f => ({ ...f, servingText: t }))}
-                  placeholder="e.g. 2 cookies (30g)"
+                  placeholder="e.g. 3 Tbsp"
                   placeholderTextColor={colors.textTertiary}
                   accessibilityLabel="Serving size as printed"
                 />
-                <HelpText style={styles.hint}>As printed on the label.</HelpText>
+                <HelpText style={styles.hint}>The measure as printed, like 3 Tbsp, 1 cup or 2 cookies. The weight goes in the next field.</HelpText>
               </View>
 
               <View style={styles.field}>
@@ -567,7 +563,7 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
             <Text style={styles.groupLabel}>NUTRIENTS</Text>
             <View style={[styles.card, styles.basisCard]}>
               <SegmentedControl
-                label="The figures on the label are"
+                label="The numbers on the label are"
                 options={BASIS_OPTIONS}
                 value={form.basis}
                 onChange={basis => setForm(f => ({ ...f, basis }))}
@@ -576,22 +572,6 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
               <HelpText style={styles.hint}>{basisCaption}</HelpText>
             </View>
             <NutrientFieldsCard amounts={form.amounts} bad={bad} onChange={setAmount} />
-
-            <Text style={styles.groupLabel}>PROCESSING</Text>
-            <View style={styles.card}>
-              <SegmentedControl
-                label="NOVA group"
-                options={NOVA_OPTIONS}
-                value={form.novaGroup}
-                onChange={novaGroup => setForm(f => ({ ...f, novaGroup }))}
-                surface="card"
-              />
-              <HelpText style={styles.hint}>
-                1 is unprocessed or minimally processed, 2 a culinary ingredient such as oil or
-                sugar, 3 processed, 4 ultra-processed. A barcode scan fills it in when the
-                database has one. Leave it unset if you don’t know.
-              </HelpText>
-            </View>
 
             {bad.length > 0 && (
               <Text style={styles.error}>
