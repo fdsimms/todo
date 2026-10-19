@@ -11,6 +11,7 @@ import { InlineAction } from './InlineAction';
 import { HelpText } from './HelpText';
 import { ExerciseProgressChart, type ExerciseChartPoint } from './ExerciseProgressChart';
 import { ExerciseEditorSheet } from './ExerciseEditorSheet';
+import { ExercisePhotos } from './ExercisePhotos';
 import { haptics } from '../utils/haptics';
 import { chartPoints as toChartPoints, chartSegments } from '../utils/exerciseChart';
 import { useWorkoutStore } from '../store/useWorkoutStore';
@@ -167,6 +168,7 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
       <Text style={styles.name}>{name}</Text>
       {!!subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
       {!!about && <Text style={styles.about}>{about}</Text>}
+      {!!info && !!exerciseId && <ExercisePhotos exerciseId={exerciseId} name={name} />}
       {!!info && (
         <View style={styles.editRow}>
           <InlineAction

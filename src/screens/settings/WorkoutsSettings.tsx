@@ -36,6 +36,8 @@ export function WorkoutsSettings() {
   const setDefaultRestSeconds = useSettingsStore(s => s.setDefaultRestSeconds);
   const workoutLiveActivity = useSettingsStore(s => s.workoutLiveActivity);
   const setWorkoutLiveActivity = useSettingsStore(s => s.setWorkoutLiveActivity);
+  const exerciseImagesEnabled = useSettingsStore(s => s.exerciseImagesEnabled);
+  const setExerciseImagesEnabled = useSettingsStore(s => s.setExerciseImagesEnabled);
   const maxHeartRate = useSettingsStore(s => s.maxHeartRate);
   const birthYear = useSettingsStore(s => s.bodyProfile.birthYear);
   const [maxHeartRateOpen, setMaxHeartRateOpen] = useState(false);
@@ -89,7 +91,19 @@ export function WorkoutsSettings() {
             describeValue={n => (n === null ? 'not set' : `${n} seconds`)}
           />
         </View>
-        {/* Both iOS-only rows, as their index entries say: a Live Activity and
+        <View style={styles.sep} />
+        <SettingsRow
+          entryId="exerciseImagesEnabled"
+          icon="images-outline"
+          iconColor={exerciseImagesEnabled ? colors.accent : undefined}
+          label="Exercise photos"
+          hint={exerciseImagesEnabled
+            ? 'An exercise’s page shows a photo of each end of the movement, downloaded from free-exercise-db on GitHub when you open it. Your workouts aren’t sent.'
+            : 'Exercise pages show no photos and the app makes no requests for them'}
+          toggle={exerciseImagesEnabled}
+          onPress={() => setExerciseImagesEnabled(!exerciseImagesEnabled)}
+        />
+        {/* The next two are iOS-only rows, as their index entries say: a Live Activity and
             heart rate from Health exist nowhere else. */}
         {Platform.OS === 'ios' && (
           <>

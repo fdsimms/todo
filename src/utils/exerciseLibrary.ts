@@ -19,7 +19,7 @@ import type { ExerciseEquipment, ExerciseKind, MuscleGroup } from '../types';
  * what the movement trains, secondary is what helps. Accuracy matters more
  * than count, since a filter by muscle that lists the wrong exercises is worse
  * than a shorter list. The cue is one plain sentence on how to do it, written
- * here; no images or video in v1 (asset size and licensing).
+ * here. Photos are `exerciseImages.ts`'s, fetched rather than bundled; there is no video.
  */
 export interface LibraryExercise {
   /** `lib:` and a slug. Stable for good, see above. */

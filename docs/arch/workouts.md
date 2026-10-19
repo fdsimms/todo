@@ -61,7 +61,8 @@ The new types go in `src/types/index.ts`, and the tables go in `initDatabase` wi
 
 New files in `src/utils/`, each with its test in `src/__tests__/`. The first three are built; the rest are planned.
 
-- `src/utils/exerciseLibrary.ts` (built): about 200 built-in exercises (name, kind, muscles, equipment, a short text cue), with ids written out rather than derived, since an id is forever. No images or video in v1.
+- `src/utils/exerciseLibrary.ts` (built): about 200 built-in exercises (name, kind, muscles, equipment, a short text cue), with ids written out rather than derived, since an id is forever. No video.
+- `src/utils/exerciseImages.ts` (built): start and end photos for about three quarters of the library, from free-exercise-db (public domain, Unlicense). Not bundled: fetched from the dataset's own hosting when an exercise's page opens, only while Settings › Workouts › Exercise photos is on, and that switch ships off. The slug-to-photo map is written and checked by hand, because matching by name paired the wrong movements (a barbell bench press with the dumbbell one); an exercise with no confident match has no photos, and so does every custom one. A failed load hides the pair. Workout mode doesn't show them.
 - `src/utils/exerciseCatalog.ts` (built): merges the library with the custom rows, plus search (the substring scoring task search uses, without its scattered-letters fallback, which matched half the library) and muscle and equipment filters. An override row contributes only the name, notes, bar weight and archived flag; what the movement is stays the library's.
 - `src/utils/workoutData.ts` (built): the closed vocabularies, their labels, the resolve-or-shrug readers every row mapper uses, and the rest and plate settings' defaults and parsers.
 - `src/utils/workoutProgression.ts` (built, phase 4): given the history for an exercise and its rule, propose the next session's targets:
@@ -157,7 +158,7 @@ This is the strongest differentiator: "build me a 4-day upper/lower around my Tu
 - Bodyweight-relative standards, Wilks/DOTS, or a body-fat estimate (the weight rule).
 - Calories estimated from lifting.
 - Social features, coaches or shared feeds (there is no backend). A routine can still be shared as a file through the share sheet.
-- Exercise videos or images in v1, because of asset size and licensing.
+- Exercise videos. Photos are fetched, never bundled (see `exerciseImages.ts`); no free video set was found with a license that allows shipping it.
 - Auto-advancing a session, or auto-applying a progression.
 
 ## Phase 2, as built
@@ -447,7 +448,7 @@ Phases 1 to 4 and 7 are JS-only and verifiable in the sandbox with tests. Phases
 - **The phone's 30-minute wait** is a guess at how long a watch's workout can take to arrive. Too short, the phone writes a copy the watch's then replaces; too long, a workout whose watch died waits that long for Health. Neither loses a workout.
 - **Live Activity churn.** Answered in phase 6 by updating the activity in place rather than restarting it. The update budget applies to push updates, and these all come from the app while it runs, so it shouldn't bite; a device build is still the first real test of how the Lock Screen takes an update on every weight stepped.
 - **Watch-first sessions.** Built in phase 8: the routine travels with its plan (last time's numbers and the warm-up ramp), and the workout runs on the watch alone. What it still can't do there: start the workout going on the phone from the wrist. Load suggestions, adding and moving exercises and sets, and notes were added after the first build (see "Phase 8, as built"). With writing to Health on, the watch's HealthKit session (phase 9) keeps the app in front through a rest; with it off, watchOS may put the app away during a long rest, and the rest's notification is what brings the person back.
-- **Exercise library source.** Writing roughly 250 entries in-house is the safe option. An open dataset (free-exercise-db is the obvious candidate) needs its licence checked before any of it ships.
+- **Exercise library source.** Answered: the entries are written in-house. free-exercise-db's license is clear (Unlicense), but only its photos are used, and only by fetching them, so none of its text or data ships in the app.
 - **Size.** About 25 sets per session at 4 sessions a week is roughly 5,000 rows a year. That's fine for SQLite, but PR and volume rollups should be memoized and benchmarked in `src/__bench__` like the Today selectors.
 - **Retention.** `purgeOldCompletedTasks` can delete the task a session completed. `taskId` is a resolve-or-shrug pointer, and sessions are never purged by the task retention window.
 - **Footprint.** The medication area alone appears in 66 files. Expect this area to touch around 70 existing files and add around 50. Most of that is registration the schema, MCP and parity tests demand, so it fails loudly rather than silently, except the reload list, the demo seed, the MCP instructions and the docs, which nothing checks.
