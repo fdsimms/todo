@@ -1,11 +1,14 @@
 import {
   MAX_CONTENT_WIDTH,
   MAX_DRAWER_WIDTH,
+  SIDEBAR_MIN_WINDOW_WIDTH,
+  SIDEBAR_WIDTH,
   drawerWidthFor,
   frameLeftFor,
   frameWidthFor,
   monthCellSizeFor,
   pickerCardWidthFor,
+  sidebarWidthFor,
 } from '../utils/frameWidth';
 
 describe('frameWidthFor', () => {
@@ -18,6 +21,27 @@ describe('frameWidthFor', () => {
     expect(frameWidthFor(834)).toBe(MAX_CONTENT_WIDTH);
     expect(frameWidthFor(1440)).toBe(MAX_CONTENT_WIDTH);
   });
+
+  it('is what the sidebar leaves once there is one', () => {
+    expect(frameWidthFor(SIDEBAR_MIN_WINDOW_WIDTH)).toBe(SIDEBAR_MIN_WINDOW_WIDTH - SIDEBAR_WIDTH);
+  });
+});
+
+describe('sidebarWidthFor', () => {
+  it('is nothing below the breakpoint, so a phone and an upright iPad keep the drawer', () => {
+    expect(sidebarWidthFor(393)).toBe(0);
+    expect(sidebarWidthFor(834)).toBe(0);
+    expect(sidebarWidthFor(SIDEBAR_MIN_WINDOW_WIDTH - 1)).toBe(0);
+  });
+
+  it('is a fixed strip from the breakpoint up', () => {
+    expect(sidebarWidthFor(SIDEBAR_MIN_WINDOW_WIDTH)).toBe(SIDEBAR_WIDTH);
+    expect(sidebarWidthFor(1440)).toBe(SIDEBAR_WIDTH);
+  });
+
+  it('never leaves the column narrower than a phone', () => {
+    expect(frameWidthFor(SIDEBAR_MIN_WINDOW_WIDTH)).toBeGreaterThan(393);
+  });
 });
 
 describe('frameLeftFor', () => {
@@ -27,7 +51,12 @@ describe('frameLeftFor', () => {
   });
 
   it('centers the column in a wider window', () => {
-    expect(frameLeftFor(1440)).toBe(360);
+    expect(frameLeftFor(834)).toBe(57);
+  });
+
+  it('starts after the sidebar, and centers in what it leaves', () => {
+    expect(frameLeftFor(SIDEBAR_MIN_WINDOW_WIDTH)).toBe(SIDEBAR_WIDTH);
+    expect(frameLeftFor(1440)).toBe(SIDEBAR_WIDTH + (1440 - SIDEBAR_WIDTH - MAX_CONTENT_WIDTH) / 2);
   });
 
   it('rounds down on an odd gutter so the column is never pushed off the window', () => {

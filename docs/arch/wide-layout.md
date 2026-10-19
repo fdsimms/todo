@@ -1,6 +1,6 @@
 # Wide windows: iPad and the iPhone app on a Mac
 
-**Status: phases 0 and 1 are built; phases 2 to 4 are planned.** The app ships as a universal iOS app
+**Status: phases 0 to 2 are built; phases 3 and 4 are planned.** The app ships as a universal iOS app
 (`ios.supportsTablet`), so an iPad runs it natively and an Apple silicon Mac runs it as a "Designed
 for iPad" app in a resizable window. This is the cheap route to a desktop-friendly app, and it sits
 beside the separate desktop client in `docs/arch/desktop-client.md` rather than replacing it.
@@ -32,11 +32,35 @@ The orientation lock stays portrait for the iPhone. The iPad's list is set expli
 `ios.infoPlist` (`UISupportedInterfaceOrientations~ipad`), because an iPad app that doesn't take
 every orientation can't be resized in Split View, Stage Manager or a Mac window.
 
+## The sidebar (phase 2)
+
+From `SIDEBAR_MIN_WINDOW_WIDTH` (900pt) up, the menu is a 236pt column that is always on screen
+(`Sidebar`), the bottom tab bar is hidden and the side menu drawer never opens. An upright iPad
+(about 820pt) stays on the drawer; a landscape iPad or a Mac window gets the sidebar. Four things
+to know:
+
+- **The sidebar and the drawer are one component.** `MenuPanel` is the find field, the Recent row,
+  the rows and hubs from `navHubs.ts` and Settings; `variant` picks the drawer's cascade and full
+  size rows or the sidebar's still, compact ones. A row added to the menu reaches both, which is the
+  point. Compact is its own treatment rather than the drawer squeezed: at 236pt the full-size hub
+  rows leave one chip per line and push half the menu below the fold.
+- **The column is centered in what the sidebar leaves**, so `frameWidthFor` and `frameLeftFor` take
+  the sidebar into account. They are for things inside the column (the month grid, the edge swipe).
+  A full-screen sheet is framed by `AppFrame` alone, over the whole window.
+- **No tab bar is drawn, and the bottom edge reports only the safe-area inset** (`HiddenTabBar`).
+  Half the app positions itself against the bar's height, in two ways. Screens inside the navigator
+  read `useBottomTabBarHeight`, which `HiddenTabBar` feeds the inset instead of a bar's height.
+  What floats above it from outside the navigator (the toasts, the undo bar, the FAB's neighbors)
+  reads `useBottomBarHeight`, which is zero while the sidebar shows. Reading `TAB_BAR_HEIGHT`
+  directly would hang those a bar's height above an empty edge, so `noFixedTabBarHeight.test.ts`
+  fails the build on it.
+- **Crossing the breakpoint** closes a drawer left open (`AppNavigator`'s effect), and the window is
+  resizable, so nothing may cache which side of it it was on.
+
 ## What isn't, and the plan
 
 | Phase | What | Notes |
 |---|---|---|
-| 2 | A persistent sidebar at 900pt and up, replacing the floating tab capsule and the drawer | `navHubs.ts` already builds the menu from data, so the sidebar draws the same rows. Routes, `navigateToTab` and the tab freeze don't change. The content column keeps its cap. |
 | 3 | Two panes for Today, Groceries, Recipes and Projects: a list on the left, the selected thing on the right | The hard part is `TaskEditor` (a 9,000-line full-screen sheet). Hosting it inline in a pane is the real version; keeping it a centered card on a wide window is the cheap one. Selection in the list uses an outline, since a selected row's background must be opaque (see CLAUDE.md, "A selected/active row's background"). |
 | 4 | Desktop input: hover, a right-click or visible button for every swipe-only action, and the rest of the shortcuts | `⌘N`, `⌘F`, `⌘Z` and Escape already exist (`useKeyShortcuts`, `todo-key-commands`). Swipe actions are the gap: a trackpad or mouse can't do most of them. |
 

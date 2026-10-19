@@ -554,7 +554,7 @@ file: the two maps are indexes, not write-ups.
 | a habit that's about *not* doing something, and the days it survives | `src/utils/negativeHabits.ts` + `Task.polarity` — the one streak in the app advanced by a rollover pass rather than by a completion, because there is no completion to hang it on |
 | what to suggest when a task is snoozed | `src/utils/snoozeEngine.ts` |
 | a task that was missed, and the grace it gets | `src/utils/missed.ts` + `src/utils/expiredTaskGrace.ts` |
-| the width of the app on an iPad or a resized Mac window, and the side menu's | `src/utils/frameWidth.ts` + `src/components/AppFrame.tsx` — see `docs/arch/wide-layout.md`. Everything is drawn in a capped, centered column. **Never read `Dimensions.get` at module load** (`noFrozenWindowSize.test.ts`), and a touch's `pageX` counts from the window, not the column |
+| the width of the app on an iPad or a resized Mac window, the sidebar that replaces the tab bar there, and the side menu's width | `src/utils/frameWidth.ts` + `src/components/AppFrame.tsx` + `src/components/Sidebar.tsx` — see `docs/arch/wide-layout.md`. Everything is drawn in a capped, centered column. **The drawer and the sidebar are one `MenuPanel`**, so a menu change is made once. **Never read `Dimensions.get` at module load** (`noFrozenWindowSize.test.ts`), and a touch's `pageX` counts from the window, not the column |
 | the iOS Live Activity | `src/utils/liveActivity.ts` (+ `tripLiveActivity.ts`) |
 | search ranking and the quick-search sheet | `src/utils/fuzzySearch.ts` + `src/utils/quickSearch.ts` |
 | the numbers on the Stats screen | `src/utils/stats.ts` (+ `cookingStats.ts`, `nutritionStats.ts`) |
@@ -728,7 +728,7 @@ decided, and the design system every screen is built from. Individual features a
 | `docs/arch/away-dates.md` | A project's away span: scheduled vacation mode, the trip move, the destination forecast, the away grocery list |
 | `docs/arch/nfc-key.md` | Key tags: why a tag is one shield reason among four, the two kinds of key, and what isn't verified without a device |
 | `docs/arch/mcp-server.md` | The MCP server: why it is a syncing replica rather than an in-app or backup-file one, and what it costs the "no backend" promise |
-| `docs/arch/wide-layout.md` | iPad and the iPhone app on a Mac: the centered column, what resizing breaks, and the sidebar and two-pane plan |
+| `docs/arch/wide-layout.md` | iPad and the iPhone app on a Mac: the centered column, the sidebar, what resizing breaks, and the two-pane plan |
 | `docs/arch/desktop-client.md` | A Mac desktop client (design only, not built): why Electron over the existing logic layer, and what the desktop leaves to the phone |
 | `docs/arch/workouts.md` | The strength-training tracker (being built in phases): what it stores against what it reads from Health, why sessions are part of the health record, and the phase plan |
 | `docs/native-targets.md` | Adding an iOS native target (widget, Watch app, Live Activity) |

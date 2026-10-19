@@ -2,7 +2,8 @@ import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } 
 import { PanResponder, StyleSheet, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { navigationRef, navigateToTab, flushPendingNavigation, currentTabName } from './navigationRef';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { BottomTabBarHeightCallbackContext, createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { CoinIcon } from '../components/CoinIcon';
@@ -61,12 +62,14 @@ import { PersonDetailScreen } from '../screens/PersonDetailScreen';
 import { TipsScreen } from '../screens/TipsScreen';
 import { SideMenuDrawer } from '../components/SideMenuDrawer';
 import { AppFrame } from '../components/AppFrame';
+import { Sidebar } from '../components/Sidebar';
 import { useFrameWidth } from '../hooks/useFrameWidth';
 import { HubMenuOptionsProvider, TabHubMenuOverlay, hubTabButtonFor } from '../components/TabHubMenu';
 import { BlankTabDiagnostic, freezeWhenBlurred } from '../components/FreezeWhenBlurred';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { SettingsGroupScreen } from '../screens/SettingsGroupScreen';
-import { DemoBanner, TAB_BAR_HEIGHT } from '../components/DemoBanner';
+import { DemoBanner } from '../components/DemoBanner';
+import { TAB_BAR_HEIGHT } from '../utils/frameWidth';
 import { UndoBar } from '../components/UndoBar';
 import { CoinToast } from '../components/CoinToast';
 import { EventCreatedToast } from '../components/EventCreatedToast';
@@ -231,6 +234,8 @@ function MorePlaceholder() {
 }
 
 const styles = StyleSheet.create({
+  // The sidebar beside the app's column, when the window has room for one.
+  shell: { flex: 1, flexDirection: 'row' },
   // The buttons sit in the top 49pt of the bar (the rest is the home
   // indicator's inset), so the capsule wraps that band with 4pt around it.
   glassTabBarSlot: {
@@ -295,6 +300,23 @@ interface MainTabsProps {
   tabPressHaptic: { tabPress: () => void };
   accentColor: string;
   onOpenMenu: () => void;
+  /** The sidebar is showing, so no bar is drawn. */
+  hideTabBar: boolean;
+}
+
+// With a sidebar the bottom bar has nothing left to do, so none is drawn. The
+// navigator still tells `useBottomTabBarHeight` how much the bottom edge takes,
+// which with no bar is the safe-area inset alone: that is what the ~40 screens
+// padding their lists for the bar read, and what keeps a list's last row off
+// the home indicator. What floats above the bar from outside the navigator
+// reads `useBottomBarHeight`, which is zero here for the same reason.
+function HiddenTabBar() {
+  const insets = useSafeAreaInsets();
+  const reportHeight = useContext(BottomTabBarHeightCallbackContext);
+  useEffect(() => {
+    reportHeight?.(insets.bottom);
+  }, [reportHeight, insets.bottom]);
+  return null;
 }
 
 // Memoized so toggling unrelated screen-level state elsewhere in
@@ -302,7 +324,7 @@ interface MainTabsProps {
 // re-render and recompute its derived task lists — that recompute was
 // blocking the settings modal's open animation.
 const MainTabs = React.memo(function MainTabs({
-  initialRouteName, screenOptions, tabPressHaptic, accentColor, onOpenMenu,
+  initialRouteName, screenOptions, tabPressHaptic, accentColor, onOpenMenu, hideTabBar,
 }: MainTabsProps) {
   const colors = useColors();
   // Recipes and meal plan live behind the drawer with no tab of their own, so
@@ -322,7 +344,11 @@ const MainTabs = React.memo(function MainTabs({
   const timerRunning = kitchenEnabled && anyTimerRunning;
   return (
     <HubMenuOptionsProvider value={menuOptions}>
-    <Tab.Navigator initialRouteName={initialRouteName} screenOptions={screenOptions}>
+    <Tab.Navigator
+      initialRouteName={initialRouteName}
+      screenOptions={screenOptions}
+      tabBar={hideTabBar ? HiddenTabBar : undefined}
+    >
       {/* The chosen tabs, in the chosen order, then More, then every other
           route hidden. The bar draws its buttons in route order, so this
           order is the bar's. Tab.Screen children are keyed by name, so a
@@ -458,7 +484,14 @@ export default function AppNavigator() {
     },
   }), []);
 
-  const { left: frameLeft } = useFrameWidth();
+  const { left: frameLeft, sidebar } = useFrameWidth();
+  // From a window wide enough to spare one, the menu is a column that is always
+  // there, and the bottom bar and the drawer step aside (see Sidebar).
+  const sidebarShown = sidebar > 0;
+  useEffect(() => {
+    // A drawer left open while the window is widened would sit over the sidebar.
+    if (sidebarShown) setMenuOpen(false);
+  }, [sidebarShown]);
   const frameLeftRef = useRef(frameLeft);
   frameLeftRef.current = frameLeft;
   const edgePanResponder = useRef(
@@ -485,6 +518,11 @@ export default function AppNavigator() {
       navigateToTab(tabName);
     }
   }, []);
+
+  const handleSidebarNavigate = useCallback((route: string) => {
+    haptics.tap();
+    handleDrawerNavigate(route);
+  }, [handleDrawerNavigate]);
 
   // The bookkeeping a tab switch does, run just after it rather than inside
   // it. Each of these is a synchronous database write and a store write that
@@ -577,8 +615,16 @@ export default function AppNavigator() {
   return (
     <>
       {/* Everything but the long-press hub menu is drawn in the app's column
-          (see AppFrame); that card is placed from window coordinates, so it
-          sits outside it, after. */}
+          (see AppFrame), beside the sidebar when there is one; that card is
+          placed from window coordinates, so it sits outside, after. */}
+      <View style={styles.shell}>
+      {sidebarShown && (
+        <Sidebar
+          activeTab={activeTab}
+          onNavigate={handleSidebarNavigate}
+          onOpenSettings={openSettings}
+        />
+      )}
       <AppFrame>
       <MenuOpenContext.Provider value={menuOpen}>
       <NavigationContainer
@@ -599,6 +645,7 @@ export default function AppNavigator() {
                 tabPressHaptic={tabPressHaptic}
                 accentColor={colors.accent}
                 onOpenMenu={openMenu}
+                hideTabBar={sidebarShown}
               />
             )}
           </RootStack.Screen>
@@ -702,13 +749,13 @@ export default function AppNavigator() {
       <BlankTabDiagnostic currentTab={currentTabName} />
 
       <SideMenuDrawer
-        visible={menuOpen}
+        visible={menuOpen && !sidebarShown}
         onClose={closeMenu}
         onNavigate={handleDrawerNavigate}
         onOpenSettings={openSettings}
         activeTab={activeTab}
       />
-      {!menuOpen && (
+      {!menuOpen && !sidebarShown && (
         <View
           style={styles.edgeZone}
           {...edgePanResponder.panHandlers}
@@ -751,6 +798,7 @@ export default function AppNavigator() {
           which has its own inline strip. See FocusFloatingBar. */}
       <FocusFloatingBar hidden={onToday} />
       </AppFrame>
+      </View>
       {/* The long-press card for a hub's tab. Outside the navigator so it can
           cover the whole screen, and drawn above the bar it points at. */}
       <TabHubMenuOverlay />

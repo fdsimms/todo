@@ -3,7 +3,7 @@ import { Text, View, StyleSheet, TouchableOpacity } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
-import { TAB_BAR_HEIGHT } from './DemoBanner';
+import { useBottomBarHeight } from '../hooks/useBottomBarHeight';
 import { FAB_SIZE } from './Fab';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { PressableScale } from './PressableScale';
@@ -76,6 +76,7 @@ const floatingWrap = { position: 'absolute' as const, left: spacing.md, right: s
 export function FocusBar({ onOpen, floating = false, lifted = false }: Props) {
   const { colors, shadows } = useTheme();
   const insets = useSafeAreaInsets();
+  const barHeight = useBottomBarHeight();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const { session, now } = useFocusSession();
@@ -121,7 +122,7 @@ export function FocusBar({ onOpen, floating = false, lifted = false }: Props) {
       ? `+${formatStopwatch(-remaining)}`
       : formatStopwatch(remaining);
 
-  const bottom = insets.bottom + TAB_BAR_HEIGHT + FAB_SIZE + spacing.lg
+  const bottom = insets.bottom + barHeight + FAB_SIZE + spacing.lg
     + (lifted ? FLOATING_BAR_STEP : 0);
 
   return (

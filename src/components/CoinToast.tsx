@@ -3,7 +3,7 @@ import { Animated, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CoinIcon } from './CoinIcon';
 import { COIN_BURST_MS, useRewardStore } from '../store/useRewardStore';
-import { TAB_BAR_HEIGHT } from './DemoBanner';
+import { useBottomBarHeight } from '../hooks/useBottomBarHeight';
 import { useTheme } from '../theme/ThemeContext';
 import { animation, border, font, fontWeight, iconSize, radius, spacing, type Colors } from '../theme';
 import { formatCoins } from '../utils/rewards';
@@ -33,6 +33,7 @@ const VISIBLE_MS = COIN_BURST_MS;
 export function CoinToast() {
   const { colors, shadows } = useTheme();
   const insets = useSafeAreaInsets();
+  const barHeight = useBottomBarHeight();
   const styles = makeStyles(colors);
   const change = useRewardStore(s => s.lastChange);
 
@@ -64,7 +65,7 @@ export function CoinToast() {
 
   return (
     <View
-      style={[styles.wrap, { bottom: insets.bottom + TAB_BAR_HEIGHT + spacing.md }]}
+      style={[styles.wrap, { bottom: insets.bottom + barHeight + spacing.md }]}
       pointerEvents="none"
     >
       <Animated.View

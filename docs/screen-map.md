@@ -242,6 +242,7 @@ Where each component can appear.
 - `src/components/MedicationLogSheet.tsx` — on MedicationDetailScreen, MedicationScreen
 - `src/components/MedicationRenameSheet.tsx` — on MedicationDetailScreen
 - `src/components/MedicationSummarySheet.tsx` — on MedicationScreen
+- `src/components/MenuPanel.tsx` — on app shell
 - `src/components/MergeItemSheet.tsx` — on GroceryScreen, KitchenScreen, RecipeDetailScreen
 - `src/components/MeterReadingSheet.tsx` — on CalendarScreen, CategoryDetailScreen, MetersScreen, ProjectDetailScreen, SavedViewDetailScreen, StackDetailScreen, TagsScreen, TodayScreen
 - `src/components/MilestoneSheet.tsx` — on MoodScreen
@@ -359,6 +360,7 @@ Where each component can appear.
 - `src/components/SheetUndoBar.tsx` — on GroceryScreen, MealPlanScreen, MedicationDetailScreen, MedicationScreen, RecipeDetailScreen
 - `src/components/ShoppingTripSheet.tsx` — on GroceryScreen
 - `src/components/SideMenuDrawer.tsx` — on app shell
+- `src/components/Sidebar.tsx` — on app shell
 - `src/components/SimpleBulkBar.tsx` — on ArchivedScreen, LogbookScreen, PeopleScreen
 - `src/components/SleepChart.tsx` — on SleepScreen
 - `src/components/SleepGoalSheet.tsx` — on SettingsGroupScreen, SleepScreen
