@@ -1,6 +1,7 @@
 import {
   gramsForLine,
   panelMultiplier,
+  portionsWithServing,
   unfixableQuantityReason,
   weighableLine,
 } from '../utils/ingredientGrams';
@@ -453,5 +454,39 @@ describe('panelMultiplier and servings', () => {
     // both are read off the same weighed density.
     expect(panelMultiplier('1 cup', null, iceCream))
       .toBeCloseTo(panelMultiplier('163.6 g', null, iceCream)!, 4);
+  });
+});
+
+describe('a packaged food whose serving is a weighed volume', () => {
+  const justEgg: FoodNutrition = {
+    basis: 'perServing',
+    servingGrams: 46,
+    servingText: '3 Tbsp (46g)',
+    amounts: { calorieKcal: 70 },
+    portions: [],
+    source: 'openFoodFacts',
+    sourceId: '1',
+    recordedAt: '2026-10-19T00:00:00.000Z',
+  };
+
+  it('answers a larger volume from the printed serving', () => {
+    // 1/2 cup is 8 tbsp, so 8/3 servings.
+    expect(panelMultiplier('1/2 cup', null, justEgg)).toBeCloseTo(8 / 3, 2);
+    expect(weighableLine('1/2 cup', null, justEgg, 'Just Egg')).toBeNull();
+  });
+
+  it('adds nothing for a serving that is not a volume', () => {
+    const pastries = { ...justEgg, servingText: '2 pastries' };
+    expect(portionsWithServing(pastries)).toEqual([]);
+    expect(panelMultiplier('1/2 cup', null, pastries)).toBeNull();
+  });
+
+  it('adds nothing without a serving weight', () => {
+    expect(portionsWithServing({ ...justEgg, servingGrams: null })).toEqual([]);
+  });
+
+  it("never overrides a volume the table already states", () => {
+    const stated = { ...justEgg, portions: FLOUR };
+    expect(portionsWithServing(stated)).toBe(FLOUR);
   });
 });

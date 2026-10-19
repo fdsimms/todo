@@ -2,7 +2,7 @@ import type { FoodNutrition, GroceryItem, ItemProduct } from '../types';
 import { nutritionFor } from './foodNutrition';
 import { resolvePluralKey } from './groceryPlural';
 import { itemKeyIndex } from './itemAliases';
-import { gramsForLine } from './ingredientGrams';
+import { gramsForLine, portionsWithServing } from './ingredientGrams';
 import { parseQuantity } from './quantity';
 import { formatScaleWeight, measureParsedQuantity, type UnitSystem } from './unitConvert';
 
@@ -42,7 +42,9 @@ export function lineWeightGrams(
   prep: string | null,
   nutrition: FoodNutrition | null,
 ): number | null {
-  if (!nutrition || nutrition.portions.length === 0) return null;
+  if (!nutrition) return null;
+  const portions = portionsWithServing(nutrition);
+  if (portions.length === 0) return null;
   const parsed = parseQuantity(quantity);
   if (parsed.amount === null || parsed.rangeMax) return null;
   if (measureParsedQuantity(parsed)?.dimension === 'mass') return null;
@@ -50,7 +52,7 @@ export function lineWeightGrams(
   // tin at a time. gramsForLine now weighs it for the nutrition rollup (#2918),
   // but a caption beside it would repeat what the line already says.
   if (parsed.container?.count) return null;
-  const grams = gramsForLine(parsed, prep, nutrition.portions);
+  const grams = gramsForLine(parsed, prep, portions);
   return grams !== null && grams > 0 ? grams : null;
 }
 
