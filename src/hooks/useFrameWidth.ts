@@ -1,15 +1,19 @@
 import { useWindowDimensions } from 'react-native';
-import { frameLeftFor, frameWidthFor } from '../utils/frameWidth';
+import { frameLeftFor, frameWidthFor, sidebarWidthFor } from '../utils/frameWidth';
 
 /**
- * The width of the column the app is drawn in, and how far its left edge is
- * from the window's. Read this, not `Dimensions.get('window')`, for anything
+ * The width of the column the app is drawn in, how far its left edge is from
+ * the window's, and the width of the sidebar beside it (0 when there is none). Read this, not `Dimensions.get('window')`, for anything
  * sized against "the screen's width": a module-level read freezes at whatever
  * the window was when the app launched, and on a wide window the screen is the
  * column (`AppFrame`), not the window. `useWindowDimensions` re-renders the
  * caller when a Mac window is resized, so nothing has to listen for it.
  */
-export function useFrameWidth(): { width: number; left: number } {
+export function useFrameWidth(): { width: number; left: number; sidebar: number } {
   const { width: windowWidth } = useWindowDimensions();
-  return { width: frameWidthFor(windowWidth), left: frameLeftFor(windowWidth) };
+  return {
+    width: frameWidthFor(windowWidth),
+    left: frameLeftFor(windowWidth),
+    sidebar: sidebarWidthFor(windowWidth),
+  };
 }

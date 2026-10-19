@@ -169,7 +169,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/foodQueue.ts` — QueuedFood, QUEUED_FOOD_MAX_LENGTH, parseQueuedFoods
 - `src/utils/foodRecall.ts` — RECALL_MIN_QUERY, RECALL_LIMIT, RecalledFood, describedGrams, estimateWholeGrams, describedEstimateFactor, descriptionClauses, recallWeight, recallFoods, recallMeasuringPanel, +14 more
 - `src/utils/foodSearchMatch.ts` — FoodCandidate, FoodMatchTier, RankedFood, rankFoodCandidates, unambiguousFood
-- `src/utils/frameWidth.ts` — MAX_CONTENT_WIDTH, MAX_DRAWER_WIDTH, frameWidthFor, frameLeftFor, drawerWidthFor, monthCellSizeFor, pickerCardWidthFor
+- `src/utils/frameWidth.ts` — MAX_CONTENT_WIDTH, MAX_DRAWER_WIDTH, SIDEBAR_MIN_WINDOW_WIDTH, SIDEBAR_WIDTH, sidebarWidthFor, frameWidthFor, frameLeftFor, drawerWidthFor, monthCellSizeFor, pickerCardWidthFor
 - `src/utils/freshness.ts` — daysUntilDay, freshnessFor, FRESHNESS_ORDER, freshnessRank, isUseUpSoon, describeUseBy, liveUseBy, describeOpenedOn, describeFrozenSince
 - `src/utils/fuzzySearch.ts` — SearchResult, fuzzySearch, ranksAsActive, ProjectSearchResult, searchProjects, GroupSearchResult, searchGroups
 - `src/utils/generatedCategoryPrompt.ts` — offerGeneratedCategoryWriteBack, bulkSetCategoryOffering

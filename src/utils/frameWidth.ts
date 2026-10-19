@@ -11,20 +11,37 @@
 /** The widest the app's column gets. About the width of an iPad held upright. */
 export const MAX_CONTENT_WIDTH = 720;
 
-/** The widest the side menu gets. A phone's 85% is already under this. */
+/** The widest the side menu gets as a drawer. A phone's 85% is already under this. */
 export const MAX_DRAWER_WIDTH = 400;
 
-/** The column's width in a window `windowWidth` wide. */
+/**
+ * From this window width up, the menu is a sidebar that is always on screen
+ * instead of a drawer opened from the tab bar. An iPad held upright (about
+ * 820pt) stays on the drawer; a landscape iPad or a Mac window gets the sidebar.
+ */
+export const SIDEBAR_MIN_WINDOW_WIDTH = 900;
+
+/** The sidebar's width, a fixed strip so the content column keeps the rest. */
+export const SIDEBAR_WIDTH = 236;
+
+/** How much of the window the sidebar takes: nothing, below the breakpoint. */
+export function sidebarWidthFor(windowWidth: number): number {
+  return windowWidth >= SIDEBAR_MIN_WINDOW_WIDTH ? SIDEBAR_WIDTH : 0;
+}
+
+/** The column's width in a window `windowWidth` wide, after the sidebar if there is one. */
 export function frameWidthFor(windowWidth: number): number {
-  return Math.min(windowWidth, MAX_CONTENT_WIDTH);
+  return Math.min(windowWidth - sidebarWidthFor(windowWidth), MAX_CONTENT_WIDTH);
 }
 
 /**
  * Where the column's left edge sits in the window, which is what a touch's
- * `pageX` has to be offset by to land in the column's own coordinates.
+ * `pageX` has to be offset by to land in the column's own coordinates. The
+ * column is centered in what the sidebar leaves.
  */
 export function frameLeftFor(windowWidth: number): number {
-  return Math.max(0, Math.floor((windowWidth - frameWidthFor(windowWidth)) / 2));
+  const sidebar = sidebarWidthFor(windowWidth);
+  return sidebar + Math.max(0, Math.floor((windowWidth - sidebar - frameWidthFor(windowWidth)) / 2));
 }
 
 /** The side menu's width: most of a phone, a fixed strip on anything wider. */
