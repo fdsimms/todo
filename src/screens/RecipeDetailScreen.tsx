@@ -2650,6 +2650,14 @@ export function RecipeDetailScreen() {
             )}
           </View>
         )}
+        {/* Only while there are none: the button's label doesn't say what a
+            wild card is, and once one is on the page its own card does. */}
+        {showBlankAction && blanks.length === 0 && (
+          <HelpText style={styles.inputHint}>
+            A wild card is a kind of food you pick from your kitchen each time
+            you plan the recipe, like the grain in a grain bowl.
+          </HelpText>
+        )}
         </>
         )}
         {tab === 'steps' && (
