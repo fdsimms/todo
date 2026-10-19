@@ -13,6 +13,7 @@
 // src/utils/workoutSession.ts, the suggested next load in
 // src/utils/workoutProgression.ts; the design in docs/arch/workouts.md, the mocks
 // in docs/arch/workouts-mocks/workout-mode.png.
+import { format } from 'date-fns/format';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Keyboard, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -29,6 +30,7 @@ import { TextField } from './TextField';
 import { ExercisePickerSheet } from './ExercisePickerSheet';
 import { ExerciseDetailSheet } from './ExerciseDetailSheet';
 import { PlateLine } from './PlateLine';
+import { SelectionDot } from './SelectionDot';
 import { WorkoutRecordsCard } from './WorkoutRecordsCard';
 import { WorkoutStatTiles } from './WorkoutStatTiles';
 import type { ExerciseKind, WorkoutSet } from '../types';
@@ -49,11 +51,14 @@ import { formatStopwatch } from '../utils/effort';
 import { linkedTaskLine, workoutTaskEffect } from '../utils/workoutTask';
 import { displayTitleFor } from '../utils/visibilityUtils';
 import { catalogExercise } from '../utils/exerciseCatalog';
+import { swapCandidates, swappableSets } from '../utils/exerciseSwap';
+import { lastTimeNotes } from '../utils/lastTimeNotes';
+import { applyRoutineChanges, describeRoutineChange, routineChanges } from '../utils/routineUpdate';
 import { barKgFor, effectivePlateInventory, isPlateLoaded, plateLoad } from '../utils/plateMath';
 import { sessionRecordSummary } from '../utils/workoutRecords';
 import { proposalActionLabel, proposalApplied, proposalHeadline, workingSetLogged, type Proposal } from '../utils/workoutProgression';
 import { exerciseProposal, type ExerciseProposal } from '../utils/workoutProposal';
-import { applyProposal } from '../utils/workoutProposalApply';
+import { applyProposal, liveProposal } from '../utils/workoutProposalApply';
 import {
   MUSCLE_LABELS, WEIGHT_PLACES, WEIGHT_STEP, WORKOUT_EFFORT, formatRestSeconds, formatWeightNumber, weightFromDisplay,
   weightToDisplay,
@@ -144,7 +149,12 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const [finishing, setFinishing] = useState(false);
   const [effort, setEffort] = useState<number | null>(null);
   const [sessionNotes, setSessionNotes] = useState('');
-  const [picking, setPicking] = useState(false);
+  // What the exercise picker is for: adding one, or swapping the shown one out.
+  const [picking, setPicking] = useState<'add' | 'swap' | null>(null);
+  const [exNoteOpen, setExNoteOpen] = useState(false);
+  const [exNoteDraft, setExNoteDraft] = useState('');
+  // The routine changes ticked on the summary. Nothing starts ticked.
+  const [accepted, setAccepted] = useState<ReadonlySet<string>>(new Set());
   const [detailOpen, setDetailOpen] = useState(false);
   // The exercise the detail sheet is on, kept through its close so it doesn't retitle while it slides away.
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -158,7 +168,9 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     setFinishing(false);
     setEffort(session?.effort ?? null);
     setSessionNotes(session?.notes ?? '');
-    setPicking(false);
+    setPicking(null);
+    setExNoteOpen(false);
+    setAccepted(new Set());
     setDetailOpen(false);
     // On open only: a tick re-derives the view through its own handler.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -200,6 +212,9 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     [viewed?.exerciseId, session?.id, sessionsList],
   );
   const previousBySet = useMemo(() => matchPrevious(viewed?.sets ?? [], previous), [viewed, previous]);
+  // What was written on this exercise's sets last time, read before the first set.
+  const lastNotes = useMemo(() => lastTimeNotes(previous), [previous]);
+  const canSwap = !!viewed && swappableSets(viewed.sets, viewed.exerciseId).length > 0;
 
   // ==== the suggestion: the next load, proposed and never applied unasked ====
   // The routine the workout follows and the program it belongs to decide
@@ -322,6 +337,29 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     setOpenSetId(null);
   };
 
+  const swapExercise = (toExerciseId: string) => {
+    if (!session || !viewed) return;
+    const moved = useWorkoutStore.getState().swapSessionExercise(session.id, viewed.exerciseId, toExerciseId);
+    if (typeof moved === 'string') return;
+    haptics.success();
+    animateLayout();
+    setViewedId(toExerciseId);
+    setOpenSetId(null);
+    setNotesOpen(false);
+    setExNoteOpen(false);
+  };
+
+  const toggleExNote = () => {
+    haptics.tap();
+    setExNoteDraft(viewedInfo?.notes ?? '');
+    setExNoteOpen(v => !v);
+  };
+  const commitExNote = () => {
+    if (viewed && (viewedInfo?.notes ?? '') !== exNoteDraft.trim()) {
+      useWorkoutStore.getState().updateExercise(viewed.exerciseId, { notes: exNoteDraft });
+    }
+  };
+
   // ==== leaving, finishing ====
   const close = () => {
     Keyboard.dismiss();
@@ -360,6 +398,32 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     [finishing, session, sets],
   );
 
+  // What this workout changed from its routine, offered on the summary one
+  // change at a time. Read off the routine and the done sets while it is open.
+  const routineDiff = useMemo(
+    () => {
+      if (!finishing || !session || !routine) return [];
+      return routineChanges({
+        items: routine.items,
+        sets,
+        kindOf: id => catalogExercise(exerciseRows, id)?.kind ?? 'weight_reps',
+        // A load taken from the suggestion is the plan working, not a change to it.
+        suggestedKg: id => liveProposal(session.id, id)?.proposal.sets.find(x => x.kind !== 'warmup')?.weightKg ?? null,
+      });
+    },
+    [finishing, session, routine, sets, exerciseRows],
+  );
+  const exerciseName = (id: string) => catalogExercise(exerciseRows, id)?.name ?? 'Unknown exercise';
+  const toggleChange = (id: string) => {
+    haptics.tap();
+    setAccepted(prev => {
+      const next = new Set(prev);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+  };
+  const acceptedCount = routineDiff.filter(c => accepted.has(c.id)).length;
+
   // What this workout beat, against everything before it. Read from each
   // exercise's own history (the live session's sets are in the database as
   // they are edited), and only while the summary is up. The workout page
@@ -386,6 +450,13 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
       completeLinkedTask: !askFirst,
     });
     if (typeof finished === 'string') return;
+    // The ticked changes go into the routine as it is now. A routine that has
+    // since been deleted or refuses the edit leaves the saved workout alone.
+    const picked = routineDiff.filter(c => accepted.has(c.id));
+    if (routine && picked.length > 0) {
+      const current = useWorkoutStore.getState().routines.find(r => r.id === routine.id);
+      if (current) useWorkoutStore.getState().updateRoutine(current.id, { items: applyRoutineChanges(current.items, picked) });
+    }
     haptics.chainFinish();
     close();
     onSaved(askFirst && linkedTask ? linkedTask.id : null);
@@ -491,6 +562,51 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                 </View>
               </>
             )}
+            {routine && routineDiff.length > 0 && (
+              <>
+                <Text style={styles.groupLabel}>{`Update ${routine.name}?`}</Text>
+                <View style={styles.card}>
+                  {routineDiff.map((c, i) => {
+                    const text = describeRoutineChange(c, exerciseName, unit);
+                    const on = accepted.has(c.id);
+                    return (
+                      <TouchableOpacity
+                        key={c.id}
+                        style={[styles.changeRow, i > 0 && styles.rowSep]}
+                        onPress={() => toggleChange(c.id)}
+                        activeOpacity={interaction.activeOpacity}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: on }}
+                        accessibilityLabel={`${text.title}. ${text.detail}`}
+                      >
+                        <View style={styles.flex}>
+                          <Text style={styles.changeTitle}>{text.title}</Text>
+                          <Text style={styles.changeDetail}>{text.detail}</Text>
+                        </View>
+                        <SelectionDot selected={on} onPress={() => toggleChange(c.id)} />
+                      </TouchableOpacity>
+                    );
+                  })}
+                  <View style={[styles.changeFooter, styles.rowSep]}>
+                    <InlineAction
+                      label={acceptedCount === routineDiff.length ? 'Clear all' : 'Select all'}
+                      variant="neutral"
+                      surface="tray"
+                      onPress={() => {
+                        haptics.tap();
+                        setAccepted(acceptedCount === routineDiff.length ? new Set() : new Set(routineDiff.map(c => c.id)));
+                      }}
+                    />
+                    <Text style={styles.changeCount}>{`${acceptedCount} of ${routineDiff.length} selected`}</Text>
+                  </View>
+                </View>
+                <Text style={styles.consequence}>
+                  {routine.programId
+                    ? 'Only the selected changes are saved to the routine, and the program uses the same routine. Your logged workout is kept either way.'
+                    : 'Only the selected changes are saved to the routine. Your logged workout is kept either way.'}
+                </Text>
+              </>
+            )}
             <Text style={styles.consequence}>
               {[
                 plan.loggedCount === 0
@@ -572,6 +688,50 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                     <Text style={styles.exMuscles}>
                       {viewedInfo.primaryMuscles.map(m => MUSCLE_LABELS[m]).join(', ')}
                     </Text>
+                  )}
+                  <View style={styles.exActions}>
+                    {canSwap && (
+                      <InlineAction
+                        icon="swap-horizontal"
+                        label="Swap"
+                        onPress={() => { haptics.tap(); setPicking('swap'); }}
+                        accessibilityLabel={`Swap ${viewedInfo?.name ?? 'this exercise'} for another`}
+                      />
+                    )}
+                    <InlineAction
+                      icon="create-outline"
+                      label={viewedInfo?.notes ? 'Edit note' : 'Add note'}
+                      variant="neutral"
+                      onPress={toggleExNote}
+                      accessibilityLabel={`${viewedInfo?.notes ? 'Edit' : 'Add'} the note on ${viewedInfo?.name ?? 'this exercise'}`}
+                    />
+                  </View>
+                  {lastNotes && (
+                    <View style={styles.noteBox}>
+                      <Text style={[styles.noteLabel, styles.noteLabelLast]}>{`Last time · ${format(new Date(lastNotes.at), 'MMM d')}`}</Text>
+                      {lastNotes.notes.map((n, i) => (
+                        <Text key={i} style={styles.noteText}>{`${n.where}: ${n.text}`}</Text>
+                      ))}
+                    </View>
+                  )}
+                  {exNoteOpen ? (
+                    <TextField
+                      style={styles.exNoteInput}
+                      value={exNoteDraft}
+                      onChangeText={setExNoteDraft}
+                      onBlur={commitExNote}
+                      onSubmitEditing={commitExNote}
+                      placeholder="e.g. Use the dumbbell press if the bench is taken"
+                      placeholderTextColor={colors.textTertiary}
+                      multiline
+                      autoFocus
+                      accessibilityLabel={`Note on ${viewedInfo?.name ?? 'this exercise'}`}
+                    />
+                  ) : !!viewedInfo?.notes && (
+                    <View style={styles.noteBox}>
+                      <Text style={styles.noteLabel}>Notes</Text>
+                      <Text style={styles.noteText}>{viewedInfo.notes}</Text>
+                    </View>
                   )}
                   {proposal && (
                     <SuggestionCard
@@ -750,7 +910,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
               </>
             )}
             <View style={styles.addExercise}>
-              <InlineAction icon="add" label="Add exercise" variant="neutral" surface="page" onPress={() => { haptics.tap(); setPicking(true); }} />
+              <InlineAction icon="add" label="Add exercise" variant="neutral" surface="page" onPress={() => { haptics.tap(); setPicking('add'); }} />
             </View>
           </ScrollView>
         )}
@@ -784,11 +944,12 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
       {/* Inside this Modal, not beside it: a second sheet presented from the
           same view controller as this one never appears. */}
       <ExercisePickerSheet
-        visible={visible && picking}
-        onClose={() => setPicking(false)}
-        onPick={addExercise}
+        visible={visible && picking !== null}
+        onClose={() => setPicking(null)}
+        onPick={picking === 'swap' ? swapExercise : addExercise}
         addedIds={exercises.map(e => e.exerciseId)}
         addedLabel="In workout"
+        suggestedIds={picking === 'swap' && viewed ? swapCandidates(exerciseRows, viewed.exerciseId, exercises.map(e => e.exerciseId)) : undefined}
       />
       <ExerciseDetailSheet visible={visible && detailOpen} exerciseId={detailId} onClose={() => setDetailOpen(false)} />
     </SheetModal>
@@ -1037,6 +1198,23 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   exHead: { paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.xs },
   exNameRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   exName: { flexShrink: 1, color: colors.text, fontSize: font.xl, fontWeight: fontWeight.bold },
+  exActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.smd },
+  noteBox: { marginTop: spacing.smd, padding: spacing.smd, borderRadius: radius.sm, backgroundColor: colors.bgTertiary },
+  noteLabel: {
+    color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold, textTransform: 'uppercase',
+    letterSpacing: 0.8, marginBottom: spacing.xxs,
+  },
+  noteLabelLast: { color: colors.warningText },
+  noteText: { color: colors.text, fontSize: font.sm },
+  exNoteInput: {
+    color: colors.text, fontSize: font.md, marginTop: spacing.smd,
+    paddingHorizontal: spacing.smd, paddingVertical: spacing.sm, backgroundColor: colors.bgTertiary, borderRadius: radius.sm, minHeight: 40,
+  },
+  changeRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd, paddingHorizontal: spacing.md, paddingVertical: spacing.smd },
+  changeTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
+  changeDetail: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs },
+  changeFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  changeCount: { color: colors.textSecondary, fontSize: font.sm },
   exMuscles: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xs },
   suggest: { backgroundColor: colors.bgTertiary, borderRadius: radius.md, padding: spacing.smd, marginTop: spacing.smd, gap: spacing.sm },
   suggestText: { color: colors.text, fontSize: font.sm },

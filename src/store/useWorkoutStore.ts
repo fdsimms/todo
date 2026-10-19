@@ -39,13 +39,16 @@ import {
 } from '../db/database';
 import { generateId } from '../utils/id';
 import { workoutTaskEffect } from '../utils/workoutTask';
+import { swappableSets } from '../utils/exerciseSwap';
 import {
   copyLastSet,
   finishPlan,
+  matchPrevious,
   movedExerciseOrder,
   plannedSetsFor,
   plannedSetsFromHistory,
   previousSets,
+  sessionExercises,
   type PlannedSetValues,
 } from '../utils/workoutSession';
 import { libraryExercise } from '../utils/exerciseLibrary';
@@ -431,6 +434,15 @@ interface WorkoutStore {
    * (`taken`), and sets past the ids given get ids of their own.
    */
   addSessionExercise: (sessionId: string, exerciseId: string, options?: { ids?: readonly string[] }) => WorkoutSet[] | WorkoutRefusal;
+  /**
+   * "Swap": moves the exercise's unticked sets to another exercise, in its
+   * place (or just after it when some of its sets are already done, which stay
+   * where they were logged). The moved sets take the new exercise's own last
+   * weights, since a bench load means nothing on a dumbbell press. Refuses an
+   * exercise the workout already has (`taken`), one nobody knows or one with
+   * nothing left to move (`notFound`). The routine is not touched.
+   */
+  swapSessionExercise: (sessionId: string, fromExerciseId: string, toExerciseId: string) => WorkoutSet[] | WorkoutRefusal;
   /** "Add set": one more planned set like the exercise's last (`copyLastSet`), with `id` as `SetInput.id`. */
   addPlannedSet: (sessionId: string, exerciseId: string, options?: { id?: string }) => WorkoutSet | WorkoutRefusal;
   /**
@@ -1701,6 +1713,42 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       dbSaveWorkoutSets(added);
       putSets(sessionId, [...sets, ...added].sort(bySetOrder));
       return added;
+    },
+
+    swapSessionExercise(sessionId, fromExerciseId, toExerciseId) {
+      if (!get().sessions.some(s => s.id === sessionId)) return 'notFound';
+      if (!exerciseKnown(toExerciseId)) return 'notFound';
+      const sets = get().loadSets(sessionId);
+      if (fromExerciseId === toExerciseId || sets.some(s => s.exerciseId === toExerciseId)) return 'taken';
+      const moving = swappableSets(sets, fromExerciseId).sort((a, b) => a.setIndex - b.setIndex);
+      if (moving.length === 0) return 'notFound';
+      const fromHasDone = sets.some(s => s.exerciseId === fromExerciseId && s.completedAt !== null);
+      const order = sessionExercises(sets).flatMap(e =>
+        e.exerciseId === fromExerciseId ? (fromHasDone ? [fromExerciseId, toExerciseId] : [toExerciseId]) : [e.exerciseId]);
+      const positionOf = new Map<string, number>(order.map((id, i) => [id, i]));
+      const last = matchPrevious(moving, get().lastTimeFor(toExerciseId, sessionId));
+      const movedAt = new Map(moving.map((s, i) => [s.id, i]));
+      const before = new Map(sets.map(s => [s.id, s]));
+      const next = sets.map(s => {
+        const i = movedAt.get(s.id);
+        const prev = i === undefined ? null : last.get(s.id) ?? null;
+        const base: WorkoutSet = i === undefined ? s : {
+          ...s,
+          exerciseId: toExerciseId,
+          setIndex: i,
+          weightKg: prev?.weightKg ?? null,
+          reps: prev?.reps ?? s.reps,
+          durationSeconds: prev?.durationSeconds ?? s.durationSeconds,
+          distanceM: prev?.distanceM ?? s.distanceM,
+        };
+        return { ...base, position: positionOf.get(base.exerciseId)! };
+      }).sort(bySetOrder);
+      dbSaveWorkoutSets(next.filter(s => {
+        const b = before.get(s.id)!;
+        return changed(s, b) || s.exerciseId !== b.exerciseId || s.weightKg !== b.weightKg || s.reps !== b.reps;
+      }));
+      putSets(sessionId, next);
+      return next.filter(s => s.exerciseId === toExerciseId);
     },
 
     addPlannedSet(sessionId, exerciseId, options = {}) {
