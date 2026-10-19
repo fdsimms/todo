@@ -465,6 +465,22 @@ export function seedDemoData(): void {
     deferUntil: addDays(today, 3).toISOString(),
   });
 
+  // A chore that waits for a lighter day, shown mid-wait: meant for three days
+  // ago and held to tomorrow, as the slot-in pass would have left it. Written
+  // here because the pass never runs in demo mode (it reads the real calendar).
+  const junkDrawer = addTask({
+    title: 'Sort out the junk drawer',
+    category: 'Home',
+    effort: 2,
+    dueDate: subDays(today, 3).toISOString(),
+    slotIn: true,
+  });
+  updateTask(junkDrawer.id, {
+    deferUntil: addDays(today, 1).toISOString(),
+    slotDecidedOn: dayKeyOf(today),
+    slotWaitingSince: dayKeyOf(subDays(today, 3)),
+  });
+
   // A window that closes at sunset. The demo database gets its own made-up
   // location, so the real one is never read in demo mode; the clock time
   // beside the anchor is the sunset it resolves to today, as the editor writes.

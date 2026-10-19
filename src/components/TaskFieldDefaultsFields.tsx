@@ -61,6 +61,7 @@ const yesNoOptions = (yes: string, no: string): SegmentOption<boolean | null>[] 
 ];
 const STREAK_OPTIONS = yesNoOptions('Show', 'Don\u2019t show');
 const VACATION_OPTIONS = yesNoOptions('Pause', 'Don\u2019t pause');
+const SLOT_IN_OPTIONS = yesNoOptions('Wait', 'Keep the date');
 const SUGGESTION_OPTIONS = yesNoOptions('Skip', 'Allow');
 
 /**
@@ -132,6 +133,14 @@ export function TaskFieldDefaultsFields({ value, onChange, showDifficulty, oneOf
           />
         </>
       )}
+      <Text style={styles.label}>If the day is full</Text>
+      <SegmentedControl<boolean | null>
+        label="Default if the day is full"
+        value={current.slotIn ?? null}
+        onChange={slotIn => set({ slotIn })}
+        columns={3}
+        options={SLOT_IN_OPTIONS}
+      />
       <Text style={styles.label}>Skip in suggestions</Text>
       <SegmentedControl<boolean | null>
         label="Default skip in suggestions"

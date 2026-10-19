@@ -32,6 +32,7 @@
  * Suggestions, not verdicts: the result never says the person is doing it
  * wrong, and the server instructions tell the agent the same.
  */
+import { slotInInUse } from '../../src/utils/slotIn';
 import type { Task } from '../../src/types';
 import type { Replica } from './replica';
 
@@ -336,6 +337,19 @@ export const ADOPTION_CHECKS: readonly AdoptionCheck[] = [
     evidence: ({ replica }) => {
       return replica.settings().rewardsEnabled && !replica.generatorEnabled('blockOfferTasks') && replica.ruleLists().blockOffer.length === 0
         ? 'Coins are on and no block-for-coins rule is written.'
+        : null;
+    },
+  },
+  {
+    id: 'slot_in',
+    title: 'Waiting for a lighter day',
+    benefit: 'A task or a whole category can wait for a day that isn\u2019t already full instead of piling onto a busy one. At least one waiting task still shows every day, longest wait first, so nothing waits for ever.',
+    since: '2026-10-19',
+    evidence: ({ open, replica }) => {
+      if (slotInInUse(open, replica.categories())) return null;
+      const pushed = open.filter(t => (t.postponeCount ?? 0) >= 2);
+      return pushed.length >= 3
+        ? `${pushed.length} open tasks have been moved to a later day by hand twice or more, and nothing is set to wait for a lighter day.`
         : null;
     },
   },

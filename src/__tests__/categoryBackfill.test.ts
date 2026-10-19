@@ -13,6 +13,7 @@ const baseCategory: Category = {
   hideOnVacation: false,
   excludeFromSuggestions: false,
   excludeFromNewTasksBanner: false,
+  slotIn: false,
   defaultTimeSegments: [],
   sortOrder: 1,
   emoji: null,

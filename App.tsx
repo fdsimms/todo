@@ -41,6 +41,7 @@ import { useCalendarSync } from './src/store/useCalendarStore';
 import { useWeatherSync, useWeatherStore } from './src/store/useWeatherStore';
 import { useWeatherWaitSync } from './src/hooks/useWeatherWaitSync';
 import { useMeterHoldSync } from './src/hooks/useMeterHoldSync';
+import { useSlotInSync } from './src/hooks/useSlotInSync';
 import { useTravelTaskSync } from './src/hooks/useTravelTaskSync';
 import { useWaniKaniSync } from './src/hooks/useWaniKaniSync';
 import { useEventTaskSync } from './src/hooks/useEventTaskSync';
@@ -310,6 +311,9 @@ function AppRoot() {
   useWeatherSync();
   useWeatherWaitSync();
   useMeterHoldSync();
+  // Decides, once a day, which tasks set to wait for a lighter day show
+  // today (see src/utils/slotIn.ts).
+  useSlotInSync();
   // Keeps the MTA subway alerts current while the app is in front (inert
   // until travel tasks, the transit switch and a line are all on), and re-runs
   // the travel task check when the calendar window or the alerts land.

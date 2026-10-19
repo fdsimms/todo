@@ -38,6 +38,7 @@ import { isRotationTask, MAX_ROTATION_PER_WEEK, MIN_ROTATION_ITEMS, rotationItem
 import { normalizeTargetUnit } from '../../src/utils/quotaUnit';
 import { canWaitForWeather } from '../../src/utils/weatherCondition';
 import { canFollowMeter, METER_NAME_MAX_LENGTH, NO_METER } from '../../src/utils/meters';
+import { isSlotHold } from '../../src/utils/slotIn';
 import { formatSunAnchor, parseSunAnchor, SUN_OFFSET_LIMIT } from '../../src/utils/sunTimes';
 import { localDateInput } from './timeZone';
 
@@ -283,6 +284,8 @@ export interface TaskFieldsInput {
   location?: string | null;
   /** Hidden, streak kept, while vacation mode is on. */
   vacationPause?: boolean;
+  /** "If the day is full": true waits for a lighter day, false keeps the date, null follows the category. */
+  slotIn?: boolean | null;
   /** The workout routine (list_workouts' routines) Start workout on the task opens. null removes the link. Checked by the replica. */
   workoutRoutineId?: string | null;
   /** The workout program whose next routine Start workout on the task opens. A task names a routine or a program: setting one clears the other. Checked by the replica. */
@@ -936,6 +939,19 @@ export function taskFieldsPatch(
   if (input.vacationPause !== undefined) {
     if (context.isSubtask && input.vacationPause) errors.push('vacationPause is set on the task a checklist item belongs to, not on the item.');
     else patch.vacationPause = input.vacationPause;
+  }
+  if (input.slotIn !== undefined) {
+    if (context.isSubtask && input.slotIn !== null) errors.push('slotIn is set on the task a checklist item belongs to, not on the item.');
+    else {
+      patch.slotIn = input.slotIn;
+      // Keeping the date on a task the pass is holding brings it back now,
+      // as the editor does, rather than at the next morning's pass. A hold is
+      // midnight of the day it ends, so one still ahead is later than now.
+      if (input.slotIn === false && current && isSlotHold(current) && input.deferUntil === undefined
+        && new Date(current.deferUntil!) > new Date()) {
+        patch.deferUntil = null;
+      }
+    }
   }
   // A task names a routine or a program, never both, the editor's rule:
   // naming one clears the other, and naming both is refused.

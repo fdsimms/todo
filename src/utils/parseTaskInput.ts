@@ -132,6 +132,13 @@ export interface ParsedSchedule {
    * unlinked tasks: see the Series note in CLAUDE.md.
    */
   extraDates?: Date[];
+  /**
+   * "~thu": the date is a target, not a promise, so the task waits if that
+   * day is full (`Task.slotIn`). Only a plain date takes it: a repeat, a
+   * deadline, a set of dates, a window or a clock time each names an exact
+   * moment, and a time also brings a reminder, which can't wait.
+   */
+  slotIn?: boolean;
 }
 
 export interface ParsedTaskInput {
@@ -700,6 +707,18 @@ function parseSuffix(
   // night on Friday, not a game on Friday night. Refused here, the shorter
   // suffix after it is the schedule.
   if (LEADING_DAY_PART.test(text)) return null;
+
+  // "~thu": the date with the "around" mark taken off, kept only when it is a
+  // plain date (see ParsedSchedule.slotIn). "~" before a number and a unit is
+  // a time estimate ("~30m"), which none of these dates can be.
+  const around = text.match(/^~\s*/);
+  if (around) {
+    const rest = text.slice(around[0].length);
+    const inner = rest ? parseSuffix(rest, now, singleWord, clockNow, dayResetTime) : null;
+    if (!inner || inner.recurrenceType !== 'none' || inner.deadline || inner.windowStart || inner.windowEnd
+      || inner.extraDates?.length || inner.explicitClockTime) return null;
+    return { ...inner, slotIn: true };
+  }
 
   // Recurrence first — it owns the "every"/plural/frequency-word triggers.
   const rec = parseRecurrenceSuffix(text, now);
@@ -2847,6 +2866,7 @@ export function describeSchedule(s: ParsedSchedule, now: Date = new Date()): str
       // accepting the chip doesn't silently add a field the label never
       // mentioned.
       if (s.deadline) label = `${label} · Deadline`;
+      if (s.slotIn) label = `${label} · Wait if full`;
       if (s.windowEnd) {
         label = `Expires ${label === 'Today' || label === 'Tomorrow' ? label.toLowerCase() : label}`;
         if (s.windowEnd !== '23:59') label += ` at ${formatHhmm(s.windowEnd)}`;

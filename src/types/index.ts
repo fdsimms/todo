@@ -69,6 +69,13 @@ export interface TaskFieldDefaults {
   vacationPause: boolean | null;
   /** `Task.excludeFromSuggestions`. */
   excludeFromSuggestions: boolean | null;
+  /**
+   * `Task.slotIn`. Unlike the three above, `false` is written onto the task as
+   * an answer ("keep the date") rather than stamped as dismissed, because the
+   * task field can hold one and it has to outrank a category that says wait.
+   * Optional so a stored object from before this field reads as no answer.
+   */
+  slotIn?: boolean | null;
 }
 
 /**
@@ -134,6 +141,10 @@ export interface Category {
   // useTaskStore.setCategoryTimeSegments, which writes the tasks themselves.
   // Empty = no default.
   defaultTimeSegments: TimeOfDay[];
+  // Tasks here wait for a day that isn't full (see src/utils/slotIn.ts). Read
+  // whenever the pass runs, unlike defaultTimeSegments, so turning it on covers
+  // the tasks already in the category; a task's own `slotIn` outranks it.
+  slotIn: boolean;
   sortOrder: number;
   emoji: string | null;            // shown in place of the folder icon, and prefixed to the name wherever it appears
   /**
@@ -4224,6 +4235,21 @@ export interface Task {
   // and is left alone. Null when the pass has written nothing.
   meterHeldUntil?: string | null;
 
+  // "If the day is full": true waits for a day that isn't (see
+  // src/utils/slotIn.ts), false keeps the date, null has no answer and follows
+  // the category's `slotIn`. The pass owns `deferUntil` while it holds one,
+  // the same way the meter and weather passes do.
+  slotIn?: boolean | null;
+  // The logical day the slot-in pass last decided this task, whether it held
+  // it or let it through. Synced, so a second device doesn't decide the same
+  // task again the same day. A hold is a `deferUntil` on the day after this
+  // one; any other future defer is the user's own and is left alone.
+  slotDecidedOn?: string | null;
+  // The day this task was first meant for, stamped on its first hold. Orders
+  // the waiting tasks (longest wait goes first) and is what the row's "Waiting
+  // since" reads. Belongs to the occurrence: a successor starts without one.
+  slotWaitingSince?: string | null;
+
   // On a recurring task: every occurrence it spawns starts pinned. Completing
   // a pinned task clears its pin and a successor is a new row that starts
   // unpinned, so without this the pin has to be redone by hand each time.
@@ -4710,6 +4736,11 @@ export interface TemplateItem {
   // seeds a task that is not waiting. Only a plain one-off may wait, so an item
   // that repeats or is a chain seeds nothing (see canWaitForWeather).
   weatherWait?: WeatherCondition | null;
+  // Seeds Task.slotIn on the task this item creates: true waits for a day
+  // that isn't full, false keeps the date even in a category set to wait.
+  // Null (the default, and what stored JSON from before the field reads as)
+  // seeds no answer, so the task follows its category.
+  slotIn?: boolean | null;
   // Seeds Task.pinEachOccurrence on the task this item creates.
   pinEachOccurrence?: boolean;
   // Adds one subtask per medication you currently take, read from the

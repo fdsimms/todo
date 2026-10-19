@@ -109,7 +109,7 @@ import { categoryLabel } from '../utils/categoryLabel';
 import { askForReminderPermissionIfNeeded } from '../utils/reminderPermission';
 import { useShallow } from 'zustand/react/shallow';
 import { isStreakAtRecord, nextStreakRecord, streakHint } from '../utils/streakRecord';
-import { formatDeadlineDate, formatDeadlineLabel, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, describeReminderOffset, describeReminderTracksVisibility, getTaskDayStart, getCurrentDayStart, getLogicalNow, getLogicalToday, seriesMonthDaysFrom, getNextDueDate, dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
+import { formatDeadlineDate, formatDeadlineLabel, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, describeReminderOffset, describeReminderTracksVisibility, getTaskDayStart, getCurrentDayStart, getLogicalNow, getLogicalToday, seriesMonthDaysFrom, getNextDueDate, dayKeyOf, dayKeyToDate, getCurrentLogicalDayKey } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
 import { parseTaskInputAheadOfRainSkip, scheduleClockInstant, stripRemindPrefix, describeSchedule, scheduleHint, detectContactIntent, matchPersonMentions, getEditorMentionSuggestions, withTrailingSpace, parseCategoryAndTagsInput, type MentionSuggestionCandidate, type ParsedCategoryAndTags } from '../utils/parseTaskInput';
@@ -120,6 +120,7 @@ import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration, estim
 import { previewCategoryDefault, previewSeededFields } from '../utils/taskFieldDefaults';
 import { apportionedMinutes, timerSegments } from '../utils/timerSegments';
 import { CollapsibleField } from './CollapsibleField';
+import { canSlotIn, isSlotWaiting, slotInFromCategory } from '../utils/slotIn';
 import { PillGroup } from './PillGroup';
 import { EmptyNote } from './EmptyNote';
 import { HelpText } from './HelpText';
@@ -252,6 +253,8 @@ export interface TaskDraft {
   polarity?: Polarity;
   /** Carried over from quick add's Difficulty chip. */
   difficulty?: Difficulty | null;
+  /** Carried over when quick add reads "~thu": the date waits if that day is full. */
+  slotIn?: boolean | null;
   /** What it waits on, carried over when quick add parses "after <another task>". */
   blockerIds?: string[];
   /** Carried over when quick add parses "pack: socks, charger". */
@@ -357,7 +360,14 @@ type DraftSubtask = { id: string; title: string; completed: boolean; timedMinute
 /** A medication name is a label on a row, not a prescription line. */
 const MEDICATION_NAME_MAX_LENGTH = 60;
 
-type FieldKey = 'kind' | 'stack' | 'category' | 'project' | 'tags' | 'people' | 'waitingOnPerson' | 'priority' | 'effort' | 'difficulty' | 'duration' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'logHealthValue' | 'medication' | 'logMealSlot';
+type FieldKey = 'kind' | 'stack' | 'category' | 'project' | 'tags' | 'people' | 'waitingOnPerson' | 'priority' | 'effort' | 'difficulty' | 'duration' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'logHealthValue' | 'medication' | 'logMealSlot' | 'slotIn';
+
+// "If the day is full" (Task.slotIn). Keep the date first: it is what every
+// task does unless told otherwise.
+const SLOT_IN_SEGMENTS: SegmentOption<boolean>[] = [
+  { value: false, label: 'Keep the date' },
+  { value: true, label: 'Wait' },
+];
 
 // Presets for the Duration field, in minutes — the common "do this for a bit"
 // spans, including the 25-minute pomodoro.
@@ -756,6 +766,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
   const [vacationPause, setVacationPause] = useState(false);
   const [excludeFromSuggestions, setExcludeFromSuggestions] = useState(false);
   const [difficulty, setDifficulty] = useState<Difficulty | null>(null);
+  // "If the day is full" (Task.slotIn): null follows the category.
+  const [slotIn, setSlotIn] = useState<boolean | null>(null);
   // Whether a live bounty is posted on this task (utils/rewards.ts). A switch
   // in the draft; save turns it into a post or a withdrawal.
   const [bounty, setBounty] = useState(false);
@@ -1229,6 +1241,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
       setWeatherWait(task.weatherWait ?? null); setWeatherWaitOpen(false);
       setMeterInput(meterInputFromTask(task)); setMeterOpen(false); setMeterReadingText('');
       setDifficulty(task.difficulty ?? null);
+      setSlotIn(task.slotIn ?? null);
       setBounty(isBountyLive(task));
       setShowStreak(task.showStreak ?? false);
       setPolarity(task.polarity ?? 'positive');
@@ -1304,6 +1317,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
       setVacationPause(false);
       setExcludeFromSuggestions(false);
       setDifficulty(initialDraft?.difficulty ?? null);
+      setSlotIn(initialDraft?.slotIn ?? null);
       // A new task starts as "Do this" unless the draft says otherwise: left
       // unset, it kept whatever the last task edited had.
       setPolarity(initialDraft?.polarity ?? 'positive');
@@ -1466,6 +1480,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
         ? (canFollowMeter(task) ? meterFieldsFromInput(meterInputFromTask(task), useMeterReadingStore.getState().readings) : NO_METER)
         : meterFieldsFromInput(meterInputFromDraft(initialDraft), useMeterReadingStore.getState().readings)),
       difficulty: task ? (task.difficulty ?? null) : (initialDraft?.difficulty ?? null),
+      slotIn: task ? (task.slotIn ?? null) : (initialDraft?.slotIn ?? null),
       bounty: task ? isBountyLive(task) : false,
       polarity: task ? (task.polarity ?? 'positive') : (initialDraft?.polarity ?? 'positive'),
       slipAllowance: task ? (task.slipAllowance ?? null) : null,
@@ -1774,6 +1789,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
     setTitle(nextTitle);
     titleCaret.moveCaret(nextTitle);
     setDueDate(parsedSchedule.schedule.dueDate);
+    if (parsedSchedule.schedule.slotIn) setSlotIn(true);
     if (parsedSchedule.schedule.extraDates?.length) setExtraDates(parsedSchedule.schedule.extraDates);
     // "after 5pm" / "before 9am": a window bound, which the phrase otherwise
     // dropped on the floor here while quick add kept it.
@@ -2298,6 +2314,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
       weatherWait: weatherWaitAllowed ? weatherWait : null,
       ...(meterAllowed ? meterFields : NO_METER),
       difficulty,
+      slotIn,
       // Only the edge is written: posting starts the count at 0, and turning a
       // live bounty off spends it. Anything else leaves the row's count to
       // updateTask, which takes a step off it if this same save pushes the date.
@@ -3167,6 +3184,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
       weatherWait: weatherWaitAllowed ? weatherWait : null,
       ...(meterAllowed ? meterFields : NO_METER),
       difficulty,
+      slotIn,
       bounty,
       polarity,
       slipAllowance,
@@ -3478,6 +3496,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
       showStreak: seeded.showStreak,
       vacationPause: seeded.vacationPause,
       excludeFromSuggestions: seeded.excludeFromSuggestions,
+      slotIn: seeded.slotIn,
       category: previewCategoryDefault(chosenProject?.defaultTaskCategory, newTaskDefaults.category),
     };
   }, [task, project, projects, newTaskDefaults, polarity, recurrenceType]);
@@ -3491,6 +3510,19 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
   const streakShown = streakTouched || !defaultsPreview ? showStreak : showStreak || defaultsPreview.showStreak;
   const vacationShown = vacationTouched || !defaultsPreview ? vacationPause : defaultsPreview.vacationPause;
   const suggestionsShown = suggestionsTouched || !defaultsPreview ? excludeFromSuggestions : defaultsPreview.excludeFromSuggestions;
+  // "If the day is full" is offered wherever the pass could act on it, and
+  // kept on screen while it holds an answer so the answer can be changed.
+  const slotInAllowed = canSlotIn({
+    parentId: task?.parentId ?? null, completed: false, archived: false,
+    dueDate: dueDate?.toISOString() ?? null, targetCount, recurrenceType, recurrenceInterval, polarity,
+    reminderTime: reminderTime?.toISOString() ?? null, generatedKind: task?.generatedKind ?? null,
+    meterName: meterAllowed && meterInput.name.trim() ? meterInput.name : null,
+    weatherWait: weatherWaitAllowed ? weatherWait : null,
+  });
+  const slotInCategory = slotIn === null ? slotInFromCategory({ slotIn: null, category }, categories) : null;
+  // Same order as the pass reads it: the task's own answer, then a project's
+  // default (a new task only), then the category.
+  const slotInShown = slotIn ?? defaultsPreview?.slotIn ?? slotInCategory !== null;
   const defaultCategoryLabel = defaultsPreview && !category && selectedGroup === null && defaultsPreview.category
     ? `Default: ${categoryLabel(defaultsPreview.category, categories)}` : undefined;
   const subtasks: (Task | DraftSubtask)[] = task ? subtasksOf(task.id) : draftSubtasks;
@@ -3682,6 +3714,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
 
   const summaryParts = buildTaskSummary({
     date: dueDate ? formatScheduledDate(dueDate.toISOString()) : undefined,
+    waitsIfFull: slotInAllowed && slotInShown,
     timesOfDay: timeSegments,
     windowStart: polarity === 'negative' ? undefined : windowBoundLabel(windowStart, windowStartSun) ?? undefined,
     windowEnd: polarity === 'negative' ? undefined : windowBoundLabel(windowEnd, windowEndSun) ?? undefined,
@@ -3722,6 +3755,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
     deadline: () => { if (deadlineOffsetDays === null && deadlineMonthDay === null) setShowDeadlinePicker(true); },
     remindMe: () => openPicker('reminder'),
     priority: () => openField('priority'),
+    slotIn: () => openField('slotIn'),
     effort: () => openField('effort'),
     category: () => openField('category'),
     project: () => openField('project'),
@@ -5628,6 +5662,35 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
               </>
             ),
           },
+          ...(slotInAllowed || slotIn !== null ? [{
+            key: 'slotIn', label: 'If the day is full', set: slotIn !== null || slotInCategory !== null,
+            keywords: ['slot in', 'wait', 'lighter day', 'busy', 'full', 'overwhelmed', 'flexible', 'whenever', 'room', 'free day', 'push', 'postpone'],
+            node: (
+              <CollapsibleField
+                label="If the day is full"
+                icon="hourglass-outline"
+                summary={slotInShown ? 'Wait' : 'Keep the date'}
+                hint={slotInCategory !== null
+                  ? `Wait moves this to the next day that isn't full. One waiting task still shows every day, starting with the one that has waited longest. Set for every task in ${slotInCategory}.`
+                  : "Wait moves this to the next day that isn't full. One waiting task still shows every day, starting with the one that has waited longest."}
+                expanded={fieldOpen('slotIn')}
+                onToggle={() => toggleField('slotIn')}
+              >
+                <SegmentedControl<boolean>
+                  label="If the day is full"
+                  value={slotInShown}
+                  onChange={wait => {
+                    setSlotIn(wait);
+                    // Keeping the date on a task the pass is holding brings it
+                    // back now rather than at tomorrow's pass.
+                    if (!wait && task && isSlotWaiting(task, getCurrentLogicalDayKey())) setDeferUntil(null);
+                    closeField('slotIn');
+                  }}
+                  options={SLOT_IN_SEGMENTS}
+                />
+              </CollapsibleField>
+            ),
+          }] : []),
           {
             key: 'deadline', label: 'Deadline', set: !!deadline || deadlineOffsetDays !== null || deadlineMonthDay !== null,
             keywords: ['due', 'by', 'cutoff', 'hard date', 'late', 'overdue', 'calendar'],

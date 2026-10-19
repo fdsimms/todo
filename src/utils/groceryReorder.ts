@@ -19,6 +19,7 @@ export type GroceryDropRow =
   | { type: 'recipeHeader' }
   | { type: 'storeHeader' }
   | { type: 'unavailableHeader' }
+  | { type: 'skippedHeader' }
   | { type: 'cartHeader' }
   | { type: 'item'; item: GroceryItem };
 
@@ -66,28 +67,27 @@ export interface GroceryPlacement {
  * anyway. Leaving them out also makes a drop mean the same thing whether the
  * cart section happens to be expanded or collapsed.
  *
- * **A `unavailableHeader` row is transparent, not a boundary.** It's a label
- * inside an aisle (the store you're standing in doesn't carry these), not a
- * new one — so it's skipped without touching `currentAisle`, the same way an
- * aisle header itself is the only thing allowed to change it.
+ * **Everything from a `unavailableHeader` (or `skippedHeader`) down is left
+ * alone too.** The "Not at <store>" group sits after the last aisle, so the nearest-header-above rule
+ * would file each of its rows under that aisle, whatever aisle it came from.
+ * It is a record of what this store lacks, and its rows keep their own aisle.
  *
  * **`recipeHeader` and `storeHeader` never actually reach here.** Row drag is
  * disabled whenever the list is grouped by recipe or by store (see
  * GroceryScreen), so these only exist to keep the type honest about every row
- * `ListRow` can hand it; they're skipped the same way `unavailableHeader` is,
- * on the off chance one does.
+ * `ListRow` can hand it; they're skipped, on the off chance one does.
  */
 export function resolveGroceryDrop(rows: readonly GroceryDropRow[]): GroceryPlacement[] {
   const walk: Array<{ item: GroceryItem; aisle: string }> = [];
   let currentAisle: string | null = null;
 
   for (const row of rows) {
-    if (row.type === 'cartHeader') break;
+    if (row.type === 'cartHeader' || row.type === 'unavailableHeader' || row.type === 'skippedHeader') break;
     if (row.type === 'aisle') {
       currentAisle = row.aisle;
       continue;
     }
-    if (row.type === 'unavailableHeader' || row.type === 'recipeHeader' || row.type === 'storeHeader') continue;
+    if (row.type === 'recipeHeader' || row.type === 'storeHeader') continue;
     walk.push({
       item: row.item,
       // No header above at all (nothing on the list is laid out that way, but a
@@ -182,22 +182,19 @@ export function placeNewGroceryItems(
  * header, since that section is a record of what's already in the trolley
  * rather than a place to file something.
  *
- * **Not similarly bounded above a `unavailableHeader`.** A "not here" row
- * can't be picked up as a drag source at all (see GroceryScreen), so the only
- * way one enters that range is a normal item dropped there — which
- * `resolveGroceryDrop` still ranks correctly, and the next render moves it
- * straight back out, since bucket membership is read fresh from the trip
- * marker rather than from where it landed. A per-aisle exclusion zone would
- * only prevent a one-frame visual that self-corrects on its own.
+ * Also bounded by the "Not at <store>" and "Skipped" headers, which sit after
+ * the last aisle: a row dropped into either would be filed under no aisle.
  */
 export function groceryDragRange(
   rows: readonly GroceryDropRow[],
   activeIndex: number,
 ): [number, number] {
   const firstAisle = rows.findIndex(r => r.type === 'aisle');
-  const cartHeader = rows.findIndex(r => r.type === 'cartHeader');
+  const tail = rows.findIndex(
+    r => r.type === 'cartHeader' || r.type === 'unavailableHeader' || r.type === 'skippedHeader',
+  );
   const lo = firstAisle >= 0 ? firstAisle + 1 : activeIndex;
-  const hi = cartHeader >= 0 ? cartHeader - 1 : rows.length - 1;
+  const hi = tail >= 0 ? tail - 1 : rows.length - 1;
   // A degenerate list (no headers, or a cart header first) would otherwise hand
   // back an inverted range, which reads as "drop anywhere" once clamped.
   if (hi < lo) return [activeIndex, activeIndex];

@@ -2333,6 +2333,12 @@ function runInitDatabase(): void {
     // every existing row, which nothing reads until a watch's copy arrives for
     // it, and none can be waiting for one from before phase 9.
     'ALTER TABLE workout_sessions ADD COLUMN times_edited INTEGER NOT NULL DEFAULT 0',
+    // Task.slotIn: NULL on every existing row, which follows its category, and
+    // every category starts at 0, so nothing waits until someone says so.
+    'ALTER TABLE tasks ADD COLUMN slot_in INTEGER',
+    'ALTER TABLE tasks ADD COLUMN slot_decided_on TEXT',
+    'ALTER TABLE tasks ADD COLUMN slot_waiting_since TEXT',
+    'ALTER TABLE categories ADD COLUMN slot_in INTEGER NOT NULL DEFAULT 0',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -3900,6 +3906,9 @@ function rowToTask(row: Record<string, unknown>): Task {
     meterHeldUntil: (row.meter_held_until as string | null) ?? null,
     rainSkipMm: (row.rain_skip_mm as number | null) ?? null,
     rainSkippedOn: (row.rain_skipped_on as string | null) ?? null,
+    slotIn: row.slot_in === null || row.slot_in === undefined ? null : Boolean(row.slot_in),
+    slotDecidedOn: (row.slot_decided_on as string | null) ?? null,
+    slotWaitingSince: (row.slot_waiting_since as string | null) ?? null,
     quotaRampStep: (row.quota_ramp_step as number | null) ?? null,
     quotaRampEvery: (row.quota_ramp_every as number | null) ?? null,
     quotaRampGoal: (row.quota_ramp_goal as number | null) ?? null,
@@ -4128,8 +4137,9 @@ export function dbInsertTask(task: Task): void {
       blocked_by_ids, deliverable_options, deliverable_sets_away, follow_up_on, extra_task_source_id,
       pin_each_occurrence, bounty_pushes, difficulty, answer_gate, deliverable_why, deliverable_revisit_if, extra_task_at_end, weather_wait, wait_for_series_end, rotation_plan, slip_allowance, done_by_other_at, window_start_sun, window_end_sun, recurrence_holidays,
       meter_name, meter_unit, meter_every, meter_due_at, meter_limit_months, meter_held_until, rain_skip_mm, rain_skipped_on, review_of_task_id,
-      quota_ramp_step, quota_ramp_every, quota_ramp_goal, quota_ramp_hits, streak_counts_units, log_saved_meal_id, coins_per_tap, log_meal_slot_by_time, quota_place_ids, gate_group_id, workout_routine_id, workout_program_id, generated_ready_at, quota_rest_after_log, quota_logged_day_key
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      quota_ramp_step, quota_ramp_every, quota_ramp_goal, quota_ramp_hits, streak_counts_units, log_saved_meal_id, coins_per_tap, log_meal_slot_by_time, quota_place_ids, gate_group_id, workout_routine_id, workout_program_id, generated_ready_at,
+      slot_in, slot_decided_on, slot_waiting_since, quota_rest_after_log, quota_logged_day_key
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deadlineTime ?? null, task.deferUntil,
@@ -4279,6 +4289,9 @@ export function dbInsertTask(task: Task): void {
       task.workoutRoutineId ?? null,
       task.workoutProgramId ?? null,
       task.generatedReadyAt ?? null,
+      task.slotIn === null || task.slotIn === undefined ? null : task.slotIn ? 1 : 0,
+      task.slotDecidedOn ?? null,
+      task.slotWaitingSince ?? null,
       task.quotaRestAfterLog ? 1 : 0,
       task.quotaLoggedDayKey ?? null,
     ]
@@ -4319,7 +4332,8 @@ export function dbUpdateTask(task: Task): void {
       blocked_by_ids=?, deliverable_options=?, deliverable_sets_away=?, follow_up_on=?, extra_task_source_id=?,
       pin_each_occurrence=?, bounty_pushes=?, difficulty=?, answer_gate=?, deliverable_why=?, deliverable_revisit_if=?, extra_task_at_end=?, weather_wait=?, wait_for_series_end=?, rotation_plan=?, slip_allowance=?, done_by_other_at=?, window_start_sun=?, window_end_sun=?, recurrence_holidays=?,
       meter_name=?, meter_unit=?, meter_every=?, meter_due_at=?, meter_limit_months=?, meter_held_until=?, rain_skip_mm=?, rain_skipped_on=?, review_of_task_id=?,
-      quota_ramp_step=?, quota_ramp_every=?, quota_ramp_goal=?, quota_ramp_hits=?, streak_counts_units=?, log_saved_meal_id=?, coins_per_tap=?, log_meal_slot_by_time=?, quota_place_ids=?, gate_group_id=?, workout_routine_id=?, workout_program_id=?, generated_ready_at=?, quota_rest_after_log=?, quota_logged_day_key=?
+      quota_ramp_step=?, quota_ramp_every=?, quota_ramp_goal=?, quota_ramp_hits=?, streak_counts_units=?, log_saved_meal_id=?, coins_per_tap=?, log_meal_slot_by_time=?, quota_place_ids=?, gate_group_id=?, workout_routine_id=?, workout_program_id=?, generated_ready_at=?,
+      slot_in=?, slot_decided_on=?, slot_waiting_since=?, quota_rest_after_log=?, quota_logged_day_key=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -4470,6 +4484,9 @@ export function dbUpdateTask(task: Task): void {
       task.workoutRoutineId ?? null,
       task.workoutProgramId ?? null,
       task.generatedReadyAt ?? null,
+      task.slotIn === null || task.slotIn === undefined ? null : task.slotIn ? 1 : 0,
+      task.slotDecidedOn ?? null,
+      task.slotWaitingSince ?? null,
       task.quotaRestAfterLog ? 1 : 0,
       task.quotaLoggedDayKey ?? null,
       task.id,
@@ -4898,6 +4915,7 @@ function rowToCategory(row: Record<string, unknown>): Category {
     excludeFromSuggestions: Boolean(row.exclude_from_pin_suggestions),
     excludeFromNewTasksBanner: Boolean(row.exclude_from_new_tasks_banner),
     defaultTimeSegments: parseTimeSegments(row.default_time_segments),
+    slotIn: Boolean(row.slot_in),
     sortOrder: row.sort_order as number,
     emoji: (row.emoji as string | null) ?? null,
     backfillDismissedFields: JSON.parse((row.backfill_dismissed_fields as string) ?? '[]') as string[],
@@ -4914,7 +4932,7 @@ export function dbInsertCategory(name: string): Category {
   const maxOrder = db.getFirstSync<{ m: number }>('SELECT COALESCE(MAX(sort_order), 0) AS m FROM categories')?.m ?? 0;
   const sortOrder = maxOrder + 1;
   db.runSync('INSERT INTO categories (id, name, sort_order) VALUES (?, ?, ?)', [id, name, sortOrder]);
-  return { id, name, scheduleDays: null, scheduleStart: null, scheduleEnd: null, hideOnVacation: false, excludeFromSuggestions: false, excludeFromNewTasksBanner: false, defaultTimeSegments: [], sortOrder, emoji: null, backfillDismissedFields: [] };
+  return { id, name, scheduleDays: null, scheduleStart: null, scheduleEnd: null, hideOnVacation: false, excludeFromSuggestions: false, excludeFromNewTasksBanner: false, defaultTimeSegments: [], slotIn: false, sortOrder, emoji: null, backfillDismissedFields: [] };
 }
 
 export function dbBatchUpdateCategorySortOrders(updates: { id: string; sortOrder: number }[]): void {
@@ -4939,6 +4957,10 @@ export function dbSetCategoryExcludeFromSuggestions(id: string, exclude: boolean
 
 export function dbSetCategoryExcludeFromNewTasksBanner(id: string, exclude: boolean): void {
   db.runSync('UPDATE categories SET exclude_from_new_tasks_banner = ? WHERE id = ?', [exclude ? 1 : 0, id]);
+}
+
+export function dbSetCategorySlotIn(id: string, slotIn: boolean): void {
+  db.runSync('UPDATE categories SET slot_in = ? WHERE id = ?', [slotIn ? 1 : 0, id]);
 }
 
 // Same mechanism as dismissBackfillField/updateTask for tasks: the screen
@@ -4986,7 +5008,7 @@ export function dbDeleteCategory(name: string): void {
 // the schedule/vacation fields a deleted category carried.
 export function dbInsertCategoryRow(category: Category): void {
   db.runSync(
-    'INSERT INTO categories (id, name, schedule_days, schedule_start, schedule_end, hide_on_vacation, exclude_from_pin_suggestions, exclude_from_new_tasks_banner, default_time_segments, sort_order, emoji, backfill_dismissed_fields) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO categories (id, name, schedule_days, schedule_start, schedule_end, hide_on_vacation, exclude_from_pin_suggestions, exclude_from_new_tasks_banner, default_time_segments, sort_order, emoji, backfill_dismissed_fields, slot_in) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
     [
       category.id,
       category.name,
@@ -5000,6 +5022,7 @@ export function dbInsertCategoryRow(category: Category): void {
       category.sortOrder,
       category.emoji,
       JSON.stringify(category.backfillDismissedFields),
+      category.slotIn ? 1 : 0,
     ]
   );
 }

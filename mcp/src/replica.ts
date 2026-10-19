@@ -144,6 +144,8 @@ export interface CategorySettingsPatch {
   hideOnVacation?: boolean;
   excludeFromSuggestions?: boolean;
   excludeFromNewTasksBanner?: boolean;
+  /** "If the day is full, wait" for every task in the category that has no answer of its own. */
+  slotIn?: boolean;
   defaultTimeSegments?: TimeOfDay[];
   /** Days (0 = Sunday) and "HH:MM" bounds the category is active; null removes the schedule. */
   schedule?: { days: number[]; start: string; end: string } | null;
@@ -937,6 +939,7 @@ export interface ProjectPatch {
   taskDefaults?: {
     priority?: number | null; difficulty?: 'easy' | 'normal' | 'hard' | null; effort?: number | null;
     showStreak?: boolean | null; vacationPause?: boolean | null; excludeFromSuggestions?: boolean | null;
+    slotIn?: boolean | null;
   } | null;
   completed?: boolean;
   archived?: boolean;
@@ -7377,7 +7380,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const content: Parameters<typeof store.updateProject>[1] = { ...rest } as never;
       if (taskDefaults !== undefined) {
         content.taskDefaults = taskDefaults === null ? null : parseTaskFieldDefaults(taskDefaults);
-        if (taskDefaults !== null && content.taskDefaults === null) throw new Error('taskDefaults: nothing in it is a value I can use. Priority is 0 to 4, difficulty is easy, normal or hard, effort is 0 to 6 (0 is no estimate), and showStreak, vacationPause and excludeFromSuggestions are true or false.');
+        if (taskDefaults !== null && content.taskDefaults === null) throw new Error('taskDefaults: nothing in it is a value I can use. Priority is 0 to 4, difficulty is easy, normal or hard, effort is 0 to 6 (0 is no estimate), and showStreak, vacationPause, excludeFromSuggestions and slotIn are true or false.');
       }
       if (content.defaultTaskCategory) {
         const errors: string[] = [];
@@ -7655,6 +7658,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         if (patch.hideOnVacation !== undefined) cats.setCategoryHideOnVacation(n, patch.hideOnVacation);
         if (patch.excludeFromSuggestions !== undefined) cats.setCategoryExcludeFromSuggestions(n, patch.excludeFromSuggestions);
         if (patch.excludeFromNewTasksBanner !== undefined) cats.setCategoryExcludeFromNewTasksBanner(n, patch.excludeFromNewTasksBanner);
+        if (patch.slotIn !== undefined) cats.setCategorySlotIn(n, patch.slotIn);
         if (patch.defaultTimeSegments !== undefined) cats.setCategoryDefaultTimeSegments(n, patch.defaultTimeSegments);
         if (patch.schedule === null) cats.removeCategorySchedule(n);
         else if (patch.schedule) cats.setCategorySchedule(n, [...new Set(patch.schedule.days)].sort(), patch.schedule.start, patch.schedule.end);

@@ -539,24 +539,34 @@ describe('describeTripMarker', () => {
 });
 
 describe('describeGroupedUnavailable', () => {
-  // The row's aisle already carries a "Not here" header once it's grouped —
-  // restating that here would be exactly the caption describeTripMarker's
-  // own unavailable case was shortened to stop saying twice.
-  it('names only the substitute, with no store fact at all', () => {
+  // The group's header names the store you're in, so the caption never does.
+  it('names the aisle, the other store and the substitute', () => {
     const margarine = item('margarine', { name: 'Margarine' });
     expect(
-      describeGroupedUnavailable({ kind: 'unavailable', shop: safeway, substitute: margarine })
-    ).toBe('or Margarine');
+      describeGroupedUnavailable(
+        { kind: 'unavailable', shop: safeway, substitute: margarine, elsewhere: traderJoes },
+        'Dairy'
+      )
+    ).toBe(`Dairy \u00b7 Try ${traderJoes.name} \u00b7 or Margarine`);
   });
 
-  it('says nothing when there is no substitute on record', () => {
+  it('leaves out whatever is not on record', () => {
+    const margarine = item('margarine', { name: 'Margarine' });
+    expect(
+      describeGroupedUnavailable({ kind: 'unavailable', shop: safeway, substitute: margarine }, 'Dairy')
+    ).toBe('Dairy \u00b7 or Margarine');
+    expect(
+      describeGroupedUnavailable({ kind: 'unavailable', shop: safeway, elsewhere: traderJoes })
+    ).toBe(`Try ${traderJoes.name}`);
+  });
+
+  it('says nothing when there is only an aisle to say', () => {
+    expect(describeGroupedUnavailable({ kind: 'unavailable', shop: safeway }, 'Dairy')).toBe('');
     expect(describeGroupedUnavailable({ kind: 'unavailable', shop: safeway })).toBe('');
   });
 
-  // Every row under the header is unavailable by construction, but the
-  // function itself stays honest about what it actually reads.
   it('says nothing for a marker of a different kind', () => {
-    expect(describeGroupedUnavailable({ kind: 'only', shop: traderJoes })).toBe('');
+    expect(describeGroupedUnavailable({ kind: 'only', shop: traderJoes }, 'Dairy')).toBe('');
   });
 });
 
@@ -587,12 +597,17 @@ describe('tripMarkerFor and a store\'s aisle range', () => {
     expect(tripMarkerFor(tofurky, links, shops, cvs)?.kind).toBe('unavailable');
   });
 
-  // Standing in the pharmacy, "the pharmacy doesn't sell this" is the useful
-  // half; where you usually get it is trivia.
-  it('outranks a clause about another store', () => {
+  // Standing in the pharmacy, "the pharmacy doesn't sell this" is the marker's
+  // kind; the other store rides along so the "Not at CVS" group can say where
+  // to get it.
+  it('outranks a clause about another store, and carries that store along', () => {
     const tofurky = item('tofurky', { aisle: 'Frozen' });
     const links = [link('tofurky', traderJoes.id, 5)];
-    expect(tripMarkerFor(tofurky, links, shops, cvs)).toEqual({ kind: 'outOfRange', shop: cvs });
+    expect(tripMarkerFor(tofurky, links, shops, cvs)).toEqual({
+      kind: 'outOfRange',
+      shop: cvs,
+      elsewhere: traderJoes,
+    });
   });
 
   it('reads as the store being out, same as the other negative', () => {
@@ -654,7 +669,7 @@ describe('tripMarkerFor and a store\'s aisle range', () => {
     );
   });
 
-  it('says only the substitute once grouped', () => {
+  it('says only the substitute once grouped, with no aisle given', () => {
     const jerky = item('jerky', { name: 'Jerky' });
     expect(describeGroupedUnavailable({ kind: 'outOfRange', shop: cvs, substitute: jerky })).toBe(
       'or Jerky'

@@ -10,6 +10,7 @@ import {
   dbSetCategoryHideOnVacation,
   dbSetCategoryExcludeFromSuggestions,
   dbSetCategoryExcludeFromNewTasksBanner,
+  dbSetCategorySlotIn,
   dbSetCategoryBackfillDismissedFields,
   dbSetCategoryEmoji,
   dbSetCategoryDefaultTimeSegments,
@@ -36,6 +37,9 @@ interface CategoryStore {
   setCategoryHideOnVacation: (name: string, hide: boolean) => void;
   setCategoryExcludeFromSuggestions: (name: string, exclude: boolean) => void;
   setCategoryExcludeFromNewTasksBanner: (name: string, exclude: boolean) => void;
+  // Read by the slot-in pass on every run, so this covers the tasks already
+  // in the category (see src/utils/slotIn.ts).
+  setCategorySlotIn: (name: string, slotIn: boolean) => void;
   // Persists the deduped array the Backfill screen (categoryBackfill.ts's
   // dismissCategoryBackfillField) computes — same split as
   // dismissBackfillField/updateTask on the task side.
@@ -141,6 +145,15 @@ export const useCategoryStore = create<CategoryStore>((set, get) => ({
       categories: s.categories.map(c =>
         c.name === name ? { ...c, excludeFromNewTasksBanner: exclude } : c
       ),
+    }));
+  },
+
+  setCategorySlotIn(name, slotIn) {
+    const cat = get().categories.find(c => c.name === name);
+    if (!cat) return;
+    dbSetCategorySlotIn(cat.id, slotIn);
+    set(s => ({
+      categories: s.categories.map(c => (c.name === name ? { ...c, slotIn } : c)),
     }));
   },
 

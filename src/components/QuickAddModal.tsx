@@ -442,6 +442,8 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
   const [customEffortText, setCustomEffortText] = useState('');
   const [dueDate, setDueDate] = useState<Date | null>(null);
+  // "~thu" read off the title: the date waits if that day is full (Task.slotIn).
+  const [titleSlotIn, setTitleSlotIn] = useState(false);
   const [deadline, setDeadline] = useState<Date | null>(null);
   const [timeSegments, setTimeSegments] = useState<TimeOfDay[]>([]);
   // A reminder actually accepted off the offer below — nothing sets this on
@@ -638,6 +640,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     setTitleWindowStart(null);
     setTitleWindowStartSun(null);
     setTitleSeries(null);
+    setTitleSlotIn(false);
     setBlockerIds([]);
     setSubtaskTitles([]);
     setTitleWindowEnd(null);
@@ -1234,6 +1237,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     setTitle(nextTitle);
     titleCaret.moveCaret(nextTitle);
     setDueDate(parsed.schedule.dueDate);
+    setTitleSlotIn(parsed.schedule.slotIn === true);
     setDeadline(parsed.schedule.deadline ?? null);
     setTitleWindowStart(parsed.schedule.windowStart ?? null);
     setTitleWindowEnd(parsed.schedule.windowEnd ?? null);
@@ -1835,6 +1839,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       ...(blockerIds.length > 0 ? blockerFields(blockerIds) : {}),
       ...(titleWindowEnd ? { windowEnd: titleWindowEnd, windowEndSun: titleWindowEndSun } : {}),
       ...(weatherWaitHere ? { weatherWait } : {}),
+      ...(titleSlotIn && dueDate ? { slotIn: true } : {}),
       ...(meterHere && titleMeterInput ? meterFieldsFromInput(titleMeterInput, meterReadings) : {}),
       ...(rainSkipHere ? { rainSkipMm: titleRainSkipMm } : {}),
       // Plain kind only, the editor's rule: every other kind is a way of
@@ -2075,6 +2080,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       windowStart: titleWindowStart,
       windowStartSun: titleWindowStart ? titleWindowStartSun : null,
       weatherWait: weatherWaitHere ? weatherWait : null,
+      slotIn: titleSlotIn && dueDate ? true : null,
       meter: meterHere ? titleMeter : null,
       rainSkipMm: rainSkipHere ? titleRainSkipMm : null,
       blockerIds,
@@ -3592,6 +3598,7 @@ parsed
         }}
         onClear={() => {
           setDueDate(null);
+          setTitleSlotIn(false);
           setTimeSegments([]);
           setWhenPickerVisible(false);
         }}

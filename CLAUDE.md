@@ -493,6 +493,7 @@ file: the two maps are indexes, not write-ups.
 | two packets of one thing, tracked apart in the pantry | `ItemProduct`'s four pantry columns + `productHaveReason` in `src/utils/grocerySuggest.ts` — see `docs/arch/groceries.md` |
 | which store an item comes from | `src/utils/groceryShops.ts` — see `docs/arch/groceries.md` |
 | the store you're shopping at right now | `src/utils/activeTrip.ts` — see `docs/arch/groceries.md` |
+| something that came home that wasn't on the list, and what replaced a missing item | `src/utils/incidentalPurchases.ts` + `addToCartMany` in `useGroceryStore` — see `docs/arch/groceries.md`. Derived from each row's `addedAt` against the trip's start; no trip, no answer |
 | what something costs, and which store is cheaper | `src/utils/groceryPrice.ts` |
 | what the app thinks you already have | `probablyHaveReason`/`pantryEntries` in `src/utils/grocerySuggest.ts` — see `docs/arch/groceries.md` |
 | the app asking whether you still have something | `src/utils/pantryCheckTasks.ts` — see `docs/arch/groceries.md` |
@@ -555,6 +556,7 @@ file: the two maps are indexes, not write-ups.
 | pulling tasks out of a project | `src/utils/projectPull.ts` |
 | what a task is waiting on, and what it blocks | `src/utils/blocking.ts` + `src/utils/blockerRegistry.ts`. A task can wait on several, so **read blockers only through `blockerIdsOf` / `liveBlockersOf` / `isBlocked`, and write them only through `blockerFields`**: `blockedById` alone is just the first, and a finished blocker holds nothing |
 | how loaded a day is, and lightening an overloaded one | `src/utils/dayLoad.ts` + `src/utils/deloadPlan.ts` |
+| a task that waits for a lighter day ("If the day is full"), per task or per category | `src/utils/slotIn.ts` + `applySlotIns` in `useTaskStore` + `src/hooks/useSlotInSync.ts` — see `docs/arch/slot-in.md`. The hold is the task's own `deferUntil`, each day is decided once, and the pass's writes skip the postpone count |
 | what lands before a date, and whether it fits | `src/utils/lookAhead.ts` (+ `src/utils/taskMoves.ts`, shared with `deloadPlan`) |
 | a recurring habit and whether it's on track | `src/utils/rhythms.ts` (+ `rhythmsSettings.ts`) |
 | a habit that's about *not* doing something, and the days it survives | `src/utils/negativeHabits.ts` + `Task.polarity` — the one streak in the app advanced by a rollover pass rather than by a completion, because there is no completion to hang it on |
@@ -723,6 +725,7 @@ decided, and the design system every screen is built from. Individual features a
 | `docs/arch/rewards.md` | Coins and rewards: why the balance is a ledger, and what may and may not earn or cost coins |
 | `docs/arch/supplies.md` | A consumable counted down by a repeating task, and the reorder it asks for |
 | `docs/arch/meters.md` | A task due at a meter reading (an odometer), the readings, and the hold that surfaces it |
+| `docs/arch/slot-in.md` | A task that waits for a day that isn't full: the once-a-day decision, the floor that drains the queue, and what can't wait |
 | `docs/arch/focus-sessions.md` | Focus sessions: the plan, its breaks, and why a step that runs out waits |
 | `docs/arch/reminders-import.md` | Apple Reminders import, and the data it deletes elsewhere |
 | `docs/arch/app-lock.md` | The Face ID gate and the API key in the keychain |

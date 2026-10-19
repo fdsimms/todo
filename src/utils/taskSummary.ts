@@ -27,6 +27,8 @@ export interface SummaryPart {
 }
 
 export interface TaskSummaryInput {
+  /** "If the day is full" is set to wait (Task.slotIn, or its category's). */
+  waitsIfFull?: boolean;
   /**
    * The Date row's value (formatScheduledDate). Its past forms, "Yesterday"
    * and "3d ago", change the verb, so the sentence and the row can't disagree
@@ -127,6 +129,7 @@ function whenSentence(i: TaskSummaryInput): Clause[] {
     if (ago) parts.push(w('showed up '), v(`${spelledDays(Number(ago[1]))} ago`, 'date'));
     else if (i.date === 'Yesterday') parts.push(w('showed up '), v('yesterday', 'date'));
     else parts.push(w('shows up '), v(inSentence(i.date), 'date'));
+    if (i.waitsIfFull) parts.push(w(', or '), v('later if that day is full', 'slotIn'));
   }
   if (i.timesOfDay && i.timesOfDay.length > 0) {
     parts.push(w(parts.length ? ' in the ' : 'shows up in the '), v(joinOr(i.timesOfDay), 'timeOfDay'));

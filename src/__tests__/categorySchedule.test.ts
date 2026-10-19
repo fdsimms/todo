@@ -16,6 +16,7 @@ function makeCategory(overrides: Partial<Category> = {}): Category {
     defaultTimeSegments: [],
     excludeFromSuggestions: false,
     excludeFromNewTasksBanner: false,
+    slotIn: false,
     sortOrder: 1,
     emoji: null,
     backfillDismissedFields: [],

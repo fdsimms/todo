@@ -141,3 +141,28 @@ export function canPageToNextMonth(displayMonth: Date, latest: Date | null): boo
   if (!latest) return true;
   return startOfMonth(displayMonth) < startOfMonth(latest);
 }
+
+/**
+ * The days a picker offers as one-tap shortcuts: today, tomorrow, then the next
+ * Saturday and Sunday after that, oldest first. `today` is the logical today
+ * (`getLogicalToday`), never `new Date()`, so a day that starts at 2 AM offers
+ * the right "Today" at 1:30 AM. A weekend day already covered by Today or
+ * Tomorrow is not repeated: from a Friday the chips are Today, Tomorrow (Sat),
+ * Sun and the Saturday after.
+ */
+export function dayShortcutDays(today: Date): Date[] {
+  const tomorrow = addDays(today, 1);
+  const nextAfterTomorrow = (weekday: number) =>
+    addDays(tomorrow, ((weekday - tomorrow.getDay() + 7) % 7) || 7);
+  const weekend = [nextAfterTomorrow(6), nextAfterTomorrow(0)].sort((a, b) => +a - +b);
+  return [today, tomorrow, ...weekend];
+}
+
+/** "Today", "Tomorrow", "Sun", or "Sat 31" once it is more than a week out. */
+export function dayShortcutLabel(day: Date, today: Date): string {
+  const away = differenceInCalendarDays(day, today);
+  if (away === 0) return 'Today';
+  if (away === 1) return 'Tomorrow';
+  const weekday = day.toLocaleDateString(undefined, { weekday: 'short' });
+  return away <= 6 ? weekday : `${weekday} ${day.getDate()}`;
+}

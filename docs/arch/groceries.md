@@ -648,7 +648,7 @@ items from, and this is a person stating what a shop sells. Same side of the lin
   showing three rows of fourteen. `planTrip` files them in `ShopCoverage.outOfRangeItemIds`, which
   `summarizeTrip` folds into `missing` — the consequence for the trip is identical to a stamped
   claim, and both are the user's own words. `tripMarkerFor` returns an `outOfRange` marker, which
-  `GroceryScreen` routes into the section's existing "Not here" group: to somebody holding the list
+  `GroceryScreen` routes into the list's one "Not at <store>" group (after the last section, before the cart): to somebody holding the list
   the two negatives say the same thing, and which one it was is a fact about where the claim came
   from.
 - **A substitute rides both negatives, and is filtered by the range.** Standing in a shop that
@@ -859,6 +859,35 @@ which rows you don't usually get here.
 - **The `usually` case can't be seeded into demo mode.** It needs an item bought at two stores
   while you stand in a third, and the demo has two stores anyone would shop at. The seeded trip
   is at Trader Joe's and shows the other two.
+
+## Incidental purchases — what came home that wasn't on the list
+
+`src/utils/incidentalPurchases.ts`. The finish sheet used to ask only about what the list had: what a
+store didn't stock, and what each bought row cost. Anything picked up on the way, or bought in place
+of something missing, had no way in except typing a name that was minted into the catalog and never
+bought.
+
+- **Derived from `GroceryListEntry.addedAt`, and nothing is stored.** An incidental is a ticked row
+  that joined the trolley at or after the active trip's start (`incidentalIds`). No flag means nothing
+  to clear when a trip ends and nothing for sync to carry.
+- **No trip, no answer.** With no trip running there is no "when the shop started". The app does not
+  fall back to the clock, because a row added three hours ago was most likely planned and calling it
+  incidental is a claim with no evidence behind it. The finish sheet still lists what was added from
+  the sheet itself in that case (its own `addedHere` state), which is the one thing that is known.
+- **An add is a purchase.** `addToCartMany` puts a row on the list already ticked, so it gets a price
+  row, the freezer toggle and a purchase record like any other bought row. It commits straight
+  through, so cancelling the finish sheet leaves the row in the cart rather than half undoing it.
+- **"Add to cart" in the add menu** opens the ordinary add sheet with `intoCart`, which ticks what the
+  field adds. It is offered only while shopping (a trip is running, or something is already ticked),
+  so it never sits beside "Add an item" on a list nobody is shopping from.
+- **"Replaced by" offers a narrow set** (`substituteCandidates`): the row's usual substitute, then
+  incidentals, then anything in the cart from the same aisle. The old prompt offered the whole trolley,
+  which meant paper towels for skyr. Don't widen it back; a name outside the set is one typed field
+  away, and typing one adds it to the cart and picks it.
+- **"Bought before" is `purchaseCount`, not a history of off-list buys** (`incidentalPicks`). The app
+  records no such history, and a staple missing from the list this week is exactly what tends to come
+  home anyway. The label says what it is.
+
 
 ## The kitchen — the pantry and the fridge, read as one thing
 
@@ -1901,3 +1930,5 @@ so this is the wire between them, not a third system.
   ad-hoc shop isn't attached to a meal, so there's nothing for "I'll decide later" to be a fact
   about. It lives in sheet state and dies with the sheet.
 
+
+**Skip is session-only and keeps the checkbox.** A row in the "Not at <store>" group can be skipped, which moves it to a "Skipped" group for the rest of the trip (`tripSkippedIds` in `useGroceryStore`, cleared when a trip starts or ends, never written to the database or synced). Both groups keep the checkbox because the app's claim is a record of an earlier visit and the shelf may disagree. Skipping hides and checks nothing, so the row is back in its aisle on the next trip. The caption in the group is `describeGroupedUnavailable`: aisle, "Try <other store>" (`TripMarker.elsewhere`, only a store on record), and "or <substitute>".

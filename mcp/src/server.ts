@@ -1223,6 +1223,7 @@ const itemSchema = z.object({
   linkUrl: z.string().nullable().optional(),
   location: z.string().nullable().optional(),
   weatherWait: z.enum(['sunny', 'rainy', 'snowy', 'cold', 'hot']).nullable().optional().describe('Hold the task until the next day with this forecast. Only for a one-off item.'),
+  slotIn: z.boolean().nullable().optional().describe('If the day is full: true makes the task wait for a day that is not busy, false keeps its date even in a category set to wait, null follows the category.'),
   pinEachOccurrence: z.boolean().optional(),
   medicationChecklist: z.boolean().optional().describe('When the template runs, add one subtask per medication the person currently takes (their medication log, archived medicines left out) after the item\'s own subtasks. Turn it on for an item like "Medications"; the list is read at run time, never stored.'),
   chain: z.object({
@@ -1456,6 +1457,8 @@ const taskFieldsShape = {
   location: z.string().nullable().optional().describe('The place it happens, as free text. null clears it.'),
   vacationPause: z.boolean().optional()
     .describe('Hide this task, and keep its streak, while vacation mode is on (get_overview says whether it is).'),
+  slotIn: z.boolean().nullable().optional()
+    .describe('If the day is full: true lets the phone hold this task until a day that is not busy (at least one waiting task still shows every day, longest wait first, and never past its deadline); false keeps its date even when its category says wait; null follows the category. Only for a dated task that is not a daily repeat, a daily target, an every-N-hours task, a meter or weather wait, or one with a reminder at a set time.'),
   workoutRoutineId: z.string().nullable().optional()
     .describe('A workout routine id (list_workouts lists routines; save_routine makes one). The task row then offers Start workout, and finishing that workout on the phone completes the task. Completing the task never logs a workout. null removes the link. Setting it clears workoutProgramId.'),
   workoutProgramId: z.string().nullable().optional()
@@ -2469,7 +2472,7 @@ function registerWriteTools(
 
   server.tool(
     'quick_add',
-    `Add up to ${MAX_QUICK_ADD} tasks from lines of text, each read with the app's own quick-add grammar: "Pay rent tomorrow 5pm #home !high ^easy ~30m +Moving". Dates and repeats ("every other Monday"), #category or #tag, !priority, ^difficulty (trivial, easy, normal, hard), +project and an estimate are read out of the title, and a repeat can end in "unless it rains" to skip a day it rained; anything that matches nothing stays in the title and the row says so. Start a line with "remind me" to set a reminder at its time. Bullets and numbering are ignored, so a pasted list works. Without apply: true it only shows how each line reads.`,
+    `Add up to ${MAX_QUICK_ADD} tasks from lines of text, each read with the app's own quick-add grammar: "Pay rent tomorrow 5pm #home !high ^easy ~30m +Moving". Dates and repeats ("every other Monday"), #category or #tag, !priority, ^difficulty (trivial, easy, normal, hard), +project, an estimate (~30m) and a date that can wait ("~fri": Friday, or later if that day is full) are read out of the title, and a repeat can end in "unless it rains" to skip a day it rained; anything that matches nothing stays in the title and the row says so. Start a line with "remind me" to set a reminder at its time. Bullets and numbering are ignored, so a pasted list works. Without apply: true it only shows how each line reads.`,
     {
       lines: z.array(z.string()).min(1),
       apply: z.boolean().optional(),
@@ -2974,12 +2977,13 @@ function registerWriteTools(
 
   server.tool(
     'add_grocery_item',
-    "Put something on the home grocery list, or on a separate list with list. A name the user has bought before re-lists the shelf item they already have, keeping its aisle, its history and its pantry state, rather than creating a second one. Singular and plural resolve to the same item. The result says which of those happened.",
+    "Put something on the home grocery list, or on a separate list with list. Pass inCart for something already bought and not on the list (an incidental), so it counts in this trip. A name the user has bought before re-lists the shelf item they already have, keeping its aisle, its history and its pantry state, rather than creating a second one. Singular and plural resolve to the same item. The result says which of those happened.",
     {
       name: z.string().min(1).describe('What to add. A leading amount is split off, so "2 gal milk" files milk with a quantity of 2 gal.'),
       quantity: z.string().nullable().optional().describe('Stated separately instead of being parsed out of the name.'),
       note: z.string().nullable().optional(),
       list: z.string().optional().describe('A separate list by name or id (see grocery_setup). The list at home when omitted.'),
+      inCart: z.boolean().optional().describe("True when it is already bought: the person grabbed it at the store without it being on the list, or got it instead of something the store did not have. It is put on the list already checked off, so the trip records it as bought. Ticks it even if it was already on the list. Leave it out for something still to buy."),
     },
     async ({ name, list, ...rest }) => {
       try {
@@ -3663,7 +3667,8 @@ function registerWriteTools(
         showStreak: z.boolean().nullable().optional().describe('true shows the streak chip on every repeating task, false leaves it off on purpose so the backfill screen stops asking. Null means ask.'),
         vacationPause: z.boolean().nullable().optional().describe('true pauses every repeating task during vacation mode, false leaves it off on purpose so the backfill screen stops asking. Null means ask.'),
         excludeFromSuggestions: z.boolean().nullable().optional().describe('true keeps every task out of suggested pins and focus sessions, false leaves it in on purpose so the backfill screen stops asking. Null means ask.'),
-      }).nullable().optional().describe('Priority, difficulty, time estimate, streak chip, vacation pause and skip-in-suggestions every new task in the project starts with, so a list like a wish list never reaches backfill. Null clears them. Existing tasks are not changed.'),
+        slotIn: z.boolean().nullable().optional().describe('If the day is full: true makes every new task wait for a day that is not busy, false keeps their dates even in a category set to wait. Null means no default.'),
+      }).nullable().optional().describe('Priority, difficulty, time estimate, streak chip, vacation pause, skip-in-suggestions and if-the-day-is-full every new task in the project starts with, so a list like a wish list never reaches backfill. Null clears them. Existing tasks are not changed.'),
       completed: z.boolean().optional(),
       archived: z.boolean().optional(),
       archiveRemaining: z.boolean().optional().describe('With completed: true, archive its open tasks too, as the app offers when a project is finished with tasks left. Ask the person first.'),
@@ -3788,6 +3793,7 @@ function registerWriteTools(
       hideOnVacation: z.boolean().optional(),
       excludeFromSuggestions: z.boolean().optional(),
       excludeFromNewTasksBanner: z.boolean().optional(),
+      slotIn: z.boolean().optional().describe('If the day is full: true makes this category\'s dated tasks wait for a day that is not busy, unless a task says otherwise (its own slotIn). Covers the tasks already in it.'),
       defaultTimeSegments: z.array(z.enum(TIME_SEGMENTS as unknown as [TimeOfDay, ...TimeOfDay[]])).optional(),
     },
     async input => {
@@ -3814,6 +3820,7 @@ function registerWriteTools(
       hideOnVacation: z.boolean().optional(),
       excludeFromSuggestions: z.boolean().optional(),
       excludeFromNewTasksBanner: z.boolean().optional(),
+      slotIn: z.boolean().optional().describe('If the day is full: true makes this category\'s dated tasks wait for a day that is not busy, unless a task says otherwise (its own slotIn). Covers the tasks already in it.'),
       defaultTimeSegments: z.array(z.enum(TIME_SEGMENTS as unknown as [TimeOfDay, ...TimeOfDay[]])).optional(),
     },
     async input => {

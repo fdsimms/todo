@@ -224,7 +224,7 @@ only the fallback until the first sync.
 | `patch_recipe` | **Write.** Small edits to one recipe without resending its lists: set a step's note or which either/or option it applies to, insert, reword or remove a step or an ingredient, or leave an ingredient out of the recipe's nutrition total (`setIngredientNutrition`). Numbered from 1; `expect` refuses a stale reading; all or nothing; untouched lines keep their ids. |
 | `delete_recipe` | **Write.** Deletes a recipe. Not undoable from here. |
 | `defer_task` | **Write.** Moves a task to a date, or clears its date. |
-| `add_grocery_item` | **Write.** Puts something on the home list, re-using the shelf item the user already has where there is one. |
+| `add_grocery_item` | **Write.** Puts something on the home list, re-using the shelf item the user already has where there is one. `inCart: true` is for something already bought and never listed (an incidental): it goes on checked off, so the trip counts it. |
 | `check_off_grocery_item` | **Write.** Checks something off on the home list, or un-checks it. |
 | `remove_from_grocery_list` | **Write.** Takes something off the home list. Does not delete it. |
 | `update_grocery_item` | **Write.** Rename, aisle, quantity, note, last price, kind-of, other names, preferred brand, stores and substitutes (including a pair marked either one). Field edits are undoable from Activity. |

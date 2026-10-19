@@ -63,7 +63,8 @@ const DIFFICULTIES: readonly Difficulty[] = ['easy', 'normal', 'hard'];
 export function hasTaskFieldDefaults(d: TaskFieldDefaults | null | undefined): d is TaskFieldDefaults {
   return !!d && (
     d.priority !== null || d.difficulty !== null || d.effort !== null ||
-    TOGGLE_DEFAULTS.some(t => d[t.key] !== null)
+    TOGGLE_DEFAULTS.some(t => d[t.key] !== null) ||
+    typeof d.slotIn === 'boolean'
   );
 }
 
@@ -91,6 +92,9 @@ export function parseTaskFieldDefaults(raw: unknown): TaskFieldDefaults | null {
   for (const t of TOGGLE_DEFAULTS) {
     if (typeof o[t.key] === 'boolean') result[t.key] = o[t.key] as boolean;
   }
+  // Absent rather than null when unanswered, so an object written before the
+  // field existed reads back exactly as it was stored.
+  if (typeof o.slotIn === 'boolean') result.slotIn = o.slotIn;
   return hasTaskFieldDefaults(result) ? result : null;
 }
 
@@ -133,6 +137,7 @@ export function resolveFieldDefaults(
     for (const t of TOGGLE_DEFAULTS) {
       if (result[t.key] === null) result[t.key] = s[t.key] ?? null;
     }
+    if (typeof result.slotIn !== 'boolean' && typeof s.slotIn === 'boolean') result.slotIn = s.slotIn;
   }
   return result;
 }
@@ -146,6 +151,7 @@ export interface SeededFieldsInput {
   showStreak?: boolean;
   vacationPause?: boolean;
   excludeFromSuggestions?: boolean;
+  slotIn?: boolean | null;
 }
 
 export interface SeededFields {
@@ -162,6 +168,12 @@ export interface SeededFields {
   showStreak: boolean | undefined;
   vacationPause: boolean | undefined;
   excludeFromSuggestions: boolean | undefined;
+  /**
+   * "If the day is full", which unlike the toggles above can be `false`: the
+   * task field holds a "keep the date" answer, and it has to, to outrank a
+   * category that says wait. `undefined` when nothing answered it.
+   */
+  slotIn: boolean | undefined;
   backfillDismissedFields: string[];
 }
 
@@ -206,7 +218,8 @@ export function seedTaskFields(
     ...(group.effort === 0 && effort === 0 && estimatedMinutes === null ? ['estimate'] : []),
     ...toggleDismissed,
   ];
-  return { priority, effort, estimatedMinutes, difficulty, ...toggles, backfillDismissedFields: dismissed };
+  const slotIn = typeof draft.slotIn === 'boolean' ? draft.slotIn : typeof group.slotIn === 'boolean' ? group.slotIn : undefined;
+  return { priority, effort, estimatedMinutes, difficulty, ...toggles, slotIn, backfillDismissedFields: dismissed };
 }
 
 /**
@@ -226,6 +239,7 @@ export function previewSeededFields(
 ): {
   priority: Priority; effort: Effort;
   showStreak: boolean; vacationPause: boolean; excludeFromSuggestions: boolean;
+  slotIn: boolean | null;
 } {
   const seeded = seedTaskFields({ recurrenceType }, resolveFieldDefaults(projectDefaults), global, negative);
   return {
@@ -234,6 +248,7 @@ export function previewSeededFields(
     showStreak: seeded.showStreak === true,
     vacationPause: seeded.vacationPause === true,
     excludeFromSuggestions: seeded.excludeFromSuggestions === true,
+    slotIn: seeded.slotIn ?? null,
   };
 }
 
@@ -289,6 +304,9 @@ export function existingTaskPatch(
     if (!isFieldMissing(task, t.field, categories) || isBackfillDismissed(task, t.field)) continue;
     patch = answer ? { ...patch, [t.key]: true } : { ...patch, ...dismissing(t.field) };
   }
+  if (typeof d.slotIn === 'boolean' && isFieldMissing(task, 'slotIn', categories) && !isBackfillDismissed(task, 'slotIn')) {
+    patch = { ...patch, slotIn: d.slotIn };
+  }
   return Object.keys(patch).length > 0 ? patch : null;
 }
 
@@ -316,6 +334,8 @@ export function describeTaskFieldDefaults(d: TaskFieldDefaults | null | undefine
     if (d[t.key] === true) parts.push(t.on);
     else if (d[t.key] === false) parts.push(t.off);
   }
+  if (d.slotIn === true) parts.push('Wait if the day is full');
+  else if (d.slotIn === false) parts.push('Keep the date');
   return parts.join(', ');
 }
 
@@ -337,6 +357,8 @@ export function defaultsFromAnswer(
     return patch.priority !== undefined ? { priority: patch.priority } : null;
   }
   if (fieldId === 'estimate' && dismissed) return { effort: 0 };
+  // Both answers are written onto the task, so the dismissal implies nothing.
+  if (fieldId === 'slotIn') return !dismissed && typeof patch.slotIn === 'boolean' ? { slotIn: patch.slotIn } : null;
   const toggle = TOGGLE_DEFAULTS.find(t => t.field === fieldId);
   if (toggle) {
     if (dismissed) return { [toggle.key]: false };

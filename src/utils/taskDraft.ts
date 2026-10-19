@@ -417,6 +417,10 @@ export function newTaskFromDraft(
     meterDueAt: draft.meterDueAt ?? null,
     meterLimitMonths: draft.meterLimitMonths ?? null,
     meterHeldUntil: null,
+    slotIn: draft.slotIn ?? seeded.slotIn ?? null,
+    // The slot-in pass's marks, never carried: a new row hasn't waited.
+    slotDecidedOn: null,
+    slotWaitingSince: null,
     difficulty: seeded.difficulty,
     pinEachOccurrence: draft.pinEachOccurrence ?? false,
     timerStartedAt: draft.timerStartedAt ?? null,

@@ -704,6 +704,10 @@ export function buildCompletion(
         driftingSince: null,
         // A bounty belongs to the occurrence it was posted on, like the count.
         bountyPushes: null,
+        // The slot-in pass's marks belong to the occurrence that waited; the
+        // next one is decided afresh when its own day arrives.
+        slotDecidedOn: null,
+        slotWaitingSince: null,
         // Carries the broken streak forward on a miss, not the pre-miss one:
         // the streak lives on whichever row is currently running it, so
         // resetting only the missed row would hand the next occurrence the

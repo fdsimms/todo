@@ -788,6 +788,18 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     expect(result.sortOrder).toBe(5);
   });
 
+  it('round-trips slotIn as three states, and its marks, through insert and update', () => {
+    dbInsertTask(makeTask({ id: 'slot', slotIn: null }));
+    expect(dbGetAllTasks()[0].slotIn).toBeNull();
+    dbUpdateTask({ ...dbGetAllTasks()[0], slotIn: false });
+    expect(dbGetAllTasks()[0].slotIn).toBe(false);
+    dbUpdateTask({ ...dbGetAllTasks()[0], slotIn: true, slotDecidedOn: '2026-10-19', slotWaitingSince: '2026-10-15' });
+    const [t] = dbGetAllTasks();
+    expect(t.slotIn).toBe(true);
+    expect(t.slotDecidedOn).toBe('2026-10-19');
+    expect(t.slotWaitingSince).toBe('2026-10-15');
+  });
+
   it('round-trips projectId', () => {
     dbInsertTask(makeTask({ id: 'proj', projectId: 'project-1' }));
     const [t] = dbGetAllTasks();
@@ -1895,7 +1907,7 @@ describe('Templates', () => {
     quotaRampEvery: null,
     quotaRampGoal: null,
     recurrenceCount: null,
-    vacationPause: false, excludeFromSuggestions: false, pinEachOccurrence: false, medicationChecklist: false, conditionsMatch: 'all', weatherWait: null, difficulty: null,
+    vacationPause: false, excludeFromSuggestions: false, pinEachOccurrence: false, medicationChecklist: false, conditionsMatch: 'all', weatherWait: null, slotIn: null, difficulty: null,
     estimatedMinutes: null,
     completionTimerMinutes: null, completionTimerNote: null,
     penaltyMinutes: null,
@@ -2330,6 +2342,7 @@ describe('Categories', () => {
       hideOnVacation: true,
       excludeFromSuggestions: true,
       excludeFromNewTasksBanner: true,
+      slotIn: false,
       defaultTimeSegments: ['evening'],
       sortOrder: 3,
       emoji: '🏠',
