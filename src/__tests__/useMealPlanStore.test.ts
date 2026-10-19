@@ -1002,13 +1002,16 @@ describe('renameEntry', () => {
       recipeId: 'r-gone', title: 'Chili', recipeChoices: ['c-1'], recipeScale: 2,
       // Goes with the picks: both are about cooking a recipe that is gone.
       recipeOverrides: [{ targetId: 'c-fish', replacement: null }],
+      itemPicks: [{ pair: 'butter|vegan butter', use: 'butter' }],
     });
     loadWeek([dinner]);
 
     useMealPlanStore.getState().renameEntry(dinner.id, 'Tacos');
 
+    // The answer to an "either one" pair goes with the picks and replacements:
+    // it was about cooking that recipe.
     expect(getEntries()[0]).toEqual({
-      ...dinner, title: 'Tacos', recipeId: null, recipeChoices: [], recipeOverrides: [], recipeScale: 1,
+      ...dinner, title: 'Tacos', recipeId: null, recipeChoices: [], recipeOverrides: [], itemPicks: [], recipeScale: 1,
     });
     expect(dbUpdateMealPlanEntry).toHaveBeenCalledWith(
       expect.objectContaining({ id: dinner.id, title: 'Tacos', recipeId: null })
@@ -2076,6 +2079,7 @@ describe('cookRecap', () => {
       recipeId: 'r-Chili',
       recipeName: 'Chili',
       choices: [],
+      itemPicks: [],
       overrides: [],
       scale: 1,
     });

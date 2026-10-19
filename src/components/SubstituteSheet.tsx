@@ -139,6 +139,7 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
   const [note, setNote] = useState('');
   const [bothWays, setBothWays] = useState(false);
   const [standing, setStanding] = useState(false);
+  const [either, setEither] = useState(false);
   const [ratioFrom, setRatioFrom] = useState('');
   const [ratioTo, setRatioTo] = useState('');
   const [suggested, setSuggested] = useState<SuggestedSubstitute[]>([]);
@@ -159,6 +160,7 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
     note: '',
     bothWays: false,
     standing: false,
+    either: false,
     ratioFrom: '',
     ratioTo: '',
   });
@@ -178,11 +180,13 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
     const seededNote = editingSub?.link.note ?? '';
     const seededBothWays = editingSub?.isMutual ?? false;
     const seededStanding = editingSub?.link.standing ?? false;
+    const seededEither = editingSub?.link.either ?? false;
     const seededRatioFrom = editingSub?.link.ratioFrom ?? '';
     const seededRatioTo = editingSub?.link.ratioTo ?? '';
     setNote(seededNote);
     setBothWays(seededBothWays);
     setStanding(seededStanding);
+    setEither(seededEither);
     setRatioFrom(seededRatioFrom);
     setRatioTo(seededRatioTo);
     baselineRef.current = {
@@ -190,6 +194,7 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
       note: seededNote,
       bothWays: seededBothWays,
       standing: seededStanding,
+      either: seededEither,
       ratioFrom: seededRatioFrom,
       ratioTo: seededRatioTo,
     };
@@ -361,11 +366,11 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
 
   const handleConfirm = () => {
     if (!item || !picked) return;
-    linkItemSub(item.id, picked.id, { note, bothWays, ratioFrom, ratioTo, standing });
+    linkItemSub(item.id, picked.id, { note, bothWays: bothWays || either, ratioFrom, ratioTo, standing, either });
     // The reverse row is written by `bothWays` and taken back here, rather than
     // left standing: unticking it in this sheet has to mean the same thing as
     // never ticking it, or reviewing a link is a way to add one you can't undo.
-    if (!bothWays && editingSub?.isMutual) unlinkItemSub(picked.id, item.id);
+    if (!bothWays && !either && editingSub?.isMutual) unlinkItemSub(picked.id, item.id);
     haptics.success();
     Keyboard.dismiss();
     onClose();
@@ -381,6 +386,7 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
       || note !== baseline.note
       || bothWays !== baseline.bothWays
       || standing !== baseline.standing
+      || either !== baseline.either
       || ratioFrom !== baseline.ratioFrom
       || ratioTo !== baseline.ratioTo;
   };
@@ -583,6 +589,8 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
               activeOpacity={interaction.activeOpacity}
               onPress={() => {
                 haptics.tap();
+                // "Always" and "either one" are different answers to one question.
+                if (!standing) setEither(false);
                 setStanding(v => !v);
               }}
               accessibilityRole="switch"
@@ -607,6 +615,35 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
                     ? ` This replaces ${replacingStanding.item.name.toLowerCase()} as what you use for ${item.name.toLowerCase()}.`
                     : ''}
                 </Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* "Either one": the pair is interchangeable and each cooking says
+                which was used. Exclusive with the standing swap above, and
+                always both directions, since the relation is symmetric. */}
+            <TouchableOpacity
+              style={styles.toggleRow}
+              activeOpacity={interaction.activeOpacity}
+              onPress={() => {
+                haptics.tap();
+                if (!either) setStanding(false);
+                setEither(v => !v);
+              }}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: either }}
+              accessibilityLabel="Either one"
+            >
+              <Ionicons
+                name={either ? 'checkbox' : 'square-outline'}
+                size={iconSize.md}
+                color={either ? colors.accent : colors.textSecondary}
+              />
+              <View style={styles.toggleBody}>
+                <Text style={styles.toggleLabel}>Either one</Text>
+                <HelpText style={styles.toggleHint}>
+                  Recipes calling for either {item.name.toLowerCase()} or {picked.name.toLowerCase()} ask
+                  which one you used. Each keeps its own nutrition and shopping.
+                </HelpText>
               </View>
             </TouchableOpacity>
 

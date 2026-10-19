@@ -1292,6 +1292,8 @@ hand-built resolution would drop it, which `noBareEntryResolution.test.ts` forbi
 sentences in `replacements`. The app has its own editor for the same list (`MealOverrideSheet`), so
 an agent's write and a person's land in one field.
 
+`picks` on `update_meal` is `MealPlanEntry.itemPicks`: `{ use: "Vegan butter" }` names the item this cooking used, from a pair set as "either one" (`update_grocery_item`'s `addSubstitutes[].either`, `docs/arch/groceries.md`), and naming the other item of the pair changes the answer. One answer covers every recipe in the meal. `list_meal_plan` shows each pair under `items` with `used` null until it is answered, and nutrition, shopping and the pantry wait for it rather than guess. `set_meal_cooked` marks nothing opened for an unanswered pair and says so in `unanswered`, and `refresh_dish_entry` refuses an entry that never recorded an answer for a pair its recipe names.
+
 `set_meal_cooked` is the plan's checkbox, with the parts a Node process can do. Marking a meal cooked
 stamps it, counts the cooking on the recipe (`useRecipeStore.markCooked`), opens the packets it used
 (`cookedConsumption` and `cookOpenedIds`, lifted out of the meal plan store, with the same "only what

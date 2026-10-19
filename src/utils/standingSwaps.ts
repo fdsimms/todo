@@ -1,6 +1,7 @@
-import type { GroceryItem, ItemSubLink, RecipeIngredient } from '../types';
+import type { GroceryItem, ItemPick, ItemSubLink, RecipeIngredient } from '../types';
 import { substituteQuantity } from './itemSubs';
 import { pluralKeyVariants, resolvePluralKey } from './groceryPlural';
+import { eitherPairKey, pickFor } from './itemEither';
 
 /**
  * Standing swaps — "I never buy dairy milk, so every recipe calling for milk
@@ -42,6 +43,12 @@ export interface StandingSwap {
   from: GroceryItem;
   /** What you actually use. */
   to: GroceryItem;
+  /**
+   * An "either one" rule (`ItemSubLink.either`) rather than an "always" one. It
+   * rewrites a line only when the cooking's `itemPicks` names `to`, and reads
+   * the line as written otherwise. See `itemEither.ts`.
+   */
+  either?: boolean;
 }
 
 /** `from.nameKey` → the rule. The shape every read here takes. */
@@ -80,6 +87,23 @@ export function standingSwaps(
 }
 
 /**
+ * Every "either one" rule: one per ordered pair, so a pair written both ways is
+ * two rules (butter→vegan butter and the reverse), each answering for the line
+ * that names its own `from`. Resolve-or-shrug on either half being gone.
+ */
+export function eitherSwaps(
+  links: readonly ItemSubLink[],
+  items: readonly GroceryItem[]
+): StandingSwap[] {
+  const byId = new Map(items.map(i => [i.id, i]));
+  return links
+    .filter(l => l.either && !l.standing)
+    .filter(l => byId.has(l.itemId) && byId.has(l.subItemId))
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    .map(l => ({ link: l, from: byId.get(l.itemId)!, to: byId.get(l.subItemId)!, either: true }));
+}
+
+/**
  * The rules, indexed by the name a recipe line would carry.
  *
  * At most one rule per item: "what do I always use instead of milk" has one
@@ -105,7 +129,10 @@ export function standingSwapMap(
   items: readonly GroceryItem[]
 ): StandingSwapMap {
   const map = new Map<string, StandingSwap>();
-  for (const swap of standingSwaps(links, items)) {
+  // An "always" rule outranks an "either one" on the same item: it is the
+  // stronger statement, and writing either one clears the other
+  // (`subLinkRows`), so this only decides a state a restore can reach.
+  for (const swap of [...standingSwaps(links, items), ...eitherSwaps(links, items)]) {
     if (!swap.from.nameKey || map.has(swap.from.nameKey)) continue;
     map.set(swap.from.nameKey, swap);
   }
@@ -133,6 +160,13 @@ export interface SwappedIngredient {
    * app's, the same job `≈` does for a converted amount.
    */
   swappedFrom: string | null;
+  /**
+   * Set when the line names an "either one" pair and the caller supplied a
+   * decision context (`picks`), whether or not it was answered: `undecided` is
+   * the state a read that puts figures on a plate must refuse on, and `use` is
+   * the `nameKey` picked, or null.
+   */
+  either?: { pair: string; undecided: boolean; use: string | null; swap: StandingSwap };
 }
 
 /**
@@ -156,18 +190,42 @@ export interface SwappedIngredient {
  */
 export function applyStandingSwap(
   ingredient: RecipeIngredient,
-  swaps: StandingSwapMap = NO_STANDING_SWAPS
+  swaps: StandingSwapMap = NO_STANDING_SWAPS,
+  /**
+   * This cooking's answers to "either one" pairs (`MealPlanEntry.itemPicks`).
+   * **Absent means the caller has no cooking in hand** (the recipe page, search,
+   * a share): either rules then do nothing at all and report nothing, so a read
+   * with no context behaves exactly as it did before the relation existed. An
+   * empty array is a cooking with nothing answered yet, which is undecided.
+   */
+  picks?: readonly ItemPick[]
 ): SwappedIngredient {
   const unchanged: SwappedIngredient = { ingredient, swappedFrom: null };
   if (ingredient.noSwap) return unchanged;
   const swap = swaps.get(ingredient.nameKey);
   if (!swap) return unchanged;
 
+  let either: SwappedIngredient['either'];
+  if (swap.either) {
+    if (!picks) return unchanged;
+    const pair = eitherPairKey(swap.from.nameKey, swap.to.nameKey);
+    const pick = pickFor(picks, pair);
+    // A pick naming neither item of the pair is no answer.
+    const use = pick && (pick.use === swap.from.nameKey || pick.use === swap.to.nameKey) ? pick.use : null;
+    either = { pair, undecided: use === null, use, swap };
+    if (use === null) return { ...unchanged, either };
+    if (use === swap.from.nameKey) return { ...unchanged, either };
+  }
+
   let quantity = ingredient.quantity;
   const { ratioFrom, ratioTo } = swap.link;
   if (ratioFrom && ratioTo) {
     const converted = substituteQuantity(ingredient.quantity, ratioFrom, ratioTo);
-    if (!converted.converted) return unchanged;
+    // An answered pair whose amount can't be converted is undecided in effect:
+    // reading the line as written would log the item that wasn't used.
+    if (!converted.converted) {
+      return either ? { ...unchanged, either: { ...either, undecided: true } } : unchanged;
+    }
     quantity = converted.text;
   }
 
@@ -185,6 +243,7 @@ export function applyStandingSwap(
       aisle: swap.to.aisle,
     },
     swappedFrom: ingredient.name,
+    ...(either ? { either } : {}),
   };
 }
 

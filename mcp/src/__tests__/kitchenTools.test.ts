@@ -19,6 +19,7 @@ function stub(over: Partial<Replica> = {}): Replica {
     mealPlan: () => [],
     mealChoices: () => [],
     mealReplacements: () => [],
+    mealItems: () => [],
     mealFills: () => [],
     mealOptional: () => [],
     todayKey: () => '2026-10-04',

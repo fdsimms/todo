@@ -47,6 +47,8 @@ export function buildFoodLogEntry(
     itemId: draft.itemId ?? null,
     productId: draft.productId ?? null,
     mealPlanEntryId: draft.mealPlanEntryId ?? null,
+    // Only when a dish used one of two "either one" items, for the same reason.
+    ...(draft.itemPicks?.length ? { itemPicks: draft.itemPicks } : {}),
     // Only present when a task's completion wrote it, so an ordinary entry's
     // shape (and every test that compares one) is unchanged.
     ...(draft.taskId ? { taskId: draft.taskId } : {}),

@@ -143,6 +143,7 @@ import {
 } from '../utils/mealPlanGroceries';
 import { decidableNights, weekNights } from '../utils/weekPlan';
 import { standingSwapMap } from '../utils/standingSwaps';
+import { eitherPairsInUse, withItemPick } from '../utils/itemEither';
 import { onHandNameKeys } from '../utils/grocerySuggest';
 import { describeWeekCost, estimateWeekCost } from '../utils/recipeCost';
 import { describeWeekNutrition, perServing, recipeNutrition, weekNutrition } from '../utils/recipeNutrition';
@@ -429,6 +430,7 @@ export function MealPlanScreen() {
   const setLastAction = useMealPlanStore(s => s.setLastAction);
   const setRecipeChoices = useMealPlanStore(s => s.setRecipeChoices);
   const setRecipeOverrides = useMealPlanStore(s => s.setRecipeOverrides);
+  const setItemPicks = useMealPlanStore(s => s.setItemPicks);
   const setRecipeScale = useMealPlanStore(s => s.setRecipeScale);
   const addedToListAt = useMealPlanStore(useShallow(s => s.addedToListAt));
   const bulkDeleteEntries = useMealPlanStore(s => s.bulkDeleteEntries);
@@ -1768,6 +1770,11 @@ export function MealPlanScreen() {
   const selectedChoiceGroups = selectedRecipe
     ? recipeChoiceGroups(selectedRecipe, recipesById, selectedResolution)
     : [];
+  // The interchangeable pairs ("either one") its recipes name, and which this
+  // cooking used. Read under the meal's own picks, so an answer shows as made.
+  const selectedItemPairs = selected && selectedRecipe
+    ? eitherPairsInUse(flattenRecipeIngredients(selectedRecipe, recipesById, selectedResolution, standingSwaps))
+    : [];
   // Its optional lines across the dish, and which this meal picked.
   const selectedOptionalLines = selected && selectedRecipe
     ? flattenRecipeIngredients(selectedRecipe, recipesById, selectedResolution)
@@ -2551,6 +2558,10 @@ export function MealPlanScreen() {
               : undefined
           }
           choiceGroups={selectedChoiceGroups}
+          itemPairs={selectedItemPairs}
+          onPickItem={(pair, use) => {
+            if (selected) setItemPicks(selected.id, withItemPick(selected.itemPicks ?? [], pair.pair, use));
+          }}
           overrideLines={selected && selectedRecipe ? overrideLines(selectedRecipe, recipesById, selected.recipeOverrides) : undefined}
           onRemoveOverride={selected
             ? targetId => setRecipeOverrides(selected.id, withoutOverride(selected.recipeOverrides, targetId))

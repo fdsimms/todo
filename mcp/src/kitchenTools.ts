@@ -182,6 +182,8 @@ export interface SerializedMeal {
   choices?: MealChoice[];
   /** What this meal uses instead of its recipe's own lines, one plain sentence each (set with update_meal's replacements). */
   replacements?: string[];
+  /** The interchangeable pairs ("either one") its recipes name and which item it used; used is null until answered (set with update_meal's picks). */
+  items?: { pair: string; items: string[]; used: string | null }[];
   /** Its recipe's blanks: what fills each this time, and what the kitchen holds that could (set with update_meal's fills). */
   blanks?: MealFill[];
   /** Its recipe's optional lines and whether this meal includes each (set with update_meal's optional). */
@@ -196,6 +198,7 @@ export interface SerializedMeal {
 function serializeMeal(e: MealPlanEntry, recipes: Map<string, string>, replica?: Replica): SerializedMeal {
   const choices = replica ? replica.mealChoices(e) : [];
   const replacements = replica ? replica.mealReplacements(e) : [];
+  const itemPairs = replica ? replica.mealItems(e) : [];
   const blanks = replica ? replica.mealFills(e) : [];
   const optional = replica ? replica.mealOptional(e) : [];
   return {
@@ -211,6 +214,7 @@ function serializeMeal(e: MealPlanEntry, recipes: Map<string, string>, replica?:
     ...(e.recipeId && e.recipeScale !== 1 ? { scale: e.recipeScale } : {}),
     ...(choices.length > 0 ? { choices } : {}),
     ...(replacements.length > 0 ? { replacements } : {}),
+    ...(itemPairs.length > 0 ? { items: itemPairs } : {}),
     ...(blanks.length > 0 ? { blanks } : {}),
     ...(optional.length > 0 ? { optional } : {}),
     ...(e.shopTask != null ? { shopTask: e.shopTask } : {}),
@@ -282,6 +286,7 @@ export function setMealCooked(replica: Replica, id: string, cooked: boolean) {
       meal,
       ...(result.opened.length ? { markedOpened: result.opened } : {}),
       ...(result.tasksCompleted.length ? { tasksCompleted: result.tasksCompleted } : {}),
+      ...(result.unanswered.length ? { unanswered: `${result.unanswered.join(' and ')}: this meal never said which was used, so nothing was marked opened for them. Ask the person, then set it with update_meal picks.` } : {}),
       note: 'The phone asks what the cooking used up, and about leftovers, when the person marks a meal cooked there; neither was asked here.',
     };
   }

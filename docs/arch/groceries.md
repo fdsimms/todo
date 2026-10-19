@@ -2,8 +2,8 @@
 
 Everything about what lands in the trolley: how the list is filed, which one of
 a thing you're after, which shop has what, what the app believes you already
-have, and the five adjacent ideas (products, either/or, alternatives,
-substitutes, standing swaps) that are easy to conflate. `docs/arch/recipes.md` is the other half; a change that touches
+have, and the six adjacent ideas (products, either/or, alternatives,
+substitutes, standing swaps, either one) that are easy to conflate. `docs/arch/recipes.md` is the other half; a change that touches
 ingredient lines usually needs both.
 
 Moved out of `CLAUDE.md` so it is read when it applies rather than on every
@@ -1690,6 +1690,20 @@ Three rules the resolver enforces, all pinned by `standingSwaps.test.ts`:
   links, and its one write turns a rule off *without* forgetting the substitute. A rule that
   rewrites what lands in the trolley has to be answerable somewhere that isn't "open every
   grocery item and check".
+
+## Either one (`ItemSubLink.either`) — interchangeable items, picked per cooking
+
+"I use vegan butter and butter almost interchangeably, and I don't want a cooking made with one to log the other's nutrition." That is a fact about a *pair of items*, so it lives on the item and reaches every recipe, and an answer about *which one went in* is a fact about one cooking, so it lives on the meal. Neither of the two things before it does both: a substitute only informs, a standing swap always picks the same side, and `recipeChoices`/`recipeOverrides` are keyed by a recipe line, so one answer would have to be given again for every recipe that names butter.
+
+- **The relation is one bit on both rows of a pair** (`either`, written by `subLinkRows` when `either` is passed, always both ways with the ratio swapped on the reverse). It excludes `standing` on both items and any other pair either item was in: "always this one" and "ask me" are different answers to one question, and a three-way set has no answer to "which pair is this pick for". `SubstituteSheet`'s "Either one" toggle and `update_grocery_item`'s `addSubstitutes[].either` are the two writes.
+- **The answer is `MealPlanEntry.itemPicks`** (`{ pair, use }`, keyed by `eitherPairKey`, the same whichever item a line names), carried on `ChoiceResolution.itemPicks` and always set by `entryResolution`. One pick covers every recipe in the meal, components included. It resets when the meal's recipe goes and does not carry on a copy, like the picks and overrides beside it. `FoodLogEntry.itemPicks` keeps the answer a logged dish was measured with, so a re-measure (`refresh_dish_entry`) reads the same lines.
+- **Resolved where standing swaps are**, in `applyStandingSwap` on the way out of `flattenRecipeIngredients`, so shopping, cost, nutrition, cook mode and the pantry all follow a pick with no per-reader work. `standingSwapMap` carries either rules in the same map (an always rule outranks one on the same item).
+- **Undecided is not a default, and that is the whole point.** A cooking in hand with no answer for a pair reads the line as the recipe wrote it and reports it undecided (`FlatIngredient.either`). `recipeNutritionLines` then returns nothing, the way it already does for an unresolved either/or, and the log prompt (`LogMealPrompt`) asks before it measures: it preselects the item used last time (`lastUsedPick`, derived from cooked meals, never stored) but nothing is answered until the tap. The pantry is never used to guess, because having both is exactly the case where a guess is wrong. A cooking that marks nothing opened for an undecided pair (`cookedConsumption`) does so for the same reason: "opened" starts a shelf-life clock.
+- **A read with no cooking in hand is not undecided.** `itemPicks` absent means the recipe page, search and a share see the recipe as written and are unchanged; only a read built from a meal (`entryResolution`) or the log prompt can refuse. Two places list recipes to log without a meal and pass `UNANSWERED` so a dish naming an open pair offers no figure rather than a wrong one: the food log's recipe list and the estimate panel.
+- **`noSwap` outranks it** ("this pastry needs real butter"), and a typed replacement on the meal is never rewritten, exactly as for a standing swap. A ratio that cannot be applied to an answered pair counts as undecided, not as the recipe's own item.
+- **Pairs only, one hop.** One item has one either-one partner.
+
+Where it is answered: the planned meal's sheet (`MealEntrySheet`'s "Butter or vegan butter" chips, written with `setItemPicks`), the log prompt, and `update_meal`'s `picks`. `set_meal_cooked` over MCP completes the cooking and says which pairs were never answered rather than guessing.
 
 ## Singular and plural are one row (`groceryPlural.ts`)
 

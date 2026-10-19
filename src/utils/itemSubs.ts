@@ -124,9 +124,11 @@ export function describeSubstituteLink(
   const parts = [
     onHand,
     sub.link.standing ? 'always used instead' : null,
+    sub.link.either ? 'either one' : null,
     ratio,
     sub.link.note,
-    sub.isMutual ? 'both ways' : null,
+    // Either one is both ways by construction, so saying so twice is noise.
+    sub.isMutual && !sub.link.either ? 'both ways' : null,
   ].filter(Boolean);
   return parts.length > 0 ? parts.join(' · ') : null;
 }

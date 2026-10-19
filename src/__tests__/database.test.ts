@@ -3534,6 +3534,13 @@ describe('grocery items', () => {
       expect(rows[0].createdAt).toBe('2026-01-01T00:00:00.000Z');
     });
 
+    it('round-trips the either-one flag, and reads an ordinary link without it', () => {
+      dbSetItemSubLink({ ...link('g1', 'g2', null), either: true });
+      expect(dbGetAllItemSubLinks()[0].either).toBe(true);
+      dbSetItemSubLink(link('g1', 'g2', null));
+      expect(dbGetAllItemSubLinks()[0]).not.toHaveProperty('either');
+    });
+
     it('round-trips a ratio, and upserts it in place like the note', () => {
       dbSetItemSubLink(link('g1', 'g2', null, { ratioFrom: '1 clove', ratioTo: '1/4 tsp' }));
       expect(dbGetAllItemSubLinks()[0]).toMatchObject({ ratioFrom: '1 clove', ratioTo: '1/4 tsp' });
@@ -4143,6 +4150,20 @@ describe('meal plan entries', () => {
 
     dbUpdateMealPlanEntry({ ...planned, recipeOverrides: [] });
     expect(dbGetMealPlanEntries('2026-08-05', '2026-08-05')[0].recipeOverrides).toEqual([]);
+  });
+
+  it('round-trips which of two interchangeable items a meal used, empty for an old row', () => {
+    const planned = makeEntry('2026-08-05', 'dinner', {
+      recipeId: 'r1', title: 'Banana bread', itemPicks: [{ pair: 'butter|vegan butter', use: 'vegan butter' }],
+    });
+    dbInsertMealPlanEntry(planned);
+    expect(dbGetMealPlanEntries('2026-08-05', '2026-08-05')[0].itemPicks).toEqual(planned.itemPicks);
+
+    dbUpdateMealPlanEntry({ ...planned, itemPicks: [{ pair: 'butter|vegan butter', use: 'butter' }] });
+    expect(dbGetMealPlanEntries('2026-08-05', '2026-08-05')[0].itemPicks).toEqual([{ pair: 'butter|vegan butter', use: 'butter' }]);
+
+    dbUpdateMealPlanEntry({ ...planned, itemPicks: undefined });
+    expect(dbGetMealPlanEntries('2026-08-05', '2026-08-05')[0].itemPicks).toBeUndefined();
   });
 
   it('stores a free-text meal with a null recipe', () => {
@@ -5864,6 +5885,13 @@ describe('a food log entry\'s kept panel', () => {
   it('round-trips through insert and read', () => {
     dbInsertFoodLogEntry(makeEntry());
     expect(dbGetFoodLogEntry('f1')?.sourcePanel).toEqual(chicken);
+  });
+
+  it('keeps which of two interchangeable items a dish was made with, and reads none for an entry that never said', () => {
+    dbInsertFoodLogEntry(makeEntry({ recipeId: 'r1', itemPicks: [{ pair: 'butter|vegan butter', use: 'vegan butter' }] }));
+    expect(dbGetFoodLogEntry('f1')?.itemPicks).toEqual([{ pair: 'butter|vegan butter', use: 'vegan butter' }]);
+    dbInsertFoodLogEntry(makeEntry({ id: 'f2' }));
+    expect(dbGetFoodLogEntry('f2')).not.toHaveProperty('itemPicks');
   });
 
   it('reads as none for an entry that kept nothing', () => {

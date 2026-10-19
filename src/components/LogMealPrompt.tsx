@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Keyboard, KeyboardAvoidingView, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SheetModal } from './SheetModal';
 import { useStoreWhileOpen } from '../hooks/useStoreWhileOpen';
-import type { GroceryItem, ItemProduct, ItemSubLink, Recipe } from '../types';
+import type { GroceryItem, ItemPick, ItemProduct, ItemSubLink, MealPlanEntry, Recipe } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
 import { useFoodLogStore } from '../store/useFoodLogStore';
@@ -13,6 +13,8 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { perServing, recipeNutrition } from '../utils/recipeNutrition';
 import { standingSwapMap } from '../utils/standingSwaps';
+import { flattenRecipeIngredients, type ChoiceResolution } from '../utils/recipeComponents';
+import { describeEitherPair, eitherPairsInUse, lastUsedPick, withItemPick } from '../utils/itemEither';
 import {
   cookedDishGrams,
   defaultHelpings,
@@ -79,6 +81,8 @@ const NO_RECIPES: Recipe[] = [];
 const NO_ITEMS: GroceryItem[] = [];
 const NO_PRODUCTS: ItemProduct[] = [];
 const NO_SUBS: ItemSubLink[] = [];
+const NO_ENTRIES: MealPlanEntry[] = [];
+const NO_PICKS: ItemPick[] = [];
 
 export function LogMealPrompt() {
   const colors = useColors();
@@ -98,6 +102,13 @@ export function LogMealPrompt() {
   const items = useStoreWhileOpen(useGroceryStore, asking, s => s.items, NO_ITEMS);
   const itemProducts = useStoreWhileOpen(useGroceryStore, asking, s => s.itemProducts, NO_PRODUCTS);
   const itemSubs = useStoreWhileOpen(useGroceryStore, asking, s => s.itemSubs, NO_SUBS);
+  const mealEntries = useStoreWhileOpen(useMealPlanStore, asking, s => s.entries, NO_ENTRIES);
+  const setItemPicks = useMealPlanStore(s => s.setItemPicks);
+  // The answers to "either one" pairs, held per offer: the pending flag carries
+  // what the meal already had, and picking here adds to it. Keyed by the offer
+  // itself so a stale answer from the last meal is never read for this one.
+  const [pickState, setPickState] = useState<{ offer: unknown; picks: ItemPick[] }>({ offer: null, picks: [] });
+  const [draftPicks, setDraftPicks] = useState<Record<string, string>>({});
 
   const [helpings, setHelpings] = useState<number | null>(defaultHelpings());
   const [platedText, setPlatedText] = useState('');
@@ -122,8 +133,34 @@ export function LogMealPrompt() {
   // those showed rather than the recipe as written. See standingSwaps.ts.
   const swaps = useMemo(() => standingSwapMap(itemSubs, items), [itemSubs, items]);
 
+  const picks = pickState.offer === pending ? pickState.picks : (pending?.itemPicks ?? NO_PICKS);
+  // This cooking as the logger sees it: always a cooking in hand, so a pair
+  // nobody has answered is undecided here rather than read as written.
+  const resolution = useMemo<ChoiceResolution | null>(() => pending ? {
+    chosen: pending.choices,
+    ...(pending.overrides?.length ? { overrides: pending.overrides } : {}),
+    itemPicks: picks,
+  } : null, [pending, picks]);
+
+  // The "either one" pairs this dish involves and which are still unanswered.
+  // Asked before anything is measured: two items that differ in nutrition are
+  // the one thing the figures below must not guess (`itemEither.ts`).
+  const eitherPairs = useMemo(() => {
+    if (!pending?.recipeId || !resolution) return [];
+    const recipe = recipes.find(r => r.id === pending.recipeId);
+    if (!recipe) return [];
+    return eitherPairsInUse(flattenRecipeIngredients(recipe, recipesById, resolution, swaps));
+  }, [pending, resolution, recipes, recipesById, swaps]);
+  const undecided = eitherPairs.filter(p => p.use === null);
+  const suggestionFor = (pair: (typeof undecided)[number]): string | null => {
+    const last = lastUsedPick(mealEntries, pair.pair);
+    return last && pair.items.some(i => i.nameKey === last) ? last : null;
+  };
+  const chosenFor = (pair: (typeof undecided)[number]): string | null => draftPicks[pair.pair] ?? suggestionFor(pair);
+  const allChosen = undecided.every(p => chosenFor(p) !== null);
+
   const figures = useMemo(() => {
-    if (!pending?.recipeId) return null;
+    if (!pending?.recipeId || !resolution || undecided.length > 0) return null;
     const recipe = recipes.find(r => r.id === pending.recipeId);
     if (!recipe) return null;
     const dish = recipeNutrition(
@@ -138,7 +175,7 @@ export function LogMealPrompt() {
       // picked serrano over jalapeño is measured as the dish that was made
       // rather than as the one the recipe leaves open. Same read
       // collectPlannedIngredients makes off the same field.
-      { chosen: pending.choices, ...(pending.overrides?.length ? { overrides: pending.overrides } : {}) },
+      resolution,
       pending.scale,
       swaps,
     );
@@ -151,7 +188,7 @@ export function LogMealPrompt() {
       // already are: a doubled batch weighs twice what the recipe says.
       cookedGrams: cookedDishGrams(recipe.cookedWeightG, pending.scale),
     };
-  }, [pending, recipes, recipesById, items, itemProducts, swaps]);
+  }, [pending, resolution, undecided.length, recipes, recipesById, items, itemProducts, swaps]);
 
   // Nothing measurable came back, so there is no question worth asking. The
   // flag is cleared rather than left pending, or the next thing that sets one
@@ -163,7 +200,9 @@ export function LogMealPrompt() {
   // all. Unasked (a meal's own finish), it still just doesn't come up.
   const setPendingManual = useFoodLogStore(s => s.setPendingManualMealLog);
   useEffect(() => {
-    if (!pending || figures) return;
+    // Waiting on an "either one" answer is not "nothing measurable": the offer
+    // stays up and asks.
+    if (!pending || figures || undecided.length > 0) return;
     setPending(null);
     if (pending.asked) {
       setPendingManual({
@@ -173,7 +212,7 @@ export function LogMealPrompt() {
         mealPlanEntryId: pending.mealPlanEntryId,
       });
     }
-  }, [pending, figures, setPending, setPendingManual]);
+  }, [pending, figures, undecided.length, setPending, setPendingManual]);
 
   // Declining clears `pending`/`figures` in the same commit that starts the
   // close animation, but SheetModal keeps rendering this sheet's children
@@ -198,7 +237,8 @@ export function LogMealPrompt() {
   // prompt had no weight to measure a plate against. The recap clears itself
   // when it has nothing to ask, so this can't be starved.
   const cookRecapUp = useMealPlanStore(s => s.cookRecap !== null);
-  const visible = !!pending && !!figures && !pendingFinishLeftoverId && !cookRecapUp;
+  const asksWhichItem = !!pending && undecided.length > 0;
+  const visible = !!pending && (!!figures || asksWhichItem) && !pendingFinishLeftoverId && !cookRecapUp;
 
   // Weight leads for a dish somebody has weighed, and is simply unavailable
   // for one nobody has: there is nothing to measure a plate against. Reset per
@@ -234,10 +274,28 @@ export function LogMealPrompt() {
       slot: pending.slot,
       recipeId: pending.recipeId,
       mealPlanEntryId: pending.mealPlanEntryId,
+      // So a later re-measure of this dish reads the same lines this one did.
+      itemPicks: picks,
       at,
     });
     haptics.success();
     close();
+  };
+
+  const handleContinue = () => {
+    if (!pending || !allChosen) return;
+    // Everything still open gets its confirmed answer, the suggestion included:
+    // preselected is not answered until this tap.
+    const next = undecided.reduce((acc, p) => {
+      const use = chosenFor(p);
+      return use ? withItemPick(acc, p.pair, use) : acc;
+    }, picks);
+    setPickState({ offer: pending, picks: next });
+    setDraftPicks({});
+    // The cooking records what it used, so the plan, the shopping read and a
+    // re-measure all agree with the log.
+    if (pending.mealPlanEntryId) setItemPicks(pending.mealPlanEntryId, next);
+    haptics.tap();
   };
 
   const handleNever = () => {
@@ -258,6 +316,66 @@ export function LogMealPrompt() {
   };
 
   if (!shown) return null;
+
+  if (asksWhichItem) {
+    return (
+      <SheetModal visible={visible} animationType="fade" transparent onRequestClose={close}>
+        <View style={styles.backdrop}>
+          <View style={styles.card}>
+            <Text style={styles.title}>What went into {shown.label}?</Text>
+            <Text style={styles.body}>
+              It calls for something you can swap for another. They have different nutrition, so pick the one you used.
+            </Text>
+            {undecided.map(pair => (
+              <View key={pair.pair} style={styles.pickGroup}>
+                <Text style={styles.pickLabel}>{describeEitherPair(pair.items)}</Text>
+                {pair.items.map(item => {
+                  const selected = chosenFor(pair) === item.nameKey;
+                  return (
+                    <PressableScale
+                      key={item.id}
+                      style={[styles.pickOption, selected && styles.pickOptionSelected]}
+                      onPress={() => { haptics.tap(); setDraftPicks(d => ({ ...d, [pair.pair]: item.nameKey })); }}
+                      accessibilityRole="radio"
+                      accessibilityLabel={item.name}
+                      accessibilityState={{ selected }}
+                    >
+                      <Text style={styles.pickOptionName}>{item.name}</Text>
+                      {suggestionFor(pair) === item.nameKey && (
+                        <Text style={styles.pickOptionHint}>Used last time</Text>
+                      )}
+                    </PressableScale>
+                  );
+                })}
+              </View>
+            ))}
+            <View style={styles.actions}>
+              <View style={styles.buttonRow}>
+                <PressableScale
+                  style={[styles.button, styles.buttonNeutral]}
+                  onPress={() => { haptics.tap(); close(); }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Not this time"
+                >
+                  <Text style={styles.buttonNeutralText}>Not this time</Text>
+                </PressableScale>
+                <PressableScale
+                  style={[styles.button, styles.buttonPrimary, !allChosen && styles.buttonDisabled]}
+                  onPress={handleContinue}
+                  disabled={!allChosen}
+                  accessibilityRole="button"
+                  accessibilityLabel="Continue"
+                  accessibilityState={{ disabled: !allChosen }}
+                >
+                  <Text style={styles.buttonPrimaryText}>Continue</Text>
+                </PressableScale>
+              </View>
+            </View>
+          </View>
+        </View>
+      </SheetModal>
+    );
+  }
 
   return (
     <SheetModal visible={visible} animationType="fade" transparent onRequestClose={close}>
@@ -464,5 +582,19 @@ function makeStyles(colors: Colors) {
       paddingHorizontal: spacing.md,
     },
     quietLinkText: { color: colors.text, fontSize: font.sm },
+    pickGroup: { marginTop: spacing.sm, gap: spacing.xsm },
+    pickLabel: { color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold },
+    pickOption: {
+      minHeight: 48,
+      justifyContent: 'center',
+      borderRadius: radius.md,
+      borderWidth: border.sm,
+      borderColor: colors.controlBorder,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+    },
+    pickOptionSelected: { borderColor: colors.accent, backgroundColor: colors.accentSubtle },
+    pickOptionName: { color: colors.text, fontSize: font.md },
+    pickOptionHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs },
   });
 }
