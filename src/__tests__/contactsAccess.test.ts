@@ -18,7 +18,7 @@ jest.mock('expo-contacts/legacy', () => ({
   requestPermissionsAsync: (...a: unknown[]) => mockRequestPermissions(...a),
   getContactsAsync: (...a: unknown[]) => mockGetContacts(...a),
   Fields: { Name: 'name', PhoneNumbers: 'phoneNumbers', Emails: 'emails', Birthday: 'birthday' },
-}), { virtual: true });
+}));
 
 import {
   fetchLimitedContacts,

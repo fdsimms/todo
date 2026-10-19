@@ -4,7 +4,7 @@ import { AGENDA_SPEECH_RATE, speakAgenda, stopSpeakingAgenda } from '../utils/ag
 // module's own note). Mocked here so the two rules it exists to hold — stop
 // before speak, and never throw — can be pinned without a device.
 const mockSpeech = { speak: jest.fn(), stop: jest.fn() };
-jest.mock('expo-speech', () => mockSpeech, { virtual: true });
+jest.mock('expo-speech', () => mockSpeech);
 jest.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
 
 beforeEach(() => {

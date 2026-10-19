@@ -37,7 +37,6 @@ jest.mock(
     if (!mockBridgePresent) throw new Error('Cannot find native module');
     return mockBridge;
   },
-  { virtual: true }
 );
 
 /**

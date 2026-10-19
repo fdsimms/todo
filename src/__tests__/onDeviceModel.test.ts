@@ -18,7 +18,7 @@ const mockNativeModule = () => ({
   generateOnDevice: (prompt: string, schema: unknown) => mockGenerate(prompt, schema),
 });
 
-jest.mock('todo-foundation-models', () => mockNativeModule(), { virtual: true });
+jest.mock('todo-foundation-models', () => mockNativeModule());
 
 import {
   isOnDeviceReady,
@@ -90,12 +90,12 @@ describe('runOnDevice', () => {
   // answers and only one of them is worth retrying.
   it('rejects when the native module is missing', async () => {
     jest.resetModules();
-    jest.doMock('todo-foundation-models', () => { throw new Error('not linked'); }, { virtual: true });
+    jest.doMock('todo-foundation-models', () => { throw new Error('not linked'); });
     try {
       const { runOnDevice: run } = require('../services/onDeviceModel');
       await expect(run('go', { name: 'X', fields: [] })).rejects.toThrow('On-device model unavailable');
     } finally {
-      jest.doMock('todo-foundation-models', () => mockNativeModule(), { virtual: true });
+      jest.doMock('todo-foundation-models', () => mockNativeModule());
       jest.resetModules();
     }
   });
