@@ -350,6 +350,16 @@ export const TASK_SETTINGS_SPECS: Partial<Record<GeneratedKind, TaskSettingsSpec
       RULE_ESTIMATE,
     ],
   },
+  blockOffer: {
+    example: 'Block Games for 1 hour (10 coins)',
+    noun: 'Block for coins task',
+    categoryHint: 'Used when a rule doesn’t name its own category. With none, these tasks appear at the top of Today.',
+    owned: () => [
+      { key: 'title', label: 'Title', summary: 'The rule’s title, with its coins', hint: 'Each rule names the task it adds. The app adds the coins in brackets.' },
+      { key: 'date', label: 'Date', summary: 'Today', hint: 'Offered once a day, and removed when the day ends unless you started the block.' },
+      { key: 'notes', label: 'Notes', summary: 'How the offer works', hint: 'Says when the block ends once you start it.' },
+    ],
+  },
   health: {
     example: 'Go for a walk',
     noun: 'Health task',

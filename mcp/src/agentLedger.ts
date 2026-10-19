@@ -49,6 +49,7 @@ const RULE_LIST_LABEL: Record<string, string> = {
   event: 'Event',
   health: 'Health',
   screenTime: 'Screen time',
+  blockOffer: 'Block for coins',
 };
 
 type LooseRule = Record<string, unknown> & { id?: string };
@@ -85,6 +86,7 @@ export function describeRule(type: string, rule: LooseRule): string {
     }
     case 'weather': return `when the forecast is ${rule.condition}, ${adds}${off}`;
     case 'screenTime': return `after ${rule.thresholdMinutes} minutes in the watched apps, ${adds}${off}`;
+    case 'blockOffer': return `each day, offer a ${rule.minutes}-minute block for ${rule.coins} coins, ${adds}${off}`;
     case 'event': {
       const words = Array.isArray(rule.matches) ? rule.matches.map(m => `"${m}"`).join(', ') : '';
       const when = rule.afterEvent ? 'after' : `${rule.leadDays ?? 0} day(s) before`;

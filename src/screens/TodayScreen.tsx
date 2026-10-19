@@ -1673,6 +1673,9 @@ export function TodayScreen() {
           // Beside it, same trigger — the crossings this checks against are
           // kept current by useScreenTimeSync's own AppState listener.
           useTaskStore.getState().checkScreenTimeTasks();
+          // Beside it, same trigger: a block that ended while the app was
+          // closed marks its offer ready here.
+          useTaskStore.getState().checkBlockOfferTasks();
           // Beside it, same trigger, and the one that matters most for this
           // generator: a steps rule cannot be judged until evening, so the
           // launch pass is usually too early and this is where it actually

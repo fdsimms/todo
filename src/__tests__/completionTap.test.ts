@@ -446,3 +446,19 @@ describe('isStrayTapOnFinishedTarget', () => {
     expect(isStrayTapOnFinishedTarget({ ...target, completed: false }, finishedAt + 300)).toBe(false);
   });
 });
+
+describe('a block offer', () => {
+  const offer = { ...baseTask, generatedKind: 'blockOffer', generatedSourceId: '2026-10-19#rule1', generatedReadyAt: null } as Task;
+
+  it('offers to start the block, because a tick before it ran would pay for nothing', () => {
+    expect(completionTapFor(offer)).toBe('start-block');
+  });
+
+  it('ticks as usual once a block has run and the row reads ready', () => {
+    expect(completionTapFor({ ...offer, generatedReadyAt: '2026-10-19T11:00:00.000Z' })).toBe('complete');
+  });
+
+  it('takes a finished one back like any other task', () => {
+    expect(completionTapFor({ ...offer, completed: true })).toBe('uncomplete');
+  });
+});

@@ -7,6 +7,7 @@ import { isRotationTask } from './rotation';
 import { isNegativeTask } from './negativeHabits';
 import { projectReviewProjectId } from './projectReviewTasks';
 import { isAnsweredByRecord } from './recordTasks';
+import { offersBlockStart } from './blockOfferTasks';
 
 /**
  * What a tap on a task's checkbox should do, for the surfaces that show a
@@ -29,6 +30,8 @@ export type CompletionTap =
   | 'pick-meal'
   /** A quiet project's review task — open the pull sheet, not the checkmark. */
   | 'review-project'
+  /** A block offer (see blockOfferTasks.ts) whose block has not run: the tap offers to start the block, since a tick before it ran would pay for nothing. */
+  | 'start-block'
   /** A task a record answers (mood, journal, dream, weigh-in) with no entry yet — open its sheet. Once the entry exists the tap is an ordinary 'complete'. */
   | 'open-log'
   /** A rotation (see utils/rotation.ts) — ask which member was done, then log that. */
@@ -72,6 +75,7 @@ export function completionTapFor(task: Task, recordReady = false): CompletionTap
   // `recordReady` is the caller's `useRecordTaskReady`; a caller with no way to
   // read it leaves it false and the tap opens the sheet, which is always safe.
   if (isAnsweredByRecord(task) && !recordReady) return 'open-log';
+  if (offersBlockStart(task)) return 'start-block';
   if (isRecurrenceNotYetDue(task)) return 'locked';
   // Ahead of the quota branch because it is the more specific claim about the
   // same tap: a rotation *is* a quota, so that branch would answer 'log-unit'

@@ -124,6 +124,7 @@ const TRAVEL_MODE_OPTIONS: SegmentOption<TravelMode>[] = [
 import { WeatherRulesSheet } from '../../components/WeatherRulesSheet';
 import { EventRulesSheet } from '../../components/EventRulesSheet';
 import { ScreenTimeRulesSheet } from '../../components/ScreenTimeRulesSheet';
+import { BlockOfferRulesSheet } from '../../components/BlockOfferRulesSheet';
 import { HealthRulesSheet } from '../../components/HealthRulesSheet';
 import { EmptyNote } from '../../components/EmptyNote';
 import { PillGroup, type PillGroupOption } from '../../components/PillGroup';
@@ -305,6 +306,11 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
   );
 
   const [screenTimeRulesVisible, setScreenTimeRulesVisible] = useState(false);
+  const [blockOfferRulesVisible, setBlockOfferRulesVisible] = useState(false);
+  const activeBlockOfferRuleCount = useMemo(
+    () => s.blockOfferRules.filter(r => r.enabled).length,
+    [s.blockOfferRules],
+  );
   const [healthRulesVisible, setHealthRulesVisible] = useState(false);
   const activeScreenTimeRuleCount = useMemo(
     () => s.screenTimeRules.filter(r => r.enabled).length,
@@ -404,6 +410,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
       case 'eventTask': return s.eventTaskCategory;
       case 'travel': return s.travelTaskCategory;
       case 'screenTime': return s.screenTimeTaskCategory;
+      case 'blockOffer': return s.blockOfferTaskCategory;
       case 'health': return s.healthTaskCategory;
       case 'moodLog': return s.moodLogTaskCategory;
       case 'moodNudge': return s.moodNudgeTaskCategory;
@@ -446,6 +453,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
       case 'eventTask': s.setEventTaskCategory(category); break;
       case 'travel': s.setTravelTaskCategory(category); break;
       case 'screenTime': s.setScreenTimeTaskCategory(category); break;
+      case 'blockOffer': s.setBlockOfferTaskCategory(category); break;
       case 'health': s.setHealthTaskCategory(category); break;
       case 'moodLog': s.setMoodLogTaskCategory(category); break;
       case 'moodNudge': s.setMoodNudgeTaskCategory(category); break;
@@ -1528,6 +1536,27 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
       );
     }
 
+    if (kind === 'blockOffer') {
+      return (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="blockOfferRules"
+            icon="list-outline"
+            iconColor={activeBlockOfferRuleCount > 0 ? colors.accent : undefined}
+            label="Rules"
+            hint="Which apps, for how long, and how many coins. Needs Rewards on."
+            value={
+              activeBlockOfferRuleCount === 0
+                ? 'None'
+                : activeBlockOfferRuleCount === 1 ? '1 rule' : `${activeBlockOfferRuleCount} rules`
+            }
+            onPress={() => { haptics.tap(); setBlockOfferRulesVisible(true); }}
+          />
+        </>
+      );
+    }
+
     if (kind === 'health') {
       return (
         <>
@@ -1848,6 +1877,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
     )}
     <EventRulesSheet visible={eventRulesVisible} onClose={() => setEventRulesVisible(false)} />
     <ScreenTimeRulesSheet visible={screenTimeRulesVisible} onClose={() => setScreenTimeRulesVisible(false)} />
+    <BlockOfferRulesSheet visible={blockOfferRulesVisible} onClose={() => setBlockOfferRulesVisible(false)} />
     <HealthRulesSheet visible={healthRulesVisible} onClose={() => setHealthRulesVisible(false)} />
     </>
   );

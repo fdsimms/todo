@@ -327,6 +327,19 @@ export const ADOPTION_CHECKS: readonly AdoptionCheck[] = [
     },
   },
   {
+    id: 'block_for_coins',
+    title: 'Coins for blocking apps',
+    benefit: 'A rule offers a task each day to block a group of apps for a set time. Checking it off after the block ends pays a fixed number of coins, and ending the block early forfeits them.',
+    since: '2026-10-19',
+    settingsQuery: 'block for coins',
+    advanced: true,
+    evidence: ({ replica }) => {
+      return replica.settings().rewardsEnabled && !replica.generatorEnabled('blockOfferTasks') && replica.ruleLists().blockOffer.length === 0
+        ? 'Coins are on and no block-for-coins rule is written.'
+        : null;
+    },
+  },
+  {
     id: 'retention',
     title: 'Keeping completed tasks',
     benefit: 'Every completion leaves a row behind, so repeating tasks pile up. A retention window clears old ones and keeps the app quick.',

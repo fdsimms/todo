@@ -2357,7 +2357,7 @@ function registerWriteTools(
 
   server.tool(
     'save_rule',
-    'Add a rule, or change one by passing its id from list_automations (only the fields you give change). title: file a new task by a word in its title ("pay" → Bills, high priority). weather: add a task when the forecast is sunny, rainy, snowy, cold or hot. event: add a task ahead of a calendar event whose title has one of these words. health: add a task when an Apple Health reading is under (or over) a number by a given hour. screenTime: add a task after this many minutes in the watched apps. The app checks every rule the way its own rule sheets do; the result is the rule as saved, and says when a value was adjusted. The matching automation must be on for a rule to fire.',
+    'Add a rule, or change one by passing its id from list_automations (only the fields you give change). title: file a new task by a word in its title ("pay" → Bills, high priority). weather: add a task when the forecast is sunny, rainy, snowy, cold or hot. event: add a task ahead of a calendar event whose title has one of these words. health: add a task when an Apple Health reading is under (or over) a number by a given hour. screenTime: add a task after this many minutes in the watched apps. blockOffer: offer a task each day that starts a block of the rule\'s app group for a set number of minutes and pays a fixed number of coins once the block has run to its end (needs Rewards on; the person checks the task off to collect; the group is chosen on the phone). The app checks every rule the way its own rule sheets do; the result is the rule as saved, and says when a value was adjusted. The matching automation must be on for a rule to fire.',
     {
       type: z.enum(RULE_TYPES as unknown as [string, ...string[]]),
       rule: z.object({
@@ -2389,6 +2389,8 @@ function registerWriteTools(
         threshold: z.number().optional().describe('health: in the metric\'s own unit.'),
         direction: z.enum(['under', 'over']).optional().describe('health: which side of the threshold fires it. Each metric has a usual one.'),
         checkpointHour: z.number().int().min(0).max(23).optional().describe('health: the hour of the day it is judged from.'),
+        minutes: z.number().int().min(15).max(720).optional().describe('blockOffer: how long the block lasts.'),
+        coins: z.number().int().min(1).max(500).optional().describe('blockOffer: coins paid when the finished block\'s task is checked off. A new rule starts at 60 minutes and 10 coins.'),
         thresholdMinutes: z.number().int().min(5).max(480).optional().describe('screenTime: minutes of use across the rule\'s app group that fire it. A rule\'s groupId is set on the phone and is kept when you edit the rule.'),
       }),
     },

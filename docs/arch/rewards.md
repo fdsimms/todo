@@ -46,6 +46,9 @@ default (`rewardsEnabled`), switched on from the Rewards screen (its own menu ro
 - **Coins never touch the app shield.** See `penaltyCreditFor`: anything that hands out unblocked
   minutes is a rewards feature wearing the penalty's clothes. A reward is a note to yourself, and
   claiming one unlocks nothing in the app.
+- **Blocking apps may earn coins, which is the other direction.** A block offer (`blockOffer`, see
+  `generated-tasks.md`) pays a fixed amount, but only for a block that ran its full time and only on
+  the person's tick; the same rule as above, that coins never move the shield, still holds.
 - **Off means nothing is written.** Every `record*` action and `claimReward` is a no-op while
   `rewardsEnabled` is off. The `takeBack*` actions are not gated, so an entry written while it was on
   still goes when its completion is undone after it was switched off.

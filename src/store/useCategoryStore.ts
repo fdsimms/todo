@@ -356,6 +356,8 @@ function generatedCategorySetting(kind: GeneratedKind): {
       return { key: 'travelTaskCategory', current: s.travelTaskCategory, assign: s.setTravelTaskCategory };
     case 'screenTime':
       return { key: 'screenTimeTaskCategory', current: s.screenTimeTaskCategory, assign: s.setScreenTimeTaskCategory };
+    case 'blockOffer':
+      return { key: 'blockOfferTaskCategory', current: s.blockOfferTaskCategory, assign: s.setBlockOfferTaskCategory };
     case 'health':
       return { key: 'healthTaskCategory', current: s.healthTaskCategory, assign: s.setHealthTaskCategory };
     case 'moodLog':

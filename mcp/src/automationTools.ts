@@ -25,7 +25,7 @@
 import type { DeliverableKind, Difficulty, Effort, GeneratedKind, GeneratedTaskExtras, Priority, TaskFieldDefaults, TimeOfDay } from '../../src/types';
 import type { Replica, RuleListType, RuleLists } from './replica';
 
-export const RULE_TYPES: readonly RuleListType[] = ['title', 'weather', 'event', 'health', 'screenTime'];
+export const RULE_TYPES: readonly RuleListType[] = ['title', 'weather', 'event', 'health', 'screenTime', 'blockOffer'];
 
 /** Which generator runs a rule list; title rules apply to every new task rather than generating any. */
 const RULE_GENERATOR: Record<Exclude<RuleListType, 'title'>, GeneratedKind> = {
@@ -33,6 +33,7 @@ const RULE_GENERATOR: Record<Exclude<RuleListType, 'title'>, GeneratedKind> = {
   event: 'eventTask',
   health: 'health',
   screenTime: 'screenTime',
+  blockOffer: 'blockOffer',
 };
 
 /** What a generator needs on the phone before it can do anything, for the ones that read the device. */
@@ -44,6 +45,7 @@ const NEEDS_ON_PHONE: Partial<Record<GeneratedKind, string>> = {
   health: 'Apple Health access',
   weighIn: 'Apple Health access',
   wanikani: 'their WaniKani API token, saved on the phone (it never syncs, so it can\u2019t be set from here); the phone reads WaniKani only while the app is open',
+  blockOffer: 'Rewards switched on, Screen Time access, and apps chosen in the rule\u2019s app group on the phone (the phone starts the block when its task is checked, and groups exist only there, so a rule\u2019s groupId can be read and kept but not set from here)',
   screenTime: 'Screen Time access, and the apps chosen in each rule\u2019s app group on the phone (a rule\u2019s groupId names the group; groups exist only on the phone, so it can be read and kept but not set from here)',
 };
 
@@ -191,6 +193,7 @@ export function listAutomations(replica: Replica): {
       event: lists.event.map(withoutMarks),
       health: lists.health.map(withoutMarks),
       screenTime: lists.screenTime.map(withoutMarks),
+      blockOffer: lists.blockOffer.map(withoutMarks),
     },
     note: 'Automations run on the phone, which reads the forecast, calendar, Health and Screen Time; changes reach it on its next sync. They are in the app under Menu › Automations.',
   };
@@ -259,6 +262,7 @@ function normalize<T extends RuleListType>(replica: Replica, type: T, rules: unk
     case 'event': return lib.eventTasks.parseEventRules(raw) as RuleLists[T];
     case 'health': return lib.healthRules.parseHealthRules(raw) as RuleLists[T];
     case 'screenTime': return lib.screenTimeRules.parseScreenTimeRules(raw) as RuleLists[T];
+    case 'blockOffer': return lib.blockOfferTasks.parseBlockOfferRules(raw) as RuleLists[T];
     default: throw new Error(`Unknown rule type ${String(type)}.`);
   }
 }
@@ -269,11 +273,14 @@ const DROPPED: Record<RuleListType, string> = {
   event: 'An event rule needs at least one word to look for and a task title.',
   health: 'A health rule needs a metric, a numeric threshold and a task title.',
   screenTime: 'A Screen Time rule needs a threshold in minutes and a task title.',
+  blockOffer: 'A block offer rule needs a task title, a length in minutes and a number of coins.',
 };
 
 /** The defaults a new rule starts from, before the caller's fields go over it. */
 function fresh(replica: Replica, type: RuleListType): Record<string, unknown> {
   if (type === 'title') return { ...replica.lib().titleRules.emptyTitleRule() };
+  // A block offer's coins and length are the person's call, so a new one asks for both.
+  if (type === 'blockOffer') return { enabled: true, lastFiredDayKey: null, minutes: 60, coins: 10 };
   return { enabled: true, lastFiredDayKey: null, ...(type === 'weather' ? { lastAheadDayKey: null } : {}) };
 }
 

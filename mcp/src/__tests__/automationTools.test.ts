@@ -83,6 +83,23 @@ describe('automations', () => {
     expect(edited.saved).toMatchObject({ thresholdMinutes: 45, groupId: 'phone-only' });
   });
 
+  it('starts a block offer at an hour and ten coins, clamps what it is given, and keeps its app group', () => {
+    const { saved } = saveRule(replica, 'blockOffer', { title: 'Block Games for 1 hour', groupId: 'phone-only' });
+    expect(saved).toMatchObject({ minutes: 60, coins: 10, groupId: 'phone-only' });
+    expect(saved).not.toHaveProperty('lastFiredDayKey');
+    const edited = saveRule(replica, 'blockOffer', { id: saved.id as string, minutes: 5, coins: 900 });
+    expect(edited.saved).toMatchObject({ minutes: 15, coins: 500, groupId: 'phone-only' });
+    expect(edited.adjusted?.join(' ')).toMatch(/minutes.*coins/);
+    expect(listAutomations(replica).automations.find(a => a.kind === 'blockOffer')).toMatchObject({
+      rules: { type: 'blockOffer', count: 1 },
+      needsOnPhone: expect.stringMatching(/Rewards/),
+    });
+  });
+
+  it('refuses a block offer with no title', () => {
+    expect(() => saveRule(replica, 'blockOffer', { minutes: 30 })).toThrow(/block offer rule needs/);
+  });
+
   it('deletes by id, and refuses an id it does not have', () => {
     const { saved } = saveRule(replica, 'event', { matches: ['dentist'], title: 'Floss the night before', leadDays: 1 });
     expect(deleteRule(replica, 'event', saved.id as string).removed).toMatchObject({ title: 'Floss the night before' });

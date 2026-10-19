@@ -34,6 +34,7 @@ function ruleListOf(type: RuleListName): unknown {
     case 'event': return s.eventRules;
     case 'health': return s.healthRules;
     case 'screenTime': return s.screenTimeRules;
+    case 'blockOffer': return s.blockOfferRules;
   }
 }
 

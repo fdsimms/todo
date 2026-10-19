@@ -132,6 +132,11 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   // should meet the other, since "rules that add a task" is one idea and
   // reading them apart is how you learn only half of it.
   'screenTime',
+  // Directly after screenTime: the same list of rules the user wrote about
+  // their own phone, run the other way (a rule here offers coins for
+  // blocking the apps rather than reacting to using them), so Settings reads
+  // them as one idea.
+  'blockOffer',
   // The eighteenth, beside the two rules that precede it and for their reason:
   // all three are a list of rules the user wrote against something outside the
   // app — the forecast, their own phone use, what Health recorded — and
@@ -256,6 +261,7 @@ export type GeneratedEnabledKey =
   | 'eventTasks'
   | 'travelTasks'
   | 'screenTimeTasks'
+  | 'blockOfferTasks'
   | 'healthTasks'
   | 'moodLogTasks'
   | 'moodNudgeTasks'
@@ -778,6 +784,24 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     onHint: 'A rule adds its task once you have spent that long on the apps you picked',
     offHint: 'Screen time adds no tasks',
     icon: 'phone-portrait-outline',
+    sourced: false,
+    notice: false,
+    kitchen: false,
+    categorized: true,
+    defaultCategory: 'Screen Time',
+  },
+  // A rule the user wrote offering coins for blocking apps. `${dayKey}#${ruleId}`
+  // like weather and screenTime, and for the same reason it has no source row
+  // to stamp an opt-out on. Off by default: it needs Screen Time access and
+  // only means anything with Rewards on. See src/utils/blockOfferTasks.ts.
+  blockOffer: {
+    kind: 'blockOffer',
+    pausedOnVacation: false,
+    enabledKey: 'blockOfferTasks',
+    label: 'Block for coins',
+    onHint: 'A rule offers coins each day for blocking its apps for a set time',
+    offHint: 'Blocking apps offers no tasks',
+    icon: 'lock-closed-outline',
     sourced: false,
     notice: false,
     kitchen: false,

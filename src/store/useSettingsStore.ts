@@ -55,7 +55,7 @@ import {
 import { DEFAULT_PRODUCE_FLOOR, clampProduceFloor } from '../utils/produceFloorTasks';
 import { DEFAULT_APP_FONT, isAppFont, pickRandomAppFont, type AppFont } from '../theme/fonts';
 import { parseGeneratorEstimates, type GeneratorEstimates } from '../utils/ruleEstimate';
-import type { SortOption, RecipeSortOption, ProjectSortOption, Priority, Effort, Difficulty, GeneratedKind, GeneratedTaskExtras, TaskFieldDefaults, MealSlot, TimeOfDay, TitleRule, WeatherRule, EventTaskRule, ScreenTimeRule, HealthRule, NutrientKey, ReminderCapture } from '../types';
+import type { SortOption, RecipeSortOption, ProjectSortOption, Priority, Effort, Difficulty, GeneratedKind, GeneratedTaskExtras, TaskFieldDefaults, MealSlot, TimeOfDay, TitleRule, WeatherRule, EventTaskRule, ScreenTimeRule, BlockOfferRule, HealthRule, NutrientKey, ReminderCapture } from '../types';
 import { clampStepGoal, parseStepGoal } from '../utils/stepGoal';
 import { clampShortNightMinutes, parseShortNightMinutes, SHORT_NIGHT_MINUTES_DEFAULT } from '../utils/shortNight';
 import { parseHealthRowKeys, serializeHealthRowKeys, type HealthRowKey } from '../utils/dayContextRows';
@@ -176,6 +176,7 @@ import {
   type WaniKaniReviewState,
 } from '../utils/wanikaniTasks';
 import { parseScreenTimeRules, defaultScreenTimeRules, serializeScreenTimeRules } from '../utils/screenTimeRules';
+import { parseBlockOfferRules, serializeBlockOfferRules } from '../utils/blockOfferTasks';
 import { parseHealthRules, defaultHealthRules, serializeHealthRules } from '../utils/healthRules';
 import { parseReminderCaptures, serializeReminderCaptures } from '../utils/reminderCaptures';
 import {
@@ -1786,6 +1787,16 @@ interface SettingsStore {
   // out of DEFAULT_SETTINGS for the same mechanical reason weatherRules is,
   // and each carries its own idempotency mark the same way.
   screenTimeRules: ScreenTimeRule[];
+  // Whether a block-offer rule writes its daily task (see
+  // src/utils/blockOfferTasks.ts). Off by default for screenTimeTasks's reason:
+  // it wants Screen Time access, and it means nothing with Rewards off.
+  blockOfferTasks: boolean;
+  // Which category a block-offer task files itself under, by name, or null.
+  blockOfferTaskCategory: string | null;
+  // The rules — "block these apps for an hour, earn 10 coins". No shipped
+  // defaults: a coin amount is the person's call. Out of DEFAULT_SETTINGS for
+  // weatherRules's reason.
+  blockOfferRules: BlockOfferRule[];
   // The daily "log how you're feeling" task (see src/utils/moodTasks.ts). Off
   // by default, the same call pantryCheck and birthdayGift make: it adds a
   // surface nobody had, and there is no recorded intent to point at — nobody
@@ -2362,6 +2373,9 @@ interface SettingsStore {
   setScreenTimeTasks: (on: boolean) => void;
   setScreenTimeTaskCategory: (category: string | null) => void;
   setScreenTimeRules: (rules: ScreenTimeRule[]) => void;
+  setBlockOfferTasks: (on: boolean) => void;
+  setBlockOfferTaskCategory: (category: string | null) => void;
+  setBlockOfferRules: (rules: BlockOfferRule[]) => void;
   setMoodLogTasks: (on: boolean) => void;
   setMoodLogTaskCategory: (category: string | null) => void;
   setMoodLogLastDayKey: (dayKey: string | null) => void;
@@ -3139,6 +3153,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   screenTimeTasks: false,
   screenTimeTaskCategory: null,
   screenTimeRules: [],
+  blockOfferTasks: false,
+  blockOfferTaskCategory: null,
+  blockOfferRules: [],
   moodLogTasks: false,
   moodLogTaskCategory: null,
   moodLogLastDayKey: null,
@@ -3762,6 +3779,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const screenTimeRules = storedScreenTimeRules
       ? parseScreenTimeRules(storedScreenTimeRules)
       : defaultScreenTimeRules();
+    const blockOfferTasks = dbGetSetting('blockOfferTasks') === 'true';
+    const blockOfferTaskCategory = dbGetSetting('blockOfferTaskCategory') || null;
+    const blockOfferRules = parseBlockOfferRules(dbGetSetting('blockOfferRules'));
     // Same TEXT-column parse as every other numeric setting here: an
     // unparseable or missing row (a fresh install, or one that predates this
     // setting) reads back as 0 — never nudge — matching DEFAULT_NUDGE_CADENCE_DAYS.
@@ -3888,6 +3908,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       birthdayTaskCategory,
       birthdayTasks,
       blockAppRemoval,
+      blockOfferRules,
+      blockOfferTaskCategory,
+      blockOfferTasks,
       bodyProfile,
       bookEventTaskCategory,
       bookEventTasks,
@@ -4920,6 +4943,22 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setScreenTimeRules(rules: ScreenTimeRule[]) {
     dbSetSetting('screenTimeRules', serializeScreenTimeRules(rules));
     set({ screenTimeRules: rules });
+  },
+
+  setBlockOfferTasks(on: boolean) {
+    dbSetSetting('blockOfferTasks', on ? 'true' : 'false');
+    set({ blockOfferTasks: on });
+  },
+
+  setBlockOfferTaskCategory(category: string | null) {
+    dbSetSetting('blockOfferTaskCategory', category ?? '');
+    set({ blockOfferTaskCategory: category });
+  },
+
+  // Written whole, like setScreenTimeRules.
+  setBlockOfferRules(rules: BlockOfferRule[]) {
+    dbSetSetting('blockOfferRules', serializeBlockOfferRules(rules));
+    set({ blockOfferRules: rules });
   },
 
   setMoodLogTasks(on: boolean) {

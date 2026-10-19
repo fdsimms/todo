@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AppState, Linking, Text, View, StyleSheet } from 'react-native';
+import React, { useMemo } from 'react';
+import { Linking, Text, View, StyleSheet } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import type { ScreenTimeRule } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -20,7 +20,7 @@ import { useShieldReasons } from '../hooks/useShieldReasons';
 import { groupEditLocked } from '../utils/blockEditLock';
 import { confirmLivePicker } from '../utils/livePickerConfirm';
 import { reconcileAppShield } from '../utils/appShieldReconcile';
-import type { ScreenTimeAuthorization, ScreenTimeSelectionCount } from 'todo-screentime-bridge';
+import { useGroupSelectionCounts } from '../hooks/useGroupSelectionCounts';
 import { PillGroup } from './PillGroup';
 import { CountStepper } from './CountStepper';
 import { InlineAction } from './InlineAction';
@@ -51,38 +51,11 @@ export function ScreenTimeRulesSheet({ visible, onClose }: Props) {
   const fallbackCategory = useSettingsStore(s => s.screenTimeTaskCategory);
   const setRules = useSettingsStore(s => s.setScreenTimeRules);
 
-  const [authorization, setAuthorization] = useState<ScreenTimeAuthorization | null>(null);
   const customGroups = useAppGroupStore(s => s.groups);
   const groupsMeta = useAppGroupStore(s => s.meta);
   // Plain groups only: a rule watches one group's apps, and a supergroup holds none of its own.
   const groups = useMemo(() => plainGroups(customGroups, groupsMeta), [customGroups, groupsMeta]);
-  const [counts, setCounts] = useState<Record<string, ScreenTimeSelectionCount>>({});
-
-  const refreshNativeState = useCallback(() => {
-    const bridge = screenTimeBridge();
-    if (!bridge) {
-      setAuthorization('unavailable');
-      return;
-    }
-    setAuthorization(bridge.screenTimeAuthorizationStatus());
-    const next: Record<string, ScreenTimeSelectionCount> = {};
-    for (const group of plainGroups(customGroups, groupsMeta)) {
-      next[group.id] = bridge.screenTimeSelectionCount(group.id);
-    }
-    setCounts(next);
-  }, [customGroups, groupsMeta]);
-
-  // Authorization can be revoked while the user is off in the system Settings
-  // app, so it's re-read on every foreground while this sheet is open — the
-  // same shape WeatherRulesSheet uses for location.
-  useEffect(() => {
-    if (!visible) return;
-    refreshNativeState();
-    const subscription = AppState.addEventListener('change', state => {
-      if (state === 'active') refreshNativeState();
-    });
-    return () => subscription.remove();
-  }, [visible, refreshNativeState]);
+  const { authorization, counts, setCounts, refresh: refreshNativeState } = useGroupSelectionCounts(visible);
 
   const reasons = useShieldReasons();
 

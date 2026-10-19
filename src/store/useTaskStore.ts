@@ -112,7 +112,7 @@ import {
 // Imports this module back, like useMealPlanStore does — inert for the same
 // reason: the reference is inside an action body, by which time both modules
 // have finished loading.
-import { deleteGeneratedTaskQuietly, dropGeneratedTask, reconcileGeneratedTask, settleReadyMarks } from './generatedTaskSync';
+import { deleteGeneratedTaskQuietly, dropGeneratedTask, markGeneratedReady, reconcileGeneratedTask, settleReadyMarks } from './generatedTaskSync';
 import { readSavedEvents, updateSavedEvent, writeSavedEvents, type SavedEvent } from '../utils/savedEvents';
 import { bookDueDay, bookSourceId, bookTaskNotes, bookTaskTitle, wantsBookTask } from '../utils/savedEventTasks';
 import { reopenedTask } from '../utils/taskReopen';
@@ -444,6 +444,11 @@ import { useScreenTimeStore } from './useScreenTimeStore';
 import { useHealthStore } from './useHealthStore';
 import { screenTimeSourceId, parseScreenTimeSourceId, crossingWantsTask, screenTimeRuleIdOf } from '../utils/screenTimeRules';
 import {
+  blockOfferCoinsFor, blockOfferRunOutcome, blockOfferSourceId, describeOfferCoins, parseBlockOfferSourceId,
+} from '../utils/blockOfferTasks';
+import { readBlockOfferRuns, writeBlockOfferRuns } from './blockOfferRuns';
+import { useShieldReleaseStore } from './useShieldReleaseStore';
+import {
   healthSourceId,
   parseHealthSourceId,
   healthRuleDirection,
@@ -741,6 +746,10 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
       // by checkScreenTimeTasks as it turns a crossing into a task — it can't
       // be spent ahead of the decision the way weather's is, because the
       // deciding is the OS's (see the field's own note).
+      return;
+    case 'blockOffer':
+      // The source is a rule in settings, as for screenTime. The mark is
+      // BlockOfferRule.lastFiredDayKey, spent before the offer is made.
       return;
     case 'health':
       // The third of them, and the same answer: a rule in settings is not a row
@@ -2119,6 +2128,12 @@ interface TaskStore extends UndoHistoryActions {
    */
   checkTravelTasks: () => void;
   checkScreenTimeTasks: () => void;
+  /**
+   * Block offers: each enabled rule offers its task once a day, a block that
+   * ran to its end marks its task ready, and one cut short deletes it. See
+   * src/utils/blockOfferTasks.ts.
+   */
+  checkBlockOfferTasks: () => void;
   checkHealthTasks: () => void;
   /**
    * Once a day, a task to log how you're feeling — and, after a run of low
@@ -4098,11 +4113,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!neutral && taskEarnsCoins(task)) {
       const rewards = useRewardStore.getState();
       const label = displayTitleFor(task);
-      if (missed) rewards.recordMiss(id, coinsForLoss(task), label, completedAt.toISOString());
+      // Declining an offer is not failing a task, so a block offer costs nothing to miss.
+      if (missed) rewards.recordMiss(id, task.generatedKind === 'blockOffer' ? 0 : coinsForLoss(task), label, completedAt.toISOString());
       else {
         // Taps on a task paid per tap (Task.coinsPerTap) were paid as they
         // happened, so the completion earns the rest of the total.
-        const owed = coinsForCompletion(task, completed.streakCount) - rewards.tapCoinsPaid(id);
+        // A block offer pays the amount its rule promised, and only once the
+        // block has run (blockOfferCoinsFor is zero before that), whatever
+        // route completed it.
+        const offerCoins = blockOfferCoinsFor(task, readBlockOfferRuns(), useSettingsStore.getState().blockOfferRules);
+        const owed = offerCoins ?? coinsForCompletion(task, completed.streakCount) - rewards.tapCoinsPaid(id);
         rewards.recordEarn(id, owed, label, completedAt.toISOString());
       }
     }
@@ -7965,6 +7985,83 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   /**
+   * Block offers — "block Games for an hour, earn 10 coins". See
+   * `src/utils/blockOfferTasks.ts`.
+   *
+   * Three jobs in one pass, in this order so a block that finished yesterday
+   * is settled before today's offer is judged:
+   *
+   * 1. **Settle accepted offers.** A run whose window passed untouched marks
+   *    its task ready (the tick, and the coins, stay the person's); one a key
+   *    tag or the emergency button cut short deletes its task. Deleting is not
+   *    a fresh offer: the day mark below was spent when the offer was made.
+   * 2. **Clear offers nobody took**: yesterday's, or a deleted rule's. An
+   *    accepted one is kept across the day boundary because its block may
+   *    still be running, and a ready one because its coins would be lost.
+   * 3. **Make today's offers.** The mark is written before the task, so a
+   *    swiped-away offer cannot come straight back.
+   *
+   * It needs Rewards on (coins are the whole offer) and refuses in demo mode,
+   * where no block may reach the real shield.
+   */
+  checkBlockOfferTasks() {
+    const settings = useSettingsStore.getState();
+    if (!settings.blockOfferTasks || !settings.rewardsEnabled) return;
+    if (isDemoModeActive()) return;
+
+    const now = new Date();
+    const todayKey = dayKeyOf(getCurrentDayStart());
+    const ruleIds = new Set(settings.blockOfferRules.map(r => r.id));
+    const runs = readBlockOfferRuns();
+    const runsByTask = new Map(runs.map(r => [r.taskId, r]));
+    const releases = useShieldReleaseStore.getState().log;
+
+    for (const task of liveGeneratedTasksOfKind(get().tasks, 'blockOffer')) {
+      const run = runsByTask.get(task.id);
+      if (run) {
+        const outcome = blockOfferRunOutcome(run, releases, now);
+        if (outcome === 'forfeited') deleteGeneratedTaskQuietly(task.id);
+        else if (outcome === 'ready') markGeneratedReady(task);
+        continue;
+      }
+      const parsed = parseBlockOfferSourceId(task.generatedSourceId);
+      if (!parsed || parsed.dayKey !== todayKey || !ruleIds.has(parsed.ruleId)) deleteGeneratedTaskQuietly(task.id);
+    }
+
+    // A run whose task is gone has nothing left to settle.
+    const liveIds = new Set(get().tasks.filter(t => t.generatedKind === 'blockOffer' && !t.completed).map(t => t.id));
+    const keptRuns = runs.filter(r => liveIds.has(r.taskId));
+    if (keptRuns.length !== runs.length) writeBlockOfferRuns(keptRuns);
+
+    const dueDate = getCurrentDayStart();
+    dueDate.setHours(12, 0, 0, 0);
+    const toOffer = settings.blockOfferRules.filter(rule => rule.enabled && rule.lastFiredDayKey !== todayKey);
+    if (toOffer.length === 0) return;
+    // The marks first, then the tasks they stand for.
+    const offeredIds = new Set(toOffer.map(rule => rule.id));
+    settings.setBlockOfferRules(settings.blockOfferRules.map(rule => (
+      offeredIds.has(rule.id) ? { ...rule, lastFiredDayKey: todayKey } : rule
+    )));
+
+    for (const rule of toOffer) {
+      const sourceId = blockOfferSourceId(todayKey, rule.id);
+      reconcileGeneratedTask({
+        kind: 'blockOffer',
+        sourceId,
+        wanted: true,
+        drift: () => null,
+        draft: () => ({
+          title: `${rule.title} (${describeOfferCoins(rule.coins)})`,
+          notes: `Tap the checkbox to start the block. Check this off after it ends to collect ${describeOfferCoins(rule.coins)}. Ending the block early forfeits them.`,
+          dueDate: dueDate.toISOString(),
+          category: ruleCategoryFor(rule, settings.blockOfferTaskCategory),
+          ...generatedBy('blockOffer', sourceId),
+        }),
+      });
+    }
+  },
+
+  /**
    * Health rules — "under six hours of sleep, keep today light".
    *
    * `checkWeatherTasks` one shelf over, because like the forecast the app holds
@@ -10915,6 +11012,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (weatherRules !== settings.weatherRules) settings.setWeatherRules(weatherRules);
     const screenTimeRules = renameInRuleCategories(settings.screenTimeRules, name, trimmed);
     if (screenTimeRules !== settings.screenTimeRules) settings.setScreenTimeRules(screenTimeRules);
+    const blockOfferRules = renameInRuleCategories(settings.blockOfferRules, name, trimmed);
+    if (blockOfferRules !== settings.blockOfferRules) settings.setBlockOfferRules(blockOfferRules);
     const healthRules = renameInRuleCategories(settings.healthRules, name, trimmed);
     if (healthRules !== settings.healthRules) settings.setHealthRules(healthRules);
     const eventRules = renameInRuleCategories(settings.eventRules, name, trimmed);
