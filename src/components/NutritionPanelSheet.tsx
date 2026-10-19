@@ -461,8 +461,8 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
             {...keyboardScroll.props}
           >
             <Text style={styles.intro}>
-              Copy the numbers off the package label. Leave a field blank if the label
-              doesn’t list it. Blank means unknown.
+              Copy the numbers off the package label. Skip anything the label doesn’t
+              list, and only type 0 where the label says 0.
             </Text>
 
             <View style={styles.photoRow}>
