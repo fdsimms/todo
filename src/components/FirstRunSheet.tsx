@@ -89,6 +89,7 @@ export function FirstRunSheet({ visible, onClose, rerun = false }: Props) {
     });
   };
 
+  // e2e/maestro/ waits for "Quick setup" and taps "Skip" to get past this sheet.
   const skip = () => {
     haptics.tap();
     dismiss(() => setFirstRunDone(true));

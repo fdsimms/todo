@@ -16,6 +16,7 @@ export type AddTaskType = 'stack' | 'template' | 'import' | 'event' | 'task';
 // "Event" is the one entry that adds no task: a one-line event
 // (`QuickEventSheet`) saved straight into the calendar. It sits beside Task because a plan for
 // today is a Today thing whichever list it ends up in.
+// The FAB's "Add task" label and the "Task" item are what e2e/maestro/ taps to reach quick add.
 const ITEMS: FabMenuItem[] = [
   { key: 'stack', label: 'Stack', icon: 'layers' },
   { key: 'template', label: 'Template', icon: 'copy' },
