@@ -149,6 +149,9 @@ export function rankByRecency<T extends { key: string }>(
 /** How many rows the picker offers as a meal's usual foods, at most. */
 export const USUAL_FOR_SLOT_LIMIT = 3;
 
+/** How far back a meal's usual foods are counted. */
+export const USUAL_FOR_SLOT_DAYS = 14;
+
 /**
  * The rows somebody keeps eating at this meal, for the picker to put in front
  * before anything is typed: the yogurt every breakfast, the sandwich most
@@ -161,6 +164,11 @@ export const USUAL_FOR_SLOT_LIMIT = 3;
  * than a habit worth a section of its own. Same id-only counting as
  * `foodLogRecency`, for the reason given at the top of this file.
  *
+ * **Only the last `USUAL_FOR_SLOT_DAYS` days count.** Over the whole log, a
+ * product eaten daily for a month and then swapped for another stayed first
+ * for weeks, because its old count outweighed the new one's. A habit that has
+ * not been eaten within the window has stopped being usual.
+ *
  * Ordered by how often, then how recently, and the candidates' own order
  * breaks a full tie, the same promote-not-sort rule `rankByRecency` keeps.
  */
@@ -169,9 +177,11 @@ export function usualForSlot<T extends { key: string }>(
   entries: readonly FoodLogEntry[],
   slot: FoodLogEntry['slot'],
   limit = USUAL_FOR_SLOT_LIMIT,
+  now: Date = new Date(),
 ): T[] {
   if (!slot) return [];
-  const inSlot = foodLogRecency(entries.filter(e => e.slot === slot));
+  const cutoffISO = new Date(now.getTime() - USUAL_FOR_SLOT_DAYS * 86_400_000).toISOString();
+  const inSlot = foodLogRecency(entries.filter(e => e.slot === slot && e.atISO >= cutoffISO));
   const habitual = new Map([...inSlot].filter(([, seen]) => seen.count >= 2));
   return rankByRecency(candidates, habitual)
     .filter(c => habitual.has(c.key))
