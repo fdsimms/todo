@@ -30,8 +30,8 @@ import { useMeasuredTextWidth } from '../hooks/useMeasuredTextWidth';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { ThumbIcon } from '../components/ThumbIcon';
 import { useShallow } from 'zustand/react/shallow';
-import type { ComponentPlacement, RecipeBlank, RecipeIngredient, RecipeOverride, RecipePrepTask, RecipeStep } from '../types';
-import { GROCERY_NAME_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH, RECIPE_STEP_NOTE_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
+import type { ComponentPlacement, RecipeBlank, RecipeIngredient, RecipeOverride, RecipePrepTask, RecipeStep, RecipeVote } from '../types';
+import { GROCERY_NAME_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH, RECIPE_VOTE_LABELS, RECIPE_STEP_NOTE_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useSyncStore } from '../store/useSyncStore';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -1138,6 +1138,24 @@ export function RecipeDetailScreen() {
     });
   };
 
+  // The header thumb. It used to toggle Loved only, so Liked it and Never again
+  // could be set only from the post-cook sheet and the editor. The menu offers
+  // all four, and the icon below shows which one is set.
+  const handleRate = () => {
+    haptics.tap();
+    const choose = (vote: RecipeVote | null) => () => setVote(recipe.id, vote);
+    actionMenu.open({
+      title: `Rate ${recipe.name}`,
+      message: recipe.vote ? `Currently: ${RECIPE_VOTE_LABELS[recipe.vote]}.` : 'Whether you’d cook this again. Also used to sort the recipe box.',
+      actions: [
+        { key: 'loved', label: RECIPE_VOTE_LABELS.loved, icon: 'thumbs-up', onPress: choose('loved') },
+        { key: 'liked', label: RECIPE_VOTE_LABELS.liked, icon: 'thumbs-up-outline', onPress: choose('liked') },
+        { key: 'none', label: 'No opinion', icon: 'remove-circle-outline', onPress: choose(null) },
+        { key: 'never', label: RECIPE_VOTE_LABELS.never, icon: 'thumbs-down-outline', onPress: choose('never') },
+      ],
+    });
+  };
+
   const handleLogToFoodLog = () => {
     haptics.tap();
     const dayKey = dayKeyOf(getCurrentDayStart());
@@ -2072,18 +2090,16 @@ export function RecipeDetailScreen() {
           <View style={styles.headerActions}>
             {!selectionMode && (
               <TouchableOpacity
-                onPress={() => {
-                  haptics.tap();
-                  setVote(recipe.id, recipe.vote === 'loved' ? null : 'loved');
-                }}
+                onPress={handleRate}
                 hitSlop={8}
                 accessibilityRole="button"
-                accessibilityLabel={recipe.vote === 'loved' ? 'Unmark loved' : 'Mark loved'}
+                accessibilityLabel={recipe.vote ? `Rating: ${RECIPE_VOTE_LABELS[recipe.vote]}. Change rating` : 'Rate this recipe'}
               >
                 <ThumbIcon
                   filled={recipe.vote === 'loved'}
+                  down={recipe.vote === 'never'}
                   size={iconSize.md}
-                  color={recipe.vote === 'loved' ? colors.orangeText : colors.textSecondary}
+                  color={recipe.vote ? colors.orangeText : colors.textSecondary}
                 />
               </TouchableOpacity>
             )}
