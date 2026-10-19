@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { AppState, Platform } from 'react-native';
+import { Alert, AppState, Platform } from 'react-native';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -33,6 +33,8 @@ import { defaultUsualDose, prefsFor } from './medicationSettings';
 import { recordDose } from './doseRecording';
 import { haptics } from './haptics';
 import { parseQueuedDreams } from './dreamQueue';
+import { parseQueuedFoods } from './foodQueue';
+import { usePendingEstimateStore } from '../store/usePendingEstimateStore';
 import { keyCodeToken, parseQueuedKeyScans } from './keyScanQueue';
 import { alertKeyScanResult } from './keyScanAlert';
 import { applyKeyScan } from './releaseBlocks';
@@ -223,6 +225,51 @@ async function processPendingDreams(): Promise<void> {
     haptics.success();
   } catch {
     // A build predating drainPendingDreams — no-op.
+  }
+}
+
+// Meals said to Siri or the Action Button (LogFoodIntent): handed to the offline
+// meal queue, which estimates each one and leaves it on the Food log screen for
+// a person to confirm. Nothing is logged here, since a figure the app made up
+// and stored unconfirmed is what that queue exists to prevent
+// (`utils/estimateQueue.ts`). The moment Siri was asked travels with the meal, so
+// confirming at bedtime still files it under the lunch it was. Silent on
+// arrival except when the queue is full, because a meal dropped with nothing
+// said is the one outcome an input may not have.
+async function processPendingFoods(): Promise<void> {
+  const bridge = widgetBridge();
+  // Optional on the bridge: a binary built before the intent has no drain.
+  if (!bridge?.drainPendingFoods) return;
+  try {
+    const queued = parseQueuedFoods(await bridge.drainPendingFoods());
+    if (queued.length === 0) return;
+    const store = usePendingEstimateStore.getState();
+    // Loaded with the task store at startup; a drain that beats it would
+    // otherwise sort the new row into an empty list.
+    if (!store.initialized) store.initialize();
+    let dropped = 0;
+    for (const food of queued) {
+      const result = usePendingEstimateStore.getState().enqueue({
+        description: food.text,
+        slot: null,
+        at: food.at ?? new Date(),
+        context: [],
+      });
+      if (result === 'full') dropped += 1;
+    }
+    if (dropped > 0) {
+      Alert.alert(
+        "Couldn't save the meal",
+        'The list of meals waiting to be logged is full. Log or remove one on the Food log screen, then say it again.',
+      );
+    } else {
+      haptics.success();
+    }
+    // Estimate now if there is a connection; a failure that waiting can fix
+    // leaves the meal waiting for "Try now" on the Food log screen.
+    void usePendingEstimateStore.getState().drain();
+  } catch {
+    // A build predating drainPendingFoods — no-op.
   }
 }
 
@@ -1002,6 +1049,7 @@ export function useWidgetSync(): void {
       processPendingDisposals(),
       processPendingDoses(),
       processPendingDreams(),
+      processPendingFoods(),
       processPendingKeyScans(),
       processPendingWorkoutStarts(),
       processQuietWidgetTaps(),
@@ -1028,6 +1076,7 @@ export function useWidgetSync(): void {
           processPendingDisposals(),
           processPendingDoses(),
           processPendingDreams(),
+          processPendingFoods(),
           processPendingKeyScans(),
           processPendingWorkoutStarts(),
           processQuietWidgetTaps(),

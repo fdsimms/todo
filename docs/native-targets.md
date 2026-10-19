@@ -188,6 +188,13 @@ the two runs compare exactly, which is how to prove a refactor left a target unc
   `src/utils/dreamQueue.ts`) and navigates nowhere, so the journal's Face ID lock stays closed.
   Written without a compiler: it copies the two intents above line for line, and a build is
   the first check on it.
+- **`LogFoodIntent` (`modules/todo-widget-bridge/ios/LogFoodIntent.swift`) is `LogDreamIntent`'s shape
+  pointed at the offline meal queue.** Siri asks "What did you eat?"; `perform()` appends `{ text, at }`
+  to `pending_foods.json`, and the app hands each to `usePendingEstimateStore.enqueue`
+  (`processPendingFoods`, `src/utils/foodQueue.ts`), then drains it. **It never logs anything**: the
+  meal is estimated and waits on the Food log screen for a tap, the rule `src/utils/estimateQueue.ts`
+  holds. With no API key, or the estimate feature off, the meal sits there marked as not estimated
+  rather than vanishing. Written without a compiler, as the intents above were.
 - **`ToggleKeyLockIntent` (`modules/todo-widget-bridge/ios/ToggleKeyLockIntent.swift`) is `LogDreamIntent`'s shape with a code in place of the text.** One `String` parameter, the key's token; `perform()` appends `{ code, at }` to `pending_key_scans.json` and the app checks it against the key list on the next foreground (`processPendingKeyScans`, `src/utils/keyScanQueue.ts`). **It is deliberately not in `DundundunShortcuts`**: an intent in no provider still shows as an action in the Shortcuts app, which is the one place it should be, and has no Siri phrase. Why a code rather than the tag is in `docs/arch/nfc-key.md`. Written without a compiler, as the one above was.
 - **`StartWorkoutIntent.swift` holds two intents and one queue.** `StartWorkoutIntent` takes
   nothing ("Start my workout in dundundun") and `StartRoutineIntent` names a routine inside the

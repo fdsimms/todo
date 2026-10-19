@@ -159,6 +159,16 @@ struct DundundunShortcuts: AppShortcutsProvider {
             shortTitle: "Log a Dream",
             systemImageName: "moon.stars"
         )
+        // Free text again: Siri asks what was eaten (LogFoodIntent.swift).
+        AppShortcut(
+            intent: LogFoodIntent(),
+            phrases: [
+                "Log food in \(.applicationName)",
+                "Log a meal in \(.applicationName)",
+            ],
+            shortTitle: "Log Food",
+            systemImageName: "fork.knife"
+        )
         // Nothing to fill in: which workout "my workout" is gets worked out in
         // the app (StartWorkoutIntent.swift).
         AppShortcut(

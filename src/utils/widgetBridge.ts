@@ -61,6 +61,11 @@ export interface WidgetBridge {
    */
   drainPendingDreams?: () => Promise<string>;
   /**
+   * Meals described to LogFoodIntent (`{ text, at }` as JSON) — see
+   * foodQueue.ts. Optional for the reason the dose drain is.
+   */
+  drainPendingFoods?: () => Promise<string>;
+  /**
    * Key codes queued by ToggleKeyLockIntent (`{ code, at }` as JSON) — see
    * keyScanQueue.ts. Optional for the reason the dose drain is.
    */
