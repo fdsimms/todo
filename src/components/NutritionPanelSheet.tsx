@@ -527,7 +527,7 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
                   placeholderTextColor={colors.textTertiary}
                   accessibilityLabel="Serving size as printed"
                 />
-                <HelpText style={styles.hint}>The measure as printed, like 3 Tbsp, 1 cup or 2 cookies. The weight goes in the next field.</HelpText>
+                <HelpText style={styles.hint}>For example 3 Tbsp, 1 cup or 2 cookies. Put the weight in the next field.</HelpText>
               </View>
 
               <View style={styles.field}>
