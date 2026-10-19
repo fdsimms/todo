@@ -6,6 +6,8 @@ import {
   hasRunningRecipeTimer,
   recipeTimerClock,
   recipeTimerResetPrompt,
+  showsPrepRow,
+  startCookingPlan,
   type CookTimerState,
   type PrepTimerState,
 } from '../utils/recipeTimer';
@@ -172,5 +174,35 @@ describe('recipeTimerResetPrompt', () => {
   it('does not ask when nothing has been timed', () => {
     expect(recipeTimerResetPrompt('Cook', { running: true, elapsedSeconds: 0.4 })).toBeNull();
     expect(recipeTimerResetPrompt('Cook', { running: false, elapsedSeconds: 0 })).toBeNull();
+  });
+});
+
+// ─── cook mode ───
+
+describe('showsPrepRow', () => {
+  it('shows on mise en place whether or not prep was started', () => {
+    expect(showsPrepRow(true, false)).toBe(true);
+  });
+
+  it('stays off a step for a cook who never timed prep', () => {
+    expect(showsPrepRow(false, false)).toBe(false);
+  });
+
+  it('stays on a step while prep is running or paused', () => {
+    expect(showsPrepRow(false, true)).toBe(true);
+  });
+});
+
+describe('startCookingPlan', () => {
+  it('pauses a running prep timer and starts the cook timer', () => {
+    expect(startCookingPlan({ prepRunning: true, cookInProgress: false })).toEqual({ pausePrep: true, startCook: true });
+  });
+
+  it('leaves an untimed prep alone', () => {
+    expect(startCookingPlan({ prepRunning: false, cookInProgress: false })).toEqual({ pausePrep: false, startCook: true });
+  });
+
+  it('does not restart a cook already in progress', () => {
+    expect(startCookingPlan({ prepRunning: false, cookInProgress: true }).startCook).toBe(false);
   });
 });

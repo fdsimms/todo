@@ -63,8 +63,6 @@ import { RecipeEditor } from '../components/RecipeEditor';
 import { RecipeIngredientSheet } from '../components/RecipeIngredientSheet';
 import { PrepTaskSheet } from '../components/PrepTaskSheet';
 import { RecipeToListSheet } from '../components/RecipeToListSheet';
-import { OverlapPickerSheet } from '../components/OverlapPickerSheet';
-import { useOverlapPicker } from '../hooks/useOverlapPicker';
 import { PlanMealSheet } from '../components/PlanMealSheet';
 import { RecipeExtractSheet } from '../components/RecipeExtractSheet';
 import { RecipeComponentPicker } from '../components/RecipeComponentPicker';
@@ -554,7 +552,6 @@ export function RecipeDetailScreen() {
   // never inherits a scale left over from an earlier scaled shop.
   const [pendingPlanScale, setPendingPlanScale] = useState<number | null>(null);
   const { planRecipe, offerPrepTasks, earliestUnplannedSlotToday, cookRecipeNow } = usePlanMeal();
-  const { overlap, openOverlap, closeOverlap, handOffOverlap } = useOverlapPicker();
   const [extractVisible, setExtractVisible] = useState(false);
   const [cookModeVisible, setCookModeVisible] = useState(false);
   /**
@@ -2621,33 +2618,20 @@ export function RecipeDetailScreen() {
           “garlic, minced”
         </Text>
 
-        {/* Sits at the end of what the recipe is made of, because that list is
-            exactly what the comparison runs on. Adding a blank sits beside it
-            for the same reason: a blank is one more thing the dish is made of.
-            Hidden in simplified mode with components, its sibling, unless the
-            recipe already has one. */}
-        {(recipe.ingredients.length > 0 || showBlankAction) && (
+        {/* Adding a blank sits at the end of what the recipe is made of: a
+            blank is one more thing the dish is made of. Hidden in simplified
+            mode with components, its sibling, unless the recipe already has
+            one. */}
+        {showBlankAction && (
           <View style={[styles.addRow, styles.addRowWrap]}>
-            {showBlankAction && (
-              <InlineAction
-                label="Add a wild card"
-                icon="add"
-                variant="neutral"
-                surface="page"
-                onPress={() => { haptics.tap(); setEditingBlank('new'); }}
-                accessibilityLabel="Add a wild card, a kind of food you pick from your kitchen each time"
-              />
-            )}
-            {recipe.ingredients.length > 0 && (
-              <InlineAction
-                label="Cook something with this"
-                icon="git-merge-outline"
-                variant="neutral"
-                surface="page"
-                onPress={() => openOverlap(recipe)}
-                accessibilityLabel={`Find recipes that share ingredients with ${recipe.name}`}
-              />
-            )}
+            <InlineAction
+              label="Add a wild card"
+              icon="add"
+              variant="neutral"
+              surface="page"
+              onPress={() => { haptics.tap(); setEditingBlank('new'); }}
+              accessibilityLabel="Add a wild card, a kind of food you pick from your kitchen each time"
+            />
           </View>
         )}
         </>
@@ -3046,20 +3030,6 @@ export function RecipeDetailScreen() {
         initialOverrides={overrides}
         onAdded={offerPlanForScaledShop}
         onClose={() => setAddToListVisible(false)}
-      />
-
-      {/* Discovery only — this screen has no week, so picks go to the meal
-          plan rather than landing on a night here. See useOverlapPicker. */}
-      <OverlapPickerSheet
-        visible={overlap !== null}
-        matches={overlap?.matches ?? []}
-        seedLabel={overlap?.seedLabel ?? recipe.name}
-        onHandOff={handOffOverlap}
-        onOpenRecipe={other => {
-          closeOverlap();
-          (navigation as any).push('RecipeDetail', { recipeId: other.id, fromName: recipe.name });
-        }}
-        onClose={closeOverlap}
       />
 
       <RecipeExtractSheet
