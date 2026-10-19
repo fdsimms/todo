@@ -64,7 +64,7 @@ import {
 } from '../utils/stepTimers';
 import {
   currentSetOf, finishPlan, formatDistance, formatSetLine, matchPrevious, nextSet,
-  columnLabel, fieldLabel, sessionExercises, sessionSummary, setBadge, setFieldsFor, setLabels, valuesFromLastDone,
+  columnLabel, fieldLabel, sessionExercises, sessionSummary, setBadge, setFieldsFor, setLabels, setName, valuesFromLastDone,
   type SetField,
 } from '../utils/workoutSession';
 import { tickSet } from '../utils/workoutTick';
@@ -610,7 +610,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                         activeOpacity={interaction.activeOpacity}
                         accessibilityRole="button"
                         accessibilityState={{ expanded: isOpen }}
-                        accessibilityLabel={`Set ${label}${prevLine ? `, last time ${prevLine}` : ''}, ${fields.map(f => valueText(set, f, unit) ?? 'not entered').join(', ')}`}
+                        accessibilityLabel={`${setName(set.kind, label)}${prevLine ? `, last time ${prevLine}` : ''}, ${fields.map(f => valueText(set, f, unit) ?? 'not entered').join(', ')}`}
                       >
                         <Text style={[styles.colSet, setBadge(set.kind) ? styles.setBadge : styles.setNumber]}>{label}</Text>
                         <Text style={[styles.colPrev, styles.prevText]} numberOfLines={1}>{prevLine ?? '–'}</Text>
@@ -629,7 +629,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                           hitSlop={{ top: 10, bottom: 10, left: 12, right: 12 }}
                           accessibilityRole="checkbox"
                           accessibilityState={{ checked: done }}
-                          accessibilityLabel={`Set ${label} done`}
+                          accessibilityLabel={`${setName(set.kind, label)} done`}
                         >
                           <CheckPop checked={done} style={styles.check} checkedStyle={styles.checkDone}>
                             <Ionicons name="checkmark" size={14} color={colors.onDone} />
