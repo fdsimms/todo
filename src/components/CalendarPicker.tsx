@@ -17,11 +17,14 @@ import { isSameMonth } from 'date-fns/isSameMonth';
 import { isSameDay } from 'date-fns/isSameDay';
 import { isToday } from 'date-fns/isToday';
 import { format } from 'date-fns/format';
+import { addMinutes } from 'date-fns/addMinutes';
+import { addDays } from 'date-fns/addDays';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, animation, type Colors, textScale } from '../theme';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { buildCalendarGrid, weekdayHeaders } from '../utils/calendarGrid';
-import { dayKeyOf } from '../utils/dateUtils';
+import { buildCalendarGrid, dayShortcutDays, dayShortcutLabel, weekdayHeaders } from '../utils/calendarGrid';
+import { dayKeyOf, formatTimeOfDay, getLogicalToday } from '../utils/dateUtils';
+import { EVENT_LENGTH_PRESETS, describeEventLength, lengthToClock } from '../utils/eventLength';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetScrim } from './SheetScrim';
 import { BUTTON_LABEL } from '../copy/shared';
@@ -30,10 +33,30 @@ import { pickerCardWidthFor } from '../utils/frameWidth';
 interface Props {
   visible: boolean;
   value: Date | null;
-  mode: 'date' | 'datetime';
+  /**
+   * `'end'` is an event's end: a time wheel (and length chips) for the day of
+   * `startsAt`, with "Different day…" to fall back to the full picker. A time at
+   * or before the start lands on the next day, so "10pm to 1am" is one wheel.
+   */
+  mode: 'date' | 'datetime' | 'end';
   title: string;
-  onConfirm: (date: Date) => void;
+  /**
+   * A second argument is passed only when the length chips were used, so a
+   * caller that never touches the length is not handed one to pin.
+   */
+  onConfirm: (date: Date, lengthMinutes?: number) => void;
   onCancel: () => void;
+  /** A row of Today / Tomorrow / next weekend above the grid. */
+  dayShortcuts?: boolean;
+  /**
+   * Shows length chips under the time wheel (start of an event), starting on
+   * this many minutes. With `onOtherLength`, a trailing "Other…" chip hands the
+   * chosen start over so the caller can open the end picker.
+   */
+  lengthMinutes?: number;
+  onOtherLength?: (start: Date, lengthMinutes: number | undefined) => void;
+  /** The event's start, for `mode="end"`. */
+  startsAt?: Date;
   /**
    * Multi-date mode: a tap toggles a day in or out of a set rather than
    * replacing the selection, and Done reports the whole set through
@@ -55,6 +78,7 @@ const CAL_PADDING = 10;
 export function CalendarPicker({
   visible, value, mode, title, onConfirm, onCancel,
   multiple, values, onConfirmMultiple,
+  dayShortcuts, lengthMinutes, onOtherLength, startsAt,
 }: Props) {
   const colors = useColors();
   const { isDark, shadows } = useTheme();
@@ -70,6 +94,12 @@ export function CalendarPicker({
   });
   const [pickerReady, setPickerReady] = useState(false);
   const [selectedDates, setSelectedDates] = useState<Date[]>(values ?? []);
+  // A length picked from the chips, null until one is. `endFull` is an end
+  // picker that fell back to the whole grid ("Different day…").
+  const [lengthPick, setLengthPick] = useState<number | null>(null);
+  const [endFull, setEndFull] = useState(false);
+  const viewMode = mode === 'end' && !endFull ? 'end' : mode === 'end' ? 'datetime' : mode;
+  const use24Hour = useSettingsStore(s => s.use24HourTime);
 
   const cardScale = useRef(new Animated.Value(0.92)).current;
   const enterAnim = useRef(new Animated.Value(0)).current;
@@ -89,6 +119,8 @@ export function CalendarPicker({
     const t = new Date(base);
     if (!seed) t.setHours(9, 0, 0, 0);
     setTimeDate(t);
+    setLengthPick(null);
+    setEndFull(false);
     cardScale.setValue(0.92);
     enterAnim.setValue(0);
     Animated.parallel([
@@ -125,22 +157,69 @@ export function CalendarPicker({
     }
   };
 
+  // The end an `'end'` picker would report: the wheel's time on the start's day, next day if not after it.
+  const endFromWheel = (): Date => {
+    const start = startsAt ?? timeDate;
+    const result = new Date(start);
+    result.setHours(timeDate.getHours(), timeDate.getMinutes(), 0, 0);
+    return result.getTime() <= start.getTime() ? addDays(result, 1) : result;
+  };
+
+  // The start the picker would report right now, for the "Other…" hand-off.
+  const startFromSelection = (): Date | null => {
+    if (!selectedDate) return null;
+    const result = new Date(selectedDate);
+    result.setHours(timeDate.getHours(), timeDate.getMinutes(), 0, 0);
+    return result;
+  };
+
   const confirm = () => {
     if (multiple) {
       onConfirmMultiple?.(selectedDates);
       return;
     }
+    if (viewMode === 'end') {
+      onConfirm(endFromWheel());
+      return;
+    }
     if (!selectedDate) return;
-    if (mode === 'datetime') {
+    if (viewMode === 'datetime') {
       const result = new Date(selectedDate);
       result.setHours(timeDate.getHours(), timeDate.getMinutes(), 0, 0);
-      onConfirm(result);
+      onConfirm(result, lengthPick ?? undefined);
     } else {
       onConfirm(selectedDate);
     }
   };
 
-  const canConfirm = multiple ? true : !!selectedDate;
+  const canConfirm = multiple || viewMode === 'end' ? true : !!selectedDate;
+
+  const shortcutDays = useMemo(
+    () => (dayShortcuts ? dayShortcutDays(getLogicalToday(dayResetTime)) : []),
+    [dayShortcuts, dayResetTime, visible],
+  );
+  const shortcutToday = useMemo(() => getLogicalToday(dayResetTime), [dayResetTime, visible]);
+
+  // In end mode the chip showing is the one the wheel already reads as.
+  const endLength = viewMode === 'end' && startsAt ? lengthToClock(startsAt, timeDate) : null;
+  const shownLength = viewMode === 'end' ? endLength : (lengthPick ?? lengthMinutes ?? null);
+  const showLengthChips = shownLength !== null && (viewMode === 'end' || (viewMode === 'datetime' && lengthMinutes !== undefined));
+  const lengthIsPreset = shownLength !== null && (EVENT_LENGTH_PRESETS as readonly number[]).includes(shownLength);
+
+  const pickLength = (minutes: number) => {
+    if (viewMode === 'end' && startsAt) {
+      setTimeDate(addMinutes(startsAt, minutes));
+    } else {
+      setLengthPick(minutes);
+    }
+  };
+
+  const showFullEnd = () => {
+    const end = endFromWheel();
+    setSelectedDate(end);
+    setDisplayMonth(startOfMonth(end));
+    setEndFull(true);
+  };
 
   return (
     <SheetModal
@@ -164,7 +243,41 @@ export function CalendarPicker({
             <SheetHeaderButton label={BUTTON_LABEL.done} onPress={confirm} disabled={!canConfirm} style={styles.headerDoneText} minWidth={28} />
           </View>
 
+          {viewMode === 'end' && startsAt && (
+            <View style={styles.endSummary}>
+              <Text style={styles.endSummaryTitle} numberOfLines={1}>
+                {`Starts ${format(startsAt, 'EEE, MMM d')} · ${formatTimeOfDay(startsAt, use24Hour)}`}
+              </Text>
+              <Text style={styles.endSummarySub} numberOfLines={1}>
+                {`Ends ${format(endFromWheel(), 'EEE, MMM d')} · ${formatTimeOfDay(endFromWheel(), use24Hour)}`}
+              </Text>
+            </View>
+          )}
+
+          {viewMode !== 'end' && shortcutDays.length > 0 && (
+            <View style={styles.chipRow}>
+              {shortcutDays.map(day => {
+                const on = selectedDate ? isSameDay(day, selectedDate) : false;
+                const label = dayShortcutLabel(day, shortcutToday);
+                return (
+                  <TouchableOpacity
+                    key={dayKeyOf(day)}
+                    style={[styles.chip, on && styles.chipOn]}
+                    onPress={() => onDayPress(day)}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${label}, ${format(day, 'EEEE, MMMM d')}`}
+                    accessibilityState={{ selected: on }}
+                  >
+                    <Text style={[styles.chipText, on && styles.chipTextOn]} numberOfLines={1}>{label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+
           {/* Calendar section */}
+          {viewMode !== 'end' && (
           <View style={styles.calSection}>
             <View style={styles.monthNav}>
               <TouchableOpacity
@@ -233,6 +346,7 @@ export function CalendarPicker({
               })}
             </View>
           </View>
+          )}
 
           {/* Picked-set summary — the grid only shows one month at a time, so
               without this a date picked in another month looks like it was lost. */}
@@ -250,13 +364,13 @@ export function CalendarPicker({
           )}
 
           {/* Time picker (datetime mode only) */}
-          {mode === 'datetime' && pickerReady && (
+          {(viewMode === 'datetime' || viewMode === 'end') && pickerReady && (
             <>
               <View style={styles.sectionGap} />
               <View style={styles.timeSection}>
                 <View style={styles.timePickerHeader}>
                   <Ionicons name="time-outline" size={14} color={colors.textSecondary} />
-                  <Text style={styles.sectionLabel}>Time</Text>
+                  <Text style={styles.sectionLabel}>{viewMode === 'end' ? 'End time' : 'Time'}</Text>
                 </View>
                 <DateTimePicker
                   value={timeDate}
@@ -277,6 +391,61 @@ export function CalendarPicker({
                 />
               </View>
             </>
+          )}
+
+          {showLengthChips && shownLength !== null && (
+            <>
+              <View style={styles.sectionGap} />
+              <View style={styles.chipRow}>
+                {EVENT_LENGTH_PRESETS.map(minutes => {
+                  const on = shownLength === minutes;
+                  return (
+                    <TouchableOpacity
+                      key={minutes}
+                      style={[styles.chip, on && styles.chipOn]}
+                      onPress={() => pickLength(minutes)}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Length ${describeEventLength(minutes)}`}
+                      accessibilityState={{ selected: on }}
+                    >
+                      <Text style={[styles.chipText, on && styles.chipTextOn]} numberOfLines={1}>{describeEventLength(minutes)}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+                {viewMode !== 'end' && onOtherLength && (
+                  <TouchableOpacity
+                    style={[styles.chip, !lengthIsPreset && styles.chipOn]}
+                    onPress={() => {
+                      const start = startFromSelection();
+                      if (start) onOtherLength(start, lengthPick ?? undefined);
+                    }}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityLabel={lengthIsPreset ? 'Other length' : `Length ${describeEventLength(shownLength)}, change`}
+                    accessibilityState={{ selected: !lengthIsPreset }}
+                  >
+                    <Text style={[styles.chipText, !lengthIsPreset && styles.chipTextOn]} numberOfLines={1}>
+                      {lengthIsPreset ? 'Other…' : describeEventLength(shownLength)}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </>
+          )}
+
+          {viewMode === 'end' && (
+            <View style={styles.chipRow}>
+              <TouchableOpacity
+                style={styles.chip}
+                onPress={showFullEnd}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel="Pick a different end day"
+              >
+                <Text style={styles.chipText} numberOfLines={1}>Different day…</Text>
+              </TouchableOpacity>
+            </View>
           )}
 
           <View style={styles.bottomSpacer} />
@@ -412,6 +581,36 @@ const makeStyles = (colors: Colors, windowWidth: number) => {
     color: colors.accent,
     fontWeight: fontWeight.semibold,
   },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xsm,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  chip: {
+    flexGrow: 1,
+    minWidth: 56,
+    minHeight: interaction.pillHeight,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgTertiary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chipOn: { backgroundColor: colors.accentFill },
+  chipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
+  chipTextOn: { color: colors.onAccent },
+  endSummary: {
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    backgroundColor: colors.accentSubtle,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.smd,
+    paddingVertical: spacing.sm,
+  },
+  endSummaryTitle: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold },
+  endSummarySub: { color: colors.textSecondary, fontSize: font.xs, marginTop: 1 },
   multiSummary: {
     marginHorizontal: spacing.md,
     backgroundColor: colors.bgTertiary,
