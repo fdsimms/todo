@@ -648,7 +648,7 @@ items from, and this is a person stating what a shop sells. Same side of the lin
   showing three rows of fourteen. `planTrip` files them in `ShopCoverage.outOfRangeItemIds`, which
   `summarizeTrip` folds into `missing` — the consequence for the trip is identical to a stamped
   claim, and both are the user's own words. `tripMarkerFor` returns an `outOfRange` marker, which
-  `GroceryScreen` routes into the section's existing "Not here" group: to somebody holding the list
+  `GroceryScreen` routes into the list's one "Not here" group (after the last section): to somebody holding the list
   the two negatives say the same thing, and which one it was is a fact about where the claim came
   from.
 - **A substitute rides both negatives, and is filtered by the range.** Standing in a shop that

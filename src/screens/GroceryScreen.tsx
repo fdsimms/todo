@@ -107,6 +107,9 @@ import { BUTTON_LABEL } from '../copy/shared';
 /** The collapse and scroll key of one store's section in the store lens. */
 const storeSectionKey = (shopId: string | null) => `store:${shopId ?? 'none'}`;
 
+/** The one "Not here" group, after the last section; its fold is remembered under this key. */
+const NOT_HERE_KEY = 'unavailable';
+
 /**
  * A flat stream of tagged rows rather than a SectionList — the same shape
  * TodayScreen uses for its headers and stacks. It keeps one scroll view, it
@@ -115,10 +118,10 @@ const storeSectionKey = (shopId: string | null) => `store:${shopId ?? 'none'}`;
  * item and move it to another aisle: the row lands where it's dropped and takes
  * the aisle of the nearest header above (see resolveGroceryDrop).
  *
- * `unavailableHeader` is the same idea one level down: a label *inside* an
- * aisle's own run of rows, not a new aisle. It only ever appears while a trip
- * is running and only when that aisle actually has a row to put under it —
- * see the `rows` memo below.
+ * `unavailableHeader` is the one group of everything this trip's store doesn't
+ * have, after the last section and before the cart. It only ever appears while
+ * a trip is running and only when something is missing — see the `rows` memo
+ * below.
  *
  * `recipeHeader` is the other lens on the same rows (#1717) — aisle and
  * recipe are mutually exclusive groupings of one list, never both at once, so
@@ -146,7 +149,7 @@ type ListRow =
   | { type: 'aisle'; key: string; aisle: string; count: number }
   | { type: 'recipeHeader'; key: string; label: string; count: number }
   | { type: 'storeHeader'; key: string; label: string; count: number }
-  | { type: 'unavailableHeader'; key: string; groupKey: string; count: number }
+  | { type: 'unavailableHeader'; key: string; count: number }
   | { type: 'cartHeader'; key: string; count: number }
   | {
       type: 'item';
@@ -668,41 +671,34 @@ export function GroceryScreen() {
 
   const rows = useMemo<ListRow[]>(() => {
     const out: ListRow[] = [];
-    // Held back rather than pushed in place, so the section's own roster
-    // stays first and the "Not here" group — if this trip's store leaves
-    // anything out of it — reads as a footnote to that roster, not a
-    // second section. Order within each bucket is still the section's own
-    // sortOrder walk, just split rather than reordered. Shared between both
+    // Held back rather than pushed in place: whatever this trip's store leaves
+    // out of every section is gathered into one "Not here" group after the last
+    // section, so a quick look at the bottom of the list shows everything to
+    // skip. Order within it is each section's own sortOrder walk, in section
+    // order. A folded section still contributes its rows: what the store lacks
+    // doesn't depend on which aisles are open. Shared between all three
     // groupings, which differ only in the header row they push.
+    const notHere: GroceryItem[] = [];
+    const isNotHere = (item: GroceryItem) => !!storeMarkers.get(item.id)?.unavailable;
     const pushSection = (header: ListRow, groupKey: string, data: GroceryItem[]) => {
       out.push(header);
-      if (collapsedGroups.has(groupKey)) return;
-      const notHere: GroceryItem[] = [];
       for (const item of data) {
-        if (storeMarkers.get(item.id)?.unavailable) {
+        if (isNotHere(item)) {
           notHere.push(item);
           continue;
         }
+        if (collapsedGroups.has(groupKey)) continue;
         out.push({ type: 'item', key: item.id, item, inCart: false, unavailableHere: false });
       }
-      if (notHere.length > 0) {
-        out.push({
-          type: 'unavailableHeader',
-          key: `unavailable:${groupKey}`,
-          groupKey,
-          count: notHere.length,
-        });
-        if (collapsedGroups.has(`unavailable:${groupKey}`)) return;
-        for (const item of notHere) {
-          out.push({ type: 'item', key: item.id, item, inCart: false, unavailableHere: true });
-        }
-      }
     };
+    // A header's count is what it hides when folded, which leaves out the rows
+    // that live in the "Not here" group instead.
+    const countOf = (data: GroceryItem[]) => data.filter(item => !isNotHere(item)).length;
     if (grouped.kind === 'recipe') {
       for (const section of grouped.sections) {
         const key = `recipe:${section.recipeId ?? 'none'}`;
         pushSection(
-          { type: 'recipeHeader', key, label: section.recipeTitle, count: section.data.length },
+          { type: 'recipeHeader', key, label: section.recipeTitle, count: countOf(section.data) },
           key,
           section.data
         );
@@ -711,7 +707,7 @@ export function GroceryScreen() {
       for (const section of grouped.sections) {
         const key = storeSectionKey(section.shopId);
         pushSection(
-          { type: 'storeHeader', key, label: section.shopName, count: section.data.length },
+          { type: 'storeHeader', key, label: section.shopName, count: countOf(section.data) },
           key,
           section.data
         );
@@ -720,10 +716,18 @@ export function GroceryScreen() {
       for (const section of grouped.sections) {
         const key = `aisle:${section.aisle}`;
         pushSection(
-          { type: 'aisle', key, aisle: section.aisle, count: section.data.length },
+          { type: 'aisle', key, aisle: section.aisle, count: countOf(section.data) },
           key,
           section.data
         );
+      }
+    }
+    if (notHere.length > 0) {
+      out.push({ type: 'unavailableHeader', key: NOT_HERE_KEY, count: notHere.length });
+      if (!collapsedGroups.has(NOT_HERE_KEY)) {
+        for (const item of notHere) {
+          out.push({ type: 'item', key: item.id, item, inCart: false, unavailableHere: true });
+        }
       }
     }
     if (inCart.length > 0) {
