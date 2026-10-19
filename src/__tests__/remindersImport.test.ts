@@ -19,6 +19,7 @@ import {
   serializeHandledReminders,
   taskTitleKey,
   taskTitleKeys,
+  importedTaskId,
 } from '../utils/remindersImport';
 
 function reminder(overrides: Partial<Reminder> = {}): Reminder {
@@ -886,5 +887,24 @@ describe('reconcileHandledReminders', () => {
   it('never stores a duplicate id', () => {
     expect(reconcileHandledReminders({ 'list-1': ['a'] }, 'list-1', new Set(['a']), new Set(['a'])))
       .toEqual({ 'list-1': ['a'] });
+  });
+});
+
+describe('importedTaskId', () => {
+  it('names a capture by its creation second and title, so every device agrees', () => {
+    const a = importedTaskId(reminder({ id: 'a', title: 'Call mum', creationDate: '2026-08-06T09:00:00.123+01:00' }));
+    const b = importedTaskId(reminder({ id: 'b', title: 'Call mum ', creationDate: '2026-08-06T08:00:00.000Z' }));
+    expect(a).toMatch(/^d/);
+    expect(b).toBe(a);
+  });
+
+  it('tells two captures apart by either half', () => {
+    const base = importedTaskId(reminder({ title: 'Call mum', creationDate: '2026-08-06T09:00:00Z' }));
+    expect(importedTaskId(reminder({ title: 'Call dad', creationDate: '2026-08-06T09:00:00Z' }))).not.toBe(base);
+    expect(importedTaskId(reminder({ title: 'Call mum', creationDate: '2026-08-06T09:00:01Z' }))).not.toBe(base);
+  });
+
+  it('has no id to offer for a reminder with no creation date', () => {
+    expect(importedTaskId(reminder({ title: 'Call mum', creationDate: undefined }))).toBeNull();
   });
 });

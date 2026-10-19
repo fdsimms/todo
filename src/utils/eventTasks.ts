@@ -110,11 +110,17 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * own `enabled`, and the generator's settings toggle (`eventTasks`) ships off
  * — see `GENERATED_KIND_SPECS.eventTask` — so nobody sees a task from these
  * until they turn the feature on.
+ *
+ * The ids are fixed rather than `generateId()`: these rules live only in
+ * memory until somebody saves the list, and a generated task's id is derived
+ * from its rule's (`spawnSeed.generated`). Minted fresh, two devices (or two
+ * launches of one) named the same default rule differently and each wrote its
+ * own copy of the task, which sync then delivered to both.
  */
 export function defaultEventRules(): EventTaskRule[] {
   return [
-    { id: generateId(), matches: ['flight'], title: 'Pack a bag', leadDays: 2, enabled: true },
-    { id: generateId(), matches: ['dentist'], title: 'Bring your insurance card', leadDays: 0, enabled: true },
+    { id: 'default-event-flight', matches: ['flight'], title: 'Pack a bag', leadDays: 2, enabled: true },
+    { id: 'default-event-dentist', matches: ['dentist'], title: 'Bring your insurance card', leadDays: 0, enabled: true },
   ];
 }
 
@@ -318,8 +324,24 @@ export function eventIsRuleEligible(event: BusyEvent, now: Date): boolean {
  * twelve occurrences. `EventReminder` and `HiddenEvent` are both keyed this
  * way already and for this reason; this is the third.
  */
-export function eventOccurrenceKey(event: Pick<BusyEvent, 'id' | 'start'>): string {
-  return `${event.id}|${event.start}`;
+export function eventOccurrenceKey(event: Pick<BusyEvent, 'id' | 'start' | 'externalId'>): string {
+  return `${event.externalId || event.id}|${event.start}`;
+}
+
+/**
+ * Every key this occurrence may already be filed under: the one above, then
+ * the local-id key it was given before the calendar server's id was read.
+ *
+ * The server id is what makes the key the same on two devices (the local id
+ * is one device's alone, so each phone wrote its own copy of every task). A
+ * task or handled entry written before that change, or before the server had
+ * named a new event, is keyed by the local id, so anything deciding whether an
+ * occurrence was already dealt with asks about both.
+ */
+export function eventOccurrenceKeys(event: Pick<BusyEvent, 'id' | 'start' | 'externalId'>): string[] {
+  const key = eventOccurrenceKey(event);
+  const local = `${event.id}|${event.start}`;
+  return key === local ? [key] : [key, local];
 }
 
 /** `${eventId}|${eventStart}#${ruleId}` — one occurrence and the rule that named it. */
@@ -385,7 +407,7 @@ export function eventTaskEventOf(
 ): BusyEvent | null {
   const parsed = parseEventTaskSourceId(generatedSourceOf(task, 'eventTask'));
   if (!parsed) return null;
-  return events.find(e => eventOccurrenceKey(e) === parsed.occurrenceKey) ?? null;
+  return events.find(e => eventOccurrenceKeys(e).includes(parsed.occurrenceKey)) ?? null;
 }
 
 /**
@@ -412,7 +434,7 @@ export function eventTaskContextLabel(
 ): string | null {
   const parsed = parseEventTaskSourceId(generatedSourceOf(task, 'eventTask'));
   if (!parsed) return null;
-  const event = events.find(e => eventOccurrenceKey(e) === parsed.occurrenceKey);
+  const event = events.find(e => eventOccurrenceKeys(e).includes(parsed.occurrenceKey));
   const start = event?.start ?? occurrenceStartOf(parsed.occurrenceKey);
   if (!start) return event?.title || null;
   // Day only once the event is gone: an all-day event starts at midnight, and
@@ -505,6 +527,11 @@ export interface EventTaskMatch {
  * what makes the fourteen-day window enough: by the time a task is wanted, its
  * event is at most `leadDays` away.
  */
+/** Whether `handled` holds this occurrence and rule under either of its keys. */
+function wasHandled(event: BusyEvent, ruleId: string, handled: Readonly<HandledEventTasks>): boolean {
+  return eventOccurrenceKeys(event).some(key => eventTaskSourceId(key, ruleId) in handled);
+}
+
 export function matchedEventTasks(
   rules: readonly EventTaskRule[],
   events: readonly BusyEvent[],
@@ -523,8 +550,8 @@ export function matchedEventTasks(
       // below; this loop only ever sees events still ahead.
       if (rule.afterEvent) continue;
       if (!ruleMatchesTitle(rule, event.title)) continue;
+      if (wasHandled(event, rule.id, handled)) continue;
       const sourceId = eventTaskSourceId(eventOccurrenceKey(event), rule.id);
-      if (sourceId in handled) continue;
       if (!leadTimeReached(event, rule, now)) continue;
       out.push({ sourceId, rule, event, endsAt: event.end });
     }
@@ -596,8 +623,8 @@ export function matchedFollowUpTasks(
     if (rule.skipIfUpcoming) finished = finished.slice(-1);
 
     for (const event of finished) {
+      if (wasHandled(event, rule.id, handled)) continue;
       const sourceId = eventTaskSourceId(eventOccurrenceKey(event), rule.id);
-      if (sourceId in handled) continue;
       out.push({ sourceId, rule, event, endsAt: followUpHandledUntil(event) });
     }
   }

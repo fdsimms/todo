@@ -22,6 +22,7 @@ import {
   pruneHandledEventTasks,
   ruleMatchesTitle,
   summarizeRuleAgainstEvents,
+  eventTaskEventOf,
 } from '../utils/eventTasks';
 import { readFileSync } from 'fs';
 import { join } from 'path';
@@ -742,5 +743,48 @@ describe('follow-up rule storage and wording', () => {
     expect(needsFollowUpWindow(false, [rule({ afterEvent: true })])).toBe(false);
     expect(needsFollowUpWindow(true, [rule({ afterEvent: true, enabled: false })])).toBe(false);
     expect(needsFollowUpWindow(true, [rule()])).toBe(false);
+  });
+});
+
+// Their tasks' ids are derived from the rule's, so a default minted fresh on
+// each device (or each launch) wrote one copy of the same task per device.
+describe('defaultEventRules ids', () => {
+  it('names each default rule the same way every time', () => {
+    const ids = defaultEventRules().map(r => r.id);
+    expect(defaultEventRules().map(r => r.id)).toEqual(ids);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+
+// The local id is this device's alone, so an occurrence keyed by it was a
+// different task on each phone. The server id is shared; the old key still
+// counts, so a task written before the change isn't written again.
+describe('occurrence keys across devices', () => {
+  const now = new Date(localIso('2026-09-20T09:00'));
+
+  it('keys an event by the calendar server id where there is one', () => {
+    const phone = event({ id: 'local-phone', externalId: 'server-1' });
+    const mac = event({ id: 'local-mac', externalId: 'server-1' });
+    expect(eventOccurrenceKey(phone)).toBe(eventOccurrenceKey(mac));
+    expect(matchedEventTasks([rule()], [phone], now, {})[0].sourceId)
+      .toBe(matchedEventTasks([rule()], [mac], now, {})[0].sourceId);
+  });
+
+  it('falls back to the local id when the server has not named the event', () => {
+    expect(eventOccurrenceKey(event({ id: 'evt1' }))).toBe(`evt1|${localIso('2026-09-20T14:00')}`);
+  });
+
+  it('treats an occurrence handled under its old local-id key as handled', () => {
+    const e = event({ id: 'evt1', externalId: 'server-1' });
+    const oldKey = `evt1|${e.start}`;
+    const handled = { [eventTaskSourceId(oldKey, 'r1')]: e.end };
+    expect(matchedEventTasks([rule()], [e], now, handled)).toEqual([]);
+  });
+
+  it('still finds the event for a task written under the old key', () => {
+    const e = event({ id: 'evt1', externalId: 'server-1' });
+    const task = { generatedKind: 'eventTask' as const, generatedSourceId: eventTaskSourceId(`evt1|${e.start}`, 'r1') };
+    expect(eventTaskEventOf(task, [e])).toBe(e);
   });
 });

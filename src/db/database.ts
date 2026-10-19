@@ -119,6 +119,7 @@ import {
   KEY_SEPARATOR,
   NOW_EXPR,
   isSyncedSettingKey,
+  SYNCED_SETTING_KEYS,
   isDeviceLocalColumn,
   withoutDeviceLocalColumns,
   backfillStatements,
@@ -3037,11 +3038,19 @@ export function dbSyncChangesSince(since: string | null, transport?: string): Sy
         : rows.map(r => withoutDeviceLocalColumns(name, r));
     }
 
-    // A first read needs no deletions: a peer that has never heard of a row
-    // has nothing to delete, and the tombstones only reach back as far as
-    // whenever tracking was installed anyway.
+    // A first read sends every tombstone this device holds too. Its peers may
+    // already have the rows they name: this device can be joining a transport
+    // other devices have used for months, or have heard of a row over another
+    // transport and deleted it. Leaving them out kept those rows alive on
+    // every peer. A peer that never had the row records the tombstone and
+    // nothing else, and one that edited it later refuses it.
     const deletionRows = since === null
-      ? []
+      ? db.getAllSync<{ table_name: string; row_key: string; deleted_at: string }>(
+          `SELECT table_name, row_key, deleted_at FROM ${SYNC_DELETIONS_TABLE}
+            WHERE deleted_at <= ? OR received_at <= ?
+            ORDER BY deleted_at ASC`,
+          [until, until]
+        )
       : db.getAllSync<{ table_name: string; row_key: string; deleted_at: string }>(
           // A deletion made here goes out by its own time; one applied from a
           // peer keeps the peer's time, so it is relayed by its arrival
@@ -3069,6 +3078,40 @@ export function dbSyncChangesSince(since: string | null, transport?: string): Sy
 
   // withTransactionSync runs the callback synchronously, so this is always set.
   return result as unknown as SyncChangeSet;
+}
+
+/**
+ * Whether anything this device would send has changed after `since`: a
+ * tracked row, a synced setting or a local deletion. One statement of index
+ * seeks rather than `dbSyncChangesSince`'s full read, so it is cheap enough to
+ * ask every couple of seconds, which is what lets an edit leave the device
+ * straight away instead of on the next sync tick (`useSyncOnForeground`).
+ *
+ * Exclusive where the read is inclusive: a row stamped exactly `since` went in
+ * the window that ended there. A stamp later than SQLite's own now is a peer's
+ * whose clock runs ahead, not an edit made here, and is ignored, or it would
+ * read as pending until this clock caught up.
+ */
+export function dbHasLocalChangesSince(since: string): boolean {
+  const synced = SYNCED_SETTING_KEYS;
+  const probes = SYNC_TRACKED_TABLES.map(({ name }) =>
+    name === 'settings'
+      ? `SELECT 1 FROM settings WHERE updated_at > ? AND updated_at <= ${NOW_EXPR}
+           AND key IN (${synced.map(() => '?').join(', ')})`
+      : `SELECT 1 FROM "${name}" WHERE updated_at > ? AND updated_at <= ${NOW_EXPR}`
+  );
+  probes.push(
+    `SELECT 1 FROM ${SYNC_DELETIONS_TABLE} WHERE received_at IS NULL AND deleted_at > ? AND deleted_at <= ${NOW_EXPR}`
+  );
+  const params: string[] = [];
+  for (const { name } of SYNC_TRACKED_TABLES) {
+    params.push(since);
+    if (name === 'settings') params.push(...synced);
+  }
+  params.push(since);
+  // Each arm is wrapped so its own LIMIT is legal inside the compound select.
+  const sql = probes.map(p => `SELECT * FROM (${p} LIMIT 1)`).join(' UNION ALL ');
+  return db.getFirstSync(`${sql} LIMIT 1`, params) !== null;
 }
 
 /**
@@ -3469,6 +3512,25 @@ function absorbAliasedRow(ctx: FoldContext, name: string, row: BackupRow): boole
   return true;
 }
 
+/**
+ * Keeps a peer's deletion of a row this device doesn't hold, under the peer's
+ * time, unless a later deletion of it is already here. Recorded as received,
+ * the way an applied deletion is, so it is relayed to the other transports
+ * rather than sent back to the one it came from.
+ */
+function recordRemoteTombstone(deletion: SyncPayload['deletions'][number], transport?: string): void {
+  const existing = db.getFirstSync<{ deleted_at: string }>(
+    `SELECT deleted_at FROM ${SYNC_DELETIONS_TABLE} WHERE table_name = ? AND row_key = ?`,
+    [deletion.table, deletion.rowKey]
+  );
+  if (existing && existing.deleted_at >= deletion.deletedAt) return;
+  db.runSync(
+    `INSERT OR REPLACE INTO ${SYNC_DELETIONS_TABLE} (table_name, row_key, deleted_at, received_at, source)
+     VALUES (?, ?, ?, ${NOW_EXPR}, ?)`,
+    [deletion.table, deletion.rowKey, deletion.deletedAt, transport ?? null]
+  );
+}
+
 export function dbApplySyncChanges(payload: SyncPayload, transport?: string): ApplyReport {
   const report = emptyApplyReport();
 
@@ -3481,13 +3543,21 @@ export function dbApplySyncChanges(payload: SyncPayload, transport?: string): Ap
     const groceryItemIds = new Set<string>();
     for (const [name, rows] of Object.entries(payload.tables)) {
       const table = trackedTable(name);
-      if (!table) continue;
+      if (!table) {
+        report.lossy += rows.length;
+        continue;
+      }
       // Never a device-local column, even from a peer that sends one (an older
       // build): the local value is this device's own and must survive the
       // apply. See SYNC_DEVICE_LOCAL_COLUMNS.
-      const allowed = dbTableColumns(name).filter(c => !isDeviceLocalColumn(name, c));
+      const columns = dbTableColumns(name);
+      const known = new Set(columns);
+      const allowed = columns.filter(c => !isDeviceLocalColumn(name, c));
 
       for (const received of rows) {
+        // A column this schema lacks is dropped by projectRow below, so this
+        // device can't stand in for the payload (see ApplyReport.lossy).
+        if (Object.keys(received).some(c => !known.has(c))) report.lossy++;
         // Pointed at the survivors of any fold first, since that can move the
         // row's own key (a list entry is keyed by the item it lists).
         const raw = remapReferences(ctx, name, received);
@@ -3495,6 +3565,7 @@ export function dbApplySyncChanges(payload: SyncPayload, transport?: string): Ap
         const remoteStamp = raw.updated_at;
         if (rowKey === null || typeof remoteStamp !== 'string') {
           report.skipped++;
+          report.lossy++;
           continue;
         }
         // Checked again on the way in, not just on the way out. A peer on an
@@ -3503,6 +3574,7 @@ export function dbApplySyncChanges(payload: SyncPayload, transport?: string): Ap
         // so this side refuses rather than trusting the sender's policy.
         if (name === 'settings' && !isSyncedSettingKey(rowKey)) {
           report.skipped++;
+          report.lossy++;
           continue;
         }
         if (absorbAliasedRow(ctx, name, projectRow(raw, allowed))) {
@@ -3605,15 +3677,26 @@ export function dbApplySyncChanges(payload: SyncPayload, transport?: string): Ap
 
     for (const deletion of payload.deletions) {
       const table = trackedTable(deletion.table);
-      if (!table) continue;
-      if (deletion.table === 'settings' && !isSyncedSettingKey(deletion.rowKey)) continue;
+      if (!table || (deletion.table === 'settings' && !isSyncedSettingKey(deletion.rowKey))) {
+        report.lossy++;
+        continue;
+      }
 
       const where = keyClause(table, deletion.rowKey);
       const local = db.getFirstSync<{ updated_at: string | null }>(
         `SELECT updated_at FROM "${deletion.table}" WHERE ${where.sql}`,
         where.values
       );
-      if (!local) continue; // Already gone, or never seen. Nothing to do.
+      // Not here, either already gone or not yet arrived. Payloads from
+      // several devices arrive in push order, not edit order, so the row this
+      // deletes can still be on its way (a device that made it offline pushes
+      // after the device that deleted it). The tombstone is kept so the
+      // insert check above refuses that older copy when it lands; with no
+      // tombstone the deleted row came back for good.
+      if (!local) {
+        recordRemoteTombstone(deletion, transport);
+        continue;
+      }
 
       if (!remoteDeletionWins(local.updated_at, deletion.deletedAt)) {
         report.deletionsRefused++;

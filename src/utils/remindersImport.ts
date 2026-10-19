@@ -2,6 +2,7 @@ import { format } from 'date-fns/format';
 import type { Calendar as ReminderList, RecurrenceRule, Reminder } from 'expo-calendar/legacy';
 import type { RecurrenceType, Task, TaskDraft } from '../types';
 import { groceryNameKey, parseGroceryInput } from './groceryParse';
+import { derivedId, spawnSeed } from './syncIds';
 import {
   describeSchedule,
   dueAt,
@@ -384,6 +385,20 @@ function creationTime(reminder: Reminder): number | null {
 export function reminderCreatedAt(reminder: Reminder): Date | null {
   const at = creationTime(reminder);
   return at === null ? null : new Date(at);
+}
+
+/**
+ * The id of the task a reminder imports as, the same on every device reading
+ * the same list (see spawnSeed.reminderImport), so two devices draining one
+ * reminder before either has synced write one task between them. Null for a
+ * reminder with no creation date or title, which imports under a fresh id as
+ * before.
+ */
+export function importedTaskId(reminder: Reminder): string | null {
+  const at = creationTime(reminder);
+  const title = reminder.title?.trim();
+  if (at === null || !title) return null;
+  return derivedId(spawnSeed.reminderImport(Math.floor(at / 1000), title));
 }
 
 /**

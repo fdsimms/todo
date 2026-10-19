@@ -74,8 +74,6 @@ export const spawnSeed = {
   review: (completedTaskId: string) => `review:${completedTaskId}`,
   /** One row per date when a repeating series rolls over to its next set. */
   seriesDate: (completedTaskId: string, date: string) => `series:${completedTaskId}:${date}`,
-  /** A successor spawned by the catch-up pass for a missed occurrence. */
-  catchUp: (missedTaskId: string) => `catchup:${missedTaskId}`,
   /** A subtask carried onto a fresh occurrence, keyed by the one it copies. */
   subtask: (newParentId: string, sourceSubtaskId: string) => `sub:${newParentId}:${sourceSubtaskId}`,
   /**
@@ -93,6 +91,33 @@ export const spawnSeed = {
    * `occurrence` gets for free by keying off the completion it came from.
    */
   generated: (kind: string, sourceId: string, index: number) => `gen:${kind}:${sourceId}:${index}`,
+  /**
+   * The task an Apple Reminders capture became. Every device with import on
+   * reads the same iCloud list, and the reminder's own id is EventKit's, which
+   * differs per device, so the capture is named by what does travel with it:
+   * when it was made, to the second (a copy synced down may not keep the
+   * milliseconds), and its title.
+   */
+  reminderImport: (createdAtSeconds: number, title: string) => `reminder:${createdAtSeconds}:${title}`,
+  /**
+   * The one stack the weekly meal-plan nudge reuses. Which stack that is was
+   * device-local (`mealPlanNudgeGroupId`), so two devices that each fired the
+   * nudge before syncing made a stack apiece, and the derived day tasks merged
+   * into one of them while the other sat empty for good.
+   */
+  mealPlanNudgeStack: () => 'meal-plan-nudge-stack',
+  /**
+   * The rows one scheduled template run writes: tasks, subtasks, stacks and a
+   * project, counted in the order the run creates each kind. The run's period
+   * is what makes it one occurrence, so two devices that both find the same
+   * week due before either has heard the other fired it write the same rows
+   * rather than two copies of everything (`checkScheduledTemplates`). Given
+   * the same template the run is deterministic, so the counts line up; a
+   * template edited on one device and not yet the other can still diverge,
+   * which costs a duplicate, never a lost row.
+   */
+  templateRun: (templateId: string, periodKey: string, kind: string, n: number) =>
+    `tmpl:${templateId}:${periodKey}:${kind}:${n}`,
   /**
    * The coins one completion earned. Keyed by the completed row, so two
    * devices completing the same occurrence apart converge on one entry, and a

@@ -26,6 +26,7 @@ import {
   groceryItemKey,
   groceryItemKeys,
   handledReminderIds,
+  importedTaskId,
   importableReminders,
   isImportableList,
   isReminderAlreadyPresent,
@@ -920,7 +921,11 @@ async function drainOnce(): Promise<ImportOutcome> {
               ? captureDraftFields(target.filing, reminderCreatedAt(reminder) ?? now)
               : null;
             const saved = { ...draft, ...scheduled, ...filed };
-            addTask(saved);
+            // Another device draining the same list may have imported this
+            // one already, under the same id; its task synced in is this one.
+            const id = importedTaskId(reminder);
+            if (!id) addTask(saved);
+            else if (!useTaskStore.getState().tasks.some(t => t.id === id)) addTask(saved, id);
             // The title as *stored*, which is the one a later pass will find in
             // the store — with review off that's the stripped one, not what was
             // dictated.

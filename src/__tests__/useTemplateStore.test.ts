@@ -21,16 +21,18 @@ const mockAddTask = jest.fn();
 const mockUpdateTask = jest.fn();
 const mockAddSubtask = jest.fn();
 const mockGroupTasks = jest.fn();
+// Rows already in the task store, for a scheduled run's reuse of a derived id.
+let mockExistingTasks: Array<{ id: string; title: string }> = [];
 jest.mock('../store/useTaskStore', () => ({
   useTaskStore: {
-    getState: () => ({ addTask: mockAddTask, addSubtask: mockAddSubtask, groupTasks: mockGroupTasks, updateTask: mockUpdateTask }),
+    getState: () => ({ tasks: mockExistingTasks, addTask: mockAddTask, addSubtask: mockAddSubtask, groupTasks: mockGroupTasks, updateTask: mockUpdateTask }),
   },
 }));
 
 const mockCreateGroup = jest.fn();
 const mockUpdateGroup = jest.fn();
 jest.mock('../store/useTaskGroupStore', () => ({
-  useTaskGroupStore: { getState: () => ({ createGroup: mockCreateGroup, updateGroup: mockUpdateGroup }) },
+  useTaskGroupStore: { getState: () => ({ createGroup: mockCreateGroup, updateGroup: mockUpdateGroup, getGroupById: () => null }) },
 }));
 
 import { awayNoonIso } from '../utils/awayDates';
@@ -1294,13 +1296,53 @@ describe('checkScheduledTemplates', () => {
   it('applies a template whose schedule has come due', () => {
     seedDue();
     useTemplateStore.getState().checkScheduledTemplates();
+    expect(mockAddTask).toHaveBeenCalledWith(expect.objectContaining({ title: 'Laundry' }), expect.any(String));
+  });
+
+  // Two devices that both find the week due before either has synced the
+  // other's mark write the same rows, which the merge then holds as one.
+  it('gives every row of a scheduled run an id derived from its period', () => {
+    seedDue();
+    useTemplateStore.getState().checkScheduledTemplates();
+    const taskId = mockAddTask.mock.calls[0][1];
+    const stackId = mockCreateGroup.mock.calls[0][3];
+
+    mockAddTask.mockClear();
+    mockCreateGroup.mockClear();
+    seedDue();
+    useTemplateStore.getState().checkScheduledTemplates();
+
+    expect(taskId).toMatch(/^d/);
+    expect(mockAddTask.mock.calls[0][1]).toBe(taskId);
+    expect(mockCreateGroup.mock.calls[0][3]).toBe(stackId);
+  });
+
+  it('reuses a row the other device\'s run of the same period already wrote', () => {
+    seedDue();
+    useTemplateStore.getState().checkScheduledTemplates();
+    const taskId = mockAddTask.mock.calls[0][1];
+    mockExistingTasks = [{ id: taskId, title: 'Laundry' }];
+
+    mockAddTask.mockClear();
+    seedDue();
+    useTemplateStore.getState().checkScheduledTemplates();
+    mockExistingTasks = [];
+
+    expect(mockAddTask).not.toHaveBeenCalled();
+  });
+
+  it('leaves a run applied by hand on random ids', () => {
+    seedDue();
+    const template = useTemplateStore.getState().templates[0];
+    useTemplateStore.getState().applyTemplate(template.id, new Set(['i1']), { start: null, end: null });
     expect(mockAddTask).toHaveBeenCalledWith(expect.objectContaining({ title: 'Laundry' }));
+    expect(mockAddTask.mock.calls[0]).toHaveLength(1);
   });
 
   it('names the run with its own date, so two firings are told apart', () => {
     seedDue();
     useTemplateStore.getState().checkScheduledTemplates();
-    expect(mockCreateGroup).toHaveBeenCalledWith('Sunday reset · Aug 23', null);
+    expect(mockCreateGroup).toHaveBeenCalledWith('Sunday reset · Aug 23', null, null, expect.any(String));
   });
 
   it('records the period so a second launch the same week does nothing', () => {
@@ -1348,7 +1390,8 @@ describe('checkScheduledTemplates', () => {
     });
     useTemplateStore.getState().checkScheduledTemplates();
     expect(mockAddTask).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Pack for a Work trip' })
+      expect.objectContaining({ title: 'Pack for a Work trip' }),
+      expect.any(String)
     );
   });
 

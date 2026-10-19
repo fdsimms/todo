@@ -1,6 +1,7 @@
 {
   "platforms": ["ios"],
   "ios": {
-    "modules": ["TodoCloudKitModule"]
+    "modules": ["TodoCloudKitModule"],
+    "appDelegateSubscribers": ["TodoCloudKitAppDelegate"]
   }
 }

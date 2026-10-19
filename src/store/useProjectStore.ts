@@ -397,6 +397,13 @@ export interface CreateProjectOptions {
   destination?: string | null;
   /** Start in Planning: held back until it's marked ready. See PLANNING_PAUSE_KEY. */
   planning?: boolean;
+  /**
+   * A fixed id, for a project the app makes unattended: a scheduled template
+   * run derives one so two devices running it apart make one project, not two
+   * (see `scheduledRunIds` in useTemplateStore). Anything a person creates
+   * leaves it out.
+   */
+  id?: string;
 }
 
 export const useProjectStore = create<ProjectStore>((set, get) => ({
@@ -425,7 +432,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     // unprompted is still opt-in, which is the half that can be annoying.
     const defaultCadenceDays = useSettingsStore.getState().defaultProjectNudgeCadenceDays;
     const project: Project = {
-      id: generateId(),
+      id: options.id ?? generateId(),
       title,
       notes: '',
       deadline: options.deadline ?? null,

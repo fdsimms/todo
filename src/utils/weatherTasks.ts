@@ -60,12 +60,18 @@ export function weatherConditionLabel(condition: WeatherCondition): string {
  * saves. Each still has its own `enabled`, and the generator's own settings
  * toggle (the `weatherTasks` setting) ships off — see `GENERATED_KIND_SPECS.weather` —
  * so nobody sees a task from these until they turn the feature on.
+ *
+ * The ids are fixed rather than `generateId()`: these rules live only in
+ * memory until somebody saves the list, and a generated task's id is derived
+ * from its rule's (`spawnSeed.generated`). Minted fresh, two devices (or two
+ * launches of one) named the same default rule differently and each wrote its
+ * own copy of the task, which sync then delivered to both.
  */
 export function defaultWeatherRules(): WeatherRule[] {
   return [
-    { id: generateId(), condition: 'sunny', title: 'Put on sunscreen', enabled: true, lastFiredDayKey: null, lastAheadDayKey: null },
-    { id: generateId(), condition: 'rainy', title: 'Bring an umbrella', enabled: true, lastFiredDayKey: null, lastAheadDayKey: null },
-    { id: generateId(), condition: 'cold', title: 'Wear a coat', enabled: true, lastFiredDayKey: null, lastAheadDayKey: null },
+    { id: 'default-weather-sunny', condition: 'sunny', title: 'Put on sunscreen', enabled: true, lastFiredDayKey: null, lastAheadDayKey: null },
+    { id: 'default-weather-rainy', condition: 'rainy', title: 'Bring an umbrella', enabled: true, lastFiredDayKey: null, lastAheadDayKey: null },
+    { id: 'default-weather-cold', condition: 'cold', title: 'Wear a coat', enabled: true, lastFiredDayKey: null, lastAheadDayKey: null },
   ];
 }
 

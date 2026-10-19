@@ -36,6 +36,7 @@ import {
   TRAVEL_ORIGIN_PHONE,
   travelOriginKey,
   TRAVEL_ORIGIN_CURRENT,
+  travelEventOf,
 } from '../utils/travelTasks';
 
 function event(overrides: Partial<BusyEvent> = {}): BusyEvent {
@@ -560,5 +561,35 @@ describe('walk-under threshold', () => {
 
   it('shows the walk on the row note', () => {
     expect(travelRowNote(travelSourceId(ev), '123 Main St', held('walking', 20), 'driving', 20)).toBe('12 min on foot');
+  });
+});
+
+
+describe('travel keys across devices', () => {
+  it('writes under the calendar server id, the same on every device', () => {
+    const [match] = matchedTravelTasks(LEADS, [event({ id: 'local-phone', externalId: 'server-1' })], NOW, HORIZON, {});
+    const [other] = matchedTravelTasks(LEADS, [event({ id: 'local-mac', externalId: 'server-1' })], NOW, HORIZON, {});
+    expect(match.sourceId).toBe(other.sourceId);
+    expect(match.sourceId.startsWith('server-1|')).toBe(true);
+  });
+
+  it('keeps updating a row written under the old local-id key', () => {
+    const e = event({ id: 'evt-1', externalId: 'server-1' });
+    const oldKey = `evt-1|${e.start}`;
+    const [match] = matchedTravelTasks(LEADS, [e], NOW, HORIZON, { [oldKey]: e.end });
+    expect(match.sourceId).toBe(oldKey);
+    expect(match.handled).toBe(true);
+  });
+
+  it('does not call a row under the old key stale while its event is still there', () => {
+    const e = event({ id: 'evt-1', externalId: 'server-1' });
+    expect(isTravelTaskStale(`evt-1|${e.start}`, [e], NOW)).toBe(false);
+    expect(isTravelTaskStale(travelSourceId(e), [e], NOW)).toBe(false);
+  });
+
+  it('finds the event, and so its local id, from either key', () => {
+    const e = event({ id: 'evt-1', externalId: 'server-1' });
+    expect(travelEventOf(travelSourceId(e), [e])?.id).toBe('evt-1');
+    expect(travelEventOf(`evt-1|${e.start}`, [e])?.id).toBe('evt-1');
   });
 });

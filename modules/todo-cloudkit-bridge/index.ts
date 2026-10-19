@@ -17,6 +17,13 @@ export interface CloudKitPullResult {
    * src/utils/syncEngine.ts.
    */
   cursor: string | null;
+  /**
+   * Each payload's record name, in the same order as `payloads`. Absent from
+   * a build before compaction, which then never compacts.
+   */
+  ids?: string[];
+  /** Payload records another device deleted since `since` (it compacted). */
+  removed?: string[];
 }
 
 export interface CloudKitImageListResult {
@@ -27,8 +34,18 @@ export interface CloudKitImageListResult {
   cursor: string | null;
 }
 
+interface Subscription {
+  remove(): void;
+}
+
 interface TodoCloudKitNativeModule {
   isAvailable(): boolean;
+  /** Optional: a build from before silent push has neither. */
+  subscribeToChanges?(): Promise<void>;
+  /** Optional: a build from before compaction has none, and never compacts. */
+  removePayloads?(names: string[]): Promise<void>;
+  remoteChangeHandled?(newData: boolean): void;
+  addListener?(event: 'onRemoteChange', listener: () => void): Subscription;
   accountStatus(): Promise<CloudKitAccountStatus>;
   push(payload: string): Promise<void>;
   pull(since: string | null): Promise<CloudKitPullResult>;
@@ -96,6 +113,20 @@ export async function pullPayloads(since: string | null): Promise<CloudKitPullRe
   return nativeModule.pull(since);
 }
 
+/** Whether this build can delete payload records, which compaction needs. */
+export function canRemovePayloads(): boolean {
+  return typeof nativeModule?.removePayloads === 'function';
+}
+
+/**
+ * Deletes payload records by name. Names already gone succeed. Throws on
+ * anything else, so the caller keeps the names and tries again later.
+ */
+export async function removePayloads(names: string[]): Promise<void> {
+  if (!nativeModule?.removePayloads) throw new Error('This build can’t compact the sync history.');
+  await nativeModule.removePayloads(names);
+}
+
 /**
  * Recipe photos live in a zone of their own (`TodoImages`), one record per
  * photo named by its filename, so a build that predates them never sees one:
@@ -122,4 +153,43 @@ export async function getImage(name: string): Promise<string | null> {
 export async function removeImage(name: string): Promise<void> {
   if (!nativeModule) throw new Error('CloudKit is not available in this build.');
   await nativeModule.removeImage(name);
+}
+
+/**
+ * Has CloudKit send a silent push when another device saves a payload. Safe to
+ * call on every launch. Resolves false on a build without it, or when CloudKit
+ * refused; sync still runs on its foreground timer either way.
+ */
+export async function subscribeToChanges(): Promise<boolean> {
+  if (!nativeModule?.subscribeToChanges) return false;
+  try {
+    await nativeModule.subscribeToChanges();
+    return true;
+  } catch (error) {
+    console.warn('[todo-cloudkit-bridge] could not subscribe to changes', error);
+    return false;
+  }
+}
+
+/**
+ * Called when a silent push says another device saved a payload. Returns the
+ * unsubscribe. The listener must end with `remoteChangeHandled`.
+ */
+export function addRemoteChangeListener(listener: () => void): () => void {
+  if (!nativeModule || typeof nativeModule.addListener !== 'function') return () => {};
+  try {
+    const subscription = nativeModule.addListener('onRemoteChange', () => listener());
+    return () => subscription.remove();
+  } catch {
+    return () => {};
+  }
+}
+
+/** The sync a silent push started is over; lets iOS stop holding the app awake for it. */
+export function remoteChangeHandled(newData: boolean): void {
+  try {
+    nativeModule?.remoteChangeHandled?.(newData);
+  } catch {
+    // The native side finishes it on a timer anyway.
+  }
 }

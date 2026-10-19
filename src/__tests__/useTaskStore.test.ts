@@ -1982,6 +1982,28 @@ describe('completeTask', () => {
     jest.useRealTimers();
   });
 
+  // The other device completed this occurrence and its successor synced in,
+  // but this device's later edit of the original won, so it is still open
+  // here. Completing it again must land on that successor, not throw on it.
+  it('writes over a successor that synced in from another device, rather than inserting it twice', () => {
+    const successorId = derivedId(spawnSeed.occurrence('r'));
+    const due = new Date(2025, 5, 10, 12).toISOString();
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'r', recurrenceType: 'daily', recurrenceInterval: 1, dueDate: due }),
+        makeTask({ id: successorId, title: 'From the other device', previousOccurrenceId: 'r' }),
+      ],
+    });
+    (dbInsertTask as jest.Mock).mockClear();
+    (dbUpdateTask as jest.Mock).mockClear();
+
+    useTaskStore.getState().completeTask('r');
+
+    expect(dbInsertTask).not.toHaveBeenCalledWith(expect.objectContaining({ id: successorId }));
+    expect(dbUpdateTask).toHaveBeenCalledWith(expect.objectContaining({ id: successorId }));
+    expect(useTaskStore.getState().tasks.filter(t => t.id === successorId)).toHaveLength(1);
+  });
+
   it('marks the task completed with a completedAt timestamp', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1' })] });
     useTaskStore.getState().completeTask('t1');
@@ -7850,6 +7872,37 @@ describe('checkMealPlanNudge', () => {
     const rows = useTaskStore.getState().tasks;
     expect(rows.some(t => t.title.startsWith('Monday'))).toBe(true);
     expect(rows.every(t => t.category === null && t.tags.length === 0)).toBe(true);
+  });
+
+  // Which stack the nudge uses is device-local, so a stack another device made
+  // for it arrives with no setting naming it. It is adopted by its shared id
+  // rather than joined by a second stack that the merged tasks leave empty.
+  it('adopts the stack another device made for the nudge', () => {
+    jest.setSystemTime(new Date(2025, 7, 3, 9, 0, 0));
+    useSettingsStore.getState.mockReturnValue(settings());
+    useTaskStore.setState({ tasks: [] });
+    const sharedId = derivedId(spawnSeed.mealPlanNudgeStack());
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: sharedId, title: 'Plan next week' })] });
+    try {
+      useTaskStore.getState().checkMealPlanNudge();
+
+      expect(useTaskGroupStore.getState().groups.map(g => g.id)).toEqual([sharedId]);
+      expect(useTaskStore.getState().tasks.every(t => t.groupId === sharedId)).toBe(true);
+    } finally {
+      useTaskGroupStore.setState({ groups: [] });
+    }
+  });
+
+  it('makes its stack under the shared id when there is none', () => {
+    jest.setSystemTime(new Date(2025, 7, 3, 9, 0, 0));
+    useSettingsStore.getState.mockReturnValue(settings());
+    useTaskStore.setState({ tasks: [] });
+    useTaskGroupStore.setState({ groups: [] });
+
+    useTaskStore.getState().checkMealPlanNudge();
+
+    expect(useTaskGroupStore.getState().groups.map(g => g.id)).toEqual([derivedId(spawnSeed.mealPlanNudgeStack())]);
+    useTaskGroupStore.setState({ groups: [] });
   });
 
   it('is a no-op while the setting is off', () => {

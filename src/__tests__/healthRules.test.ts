@@ -737,3 +737,13 @@ describe('anyExerciseRule', () => {
     expect(anyExerciseRule([])).toBe(false);
   });
 });
+
+// Their tasks' ids are derived from the rule's, so a default minted fresh on
+// each device (or each launch) wrote one copy of the same task per device.
+describe('defaultHealthRules ids', () => {
+  it('names each default rule the same way every time', () => {
+    const ids = defaultHealthRules().map(r => r.id);
+    expect(defaultHealthRules().map(r => r.id)).toEqual(ids);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+});

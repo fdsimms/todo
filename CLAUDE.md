@@ -1464,6 +1464,13 @@ inset is what just went away) — that asymmetry is the whole design, don't coll
   `dropGeneratedTask` both use it. A reason that reverses by itself (an item frozen, then thawed)
   must not leave a permanent "never" behind. A new path that deletes a generated task goes through
   it, not a bare `deleteTask`. Only a delete the user performs records a decision.
+- **A row the app inserts unattended gets a derived id, never `generateId()`.** Every device runs
+  the same launch passes, generators, imports and scheduled runs, so a random id makes one copy per
+  device and sync delivers both to each. Seed it in `spawnSeed` (`src/utils/syncIds.ts`) from
+  something every device agrees on: the source row, the period, a calendar server id, never an
+  EventKit id or anything else device-local. When the derived row is already there (the other
+  device's copy synced in first), reuse or write over it rather than inserting it again.
+  `syncConvergence.test.ts` runs two real databases through the sync loop for checking a change.
 - **Editing a day-keyed rule clears its idempotency mark when the edit changes what the rule
   asks.** `HealthRule` and `WeatherRule` spend `lastFiredDayKey` the first time a rule is judged
   that day, matched or not, so the mark means "this question was answered today". Change the

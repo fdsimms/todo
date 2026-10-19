@@ -23,6 +23,8 @@ const mockBridge = {
   removeImage: jest.fn(async (_name: string) => {}),
   putImage: jest.fn(async (_name: string, _base64: string) => {}),
   getImage: jest.fn(async (_name: string): Promise<string | null> => null),
+  canRemovePayloads: jest.fn(() => true),
+  removePayloads: jest.fn(async (_names: string[]) => {}),
 };
 
 let mockBridgePresent = true;
@@ -57,6 +59,8 @@ beforeEach(() => {
   // mockRejectedValue in place, so a failure injected by one test would
   // otherwise leak into every test after it.
   mockBridge.isCloudKitAvailable.mockReturnValue(true);
+  mockBridge.canRemovePayloads.mockReturnValue(true);
+  mockBridge.removePayloads.mockResolvedValue(undefined);
   mockBridge.cloudKitAccountStatus.mockResolvedValue('available');
   mockBridge.pushPayload.mockResolvedValue(undefined);
   mockBridge.pullPayloads.mockResolvedValue({ payloads: [], cursor: null });
@@ -113,6 +117,29 @@ describe('transport', () => {
 
     expect(mockBridge.pullPayloads).toHaveBeenCalledWith(token);
     expect(result.cursor).toBe(token);
+  });
+
+  it('passes each payload\'s record name and the deleted names through', async () => {
+    mockBridge.pullPayloads.mockResolvedValue({ payloads: ['{}'], cursor: null, ids: ['rec-1'], removed: ['rec-0'] } as never);
+
+    const result = await loadTransport().cloudKitTransport().pull(null);
+
+    expect(result.ids).toEqual(['rec-1']);
+    expect(result.removed).toEqual(['rec-0']);
+  });
+
+  it('forwards a compaction\'s deletes, and lets a failure propagate so the ids are kept', async () => {
+    const transport = loadTransport().cloudKitTransport();
+    await transport.removeHistory!(['rec-1', 'rec-2']);
+    expect(mockBridge.removePayloads).toHaveBeenCalledWith(['rec-1', 'rec-2']);
+
+    mockBridge.removePayloads.mockRejectedValue(new Error('network gone'));
+    await expect(transport.removeHistory!(['rec-3'])).rejects.toThrow('network gone');
+  });
+
+  it('offers no compaction on a build whose native half can\'t delete records', () => {
+    mockBridge.canRemovePayloads.mockReturnValue(false);
+    expect(loadTransport().cloudKitTransport().removeHistory).toBeUndefined();
   });
 
   it('lets a push failure propagate instead of reporting success', async () => {

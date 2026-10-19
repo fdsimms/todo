@@ -35,13 +35,12 @@ describe('derivedId', () => {
     const ids = new Set([
       derivedId(spawnSeed.occurrence('t1')),
       derivedId(spawnSeed.extra('t1')),
-      derivedId(spawnSeed.catchUp('t1')),
       derivedId(spawnSeed.seriesDate('t1', '2026-01-10T00:00:00.000Z')),
       derivedId(spawnSeed.seriesDate('t1', '2026-01-15T00:00:00.000Z')),
       derivedId(spawnSeed.subtask('t1', 'sub1')),
       derivedId(spawnSeed.generated('mealCook', 'entry1', 0)),
     ]);
-    expect(ids.size).toBe(7);
+    expect(ids.size).toBe(6);
   });
 });
 
