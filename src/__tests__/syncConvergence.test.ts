@@ -270,3 +270,171 @@ describe('two devices through iCloud', () => {
     expect(tasks(mac)).toEqual(tasks(phone));
   });
 });
+
+
+/**
+ * The CloudKit bridge with deletion, the way its change feed reports one: a
+ * record removed after a device's position is listed in `removed`, and is no
+ * longer handed out as a payload.
+ */
+function compactingICloud(compactAfter: number) {
+  const log: Array<{ kind: 'save'; id: string; payload: string } | { kind: 'delete'; id: string }> = [];
+  const live = new Map<string, string>();
+  let next = 0;
+  // Runs once after the next pull returns, standing in for another device
+  // pushing while this one is between its pull and its compaction.
+  let afterPull: (() => void) | null = null;
+  const cloud: SyncTransport & {
+    live: Map<string, string>;
+    removedIds: string[];
+    afterNextPull(fn: () => void): void;
+  } = {
+    name: 'cloudkit',
+    compactAfter,
+    live,
+    removedIds: [],
+    afterNextPull(fn) { afterPull = fn; },
+    async push(payload: string) {
+      const id = `rec-${next++}`;
+      live.set(id, payload);
+      log.push({ kind: 'save', id, payload });
+    },
+    async pull(since: string | null) {
+      const from = since === null ? 0 : Number(since);
+      const payloads: string[] = [];
+      const ids: string[] = [];
+      const removed: string[] = [];
+      for (const entry of log.slice(from)) {
+        if (entry.kind === 'delete') removed.push(entry.id);
+        else if (live.has(entry.id)) {
+          payloads.push(entry.payload);
+          ids.push(entry.id);
+        }
+      }
+      const cursor = String(log.length);
+      const hook = afterPull;
+      afterPull = null;
+      hook?.();
+      return { payloads, ids, removed, cursor };
+    },
+    async removeHistory(ids: string[]) {
+      for (const id of ids) {
+        if (!live.delete(id)) continue;
+        log.push({ kind: 'delete', id });
+        cloud.removedIds.push(id);
+      }
+    },
+  };
+  return cloud;
+}
+
+describe('compacting the history behind a snapshot', () => {
+  /** Edits a task enough times on `d` to push past the threshold. */
+  async function churn(cloud: SyncTransport, d: Device, others: Device[], times: number) {
+    for (let i = 0; i < times; i++) {
+      editTask(d, 'a', { title: `Pay rent ${i}` });
+      await sync(cloud, d, ...others);
+    }
+  }
+
+  it('shrinks the store, and a new device rebuilds the same state from what is left', async () => {
+    const cloud = compactingICloud(6);
+    const phone = newDevice('phone');
+    const mac = newDevice('mac');
+    addTask(phone, 'a', 'Pay rent');
+    addTask(phone, 'b', 'Call mum');
+    addTask(mac, 'c', 'Water plants');
+    await settle(cloud, phone, mac);
+    deleteTask(mac, 'c');
+    await churn(cloud, phone, [mac], 10);
+    await settle(cloud, phone, mac);
+
+    expect(cloud.removedIds.length).toBeGreaterThan(0);
+    const fresh = newDevice('new phone');
+    await settle(cloud, fresh);
+
+    expect(tasks(fresh)).toEqual(tasks(phone));
+    expect(tasks(mac)).toEqual(tasks(phone));
+    expect(titles(fresh)).toEqual(['Call mum', 'Pay rent 9']);
+  });
+
+  it('keeps a deletion for a device that was away while the history was compacted', async () => {
+    const cloud = compactingICloud(4);
+    const phone = newDevice('phone');
+    const mac = newDevice('mac');
+    const ipad = newDevice('ipad');
+    addTask(phone, 'a', 'Pay rent');
+    addTask(phone, 'b', 'Call mum');
+    await settle(cloud, phone, mac, ipad);
+    // The iPad goes quiet. The task is deleted and the history compacted.
+    deleteTask(mac, 'b');
+    await churn(cloud, phone, [mac], 8);
+    await settle(cloud, phone, mac);
+    expect(cloud.removedIds.length).toBeGreaterThan(0);
+
+    await settle(cloud, ipad);
+
+    expect(titles(ipad)).toEqual(['Pay rent 7']);
+  });
+
+  it('never deletes a payload another device pushed after this one last pulled', async () => {
+    const cloud = compactingICloud(4);
+    const phone = newDevice('phone');
+    const mac = newDevice('mac');
+    addTask(phone, 'a', 'Pay rent');
+    await settle(cloud, phone, mac);
+    await churn(cloud, phone, [], 3);
+    // The Mac's edit lands between the phone's pull and its compaction.
+    cloud.afterNextPull(() => {
+      addTask(mac, 'late', 'Book flights');
+      const changes = mac.db.dbSyncChangesSince(mac.db.dbGetSyncCursor('cloudkit:push'));
+      void cloud.push(JSON.stringify({ format: 1, deviceId: mac.local.deviceId(), ...changes }));
+    });
+    editTask(phone, 'a', { title: 'Pay rent (final)' });
+    await sync(cloud, phone);
+    expect(cloud.removedIds.length).toBeGreaterThan(0);
+
+    const fresh = newDevice('new phone');
+    await settle(cloud, fresh);
+
+    expect(titles(fresh)).toContain('Book flights');
+  });
+
+  it('never deletes a payload it could only partly read, so a newer device still gets all of it', async () => {
+    const cloud = compactingICloud(4);
+    const phone = newDevice('phone');
+    addTask(phone, 'a', 'Pay rent');
+    await sync(cloud, phone);
+    // A peer on a newer build sends a table this one doesn't have.
+    await cloud.push(JSON.stringify({
+      format: 1, deviceId: 'newer-build', since: null, until: '2026-10-19T00:00:00.000Z',
+      tables: { future_things: [{ id: 'f1', updated_at: '2026-10-19T00:00:00.000Z' }] }, deletions: [],
+    }));
+    const newerPayloadId = [...cloud.live.keys()].at(-1)!;
+    await churn(cloud, phone, [], 6);
+
+    expect(cloud.removedIds.length).toBeGreaterThan(0);
+    expect(cloud.live.has(newerPayloadId)).toBe(true);
+  });
+
+  it('two devices compacting the same history lose nothing', async () => {
+    const cloud = compactingICloud(3);
+    const phone = newDevice('phone');
+    const mac = newDevice('mac');
+    addTask(phone, 'a', 'Pay rent');
+    addTask(mac, 'm', 'Mac only');
+    await settle(cloud, phone, mac);
+    for (let i = 0; i < 6; i++) {
+      editTask(phone, 'a', { title: `Pay rent ${i}` });
+      editTask(mac, 'm', { title: `Mac only ${i}` });
+      await sync(cloud, phone, mac);
+    }
+    await settle(cloud, phone, mac);
+
+    const fresh = newDevice('new phone');
+    await settle(cloud, fresh);
+
+    expect(titles(fresh)).toEqual(['Mac only 5', 'Pay rent 5']);
+    expect(tasks(mac)).toEqual(tasks(phone));
+  });
+});

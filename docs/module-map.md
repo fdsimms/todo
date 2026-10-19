@@ -485,7 +485,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/swipeArm.ts` — SwipeArmSides, swipeArmDistance, nextSwipeArm
 - `src/utils/swipeDismiss.ts` — SWIPE_DISMISS_DISTANCE, SWIPE_DISMISS_VELOCITY, OVERSCROLL_DISMISS_DISTANCE, isDownwardDrag, shouldDismissOnSwipe, swipeFollowOffset, overscrollDismisses, quickSearchMaxHeight
 - `src/utils/symptomQuickLog.ts` — SymptomPhrase, resolveClockTime, parseSymptomPhrase, matchSymptoms
-- `src/utils/syncEngine.ts` — SyncTransport, SyncImageStore, SyncWithholding, withholdChanges, pushCursorKey, PullResult, SyncLocal, IMAGE_PAYLOAD_BUDGET_CHARS, imagesSentKey, imagesKnownKey, +9 more
+- `src/utils/syncEngine.ts` — SyncTransport, SyncImageStore, SyncWithholding, withholdChanges, pushCursorKey, PullResult, SyncLocal, IMAGE_PAYLOAD_BUDGET_CHARS, imagesSentKey, imagesKnownKey, +11 more
 - `src/utils/syncIds.ts` — derivedId, isDerivedId, spawnSeed
 - `src/utils/syncLocal.ts` — databaseSyncLocal
 - `src/utils/syncMerge.ts` — SyncDeletion, SyncChangeSet, SYNC_FORMAT, SyncPayload, MAX_SYNC_IMAGE_CHARS, isSyncImageName, ParsedPayload, buildPayload, buildImagePayload, serializePayload, +9 more

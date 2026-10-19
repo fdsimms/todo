@@ -56,6 +56,15 @@ export interface SyncTransport {
    * the photos its recipes point at.
    */
   readonly imageStore?: SyncImageStore;
+  /**
+   * Deletes payloads from the store by the ids `pull` reported for them. A
+   * store that keeps every payload for ever (CloudKit) offers this so its
+   * history can be compacted behind a snapshot; see `compactHistory`. An id
+   * already gone succeeds.
+   */
+  removeHistory?(ids: string[]): Promise<void>;
+  /** Overrides `COMPACT_AFTER_PAYLOADS` for this transport. Tests use it; the app doesn't. */
+  readonly compactAfter?: number;
 }
 
 /** A transport's per-photo storage, keyed by the photo's filename. */
@@ -120,6 +129,14 @@ export interface PullResult {
    * and leaves the stored cursor alone.
    */
   cursor: string | null;
+  /**
+   * Each payload's id in the store, in the same order as `payloads`, for a
+   * transport that can delete them (`removeHistory`). Ignored unless it lines
+   * up with `payloads` one for one.
+   */
+  ids?: string[];
+  /** Ids of payloads another device removed from the store since `since`. */
+  removed?: string[];
 }
 
 /** What the local database has to be able to do. */
@@ -350,6 +367,51 @@ async function downloadFromImageStore(
   return count;
 }
 
+/** The device-local cursor key holding the payload ids this device has applied and may compact. */
+export function historyKey(transportName: string): string {
+  return `${transportName}:history`;
+}
+
+/**
+ * How many payloads a device lets build up in the store before it compacts
+ * them behind a snapshot. Every edit is a payload, so this is a few days of
+ * steady use; a snapshot is the whole database, so it shouldn't be often.
+ */
+export const COMPACT_AFTER_PAYLOADS = 500;
+
+/**
+ * Replaces the payloads this device has applied with one snapshot of its
+ * database, so the store stops growing and a new device downloads one
+ * snapshot and what came after it, not every edit ever made.
+ *
+ * Three rules make deleting safe, and each is load-bearing:
+ *
+ * - **Only payloads this device has itself applied in full.** Its database
+ *   then holds everything they said (or something newer), so the snapshot
+ *   does too. A payload it couldn't read, or applied only in part because it
+ *   came from a newer build (`ApplyReport.lossy`), is never in `ids`: a device
+ *   that can read it all may not have pulled it yet. And a payload another
+ *   device pushed that this one hasn't pulled is never deleted, however old.
+ * - **The snapshot is stored before anything is deleted.** A device that
+ *   misses a deleted payload finds the snapshot instead, deletions included
+ *   (a first read carries every tombstone).
+ * - **No coordination.** Two devices compacting at once each delete only what
+ *   they hold, and a payload already gone counts as deleted. The other side
+ *   hears of the deletions (`PullResult.removed`) and stops counting them.
+ *
+ * What this can't fix is the 90-day tombstone limit (TOMBSTONE_RETENTION_DAYS):
+ * a device away longer than that misses deletions whether or not the payloads
+ * that carried them still exist, because the snapshot's tombstones stop there.
+ */
+async function compactHistory(transport: SyncTransport, local: SyncLocal, ids: string[]): Promise<number> {
+  if (!transport.removeHistory || ids.length === 0) return 0;
+  const snapshot = withholdChanges(local.changesSince(null, transport.name), transport.withhold);
+  await transport.push(serializePayload({ ...buildPayload(snapshot, local.deviceId()), snapshot: true }));
+  await transport.removeHistory(ids);
+  local.setCursor(historyKey(transport.name), JSON.stringify([]));
+  return ids.length;
+}
+
 export type SyncStatus = 'ok' | 'skipped' | 'failed';
 
 export interface SyncRunResult {
@@ -375,6 +437,10 @@ export interface SyncRunResult {
    * refuses photo payloads outright must not stop this device pulling.
    */
   imageProblem?: string;
+  /** Payloads removed from the store behind a snapshot this run (`compactHistory`). */
+  compacted?: number;
+  /** Set when a compaction failed. Not a failed run: it is retried on a later one. */
+  historyProblem?: string;
 }
 
 export function hasChanges(changes: SyncChangeSet): boolean {
@@ -388,6 +454,7 @@ function addReport(into: ApplyReport, from: ApplyReport): void {
   into.skipped += from.skipped;
   into.deleted += from.deleted;
   into.deletionsRefused += from.deletionsRefused;
+  into.lossy += from.lossy;
   into.mealEntryIds.push(...from.mealEntryIds);
   into.removedMealEvents.push(...from.removedMealEvents);
   into.taskIds.push(...from.taskIds);
@@ -491,8 +558,12 @@ export async function runSync(
     const mine = local.deviceId();
     const imageKey = imagesSentKey(transport.name);
     let arrived: Set<string> | null = null;
+    // The payloads this device can stand in for once applied (see
+    // compactHistory), by store id. Only kept when the ids line up.
+    const storeIds = result.ids && result.ids.length === result.payloads.length ? result.ids : null;
+    const fullyHeld: string[] = [];
 
-    for (const raw of result.payloads) {
+    for (const [index, raw] of result.payloads.entries()) {
       const parsed = parsePayload(raw);
       if (!parsed.ok) {
         unreadable++;
@@ -501,9 +572,15 @@ export async function runSync(
       // A transport that stores everything hands back this device's own
       // records too. Applying them would be harmless but not free, and it
       // would make the sync log report work that never happened.
-      if (parsed.payload.deviceId === mine) continue;
+      if (parsed.payload.deviceId === mine) {
+        if (storeIds) fullyHeld.push(storeIds[index]);
+        continue;
+      }
 
-      addReport(applied, local.apply(parsed.payload, transport.name));
+      const report = local.apply(parsed.payload, transport.name);
+      addReport(applied, report);
+      // Photos are held as files, not in the database a snapshot is read from.
+      if (storeIds && report.lossy === 0 && !parsed.payload.images) fullyHeld.push(storeIds[index]);
 
       // After the payload's rows, which are none in a photo payload, and only
       // where the local can store a file at all.
@@ -523,6 +600,14 @@ export async function runSync(
     // already landed apply again as no-ops.
     if (result.cursor !== null) local.setCursor(pullKey, result.cursor);
     reportApplied();
+    // After the cursor: a crash before this leaves some applied payloads
+    // unrecorded, which only means this device never deletes them.
+    if (storeIds || (result.removed?.length ?? 0) > 0) {
+      const gone = new Set(result.removed ?? []);
+      const held = new Set([...readNameList(local.getCursor(historyKey(transport.name)))].filter(id => !gone.has(id)));
+      fullyHeld.forEach(id => held.add(id));
+      local.setCursor(historyKey(transport.name), JSON.stringify([...held]));
+    }
 
     // After the rows, so the recipes are here to say which photos are wanted.
     if (transport.imageStore) {
@@ -546,9 +631,26 @@ export async function runSync(
     };
   }
 
+  // Last, and outside the run's own failure: the rows have synced whatever
+  // happens here, and a compaction that fails keeps its ids for next time.
+  let compacted = 0;
+  let historyProblem: string | undefined;
+  if (transport.removeHistory) {
+    const held = [...readNameList(local.getCursor(historyKey(transport.name)))];
+    if (held.length >= (transport.compactAfter ?? COMPACT_AFTER_PAYLOADS)) {
+      try {
+        compacted = await compactHistory(transport, local, held);
+      } catch (e) {
+        historyProblem = messageOf(e, 'Couldn’t compact the sync history.');
+      }
+    }
+  }
+
   return {
     status: 'ok', pushed, applied, unreadable, imagesSent, imagesReceived,
     ...(imageProblem ? { imageProblem } : {}),
+    ...(compacted > 0 ? { compacted } : {}),
+    ...(historyProblem ? { historyProblem } : {}),
   };
 }
 

@@ -67,6 +67,12 @@ export interface SyncPayload extends SyncChangeSet {
    * device that has nowhere to put the bytes anyway.
    */
   images?: Record<string, string>;
+  /**
+   * Set on a full snapshot of the sender's database, pushed when it compacts
+   * the history (`compactHistory` in syncEngine). Applied like any payload;
+   * the flag is for anyone reading the store, and an older build ignores it.
+   */
+  snapshot?: boolean;
 }
 
 /**
@@ -266,6 +272,15 @@ export interface ApplyReport {
   /** Deletions ignored because the local row had a later edit. */
   deletionsRefused: number;
   /**
+   * Things in the payload this device could not keep: a table or column its
+   * schema doesn't have (a peer on a newer build), a setting it doesn't sync,
+   * a row with no key. Nonzero means this device's own state is not a full
+   * account of the payload, so it must never delete that payload from the
+   * store (see `compactHistory`): a device that can read all of it may not
+   * have yet.
+   */
+  lossy: number;
+  /**
    * Every planned meal the apply wrote (inserted or updated), by id, for the
    * meal calendar reconcile that runs after a sync (#2950). A meal's event
    * belongs to the device that wrote it (`SYNC_DEVICE_LOCAL_COLUMNS`), so a
@@ -309,6 +324,7 @@ export function emptyApplyReport(): ApplyReport {
     skipped: 0,
     deleted: 0,
     deletionsRefused: 0,
+    lossy: 0,
     mealEntryIds: [],
     removedMealEvents: [],
     taskIds: [],

@@ -17,6 +17,13 @@ export interface CloudKitPullResult {
    * src/utils/syncEngine.ts.
    */
   cursor: string | null;
+  /**
+   * Each payload's record name, in the same order as `payloads`. Absent from
+   * a build before compaction, which then never compacts.
+   */
+  ids?: string[];
+  /** Payload records another device deleted since `since` (it compacted). */
+  removed?: string[];
 }
 
 export interface CloudKitImageListResult {
@@ -35,6 +42,8 @@ interface TodoCloudKitNativeModule {
   isAvailable(): boolean;
   /** Optional: a build from before silent push has neither. */
   subscribeToChanges?(): Promise<void>;
+  /** Optional: a build from before compaction has none, and never compacts. */
+  removePayloads?(names: string[]): Promise<void>;
   remoteChangeHandled?(newData: boolean): void;
   addListener?(event: 'onRemoteChange', listener: () => void): Subscription;
   accountStatus(): Promise<CloudKitAccountStatus>;
@@ -102,6 +111,20 @@ export async function pushPayload(payload: string): Promise<void> {
 export async function pullPayloads(since: string | null): Promise<CloudKitPullResult> {
   if (!nativeModule) throw new Error('CloudKit is not available in this build.');
   return nativeModule.pull(since);
+}
+
+/** Whether this build can delete payload records, which compaction needs. */
+export function canRemovePayloads(): boolean {
+  return typeof nativeModule?.removePayloads === 'function';
+}
+
+/**
+ * Deletes payload records by name. Names already gone succeed. Throws on
+ * anything else, so the caller keeps the names and tries again later.
+ */
+export async function removePayloads(names: string[]): Promise<void> {
+  if (!nativeModule?.removePayloads) throw new Error('This build can’t compact the sync history.');
+  await nativeModule.removePayloads(names);
 }
 
 /**

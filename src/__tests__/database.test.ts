@@ -4747,6 +4747,38 @@ describe('dbApplySyncChanges', () => {
     expect(rowOf('p1')?.title).toBe('Local wins');
   });
 
+  // A device compacting the store may only delete a payload it applied in
+  // full; anything it had to drop means it can't stand in for that payload.
+  describe('counting what it could not keep', () => {
+    it('counts nothing for a payload it applied in full', () => {
+      const report = dbApplySyncChanges(payload({
+        tables: { tasks: [peerTaskRow('p1', 'From peer', '2026-01-01T00:00:00.000Z')] },
+      }));
+      expect(report.lossy).toBe(0);
+    });
+
+    it('counts a table it does not have', () => {
+      const report = dbApplySyncChanges(payload({
+        tables: { future_things: [{ id: 'f1', updated_at: '2026-01-01T00:00:00.000Z' }] },
+      }));
+      expect(report.lossy).toBe(1);
+    });
+
+    it('counts a row carrying a column it does not have', () => {
+      const row = { ...peerTaskRow('p1', 'From peer', '2026-01-01T00:00:00.000Z'), future_column: 'x' };
+      const report = dbApplySyncChanges(payload({ tables: { tasks: [row] } }));
+      expect(report.lossy).toBe(1);
+      expect(rowOf('p1')?.title).toBe('From peer');
+    });
+
+    it('counts a setting it does not sync', () => {
+      const report = dbApplySyncChanges(payload({
+        tables: { settings: [{ key: 'syncDeviceId', value: 'x', updated_at: '2026-01-01T00:00:00.000Z' }] },
+      }));
+      expect(report.lossy).toBe(1);
+    });
+  });
+
   it('keeps a deletion that arrives before its row, so the older row stays deleted', () => {
     const remote = peerTaskRow('p1', 'Deleted elsewhere', '2026-01-01T00:00:00.000Z');
     dbApplySyncChanges(payload({

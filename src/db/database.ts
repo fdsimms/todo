@@ -3543,13 +3543,21 @@ export function dbApplySyncChanges(payload: SyncPayload, transport?: string): Ap
     const groceryItemIds = new Set<string>();
     for (const [name, rows] of Object.entries(payload.tables)) {
       const table = trackedTable(name);
-      if (!table) continue;
+      if (!table) {
+        report.lossy += rows.length;
+        continue;
+      }
       // Never a device-local column, even from a peer that sends one (an older
       // build): the local value is this device's own and must survive the
       // apply. See SYNC_DEVICE_LOCAL_COLUMNS.
-      const allowed = dbTableColumns(name).filter(c => !isDeviceLocalColumn(name, c));
+      const columns = dbTableColumns(name);
+      const known = new Set(columns);
+      const allowed = columns.filter(c => !isDeviceLocalColumn(name, c));
 
       for (const received of rows) {
+        // A column this schema lacks is dropped by projectRow below, so this
+        // device can't stand in for the payload (see ApplyReport.lossy).
+        if (Object.keys(received).some(c => !known.has(c))) report.lossy++;
         // Pointed at the survivors of any fold first, since that can move the
         // row's own key (a list entry is keyed by the item it lists).
         const raw = remapReferences(ctx, name, received);
@@ -3557,6 +3565,7 @@ export function dbApplySyncChanges(payload: SyncPayload, transport?: string): Ap
         const remoteStamp = raw.updated_at;
         if (rowKey === null || typeof remoteStamp !== 'string') {
           report.skipped++;
+          report.lossy++;
           continue;
         }
         // Checked again on the way in, not just on the way out. A peer on an
@@ -3565,6 +3574,7 @@ export function dbApplySyncChanges(payload: SyncPayload, transport?: string): Ap
         // so this side refuses rather than trusting the sender's policy.
         if (name === 'settings' && !isSyncedSettingKey(rowKey)) {
           report.skipped++;
+          report.lossy++;
           continue;
         }
         if (absorbAliasedRow(ctx, name, projectRow(raw, allowed))) {
@@ -3667,8 +3677,10 @@ export function dbApplySyncChanges(payload: SyncPayload, transport?: string): Ap
 
     for (const deletion of payload.deletions) {
       const table = trackedTable(deletion.table);
-      if (!table) continue;
-      if (deletion.table === 'settings' && !isSyncedSettingKey(deletion.rowKey)) continue;
+      if (!table || (deletion.table === 'settings' && !isSyncedSettingKey(deletion.rowKey))) {
+        report.lossy++;
+        continue;
+      }
 
       const where = keyClause(table, deletion.rowKey);
       const local = db.getFirstSync<{ updated_at: string | null }>(

@@ -139,6 +139,13 @@ public class TodoCloudKitModule: Module {
       }
     }
 
+    /// Deletes payload records by name, in batches. A name already gone (another
+    /// device compacted first) is the state asked for and succeeds. See
+    /// `compactHistory` in src/utils/syncEngine.ts for which names may go.
+    AsyncFunction("removePayloads") { (names: [String], promise: Promise) in
+      self.deletePayloads(names, promise: promise)
+    }
+
     AsyncFunction("listImages") { (since: String?, promise: Promise) in
       self.ensureZone(self.imagesZoneID) { error in
         if let error {
@@ -258,6 +265,11 @@ public class TodoCloudKitModule: Module {
 
   private func fetchChanges(since: String?, promise: Promise) {
     var payloads: [String] = []
+    // Each payload's record name, in the same order, so JS can later delete
+    // the records it has applied once a snapshot covers them; and the names
+    // other devices deleted, so it stops counting those.
+    var ids: [String] = []
+    var removed: [String] = []
     // Set the moment any record fails to decode, and checked once the fetch
     // finishes. Not rejected from inside the block itself: a Promise can only
     // be resolved once, and the fetch operation carries on calling this block
@@ -298,6 +310,7 @@ public class TodoCloudKitModule: Module {
         }
         do {
           payloads.append(try String(contentsOf: url, encoding: .utf8))
+          ids.append(recordID.recordName)
         } catch {
           decodeFailure = (recordID, "could not read payload asset: \(error.localizedDescription)")
         }
@@ -306,10 +319,12 @@ public class TodoCloudKitModule: Module {
       }
     }
 
-    // Deletions are not handled: a payload record is never deleted, only aged
-    // out by the housekeeping a later change will add. Deleting one would not
-    // mean anything to a peer anyway — the payload's *contents* already say
-    // what was removed, via the tombstones in the changeset.
+    // A deleted payload record means a device compacted the history behind a
+    // snapshot. Nothing to apply (the snapshot holds what it said); reported
+    // only so JS drops the name from the records it would delete itself.
+    op.recordWithIDWasDeletedBlock = { recordID, _ in
+      removed.append(recordID.recordName)
+    }
 
     // Spelled out rather than left for Swift to infer: the closure's
     // parameter is a Result over a *labeled* tuple
@@ -349,6 +364,8 @@ public class TodoCloudKitModule: Module {
         _ = moreComing
         promise.resolve([
           "payloads": payloads,
+          "ids": ids,
+          "removed": removed,
           "cursor": Self.encodeToken(token) as Any,
         ])
       case .failure(let error):
@@ -366,6 +383,56 @@ public class TodoCloudKitModule: Module {
     op.recordZoneFetchResultBlock = handleZoneFetchResult
 
     database.add(op)
+  }
+
+  // MARK: - Compaction
+
+  /// CloudKit's limit on records in one modify operation.
+  private static let deleteBatchSize = 400
+
+  private func deletePayloads(_ names: [String], promise: Promise) {
+    let batch = Array(names.prefix(Self.deleteBatchSize))
+    let rest = Array(names.dropFirst(Self.deleteBatchSize))
+    if batch.isEmpty {
+      promise.resolve(nil)
+      return
+    }
+    let op = CKModifyRecordsOperation(
+      recordsToSave: nil,
+      recordIDsToDelete: batch.map { CKRecord.ID(recordName: $0, zoneID: zoneID) }
+    )
+    // Not atomic: the default makes one name already deleted by another
+    // device fail the whole batch, and the same batch would fail every retry.
+    op.isAtomic = false
+    var failure: Error?
+    op.perRecordDeleteBlock = { _, result in
+      if case .failure(let error) = result, !Self.isAlreadyGone(error), failure == nil {
+        failure = error
+      }
+    }
+    op.modifyRecordsResultBlock = { result in
+      if let failure {
+        promise.reject("ERR_CLOUDKIT_COMPACT", failure.localizedDescription)
+        return
+      }
+      if case .failure(let error) = result, !Self.isAlreadyGone(error) {
+        promise.reject("ERR_CLOUDKIT_COMPACT", error.localizedDescription)
+        return
+      }
+      self.deletePayloads(rest, promise: promise)
+    }
+    database.add(op)
+  }
+
+  /// Whether an error only says the record (or its zone) is already gone,
+  /// including a partial failure made of nothing else.
+  private static func isAlreadyGone(_ error: Error) -> Bool {
+    guard let ckError = error as? CKError else { return false }
+    if ckError.code == .unknownItem || ckError.code == .zoneNotFound { return true }
+    if ckError.code == .partialFailure, let partial = ckError.partialErrorsByItemID {
+      return partial.values.allSatisfy { isAlreadyGone($0) }
+    }
+    return false
   }
 
   // MARK: - Images

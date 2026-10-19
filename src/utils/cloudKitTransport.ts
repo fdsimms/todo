@@ -79,8 +79,19 @@ export function cloudKitChangeHandled(newData: boolean): void {
 }
 
 export function cloudKitTransport(): SyncTransport {
+  const b = bridge();
   return {
     name: CLOUDKIT_SOURCE,
+
+    // Only on a build whose native half can delete records; otherwise the
+    // history is never compacted, as before.
+    ...(b?.canRemovePayloads() ? {
+      async removeHistory(ids: string[]): Promise<void> {
+        const live = bridge();
+        if (!live) throw new Error('CloudKit is not available in this build.');
+        await live.removePayloads(ids);
+      },
+    } : {}),
 
     async push(payload: string): Promise<void> {
       const b = bridge();
@@ -92,7 +103,7 @@ export function cloudKitTransport(): SyncTransport {
       const b = bridge();
       if (!b) throw new Error('CloudKit is not available in this build.');
       const result = await b.pullPayloads(since);
-      return { payloads: result.payloads, cursor: result.cursor };
+      return { payloads: result.payloads, cursor: result.cursor, ids: result.ids, removed: result.removed };
     },
 
     imageStore: {
