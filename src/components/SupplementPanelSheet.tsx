@@ -233,8 +233,8 @@ export function SupplementPanelSheet({ visible, name, panel, onClose, onSave }: 
             {...keyboardScroll.props}
           >
             <Text style={styles.intro}>
-              Copy the figures from the supplement facts on the label. Leave a field blank if
-              the label doesn’t list it. Blank means unknown, which is not the same as zero.
+              Copy the figures from the supplement facts on the label. Skip anything the label
+              doesn’t list, and only type 0 where the label says 0.
             </Text>
 
             {canPhotograph && (
