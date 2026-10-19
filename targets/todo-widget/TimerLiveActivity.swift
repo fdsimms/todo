@@ -146,6 +146,20 @@ private struct TimerLockScreenView: View {
     }
 }
 
+// Where a tap on the activity's body lands. Cook, prep and cooking-step
+// activities go to the recipe in Cook Mode (`cookSession`, resolved in
+// src/utils/deepLinks.ts); everything else just opens the app.
+private func timerTapURL(_ attributes: TimerActivityAttributes) -> URL? {
+    guard ["cook", "prep", "step"].contains(attributes.kind) else {
+        return URL(string: "dundundun://")
+    }
+    var components = URLComponents()
+    components.scheme = "dundundun"
+    components.host = "cookSession"
+    components.queryItems = [URLQueryItem(name: "key", value: attributes.key)]
+    return components.url
+}
+
 @available(iOS 17.0, *)
 struct TimerLiveActivity: Widget {
     var body: some WidgetConfiguration {
@@ -216,8 +230,9 @@ struct TimerLiveActivity: Widget {
                     .foregroundColor(palette.brand)
             }
             // Tapping anywhere non-interactive opens the app — same scheme
-            // the Today widget uses (TodoTodayWidget.swift).
-            .widgetURL(URL(string: "dundundun://"))
+            // the Today widget uses (TodoTodayWidget.swift). A cooking
+            // activity opens the dish in Cook Mode instead.
+            .widgetURL(timerTapURL(context.attributes))
             .keylineTint(palette.brand)
         }
     }
