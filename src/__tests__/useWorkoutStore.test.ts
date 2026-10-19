@@ -561,6 +561,54 @@ describe('a session from a routine', () => {
     expect(state().addSessionExercise(s.id, 'nobody')).toBe('notFound');
   });
 
+  describe('swapping an exercise', () => {
+    const bench = 'lib:barbell-bench-press';
+    const dbPress = 'lib:dumbbell-bench-press';
+    const tick = '2026-10-01T18:10:00.000Z';
+
+    it('moves the unticked sets to the other exercise, in its place, with its own last weights', () => {
+      const before = ok(state().startSession({ at: new Date(2026, 9, 1, 18) }));
+      ok(state().logSet(before.id, { exerciseId: dbPress, kind: 'working', weightKg: 30, reps: 10, completedAt: tick }));
+      ok(state().finishSession(before.id));
+
+      const s = ok(state().startSession());
+      ok(state().logSet(s.id, { exerciseId: bench, kind: 'working', weightKg: 60, reps: 8, completedAt: null }));
+      ok(state().logSet(s.id, { exerciseId: bench, kind: 'working', weightKg: 60, reps: 8, completedAt: null }));
+      ok(state().logSet(s.id, { exerciseId: 'lib:back-squat', kind: 'working', weightKg: 100, reps: 5, completedAt: null }));
+
+      const moved = ok(state().swapSessionExercise(s.id, bench, dbPress));
+      expect(moved.map(x => [x.exerciseId, x.position, x.setIndex, x.weightKg, x.reps])).toEqual([
+        [dbPress, 0, 0, 30, 10],
+        [dbPress, 0, 1, null, 8],
+      ]);
+      // Written through, not only in memory, and the squat keeps its slot.
+      expect(dbGetWorkoutSets(s.id).map(x => [x.exerciseId, x.position])).toEqual([
+        [dbPress, 0], [dbPress, 0], ['lib:back-squat', 1],
+      ]);
+    });
+
+    it('leaves a set already done under the original, and puts the new exercise right after it', () => {
+      const s = ok(state().startSession());
+      ok(state().logSet(s.id, { exerciseId: bench, kind: 'working', weightKg: 60, reps: 8, completedAt: tick }));
+      ok(state().logSet(s.id, { exerciseId: bench, kind: 'working', weightKg: 60, reps: 8, completedAt: null }));
+      ok(state().logSet(s.id, { exerciseId: 'lib:back-squat', kind: 'working', weightKg: 100, reps: 5, completedAt: null }));
+
+      ok(state().swapSessionExercise(s.id, bench, dbPress));
+      expect(dbGetWorkoutSets(s.id).map(x => [x.exerciseId, x.position, x.completedAt !== null])).toEqual([
+        [bench, 0, true], [dbPress, 1, false], ['lib:back-squat', 2, false],
+      ]);
+    });
+
+    it('refuses an exercise already in the workout, an unknown one, and one with nothing left to move', () => {
+      const s = ok(state().startSession());
+      ok(state().logSet(s.id, { exerciseId: bench, kind: 'working', weightKg: 60, reps: 8, completedAt: tick }));
+      ok(state().logSet(s.id, { exerciseId: dbPress, kind: 'working', weightKg: 30, reps: 8, completedAt: null }));
+      expect(state().swapSessionExercise(s.id, dbPress, bench)).toBe('taken');
+      expect(state().swapSessionExercise(s.id, dbPress, 'nobody')).toBe('notFound');
+      expect(state().swapSessionExercise(s.id, bench, 'lib:back-squat')).toBe('notFound');
+    });
+  });
+
   it('lays warm-ups out ahead of an exercise\'s sets, which move down to make room', () => {
     const s = ok(state().startSession());
     ok(state().logSet(s.id, { exerciseId: 'lib:back-squat', weightKg: 100, reps: 5, completedAt: null }));
