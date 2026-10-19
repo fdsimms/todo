@@ -145,12 +145,17 @@ export function PillHighlightLayer({ highlight, keys, restColor, activeColor, ra
     width: width.value,
     height: height.value,
   }));
-  if (!highlight.ready) return null;
+  // The sliding capsule is mounted from the first render and hidden until the
+  // pills are placed, never mounted on `ready`. The first placement writes x,
+  // y, width and height before `ready` flips, so a view mounting afterwards
+  // can miss the UI thread's one update of those values and sit at the 0 x 0
+  // it was first rendered with: the label (always mounted) turns to the
+  // accent's ink while no accent fill is behind it.
   return (
     <>
       {keys.map(key => {
         const f = highlight.frames.get(key);
-        if (!f) return null;
+        if (!highlight.ready || !f) return null;
         return (
           <View
             key={key}
@@ -161,7 +166,11 @@ export function PillHighlightLayer({ highlight, keys, restColor, activeColor, ra
       })}
       <Reanimated.View
         pointerEvents="none"
-        style={[styles.capsule, { left: 0, top: 0, borderRadius: radius, backgroundColor: activeColor }, sliding]}
+        style={[
+          styles.capsule,
+          { left: 0, top: 0, borderRadius: radius, backgroundColor: activeColor, opacity: highlight.ready ? 1 : 0 },
+          sliding,
+        ]}
       />
     </>
   );
