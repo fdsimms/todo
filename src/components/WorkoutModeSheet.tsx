@@ -617,10 +617,11 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                         {fields.map(f => (
                           <Text
                             key={f}
-                            style={[styles.colValue, styles.valueText, isOpen && styles.valueOpen, !done && !isOpen && styles.valuePlanned]}
+                            style={[styles.colValue, styles.valueText, !done && styles.valuePlanned]}
                             numberOfLines={1}
                           >
-                            {valueText(set, f, unit) ?? '–'}
+                            {/* The stepper under an open row shows the same number, so the row steps aside rather than say it twice. */}
+                            {isOpen ? '' : valueText(set, f, unit) ?? '–'}
                           </Text>
                         ))}
                         <TouchableOpacity
@@ -1006,7 +1007,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   setBadge: { color: colors.orangeText, fontSize: font.md, fontWeight: fontWeight.bold },
   prevText: { color: colors.textTertiary, fontSize: font.md, fontVariant: ['tabular-nums'] },
   valueText: { color: colors.text, fontSize: font.md, fontVariant: ['tabular-nums'] },
-  valueOpen: { fontWeight: fontWeight.semibold },
   valuePlanned: { color: colors.textTertiary },
   check: {
     width: 24, height: 24, borderRadius: 8, borderWidth: 1.5, borderColor: colors.controlBorder,
