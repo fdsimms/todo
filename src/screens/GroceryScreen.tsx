@@ -913,6 +913,9 @@ export function GroceryScreen() {
   // re-runs every row's renderItem. Only the button's label reads it.
   const fabIntentChannel = useFabIntentChannel();
   const [addSeedAisle, setAddSeedAisle] = useState<string | null>(null);
+  // The add sheet opened from "Add to cart": what it adds is ticked as it goes,
+  // for something that came home without ever being on the list.
+  const [addIntoCart, setAddIntoCart] = useState(false);
   // The drop the add sheet was opened by, re-anchored after each item so a
   // burst of ten arrives in the order it was typed rather than inside out.
   const pendingDropRef = useRef<Extract<FabDropIntent, { kind: 'insert' }> | null>(null);
@@ -925,6 +928,7 @@ export function GroceryScreen() {
   const closeAdd = useCallback(() => {
     setAddOpen(false);
     setAddSeedAisle(null);
+    setAddIntoCart(false);
     pendingDropRef.current = null;
   }, []);
 
@@ -987,6 +991,14 @@ export function GroceryScreen() {
     },
     [rows, applyDrop]
   );
+
+  // "Add to cart": the rows the field just put on the list are ticked in the
+  // same breath. Not placed anywhere, since a ticked row sits in the cart rather
+  // than in an aisle (see `zoneByKey`).
+  const handleAddedToCart = useCallback((created: GroceryItem[]) => {
+    if (created.length === 0) return;
+    useGroceryStore.getState().setCheckedMany(created.map(i => i.id), true);
+  }, []);
 
   const openAddForDrop = useCallback((intent: FabDropIntent) => {
     // Dropped back on the button: the drag is the whole of what happened, so no
@@ -1447,6 +1459,7 @@ export function GroceryScreen() {
   // no longer needs a key by itself — a saved recipe imports nothing over the
   // network — so it's gated on having *either* a saved recipe or a key to
   // import a new one with; a user with neither gets a two-item menu.
+  const shopping = !!activeTripShop || checkedCount > 0;
   const addMenuItems = useMemo<FabMenuItem[]>(() => {
     const list: FabMenuItem[] = [];
     if (recipes.length > 0 || canImportRecipe) {
@@ -1461,8 +1474,14 @@ export function GroceryScreen() {
       list.push({ key: 'scan', label: 'Scan what you bought', icon: 'barcode-outline' });
     }
     list.push({ key: 'item', label: 'Add an item', icon: 'add-circle-outline' });
+    // Closest to the button while shopping, since that is when it is wanted:
+    // only offered once a trip is running or something is already in the cart,
+    // so it never sits beside "Add an item" on a list nobody is shopping from.
+    if (shopping) {
+      list.push({ key: 'cart', label: 'Add to cart', icon: 'cart-outline' });
+    }
     return list;
-  }, [recipes.length, canImportRecipe, simpleMode]);
+  }, [recipes.length, canImportRecipe, simpleMode, shopping]);
 
   const handleAddMenuSelect = useCallback((key: string) => {
     if (key === 'recipe') {
@@ -1473,7 +1492,10 @@ export function GroceryScreen() {
       else setRecipeSourceOpen(true);
     }
     else if (key === 'scan') setScanOpen(true);
-    else setAddOpen(true);
+    else {
+      setAddIntoCart(key === 'cart');
+      setAddOpen(true);
+    }
   }, [recipes, canImportRecipe]);
 
   const renderRow = useCallback(
@@ -1940,7 +1962,8 @@ export function GroceryScreen() {
           visible={addOpen}
           onClose={closeAdd}
           seedAisle={addSeedAisle}
-          onAdded={handleItemsAdded}
+          intoCart={addIntoCart}
+          onAdded={addIntoCart ? handleAddedToCart : handleItemsAdded}
         />
       </LazySheet>
       <LazySheet open={catalogOpen}>

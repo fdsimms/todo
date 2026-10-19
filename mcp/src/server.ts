@@ -2976,12 +2976,13 @@ function registerWriteTools(
 
   server.tool(
     'add_grocery_item',
-    "Put something on the home grocery list, or on a separate list with list. A name the user has bought before re-lists the shelf item they already have, keeping its aisle, its history and its pantry state, rather than creating a second one. Singular and plural resolve to the same item. The result says which of those happened.",
+    "Put something on the home grocery list, or on a separate list with list. Pass inCart for something already bought and not on the list (an incidental), so it counts in this trip. A name the user has bought before re-lists the shelf item they already have, keeping its aisle, its history and its pantry state, rather than creating a second one. Singular and plural resolve to the same item. The result says which of those happened.",
     {
       name: z.string().min(1).describe('What to add. A leading amount is split off, so "2 gal milk" files milk with a quantity of 2 gal.'),
       quantity: z.string().nullable().optional().describe('Stated separately instead of being parsed out of the name.'),
       note: z.string().nullable().optional(),
       list: z.string().optional().describe('A separate list by name or id (see grocery_setup). The list at home when omitted.'),
+      inCart: z.boolean().optional().describe("True when it is already bought: the person grabbed it at the store without it being on the list, or got it instead of something the store did not have. It is put on the list already checked off, so the trip records it as bought. Ticks it even if it was already on the list. Leave it out for something still to buy."),
     },
     async ({ name, list, ...rest }) => {
       try {

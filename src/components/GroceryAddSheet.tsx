@@ -25,6 +25,12 @@ interface Props {
    * is decided by the screen, which knows the seam and not just the section.
    */
   seedAisle?: string | null;
+  /**
+   * Opened from "Add to cart": the title says so, and the screen ticks what is
+   * added. The field itself is unchanged, so parsing, matching and the burst
+   * behaviour all work as they do for an ordinary add.
+   */
+  intoCart?: boolean;
   /** Every add, so a screen that placed this sheet can place what comes out of it. */
   onAdded?: (items: GroceryItem[]) => void;
 }
@@ -53,7 +59,7 @@ interface Props {
  * keyboard to get out of the way of, and a card that slid on `keyboardWillShow`
  * was one more thing moving under the same finger.
  */
-export function GroceryAddSheet({ visible, onClose, seedAisle, onAdded }: Props) {
+export function GroceryAddSheet({ visible, onClose, seedAisle, intoCart = false, onAdded }: Props) {
   const colors = useColors();
   const { isDark, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -142,9 +148,13 @@ export function GroceryAddSheet({ visible, onClose, seedAisle, onAdded }: Props)
                 first add: every item typed here goes to the same place, and
                 that's the one thing a drag said that a tap didn't. */}
             <Text style={styles.title} numberOfLines={1}>
-              {addedCount > 0
-                ? `Added ${addedCount} ${addedCount === 1 ? 'item' : 'items'}${seedAisle ? ` to ${seedAisle}` : ''}`
-                : seedAisle ? `Add to ${seedAisle}` : 'Add to the list'}
+              {intoCart
+                ? addedCount > 0
+                  ? `Added ${addedCount} ${addedCount === 1 ? 'item' : 'items'} to the cart`
+                  : 'Add to the cart'
+                : addedCount > 0
+                  ? `Added ${addedCount} ${addedCount === 1 ? 'item' : 'items'}${seedAisle ? ` to ${seedAisle}` : ''}`
+                  : seedAisle ? `Add to ${seedAisle}` : 'Add to the list'}
             </Text>
             <SheetHeaderButton label={BUTTON_LABEL.done} onPress={confirm} />
           </View>

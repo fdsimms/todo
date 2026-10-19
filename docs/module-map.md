@@ -210,6 +210,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/holidays.ts` — HolidaySet, HOLIDAY_SETS, HOLIDAY_SET_LABELS, Holiday, HolidayConfig, holidaysInYear, holidayOn, hasAnyHolidays, nextHoliday, parseHolidaySet, +1 more
 - `src/utils/httpSyncTransport.ts` — HTTP_SYNC_SOURCE, SYNC_REQUEST_TIMEOUT_MS, SYNC_BODY_TIMEOUT_MS, HttpSyncConfig, isHttpSyncConfigured, httpSyncTransport, readPullBody
 - `src/utils/id.ts` — generateId
+- `src/utils/incidentalPurchases.ts` — incidentalIds, SubstituteReason, SubstituteCandidate, substituteCandidates, INCIDENTAL_PICK_LIMIT, incidentalPicks
 - `src/utils/ingredientCatalogMatch.ts` — IngredientMatchReason, IngredientMatchKind, IngredientCatalogMatch, matchIngredientToCatalog, matchIngredientsToCatalog, CatalogMatchSummary, catalogMatchSummary
 - `src/utils/ingredientGrams.ts` — portionsWithServing, volumeFromMass, hasKnownDensity, measureLineAmount, gramsForLine, panelMultiplier, UnfixableQuantity, unfixableQuantityReason, LineWeighing, weighableLine
 - `src/utils/itemAliases.ts` — otherNameKeysOf, aliasIndex, itemKeyIndex, itemForOtherName, OtherNamesResult, cleanOtherNames, describeOtherNames

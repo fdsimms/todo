@@ -1108,6 +1108,52 @@ describe('setCheckedMany', () => {
   });
 });
 
+describe('addToCartMany', () => {
+  it('puts an off-list row on the list already ticked', () => {
+    const bananas = makeItem({ name: 'Bananas', onList: false });
+    seed([bananas]);
+
+    useGroceryStore.getState().addToCartMany([bananas.id]);
+
+    const entry = useGroceryStore.getState().listEntries.find(e => e.itemId === bananas.id);
+    expect(entry).toMatchObject({ listId: null, checked: true });
+  });
+
+  it('ticks a row that was already on the list, without adding it twice', () => {
+    const milk = makeItem({ name: 'Milk', onList: true, checked: false });
+    seed([milk]);
+
+    useGroceryStore.getState().addToCartMany([milk.id]);
+
+    const entries = useGroceryStore.getState().listEntries.filter(e => e.itemId === milk.id);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].checked).toBe(true);
+  });
+
+  it('files the undo against the rows it added and leaves a row that was already there', () => {
+    const bananas = makeItem({ name: 'Bananas', onList: false });
+    const milk = makeItem({ name: 'Milk', onList: true, checked: false });
+    seed([bananas, milk]);
+
+    useGroceryStore.getState().addToCartMany([bananas.id, milk.id]);
+    useGroceryStore.getState().lastAction?.undo();
+
+    const ids = useGroceryStore.getState().listEntries.map(e => e.itemId);
+    expect(ids).toContain(milk.id);
+    expect(ids).not.toContain(bananas.id);
+  });
+
+  it('writes to the list it names rather than the one on screen', () => {
+    const bananas = makeItem({ name: 'Bananas', onList: false });
+    seed([bananas], { activeListId: 'airbnb', lists: [{ id: 'airbnb', name: 'Airbnb', sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z' }] });
+
+    useGroceryStore.getState().addToCartMany([bananas.id], { listId: null });
+
+    const entry = useGroceryStore.getState().listEntries.find(e => e.itemId === bananas.id);
+    expect(entry).toMatchObject({ listId: null, checked: true });
+  });
+});
+
 // ─── finishShopping / clearList ──────────────────────────────────────────────
 
 describe('finishShopping', () => {

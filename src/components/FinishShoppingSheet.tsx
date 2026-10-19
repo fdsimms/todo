@@ -34,6 +34,7 @@ import {
   pricesRecordedSince,
 } from '../utils/groceryPrice';
 import { resolveShoppingSubstitutes, substitutesFor } from '../utils/itemSubs';
+import { incidentalIds, incidentalPicks, substituteCandidates } from '../utils/incidentalPurchases';
 import { describeShopAisles, isOutOfRange } from '../utils/groceryShops';
 import { featureShown } from '../utils/simpleMode';
 import { confirmDiscard } from '../utils/confirmDiscard';
@@ -230,18 +231,30 @@ function sameMembers<T>(a: ReadonlySet<T>, b: ReadonlySet<T>): boolean {
  * rather than from a declaration — everywhere else in that system waits for
  * the user to go and say so in the item sheet, which is exactly why it's
  * worth capturing well here. It unfolds under the row itself rather than
- * opening anything, offers what the trip actually bought as one-tap picks
- * (`purchased`, the honest common case), and — via the same find-or-add
- * `PillGroup` shape the store picker above it already uses — lets typing a
- * name mint a catalog row for anything else, through `ensureCatalogItem`
- * (the same "type it in" `SubstituteSheet`'s own field uses). Someone whose
- * trolley never had the actual replacement in it, or who bought nothing at
- * all this trip, can still say what they got. It follows the same silence
- * rule as the tick above it: nothing is picked by default, and skipping it
- * writes nothing. Changing the store clears these answers along with the
- * ticks — "got margarine instead" is an answer about Safeway's shelves, not
- * Costco's. `resolveShoppingSubstitutes` is what turns the sheet's per-row
- * answers into the pairs actually worth writing.
+ * opening anything. What it offers is narrow on purpose
+ * (`substituteCandidates`): the row's usual substitute, what came home that the
+ * list never had, and anything from the same aisle already in the trolley. The
+ * answer to "what did you get instead" is nearly always something that was not
+ * on the list, so the whole trolley as one-tap picks was mostly paper towels
+ * offered for skyr. A name outside that set is typed into the same
+ * find-or-add `PillGroup` the store picker uses, which puts it in the cart
+ * (`addToCartMany`) and picks it, since it did come home. Someone who bought
+ * nothing else this trip can still say what they got. It follows the same
+ * silence rule as the tick above it: nothing is picked by default, and
+ * skipping it writes nothing. Changing the store clears these answers along
+ * with the ticks — "got margarine instead" is an answer about Safeway's
+ * shelves, not Costco's. `resolveShoppingSubstitutes` is what turns the
+ * sheet's per-row answers into the pairs actually worth writing.
+ *
+ * **"Anything else you bought?" is the same fact asked on its own.** A
+ * replacement is one case of something that came home unplanned; groceries
+ * picked up on the way are the other, and they were the only purchases the
+ * sheet had no way to record. The section lists what joined the trolley after
+ * the trip began (`incidentalIds`, derived from each row's `addedAt`, so
+ * nothing is stored) plus whatever was added from this sheet, and offers
+ * `incidentalPicks` as one-tap adds. Each add goes straight into the cart, so
+ * it gets a price row and the freezer toggle below like any other row, and
+ * cancelling the sheet leaves it there rather than half-undoing it.
  *
  * **A row that already has a linked substitute (`substitutesFor`) offers it
  * first.** This is the one moment the app knows both that the original isn't
@@ -304,6 +317,10 @@ export function FinishShoppingSheet({
   const itemShops = useGroceryStore(useShallow(s => s.itemShops));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
   const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
+  const listEntries = useGroceryStore(useShallow(s => s.listEntries));
+  const activeListId = useGroceryStore(s => s.activeListId);
+  const addToCartMany = useGroceryStore(s => s.addToCartMany);
+  const removeFromListMany = useGroceryStore(s => s.removeFromListMany);
   const setShopAisles = useGroceryStore(s => s.setShopAisles);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
   const simpleMode = useSettingsStore(s => s.simpleMode);
@@ -325,6 +342,11 @@ export function FinishShoppingSheet({
   // `seedFrozenIds` and read against `purchased` at Finish, so an id whose row
   // has left the trolley since writes nothing.
   const [frozen, setFrozen] = useState<ReadonlySet<string>>(new Set());
+  // Rows put in the cart from this sheet's own "anything else you bought?"
+  // section. A trip's start dates the rest (see `incidentalIds`), but with no
+  // trip running there is no start to compare against, and what was added a
+  // moment ago in front of the person is the one thing that is still known.
+  const [addedHere, setAddedHere] = useState<string[]>([]);
 
   // If a trip is running, the store is already known and this stops being a
   // question — you said where you were on the way in. With no trip running the
@@ -343,6 +365,18 @@ export function FinishShoppingSheet({
     simpleMode,
     purchased.some(p => seedFrozenIds?.has(p.id))
   );
+
+  // What came home that the list never had: rows that joined the trolley after
+  // the trip began, plus anything added from this sheet. Only rows still in the
+  // cart count, so an item ticked off again drops out of the section.
+  const incidental = useMemo(() => {
+    const ids = incidentalIds(listEntries, activeListId, activeTrip ? tripStartedAt : null);
+    for (const id of addedHere) ids.add(id);
+    return ids;
+  }, [listEntries, activeListId, activeTrip, tripStartedAt, addedHere]);
+  const incidentalRows = purchased.filter(p => incidental.has(p.id));
+  const picks = useMemo(() => incidentalPicks(items, listEntries), [items, listEntries]);
+  const aisleById = useMemo(() => new Map(items.map(i => [i.id, i.aisle])), [items]);
 
   // ==== seeding ====
   // The prices typed into a row's price tag during this trip, as field text.
@@ -417,6 +451,7 @@ export function FinishShoppingSheet({
       // setSelected to the value it already holds changes nothing.
       setUnavailable([]);
       setSubstituteFor({});
+      setAddedHere([]);
     }
   }, [visible]);
 
@@ -583,14 +618,50 @@ export function FinishShoppingSheet({
     );
   };
 
-  // The typed-in half: what came home wasn't necessarily anything else in the
-  // trolley. Mints or finds the catalog row the same way SubstituteSheet's own
-  // add-by-name field does, then picks it — same as tapping a pill, just for a
-  // name that wasn't already one.
+  // ==== incidentals ====
+  // Committed straight through, like `handleWidenRange` above: each of these is
+  // a row in the cart the moment it is tapped, which is what lets it get a price
+  // row and be offered as what replaced something. Cancelling the sheet leaves
+  // it in the cart, where it can be unticked like any other row.
+  const addIncidental = (itemId: string) => {
+    addToCartMany([itemId]);
+    setAddedHere(prev => (prev.includes(itemId) ? prev : [...prev, itemId]));
+  };
+
+  const handleCreateIncidental = (name: string) => {
+    const created = ensureCatalogItem(name);
+    if (!created) return 'Enter a name.';
+    haptics.success();
+    addIncidental(created.id);
+  };
+
+  const removeIncidental = (itemId: string) => {
+    haptics.tap();
+    removeFromListMany([itemId]);
+    setAddedHere(prev => prev.filter(id => id !== itemId));
+    // Whatever was typed or flagged for a row that is no longer being bought
+    // must not reach `finishShopping`, and a replacement pointing at it has
+    // nothing left to point at.
+    setPriceText(prev => {
+      if (!(itemId in prev)) return prev;
+      const { [itemId]: _, ...rest } = prev;
+      return rest;
+    });
+    setFrozen(prev => (prev.has(itemId) ? toggledIn(prev, itemId) : prev));
+    setSubstituteFor(prev =>
+      Object.fromEntries(Object.entries(prev).filter(([, subId]) => subId !== itemId))
+    );
+  };
+
+  // The typed-in half of "Replaced by": what came home may be something the
+  // trolley never had. It is added to the cart and picked in one go, because
+  // it did come home, and a substitute that is only a catalog row would never
+  // be bought or priced.
   const handleCreateSubstitute = (itemId: string, name: string) => {
     const created = ensureCatalogItem(name);
     if (!created) return 'Enter a name.';
     haptics.success();
+    addIncidental(created.id);
     setSubstituteFor(prev => ({ ...prev, [itemId]: created.id }));
   };
 
@@ -753,16 +824,23 @@ export function FinishShoppingSheet({
                   const ticked = unavailable.includes(row.id);
                   const chosenId = substituteFor[row.id] ?? null;
                   // What the item's own substitute links already say to use
-                  // instead — the one thing the app can suggest here rather
-                  // than wait for the user to type it in.
+                  // instead, then what came home that the list never had, then
+                  // anything from the same aisle already in the cart. Nothing
+                  // else is offered: the rest of the trolley is never the
+                  // answer, and a name outside this set is one field away.
                   const knownSubs = substitutesFor(row.id, itemSubs, items);
-                  const knownSubIds = new Set(knownSubs.map(s => s.item.id));
-                  // A pick can be a purchased row, a recorded substitute, or a
-                  // name typed into the create field and minted on the spot —
-                  // the last of those isn't in either list, so it needs its
-                  // own pill to show as selected.
+                  const candidates = substituteCandidates({
+                    missing: { id: row.id, aisle: aisleById.get(row.id) ?? '' },
+                    usual: knownSubs.map(s => ({ id: s.item.id, name: s.item.name })),
+                    incidental,
+                    purchased,
+                    aisleById,
+                  });
+                  // A pick can be a name typed into the create field and minted
+                  // on the spot, which isn't in the candidates until the cart
+                  // catches up, so it needs its own pill to show as selected.
                   const chosenExtra =
-                    chosenId && !purchased.some(p => p.id === chosenId) && !knownSubIds.has(chosenId)
+                    chosenId && !candidates.some(c => c.id === chosenId)
                       ? items.find(i => i.id === chosenId)
                       : null;
                   return (
@@ -786,11 +864,12 @@ export function FinishShoppingSheet({
                       </TouchableOpacity>
 
                       {/* Optional, and offered whether or not anything was
-                          bought this trip — the typed field means an empty
-                          trolley still has a way to answer. */}
+                          bought this trip: the typed field adds what came
+                          home to the cart, so an empty trolley still has a
+                          way to answer. */}
                       {ticked && (
                         <View style={styles.substituteWrap}>
-                          <Text style={styles.substituteLabel}>Got something else instead?</Text>
+                          <Text style={styles.substituteLabel}>Replaced by</Text>
                           <PillGroup
                             noun="item"
                             surface="card"
@@ -798,29 +877,20 @@ export function FinishShoppingSheet({
                             createMaxLength={GROCERY_NAME_MAX_LENGTH}
                             onCreate={name => handleCreateSubstitute(row.id, name)}
                             options={[
-                              // Recorded substitutes lead the grid and are
-                              // pinned so a longer purchased list can't push
-                              // them behind "N more" — a link the user
-                              // already authored outranks a guess. Skipped
-                              // when the same item is also in `purchased`,
-                              // which already gets a pill of its own below.
-                              ...knownSubs
-                                .filter(s => !purchased.some(p => p.id === s.item.id))
-                                .map(s => ({
-                                  key: s.item.id,
-                                  label: s.item.name,
-                                  suffix: ' · usual substitute',
-                                  pinned: true,
-                                  selected: chosenId === s.item.id,
-                                  accessibilityLabel: `${s.item.name}, the usual substitute for ${row.name}`,
-                                  onPress: () => toggleSubstitute(row.id, s.item.id),
-                                })),
-                              ...purchased.map(p => ({
-                                key: p.id,
-                                label: p.name,
-                                suffix: knownSubIds.has(p.id) ? ' · usual substitute' : undefined,
-                                selected: chosenId === p.id,
-                                onPress: () => toggleSubstitute(row.id, p.id),
+                              // A recorded substitute is pinned so a longer list
+                              // can't push it behind "N more": a link the user
+                              // already authored outranks a guess.
+                              ...candidates.map(c => ({
+                                key: c.id,
+                                label: c.name,
+                                suffix: c.reason === 'usual' ? ' · usual substitute' : undefined,
+                                pinned: c.reason === 'usual',
+                                selected: chosenId === c.id,
+                                accessibilityLabel:
+                                  c.reason === 'usual'
+                                    ? `${c.name}, the usual substitute for ${row.name}`
+                                    : undefined,
+                                onPress: () => toggleSubstitute(row.id, c.id),
                               })),
                               ...(chosenExtra
                                 ? [
@@ -848,6 +918,63 @@ export function FinishShoppingSheet({
               </Text>
             </>
           )}
+
+          {/* What came home that was never on the list. Asked whether or not
+              a store is named, and whether or not anything was missing: it is
+              a fact about the trolley, not about a shop. */}
+          <Text style={styles.label}>ANYTHING ELSE YOU BOUGHT?</Text>
+          <HelpText style={styles.hint}>
+            Optional. Things you got that weren’t on your list. They count as bought and get a price
+            row below.
+          </HelpText>
+
+          <View style={styles.card}>
+            {incidentalRows.map((row, i) => {
+              const replaced = Object.entries(substituteFor).find(([, subId]) => subId === row.id);
+              const replacesName = replaced ? leftover.find(l => l.id === replaced[0])?.name : null;
+              return (
+                <View key={row.id} style={[styles.row, i > 0 && styles.rowDivided]}>
+                  <View style={styles.incidentalTile}>
+                    <Ionicons name="add" size={iconSize.sm} color={colors.accentText} />
+                  </View>
+                  <View style={styles.priceName}>
+                    <Text style={styles.rowTitle} numberOfLines={1}>
+                      {row.name}
+                    </Text>
+                    {!!replacesName && <Text style={styles.rowQuantity}>Replaces {replacesName}</Text>}
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => removeIncidental(row.id)}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove ${row.name} from the cart`}
+                  >
+                    <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
+            <View style={[styles.incidentalAdd, incidentalRows.length > 0 && styles.rowDivided]}>
+              {picks.length > 0 && <Text style={styles.substituteLabel}>Bought before</Text>}
+              <PillGroup
+                noun="item"
+                surface="card"
+                limit={6}
+                createMaxLength={GROCERY_NAME_MAX_LENGTH}
+                onCreate={handleCreateIncidental}
+                options={picks.map(item => ({
+                  key: item.id,
+                  label: item.name,
+                  selected: false,
+                  onPress: () => {
+                    haptics.success();
+                    addIncidental(item.id);
+                  },
+                }))}
+              />
+            </View>
+          </View>
 
           {/* Last, and asked with or without a store — see the note on the
               component. A row's placeholder is what it last cost, so the
@@ -1007,6 +1134,18 @@ function makeStyles(colors: Colors) {
       gap: spacing.sm,
     },
     substituteLabel: { fontSize: font.sm, color: colors.textTertiary },
+    // The leading tile on an incidental row, in place of the checkbox: nothing
+    // here is ticked or unticked, it is already in the cart. Tinted rather than
+    // `bgQuaternary` so it doesn't read as the red "they didn't have it" mark.
+    incidentalTile: {
+      width: CHECK_SIZE,
+      height: CHECK_SIZE,
+      borderRadius: checkboxRadius(CHECK_SIZE),
+      backgroundColor: colors.accentSubtle,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    incidentalAdd: { padding: spacing.md, gap: spacing.sm },
     priceName: { flex: 1, gap: spacing.xxs },
     rowQuantity: { color: colors.textTertiary, fontSize: font.sm },
     // A bordered box rather than a bare input: it's the only thing on this

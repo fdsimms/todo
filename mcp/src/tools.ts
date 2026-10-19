@@ -1143,9 +1143,23 @@ export interface GroceryWriteResult {
 export function addGroceryItem(
   replica: Replica,
   name: string,
-  opts?: { quantity?: string | null; note?: string | null; listId?: string | null },
+  opts?: { quantity?: string | null; note?: string | null; listId?: string | null; inCart?: boolean },
 ): GroceryWriteResult {
-  const { item, isNew, wasOnList } = replica.addGroceryItem(name, opts);
+  const { inCart, ...addOpts } = opts ?? {};
+  const { item, isNew, wasOnList } = replica.addGroceryItem(name, addOpts);
+  // Something that came home without being listed: the same two writes the
+  // app's "Add to cart" makes (`addToCartMany`), so the trip can record it and
+  // it gets a price row. Ticks a row already on the list too, which is the one
+  // case a plain add leaves alone.
+  if (inCart) {
+    const ticked = replica.setGroceryChecked(item.id, true, addOpts.listId ?? null);
+    const how = isNew
+      ? `Added "${item.name}" to the list, filed under ${item.aisle}, and checked it off.`
+      : wasOnList
+        ? `"${item.name}" was already on the list, so it was checked off.`
+        : `"${item.name}" was already in the catalog, so it went back on the list with the aisle and history it already had, and was checked off.`;
+    return { item: serializeWithHome(replica, ticked, addOpts.listId ?? null), outcome: how };
+  }
   const outcome = isNew
     ? `Added "${item.name}" to the list, filed under ${item.aisle}.`
     : wasOnList

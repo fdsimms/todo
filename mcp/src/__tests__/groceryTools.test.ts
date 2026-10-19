@@ -104,6 +104,28 @@ describe('the catalog tools', () => {
 
   const idOf = (name: string) => replica.groceryItems().find(i => i.name.toLowerCase() === name.toLowerCase())!.id;
 
+  describe('add_grocery_item with inCart', () => {
+    it('puts a new item on the list already checked off', () => {
+      const result = addGroceryItem(replica, 'sparkling water', { inCart: true });
+      expect(result.outcome).toMatch(/checked it off/);
+      expect(result.item.checked).toBe(true);
+      expect(replica.groceryItems().find(i => i.name === 'sparkling water')).toBeDefined();
+    });
+
+    it('checks off an item that was already on the list, which a plain add leaves alone', () => {
+      addGroceryItem(replica, 'milk');
+      const plain = addGroceryItem(replica, 'milk');
+      expect(plain.item.checked).toBeFalsy();
+      const cart = addGroceryItem(replica, 'milk', { inCart: true });
+      expect(cart.item.checked).toBe(true);
+      expect(cart.outcome).toMatch(/already on the list/);
+    });
+
+    it('leaves a plain add unchecked', () => {
+      expect(addGroceryItem(replica, 'bread').item.checked).toBeFalsy();
+    });
+  });
+
   describe('update_grocery_item', () => {
     it('moves an item to an aisle that exists, remembers it for the name, and says which aisles exist when it does not', () => {
       addGroceryItem(replica, 'milk');
