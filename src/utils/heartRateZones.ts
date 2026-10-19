@@ -11,8 +11,8 @@ import { ageFromBirthYear } from './energyBudget';
  * minutes in each; what they mean is the person's business.
  *
  * **The maximum is the one estimate the app makes about a body**, and only
- * because the person chose it (a typed maximum, or a year of birth typed into
- * the calorie budget), it is labeled as an estimate wherever it shows, a
+ * because the person chose it (a typed maximum, or a year of birth typed in
+ * Settings › Apple Health), it is labeled as an estimate wherever it shows, a
  * typed number replaces it, and it only partitions what Health recorded.
  * `resolveMaxHeartRate` is where the typed figure, the estimate and "none"
  * are decided, and `describeZoneBasis` is the label the card carries.
@@ -64,7 +64,8 @@ export function parseMaxHeartRate(raw: string | null | undefined): number | null
 
 /**
  * The maximum the zones are shares of: the typed figure when there is one,
- * else 220 minus the age from the year of birth in the calorie budget, else
+ * else 220 minus the age from the year of birth (`bodyProfile.birthYear`, which
+ * the calorie budget reads too, so neither needs the other set up), else
  * null, which means no zones at all (never a default age, never a guess).
  */
 export function resolveMaxHeartRate(typed: number | null, birthYear: number | null, today: Date): MaxHeartRate | null {
@@ -90,7 +91,7 @@ export function describeMaxHeartRate(max: MaxHeartRate | null): string {
  */
 export function describeZoneBasis(max: MaxHeartRate | null): string {
   if (!max) {
-    return 'To see time in zones, set your maximum heart rate in Settings › Workouts, or your year of birth in the calorie budget.';
+    return 'To see time in zones, set your maximum heart rate in Settings › Workouts, or your year of birth in Settings › Apple Health.';
   }
   if (max.source === 'age') {
     return `Zones are shares of a maximum of ${max.bpm} bpm, estimated from your age (${AGE_ESTIMATE_BASE} minus age). Set your own maximum in Settings › Workouts.`;

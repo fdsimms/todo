@@ -23,6 +23,7 @@ import { formatWeight } from '../../utils/weightLog';
 import { goalDirection } from '../../utils/weightGoal';
 import { formatSleepDuration } from '../../utils/sleepLog';
 import { SleepGoalSheet } from '../../components/SleepGoalSheet';
+import { YearOfBirthSheet } from '../../components/YearOfBirthSheet';
 import { JournalWordGoalSheet } from '../../components/JournalWordGoalSheet';
 import { JournalPromptsSheet } from '../../components/JournalPromptsSheet';
 import { formatWordCount } from '../../utils/journal';
@@ -136,6 +137,8 @@ export function HealthSettings() {
   const setWeightUnit = useSettingsStore(s => s.setWeightUnit);
   const sleepGoalMinutes = useSettingsStore(s => s.sleepGoalMinutes);
   const [sleepGoalOpen, setSleepGoalOpen] = useState(false);
+  const birthYear = useSettingsStore(s => s.bodyProfile.birthYear);
+  const [birthYearOpen, setBirthYearOpen] = useState(false);
   const journalWordGoal = useSettingsStore(s => s.journalWordGoal);
   const moodContextSources = useSettingsStore(s => s.moodContextSources);
   const setMoodContextSource = useSettingsStore(s => s.setMoodContextSource);
@@ -672,6 +675,21 @@ export function HealthSettings() {
         accessibilityLabelFor={o => (o.value === 'kg' ? 'Kilograms' : 'Pounds')}
       />
     </SettingsSection>
+
+    <SettingsSection
+      label="About you"
+      footer="Used by the calorie estimate and by heart rate zones on a workout. Height and sex for the calorie estimate are in the weight goal."
+    >
+      <SettingsRow
+        entryId="birthYear"
+        icon="calendar-outline"
+        label="Year of birth"
+        hint="Your age comes from this. It stays on your devices and isn’t written to Apple Health."
+        value={birthYear === null ? 'Not set' : String(birthYear)}
+        onPress={() => { haptics.tap(); setBirthYearOpen(true); }}
+      />
+    </SettingsSection>
+    <YearOfBirthSheet visible={birthYearOpen} onClose={() => setBirthYearOpen(false)} />
 
     <SettingsSection
       label="Sleep"

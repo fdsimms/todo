@@ -26,6 +26,8 @@ interface Props {
   format: (value: number) => string;
   /** What a screen reader calls the number. */
   label: string;
+  /** The button that clears the saved value. Defaults to "Remove goal", right for a goal and wrong for anything else. */
+  removeLabel?: string;
 }
 
 /**
@@ -36,7 +38,7 @@ interface Props {
  * suggests a figure or says whether the one picked is enough: the range is an
  * absurdity check, not advice.
  */
-export function GoalStepperSheet({ visible, onClose, name, heading, hint, saved, onSave, range, format, label }: Props) {
+export function GoalStepperSheet({ visible, onClose, name, heading, hint, saved, onSave, range, format, label, removeLabel = 'Remove goal' }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const card = useCardSheet();
@@ -87,7 +89,7 @@ export function GoalStepperSheet({ visible, onClose, name, heading, hint, saved,
           </View>
           {saved !== null && (
             <View style={styles.removeRow}>
-              <InlineAction label="Remove goal" icon="close" variant="neutral" onPress={remove} />
+              <InlineAction label={removeLabel} icon="close" variant="neutral" onPress={remove} />
             </View>
           )}
         </View>
