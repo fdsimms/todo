@@ -37,6 +37,7 @@ export interface SerializedProjectDetail {
   taskDefaults?: {
     priority: number | null; difficulty: string | null; effort: number | null;
     showStreak?: boolean | null; vacationPause?: boolean | null; excludeFromSuggestions?: boolean | null;
+    slotIn?: boolean | null;
   };
   completed?: boolean;
   archived?: boolean;

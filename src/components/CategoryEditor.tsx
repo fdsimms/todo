@@ -37,6 +37,7 @@ import type { TimeOfDay } from '../types';
 import { TextField } from './TextField';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { Toggle } from './Toggle';
+import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
 
 const DEFAULT_DAYS = [1, 2, 3, 4, 5];
@@ -79,6 +80,7 @@ export function CategoryEditor({ visible, category: liveCategory, onClose }: Pro
   const setCategoryHideOnVacation = useCategoryStore(s => s.setCategoryHideOnVacation);
   const setCategoryExcludeFromSuggestions = useCategoryStore(s => s.setCategoryExcludeFromSuggestions);
   const setCategoryExcludeFromNewTasksBanner = useCategoryStore(s => s.setCategoryExcludeFromNewTasksBanner);
+  const setCategorySlotIn = useCategoryStore(s => s.setCategorySlotIn);
   const setCategoryEmoji = useCategoryStore(s => s.setCategoryEmoji);
   const setCategoryDefaultTimeSegments = useCategoryStore(s => s.setCategoryDefaultTimeSegments);
   const renameCategory = useTaskStore(s => s.renameCategory);
@@ -96,6 +98,7 @@ export function CategoryEditor({ visible, category: liveCategory, onClose }: Pro
   const [hideOnVacation, setHideOnVacation] = useState(false);
   const [excludeFromSuggestions, setExcludeFromSuggestions] = useState(false);
   const [excludeFromNewBanner, setExcludeFromNewBanner] = useState(false);
+  const [slotIn, setSlotIn] = useState(false);
   const [defaultSegments, setDefaultSegments] = useState<TimeOfDay[]>([]);
   const [segmentsOpen, setSegmentsOpen] = useState(false);
   const [picker, setPicker] = useState<'start' | 'end' | null>(null);
@@ -118,6 +121,7 @@ export function CategoryEditor({ visible, category: liveCategory, onClose }: Pro
     setHideOnVacation(!!cat?.hideOnVacation);
     setExcludeFromSuggestions(!!cat?.excludeFromSuggestions);
     setExcludeFromNewBanner(!!cat?.excludeFromNewTasksBanner);
+    setSlotIn(!!cat?.slotIn);
     setDefaultSegments(cat?.defaultTimeSegments ?? []);
     setSegmentsOpen(false);
     setPicker(null);
@@ -235,6 +239,9 @@ export function CategoryEditor({ visible, category: liveCategory, onClose }: Pro
     }
     if (excludeFromNewBanner !== !!cat?.excludeFromNewTasksBanner) {
       setCategoryExcludeFromNewTasksBanner(category, excludeFromNewBanner);
+    }
+    if (slotIn !== !!cat?.slotIn) {
+      setCategorySlotIn(category, slotIn);
     }
     if (!sameTimeSegments(defaultSegments, cat?.defaultTimeSegments ?? [])) {
       setCategoryDefaultTimeSegments(category, defaultSegments);
@@ -431,10 +438,26 @@ export function CategoryEditor({ visible, category: liveCategory, onClose }: Pro
               </View>
               <Toggle value={excludeFromNewBanner} />
             </TouchableOpacity>
+            <View style={styles.sep} />
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => { haptics.tap(); setSlotIn(v => !v); }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: slotIn }}
+              accessibilityLabel="Wait if the day is full"
+            >
+              <Ionicons name="hourglass-outline" size={18} color={slotIn ? colors.accent : colors.textSecondary} />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Wait if the day is full</Text>
+                <HelpText style={styles.optionHint}>Moves these to the next day that isn’t full. A task can still keep its own date.</HelpText>
+              </View>
+              <Toggle value={slotIn} />
+            </TouchableOpacity>
           </View>
 
           {/* Its own group rather than a fourth row in VISIBILITY, because it
-              isn't a live category rule like the three above it: it seeds the
+              isn't a live category rule like the ones above it: it seeds the
               tasks and then stops mattering. Sitting under the schedule row it
               would read as one more thing the category does to its tasks
               every day. */}

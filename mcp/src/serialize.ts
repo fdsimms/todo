@@ -127,6 +127,17 @@ export interface SerializedTask {
    * explained by the flag.
    */
   vacationPause?: true;
+  /**
+   * "If the day is full" (`slotIn`): true waits for a day that isn't, false
+   * keeps the date. Absent when the task has no answer of its own and follows
+   * its category (list_categories' slotIn).
+   */
+  slotIn?: boolean;
+  /**
+   * The day this task was first meant for, while it is waiting or since it
+   * was let through after waiting (`slotWaitingSince`).
+   */
+  waitingSince?: string;
 }
 
 /** Drops keys whose value is null, undefined, or an empty array. */
@@ -220,6 +231,8 @@ export function serializeTask(replica: Replica, task: Task, names?: Map<string, 
     seriesId: task.seriesId ?? undefined,
     people,
     vacationPause: task.vacationPause ? true : undefined,
+    slotIn: task.slotIn ?? undefined,
+    waitingSince: task.slotWaitingSince ?? undefined,
   });
 }
 

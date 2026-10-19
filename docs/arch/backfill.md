@@ -6,7 +6,7 @@ what "missing" means for it:
 
 | Pool | Module | Fields |
 |---|---|---|
-| Tasks | `src/utils/fieldBackfill.ts` | estimate, priority, difficulty, category, streak chip, vacation pause, holidays, reminder, skip in suggestions |
+| Tasks | `src/utils/fieldBackfill.ts` | estimate, priority, difficulty, category, streak chip, vacation pause, holidays, if the day is full, reminder, skip in suggestions |
 | Categories | `src/utils/categoryBackfill.ts` | vacation, suggestions, new-tasks banner |
 | Projects | `src/utils/projectBackfill.ts` | nudge, weekend source |
 | People | `src/utils/peopleBackfill.ts` | birthday, cadence, ask about, location |
@@ -38,6 +38,13 @@ own headers apply one bar, and a new feature has to be sorted against it:
 5. **A feature the person has to opt into is not "unanswered".** Rain skip, time windows,
    usage meters, app gating, penalties and a quota ramp all read as "not using it" when empty,
    so the card would ask everyone to consider a feature most of them have no use for.
+
+**If the day is full** (`slotIn`) is an opt-in feature that is asked about anyway, and the
+fifth rule is why it is gated: `backfillFieldsFor` offers it only once a task or a category has
+turned it on (`slotInInUse`). From then on "firm date or flexible?" is an honest gap on every task
+that could wait, the way a holiday rule is on every repeating task. Both answers are written onto
+the task, since `false` has to outrank a category set to wait, and the dismissal ("Leave as
+usual") leaves it following its category. A whole-category answer offers to turn the category on.
 
 Considered and left out under the rules above, so they are not re-derived: rain skip
 (`rainSkipMm`), time-window sun anchors, deadline time, usage meters, app gating, medications as

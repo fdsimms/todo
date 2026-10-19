@@ -62,6 +62,7 @@ import {
   BACKFILL_FIELDS, backfillCandidates, backfillFieldCounts, backfillSeriesPeers, dismissBackfillField,
   isFieldMissing, backfillFieldsFor, type BackfillFieldId,
 } from '../utils/fieldBackfill';
+import { slotInInUse } from '../utils/slotIn';
 import {
   isSuggestibleBackfillField, suggestionTasks, suggestionExamples, type BackfillSuggestion,
 } from '../utils/backfillSuggest';
@@ -121,6 +122,7 @@ const FIELD_ICONS: Record<BackfillFieldId, keyof typeof Ionicons.glyphMap> = {
   streak: 'flame-outline',
   vacation: 'airplane-outline',
   holidays: 'calendar-outline',
+  slotIn: 'hourglass-outline',
   reminder: 'notifications-outline',
   suggestions: 'color-wand-outline',
 };
@@ -131,6 +133,13 @@ const FIELD_ICONS: Record<BackfillFieldId, keyof typeof Ionicons.glyphMap> = {
 const HOLIDAY_SEGMENTS: { value: HolidayRule | null; label: string }[] = [
   { value: 'skip', label: 'Skip it' },
   { value: 'move', label: 'Next day' },
+];
+
+// "If the day is full". Both are answers written onto the task, so neither is
+// pre-selected; the dismissal leaves it following its category.
+const SLOT_IN_SEGMENTS: { value: boolean | null; label: string }[] = [
+  { value: true, label: 'Wait' },
+  { value: false, label: 'Keep the date' },
 ];
 
 // Filled counterparts of the row icons above, for the per-card CTA button —
@@ -392,6 +401,7 @@ export function BackfillScreen() {
   const setCategoryHideOnVacation = useCategoryStore(s => s.setCategoryHideOnVacation);
   const setCategoryExcludeFromSuggestions = useCategoryStore(s => s.setCategoryExcludeFromSuggestions);
   const setCategoryExcludeFromNewTasksBanner = useCategoryStore(s => s.setCategoryExcludeFromNewTasksBanner);
+  const setCategorySlotIn = useCategoryStore(s => s.setCategorySlotIn);
   const setCategoryBackfillDismissedFields = useCategoryStore(s => s.setCategoryBackfillDismissedFields);
   const projects = useProjectStore(useShallow(s => s.projects));
   const updateProject = useProjectStore(s => s.updateProject);
@@ -536,9 +546,10 @@ export function BackfillScreen() {
   const suggestRoute = useAiRoute('backfillSuggestions');
 
   const holidaysConfigured = hasAnyHolidays({ set: holidaySet, custom: customHolidays });
+  const slotInUsed = useMemo(() => slotInInUse(tasks, categories), [tasks, categories]);
   const taskFields = useMemo(
-    () => backfillFieldsFor(simpleMode, rewardsEnabled, holidaysConfigured),
-    [simpleMode, rewardsEnabled, holidaysConfigured]
+    () => backfillFieldsFor(simpleMode, rewardsEnabled, holidaysConfigured, slotInUsed),
+    [simpleMode, rewardsEnabled, holidaysConfigured, slotInUsed]
   );
   const entitySegments = useMemo(
     () => ENTITY_KIND_SEGMENTS.filter(seg => kitchenEnabled || !KITCHEN_ENTITY_KINDS.has(seg.value)),
@@ -1147,9 +1158,16 @@ export function BackfillScreen() {
    * future tasks start with are two different calls.
    */
   const offerGroupDefault = (sample: Task, scope: BatchScope, answer: Partial<TaskFieldDefaults> | null, setting: string) => {
-    // Only the two sets that own a default can keep one: a category or a stack
-    // has nowhere to store it, and reading the sample's own project there would
-    // set a default for a set the person never chose.
+    // A category holds one answer of its own, "If the day is full", and it
+    // covers the tasks already there as well as new ones, so it's offered as
+    // turning the category on rather than as a default for new tasks.
+    if (answer?.slotIn === true && scope.kind === 'category' && sample.category) {
+      offerCategorySlotIn(sample.category);
+      return;
+    }
+    // Otherwise only the two sets that own a default can keep one: a category
+    // or a stack has nowhere to store it, and reading the sample's own project
+    // there would set a default for a set the person never chose.
     if (!answer || (scope.kind !== 'generated' && scope.kind !== 'project')) return;
     const kind = scope.kind === 'generated' ? sample.generatedKind : null;
     const projectId = scope.kind === 'project' ? sample.projectId : null;
@@ -1182,6 +1200,30 @@ export function BackfillScreen() {
               valueText: `${setting}, for new tasks`,
               isDefault: true,
               undo: () => write(current ?? null),
+            });
+          },
+        },
+      ],
+    );
+  };
+
+  const offerCategorySlotIn = (name: string) => {
+    if (categories.some(c => c.name === name && c.slotIn)) return;
+    Alert.alert(
+      `Make every task in “${name}” wait if the day is full?`,
+      'Tasks you add there later will wait too, unless a task says otherwise. You can change this in the category’s settings.',
+      [
+        { text: 'Not now', style: 'cancel' },
+        {
+          text: 'Turn on',
+          onPress: () => {
+            setCategorySlotIn(name, true);
+            commit(`“${name}” waits if the day is full`, {
+              itemId: `default:category:${name}:slotIn`,
+              title: `“${name}”`,
+              valueText: 'Waits if the day is full',
+              isDefault: true,
+              undo: () => setCategorySlotIn(name, false),
             });
           },
         },
@@ -2443,6 +2485,7 @@ export function BackfillScreen() {
               onStreak={() => apply({ showStreak: true }, 'Streak shown')}
               onVacation={() => apply({ vacationPause: true }, 'Paused on vacation')}
               onHolidays={rule => apply({ recurrenceHolidays: rule }, rule === 'skip' ? 'Skips holidays' : 'Moves to the next day')}
+              onSlotIn={wait => apply({ slotIn: wait }, wait ? 'Waits if the day is full' : 'Keeps its date')}
               onReminder={() => { haptics.tap(); setReminderPickerOpen(true); }}
               onSuggestions={() => apply({ excludeFromSuggestions: true }, 'Excluded from suggestions')}
               customOpen={customOpen}
@@ -3800,6 +3843,7 @@ interface FieldControlProps {
   onStreak: () => void;
   onVacation: () => void;
   onHolidays: (rule: HolidayRule) => void;
+  onSlotIn: (wait: boolean) => void;
   onReminder: () => void;
   onSuggestions: () => void;
   onDifficulty: (difficulty: Difficulty) => void;
@@ -3813,7 +3857,7 @@ interface FieldControlProps {
 }
 
 function FieldControl({
-  field, task, colors, styles, onEstimate, onPriority, onDifficulty, onCategory, onStreak, onVacation, onHolidays, onReminder, onSuggestions,
+  field, task, colors, styles, onEstimate, onPriority, onDifficulty, onCategory, onStreak, onVacation, onHolidays, onSlotIn, onReminder, onSuggestions,
   customOpen, customText, customUnit, onOpenCustom, onCustomTextChange, onCustomUnitChange, onCustomSubmit,
 }: FieldControlProps) {
   if (field === 'estimate') {
@@ -3949,6 +3993,18 @@ function FieldControl({
         value={task.recurrenceHolidays ?? null}
         onChange={rule => { if (rule) onHolidays(rule); }}
         options={HOLIDAY_SEGMENTS}
+        surface="page"
+      />
+    );
+  }
+
+  if (field === 'slotIn') {
+    return (
+      <SegmentedControl<boolean | null>
+        label="If the day is full"
+        value={task.slotIn ?? null}
+        onChange={wait => { if (wait !== null) onSlotIn(wait); }}
+        options={SLOT_IN_SEGMENTS}
         surface="page"
       />
     );

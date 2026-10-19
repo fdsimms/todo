@@ -1455,6 +1455,8 @@ const taskFieldsShape = {
   location: z.string().nullable().optional().describe('The place it happens, as free text. null clears it.'),
   vacationPause: z.boolean().optional()
     .describe('Hide this task, and keep its streak, while vacation mode is on (get_overview says whether it is).'),
+  slotIn: z.boolean().nullable().optional()
+    .describe('If the day is full: true lets the phone hold this task until a day that is not busy (at least one waiting task still shows every day, longest wait first, and never past its deadline); false keeps its date even when its category says wait; null follows the category. Only for a dated task that is not a daily repeat, a daily target, an every-N-hours task, a meter or weather wait, or one with a reminder at a set time.'),
   workoutRoutineId: z.string().nullable().optional()
     .describe('A workout routine id (list_workouts lists routines; save_routine makes one). The task row then offers Start workout, and finishing that workout on the phone completes the task. Completing the task never logs a workout. null removes the link. Setting it clears workoutProgramId.'),
   workoutProgramId: z.string().nullable().optional()
@@ -3662,7 +3664,8 @@ function registerWriteTools(
         showStreak: z.boolean().nullable().optional().describe('true shows the streak chip on every repeating task, false leaves it off on purpose so the backfill screen stops asking. Null means ask.'),
         vacationPause: z.boolean().nullable().optional().describe('true pauses every repeating task during vacation mode, false leaves it off on purpose so the backfill screen stops asking. Null means ask.'),
         excludeFromSuggestions: z.boolean().nullable().optional().describe('true keeps every task out of suggested pins and focus sessions, false leaves it in on purpose so the backfill screen stops asking. Null means ask.'),
-      }).nullable().optional().describe('Priority, difficulty, time estimate, streak chip, vacation pause and skip-in-suggestions every new task in the project starts with, so a list like a wish list never reaches backfill. Null clears them. Existing tasks are not changed.'),
+        slotIn: z.boolean().nullable().optional().describe('If the day is full: true makes every new task wait for a day that is not busy, false keeps their dates even in a category set to wait. Null means no default.'),
+      }).nullable().optional().describe('Priority, difficulty, time estimate, streak chip, vacation pause, skip-in-suggestions and if-the-day-is-full every new task in the project starts with, so a list like a wish list never reaches backfill. Null clears them. Existing tasks are not changed.'),
       completed: z.boolean().optional(),
       archived: z.boolean().optional(),
       archiveRemaining: z.boolean().optional().describe('With completed: true, archive its open tasks too, as the app offers when a project is finished with tasks left. Ask the person first.'),
@@ -3787,6 +3790,7 @@ function registerWriteTools(
       hideOnVacation: z.boolean().optional(),
       excludeFromSuggestions: z.boolean().optional(),
       excludeFromNewTasksBanner: z.boolean().optional(),
+      slotIn: z.boolean().optional().describe('If the day is full: true makes this category\'s dated tasks wait for a day that is not busy, unless a task says otherwise (its own slotIn). Covers the tasks already in it.'),
       defaultTimeSegments: z.array(z.enum(TIME_SEGMENTS as unknown as [TimeOfDay, ...TimeOfDay[]])).optional(),
     },
     async input => {
@@ -3813,6 +3817,7 @@ function registerWriteTools(
       hideOnVacation: z.boolean().optional(),
       excludeFromSuggestions: z.boolean().optional(),
       excludeFromNewTasksBanner: z.boolean().optional(),
+      slotIn: z.boolean().optional().describe('If the day is full: true makes this category\'s dated tasks wait for a day that is not busy, unless a task says otherwise (its own slotIn). Covers the tasks already in it.'),
       defaultTimeSegments: z.array(z.enum(TIME_SEGMENTS as unknown as [TimeOfDay, ...TimeOfDay[]])).optional(),
     },
     async input => {

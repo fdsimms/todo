@@ -35,7 +35,7 @@ const NOT_SEEDED: Record<string, string[]> = {
     'waitingOnPersonSince', 'waitingFollowUpDeclinedAt', 'generatedKind', 'generatedSourceId', 'generatedReadyAt', 'calendarEventId',
     'calendarEventExternalId', 'completionCalendarEventId', 'completionCalendarEventExternalId', 'timeBlockEventId',
     'timeBlockExternalId', 'reminderUtcOffsetMinutes', 'recurrenceAnchorDay', 'recurrenceAnchorDate',
-    'meterHeldUntil', 'rainSkippedOn', 'reviewOfTaskId',
+    'meterHeldUntil', 'rainSkippedOn', 'reviewOfTaskId', 'slotDecidedOn', 'slotWaitingSince',
   ],
 
   // A group of apps is a selection of tokens that exists only on one phone, and
@@ -102,7 +102,7 @@ const NOT_SEEDED: Record<string, string[]> = {
   // quotaIntervalMinutes derives targetCount from the time window, which needs
   // the window and the interval edited together.
   'not offered on a template yet': [
-    'showStreak', 'streakRequiresWindow', 'streakCountsUnits', 'deadlineMonthDay', 'deadlineOnCalendar', 'logCompletionToCalendar',
+    'showStreak', 'slotIn', 'streakRequiresWindow', 'streakCountsUnits', 'deadlineMonthDay', 'deadlineOnCalendar', 'logCompletionToCalendar',
     'reminderKind', 'reminderTracksVisibility', 'reminderTimeAnchor', 'quotaIntervalMinutes', 'quotaAlwaysVisible',
     'timedMinutes', 'followUpTaskEveryN', 'followUpTaskTitle', 'followUpTaskDraft', 'followUpTaskOneAtATime',
     'followUpTaskAtEnd', 'seriesMonthDays', 'seriesRepeatMonths', 'seriesDefaults', 'slipAllowance',

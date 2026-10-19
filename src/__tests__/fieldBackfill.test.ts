@@ -13,6 +13,7 @@ const baseCategory: Category = {
   hideOnVacation: false,
   excludeFromSuggestions: false,
   excludeFromNewTasksBanner: false,
+  slotIn: false,
   defaultTimeSegments: [],
   sortOrder: 0,
   emoji: null,
@@ -421,12 +422,13 @@ describe('backfillFieldCounts', () => {
       { ...baseTask, id: 'f', estimatedMinutes: 30, priority: 2, category: 'Home', recurrenceType: 'daily' },
       { ...baseTask, id: 'g', estimatedMinutes: 30, priority: 2, category: 'Home', dueDate: new Date(2025, 0, 5).toISOString() },
     ];
-    expect(backfillFieldCounts(tasks)).toEqual({ estimate: 2, priority: 2, difficulty: 6, category: 2, streak: 1, vacation: 1, holidays: 2, reminder: 1, suggestions: 6 });
+    expect(backfillFieldCounts(tasks)).toEqual({ estimate: 2, priority: 2, difficulty: 6, category: 2, streak: 1, vacation: 1, holidays: 2, slotIn: 1, reminder: 1, suggestions: 6 });
   });
 
   it('covers every declared backfillable field', () => {
     const counts = backfillFieldCounts([{
-      ...baseTask, recurrenceType: 'daily', dueDate: new Date(2025, 0, 5).toISOString(),
+      // Weekly rather than daily: a daily task can't wait for a lighter day.
+      ...baseTask, recurrenceType: 'weekly', dueDate: new Date(2025, 0, 5).toISOString(),
     }]);
     for (const field of BACKFILL_FIELDS) {
       expect(counts[field.id]).toBe(1);
@@ -435,7 +437,7 @@ describe('backfillFieldCounts', () => {
 
   it('does not count a task dismissed for that field', () => {
     const task = { ...baseTask, backfillDismissedFields: ['estimate'] };
-    expect(backfillFieldCounts([task])).toEqual({ estimate: 0, priority: 1, difficulty: 1, category: 1, streak: 0, vacation: 0, holidays: 0, reminder: 0, suggestions: 1 });
+    expect(backfillFieldCounts([task])).toEqual({ estimate: 0, priority: 1, difficulty: 1, category: 1, streak: 0, vacation: 0, holidays: 0, slotIn: 0, reminder: 0, suggestions: 1 });
   });
 
   it('does not count a recurring task whose category already hides on vacation', () => {
@@ -464,8 +466,8 @@ describe('estimatePatchFor', () => {
 });
 
 describe('backfillFieldsFor', () => {
-  it('offers every field when simplified mode is off and rewards are on', () => {
-    expect(backfillFieldsFor(false, true)).toEqual(BACKFILL_FIELDS);
+  it('offers every field when simplified mode is off, rewards are on and slot-in is in use', () => {
+    expect(backfillFieldsFor(false, true, true, true)).toEqual(BACKFILL_FIELDS);
   });
 
   it('offers difficulty only while rewards are on, since only coins read it', () => {
@@ -579,5 +581,29 @@ describe('a task given several dates', () => {
   it('has no peers when it is not a series', () => {
     const other = series.find(t => t.id === 'other')!;
     expect(backfillSeriesPeers(other, series, 'priority')).toEqual([]);
+  });
+});
+
+describe('the slotIn field', () => {
+  const dated: Task = { ...baseTask, dueDate: new Date(2026, 9, 19).toISOString(), slotIn: null, category: 'Home' };
+
+  it('is offered only once slot-in is in use', () => {
+    expect(backfillFieldsFor(false).some(f => f.id === 'slotIn')).toBe(false);
+    expect(backfillFieldsFor(false, false, true, true).some(f => f.id === 'slotIn')).toBe(true);
+  });
+
+  it('asks about a dated task with no answer', () => {
+    expect(isFieldMissing(dated, 'slotIn', [baseCategory])).toBe(true);
+    expect(isFieldMissing({ ...dated, slotIn: false }, 'slotIn', [baseCategory])).toBe(false);
+    expect(isFieldMissing({ ...dated, slotIn: true }, 'slotIn', [baseCategory])).toBe(false);
+  });
+
+  it('leaves a task its category already answers', () => {
+    expect(isFieldMissing(dated, 'slotIn', [{ ...baseCategory, slotIn: true }])).toBe(false);
+  });
+
+  it('never asks about a task that cannot wait', () => {
+    expect(isFieldMissing({ ...dated, dueDate: null }, 'slotIn', [baseCategory])).toBe(false);
+    expect(isFieldMissing({ ...dated, recurrenceType: 'daily', recurrenceInterval: 1 }, 'slotIn', [baseCategory])).toBe(false);
   });
 });

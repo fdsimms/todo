@@ -2,9 +2,10 @@ import type { Task, Effort, Category } from '../types';
 import { EFFORT_MINUTES } from './effort';
 import { activeChainStep } from './chain';
 import { featureHidden, type SimpleFeatureId } from './simpleMode';
+import { canSlotIn, slotInFromCategory } from './slotIn';
 
 /** A field this screen can walk the task list and fill in, one task at a time. */
-export type BackfillFieldId = 'estimate' | 'priority' | 'difficulty' | 'category' | 'streak' | 'vacation' | 'holidays' | 'reminder' | 'suggestions';
+export type BackfillFieldId = 'estimate' | 'priority' | 'difficulty' | 'category' | 'streak' | 'vacation' | 'holidays' | 'slotIn' | 'reminder' | 'suggestions';
 
 export interface BackfillFieldDef {
   id: BackfillFieldId;
@@ -49,6 +50,11 @@ export const BACKFILL_FIELDS: BackfillFieldDef[] = [
     id: 'holidays',
     label: 'On a holiday',
     hint: 'What a repeating task does when it lands on a holiday: skip that day, or move to the next one.',
+  },
+  {
+    id: 'slotIn',
+    label: 'If the day is full',
+    hint: 'Whether a task waits for a day that isn’t already full, or keeps its date.',
   },
   {
     id: 'reminder',
@@ -100,6 +106,7 @@ export function backfillFieldsFor(
   simpleMode: boolean,
   rewardsEnabled = false,
   holidaysConfigured = true,
+  slotInInUse = false,
 ): BackfillFieldDef[] {
   return BACKFILL_FIELDS.filter(f => {
     // With no holidays set up in Settings the rule has nothing to act on, so the
@@ -110,6 +117,11 @@ export function backfillFieldsFor(
     // asks a question whose answer changes nothing: the editor hides its row
     // on the same terms.
     if (f.id === 'difficulty' && !rewardsEnabled) return false;
+    // Waiting for a lighter day is something a person opts into, so the
+    // question only appears once they have, on a task or a category
+    // (`slotInInUse`). Asked of everyone, it would be the opt-in feature
+    // docs/arch/backfill.md's fifth rule keeps off this screen.
+    if (f.id === 'slotIn' && !slotInInUse) return false;
     const feature = FIELD_SIMPLE_FEATURE[f.id];
     return !feature || !featureHidden(feature, simpleMode);
   });
@@ -186,6 +198,11 @@ export function isFieldMissing(task: Task, fieldId: BackfillFieldId, categories?
       // Null is "As usual", which is also what an unanswered task reads as, so
       // a person who wants it left that way says so with the dismissal.
       return repeatsOnDates(task) && task.recurrenceHolidays == null;
+    case 'slotIn':
+      // Null follows the category, so a task whose category already says wait
+      // is answered, the way 'vacation' treats hideOnVacation.
+      if (!canSlotIn(task) || typeof task.slotIn === 'boolean') return false;
+      return categories === undefined || slotInFromCategory(task, categories) === null;
     case 'reminder':
       // A reminder is an absolute instant, and the only instant this wizard
       // has to offer one against is the task's own due date — a task with no
@@ -224,11 +241,13 @@ function repeatsOnDates(task: Task): boolean {
 
 /**
  * Whether the field is a question for this task at all, set or not. It is what
- * a redo walks, so a one-off is never offered a holiday rule. Only `holidays`
- * has a gate that is about the task rather than the value.
+ * a redo walks, so a one-off is never offered a holiday rule. `holidays` and
+ * `slotIn` are the gates that are about the task rather than the value.
  */
 function fieldApplies(task: Task, fieldId: BackfillFieldId): boolean {
-  return fieldId !== 'holidays' || repeatsOnDates(task);
+  if (fieldId === 'holidays') return repeatsOnDates(task);
+  if (fieldId === 'slotIn') return canSlotIn(task);
+  return true;
 }
 
 /**

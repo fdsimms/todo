@@ -131,3 +131,15 @@ describe('buildTaskSummary', () => {
     expect(text(buildTaskSummary({ asks: 'yesno' }))).toBe('Asks for yes or no when you check it off.');
   });
 });
+
+describe('a task that waits if the day is full', () => {
+  it('says so after its date, as a tappable value', () => {
+    const parts = buildTaskSummary({ date: 'Friday', waitsIfFull: true });
+    expect(text(parts)).toBe('Shows up Friday, or later if that day is full.');
+    expect(values(parts)).toContainEqual(['slotIn', 'later if that day is full']);
+  });
+
+  it('says nothing without a date', () => {
+    expect(buildTaskSummary({ waitsIfFull: true })).toEqual([]);
+  });
+});

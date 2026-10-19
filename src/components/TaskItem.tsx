@@ -51,6 +51,7 @@ import { useTrayRaised } from './TaskGroupTray';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, checkboxRadius, type Colors, textScale } from '../theme';
 import { weatherWaitChipText } from '../utils/weatherWait';
+import { slotInChipText } from '../utils/slotIn';
 import { splitWeatherTitle } from '../utils/weatherTasks';
 import { meterChipText } from '../utils/meters';
 import { useMeterReadingStore } from '../store/useMeterReadingStore';
@@ -2053,6 +2054,7 @@ const TaskItemRow = React.memo(function TaskItem({
   // A one-off waiting for a kind of day says so, because the date beside it is
   // only where the forecast currently puts it (see Task.weatherWait).
   const weatherWaitText = weatherWaitChipText(task, getLogicalDayKey(new Date()));
+  const slotInText = slotInChipText(task, getLogicalDayKey(new Date()));
   // A string or null, for the reason the health selectors above return a
   // number: a row with no meter answers null for ever and never re-renders on
   // a reading, and one with a meter only when its own sentence changes.
@@ -2966,7 +2968,7 @@ const TaskItemRow = React.memo(function TaskItem({
   // Whether the meta row has anything to show besides the notes and deadline
   // markers. The notes icon alone is a bare glyph, so it never takes a line
   // of its own (see `notesStayInTitle`).
-  const hasOtherMeta = isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || (showStreakChip && !nutrientRow) || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || meterText !== null || reminderTimeLabel !== null || travelNote !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.generatedKind === 'calendarReview';
+  const hasOtherMeta = isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || (showStreakChip && !nutrientRow) || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || slotInText !== null || meterText !== null || reminderTimeLabel !== null || travelNote !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.generatedKind === 'calendarReview';
   const deadlineOnMeta = markersOnMeta && deadlineDays !== null;
   const notesStayInTitle = markersOnMeta && hasNotes && !hasOtherMeta && !deadlineOnMeta;
 
@@ -3693,6 +3695,14 @@ const TaskItemRow = React.memo(function TaskItem({
                 <Ionicons name="partly-sunny-outline" size={iconSize.xs} color={colors.textSecondary} />
                 <Text style={styles.scheduledLabel} numberOfLines={1}>
                   {weatherWaitText}
+                </Text>
+              </View>
+            )}
+            {slotInText !== null && (
+              <View style={styles.metaChip} accessibilityLabel={slotInText}>
+                <Ionicons name="hourglass-outline" size={iconSize.xs} color={colors.textSecondary} />
+                <Text style={styles.scheduledLabel} numberOfLines={1}>
+                  {slotInText}
                 </Text>
               </View>
             )}

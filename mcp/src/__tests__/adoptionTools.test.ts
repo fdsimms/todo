@@ -35,9 +35,11 @@ function fakeReplica(opts: {
   medications?: unknown[];
   rewards?: boolean;
   recipeRows?: unknown[];
+  categories?: { name: string; slotIn: boolean }[];
 } = {}): Replica {
   return {
     tasks: () => opts.tasks ?? [],
+    categories: () => opts.categories ?? [],
     generatorEnabled: () => false,
     settings: () => ({ simpleMode: !!opts.simpleMode, kitchenEnabled: opts.kitchenEnabled ?? true, completedRetentionDays: null, rewardsEnabled: opts.rewards ?? false }),
     recipes: () => opts.recipeRows ?? Array.from({ length: opts.recipes ?? 0 }, () => ({ name: 'Recipe', blanks: [], ingredients: [] })),
@@ -191,6 +193,16 @@ describe('since: features that are new to the person', () => {
     expect(ids([trip({})])).toContain('trip_destination');
     expect(ids([trip({ destination: 'Lisbon' })])).not.toContain('trip_destination');
     expect(ids([trip({ awayStart: null })])).not.toContain('trip_destination');
+  });
+
+  it('suggests waiting for a lighter day once tasks keep being moved by hand and nothing waits', () => {
+    const ids = (tasks: unknown[], categories: { name: string; slotIn: boolean }[] = []) =>
+      unusedFeatures(fakeReplica({ tasks: tasks as never, categories }), { since: '2026-10-19', limit: 20 }).suggestions.map(s => s.id);
+    const pushed = [...manyOpen(3, { postponeCount: 2 }), ...manyOpen(20)];
+    expect(ids(pushed)).toContain('slot_in');
+    expect(ids([...manyOpen(2, { postponeCount: 2 }), ...manyOpen(20)])).not.toContain('slot_in');
+    expect(ids(pushed, [{ name: 'Chores', slotIn: true }])).not.toContain('slot_in');
+    expect(ids([...pushed, ...manyOpen(1, { slotIn: true })])).not.toContain('slot_in');
   });
 
   it('suggests block for coins only with rewards on, the automation off and no rule written', () => {

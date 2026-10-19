@@ -92,7 +92,7 @@ type BatchPool = 'task' | 'person' | 'item' | 'recipe';
  * every recipe's cooked weight is its own.
  */
 const BATCH_APPLY: Record<BatchPool, readonly string[]> = {
-  task: ['estimate', 'priority', 'difficulty', 'category', 'streak', 'vacation', 'holidays', 'suggestions'],
+  task: ['estimate', 'priority', 'difficulty', 'category', 'streak', 'vacation', 'holidays', 'slotIn', 'suggestions'],
   person: ['location'],
   item: [],
   recipe: ['servings', 'cookTime', 'prepTime'],
@@ -105,7 +105,7 @@ const BATCH_APPLY: Record<BatchPool, readonly string[]> = {
  * cookbook of drinks with no cooked weight.
  */
 const BATCH_DISMISS: Record<BatchPool, readonly string[]> = {
-  task: ['estimate', 'priority', 'difficulty', 'category', 'streak', 'vacation', 'holidays', 'reminder', 'suggestions'],
+  task: ['estimate', 'priority', 'difficulty', 'category', 'streak', 'vacation', 'holidays', 'slotIn', 'reminder', 'suggestions'],
   person: ['cadence', 'location'],
   item: ['variety', 'substitutes', 'nutrition', 'nutritionDetail', 'product'],
   recipe: ['servings', 'cookTime', 'prepTime', 'cookedWeight'],
