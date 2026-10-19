@@ -1324,7 +1324,7 @@ carve-out from that rule, written down the way the weight goal's is, and
 allowed only for these four reasons together:
 
 - **The person chose it.** Zones appear only for somebody who typed a maximum
-  (Settings › Apple Health › Workouts › Maximum heart rate, `maxHeartRate`) or
+  (Settings › Workouts › Maximum heart rate, `maxHeartRate`) or
   typed a year of birth into the calorie budget (`bodyProfile.birthYear`).
   Without either, the card's one line names where they are typed, and that is
   all: no prompt, no sheet opened for it, no reminder, and nothing elsewhere

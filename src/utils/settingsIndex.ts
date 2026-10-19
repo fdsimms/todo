@@ -52,6 +52,7 @@ export type SettingsGroupId =
   | 'generated'
   | 'health'
   | 'kitchen'
+  | 'workouts'
   | 'permissions'
   | 'privacyAi'
   | 'dataReset'
@@ -86,6 +87,12 @@ export interface SettingsGroup {
    * lives in its own Feature areas group instead.
    */
   kitchenOnly?: boolean;
+  /**
+   * Dropped while the Workouts area (`workoutsEnabled`) is off, along with all
+   * of its entries: `kitchenOnly`'s treatment, for the other area with a switch
+   * of its own. The switch lives in Feature areas for the same reason.
+   */
+  workoutsOnly?: boolean;
   /**
    * The menu screen this group lives on instead of behind a row in Settings.
    *
@@ -148,6 +155,12 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
   // the rule is only that a repeat never lands next to its own other instance.
   { id: 'health', title: 'Apple Health', icon: 'heart-outline', tint: 'red', iosOnly: true },
   { id: 'kitchen', title: 'Groceries & meals', icon: 'cart-outline', tint: 'orange', kitchenOnly: true },
+  // After Groceries & meals, as its menu row is. These rows used to be a
+  // section of Apple Health, which is `iosOnly`, so the unit and the rest timer
+  // couldn't be set anywhere else. The Health write switch stays in Apple
+  // Health › Log to Health, beside everything else the app writes there. Green
+  // because orange is the row above, and green's other use is Reminders & Siri.
+  { id: 'workouts', title: 'Workouts', icon: 'barbell-outline', tint: 'green', workoutsOnly: true },
   // Neutral from here down: the tinted groups are things you configure, the grey
   // ones are housekeeping. There are only five tints and six tinted groups in
   // Settings' own list, so one repeats, and so does red — the rule is that a repeat never lands *next to* its own other
@@ -621,15 +634,6 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'weightGoal', groupId: 'health', label: 'Weight goal', section: 'Weight', keywords: ['target', 'lose', 'gain', 'maintain', 'calories', 'tdee', 'deficit', 'macros', 'protein', 'bmr', 'rate', 'lb per week'] },
   { id: 'weightUnit', groupId: 'health', label: 'Weight unit', section: 'Weight',
     keywords: ['kg', 'kilograms', 'lb', 'pounds', 'scale', 'body', 'mass', 'metric', 'imperial'] },
-  // Rendered only while the Workouts area is on, which is what `requires` says.
-  { id: 'workoutUnit', requires: 'workoutsEnabled', groupId: 'health', label: 'Workout weights', section: 'Workouts',
-    keywords: ['kg', 'kilograms', 'lb', 'pounds', 'gym', 'lifting', 'barbell', 'plates', 'metric', 'imperial'] },
-  { id: 'defaultRestSeconds', requires: 'workoutsEnabled', groupId: 'health', label: 'Rest between sets', section: 'Workouts',
-    keywords: ['rest timer', 'break', 'seconds', 'gym', 'lifting', 'countdown'] },
-  { id: 'workoutLiveActivity', iosOnly: true, requires: 'workoutsEnabled', groupId: 'health', label: 'Live Activity while working out', section: 'Workouts',
-    keywords: ['lock screen', 'dynamic island', 'rest timer', 'sets', 'gym', 'lifting', 'countdown'] },
-  { id: 'maxHeartRate', iosOnly: true, requires: 'workoutsEnabled', groupId: 'health', label: 'Maximum heart rate', section: 'Workouts',
-    keywords: ['max hr', 'bpm', 'pulse', 'zones', 'apple watch', 'age', 'estimate'] },
   { id: 'sleepGoal', groupId: 'health', label: 'Sleep goal', section: 'Sleep',
     keywords: ['hours', 'asleep', 'bedtime', 'night', 'rest', 'target'] },
   { id: 'shortNightNote', requires: 'healthRead', groupId: 'health', label: 'Short night note', section: 'Sleep',
@@ -1043,6 +1047,16 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
       'allergy', 'recipe', 'grocery', 'automatic'],
     simple: true },
 
+  // Workouts. No `requires`: the group is `workoutsOnly`, which drops them all.
+  { id: 'workoutUnit', groupId: 'workouts', label: 'Workout weights', section: 'Workouts',
+    keywords: ['kg', 'kilograms', 'lb', 'pounds', 'gym', 'lifting', 'barbell', 'plates', 'metric', 'imperial'] },
+  { id: 'defaultRestSeconds', groupId: 'workouts', label: 'Rest between sets', section: 'Workouts',
+    keywords: ['rest timer', 'break', 'seconds', 'gym', 'lifting', 'countdown'] },
+  { id: 'workoutLiveActivity', iosOnly: true, groupId: 'workouts', label: 'Live Activity while working out', section: 'Workouts',
+    keywords: ['lock screen', 'dynamic island', 'rest timer', 'sets', 'gym', 'lifting', 'countdown'] },
+  { id: 'maxHeartRate', iosOnly: true, groupId: 'workouts', label: 'Maximum heart rate', section: 'Workouts',
+    keywords: ['max hr', 'bpm', 'pulse', 'zones', 'apple watch', 'age', 'estimate'] },
+
   // Privacy & AI
   { id: 'appLock', groupId: 'privacyAi', label: 'Require Face ID to open', section: 'App lock',
     keywords: ['touch id', 'biometric', 'lock', 'passcode', 'privacy', 'security'] },
@@ -1117,10 +1131,13 @@ export function visibleSettingsGroups(
    * rows live in, and a hidden group's rows are already filtered by `simple`.
    */
   simpleMode = false,
+  /** The Workouts area's switch. True by default, for the reason `kitchenEnabled` is. */
+  workoutsEnabled = true,
 ): SettingsGroup[] {
   return SETTINGS_GROUPS.filter(g =>
     (!g.iosOnly || platformOS === 'ios')
     && (!g.kitchenOnly || kitchenEnabled)
+    && (!g.workoutsOnly || workoutsEnabled)
     && (!simpleMode || g.screen || SETTINGS_ENTRIES.some(e =>
       e.groupId === g.id
       && !e.simple
@@ -1154,7 +1171,11 @@ export function visibleSettingsEntries(
    */
   activeEntryIds?: ReadonlySet<string>,
 ): SettingsEntry[] {
-  const shown = new Set(visibleSettingsGroups(platformOS, kitchenEnabled).map(g => g.id));
+  // The Workouts switch is itself a gating row (`workoutsEnabled`), so a caller
+  // that says which rows are on has already said whether the area is; one that
+  // doesn't gets every group, the way it gets every row.
+  const workoutsEnabled = !activeEntryIds || activeEntryIds.has('workoutsEnabled');
+  const shown = new Set(visibleSettingsGroups(platformOS, kitchenEnabled, false, workoutsEnabled).map(g => g.id));
   return SETTINGS_ENTRIES.filter(e =>
     shown.has(e.groupId)
     && (kitchenEnabled || !e.kitchen)
@@ -1177,8 +1198,13 @@ export function settingsGroup(id: SettingsGroupId): SettingsGroup | undefined {
 export type IndexedSettingsGroup = SettingsGroup & { id: IndexedSettingsGroupId };
 export type IndexedSettingsGroupId = Exclude<SettingsGroupId, 'generated' | 'screenTime'>;
 
-export function settingsIndexGroups(platformOS: string, kitchenEnabled = true, simpleMode = false): IndexedSettingsGroup[] {
-  return visibleSettingsGroups(platformOS, kitchenEnabled, simpleMode)
+export function settingsIndexGroups(
+  platformOS: string,
+  kitchenEnabled = true,
+  simpleMode = false,
+  workoutsEnabled = true,
+): IndexedSettingsGroup[] {
+  return visibleSettingsGroups(platformOS, kitchenEnabled, simpleMode, workoutsEnabled)
     .filter((g): g is IndexedSettingsGroup => !g.screen);
 }
 

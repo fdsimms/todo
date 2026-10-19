@@ -99,9 +99,9 @@ export function FeatureAreasSettings() {
         icon="barbell-outline"
         iconColor={workoutsEnabled ? colors.accent : undefined}
         label="Workouts"
-        hint={workoutsEnabled
-          ? 'Log workouts from routines you make, under Health in the menu'
-          : 'Hidden from the menu and the tab bar'}
+        hint={!workoutsEnabled
+          ? 'Hidden from the menu and the tab bar'
+          : tabRoutes.includes('Workouts') ? 'Shown in the menu and the tab bar' : 'Shown in the menu'}
         toggle={workoutsEnabled}
         onPress={() => setWorkoutsEnabled(!workoutsEnabled)}
       />

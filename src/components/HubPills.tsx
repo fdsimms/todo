@@ -13,7 +13,6 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { usePersonStore } from '../store/usePersonStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useMoodStore } from '../store/useMoodStore';
-import { useWorkoutStore, workoutContentCount } from '../store/useWorkoutStore';
 import { NAV_HUBS, visibleHubMembers, type NavHubId } from '../utils/navHubs';
 import { attentionLeftovers, freshnessOf } from '../utils/leftovers';
 // The colour ladder lives with the card that established it — same import
@@ -80,8 +79,6 @@ export function HubPills({ hub, active }: Props) {
   const people = usePersonStore(s => s.people.length);
   const mood = useMoodStore(s => s.logs.length);
   const foodLog = useFoodLogStore(s => s.totalCount);
-  const workouts = useWorkoutStore(workoutContentCount);
-  const workoutsEnabled = useSettingsStore(s => s.workoutsEnabled);
 
   // The list you're actually looking at, not every trolley you have going — a
   // pill reading 22 while the Airbnb list holds four is counting shopping this
@@ -112,11 +109,11 @@ export function HubPills({ hub, active }: Props) {
   const tabs = useMemo(() => {
     const definition = NAV_HUBS.find(h => h.id === hub);
     if (!definition) return [];
-    const shown = visibleHubMembers(definition, simpleMode, { stacks, templates, people, mood, foodLog, workouts }, workoutsEnabled);
+    const shown = visibleHubMembers(definition, simpleMode, { stacks, templates, people, mood, foodLog });
     if (shown.some(m => m.route === active)) return shown;
     // Standing on a hidden member: put it back, in its own place.
     return definition.members.filter(m => m.route === active || shown.includes(m));
-  }, [hub, active, simpleMode, stacks, templates, people, mood, foodLog, workouts, workoutsEnabled]);
+  }, [hub, active, simpleMode, stacks, templates, people, mood, foodLog]);
 
   if (tabs.length < 2) return null;
 

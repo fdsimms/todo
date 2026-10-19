@@ -90,10 +90,10 @@ export function describeMaxHeartRate(max: MaxHeartRate | null): string {
  */
 export function describeZoneBasis(max: MaxHeartRate | null): string {
   if (!max) {
-    return 'To see time in zones, set your maximum heart rate in Settings › Apple Health › Workouts, or your year of birth in the calorie budget.';
+    return 'To see time in zones, set your maximum heart rate in Settings › Workouts, or your year of birth in the calorie budget.';
   }
   if (max.source === 'age') {
-    return `Zones are shares of a maximum of ${max.bpm} bpm, estimated from your age (${AGE_ESTIMATE_BASE} minus age). Set your own maximum in Settings › Apple Health › Workouts.`;
+    return `Zones are shares of a maximum of ${max.bpm} bpm, estimated from your age (${AGE_ESTIMATE_BASE} minus age). Set your own maximum in Settings › Workouts.`;
   }
   return `Zones are shares of the maximum heart rate you set, ${max.bpm} bpm.`;
 }

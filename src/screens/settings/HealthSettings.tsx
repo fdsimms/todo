@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, AppState, Platform } from 'react-native';
+import { View, AppState } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import type { HealthRequestStatus, HealthWriteStatus } from 'todo-health-bridge';
 import { useShallow } from 'zustand/react/shallow';
@@ -22,10 +22,7 @@ import { dayKeyOf, getCurrentDayStart } from '../../utils/dateUtils';
 import { formatWeight } from '../../utils/weightLog';
 import { goalDirection } from '../../utils/weightGoal';
 import { formatSleepDuration } from '../../utils/sleepLog';
-import { REST_SECONDS_MAX, REST_SECONDS_MIN, formatRestSeconds } from '../../utils/workoutData';
-import { describeMaxHeartRate, resolveMaxHeartRate } from '../../utils/heartRateZones';
 import { SleepGoalSheet } from '../../components/SleepGoalSheet';
-import { MaxHeartRateSheet } from '../../components/MaxHeartRateSheet';
 import { JournalWordGoalSheet } from '../../components/JournalWordGoalSheet';
 import { JournalPromptsSheet } from '../../components/JournalPromptsSheet';
 import { formatWordCount } from '../../utils/journal';
@@ -135,15 +132,6 @@ export function HealthSettings() {
   const setHealthTodayHidden = useSettingsStore(s => s.setHealthTodayHidden);
   const weightUnit = useSettingsStore(s => s.weightUnit);
   const workoutsEnabled = useSettingsStore(s => s.workoutsEnabled);
-  const workoutUnit = useSettingsStore(s => s.workoutUnit);
-  const setWorkoutUnit = useSettingsStore(s => s.setWorkoutUnit);
-  const defaultRestSeconds = useSettingsStore(s => s.defaultRestSeconds);
-  const setDefaultRestSeconds = useSettingsStore(s => s.setDefaultRestSeconds);
-  const workoutLiveActivity = useSettingsStore(s => s.workoutLiveActivity);
-  const setWorkoutLiveActivity = useSettingsStore(s => s.setWorkoutLiveActivity);
-  const maxHeartRate = useSettingsStore(s => s.maxHeartRate);
-  const birthYear = useSettingsStore(s => s.bodyProfile.birthYear);
-  const [maxHeartRateOpen, setMaxHeartRateOpen] = useState(false);
   const weightGoal = useSettingsStore(useShallow(s => s.weightGoal));
   const setWeightUnit = useSettingsStore(s => s.setWeightUnit);
   const sleepGoalMinutes = useSettingsStore(s => s.sleepGoalMinutes);
@@ -684,79 +672,6 @@ export function HealthSettings() {
         accessibilityLabelFor={o => (o.value === 'kg' ? 'Kilograms' : 'Pounds')}
       />
     </SettingsSection>
-
-    {workoutsEnabled && (
-      <SettingsSection
-        label="Workouts"
-        footer="Weights are stored in kilograms either way, so switching units changes only what workouts show and step by."
-      >
-        <SettingsRow
-          entryId="workoutUnit"
-          icon="barbell-outline"
-          label="Workout weights"
-          value={workoutUnit === 'kg' ? 'Kilograms' : 'Pounds'}
-          tight
-        />
-        <SettingsSegments
-          attached
-          label="Workout weights"
-          options={[
-            { value: 'kg' as WeightUnit, label: 'kg' },
-            { value: 'lb' as WeightUnit, label: 'lb' },
-          ]}
-          selected={workoutUnit}
-          onSelect={unit => setWorkoutUnit(unit)}
-          accessibilityLabelFor={o => (o.value === 'kg' ? 'Kilograms' : 'Pounds')}
-        />
-        <View style={styles.sep} />
-        <SettingsRow
-          entryId="defaultRestSeconds"
-          icon="timer-outline"
-          label="Rest between sets"
-          hint="The rest timer after a set, for an exercise whose routine doesn’t set its own."
-          tight
-        />
-        <View style={styles.cadenceRow}>
-          <CountStepper
-            value={defaultRestSeconds}
-            onChange={next => { if (next !== null) setDefaultRestSeconds(next); }}
-            min={REST_SECONDS_MIN}
-            max={REST_SECONDS_MAX}
-            step={15}
-            format={formatRestSeconds}
-            label="Rest between sets"
-            describeValue={n => (n === null ? 'not set' : `${n} seconds`)}
-          />
-        </View>
-        {Platform.OS === 'ios' && (
-          <>
-            <View style={styles.sep} />
-            <SettingsRow
-              entryId="workoutLiveActivity"
-              icon="phone-portrait-outline"
-              iconColor={workoutLiveActivity ? colors.accent : undefined}
-              label="Live Activity while working out"
-              hint={workoutLiveActivity
-                ? 'The set you’re on and the rest countdown show on the Lock Screen and Dynamic Island, with buttons to finish a set or skip the rest'
-                : 'Workouts stay in the app only'}
-              toggle={workoutLiveActivity}
-              onPress={() => setWorkoutLiveActivity(!workoutLiveActivity)}
-            />
-          </>
-        )}
-        <View style={styles.sep} />
-        <SettingsRow
-          entryId="maxHeartRate"
-          icon="heart-outline"
-          label="Maximum heart rate"
-          hint="Used to split a workout’s heart rate into five zones. Estimated as 220 minus your age until you set it. Your age comes from your year of birth in the calorie budget."
-          // "186, from age" while it is the estimate: it says so wherever it shows.
-          value={describeMaxHeartRate(resolveMaxHeartRate(maxHeartRate, birthYear, new Date()))}
-          onPress={() => { haptics.tap(); setMaxHeartRateOpen(true); }}
-        />
-      </SettingsSection>
-    )}
-    <MaxHeartRateSheet visible={workoutsEnabled && maxHeartRateOpen} onClose={() => setMaxHeartRateOpen(false)} />
 
     <SettingsSection
       label="Sleep"

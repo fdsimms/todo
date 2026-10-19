@@ -12,6 +12,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useSyncStore } from '../store/useSyncStore';
 import { getAppFontOption } from '../theme/fonts';
 import { retentionLabel } from '../utils/retention';
+import { formatRestSeconds } from '../utils/workoutData';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { DetailHeader } from '../components/DetailHeader';
@@ -70,8 +71,8 @@ export function SettingsScreen() {
   })));
 
   const groups = useMemo(
-    () => settingsIndexGroups(Platform.OS, settings.kitchenEnabled, settings.simpleMode),
-    [settings.kitchenEnabled, settings.simpleMode]
+    () => settingsIndexGroups(Platform.OS, settings.kitchenEnabled, settings.simpleMode, settings.workoutsEnabled),
+    [settings.kitchenEnabled, settings.simpleMode, settings.workoutsEnabled]
   );
   // Search must not turn up a row that isn't rendered — see
   // searchableSettingsEntries, which the app-wide search reads too.
@@ -94,6 +95,8 @@ export function SettingsScreen() {
     remindersImportEnabled: settings.remindersImportEnabled,
     groceryImportEnabled: settings.groceryImportEnabled,
     kitchenEnabled: settings.kitchenEnabled,
+    rewardsEnabled: settings.rewardsEnabled,
+    workoutsEnabled: settings.workoutsEnabled,
     calendarReadEnabled: settings.calendarReadEnabled,
     calendarIds: settings.calendarIds,
     healthReadEnabled: settings.healthReadEnabled,
@@ -112,6 +115,8 @@ export function SettingsScreen() {
       ? null
       : retentionLabel(settings.completedRetentionDays),
     demoActive,
+    workoutUnit: settings.workoutUnit,
+    workoutRestLabel: formatRestSeconds(settings.defaultRestSeconds),
     appVersion: `${Constants.expoConfig?.version || '1.0.0'}${Constants.nativeBuildVersion ? ` (${Constants.nativeBuildVersion})` : ''}`,
   }), [settings, demoActive]);
 
