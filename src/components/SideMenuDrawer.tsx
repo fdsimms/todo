@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
-  Dimensions,
+  useWindowDimensions,
   PanResponder,
   ScrollView,
   StyleSheet,
@@ -35,13 +35,14 @@ import { tipsFor } from '../utils/tips';
 import { hiddenResultsNote } from '../utils/simpleMode';
 import { useFilterField } from '../hooks/useFilterField';
 import { useNavMenuOptions } from '../hooks/useNavMenuOptions';
+import { drawerWidthFor } from '../utils/frameWidth';
 
-// 85% rather than the 72% this used to be. The drawer is the only thing on
-// screen while it's open — everything behind it is blurred and dimmed and
-// exists to be tapped through — so the strip it left showing was 28% of the
+// 85% of a phone rather than the 72% this used to be. The drawer is the only
+// thing on screen while it's open — everything behind it is blurred and dimmed
+// and exists to be tapped through — so the strip it left showing was 28% of the
 // display doing no work, and it was the same 28% a hub row's subtitle needed
-// to name what it holds without truncating.
-const DRAWER_WIDTH = Math.round(Dimensions.get('window').width * 0.85);
+// to name what it holds without truncating. On a wider window it stops at a
+// fixed strip (`drawerWidthFor`), read per render because a Mac window resizes.
 
 interface Props {
   visible: boolean;
@@ -121,7 +122,13 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
   );
   const searching = terms.length > 0;
 
-  const translateX = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
+  const { width: windowWidth } = useWindowDimensions();
+  const drawerWidth = drawerWidthFor(windowWidth);
+  // The responder and the close animations are built once, so they read the
+  // width as it is when they run rather than as it was when they were made.
+  const drawerWidthRef = useRef(drawerWidth);
+  drawerWidthRef.current = drawerWidth;
+  const translateX = useRef(new Animated.Value(-drawerWidth)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const dragOffsetX = useRef(new Animated.Value(0)).current;
   const [isRendered, setIsRendered] = useState(false);
@@ -147,7 +154,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
         if (gs.dx < 0) dragOffsetX.setValue(gs.dx);
       },
       onPanResponderRelease: (_e, gs) => {
-        if (gs.dx < -DRAWER_WIDTH * 0.3 || gs.vx < -0.5) {
+        if (gs.dx < -drawerWidthRef.current * 0.3 || gs.vx < -0.5) {
           Animated.timing(dragOffsetX, { toValue: 0, duration: 0, useNativeDriver: true }).start();
           onClose();
         } else {
@@ -163,6 +170,10 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
   useEffect(() => {
     if (visible) {
       fastCloseRef.current = false;
+      // Fully closed means parked at the old width's edge, which a resized
+      // window has moved: park at the current one so it slides in from off
+      // screen. Skipped mid-close, where jumping would be seen.
+      if (!isRendered) translateX.setValue(-drawerWidthRef.current);
       setIsRendered(true);
       // A query handed back on the next open is a filtered menu with no visible
       // reason why — the same rule the task editor's field search follows.
@@ -192,7 +203,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
       const closeAnimations = fastCloseRef.current
         ? [
             Animated.timing(translateX, {
-              toValue: -DRAWER_WIDTH,
+              toValue: -drawerWidthRef.current,
               duration: animation.duration.fast,
               useNativeDriver: true,
             }),
@@ -209,7 +220,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
             // bar was dead for a second or two after the menu looked closed.
             // Same reasoning as `useSheetMotion`'s exit.
             Animated.timing(translateX, {
-              toValue: -DRAWER_WIDTH,
+              toValue: -drawerWidthRef.current,
               duration: animation.duration.sheetExit,
               useNativeDriver: true,
             }),
@@ -282,7 +293,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
             styles.drawer,
             shadows.drawer,
             {
-              width: DRAWER_WIDTH,
+              width: drawerWidth,
               borderRightColor: colors.separator,
               transform: [{ translateX: Animated.add(translateX, dragOffsetX) }],
             },

@@ -5,7 +5,7 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 import { SheetModal } from './SheetModal';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -25,6 +25,7 @@ import { dayKeyOf } from '../utils/dateUtils';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetScrim } from './SheetScrim';
 import { BUTTON_LABEL } from '../copy/shared';
+import { pickerCardWidthFor } from '../utils/frameWidth';
 
 interface Props {
   visible: boolean;
@@ -49,10 +50,7 @@ interface Props {
 // its own hand-picked spacing, which is why the two read as two different
 // pickers despite doing the same job. Keep these in step with WhenPicker's
 // constants if either changes.
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CARD_WIDTH = Math.min(SCREEN_WIDTH - 32, 380);
 const CAL_PADDING = 10;
-const CELL_SIZE = Math.floor((CARD_WIDTH - CAL_PADDING * 2) / 7);
 
 export function CalendarPicker({
   visible, value, mode, title, onConfirm, onCancel,
@@ -60,7 +58,8 @@ export function CalendarPicker({
 }: Props) {
   const colors = useColors();
   const { isDark, shadows } = useTheme();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const { width: windowWidth } = useWindowDimensions();
+  const styles = useMemo(() => makeStyles(colors, windowWidth), [colors, windowWidth]);
 
   const [displayMonth, setDisplayMonth] = useState(() => value ?? new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(value);
@@ -287,7 +286,11 @@ export function CalendarPicker({
   );
 }
 
-const makeStyles = (colors: Colors) => StyleSheet.create({
+const makeStyles = (colors: Colors, windowWidth: number) => {
+  // Read per render: a Mac window or an iPad in Split View is resized after launch.
+  const cardWidth = pickerCardWidthFor(windowWidth);
+  const cellSize = Math.floor((cardWidth - CAL_PADDING * 2) / 7);
+  return StyleSheet.create({
   backdrop: {
     flex: 1,
     justifyContent: 'center',
@@ -298,7 +301,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.backdrop,
   },
   card: {
-    width: CARD_WIDTH,
+    width: cardWidth,
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.lg,
     overflow: 'hidden',
@@ -359,7 +362,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginBottom: spacing.xxs,
   },
   dayHeaderCell: {
-    width: CELL_SIZE,
+    width: cellSize,
     alignItems: 'center',
     paddingVertical: 4,
   },
@@ -371,18 +374,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    height: CELL_SIZE * 6,
+    height: cellSize * 6,
   },
   dayCell: {
-    width: CELL_SIZE,
-    height: CELL_SIZE,
+    width: cellSize,
+    height: cellSize,
     alignItems: 'center',
     justifyContent: 'center',
   },
   dayCircle: {
-    width: CELL_SIZE - 6,
-    height: CELL_SIZE - 6,
-    borderRadius: (CELL_SIZE - 6) / 2,
+    width: cellSize - 6,
+    height: cellSize - 6,
+    borderRadius: (cellSize - 6) / 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -442,3 +445,4 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     height: spacing.md,
   },
 });
+};

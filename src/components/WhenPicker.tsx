@@ -6,7 +6,7 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Dimensions,
+  useWindowDimensions,
   Animated,
 } from 'react-native';
 import { SheetModal } from './SheetModal';
@@ -49,6 +49,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetScrim } from './SheetScrim';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
+import { pickerCardWidthFor } from '../utils/frameWidth';
 
 // Placeholder fields the snooze engine doesn't consider — only the ones it
 // actually reads (title/notes/tags/category/priority/effort) get overridden
@@ -185,10 +186,7 @@ interface Props {
   projectAnchor?: ProjectDateAnchor | null;
 }
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CARD_WIDTH = Math.min(SCREEN_WIDTH - 32, 380);
 const CAL_PADDING = 10;
-const CELL_SIZE = Math.floor((CARD_WIDTH - CAL_PADDING * 2) / 7);
 // Rows are shorter than the columns are wide: a square cell made the month
 // grid taller than the controls above it. The circle is sized from the row.
 const ROW_HEIGHT = 40;
@@ -221,7 +219,8 @@ export function WhenPicker({
 }: Props) {
   const colors = useColors();
   const { shadows } = useTheme();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const { width: windowWidth } = useWindowDimensions();
+  const styles = useMemo(() => makeStyles(colors, windowWidth), [colors, windowWidth]);
   const tasks = useTasksWhileOpen(visible);
   const projects = useProjectStore(useShallow(s => s.projects));
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
@@ -1005,7 +1004,11 @@ function QuickButton({
   );
 }
 
-const makeStyles = (colors: Colors) => StyleSheet.create({
+const makeStyles = (colors: Colors, windowWidth: number) => {
+  // Read per render: a Mac window or an iPad in Split View is resized after launch.
+  const cardWidth = pickerCardWidthFor(windowWidth);
+  const cellSize = Math.floor((cardWidth - CAL_PADDING * 2) / 7);
+  return StyleSheet.create({
   backdrop: {
     flex: 1,
     justifyContent: 'center',
@@ -1018,7 +1021,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.backdrop,
   },
   card: {
-    width: CARD_WIDTH,
+    width: cardWidth,
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.lg,
     overflow: 'hidden',
@@ -1199,7 +1202,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
   },
   dayHeaderCell: {
-    width: CELL_SIZE,
+    width: cellSize,
     alignItems: 'center',
     paddingVertical: spacing.xxs,
   },
@@ -1214,7 +1217,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     height: ROW_HEIGHT * 6,
   },
   dayCell: {
-    width: CELL_SIZE,
+    width: cellSize,
     height: ROW_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1332,3 +1335,4 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.semibold,
   },
 });
+};

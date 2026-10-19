@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Text, View, StyleSheet, Animated, TouchableOpacity, ScrollView, Dimensions } from 'react-native';
+import { Text, View, StyleSheet, Animated, TouchableOpacity, ScrollView, useWindowDimensions } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { animation, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
@@ -22,7 +22,7 @@ const PREVIEW_LIMIT = 4;
  * the only way back to your tasks is to dismiss it. Capped, the overflow
  * scrolls inside the banner and the list keeps its share of the screen.
  */
-const MAX_LIST_HEIGHT = Math.round(Dimensions.get('window').height * 0.32);
+const MAX_LIST_HEIGHT_FRACTION = 0.32;
 
 interface Props {
   tasks: Task[];
@@ -51,7 +51,8 @@ interface Props {
  */
 export function NewTasksBanner({ tasks, onJumpToTask, onDismiss }: Props) {
   const colors = useColors();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const { height: windowHeight } = useWindowDimensions();
+  const styles = useMemo(() => makeStyles(colors, windowHeight), [colors, windowHeight]);
   const reduceMotion = useReduceMotion();
   const progress = useRef(new Animated.Value(0)).current;
   const [collapsed, setCollapsed] = useState(false);
@@ -213,7 +214,7 @@ function NewTaskRow({
   );
 }
 
-const makeStyles = (colors: Colors) => StyleSheet.create({
+const makeStyles = (colors: Colors, windowHeight: number) => StyleSheet.create({
   container: {
     backgroundColor: colors.warningBg,
     marginHorizontal: spacing.md,
@@ -250,7 +251,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     // flexGrow: 0 keeps the ScrollView sized to its content up to the cap
     // rather than filling whatever the banner's parent offers.
     flexGrow: 0,
-    maxHeight: MAX_LIST_HEIGHT,
+    maxHeight: Math.round(windowHeight * MAX_LIST_HEIGHT_FRACTION),
   },
   listContent: {
     paddingRight: spacing.xs,

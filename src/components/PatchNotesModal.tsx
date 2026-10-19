@@ -7,7 +7,7 @@ import {
   PanResponder,
   FlatList,
   StyleSheet,
-  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 import { SheetModal } from './SheetModal';
 import { SafeBlurView } from './SafeBlurView';
@@ -31,8 +31,6 @@ interface Props {
   onDismiss: () => void;
 }
 
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
-const NOTES_MAX_HEIGHT = SCREEN_HEIGHT * 0.7;
 
 function formatDate(iso: string): string {
   if (!iso) return '';
@@ -46,7 +44,8 @@ function formatDate(iso: string): string {
 export function PatchNotesModal({ visible, onDismiss }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const { height: windowHeight } = useWindowDimensions();
+  const styles = useMemo(() => makeStyles(colors, windowHeight), [colors, windowHeight]);
   const fade = useScrollEdgeFade();
   const patchNotesQaStatus = useSettingsStore(s => s.patchNotesQaStatus);
   const setPatchNoteQaStatus = useSettingsStore(s => s.setPatchNoteQaStatus);
@@ -224,7 +223,7 @@ export function PatchNotesModal({ visible, onDismiss }: Props) {
   );
 }
 
-const makeStyles = (colors: Colors) => StyleSheet.create({
+const makeStyles = (colors: Colors, windowHeight: number) => StyleSheet.create({
   container: {
     flex: 1,
     justifyContent: 'flex-end',
@@ -273,7 +272,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     padding: spacing.xxs,
   },
   notesScroll: {
-    maxHeight: NOTES_MAX_HEIGHT,
+    maxHeight: windowHeight * 0.7,
   },
   empty: { paddingVertical: spacing.xl },
   noteRow: {
