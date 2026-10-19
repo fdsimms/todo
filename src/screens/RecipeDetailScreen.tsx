@@ -165,6 +165,9 @@ type RootStackParamList = {
   RecipeDetail: { recipeId: string; choices?: string[]; overrides?: RecipeOverride[]; scale?: number; openCookMode?: number; openDetails?: number; draft?: boolean; returnTo?: string; fromName?: string };
 };
 
+/** What opens a recipe: the route's params, and what a pane is handed in place of a push. */
+export type RecipeDetailParams = RootStackParamList['RecipeDetail'];
+
 /** One row of the merged list the ingredients SortableList drags over — see mergedIngredientRows. */
 type MergedIngredientRow =
   | { kind: 'ingredient'; id: string; ingredient: RecipeIngredient }

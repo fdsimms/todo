@@ -71,6 +71,14 @@ interface Props {
   onScrollMetrics?: (metrics: ScrollMetrics) => void;
   /** Filled with a function that scrolls the sheet to an offset, animated unless Reduce Motion is on. */
   scrollToRef?: React.MutableRefObject<((y: number) => void) | null>;
+  /**
+   * Drawn where it is placed, with no Modal, as the second pane beside a list
+   * (`TwoPane`) instead of a sheet over it. Nothing renders while `visible` is
+   * false, and `onShow` fires when it becomes visible, since there is no
+   * present animation to wait for. It is then a screen-level form like any
+   * other, so a drag inside it has none of the page-sheet trouble above.
+   */
+  inline?: boolean;
 }
 
 /**
@@ -127,6 +135,7 @@ export function EditorSheet({
   subheader,
   onScrollMetrics,
   scrollToRef,
+  inline = false,
 }: Props) {
   const insets = useSafeAreaInsets();
   // Gives the ScrollView itself a correct bottom inset for the focused field
@@ -139,7 +148,7 @@ export function EditorSheet({
   // combination could over-scroll the sheet — a small field near the top
   // scrolling far past where it needed to, occasionally all the way to the
   // bottom of the content. One mechanism owning the adjustment fixes that.
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true, accessoryHeight: keyboardAccessoryHeight });
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: !inline, accessoryHeight: keyboardAccessoryHeight });
 
   // What a DragScroller needs, kept off React state: it is read a frame at a
   // time while a drag is in flight. The offset is written back synchronously by
@@ -199,14 +208,15 @@ export function EditorSheet({
     </ScrollView>
   );
 
-  return (
-    <SheetModal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="fullScreen"
-      onRequestClose={onRequestClose}
-      onShow={onShow}
-    >
+  // Inline, the pane has no present animation to wait for, so the form's "now
+  // showing" is the moment it becomes visible.
+  const onShowRef = useRef(onShow);
+  onShowRef.current = onShow;
+  useEffect(() => {
+    if (inline && visible) onShowRef.current?.();
+  }, [inline, visible]);
+
+  const body = (
       <View style={rootStyle}>
         {/*
           The page sheet used to start below the status bar for us. Held on a
@@ -224,6 +234,18 @@ export function EditorSheet({
 
         {footer}
       </View>
+  );
+
+  if (inline) return visible ? body : null;
+  return (
+    <SheetModal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="fullScreen"
+      onRequestClose={onRequestClose}
+      onShow={onShow}
+    >
+      {body}
     </SheetModal>
   );
 }

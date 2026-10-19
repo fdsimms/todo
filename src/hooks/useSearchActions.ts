@@ -3,6 +3,8 @@ import { haptics } from '../utils/haptics';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useFoodLogStore } from '../store/useFoodLogStore';
+import { waterEntryOf, waterTotalMl } from '../utils/waterLog';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useNavMenuOptions } from './useNavMenuOptions';
 import { menuDestinations } from '../utils/navHubs';
@@ -58,7 +60,9 @@ const NONE: SearchActionsView = {
  * The stores are read when the query changes rather than subscribed to, the
  * same trade `useElsewhereSearch` makes: both callers stay mounted behind
  * other screens, and a subscription would re-render them on every dose, glass
- * or grocery tick for a list nobody is looking at.
+ * or grocery tick for a list nobody is looking at. The exception is today's
+ * water total, watched as a number while the results are showing, so the
+ * water row's "so far" line follows a glass logged from a task.
  */
 export function useSearchActions(query: string, active: boolean, limit?: number): SearchActionsView {
   const menuOptions = useNavMenuOptions();
@@ -66,6 +70,16 @@ export function useSearchActions(query: string, active: boolean, limit?: number)
     () => new Set(menuDestinations(menuOptions).map(d => d.route)),
     [menuOptions],
   );
+
+  // The one subscription here, and a number rather than the entries: ticking a
+  // linked water task (or the Food log's stepper) while results are up writes
+  // today's water, and the "so far" line should follow. A primitive selector
+  // re-renders only when the total itself moves, and not at all while closed.
+  const liveWaterMl = useFoodLogStore(s => {
+    if (!active) return 0;
+    const entry = waterEntryOf(s.entries);
+    return entry ? waterTotalMl([entry]) : 0;
+  });
 
   return useMemo(() => {
     if (!active || query.trim().length === 0) return NONE;
@@ -104,7 +118,7 @@ export function useSearchActions(query: string, active: boolean, limit?: number)
       descriptions: new Map(outcome.actions.map(a => [a.key, describeSearchAction(a, ctx)])),
       describe: (a: SearchAction) => describeSearchAction(a, ctx),
     };
-  }, [active, query, routes, limit]);
+  }, [active, query, routes, limit, liveWaterMl]);
 }
 
 /**
