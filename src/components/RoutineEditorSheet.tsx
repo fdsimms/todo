@@ -67,6 +67,16 @@ const PROGRESSION_OPTIONS: SegmentOption<ProgressionScheme | null>[] = (
   ['double', 'linear', 'percent', 'rpe'] as const
 ).map(value => ({ value, label: PROGRESSION_LABELS[value] }));
 
+// With no scheme chosen the four names mean nothing to most people, so the
+// hint spells each one out. Once one is picked, PROGRESSION_HINTS takes over.
+const PROGRESSION_INTRO = [
+  'How this exercise moves on from one workout to the next. With none chosen here, the program’s choice applies. Workout mode shows its suggestion, and you choose whether to use it.',
+  'Rep range: you aim for a range, like 8 to 12 reps. Once every set reaches the top, add weight and start at the bottom again.',
+  'Linear: add a little weight each workout where you finish all your reps. Common for beginners.',
+  '% of max: each set’s weight is a percentage of your heaviest lift, which you set in the program.',
+  'RPE: after a set, rate how hard it felt from 1 (very easy) to 10 (couldn’t do another rep), and the suggested weight follows.',
+].join('\n\n');
+
 const NAME_REFUSED: Record<string, string> = {
   blank: 'Give the routine a name.',
   notFound: 'This routine was deleted on another device.',
@@ -475,7 +485,7 @@ function ItemControls({
           <HelpText style={[styles.hint, styles.hintBelow]}>
             {scheme
               ? PROGRESSION_HINTS[scheme]
-              : 'How this exercise moves on from one workout to the next. With none chosen here, the program’s choice applies. Workout mode shows its suggestion, and you choose whether to use it.'}
+              : PROGRESSION_INTRO}
           </HelpText>
         </View>
       </View>
