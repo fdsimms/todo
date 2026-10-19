@@ -64,7 +64,8 @@ import {
 } from '../utils/stepTimers';
 import {
   currentSetOf, finishPlan, formatDistance, formatSetLine, matchPrevious, nextSet,
-  sessionExercises, sessionSummary, setFieldsFor, setLabels, valuesFromLastDone, type SetField,
+  columnLabel, fieldLabel, sessionExercises, sessionSummary, setBadge, setFieldsFor, setLabels, valuesFromLastDone,
+  type SetField,
 } from '../utils/workoutSession';
 import { tickSet } from '../utils/workoutTick';
 import type { WeightUnit } from '../utils/weightLog';
@@ -611,7 +612,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                         accessibilityState={{ expanded: isOpen }}
                         accessibilityLabel={`Set ${label}${prevLine ? `, last time ${prevLine}` : ''}, ${fields.map(f => valueText(set, f, unit) ?? 'not entered').join(', ')}`}
                       >
-                        <Text style={[styles.colSet, set.kind === 'warmup' || set.kind === 'drop' ? styles.setBadge : styles.setNumber]}>{label}</Text>
+                        <Text style={[styles.colSet, setBadge(set.kind) ? styles.setBadge : styles.setNumber]}>{label}</Text>
                         <Text style={[styles.colPrev, styles.prevText]} numberOfLines={1}>{prevLine ?? '–'}</Text>
                         {fields.map(f => (
                           <Text
@@ -756,21 +757,6 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
 }
 
 // ==== the cells and their steppers ====
-
-/** What a value column is headed: the unit for a weight, as the mock has it. */
-function columnLabel(field: SetField, kind: ExerciseKind, unit: WeightUnit): string {
-  if (field === 'weight') return kind === 'assisted_reps' ? `−${unit}` : unit;
-  if (field === 'reps') return 'Reps';
-  if (field === 'duration') return 'Time';
-  return 'Dist';
-}
-
-function fieldLabel(field: SetField, kind: ExerciseKind): string {
-  if (field === 'weight') return kind === 'assisted_reps' ? 'Assistance' : 'Weight';
-  if (field === 'reps') return 'Reps';
-  if (field === 'duration') return 'Time';
-  return 'Distance';
-}
 
 function valueText(set: WorkoutSet, field: SetField, unit: WeightUnit): string | null {
   if (field === 'weight') return set.weightKg !== null ? formatWeightNumber(set.weightKg, unit) : null;

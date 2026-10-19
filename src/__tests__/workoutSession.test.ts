@@ -19,6 +19,8 @@ import {
   setFieldsFor,
   setLabels,
   setName,
+  columnLabel,
+  fieldLabel,
   supersetGroup,
   valuesFromLastDone,
   walkOrder,
@@ -316,8 +318,16 @@ describe('what a set records, and how it reads', () => {
       set('a', 0, 0, { kind: 'warmup' }), set('a', 0, 1), set('a', 0, 2, { kind: 'amrap' }), set('a', 0, 3, { kind: 'drop' }),
     ];
     const labels = setLabels(sets);
-    expect(sets.map(s => labels.get(s.id))).toEqual(['W', '1', '2', 'D']);
-    expect(sets.map(s => setName(s.kind, labels.get(s.id)!))).toEqual(['Warm-up', 'Set 1', 'Set 2', 'Drop set']);
+    expect(sets.map(s => labels.get(s.id))).toEqual(['W', '1', 'F', 'D']);
+    expect(sets.map(s => setName(s.kind, labels.get(s.id)!))).toEqual(['Warm-up', 'Set 1', 'To failure', 'Drop set']);
+  });
+
+  it('heads a weight column with the unit, minus for assistance, and names it in words', () => {
+    expect(columnLabel('weight', 'weight_reps', 'kg')).toBe('kg');
+    expect(columnLabel('weight', 'assisted_reps', 'lb')).toBe('−lb');
+    expect(columnLabel('reps', 'weight_reps', 'kg')).toBe('Reps');
+    expect(fieldLabel('weight', 'assisted_reps')).toBe('Assistance');
+    expect(fieldLabel('duration', 'duration')).toBe('Time');
   });
 });
 

@@ -29,12 +29,13 @@ export interface TickOutcome extends AfterLog {
 
 /**
  * The rest after a set, in the words the footer and the Lock Screen show:
- * "After set 2 of Barbell bench press". A warm-up and a drop set say so, since
- * they carry no number.
+ * "After set 2 of Barbell bench press". A warm-up, a drop set and a set to
+ * failure say so, since they carry no number.
  */
 export function restLabelFor(set: Pick<WorkoutSet, 'kind'>, label: string | undefined, exerciseNameText: string): string {
   if (set.kind === 'warmup') return `After a warm-up set of ${exerciseNameText}`;
   if (set.kind === 'drop') return `After a drop set of ${exerciseNameText}`;
+  if (set.kind === 'amrap') return `After a set to failure of ${exerciseNameText}`;
   return `After set ${label} of ${exerciseNameText}`;
 }
 

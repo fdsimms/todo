@@ -4,57 +4,82 @@ import type {
   ProgressionScheme,
   RoutineSetTarget,
   WorkoutRoutineItem,
+  WorkoutSetKind,
 } from '../types';
 import type { WeightUnit } from './weightLog';
 import { MUSCLE_LABELS, formatRestSeconds, formatWeightWithUnit } from './workoutData';
-import { formatDistance } from './workoutSession';
+import { formatDistance, setBadge } from './workoutSession';
 
 /**
  * The routine editor's rules: what an item's targets add up to, and the edits
  * the editor makes to them, written so an edit changes only what it names.
  * Pure and tested (`workoutRoutine.test.ts`); `RoutineEditorSheet` draws.
  *
- * **An edit never flattens targets it didn't touch.** A routine written over
- * MCP or by a later build can hold per-set targets the editor has no control
- * for (an AMRAP last set, a drop set, a different weight per set). Changing
- * the working-set count copies the last of them or drops from the end;
- * changing the reps or the weight writes that one field on each working
- * target and leaves the rest of every target as it was.
+ * **Every set is edited on its own.** The editor draws an item's targets as a
+ * table, one row per planned set, and each edit names the set it changes
+ * (`withSetKind`, `withSetWeight`, `withSetReps`, `duplicateSet`, `removeSet`),
+ * so a pyramid, a drop set or a last set to failure is written as it is meant
+ * and nothing else moves. Fields the editor has no control for (a percentage
+ * of the training max, an RPE) ride along on the target untouched.
+ *
+ * **Two rules hold the table's shape.** Warm-ups come first, since a warm-up
+ * after the work isn't one; and an item keeps at least one set that isn't a
+ * warm-up, since the rest of the app reads an item's working weight and reps
+ * off it. The editor never offers an edit that would break either (`canRemoveSet`,
+ * `kindsFor`), and the functions refuse one anyway.
  *
  * **The progression is a choice stored on the item.** Workout mode proposes
  * the next load from it (`workoutProgression.ts`), as a suggestion the person
  * accepts with a tap; nothing here or there applies one unasked.
  */
 
-/** How the editor reads an item: the counts and the one value each control shows. */
+/** How an item reads in a line: its counts by kind, and the values of its first working set. */
 export interface RoutineItemShape {
   warmups: number;
-  /** Every target that isn't a warm-up: working, AMRAP and drop sets. */
+  /** Plain working sets, the ones the table numbers. */
   workingSets: number;
+  dropSets: number;
+  /** Sets to failure (`amrap`). */
+  failureSets: number;
+  /** The lowest and highest reps across the working sets. */
   repsMin: number | null;
   repsMax: number | null;
+  /** The first working set's weight: what a ramp is worked out from. */
   weightKg: number | null;
   durationSeconds: number | null;
 }
 
 const isWarmup = (t: RoutineSetTarget) => t.kind === 'warmup';
 
-/** The shape of an item's targets, read off its first working target. */
+/**
+ * The shape of an item's targets. The values come from its plain working
+ * sets, else (an item that is all drop or failure sets) from whatever isn't a
+ * warm-up, so a weight or a rep range is never lost from the line for want of
+ * a set called "working".
+ */
 export function itemShape(item: Pick<WorkoutRoutineItem, 'targets'>): RoutineItemShape {
-  const working = item.targets.filter(t => !isWarmup(t));
-  const first = working[0];
+  const work = item.targets.filter(t => !isWarmup(t));
+  const working = item.targets.filter(t => t.kind === 'working');
+  const basis = working.length > 0 ? working : work;
+  const mins = basis.map(t => t.repsMin ?? t.repsMax).filter((n): n is number => n != null);
+  const maxes = basis.map(t => t.repsMax ?? t.repsMin).filter((n): n is number => n != null);
   return {
-    warmups: item.targets.length - working.length,
+    warmups: item.targets.length - work.length,
     workingSets: working.length,
-    repsMin: first?.repsMin ?? null,
-    repsMax: first?.repsMax ?? null,
-    weightKg: first?.weightKg ?? null,
-    durationSeconds: first?.durationSeconds ?? null,
+    dropSets: item.targets.filter(t => t.kind === 'drop').length,
+    failureSets: item.targets.filter(t => t.kind === 'amrap').length,
+    repsMin: mins.length ? Math.min(...mins) : null,
+    repsMax: maxes.length ? Math.max(...maxes) : null,
+    weightKg: basis[0]?.weightKg ?? null,
+    durationSeconds: basis[0]?.durationSeconds ?? null,
   };
 }
 
-/** The most sets of one kind an item holds: a typo check, not a coaching limit. */
+/** The most sets an item holds that aren't warm-ups: a typo check, not a coaching limit. */
 export const MAX_ROUTINE_SETS = 20;
+
+/** The most warm-up sets an item holds. */
+export const MAX_WARMUP_SETS = 10;
 
 const clampCount = (n: number) => Math.max(0, Math.min(MAX_ROUTINE_SETS, Math.round(n)));
 
@@ -71,17 +96,6 @@ export function defaultTargets(kind: ExerciseKind): RoutineSetTarget[] {
 /** A new item for an exercise: three working sets, the default rest, no progression chosen. */
 export function newRoutineItem(exerciseId: string, kind: ExerciseKind): WorkoutRoutineItem {
   return { exerciseId, supersetKey: null, restSeconds: null, progression: null, targets: defaultTargets(kind) };
-}
-
-/** The item with `n` working sets: copies of the last working target added, or the last ones dropped. */
-export function withWorkingSets(item: WorkoutRoutineItem, n: number): WorkoutRoutineItem {
-  const want = Math.max(1, clampCount(n));
-  const warmups = item.targets.filter(isWarmup);
-  const working = item.targets.filter(t => !isWarmup(t));
-  const template: RoutineSetTarget = working[working.length - 1] ?? { kind: 'working', repsMin: 8, repsMax: 12 };
-  const next = working.slice(0, want);
-  while (next.length < want) next.push({ ...template });
-  return { ...item, targets: [...warmups, ...next] };
 }
 
 /** The item without a ramp: the key dropped rather than set false, so it reads as an item from before ramps. */
@@ -127,29 +141,190 @@ export function withWarmupMode(item: WorkoutRoutineItem, mode: WarmupMode): Work
   return withWarmups(noRamp(item), had > 0 ? had : DEFAULT_WARMUP_SETS);
 }
 
-function onWorking(item: WorkoutRoutineItem, patch: Partial<RoutineSetTarget>): WorkoutRoutineItem {
-  return { ...item, targets: item.targets.map(t => (isWarmup(t) ? t : { ...t, ...patch })) };
+// ==== one set at a time ====
+
+/** The kinds a set can be, in the order the editor's menu lists them. */
+export const ROUTINE_SET_KINDS: readonly WorkoutSetKind[] = ['warmup', 'working', 'drop', 'amrap'];
+
+/** What each kind is called in the editor's menu, and how a set of it is spoken of. */
+export const SET_KIND_LABELS: Record<WorkoutSetKind, string> = {
+  warmup: 'Warm-up',
+  working: 'Working',
+  drop: 'Drop set',
+  amrap: 'To failure',
+};
+
+/** The sets that aren't warm-ups. */
+const workCount = (targets: readonly RoutineSetTarget[]) => targets.filter(t => !isWarmup(t)).length;
+
+/** Warm-ups first, each group in the order it was in. */
+const warmupsFirst = (targets: readonly RoutineSetTarget[]) =>
+  [...targets.filter(isWarmup), ...targets.filter(t => !isWarmup(t))];
+
+/** The item with these targets, warm-ups first, and no ramp once it holds a warm-up of its own. */
+function withTargets(item: WorkoutRoutineItem, targets: RoutineSetTarget[]): WorkoutRoutineItem {
+  const ordered = warmupsFirst(targets);
+  const base = ordered.some(isWarmup) ? noRamp(item) : item;
+  return { ...base, targets: ordered };
+}
+
+const inRange = (item: WorkoutRoutineItem, index: number) => index >= 0 && index < item.targets.length;
+
+/**
+ * What the set at `index` is labelled in the table: "W", "D" or "F" for a
+ * warm-up, a drop set or a set to failure, and the working sets numbered 1, 2,
+ * 3 however many of those come before them. The same rule workout mode
+ * numbers a session's sets by (`setLabels`), so a routine reads the way the
+ * workout it starts will.
+ */
+export function routineSetLabels(targets: readonly Pick<RoutineSetTarget, 'kind'>[]): string[] {
+  let n = 0;
+  return targets.map(t => setBadge(t.kind) ?? String(++n));
 }
 
 /**
- * The item with this rep range on every working set. A range given backwards
- * is the same range, and one end alone is a fixed count ("5", not "5 or more").
+ * Whether the set at `index` can go: anything but the item's only set that
+ * isn't a warm-up. Removing that one is removing the exercise, which has its
+ * own button.
  */
-export function withReps(item: WorkoutRoutineItem, min: number | null, max: number | null): WorkoutRoutineItem {
-  let lo = min === null ? null : Math.max(0, Math.round(min));
-  let hi = max === null ? null : Math.max(0, Math.round(max));
+export function canRemoveSet(item: Pick<WorkoutRoutineItem, 'targets'>, index: number): boolean {
+  const t = item.targets[index];
+  if (!t) return false;
+  return isWarmup(t) || workCount(item.targets) > 1;
+}
+
+/** Whether another set of this one's sort (warm-up or not) fits under its cap. */
+export function canDuplicateSet(item: Pick<WorkoutRoutineItem, 'targets'>, index: number): boolean {
+  const t = item.targets[index];
+  if (!t) return false;
+  return isWarmup(t)
+    ? item.targets.length - workCount(item.targets) < MAX_WARMUP_SETS
+    : workCount(item.targets) < MAX_ROUTINE_SETS;
+}
+
+/**
+ * The kinds the set at `index` may become. The item's only set that isn't a
+ * warm-up can't become one (the item would have no work left), and a warm-up
+ * can only become work while there is room for another set of work.
+ */
+export function kindsFor(item: Pick<WorkoutRoutineItem, 'targets'>, index: number): WorkoutSetKind[] {
+  const t = item.targets[index];
+  if (!t) return [];
+  const warmups = item.targets.length - workCount(item.targets);
+  return ROUTINE_SET_KINDS.filter(kind => {
+    if (kind === t.kind) return true;
+    if (kind === 'warmup') return workCount(item.targets) > 1 && warmups < MAX_WARMUP_SETS;
+    return !isWarmup(t) || workCount(item.targets) < MAX_ROUTINE_SETS;
+  });
+}
+
+/**
+ * The item with the set at `index` made this kind. A set taken to failure
+ * names the fewest reps it is aiming past, so a range collapses to its low
+ * end ("6–8" becomes "6+"): the table shows that end, and workout mode lays
+ * the set out with it. Making a set a warm-up moves it up among the warm-ups
+ * and turns a ramp off, since a ramp and warm-ups of the item's own don't mix.
+ */
+export function withSetKind(item: WorkoutRoutineItem, index: number, kind: WorkoutSetKind): WorkoutRoutineItem {
+  if (!inRange(item, index) || !kindsFor(item, index).includes(kind)) return item;
+  const targets = item.targets.map((t, i) => {
+    if (i !== index) return t;
+    const next: RoutineSetTarget = { ...t, kind };
+    if (kind === 'amrap' && next.repsMin != null) next.repsMax = next.repsMin;
+    return next;
+  });
+  return withTargets(item, targets);
+}
+
+/** The item with this target weight on the set at `index`, or none (null): workout mode then starts it from last time's. */
+export function withSetWeight(item: WorkoutRoutineItem, index: number, kg: number | null): WorkoutRoutineItem {
+  if (!inRange(item, index)) return item;
+  const weightKg = kg !== null && kg > 0 ? kg : null;
+  return { ...item, targets: item.targets.map((t, i) => (i === index ? { ...t, weightKg } : t)) };
+}
+
+/**
+ * The item with this rep range on the set at `index`. A range given backwards
+ * is the same range, one end alone is a fixed count, and both ends empty is
+ * none (workout mode then starts the set from last time's reps).
+ */
+export function withSetReps(item: WorkoutRoutineItem, index: number, min: number | null, max: number | null): WorkoutRoutineItem {
+  if (!inRange(item, index)) return item;
+  let lo = min === null ? null : Math.max(1, Math.round(min));
+  let hi = max === null ? null : Math.max(1, Math.round(max));
   if (lo !== null && hi !== null && lo > hi) [lo, hi] = [hi, lo];
-  return onWorking(item, { repsMin: lo ?? hi, repsMax: hi ?? lo });
+  const repsMin = lo ?? hi;
+  const repsMax = hi ?? lo;
+  return { ...item, targets: item.targets.map((t, i) => (i === index ? { ...t, repsMin, repsMax } : t)) };
 }
 
-/** The item with this target weight on every working set, or none (null). */
-export function withTargetWeight(item: WorkoutRoutineItem, kg: number | null): WorkoutRoutineItem {
-  return onWorking(item, { weightKg: kg !== null && kg > 0 ? kg : null });
+/** The item with this hold time on the set at `index`, or none. */
+export function withSetDuration(item: WorkoutRoutineItem, index: number, seconds: number | null): WorkoutRoutineItem {
+  if (!inRange(item, index)) return item;
+  const durationSeconds = seconds !== null && seconds > 0 ? Math.round(seconds) : null;
+  return { ...item, targets: item.targets.map((t, i) => (i === index ? { ...t, durationSeconds } : t)) };
 }
 
-/** The item with this hold time on every working set. */
-export function withTargetDuration(item: WorkoutRoutineItem, seconds: number | null): WorkoutRoutineItem {
-  return onWorking(item, { durationSeconds: seconds !== null && seconds > 0 ? Math.round(seconds) : null });
+/** The item with a copy of the set at `index` straight after it. */
+export function duplicateSet(item: WorkoutRoutineItem, index: number): WorkoutRoutineItem {
+  if (!canDuplicateSet(item, index)) return item;
+  const targets = [...item.targets];
+  targets.splice(index + 1, 0, { ...item.targets[index] });
+  return { ...item, targets };
+}
+
+/** The item without the set at `index`, unless it is the only set that isn't a warm-up. */
+export function removeSet(item: WorkoutRoutineItem, index: number): WorkoutRoutineItem {
+  if (!canRemoveSet(item, index)) return item;
+  return { ...item, targets: item.targets.filter((_, i) => i !== index) };
+}
+
+/**
+ * The item with one more working set: a copy of its last working set (as a
+ * plain working set, if it only had drop or failure sets to copy), placed
+ * after the last working set so it takes the next number and a drop set or a
+ * set to failure stays at the end.
+ */
+export function addSet(item: WorkoutRoutineItem): WorkoutRoutineItem {
+  if (workCount(item.targets) >= MAX_ROUTINE_SETS) return item;
+  const lastWorking = item.targets.map(t => t.kind).lastIndexOf('working');
+  const work = item.targets.filter(t => !isWarmup(t));
+  const template: RoutineSetTarget = lastWorking >= 0
+    ? item.targets[lastWorking]
+    : { ...(work[work.length - 1] ?? { repsMin: 8, repsMax: 12 }), kind: 'working' };
+  const at = lastWorking >= 0 ? lastWorking + 1 : item.targets.length;
+  const targets = [...item.targets];
+  targets.splice(at, 0, { ...template, kind: 'working' });
+  return { ...item, targets };
+}
+
+/**
+ * The item with one more warm-up, after the warm-ups it has: a copy of the
+ * last one, or a set naming no weight or reps (workout mode lays it out from
+ * last time's warm-up). Turns a ramp off, as any warm-up of the item's own does.
+ */
+export function addWarmup(item: WorkoutRoutineItem): WorkoutRoutineItem {
+  const warmups = item.targets.filter(isWarmup);
+  if (warmups.length >= MAX_WARMUP_SETS) return item;
+  const next: RoutineSetTarget = warmups.length
+    ? { ...warmups[warmups.length - 1] }
+    : { kind: 'warmup', repsMin: null, repsMax: null };
+  return withTargets(item, [...warmups, next, ...item.targets.filter(t => !isWarmup(t))]);
+}
+
+/**
+ * A set's reps as its table cell reads: "6–8", "10", "6+" for a set to
+ * failure aiming past six, "Max" for one with no number, and null for a set
+ * that names none (it starts from last time's).
+ */
+export function describeTargetReps(t: Pick<RoutineSetTarget, 'kind' | 'repsMin' | 'repsMax'>): string | null {
+  if (t.kind === 'amrap') {
+    const floor = t.repsMin ?? t.repsMax;
+    return floor != null ? `${floor}+` : 'Max';
+  }
+  if (t.repsMin == null && t.repsMax == null) return null;
+  if (t.repsMin == null || t.repsMax == null || t.repsMin === t.repsMax) return String(t.repsMin ?? t.repsMax);
+  return `${t.repsMin}–${t.repsMax}`;
 }
 
 /** The item with this scheme chosen, keeping a step already set; null clears the choice. */
@@ -263,20 +438,30 @@ export interface DescribeItemOptions {
   role: SupersetRole;
 }
 
-/** "3 × 6–8", "3 × 0:30", "3 sets": the sets an item asks for, without warm-ups. */
+/**
+ * "3 × 6–8", "3 × 0:30", "3 sets", then "1 drop set" and "1 to failure" when
+ * the item has them: the sets an item asks for, without warm-ups. Working
+ * sets with different reps (a pyramid) read as the span they cover.
+ */
 export function describeSets(item: Pick<WorkoutRoutineItem, 'targets'>, kind: ExerciseKind): string {
   const shape = itemShape(item);
   const n = shape.workingSets;
-  if (kind === 'duration' && shape.durationSeconds !== null) return `${n} × ${formatRestSeconds(shape.durationSeconds)}`;
-  if (kind !== 'duration' && kind !== 'distance' && kind !== 'weight_distance' && shape.repsMin !== null) {
-    const reps = shape.repsMax !== null && shape.repsMax !== shape.repsMin
-      ? `${shape.repsMin}–${shape.repsMax}`
-      : String(shape.repsMin);
-    return `${n} × ${reps}`;
+  const parts: string[] = [];
+  if (n > 0) {
+    if (kind === 'duration' && shape.durationSeconds !== null) parts.push(`${n} × ${formatRestSeconds(shape.durationSeconds)}`);
+    else if (kind !== 'duration' && kind !== 'distance' && kind !== 'weight_distance' && shape.repsMin !== null) {
+      const reps = shape.repsMax !== null && shape.repsMax !== shape.repsMin
+        ? `${shape.repsMin}–${shape.repsMax}`
+        : String(shape.repsMin);
+      parts.push(`${n} × ${reps}`);
+    } else {
+      const distance = item.targets.find(t => t.kind === 'working')?.distanceM;
+      parts.push(distance != null ? `${n} × ${formatDistance(distance)}` : `${n} ${n === 1 ? 'set' : 'sets'}`);
+    }
   }
-  const distance = item.targets.find(t => !isWarmup(t))?.distanceM;
-  if (distance != null) return `${n} × ${formatDistance(distance)}`;
-  return `${n} ${n === 1 ? 'set' : 'sets'}`;
+  if (shape.dropSets > 0) parts.push(`${shape.dropSets} ${shape.dropSets === 1 ? 'drop set' : 'drop sets'}`);
+  if (shape.failureSets > 0) parts.push(`${shape.failureSets} to failure`);
+  return parts.join(' · ');
 }
 
 /**

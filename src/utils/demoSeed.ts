@@ -3295,14 +3295,20 @@ function seedWorkouts(today: Date): void {
       targets: [working(8, 10, 40), working(8, 10, 40), working(8, 10, 40)] },
     { exerciseId: 'lib:dumbbell-lateral-raise', supersetKey: 'a', restSeconds: 60, progression: null,
       targets: [working(12, 15, 8), working(12, 15, 8)] },
+    // A drop set to finish, so the set table shows a row that isn't numbered.
     { exerciseId: 'lib:triceps-pushdown', supersetKey: 'a', restSeconds: 60, progression: null,
-      targets: [working(10, 12, 25), working(10, 12, 25)] },
+      targets: [working(10, 12, 25), working(10, 12, 25), { kind: 'drop', repsMin: 10, repsMax: 12, weightKg: 15 }] },
   ]);
   const lower = ownRoutine('Lower A', [
     { exerciseId: 'lib:back-squat', restSeconds: 180, progression: { scheme: 'double', incrementKg: 5 }, warmupRamp: true,
       targets: [working(5, 6, 80), working(5, 6, 80), working(5, 6, 80)] },
+    // Sets that aren't all alike: a warm-up of its own, and a lighter last set to failure.
     { exerciseId: 'lib:romanian-deadlift', restSeconds: 150, progression: { scheme: 'double', incrementKg: 5 },
-      targets: [working(8, 10, 70), working(8, 10, 70)] },
+      targets: [
+        { kind: 'warmup', repsMin: 8, repsMax: 8, weightKg: 40 },
+        working(8, 10, 70), working(8, 10, 70),
+        { kind: 'amrap', repsMin: 8, repsMax: 8, weightKg: 60 },
+      ] },
     { exerciseId: 'lib:plank', restSeconds: 60, progression: null,
       targets: [{ kind: 'working', repsMin: null, repsMax: null, durationSeconds: 60 }] },
   ]);

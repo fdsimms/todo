@@ -614,7 +614,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
   );
 
   const routineSet = z.object({
-    kind: z.enum(['warmup', 'working', 'drop', 'amrap']).optional().describe('Default working.'),
+    kind: z.enum(['warmup', 'working', 'drop', 'amrap']).optional().describe('Default working. amrap is a set taken to failure, shown in the app as "To failure" with an F.'),
     repsMin: z.number().int().min(0).max(1000).nullable().optional(),
     repsMax: z.number().int().min(0).max(1000).nullable().optional().describe('With repsMin, a range ("6 to 8"); alone, a fixed count.'),
     weightKg: z.number().positive().max(1000).nullable().optional().describe('A target weight in kg. Leave it out and the workout starts from the weight last lifted.'),
@@ -624,7 +624,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     pctOfTm: z.number().positive().max(200).nullable().optional().describe('Percent of a training max, for a percentage program.'),
   });
   const loggedSet = z.object({
-    kind: z.enum(['warmup', 'working', 'drop', 'amrap']).optional().describe('Default working.'),
+    kind: z.enum(['warmup', 'working', 'drop', 'amrap']).optional().describe('Default working. amrap is a set taken to failure, shown in the app as "To failure" with an F.'),
     weightKg: z.number().min(0).max(1000).nullable().optional().describe('In kg, whatever unit the person said; convert pounds.'),
     reps: z.number().int().min(0).max(1000).nullable().optional(),
     durationSeconds: z.number().int().min(0).max(36000).nullable().optional(),

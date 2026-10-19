@@ -6,9 +6,11 @@
 //   ItemControls            one exercise's expanded controls, below the sheet
 //   makeStyles              styles, at the bottom
 //
-// The rules (what an edit to an item changes, supersets) live in
-// src/utils/workoutRoutine.ts; this file draws them. Mock:
-// docs/arch/workouts-mocks/routine-editor.png.
+// Each exercise is a card of its own (a superset's cards join into one block),
+// and its sets are a table drawn by RoutineSetTable. The rules (what an edit
+// to an item changes, supersets) live in src/utils/workoutRoutine.ts; this
+// file draws them. Mocks: docs/arch/workouts-mocks/routine-editor.png, and
+// routine-sets.png for the set table and the spacing.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -18,6 +20,8 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { SortableList } from './SortableList';
 import { CountStepper } from './CountStepper';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
+import { RoutineSetTable } from './RoutineSetTable';
+import { Toggle } from './Toggle';
 import { InlineAction } from './InlineAction';
 import { HelpText } from './HelpText';
 import { TextField } from './TextField';
@@ -35,18 +39,14 @@ import { confirmDiscard } from '../utils/confirmDiscard';
 import { confirmDelete } from '../utils/confirmDelete';
 import { generateId } from '../utils/id';
 import { catalogExercise } from '../utils/exerciseCatalog';
+import { REST_SECONDS_MAX, WORKOUT_NAME_MAX_LENGTH, formatRestSeconds } from '../utils/workoutData';
 import {
-  REST_SECONDS_MAX, WEIGHT_PLACES, WEIGHT_STEP, WORKOUT_NAME_MAX_LENGTH, formatRestSeconds,
-  weightFromDisplay, weightToDisplay,
-} from '../utils/workoutData';
-import {
-  MAX_ROUTINE_SETS, PROGRESSION_HINTS, PROGRESSION_LABELS, describeRoutineItem, itemShape, joinPrevious,
-  leaveSuperset, newRoutineItem, normalizeSupersets, supersetRoles, warmupMode, withProgression, withReps,
-  withTargetDuration, withTargetWeight, withWarmupMode, withWarmups, withWorkingSets, type SupersetRole, type WarmupMode,
+  PROGRESSION_HINTS, PROGRESSION_LABELS, describeRoutineItem, itemShape, joinPrevious,
+  leaveSuperset, newRoutineItem, normalizeSupersets, supersetRoles, withProgression, withWarmupMode,
+  type SupersetRole,
 } from '../utils/workoutRoutine';
 import { joinAnd, loadContextFor, rampSteps } from '../utils/workoutProgression';
 import { formatWeightNumber } from '../utils/workoutData';
-import { setFieldsFor } from '../utils/workoutSession';
 import type { WeightUnit } from '../utils/weightLog';
 import { BUTTON_LABEL } from '../copy/shared';
 
@@ -62,12 +62,6 @@ interface Row {
   id: string;
   item: WorkoutRoutineItem;
 }
-
-const WARMUP_OPTIONS: SegmentOption<WarmupMode>[] = [
-  { value: 'none', label: 'None' },
-  { value: 'ramp', label: 'Ramp' },
-  { value: 'sets', label: 'Sets' },
-];
 
 const PROGRESSION_OPTIONS: SegmentOption<ProgressionScheme | null>[] = (
   ['double', 'linear', 'percent', 'rpe'] as const
@@ -128,17 +122,17 @@ export function RoutineEditorSheet({ visible, routineId, onClose }: Props) {
   const kindOf = (exerciseId: string): ExerciseKind => catalogExercise(exercises, exerciseId)?.kind ?? 'weight_reps';
   const nameOf = (exerciseId: string) => catalogExercise(exercises, exerciseId)?.name ?? 'Unknown exercise';
   /**
-   * "For 82.5 kg: 32.5, 50 and 65 kg.": the ramp an item's target weight
-   * would lay out, worked out the way workout mode will (`rampSteps`), so the
-   * hint shows real loads. Null with no target weight to ramp to.
+   * "32.5, 50 and 65 kg": the ramp an item's target weight would lay out,
+   * worked out the way workout mode will (`rampSteps`), so the table's ramp
+   * row shows real loads. Null with no target weight to ramp to.
    */
-  const rampExample = (item: WorkoutRoutineItem): string | null => {
+  const rampLoads = (item: WorkoutRoutineItem): string | null => {
     const info = catalogExercise(exercises, item.exerciseId);
     const kg = itemShape(item).weightKg;
     if (!info || kg === null) return null;
     const steps = rampSteps(kg, loadContextFor(info, plateInventory, unit, item));
     if (steps.length === 0) return null;
-    return `For ${formatWeightNumber(kg, unit)} ${unit}: ${joinAnd(steps.map(st => formatWeightNumber(st.kg, unit)))} ${unit}.`;
+    return `${joinAnd(steps.map(st => formatWeightNumber(st.kg, unit)))} ${unit}`;
   };
 
   // ==== editing the list ====
@@ -283,9 +277,9 @@ export function RoutineEditorSheet({ visible, routineId, onClose }: Props) {
       {refusal && <Text style={styles.refusal}>{refusal}</Text>}
 
       <Text style={styles.groupLabel}>Exercises</Text>
-      <View style={styles.card}>
+      <View>
         {rows.length === 0 ? (
-          <View style={styles.emptyWrap}>
+          <View style={[styles.card, styles.emptyWrap]}>
             <EmptyNote icon="barbell-outline">No exercises yet. Add the first one below.</EmptyNote>
           </View>
         ) : (
@@ -298,56 +292,71 @@ export function RoutineEditorSheet({ visible, routineId, onClose }: Props) {
               const open = openRowId === row.id;
               const kind = kindOf(row.item.exerciseId);
               const exName = nameOf(row.item.exerciseId);
+              // The gap is padding inside the row rather than a margin between
+              // rows, so SortableList measures it as part of the row and the
+              // drag maths still line up. A superset's cards close it up and
+              // square their inner corners, so the run reads as one block.
+              const joinsNext = role === 'first' || role === 'middle';
               return (
-                <View style={[styles.itemWrap, index > 0 && styles.itemSep, role !== 'none' && styles.superset]}>
-                  {role === 'first' && <Text style={styles.supersetTag}>Superset</Text>}
-                  <View style={styles.itemRow}>
-                    <TouchableOpacity
-                      onLongPress={drag}
-                      delayLongPress={interaction.delayLongPress}
-                      hitSlop={8}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Reorder ${exName}`}
-                      accessibilityHint="Touch and hold, then drag"
-                    >
-                      <Ionicons name="reorder-two-outline" size={iconSize.md} color={colors.textTertiary} />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.itemText}
-                      onPress={() => toggleOpen(row.id)}
-                      onLongPress={drag}
-                      delayLongPress={interaction.delayLongPress}
-                      activeOpacity={interaction.activeOpacity}
-                      accessibilityRole="button"
-                      accessibilityState={{ expanded: open }}
-                      accessibilityLabel={exName}
-                    >
-                      <Text style={styles.itemName}>{exName}</Text>
-                      <Text style={styles.itemSummary}>
-                        {describeRoutineItem(row.item, { kind, unit, defaultRestSeconds: defaultRest, role })}
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => toggleOpen(row.id)} hitSlop={8} accessibilityElementsHidden importantForAccessibility="no">
-                      <RotatingChevron open={open} size={iconSize.sm} color={colors.textTertiary} />
-                    </TouchableOpacity>
+                <View style={!joinsNext && styles.itemGap}>
+                  <View
+                    style={[
+                      styles.itemCard,
+                      role !== 'none' && styles.superset,
+                      (role === 'middle' || role === 'last') && styles.itemSep,
+                      joinsNext && styles.squareBottom,
+                      (role === 'middle' || role === 'last') && styles.squareTop,
+                    ]}
+                  >
+                    {role === 'first' && <Text style={styles.supersetTag}>Superset</Text>}
+                    <View style={styles.itemRow}>
+                      <TouchableOpacity
+                        onLongPress={drag}
+                        delayLongPress={interaction.delayLongPress}
+                        hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Reorder ${exName}`}
+                        accessibilityHint="Touch and hold, then drag"
+                      >
+                        <Ionicons name="reorder-two-outline" size={iconSize.md} color={colors.textTertiary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.itemText}
+                        onPress={() => toggleOpen(row.id)}
+                        onLongPress={drag}
+                        delayLongPress={interaction.delayLongPress}
+                        activeOpacity={interaction.activeOpacity}
+                        accessibilityRole="button"
+                        accessibilityState={{ expanded: open }}
+                        accessibilityLabel={exName}
+                      >
+                        <Text style={styles.itemName}>{exName}</Text>
+                        <Text style={styles.itemSummary}>
+                          {describeRoutineItem(row.item, { kind, unit, defaultRestSeconds: defaultRest, role })}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => toggleOpen(row.id)} hitSlop={8} accessibilityElementsHidden importantForAccessibility="no">
+                        <RotatingChevron open={open} size={iconSize.sm} color={colors.textTertiary} />
+                      </TouchableOpacity>
+                    </View>
+                    {open && (
+                      <ItemControls
+                        item={row.item}
+                        kind={kind}
+                        role={role}
+                        unit={unit}
+                        defaultRest={defaultRest}
+                        canJoin={index > 0}
+                        rampLoads={kind === 'weight_reps' ? rampLoads(row.item) : null}
+                        colors={colors}
+                        styles={styles}
+                        onChange={change => updateItem(row.id, change)}
+                        onJoin={() => joinWithPrevious(index)}
+                        onLeave={() => leave(index)}
+                        onRemove={() => removeRow(row.id)}
+                      />
+                    )}
                   </View>
-                  {open && (
-                    <ItemControls
-                      item={row.item}
-                      kind={kind}
-                      role={role}
-                      unit={unit}
-                      defaultRest={defaultRest}
-                      canJoin={index > 0}
-                      rampExample={kind === 'weight_reps' ? rampExample(row.item) : null}
-                      colors={colors}
-                      styles={styles}
-                      onChange={change => updateItem(row.id, change)}
-                      onJoin={() => joinWithPrevious(index)}
-                      onLeave={() => leave(index)}
-                      onRemove={() => removeRow(row.id)}
-                    />
-                  )}
                 </View>
               );
             }}
@@ -391,8 +400,8 @@ interface ItemControlsProps {
   unit: WeightUnit;
   defaultRest: number;
   canJoin: boolean;
-  /** The ramp the target weight would lay out, for the Ramp hint. */
-  rampExample: string | null;
+  /** What the ramp lays out from the target weight, for the table's ramp row. */
+  rampLoads: string | null;
   colors: Colors;
   styles: ReturnType<typeof makeStyles>;
   onChange: (change: (item: WorkoutRoutineItem) => WorkoutRoutineItem) => void;
@@ -401,161 +410,82 @@ interface ItemControlsProps {
   onRemove: () => void;
 }
 
-/** One exercise's planned sets, unfolded under its row. */
+/**
+ * One exercise unfolded under its row: its sets as a table, then the rest of
+ * what it asks (a ramp, the rest, the progression) in sections of their own,
+ * each label beside or above its one control so no row has to hold two.
+ */
 function ItemControls({
-  item, kind, role, unit, defaultRest, canJoin, rampExample, colors, styles, onChange, onJoin, onLeave, onRemove,
+  item, kind, role, unit, defaultRest, canJoin, rampLoads, colors, styles, onChange, onJoin, onLeave, onRemove,
 }: ItemControlsProps) {
-  const shape = itemShape(item);
-  const fields = setFieldsFor(kind);
   const scheme = item.progression?.scheme ?? null;
-  const warmup = warmupMode(item);
   const rests = role === 'none' || role === 'last';
-  const shownWeight = shape.weightKg !== null ? weightToDisplay(shape.weightKg, unit) : null;
+  const ramp = item.warmupRamp === true;
   return (
     <View style={styles.controls}>
-      <View style={styles.kv}>
-        <Text style={styles.cap}>Working sets</Text>
-        <CountStepper
-          value={shape.workingSets}
-          onChange={n => onChange(i => withWorkingSets(i, n ?? 1))}
-          min={1}
-          max={MAX_ROUTINE_SETS}
-          label="Working sets"
-        />
-      </View>
+      <RoutineSetTable item={item} kind={kind} unit={unit} rampLoads={rampLoads} onChange={onChange} />
 
-      {fields.includes('reps') && (
-        <View style={styles.kv}>
-          <Text style={styles.cap}>Reps</Text>
-          <View style={styles.range}>
-            <CountStepper
-              value={shape.repsMin}
-              // Raising the low end past the high end takes the high end with
-              // it, and lowering the high end below the low end does the same:
-              // the end being stepped is the one that moves as pressed.
-              onChange={n => onChange(i => withReps(i, n, Math.max(n ?? 1, shape.repsMax ?? 1)))}
-              min={1}
-              max={100}
-              label="Fewest reps"
-            />
-            <Text style={styles.to}>to</Text>
-            <CountStepper
-              value={shape.repsMax}
-              onChange={n => onChange(i => withReps(i, Math.min(n ?? 1, shape.repsMin ?? n ?? 1), n))}
-              min={1}
-              max={100}
-              label="Most reps"
-            />
-          </View>
-        </View>
-      )}
-
-      {fields.includes('duration') && (
-        <View style={styles.kv}>
-          <Text style={styles.cap}>Time</Text>
-          <CountStepper
-            value={shape.durationSeconds}
-            onChange={n => onChange(i => withTargetDuration(i, n))}
-            min={5}
-            max={3600}
-            step={5}
-            allowNull
-            emptyLabel="Any"
-            format={formatRestSeconds}
-            label="Time per set"
-          />
-        </View>
-      )}
-
-      {fields.includes('weight') && (
-        <View>
-          <View style={styles.kv}>
-            <Text style={styles.cap}>{kind === 'assisted_reps' ? 'Assistance' : 'Weight'}</Text>
-            <CountStepper
-              value={shownWeight}
-              onChange={n => onChange(i => withTargetWeight(i, n === null ? null : weightFromDisplay(n, unit)))}
-              min={WEIGHT_STEP[unit]}
-              max={unit === 'kg' ? 500 : 1100}
-              step={WEIGHT_STEP[unit]}
-              places={WEIGHT_PLACES[unit]}
-              allowNull
-              emptyLabel="Last time"
-              format={n => `${n} ${unit}`}
-              label={kind === 'assisted_reps' ? 'Assistance' : 'Target weight'}
-            />
-          </View>
-          <HelpText style={styles.hint}>Leave it on Last time to start each workout from the weight you lifted before.</HelpText>
-        </View>
-      )}
-
-      <View>
-        <Text style={[styles.cap, styles.capAbove]}>Progression</Text>
-        <SegmentedControl
-          options={PROGRESSION_OPTIONS}
-          value={scheme}
-          onChange={s => onChange(i => withProgression(i, s))}
-          onDeselect={() => onChange(i => withProgression(i, null))}
-          label="Progression"
-        />
-        <HelpText style={styles.hint}>
-          {scheme
-            ? PROGRESSION_HINTS[scheme]
-            : 'How this exercise moves on from one workout to the next. With none chosen here, the program’s choice applies. Workout mode shows its suggestion, and you choose whether to use it.'}
-        </HelpText>
-      </View>
-
-      {fields.includes('weight') && (
-        <View>
-          <Text style={[styles.cap, styles.capAbove]}>Warm-up</Text>
-          <SegmentedControl
-            options={kind === 'weight_reps' ? WARMUP_OPTIONS : WARMUP_OPTIONS.filter(o => o.value !== 'ramp')}
-            value={warmup}
-            onChange={m => onChange(i => withWarmupMode(i, m))}
-            label="Warm-up"
-          />
-          {warmup === 'ramp' && (
-            <HelpText style={styles.hint}>
-              {`Sets at about 40, 60 and 80% of the working weight, rounded to your plates.${rampExample ? ` ${rampExample}` : ' With no target weight, the ramp is worked out from last time’s.'}`}
-            </HelpText>
-          )}
-          {warmup === 'sets' && (
-            <View style={[styles.kv, styles.below]}>
-              <Text style={styles.cap}>Warm-up sets</Text>
-              <CountStepper
-                value={shape.warmups}
-                onChange={n => onChange(i => (n === null || n === 0 ? withWarmupMode(i, 'none') : withWarmups(i, n)))}
-                min={0}
-                max={10}
-                label="Warm-up sets"
-              />
+      <View style={styles.section}>
+        {kind === 'weight_reps' && (
+          <TouchableOpacity
+            style={styles.toggleRow}
+            onPress={() => { haptics.tap(); animateLayout(); onChange(i => withWarmupMode(i, ramp ? 'none' : 'ramp')); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: ramp }}
+            accessibilityLabel="Ramp warm-ups"
+          >
+            <View style={styles.rowText}>
+              <Text style={styles.rowLabel}>Ramp warm-ups</Text>
+              <HelpText style={styles.rowHint}>
+                About 40, 60 and 80% of the first working weight, rounded to your plates. In place of warm-up sets of its own.
+              </HelpText>
             </View>
-          )}
-        </View>
-      )}
+            <Toggle value={ramp} />
+          </TouchableOpacity>
+        )}
+        {rests ? (
+          <View style={styles.kv}>
+            <Text style={styles.rowLabel}>{role === 'last' ? 'Rest after the superset' : 'Rest'}</Text>
+            <CountStepper
+              value={item.restSeconds ?? defaultRest}
+              onChange={n => onChange(i => ({ ...i, restSeconds: n ?? 0 }))}
+              min={0}
+              max={REST_SECONDS_MAX}
+              step={15}
+              format={n => (n === 0 ? 'None' : formatRestSeconds(n))}
+              label="Rest"
+            />
+          </View>
+        ) : (
+          <HelpText style={styles.hint}>No rest of its own: the rest comes after the last exercise of the superset.</HelpText>
+        )}
+      </View>
 
-      {rests ? (
-        <View style={styles.kv}>
-          <Text style={styles.cap}>{role === 'last' ? 'Rest after the superset' : 'Rest'}</Text>
-          <CountStepper
-            value={item.restSeconds ?? defaultRest}
-            onChange={n => onChange(i => ({ ...i, restSeconds: n ?? 0 }))}
-            min={0}
-            max={REST_SECONDS_MAX}
-            step={15}
-            format={n => (n === 0 ? 'None' : formatRestSeconds(n))}
-            label="Rest"
+      <View style={styles.section}>
+        <View>
+          <Text style={[styles.cap, styles.capAbove]}>Progression</Text>
+          <SegmentedControl
+            options={PROGRESSION_OPTIONS}
+            value={scheme}
+            onChange={s => onChange(i => withProgression(i, s))}
+            onDeselect={() => onChange(i => withProgression(i, null))}
+            label="Progression"
           />
+          <HelpText style={[styles.hint, styles.hintBelow]}>
+            {scheme
+              ? PROGRESSION_HINTS[scheme]
+              : 'How this exercise moves on from one workout to the next. With none chosen here, the program’s choice applies. Workout mode shows its suggestion, and you choose whether to use it.'}
+          </HelpText>
         </View>
-      ) : (
-        <HelpText style={styles.hint}>No rest of its own: the rest comes after the last exercise of the superset.</HelpText>
-      )}
+      </View>
 
-      <View style={styles.itemActions}>
+      <View style={[styles.section, styles.itemActions]}>
         {role === 'none' && canJoin && (
           <InlineAction label="Superset with the one above" variant="neutral" onPress={onJoin} />
         )}
         {role !== 'none' && <InlineAction label="Leave superset" variant="neutral" onPress={onLeave} />}
-        <InlineAction icon="trash-outline" label="Remove" tint={colors.redText} onPress={onRemove} />
+        <InlineAction icon="trash-outline" label="Remove exercise" tint={colors.redText} onPress={onRemove} />
       </View>
     </View>
   );
@@ -583,8 +513,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   card: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden' },
   emptyWrap: { padding: spacing.md },
-  itemWrap: { backgroundColor: colors.bgSecondary },
+  itemGap: { paddingBottom: spacing.smd },
+  itemCard: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden' },
   itemSep: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator },
+  squareTop: { borderTopLeftRadius: 0, borderTopRightRadius: 0 },
+  squareBottom: { borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
   // A superset is a block of neighbours, so its rows share a rail down the
   // left edge, the way the mock draws it. 3pt of the padding goes to the rail.
   superset: { borderLeftWidth: 3, borderLeftColor: colors.accent },
@@ -592,29 +525,34 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.accentText, fontSize: font.xxs, fontWeight: fontWeight.semibold, letterSpacing: 0.8,
     textTransform: 'uppercase', paddingTop: spacing.sm, paddingHorizontal: spacing.md - 3,
   },
-  itemRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd, paddingHorizontal: spacing.md, paddingVertical: spacing.smd, minHeight: 56 },
+  itemRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd, paddingHorizontal: spacing.md, paddingVertical: spacing.smd, minHeight: 60 },
   itemText: { flex: 1 },
-  itemName: { color: colors.text, fontSize: font.md },
-  itemSummary: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs },
+  itemName: { color: colors.text, fontSize: font.lg, fontWeight: fontWeight.semibold },
+  itemSummary: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs, lineHeight: 18 },
+  // The table runs edge to edge inside the card (its rows carry their own
+  // padding); the sections below it are padded, and each opens with a rule.
   controls: {
     borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator,
-    paddingHorizontal: spacing.md, paddingTop: spacing.smd, paddingBottom: spacing.md, gap: spacing.md,
+    paddingTop: spacing.smd, paddingBottom: spacing.md,
   },
-  kv: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm, flexWrap: 'wrap' },
+  section: {
+    marginTop: spacing.md, paddingTop: spacing.md, paddingHorizontal: spacing.md, gap: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator,
+  },
+  kv: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm, flexWrap: 'wrap', minHeight: 44 },
+  toggleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 44 },
+  rowText: { flex: 1 },
+  rowLabel: { color: colors.text, fontSize: font.md },
+  rowHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs, lineHeight: 16 },
   cap: {
     color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold,
     textTransform: 'uppercase', letterSpacing: 0.8,
   },
   capAbove: { marginBottom: spacing.sm },
-  below: { marginTop: spacing.md },
-  range: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  to: { color: colors.textSecondary, fontSize: font.sm },
-  hint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xs },
+  hint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16 },
+  hintBelow: { marginTop: spacing.sm },
   itemActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  adds: {
-    flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, padding: spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator,
-  },
+  adds: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.xs },
   footHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.sm, marginHorizontal: spacing.xs },
   deleteRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs,
