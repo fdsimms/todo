@@ -191,6 +191,30 @@ function gramsFromVolume(
 }
 
 /**
+ * The food's portion table, plus the serving its own panel states when that
+ * serving is a volume with a weight ("3 Tbsp (46g)").
+ *
+ * A packaged product's table is empty (`FoodPortion`), but its serving is a
+ * weighed volume of that very food, which is the same fact a "1 cup = 240g" row
+ * states, so a line in cups or tablespoons can be answered from it. It is added
+ * only when the table names no volume itself, so a stated portion is never
+ * second-guessed by a serving that disagrees with it. The text is read for its
+ * leading amount and unit only; anything that isn't a plain volume ("2
+ * pastries") adds nothing.
+ */
+export function portionsWithServing(nutrition: FoodNutrition): readonly FoodPortion[] {
+  const { portions, servingText, servingGrams } = nutrition;
+  if (!servingText || servingGrams === null || !(servingGrams > 0)) return portions;
+  if (portions.some(p => densityOf(p) !== null)) return portions;
+  const parsed = parseQuantity(servingText);
+  if (parsed.amount === null || parsed.rangeMax || parsed.container || !parsed.unit) return portions;
+  if (measureParsedQuantity(parsed)?.dimension !== 'volume') return portions;
+  const amount = rationalToNumber(parsed.amount);
+  if (!(amount > 0)) return portions;
+  return [...portions, { amount, label: parsed.unit, grams: servingGrams }];
+}
+
+/**
  * A per-100ml food's own density, run the other way: how many millilitres a
  * weighed amount comes to, so a mass line can reach the same per-100ml panel
  * a volume line already could.
@@ -425,11 +449,11 @@ export function panelMultiplier(
     if (!measured) return null;
     if (measured.dimension === 'volume') return measured.base / 100;
     if (measured.dimension !== 'mass') return null;
-    const millilitres = volumeFromMass(measured.base, nutrition.portions, prep);
+    const millilitres = volumeFromMass(measured.base, portionsWithServing(nutrition), prep);
     return millilitres === null ? null : millilitres / 100;
   }
 
-  const grams = gramsForLine(parsed, prep, nutrition.portions);
+  const grams = gramsForLine(parsed, prep, portionsWithServing(nutrition));
   if (grams === null) return null;
   if (nutrition.basis === 'per100g') return grams / 100;
   // perServing
@@ -543,7 +567,7 @@ export function weighableLine(
   // a gap: its weight, not its nutrients.
   if (panelMultiplier(quantity, prep, nutrition) !== null) {
     if (nutrition.basis !== 'per100ml') return null;
-    if (gramsForLine(parsed, prep, nutrition.portions) !== null) return null;
+    if (gramsForLine(parsed, prep, portionsWithServing(nutrition)) !== null) return null;
     const single = parsed.rangeMax ? { ...parsed, rangeMax: null } : parsed;
     const measured = measureParsedQuantity(single);
     if (!measured || measured.dimension !== 'volume') return null;
