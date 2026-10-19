@@ -261,6 +261,27 @@ export function setFieldsFor(kind: ExerciseKind): SetField[] {
   }
 }
 
+/**
+ * What a value column is headed in a table of sets: the unit for a weight
+ * (with a minus for assistance, which takes weight off), as workout mode's
+ * mock has it. Workout mode and the routine editor's set table share it, so
+ * the two tables read alike.
+ */
+export function columnLabel(field: SetField, kind: ExerciseKind, unit: WeightUnit): string {
+  if (field === 'weight') return kind === 'assisted_reps' ? `−${unit}` : unit;
+  if (field === 'reps') return 'Reps';
+  if (field === 'duration') return 'Time';
+  return 'Dist';
+}
+
+/** What one of a set's values is called in words, above its stepper. */
+export function fieldLabel(field: SetField, kind: ExerciseKind): string {
+  if (field === 'weight') return kind === 'assisted_reps' ? 'Assistance' : 'Weight';
+  if (field === 'reps') return 'Reps';
+  if (field === 'duration') return 'Time';
+  return 'Distance';
+}
+
 /** A distance in metres as a set shows it: "400 m", "1.2 km". */
 export function formatDistance(m: number): string {
   return m >= 1000 ? `${Number((m / 1000).toFixed(2))} km` : `${Math.round(m)} m`;
@@ -310,13 +331,16 @@ export function formatSetLine(
 export function setBadge(kind: WorkoutSetKind): string | null {
   if (kind === 'warmup') return 'W';
   if (kind === 'drop') return 'D';
+  // `amrap` is shown as a set to failure: the F Strong and Hevy mark one with,
+  // and that the CSV export already writes.
+  if (kind === 'amrap') return 'F';
   return null;
 }
 
 /**
- * The number each set shows in the SET column: warm-ups and drop sets carry
- * their letter instead, and count nothing, so the working sets read 1, 2, 3
- * however many warm-ups come first.
+ * The number each set shows in the SET column: warm-ups, drop sets and sets
+ * to failure carry their letter instead, and count nothing, so the working
+ * sets read 1, 2, 3 however many warm-ups come first.
  */
 export function setLabels(sets: readonly WorkoutSet[]): Map<string, string> {
   const out = new Map<string, string>();
@@ -337,6 +361,7 @@ export function setLabels(sets: readonly WorkoutSet[]): Map<string, string> {
 export function setName(kind: WorkoutSetKind, label: string): string {
   if (kind === 'warmup') return 'Warm-up';
   if (kind === 'drop') return 'Drop set';
+  if (kind === 'amrap') return 'To failure';
   return `Set ${label}`;
 }
 

@@ -2355,6 +2355,11 @@ describe('demo seed — people', () => {
     expect(proposal!.sets[0].weightKg).toBe(85);
   });
 
+  it('seeds routines whose sets are not all alike, so the set table has rows of each kind', () => {
+    const kinds = new Set(useWorkoutStore.getState().routines.flatMap(r => r.items.flatMap(i => i.targets.map(t => t.kind))));
+    expect([...kinds].sort()).toEqual(['amrap', 'drop', 'warmup', 'working']);
+  });
+
   it('seeds both halves of the medication log, so neither reads as missing', () => {
     // The scheduled half has to come from a task completion or the feature
     // reads as a second list you type the tablets into again; the as-needed

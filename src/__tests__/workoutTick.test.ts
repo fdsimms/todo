@@ -88,6 +88,7 @@ describe('restLabelFor', () => {
     expect(restLabelFor({ kind: 'working' }, '2', 'Barbell bench press')).toBe('After set 2 of Barbell bench press');
     expect(restLabelFor({ kind: 'warmup' }, 'W', 'Barbell bench press')).toBe('After a warm-up set of Barbell bench press');
     expect(restLabelFor({ kind: 'drop' }, 'D', 'Barbell bench press')).toBe('After a drop set of Barbell bench press');
+    expect(restLabelFor({ kind: 'amrap' }, 'F', 'Barbell bench press')).toBe('After a set to failure of Barbell bench press');
   });
 });
 

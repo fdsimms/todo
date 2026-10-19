@@ -787,7 +787,8 @@ struct WatchWorkoutList {
     }
 
     /// Words an exercise's sets as the phone does (`setLabels`, `setName`):
-    /// working sets numbered "Set 2 of 4", warm-ups and drop sets lettered.
+    /// working sets numbered "Set 2 of 4", warm-ups, drop sets and sets to
+    /// failure lettered.
     mutating func relabel(_ exerciseId: String) {
         guard let name = exercises.first(where: { $0.id == exerciseId })?.name else { return }
         let indices = sets.indices.filter { sets[$0].exerciseId == exerciseId }
@@ -801,9 +802,9 @@ struct WatchWorkoutList {
                 sets[index].label = "Set \(number) of \(count)"
                 sets[index].next = "Next: \(name), set \(number)"
             } else {
-                let warmup = sets[index].kind == "warmup"
-                sets[index].label = warmup ? "Warm-up" : "Drop set"
-                sets[index].next = "Next: \(name), \(warmup ? "warm-up" : "drop set")"
+                let words = Self.letteredName(sets[index].kind)
+                sets[index].label = words
+                sets[index].next = "Next: \(name), \(words.lowercased())"
             }
         }
     }
@@ -812,7 +813,17 @@ struct WatchWorkoutList {
         switch kind {
         case "warmup": return "W"
         case "drop": return "D"
+        case "amrap": return "F"
         default: return nil
+        }
+    }
+
+    /// What a lettered set is called (`setName` on the phone).
+    static func letteredName(_ kind: String) -> String {
+        switch kind {
+        case "warmup": return "Warm-up"
+        case "amrap": return "To failure"
+        default: return "Drop set"
         }
     }
 

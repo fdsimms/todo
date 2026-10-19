@@ -30,7 +30,7 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { formatTimeOfDay } from '../utils/dateUtils';
 import { catalogExercise } from '../utils/exerciseCatalog';
 import { sessionRecordSummary } from '../utils/workoutRecords';
-import { formatSetLine, sessionExercises, sessionMinutes, setLabels, setName } from '../utils/workoutSession';
+import { formatSetLine, sessionExercises, sessionMinutes, setBadge, setLabels, setName } from '../utils/workoutSession';
 import { WORKOUT_EFFORT } from '../utils/workoutData';
 import { workoutSpanWritable } from '../utils/healthWorkoutSync';
 import { resolveMaxHeartRate } from '../utils/heartRateZones';
@@ -400,7 +400,7 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose }: Props) {
                           {e.sets.map(set => {
                             const label = labels.get(set.id) ?? '';
                             const line = formatSetLine(set, kind, unit, true) ?? '–';
-                            const lettered = set.kind === 'warmup' || set.kind === 'drop';
+                            const lettered = setBadge(set.kind) !== null;
                             return (
                               <View
                                 key={set.id}
