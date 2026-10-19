@@ -48,6 +48,6 @@ export function listErrors(
       message: e.message,
       ...(e.stack ? { stack: e.stack } : {}),
     })),
-    note: 'Newest first. Only unexpected failures are logged, as the phone caught them, and the log keeps about a month. A fresh sync is needed for a failure the person just hit to appear. Empty means none were recorded, not that nothing went wrong.',
+    note: 'Newest first. Only unexpected failures are logged, as the phone caught them, and the log keeps about a month. A fresh sync is needed for a failure the person just hit to appear. Empty means none were recorded, not that nothing went wrong: a failure the phone showed as an alert without logging it never appears, so ask the person what the alert said.',
   };
 }
