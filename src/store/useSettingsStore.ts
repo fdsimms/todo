@@ -1240,6 +1240,10 @@ interface SettingsStore {
   // timerLiveActivity's shape: iOS 17+ only, device-local, defaults on, and
   // shown only inside the Workouts area.
   workoutLiveActivity: boolean;
+  // Start and end photos on an exercise's page, fetched from free-exercise-db
+  // (src/utils/exerciseImages.ts). A request nobody made by a tap, so it has
+  // its own switch and ships off, productLookupEnabled's reasoning inverted.
+  exerciseImagesEnabled: boolean;
 
   /**
    * Which day facts the mood log may offer as pre-picked context tags
@@ -2234,6 +2238,7 @@ interface SettingsStore {
   setPlateInventory: (inventory: PlateInventory) => void;
   setDefaultRestSeconds: (seconds: number) => void;
   setWorkoutLiveActivity: (on: boolean) => void;
+  setExerciseImagesEnabled: (on: boolean) => void;
   setMoodContextSource: (key: keyof MoodContextSources, on: boolean) => void;
   /** Sets the weight goal, or clears it with null. */
   setWeightGoal: (goal: WeightGoal | null) => void;
@@ -2548,6 +2553,7 @@ const DEFAULT_SETTINGS = {
   leaveWindowMinutes: LEAVE_WINDOW_MINUTES_DEFAULT,
   focusLiveActivity: true,
   workoutLiveActivity: true,
+  exerciseImagesEnabled: false,
   focusHideTimers: false,
   focusBreaksEnabled: true,
   collapsedCategories: [] as string[],
@@ -2999,6 +3005,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   leaveWindowMinutes: LEAVE_WINDOW_MINUTES_DEFAULT,
   focusLiveActivity: true,
   workoutLiveActivity: true,
+  exerciseImagesEnabled: false,
   focusHideTimers: false,
   focusBreaksEnabled: true,
   collapsedCategories: [],
@@ -3367,6 +3374,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const focusLiveActivity = dbGetSetting('focusLiveActivity') !== 'false';
     // And for the workout's.
     const workoutLiveActivity = dbGetSetting('workoutLiveActivity') !== 'false';
+    const exerciseImagesEnabled = dbGetSetting('exerciseImagesEnabled') === 'true';
     const focusHideTimers = dbGetSetting('focusHideTimers') === 'true';
     const focusBreaksEnabled = dbGetSetting('focusBreaksEnabled') !== 'false';
     // Same `!== 'false'`: the groceries/recipes/meal plan area is on unless
@@ -3952,6 +3960,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       eventTaskCategory,
       eventTaskHandled,
       eventTasks,
+      exerciseImagesEnabled,
       fabHand,
       filterEfforts,
       filterPriorities,
@@ -5847,6 +5856,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setWorkoutLiveActivity(on: boolean) {
     dbSetSetting('workoutLiveActivity', on ? 'true' : 'false');
     set({ workoutLiveActivity: on });
+  },
+
+  setExerciseImagesEnabled(on: boolean) {
+    dbSetSetting('exerciseImagesEnabled', on ? 'true' : 'false');
+    set({ exerciseImagesEnabled: on });
   },
 
   setMoodContextSource(key: keyof MoodContextSources, on: boolean) {

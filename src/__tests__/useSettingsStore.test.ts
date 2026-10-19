@@ -539,6 +539,7 @@ describe('resetToDefaults', () => {
     expect(state.timerLiveActivity).toBe(true);
     expect(state.tripLiveActivity).toBe(true);
     expect(state.workoutLiveActivity).toBe(true);
+    expect(state.exerciseImagesEnabled).toBe(false);
   });
 
   /**
@@ -1820,6 +1821,29 @@ describe('workoutLiveActivity', () => {
     useSettingsStore.getState().setWorkoutLiveActivity(false);
     expect(dbSetSetting).toHaveBeenCalledWith('workoutLiveActivity', 'false');
     expect(useSettingsStore.getState().workoutLiveActivity).toBe(false);
+  });
+});
+
+describe('exerciseImagesEnabled', () => {
+  // The inverse of workoutLiveActivity: it makes a network request nobody
+  // asked for by a tap, so it is off unless someone turned it on.
+  it('defaults to off, including when nothing is stored', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().exerciseImagesEnabled).toBe(false);
+  });
+
+  it('only turns on for an explicit "true"', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'exerciseImagesEnabled' ? 'true' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().exerciseImagesEnabled).toBe(true);
+  });
+
+  it('round-trips through setExerciseImagesEnabled', () => {
+    useSettingsStore.getState().setExerciseImagesEnabled(true);
+    expect(dbSetSetting).toHaveBeenCalledWith('exerciseImagesEnabled', 'true');
+    expect(useSettingsStore.getState().exerciseImagesEnabled).toBe(true);
   });
 });
 

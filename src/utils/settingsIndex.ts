@@ -1058,6 +1058,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['kg', 'kilograms', 'lb', 'pounds', 'gym', 'lifting', 'barbell', 'plates', 'metric', 'imperial'] },
   { id: 'defaultRestSeconds', groupId: 'workouts', label: 'Rest between sets', section: 'Workouts',
     keywords: ['rest timer', 'break', 'seconds', 'gym', 'lifting', 'countdown'] },
+  { id: 'exerciseImagesEnabled', groupId: 'workouts', label: 'Exercise photos', section: 'Workouts',
+    keywords: ['images', 'pictures', 'demo', 'form', 'how to', 'gym', 'lifting', 'download', 'internet', 'network'] },
   { id: 'workoutLiveActivity', iosOnly: true, groupId: 'workouts', label: 'Live Activity while working out', section: 'Workouts',
     keywords: ['lock screen', 'dynamic island', 'rest timer', 'sets', 'gym', 'lifting', 'countdown'] },
   { id: 'maxHeartRate', iosOnly: true, groupId: 'workouts', label: 'Maximum heart rate', section: 'Workouts',

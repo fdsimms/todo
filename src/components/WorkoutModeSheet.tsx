@@ -29,6 +29,7 @@ import { EmptyNote } from './EmptyNote';
 import { TextField } from './TextField';
 import { ExercisePickerSheet } from './ExercisePickerSheet';
 import { ExerciseDetailSheet } from './ExerciseDetailSheet';
+import { ExercisePhotos } from './ExercisePhotos';
 import { PlateLine } from './PlateLine';
 import { SelectionDot } from './SelectionDot';
 import { WorkoutRecordsCard } from './WorkoutRecordsCard';
@@ -156,6 +157,9 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   // The routine changes ticked on the summary. Nothing starts ticked.
   const [accepted, setAccepted] = useState<ReadonlySet<string>>(new Set());
   const [detailOpen, setDetailOpen] = useState(false);
+  // Form photos shown under the exercise's name. Session-only, and shared across
+  // exercises so one tap keeps them open while moving through the workout.
+  const [photosOpen, setPhotosOpen] = useState(false);
   // The exercise the detail sheet is on, kept through its close so it doesn't retitle while it slides away.
   const [detailId, setDetailId] = useState<string | null>(null);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
@@ -689,6 +693,12 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                       {viewedInfo.primaryMuscles.map(m => MUSCLE_LABELS[m]).join(', ')}
                     </Text>
                   )}
+                  <ExercisePhotos
+                    exerciseId={viewed.exerciseId}
+                    name={viewedInfo?.name ?? 'this exercise'}
+                    open={photosOpen}
+                    onToggle={() => setPhotosOpen(o => !o)}
+                  />
                   <View style={styles.exActions}>
                     {canSwap && (
                       <InlineAction
