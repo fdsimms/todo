@@ -379,7 +379,11 @@ export function supersetRoles(items: readonly Pick<WorkoutRoutineItem, 'superset
  * passed through, so a superset is always a block of neighbours and nothing
  * else is left carrying a key that means nothing.
  */
-export function normalizeSupersets<T extends Pick<WorkoutRoutineItem, 'supersetKey'>>(items: readonly T[]): T[] {
+export function normalizeSupersets<T extends Pick<WorkoutRoutineItem, 'supersetKey'>>(
+  items: readonly T[],
+  /** An index the editor is holding open for an exercise: a run of only that keeps its key. */
+  isOpenSlot: (index: number) => boolean = () => false,
+): T[] {
   const out = items.map(i => ({ ...i }));
   const closed = new Set<string>();
   let i = 0;
@@ -388,13 +392,68 @@ export function normalizeSupersets<T extends Pick<WorkoutRoutineItem, 'supersetK
     if (!key) { i++; continue; }
     let end = i;
     while (end + 1 < out.length && out[end + 1].supersetKey === key) end++;
-    if (end === i || closed.has(key)) {
+    if ((end === i && !isOpenSlot(i)) || closed.has(key)) {
       for (let j = i; j <= end; j++) out[j].supersetKey = null;
     }
     closed.add(key);
     i = end + 1;
   }
   return out;
+}
+
+/** One row of the editor's list as the drop rules see it. */
+export interface SupersetRowView {
+  id: string;
+  key: string | null;
+  /** The editor's empty slot ("add an exercise here"), not an exercise. It sits at the end of its superset. */
+  open: boolean;
+}
+
+/**
+ * The superset a dragged row was dropped into, if it was: between two rows of
+ * one superset, or next to a slot that has no exercises yet. Only the row
+ * that moved is looked at. A drag changes the order and nothing says which row
+ * was held, so it is found by taking each end of the changed stretch out of
+ * both orders; a one-place move fits either row, and the reading that joins a
+ * superset wins, since the other would split the superset it landed in.
+ */
+export function droppedIntoSuperset(
+  prev: readonly SupersetRowView[],
+  next: readonly SupersetRowView[],
+): { id: string; key: string } | null {
+  if (prev.length !== next.length) return null;
+  let first = 0;
+  while (first < prev.length && prev[first].id === next[first].id) first++;
+  if (first === prev.length) return null;
+  const without = (rows: readonly SupersetRowView[], id: string) => rows.filter(r => r.id !== id).map(r => r.id).join('\u0000');
+  for (const id of new Set([prev[first].id, next[first].id])) {
+    if (without(prev, id) !== without(next, id)) continue;
+    const at = next.findIndex(r => r.id === id);
+    const row = next[at];
+    if (row.open) continue;
+    const above = next[at - 1];
+    const below = next[at + 1];
+    const between = above?.key && above.key === below?.key ? above.key : null;
+    if (between && row.key !== between) return { id, key: between };
+    // Next to a slot with nothing in it: the run is the slot alone.
+    if (below?.open && below.key && next[at + 2]?.key !== below.key && above?.key !== below.key) return { id, key: below.key };
+    if (above?.open && above.key && next[at - 2]?.key !== above.key && below?.key !== above.key) return { id, key: above.key };
+  }
+  return null;
+}
+
+/** The ids with each empty slot moved to the end of its superset, so it stays the "add here" tail. */
+export function settleOpenSlots(rows: readonly SupersetRowView[]): string[] {
+  const out = [...rows];
+  for (let i = 0; i < out.length; i++) {
+    if (!out[i].open || !out[i].key) continue;
+    let at = i;
+    while (at + 1 < out.length && !out[at + 1].open && out[at + 1].key === out[at].key) {
+      [out[at], out[at + 1]] = [out[at + 1], out[at]];
+      at++;
+    }
+  }
+  return out.map(r => r.id);
 }
 
 /**
