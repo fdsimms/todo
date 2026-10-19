@@ -643,6 +643,37 @@ export function keyUrlToken(url: string): string | null {
   return normalizeLinkToken(parseQuery(match[1] ?? '').token);
 }
 
+// `dundundun://cookSession?key=cook:<id>|prep:<id>|step:<id>` — what tapping the
+// body of a cooking Live Activity opens: the dish in Cook Mode, where the cook
+// left off. It carries the activity's key rather than a recipe id because a step
+// timer's activity knows only its own id; `cookSessionRecipeId` resolves it.
+const COOK_SESSION_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?cookSession\\/?(?:\\?(.*))?$`, 'i');
+
+export function isCookSessionUrl(url: string): boolean {
+  return typeof url === 'string' && COOK_SESSION_RE.test(url.trim());
+}
+
+export function cookSessionUrlKey(url: string): string | null {
+  if (typeof url !== 'string') return null;
+  const match = COOK_SESSION_RE.exec(url.trim());
+  if (!match) return null;
+  const key = (parseQuery(match[1] ?? '').key ?? '').trim();
+  return key || null;
+}
+
+/** The recipe a cooking activity's key points at, or null when it no longer resolves. */
+export function cookSessionRecipeId(
+  key: string,
+  stepTimers: ReadonlyArray<{ id: string; recipeId?: string }>,
+): string | null {
+  if (key.startsWith('cook:') || key.startsWith('prep:')) return key.slice(5) || null;
+  if (key.startsWith('step:')) {
+    const id = key.slice('step:'.length);
+    return stepTimers.find(t => t.id === id)?.recipeId || null;
+  }
+  return null;
+}
+
 // `dundundun://stopTimer?key=cook:<id>|prep:<id>|step:<id>|rest:<id>` — the peer of
 // completeTask above for the Done button on a recipe's cook/prep Live Activity
 // and on a cooking step timer's. The host is still named for stopping because
@@ -928,6 +959,14 @@ export function openInAppUrl(url: string | null | undefined): boolean {
   const workoutLink = workoutUrlLink(url);
   if (workoutLink) {
     applyWorkoutLink(workoutLink);
+    return true;
+  }
+  if (isCookSessionUrl(url)) {
+    const key = cookSessionUrlKey(url);
+    const recipeId = key ? cookSessionRecipeId(key, useStepTimerStore.getState().timers) : null;
+    // Resolve-or-shrug: a timer finished since the activity was drawn leaves
+    // nothing to return to, so the app just opens.
+    if (recipeId) resetToRecipeDetail(recipeId, { openCookMode: true });
     return true;
   }
   if (isStopTimerUrl(url)) {

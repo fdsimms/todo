@@ -151,6 +151,9 @@ import {
   completeTaskUrlId,
   isStopTimerUrl,
   stopTimerUrlKey,
+  isCookSessionUrl,
+  cookSessionUrlKey,
+  cookSessionRecipeId,
   isKeyUrl,
   keyUrlToken,
   linkIconFor,
@@ -507,6 +510,24 @@ describe('completeTaskUrlId', () => {
     expect(completeTaskUrlId('dundundun://completeTask')).toBeNull();
     expect(completeTaskUrlId('dundundun://completeTask?id=')).toBeNull();
     expect(completeTaskUrlId('dundundun://stopTimer?id=task-1')).toBeNull();
+  });
+});
+
+describe('cook session links', () => {
+  it('parses the activity key', () => {
+    expect(isCookSessionUrl('dundundun://cookSession?key=cook:r1')).toBe(true);
+    expect(isCookSessionUrl('dundundun://stopTimer?key=cook:r1')).toBe(false);
+    expect(cookSessionUrlKey('dundundun://cookSession?key=step:t1')).toBe('step:t1');
+    expect(cookSessionUrlKey('dundundun://cookSession')).toBeNull();
+  });
+
+  it('resolves a key to its recipe', () => {
+    const timers = [{ id: 't1', recipeId: 'r9' }];
+    expect(cookSessionRecipeId('cook:r1', timers)).toBe('r1');
+    expect(cookSessionRecipeId('prep:r2', timers)).toBe('r2');
+    expect(cookSessionRecipeId('step:t1', timers)).toBe('r9');
+    expect(cookSessionRecipeId('step:gone', timers)).toBeNull();
+    expect(cookSessionRecipeId('task:x', timers)).toBeNull();
   });
 });
 

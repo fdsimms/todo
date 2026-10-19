@@ -51,6 +51,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, lineHeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
+import { clearCookPosition, restingCookPosition, saveCookPosition } from '../utils/cookPosition';
 import { clampStepIndex, cookNotesPanel, cookSteps, describeStepPosition } from '../utils/cookMode';
 import { formatStepDuration, stepDurationOffers, stepTimerExcerpt } from '../utils/stepTimers';
 import { recipeTimerResetPrompt } from '../utils/recipeTimer';
@@ -277,11 +278,15 @@ export function CookModeSheet({
 
   // -1 is the mise en place screen, ahead of step 0 — screen state like the
   // step position itself, reset the same way on close.
-  const [rawIndex, setRawIndex] = useState(0);
+  const [rawIndex, setRawIndex] = useState(
+    () => restingCookPosition(recipe.id, recipe.timerStartedAt !== null, false).rawIndex,
+  );
   // Past the last step: the end screen, which offers the post-cook sheet
   // rather than closing on the cook. Screen state like the position, and
   // reset the same way on close.
-  const [finished, setFinished] = useState(false);
+  const [finished, setFinished] = useState(
+    () => restingCookPosition(recipe.id, recipe.timerStartedAt !== null, false).finished,
+  );
   const [ingredientsOpen, setIngredientsOpen] = useState(false);
   // Folded like the ingredients and, like them, kept across steps: the notes are
   // about the whole cooking, so moving on mustn't close them under the cook.
@@ -314,15 +319,24 @@ export function CookModeSheet({
   // handing them the start. Reset on the way *out* rather than on the way in,
   // so the state is already clean before the first frame is drawn — resetting
   // on open would paint the old step for a frame first.
+  // A running cook timer means the sitting is still going, so the place is
+  // kept instead (cookPosition.ts): closing the sheet, or returning from the
+  // cooking Live Activity, lands on the step the cook was on.
+  const cookRunning = recipe.timerStartedAt !== null;
   useEffect(() => {
     if (!visible) {
-      setRawIndex(hasIngredients ? -1 : 0);
-      setFinished(false);
+      const rest = restingCookPosition(recipe.id, cookRunning, hasIngredients);
+      setRawIndex(rest.rawIndex);
+      setFinished(rest.finished);
       setIngredientsOpen(false);
       setNotesOpen(false);
       setFillingBlanks(false);
     }
-  }, [visible, hasIngredients]);
+  }, [visible, hasIngredients, cookRunning, recipe.id]);
+  useEffect(() => {
+    if (!cookRunning) clearCookPosition(recipe.id);
+    else if (visible) saveCookPosition(recipe.id, { rawIndex, finished });
+  }, [visible, cookRunning, recipe.id, rawIndex, finished]);
 
   // An answer belongs to the sentence it was given about, so moving off that
   // step takes it with it — including a half-typed question, which on the next
