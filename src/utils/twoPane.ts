@@ -20,7 +20,7 @@ export const TWO_PANE_LIST_WIDTH = 400;
  * (`MAX_CONTENT_WIDTH`) is lifted, because two panes are wider than one column
  * by design; every other screen keeps the cap.
  */
-export const TWO_PANE_ROUTES: ReadonlySet<string> = new Set(['Recipes', 'Projects']);
+export const TWO_PANE_ROUTES: ReadonlySet<string> = new Set(['Today', 'Recipes', 'Projects']);
 
 /** Whether a window this wide has room for two panes. */
 export function twoPaneFor(windowWidth: number): boolean {

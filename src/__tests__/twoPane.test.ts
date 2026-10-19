@@ -27,10 +27,12 @@ describe('twoPaneFor', () => {
 describe('columnUncappedFor', () => {
   it('lifts the cap on a two-pane screen in a wide window', () => {
     expect(columnUncappedFor(1440, 'Recipes')).toBe(true);
+    expect(columnUncappedFor(1440, 'Projects')).toBe(true);
+    expect(columnUncappedFor(1440, 'Today')).toBe(true);
   });
 
   it('keeps the cap on every other screen', () => {
-    expect(columnUncappedFor(1440, 'Today')).toBe(false);
+    expect(columnUncappedFor(1440, 'Stats')).toBe(false);
     expect(columnUncappedFor(1440, null)).toBe(false);
     expect(columnUncappedFor(1440, undefined)).toBe(false);
   });

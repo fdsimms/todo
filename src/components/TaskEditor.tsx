@@ -343,6 +343,8 @@ interface Props {
   task?: Task | null;
   initialDraft?: Partial<TaskDraft> | null;
   onClose: () => void;
+  /** Drawn in place as the second pane beside Today's list, not as a sheet over it (see EditorSheet). */
+  inline?: boolean;
 }
 
 type PickerMode = 'none' | 'reminder';
@@ -489,7 +491,7 @@ const WINDOW_KIND_OPTIONS: SegmentOption<'time' | SunEvent>[] = [
 
 const NO_TASKS: Task[] = [];
 
-function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
+function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false }: Props) {
   // ==== store bindings ====
   const addTask = useTaskStore(s => s.addTask);
   const addTaskSeries = useTaskStore(s => s.addTaskSeries);
@@ -3815,6 +3817,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   return (
     <EditorSheet
       visible={visible}
+      inline={inline}
       onRequestClose={handleCancel}
       onShow={() => { if (!task) titleRef.current?.focus(); }}
       rootStyle={styles.root}
