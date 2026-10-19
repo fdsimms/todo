@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { useWithoutLockedTasks } from '../hooks/useWithoutLockedTasks';
 import { useStableCallback } from '../hooks/useStableCallback';
-import { Animated, View, Text, ScrollView, StyleSheet, Dimensions, TouchableOpacity, PanResponder, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { Animated, View, Text, ScrollView, StyleSheet, useWindowDimensions, TouchableOpacity, PanResponder, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -30,6 +30,7 @@ import { cellAt, isMoveDrop, type CellRect } from '../utils/calendarDrag';
 import { confirmBulkSetWhen } from '../utils/scheduleMovePrompt';
 import { spacing, font, fontWeight, radius, interaction, flattenOverlay, type Colors, textScale } from '../theme';
 import { useTextScale } from '../hooks/useTextScale';
+import { monthCellSizeFor } from '../utils/frameWidth';
 import { dayShadeBackground } from '../theme/dayShade';
 import { haptics } from '../utils/haptics';
 import { resetToMealPlan } from '../navigation/navigationRef';
@@ -79,13 +80,13 @@ import {
 import { LazySheet } from '../components/LazySheet';
 import { reuseUnchangedLists } from '../utils/stableLists';
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
-const CELL_SIZE = Math.floor((SCREEN_WIDTH - spacing.md * 2) / 7);
-// Shorter than CELL_SIZE on purpose (#1746) — width still has to hold seven
-// columns across the screen, but with the dots beside the circle instead of
-// in their own row below it, the cell's content no longer needs a square box
-// to fit in.
-const CELL_HEIGHT = CELL_SIZE - 10;
+// A cell is a seventh of the column, read from the window as it is now: a Mac
+// window or an iPad in Split View is resized after launch, so this can't be a
+// module-level constant. Shorter than it is wide on purpose (#1746) — width
+// still has to hold seven columns across the screen, but with the dots beside
+// the circle instead of in their own row below it, the cell's content no
+// longer needs a square box to fit in.
+const cellHeightFor = (cellSize: number) => cellSize - 10;
 // The red dot under a date with an open deadline, and the slot reserved for
 // it on every cell so a marked circle sits in line with its neighbours.
 const DEADLINE_DOT = 5;
@@ -151,7 +152,12 @@ export function CalendarScreen() {
   const screenSettings = useScreenSettings('Calendar', 'Calendar settings');
   const { shadows } = useTheme();
   const textScaleFactor = useTextScale();
-  const styles = useMemo(() => makeStyles(colors, textScaleFactor), [colors, textScaleFactor]);
+  const { width: windowWidth } = useWindowDimensions();
+  const cellSize = monthCellSizeFor(windowWidth, spacing.md);
+  const styles = useMemo(
+    () => makeStyles(colors, textScaleFactor, cellSize),
+    [colors, textScaleFactor, cellSize],
+  );
 
   // ==== stores and screen state ====
   const allTasks = useWithoutLockedTasks(useTaskStore(s => s.tasks));
@@ -795,8 +801,8 @@ export function CalendarScreen() {
                 style={[
                   styles.tripBand,
                   {
-                    left: segment.startCol * CELL_SIZE + (segment.continuesBefore ? 0 : 3),
-                    width: segment.span * CELL_SIZE - (segment.continuesBefore ? 0 : 3) - (segment.continuesAfter ? 0 : 3),
+                    left: segment.startCol * cellSize + (segment.continuesBefore ? 0 : 3),
+                    width: segment.span * cellSize - (segment.continuesBefore ? 0 : 3) - (segment.continuesAfter ? 0 : 3),
                   },
                   segment.continuesBefore && styles.tripBandOpenStart,
                   segment.continuesAfter && styles.tripBandOpenEnd,
@@ -1484,7 +1490,8 @@ function cellLabel(day: Date, bucket: DayBucket | undefined, shade: DayShade): s
   return `${date}, ${parts.join(', ')}${suffix}`;
 }
 
-function makeStyles(colors: Colors, textScaleFactor = 1) {
+function makeStyles(colors: Colors, textScaleFactor = 1, cellSize = 0) {
+  const cellHeight = cellHeightFor(cellSize);
   return StyleSheet.create({
     container: {
       flex: 1,
@@ -1540,7 +1547,7 @@ function makeStyles(colors: Colors, textScaleFactor = 1) {
       marginBottom: spacing.xxs,
     },
     dayHeaderCell: {
-      width: CELL_SIZE,
+      width: cellSize,
       alignItems: 'center',
       paddingVertical: 4,
     },
@@ -1552,7 +1559,7 @@ function makeStyles(colors: Colors, textScaleFactor = 1) {
     },
     gridRow: {
       flexDirection: 'row',
-      height: CELL_HEIGHT,
+      height: cellHeight,
     },
     // A lane is positioned by its segments, which sit at their columns'
     // offsets; the lane only reserves the height.
@@ -1591,11 +1598,11 @@ function makeStyles(colors: Colors, textScaleFactor = 1) {
     // One row of the month's cells, so the week reads as a slice of the grid.
     weekStrip: {
       flexDirection: 'row',
-      height: CELL_HEIGHT,
+      height: cellHeight,
     },
     dayCell: {
-      width: CELL_SIZE,
-      height: CELL_HEIGHT,
+      width: cellSize,
+      height: cellHeight,
       alignItems: 'center',
       justifyContent: 'center',
     },
@@ -1621,9 +1628,9 @@ function makeStyles(colors: Colors, textScaleFactor = 1) {
       fontWeight: fontWeight.medium,
     },
     dayCircle: {
-      width: CELL_SIZE - 18,
-      height: CELL_SIZE - 18,
-      borderRadius: (CELL_SIZE - 18) / 2,
+      width: cellSize - 18,
+      height: cellSize - 18,
+      borderRadius: (cellSize - 18) / 2,
       alignItems: 'center',
       justifyContent: 'center',
     },

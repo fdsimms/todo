@@ -13,10 +13,16 @@
         "dark": "./assets/icon-dark.png",
         "tinted": "./assets/icon-tinted.png"
       },
-      "supportsTablet": false,
+      "supportsTablet": true,
       "bundleIdentifier": "com.fdsimms.dundundun",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
+        "UISupportedInterfaceOrientations~ipad": [
+          "UIInterfaceOrientationPortrait",
+          "UIInterfaceOrientationPortraitUpsideDown",
+          "UIInterfaceOrientationLandscapeLeft",
+          "UIInterfaceOrientationLandscapeRight"
+        ],
         "LSApplicationQueriesSchemes": ["x-apple-health"],
         "NSHealthShareUsageDescription": "dundundun reads data such as your step count, Activity rings, today’s sleep and nutrition, your weight over time, and workouts other apps recorded. It shows them beside your tasks and checks them against rules you set. It also reads your heart rate during a workout your Apple Watch measured in dundundun, to show on that workout’s page. Nothing is sent anywhere, and no copy is kept on this phone.",
         "NSHealthUpdateUsageDescription": "dundundun saves an amount to Health, such as a glass of water or a coffee’s caffeine, when you complete a task you set up to log one. It saves a weight when you record one, a meal’s nutrition when you add the meal to the food log, and a strength workout when you choose to save a finished one. Nothing else is written. Deleting a food log entry or a workout removes what it saved.",

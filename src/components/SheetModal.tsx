@@ -1,5 +1,6 @@
 import React, { useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Keyboard, Modal } from 'react-native';
+import { AppFrame } from './AppFrame';
 import {
   beginDismissal,
   canHideSheet,
@@ -374,15 +375,25 @@ export function SheetModal({ visible = true, children, name, preempts = false, .
     };
   }, [shown, parentLevel, ownLevel, id, name, rest.testID, preempts]);
 
+  // A full-screen sheet fills the whole window, which on an iPad or a resized
+  // Mac window is wider than anything in it was drawn for, so it gets the same
+  // column the rest of the app is drawn in. A page sheet is sized by iOS, and a
+  // transparent one is a backdrop that has to cover the window with its own
+  // card on top, so neither is framed. A `Modal` with no style and not
+  // transparent presents full screen.
+  const fillsWindow = !rest.transparent && (rest.presentationStyle ?? 'fullScreen') === 'fullScreen';
+  const body = (
+    <PresentationLevelContext.Provider value={ownLevel}>
+      {children}
+    </PresentationLevelContext.Provider>
+  );
   return (
     <Modal
       visible={shown}
       {...rest}
       onDismiss={() => { finishDismissal(); rest.onDismiss?.(); }}
     >
-      <PresentationLevelContext.Provider value={ownLevel}>
-        {children}
-      </PresentationLevelContext.Provider>
+      {fillsWindow ? <AppFrame>{body}</AppFrame> : body}
     </Modal>
   );
 }
