@@ -2635,7 +2635,7 @@ export function RecipeDetailScreen() {
                 variant="neutral"
                 surface="page"
                 onPress={() => { haptics.tap(); setEditingBlank('new'); }}
-                accessibilityLabel="Add a wild card, a kind of food you pick from your kitchen each time"
+                accessibilityLabel="Add a wild card, a kind of food you choose each time you plan the recipe"
               />
             )}
             {recipe.ingredients.length > 0 && (
@@ -2654,8 +2654,8 @@ export function RecipeDetailScreen() {
             wild card is, and once one is on the page its own card does. */}
         {showBlankAction && blanks.length === 0 && (
           <HelpText style={styles.inputHint}>
-            A wild card is a kind of food you pick from your kitchen each time
-            you plan the recipe, like the grain in a grain bowl.
+            A wild card is a kind of food you choose each time you plan the
+            recipe, like the grain in a grain bowl.
           </HelpText>
         )}
         </>
