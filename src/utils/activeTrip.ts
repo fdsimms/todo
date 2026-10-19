@@ -175,6 +175,13 @@ export interface TripMarker {
    * same thing: this isn't coming home from here, so what else would do?
    */
   substitute?: GroceryItem;
+  /**
+   * `unavailable` and `outOfRange`: another store on record as having this item
+   * (`primaryShopFor`, which already drops stores said to lack it), so the row
+   * can say where to get it instead. Absent when no other store is on record;
+   * the app never guesses one.
+   */
+  elsewhere?: Shop;
 }
 
 /**
@@ -202,6 +209,17 @@ function substituteAt(
   )?.item;
 }
 
+/** The store to point at when this one hasn't got the item, or undefined. */
+function elsewhereFor(
+  item: GroceryItem,
+  links: readonly ItemShopLink[],
+  shops: readonly Shop[],
+  trip: Shop,
+): Shop | undefined {
+  const other = exclusiveShopFor(item, links, shops) ?? primaryShopFor(item, links, shops);
+  return other && other.id !== trip.id ? other : undefined;
+}
+
 export function tripMarkerFor(
   item: GroceryItem,
   links: readonly ItemShopLink[],
@@ -217,7 +235,7 @@ export function tripMarkerFor(
     // stronger claim, and both are the user's own.
     if (isUnavailable(here)) {
       const substitute = substituteAt(item, links, trip, subLinks, items);
-      return { kind: 'unavailable', shop: trip, substitute };
+      return { kind: 'unavailable', shop: trip, substitute, elsewhere: elsewhereFor(item, links, shops, trip) };
     }
     if (lacksWantedProduct(here, item)) {
       const wantedProduct = describePreferredProduct(item, products);
@@ -250,7 +268,7 @@ export function tripMarkerFor(
   // otherwise.
   if (isOutOfRange(trip, item, links)) {
     const substitute = substituteAt(item, links, trip, subLinks, items);
-    return { kind: 'outOfRange', shop: trip, substitute };
+    return { kind: 'outOfRange', shop: trip, substitute, elsewhere: elsewhereFor(item, links, shops, trip) };
   }
 
   // Anything left to say has to come from a link naming
@@ -379,20 +397,23 @@ export function describeTripMarker(marker: TripMarker): string {
 }
 
 /**
- * The caption for an `unavailable` marker once its row sits under its
- * aisle's own "Not here" group instead of inline (see GroceryScreen) — a
- * second-generation version of the same problem `describeTripMarker`'s
- * `unavailable` case already solved once: restating the store's own
- * negative claim on every row under a header that already said it once is
- * exactly the over-stuffed caption that case was shortened to avoid.
+ * The caption for an `unavailable` or `outOfRange` marker once its row sits in
+ * the list's "Not at <store>" group instead of inline (see GroceryScreen).
  *
- * Every row under that header is `unavailable` or `outOfRange` by
- * construction, so there is nothing left to say beyond the one thing the header
- * doesn't know: what to grab instead. Empty when there's no substitute on
- * record — the row says nothing at all, same silence rule as everywhere else in
- * this module — and empty a second way for a store with a range, which is that
- * a substitute it also can't sell you has been dropped before it got here.
+ * The group's header names the store you're in, so the caption leaves that out
+ * and says what a row away from its aisle can't: which aisle it belongs to,
+ * which other store is on record as having it, and what to grab instead.
+ * Three parts at most, each dropped when the app has nothing on record for it,
+ * so a row with none of them says nothing at all (the module's silence rule).
+ * Empty for every other kind of marker, and a substitute this store also can't
+ * sell has already been dropped before it gets here.
  */
-export function describeGroupedUnavailable(marker: TripMarker): string {
-  return marker.substitute ? `or ${marker.substitute.name}` : '';
+export function describeGroupedUnavailable(marker: TripMarker, aisle?: string): string {
+  if (marker.kind !== 'unavailable' && marker.kind !== 'outOfRange') return '';
+  const parts: string[] = [];
+  if (aisle) parts.push(aisle);
+  if (marker.elsewhere) parts.push(`Try ${marker.elsewhere.name}`);
+  if (marker.substitute) parts.push(`or ${marker.substitute.name}`);
+  // An aisle alone isn't something worth a caption.
+  return parts.length > (aisle ? 1 : 0) ? parts.join(' \u00b7 ') : '';
 }

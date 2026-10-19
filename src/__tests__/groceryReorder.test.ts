@@ -239,6 +239,11 @@ describe('groceryDragRange', () => {
     expect(groceryDragRange([aisle('Dairy'), cart], 0)).toEqual([0, 0]);
   });
 
+  it('stops above the Skipped group when nothing is unavailable', () => {
+    const rows = [aisle('Dairy'), row(makeItem('Milk')), { type: 'skippedHeader' } as GroceryDropRow, row(makeItem('Cream'))];
+    expect(groceryDragRange(rows, 1)).toEqual([1, 1]);
+  });
+
   it('stops above the Not here group', () => {
     const rows = [aisle('Dairy'), row(makeItem('Milk')), row(makeItem('Eggs')), notHere, row(makeItem('Cream'))];
     expect(groceryDragRange(rows, 1)).toEqual([1, 2]);

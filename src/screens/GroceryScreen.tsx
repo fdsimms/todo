@@ -107,8 +107,10 @@ import { BUTTON_LABEL } from '../copy/shared';
 /** The collapse and scroll key of one store's section in the store lens. */
 const storeSectionKey = (shopId: string | null) => `store:${shopId ?? 'none'}`;
 
-/** The one "Not here" group, after the last section; its fold is remembered under this key. */
+/** The one "Not at <store>" group, after the last section; its fold is remembered under this key. */
 const NOT_HERE_KEY = 'unavailable';
+/** The "Skipped" group under it; session-only, like the trip it belongs to. */
+const SKIPPED_KEY = 'skipped';
 
 /**
  * A flat stream of tagged rows rather than a SectionList — the same shape
@@ -149,7 +151,8 @@ type ListRow =
   | { type: 'aisle'; key: string; aisle: string; count: number }
   | { type: 'recipeHeader'; key: string; label: string; count: number }
   | { type: 'storeHeader'; key: string; label: string; count: number }
-  | { type: 'unavailableHeader'; key: string; count: number }
+  | { type: 'unavailableHeader'; key: string; count: number; shopName: string }
+  | { type: 'skippedHeader'; key: string; count: number }
   | { type: 'cartHeader'; key: string; count: number }
   | {
       type: 'item';
@@ -157,6 +160,8 @@ type ListRow =
       item: GroceryItem;
       inCart: boolean;
       unavailableHere: boolean;
+      /** In the "Skipped" group: acknowledged as not at this store for the rest of the trip. */
+      skipped?: boolean;
       /**
        * Set when this row sits directly next to its live either/or partner(s)
        * — same `choiceGroup`, nothing between them — so GroceryRow can draw
@@ -254,6 +259,10 @@ export function GroceryScreen() {
   const itemShops = useGroceryStore(useShallow(s => s.itemShops));
   const tripShopId = useGroceryStore(s => s.tripShopId);
   const tripStartedAt = useGroceryStore(s => s.tripStartedAt);
+  const tripSkippedIds = useGroceryStore(useShallow(s => s.tripSkippedIds));
+  const skipForTrip = useGroceryStore(s => s.skipForTrip);
+  const unskipForTrip = useGroceryStore(s => s.unskipForTrip);
+  const [skippedOpen, setSkippedOpen] = useState(false);
   const startTrip = useGroceryStore(s => s.startTrip);
   const endTrip = useGroceryStore(s => s.endTrip);
   const checkTripExpiry = useGroceryStore(s => s.checkTripExpiry);
@@ -544,7 +553,9 @@ export function GroceryScreen() {
       // where the claim came from, and not one the reader needs at a shelf.
       const unavailable = marker.kind === 'unavailable' || marker.kind === 'outOfRange';
       out.set(item.id, {
-        text: unavailable ? describeGroupedUnavailable(marker) : describeTripMarker(marker),
+        text: unavailable
+          ? describeGroupedUnavailable(marker, item.aisle === OTHER_AISLE ? undefined : item.aisle)
+          : describeTripMarker(marker),
         substituteId: marker.substitute?.id,
         unavailable,
       });
@@ -679,12 +690,14 @@ export function GroceryScreen() {
     // doesn't depend on which aisles are open. Shared between all three
     // groupings, which differ only in the header row they push.
     const notHere: GroceryItem[] = [];
+    const skippedSet = new Set(tripSkippedIds);
+    const skipped: GroceryItem[] = [];
     const isNotHere = (item: GroceryItem) => !!storeMarkers.get(item.id)?.unavailable;
     const pushSection = (header: ListRow, groupKey: string, data: GroceryItem[]) => {
       out.push(header);
       for (const item of data) {
         if (isNotHere(item)) {
-          notHere.push(item);
+          (skippedSet.has(item.id) ? skipped : notHere).push(item);
           continue;
         }
         if (collapsedGroups.has(groupKey)) continue;
@@ -723,10 +736,23 @@ export function GroceryScreen() {
       }
     }
     if (notHere.length > 0) {
-      out.push({ type: 'unavailableHeader', key: NOT_HERE_KEY, count: notHere.length });
+      out.push({
+        type: 'unavailableHeader',
+        key: NOT_HERE_KEY,
+        count: notHere.length,
+        shopName: activeTripShop?.name ?? '',
+      });
       if (!collapsedGroups.has(NOT_HERE_KEY)) {
         for (const item of notHere) {
           out.push({ type: 'item', key: item.id, item, inCart: false, unavailableHere: true });
+        }
+      }
+    }
+    if (skipped.length > 0) {
+      out.push({ type: 'skippedHeader', key: SKIPPED_KEY, count: skipped.length });
+      if (skippedOpen) {
+        for (const item of skipped) {
+          out.push({ type: 'item', key: item.id, item, inCart: false, unavailableHere: true, skipped: true });
         }
       }
     }
@@ -753,7 +779,7 @@ export function GroceryScreen() {
       row.choicePosition = prevPaired ? (nextPaired ? 'middle' : 'last') : 'first';
     }
     return out;
-  }, [grouped, inCart, cartOpen, storeMarkers, collapsedGroups]);
+  }, [grouped, inCart, cartOpen, storeMarkers, collapsedGroups, tripSkippedIds, skippedOpen, activeTripShop]);
 
   // What's actually selectable right now — the cart's rows only join this
   // when the cart is expanded, same as what's tappable on screen.
@@ -917,7 +943,7 @@ export function GroceryScreen() {
     rows.forEach((row, i) => {
       if (row.type === 'aisle') {
         map.set(row.key, { kind: 'header', key: row.key, category: row.aisle });
-      } else if (row.type === 'cartHeader' || row.type === 'unavailableHeader' || row.type === 'recipeHeader' || row.type === 'storeHeader' || row.inCart || row.unavailableHere) {
+      } else if (row.type === 'cartHeader' || row.type === 'unavailableHeader' || row.type === 'skippedHeader' || row.type === 'recipeHeader' || row.type === 'storeHeader' || row.inCart || row.unavailableHere) {
         // Registered, but with nothing to say about placement: the cart is a
         // record of the trolley rather than a place to file something, which is
         // the same bound groceryDragRange puts on a row drag. Leaving these out
@@ -1492,11 +1518,11 @@ export function GroceryScreen() {
       if (row.type === 'unavailableHeader') {
         // Same treatment as the aisle header above it, not a dimmer one —
         // every section header in this app reads the same way (see
-        // CLAUDE.md's design-system note), so what tells this apart from a
-        // new aisle is the wording and the count. It folds like the aisle
-        // does, remembered under its own key: once you know what the store
-        // doesn't have, the group is only in the way of the rest of the list.
+        // CLAUDE.md's design-system note). It names the store, since "here"
+        // doesn't say which one, and it folds like an aisle, remembered under
+        // its own key.
         const collapsed = collapsedGroups.has(row.key);
+        const label = `Not at ${row.shopName}`;
         return withZone(
           <TouchableOpacity
             style={styles.groupSectionHeader}
@@ -1504,16 +1530,41 @@ export function GroceryScreen() {
             onPress={() => toggleGroupCollapsed(row.key)}
             accessibilityRole="button"
             accessibilityState={{ expanded: !collapsed }}
-            accessibilityLabel={`${collapsed ? 'Expand' : 'Collapse'} not here`}
+            accessibilityLabel={`${collapsed ? 'Expand' : 'Collapse'} ${label}`}
           >
             <View style={styles.groupSectionHeaderLeft}>
-              <Text style={styles.sectionTitle}>Not here ({row.count})</Text>
+              <Text style={styles.sectionTitle}>{label} ({row.count})</Text>
               <Ionicons
                 name={collapsed ? 'chevron-down' : 'chevron-up'}
                 size={iconSize.sm}
                 color={colors.textTertiary}
               />
             </View>
+          </TouchableOpacity>
+        );
+      }
+      if (row.type === 'skippedHeader') {
+        // Rows acknowledged as not here, kept one tap away rather than gone: the
+        // store may still turn out to have one, and it is still on the list.
+        return withZone(
+          <TouchableOpacity
+            style={styles.cartHeader}
+            activeOpacity={interaction.activeOpacity}
+            onPress={() => {
+              haptics.tap();
+              animateLayout();
+              setSkippedOpen(o => !o);
+            }}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: skippedOpen }}
+            accessibilityLabel={`Skipped, ${row.count} ${row.count === 1 ? 'item' : 'items'}`}
+          >
+            <Text style={styles.sectionTitle}>Skipped ({row.count})</Text>
+            <Ionicons
+              name={skippedOpen ? 'chevron-up' : 'chevron-down'}
+              size={iconSize.sm}
+              color={colors.textTertiary}
+            />
           </TouchableOpacity>
         );
       }
@@ -1577,13 +1628,15 @@ export function GroceryScreen() {
           storeMarker={storeMarkers.get(row.item.id)?.text}
           swapSubstituteId={storeMarkers.get(row.item.id)?.substituteId}
           onSwapForSubstitute={handleSwapForSubstitute}
+          tripActionLabel={row.unavailableHere ? (row.skipped ? 'Put back' : 'Skip') : undefined}
+          onTripAction={row.skipped ? unskipForTrip : skipForTrip}
           tripPriceMinor={tripPriceById.get(row.item.id)?.minor}
           tripPriceRecorded={tripPriceById.get(row.item.id)?.recorded}
           onSetTripPrice={tripPriceById.has(row.item.id) ? handleSetTripPrice : undefined}
         />
       );
     },
-    [styles, colors, cartOpen, collapsedGroups, toggleGroupCollapsed, handleToggle, handleEdit, handleOpenSubstitutes, handleSwapForSubstitute, zoneByKey, grouped.kind, selectionMode, selectedIds, toggleSelection, enterSelectionMode, alternativeCaptionById, stockedForById, storeMarkers, tripPriceById, handleSetTripPrice]
+    [styles, colors, cartOpen, skippedOpen, skipForTrip, unskipForTrip, collapsedGroups, toggleGroupCollapsed, handleToggle, handleEdit, handleOpenSubstitutes, handleSwapForSubstitute, zoneByKey, grouped.kind, selectionMode, selectedIds, toggleSelection, enterSelectionMode, alternativeCaptionById, stockedForById, storeMarkers, tripPriceById, handleSetTripPrice]
   );
 
   // The "Start shopping" card, mounted either as the list's header or as a

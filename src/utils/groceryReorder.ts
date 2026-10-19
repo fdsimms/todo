@@ -19,6 +19,7 @@ export type GroceryDropRow =
   | { type: 'recipeHeader' }
   | { type: 'storeHeader' }
   | { type: 'unavailableHeader' }
+  | { type: 'skippedHeader' }
   | { type: 'cartHeader' }
   | { type: 'item'; item: GroceryItem };
 
@@ -66,8 +67,8 @@ export interface GroceryPlacement {
  * anyway. Leaving them out also makes a drop mean the same thing whether the
  * cart section happens to be expanded or collapsed.
  *
- * **Everything from a `unavailableHeader` down is left alone too.** The "Not
- * here" group sits after the last aisle, so the nearest-header-above rule
+ * **Everything from a `unavailableHeader` (or `skippedHeader`) down is left
+ * alone too.** The "Not at <store>" group sits after the last aisle, so the nearest-header-above rule
  * would file each of its rows under that aisle, whatever aisle it came from.
  * It is a record of what this store lacks, and its rows keep their own aisle.
  *
@@ -81,7 +82,7 @@ export function resolveGroceryDrop(rows: readonly GroceryDropRow[]): GroceryPlac
   let currentAisle: string | null = null;
 
   for (const row of rows) {
-    if (row.type === 'cartHeader' || row.type === 'unavailableHeader') break;
+    if (row.type === 'cartHeader' || row.type === 'unavailableHeader' || row.type === 'skippedHeader') break;
     if (row.type === 'aisle') {
       currentAisle = row.aisle;
       continue;
@@ -181,15 +182,17 @@ export function placeNewGroceryItems(
  * header, since that section is a record of what's already in the trolley
  * rather than a place to file something.
  *
- * Also bounded by the "Not here" header, which sits after the last aisle: a
- * row dropped into that group would be filed under no aisle at all.
+ * Also bounded by the "Not at <store>" and "Skipped" headers, which sit after
+ * the last aisle: a row dropped into either would be filed under no aisle.
  */
 export function groceryDragRange(
   rows: readonly GroceryDropRow[],
   activeIndex: number,
 ): [number, number] {
   const firstAisle = rows.findIndex(r => r.type === 'aisle');
-  const tail = rows.findIndex(r => r.type === 'cartHeader' || r.type === 'unavailableHeader');
+  const tail = rows.findIndex(
+    r => r.type === 'cartHeader' || r.type === 'unavailableHeader' || r.type === 'skippedHeader',
+  );
   const lo = firstAisle >= 0 ? firstAisle + 1 : activeIndex;
   const hi = tail >= 0 ? tail - 1 : rows.length - 1;
   // A degenerate list (no headers, or a cart header first) would otherwise hand
