@@ -5,7 +5,6 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Dimensions,
   ScrollView,
   useWindowDimensions,
 } from 'react-native';
@@ -36,6 +35,7 @@ import { SheetScrim } from './SheetScrim';
 import type { ReminderKind } from '../types';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
+import { pickerCardWidthFor } from '../utils/frameWidth';
 
 type Mode = 'date' | 'before' | 'visible';
 
@@ -71,10 +71,7 @@ interface Props {
   onCancel: () => void;
 }
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CARD_WIDTH = Math.min(SCREEN_WIDTH - 32, 380);
 const CAL_PADDING = 10;
-const CELL_SIZE = Math.floor((CARD_WIDTH - spacing.md * 2 - CAL_PADDING * 2) / 7);
 
 const alarmKitAvailable = isAlarmKitAvailable();
 
@@ -87,8 +84,8 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
   // Reactive, unlike the width above: read once at module load, a stale
   // height would cap the card against a screen that no longer matches the
   // one it's actually rendering on.
-  const { height: windowHeight } = useWindowDimensions();
-  const styles = useMemo(() => makeStyles(colors, windowHeight), [colors, windowHeight]);
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const styles = useMemo(() => makeStyles(colors, windowWidth, windowHeight), [colors, windowWidth, windowHeight]);
   const fade = useScrollEdgeFade();
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
@@ -507,7 +504,11 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
   );
 }
 
-const makeStyles = (colors: Colors, windowHeight: number) => StyleSheet.create({
+const makeStyles = (colors: Colors, windowWidth: number, windowHeight: number) => {
+  // Read per render: a Mac window or an iPad in Split View is resized after launch.
+  const cardWidth = pickerCardWidthFor(windowWidth);
+  const cellSize = Math.floor((cardWidth - spacing.md * 2 - CAL_PADDING * 2) / 7);
+  return StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: colors.backdrop,
@@ -516,7 +517,7 @@ const makeStyles = (colors: Colors, windowHeight: number) => StyleSheet.create({
     paddingHorizontal: 16,
   },
   card: {
-    width: CARD_WIDTH,
+    width: cardWidth,
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.lg,
     overflow: 'hidden',
@@ -652,7 +653,7 @@ const makeStyles = (colors: Colors, windowHeight: number) => StyleSheet.create({
     marginBottom: spacing.xxs,
   },
   dayHeaderCell: {
-    width: CELL_SIZE,
+    width: cellSize,
     alignItems: 'center',
     paddingVertical: 4,
   },
@@ -664,18 +665,18 @@ const makeStyles = (colors: Colors, windowHeight: number) => StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    height: CELL_SIZE * 6,
+    height: cellSize * 6,
   },
   dayCell: {
-    width: CELL_SIZE,
-    height: CELL_SIZE,
+    width: cellSize,
+    height: cellSize,
     alignItems: 'center',
     justifyContent: 'center',
   },
   dayCircle: {
-    width: CELL_SIZE - 6,
-    height: CELL_SIZE - 6,
-    borderRadius: (CELL_SIZE - 6) / 2,
+    width: cellSize - 6,
+    height: cellSize - 6,
+    borderRadius: (cellSize - 6) / 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -752,3 +753,4 @@ const makeStyles = (colors: Colors, windowHeight: number) => StyleSheet.create({
     fontWeight: fontWeight.medium,
   },
 });
+};

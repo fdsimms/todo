@@ -38,6 +38,9 @@ private let pendingDosesFileName = "pending_doses.json"
 // Matching LogDreamIntent.swift. The dream log's own queue, drained by
 // processPendingDreams in src/utils/widgetSync.ts.
 private let pendingDreamsFileName = "pending_dreams.json"
+// Matching LogFoodIntent.swift. Meals described to Siri, drained by
+// processPendingFoods in src/utils/widgetSync.ts.
+private let pendingFoodsFileName = "pending_foods.json"
 // Matching ToggleKeyLockIntent.swift. The key lock's own queue, drained by
 // processPendingKeyScans in src/utils/widgetSync.ts.
 private let pendingKeyScansFileName = "pending_key_scans.json"
@@ -70,6 +73,13 @@ private struct PendingDosePayload: Codable {
 // Mirrors what LogDreamIntent queues and what processPendingDreams() in
 // widgetSync.ts expects back. `at` is the ISO 8601 moment Siri was asked.
 private struct PendingDreamPayload: Codable {
+  let text: String
+  let at: String
+}
+
+// Mirrors what LogFoodIntent queues and what processPendingFoods() in
+// widgetSync.ts expects back. `at` is the ISO 8601 moment Siri was asked.
+private struct PendingFoodPayload: Codable {
   let text: String
   let at: String
 }
@@ -563,6 +573,33 @@ public class TodoWidgetBridgeModule: Module {
         guard let data = try? Data(contentsOf: fileURL) else { return }
         defer { try? FileManager.default.removeItem(at: fileURL) }
         guard let decoded = try? JSONDecoder().decode([PendingDreamPayload].self, from: data) else {
+          return
+        }
+        guard let reencoded = try? JSONEncoder().encode(decoded) else { return }
+        json = String(data: reencoded, encoding: .utf8) ?? "[]"
+      }
+      return json
+    }
+
+    // Reads and clears the queue LogFoodIntent writes ("log food"). The same
+    // read-and-delete shape as drainPendingDreams: a corrupt file is deleted
+    // rather than failing on every launch.
+    AsyncFunction("drainPendingFoods") { () -> String in
+      var json = "[]"
+      TodoWidgetExceptionCatcher.runCatchingExceptions {
+        guard let containerURL = FileManager.default.containerURL(
+          forSecurityApplicationGroupIdentifier: appGroupID
+        ) else {
+          return
+        }
+
+        let fileURL = containerURL
+          .appendingPathComponent("Library/Application Support", isDirectory: true)
+          .appendingPathComponent(pendingFoodsFileName)
+
+        guard let data = try? Data(contentsOf: fileURL) else { return }
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+        guard let decoded = try? JSONDecoder().decode([PendingFoodPayload].self, from: data) else {
           return
         }
         guard let reencoded = try? JSONEncoder().encode(decoded) else { return }

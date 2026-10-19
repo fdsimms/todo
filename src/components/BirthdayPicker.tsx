@@ -5,7 +5,7 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 import { SheetModal } from './SheetModal';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -17,6 +17,7 @@ import { SheetScrim } from './SheetScrim';
 import { Toggle } from './Toggle';
 import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
+import { pickerCardWidthFor } from '../utils/frameWidth';
 
 /**
  * The birthday picker — month, day and an optional year, as three native
@@ -60,8 +61,6 @@ interface Props {
   onCancel: () => void;
 }
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CARD_WIDTH = Math.min(SCREEN_WIDTH - 32, 380);
 
 // A neutral, leap-safe placeholder for the wheel's year column when no birth
 // year is on file — the same convention `describeBirthday`/`birthdayInYear`
@@ -74,7 +73,8 @@ const MIN_DATE = new Date(1900, 0, 1);
 export function BirthdayPicker({ visible, month, day, year, onConfirm, onClear, onCancel }: Props) {
   const colors = useColors();
   const { isDark, shadows } = useTheme();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const { width: windowWidth } = useWindowDimensions();
+  const styles = useMemo(() => makeStyles(colors, windowWidth), [colors, windowWidth]);
 
   const [date, setDate] = useState(() => new Date());
   const [yearKnown, setYearKnown] = useState(false);
@@ -175,7 +175,10 @@ export function BirthdayPicker({ visible, month, day, year, onConfirm, onClear, 
   );
 }
 
-const makeStyles = (colors: Colors) => StyleSheet.create({
+const makeStyles = (colors: Colors, windowWidth: number) => {
+  // Read per render: a Mac window or an iPad in Split View is resized after launch.
+  const cardWidth = pickerCardWidthFor(windowWidth);
+  return StyleSheet.create({
   backdrop: {
     flex: 1,
     justifyContent: 'center',
@@ -186,7 +189,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.backdrop,
   },
   card: {
-    width: CARD_WIDTH,
+    width: cardWidth,
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.lg,
     overflow: 'hidden',
@@ -255,3 +258,4 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.semibold,
   },
 });
+};

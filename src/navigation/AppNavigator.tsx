@@ -60,6 +60,8 @@ import { StackDetailScreen } from '../screens/StackDetailScreen';
 import { PersonDetailScreen } from '../screens/PersonDetailScreen';
 import { TipsScreen } from '../screens/TipsScreen';
 import { SideMenuDrawer } from '../components/SideMenuDrawer';
+import { AppFrame } from '../components/AppFrame';
+import { useFrameWidth } from '../hooks/useFrameWidth';
 import { HubMenuOptionsProvider, TabHubMenuOverlay, hubTabButtonFor } from '../components/TabHubMenu';
 import { BlankTabDiagnostic, freezeWhenBlurred } from '../components/FreezeWhenBlurred';
 import { SettingsScreen } from '../screens/SettingsScreen';
@@ -456,11 +458,15 @@ export default function AppNavigator() {
     },
   }), []);
 
+  const { left: frameLeft } = useFrameWidth();
+  const frameLeftRef = useRef(frameLeft);
+  frameLeftRef.current = frameLeft;
   const edgePanResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: (e) => e.nativeEvent.pageX < EDGE_WIDTH,
+      // `pageX` counts from the window's edge, the strip from the column's.
+      onStartShouldSetPanResponder: (e) => e.nativeEvent.pageX - frameLeftRef.current < EDGE_WIDTH,
       onMoveShouldSetPanResponder: (e, gs) =>
-        e.nativeEvent.pageX < EDGE_WIDTH + 10 &&
+        e.nativeEvent.pageX - frameLeftRef.current < EDGE_WIDTH + 10 &&
         gs.dx > 8 &&
         Math.abs(gs.dx) > Math.abs(gs.dy),
       onPanResponderRelease: (_e, gs) => {
@@ -570,6 +576,10 @@ export default function AppNavigator() {
 
   return (
     <>
+      {/* Everything but the long-press hub menu is drawn in the app's column
+          (see AppFrame); that card is placed from window coordinates, so it
+          sits outside it, after. */}
+      <AppFrame>
       <MenuOpenContext.Provider value={menuOpen}>
       <NavigationContainer
         ref={navRef}
@@ -698,9 +708,6 @@ export default function AppNavigator() {
         onOpenSettings={openSettings}
         activeTab={activeTab}
       />
-      {/* The long-press card for a hub's tab. Outside the navigator so it can
-          cover the whole screen, and drawn above the bar it points at. */}
-      <TabHubMenuOverlay />
       {!menuOpen && (
         <View
           style={styles.edgeZone}
@@ -743,6 +750,10 @@ export default function AppNavigator() {
       {/* A minimized focus session's way back from every screen but Today,
           which has its own inline strip. See FocusFloatingBar. */}
       <FocusFloatingBar hidden={onToday} />
+      </AppFrame>
+      {/* The long-press card for a hub's tab. Outside the navigator so it can
+          cover the whole screen, and drawn above the bar it points at. */}
+      <TabHubMenuOverlay />
     </>
   );
 }

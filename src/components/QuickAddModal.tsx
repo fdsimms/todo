@@ -2480,6 +2480,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
               <TextField
                 ref={inputRef}
                 style={[styles.input, hasOverlay && styles.inputHidden]}
+                // e2e/maestro/ finds the field by this placeholder.
                 placeholder="New task…"
                 placeholderTextColor={colors.textTertiary}
                 value={title}
