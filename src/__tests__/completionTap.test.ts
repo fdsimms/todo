@@ -311,6 +311,10 @@ describe('completionTapFor', () => {
       expect(completionTapFor(chooseStep)).toBe('pick-meal');
     });
 
+    it('ticks normally on a "Choose" step that reads ready (the meal was already logged or cooked)', () => {
+      expect(completionTapFor({ ...chooseStep, generatedReadyAt: '2025-06-10T08:00:00.000Z' })).toBe('complete');
+    });
+
     it('ticks normally once the chain has moved past Choose', () => {
       expect(completionTapFor({ ...chooseStep, chainIndex: 1 })).toBe('complete');
     });
