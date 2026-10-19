@@ -776,7 +776,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_errors',
-    'Unexpected failures the phone recorded (an AI or import request that failed in a way nobody anticipated), newest first, each with where it was caught, the error name, a trimmed message and the top of its stack. Use it to work out why a feature the person says is not working failed. Read-only. Empty means none were recorded.',
+    'Unexpected failures the phone recorded (an AI request, an import, or a file or photo pick that failed in a way nobody anticipated), newest first, each with where it was caught, the error name, a trimmed message and the top of its stack. Use it to work out why a feature the person says is not working failed. Read-only. Empty means none were recorded, and a failure the phone only showed as an alert without logging it is not here either, so ask the person for the exact wording of the alert.',
     {
       source: z.string().optional().describe('Only errors caught in one place, e.g. "recipe-component-import".'),
       limit: z.number().int().positive().max(MAX_ERRORS).optional(),

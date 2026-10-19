@@ -25,6 +25,20 @@ import { generateId } from './id';
  */
 
 /**
+ * Records a failed pick in the error log so it can be read off the phone.
+ * `errorLog` is `require`d here, inside its own try, because it reaches the
+ * database module: a failure to log must never replace the failure being
+ * reported, and this file is used where no database exists.
+ */
+function logPickFailure(source: string, error: unknown): void {
+  try {
+    require('./errorLog').logError(source, error);
+  } catch {
+    // The caller already returns the failure to the person.
+  }
+}
+
+/**
  * Long edge we downscale to. This is the standard vision tier's ceiling — above
  * it the API downscales anyway and bills for the upload regardless.
  *
@@ -311,6 +325,7 @@ export async function pickRecipePhoto(source: RecipePhotoSource): Promise<Recipe
       },
     };
   } catch (e) {
+    logPickFailure('recipe-photo-pick', e);
     return {
       status: 'failed',
       message: e instanceof Error && e.message ? e.message : 'Couldn’t read that photo. Try another.',
@@ -456,6 +471,7 @@ export async function pickRecipeImage(source: RecipePhotoSource): Promise<Recipe
 
     return await saveIntoRecipeImageDirectory(asset.uri, asset.width, asset.height);
   } catch (e) {
+    logPickFailure('recipe-image-pick', e);
     return {
       status: 'failed',
       message: e instanceof Error && e.message ? e.message : 'Couldn’t read that photo. Try another.',
