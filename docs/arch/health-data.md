@@ -1325,7 +1325,9 @@ allowed only for these four reasons together:
 
 - **The person chose it.** Zones appear only for somebody who typed a maximum
   (Settings › Workouts › Maximum heart rate, `maxHeartRate`) or
-  typed a year of birth into the calorie budget (`bodyProfile.birthYear`).
+  typed a year of birth (Settings › Apple Health › About you,
+  `bodyProfile.birthYear`). The weight goal sheet edits the same value, so
+  the zones don't need the calorie budget set up.
   Without either, the card's one line names where they are typed, and that is
   all: no prompt, no sheet opened for it, no reminder, and nothing elsewhere
   that asks for an age or a maximum for the zones' sake. Both sync with the

@@ -34,6 +34,8 @@ interface Props {
   addedIds?: readonly string[];
   /** What the list says they are already in: "In routine", "In workout". */
   addedLabel?: string;
+  /** Exercises to list first while nothing is typed, in order: what a swap offers in place of the one shown. */
+  suggestedIds?: readonly string[];
 }
 
 /** What a set records, as the create form and the exercise editor offer it. */
@@ -66,17 +68,24 @@ const NAME_REFUSED: Record<string, string> = {
  * the chest. The field's own text is offered as the new exercise's name, the
  * way a `PillGroup`'s filter offers to create what it can't find.
  */
-export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], addedLabel = 'Added' }: Props) {
+export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], addedLabel = 'Added', suggestedIds }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const exercises = useWorkoutStore(s => s.exercises);
   const addExercise = useWorkoutStore(s => s.addExercise);
   const search = useFilterField();
   const added = useMemo(() => new Set(addedIds), [addedIds]);
-  const results = useMemo(
-    () => (visible ? searchExercises(exercises, search.query) : []),
-    [visible, exercises, search.query],
-  );
+  const results = useMemo(() => {
+    if (!visible) return [];
+    const found = searchExercises(exercises, search.query);
+    if (!suggestedIds || suggestedIds.length === 0 || search.query.trim() !== '') return found;
+    const rank = new Map(suggestedIds.map((id, i) => [id, i]));
+    // Suggested first, in the order given; the rest keep the catalog's.
+    return [
+      ...found.filter(r => rank.has(r.exercise.id)).sort((a, b) => rank.get(a.exercise.id)! - rank.get(b.exercise.id)!),
+      ...found.filter(r => !rank.has(r.exercise.id)),
+    ];
+  }, [visible, exercises, search.query, suggestedIds]);
 
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');

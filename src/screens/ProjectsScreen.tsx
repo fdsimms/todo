@@ -1,4 +1,4 @@
-import React, { useRef, useState, useMemo, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import {
   Alert,
   View,
@@ -22,6 +22,10 @@ import { QuickAddProjectModal, type ProjectDraft } from '../components/QuickAddP
 import { ScreenHeader } from '../components/ScreenHeader';
 import { TipHost } from '../components/TipHost';
 import { EmptyState } from '../components/EmptyState';
+import { EmbeddedRoute } from '../components/EmbeddedRoute';
+import { TwoPane } from '../components/TwoPane';
+import { useTwoPane } from '../hooks/useTwoPane';
+import { ProjectDetailScreen, type ProjectDetailParams } from './ProjectDetailScreen';
 import { Fab, FAB_SIZE, type FabDragHandlers, useFabBottom } from '../components/Fab';
 import {
   FabDropZone,
@@ -96,7 +100,18 @@ function AddProjectFabWithDropLabel({
   return <Fab {...props} dragLabel={label} />;
 }
 
-export function ProjectsScreen() {
+/**
+ * What a project row does with a tap when the page opens beside the list rather
+ * than over it. Null everywhere else (a phone, a narrow window), where a tap
+ * pushes the page as it always has.
+ */
+interface ProjectPane {
+  selectedId: string | null;
+  select: (params: ProjectDetailParams) => void;
+}
+const ProjectPaneContext = createContext<ProjectPane | null>(null);
+
+function ProjectsList() {
   const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const fabBottom = useFabBottom();
@@ -107,6 +122,16 @@ export function ProjectsScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const navigation = useNavigation();
+  const pane = useContext(ProjectPaneContext);
+  // Every way into a project's page: beside the list in a pane, over it otherwise.
+  // Depends on the pane's `select`, which never changes, rather than on the pane
+  // itself, which does with every selection: a new handler on every row would
+  // defeat the rows' memo each time one is opened.
+  const paneSelect = pane?.select ?? null;
+  const openDetail = useCallback((params: ProjectDetailParams) => {
+    if (paneSelect) paneSelect(params);
+    else (navigation as any).navigate('ProjectDetail', params);
+  }, [paneSelect, navigation]);
   const projects = useProjectStore(useShallow(s => s.projects));
   const createProject = useProjectStore(s => s.createProject);
   const removeProjectRow = useProjectStore(s => s.removeProjectRow);
@@ -395,7 +420,7 @@ export function ProjectsScreen() {
     const dropped = pendingDropRef.current;
     pendingDropRef.current = null;
     if (placed && dropped?.kind === 'insert') placeCreatedProject(project, dropped);
-    (navigation as any).navigate('ProjectDetail', { projectId: project.id });
+    openDetail({ projectId: project.id });
   };
 
   // Rebuilt each render so it closes over fresh state; the button reads it
@@ -451,7 +476,7 @@ export function ProjectsScreen() {
       removeProjectRow(id);
       return;
     }
-    (navigation as any).navigate('ProjectDetail', { projectId: id });
+    openDetail({ projectId: id });
   };
 
   // The row handlers are memoized and take the project they act on, rather
@@ -483,12 +508,12 @@ export function ProjectsScreen() {
     // on this list rather than pushing a locked page nobody asked to see.
     if (isProjectHidden(project.id)) {
       unlockProjects().then(ok => {
-        if (ok) (navigation as any).navigate('ProjectDetail', { projectId: project.id });
+        if (ok) openDetail({ projectId: project.id });
       });
       return;
     }
-    (navigation as any).navigate('ProjectDetail', { projectId: project.id });
-  }, [selectionMode, toggleSelection, navigation]);
+    openDetail({ projectId: project.id });
+  }, [selectionMode, toggleSelection, openDetail]);
 
   // A locked project's settings are as private as its tasks.
   const handleEditProject = useCallback((project: Project) => {
@@ -541,6 +566,7 @@ export function ProjectsScreen() {
         allDone={allDone}
         selectionMode={selectionMode}
         selected={selected}
+        paneActive={pane?.selectedId === project.id}
         isActive={isActive}
         drag={canReorder ? drag : undefined}
         colors={colors}
@@ -785,7 +811,7 @@ export function ProjectsScreen() {
  */
 const ProjectRow = React.memo(function ProjectRow({
   project, locked, progress, pastWindow, captionText, captionOverdue, captionSoon, progressNote, nextStep, projectFilter, allDone,
-  selectionMode, selected, isActive, drag, colors, styles,
+  selectionMode, selected, paneActive, isActive, drag, colors, styles,
   onPress, onToggleSelect, onSwipeSelect, onQuickUnarchive, onQuickUncomplete, onQuickComplete, onEdit,
 }: {
   project: Project;
@@ -806,6 +832,8 @@ const ProjectRow = React.memo(function ProjectRow({
   allDone: boolean;
   selectionMode: boolean;
   selected: boolean;
+  /** Its page is the one open in the pane beside the list. */
+  paneActive: boolean;
   isActive?: boolean;
   drag?: () => void;
   colors: Colors;
@@ -840,6 +868,7 @@ const ProjectRow = React.memo(function ProjectRow({
             styles.projectRow,
             isActive && styles.projectRowActive,
             selectionMode && selected && styles.projectRowSelected,
+            paneActive && !selectionMode && styles.projectRowPaneActive,
           ]}
           onPress={press}
           // Reordering is off while selecting: the long press that would start a
@@ -964,6 +993,47 @@ const ProjectRow = React.memo(function ProjectRow({
   );
 });
 
+/**
+ * The projects tab. On a window with room for two panes the list sits beside the
+ * project that is open (the page `ProjectDetailScreen` is, drawn in place by
+ * `EmbeddedRoute`); otherwise it is the list alone and a tap pushes the page.
+ */
+export function ProjectsScreen() {
+  const twoPane = useTwoPane();
+  const [selection, setSelection] = useState<ProjectDetailParams | null>(null);
+  const selectedId = selection?.projectId ?? null;
+  // A project deleted from its own page (or from the list) leaves nothing to show.
+  const stillThere = useProjectStore(s => (selectedId ? s.projects.some(p => p.id === selectedId) : true));
+  useEffect(() => {
+    if (!stillThere) setSelection(null);
+  }, [stillThere]);
+
+  const close = useCallback(() => setSelection(null), []);
+  const pane = useMemo<ProjectPane | null>(
+    () => (twoPane ? { selectedId, select: setSelection } : null),
+    [twoPane, selectedId],
+  );
+
+  return (
+    <ProjectPaneContext.Provider value={pane}>
+      <TwoPane
+        list={<ProjectsList />}
+        detail={selection ? (
+          <EmbeddedRoute key={selection.projectId} name="ProjectDetail" params={selection} onClose={close}>
+            <ProjectDetailScreen />
+          </EmbeddedRoute>
+        ) : (
+          <EmptyState
+            icon="briefcase-outline"
+            title="Pick a project"
+            subtitle="Its tasks open here."
+          />
+        )}
+      />
+    </ProjectPaneContext.Provider>
+  );
+}
+
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: {
     flex: 1,
@@ -1016,6 +1086,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // `flattenOverlay`.
   projectRowSelected: {
     backgroundColor: flattenOverlay(colors.accentSubtle, colors.bgSecondary),
+  },
+  // The row whose page is open beside the list: an outline, so it stays opaque
+  // inside a SwipeableRow and doesn't make the row taller than its neighbors.
+  projectRowPaneActive: {
+    outlineWidth: 2,
+    outlineColor: colors.accent,
+    outlineOffset: -2,
   },
   dropSlot: {
     marginHorizontal: spacing.md,

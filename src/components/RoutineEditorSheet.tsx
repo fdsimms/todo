@@ -42,8 +42,9 @@ import { catalogExercise } from '../utils/exerciseCatalog';
 import { REST_SECONDS_MAX, WORKOUT_NAME_MAX_LENGTH, formatRestSeconds } from '../utils/workoutData';
 import {
   PROGRESSION_HINTS, PROGRESSION_LABELS, describeRoutineItem, itemShape, joinPrevious,
-  leaveSuperset, newRoutineItem, normalizeSupersets, supersetRoles, withProgression, withWarmupMode,
-  type SupersetRole,
+  droppedIntoSuperset, leaveSuperset, newRoutineItem, normalizeSupersets, settleOpenSlots, supersetRoles,
+  withProgression, withWarmupMode,
+  type SupersetRole, type SupersetRowView,
 } from '../utils/workoutRoutine';
 import { joinAnd, loadContextFor, rampSteps } from '../utils/workoutProgression';
 import { formatWeightNumber } from '../utils/workoutData';
@@ -57,15 +58,31 @@ interface Props {
   onClose: () => void;
 }
 
-/** A routine item with a key of its own for the list, which items don't carry. */
+/**
+ * A routine item with a key of its own for the list, which items don't carry.
+ * An `open` row is not an exercise: it is the empty slot of a superset the
+ * person is filling, held at the end of the superset. It never reaches Save.
+ */
 interface Row {
   id: string;
   item: WorkoutRoutineItem;
+  open?: boolean;
 }
 
 const PROGRESSION_OPTIONS: SegmentOption<ProgressionScheme | null>[] = (
   ['double', 'linear', 'percent', 'rpe'] as const
 ).map(value => ({ value, label: PROGRESSION_LABELS[value] }));
+
+const PROGRESSION_INTRO =
+  'How this exercise moves on from one workout to the next. With none chosen here, the program’s choice applies. Workout mode shows its suggestion, and you choose whether to use it.';
+
+// Behind the "?" beside the label: the four names mean nothing to most people.
+const PROGRESSION_GLOSSARY = [
+  ['Rep range', 'You aim for a range, like 8 to 12 reps. Once every set reaches the top, add weight and start at the bottom again.'],
+  ['Linear', 'Add a little weight each workout where you finish all your reps. Common for beginners.'],
+  ['% of max', 'Each set’s weight is a percentage of your heaviest lift, which you set in the program.'],
+  ['RPE', 'After a set, rate how hard it felt from 1 (very easy) to 10 (couldn’t do another rep), and the suggested weight follows.'],
+] as const;
 
 const NAME_REFUSED: Record<string, string> = {
   blank: 'Give the routine a name.',
@@ -73,8 +90,13 @@ const NAME_REFUSED: Record<string, string> = {
 };
 
 const toRows = (items: readonly WorkoutRoutineItem[]): Row[] => items.map(item => ({ id: generateId(), item }));
+/** What Save writes: the exercises, with any superset left holding fewer than two let go. */
+const savedItems = (rows: readonly Row[]): WorkoutRoutineItem[] =>
+  normalizeSupersets(rows.filter(r => !r.open).map(r => r.item));
 const snapshotOf = (name: string, notes: string, rows: readonly Row[]) =>
-  JSON.stringify([name.trim(), notes.trim(), rows.map(r => r.item)]);
+  JSON.stringify([name.trim(), notes.trim(), savedItems(rows)]);
+const viewsOf = (rows: readonly Row[]): SupersetRowView[] =>
+  rows.map(r => ({ id: r.id, key: r.item.supersetKey ?? null, open: r.open === true }));
 
 /**
  * A routine's editor. Everything is staged and written on Save, so Cancel
@@ -96,7 +118,7 @@ export function RoutineEditorSheet({ visible, routineId, onClose }: Props) {
   const [notes, setNotes] = useState('');
   const [rows, setRows] = useState<Row[]>([]);
   const [openRowId, setOpenRowId] = useState<string | null>(null);
-  const [picking, setPicking] = useState<'add' | 'superset' | null>(null);
+  const [picking, setPicking] = useState<'add' | { slotId: string } | null>(null);
   const [dragging, setDragging] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
   const baseline = useRef('');
@@ -136,41 +158,66 @@ export function RoutineEditorSheet({ visible, routineId, onClose }: Props) {
   };
 
   // ==== editing the list ====
-  const setItems = (next: Row[]) => setRows(next);
   const updateItem = (rowId: string, change: (item: WorkoutRoutineItem) => WorkoutRoutineItem) =>
     setRows(prev => prev.map(r => (r.id === rowId ? { ...r, item: change(r.item) } : r)));
 
   const asItems = (list: Row[]) => list.map(r => r.item);
   const withItems = (list: Row[], items: WorkoutRoutineItem[]) => list.map((r, i) => ({ ...r, item: items[i] }));
+  /**
+   * The list after an edit, with its supersets put right: a superset that holds
+   * fewer than two exercises lets go, except while its empty slot is still
+   * there to fill, and each slot stays at the end of its superset.
+   */
+  const settled = (list: Row[]): Row[] => {
+    const keyed = list.map(r => (r.open && !r.item.supersetKey ? { ...r, item: { ...r.item, supersetKey: generateId() } } : r));
+    const normal = withItems(keyed, normalizeSupersets(asItems(keyed), i => keyed[i].open === true));
+    const order = settleOpenSlots(viewsOf(normal));
+    return order.map(id => normal.find(r => r.id === id)!);
+  };
 
   const addExercise = (exerciseId: string) => {
     const row: Row = { id: generateId(), item: newRoutineItem(exerciseId, kindOf(exerciseId)) };
     animateLayout();
     setRows(prev => {
-      const next = [...prev, row];
-      if (picking !== 'superset' || prev.length === 0) return next;
-      return withItems(next, joinPrevious(asItems(next), next.length - 1, generateId()));
+      if (picking === null || picking === 'add') return [...prev, row];
+      // Into a superset: the row takes the slot's key and sits just above it.
+      const at = prev.findIndex(r => r.id === picking.slotId);
+      if (at < 0) return [...prev, row];
+      const joined = { ...row, item: { ...row.item, supersetKey: prev[at].item.supersetKey } };
+      return settled([...prev.slice(0, at), joined, ...prev.slice(at)]);
     });
     setOpenRowId(row.id);
+  };
+
+  const addEmptySuperset = () => {
+    haptics.tap();
+    animateLayout();
+    const slot: Row = { id: generateId(), open: true, item: newRoutineItem('', 'weight_reps') };
+    setRows(prev => settled([...prev, { ...slot, item: { ...slot.item, supersetKey: generateId() } }]));
   };
 
   const removeRow = (rowId: string) => {
     haptics.tap();
     animateLayout();
-    setRows(prev => {
-      const next = prev.filter(r => r.id !== rowId);
-      return withItems(next, normalizeSupersets(asItems(next)));
-    });
+    setRows(prev => settled(prev.filter(r => r.id !== rowId)));
   };
 
   const joinWithPrevious = (index: number) => {
     haptics.tap();
-    setRows(prev => withItems(prev, joinPrevious(asItems(prev), index, generateId())));
+    setRows(prev => settled(withItems(prev, joinPrevious(asItems(prev), index, generateId()))));
   };
 
   const leave = (index: number) => {
     haptics.tap();
-    setRows(prev => withItems(prev, leaveSuperset(asItems(prev), index)));
+    setRows(prev => settled(withItems(prev, leaveSuperset(asItems(prev), index))));
+  };
+
+  const reorder = (next: Row[]) => {
+    const hit = droppedIntoSuperset(viewsOf(rows), viewsOf(next));
+    const joined = hit
+      ? next.map(r => (r.id === hit.id ? { ...r, item: { ...r.item, supersetKey: hit.key } } : r))
+      : next;
+    setRows(settled(joined));
   };
 
   const toggleOpen = (rowId: string) => {
@@ -192,7 +239,7 @@ export function RoutineEditorSheet({ visible, routineId, onClose }: Props) {
 
   const save = () => {
     const store = useWorkoutStore.getState();
-    const items = asItems(rows);
+    const items = savedItems(rows);
     const result = routine
       ? store.updateRoutine(routine.id, { name, notes, items })
       : (() => {
@@ -247,7 +294,7 @@ export function RoutineEditorSheet({ visible, routineId, onClose }: Props) {
           visible={visible && picking !== null}
           onClose={() => setPicking(null)}
           onPick={addExercise}
-          addedIds={rows.map(r => r.item.exerciseId)}
+          addedIds={rows.filter(r => !r.open).map(r => r.item.exerciseId)}
           addedLabel="In routine"
         />
       }
@@ -286,9 +333,24 @@ export function RoutineEditorSheet({ visible, routineId, onClose }: Props) {
           <SortableList
             data={rows}
             onDragStateChange={setDragging}
-            onReorder={next => setItems(withItems(next, normalizeSupersets(asItems(next))))}
+            onReorder={reorder}
             renderItem={(row, index, drag) => {
               const role = roles[index];
+              if (row.open) {
+                return (
+                  <OpenSlot
+                    role={role}
+                    colors={colors}
+                    styles={styles}
+                    onAdd={() => { haptics.tap(); setPicking({ slotId: row.id }); }}
+                    onRemove={() => removeRow(row.id)}
+                  />
+                );
+              }
+              // The empty slot isn't an exercise, so the last exercise above it is the end of the run.
+              const next = rows[index + 1];
+              const tail = next?.open === true && next.item.supersetKey === row.item.supersetKey;
+              const itemRole: SupersetRole = tail && (role === 'first' || role === 'middle') ? 'last' : role;
               const open = openRowId === row.id;
               const kind = kindOf(row.item.exerciseId);
               const exName = nameOf(row.item.exerciseId);
@@ -332,7 +394,7 @@ export function RoutineEditorSheet({ visible, routineId, onClose }: Props) {
                       >
                         <Text style={styles.itemName}>{exName}</Text>
                         <Text style={styles.itemSummary}>
-                          {describeRoutineItem(row.item, { kind, unit, defaultRestSeconds: defaultRest, role })}
+                          {describeRoutineItem(row.item, { kind, unit, defaultRestSeconds: defaultRest, role: itemRole })}
                         </Text>
                       </TouchableOpacity>
                       <TouchableOpacity onPress={() => toggleOpen(row.id)} hitSlop={8} accessibilityElementsHidden importantForAccessibility="no">
@@ -343,7 +405,7 @@ export function RoutineEditorSheet({ visible, routineId, onClose }: Props) {
                       <ItemControls
                         item={row.item}
                         kind={kind}
-                        role={role}
+                        role={itemRole}
                         unit={unit}
                         defaultRest={defaultRest}
                         canJoin={index > 0}
@@ -364,18 +426,16 @@ export function RoutineEditorSheet({ visible, routineId, onClose }: Props) {
         )}
         <View style={styles.adds}>
           <InlineAction icon="add" label="Add exercise" onPress={() => { haptics.tap(); setPicking('add'); }} />
-          {rows.length > 0 && (
-            <InlineAction
-              label="Superset"
-              variant="neutral"
-              onPress={() => { haptics.tap(); setPicking('superset'); }}
-              accessibilityLabel="Add an exercise as a superset with the last one"
-            />
-          )}
+          <InlineAction
+            label="Superset"
+            variant="neutral"
+            onPress={addEmptySuperset}
+            accessibilityLabel="Add an empty superset"
+          />
         </View>
       </View>
       <HelpText style={styles.footHint}>
-        Touch and hold an exercise to move it. A superset is done set by set, back to back, with the rest after the last one.
+        Touch and hold an exercise to move it, including into a superset. A superset is done set by set, back to back, with the rest after the last one.
       </HelpText>
 
       {routine && (
@@ -390,6 +450,33 @@ export function RoutineEditorSheet({ visible, routineId, onClose }: Props) {
         </TouchableOpacity>
       )}
     </EditorSheet>
+  );
+}
+
+interface OpenSlotProps {
+  /** 'last' when exercises sit above it in the superset, 'none' when it is empty. */
+  role: SupersetRole;
+  colors: Colors;
+  styles: ReturnType<typeof makeStyles>;
+  onAdd: () => void;
+  onRemove: () => void;
+}
+
+/** The end of a superset still being filled: a way to add an exercise to it. Exercises are dropped on it like on any row. */
+function OpenSlot({ role, colors, styles, onAdd, onRemove }: OpenSlotProps) {
+  const empty = role === 'none';
+  return (
+    <View style={empty && styles.itemGap}>
+      <View style={[styles.itemCard, styles.superset, !empty && styles.itemSep, !empty && styles.squareTop]}>
+        {empty && <Text style={styles.supersetTag}>Superset</Text>}
+        <View style={styles.slotBody}>
+          <View style={styles.itemActions}>
+            <InlineAction icon="add" label="Add exercise" onPress={onAdd} />
+            <InlineAction label={empty ? 'Remove superset' : BUTTON_LABEL.done} variant="neutral" onPress={onRemove} />
+          </View>
+        </View>
+      </View>
+    </View>
   );
 }
 
@@ -419,6 +506,7 @@ function ItemControls({
   item, kind, role, unit, defaultRest, canJoin, rampLoads, colors, styles, onChange, onJoin, onLeave, onRemove,
 }: ItemControlsProps) {
   const scheme = item.progression?.scheme ?? null;
+  const [explainOpen, setExplainOpen] = useState(false);
   const rests = role === 'none' || role === 'last';
   const ramp = item.warmupRamp === true;
   return (
@@ -464,7 +552,23 @@ function ItemControls({
 
       <View style={styles.section}>
         <View>
-          <Text style={[styles.cap, styles.capAbove]}>Progression</Text>
+          <View style={styles.capRow}>
+            <Text style={styles.cap}>Progression</Text>
+            <TouchableOpacity
+              onPress={() => { haptics.tap(); animateLayout(); setExplainOpen(o => !o); }}
+              activeOpacity={interaction.activeOpacity}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="What the progression options mean"
+              accessibilityState={{ expanded: explainOpen }}
+            >
+              <Ionicons
+                name={explainOpen ? 'help-circle' : 'help-circle-outline'}
+                size={iconSize.md}
+                color={explainOpen ? colors.accent : colors.textSecondary}
+              />
+            </TouchableOpacity>
+          </View>
           <SegmentedControl
             options={PROGRESSION_OPTIONS}
             value={scheme}
@@ -475,8 +579,18 @@ function ItemControls({
           <HelpText style={[styles.hint, styles.hintBelow]}>
             {scheme
               ? PROGRESSION_HINTS[scheme]
-              : 'How this exercise moves on from one workout to the next. With none chosen here, the program’s choice applies. Workout mode shows its suggestion, and you choose whether to use it.'}
+              : PROGRESSION_INTRO}
           </HelpText>
+          {explainOpen && (
+            <View style={styles.glossary}>
+              {PROGRESSION_GLOSSARY.map(([name, text]) => (
+                <Text key={name} style={styles.hint}>
+                  <Text style={styles.glossaryName}>{name}</Text>
+                  {`: ${text}`}
+                </Text>
+              ))}
+            </View>
+          )}
         </View>
       </View>
 
@@ -525,6 +639,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.accentText, fontSize: font.xxs, fontWeight: fontWeight.semibold, letterSpacing: 0.8,
     textTransform: 'uppercase', paddingTop: spacing.sm, paddingHorizontal: spacing.md - 3,
   },
+  slotBody: { padding: spacing.md - 3, paddingRight: spacing.md },
   itemRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd, paddingHorizontal: spacing.md, paddingVertical: spacing.smd, minHeight: 60 },
   itemText: { flex: 1 },
   itemName: { color: colors.text, fontSize: font.lg, fontWeight: fontWeight.semibold },
@@ -548,7 +663,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold,
     textTransform: 'uppercase', letterSpacing: 0.8,
   },
-  capAbove: { marginBottom: spacing.sm },
+  capRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm },
+  glossary: { marginTop: spacing.smd, gap: spacing.sm },
+  glossaryName: { color: colors.text, fontWeight: fontWeight.semibold },
   hint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16 },
   hintBelow: { marginTop: spacing.sm },
   itemActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },

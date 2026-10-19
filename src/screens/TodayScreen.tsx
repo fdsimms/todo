@@ -234,6 +234,8 @@ import { emitNowTick } from '../utils/nowTick';
 import { useNowTick } from '../hooks/useNowTick';
 import { sumEstimatedMinutes, formatDuration } from '../utils/effort';
 import { LazySheet } from '../components/LazySheet';
+import { TwoPane } from '../components/TwoPane';
+import { useTwoPane } from '../hooks/useTwoPane';
 import { ProgressBar } from '../components/ProgressBar';
 import { AnimatedNumber } from '../components/AnimatedNumber';
 import { useLingering } from '../hooks/useLingering';
@@ -757,6 +759,9 @@ const OPEN_TASK_WAIT_MS = 20_000;
 export function TodayScreen() {
   // ==== store bindings, navigation, layout insets ====
   const insets = useSafeAreaInsets();
+  // On a window with room for two panes (`twoPaneFor`) the task editor opens
+  // beside the list, drawn in place, instead of as a sheet over it.
+  const twoPane = useTwoPane();
   const navigation = useNavigation();
   // A task row's category chip opens that category's page. Stable, because
   // TaskItem is memoized.
@@ -3718,6 +3723,7 @@ export function TodayScreen() {
         expanded={expandedTaskId === rowKey}
         spotlightDisabled={expandedTaskId !== null && expandedTaskId !== rowKey && !selectionMode}
         onEdit={handleRowEdit}
+        paneActive={twoPane && editorVisible && editingTask?.id === task.id}
         subtaskCount={subs.items.length}
         subtaskDoneCount={subs.doneCount}
         subtasks={subs.items}
@@ -4919,7 +4925,7 @@ export function TodayScreen() {
   ];
 
   // ==== render. Everything below is JSX ====
-  return (
+  const screenBody = (
     <SpotlightProvider progress={spotlightProgress}>
       <View style={[styles.container, { paddingTop: insets.top }]} {...scrollNudge.touchProps}>
         <ScreenHeader
@@ -5713,12 +5719,15 @@ export function TodayScreen() {
 
         <DeliverablePromptQueue {...queueProps} />
 
-        <TaskEditor
-          visible={editorVisible}
-          task={editingTask}
-          initialDraft={editorInitialDraft}
-          onClose={closeEditor}
-        />
+        {/* A sheet over the list, unless there is room for it beside it (below). */}
+        {!twoPane && (
+          <TaskEditor
+            visible={editorVisible}
+            task={editingTask}
+            initialDraft={editorInitialDraft}
+            onClose={closeEditor}
+          />
+        )}
 
         <LazySheet open={filterVisible}>
           <SortFilterSheet
@@ -5983,6 +5992,30 @@ export function TodayScreen() {
         )}
       </View>
     </SpotlightProvider>
+  );
+
+  return (
+    <TwoPane
+      list={screenBody}
+      detail={(
+        <>
+          {!editorVisible && (
+            <EmptyState
+              icon="create-outline"
+              title="Pick a task to edit"
+              subtitle="Its details open here. Tap the pencil on a task, or add a new one."
+            />
+          )}
+          <TaskEditor
+            inline
+            visible={editorVisible}
+            task={editingTask}
+            initialDraft={editorInitialDraft}
+            onClose={closeEditor}
+          />
+        </>
+      )}
+    />
   );
 }
 

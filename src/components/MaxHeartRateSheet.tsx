@@ -20,7 +20,7 @@ interface Props {
  * The maximum heart rate a workout's zones are shares of, typed in. One
  * number, so a `CardSheet`, staged and written on Save, so Cancel leaves it as
  * it was. An empty field goes back to the estimate, 220 minus the age from the
- * calorie budget's year of birth, and the line under the field says so with
+ * year of birth set in Settings › Apple Health, and the line under the field says so with
  * the figure it would be. Nothing here suggests a number or says whether one
  * is right: the bounds are an absurdity check, and a number outside them is
  * refused in the card with the reason, never quietly replaced.
@@ -86,8 +86,8 @@ export function MaxHeartRateSheet({ visible, onClose }: Props) {
           )}
           <HelpText style={styles.hint}>
             {estimate
-              ? `Leave it empty to use ${AGE_ESTIMATE_BASE} minus your age, ${estimate.bpm} bpm, estimated from your year of birth in the calorie budget.`
-              : `Leave it empty for no zones. With a year of birth in the calorie budget, it uses ${AGE_ESTIMATE_BASE} minus your age instead.`}
+              ? `Leave it empty to use ${AGE_ESTIMATE_BASE} minus your age, ${estimate.bpm} bpm, estimated from your year of birth in Settings › Apple Health.`
+              : `Leave it empty for no zones. With a year of birth in Settings › Apple Health, it uses ${AGE_ESTIMATE_BASE} minus your age instead.`}
           </HelpText>
         </View>
       </View>

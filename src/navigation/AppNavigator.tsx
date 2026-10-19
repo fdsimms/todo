@@ -63,6 +63,7 @@ import { TipsScreen } from '../screens/TipsScreen';
 import { SideMenuDrawer } from '../components/SideMenuDrawer';
 import { AppFrame } from '../components/AppFrame';
 import { Sidebar } from '../components/Sidebar';
+import { useFocusedRouteStore } from '../store/useFocusedRouteStore';
 import { useFrameWidth } from '../hooks/useFrameWidth';
 import { HubMenuOptionsProvider, TabHubMenuOverlay, hubTabButtonFor } from '../components/TabHubMenu';
 import { BlankTabDiagnostic, freezeWhenBlurred } from '../components/FreezeWhenBlurred';
@@ -552,6 +553,9 @@ export default function AppNavigator() {
 
   const handleStateChange = useCallback(() => {
     const currentName = navRef.current?.getCurrentRoute()?.name;
+    // Before anything is deferred: the app's column widens for a two-pane screen
+    // in the same commit the screen arrives in, not a beat after it.
+    useFocusedRouteStore.getState().setRoute(currentName ?? null);
     if (currentName) setOnToday(currentName === 'Today');
     if (!currentName || currentName === 'More' || PUSHED_ROUTES.has(currentName)) return;
     // Not deferred with the rest: the launch guard has to hear about a screen
@@ -625,7 +629,7 @@ export default function AppNavigator() {
           onOpenSettings={openSettings}
         />
       )}
-      <AppFrame>
+      <AppFrame followRoute>
       <MenuOpenContext.Provider value={menuOpen}>
       <NavigationContainer
         ref={navRef}
@@ -634,7 +638,10 @@ export default function AppNavigator() {
         // container was ready — a widget tap or Home Screen quick action that
         // raced app startup — instead of leaving it silently dropped. See
         // navigationRef.ts's runWhenReady/flushPendingNavigation.
-        onReady={flushPendingNavigation}
+        onReady={() => {
+          useFocusedRouteStore.getState().setRoute(navRef.current?.getCurrentRoute()?.name ?? null);
+          flushPendingNavigation();
+        }}
       >
         <RootStack.Navigator screenOptions={{ headerShown: false }}>
           <RootStack.Screen name="MainTabs">

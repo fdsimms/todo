@@ -307,6 +307,8 @@ interface Props {
   indented?: boolean;
   /** Briefly tints the row to draw the eye to it — a task that was just created, or one jumped to from the new-todos banner. */
   highlighted?: boolean;
+  /** Its editor is the one open in the pane beside the list. Outlined rather than tinted, which has to stay opaque in a swipe row. */
+  paneActive?: boolean;
   /**
    * A checklist line: checked off rather than scheduled. A tap opens
    * the line with its text ready to edit, the whole text shows while open,
@@ -440,6 +442,7 @@ const TaskItemRow = React.memo(function TaskItem({
   duplicateRow = false,
   indented = false,
   highlighted = false,
+  paneActive = false,
   listRow = false,
   onSubmitLine,
   autoComplete = false,
@@ -5090,6 +5093,7 @@ const TaskItemRow = React.memo(function TaskItem({
             shadows.card,
             { opacity: isActive ? 1 : rowOpacity },
             isActive && styles.itemWrapperActive,
+            paneActive && styles.itemWrapperPaneActive,
             indented && styles.itemWrapperIndented,
           ]}
           // Screens collapse the spotlight on any touch in the list area;
@@ -5382,6 +5386,12 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
   // reads as clearly distinct from the resting rows.
   itemWrapperActive: {
     backgroundColor: colors.bgTertiary,
+  },
+  // An outline, drawn inside the card, so the row is no taller than its neighbors.
+  itemWrapperPaneActive: {
+    outlineWidth: 2,
+    outlineColor: colors.accent,
+    outlineOffset: -2,
   },
   rowActive: {
     backgroundColor: colors.bgTertiary,

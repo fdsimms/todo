@@ -124,7 +124,7 @@ export function WorkoutsSettings() {
               entryId="maxHeartRate"
               icon="heart-outline"
               label="Maximum heart rate"
-              hint="Used to split a workout’s heart rate into five zones. Estimated as 220 minus your age until you set it. Your age comes from your year of birth in the calorie budget."
+              hint="Used to split a workout’s heart rate into five zones. Estimated as 220 minus your age until you set it. Your age comes from your year of birth in Settings › Apple Health."
               // "186, from age" while it is the estimate: it says so wherever it shows.
               value={describeMaxHeartRate(resolveMaxHeartRate(maxHeartRate, birthYear, new Date()))}
               onPress={() => { haptics.tap(); setMaxHeartRateOpen(true); }}

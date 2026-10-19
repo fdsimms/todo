@@ -11,6 +11,7 @@ import {
   describeRoutineItem,
   describeSets,
   describeTargetReps,
+  droppedIntoSuperset,
   duplicateSet,
   itemShape,
   joinPrevious,
@@ -20,6 +21,7 @@ import {
   normalizeSupersets,
   removeSet,
   routineSetLabels,
+  settleOpenSlots,
   supersetRoles,
   withProgression,
   withSetDuration,
@@ -260,5 +262,56 @@ describe('describeRoutine', () => {
       .toBe('3 exercises · Chest, Triceps, Front delts');
     expect(describeRoutine([{ exerciseId: 'unknown' }], of)).toBe('1 exercise');
     expect(describeRoutine([], of)).toBe('No exercises yet');
+  });
+});
+
+describe('dropping into a superset', () => {
+  const v = (id: string, key: string | null = null, open = false) => ({ id, key, open });
+
+  it('joins a row dropped between two members', () => {
+    const prev = [v('a', 'k'), v('b', 'k'), v('x')];
+    const next = [v('a', 'k'), v('x'), v('b', 'k')];
+    expect(droppedIntoSuperset(prev, next)).toEqual({ id: 'x', key: 'k' });
+  });
+
+  it('joins from further away, and from above', () => {
+    const prev = [v('x'), v('y'), v('a', 'k'), v('b', 'k')];
+    const next = [v('y'), v('a', 'k'), v('x'), v('b', 'k')];
+    expect(droppedIntoSuperset(prev, next)).toEqual({ id: 'x', key: 'k' });
+  });
+
+  it('leaves a row dropped beside a superset out of it', () => {
+    const prev = [v('a', 'k'), v('b', 'k'), v('x')];
+    expect(droppedIntoSuperset(prev, [v('x'), v('a', 'k'), v('b', 'k')])).toBeNull();
+    expect(droppedIntoSuperset(prev, prev)).toBeNull();
+  });
+
+  it('does not split a superset by moving one of its own members', () => {
+    const prev = [v('a', 'k'), v('b', 'k'), v('c', 'k')];
+    expect(droppedIntoSuperset(prev, [v('b', 'k'), v('a', 'k'), v('c', 'k')])).toBeNull();
+  });
+
+  it('joins a row dropped next to an empty slot, on either side', () => {
+    const prev = [v('s', 'k', true), v('x')];
+    expect(droppedIntoSuperset(prev, [v('x'), v('s', 'k', true)])).toEqual({ id: 'x', key: 'k' });
+    const prev2 = [v('x'), v('y'), v('s', 'k', true)];
+    expect(droppedIntoSuperset(prev2, [v('y'), v('s', 'k', true), v('x')])).toEqual({ id: 'x', key: 'k' });
+  });
+
+  it('joins a row dropped between the last member and the slot', () => {
+    const prev = [v('a', 'k'), v('s', 'k', true), v('x')];
+    expect(droppedIntoSuperset(prev, [v('a', 'k'), v('x'), v('s', 'k', true)])).toEqual({ id: 'x', key: 'k' });
+  });
+
+  it('keeps an empty slot at the end of its superset', () => {
+    expect(settleOpenSlots([v('s', 'k', true), v('a', 'k'), v('b', 'k'), v('z')])).toEqual(['a', 'b', 's', 'z']);
+    expect(settleOpenSlots([v('s', 'k', true), v('z')])).toEqual(['s', 'z']);
+  });
+
+  it('keeps a lone key for a slot that is still open', () => {
+    const rows = [{ supersetKey: 'k' }, { supersetKey: 'k' }];
+    expect(normalizeSupersets([{ supersetKey: 'k' }], i => i === 0).map(i => i.supersetKey)).toEqual(['k']);
+    expect(normalizeSupersets(rows, i => i === 1).map(i => i.supersetKey)).toEqual(['k', 'k']);
+    expect(normalizeSupersets([{ supersetKey: 'k' }]).map(i => i.supersetKey)).toEqual([null]);
   });
 });

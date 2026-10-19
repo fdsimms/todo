@@ -635,6 +635,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'weightGoal', groupId: 'health', label: 'Weight goal', section: 'Weight', keywords: ['target', 'lose', 'gain', 'maintain', 'calories', 'tdee', 'deficit', 'macros', 'protein', 'bmr', 'rate', 'lb per week'] },
   { id: 'weightUnit', groupId: 'health', label: 'Weight unit', section: 'Weight',
     keywords: ['kg', 'kilograms', 'lb', 'pounds', 'scale', 'body', 'mass', 'metric', 'imperial'] },
+  { id: 'birthYear', groupId: 'health', label: 'Year of birth', section: 'About you',
+    keywords: ['age', 'birthday', 'born', 'maximum heart rate', 'zones', 'calories', 'bmr'] },
   { id: 'sleepGoal', groupId: 'health', label: 'Sleep goal', section: 'Sleep',
     keywords: ['hours', 'asleep', 'bedtime', 'night', 'rest', 'target'] },
   { id: 'shortNightNote', requires: 'healthRead', groupId: 'health', label: 'Short night note', section: 'Sleep',

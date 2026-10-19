@@ -55,6 +55,11 @@ interface Props {
   /** What a screen reader reads for the value, if `format` doesn't say it well. */
   describeValue?: (n: number | null) => string;
   style?: StyleProp<ViewStyle>;
+  /**
+   * For a stepper that shares a row with other cells: it fills the width it is
+   * given, with narrower keys (36pt, so two fit side by side on a phone).
+   */
+  inline?: boolean;
 }
 
 /**
@@ -115,6 +120,7 @@ export function CountStepper({
   label,
   describeValue,
   style,
+  inline = false,
 }: Props) {
   const colors = useColors();
   const styles = makeStyles(colors);
@@ -211,7 +217,7 @@ export function CountStepper({
     const enabled = canStep(value, delta, range);
     return (
       <PressableScale
-        style={[styles.key, !enabled && styles.keyDisabled]}
+        style={[styles.key, inline && styles.keyInline, !enabled && styles.keyDisabled]}
         onPressIn={() => enabled && startRepeat(delta)}
         onPressOut={stop}
         disabled={!enabled}
@@ -228,11 +234,11 @@ export function CountStepper({
   };
 
   return (
-    <View style={[styles.wrap, style]}>
+    <View style={[styles.wrap, inline && styles.wrapInline, style]}>
       {key(-step, 'remove', 'Decrease')}
       {editing ? (
         <TextField
-          style={styles.valueInput}
+          style={[styles.valueInput, inline && styles.valueInputInline]}
           value={draft}
           onChangeText={setDraft}
           onBlur={commitEdit}
@@ -243,7 +249,7 @@ export function CountStepper({
           accessibilityLabel={`${label}, editing`}
         />
       ) : (
-        <PressableScale style={styles.valuePress} onPress={openEditor}>
+        <PressableScale style={[styles.valuePress, inline && styles.valuePressInline]} onPress={openEditor}>
           <AnimatedNumber
             text={display}
             value={value}
@@ -263,14 +269,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start',
     backgroundColor: colors.bgTertiary, borderRadius: radius.full,
   },
+  wrapInline: { alignSelf: 'stretch', justifyContent: 'space-between' },
   // 12 + a 20pt glyph + 12 is a 44pt key: the minimum comfortable tap target
   // and no wider. The control's width is the two keys plus the digits.
   key: {
     paddingHorizontal: spacing.smd, paddingVertical: spacing.sm,
     alignItems: 'center', justifyContent: 'center',
   },
+  keyInline: { paddingHorizontal: spacing.sm },
   keyDisabled: { opacity: 0.4 },
   valuePress: { paddingVertical: spacing.xs },
+  valuePressInline: { flex: 1, alignItems: 'center' },
   // Fits the widest value (99×) without the keys shifting as digits change.
   valueBox: { minWidth: 40, justifyContent: 'center' },
   value: {
@@ -280,6 +289,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   valueEmpty: { color: colors.textTertiary, fontWeight: fontWeight.medium },
   // Same box as `value` so the keys don't shift when the field opens; padding
   // 0 and no border keep it looking like the digits themselves, not a form.
+  valueInputInline: { flex: 1, minWidth: 0 },
   valueInput: {
     minWidth: 40, textAlign: 'center', padding: 0,
     color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold,

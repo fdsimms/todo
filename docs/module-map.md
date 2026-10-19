@@ -148,6 +148,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/exerciseChart.ts` — ChartInput, ChartPoint, CHART_GAP_DAYS, daysBetween, chartPoints, chartSegments, recordIndexes, ChartDomain, chartDomain, domainFraction, +3 more
 - `src/utils/exerciseImages.ts` — EXERCISE_IMAGE_BASE_URL, ExercisePhotos, PHOTOGRAPHED_SLUGS, exercisePhotos
 - `src/utils/exerciseLibrary.ts` — LibraryExercise, LIBRARY_ID_PREFIX, EXERCISE_LIBRARY, libraryExercise, isLibraryId
+- `src/utils/exerciseSwap.ts` — swappableSets, swapCandidates
 - `src/utils/expiredTaskGrace.ts` — ExpiredTaskGraceDays, EXPIRED_TASK_GRACE_OPTIONS, expiredTaskGraceLabel, parseExpiredTaskGrace, serializeExpiredTaskGrace
 - `src/utils/fabDrop.ts` — ScheduleInfo, DropZone, ZoneRect, FabDropIntent, zoneKey, ZONE_HIT_SLOP, TAIL_HIT_SLOP, zoneAtY, DEFAULT_DROP_SLOT, slotAtX, +13 more
 - `src/utils/fieldBackfill.ts` — BackfillFieldId, BackfillFieldDef, BACKFILL_FIELDS, backfillFieldsFor, BackfillCandidatesOptions, isFieldMissing, isBackfillDismissed, backfillCandidates, backfillSeriesPeers, backfillFieldCounts, +3 more
@@ -230,6 +231,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/kitchenInventory.ts` — KitchenKind, kitchenEntryId, parseKitchenEntryId, KITCHEN_LINK_URL, kitchenLinkUrl, FRIDGE_SECTION, FREEZER_SECTION, PORTION_LABEL, KitchenEntry, KitchenSection, +5 more
 - `src/utils/kitchenReorder.ts` — KitchenRow, kitchenRowKey, KitchenDestination, KitchenMove, buildKitchenRows, resolveKitchenDrop, kitchenDragRange
 - `src/utils/labelOcr.ts` — LabelColumn, LabelReading, readNutritionLabel, amountFromPrintedText, readLabelPhoto
+- `src/utils/lastTimeNotes.ts` — LastTimeNote, LastTimeNotes, lastTimeNotes
 - `src/utils/launchGuard.ts` — UNPROVEN_SCREEN_KEY, HEALTHY_AFTER_MS, screenToRestore, markScreenUnproven, readUnprovenScreen, clearUnprovenScreen
 - `src/utils/layoutAnimation.ts` — animateLayout
 - `src/utils/leaveLiveActivity.ts` — LEAVE_WINDOW_MS, ALREADY_THERE_MINUTES, LeaveRun, AlreadyThereCheck, isAlreadyThere, buildLeaveRun, useLeaveLiveActivitySync
@@ -414,6 +416,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/rhythms.ts` — SegmentBoundaries, DEFAULT_BOUNDARIES, RhythmOptions, MIN_SAMPLES, segmentOf, HourRange, RhythmProfile, buildRhythmProfile, formatHour, formatHourRange, +3 more
 - `src/utils/rhythmsSettings.ts` — rhythmOptionsFromSettings
 - `src/utils/rotation.ts` — RotationMember, RotationCarrier, MAX_ROTATION_PER_WEEK, rotationPerWeek, withPerWeek, RotationMemberInput, rotationMemberTitle, rotationItemFromInput, rotationMemberToInput, rotationItemsFrom, +27 more
+- `src/utils/routineUpdate.ts` — RoutineChange, RepRange, RoutineDiffInput, routineChanges, applyRoutineChanges, describeRoutineChange
 - `src/utils/rsvp.ts` — parseGuestNames
 - `src/utils/ruleCategory.ts` — parseRuleCategory, ruleCategoryFor, renameInRuleCategories, withRuleCategory
 - `src/utils/ruleEstimate.ts` — GeneratorEstimate, GeneratorEstimates, holdsKindEstimate, parseRuleEstimate, ruleEstimateDraft, withRuleEstimate, parseGeneratorEstimates, withGeneratorEstimate
@@ -536,6 +539,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/tripEvents.ts` — spansDays, tripSpanOf, awayFieldsFromEvent, projectForTripEvent
 - `src/utils/tripForecast.ts` — TripForecast, summarizeTripForecast, describeTripForecast, describeForecastGap
 - `src/utils/tripLiveActivity.ts` — TripRun, buildTripRun, useTripLiveActivitySync
+- `src/utils/twoPane.ts` — TWO_PANE_MIN_WINDOW_WIDTH, TWO_PANE_LIST_WIDTH, TWO_PANE_ROUTES, twoPaneFor, columnUncappedFor
 - `src/utils/unattendedLedger.ts` — UnattendedActionSpec, UNATTENDED_ACTION_SPECS, AGENT_SOURCE, unattendedIcon, unattendedSource, describeUnattendedEntry, UnattendedDay, unattendedDays, unattendedDayLabel, unattendedSummary, +5 more
 - `src/utils/undoHistory.ts` — UndoableAction, UndoHistory, UNDO_STACK_LIMIT, topOf, pushEntry, popEntry, freshest, redoIsCurrent, offersOnUndoBar, latestUndoHistory, +9 more
 - `src/utils/unitConvert.ts` — UnitSystem, UNIT_SYSTEMS, Dimension, ML_PER_TBSP, ConvertedQuantity, MeasuredQuantity, measureQuantity, measureParsedQuantity, shelfUnit, unitBase, +6 more
@@ -583,7 +587,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/workoutProposalApply.ts` — liveProposal, ApplyProposalOptions, applyProposal
 - `src/utils/workoutRecordText.ts` — withThousands, recordLabel, formatVolume, formatRecordFigure, formatRecordValue, formatRecordChange, metricLabel, metricNote, metricCaption, formatBestPoint, +3 more
 - `src/utils/workoutRecords.ts` — E1RM_MAX_REPS, REP_RECORD_MAX, SECONDARY_MUSCLE_WEIGHT, NEW_RECORD_DAYS, RECENT_RECORD_DAYS, countsForRecords, estimatedOneRepMax, setVolume, VolumeUnit, volumeUnit, +31 more
-- `src/utils/workoutRoutine.ts` — RoutineItemShape, itemShape, MAX_ROUTINE_SETS, MAX_WARMUP_SETS, defaultTargets, newRoutineItem, withWarmups, WarmupMode, warmupMode, DEFAULT_WARMUP_SETS, +28 more
+- `src/utils/workoutRoutine.ts` — RoutineItemShape, itemShape, MAX_ROUTINE_SETS, MAX_WARMUP_SETS, defaultTargets, newRoutineItem, withWarmups, WarmupMode, warmupMode, DEFAULT_WARMUP_SETS, +31 more
 - `src/utils/workoutSession.ts` — SessionExercise, sessionExercises, supersetGroup, roundRobin, walkOrder, movedExerciseOrder, nextSet, currentSetOf, AfterLog, afterLog, +23 more
 - `src/utils/workoutSiri.ts` — WorkoutRoutineIndexEntry, MAX_ROUTINE_INDEX_ENTRIES, buildRoutineIndex, QueuedWorkoutStart, parseQueuedWorkoutStarts, newestWorkoutStart, WorkoutStartPlan, QUEUED_START_MAX_AGE_MS, resolveQueuedWorkoutStart, myWorkoutStart
 - `src/utils/workoutTask.ts` — WorkoutTaskEffect, workoutTaskEffect, linkedTaskLine
@@ -608,6 +612,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useEventReminderStore.ts` — useEventReminderStore
 - `src/store/useEventTaskLinkStore.ts` — EVENT_TASK_LINKS_SETTING_KEY, useEventTaskLinkStore
 - `src/store/useFocusStore.ts` — useFocusStore
+- `src/store/useFocusedRouteStore.ts` — useFocusedRouteStore
 - `src/store/useFoodLogStore.ts` — FOOD_INSIGHT_DAYS, FoodLogDraft, PendingMealLog, PendingManualMealLog, FoodLogPatch, FoodLogPlacement, sameEntries, useFoodLogStore
 - `src/store/useGroceryStore.ts` — subscribeCartHoldRelease, PlannedRow, PlanAddResult, describePlanAdd, useGroceryStore
 - `src/store/useHealthStore.ts` — HealthDay, EXERCISE_LIVE_WINDOW_DAYS, HEALTH_HISTORY_DAYS, WEIGHT_HISTORY_DAYS, SLEEP_HISTORY_DAYS, sameHealthHistory, useHealthStore, useHealthSync
@@ -732,6 +737,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useTipSignals.ts` — useTipSignals
 - `src/hooks/useTitleSelection.ts` — TitleSelection, useTitleSelection
 - `src/hooks/useTravelTaskSync.ts` — useTravelTaskSync
+- `src/hooks/useTwoPane.ts` — useTwoPane
 - `src/hooks/useWaniKaniSync.ts` — useWaniKaniSync
 - `src/hooks/useWatchClashPrompt.ts` — useWatchClashPrompt
 - `src/hooks/useWeatherWaitSync.ts` — useWeatherWaitSync

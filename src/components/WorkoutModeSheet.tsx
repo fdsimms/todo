@@ -13,6 +13,7 @@
 // src/utils/workoutSession.ts, the suggested next load in
 // src/utils/workoutProgression.ts; the design in docs/arch/workouts.md, the mocks
 // in docs/arch/workouts-mocks/workout-mode.png.
+import { format } from 'date-fns/format';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Keyboard, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -30,6 +31,7 @@ import { ExercisePickerSheet } from './ExercisePickerSheet';
 import { ExerciseDetailSheet } from './ExerciseDetailSheet';
 import { ExercisePhotos } from './ExercisePhotos';
 import { PlateLine } from './PlateLine';
+import { SelectionDot } from './SelectionDot';
 import { WorkoutRecordsCard } from './WorkoutRecordsCard';
 import { WorkoutStatTiles } from './WorkoutStatTiles';
 import type { ExerciseKind, WorkoutSet } from '../types';
@@ -50,11 +52,14 @@ import { formatStopwatch } from '../utils/effort';
 import { linkedTaskLine, workoutTaskEffect } from '../utils/workoutTask';
 import { displayTitleFor } from '../utils/visibilityUtils';
 import { catalogExercise } from '../utils/exerciseCatalog';
+import { swapCandidates, swappableSets } from '../utils/exerciseSwap';
+import { lastTimeNotes } from '../utils/lastTimeNotes';
+import { applyRoutineChanges, describeRoutineChange, routineChanges } from '../utils/routineUpdate';
 import { barKgFor, effectivePlateInventory, isPlateLoaded, plateLoad } from '../utils/plateMath';
 import { sessionRecordSummary } from '../utils/workoutRecords';
 import { proposalActionLabel, proposalApplied, proposalHeadline, workingSetLogged, type Proposal } from '../utils/workoutProgression';
 import { exerciseProposal, type ExerciseProposal } from '../utils/workoutProposal';
-import { applyProposal } from '../utils/workoutProposalApply';
+import { applyProposal, liveProposal } from '../utils/workoutProposalApply';
 import {
   MUSCLE_LABELS, WEIGHT_PLACES, WEIGHT_STEP, WORKOUT_EFFORT, formatRestSeconds, formatWeightNumber, weightFromDisplay,
   weightToDisplay,
@@ -145,7 +150,12 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const [finishing, setFinishing] = useState(false);
   const [effort, setEffort] = useState<number | null>(null);
   const [sessionNotes, setSessionNotes] = useState('');
-  const [picking, setPicking] = useState(false);
+  // What the exercise picker is for: adding one, or swapping the shown one out.
+  const [picking, setPicking] = useState<'add' | 'swap' | null>(null);
+  const [exNoteOpen, setExNoteOpen] = useState(false);
+  const [exNoteDraft, setExNoteDraft] = useState('');
+  // The routine changes ticked on the summary. Nothing starts ticked.
+  const [accepted, setAccepted] = useState<ReadonlySet<string>>(new Set());
   const [detailOpen, setDetailOpen] = useState(false);
   // Form photos shown under the exercise's name. Session-only, and shared across
   // exercises so one tap keeps them open while moving through the workout.
@@ -162,7 +172,9 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     setFinishing(false);
     setEffort(session?.effort ?? null);
     setSessionNotes(session?.notes ?? '');
-    setPicking(false);
+    setPicking(null);
+    setExNoteOpen(false);
+    setAccepted(new Set());
     setDetailOpen(false);
     // On open only: a tick re-derives the view through its own handler.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -204,6 +216,9 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     [viewed?.exerciseId, session?.id, sessionsList],
   );
   const previousBySet = useMemo(() => matchPrevious(viewed?.sets ?? [], previous), [viewed, previous]);
+  // What was written on this exercise's sets last time, read before the first set.
+  const lastNotes = useMemo(() => lastTimeNotes(previous), [previous]);
+  const canSwap = !!viewed && swappableSets(viewed.sets, viewed.exerciseId).length > 0;
 
   // ==== the suggestion: the next load, proposed and never applied unasked ====
   // The routine the workout follows and the program it belongs to decide
@@ -326,6 +341,29 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     setOpenSetId(null);
   };
 
+  const swapExercise = (toExerciseId: string) => {
+    if (!session || !viewed) return;
+    const moved = useWorkoutStore.getState().swapSessionExercise(session.id, viewed.exerciseId, toExerciseId);
+    if (typeof moved === 'string') return;
+    haptics.success();
+    animateLayout();
+    setViewedId(toExerciseId);
+    setOpenSetId(null);
+    setNotesOpen(false);
+    setExNoteOpen(false);
+  };
+
+  const toggleExNote = () => {
+    haptics.tap();
+    setExNoteDraft(viewedInfo?.notes ?? '');
+    setExNoteOpen(v => !v);
+  };
+  const commitExNote = () => {
+    if (viewed && (viewedInfo?.notes ?? '') !== exNoteDraft.trim()) {
+      useWorkoutStore.getState().updateExercise(viewed.exerciseId, { notes: exNoteDraft });
+    }
+  };
+
   // ==== leaving, finishing ====
   const close = () => {
     Keyboard.dismiss();
@@ -364,6 +402,32 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     [finishing, session, sets],
   );
 
+  // What this workout changed from its routine, offered on the summary one
+  // change at a time. Read off the routine and the done sets while it is open.
+  const routineDiff = useMemo(
+    () => {
+      if (!finishing || !session || !routine) return [];
+      return routineChanges({
+        items: routine.items,
+        sets,
+        kindOf: id => catalogExercise(exerciseRows, id)?.kind ?? 'weight_reps',
+        // A load taken from the suggestion is the plan working, not a change to it.
+        suggestedKg: id => liveProposal(session.id, id)?.proposal.sets.find(x => x.kind !== 'warmup')?.weightKg ?? null,
+      });
+    },
+    [finishing, session, routine, sets, exerciseRows],
+  );
+  const exerciseName = (id: string) => catalogExercise(exerciseRows, id)?.name ?? 'Unknown exercise';
+  const toggleChange = (id: string) => {
+    haptics.tap();
+    setAccepted(prev => {
+      const next = new Set(prev);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+  };
+  const acceptedCount = routineDiff.filter(c => accepted.has(c.id)).length;
+
   // What this workout beat, against everything before it. Read from each
   // exercise's own history (the live session's sets are in the database as
   // they are edited), and only while the summary is up. The workout page
@@ -390,6 +454,13 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
       completeLinkedTask: !askFirst,
     });
     if (typeof finished === 'string') return;
+    // The ticked changes go into the routine as it is now. A routine that has
+    // since been deleted or refuses the edit leaves the saved workout alone.
+    const picked = routineDiff.filter(c => accepted.has(c.id));
+    if (routine && picked.length > 0) {
+      const current = useWorkoutStore.getState().routines.find(r => r.id === routine.id);
+      if (current) useWorkoutStore.getState().updateRoutine(current.id, { items: applyRoutineChanges(current.items, picked) });
+    }
     haptics.chainFinish();
     close();
     onSaved(askFirst && linkedTask ? linkedTask.id : null);
@@ -495,6 +566,51 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                 </View>
               </>
             )}
+            {routine && routineDiff.length > 0 && (
+              <>
+                <Text style={styles.groupLabel}>{`Update ${routine.name}?`}</Text>
+                <View style={styles.card}>
+                  {routineDiff.map((c, i) => {
+                    const text = describeRoutineChange(c, exerciseName, unit);
+                    const on = accepted.has(c.id);
+                    return (
+                      <TouchableOpacity
+                        key={c.id}
+                        style={[styles.changeRow, i > 0 && styles.rowSep]}
+                        onPress={() => toggleChange(c.id)}
+                        activeOpacity={interaction.activeOpacity}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: on }}
+                        accessibilityLabel={`${text.title}. ${text.detail}`}
+                      >
+                        <View style={styles.flex}>
+                          <Text style={styles.changeTitle}>{text.title}</Text>
+                          <Text style={styles.changeDetail}>{text.detail}</Text>
+                        </View>
+                        <SelectionDot selected={on} onPress={() => toggleChange(c.id)} />
+                      </TouchableOpacity>
+                    );
+                  })}
+                  <View style={[styles.changeFooter, styles.rowSep]}>
+                    <InlineAction
+                      label={acceptedCount === routineDiff.length ? 'Clear all' : 'Select all'}
+                      variant="neutral"
+                      surface="tray"
+                      onPress={() => {
+                        haptics.tap();
+                        setAccepted(acceptedCount === routineDiff.length ? new Set() : new Set(routineDiff.map(c => c.id)));
+                      }}
+                    />
+                    <Text style={styles.changeCount}>{`${acceptedCount} of ${routineDiff.length} selected`}</Text>
+                  </View>
+                </View>
+                <Text style={styles.consequence}>
+                  {routine.programId
+                    ? 'Only the selected changes are saved to the routine, and the program uses the same routine. Your logged workout is kept either way.'
+                    : 'Only the selected changes are saved to the routine. Your logged workout is kept either way.'}
+                </Text>
+              </>
+            )}
             <Text style={styles.consequence}>
               {[
                 plan.loggedCount === 0
@@ -583,6 +699,50 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                     open={photosOpen}
                     onToggle={() => setPhotosOpen(o => !o)}
                   />
+                  <View style={styles.exActions}>
+                    {canSwap && (
+                      <InlineAction
+                        icon="swap-horizontal"
+                        label="Swap"
+                        onPress={() => { haptics.tap(); setPicking('swap'); }}
+                        accessibilityLabel={`Swap ${viewedInfo?.name ?? 'this exercise'} for another`}
+                      />
+                    )}
+                    <InlineAction
+                      icon="create-outline"
+                      label={viewedInfo?.notes ? 'Edit note' : 'Add note'}
+                      variant="neutral"
+                      onPress={toggleExNote}
+                      accessibilityLabel={`${viewedInfo?.notes ? 'Edit' : 'Add'} the note on ${viewedInfo?.name ?? 'this exercise'}`}
+                    />
+                  </View>
+                  {lastNotes && (
+                    <View style={styles.noteBox}>
+                      <Text style={[styles.noteLabel, styles.noteLabelLast]}>{`Last time · ${format(new Date(lastNotes.at), 'MMM d')}`}</Text>
+                      {lastNotes.notes.map((n, i) => (
+                        <Text key={i} style={styles.noteText}>{`${n.where}: ${n.text}`}</Text>
+                      ))}
+                    </View>
+                  )}
+                  {exNoteOpen ? (
+                    <TextField
+                      style={styles.exNoteInput}
+                      value={exNoteDraft}
+                      onChangeText={setExNoteDraft}
+                      onBlur={commitExNote}
+                      onSubmitEditing={commitExNote}
+                      placeholder="e.g. Use the dumbbell press if the bench is taken"
+                      placeholderTextColor={colors.textTertiary}
+                      multiline
+                      autoFocus
+                      accessibilityLabel={`Note on ${viewedInfo?.name ?? 'this exercise'}`}
+                    />
+                  ) : !!viewedInfo?.notes && (
+                    <View style={styles.noteBox}>
+                      <Text style={styles.noteLabel}>Notes</Text>
+                      <Text style={styles.noteText}>{viewedInfo.notes}</Text>
+                    </View>
+                  )}
                   {proposal && (
                     <SuggestionCard
                       proposal={proposal}
@@ -614,54 +774,93 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                   const label = labels.get(set.id) ?? '';
                   return (
                     <View key={set.id}>
-                      <TouchableOpacity
-                        style={[styles.setRow, isOpen && styles.setRowOpen]}
-                        onPress={() => openRow(set)}
-                        activeOpacity={interaction.activeOpacity}
-                        accessibilityRole="button"
-                        accessibilityState={{ expanded: isOpen }}
-                        accessibilityLabel={`${setName(set.kind, label)}${prevLine ? `, last time ${prevLine}` : ''}, ${fields.map(f => valueText(set, f, unit) ?? 'not entered').join(', ')}`}
-                      >
-                        <Text style={[styles.colSet, setBadge(set.kind) ? styles.setBadge : styles.setNumber]}>{label}</Text>
-                        <Text style={[styles.colPrev, styles.prevText]} numberOfLines={1}>{prevLine ?? '–'}</Text>
-                        {fields.map(f => (
-                          <Text
-                            key={f}
-                            style={[styles.colValue, styles.valueText, isOpen && styles.valueOpen, !done && !isOpen && styles.valuePlanned]}
-                            numberOfLines={1}
-                          >
-                            {valueText(set, f, unit) ?? '–'}
-                          </Text>
-                        ))}
-                        <TouchableOpacity
-                          style={styles.colCheck}
-                          onPress={() => toggleSet(set)}
-                          hitSlop={{ top: 10, bottom: 10, left: 12, right: 12 }}
-                          accessibilityRole="checkbox"
-                          accessibilityState={{ checked: done }}
-                          accessibilityLabel={`${setName(set.kind, label)} done`}
-                        >
-                          <CheckPop checked={done} style={styles.check} checkedStyle={styles.checkDone}>
-                            <Ionicons name="checkmark" size={14} color={colors.onDone} />
-                          </CheckPop>
-                        </TouchableOpacity>
-                      </TouchableOpacity>
-                      {isOpen && (
-                        <View style={styles.edit}>
-                          {fields.map(f => (
-                            <View key={f} style={styles.editLine}>
-                              <Text style={styles.editLabel}>{fieldLabel(f, kind)}</Text>
-                              <FieldStepper set={set} field={f} unit={unit} onEdit={patch => edit(set.id, patch)} stepperStyle={styles.editStepper} />
+                      {isOpen ? (
+                        <View style={styles.open}>
+                          {/* Its own captions, since the table's header is lined up with the closed rows' columns, which an open row's steppers don't match. */}
+                          <View style={styles.openCaps} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+                            <View style={styles.colSet} />
+                            {fields.length === 1 && <View style={styles.openSpacer} />}
+                            {fields.map(f => (
+                              <Text key={f} style={[styles.headCell, styles.openCell]} numberOfLines={1}>
+                                {inlineCaption(f, kind, unit)}
+                              </Text>
+                            ))}
+                            <View style={styles.colCheck} />
+                          </View>
+                          <View style={styles.openRow}>
+                            <TouchableOpacity
+                              style={styles.colSet}
+                              onPress={() => openRow(set)}
+                              hitSlop={{ top: 10, bottom: 10, left: 10, right: 6 }}
+                              accessibilityRole="button"
+                              accessibilityState={{ expanded: true }}
+                              accessibilityLabel={`${setName(set.kind, label)}, close`}
+                            >
+                              <Text style={[setBadge(set.kind) ? styles.setBadge : styles.setNumber, styles.openSetLabel]}>{label}</Text>
+                            </TouchableOpacity>
+                            {fields.length === 1 && <View style={styles.openSpacer} />}
+                            {fields.map(f => (
+                              <View key={f} style={styles.openCell}>
+                                <FieldStepper set={set} field={f} unit={unit} onEdit={patch => edit(set.id, patch)} stepperStyle={styles.editStepper} inline />
+                              </View>
+                            ))}
+                            <TouchableOpacity
+                              style={styles.colCheck}
+                              onPress={() => toggleSet(set)}
+                              hitSlop={{ top: 10, bottom: 10, left: 12, right: 12 }}
+                              accessibilityRole="checkbox"
+                              accessibilityState={{ checked: done }}
+                              accessibilityLabel={`${setName(set.kind, label)} done`}
+                            >
+                              <CheckPop checked={done} style={styles.check} checkedStyle={styles.checkDone}>
+                                <Ionicons name="checkmark" size={14} color={colors.onDone} />
+                              </CheckPop>
+                            </TouchableOpacity>
+                          </View>
+                          <View style={styles.edit}>
+                            {!!prevLine && <Text style={styles.lastTime}>Last time: {prevLine}</Text>}
+                            {!!plate && <PlateLine load={plate} unit={unit} />}
+                            <View style={styles.editActions}>
+                              {!!valuesFromLastDone(viewed.sets, set.id) && (
+                                <InlineAction label="Same as last set" variant="neutral" surface="tray" onPress={() => sameAsLast(set)} />
+                              )}
+                              <InlineAction icon="trash-outline" label="Remove set" tint={colors.redText} onPress={() => removeSet(set)} />
                             </View>
-                          ))}
-                          {!!plate && <PlateLine load={plate} unit={unit} />}
-                          <View style={styles.editActions}>
-                            {!!valuesFromLastDone(viewed.sets, set.id) && (
-                              <InlineAction label="Same as last set" variant="neutral" surface="tray" onPress={() => sameAsLast(set)} />
-                            )}
-                            <InlineAction icon="trash-outline" label="Remove set" tint={colors.redText} onPress={() => removeSet(set)} />
                           </View>
                         </View>
+                      ) : (
+                        <TouchableOpacity
+                          style={styles.setRow}
+                          onPress={() => openRow(set)}
+                          activeOpacity={interaction.activeOpacity}
+                          accessibilityRole="button"
+                          accessibilityState={{ expanded: false }}
+                          accessibilityLabel={`${setName(set.kind, label)}${prevLine ? `, last time ${prevLine}` : ''}, ${fields.map(f => valueText(set, f, unit) ?? 'not entered').join(', ')}`}
+                        >
+                          <Text style={[styles.colSet, setBadge(set.kind) ? styles.setBadge : styles.setNumber]}>{label}</Text>
+                          <Text style={[styles.colPrev, styles.prevText]} numberOfLines={1}>{prevLine ?? '–'}</Text>
+                          {fields.map(f => (
+                            <Text
+                              key={f}
+                              style={[styles.colValue, styles.valueText, !done && styles.valuePlanned]}
+                              numberOfLines={1}
+                            >
+                              {valueText(set, f, unit) ?? '–'}
+                            </Text>
+                          ))}
+                          <TouchableOpacity
+                            style={styles.colCheck}
+                            onPress={() => toggleSet(set)}
+                            hitSlop={{ top: 10, bottom: 10, left: 12, right: 12 }}
+                            accessibilityRole="checkbox"
+                            accessibilityState={{ checked: done }}
+                            accessibilityLabel={`${setName(set.kind, label)} done`}
+                          >
+                            <CheckPop checked={done} style={styles.check} checkedStyle={styles.checkDone}>
+                              <Ionicons name="checkmark" size={14} color={colors.onDone} />
+                            </CheckPop>
+                          </TouchableOpacity>
+                        </TouchableOpacity>
                       )}
                     </View>
                   );
@@ -721,7 +920,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
               </>
             )}
             <View style={styles.addExercise}>
-              <InlineAction icon="add" label="Add exercise" variant="neutral" surface="page" onPress={() => { haptics.tap(); setPicking(true); }} />
+              <InlineAction icon="add" label="Add exercise" variant="neutral" surface="page" onPress={() => { haptics.tap(); setPicking('add'); }} />
             </View>
           </ScrollView>
         )}
@@ -755,11 +954,12 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
       {/* Inside this Modal, not beside it: a second sheet presented from the
           same view controller as this one never appears. */}
       <ExercisePickerSheet
-        visible={visible && picking}
-        onClose={() => setPicking(false)}
-        onPick={addExercise}
+        visible={visible && picking !== null}
+        onClose={() => setPicking(null)}
+        onPick={picking === 'swap' ? swapExercise : addExercise}
         addedIds={exercises.map(e => e.exerciseId)}
         addedLabel="In workout"
+        suggestedIds={picking === 'swap' && viewed ? swapCandidates(exerciseRows, viewed.exerciseId, exercises.map(e => e.exerciseId)) : undefined}
       />
       <ExerciseDetailSheet visible={visible && detailOpen} exerciseId={detailId} onClose={() => setDetailOpen(false)} />
     </SheetModal>
@@ -783,12 +983,22 @@ function heaviestLine(set: WorkoutSet, kind: ExerciseKind, unit: WeightUnit): st
   return set.reps !== null ? `${w} × ${set.reps}` : w;
 }
 
-function FieldStepper({ set, field, unit, onEdit, stepperStyle }: {
+/** What heads an open set's stepper: the field's name, with the unit it counts in. */
+function inlineCaption(field: SetField, kind: ExerciseKind, unit: WeightUnit): string {
+  const name = fieldLabel(field, kind);
+  if (field === 'weight') return `${name} (${unit})`;
+  if (field === 'distance') return `${name} (m)`;
+  return name;
+}
+
+function FieldStepper({ set, field, unit, onEdit, stepperStyle, inline }: {
   set: WorkoutSet;
   field: SetField;
   unit: WeightUnit;
   onEdit: (patch: Partial<WorkoutSet>) => void;
   stepperStyle: object;
+  /** Sat in the open row's own cell: narrower keys, and no unit in the value, since the caption above it carries that. */
+  inline?: boolean;
 }) {
   if (field === 'weight') {
     return (
@@ -802,9 +1012,10 @@ function FieldStepper({ set, field, unit, onEdit, stepperStyle }: {
         allowNull
         start={WEIGHT_STEP[unit] * 8}
         emptyLabel="–"
-        format={n => `${n} ${unit}`}
+        format={inline ? undefined : n => `${n} ${unit}`}
         label="Weight"
         style={stepperStyle}
+        inline={inline}
       />
     );
   }
@@ -820,6 +1031,7 @@ function FieldStepper({ set, field, unit, onEdit, stepperStyle }: {
         emptyLabel="–"
         label="Reps"
         style={stepperStyle}
+        inline={inline}
       />
     );
   }
@@ -837,6 +1049,7 @@ function FieldStepper({ set, field, unit, onEdit, stepperStyle }: {
         format={formatRestSeconds}
         label="Time"
         style={stepperStyle}
+        inline={inline}
       />
     );
   }
@@ -850,9 +1063,10 @@ function FieldStepper({ set, field, unit, onEdit, stepperStyle }: {
       allowNull
       start={100}
       emptyLabel="–"
-      format={n => `${n} m`}
+      format={inline ? undefined : n => `${n} m`}
       label="Distance in meters"
       style={stepperStyle}
+      inline={inline}
     />
   );
 }
@@ -994,6 +1208,23 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   exHead: { paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.xs },
   exNameRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   exName: { flexShrink: 1, color: colors.text, fontSize: font.xl, fontWeight: fontWeight.bold },
+  exActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.smd },
+  noteBox: { marginTop: spacing.smd, padding: spacing.smd, borderRadius: radius.sm, backgroundColor: colors.bgTertiary },
+  noteLabel: {
+    color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold, textTransform: 'uppercase',
+    letterSpacing: 0.8, marginBottom: spacing.xxs,
+  },
+  noteLabelLast: { color: colors.warningText },
+  noteText: { color: colors.text, fontSize: font.sm },
+  exNoteInput: {
+    color: colors.text, fontSize: font.md, marginTop: spacing.smd,
+    paddingHorizontal: spacing.smd, paddingVertical: spacing.sm, backgroundColor: colors.bgTertiary, borderRadius: radius.sm, minHeight: 40,
+  },
+  changeRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd, paddingHorizontal: spacing.md, paddingVertical: spacing.smd },
+  changeTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
+  changeDetail: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs },
+  changeFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  changeCount: { color: colors.textSecondary, fontSize: font.sm },
   exMuscles: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xs },
   suggest: { backgroundColor: colors.bgTertiary, borderRadius: radius.md, padding: spacing.smd, marginTop: spacing.smd, gap: spacing.sm },
   suggestText: { color: colors.text, fontSize: font.sm },
@@ -1011,21 +1242,25 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 46,
     paddingHorizontal: spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator,
   },
-  setRowOpen: { backgroundColor: colors.accentSubtle },
+  open: { backgroundColor: colors.accentSubtle, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator },
+  openCaps: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, paddingTop: spacing.sm },
+  openRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 48, paddingHorizontal: spacing.md },
+  openCell: { flex: 1, textAlign: 'center' },
+  // A lone value takes the right half, the width it has beside a neighbour, so a stepper is the same size whichever exercise it is on.
+  openSpacer: { flex: 1 },
+  openSetLabel: { textAlign: 'center' },
+  lastTime: { color: colors.textSecondary, fontSize: font.sm },
   setNumber: { color: colors.textSecondary, fontSize: font.md, fontWeight: fontWeight.semibold },
   setBadge: { color: colors.orangeText, fontSize: font.md, fontWeight: fontWeight.bold },
   prevText: { color: colors.textTertiary, fontSize: font.md, fontVariant: ['tabular-nums'] },
   valueText: { color: colors.text, fontSize: font.md, fontVariant: ['tabular-nums'] },
-  valueOpen: { fontWeight: fontWeight.semibold },
   valuePlanned: { color: colors.textTertiary },
   check: {
     width: 24, height: 24, borderRadius: 8, borderWidth: 1.5, borderColor: colors.controlBorder,
     alignItems: 'center', justifyContent: 'center',
   },
   checkDone: { backgroundColor: colors.done, borderColor: colors.done },
-  edit: { backgroundColor: colors.accentSubtle, paddingHorizontal: spacing.md, paddingTop: spacing.xs, paddingBottom: spacing.smd, gap: spacing.smd },
-  editLine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  editLabel: { color: colors.textSecondary, fontSize: font.md },
+  edit: { paddingHorizontal: spacing.md, paddingBottom: spacing.smd, gap: spacing.smd },
   editStepper: { backgroundColor: colors.bgSecondary },
   editActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   adds: {
