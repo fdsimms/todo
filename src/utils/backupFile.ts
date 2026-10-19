@@ -141,10 +141,17 @@ export function discardBackupFile(uri: string): void {
  * a greyed-out file would.
  */
 export async function pickBackupFile(): Promise<string | null> {
-  const result = await documentPicker().getDocumentAsync({
-    type: ['application/json', 'public.json', 'text/plain', '*/*'],
-    copyToCacheDirectory: true,
-  });
-  if (result.canceled || !result.assets?.length) return null;
-  return new (fileSystem().File)(result.assets[0].uri).text();
+  try {
+    const result = await documentPicker().getDocumentAsync({
+      type: ['application/json', 'public.json', 'text/plain', '*/*'],
+      copyToCacheDirectory: true,
+    });
+    if (result.canceled || !result.assets?.length) return null;
+    return await new (fileSystem().File)(result.assets[0].uri).text();
+  } catch (e) {
+    // Every caller shows its own alert and drops the error, so it is logged
+    // here, once, where the picker and the read both fail.
+    require('./errorLog').logError('backup-file-pick', e);
+    throw e;
+  }
 }
