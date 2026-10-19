@@ -16,18 +16,14 @@ import {
   applyFoodNutrition,
   applyLabelReading,
   buildPanelNutrition,
-  convertPanelBasis,
-  divideAmountsByServings,
   foodNutritionFieldCount,
   gramsToServingWeight,
   invalidPanelFields,
   labelColumnFieldCount,
   panelFormDirty,
   panelFormFrom,
-  readPanelNumber,
   servingWeightToGrams,
   type PanelFieldKey,
-  type NovaGroupText,
   type PanelForm,
   type ServingWeightUnit,
 } from '../utils/nutritionPanelForm';
@@ -68,15 +64,17 @@ import { BUTTON_LABEL } from '../copy/shared';
  * (`NUTRIENT_KEYS`). Reading down the packet and down the screen should be
  * the same movement.
  *
- * **The basis selector sits at the bottom of the SERVING card, immediately
- * above NUTRIENTS, not at the top.** It answers "what basis are the figures
- * below in", and it used to sit directly above Serving weight instead — which
- * reads as if it scopes that field too, since a form control and the field
- * right under it look like the control's own target. `servingGrams` is
- * unrelated to `basis` (see that field's own doc comment in `types/index.ts`)
- * and applies to a per-100g panel exactly as much as a per-serving one, so it
- * comes first and the selector sits right against the section it actually
- * governs.
+ * **The basis selector heads the NUTRIENTS section, not the serving.** It answers
+ * "which column of the label are these figures from", so it sits directly over
+ * the figures it describes and says in a line what to type. `servingGrams` is
+ * unrelated to `basis` (see that field's own doc comment in `types/index.ts`):
+ * it describes the food, so the SERVING card holds only facts about the food
+ * and nothing in it scopes the figures.
+ *
+ * **There is no NOVA control here.** Nobody copying a packet knows what the group
+ * is, and it is not printed on one. A barcode scan or an earlier edit still
+ * carries it: `panelFormFrom` seeds `novaGroup` and `buildPanelNutrition` writes
+ * it back, so saving this sheet never drops a group a source stated.
  *
  * **Every field is blank by default and stays blank if nothing is typed.** A
  * placeholder of "0" would read as a value already saved and would quietly
@@ -121,16 +119,12 @@ import { BUTTON_LABEL } from '../copy/shared';
  * `applyLabelReading`. Same review, same Save; only the source of the numbers
  * differs.
  *
- * **Three pieces of arithmetic a person would otherwise do against the packet
- * are done here instead**, all in `nutritionPanelForm.ts` and all display-only
- * until Save, same as everything above: a g/oz toggle on Serving weight (a
- * label with no metric figure needs no mental multiplication), a "Convert
- * typed figures to …" action that re-expresses what's typed between per 100g
- * and per serving using `servingGrams` as the ratio (a US label states one and
- * this app usually wants the other), and a "Divide into one serving" action
- * for a label that only states whole-package totals against a servings count.
- * Each is offered only when the numbers on screen make it answerable, and each
- * only rewrites the same typed fields — nothing here is a second record.
+ * **A g/oz toggle on Serving weight is the one piece of arithmetic done for
+ * you** (`servingWeightToGrams`): a label with no metric figure needs no mental
+ * multiplication. There is deliberately no converting between per 100g and per
+ * serving, and no dividing of whole-package totals: both bases log correctly as
+ * typed, and the actions that rewrote typed figures were the part of this sheet
+ * nobody could follow.
  */
 
 interface Props {
@@ -156,14 +150,6 @@ const BASIS_OPTIONS = (['per100g', 'per100ml', 'perServing'] as const).map(value
   value,
   label: NUTRITION_BASIS_LABEL[value],
 }));
-
-const NOVA_OPTIONS: { value: NovaGroupText; label: string }[] = [
-  { value: '', label: 'Not set' },
-  { value: '1', label: '1' },
-  { value: '2', label: '2' },
-  { value: '3', label: '3' },
-  { value: '4', label: '4' },
-];
 
 const WEIGHT_UNIT_OPTIONS: { value: ServingWeightUnit; label: string }[] = [
   { value: 'g', label: 'g' },
@@ -210,11 +196,6 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
   // shows "1", not a round-tripped "1.00002". See `servingWeightToGrams`.
   const [weightUnit, setWeightUnit] = useState<ServingWeightUnit>('g');
   const [weightText, setWeightText] = useState(form.servingGrams);
-  // A transient calculator input, never saved: how many servings a package's
-  // whole-total figures should be divided by. Cleared once used or on reopen,
-  // the same as a photo's `label` — a count from an earlier food is worse than
-  // none. See `divideAmountsByServings`.
-  const [servingsText, setServingsText] = useState('');
   // Kept in step so a handler triggered from outside a keystroke (a photo
   // read, a barcode fetch, a column switch) can read the form as it stands
   // right now without being recreated on every render to stay fresh.
@@ -242,7 +223,6 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
     setScanNote(null);
     setWeightUnit('g');
     setWeightText(opened.servingGrams);
-    setServingsText('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
@@ -407,35 +387,12 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
     setWeightText(gramsToServingWeight(grams, unit));
   };
 
-  /** Whether "Convert to X" against the other of per-100g/per-serving has anything to do. */
-  const basisConvertTarget: 'per100g' | 'perServing' | null =
-    form.basis === 'perServing' ? 'per100g' : form.basis === 'per100g' ? 'perServing' : null;
-  const canConvertBasis = basisConvertTarget !== null && convertPanelBasis(form, basisConvertTarget) !== null;
-
-  const handleConvertBasis = () => {
-    if (!basisConvertTarget) return;
-    const next = convertPanelBasis(form, basisConvertTarget);
-    if (!next) return;
-    haptics.success();
-    setForm(next);
-    setBad([]);
-  };
-
-  const servingsCount = (() => {
-    const n = readPanelNumber(servingsText);
-    return typeof n === 'number' && n > 0 ? n : null;
-  })();
-  const canDivideServings = servingsCount !== null && divideAmountsByServings(form, servingsCount) !== null;
-
-  const handleDivideServings = () => {
-    if (servingsCount === null) return;
-    const next = divideAmountsByServings(form, servingsCount);
-    if (!next) return;
-    haptics.success();
-    setForm(next);
-    setBad([]);
-    setServingsText('');
-  };
+  const basisCaption =
+    form.basis === 'perServing'
+      ? `Copy the “Amount per serving” numbers${form.servingText.trim() ? ` (for ${form.servingText.trim()})` : ''}.`
+      : form.basis === 'per100g'
+        ? 'Copy the “per 100 g” numbers.'
+        : 'Copy the “per 100 ml” numbers.';
 
   const handleSave = () => {
     const invalid = invalidPanelFields(form);
@@ -504,8 +461,8 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
             {...keyboardScroll.props}
           >
             <Text style={styles.intro}>
-              Copy the numbers off the package label. Leave a field blank if the label
-              doesn’t list it. Blank means unknown.
+              Copy the numbers off the package label. Skip anything the label doesn’t
+              list, and only type 0 where the label says 0.
             </Text>
 
             <View style={styles.photoRow}>
@@ -566,10 +523,11 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
                   style={styles.textInput}
                   value={form.servingText}
                   onChangeText={t => setForm(f => ({ ...f, servingText: t }))}
-                  placeholder="e.g. 2 cookies (30g)"
+                  placeholder="e.g. 3 Tbsp"
                   placeholderTextColor={colors.textTertiary}
                   accessibilityLabel="Serving size as printed"
                 />
+                <HelpText style={styles.hint}>For example 3 Tbsp, 1 cup or 2 cookies. Put the weight in the next field.</HelpText>
               </View>
 
               <View style={styles.field}>
@@ -596,76 +554,24 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
                   </View>
                 </View>
                 <HelpText style={styles.hint}>
-                  The weight used for calculations. Leave it blank for a product sold by
-                  volume. A label in ounces is converted to grams.
+                  What one serving weighs, if the label says. Leave it blank if the label
+                  gives only a volume. Ounces are saved as grams.
                 </HelpText>
               </View>
+            </View>
 
+            <Text style={styles.groupLabel}>NUTRIENTS</Text>
+            <View style={[styles.card, styles.basisCard]}>
               <SegmentedControl
-                label="The nutrients below are"
+                label="The numbers on the label are"
                 options={BASIS_OPTIONS}
                 value={form.basis}
                 onChange={basis => setForm(f => ({ ...f, basis }))}
                 surface="card"
               />
-              <HelpText style={styles.hint}>
-                Most labels outside the US print per 100g. Pick “per serving” only if the
-                panel’s own column says so. If you typed the figures under the wrong one,
-                recalculate them here using the serving weight.
-              </HelpText>
-              {!!basisConvertTarget && (
-                <InlineAction
-                  label={basisConvertTarget === 'perServing' ? 'Recalculate for one serving' : 'Recalculate per 100g'}
-                  icon="swap-horizontal-outline"
-                  variant="neutral"
-                  disabled={!canConvertBasis}
-                  onPress={handleConvertBasis}
-                  style={styles.convertAction}
-                />
-              )}
+              <HelpText style={styles.hint}>{basisCaption}</HelpText>
             </View>
-
-            <Text style={styles.groupLabel}>NUTRIENTS</Text>
-            <View style={styles.divideRow}>
-              <TextField
-                style={styles.divideInput}
-                value={servingsText}
-                onChangeText={setServingsText}
-                placeholder="Servings per container"
-                placeholderTextColor={colors.textTertiary}
-                keyboardType="decimal-pad"
-                inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
-                accessibilityLabel="Servings per container, for dividing whole-package totals into one serving"
-              />
-              <InlineAction
-                label="Divide into one serving"
-                icon="calculator-outline"
-                variant="neutral"
-                disabled={!canDivideServings}
-                onPress={handleDivideServings}
-              />
-            </View>
-            <HelpText style={styles.hint}>
-              If the label only gives whole-package totals, type them into the figures
-              below, enter the servings per container, then divide.
-            </HelpText>
             <NutrientFieldsCard amounts={form.amounts} bad={bad} onChange={setAmount} />
-
-            <Text style={styles.groupLabel}>PROCESSING</Text>
-            <View style={styles.card}>
-              <SegmentedControl
-                label="NOVA group"
-                options={NOVA_OPTIONS}
-                value={form.novaGroup}
-                onChange={novaGroup => setForm(f => ({ ...f, novaGroup }))}
-                surface="card"
-              />
-              <HelpText style={styles.hint}>
-                1 is unprocessed or minimally processed, 2 a culinary ingredient such as oil or
-                sugar, 3 processed, 4 ultra-processed. A barcode scan fills it in when the
-                database has one. Leave it unset if you don’t know.
-              </HelpText>
-            </View>
 
             {bad.length > 0 && (
               <Text style={styles.error}>
@@ -751,25 +657,8 @@ function makeStyles(colors: Colors) {
     // this, and letting the track stretch would pull it away from the field
     // it belongs to.
     weightUnitToggle: { width: 104 },
-    // A card's cross axis stretches by default, which would turn a solo pill
-    // into a full-width button — same fix `SubstituteSheet`'s own solo
-    // `InlineAction` needs (see its `suggestAsk` style).
-    convertAction: { alignSelf: 'flex-start' },
+    basisCard: { gap: spacing.sm },
     hint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16 },
     error: { color: colors.redText, fontSize: font.sm, lineHeight: 18, marginTop: spacing.md },
-    // Margin on both sides, same rule as photoRow above: the hint right below
-    // it has no top margin of its own.
-    divideRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.xs },
-    divideInput: {
-      flex: 1,
-      color: colors.text,
-      fontSize: font.md,
-      backgroundColor: colors.bgSecondary,
-      borderRadius: radius.md,
-      paddingHorizontal: spacing.sm,
-      paddingVertical: spacing.sm,
-      borderWidth: border.thin,
-      borderColor: colors.separator,
-    },
   });
 }

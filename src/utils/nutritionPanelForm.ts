@@ -57,11 +57,15 @@ export function novaGroupToText(group: NovaGroup | null | undefined): NovaGroupT
 /** Which field a read failed on — the nutrient's own key, or the serving weight. */
 export type PanelFieldKey = NutrientKey | 'servingGrams';
 
-/** Every text field, blank. Used for a food with no record and as the reset. */
+/**
+ * Every text field, blank. Used for a food with no record and as the reset.
+ * The basis starts at `perServing`, the US label's one column, and a read photo
+ * or barcode overrides it with what the source states.
+ */
 export function emptyPanelForm(): PanelForm {
   const amounts = {} as Record<NutrientKey, string>;
   for (const key of NUTRIENT_KEYS) amounts[key] = '';
-  return { basis: 'per100g', servingText: '', servingGrams: '', amounts, novaGroup: '' };
+  return { basis: 'perServing', servingText: '', servingGrams: '', amounts, novaGroup: '' };
 }
 
 /**
@@ -213,74 +217,6 @@ export function buildPanelNutrition(
     // panel does not drop a group the source stated: `panelFormFrom` seeded it.
     ...(novaGroupFromText(form.novaGroup) ? { novaGroup: novaGroupFromText(form.novaGroup)! } : {}),
   };
-}
-
-/** A figure rounded the way a label's own precision reads — the same one decimal `foodLog.ts`'s own `round` keeps. */
-function roundNutrient(value: number): number {
-  return Math.round(value * 10) / 10;
-}
-
-/**
- * The form's typed figures re-expressed in the other basis, using
- * `servingGrams` as the ratio — so a US label that only prints "Amount Per
- * Serving" can still be typed in and stored as per 100g (or the reverse)
- * without anyone doing that multiplication by hand.
- *
- * **Only between `per100g` and `perServing`.** A `per100ml` panel has no
- * `servingGrams` to convert against — a product sold by volume states none,
- * see that field's own doc comment — and converting it would need a density
- * this app does not have, the same refusal `FoodNutrition.basis` itself
- * documents. Null whenever the conversion can't be done: the form is already
- * at `target`, there's no positive serving weight, or nothing is typed to
- * convert — the caller uses that to decide whether to offer the action at
- * all, not just whether to act on it.
- */
-export function convertPanelBasis(
-  form: PanelForm,
-  target: 'per100g' | 'perServing',
-): PanelForm | null {
-  if (form.basis !== 'per100g' && form.basis !== 'perServing') return null;
-  if (form.basis === target) return null;
-  const grams = readPanelNumber(form.servingGrams);
-  if (typeof grams !== 'number' || grams <= 0) return null;
-
-  const ratio = target === 'per100g' ? 100 / grams : grams / 100;
-  const amounts = { ...form.amounts };
-  let converted = false;
-  for (const key of NUTRIENT_KEYS) {
-    const value = readPanelNumber(form.amounts[key]);
-    if (typeof value !== 'number') continue;
-    amounts[key] = String(roundNutrient(value * ratio));
-    converted = true;
-  }
-  if (!converted) return null;
-  return { ...form, basis: target, amounts };
-}
-
-/**
- * The form's typed figures, read as a whole package's totals, divided down to
- * one serving — for a label that states "X servings per container" and only
- * a per-container total, with no per-serving column to copy. `basis` becomes
- * `perServing`, since that's what the result now is.
- *
- * `servingGrams` is deliberately left alone: it already means one serving's
- * weight, which a label states directly (see its own doc comment) far more
- * often than it states a package's total weight, so there is nothing here
- * this function could safely divide for it. Null when there's nothing to
- * divide, or `servings` isn't a real, positive count.
- */
-export function divideAmountsByServings(form: PanelForm, servings: number): PanelForm | null {
-  if (!(servings > 0) || !Number.isFinite(servings)) return null;
-  const amounts = { ...form.amounts };
-  let divided = false;
-  for (const key of NUTRIENT_KEYS) {
-    const value = readPanelNumber(form.amounts[key]);
-    if (typeof value !== 'number') continue;
-    amounts[key] = String(roundNutrient(value / servings));
-    divided = true;
-  }
-  if (!divided) return null;
-  return { ...form, basis: 'perServing', amounts };
 }
 
 /**
