@@ -91,7 +91,9 @@ export function completionTapFor(task: Task, recordReady = false): CompletionTap
   // Same reasoning as `ask`, checked first: this step isn't answered by
   // ticking it, it's answered by putting something in the slot — see
   // mealSlotChain in mealSlotTasks.ts.
-  if (activeMealSlotStepId(task)?.endsWith('-choose')) return 'pick-meal';
+  // A ready row has nothing left to choose (the meal was logged or cooked), so
+  // its tap is the ordinary tick the green ring is offering.
+  if (!task.generatedReadyAt && activeMealSlotStepId(task)?.endsWith('-choose')) return 'pick-meal';
   if (projectReviewProjectId(task)) return 'review-project';
   if (asksOnCompletion(task)) return 'ask';
   return 'complete';

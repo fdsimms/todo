@@ -1266,8 +1266,12 @@ const TaskItemRow = React.memo(function TaskItem({
   // always chainIndex 0 by construction (mealSlotChain puts it first), but
   // checked by step id rather than index so a task that isn't this
   // generator's at all reads as not-a-choose-step too.
+  // Not when the row reads ready: the meal was already logged or cooked, so
+  // the tap is the tick the green ring offers (see completionTapFor).
   const mealSlotChooseSource =
-    activeMealSlotStepId(task)?.endsWith('-choose') ? parseMealSlotSource(task.generatedSourceId) : null;
+    !task.generatedReadyAt && activeMealSlotStepId(task)?.endsWith('-choose')
+      ? parseMealSlotSource(task.generatedSourceId)
+      : null;
   const planMeal = useMealPlanStore(s => s.planMeal);
   const removeMealPlanEntry = useMealPlanStore(s => s.removeEntry);
 
