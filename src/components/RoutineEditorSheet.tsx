@@ -67,15 +67,16 @@ const PROGRESSION_OPTIONS: SegmentOption<ProgressionScheme | null>[] = (
   ['double', 'linear', 'percent', 'rpe'] as const
 ).map(value => ({ value, label: PROGRESSION_LABELS[value] }));
 
-// With no scheme chosen the four names mean nothing to most people, so the
-// hint spells each one out. Once one is picked, PROGRESSION_HINTS takes over.
-const PROGRESSION_INTRO = [
-  'How this exercise moves on from one workout to the next. With none chosen here, the program’s choice applies. Workout mode shows its suggestion, and you choose whether to use it.',
-  'Rep range: you aim for a range, like 8 to 12 reps. Once every set reaches the top, add weight and start at the bottom again.',
-  'Linear: add a little weight each workout where you finish all your reps. Common for beginners.',
-  '% of max: each set’s weight is a percentage of your heaviest lift, which you set in the program.',
-  'RPE: after a set, rate how hard it felt from 1 (very easy) to 10 (couldn’t do another rep), and the suggested weight follows.',
-].join('\n\n');
+const PROGRESSION_INTRO =
+  'How this exercise moves on from one workout to the next. With none chosen here, the program’s choice applies. Workout mode shows its suggestion, and you choose whether to use it.';
+
+// Behind the "?" beside the label: the four names mean nothing to most people.
+const PROGRESSION_GLOSSARY = [
+  ['Rep range', 'You aim for a range, like 8 to 12 reps. Once every set reaches the top, add weight and start at the bottom again.'],
+  ['Linear', 'Add a little weight each workout where you finish all your reps. Common for beginners.'],
+  ['% of max', 'Each set’s weight is a percentage of your heaviest lift, which you set in the program.'],
+  ['RPE', 'After a set, rate how hard it felt from 1 (very easy) to 10 (couldn’t do another rep), and the suggested weight follows.'],
+] as const;
 
 const NAME_REFUSED: Record<string, string> = {
   blank: 'Give the routine a name.',
@@ -429,6 +430,7 @@ function ItemControls({
   item, kind, role, unit, defaultRest, canJoin, rampLoads, colors, styles, onChange, onJoin, onLeave, onRemove,
 }: ItemControlsProps) {
   const scheme = item.progression?.scheme ?? null;
+  const [explainOpen, setExplainOpen] = useState(false);
   const rests = role === 'none' || role === 'last';
   const ramp = item.warmupRamp === true;
   return (
@@ -474,7 +476,23 @@ function ItemControls({
 
       <View style={styles.section}>
         <View>
-          <Text style={[styles.cap, styles.capAbove]}>Progression</Text>
+          <View style={styles.capRow}>
+            <Text style={styles.cap}>Progression</Text>
+            <TouchableOpacity
+              onPress={() => { haptics.tap(); animateLayout(); setExplainOpen(o => !o); }}
+              activeOpacity={interaction.activeOpacity}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="What the progression options mean"
+              accessibilityState={{ expanded: explainOpen }}
+            >
+              <Ionicons
+                name={explainOpen ? 'help-circle' : 'help-circle-outline'}
+                size={iconSize.md}
+                color={explainOpen ? colors.accent : colors.textSecondary}
+              />
+            </TouchableOpacity>
+          </View>
           <SegmentedControl
             options={PROGRESSION_OPTIONS}
             value={scheme}
@@ -487,6 +505,16 @@ function ItemControls({
               ? PROGRESSION_HINTS[scheme]
               : PROGRESSION_INTRO}
           </HelpText>
+          {explainOpen && (
+            <View style={styles.glossary}>
+              {PROGRESSION_GLOSSARY.map(([name, text]) => (
+                <Text key={name} style={styles.hint}>
+                  <Text style={styles.glossaryName}>{name}</Text>
+                  {`: ${text}`}
+                </Text>
+              ))}
+            </View>
+          )}
         </View>
       </View>
 
@@ -558,7 +586,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold,
     textTransform: 'uppercase', letterSpacing: 0.8,
   },
-  capAbove: { marginBottom: spacing.sm },
+  capRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm },
+  glossary: { marginTop: spacing.smd, gap: spacing.sm },
+  glossaryName: { color: colors.text, fontWeight: fontWeight.semibold },
   hint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16 },
   hintBelow: { marginTop: spacing.sm },
   itemActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
