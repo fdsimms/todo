@@ -12,6 +12,8 @@ const defaults: SettingsSummaryInput = {
   remindersImportEnabled: false,
   groceryImportEnabled: false,
   kitchenEnabled: true,
+  rewardsEnabled: true,
+  workoutsEnabled: true,
   simpleMode: false,
   mealsOnToday: false,
   unitSystemLabel: null,
@@ -44,15 +46,25 @@ describe('settingsSummaries', () => {
   });
 
   describe('featureAreas', () => {
-    it('says everything is on by default', () => {
+    it('says everything is on only when every area is', () => {
       expect(summarise().featureAreas).toBe('Everything on');
     });
 
     it('names each switch once it is off/on', () => {
-      expect(summarise({ kitchenEnabled: false }).featureAreas).toBe('Groceries & meals hidden');
+      expect(summarise({ kitchenEnabled: false }).featureAreas).toBe('Groceries & meals off');
       expect(summarise({ simpleMode: true }).featureAreas).toBe('Simplified mode on');
       expect(summarise({ kitchenEnabled: false, simpleMode: true }).featureAreas)
-        .toBe('Groceries & meals hidden · Simplified mode on');
+        .toBe('Groceries & meals off · Simplified mode on');
+    });
+
+    // A fresh install: Rewards and Workouts both start off, and the line used
+    // to say "Everything on" regardless.
+    it('names Rewards and Workouts when they are off', () => {
+      expect(summarise({ rewardsEnabled: false, workoutsEnabled: false }).featureAreas)
+        .toBe('Rewards and Workouts off');
+      expect(summarise({ workoutsEnabled: false }).featureAreas).toBe('Workouts off');
+      expect(summarise({ kitchenEnabled: false, rewardsEnabled: false, workoutsEnabled: false }).featureAreas)
+        .toBe('Groceries & meals, Rewards and Workouts off');
     });
   });
 

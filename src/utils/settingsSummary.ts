@@ -32,6 +32,9 @@ export interface SettingsSummaryInput {
    * `groceryImportEnabled` alone.
    */
   kitchenEnabled: boolean;
+  /** The other two areas with a switch in Feature areas, both off on a fresh install. */
+  rewardsEnabled: boolean;
+  workoutsEnabled: boolean;
   calendarReadEnabled: boolean;
   /**
    * Read alongside the switch rather than trusting it, and the count is the
@@ -80,6 +83,13 @@ const THEME_LABELS: Record<string, string> = {
   system: 'System',
 };
 
+/** "Rewards and Workouts", "Groceries & meals, Rewards and Workouts". */
+function andList(names: readonly string[]): string {
+  return names.length <= 2
+    ? names.join(' and ')
+    : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
 /** Joins the parts that are worth saying, dropping the ones that aren't. */
 function line(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(' · ');
@@ -94,10 +104,20 @@ function line(...parts: (string | false | null | undefined)[]): string {
  */
 export function settingsSummaries(s: SettingsSummaryInput): Record<IndexedSettingsGroupId, string> {
   return {
-    featureAreas: line(
-      !s.kitchenEnabled && 'Groceries & meals hidden',
-      s.simpleMode && 'Simplified mode on',
-    ) || 'Everything on',
+    // Every area switched off is named, in the rows' own order: Rewards and
+    // Workouts are off on a fresh install, so "Everything on" was only ever
+    // true for whoever had turned both on.
+    featureAreas: (() => {
+      const off = [
+        !s.kitchenEnabled && 'Groceries & meals',
+        !s.rewardsEnabled && 'Rewards',
+        !s.workoutsEnabled && 'Workouts',
+      ].filter((name): name is string => !!name);
+      return line(
+        off.length > 0 && `${andList(off)} off`,
+        s.simpleMode && 'Simplified mode on',
+      ) || 'Everything on';
+    })(),
 
     appearance: line(
       THEME_LABELS[s.themeMode] ?? 'Black',

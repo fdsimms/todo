@@ -95,6 +95,8 @@ export function SettingsScreen() {
     remindersImportEnabled: settings.remindersImportEnabled,
     groceryImportEnabled: settings.groceryImportEnabled,
     kitchenEnabled: settings.kitchenEnabled,
+    rewardsEnabled: settings.rewardsEnabled,
+    workoutsEnabled: settings.workoutsEnabled,
     calendarReadEnabled: settings.calendarReadEnabled,
     calendarIds: settings.calendarIds,
     healthReadEnabled: settings.healthReadEnabled,
