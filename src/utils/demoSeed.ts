@@ -4412,8 +4412,6 @@ function seedRecipes(): DemoRecipes {
       '4 cups vegetable stock',
       '1 can diced tomatoes',
       '1 tsp dried thyme',
-      // Shares with the stir-fry and the salmon, so "Cook together" has a
-      // third dish to offer rather than a pair.
       '2 cloves garlic, minced',
     ].join('\n')
   );
@@ -4435,11 +4433,8 @@ function seedRecipes(): DemoRecipes {
   const crustyBread = addIngredient(soup.id, 'Bread');
   if (crustyBread) updateIngredient(soup.id, crustyBread.id, { purpose: 'serving', optional: true });
 
-  // Deliberately left unplanned, and deliberately built out of what the
-  // planned stir-fry already buys: rice, garlic and soy sauce. It's what
-  // "Cook together" exists to surface — a dish worth cooking this week
-  // precisely because the shopping is already half done. Without a candidate
-  // that overlaps three ways, the feature demos as a list of near-misses.
+  // Deliberately left unplanned: a dish with a lot in common with the planned
+  // stir-fry (rice, garlic and soy sauce), so the shopping is half done.
   const friedRice = newRecipe('Garlic fried rice');
   addIngredientsFromText(
     friedRice.id,
