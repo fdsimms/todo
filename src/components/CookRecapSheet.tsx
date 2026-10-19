@@ -527,9 +527,6 @@ export function CookRecapSheet({
                   </Text>
                 )}
                 <View style={styles.card}>
-                  <View style={styles.weighInWrap}>
-                    <CookwareWeighIn weighIn={weighIn} scaleText={weightText} />
-                  </View>
                   <View style={styles.weightRow}>
                     <Ionicons name="scale-outline" size={18} color={colors.textSecondary} />
                     {/* Invisible twin of the input below, measured so the input
@@ -557,6 +554,9 @@ export function CookRecapSheet({
                       accessibilityLabel={weighIn.picked.length > 0 ? 'Weight on the scale in grams' : 'Weight of the finished dish in grams'}
                     />
                     <Text style={styles.weightUnit}>g</Text>
+                  </View>
+                  <View style={styles.weighInWrap}>
+                    <CookwareWeighIn weighIn={weighIn} scaleText={weightText} />
                   </View>
                 </View>
               </>

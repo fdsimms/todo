@@ -1124,6 +1124,10 @@ ingredient panel's fold die with the modal.
   and logging one. It takes an undefined recipe so a screen can call it above its own "the row is
   gone" guard — and `CookModeSheet` passes `visible ? recipe : undefined`, since a modal mounted
   invisible must not hold a once-a-second interval open.
+  **The prep timer is the same hook**, drawn above the cook row on the mise en place screen and on a
+  step only while it is running or paused (`showsPrepRow`), so a cook who never times prep pays no
+  footer space. Start cooking pauses a running prep timer before starting the cook one
+  (`startCookingPlan`), so the two never count the same minutes.
 - **The either/or picks are made here, not before.** Cook mode used to resolve every group to its
   default and ignore the recipe screen's chips, so the only way to cook the jalapeño version was to
   remember to pick it before pressing Cook, and forgetting meant backing out and starting over.
@@ -1155,6 +1159,10 @@ ingredient panel's fold die with the modal.
   verbs sit behind one labelled "Made it" control rather than two glyphs; it is a menu even when
   only one of them applies, because `lastCookedAt` steers suggestions for weeks and a stray tap on
   a header icon shouldn't move it.
+- **Ingredient lines can be checked off, as screen state only.** Both the mise en place list and the
+  tray's panel carry a checkbox per line (`checkedLines` in `CookModeSheet`, keyed by node and line id
+  so a pick that reshuffles the list can't move a check). It writes nothing to the recipe, pantry or
+  list; it resets on close except while the cook timer runs, the same rule as the step position.
 - **Leaving does not cancel a cook; the header's trash button does.** Closing with the X keeps the
   cook timer running, because stepping away mid-cook is the ordinary case. Abandoning one is
   `cancelCook` in `CookModeSheet`: it appears only while the timer has time on it, asks first

@@ -378,7 +378,6 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/recipeImportPreview.ts` — ImportPreviewLine, methodRowMeta, prepTasksRowMeta, methodPreviewLines, prepTaskPreviewLines, previewToggleLabel
 - `src/utils/recipeNutrition.ts` — RecipeNutrition, NutritionLineState, recipeNutrition, componentShares, RecipeNutritionReading, readRecipeNutrition, NutritionLine, recipeNutritionLines, ExcludedNutritionLine, excludedNutritionLines, +10 more
 - `src/utils/recipeNutritionEstimate.ts` — RecipeEstimateConfidence, RecipeNutritionEstimate, RawRecipeNutritionEstimate, readRecipeNutritionEstimate, describeRecipeNutritionEstimate
-- `src/utils/recipeOverlap.ts` — SharedIngredient, OverlapSeed, OverlapMatch, overlapSeedFromPlanned, overlapSeedFromRecipes, rankOverlapRecipes, describeOverlap
 - `src/utils/recipePageOffline.ts` — OfflineRecipeItem, servingsFromYield, recipeFromPageOffline
 - `src/utils/recipePhoto.ts` — MAX_PHOTO_EDGE, MAX_RECIPE_PHOTOS, RecipePhotoSource, RecipePhoto, RecipePhotoResult, photoTargetSize, CameraPermission, PhotoLibraryPermission, getCameraPermission, requestCameraPermission, +15 more
 - `src/utils/recipePlanned.ts` — PLANNED_MEAL_LIMIT, upcomingRecipeMeals, plannedMealLabel
@@ -389,7 +388,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/recipeSources.ts` — foldRecipeSources, incomingSourcesOf, currentSourcesOf, RecipeLedger, recipeLedgerFor, sourcesAfterMerge
 - `src/utils/recipeSourcesCodec.ts` — parseRecipeSources, serializeRecipeSources
 - `src/utils/recipeTags.ts` — cleanRecipeTag, normalizeRecipeTags, parseRecipeTags, allRecipeTags, recipeTagCounts, filterRecipesByTags, formatTagList, toggleRecipeTag
-- `src/utils/recipeTimer.ts` — CookTimerState, PrepTimerState, isCookTimerRunning, cookTimerElapsed, isPrepTimerRunning, prepTimerElapsed, hasRunningRecipeTimer, RecipeTimerReading, recipeTimerClock, recipeTimerResetPrompt
+- `src/utils/recipeTimer.ts` — CookTimerState, PrepTimerState, isCookTimerRunning, cookTimerElapsed, isPrepTimerRunning, prepTimerElapsed, hasRunningRecipeTimer, showsPrepRow, startCookingPlan, RecipeTimerReading, +2 more
 - `src/utils/recipeUrl.ts` — normalizeRecipeUrl, recipeImportedFrom, decodeEntities, htmlToText, metaContent, PageRecipe, parseIsoDuration, parseRecipeJsonLd, focusRecipeText, recipeToPlainText, +2 more
 - `src/utils/recipeUtils.ts` — parseRecipeIngredients, normalizeIngredient, makeIngredient, AndSplitPart, splitIngredientAnd, ingredientDedupeKey, duplicateIngredientIn, blockedIngredientNote, alreadyInRecipeNote, blockedReviewRows, +66 more
 - `src/utils/recordTasks.ts` — isAnsweredByRecord, recordLogUrl, RecordContext, isRecordAnswered
@@ -686,7 +685,6 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useNavMenuOptions.ts` — useNavMenuOptions
 - `src/hooks/useNowTick.ts` — useNowTick
 - `src/hooks/useOnDeviceAi.ts` — useOnDeviceAvailability, useAiRoute
-- `src/hooks/useOverlapPicker.ts` — OverlapPickerState, useOverlapPicker
 - `src/hooks/usePendingEdits.ts` — PendingEdits, usePendingEdits, useRegisterPendingEdit
 - `src/hooks/usePlaceGateRefresh.ts` — usePlaceGateRefresh
 - `src/hooks/usePlaceSuggestions.ts` — usePlaceSuggestions

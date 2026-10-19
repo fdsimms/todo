@@ -33,8 +33,6 @@ import { EmptyState } from '../components/EmptyState';
 import { RecipeCreateSheet } from '../components/RecipeCreateSheet';
 import { InventRecipeSheet } from '../components/InventRecipeSheet';
 import type { RecipeInputMode } from '../components/RecipeSourcePicker';
-import { OverlapPickerSheet } from '../components/OverlapPickerSheet';
-import { useOverlapPicker } from '../hooks/useOverlapPicker';
 import { RecipeSortFilterSheet } from '../components/RecipeSortFilterSheet';
 import { FabMenu, FAB_SIZE, type FabDragHandlers, type FabMenuItem, useFabBottom } from '../components/Fab';
 import {
@@ -634,8 +632,6 @@ export function RecipesScreen() {
     navigation.navigate('RecipeDetail', { recipeId: recipe.id });
   }, [navigation]);
 
-  const { overlap, openOverlap, closeOverlap, handOffOverlap } = useOverlapPicker();
-
   // The row's handlers. Stable, and each takes the recipe (or its id) it acts
   // on, so one function serves every row and `RecipeRow`'s memo holds through
   // a render of the screen (#2922) — see the row's own note.
@@ -648,14 +644,6 @@ export function RecipesScreen() {
     haptics.tap();
     setUpNext(recipe.id, !recipe.upNext);
   }, [setUpNext]);
-
-  // `openOverlap` is rebuilt whenever the grocery catalog changes, since it
-  // ranks against it, and a check-off changes the catalog. Handed to the rows
-  // directly, every check-off would re-render every row, so they get this
-  // stable wrapper instead, reading the current one at the tap.
-  const openOverlapRef = useRef(openOverlap);
-  openOverlapRef.current = openOverlap;
-  const handleCookTogether = useCallback((recipe: Recipe) => openOverlapRef.current(recipe), []);
 
   // One row, for all three lists that draw one: the grouped box, the flat box
   // and the Up Next shelf. `duplicateRow` is the shelf's copy of a recipe that
@@ -680,11 +668,10 @@ export function RecipesScreen() {
       onSwipeSelect={enterSelectionMode}
       onPlan={handlePlanRecipe}
       onToggleUpNext={handleToggleUpNext}
-      onCookTogether={handleCookTogether}
     />
   ), [
     rowDescriptions, pantryCounts, colors, styles, selectionMode, selectedIds, openRecipe, toggleSelection,
-    enterSelectionMode, handlePlanRecipe, handleToggleUpNext, handleCookTogether,
+    enterSelectionMode, handlePlanRecipe, handleToggleUpNext,
   ]);
 
   // The flat view's renderItem. The FlatList still calls it for every row in
@@ -981,22 +968,6 @@ export function RecipesScreen() {
         />
       </LazySheet>
 
-      {/* Discovery only — this screen has no week to land picks on, so they
-          go to the meal plan. See useOverlapPicker. */}
-      <LazySheet open={overlap !== null}>
-        <OverlapPickerSheet
-          visible={overlap !== null}
-          matches={overlap?.matches ?? []}
-          seedLabel={overlap?.seedLabel ?? ''}
-          onHandOff={handOffOverlap}
-          onOpenRecipe={other => {
-            closeOverlap();
-            openRecipe(other);
-          }}
-          onClose={closeOverlap}
-        />
-      </LazySheet>
-
       <LazySheet open={sortFilterVisible}>
         <RecipeSortFilterSheet
           visible={sortFilterVisible}
@@ -1046,7 +1017,7 @@ export function RecipesScreen() {
  */
 const RecipeRow = React.memo(function RecipeRow({
   recipe, description, colors, styles, drag, isActive, duplicateRow, selectionMode, selected,
-  onOpen, onToggleSelect, onSwipeSelect, onPlan, onToggleUpNext, onCookTogether,
+  onOpen, onToggleSelect, onSwipeSelect, onPlan, onToggleUpNext,
 }: {
   recipe: Recipe;
   /** describeRecipe's subtitle, pantry counts included; read by both the spoken label and the meta line. */
@@ -1073,7 +1044,6 @@ const RecipeRow = React.memo(function RecipeRow({
   onSwipeSelect: (recipeId: string) => void;
   onPlan: (recipe: Recipe) => void;
   onToggleUpNext: (recipe: Recipe) => void;
-  onCookTogether: (recipe: Recipe) => void;
 }) {
   // Registered with the screen's PaintSelectionProvider so a drag down the
   // column of dots picks up this row. Not the drag overlay's copy, which
@@ -1133,24 +1103,6 @@ const RecipeRow = React.memo(function RecipeRow({
       </View>
       {recipe.vote === 'loved' && (
         <ThumbIcon size={iconSize.sm} color={colors.orangeText} />
-      )}
-      {/* The third of the row's icon buttons, and the quietest of them:
-          tertiary until tapped, where Plan is accent. A button rather than a
-          swipe because both of SwipeableRow's slots are spoken for and "cook
-          alongside" is not the time-shaped action `whenAction` is reserved
-          for; and not a long-press, which is the drag handle, for the same
-          reason the other two aren't. */}
-      {!selectionMode && (
-        <TouchableOpacity
-          style={styles.planButton}
-          onPress={() => onCookTogether(recipe)}
-          activeOpacity={interaction.activeOpacity}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          accessibilityRole="button"
-          accessibilityLabel={`Find recipes that share ingredients with ${recipe.name}`}
-        >
-          <Ionicons name="git-merge-outline" size={iconSize.md} color={colors.textTertiary} />
-        </TouchableOpacity>
       )}
       {/* Icon-only, same treatment as Plan beside it, and a button rather
           than a long-press for the same reason: the row's long-press is

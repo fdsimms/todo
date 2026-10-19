@@ -88,6 +88,7 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
   const registered = useMedicationStore(s => s.registered);
   const settings = useMedicationStore(s => s.settings);
   const updateLog = useMedicationStore(s => s.updateLog);
+  const addMedication = useMedicationStore(s => s.addMedication);
 
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
@@ -151,6 +152,10 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
     if (pillNames.some(n => medicationKey(n) === medicationKey(trimmed))) {
       return 'You already have that one.';
     }
+    // Recording a new dose adds the medication to the list now, so Cancel keeps
+    // it: adding one must not need a dose. Editing a dose only renames it, so
+    // there the name stays a draft until Save.
+    if (!log) addMedication(trimmed);
     setDrafted(d => [...d, trimmed]);
     setName(trimmed);
   };
