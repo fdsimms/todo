@@ -187,22 +187,21 @@ describe('resolveGroceryDrop', () => {
     expect(resolveGroceryDrop([])).toEqual([]);
   });
 
-  // A "Not here" header is a label inside an aisle, not a new one — only an
-  // actual aisle row is allowed to change currentAisle.
-  it('keeps items after an unavailableHeader in the same aisle, ranked in place', () => {
+  // The "Not here" group sits after the last aisle, so reading down from its
+  // header would file every row under that aisle. It is left alone, like the cart.
+  it('leaves everything from an unavailableHeader down alone', () => {
     const milk = makeItem('Milk', { aisle: 'Dairy', sortOrder: 1 });
-    const cream = makeItem('Cream', { aisle: 'Dairy', sortOrder: 2 });
     const apples = makeItem('Apples', { aisle: 'Produce', sortOrder: 3 });
+    const cream = makeItem('Cream', { aisle: 'Dairy', sortOrder: 2 });
 
     const placements = resolveGroceryDrop([
       aisle('Dairy'), row(milk),
-      notHere, row(cream),
       aisle('Produce'), row(apples),
+      notHere, row(cream),
     ]);
 
     expect(placements).toEqual([
       { id: milk.id, sortOrder: 1, aisle: 'Dairy' },
-      { id: cream.id, sortOrder: 2, aisle: 'Dairy' },
       { id: apples.id, sortOrder: 3, aisle: 'Produce' },
     ]);
   });
@@ -238,6 +237,16 @@ describe('groceryDragRange', () => {
     // Cart header first, so there is no aisle row to move among.
     expect(groceryDragRange([cart, row(makeItem('Bread'))], 1)).toEqual([1, 1]);
     expect(groceryDragRange([aisle('Dairy'), cart], 0)).toEqual([0, 0]);
+  });
+
+  it('stops above the Skipped group when nothing is unavailable', () => {
+    const rows = [aisle('Dairy'), row(makeItem('Milk')), { type: 'skippedHeader' } as GroceryDropRow, row(makeItem('Cream'))];
+    expect(groceryDragRange(rows, 1)).toEqual([1, 1]);
+  });
+
+  it('stops above the Not here group', () => {
+    const rows = [aisle('Dairy'), row(makeItem('Milk')), row(makeItem('Eggs')), notHere, row(makeItem('Cream'))];
+    expect(groceryDragRange(rows, 1)).toEqual([1, 2]);
   });
 });
 

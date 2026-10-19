@@ -18,6 +18,7 @@ import {
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { GROCERY_NAME_MAX_LENGTH, type GroceryItem, type ItemProduct } from '../types';
+import { InlineAction } from './InlineAction';
 import { SwipeableRow } from './SwipeableRow';
 import { SelectionDot } from './SelectionDot';
 import { SwipeActionButtons } from './SwipeActionButtons';
@@ -124,6 +125,14 @@ interface Props {
   /** Tap the "· or margarine" clause: swap this item for that substitute. */
   onSwapForSubstitute?: (itemId: string, subItemId: string) => void;
   /**
+   * The pill on a row in the trip's "Not at <store>" group ("Skip") or in its
+   * "Skipped" group ("Put back"). Both are handed down as a label and one
+   * stable handler rather than a closure per row, because this row is memoised.
+   * The checkbox stays either way: the store may have it after all.
+   */
+  tripActionLabel?: string;
+  onTripAction?: (itemId: string) => void;
+  /**
    * What this item costs at the active trip's store, computed by the screen
    * (only it knows the trip and the item→shop links) — same hand-down as
    * `storeMarker`, and for the same reason: this row is memoised, and reading
@@ -203,6 +212,8 @@ export const GroceryRow = React.memo(function GroceryRow({
   storeMarker,
   swapSubstituteId,
   onSwapForSubstitute,
+  tripActionLabel,
+  onTripAction,
   tripPriceMinor,
   tripPriceRecorded = false,
   onSetTripPrice,
@@ -735,6 +746,15 @@ export const GroceryRow = React.memo(function GroceryRow({
           </TouchableOpacity>
         )}
       </TouchableOpacity>
+
+      {!selectionMode && !!tripActionLabel && !!onTripAction && (
+        <InlineAction
+          label={tripActionLabel}
+          onPress={() => onTripAction(item.id)}
+          haptic
+          accessibilityLabel={`${tripActionLabel} ${item.name}`}
+        />
+      )}
 
       {/* Tertiary grey, like the ellipsis beside it, and left of it: the
           ellipsis opens the whole item sheet, this one asks the single

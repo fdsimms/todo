@@ -419,6 +419,13 @@ interface GroceryStore extends UndoHistoryActions {
   tripShopId: string | null;
   tripStartedAt: string | null;
   /**
+   * Rows the person has acknowledged as not at this trip's store ("Skip" in the
+   * "Not at <store>" group). Session-only on purpose: it only hides a row for
+   * the length of the trip, so it is cleared whenever a trip starts or ends and
+   * nothing about it is written to the database or synced.
+   */
+  tripSkippedIds: string[];
+  /**
    * What this trip was meant to cost, in minor units, or null for no ceiling.
    *
    * Optional forever. Absent means the running total still shows and is simply
@@ -1655,6 +1662,9 @@ interface GroceryStore extends UndoHistoryActions {
    * Idempotent, so callers never have to check first.
    */
   endTrip: () => void;
+  /** Hide an unavailable row for the rest of this trip, or bring it back. */
+  skipForTrip: (id: string) => void;
+  unskipForTrip: (id: string) => void;
   /**
    * The store you're at, or null. The only sanctioned read of the trip fields:
    * it drops a deleted shop and an aged-out trip, so no caller has to remember
@@ -2003,6 +2013,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   lastShopId: null,
   tripShopId: null,
   tripStartedAt: null,
+  tripSkippedIds: [],
   tripBudgetMinor: null,
   aisleOverrides: {},
   cartHoldIds: [],
@@ -4988,6 +4999,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       tripShopId: wasTrip ? null : s.tripShopId,
       tripStartedAt: wasTrip ? null : s.tripStartedAt,
       tripBudgetMinor: wasTrip ? null : s.tripBudgetMinor,
+      tripSkippedIds: wasTrip ? [] : s.tripSkippedIds,
     }));
     if (wasTrip) cancelTripReminder();
   },
@@ -5602,15 +5614,23 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       : get().activeShop() ? get().tripBudgetMinor : null;
     const startedAt = new Date().toISOString();
     dbSetTrip(shopId, startedAt, budgetMinor);
-    set({ tripShopId: shopId, tripStartedAt: startedAt, tripBudgetMinor: budgetMinor });
+    set({ tripShopId: shopId, tripStartedAt: startedAt, tripBudgetMinor: budgetMinor, tripSkippedIds: [] });
     scheduleTripReminder(shop.name, startedAt);
   },
 
   endTrip() {
     if (!get().tripShopId && !get().tripStartedAt) return;
     dbSetTrip(null, null, null);
-    set({ tripShopId: null, tripStartedAt: null, tripBudgetMinor: null });
+    set({ tripShopId: null, tripStartedAt: null, tripBudgetMinor: null, tripSkippedIds: [] });
     cancelTripReminder();
+  },
+
+  skipForTrip(id) {
+    set(s => (s.tripSkippedIds.includes(id) ? s : { tripSkippedIds: [...s.tripSkippedIds, id] }));
+  },
+
+  unskipForTrip(id) {
+    set(s => (s.tripSkippedIds.includes(id) ? { tripSkippedIds: s.tripSkippedIds.filter(x => x !== id) } : s));
   },
 
   // Guarded on a trip running, because a ceiling with nothing to be a ceiling

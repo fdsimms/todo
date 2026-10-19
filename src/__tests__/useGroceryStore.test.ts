@@ -6852,6 +6852,35 @@ describe('the active trip', () => {
     expect(useGroceryStore.getState().tripBudgetMinor).toBeNull();
   });
 
+  it('keeps skipped rows for the length of a trip and drops them when it ends', () => {
+    const costco = makeShop('Costco');
+    seed([], { shops: [costco] });
+    useGroceryStore.getState().startTrip(costco.id);
+
+    useGroceryStore.getState().skipForTrip('a');
+    useGroceryStore.getState().skipForTrip('a');
+    useGroceryStore.getState().skipForTrip('b');
+    expect(useGroceryStore.getState().tripSkippedIds).toEqual(['a', 'b']);
+
+    useGroceryStore.getState().unskipForTrip('a');
+    expect(useGroceryStore.getState().tripSkippedIds).toEqual(['b']);
+
+    useGroceryStore.getState().endTrip();
+    expect(useGroceryStore.getState().tripSkippedIds).toEqual([]);
+  });
+
+  it('starting a trip at another store clears what was skipped at the last one', () => {
+    const costco = makeShop('Costco');
+    const safeway = makeShop('Safeway');
+    seed([], { shops: [costco, safeway] });
+    useGroceryStore.getState().startTrip(costco.id);
+    useGroceryStore.getState().skipForTrip('a');
+
+    useGroceryStore.getState().startTrip(safeway.id);
+
+    expect(useGroceryStore.getState().tripSkippedIds).toEqual([]);
+  });
+
   it('refuses to start a trip at a store that does not exist', () => {
     seed([], { shops: [] });
 
