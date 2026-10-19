@@ -288,6 +288,8 @@ describe('helpingAgain', () => {
   });
 });
 
+const NOW = new Date('2026-04-03T12:00:00.000Z');
+
 describe('usualForSlot', () => {
   const rows = [{ key: 'i:bread' }, { key: 'i:yogurt' }, { key: 'i:soup' }, { key: 'r:sandwich' }];
 
@@ -299,12 +301,12 @@ describe('usualForSlot', () => {
       entry({ slot: 'breakfast', itemId: 'bread' }),
       entry({ slot: 'breakfast', itemId: 'bread' }),
     ];
-    expect(usualForSlot(rows, log, 'breakfast').map(r => r.key)).toEqual(['i:yogurt', 'i:bread']);
+    expect(usualForSlot(rows, log, 'breakfast', undefined, NOW).map(r => r.key)).toEqual(['i:yogurt', 'i:bread']);
   });
 
   it('leaves out a row eaten only once at this meal', () => {
     const log = [entry({ slot: 'lunch', itemId: 'soup' })];
-    expect(usualForSlot(rows, log, 'lunch')).toEqual([]);
+    expect(usualForSlot(rows, log, 'lunch', undefined, NOW)).toEqual([]);
   });
 
   it('counts only entries filed under this meal', () => {
@@ -313,8 +315,8 @@ describe('usualForSlot', () => {
       entry({ slot: 'dinner', recipeId: 'sandwich' }),
       entry({ slot: 'lunch', recipeId: 'sandwich' }),
     ];
-    expect(usualForSlot(rows, log, 'lunch')).toEqual([]);
-    expect(usualForSlot(rows, log, 'dinner').map(r => r.key)).toEqual(['r:sandwich']);
+    expect(usualForSlot(rows, log, 'lunch', undefined, NOW)).toEqual([]);
+    expect(usualForSlot(rows, log, 'dinner', undefined, NOW).map(r => r.key)).toEqual(['r:sandwich']);
   });
 
   it('offers nothing for no meal, and stops at the limit', () => {
@@ -322,12 +324,23 @@ describe('usualForSlot', () => {
       entry({ slot: 'snack', itemId: id }),
       entry({ slot: 'snack', itemId: id }),
     ]);
-    expect(usualForSlot(rows, log, null)).toEqual([]);
-    expect(usualForSlot(rows, log, 'snack', 2)).toHaveLength(2);
+    expect(usualForSlot(rows, log, null, undefined, NOW)).toEqual([]);
+    expect(usualForSlot(rows, log, 'snack', 2, NOW)).toHaveLength(2);
+  });
+
+  it('drops a habit that has not been eaten within the window, however often it was', () => {
+    const old = '2026-03-01T08:00:00.000Z';
+    const recent = '2026-04-01T08:00:00.000Z';
+    const log = [
+      ...Array.from({ length: 10 }, () => entry({ slot: 'breakfast', itemId: 'bread', atISO: old })),
+      entry({ slot: 'breakfast', itemId: 'yogurt', atISO: recent }),
+      entry({ slot: 'breakfast', itemId: 'yogurt', atISO: recent }),
+    ];
+    expect(usualForSlot(rows, log, 'breakfast', undefined, NOW).map(r => r.key)).toEqual(['i:yogurt']);
   });
 
   it('ignores a food logged under no row', () => {
     const log = [entry({ slot: 'breakfast' }), entry({ slot: 'breakfast' })];
-    expect(usualForSlot(rows, log, 'breakfast')).toEqual([]);
+    expect(usualForSlot(rows, log, 'breakfast', undefined, NOW)).toEqual([]);
   });
 });
