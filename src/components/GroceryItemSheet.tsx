@@ -168,6 +168,8 @@ interface Props {
    * disclosure these editors exist to avoid.
    */
   initialField?: CollapsibleFieldKey;
+  /** Drawn in place as the second pane beside the list (`TwoPane`), not as a sheet over it. */
+  inline?: boolean;
 }
 
 /**
@@ -177,12 +179,12 @@ interface Props {
  * than on a swipe.
  */
 export function GroceryItemSheet({
-  visible, itemId, onClose, onOpenRecipe, onOpenSettings, recipeExists, initialField,
+  visible, itemId, onClose, onOpenRecipe, onOpenSettings, recipeExists, initialField, inline = false,
 }: Props) {
   // ==== store bindings ====
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: !inline });
 
   const liveItem = useGroceryStore(s => (itemId ? s.items.find(i => i.id === itemId) ?? null : null));
   // Held through the dismissal (useSheetSubject), as ProductSheet and
@@ -387,9 +389,9 @@ export function GroceryItemSheet({
     // nothing to show: an unstyled Modal defaults to a native white
     // background (#1618).
     return (
-      <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <ItemSheetModal inline={inline} visible={visible} onRequestClose={onClose}>
         <View style={styles.root} />
-      </SheetModal>
+      </ItemSheetModal>
     );
   }
 
@@ -1807,13 +1809,7 @@ export function GroceryItemSheet({
 
   // ==== render. Everything below is JSX ====
   return (
-    <SheetModal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={handleDone}
-      onDismiss={handleDone}
-    >
+    <ItemSheetModal inline={inline} visible={visible} onRequestClose={handleDone} onDismiss={handleDone}>
       <View style={styles.root}>
         <SheetHeader
           title="Item"
@@ -2289,6 +2285,35 @@ export function GroceryItemSheet({
         onSave={nutrition => setItemNutrition(item.id, nutrition)}
       />
       <NumberPadAccessory />
+    </ItemSheetModal>
+  );
+}
+
+/**
+ * The item sheet's frame: a page sheet over the screen, or, inline, just its
+ * content where it is placed (the second pane beside the list, see `TwoPane`),
+ * nothing while it isn't visible. Every field here commits as it is edited, so
+ * there is no unsaved state for the missing swipe-down to lose.
+ */
+function ItemSheetModal({
+  inline, visible, onRequestClose, onDismiss, children,
+}: {
+  inline: boolean;
+  visible: boolean;
+  onRequestClose: () => void;
+  onDismiss?: () => void;
+  children: React.ReactNode;
+}) {
+  if (inline) return visible ? <>{children}</> : null;
+  return (
+    <SheetModal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={onRequestClose}
+      onDismiss={onDismiss}
+    >
+      {children}
     </SheetModal>
   );
 }

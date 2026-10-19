@@ -1,6 +1,6 @@
 # Wide windows: iPad and the iPhone app on a Mac
 
-**Status: phases 0 to 2 are built; phase 3 is built for Recipes, Projects and Today and planned for Groceries; phase 4 is planned.** The app ships as a universal iOS app
+**Status: phases 0 to 3 are built; phase 4 is mostly there already, behind the iPhone Mirroring setting.** The app ships as a universal iOS app
 (`ios.supportsTablet`), so an iPad runs it natively and an Apple silicon Mac runs it as a "Designed
 for iPad" app in a resizable window. This is the cheap route to a desktop-friendly app, and it sits
 beside the separate desktop client in `docs/arch/desktop-client.md` rather than replacing it.
@@ -57,9 +57,9 @@ to know:
 - **Crossing the breakpoint** closes a drawer left open (`AppNavigator`'s effect), and the window is
   resizable, so nothing may cache which side of it it was on.
 
-## Two panes (phase 3, Recipes, Projects and Today)
+## Two panes (phase 3, Recipes, Projects, Today and Groceries)
 
-From `TWO_PANE_MIN_WINDOW_WIDTH` (1100pt) up, Recipes, Projects and Today show the list on the left
+From `TWO_PANE_MIN_WINDOW_WIDTH` (1100pt) up, Recipes, Projects, Today and Groceries show the list on the left
 (`TWO_PANE_LIST_WIDTH`, 400pt) and the open page on the right. Below it they are the single column
 they always were, and a tap pushes the page. Four things to know:
 
@@ -85,6 +85,11 @@ they always were, and a tap pushes the page. Four things to know:
   crossing the breakpoint with the editor open remounts it, and an unsaved edit is lost; and the
   sheets the editor raises (the date picker, the category list) still present over the whole window.
   The row being edited is outlined (`TaskItem`'s `paneActive`).
+- **Groceries' second pane is the item sheet, the same shape as Today's editor.** `GroceryItemSheet`
+  takes `inline` (an `ItemSheetModal` frame that is either the page sheet or just the content), and
+  the screen defines the sheet once (`itemSheet(inline)`) for both places. Every field in it commits
+  as it is edited, so there is no unsaved state to lose at the breakpoint. The row opens it from its
+  trailing ellipsis (a long press drags), and is outlined while it is the one open.
 - **Anything else that opens the same page still pushes it** (a meal plan row, a search result, a
   deep link). Only the list screen's own rows and the "new" flows open it in the pane.
 
@@ -92,8 +97,7 @@ they always were, and a tap pushes the page. Four things to know:
 
 | Phase | What | Notes |
 |---|---|---|
-| 3 (rest) | Two panes for Groceries: a list on the left, the selected thing on the right | The hard part is `TaskEditor` (a 9,000-line full-screen sheet). Hosting it inline in a pane is the real version; keeping it a centered card on a wide window is the cheap one. Selection in the list uses an outline, since a selected row's background must be opaque (see CLAUDE.md, "A selected/active row's background"). |
-| 4 | Desktop input: hover, a right-click or visible button for every swipe-only action, and the rest of the shortcuts | `⌘N`, `⌘F`, `⌘Z` and Escape already exist (`useKeyShortcuts`, `todo-key-commands`). Swipe actions are the gap: a trackpad or mouse can't do most of them. |
+| 4 | Desktop input: what is left once `mirroringMode` is on | **Most of this exists already, under the iPhone Mirroring setting** (`useSettingsStore.mirroringMode`, Settings › Appearance, off by default, device-local). On, every swipeable row shows its swipe actions as buttons (`SwipeActionButtons`), the undo bar offers every action, Return accepts a title suggestion, and the hardware-keyboard shortcuts are on (`keyShortcuts.ts`: `n`, `/`, `⌘N`, `⌘F`, `⌘Z`, Escape, `1` to `4` for the Today views). A swipe is only ever select (left) or reschedule (right), never a destructive action. What is missing is that a Mac window has to turn the setting on by hand, and there are no hover states. |
 
 Not available on a Mac, as it isn't in the desktop-client plan either: HealthKit, Screen Time,
 widgets, the Watch app, Live Activities and NFC. The logic layer already guards each behind a
