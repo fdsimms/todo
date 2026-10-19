@@ -324,6 +324,7 @@ export interface TaskDraft {
   quotaReminders?: boolean;
   quotaPlaceIds?: string[];
   quotaAlwaysVisible?: boolean;
+  quotaRestAfterLog?: boolean;
   followWaterTarget?: boolean;
   supplyCount?: number | null;
   supplyUnit?: string | null;
@@ -677,6 +678,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
   const [quotaReminders, setQuotaReminders] = useState(false);
   const [quotaPlaceIds, setQuotaPlaceIds] = useState<string[]>([]);
   const [quotaAlwaysVisible, setQuotaAlwaysVisible] = useState(false);
+  const [quotaRestAfterLog, setQuotaRestAfterLog] = useState(false);
   // Whether a weekly target set up partway through a week asks for fewer that
   // first week. On by default; only offered when it would change the count.
   const [prorateFirstWeek, setProrateFirstWeek] = useState(true);
@@ -1198,6 +1200,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
       setQuotaReminders(task.quotaReminders ?? false);
       setQuotaPlaceIds(task.quotaPlaceIds ?? []);
       setQuotaAlwaysVisible(task.quotaAlwaysVisible ?? false);
+      setQuotaRestAfterLog(task.quotaRestAfterLog ?? false);
       setFollowWaterTarget(task.followWaterTarget ?? false);
       setSupplyCount(task.supplyCount ?? null);
       setSupplyUnit(task.supplyUnit ?? '');
@@ -1289,7 +1292,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
       // because the one before it was. A new field goes in both branches.
       setTitle(initialDraft?.title ?? ''); titleCaret.resetCaret(initialDraft?.title ?? ''); setNotes(initialDraft?.notes ?? ''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
-      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setDeadlineTime(null); setDeadlineTimePickerOpen(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setWindowStartSun(initialDraft?.windowStartSun ?? null); setWindowEndSun(initialDraft?.windowEndSun ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setGateGroupId(initialDraft?.gateGroupId ?? null); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day');  setStreakCountsUnits(false); setQuotaRampStep(null); setQuotaRampEvery(1); setQuotaRampGoal(null); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setCoinsPerTap(initialDraft?.coinsPerTap ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaPlaceIds(initialDraft?.quotaPlaceIds ?? []); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setProrateFirstWeek(true); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setMeterInput(meterInputFromDraft(initialDraft)); setMeterOpen(false); setMeterReadingText(''); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
+      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setDeadlineTime(null); setDeadlineTimePickerOpen(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setWindowStartSun(initialDraft?.windowStartSun ?? null); setWindowEndSun(initialDraft?.windowEndSun ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setGateGroupId(initialDraft?.gateGroupId ?? null); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day');  setStreakCountsUnits(false); setQuotaRampStep(null); setQuotaRampEvery(1); setQuotaRampGoal(null); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setCoinsPerTap(initialDraft?.coinsPerTap ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaPlaceIds(initialDraft?.quotaPlaceIds ?? []); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setQuotaRestAfterLog(initialDraft?.quotaRestAfterLog ?? false); setProrateFirstWeek(true); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setMeterInput(meterInputFromDraft(initialDraft)); setMeterOpen(false); setMeterReadingText(''); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
@@ -1413,6 +1416,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
       quotaReminders: task ? (task.quotaReminders ?? false) : (initialDraft?.quotaReminders ?? false),
       quotaPlaceIds: task ? (task.quotaPlaceIds ?? []) : (initialDraft?.quotaPlaceIds ?? []),
       quotaAlwaysVisible: task ? (task.quotaAlwaysVisible ?? false) : (initialDraft?.quotaAlwaysVisible ?? false),
+      quotaRestAfterLog: task ? (task.quotaRestAfterLog ?? false) : (initialDraft?.quotaRestAfterLog ?? false),
       followWaterTarget: task ? (task.followWaterTarget ?? false) : (initialDraft?.followWaterTarget ?? false),
       quotaPeriod: task ? (task.quotaPeriod ?? 'day') : (initialDraft?.quotaPeriod ?? 'day'),
       quotaRampStep: task ? (task.quotaRampStep ?? null) : null,
@@ -2217,6 +2221,9 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
       quotaReminders: targetCount !== null ? quotaReminders : false,
       quotaPlaceIds: targetCount !== null && quotaReminders ? quotaPlaceIds : [],
       quotaAlwaysVisible: targetCount !== null || rotationEnabled ? quotaAlwaysVisible : false,
+      // Only the plain weekly target can rest for the day (a rotation has no
+      // single count to be on pace with, and a daily one has tomorrow's own row).
+      quotaRestAfterLog: targetCount !== null && quotaPeriod === 'week' && !rotationEnabled ? quotaRestAfterLog : false,
       // Cleared when what it follows goes: it only means anything on a daily
       // target that logs water.
       followWaterTarget: followsWaterTarget ? followWaterTarget : false,
@@ -3144,6 +3151,9 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
       quotaReminders: targetCount !== null ? quotaReminders : false,
       quotaPlaceIds: targetCount !== null && quotaReminders ? quotaPlaceIds : [],
       quotaAlwaysVisible: targetCount !== null || rotationEnabled ? quotaAlwaysVisible : false,
+      // Only the plain weekly target can rest for the day (a rotation has no
+      // single count to be on pace with, and a daily one has tomorrow's own row).
+      quotaRestAfterLog: targetCount !== null && quotaPeriod === 'week' && !rotationEnabled ? quotaRestAfterLog : false,
       // Cleared when what it follows goes: it only means anything on a daily
       // target that logs water.
       followWaterTarget: followsWaterTarget ? followWaterTarget : false,
@@ -5129,6 +5139,25 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
                         </Text>
                       </View>
                       <Toggle value={quotaAlwaysVisible} onColor={colors.orange} />
+                    </TouchableOpacity>
+                  )}
+                  {targetCount !== null && quotaPeriod === 'week' && !quotaAlwaysVisible && (
+                    <TouchableOpacity
+                      style={styles.optionRow}
+                      onPress={() => { haptics.tap(); setQuotaRestAfterLog(v => !v); }}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="switch"
+                      accessibilityLabel="Hide for the rest of the day after logging"
+                      accessibilityState={{ checked: quotaRestAfterLog }}
+                    >
+                      <Ionicons name="moon-outline" size={18} color={quotaRestAfterLog ? colors.accent : colors.textSecondary} />
+                      <View style={styles.optionContent}>
+                        <Text style={styles.optionLabel}>Hide for the rest of the day after logging</Text>
+                        <Text style={styles.optionHint}>
+                          Once a log puts you on pace, this leaves Today until tomorrow, even if you are well ahead for the week
+                        </Text>
+                      </View>
+                      <Toggle value={quotaRestAfterLog} onColor={colors.orange} />
                     </TouchableOpacity>
                   )}
                 </>

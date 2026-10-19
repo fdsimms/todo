@@ -14,7 +14,7 @@ jest.mock('../utils/demoState', () => ({ isDemoModeActive: jest.fn(() => false) 
 const mockEstimate = jest.fn();
 jest.mock('todo-eventkit-bridge', () => ({
   estimateTravelTime: (...args: unknown[]) => mockEstimate(...args),
-}), { virtual: true });
+}));
 
 const demoMock = isDemoModeActive as jest.MockedFunction<typeof isDemoModeActive>;
 const departAt = new Date(2026, 9, 5, 13, 30);

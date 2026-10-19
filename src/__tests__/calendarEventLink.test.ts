@@ -20,7 +20,7 @@ jest.mock('todo-eventkit-bridge', () => ({
   externalIdentifiers: (ids: string[]) => mockExternalIds(ids),
   eventsWithExternalIdentifier: (id: string) => mockEventsWithExternalId(id),
   isEventKitBridgeAvailable: () => mockBridgeAvailable,
-}), { virtual: true });
+}));
 
 let mockDemoActive = false;
 jest.mock('../utils/demoState', () => ({

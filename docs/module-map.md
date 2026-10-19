@@ -553,7 +553,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/useUpRecipes.ts` — UseUpRecipe, useUpRecipes, describeUseUpRecipe
 - `src/utils/useUpSweep.ts` — UseUpSweepSource, useUpSweepOrder
 - `src/utils/vacationStreaks.ts` — isVacationProtectedStreak, forgiveVacationStreaks
-- `src/utils/visibilityUtils.ts` — isTaskBlocked, isInPausedProject, isWithheld, isTaskNotNeeded, isHeldBack, VisibleAtPass, beginVisibleAtPass, isHiddenForVacation, isCategoryScheduledDay, sameTimeSegments, +43 more
+- `src/utils/visibilityUtils.ts` — isTaskBlocked, isInPausedProject, isWithheld, isTaskNotNeeded, isHeldBack, VisibleAtPass, beginVisibleAtPass, isHiddenForVacation, isCategoryScheduledDay, sameTimeSegments, +44 more
 - `src/utils/waitingFollowUpTasks.ts` — MAX_WAITING_FOLLOW_UP_TASKS, WAITING_FOLLOW_UP_DECLINE_DAYS, WAITING_FOLLOW_UP_THRESHOLD_DAYS, waitingFollowUpTaskId, waitingFollowUpTitle, waitingFollowUpsHandledRecently, followUpDue, WaitingFollowUpWant, wantedWaitingFollowUps, staleWaitingFollowUpTasks
 - `src/utils/wanikaniTasks.ts` — WaniKaniSnapshot, WaniKaniReviewState, WANIKANI_INITIAL_REVIEW_STATE, WANIKANI_REVIEW_THRESHOLD_DEFAULT, WANIKANI_REVIEW_THRESHOLD_MIN, WANIKANI_REVIEW_THRESHOLD_MAX, WANIKANI_LESSONS_PER_DAY_MIN, WANIKANI_LESSONS_PER_DAY_MAX, WANIKANI_APPRENTICE_CAP_DEFAULT, WANIKANI_APPRENTICE_CAP_MIN, +26 more
 - `src/utils/watchHealthWorkout.ts` — WATCH_HEALTH_REQUESTS_SETTING, WATCH_RETRACT_LIMIT, WATCH_DROP_HOURS, RECENTLY_FINISHED_HOURS, RECENTLY_FINISHED_LIMIT, WatchHealthRequest, WatchHealthRequests, NO_WATCH_HEALTH_REQUESTS, parseWatchHealthRequests, withRetractions, +9 more

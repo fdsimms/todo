@@ -660,6 +660,7 @@ export function buildCompletion(
         // otherwise. The inherited pinnedOrder keeps its place in the section.
         pinned: chainStepStaysPinned || (recurs && !!task.pinEachOccurrence),
         progressCount: 0, // a quota starts the new day empty
+        quotaLoggedDayKey: null,
         // A ramp-up target steps on the closing of an occurrence that met it, and
         // only that: a miss, a neutral close or somebody else's completion leaves
         // the count and the run of hits exactly as they were (src/utils/quotaRamp.ts).

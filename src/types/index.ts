@@ -3073,6 +3073,22 @@ export interface Task {
   // is a writer, `syncWaterQuotaTasks`. See `followedWaterTargetCount` in
   // src/utils/waterTargetUnits.ts. Off by default.
   followWaterTarget: boolean;
+  /**
+   * Opt-in, and only for a plain weekly target: once a log puts it on pace, the
+   * row leaves Today for the rest of that logical day and is back at the next
+   * day start, however far ahead of pace it still is. It replaces the pace
+   * hide for this task (`quotaHidesWhenOnPace` says no), because that one waits
+   * for the next unit to fall due, which for a target running ahead is days
+   * away. A day with no log, or a log that leaves it behind pace, leaves the row
+   * up. `quotaAlwaysVisible` still wins. See `quotaRestsForToday`.
+   */
+  quotaRestAfterLog?: boolean;
+  /**
+   * The logical day (`YYYY-MM-DD`) of the last unit logged on this occurrence,
+   * which is what `quotaRestAfterLog` reads. Stamped by `logQuotaUnit`, cleared
+   * by `unlogQuotaUnit`, and never carried onto a successor.
+   */
+  quotaLoggedDayKey?: string | null;
 
   /**
    * The stretch of time the target is counted over: one logical day (every

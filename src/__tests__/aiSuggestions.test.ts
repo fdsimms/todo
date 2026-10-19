@@ -84,7 +84,7 @@ jest.mock('todo-foundation-models', () => ({
   isOnDeviceModelAvailable: () => mockOnDeviceAvailable(),
   onDeviceModelAvailability: () => (mockOnDeviceAvailable() ? 'available' : 'unavailable'),
   generateOnDevice: (prompt: string, schema: unknown) => mockGenerateOnDevice(prompt, schema),
-}), { virtual: true });
+}));
 
 // ---------------------------------------------------------------------------
 // Helpers

@@ -714,10 +714,29 @@ export function quotaExpectedByNow(task: Task): number {
 // so it stays up. Anything else follows its own opt-out.
 export function quotaHidesWhenOnPace(task: Task): boolean {
   if (task.quotaAlwaysVisible) return false;
+  // Replaced, not added to: this task steps aside for the rest of the day it was
+  // logged on (quotaRestsForToday) and is otherwise up, so being ahead of pace
+  // must not also hold it off until the next unit falls due, days away.
+  if (quotaRestsAfterLog(task)) return false;
   if (task.quotaPeriod === 'week' && isQuotaTask(task)) {
     return getTaskDayStart(quotaNextDueAt(task)).getTime() !== getCurrentDayStart().getTime();
   }
   return true;
+}
+
+// Whether this is a weekly target set to step aside for the rest of the day once
+// a log puts it on pace (Task.quotaRestAfterLog).
+function quotaRestsAfterLog(task: Task): boolean {
+  return !!task.quotaRestAfterLog && task.quotaPeriod === 'week' && isQuotaTask(task);
+}
+
+// True while a quotaRestAfterLog target is out of the way: a unit was logged
+// today and the count is at or above pace. Behind pace it stays up, and the
+// next day start clears it by the stamp no longer matching.
+export function quotaRestsForToday(task: Task): boolean {
+  if (task.quotaAlwaysVisible || !quotaRestsAfterLog(task)) return false;
+  if (task.quotaLoggedDayKey !== getCurrentLogicalDayKey()) return false;
+  return isQuotaOnPace(task);
 }
 
 export function isQuotaOnPace(task: Task): boolean {
@@ -788,7 +807,7 @@ export function quotaLeavesTodayAfterLog(task: Task): boolean {
   if (task.progressCount + 1 >= task.targetCount!) return false;
   return (
     isTaskVisible(task) &&
-    !isTaskVisible({ ...task, progressCount: task.progressCount + 1 })
+    !isTaskVisible({ ...task, progressCount: task.progressCount + 1, quotaLoggedDayKey: getCurrentLogicalDayKey() })
   );
 }
 
@@ -903,6 +922,9 @@ export function isVisibleApartFromVacation(task: Task): boolean {
   // logging still paces normally (see isQuotaOnPace, isOnPaceQuota), it just
   // never disappears for being ahead of it.
   if (isQuotaTask(task) && isQuotaOnPace(task) && quotaHidesWhenOnPace(task)) return false;
+
+  // The weekly target that rests for the day it was logged on instead.
+  if (quotaRestsForToday(task)) return false;
 
   if (!isCategoryScheduleActive(task.category)) return false;
 
@@ -1187,7 +1209,11 @@ export function getVisibleAt(task: Task, pass: VisibleAtPass = beginVisibleAtPas
 
   // An on-pace quota task comes back when its next unit falls due rather than
   // at any day boundary — that's what orders it against everything else in Later.
-  if (isQuotaTask(task) && isQuotaOnPace(task)) {
+  if (quotaRestsForToday(task)) {
+    // Back at the start of the next logical day, not when the next unit falls
+    // due: that is what lets a target running ahead of pace return tomorrow.
+    candidates.push(addDays(todayStart, 1));
+  } else if (isQuotaTask(task) && isQuotaOnPace(task) && !quotaRestsAfterLog(task)) {
     const nextUnit = quotaNextDueAt(task);
     if (nextUnit > now) candidates.push(nextUnit);
   }

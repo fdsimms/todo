@@ -245,7 +245,7 @@ import {
   supplyRestockReleasesItem,
   wantedSupplyReorders,
 } from '../utils/supply';
-import { getNextDueDate, getNextOccurrence, getCurrentDayStart, getLogicalDayKey, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, dayKeyToDate, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor, captureReminderOffset, reanchorReminderToWallClock } from '../utils/dateUtils';
+import { getNextDueDate, getNextOccurrence, getCurrentDayStart, getCurrentLogicalDayKey, getLogicalDayKey, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, dayKeyToDate, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor, captureReminderOffset, reanchorReminderToWallClock } from '../utils/dateUtils';
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, loggedMealSlotTasks, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource, slotEntryForTask, staleMealSlotTasks } from '../utils/mealSlotTasks';
 import { slotForHour, wantsMealLogPrompt } from '../utils/mealLog';
@@ -5045,6 +5045,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const updated = {
       ...task,
       progressCount: task.progressCount + 1,
+      // What quotaRestAfterLog reads to rest the row until the next day.
+      quotaLoggedDayKey: getCurrentLogicalDayKey(),
       ...(hadCountdown ? { timerStartedAt: null, timerElapsedSeconds: 0 } : {}),
       // streakDate is stamped too: the first unit of a task that has never
       // completed would otherwise leave a total with no date to read it by.
@@ -5188,6 +5190,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const updated = {
       ...task,
       progressCount: task.progressCount - 1,
+      // An undone log must not keep the row resting.
+      quotaLoggedDayKey: null,
       ...(countsUnits(task) && task.streakCount > 0 ? { streakCount: task.streakCount - 1 } : {}),
     };
     dbUpdateTask(updated);
@@ -5465,6 +5469,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // for every occurrence to be.
         pinned: !!task.pinEachOccurrence,
         progressCount: 0,
+        quotaLoggedDayKey: null,
         // Same as completeTask's successor: the count resets, the mute carries.
         postponeCount: 0,
         driftingSince: null,
