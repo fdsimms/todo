@@ -195,6 +195,12 @@ option of a pair has to be filed as an alternative for itself. If a label only m
 you've read the type, it's the wrong label — name the state the user is choosing between
 ("Always needed" / "One of a choice") and let the control carry the mechanism.
 
+**Read each line aloud, and rewrite it if nobody would say it that way to a person holding the
+package.** Copy that is technically correct but written like documentation ("Blank means unknown",
+"the measure as printed", "Type the column for one serving") still reads badly. Use the label's own
+words ("Amount per serving") and an example ("For example 3 Tbsp") over a description of what kind
+of thing the field holds.
+
 **A line that explains a control uses `HelpText`, not `Text`.** Settings › Hide help text is meant to
 remove every static explanation under a field, and a hint rendered with a plain `Text` ignores it.
 `HelpText` (`src/components/HelpText.tsx`) renders nothing while the setting is on, so use it for

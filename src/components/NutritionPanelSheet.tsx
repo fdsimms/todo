@@ -414,7 +414,7 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
     setBad(warnings.map(w => w.key));
     Alert.alert(
       'Check these figures',
-      `${warnings.map(w => w.message).join('\n\n')}\n\nCheck them against the packet.`,
+      `${warnings.map(w => w.message).join('\n\n')}\n\nCheck them against the label.`,
       [
         { text: 'Edit', style: 'cancel' },
         { text: 'Save anyway', onPress: commit },
