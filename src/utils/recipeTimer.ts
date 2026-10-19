@@ -68,6 +68,31 @@ export function hasRunningRecipeTimer(recipe: CookTimerState & PrepTimerState): 
   return isCookTimerRunning(recipe) || isPrepTimerRunning(recipe);
 }
 
+// ==== cook mode ====
+
+/**
+ * Does cook mode draw the prep row? It does on the mise en place screen, where
+ * prep happens, and on a step only while a prep timer is running or paused, so a
+ * started one can't be lost. A cook who never times prep pays no footer space on
+ * the steps.
+ */
+export function showsPrepRow(atMise: boolean, prepInProgress: boolean): boolean {
+  return atMise || prepInProgress;
+}
+
+/**
+ * What leaving mise en place does to the two timers. A running prep timer is
+ * paused, so prep and cook never count the same minutes; the cook timer starts
+ * unless a cook is already in progress (Back then Start cooking again must not
+ * reset it).
+ */
+export function startCookingPlan(t: { prepRunning: boolean; cookInProgress: boolean }): {
+  pausePrep: boolean;
+  startCook: boolean;
+} {
+  return { pausePrep: t.prepRunning, startCook: !t.cookInProgress };
+}
+
 // ==== what the row says ====
 
 /** The live half of a recipe timer that `RecipeTimerRow` draws: `useRecipeTimer`'s binding, narrowed. */
