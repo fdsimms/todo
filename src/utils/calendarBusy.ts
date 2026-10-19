@@ -46,6 +46,15 @@ export interface BusyEvent {
    * never kept. Optional: absent reads as false.
    */
   videoCall?: boolean;
+  /**
+   * The calendar server's id for the event (`calendarItemExternalIdentifier`),
+   * the same on every device signed in to the calendar account, where `id` is
+   * this device's alone. Attached after the read (`withExternalEventIds`) and
+   * absent when the server hasn't named the event yet or the bridge can't ask.
+   * Read by the occurrence key, so a task written for an event names it the
+   * same way on two devices.
+   */
+  externalId?: string | null;
 }
 
 /**

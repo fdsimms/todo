@@ -100,7 +100,7 @@ import { type ReachOutKind } from '../utils/reachOutIntent';
 import { mailtoUrl } from '../utils/email';
 import { directionsUrl } from '../utils/maps';
 import { eventCoordinate } from '../utils/calendarSync';
-import { travelModeFor, travelRowNote, travelSourceEventId, travelWalkUnderFor } from '../utils/travelTasks';
+import { travelEventOf, travelModeFor, travelRowNote, travelSourceEventId, travelWalkUnderFor } from '../utils/travelTasks';
 import { useTravelTimeStore } from '../store/useTravelTimeStore';
 import { animateLayout } from '../utils/layoutAnimation';
 import { nextMeasuredHeight } from '../utils/measuredHeight';
@@ -177,6 +177,16 @@ import { ProgressBar } from './ProgressBar';
 import { TextField } from './TextField';
 import { useActionMenu } from '../hooks/useActionMenu';
 import { BUTTON_LABEL } from '../copy/shared';
+
+/**
+ * This device's id for the event a "Leave for X" row was written for. The row
+ * names the event by the calendar server's id where it could read one, which
+ * the map pin and the per-event travel mode (both keyed by the local id) can't
+ * use, so the event is looked up in the calendar window first.
+ */
+function localTravelEventId(sourceId: string): string | null {
+  return travelEventOf(sourceId, useCalendarStore.getState().events)?.id ?? travelSourceEventId(sourceId);
+}
 
 const CHECKBOX_SIZE = 20;
 const SUBTASK_CHECKBOX_SIZE = 16;
@@ -630,7 +640,7 @@ const TaskItemRow = React.memo(function TaskItem({
     // A "Leave for X" row was written for one calendar event, so it can route
     // to that event's map pin when it has one; any other row searches the text.
     const sourceId = task.generatedKind === 'travel' ? task.generatedSourceId : null;
-    const eventId = sourceId ? travelSourceEventId(sourceId) : null;
+    const eventId = sourceId ? localTravelEventId(sourceId) : null;
     const coordinate = eventId ? await eventCoordinate(eventId) : null;
     const url = directionsUrl(task.location, useSettingsStore.getState().mapsApp, coordinate);
     if (!url) return;
@@ -680,7 +690,7 @@ const TaskItemRow = React.memo(function TaskItem({
   const travelEventPrefs = useSettingsStore(s => s.travelEventPrefs);
   const travelNote = useTravelTimeStore(s => {
     if (task.generatedKind !== 'travel' || !task.generatedSourceId) return null;
-    const eventId = travelSourceEventId(task.generatedSourceId);
+    const eventId = localTravelEventId(task.generatedSourceId);
     if (!eventId) return null;
     return travelRowNote(
       task.generatedSourceId,

@@ -39,6 +39,7 @@ import {
   filledExternalId,
   readExternalEventId,
   readExternalEventIds,
+  withExternalEventIds,
   uniqueLinks,
   writeAllDayEvent,
   type ExternalEventMatch,
@@ -151,6 +152,20 @@ describe('the bridge door', () => {
     expect(await eventsWithExternalId('ext-1')).toEqual([]);
     expect(mockExternalIds).not.toHaveBeenCalled();
     expect(mockEventsWithExternalId).not.toHaveBeenCalled();
+  });
+});
+
+describe('withExternalEventIds', () => {
+  it('attaches each event\'s server id in one call, and leaves one without', async () => {
+    mockExternalIds.mockResolvedValue({ 'evt-1': 'ext-1' });
+    const out = await withExternalEventIds([{ id: 'evt-1' }, { id: 'evt-2' }]);
+    expect(out).toEqual([{ id: 'evt-1', externalId: 'ext-1' }, { id: 'evt-2' }]);
+    expect(mockExternalIds).toHaveBeenCalledTimes(1);
+  });
+
+  it('hands the events back unchanged when the bridge fails', async () => {
+    mockExternalIds.mockRejectedValue(new Error('no module'));
+    expect(await withExternalEventIds([{ id: 'evt-1' }])).toEqual([{ id: 'evt-1' }]);
   });
 });
 

@@ -1,5 +1,6 @@
 import {
   registerSyncReload,
+  whenSyncIdle,
   useSyncStore,
   isSyncSupported,
   markHealthLogsWithheld,
@@ -223,6 +224,32 @@ describe('syncNow', () => {
     await useSyncStore.getState().syncNow();
     expect(runSyncAll).toHaveBeenCalledTimes(3);
     (runSyncAll as jest.Mock).mockReset().mockResolvedValue([]);
+  });
+
+  // A silent push has to know its sync is over before telling iOS so, and a
+  // syncNow that lands mid-run returns at once with its work still to come.
+  it('waits for the running sync, follow-up round included, when asked whether it is idle', async () => {
+    const order: string[] = [];
+    (runSyncAll as jest.Mock).mockImplementation(async () => {
+      await Promise.resolve();
+      order.push('ran');
+      return runs(okResult());
+    });
+    withServer();
+
+    const first = useSyncStore.getState().syncNow();
+    const second = await useSyncStore.getState().syncNow();
+    await whenSyncIdle();
+    order.push('idle');
+    await first;
+
+    expect(second).toBeNull();
+    expect(order).toEqual(['ran', 'ran', 'idle']);
+    (runSyncAll as jest.Mock).mockReset().mockResolvedValue([]);
+  });
+
+  it('is idle at once when nothing is running', async () => {
+    await expect(whenSyncIdle()).resolves.toBeUndefined();
   });
 
   it('goes round at most a few times however often it is asked mid-run', async () => {

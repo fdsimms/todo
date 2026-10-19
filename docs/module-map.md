@@ -66,7 +66,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/calendarBusy.ts` — BusyEvent, hasVideoCallLink, BusyInterval, isLiveEvent, occupiesTime, allDayRangeMs, busyIntervalsIn, busyMinutesIn, freeGapsIn, freeMinutesIn, +4 more
 - `src/utils/calendarDrag.ts` — CellRect, cellAt, isMoveDrop
 - `src/utils/calendarEventImport.ts` — CalendarEventDraft, draftFromExtractedEvent, EventImportCreateFields, eventImportCreateFields, eventImportQuickSeed, EventTaskFields, eventDayDueDate, taskFieldsFromEvent
-- `src/utils/calendarEventLink.ts` — CalendarEventLink, NO_EVENT_LINK, ExternalEventMatch, readExternalEventId, canReadExternalEventIds, readExternalEventIds, eventsWithExternalId, filledExternalId, uniqueLinks, adoptableEventId, +6 more
+- `src/utils/calendarEventLink.ts` — CalendarEventLink, NO_EVENT_LINK, ExternalEventMatch, readExternalEventId, canReadExternalEventIds, readExternalEventIds, withExternalEventIds, eventsWithExternalId, filledExternalId, uniqueLinks, +7 more
 - `src/utils/calendarExtras.ts` — CalendarTrip, DayExtras, calendarTrips, DayExtrasInput, buildDayExtras, hasDayNotes, completedRows, TripBandSegment, tripBandLanes
 - `src/utils/calendarGrid.ts` — weekdayHeaders, buildWeekDays, buildCalendarGrid, isDayBefore, clampMonthToEarliest, canPageToPreviousMonth, isDayAfter, clampMonthToLatest, canPageToNextMonth
 - `src/utils/calendarHistory.ts` — PAST_CALENDAR_WINDOW_DAYS, MIN_CALENDAR_NAME_LENGTH, PastCalendarGate, shouldReadPastCalendar, PersonName, HistorySuggestion, HandledHistoryEvents, pastWindowStart, historyEventKey, peopleNamedInTitle, +4 more
@@ -88,7 +88,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/chain.ts` — ChainCarrier, ChainCompletionCarrier, activeChainStep, nextChainStep, nextChainStepTitle, parseChainItems, ChainPreview, chainPreview, chainStepAdvancesInPlace, isChainFinish
 - `src/utils/chipUses.ts` — ChipUses, ChipUseKind, chipUseKey, bumpChipUses, rankByUse, parseChipUses
 - `src/utils/clockTime.ts` — hhmmToDate, logicalDayStart, taskDayStart, carryClockTime, overdueDayCount, hhmmMinutes, effectiveWindowEndTime, formatHHMM, clockTimeToken, dateToHHMM, +1 more
-- `src/utils/cloudKitTransport.ts` — CLOUDKIT_SOURCE, isCloudKitSyncAvailable, cloudKitUnavailableReason, cloudKitTransport
+- `src/utils/cloudKitTransport.ts` — CLOUDKIT_SOURCE, isCloudKitSyncAvailable, cloudKitUnavailableReason, subscribeToCloudKitChanges, addCloudKitChangeListener, cloudKitChangeHandled, cloudKitTransport
 - `src/utils/coinBurst.ts` — BurstPiece, BURST_GRAVITY, burstPieces, burstOffset, burstOpacity
 - `src/utils/completionCalendarSync.ts` — logTaskCompletionToCalendar, completionEventLink, deleteCompletionEvent
 - `src/utils/completionTap.ts` — CompletionTap, completionTapFor, offersMealLogOnCompletion, TARGET_FINISH_TAP_GUARD_MS, isStrayTapOnFinishedTarget
@@ -142,7 +142,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/eventReminders.ts` — EventReminder, EVENT_REMINDER_OFFSETS, eventReminderKey, reminderFromEvent, reminderTriggerDate, isReminderStale, pruneStaleReminders, describeEventReminderOffset
 - `src/utils/eventStoreChanges.ts` — CoalescedTrigger, createCoalescedTrigger, onEventStoreChanged
 - `src/utils/eventTaskLinks.ts` — EventTaskLink, EventTaskLinks, eventTaskKey, tasksForEvent, withEventTasks, rekeyEventTasks, EVENT_TASK_LINK_GRACE_DAYS, pruneStaleEventTaskLinks, parseEventTaskLinks, MovedEvent, +4 more
-- `src/utils/eventTasks.ts` — EVENT_RULE_TITLE_MAX_LENGTH, EVENT_MATCH_MAX_LENGTH, EVENT_MATCH_MIN_LENGTH, EVENT_RULE_MAX_MATCHES, EVENT_LEAD_DAYS_MAX, FOLLOW_UP_LOOKBACK_DAYS, FOLLOW_UP_AHEAD_DAYS, defaultEventRules, parseEventRules, ruleMatchesTitle, +22 more
+- `src/utils/eventTasks.ts` — EVENT_RULE_TITLE_MAX_LENGTH, EVENT_MATCH_MAX_LENGTH, EVENT_MATCH_MIN_LENGTH, EVENT_RULE_MAX_MATCHES, EVENT_LEAD_DAYS_MAX, FOLLOW_UP_LOOKBACK_DAYS, FOLLOW_UP_AHEAD_DAYS, defaultEventRules, parseEventRules, ruleMatchesTitle, +23 more
 - `src/utils/eventTextParse.ts` — MAX_EVENT_TEXT_CHARS, ParsedEventText, parseEventText
 - `src/utils/exerciseCatalog.ts` — CatalogExercise, buildCatalog, activeExercises, catalogExercise, exerciseName, ExerciseFilters, ExerciseSearchResult, searchExercises, muscleFilterOptions, equipmentFilterOptions, +1 more
 - `src/utils/exerciseChart.ts` — ChartInput, ChartPoint, CHART_GAP_DAYS, daysBetween, chartPoints, chartSegments, recordIndexes, ChartDomain, chartDomain, domainFraction, +3 more
@@ -529,7 +529,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/todayProjectBands.ts` — TodayProjectBand, TodayProjectBands, buildTodayProjectBands
 - `src/utils/tooltipAim.ts` — TOOLTIP_CARET_W, aimTooltip
 - `src/utils/transitAlerts.ts` — TransitEffect, TransitAlert, TransitSnapshot, TRANSIT_LINES, parseTransitLines, effectOfAlertType, parseSubwayAlerts, alertOverlaps, LIVE_ALERT_MAX_AGE_MS, PLANNED_ALERT_MAX_AGE_MS, +5 more
-- `src/utils/travelTasks.ts` — TRAVEL_LEAD_MINUTES_DEFAULT, TRAVEL_LEAD_MINUTES_MIN, TRAVEL_LEAD_MINUTES_MAX, TRAVEL_LEAD_MINUTES_STEP, LEAVE_WINDOW_MINUTES_DEFAULT, LEAVE_WINDOW_MINUTES_MIN, LEAVE_WINDOW_MINUTES_MAX, LEAVE_WINDOW_MINUTES_STEP, describeLeaveWindow, clampLeaveWindowMinutes, +52 more
+- `src/utils/travelTasks.ts` — TRAVEL_LEAD_MINUTES_DEFAULT, TRAVEL_LEAD_MINUTES_MIN, TRAVEL_LEAD_MINUTES_MAX, TRAVEL_LEAD_MINUTES_STEP, LEAVE_WINDOW_MINUTES_DEFAULT, LEAVE_WINDOW_MINUTES_MIN, LEAVE_WINDOW_MINUTES_MAX, LEAVE_WINDOW_MINUTES_STEP, describeLeaveWindow, clampLeaveWindowMinutes, +53 more
 - `src/utils/tripEvents.ts` — spansDays, tripSpanOf, awayFieldsFromEvent, projectForTripEvent
 - `src/utils/tripForecast.ts` — TripForecast, summarizeTripForecast, describeTripForecast, describeForecastGap
 - `src/utils/tripLiveActivity.ts` — TripRun, buildTripRun, useTripLiveActivitySync
@@ -636,7 +636,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useSharedLinkStore.ts` — useSharedLinkStore
 - `src/store/useShieldReleaseStore.ts` — useShieldReleaseStore
 - `src/store/useStepTimerStore.ts` — useStepTimerStore
-- `src/store/useSyncStore.ts` — SERVER_HEALTH_LOGS_KEY, SERVER_HEALTH_RESEND_KEY, NOTHING_OWED, SERVER_JOURNAL_KEY, SERVER_JOURNAL_RESEND_KEY, SYNC_EPOCH, withholdingFor, markHealthLogsWithheld, settleHealthLogResend, SyncPhase, +4 more
+- `src/store/useSyncStore.ts` — SERVER_HEALTH_LOGS_KEY, SERVER_HEALTH_RESEND_KEY, NOTHING_OWED, SERVER_JOURNAL_KEY, SERVER_JOURNAL_RESEND_KEY, SYNC_EPOCH, withholdingFor, markHealthLogsWithheld, settleHealthLogResend, SyncPhase, +5 more
 - `src/store/useTabHubMenuStore.ts` — TabHubMenu, useTabHubMenuStore
 - `src/store/useTaskGroupStore.ts` — useTaskGroupStore
 - `src/store/useTaskStore.ts` — offerMealLog, TimeBlockPlan, redoRestoringRows, useTaskStore

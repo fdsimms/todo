@@ -59,6 +59,25 @@ export async function cloudKitUnavailableReason(): Promise<string | null> {
   }
 }
 
+/**
+ * Asks iCloud for a silent push whenever another device syncs (#1551's
+ * missing half: without it the other device heard nothing until its own next
+ * foreground tick). False where the build or CloudKit can't.
+ */
+export async function subscribeToCloudKitChanges(): Promise<boolean> {
+  return (await bridge()?.subscribeToChanges()) ?? false;
+}
+
+/** Calls `listener` on each of those pushes. Returns the unsubscribe; a no-op without the bridge. */
+export function addCloudKitChangeListener(listener: () => void): () => void {
+  return bridge()?.addRemoteChangeListener(listener) ?? (() => {});
+}
+
+/** Tells iOS the sync a push started has finished. */
+export function cloudKitChangeHandled(newData: boolean): void {
+  bridge()?.remoteChangeHandled(newData);
+}
+
 export function cloudKitTransport(): SyncTransport {
   return {
     name: CLOUDKIT_SOURCE,

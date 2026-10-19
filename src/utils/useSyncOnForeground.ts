@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { AppState } from 'react-native';
-import { hasUnsentChanges, useSyncStore } from '../store/useSyncStore';
+import { hasUnsentChanges, useSyncStore, whenSyncIdle } from '../store/useSyncStore';
+import { addCloudKitChangeListener, cloudKitChangeHandled, subscribeToCloudKitChanges } from './cloudKitTransport';
 
 /**
  * How often the app syncs while it is on screen. Short, because the case it is
@@ -29,12 +30,10 @@ export const LOCAL_CHANGE_PROBE_MS = 2_000;
  * would quietly mean "sync whenever iOS felt like it", which is worse than a
  * rule you can predict. In the foreground there is no such problem.
  *
- * The honest consequence: changes arrive when you look at the app, not before.
- * A silent push could improve on that later (CloudKit subscriptions can wake
- * the app), but silent pushes are throttled at the system's discretion, so it
- * would be a "usually sooner", never a guarantee — and the UI should keep
- * saying "last synced", which is a fact, rather than "up to date", which
- * wouldn't be.
+ * What closes most of that gap is CloudKit's silent push (the first effect
+ * below), but silent pushes are throttled at the system's discretion, so it is
+ * a "usually sooner", never a guarantee, and the UI should keep saying "last
+ * synced", which is a fact, rather than "up to date", which wouldn't be.
  *
  * `syncNow` is its own guard: a call that lands mid-run never starts a second
  * run stacked on the first. It asks the running one to go round once more
@@ -48,6 +47,31 @@ export function useSyncOnForeground(): void {
   // test SyncSettings uses for whether there is anywhere to sync to.
   const enabled = useSyncStore(s => s.enabled || (!!s.serverUrl && s.hasServerToken));
   const syncNow = useSyncStore(s => s.syncNow);
+  const icloud = useSyncStore(s => s.enabled);
+
+  // Another device syncing sends this one a silent push, which wakes it to
+  // sync too, in the foreground or (as iOS allows) the background. So a change
+  // made elsewhere arrives in seconds rather than at this device's next
+  // foreground tick. iOS throttles silent pushes as it sees fit, so this is
+  // "usually sooner", and the timers below stay as the floor. Subscribing is
+  // repeated on each mount, which is harmless (same subscription id), and
+  // keeps a reinstall or a reset iCloud container subscribed.
+  useEffect(() => {
+    if (!icloud) return;
+    void subscribeToCloudKitChanges();
+    return addCloudKitChangeListener(() => {
+      void (async () => {
+        let newData = false;
+        try {
+          const summary = await syncNow();
+          await whenSyncIdle();
+          newData = !!summary && summary.applied.inserted + summary.applied.updated + summary.applied.deleted > 0;
+        } finally {
+          cloudKitChangeHandled(newData);
+        }
+      })();
+    });
+  }, [icloud, syncNow]);
 
   useEffect(() => {
     if (!enabled) return;

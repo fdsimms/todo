@@ -1,5 +1,6 @@
 import CloudKit
 import ExpoModulesCore
+import UIKit
 
 /**
  * Stores sync payloads as records in the user's *private* CloudKit database.
@@ -26,7 +27,20 @@ public class TodoCloudKitModule: Module {
   private static let imageRecordType = "RecipeImage"
   private static let imageKey = "image"
 
+  /// The subscription that has CloudKit send a silent push when another
+  /// device saves a payload, so this one syncs within seconds instead of on
+  /// its next foreground tick. Matched by `TodoCloudKitAppDelegate`.
+  static let subscriptionID = "todo-sync-changes"
+
   private let container = CKContainer(identifier: "iCloud.com.fdsimms.dundundun")
+
+  /// Zones known to exist, so a push or pull skips the save that checks for
+  /// one. That save is a round trip of its own, and it ran before every push,
+  /// pull and photo call. Forgotten when CloudKit says a zone is gone (the
+  /// person deleted the app's iCloud data), so the next call makes it again.
+  private var readyZones = Set<String>()
+  private let readyZonesLock = NSLock()
+  private var remoteChangeObserver: NSObjectProtocol?
   private var database: CKDatabase { container.privateCloudDatabase }
   private var zoneID: CKRecordZone.ID {
     CKRecordZone.ID(zoneName: Self.zoneName, ownerName: CKCurrentUserDefaultName)
@@ -37,6 +51,63 @@ public class TodoCloudKitModule: Module {
 
   public func definition() -> ModuleDefinition {
     Name("TodoCloudKit")
+
+    /// Another device saved a payload: CloudKit's silent push, relayed from
+    /// `TodoCloudKitAppDelegate`. Carries nothing; the listener syncs, then
+    /// calls `remoteChangeHandled` so iOS is told the push was dealt with.
+    Events("onRemoteChange")
+
+    OnStartObserving {
+      guard self.remoteChangeObserver == nil else { return }
+      self.remoteChangeObserver = NotificationCenter.default.addObserver(
+        forName: RemoteChangeRelay.arrived,
+        object: nil,
+        queue: .main
+      ) { [weak self] _ in
+        self?.sendEvent("onRemoteChange", [:])
+      }
+    }
+
+    OnStopObserving {
+      if let observer = self.remoteChangeObserver {
+        NotificationCenter.default.removeObserver(observer)
+      }
+      self.remoteChangeObserver = nil
+    }
+
+    /// Asks CloudKit for a silent push whenever the sync zone changes, and
+    /// registers this app for remote notifications so it can receive one. A
+    /// silent push needs no permission from the person, and saving the same
+    /// subscription id again replaces it, so this is safe to call each launch.
+    AsyncFunction("subscribeToChanges") { (promise: Promise) in
+      self.ensureZone(self.zoneID) { error in
+        if let error {
+          promise.reject("ERR_CLOUDKIT_ZONE", error.localizedDescription)
+          return
+        }
+        let subscription = CKRecordZoneSubscription(zoneID: self.zoneID, subscriptionID: Self.subscriptionID)
+        let info = CKSubscription.NotificationInfo()
+        info.shouldSendContentAvailable = true
+        subscription.notificationInfo = info
+        self.database.save(subscription) { _, error in
+          if let error {
+            self.forgetZoneIfMissing(error, self.zoneID)
+            promise.reject("ERR_CLOUDKIT_SUBSCRIBE", error.localizedDescription)
+            return
+          }
+          DispatchQueue.main.async {
+            UIApplication.shared.registerForRemoteNotifications()
+          }
+          promise.resolve(nil)
+        }
+      }
+    }
+
+    /// The sync a silent push started has finished. Completes every push
+    /// still waiting, so iOS stops holding the app awake for them.
+    Function("remoteChangeHandled") { (newData: Bool) in
+      RemoteChangeRelay.shared.finishAll(newData: newData)
+    }
 
     Function("isAvailable") { () -> Bool in
       return true
@@ -103,15 +174,25 @@ public class TodoCloudKitModule: Module {
   /// and the token is what makes "everything since last time" a cheap query
   /// rather than a full scan the client has to filter.
   private func ensureZone(_ id: CKRecordZone.ID, completion: @escaping (Error?) -> Void) {
+    readyZonesLock.lock()
+    let known = readyZones.contains(id.zoneName)
+    readyZonesLock.unlock()
+    if known {
+      completion(nil)
+      return
+    }
+
     let zone = CKRecordZone(zoneID: id)
     let op = CKModifyRecordZonesOperation(recordZonesToSave: [zone], recordZoneIDsToDelete: nil)
     op.modifyRecordZonesResultBlock = { result in
       switch result {
       case .success:
+        self.markZoneReady(id)
         completion(nil)
       case .failure(let error):
         // Already existing is the normal case on every call after the first.
         if let ckError = error as? CKError, ckError.code == .serverRecordChanged {
+          self.markZoneReady(id)
           completion(nil)
         } else {
           completion(error)
@@ -119,6 +200,25 @@ public class TodoCloudKitModule: Module {
       }
     }
     database.add(op)
+  }
+
+  private func markZoneReady(_ id: CKRecordZone.ID) {
+    readyZonesLock.lock()
+    readyZones.insert(id.zoneName)
+    readyZonesLock.unlock()
+  }
+
+  /// Drops a zone from `readyZones` when an error says it no longer exists,
+  /// directly or inside a partial failure, so the next call recreates it.
+  private func forgetZoneIfMissing(_ error: Error, _ id: CKRecordZone.ID) {
+    guard let ckError = error as? CKError else { return }
+    let codes: [CKError.Code] = [ckError.code] + (ckError.partialErrorsByItemID?.values.compactMap {
+      ($0 as? CKError)?.code
+    } ?? [])
+    guard codes.contains(where: { $0 == .zoneNotFound || $0 == .userDeletedZone }) else { return }
+    readyZonesLock.lock()
+    readyZones.remove(id.zoneName)
+    readyZonesLock.unlock()
   }
 
   // MARK: - Push
@@ -146,6 +246,7 @@ public class TodoCloudKitModule: Module {
       try? FileManager.default.removeItem(at: fileURL)
 
       if let error {
+        self.forgetZoneIfMissing(error, self.zoneID)
         promise.reject("ERR_CLOUDKIT_PUSH", error.localizedDescription)
       } else {
         promise.resolve(nil)
@@ -257,6 +358,7 @@ public class TodoCloudKitModule: Module {
         if let ckError = error as? CKError, ckError.code == .changeTokenExpired {
           self.fetchChanges(since: nil, promise: promise)
         } else {
+          self.forgetZoneIfMissing(error, self.zoneID)
           promise.reject("ERR_CLOUDKIT_PULL", error.localizedDescription)
         }
       }
@@ -298,6 +400,7 @@ public class TodoCloudKitModule: Module {
       if let ckError = error as? CKError, ckError.code == .serverRecordChanged {
         promise.resolve(nil)
       } else if let error {
+        self.forgetZoneIfMissing(error, self.imagesZoneID)
         promise.reject("ERR_CLOUDKIT_PUSH", error.localizedDescription)
       } else {
         promise.resolve(nil)
@@ -414,6 +517,7 @@ public class TodoCloudKitModule: Module {
         if let ckError = error as? CKError, ckError.code == .changeTokenExpired {
           self.listImageNames(since: nil, accumulated: [], accumulatedRemoved: [], promise: promise)
         } else {
+          self.forgetZoneIfMissing(error, self.imagesZoneID)
           promise.reject("ERR_CLOUDKIT_PULL", error.localizedDescription)
         }
       }
@@ -454,5 +558,62 @@ public class TodoCloudKitModule: Module {
     case .temporarilyUnavailable: return "temporarilyUnavailable"
     @unknown default: return "couldNotDetermine"
     }
+  }
+}
+
+// MARK: - Silent push
+
+/**
+ * Holds the completion handlers of CloudKit's silent pushes until the sync
+ * they start has finished. iOS keeps the app awake until a handler is called,
+ * and stops waking it so readily if they are left hanging, so each one is
+ * finished either by JavaScript (`remoteChangeHandled`) or, if JavaScript
+ * never answers (it wasn't listening yet, or the sync stalled), by a timer
+ * well inside the roughly 30 seconds iOS allows.
+ */
+final class RemoteChangeRelay {
+  static let shared = RemoteChangeRelay()
+  static let arrived = Notification.Name("TodoCloudKitRemoteChange")
+  private static let fallbackSeconds: TimeInterval = 25
+
+  /// Touched on the main queue only.
+  private var pending: [(UIBackgroundFetchResult) -> Void] = []
+
+  func arrive(_ completion: @escaping (UIBackgroundFetchResult) -> Void) {
+    DispatchQueue.main.async {
+      self.pending.append(completion)
+      NotificationCenter.default.post(name: Self.arrived, object: nil)
+      DispatchQueue.main.asyncAfter(deadline: .now() + Self.fallbackSeconds) {
+        self.finishAll(newData: false)
+      }
+    }
+  }
+
+  func finishAll(newData: Bool) {
+    DispatchQueue.main.async {
+      let handlers = self.pending
+      self.pending = []
+      handlers.forEach { $0(newData ? .newData : .noData) }
+    }
+  }
+}
+
+/// Registered in expo-module.config.json's appDelegateSubscribers. Every
+/// subscriber hears every remote notification and Expo waits for all of them
+/// to answer, so one that isn't CloudKit's is answered at once.
+public class TodoCloudKitAppDelegate: ExpoAppDelegateSubscriber {
+  public func application(
+    _ application: UIApplication,
+    didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+    fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+  ) {
+    guard
+      let notification = CKNotification(fromRemoteNotificationDictionary: userInfo),
+      notification.subscriptionID == TodoCloudKitModule.subscriptionID
+    else {
+      completionHandler(.noData)
+      return
+    }
+    RemoteChangeRelay.shared.arrive(completionHandler)
   }
 }

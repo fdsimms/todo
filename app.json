@@ -46,7 +46,8 @@
       [
         "expo-notifications",
         {
-          "iosDisplayInForeground": true
+          "iosDisplayInForeground": true,
+          "enableBackgroundRemoteNotifications": true
         }
       ],
       "@react-native-community/datetimepicker",

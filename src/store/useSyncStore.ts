@@ -196,6 +196,18 @@ let syncInFlight = false;
 let syncAgain = false;
 /** Rounds one `syncNow` call may run back to back, so a steady stream of asks can't hold it forever. */
 const MAX_SYNC_ROUNDS = 3;
+// The call that holds the claim, so `whenSyncIdle` can wait for its rounds.
+let currentRun: Promise<SyncSummary | null> | null = null;
+
+/**
+ * Resolves once no sync is running, follow-up rounds included. A `syncNow`
+ * that lands mid-run returns at once and leaves its work to the running call,
+ * so a caller that has to know the work is done (a silent push, which iOS
+ * stops waiting for once told) waits on this instead.
+ */
+export function whenSyncIdle(): Promise<void> {
+  return currentRun ? currentRun.then(() => undefined, () => undefined) : Promise.resolve();
+}
 
 /**
  * Re-reads every data store from the database after a sync wrote to it.
@@ -328,7 +340,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     // and ran runSyncAll twice, interleaved, which is what running the
     // transports sequentially exists to prevent.
     syncInFlight = true;
-    try {
+    const run = (async () => {
       let summary: SyncSummary | null = null;
       for (let round = 0; round < MAX_SYNC_ROUNDS; round++) {
         syncAgain = false;
@@ -337,9 +349,14 @@ export const useSyncStore = create<SyncState>((set, get) => ({
         if (!syncAgain) break;
       }
       return summary;
+    })();
+    currentRun = run;
+    try {
+      return await run;
     } finally {
       syncInFlight = false;
       syncAgain = false;
+      currentRun = null;
     }
   },
 }));

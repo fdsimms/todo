@@ -132,6 +132,20 @@ export async function readExternalEventIds(eventIds: readonly string[]): Promise
   }
 }
 
+/**
+ * `events` with each one's calendar server id attached (`BusyEvent.externalId`),
+ * in one native call. An event the server hasn't named keeps none, and any
+ * failure hands the events back as they were: the occurrence key falls back to
+ * the local id, which is what it always used.
+ */
+export async function withExternalEventIds<E extends { id: string; externalId?: string | null }>(
+  events: readonly E[],
+): Promise<E[]> {
+  if (events.length === 0) return [...events];
+  const ids = await readExternalEventIds(events.map(e => e.id));
+  return events.map(e => (ids[e.id] ? { ...e, externalId: ids[e.id] } : e));
+}
+
 /** Every event this device holds under the server id `externalId`. Empty on any failure. */
 export async function eventsWithExternalId(externalId: string): Promise<ExternalEventMatch[]> {
   const bridge = eventKitBridge();

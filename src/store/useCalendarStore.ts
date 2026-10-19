@@ -20,6 +20,7 @@ import { useSettingsStore } from './useSettingsStore';
 import { spansDays } from '../utils/tripEvents';
 import { createRefreshGuard } from '../utils/refreshGuard';
 import { createCoalescedTrigger, onEventStoreChanged } from '../utils/eventStoreChanges';
+import { withExternalEventIds } from '../utils/calendarEventLink';
 
 /**
  * A rolling window of the device calendar, held in memory.
@@ -301,8 +302,12 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
       set({ loaded: false, readFailed: true });
       return;
     }
+    // The server ids, so an event task or a "Leave for X" written for one of
+    // these is keyed the same on every device (see eventOccurrenceKeys).
+    const events = await withExternalEventIds(result.events);
+    if (!windowGuard.isCurrent(token)) return;
     set({
-      events: result.events,
+      events,
       vacationReturnEvents,
       vacationReturnLoaded: false,
       perCalendar: result.perCalendar,
@@ -410,9 +415,12 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
       set({ followUpLoaded: false });
       return;
     }
+    // Server ids for the reason `refresh` attaches them.
+    const followUpEvents = await withExternalEventIds(result.events);
+    if (!followUpGuard.isCurrent(token)) return;
     // `useEventTaskSync` re-runs the sweep when this lands; it can't be called
     // from here, since `useTaskStore` imports this store.
-    set({ followUpEvents: result.events, followUpLoaded: true });
+    set({ followUpEvents, followUpLoaded: true });
   },
 
   markHistoryHandled(key, dayKey) {

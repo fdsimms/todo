@@ -1,6 +1,6 @@
 import type { BusyEvent } from './calendarBusy';
 import type { Task } from '../types';
-import { eventIsRuleEligible, eventOccurrenceKey, type HandledEventTasks } from './eventTasks';
+import { eventIsRuleEligible, eventOccurrenceKey, eventOccurrenceKeys, type HandledEventTasks } from './eventTasks';
 import { generatedSourceOf } from './generatedTasks';
 import type { SavedPlace } from './savedPlaces';
 
@@ -468,8 +468,18 @@ export function travelLeaveAt(event: Pick<BusyEvent, 'start'>, leadMinutes: numb
  * because there is one rule. A recurring event's every instance shares an
  * EventKit id, so the start is what tells Tuesday's standup from Wednesday's.
  */
-export function travelSourceId(event: Pick<BusyEvent, 'id' | 'start'>): string {
+export function travelSourceId(event: Pick<BusyEvent, 'id' | 'start' | 'externalId'>): string {
   return eventOccurrenceKey(event);
+}
+
+/**
+ * The calendar event a travel task was written for, by either of its keys
+ * (see `eventOccurrenceKeys`), or null when it isn't in `events`. What a row
+ * uses to reach the event's local id for its map pin and its travel mode,
+ * since the key itself names the event by the calendar server's id.
+ */
+export function travelEventOf(sourceId: string, events: readonly BusyEvent[]): BusyEvent | null {
+  return events.find(event => eventOccurrenceKeys(event).includes(sourceId)) ?? null;
 }
 
 /** The occurrence key a travel task was written for, or null for any other task. */
@@ -527,7 +537,10 @@ export function matchedTravelTasks(
     .filter(event => eventIsTravelEligible(event, now) && Date.parse(event.start) < horizonEnd.getTime())
     .sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
   for (const event of eligible) {
-    const sourceId = travelSourceId(event);
+    // The key a task was already written under wins, so a row filed under the
+    // local-id key before the server id was read keeps being the one updated.
+    const keys = eventOccurrenceKeys(event);
+    const sourceId = keys.find(key => key in handled) ?? keys[0];
     const estimate = estimated
       ? estimateFor(
           event,
@@ -565,7 +578,12 @@ export function travelSourceStart(sourceId: string): number | null {
   return Number.isFinite(start) ? start : null;
 }
 
-/** The EventKit event id a travel source id was written for: everything before the last `|`. */
+/**
+ * The event id a travel source id was written under: everything before the
+ * last `|`. That is the calendar server's id for a task written since keys
+ * moved to it, so a caller that needs this device's own id resolves the event
+ * with `travelEventOf` first and falls back to this.
+ */
 export function travelSourceEventId(sourceId: string): string | null {
   const i = sourceId.lastIndexOf('|');
   return i > 0 ? sourceId.slice(0, i) : null;
@@ -595,7 +613,7 @@ export function isTravelTaskStale(
   const start = travelSourceStart(sourceId);
   if (start === null) return true;
   if (start <= now.getTime()) return false;
-  return !events.some(event => eventIsTravelEligible(event, now) && travelSourceId(event) === sourceId);
+  return !events.some(event => eventIsTravelEligible(event, now) && eventOccurrenceKeys(event).includes(sourceId));
 }
 
 /**

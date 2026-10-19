@@ -27,8 +27,16 @@ export interface CloudKitImageListResult {
   cursor: string | null;
 }
 
+interface Subscription {
+  remove(): void;
+}
+
 interface TodoCloudKitNativeModule {
   isAvailable(): boolean;
+  /** Optional: a build from before silent push has neither. */
+  subscribeToChanges?(): Promise<void>;
+  remoteChangeHandled?(newData: boolean): void;
+  addListener?(event: 'onRemoteChange', listener: () => void): Subscription;
   accountStatus(): Promise<CloudKitAccountStatus>;
   push(payload: string): Promise<void>;
   pull(since: string | null): Promise<CloudKitPullResult>;
@@ -122,4 +130,43 @@ export async function getImage(name: string): Promise<string | null> {
 export async function removeImage(name: string): Promise<void> {
   if (!nativeModule) throw new Error('CloudKit is not available in this build.');
   await nativeModule.removeImage(name);
+}
+
+/**
+ * Has CloudKit send a silent push when another device saves a payload. Safe to
+ * call on every launch. Resolves false on a build without it, or when CloudKit
+ * refused; sync still runs on its foreground timer either way.
+ */
+export async function subscribeToChanges(): Promise<boolean> {
+  if (!nativeModule?.subscribeToChanges) return false;
+  try {
+    await nativeModule.subscribeToChanges();
+    return true;
+  } catch (error) {
+    console.warn('[todo-cloudkit-bridge] could not subscribe to changes', error);
+    return false;
+  }
+}
+
+/**
+ * Called when a silent push says another device saved a payload. Returns the
+ * unsubscribe. The listener must end with `remoteChangeHandled`.
+ */
+export function addRemoteChangeListener(listener: () => void): () => void {
+  if (!nativeModule || typeof nativeModule.addListener !== 'function') return () => {};
+  try {
+    const subscription = nativeModule.addListener('onRemoteChange', () => listener());
+    return () => subscription.remove();
+  } catch {
+    return () => {};
+  }
+}
+
+/** The sync a silent push started is over; lets iOS stop holding the app awake for it. */
+export function remoteChangeHandled(newData: boolean): void {
+  try {
+    nativeModule?.remoteChangeHandled?.(newData);
+  } catch {
+    // The native side finishes it on a timer anyway.
+  }
 }
