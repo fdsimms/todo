@@ -466,6 +466,12 @@ these synced before, so a change on the server would never have reached the phon
 generators still run on the phone, the one place with a forecast, a calendar, Health and Screen
 Time to read, and the list says what each needs there.
 
+`save_rule` also takes a `blockOffer` rule (`minutes`, `coins`, a title, a category): a daily offer
+to block the rule's app group for a set time, paid a fixed number of coins once the block ran. Both
+numbers are clamped as the rules sheet clamps them. The server never starts a block or pays
+anything: the phone starts it when the task is checked, and the app group is chosen there, so
+`groupId` is kept on an edit and not settable here, as for Screen Time.
+
 `set_automation` also takes a `category`: a generator's "File them under" setting, the same stored
 answer the Settings row writes (`setGeneratedCategory` in `useCategoryStore`), so startup's
 `ensureGeneratedTaskCategory` leaves it alone. The name must already be a category; `null` files

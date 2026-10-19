@@ -24,6 +24,7 @@ import { isFailedToday } from '../utils/negativeHabits';
 import { getCurrentDayStart } from '../utils/dateUtils';
 import { formatQuotaProgress } from '../utils/quotaUnit';
 import { haptics } from '../utils/haptics';
+import { offerBlockStart } from '../utils/blockOfferAccept';
 import { animateLayout } from '../utils/layoutAnimation';
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { isChainFinish } from '../utils/chain';
@@ -204,6 +205,11 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
           }
         }
         return;
+      case 'start-block':
+        // A block offer: the tap offers to start the block instead of ticking,
+        // so coins are never paid for a block that did not run.
+        await offerBlockStart(task);
+        return;
       case 'open-log': {
         // Same contract as 'review-project': until there is an entry the tap
         // opens the sheet that records it. Once there is one, the tap is a
@@ -271,6 +277,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
     : action === 'pick-meal' ? `${label}, pick a meal`
     : action === 'review-project' ? `${label}, review what to pull in`
     : action === 'open-log' ? `${label}, opens the entry sheet`
+    : action === 'start-block' ? `${label}, starts the block`
     : action === 'log-unit'
       ? `Log one of ${task.targetCount}${task.targetUnit ? ` ${task.targetUnit}` : ''}, ${formatQuotaProgress(task.progressCount, task.targetCount!, task.targetUnit)} done, ${label}`
     : action === 'uncomplete' ? `Mark ${label} as not done`

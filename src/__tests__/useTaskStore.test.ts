@@ -8,6 +8,7 @@ import { useProjectLockStore } from '../store/useProjectLockStore';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { useRewardStore } from '../store/useRewardStore';
+import { useShieldReleaseStore } from '../store/useShieldReleaseStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { useJournalStore } from '../store/useJournalStore';
@@ -301,7 +302,7 @@ jest.mock('../store/useSettingsStore', () => ({
       // The settings that name a category — renaming or deleting one has to
       // carry them with it (see renameCategory/deleteCategory).
       mealCookTaskCategory: null, groceryUseUpTaskCategory: null, leftoverUseUpTaskCategory: null,
-      calendarEventCategory: null, healthCategory: null, collapsedCategories: [], titleRules: [], reminderCaptures: [], weatherRules: [], screenTimeRules: [], healthRules: [], eventRules: [],
+      calendarEventCategory: null, healthCategory: null, collapsedCategories: [], titleRules: [], reminderCaptures: [], weatherRules: [], screenTimeRules: [], blockOfferRules: [], healthRules: [], eventRules: [],
       penaltyShieldEnabled: false, penaltyShieldUntil: null, setPenaltyShieldUntil: jest.fn(),
       // Read by offerMealLog, whose whole point is the meal-slot/log-nudge
       // completion tests further down this file — defaulting it off here
@@ -10403,7 +10404,7 @@ describe('renameCategory', () => {
     dayResetTime: '00:00',
     newTaskDefaults: { category: null as string | null },
     calendarEventCategory: null as string | null, healthCategory: null as string | null,
-    collapsedCategories: [] as string[], titleRules: [], reminderCaptures: [], weatherRules: [], screenTimeRules: [], healthRules: [], eventRules: [],
+    collapsedCategories: [] as string[], titleRules: [], reminderCaptures: [], weatherRules: [], screenTimeRules: [], blockOfferRules: [], healthRules: [], eventRules: [],
     setCalendarEventCategory: jest.fn(), setHealthCategory: jest.fn(), setNewTaskDefaults: jest.fn(),
     setTitleRules: jest.fn(), setReminderCaptures: jest.fn(), setWeatherRules: jest.fn(), setScreenTimeRules: jest.fn(), setHealthRules: jest.fn(), setEventRules: jest.fn(), setCollapsedCategories: jest.fn(),
   });
@@ -21106,5 +21107,175 @@ describe('updateTask: what a rule-written task logs is kept on its rule', () => 
     useTaskStore.getState().updateTask('plain', { medicationName: 'Sodium chloride' });
 
     expect(setHealthRules).not.toHaveBeenCalled();
+  });
+});
+
+// ─── block offers ───────────────────────────────────────────────────────────
+
+describe('checkBlockOfferTasks', () => {
+  const settingsMock = useSettingsStore.getState as jest.Mock;
+  const base = settingsMock.getMockImplementation()!;
+  const { dbGetSetting } = jest.requireMock('../db/database') as { dbGetSetting: jest.Mock };
+
+  const NOW = new Date(2026, 9, 19, 10, 0);
+  const rule = (over: Record<string, unknown> = {}) => ({
+    id: 'rule1', title: 'Block Games for 1 hour', groupId: 'games', minutes: 60, coins: 10,
+    enabled: true, lastFiredDayKey: null, ...over,
+  });
+
+  let current: Record<string, unknown>;
+  const setSettings = (over: Record<string, unknown> = {}) => {
+    current = {
+      ...base(),
+      rewardsEnabled: true,
+      blockOfferTasks: true,
+      blockOfferTaskCategory: 'Screen Time',
+      blockOfferRules: [rule()],
+      setBlockOfferRules: jest.fn((rules: unknown) => { current.blockOfferRules = rules; }),
+      ...over,
+    };
+  };
+  const offers = () => useTaskStore.getState().tasks.filter(t => t.generatedKind === 'blockOffer');
+  const check = () => useTaskStore.getState().checkBlockOfferTasks();
+  const storedRuns = (runs: unknown[]) =>
+    dbGetSetting.mockImplementation((key: string) => (key === 'blockOfferRuns' ? JSON.stringify(runs) : null));
+  const runFor = (taskId: string, over: Record<string, unknown> = {}) => ({
+    taskId, ruleId: 'rule1', startedAt: new Date(2026, 9, 19, 8, 0).toISOString(),
+    untilIso: new Date(2026, 9, 19, 9, 0).toISOString(), coins: 10, ...over,
+  });
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+    setSettings();
+    settingsMock.mockImplementation(() => current);
+    useTaskStore.setState({ tasks: [] });
+    useRewardStore.setState({ entries: [], rewards: [], initialized: true });
+    useShieldReleaseStore.setState({ log: [] });
+    dbGetSetting.mockReset().mockReturnValue(null);
+  });
+  afterEach(() => {
+    settingsMock.mockImplementation(base);
+    dbGetSetting.mockReset().mockReturnValue(null);
+    setDemoModeActive(false);
+    jest.runOnlyPendingTimers();
+    jest.useRealTimers();
+  });
+
+  it('offers one task a day for an enabled rule, with its coins in the title', () => {
+    check();
+    const [task] = offers();
+    expect(task.title).toBe('Block Games for 1 hour (10 coins)');
+    expect(task.category).toBe('Screen Time');
+    expect(task.generatedSourceId).toBe('2026-10-19#rule1');
+    expect(task.generatedReadyAt).toBeFalsy();
+    expect((current.blockOfferRules as { lastFiredDayKey: string }[])[0].lastFiredDayKey).toBe('2026-10-19');
+  });
+
+  it('does not offer again the same day, even after the task is gone', () => {
+    check();
+    useTaskStore.setState({ tasks: [] });
+    check();
+    expect(offers()).toHaveLength(0);
+  });
+
+  it('offers nothing for a disabled rule, with the switch off, with rewards off or in demo mode', () => {
+    setSettings({ blockOfferRules: [rule({ enabled: false })] });
+    check();
+    expect(offers()).toHaveLength(0);
+
+    setSettings({ blockOfferTasks: false });
+    check();
+    expect(offers()).toHaveLength(0);
+
+    setSettings({ rewardsEnabled: false });
+    check();
+    expect(offers()).toHaveLength(0);
+
+    setSettings();
+    setDemoModeActive(true);
+    check();
+    expect(offers()).toHaveLength(0);
+  });
+
+  it('clears an offer nobody took once its day has gone, and one whose rule was deleted', () => {
+    setSettings({ blockOfferRules: [rule({ lastFiredDayKey: '2026-10-19' })] });
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'stale', generatedKind: 'blockOffer', generatedSourceId: '2026-10-18#rule1' }),
+        makeTask({ id: 'orphan', generatedKind: 'blockOffer', generatedSourceId: '2026-10-19#gone' }),
+        makeTask({ id: 'today', generatedKind: 'blockOffer', generatedSourceId: '2026-10-19#rule1' }),
+      ],
+    });
+    check();
+    expect(offers().map(t => t.id)).toEqual(['today']);
+  });
+
+  it('marks the task ready once its block has run to the end, and keeps it across the day', () => {
+    setSettings({ blockOfferRules: [rule({ lastFiredDayKey: '2026-10-19' })] });
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'yesterday', generatedKind: 'blockOffer', generatedSourceId: '2026-10-18#rule1' })],
+    });
+    storedRuns([runFor('yesterday')]);
+    check();
+    const [task] = offers();
+    expect(task.id).toBe('yesterday');
+    expect(task.generatedReadyAt).not.toBeNull();
+  });
+
+  it('leaves a task alone while its block is still running', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', generatedKind: 'blockOffer', generatedSourceId: '2026-10-19#rule1' })],
+    });
+    storedRuns([runFor('t1', { untilIso: new Date(2026, 9, 19, 11, 0).toISOString() })]);
+    check();
+    expect(offers()[0].generatedReadyAt).toBeFalsy();
+  });
+
+  it('deletes the task when a key tag or the emergency button ended the block early, and does not offer it again', () => {
+    setSettings({ blockOfferRules: [rule({ lastFiredDayKey: '2026-10-19' })] });
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', generatedKind: 'blockOffer', generatedSourceId: '2026-10-19#rule1' })],
+    });
+    storedRuns([runFor('t1', { untilIso: new Date(2026, 9, 19, 11, 0).toISOString() })]);
+    useShieldReleaseStore.setState({
+      log: [{ id: 'r1', at: new Date(2026, 9, 19, 8, 30).toISOString(), source: 'emergency', reason: null, ended: ['manual'] }],
+    });
+    check();
+    expect(offers()).toHaveLength(0);
+  });
+
+  describe('paying', () => {
+    const offerTask = (over: Partial<Task> = {}) => makeTask({
+      id: 't1', generatedKind: 'blockOffer', generatedSourceId: '2026-10-19#rule1',
+      estimatedMinutes: 90, ...over,
+    });
+
+    it('pays the rule’s coins, not the effort bucket, once the block has run', () => {
+      useTaskStore.setState({ tasks: [offerTask({ generatedReadyAt: NOW.toISOString() })] });
+      storedRuns([runFor('t1', { coins: 12 })]);
+      useTaskStore.getState().completeTask('t1');
+      expect(useRewardStore.getState().balance()).toBe(12);
+    });
+
+    it('pays nothing for a tick before the block has run, by any route', () => {
+      useTaskStore.setState({ tasks: [offerTask()] });
+      useTaskStore.getState().completeTask('t1');
+      expect(useRewardStore.getState().entries).toEqual([]);
+    });
+
+    it('costs nothing to mark an offer missed', () => {
+      useTaskStore.setState({ tasks: [offerTask()] });
+      useTaskStore.getState().markMissed('t1');
+      expect(useRewardStore.getState().entries).toEqual([]);
+    });
+
+    it('takes the coins back when the tick is undone', () => {
+      useTaskStore.setState({ tasks: [offerTask({ generatedReadyAt: NOW.toISOString() })] });
+      storedRuns([runFor('t1', { coins: 12 })]);
+      useTaskStore.getState().completeTask('t1');
+      useTaskStore.getState().uncompleteTask('t1');
+      expect(useRewardStore.getState().balance()).toBe(0);
+    });
   });
 });

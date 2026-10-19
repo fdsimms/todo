@@ -205,6 +205,11 @@ export function catchUpPasses(): MaintenanceStep[] {
     // crossings it reads are only ever drained by useScreenTimeSync's own
     // effect, which has not run yet on the very first pass.
     ['check screen time tasks', () => tasks().checkScreenTimeTasks()],
+    // Beside it, same trigger: an offer's block ends by time passing, often
+    // with the app closed, so the pass that marks it ready runs on the next
+    // launch or foreground. It reads the release log, which no foreground
+    // effect has to fill in first.
+    ['check block offer tasks', () => tasks().checkBlockOfferTasks()],
     // Beside it, same trigger and the same near-no-op at cold launch: the
     // reading it judges against is only ever taken by useHealthSync's own
     // effect, which has not run yet on the very first pass.

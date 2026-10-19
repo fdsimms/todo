@@ -522,6 +522,31 @@ export interface ScreenTimeRule extends RuleTaskEstimate, RuleTaskCategory, Rule
 }
 
 /**
+ * A rule offering coins for blocking apps ("Block Games for an hour: 10
+ * coins"), stored in settings as `blockOfferRules` — see
+ * `src/utils/blockOfferTasks.ts`. One task a day per enabled rule, and the task
+ * pays only after the block it starts has run to its end.
+ */
+export interface BlockOfferRule extends RuleTaskCategory {
+  id: string;
+  /** The task's title, e.g. "Block Games for 1 hour". */
+  title: string;
+  /** The app group this rule blocks (`appGroups.ts`). Absent means the fallback group. */
+  groupId?: string;
+  /** How long the block lasts, within `manualMinutesProblem`'s range. */
+  minutes: number;
+  /** Coins paid when the finished block's task is checked off. Fixed on the rule, not worked out from effort. */
+  coins: number;
+  enabled: boolean;
+  /**
+   * The day key this rule last offered on. Written before the offer is made,
+   * the way `WeatherRule.lastFiredDayKey` is, so a task swiped away or
+   * forfeited cannot come straight back the same day.
+   */
+  lastFiredDayKey: string | null;
+}
+
+/**
  * What a health-target task ("walk 8,000 steps", "close the Stand ring") can
  * read: the mood axis's two readings plus the three Activity rings' figures.
  *
@@ -2556,6 +2581,11 @@ export type GeneratedKind =
   // the source is a rule in settings, not a row a decline could be stamped on,
   // so writeGeneratedOptOut has nothing to write for it either.
   | 'screenTime'
+  // An offer of coins for blocking apps a set time, written by a rule the user
+  // wrote — see src/utils/blockOfferTasks.ts. Same `${dayKey}#${ruleId}` source
+  // id as weather and screenTime, and writeGeneratedOptOut has nothing to write
+  // for it for their reason: the source is a rule in settings.
+  | 'blockOffer'
   // A shortfall against an Apple Health reading the user wrote a rule about
   // ("under six hours of sleep") — see src/utils/healthRules.ts. Same
   // `${dayKey}#${ruleId}` source id as weather and screenTime, and

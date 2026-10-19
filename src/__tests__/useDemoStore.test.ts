@@ -4874,6 +4874,22 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(dayKeyOf(new Date(ahead!.dueDate!))).toBe(tomorrowKey);
   });
 
+  it('seeds an unaccepted block offer and its rule', () => {
+    const { tasks } = useTaskStore.getState();
+    const settings = useSettingsStore.getState();
+
+    const [rule] = settings.blockOfferRules;
+    expect(rule).toBeDefined();
+    expect(rule.lastFiredDayKey).toBe(dayKeyOf(getCurrentDayStart()));
+    expect(settings.blockOfferTaskCategory).toBe('Screen Time');
+
+    const task = tasks.find(t => t.generatedKind === 'blockOffer');
+    expect(task).toBeDefined();
+    expect(task!.title).toBe(`${rule.title} (10 coins)`);
+    expect(task!.generatedSourceId).toBe(`${dayKeyOf(getCurrentDayStart())}#${rule.id}`);
+    expect(task!.generatedReadyAt).toBeFalsy();
+  });
+
   it('seeds a screen time task and the rules alongside it', () => {
     const { tasks } = useTaskStore.getState();
     const settings = useSettingsStore.getState();

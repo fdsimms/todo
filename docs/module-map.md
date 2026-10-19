@@ -51,6 +51,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/birthdayTasks.ts` — DEFAULT_BIRTHDAY_LEAD_DAYS, DEFAULT_BIRTHDAY_GIFT_LEAD_DAYS, MAX_BIRTHDAY_LEAD_DAYS, clampBirthdayLeadDays, clampBirthdayGiftLeadDays, parseBirthdayLeadDays, parseBirthdayGiftLeadDays, birthdaySourceId, parseBirthdaySource, parseBirthdayGiftSource, +15 more
 - `src/utils/blankPicker.ts` — isBlankExcluded, blankFits, kitchenEntryItemId, BlankCandidate, BlankChoices, USUAL_CANDIDATE_LIMIT, blankChoices, needsUsing, defaultBlankPicks, togglePick, +1 more
 - `src/utils/blockEditLock.ts` — liveGroupIds, groupEditLocked, supergroupEditLocked, reasonGroupLocked, reasonSwitchLocked, appRemovalSwitchLocked, defaultGroupLocked, scheduleEditLocked, groupBlockHint, BLOCK_PICKER_NOTE_TITLE, +4 more
+- `src/utils/blockOfferAccept.ts` — offerBlockStart
+- `src/utils/blockOfferTasks.ts` — BLOCK_OFFER_TITLE_MAX_LENGTH, BLOCK_OFFER_COINS_MIN, BLOCK_OFFER_COINS_MAX, BLOCK_OFFER_COINS_DEFAULT, BLOCK_OFFER_MINUTES_DEFAULT, BLOCK_OFFER_MINUTE_CHOICES, clampBlockOfferMinutes, clampBlockOfferCoins, blockOfferTitle, describeOfferCoins, +16 more
 - `src/utils/blockSchedule.ts` — BLOCK_SCHEDULES_SETTING, MAX_BLOCK_SCHEDULES, MIN_WINDOW_MINUTES, MAX_SCHEDULE_NAME_LENGTH, readGroupIds, BlockSchedule, ALL_DAYS, WEEKDAYS, cleanScheduleName, windowLengthMinutes, +18 more
 - `src/utils/blockTimer.ts` — BLOCK_SINCE_SETTING, BlockStamp, parseBlockStamp, reasonsEndBy, nextBlockStamp, blockedForMs, formatBlockedFor, spokenBlockedFor
 - `src/utils/blockerRegistry.ts` — registerTaskSource, resolveBlocker, waitingCountFor
@@ -586,6 +588,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 
 ## `src/store`
 
+- `src/store/blockOfferRuns.ts` — readBlockOfferRuns, writeBlockOfferRuns
 - `src/store/generatedCategoryWriteBack.ts` — GeneratedCategoryOffer, generatedCategoryOffer, writeCategoryToSource
 - `src/store/generatedTaskSync.ts` — deleteGeneratedTaskQuietly, markGeneratedReady, settleReadyMarks, ReconcileGeneratedOptions, reconcileGeneratedTask, dropGeneratedTask, forfeitUseUpCoins, restoreUseUpCoins
 - `src/store/generatorSwitch.ts` — setGeneratorEnabled
@@ -670,6 +673,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useFocusRefreshedRead.ts` — useFocusRefreshedRead
 - `src/hooks/useFocusSession.ts` — useFocusSession, useFocusStepDoneHaptic, useFocusPlanReconcile
 - `src/hooks/useFoodDatabaseSearch.ts` — FoodDatabaseSearch, useFoodDatabaseSearch
+- `src/hooks/useGroupSelectionCounts.ts` — useGroupSelectionCounts
 - `src/hooks/useHealthWorkoutHistory.ts` — useHealthWorkoutHistory
 - `src/hooks/useJournalAccess.ts` — useJournalAccess
 - `src/hooks/useKeyShortcuts.ts` — useKeyShortcuts
