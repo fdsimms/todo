@@ -37,6 +37,7 @@ const mockTaskState = {
     mockTaskState.tasks = mockTaskState.tasks.filter(t => t.id !== id);
   }),
   setLastAction: jest.fn(),
+  requestAutoComplete: jest.fn(),
 };
 // The reconcile also asks whether vacation mode is on, for the kinds that stand
 // down during it (see GeneratedKindSpec.pausedOnVacation). Mocked rather than

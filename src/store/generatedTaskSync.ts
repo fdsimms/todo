@@ -68,21 +68,29 @@ export function deleteGeneratedTaskQuietly(
 
 /**
  * Mark a generated task as done-for-the-person: the thing it asks for has
- * happened, so the row stays and reads ready, and the tick (with its coins) is
- * theirs. This is what a sweep does in place of deleting the row, or of ticking
- * it for them, when the reason the task existed was satisfied rather than
- * withdrawn. A no-op on a row that is already marked.
+ * happened, so the row reads ready, and the tick (with its coins) is theirs
+ * unless the app is allowed to take it for them. This is what a sweep does in
+ * place of deleting the row when the reason the task existed was satisfied
+ * rather than withdrawn. A no-op on a row that is already marked.
+ *
+ * **It also asks the row to complete itself, when the person did the thing.**
+ * `requestAutoComplete` refuses unless they are in the app and this is not a
+ * launch or background catch-up, so a task satisfied while nobody was looking
+ * (Siri, another device, Health overnight) stays ready for them to tick. A row
+ * already marked is never asked again: the mark means a pass saw it earlier.
  *
  * `skipPostponeCount` for `reconcileGeneratedTask`'s reason: this is the app
  * writing, not the person moving the task.
  */
 export function markGeneratedReady(task: Pick<Task, 'id' | 'generatedReadyAt' | 'completed'>): void {
   if (task.completed || task.generatedReadyAt) return;
-  useTaskStore.getState().updateTask(
+  const store = useTaskStore.getState();
+  store.updateTask(
     task.id,
     { generatedReadyAt: new Date().toISOString() },
     { skipPostponeCount: true },
   );
+  store.requestAutoComplete([task.id]);
 }
 
 /**

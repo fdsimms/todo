@@ -124,6 +124,8 @@ import { setGeneratorEnabled } from './generatorSwitch';
 import { featureHidden } from '../utils/simpleMode';
 import { CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview } from '../utils/calendarReviewTasks';
 import { isAnsweredByRecord, isRecordAnswered } from '../utils/recordTasks';
+import { autoCompleteReason } from '../utils/autoComplete';
+import { canAutoComplete } from '../utils/autoCompleteScope';
 import { MOOD_LOG_LINK_URL, MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogDayKey, moodLogSourceId, moodNudgeNotes, wantsMoodNudge } from '../utils/moodTasks';
 import { DREAM_LOG_TITLE, JOURNAL_TASK_KIND, journalLogTitle, journalLogUrl, journalTaskDayKey, journalTaskSourceId } from '../utils/journalTasks';
 import {
@@ -195,7 +197,7 @@ import { medicationFor } from '../utils/medicationLog';
 import { installSupplementDoseEffects } from '../utils/supplementDoseSync';
 import { eventsIn } from '../utils/calendarBusy';
 import { isDemoModeActive } from '../utils/demoState';
-import type { Category, JournalKind, MealSlot, Project, TaskGroup, WeatherCondition, WeatherRule, NutrientKey } from '../types';
+import type { Category, GeneratedKind, JournalKind, MealSlot, Project, TaskGroup, WeatherCondition, WeatherRule, NutrientKey } from '../types';
 import { awayPauseDriver, departureFromAnswer, departureMoveFromAnswer, isProjectAwayNow, liveAwaySpans } from '../utils/awayDates';
 import { generateId } from '../utils/id';
 import {
@@ -1306,6 +1308,13 @@ let completionCollapseTimer: ReturnType<typeof setTimeout> | null = null;
 // — a row doesn't re-render because a *different* row was tapped.
 let pendingCompletionIds: string[] = [];
 
+// How long a request for a task to complete itself waits for its row to pick it
+// up and play the tick (see TaskItem). A row that isn't on screen never will,
+// so past this the store completes the task itself. Longer than a frame or two
+// of mounting, far shorter than anything a person would notice as lag.
+const AUTO_COMPLETE_PICKUP_MS = 600;
+let autoCompleteTimer: ReturnType<typeof setTimeout> | null = null;
+
 // The same idea as the completion hold, for the other way a task leaves Today
 // under its own steam: a daily target that a logged unit just put back on pace.
 // That one used to go on the tap that logged it, which capped a real burst —
@@ -1594,6 +1603,25 @@ interface TaskStore extends UndoHistoryActions {
     | null;
   clearTripDatePrompt: () => void;
   clearReadyOffer: () => void;
+  /**
+   * Task id -> the line saying why, for tasks that are about to complete
+   * themselves because of something the person just did. A row that finds its
+   * own id here plays the ordinary completion with that line under the title
+   * (`claimAutoComplete`); one nobody claims is completed by the store after
+   * `AUTO_COMPLETE_PICKUP_MS`. Session-only and never persisted.
+   */
+  autoComplete: Record<string, string>;
+  /**
+   * Ask for these tasks to complete themselves. Does nothing unless the person
+   * is in the app and this isn't a launch or background pass
+   * (`canAutoComplete`), and skips a task whose kind may not
+   * (`autoCompleteReason`), one already done, and a record task with no entry.
+   */
+  requestAutoComplete: (ids: string[]) => void;
+  /** `requestAutoComplete` for every live task of a kind, called where the person saves what it asks for. */
+  autoCompleteRecordTasks: (kind: GeneratedKind) => void;
+  /** A row taking the request for its own task: returns the reason and removes it, or null if there is none. */
+  claimAutoComplete: (id: string) => string | null;
   /** Dates every task in the offer on `date`, undoably, and clears it. */
   placeReadyTasks: (date: Date) => void;
   /**
@@ -1817,6 +1845,8 @@ interface TaskStore extends UndoHistoryActions {
     recorded?: boolean;
     /** See CompletionOptions.byOther (taskCompletion.ts) — somebody else did it. */
     byOther?: boolean;
+    /** The app completed this because the person's action satisfied it; a ready step it spawns follows. See `requestAutoComplete`. */
+    autoCompleted?: boolean;
     completedAt?: string;
     logEarly?: boolean;
     /**
@@ -2200,9 +2230,10 @@ interface TaskStore extends UndoHistoryActions {
   checkWeighInTasks: () => Promise<void>;
   /**
    * Make today's weigh-in request read ready, if one is live, after a weight
-   * dated `dayKey` is saved. Completes nothing: the tick, and the coins, are
-   * the person's (see recordTasks.ts). Mood, journal and dream rows need no
-   * such call, since their readiness is derived from the entries themselves.
+   * dated `dayKey` is saved, and ask it to complete itself (the save is the
+   * person's own action; see `requestAutoComplete`). Mood, journal and dream
+   * rows need no readiness call, since that is derived from the entries
+   * themselves, but their sheets call `autoCompleteRecordTasks`.
    */
   markWeighInAnswered: (dayKey: string) => void;
   /**
@@ -3077,6 +3108,42 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
   clearReadyOffer() {
     set({ readyOffer: null });
+  },
+  autoComplete: {},
+  requestAutoComplete(ids) {
+    if (!canAutoComplete()) return;
+    const requested: Record<string, string> = {};
+    for (const id of ids) {
+      const task = get().tasks.find(t => t.id === id);
+      if (!task || task.completed || task.archived) continue;
+      const reason = autoCompleteReason(task);
+      if (!reason) continue;
+      // The record has to exist, or the completion below would be refused.
+      if (isAnsweredByRecord(task) && !recordTaskAnswered(task)) continue;
+      requested[id] = reason;
+    }
+    if (Object.keys(requested).length === 0) return;
+    set(s => ({ autoComplete: { ...s.autoComplete, ...requested } }));
+    if (autoCompleteTimer) clearTimeout(autoCompleteTimer);
+    autoCompleteTimer = setTimeout(() => {
+      autoCompleteTimer = null;
+      const unclaimed = Object.keys(get().autoComplete);
+      if (unclaimed.length === 0) return;
+      set({ autoComplete: {} });
+      unclaimed.forEach(id => get().completeTask(id, { autoCompleted: true }));
+    }, AUTO_COMPLETE_PICKUP_MS);
+  },
+  autoCompleteRecordTasks(kind) {
+    get().requestAutoComplete(liveGeneratedTasksOfKind(get().tasks, kind).map(t => t.id));
+  },
+  claimAutoComplete(id) {
+    const reason = get().autoComplete[id];
+    if (reason === undefined) return null;
+    set(s => {
+      const { [id]: _claimed, ...rest } = s.autoComplete;
+      return { autoComplete: rest };
+    });
+    return reason;
   },
   redateRoutines(taskIds) {
     const resetTime = useSettingsStore.getState().dayResetTime;
@@ -4505,6 +4572,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }
 
     syncGatedReminders(id, get().tasks);
+
+    // A chain's next step carries the ready mark (a meal already cooked is still
+    // cooked), so it completes the same way rather than waiting for a tick.
+    if (options?.autoCompleted && nextTask?.generatedReadyAt) get().requestAutoComplete([nextTask.id]);
 
     // The tasks this was the last thing holding back, if they have no day of
     // their own: ready now, but an undated task goes nowhere by itself, so
@@ -8908,7 +8979,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   /**
    * A weight was just recorded, so today's weigh-in request (if there is one)
-   * is answered and its row reads ready. Nothing is completed here.
+   * is answered and its row reads ready, then completes itself.
    *
    * A reading dated today answers it outright. A backdated one may or may not
    * fall inside the request's window, which only a Health read can say, so it
@@ -8919,8 +8990,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const live = liveGeneratedTasksOfKind(get().tasks, 'weighIn')
       .some(t => weighInDayKey(t) === todayKey);
     if (!live) return;
-    if (dayKey === todayKey) useHealthStore.getState().setWeighInAnsweredOn(todayKey);
-    else void get().checkWeighInTasks();
+    if (dayKey === todayKey) {
+      useHealthStore.getState().setWeighInAnsweredOn(todayKey);
+      get().autoCompleteRecordTasks('weighIn');
+    } else {
+      void get().checkWeighInTasks().then(() => get().autoCompleteRecordTasks('weighIn'));
+    }
   },
 
   skipNextRecurrence(id) {

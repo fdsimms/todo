@@ -25,6 +25,7 @@ import {
   withoutSymptom,
 } from '../utils/moodLog';
 import { useMoodStore } from '../store/useMoodStore';
+import { useTaskStore } from '../store/useTaskStore';
 import { dayKeyOf, getCurrentDayStart, getLogicalToday } from '../utils/dateUtils';
 import { isAwayOn } from '../utils/awayDates';
 import { moodPlaceTagNow } from '../utils/moodPlaceNow';
@@ -371,9 +372,10 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
       const isToday = isSameDay(day, getLogicalToday());
       const at = isToday ? undefined : noonOn(day);
       addLog(mood, symptoms, note, at, contextTags);
-      // The daily check-in task is not ticked here: the saved entry makes its
-      // row read ready (recordTasks.ts) and the person ticks it, which is what
-      // pays the coins.
+      // The saved entry answers the check-in task (recordTasks.ts), so its row
+      // plays the tick and leaves. A backdated entry answers nothing, and the
+      // request skips any task the entry doesn't answer.
+      useTaskStore.getState().autoCompleteRecordTasks('moodLog');
     }
     onClose();
   };

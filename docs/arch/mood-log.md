@@ -232,9 +232,10 @@ position `calendarReview` is in), both firing from one pass
 (`checkMoodTasks`) because they read the same data. Both ship **off**.
 
 `moodLog` is ordinary: once a day, a task to write it down, cleared when the
-day is already logged. Logging makes the row read ready and the person ticks it
-(for the coins); nothing completes it for them, and a ready row from an earlier
-day or part of the day is kept rather than cleared (`isReadyRecordTask`).
+day is already logged. Logging makes the row read ready, and saving the entry in
+the app completes it (see "The tick is gated" below). An entry that arrives some
+other way leaves the row ready for the person to tick, and a ready row from an
+earlier day or part of the day is kept rather than cleared (`isReadyRecordTask`).
 
 The pass lives in `catchUpPasses()` (`src/utils/maintenancePasses.ts`), so it
 runs at launch, on foreground, **and in a background refresh** — which is the
@@ -254,9 +255,11 @@ are the same shape, and `src/utils/recordTasks.ts` lists the four. Until the
 entry exists the checkbox opens the sheet (`'open-log'` in `completionTap.ts`)
 and `completeTask` refuses; `isRecordAnswered` (read by `useRecordTaskReady`)
 then makes the row ready, the green ring `health` and the pantry check use, and
-the tick completes it. Nothing completes the task on its own except the sheet's
-own save (`complete…TaskForToday`, `CompletionOptions.recorded`), which is the
-tick done for you at the one moment the person just did the thing. A missed mark
+the tick completes it. The only thing that completes it without a tap is the
+sheet's own save (`autoCompleteRecordTasks`, which the mood, journal and weight
+sheets call), the tick done for you at the one moment the person just did the
+thing; it plays the row's own completion with "Logged your mood" under the title
+(`docs/arch/generated-tasks.md`, "A satisfied task stays"). A missed mark
 claims nothing and is never gated. An entry saved some other way (Claude over
 MCP, another device) makes the row ready with no pass involved. A weigh-in is
 answered by a reading only Health can report, so `checkWeighInTasks` records the

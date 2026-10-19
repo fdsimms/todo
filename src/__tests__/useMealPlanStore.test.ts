@@ -135,6 +135,7 @@ const mockTaskState = {
     mockTaskState.tasks = mockTaskState.tasks.filter(t => t.id !== id);
   }),
   setLastAction: jest.fn(),
+  requestAutoComplete: jest.fn(),
   completeTask: jest.fn((id: string) => {
     mockTaskState.tasks = mockTaskState.tasks.map(t => (t.id === id ? { ...t, completed: true } : t));
   }),

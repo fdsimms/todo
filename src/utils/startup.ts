@@ -21,6 +21,7 @@
  */
 
 import { timed } from './perfLog';
+import { runUnattended } from './autoCompleteScope';
 
 /**
  * Runs one launch step. Returns whether it got through without throwing. How
@@ -28,7 +29,9 @@ import { timed } from './perfLog';
  */
 export function runStartupStep(name: string, step: () => void): boolean {
   try {
-    timed(name, step);
+    // Launch and background steps catch up on time that passed with nobody
+    // there, so nothing they notice may complete a task for the person.
+    runUnattended(() => timed(name, step));
     return true;
   } catch (error) {
     console.error(`Startup step "${name}" failed`, error);

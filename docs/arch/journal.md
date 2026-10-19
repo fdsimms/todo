@@ -83,9 +83,11 @@ away, off by default, and each opens its sheet through
 - **The dream reminder is once a day, with no part of the day.** A dream is
   written once, on waking, and whenever the list is first looked at is close
   enough to that.
-- **Saving an entry never completes the reminder.** It makes the row read
-  ready and the person ticks it, which is what pays the coins; a ready row from
-  an earlier day or part of the day is kept (`isReadyRecordTask`).
+- **Saving an entry in the sheet completes the reminder**, through the row's own
+  completion animation (`autoCompleteRecordTasks`). An entry that arrives another
+  way (the widget's dream capture, sync) makes the row read ready and the person
+  ticks it; a ready row from an earlier day or part of the day is kept
+  (`isReadyRecordTask`).
   Until an entry exists the reminder's checkbox opens the sheet and
   `completeTask` refuses a tick; afterwards the row reads ready (`recordTasks.ts`;
   see the mood log's "The two generators").
