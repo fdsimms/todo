@@ -4,6 +4,7 @@ import {
   buildCalendarGrid, buildWeekDays, weekdayHeaders,
   canPageToPreviousMonth, clampMonthToEarliest, isDayBefore,
   canPageToNextMonth, clampMonthToLatest, isDayAfter,
+  dayShortcutDays, dayShortcutLabel,
 } from '../utils/calendarGrid';
 
 const iso = (d: Date) => format(d, 'yyyy-MM-dd');
@@ -307,5 +308,30 @@ describe('the ceiling half', () => {
     expect(canPageToNextMonth(day('2026-07-01'), day('2026-08-17'))).toBe(true);
     expect(canPageToNextMonth(day('2026-08-01'), day('2026-08-17'))).toBe(false);
     expect(canPageToNextMonth(day('2026-08-01'), null)).toBe(true);
+  });
+});
+
+describe('dayShortcutDays', () => {
+  it('offers today, tomorrow and the next weekend, oldest first', () => {
+    // Mon Oct 19 2026
+    const days = dayShortcutDays(new Date(2026, 9, 19)).map(iso);
+    expect(days).toEqual(['2026-10-19', '2026-10-20', '2026-10-24', '2026-10-25']);
+  });
+
+  it('does not repeat a weekend day that today or tomorrow already is', () => {
+    // Fri Oct 23: tomorrow is Sat, so the chips are Sun and the Saturday after.
+    expect(dayShortcutDays(new Date(2026, 9, 23)).map(iso)).toEqual(['2026-10-23', '2026-10-24', '2026-10-25', '2026-10-31']);
+    // Sat Oct 24: tomorrow is Sun, so the next weekend comes after.
+    expect(dayShortcutDays(new Date(2026, 9, 24)).map(iso)).toEqual(['2026-10-24', '2026-10-25', '2026-10-31', '2026-11-01']);
+  });
+});
+
+describe('dayShortcutLabel', () => {
+  it('names today and tomorrow, then the weekday, then adds the date past a week', () => {
+    const today = new Date(2026, 9, 19);
+    expect(dayShortcutLabel(today, today)).toBe('Today');
+    expect(dayShortcutLabel(new Date(2026, 9, 20), today)).toBe('Tomorrow');
+    expect(dayShortcutLabel(new Date(2026, 9, 24), today)).toMatch(/^\w+$/);
+    expect(dayShortcutLabel(new Date(2026, 9, 31), today)).toMatch(/31$/);
   });
 });
