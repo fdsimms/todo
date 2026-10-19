@@ -31,6 +31,8 @@ import { CsvExportSheet } from '../components/CsvExportSheet';
 import { WorkoutImportSheet } from '../components/WorkoutImportSheet';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { pickBackupFile } from '../utils/backupFile';
+import { afterSheetsDismissed } from '../utils/sheetModal';
+import { logError } from '../utils/errorLog';
 import {
   parseWorkoutCsv,
   workoutExportCsv,
@@ -361,8 +363,12 @@ export function WorkoutsScreen() {
   const startImport = useCallback(async () => {
     let text: string | null;
     try {
+      // Raised from the "…" menu, which is still leaving: iOS refuses to
+      // present the picker over it.
+      await afterSheetsDismissed();
       text = await pickBackupFile();
-    } catch {
+    } catch (e) {
+      logError('workout-import-pick', e);
       Alert.alert('Couldn’t read the file', 'The file couldn’t be opened. Pick it again, or export it again from the app.');
       return;
     }
