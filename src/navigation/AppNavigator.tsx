@@ -679,6 +679,13 @@ export default function AppNavigator() {
             useKeyboardInsetScroll, which needs a navigation object. Mounted
             once so a task row on any screen opens the one sheet. */}
         <WorkoutModeHost />
+        {/* The cook recap and the use-up leftover sheet, for the same reason:
+            both render CookwareWeighIn, whose CookwareSheet is an EditorSheet
+            and so reads a navigation object. Mounted once, here, rather than
+            on the screens a meal is ticked off from, so a blurred tab's copy
+            can't present a second Modal for the same cooking. */}
+        <UseUpResolveSheet />
+        <CookRecap />
       </NavigationContainer>
       </MenuOpenContext.Provider>
       {/* TEMPORARY: the blank-tab diagnostic, drawn outside every tab. */}
@@ -721,22 +728,13 @@ export default function AppNavigator() {
           raised by an answer given anywhere. See TripDatePrompt. */}
       <TripDatePrompt />
       {/* Same placement again, and for the same "not tied to a screen" reason:
-          each renders nothing (FinishLeftoverPrompt) or a plain Modal
-          (UseUpResolveSheet's LeftoverSheet, CookRecap's sheet), touching no
-          navigation hooks, so none needs NavigationContainer. See their own doc
-          comments. (LogMealEntrySheet moved inside NavigationContainer above,
-          for the reason noted there.) */}
+          each renders nothing (FinishLeftoverPrompt) or a plain Modal, touching
+          no navigation hooks, so none needs NavigationContainer. See their own
+          doc comments. (LogMealEntrySheet, UseUpResolveSheet and CookRecap are
+          inside NavigationContainer above, for the reasons noted there.) */}
       <FinishLeftoverPrompt />
       <LogMealPrompt />
       <HealthWriteRefusedNotice />
-      <UseUpResolveSheet />
-      {/* Mounted once here rather than on the two screens a meal is ticked off
-          from, which is what the offers it replaced did. A banner rendered
-          twice is invisible twice over — only the focused screen is on screen —
-          but `enableScreens(false)` keeps a blurred tab mounted (see CLAUDE.md),
-          so two copies of a *sheet* would each present a Modal for the same
-          cooking. Same reason FinishLeftoverPrompt above is mounted once. */}
-      <CookRecap />
       {/* Same "not a screen" placement, and floating rather than a sibling of
           a list the way ActiveTripBanner is — see CookingBar's own doc
           comment for why a cook timer needs the app-wide bar that shopping
