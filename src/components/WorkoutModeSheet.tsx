@@ -609,12 +609,12 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                           {/* Its own captions, since the table's header is lined up with the closed rows' columns, which an open row's steppers don't match. */}
                           <View style={styles.openCaps} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
                             <View style={styles.colSet} />
+                            {fields.length === 1 && <View style={styles.openSpacer} />}
                             {fields.map(f => (
-                              <Text key={f} style={[styles.headCell, styles.openCell, fields.length === 1 && styles.openCellSingle]} numberOfLines={1}>
+                              <Text key={f} style={[styles.headCell, styles.openCell]} numberOfLines={1}>
                                 {inlineCaption(f, kind, unit)}
                               </Text>
                             ))}
-                            {fields.length === 1 && <View style={styles.openSpacer} />}
                             <View style={styles.colCheck} />
                           </View>
                           <View style={styles.openRow}>
@@ -628,12 +628,12 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                             >
                               <Text style={[setBadge(set.kind) ? styles.setBadge : styles.setNumber, styles.openSetLabel]}>{label}</Text>
                             </TouchableOpacity>
+                            {fields.length === 1 && <View style={styles.openSpacer} />}
                             {fields.map(f => (
-                              <View key={f} style={[styles.openCell, fields.length === 1 && styles.openCellSingle]}>
+                              <View key={f} style={styles.openCell}>
                                 <FieldStepper set={set} field={f} unit={unit} onEdit={patch => edit(set.id, patch)} stepperStyle={styles.editStepper} inline />
                               </View>
                             ))}
-                            {fields.length === 1 && <View style={styles.openSpacer} />}
                             <TouchableOpacity
                               style={styles.colCheck}
                               onPress={() => toggleSet(set)}
@@ -1058,8 +1058,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   openCaps: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, paddingTop: spacing.sm },
   openRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 48, paddingHorizontal: spacing.md },
   openCell: { flex: 1, textAlign: 'center' },
-  // One value has no neighbour to share the row with, so it keeps a stepper's own width.
-  openCellSingle: { flex: 0, width: 140 },
+  // A lone value takes the right half, the width it has beside a neighbour, so a stepper is the same size whichever exercise it is on.
   openSpacer: { flex: 1 },
   openSetLabel: { textAlign: 'center' },
   lastTime: { color: colors.textSecondary, fontSize: font.sm },
