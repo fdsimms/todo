@@ -451,7 +451,7 @@ interface OpenSlotProps {
   onRemove: () => void;
 }
 
-/** The end of a superset still being filled: a target to drop exercises on, and a way to add one. */
+/** The end of a superset still being filled: a way to add an exercise to it. Exercises are dropped on it like on any row. */
 function OpenSlot({ role, colors, styles, onAdd, onRemove }: OpenSlotProps) {
   const empty = role === 'none';
   return (
@@ -459,9 +459,6 @@ function OpenSlot({ role, colors, styles, onAdd, onRemove }: OpenSlotProps) {
       <View style={[styles.itemCard, styles.superset, !empty && styles.itemSep, !empty && styles.squareTop]}>
         {empty && <Text style={styles.supersetTag}>Superset</Text>}
         <View style={styles.slotBody}>
-          <View style={styles.slotDrop}>
-            <Text style={styles.slotDropText}>{empty ? 'No exercises yet. Drag one here or add one.' : 'Drag another exercise here or add one.'}</Text>
-          </View>
           <View style={styles.itemActions}>
             <InlineAction icon="add" label="Add exercise" onPress={onAdd} />
             <InlineAction label={empty ? 'Remove superset' : BUTTON_LABEL.done} variant="neutral" onPress={onRemove} />
@@ -604,12 +601,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.accentText, fontSize: font.xxs, fontWeight: fontWeight.semibold, letterSpacing: 0.8,
     textTransform: 'uppercase', paddingTop: spacing.sm, paddingHorizontal: spacing.md - 3,
   },
-  slotBody: { padding: spacing.md - 3, paddingRight: spacing.md, gap: spacing.smd },
-  slotDrop: {
-    borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.controlBorder, borderRadius: radius.sm,
-    paddingVertical: spacing.smd, paddingHorizontal: spacing.md, alignItems: 'center',
-  },
-  slotDropText: { color: colors.textSecondary, fontSize: font.sm, textAlign: 'center' },
+  slotBody: { padding: spacing.md - 3, paddingRight: spacing.md },
   itemRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd, paddingHorizontal: spacing.md, paddingVertical: spacing.smd, minHeight: 60 },
   itemText: { flex: 1 },
   itemName: { color: colors.text, fontSize: font.lg, fontWeight: fontWeight.semibold },
