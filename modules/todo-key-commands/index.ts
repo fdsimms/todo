@@ -14,6 +14,7 @@ interface Subscription {
 
 interface TodoKeyCommandsNativeModule {
   isAvailable(): boolean;
+  isOnMac(): boolean;
   setCommands(specs: KeyCommandSpec[]): void;
   addListener(event: 'onKeyCommand', listener: (event: { id: string }) => void): Subscription;
 }
@@ -56,5 +57,20 @@ export function addKeyCommandListener(listener: (id: string) => void): () => voi
     return () => subscription.remove();
   } catch {
     return () => {};
+  }
+}
+
+/**
+ * Whether the app is the iPhone or iPad app running on a Mac (Apple silicon's
+ * "Designed for iPad"). False everywhere else, and when the native half isn't
+ * linked or is an older build without this call: a build that can't say
+ * leaves a Mac to turn the setting on by hand, as it always was.
+ */
+export function isRunningOnMac(): boolean {
+  if (!nativeModule) return false;
+  try {
+    return nativeModule.isOnMac() === true;
+  } catch {
+    return false;
   }
 }

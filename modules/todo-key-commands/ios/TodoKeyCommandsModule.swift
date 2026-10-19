@@ -58,6 +58,14 @@ public class TodoKeyCommandsModule: Module {
       return true
     }
 
+    // Whether this is the iPhone or iPad app running on a Mac itself (Apple
+    // silicon's "Designed for iPad"). False under iPhone Mirroring, where the app
+    // still runs on the phone. `isiOSAppOnMac` is a plain read-only Bool, iOS 14
+    // and later, so it needs no main-thread hop.
+    Function("isOnMac") { () -> Bool in
+      return ProcessInfo.processInfo.isiOSAppOnMac
+    }
+
     // An empty list switches everything off: the sink leaves the window, the
     // commands come off the root view controller, and the focus timer stops.
     // Dispatched to main for the same reason as TodoPrivacyShield's setEnabled:
