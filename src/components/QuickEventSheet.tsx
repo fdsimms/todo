@@ -118,6 +118,7 @@ import { aimTooltip } from '../utils/tooltipAim';
 import { formatTimeOfDay, getCurrentDayStart, getLogicalNow } from '../utils/dateUtils';
 import { animateLayout } from '../utils/layoutAnimation';
 import { haptics } from '../utils/haptics';
+import { RotatingChevron } from './RotatingChevron';
 import { isDemoModeActive } from '../utils/demoState';
 import { TITLE_MAX_LENGTH } from '../types';
 import { TextField } from './TextField';
@@ -303,6 +304,8 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   const [eventMemory, setEventMemory] = useState<EventMemory>({});
   // Events kept for re-adding (`savedEvents.ts`), read on open since a sync can change them.
   const [savedEventList, setSavedEventList] = useState<SavedEvent[]>([]);
+  // The Saved list starts folded: most events are typed fresh, so it shouldn't take the room by default.
+  const [savedOpen, setSavedOpen] = useState(false);
   // The title whose remembered values the user waved off for this event.
   const [memoryDismissedKey, setMemoryDismissedKey] = useState<string | null>(null);
   // The overlap row shows one event and a count; a tap lists every one.
@@ -451,6 +454,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     setDurationPick(null);
     setEventMemory(readEventMemory());
     setSavedEventList(readSavedEvents());
+    setSavedOpen(false);
     setMemoryDismissedKey(null);
     setCalendarPickerVisible(false);
     setAlertPickerVisible(false);
@@ -1225,12 +1229,25 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
           >
             {showSaved && (
               <View style={styles.savedBlock}>
-                <Text style={styles.savedLabel}>Saved</Text>
                 <View style={styles.savedList}>
-                  {savedList.map((event, i) => (
+                  <TouchableOpacity
+                    style={styles.savedRow}
+                    onPress={() => { haptics.tap(); animateLayout(); setSavedOpen(o => !o); }}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityLabel="Saved events"
+                    accessibilityValue={{ text: `${savedList.length}` }}
+                    accessibilityState={{ expanded: savedOpen }}
+                  >
+                    <Ionicons name="bookmark" size={iconSize.sm} color={colors.accent} />
+                    <Text style={styles.savedHeaderText}>Saved events</Text>
+                    <Text style={styles.placeAddress}>{savedList.length}</Text>
+                    <RotatingChevron open={savedOpen} size={iconSize.sm} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                  {savedOpen && savedList.map(event => (
                     <TouchableOpacity
                       key={eventMemoryKey(event.title)}
-                      style={[styles.savedRow, i > 0 && styles.placeRowRuled]}
+                      style={[styles.savedRow, styles.placeRowRuled]}
                       onPress={() => pickSaved(event)}
                       onLongPress={() => confirmUnsave(event)}
                       delayLongPress={interaction.delayLongPress}
@@ -1843,17 +1860,9 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     overflow: 'hidden',
   },
   placeRow: { paddingHorizontal: 10, paddingVertical: spacing.sm, gap: spacing.xxs },
-  // The saved list's label is a section header; the block carries the gap below.
+  // The saved list folds under its own header row; the block carries the gap below.
   savedBlock: { marginBottom: spacing.sm },
-  savedLabel: {
-    color: colors.textSecondary,
-    fontSize: font.xs,
-    fontWeight: fontWeight.semibold,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    marginBottom: spacing.xs,
-    marginLeft: spacing.xxs,
-  },
+  savedHeaderText: { flex: 1, color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
   savedList: { borderRadius: radius.md, backgroundColor: colors.bgTertiary, overflow: 'hidden' },
   savedRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: 10, paddingVertical: spacing.sm },
   savedText: { flex: 1, gap: spacing.xxs },
