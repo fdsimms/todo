@@ -3041,6 +3041,7 @@ const TaskItemRow = React.memo(function TaskItem({
                       ? `Complete ${task.title}, asks for an answer`
                     : offersMealLog
                       ? `Complete ${task.title}, offers to log it`
+                      // e2e/maestro/ taps a row's checkbox by this label.
                       : `Complete ${task.title}`
         }
         accessibilityHint={

@@ -1,0 +1,34 @@
+# The path the app is used for most: add a task from Today, then check it off.
+# Selectors are accessibility labels and visible text (the app sets no testIDs):
+# the FAB is "Add task" (AddTaskFab), its menu item "Task", quick add's field
+# "New task…", and a row's checkbox "Complete <title>" (TaskItem).
+appId: com.fdsimms.dundundun
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: allow
+# AlarmKit asks for its own authorization at launch where the OS has it, and
+# launchApp can't pre-grant that one. Text matches whole, so this never hits
+# "Don't Allow".
+- tapOn:
+    text: "Allow"
+    optional: true
+# A fresh install with no tasks offers the first-run sheet. A Release cold
+# launch runs every migration first, so give it longer than tapOn's own wait.
+- extendedWaitUntil:
+    visible: "Quick setup"
+    timeout: 30000
+- tapOn: "Skip"
+- tapOn: "Add task"
+- tapOn: "Task"
+# Quick add opens with the field focused, and Return adds the task. Opened from
+# Today, a title-only task is due today, so it lands on this list.
+- inputText: "Water the plants"
+- pressKey: Enter
+- assertVisible: "Complete Water the plants"
+- tapOn: "Complete Water the plants"
+# The row is held for a second (labelled "Undo complete …") and then leaves Today.
+- extendedWaitUntil:
+    notVisible: "Water the plants"
+    timeout: 10000
