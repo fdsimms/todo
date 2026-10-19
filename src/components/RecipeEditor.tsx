@@ -503,9 +503,6 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
             : undefined}
         />
         {cookedWeightOpen && (
-          <CookwareWeighIn weighIn={weighIn} scaleText={cookedWeight} surface="page" />
-        )}
-        {cookedWeightOpen && (
           <TextField
             style={styles.urlInput}
             value={cookedWeight}
@@ -519,6 +516,13 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
             returnKeyType="done"
             accessibilityLabel={weighIn.picked.length > 0 ? 'Weight on the scale in grams' : 'Cooked weight in grams'}
           />
+        )}
+        {/* Under the number it modifies, lined up with it: the picker is the
+            optional half, so it comes second. */}
+        {cookedWeightOpen && (
+          <View style={styles.weighInWrap}>
+            <CookwareWeighIn weighIn={weighIn} scaleText={cookedWeight} surface="page" />
+          </View>
         )}
         <EditorRow
           icon="snow-outline"
@@ -994,6 +998,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   pillText: { color: colors.text, fontSize: font.sm, fontWeight: '500' },
   pillTextActive: { color: colors.onAccent, fontWeight: '600' },
   // Every one of these sits under an EditorRow, so they all take the indent.
+  weighInWrap: { marginLeft: ROW_CONTENT_INDENT, marginRight: spacing.md, marginBottom: spacing.sm },
   urlInput: {
     color: colors.text,
     fontSize: font.md,

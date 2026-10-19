@@ -2410,11 +2410,6 @@ export function RecipeDetailScreen() {
           </TouchableOpacity>
         )}
         {cookedWeightOpen && (
-          <View style={styles.weighInWrap}>
-            <CookwareWeighIn weighIn={weighIn} scaleText={cookedWeightDraft} surface="page" />
-          </View>
-        )}
-        {cookedWeightOpen && (
           <View style={styles.weightEditRow}>
             {/* Invisible twin of the input below, measured so the input can be
                 sized to hug what's typed rather than stretching the row and
@@ -2443,6 +2438,11 @@ export function RecipeDetailScreen() {
               accessibilityLabel={weighIn.picked.length > 0 ? 'Weight on the scale in grams' : 'Cooked weight in grams'}
             />
             <Text style={styles.weightEditUnit}>g</Text>
+          </View>
+        )}
+        {cookedWeightOpen && (
+          <View style={styles.weighInWrap}>
+            <CookwareWeighIn weighIn={weighIn} scaleText={cookedWeightDraft} surface="page" />
           </View>
         )}
         {cookedWeightOpen && (
