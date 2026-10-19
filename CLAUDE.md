@@ -493,6 +493,7 @@ file: the two maps are indexes, not write-ups.
 | two packets of one thing, tracked apart in the pantry | `ItemProduct`'s four pantry columns + `productHaveReason` in `src/utils/grocerySuggest.ts` — see `docs/arch/groceries.md` |
 | which store an item comes from | `src/utils/groceryShops.ts` — see `docs/arch/groceries.md` |
 | the store you're shopping at right now | `src/utils/activeTrip.ts` — see `docs/arch/groceries.md` |
+| something that came home that wasn't on the list, and what replaced a missing item | `src/utils/incidentalPurchases.ts` + `addToCartMany` in `useGroceryStore` — see `docs/arch/groceries.md`. Derived from each row's `addedAt` against the trip's start; no trip, no answer |
 | what something costs, and which store is cheaper | `src/utils/groceryPrice.ts` |
 | what the app thinks you already have | `probablyHaveReason`/`pantryEntries` in `src/utils/grocerySuggest.ts` — see `docs/arch/groceries.md` |
 | the app asking whether you still have something | `src/utils/pantryCheckTasks.ts` — see `docs/arch/groceries.md` |

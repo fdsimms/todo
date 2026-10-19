@@ -665,6 +665,18 @@ interface GroceryStore extends UndoHistoryActions {
    */
   addExistingMany: (ids: string[], opts?: { listId?: string | null }) => void;
   /**
+   * Puts each row straight into the cart: onto the list if it isn't there, and
+   * ticked either way. For something that came home without ever being written
+   * down (an incidental), where "add it, then find it and tick it" is two steps
+   * made with a bag in each hand.
+   *
+   * It is `addExistingMany` followed by `setCheckedMany` and nothing of its
+   * own, so the undo is the add's: it takes back the rows this put on the list
+   * and leaves a row that was already there, which was never this call's to
+   * remove.
+   */
+  addToCartMany: (ids: string[], opts?: { listId?: string | null }) => void;
+  /**
    * Puts a reviewed set of planned rows — currently a recipe's ingredients —
    * onto the list in one transaction. See the implementation for why this isn't
    * just a loop over addByName at the call site.
@@ -2417,6 +2429,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       label: `${addedIds.length} item${addedIds.length === 1 ? '' : 's'} added`,
       undo: () => get().removeFromListMany(addedIds),
     });
+  },
+
+  addToCartMany(ids, opts) {
+    get().addExistingMany(ids, opts);
+    get().setCheckedMany(ids, true, opts);
   },
 
   /**
