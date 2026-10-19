@@ -851,7 +851,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
 
   // A date picked by hand replaces the one the line reads, so the words that
   // read it go too rather than being left in the title saying something else.
-  const pickStart = (date: Date) => {
+  const pickStart = (date: Date, lengthMinutes?: number) => {
     if (phrase) {
       const next = withTrailingSpace(phrase.lineWithout);
       setText(next);
@@ -860,7 +860,18 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     setStartOverride(date);
     if (phrase) setRepeatPick(draft.repeat);
     if (phrase && draft.durationMinutes !== null) setDurationPick(draft.durationMinutes);
+    // A length chosen in the picker replaces one typed in the line, like a picked end.
+    if (lengthMinutes !== undefined) {
+      if (!phrase && draft.durationSpan) cutFromLine(draft.durationSpan);
+      setDurationPick(lengthMinutes);
+    }
     setPickerVisible(false);
+  };
+
+  // "Other…" in the start picker: keep what it holds and go straight to the end.
+  const pickStartThenEnd = (date: Date, lengthMinutes: number | undefined) => {
+    pickStart(date, lengthMinutes);
+    setEndPickerVisible(true);
   };
 
   // Takes a live phrase's words out of the line and keeps what it read, for a
@@ -1667,14 +1678,18 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
         visible={pickerVisible}
         value={rawStart}
         mode={allDay ? 'date' : 'datetime'}
-        title={allDay ? 'Date' : 'Date & time'}
+        title={allDay ? 'Date' : 'Starts'}
+        dayShortcuts
+        lengthMinutes={allDay ? undefined : effectiveDuration}
+        onOtherLength={pickStartThenEnd}
         onConfirm={pickStart}
         onCancel={() => setPickerVisible(false)}
       />
       <CalendarPicker
         visible={endPickerVisible}
         value={effectiveEnd}
-        mode="datetime"
+        startsAt={effectiveStart}
+        mode="end"
         title="Ends"
         onConfirm={pickEnd}
         onCancel={() => setEndPickerVisible(false)}
