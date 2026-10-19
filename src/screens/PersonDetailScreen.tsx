@@ -761,7 +761,7 @@ export function PersonDetailScreen() {
       <QuickEventSheet
         visible={planningEvent}
         onClose={() => setPlanningEvent(false)}
-        seed={{ title: `With ${name}`, personIds: [person.id] }}
+        seed={{ personIds: [person.id] }}
       />
       <TaskEditor
         visible={editingTaskId !== null}
