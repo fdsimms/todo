@@ -55,7 +55,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { clearCookPosition, restingCookPosition, saveCookPosition } from '../utils/cookPosition';
 import { clampStepIndex, cookNotesPanel, cookSteps, describeStepPosition } from '../utils/cookMode';
 import { formatStepDuration, stepDurationOffers, stepTimerExcerpt } from '../utils/stepTimers';
-import { recipeTimerResetPrompt } from '../utils/recipeTimer';
+import { recipeTimerResetPrompt, showsPrepRow, startCookingPlan } from '../utils/recipeTimer';
 import {
   applyChoice, choiceGroupKey, flattenRecipeIngredients, recipeChoiceGroups, type ChoiceGroup,
 } from '../utils/recipeComponents';
@@ -199,6 +199,7 @@ export function CookModeSheet({
   // can see — running for as long as a cook timer does. The hook takes an
   // undefined recipe for exactly this.
   const cookTimer = useRecipeTimer(visible ? recipe : undefined, 'Cook');
+  const prepTimer = useRecipeTimer(visible ? recipe : undefined, 'Prep');
   // Same `visible ?` guard and for the same reason — a sheet mounted invisible
   // must not hold a once-a-second interval open. Scoped to this recipe, so a
   // timer left running on another dish stays on that dish's screen.
@@ -463,7 +464,11 @@ export function CookModeSheet({
     // place is left behind. Only when nothing's running or paused yet — a
     // cook who already started or logged the timer isn't reset by leaving
     // mise en place a second time (Back then Start Cooking again).
-    if (!cookTimer.inProgress) cookTimer.onToggle();
+    // A running prep timer is paused first, so prep and cook never count the
+    // same minutes (see startCookingPlan).
+    const plan = startCookingPlan({ prepRunning: prepTimer.running, cookInProgress: cookTimer.inProgress });
+    if (plan.pausePrep) prepTimer.onToggle();
+    if (plan.startCook) cookTimer.onToggle();
     setRawIndex(0);
   };
 
@@ -1097,6 +1102,15 @@ export function CookModeSheet({
               the "already there" half of this feature: starting, pausing and
               logging a cook shouldn't cost a trip back to the recipe. */}
           <View style={styles.timerCard}>
+            {/* Prep shares the card on mise en place, where prep happens, and
+                on a step only while one is running or paused: most cooks never
+                time it, so it costs them no footer space. */}
+            {showsPrepRow(atMise, prepTimer.inProgress) && (
+              <>
+                <RecipeTimerRow verb="Prep" {...prepTimer} />
+                <View style={styles.timerDivider} />
+              </>
+            )}
             <RecipeTimerRow verb="Cook" {...cookTimer} />
           </View>
 
@@ -1575,6 +1589,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
+  },
+  timerDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.separator,
   },
   controls: {
     flexDirection: 'row',

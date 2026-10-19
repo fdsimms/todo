@@ -1124,6 +1124,10 @@ ingredient panel's fold die with the modal.
   and logging one. It takes an undefined recipe so a screen can call it above its own "the row is
   gone" guard — and `CookModeSheet` passes `visible ? recipe : undefined`, since a modal mounted
   invisible must not hold a once-a-second interval open.
+  **The prep timer is the same hook**, drawn above the cook row on the mise en place screen and on a
+  step only while it is running or paused (`showsPrepRow`), so a cook who never times prep pays no
+  footer space. Start cooking pauses a running prep timer before starting the cook one
+  (`startCookingPlan`), so the two never count the same minutes.
 - **The either/or picks are made here, not before.** Cook mode used to resolve every group to its
   default and ignore the recipe screen's chips, so the only way to cook the jalapeño version was to
   remember to pick it before pressing Cook, and forgetting meant backing out and starting over.
