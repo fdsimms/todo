@@ -99,6 +99,7 @@ import {
 } from './weekendTasks';
 import { weatherSourceId, defaultWeatherRules, describeWeatherWindow, weatherTaskTitle, WEATHER_LINK_URL } from './weatherTasks';
 import { screenTimeSourceId, defaultScreenTimeRules } from './screenTimeRules';
+import { blockOfferSourceId, blockOfferTitle, describeOfferCoins, newBlockOfferRule } from './blockOfferTasks';
 import { defaultEventRules, eventOccurrenceKey, eventTaskSourceId } from './eventTasks';
 import { TRAVEL_LEAD_MINUTES_DEFAULT, travelSourceId, travelTaskTitle } from './travelTasks';
 import { healthSourceId, defaultHealthRules } from './healthRules';
@@ -1852,6 +1853,21 @@ export function seedDemoData(): void {
     dueDate: today.toISOString(),
     category: 'Screen Time',
     ...generatedBy('screenTime', screenTimeSourceId(dayKeyOf(today), walkRule.id)),
+  });
+
+  // A block offer, seeded directly for screenTime's reason: accepting one
+  // starts a real block, which demo mode refuses, so checkBlockOfferTasks
+  // could never write it. It sits unaccepted, which is what a person who has
+  // just turned the feature on sees.
+  const gamesOffer = newBlockOfferRule(blockOfferTitle('Default', 60));
+  useSettingsStore.getState().setBlockOfferTaskCategory('Screen Time');
+  useSettingsStore.getState().setBlockOfferRules([{ ...gamesOffer, lastFiredDayKey: dayKeyOf(today) }]);
+  addTask({
+    title: `${gamesOffer.title} (${describeOfferCoins(gamesOffer.coins)})`,
+    notes: `Tap the checkbox to start the block. Check this off after it ends to collect ${describeOfferCoins(gamesOffer.coins)}. Ending the block early forfeits them.`,
+    dueDate: today.toISOString(),
+    category: 'Screen Time',
+    ...generatedBy('blockOffer', blockOfferSourceId(dayKeyOf(today), gamesOffer.id)),
   });
 
   // An event task, seeded directly for the same reason the three above are:

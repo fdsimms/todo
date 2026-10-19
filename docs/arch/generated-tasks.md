@@ -1126,6 +1126,43 @@ the differences all come from one place: **the app cannot see usage.**
 - **It does not gate on vacation mode**, following `weather` rather than `mealPlanNudge`. A rule
   about your own phone use is sunscreen, not work: vacation is exactly when somebody might want it.
 
+## `blockOffer` — coins offered for blocking apps
+
+"Block Games for an hour: 10 coins." A rule the user wrote (an app group, a length, a coin
+amount, `BlockOfferRule`) offers one task a day. Structurally it is `screenTime` run the other
+way: where that one reacts to use, this one asks for a block. Rules in
+`src/utils/blockOfferTasks.ts`, the pass is `checkBlockOfferTasks` (`useTaskStore`), the tap is
+`offerBlockStart` (`src/utils/blockOfferAccept.ts`).
+
+- **The checkbox starts the block, and the tick pays only after it ran.** A block offer nobody has
+  finished a block for answers `start-block` in `completionTapFor`, so the tap asks, checks
+  Screen Time access and that the group holds apps, then starts an ordinary manual block
+  (`useManualBlockStore`) and records the run (`blockOfferRuns`, device-local). It is the
+  `isAnsweredByRecord` shape: a tick before the thing happened would say it had.
+- **The app still never pays on its own.** When the run's window passes untouched the pass sets
+  `generatedReadyAt`, the row reads ready, and the person's tick pays. Coins go the direction
+  `rewards.md` rules out the other way round: coins never unlock apps, but blocking apps may earn
+  coins, because the person chose the block.
+- **The payout is the rule's fixed amount**, read through `blockOfferCoinsFor` in `completeTask`,
+  and it is **zero until ready**. That is what stops every route that completes without asking
+  (a bulk tick, the widget, an agent) paying for a block that never happened. The run's own coin
+  figure wins, copied when the block started, so editing a rule never changes an accepted offer;
+  a phone with no run (runs stay on the phone that blocked) falls back to the rule, since rules
+  sync. Marking an offer missed costs nothing: declining is not failing.
+- **Ending the block early forfeits it.** `releaseAllBlocks` writes a release record naming
+  `manual`; one inside the run's window deletes the task (`blockOfferRunOutcome`). The rule's day
+  mark was spent when the offer was made, so it does not come back that day. The read is of the
+  release log rather than the block's own state, because a lapsed block and an ended one look the
+  same once gone.
+- **One offer per rule per day, mark before task**, like `weather`, so a swiped-away or forfeited
+  offer cannot come straight back. An unaccepted offer is cleared when its day passes or its rule
+  is deleted; an accepted one survives the rollover (its block may still be running) and a ready
+  one too (its coins would be lost).
+- **Needs Rewards on, and refuses in demo mode**, where no block may reach the real shield. The demo
+  row is seeded directly, as `screenTime`'s is.
+- **A rule with no apps in its group says so** on its row rather than offering a task that could
+  not start a block; the check at the tap is what actually prevents paying for an empty block.
+
 ## `eventTask` — a rule the user wrote, cued by text
 
 "When something on my calendar says *flight*, add a task to pack, two days before."

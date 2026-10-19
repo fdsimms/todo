@@ -81,6 +81,8 @@ import { offersMealLogOnCompletion } from '../utils/completionTap';
 import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { chainPreview, isChainFinish, chainStepAdvancesInPlace, nextChainStep } from '../utils/chain';
 import { isAnsweredByRecord, recordLogUrl } from '../utils/recordTasks';
+import { offerBlockStart } from '../utils/blockOfferAccept';
+import { offersBlockStart } from '../utils/blockOfferTasks';
 import { useRecordTaskReady } from '../hooks/useRecordTaskReady';
 import { formatQuotaProgress } from '../utils/quotaUnit';
 import { clampSupplyReorderAt, describeSupply } from '../utils/supply';
@@ -2432,6 +2434,13 @@ const TaskItemRow = React.memo(function TaskItem({
       handleOpenLink();
       return;
     }
+    // A block offer is paid for a block that ran, so the tap offers to start
+    // one. Once the block has run the row reads ready and this falls through to
+    // the ordinary completion.
+    if (offersBlockStart(task)) {
+      await offerBlockStart(task);
+      return;
+    }
     // A mood, journal, dream or weigh-in task is answered by the entry it asks
     // for. Ticking it before there is one would say it was done when nothing
     // was recorded, so the tap opens the sheet until the row is ready.
@@ -3018,6 +3027,8 @@ const TaskItemRow = React.memo(function TaskItem({
                       ? `${task.title}, pick a meal`
                     : reviewProjectId
                       ? `${task.title}, opens the project review`
+                    : offersBlockStart(task)
+                      ? `${task.title}, starts the block`
                     : recordLog
                       ? `${task.title}, opens the entry sheet`
                     : recordReady

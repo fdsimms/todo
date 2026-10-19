@@ -5,6 +5,7 @@ import { GENERATED_KIND_SPECS, type GeneratedKind } from '../utils/generatedTask
 import { ruleCategoryFor, withRuleCategory } from '../utils/ruleCategory';
 import { weatherRuleIdOf } from '../utils/weatherTasks';
 import { screenTimeRuleIdOf } from '../utils/screenTimeRules';
+import { blockOfferRuleIdOf } from '../utils/blockOfferTasks';
 import { healthRuleIdOf } from '../utils/healthRules';
 import { eventTaskRuleIdOf } from '../utils/eventTasks';
 
@@ -64,6 +65,18 @@ function ruleHomeOf(task: Task): RuleHome | null {
         },
       };
     }
+    case 'blockOffer': {
+      const ruleId = blockOfferRuleIdOf(task);
+      if (!ruleId) return null;
+      return {
+        ruleId,
+        apply: category => {
+          const next = withRuleCategory(settings.blockOfferRules, ruleId, category, fallback);
+          if (next) settings.setBlockOfferRules(next);
+          return !!next;
+        },
+      };
+    }
     case 'health': {
       const ruleId = healthRuleIdOf(task);
       if (!ruleId) return null;
@@ -99,14 +112,15 @@ function currentRuleCategory(task: Task, ruleId: string): string | null {
   const rules =
     task.generatedKind === 'weather' ? settings.weatherRules
       : task.generatedKind === 'screenTime' ? settings.screenTimeRules
-        : task.generatedKind === 'health' ? settings.healthRules
-          : settings.eventRules;
+        : task.generatedKind === 'blockOffer' ? settings.blockOfferRules
+          : task.generatedKind === 'health' ? settings.healthRules
+            : settings.eventRules;
   const rule = (rules as { id: string; category?: string }[]).find(r => r.id === ruleId);
   if (!rule) return null;
   return ruleCategoryFor(rule, task.generatedKind ? getGeneratedCategory(task.generatedKind) : null);
 }
 
-const RULE_KINDS: ReadonlySet<GeneratedKind> = new Set<GeneratedKind>(['weather', 'screenTime', 'health', 'eventTask']);
+const RULE_KINDS: ReadonlySet<GeneratedKind> = new Set<GeneratedKind>(['weather', 'screenTime', 'blockOffer', 'health', 'eventTask']);
 
 /**
  * What to offer for a generated task that was just filed under `category`, or

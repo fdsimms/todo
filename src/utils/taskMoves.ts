@@ -57,6 +57,7 @@ const DAY_BOUND_GENERATED_KINDS: ReadonlySet<GeneratedKind> = new Set([
   'weather',
   'health',
   'screenTime',
+  'blockOffer',
   'mealSlot',
   'mealCook',
 ]);
