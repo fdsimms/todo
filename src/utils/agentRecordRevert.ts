@@ -33,9 +33,9 @@ export const PROJECT_REVERT_FIELDS = [
 ] as const;
 
 export type RecordLogSubject = 'meal' | 'food' | 'mood' | 'medication';
-export type RuleListName = 'title' | 'weather' | 'event' | 'health' | 'screenTime';
+export type RuleListName = 'title' | 'weather' | 'event' | 'health' | 'screenTime' | 'blockOffer';
 
-export const RULE_LIST_NAMES: readonly RuleListName[] = ['title', 'weather', 'event', 'health', 'screenTime'];
+export const RULE_LIST_NAMES: readonly RuleListName[] = ['title', 'weather', 'event', 'health', 'screenTime', 'blockOffer'];
 
 /** What the plan needs to know about the world, so it can be tested without a store. */
 export interface RecordState extends PantryRecordState, CatalogRecordState {

@@ -1,9 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AppState, StyleSheet, View } from 'react-native';
+import React, { useMemo } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import type { BlockOfferRule } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useAppGroupStore } from '../store/useAppGroupStore';
+import { useGroupSelectionCounts } from '../hooks/useGroupSelectionCounts';
 import { spacing } from '../theme';
 import { DEFAULT_GROUP_ID, groupName, plainGroups, resolveGroupId } from '../utils/appGroups';
 import {
@@ -11,7 +12,6 @@ import {
   BLOCK_OFFER_MINUTES_DEFAULT, BLOCK_OFFER_TITLE_MAX_LENGTH, blockOfferTitle, describeOfferCoins, newBlockOfferRule,
 } from '../utils/blockOfferTasks';
 import { describeDuration } from '../utils/manualBlock';
-import { screenTimeBridge } from '../utils/screenTimeBridge';
 import { CountStepper } from './CountStepper';
 import { PillGroup } from './PillGroup';
 import { RuleFieldLabel, RuleListSheet } from './RuleListSheet';
@@ -46,28 +46,12 @@ export function BlockOfferRulesSheet({ visible, onClose }: Props) {
   const groupsMeta = useAppGroupStore(s => s.meta);
   // Plain groups only: a rule blocks one group's apps, and a supergroup holds none of its own.
   const groups = useMemo(() => plainGroups(customGroups, groupsMeta), [customGroups, groupsMeta]);
-  const [counts, setCounts] = useState<Record<string, number>>({});
-
-  const refreshCounts = useCallback(() => {
-    const bridge = screenTimeBridge();
-    const next: Record<string, number> = {};
-    for (const group of plainGroups(customGroups, groupsMeta)) {
-      const c = bridge?.screenTimeSelectionCount(group.id);
-      next[group.id] = c ? c.applications + c.categories + (c.websites ?? 0) : 0;
-    }
-    setCounts(next);
-  }, [customGroups, groupsMeta]);
-
-  // Re-read on every foreground while open, so picking apps on the Screen Time
-  // screen and coming back clears the warning.
-  useEffect(() => {
-    if (!visible) return;
-    refreshCounts();
-    const subscription = AppState.addEventListener('change', state => {
-      if (state === 'active') refreshCounts();
-    });
-    return () => subscription.remove();
-  }, [visible, refreshCounts]);
+  const { counts: selections } = useGroupSelectionCounts(visible);
+  const counts = useMemo(() => {
+    const totals: Record<string, number> = {};
+    for (const [id, c] of Object.entries(selections)) totals[id] = c.applications + c.categories + (c.websites ?? 0);
+    return totals;
+  }, [selections]);
 
   const groupIdOf = (rule: BlockOfferRule) => resolveGroupId(customGroups, rule.groupId, groupsMeta);
   const nameOf = (rule: BlockOfferRule) => groupName(customGroups, rule.groupId, groupsMeta);

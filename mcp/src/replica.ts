@@ -59,6 +59,7 @@ import type {
   SavedView,
   SavedViewClause,
   ScreenTimeRule,
+  BlockOfferRule,
   TitleRule,
   WeatherRule,
   GroceryItem,
@@ -317,6 +318,7 @@ export interface ReplicaLib {
   eventTasks: typeof import('../../src/utils/eventTasks');
   healthRules: typeof import('../../src/utils/healthRules');
   screenTimeRules: typeof import('../../src/utils/screenTimeRules');
+  blockOfferTasks: typeof import('../../src/utils/blockOfferTasks');
   rewards: typeof import('../../src/utils/rewards');
   grocerySuggest: typeof import('../../src/utils/grocerySuggest');
   kitchenInventory: typeof import('../../src/utils/kitchenInventory');
@@ -348,7 +350,7 @@ export interface VacationSwitchOutcome {
 }
 
 /** The rule lists an agent may edit, by the name the tools use. */
-export type RuleListType = 'title' | 'weather' | 'event' | 'health' | 'screenTime';
+export type RuleListType = 'title' | 'weather' | 'event' | 'health' | 'screenTime' | 'blockOffer';
 
 export interface RuleLists {
   title: TitleRule[];
@@ -356,6 +358,7 @@ export interface RuleLists {
   event: EventTaskRule[];
   health: HealthRule[];
   screenTime: ScreenTimeRule[];
+  blockOffer: BlockOfferRule[];
 }
 
 /** A recipe as a tool states it. Ingredients are typed lines ("2 cloves garlic, minced"). */
@@ -4144,6 +4147,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         eventTasks: require('../../src/utils/eventTasks'),
         healthRules: require('../../src/utils/healthRules'),
         screenTimeRules: require('../../src/utils/screenTimeRules'),
+        blockOfferTasks: require('../../src/utils/blockOfferTasks'),
         rewards: require('../../src/utils/rewards'),
         grocerySuggest,
         kitchenInventory: require('../../src/utils/kitchenInventory'),
@@ -5421,7 +5425,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
 
     ruleLists(): RuleLists {
       const s = useSettingsStore.getState();
-      return { title: s.titleRules, weather: s.weatherRules, event: s.eventRules, health: s.healthRules, screenTime: s.screenTimeRules };
+      return { title: s.titleRules, weather: s.weatherRules, event: s.eventRules, health: s.healthRules, screenTime: s.screenTimeRules, blockOffer: s.blockOfferRules };
     },
 
     setRuleList(type, rules) {
@@ -5432,6 +5436,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         case 'event': s.setEventRules(rules as EventTaskRule[]); break;
         case 'health': s.setHealthRules(rules as HealthRule[]); break;
         case 'screenTime': s.setScreenTimeRules(rules as ScreenTimeRule[]); break;
+        case 'blockOffer': s.setBlockOfferRules(rules as BlockOfferRule[]); break;
       }
     },
 
@@ -7554,6 +7559,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         if (weatherRules !== settings.weatherRules) settings.setWeatherRules(weatherRules);
         const screenTimeRules = renameInRuleCategories(settings.screenTimeRules, from, to);
         if (screenTimeRules !== settings.screenTimeRules) settings.setScreenTimeRules(screenTimeRules);
+        const blockOfferRules = renameInRuleCategories(settings.blockOfferRules, from, to);
+        if (blockOfferRules !== settings.blockOfferRules) settings.setBlockOfferRules(blockOfferRules);
         const healthRules = renameInRuleCategories(settings.healthRules, from, to);
         if (healthRules !== settings.healthRules) settings.setHealthRules(healthRules);
         const eventRules = renameInRuleCategories(settings.eventRules, from, to);

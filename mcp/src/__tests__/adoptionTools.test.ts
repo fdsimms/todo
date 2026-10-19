@@ -38,6 +38,7 @@ function fakeReplica(opts: {
 } = {}): Replica {
   return {
     tasks: () => opts.tasks ?? [],
+    generatorEnabled: () => false,
     settings: () => ({ simpleMode: !!opts.simpleMode, kitchenEnabled: opts.kitchenEnabled ?? true, completedRetentionDays: null, rewardsEnabled: opts.rewards ?? false }),
     recipes: () => opts.recipeRows ?? Array.from({ length: opts.recipes ?? 0 }, () => ({ name: 'Recipe', blanks: [], ingredients: [] })),
     mealPlan: () => Array.from({ length: opts.planned ?? 0 }),
@@ -52,7 +53,7 @@ function fakeReplica(opts: {
     templates: () => opts.templates ?? [],
     projects: () => opts.projects ?? [],
     projectProgress: () => ({ done: 0, total: 0 }),
-    ruleLists: () => ({ title: [], weather: [], event: [], health: [], screenTime: [] }),
+    ruleLists: () => ({ title: [], weather: [], event: [], health: [], screenTime: [], blockOffer: [] }),
     isVisible: () => false,
     searchSettings: (q: string) => (q === 'categories' ? [{ label: 'Categories', path: 'Settings › Organize › Categories' }] : []),
   } as unknown as Replica;
@@ -190,6 +191,18 @@ describe('since: features that are new to the person', () => {
     expect(ids([trip({})])).toContain('trip_destination');
     expect(ids([trip({ destination: 'Lisbon' })])).not.toContain('trip_destination');
     expect(ids([trip({ awayStart: null })])).not.toContain('trip_destination');
+  });
+
+  it('suggests block for coins only with rewards on, the automation off and no rule written', () => {
+    const ids = (rewards: boolean, on: boolean, rules: number) => unusedFeatures({
+      ...fakeReplica({ rewards }),
+      generatorEnabled: () => on,
+      ruleLists: () => ({ blockOffer: Array.from({ length: rules }) }),
+    } as unknown as Replica, { since: '2026-10-19', limit: 20 }).suggestions.map(s => s.id);
+    expect(ids(true, false, 0)).toContain('block_for_coins');
+    expect(ids(false, false, 0)).not.toContain('block_for_coins');
+    expect(ids(true, true, 0)).not.toContain('block_for_coins');
+    expect(ids(true, false, 1)).not.toContain('block_for_coins');
   });
 
   it('suggests a program only with Workouts on, two or more routines and no program', () => {
