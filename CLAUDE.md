@@ -522,6 +522,7 @@ file: the two maps are indexes, not write-ups.
 | "if there's no butter, use margarine" | `src/utils/itemSubs.ts` — see `docs/arch/groceries.md` |
 | "white onion is still onion" | `src/utils/itemVarieties.ts` — see `docs/arch/groceries.md` |
 | "always use oat milk for milk" | `src/utils/standingSwaps.ts` — see `docs/arch/groceries.md` |
+| two items used interchangeably, with which one went into a cooking picked per meal ("butter or vegan butter") | `src/utils/itemEither.ts` + `ItemSubLink.either` + `MealPlanEntry.itemPicks`, resolved in `applyStandingSwap` — see `docs/arch/groceries.md`. An unanswered pair is undecided, never defaulted: nutrition refuses and the log prompt asks |
 | one recipe used inside another | `src/utils/recipeComponents.ts` — see `docs/arch/recipes.md` |
 | a recipe filled from what's in the kitchen (a grain bowl), and what kind of food an item is | `src/utils/recipeBlanks.ts` (the blank and its fill, which rides `RecipeOverride.fill`) + `src/utils/blankPicker.ts` (what the kitchen offers) + `src/utils/foodKinds.ts` — see `docs/arch/recipes.md` |
 | "serrano or jalapeño", decided at the shelf | `ChoiceResolution.undecided` in `src/utils/recipeComponents.ts` — see `docs/arch/groceries.md` |
