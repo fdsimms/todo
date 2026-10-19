@@ -1,7 +1,8 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useContext, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, type NativeSyntheticEvent, type TextLayoutEventData } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PressableScale } from './PressableScale';
+import { EmbeddedPaneContext } from './EmbeddedRoute';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, type Colors } from '../theme';
 
@@ -58,7 +59,9 @@ export function DetailHeader({
     if (e.nativeEvent.lines.length > 1) setWrapped(true);
   }, []);
 
-  const backButton = (
+  // In a pane there is nowhere to go back to: the list is still beside it.
+  const embedded = useContext(EmbeddedPaneContext);
+  const backButton = embedded ? null : (
     <PressableScale
       onPress={onBack}
       hitSlop={8}

@@ -124,6 +124,9 @@ type RootStackParamList = {
   ProjectDetail: { projectId: string; returnTo?: string };
 };
 
+/** What opens a project: the route's params, and what a pane is handed in place of a push. */
+export type ProjectDetailParams = RootStackParamList['ProjectDetail'];
+
 // One shared empty array for a task with no subtasks — a fresh `[]` per row per
 // render is exactly the identity churn the grouping below exists to avoid.
 const NO_SUBTASKS: Task[] = [];

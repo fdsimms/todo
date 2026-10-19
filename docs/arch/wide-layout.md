@@ -1,6 +1,6 @@
 # Wide windows: iPad and the iPhone app on a Mac
 
-**Status: phases 0 to 2 are built; phases 3 and 4 are planned.** The app ships as a universal iOS app
+**Status: phases 0 to 2 are built; phase 3 is built for Recipes and Projects and planned for the rest; phase 4 is planned.** The app ships as a universal iOS app
 (`ios.supportsTablet`), so an iPad runs it natively and an Apple silicon Mac runs it as a "Designed
 for iPad" app in a resizable window. This is the cheap route to a desktop-friendly app, and it sits
 beside the separate desktop client in `docs/arch/desktop-client.md` rather than replacing it.
@@ -57,11 +57,33 @@ to know:
 - **Crossing the breakpoint** closes a drawer left open (`AppNavigator`'s effect), and the window is
   resizable, so nothing may cache which side of it it was on.
 
+## Two panes (phase 3, Recipes and Projects)
+
+From `TWO_PANE_MIN_WINDOW_WIDTH` (1100pt) up, Recipes and Projects show the list on the left
+(`TWO_PANE_LIST_WIDTH`, 400pt) and the open page on the right. Below it they are the single column
+they always were, and a tap pushes the page. Four things to know:
+
+- **The page is the pushed screen, drawn in place.** `RecipeDetailScreen` and `ProjectDetailScreen`
+  read `useRoute` and call `navigation.goBack`, and are thousands of lines, so `EmbeddedRoute`
+  supplies the route they ask for and a navigation whose `goBack` closes the pane. A new two-pane
+  screen reuses it instead of splitting its detail screen in two. `params` must keep its identity
+  while the same thing is open (`RecipeDetailScreen` reseeds its state when it changes), and the
+  pane is keyed by the id so switching rows remounts rather than carrying state across.
+- **A list screen always renders its list first, in the same place** (`TwoPane`), so crossing the
+  breakpoint keeps scroll position, search and a selection in progress. The screen's rows take
+  `paneActive`, an outline rather than a tint, because a selected row's background must be opaque.
+- **The column cap is lifted per screen, by route** (`TWO_PANE_ROUTES`, `columnUncappedFor`), since
+  two panes are wider than one column by design. `AppFrame followRoute` reads the focused route from
+  `useFocusedRouteStore`, written on every navigation state change. It is the focused route, not
+  the tab under it: a page pushed over a two-pane screen is a single column and keeps the cap.
+- **Anything else that opens the same page still pushes it** (a meal plan row, a search result, a
+  deep link). Only the list screen's own rows and the "new" flows open it in the pane.
+
 ## What isn't, and the plan
 
 | Phase | What | Notes |
 |---|---|---|
-| 3 | Two panes for Today, Groceries, Recipes and Projects: a list on the left, the selected thing on the right | The hard part is `TaskEditor` (a 9,000-line full-screen sheet). Hosting it inline in a pane is the real version; keeping it a centered card on a wide window is the cheap one. Selection in the list uses an outline, since a selected row's background must be opaque (see CLAUDE.md, "A selected/active row's background"). |
+| 3 (rest) | Two panes for Today and Groceries: a list on the left, the selected thing on the right | The hard part is `TaskEditor` (a 9,000-line full-screen sheet). Hosting it inline in a pane is the real version; keeping it a centered card on a wide window is the cheap one. Selection in the list uses an outline, since a selected row's background must be opaque (see CLAUDE.md, "A selected/active row's background"). |
 | 4 | Desktop input: hover, a right-click or visible button for every swipe-only action, and the rest of the shortcuts | `⌘N`, `⌘F`, `⌘Z` and Escape already exist (`useKeyShortcuts`, `todo-key-commands`). Swipe actions are the gap: a trackpad or mouse can't do most of them. |
 
 Not available on a Mac, as it isn't in the desktop-client plan either: HealthKit, Screen Time,
