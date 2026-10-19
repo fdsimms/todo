@@ -100,7 +100,7 @@ const mockEventsWithExternalId = jest.fn((_id: string) => Promise.resolve([] as 
 jest.mock('todo-eventkit-bridge', () => ({
   externalIdentifiers: (ids: string[]) => mockExternalIds(ids),
   eventsWithExternalIdentifier: (id: string) => mockEventsWithExternalId(id),
-}), { virtual: true });
+}));
 
 // useGroceryStore (real, below) imports these unconditionally for
 // startTrip/endTrip — same expo-notifications-in-node problem the task store

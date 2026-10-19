@@ -27,7 +27,7 @@ jest.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
 const mockCoordinates = jest.fn();
 jest.mock('todo-eventkit-bridge', () => ({
   eventCoordinatesRaw: (ids: string[]) => mockCoordinates(ids),
-}), { virtual: true });
+}));
 const mockDemo = jest.fn(() => false);
 jest.mock('../utils/demoState', () => ({ isDemoModeActive: () => mockDemo() }));
 

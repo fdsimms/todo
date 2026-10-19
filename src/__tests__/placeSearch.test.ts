@@ -12,7 +12,7 @@ jest.mock('../store/useSettingsStore', () => ({
 }));
 jest.mock('../utils/demoState', () => ({ isDemoModeActive: jest.fn(() => false) }));
 const mockSearch = jest.fn();
-jest.mock('todo-eventkit-bridge', () => ({ searchPlacesRaw: (q: string) => mockSearch(q) }), { virtual: true });
+jest.mock('todo-eventkit-bridge', () => ({ searchPlacesRaw: (q: string) => mockSearch(q) }));
 
 const demoMock = isDemoModeActive as jest.MockedFunction<typeof isDemoModeActive>;
 

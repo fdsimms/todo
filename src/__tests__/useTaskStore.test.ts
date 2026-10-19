@@ -383,7 +383,7 @@ const mockEventsWithExternalId = jest.fn((_id: string) => Promise.resolve([] as 
 jest.mock('todo-eventkit-bridge', () => ({
   externalIdentifiers: (ids: string[]) => mockExternalIds(ids),
   eventsWithExternalIdentifier: (id: string) => mockEventsWithExternalId(id),
-}), { virtual: true });
+}));
 jest.mock('../store/useCalendarStore', () => ({
   // subscribe: useEventPeopleStore follows the calendar to read server ids.
   useCalendarStore: { getState: jest.fn(() => ({ events: [], pastEvents: [], loaded: false })), subscribe: jest.fn() },

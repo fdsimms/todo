@@ -46,7 +46,7 @@ jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: { getState: () => ({ dayResetTime: '00:00', weekStartsOn: 0 }) },
 }));
 const mockExternalIds = jest.fn();
-jest.mock('todo-eventkit-bridge', () => ({ externalIdentifiers: (ids: string[]) => mockExternalIds(ids) }), { virtual: true });
+jest.mock('todo-eventkit-bridge', () => ({ externalIdentifiers: (ids: string[]) => mockExternalIds(ids) }));
 
 const event = (overrides: Partial<BusyEvent> = {}): BusyEvent => ({
   id: 'e1',
