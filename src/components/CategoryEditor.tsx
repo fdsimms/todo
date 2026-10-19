@@ -402,7 +402,7 @@ export function CategoryEditor({ visible, category: liveCategory, onClose }: Pro
               <Ionicons name="airplane-outline" size={18} color={hideOnVacation ? colors.accent : colors.textSecondary} />
               <View style={styles.optionContent}>
                 <Text style={styles.optionLabel}>Hide on vacation</Text>
-                <Text style={styles.optionHint}>Hides these tasks while vacation mode is on.</Text>
+                <HelpText style={styles.optionHint}>Hides these tasks while vacation mode is on.</HelpText>
               </View>
               <Toggle value={hideOnVacation} />
             </TouchableOpacity>
@@ -418,7 +418,7 @@ export function CategoryEditor({ visible, category: liveCategory, onClose }: Pro
               <Ionicons name="color-wand-outline" size={18} color={excludeFromSuggestions ? colors.accent : colors.textSecondary} />
               <View style={styles.optionContent}>
                 <Text style={styles.optionLabel}>Skip in suggestions</Text>
-                <Text style={styles.optionHint}>Keeps these out of suggested pins and focus sessions. You can still pin or queue them by hand</Text>
+                <HelpText style={styles.optionHint}>Keeps these out of suggested pins and focus sessions. You can still pin or queue them by hand.</HelpText>
               </View>
               <Toggle value={excludeFromSuggestions} />
             </TouchableOpacity>
@@ -434,7 +434,7 @@ export function CategoryEditor({ visible, category: liveCategory, onClose }: Pro
               <Ionicons name="notifications-off-outline" size={18} color={excludeFromNewBanner ? colors.accent : colors.textSecondary} />
               <View style={styles.optionContent}>
                 <Text style={styles.optionLabel}>Skip in new tasks banner</Text>
-                <Text style={styles.optionHint}>Keeps these off the new tasks banner and the new dot on their row.</Text>
+                <HelpText style={styles.optionHint}>Keeps these off the new tasks banner and the new dot on their row.</HelpText>
               </View>
               <Toggle value={excludeFromNewBanner} />
             </TouchableOpacity>

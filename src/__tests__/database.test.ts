@@ -1907,7 +1907,7 @@ describe('Templates', () => {
     quotaRampEvery: null,
     quotaRampGoal: null,
     recurrenceCount: null,
-    vacationPause: false, excludeFromSuggestions: false, pinEachOccurrence: false, medicationChecklist: false, conditionsMatch: 'all', weatherWait: null, difficulty: null,
+    vacationPause: false, excludeFromSuggestions: false, pinEachOccurrence: false, medicationChecklist: false, conditionsMatch: 'all', weatherWait: null, slotIn: null, difficulty: null,
     estimatedMinutes: null,
     completionTimerMinutes: null, completionTimerNote: null,
     penaltyMinutes: null,

@@ -607,3 +607,21 @@ describe('the slotIn field', () => {
     expect(isFieldMissing({ ...dated, recurrenceType: 'daily', recurrenceInterval: 1 }, 'slotIn', [baseCategory])).toBe(false);
   });
 });
+
+describe('the slotIn queue order', () => {
+  const at = (id: string, title: string, day: number): Task => ({
+    ...baseTask, id, title, dueDate: new Date(2026, 9, day).toISOString(), slotIn: null,
+  });
+  const tasks = [at('a', 'Apple', 20), at('b', 'Banana', 21), at('c', 'Cherry', 22), at('d', 'Date', 23)];
+  const minutes: Record<string, number | null> = { a: 30, b: 300, c: 120, d: null };
+
+  it('asks about the fullest days first, and unknown days last', () => {
+    const order = backfillCandidates(tasks, 'slotIn', { categories: [], dayLoadOf: t => minutes[t.id] }).map(t => t.id);
+    expect(order).toEqual(['b', 'c', 'a', 'd']);
+  });
+
+  it('stays alphabetical without a reading, and for every other field', () => {
+    expect(backfillCandidates(tasks, 'slotIn', { categories: [] }).map(t => t.id)).toEqual(['a', 'b', 'c', 'd']);
+    expect(backfillCandidates(tasks, 'priority', { dayLoadOf: t => minutes[t.id] }).map(t => t.id)).toEqual(['a', 'b', 'c', 'd']);
+  });
+});

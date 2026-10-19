@@ -4720,6 +4720,11 @@ export interface TemplateItem {
   // seeds a task that is not waiting. Only a plain one-off may wait, so an item
   // that repeats or is a chain seeds nothing (see canWaitForWeather).
   weatherWait?: WeatherCondition | null;
+  // Seeds Task.slotIn on the task this item creates: true waits for a day
+  // that isn't full, false keeps the date even in a category set to wait.
+  // Null (the default, and what stored JSON from before the field reads as)
+  // seeds no answer, so the task follows its category.
+  slotIn?: boolean | null;
   // Seeds Task.pinEachOccurrence on the task this item creates.
   pinEachOccurrence?: boolean;
   // Adds one subtask per medication you currently take, read from the

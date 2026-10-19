@@ -1223,6 +1223,7 @@ const itemSchema = z.object({
   linkUrl: z.string().nullable().optional(),
   location: z.string().nullable().optional(),
   weatherWait: z.enum(['sunny', 'rainy', 'snowy', 'cold', 'hot']).nullable().optional().describe('Hold the task until the next day with this forecast. Only for a one-off item.'),
+  slotIn: z.boolean().nullable().optional().describe('If the day is full: true makes the task wait for a day that is not busy, false keeps its date even in a category set to wait, null follows the category.'),
   pinEachOccurrence: z.boolean().optional(),
   medicationChecklist: z.boolean().optional().describe('When the template runs, add one subtask per medication the person currently takes (their medication log, archived medicines left out) after the item\'s own subtasks. Turn it on for an item like "Medications"; the list is read at run time, never stored.'),
   chain: z.object({

@@ -141,6 +141,13 @@ export interface BackfillCandidatesOptions {
    * `isFieldMissing`'s `vacation` case for why. Omit for any other field.
    */
   categories?: Category[];
+  /**
+   * How full a task's day already is (`DayLoad.rankedMinutes`), or null when
+   * nothing is known about it. Read only by `slotIn`, which asks about the
+   * tasks on the fullest days first: those are the answers that change this
+   * week. The screen supplies it, since the reading needs the calendar.
+   */
+  dayLoadOf?: (task: Task) => number | null;
 }
 
 /**
@@ -307,7 +314,16 @@ export function backfillCandidates(
   fieldId: BackfillFieldId,
   opts: BackfillCandidatesOptions = {}
 ): Task[] {
-  return queuedRows(tasks, fieldId, opts).sort((a, b) => a.title.localeCompare(b.title));
+  const rows = queuedRows(tasks, fieldId, opts);
+  const loadOf = opts.dayLoadOf;
+  if (fieldId === 'slotIn' && loadOf) {
+    const load = new Map(rows.map(t => [t.id, loadOf(t) ?? -1]));
+    return rows.sort((a, b) =>
+      load.get(b.id)! - load.get(a.id)!
+      || (a.dueDate ?? '').localeCompare(b.dueDate ?? '')
+      || a.title.localeCompare(b.title));
+  }
+  return rows.sort((a, b) => a.title.localeCompare(b.title));
 }
 
 /**

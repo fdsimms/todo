@@ -342,6 +342,16 @@ describe('buildDraftsFromTemplate', () => {
     expect(draft.difficulty).toBe('hard');
   });
 
+  it('seeds "If the day is full", and no answer when the item has none', () => {
+    const [waits] = buildDraftsFromTemplate([makeItem({ slotIn: true })], noAnchors);
+    expect(waits.slotIn).toBe(true);
+    const [keeps] = buildDraftsFromTemplate([makeItem({ slotIn: false })], noAnchors);
+    expect(keeps.slotIn).toBe(false);
+    const [plain] = buildDraftsFromTemplate([makeItem()], noAnchors);
+    expect(plain.slotIn).toBeNull();
+    expect(normalizeTemplateItem({}).slotIn).toBeNull();
+  });
+
   it('seeds a weather wait on a one-off item, and an older item without one reads as none', () => {
     const [draft] = buildDraftsFromTemplate([makeItem({ weatherWait: 'sunny' })], noAnchors);
     expect(draft.weatherWait).toBe('sunny');

@@ -8,7 +8,12 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { NamedIcon } from '../components/CoinIcon';
 import { useShallow } from 'zustand/react/shallow';
 import { format } from 'date-fns/format';
-import { describeReminderTracksVisibility } from '../utils/dateUtils';
+import { dayKeyOf, describeReminderTracksVisibility, getEffectiveTaskDate, getLogicalToday, getTaskDayStart } from '../utils/dateUtils';
+import { addDays } from 'date-fns/addDays';
+import { buildDayBuckets } from '../utils/calendarMonth';
+import { assumedMinutesFor, buildDayLoads } from '../utils/dayLoad';
+import { liveAwaySpans } from '../utils/awayDates';
+import { useCalendarStore } from '../store/useCalendarStore';
 import { getVisibleAt } from '../utils/visibilityUtils';
 import { useTaskStore, redoRestoringRows } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -134,6 +139,10 @@ const HOLIDAY_SEGMENTS: { value: HolidayRule | null; label: string }[] = [
   { value: 'skip', label: 'Skip it' },
   { value: 'move', label: 'Next day' },
 ];
+
+// How far ahead "If the day is full" reads day loads to order its queue. A
+// task dated past this is asked about after every one inside it.
+const SLOT_IN_RANK_DAYS = 28;
 
 // "If the day is full". Both are answers written onto the task, so neither is
 // pre-selected; the dismissal leaves it following its category.
@@ -573,11 +582,45 @@ export function BackfillScreen() {
   );
   const recipeCounts = useMemo(() => recipeBackfillFieldCounts(recipes), [recipes]);
 
+  // "If the day is full" asks about the tasks on the fullest days first, read
+  // the way the date picker's busy cue reads a day. Built only while that
+  // field is open, since it walks the calendar and four weeks of tasks.
+  const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
+  const calendarEvents = useCalendarStore(s => s.events);
+  const calendarLoaded = useCalendarStore(s => s.loaded);
+  const calendarWindowStart = useCalendarStore(s => s.windowStart);
+  const calendarWindowEnd = useCalendarStore(s => s.windowEnd);
+  const slotInDayLoadOf = useMemo(() => {
+    if (active?.kind !== 'task' || active.id !== 'slotIn') return undefined;
+    const today = getLogicalToday(dayResetTime);
+    const days = Array.from({ length: SLOT_IN_RANK_DAYS }, (_, i) => addDays(today, i));
+    const buckets = buildDayBuckets(tasks, { from: days[0], to: days[days.length - 1], dayResetTime });
+    const loads = buildDayLoads(days, buckets, {
+      taskById: new Map(tasks.map(t => [t.id, t])),
+      busyEvents: calendarReadEnabled && calendarLoaded ? calendarEvents : [],
+      busyWindow: calendarWindowStart && calendarWindowEnd
+        ? { start: new Date(calendarWindowStart), end: new Date(calendarWindowEnd) }
+        : null,
+      awaySpans: liveAwaySpans(projects, dayResetTime),
+      dayResetTime,
+      assumedTaskMinutes: assumedMinutesFor(tasks),
+    });
+    const todayKey = dayKeyOf(today);
+    return (task: Task) => {
+      const iso = getEffectiveTaskDate(task, dayResetTime);
+      if (!iso) return null;
+      const key = dayKeyOf(getTaskDayStart(new Date(iso), dayResetTime));
+      // Overdue is on today, which is where it is weighing.
+      return loads.get(key < todayKey ? todayKey : key)?.rankedMinutes ?? null;
+    };
+  }, [active, tasks, dayResetTime, calendarReadEnabled, calendarLoaded, calendarEvents, calendarWindowStart, calendarWindowEnd, projects]);
+
   const taskQueue = useMemo(
     () => active?.kind === 'task'
-      ? backfillCandidates(tasks, active.id, { fromScratch, categories }).filter(t => !skippedIds.has(t.id))
+      ? backfillCandidates(tasks, active.id, { fromScratch, categories, dayLoadOf: slotInDayLoadOf }).filter(t => !skippedIds.has(t.id))
       : [],
-    [tasks, active, fromScratch, skippedIds, categories]
+    [tasks, active, fromScratch, skippedIds, categories, slotInDayLoadOf]
   );
   const categoryQueue = useMemo(
     () => active?.kind === 'category' ? categoryBackfillCandidates(categories, active.id, { fromScratch }).filter(c => !skippedIds.has(c.id)) : [],

@@ -120,7 +120,7 @@ const MEDICATION_NAME_MAX_LENGTH = 60;
 /** Matches TaskEditor's own cap on the completion timer's note. */
 const COMPLETION_TIMER_NOTE_MAX_LENGTH = 120;
 
-type FieldKey = 'blanks' | 'conditions' | 'variants' | 'answerGate' | 'category' | 'tags' | 'priority' | 'effort' | 'difficulty' | 'subtasks' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'penalty' | 'medication' | 'logMealSlot' | 'link' | 'location' | 'weatherWait' | 'target' | 'phone' | 'email' | 'waitsOn';
+type FieldKey = 'blanks' | 'conditions' | 'variants' | 'answerGate' | 'category' | 'tags' | 'priority' | 'effort' | 'difficulty' | 'subtasks' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'penalty' | 'medication' | 'logMealSlot' | 'link' | 'location' | 'weatherWait' | 'target' | 'phone' | 'email' | 'waitsOn' | 'slotIn';
 
 interface Props {
   visible: boolean;
@@ -303,6 +303,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [weatherWait, setWeatherWait] = useState<WeatherCondition | null>(null);
   const weatherTasksOn = useSettingsStore(s => s.weatherTasks);
   const [difficulty, setDifficulty] = useState<Difficulty | null>(null);
+  // "If the day is full" (TemplateItem.slotIn): null follows the category.
+  const [slotIn, setSlotIn] = useState<boolean | null>(null);
   const [pinEachOccurrence, setPinEachOccurrence] = useState(false);
   const [medicationChecklist, setMedicationChecklist] = useState(false);
   const [polarity, setPolarity] = useState<Polarity>('positive');
@@ -413,6 +415,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setExcludeFromSuggestions(item?.excludeFromSuggestions ?? draft?.excludeFromSuggestions ?? false);
     setWeatherWait(item?.weatherWait ?? draft?.weatherWait ?? null);
     setDifficulty(item?.difficulty ?? draft?.difficulty ?? null);
+    setSlotIn(item?.slotIn ?? draft?.slotIn ?? null);
     setPinEachOccurrence(item?.pinEachOccurrence ?? draft?.pinEachOccurrence ?? false);
     setMedicationChecklist(item?.medicationChecklist ?? false);
     setPolarity(item?.polarity ?? draft?.polarity ?? 'positive');
@@ -506,7 +509,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const cardHasValue: Record<string, boolean> = {
     when: dueOffsetDays !== null || deferOffsetDays !== null || deadlineOffsetDays !== null
       || timeSegments.length > 0 || !!windowStart || !!windowEnd || reminderOffsetMinutes !== null
-      || weatherWait !== null || vacationPause,
+      || weatherWait !== null || slotIn !== null || vacationPause,
     repeat: recurrenceType !== 'none',
     priority: priority > 0 || pinEachOccurrence || excludeFromSuggestions || gatesApps || penaltyMinutes !== null
       || effort > 0 || estimatedMinutes !== null || difficulty !== null,
@@ -733,6 +736,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       // Cleared with the repeat or chain it conflicts with, the rule TaskEditor
       // applies on save: only a plain one-off may wait for weather.
       weatherWait: recurrenceType === 'none' && !chainEnabled ? weatherWait : null,
+      slotIn,
       difficulty,
       // Cleared with the schedule: it only means anything on a repeating task.
       pinEachOccurrence: recurrenceType !== 'none' ? pinEachOccurrence : false,
@@ -874,6 +878,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const summaryParts = buildTaskSummary({
     optional,
     date: offsetLabel(dueOffsetDays),
+    waitsIfFull: slotIn === true,
     hiddenUntil: offsetLabel(deferOffsetDays),
     timesOfDay: timeSegments,
     windowStart: windowBoundLabel(windowStart, windowStartSun) ?? undefined,
@@ -912,6 +917,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const summaryTargets: Partial<Record<string, { card: string; open?: () => void }>> = {
     optional: { card: 'optional' },
     date: { card: 'when' },
+    slotIn: { card: 'when', open: () => openField('slotIn') },
     hideUntil: { card: 'when' },
     deadline: { card: 'when' },
     remindMe: { card: 'when' },
@@ -2073,6 +2079,31 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   value={weatherWait}
                   onChange={next => setWeatherWait(next === weatherWait ? null : next)}
                   options={WEATHER_CONDITIONS.map(c => ({ value: c, label: weatherConditionLabel(c) }))}
+                />
+              </CollapsibleField>
+            </>
+          )}
+          {/* Seeds Task.slotIn. Offered where the task could wait (see
+              canSlotIn), and kept while it holds an answer so it can be
+              cleared; tapping the chosen segment again clears it, the way
+              Wait for weather does above. */}
+          {(slotIn !== null || (recurrenceType !== 'hours' && !(recurrenceType === 'daily' && recurrenceInterval <= 1)
+            && targetCount === null && polarity !== 'negative' && reminderOffsetMinutes === null && weatherWait === null)) && (
+            <>
+              <View style={styles.sep} />
+              <CollapsibleField
+                label="If the day is full"
+                summary={slotIn === null ? undefined : slotIn ? 'Wait' : 'Keep the date'}
+                emptySummary="As its category"
+                hint="Wait moves tasks made from this item to the next day that isn't full. Keep the date holds them to it even in a category set to wait."
+                expanded={fieldOpen('slotIn')}
+                onToggle={() => toggleField('slotIn')}
+              >
+                <SegmentedControl<boolean | null>
+                  label="If the day is full"
+                  value={slotIn}
+                  onChange={next => setSlotIn(next === slotIn ? null : next)}
+                  options={[{ value: false, label: 'Keep the date' }, { value: true, label: 'Wait' }]}
                 />
               </CollapsibleField>
             </>
