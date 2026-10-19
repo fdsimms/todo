@@ -1,7 +1,7 @@
 import { slipsToday } from '../utils/negativeHabits';
 import { isStreakAtRecord } from '../utils/streakRecord';
 import { registerPausedProjectSource } from '../utils/projectPause';
-import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
+import { dayKeyOf, getCurrentDayStart, getCurrentLogicalDayKey } from '../utils/dateUtils';
 import { logTaskHealthValue, unlogTaskNutrientFromFoodLog } from '../utils/healthCompletionSync';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectLockStore } from '../store/useProjectLockStore';
@@ -14202,6 +14202,15 @@ describe('quota tasks', () => {
   });
 
   describe('logQuotaUnit', () => {
+    it('stamps the day it was logged on, and an undo clears it', () => {
+      useTaskStore.setState({ tasks: [quota({ progressCount: 3, quotaRestAfterLog: true })] });
+      useTaskStore.getState().logQuotaUnit('water');
+      expect(useTaskStore.getState().tasks.find(t => t.id === 'water')!.quotaLoggedDayKey).toBe(getCurrentLogicalDayKey());
+
+      useTaskStore.getState().unlogQuotaUnit('water');
+      expect(useTaskStore.getState().tasks.find(t => t.id === 'water')!.quotaLoggedDayKey).toBeNull();
+    });
+
     it('logs one unit without completing the task', () => {
       useTaskStore.setState({ tasks: [quota({ progressCount: 3 })] });
       useTaskStore.getState().logQuotaUnit('water');

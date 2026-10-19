@@ -23,6 +23,10 @@ const NOT_NAMED: Record<string, string[]> = {
   'set by the calendar reconcile, never by a draft': [
     'calendarEventExternalId', 'completionCalendarEventExternalId', 'timeBlockExternalId',
   ],
+
+  // Per-occurrence state a new row starts without: the day a unit was last
+  // logged is stamped by logQuotaUnit, and a draft has logged nothing.
+  'stamped by logging, never by a draft': ['quotaLoggedDayKey'],
 };
 
 const ALL_NOT_NAMED = Object.values(NOT_NAMED).flat();

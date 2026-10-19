@@ -29,6 +29,7 @@ import {
   isQuotaPartial,
   isOnPaceQuota,
   quotaHidesWhenOnPace,
+  quotaRestsForToday,
   isDismissedToday,
   isTaskBlocked,
   isWaitingTask,
@@ -2116,6 +2117,63 @@ describe('quota tasks', () => {
 
     it('is false for quotaAlwaysVisible — being on pace never keeps it off Today', () => {
       expect(isOnPaceQuota({ ...quotaTask, quotaAlwaysVisible: true, progressCount: 2 })).toBe(false);
+    });
+  });
+
+  // NOW is Tue Jun 10 10:00, a day and a third into a week that starts Monday, so
+  // 1 of 4 is on pace and 3 of 4 is well ahead of it.
+  describe('quotaRestAfterLog', () => {
+    const weekly: Task = {
+      ...quotaTask,
+      recurrenceType: 'weekly',
+      quotaPeriod: 'week',
+      targetCount: 4,
+      progressCount: 3,
+      quotaRestAfterLog: true,
+    };
+
+    it('hides for the rest of the day it was logged on once on pace', () => {
+      const logged = { ...weekly, quotaLoggedDayKey: '2025-06-10' };
+      expect(quotaRestsForToday(logged)).toBe(true);
+      expect(isTaskVisible(logged)).toBe(false);
+      expect(isTaskDeferred(logged)).toBe(true);
+    });
+
+    it('is back at the next day start, not when the next unit falls due', () => {
+      const logged = { ...weekly, quotaLoggedDayKey: '2025-06-10' };
+      expect(getVisibleAt(logged)).toEqual(new Date(2025, 5, 11, 0, 0, 0));
+      // The next day, still ahead of pace and with nothing logged yet that day.
+      jest.setSystemTime(new Date(2025, 5, 11, 9, 0, 0));
+      expect(isQuotaOnPace(logged)).toBe(true);
+      expect(isTaskVisible(logged)).toBe(true);
+    });
+
+    it('stays up on a day with no log, even while ahead of pace', () => {
+      expect(isTaskVisible(weekly)).toBe(true);
+      expect(isTaskVisible({ ...weekly, quotaLoggedDayKey: '2025-06-09' })).toBe(true);
+    });
+
+    it('stays up when the log leaves it behind pace', () => {
+      const behind = { ...weekly, progressCount: 0, quotaLoggedDayKey: '2025-06-10' };
+      expect(isQuotaOnPace(behind)).toBe(false);
+      expect(isTaskVisible(behind)).toBe(true);
+    });
+
+    it('is off unless asked for, and quotaAlwaysVisible wins', () => {
+      const logged = { ...weekly, quotaLoggedDayKey: '2025-06-10' };
+      expect(quotaRestsForToday({ ...logged, quotaRestAfterLog: false })).toBe(false);
+      // The ordinary pace hide still applies to it: ahead of pace, next unit days away.
+      expect(isTaskVisible({ ...logged, quotaRestAfterLog: false })).toBe(false);
+      expect(isTaskVisible({ ...logged, quotaAlwaysVisible: true })).toBe(true);
+    });
+
+    it('is for a weekly target only', () => {
+      const daily = { ...quotaTask, quotaRestAfterLog: true, progressCount: 2, quotaLoggedDayKey: '2025-06-10' };
+      expect(quotaRestsForToday(daily)).toBe(false);
+    });
+
+    it('sends the row off on the unit that catches it up to pace', () => {
+      expect(quotaLeavesTodayAfterLog({ ...weekly, progressCount: 0 })).toBe(true);
     });
   });
 

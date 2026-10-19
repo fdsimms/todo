@@ -271,6 +271,7 @@ export function newTaskFromDraft(
     quotaReminders: draft.quotaReminders ?? false,
     quotaPlaceIds: draft.quotaPlaceIds ?? [],
     quotaAlwaysVisible: draft.quotaAlwaysVisible ?? false,
+    quotaRestAfterLog: draft.quotaRestAfterLog ?? false,
     followWaterTarget: draft.followWaterTarget ?? false,
     quotaPeriod: isRotationTask(draft) ? 'week' : draft.quotaPeriod ?? 'day',
     quotaRampStep: draft.quotaRampStep ?? null,

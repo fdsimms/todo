@@ -52,6 +52,7 @@ const NOT_EXPOSED: Record<string, string[]> = {
     'followUpTaskSourceTitle', 'generatedSourceId', 'generatedReadyAt', 'waitingFollowUpDeclinedAt', 'timerStartedAt',
     'timerElapsedSeconds', 'estimateBeforeTiming', 'seriesDefaults', 'pendingImport', 'reminderTimeAnchor',
     'reminderUtcOffsetMinutes', 'createdAt', 'archivedAt', 'previousOccurrenceId', 'rainSkippedOn',
+    'quotaLoggedDayKey',
   ],
 
   // Settings Claude has no reason to read or set per task, or that are only

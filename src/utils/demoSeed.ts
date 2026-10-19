@@ -888,7 +888,9 @@ export function seedDemoData(): void {
     quotaPeriod: 'week',
     recurrenceType: 'weekly',
     recurrenceInterval: 1,
-    quotaAlwaysVisible: true,
+    // Steps aside for the rest of the day once a workout puts it on pace, and
+    // is back tomorrow (Task.quotaRestAfterLog).
+    quotaRestAfterLog: true,
   });
   const strengthScaled = quotaProrationPatch(strength, 4, 2, today);
   if (strengthScaled) updateTask(strength.id, strengthScaled);

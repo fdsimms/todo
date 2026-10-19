@@ -1197,6 +1197,8 @@ describe('demo mode', () => {
     expect(proratedFrom(scaled!)).toBe(4);
     expect(scaled!.quotaStartedAt).not.toBeNull();
     expect(isTaskVisible(scaled!)).toBe(true);
+    // Rests for the day after a log instead of staying up all week.
+    expect(scaled!.quotaRestAfterLog).toBe(true);
   });
 
   // A rotation is the one shape a plain weekly target can't express: it knows

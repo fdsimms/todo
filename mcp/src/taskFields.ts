@@ -135,6 +135,8 @@ export interface TargetInput {
   coinsPerTap?: boolean;
   /** Keep the row on Today instead of hiding it while the pace is met (`Task.quotaAlwaysVisible`). */
   alwaysVisible?: boolean;
+  /** Weekly only: once a log puts it on pace, hide it for the rest of that day and bring it back the next (`Task.quotaRestAfterLog`). */
+  restAfterLog?: boolean;
   /** Raise the count as it keeps being met: add `add` after every `every` days (weeks, for a weekly target) it was hit, stopping at `upTo`. null clears it. */
   rampUp?: { add: number; every: number; upTo?: number | null } | null;
   /** Creating a weekly target partway through a week: 'fewer' (the default) scales the first week to the days left, 'full' asks for the whole count. */
@@ -512,6 +514,7 @@ export function taskFieldsPatch(
         quotaReminders: false,
         quotaPlaceIds: [],
         quotaAlwaysVisible: false,
+        quotaRestAfterLog: false,
         quotaPeriod: 'day',
         quotaRampStep: null,
         quotaRampEvery: null,
@@ -568,6 +571,10 @@ export function taskFieldsPatch(
       }
       if (t.coinsPerTap !== undefined) patch.coinsPerTap = t.coinsPerTap;
       if (t.alwaysVisible !== undefined) patch.quotaAlwaysVisible = t.alwaysVisible;
+      if (t.restAfterLog !== undefined) {
+        if (t.restAfterLog && (t.per ?? current?.quotaPeriod ?? 'day') !== 'week') errors.push('target.restAfterLog only applies to a weekly target.');
+        else patch.quotaRestAfterLog = t.restAfterLog;
+      }
       if (t.unit !== undefined) patch.targetUnit = t.unit;
       // Ramp up: the app's own rule (src/utils/quotaRamp.ts). Only a plain count
       // can ramp, so going past the target is refused alongside it.
