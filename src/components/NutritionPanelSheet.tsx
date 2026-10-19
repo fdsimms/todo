@@ -10,21 +10,18 @@ import {
 import { SheetModal } from './SheetModal';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, radius, spacing, type Colors } from '../theme';
-import { NUTRIENT_KEYS, type FoodNutrition, type NutrientKey } from '../types';
-import { NUTRIENT_LABEL, NUTRITION_BASIS_LABEL } from '../utils/foodNutrition';
+import { type FoodNutrition, type NutrientKey } from '../types';
+import { NUTRITION_BASIS_LABEL } from '../utils/foodNutrition';
 import {
   applyFoodNutrition,
   applyLabelReading,
   buildPanelNutrition,
-  convertPanelBasis,
-  divideAmountsByServings,
   foodNutritionFieldCount,
   gramsToServingWeight,
   invalidPanelFields,
   labelColumnFieldCount,
   panelFormDirty,
   panelFormFrom,
-  readPanelNumber,
   servingWeightToGrams,
   type PanelFieldKey,
   type NovaGroupText,
@@ -118,16 +115,12 @@ import { BUTTON_LABEL } from '../copy/shared';
  * `applyLabelReading`. Same review, same Save; only the source of the numbers
  * differs.
  *
- * **Three pieces of arithmetic a person would otherwise do against the packet
- * are done here instead**, all in `nutritionPanelForm.ts`, display-only until
- * Save: a g/oz toggle on Serving weight, a "Convert to per 100g / per serving"
- * action, and a "Divide by servings per container" action for whole-package totals (the count is a field of the SERVING card, since it is on the label with the serving size, but is never saved). The last two live in
- * an optional CONVERT card *below* the figures (they act on what is typed, so
- * offering them above the fields invited pressing them first, and a button
- * appearing above the fields would shift them under the finger). Converting is
- * never required: both bases log correctly. Each rewrite says what it did and
- * offers one Undo, dropped by the next edit, because it replaces every typed
- * figure at once.
+ * **A g/oz toggle on Serving weight is the one piece of arithmetic done for
+ * you** (`servingWeightToGrams`): a label with no metric figure needs no mental
+ * multiplication. There is deliberately no converting between per 100g and per
+ * serving, and no dividing of whole-package totals: both bases log correctly as
+ * typed, and the actions that rewrote typed figures were the part of this sheet
+ * nobody could follow.
  */
 
 interface Props {
@@ -207,15 +200,6 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
   // shows "1", not a round-tripped "1.00002". See `servingWeightToGrams`.
   const [weightUnit, setWeightUnit] = useState<ServingWeightUnit>('g');
   const [weightText, setWeightText] = useState(form.servingGrams);
-  // A transient calculator input, never saved: how many servings a package's
-  // whole-total figures should be divided by. Cleared once used or on reopen,
-  // the same as a photo's `label` — a count from an earlier food is worse than
-  // none. See `divideAmountsByServings`.
-  const [servingsText, setServingsText] = useState('');
-  // The one step back for a conversion, since it rewrites every typed figure.
-  // Dropped by any edit made after it, when the snapshot would undo that too.
-  const [undo, setUndo] = useState<{ form: PanelForm; note: string } | null>(null);
-
   // Kept in step so a handler triggered from outside a keystroke (a photo
   // read, a barcode fetch, a column switch) can read the form as it stands
   // right now without being recreated on every render to stay fresh.
@@ -243,8 +227,6 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
     setScanNote(null);
     setWeightUnit('g');
     setWeightText(opened.servingGrams);
-    setServingsText('');
-    setUndo(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
@@ -389,13 +371,11 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
   }, []);
 
   const setAmount = (key: NutrientKey, text: string) => {
-    setUndo(null);
     setForm(f => ({ ...f, amounts: { ...f.amounts, [key]: text } }));
     setBad(b => (b.includes(key) ? b.filter(k => k !== key) : b));
   };
 
   const setWeightAmount = (text: string) => {
-    setUndo(null);
     setWeightText(text);
     setForm(f => ({ ...f, servingGrams: servingWeightToGrams(text, weightUnit) }));
     setBad(b => b.filter(k => k !== 'servingGrams'));
@@ -411,65 +391,12 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
     setWeightText(gramsToServingWeight(grams, unit));
   };
 
-  /** Whether "Convert to X" against the other of per-100g/per-serving has anything to do. */
-  const basisConvertTarget: 'per100g' | 'perServing' | null =
-    form.basis === 'perServing' ? 'per100g' : form.basis === 'per100g' ? 'perServing' : null;
-  const canConvertBasis = basisConvertTarget !== null && convertPanelBasis(form, basisConvertTarget) !== null;
-
-  const convertExample = (() => {
-    if (!basisConvertTarget) return null;
-    const next = convertPanelBasis(form, basisConvertTarget);
-    if (!next) return null;
-    const key = NUTRIENT_KEYS.find(k => typeof readPanelNumber(form.amounts[k]) === 'number');
-    if (!key) return null;
-    return `${NUTRIENT_LABEL[key].label} ${form.amounts[key].trim()} becomes ${next.amounts[key]}`;
-  })();
-
-  const handleConvertBasis = () => {
-    if (!basisConvertTarget) return;
-    const next = convertPanelBasis(form, basisConvertTarget);
-    if (!next) return;
-    haptics.success();
-    setUndo({
-      form,
-      note: `Converted from ${NUTRITION_BASIS_LABEL[form.basis]} to ${NUTRITION_BASIS_LABEL[next.basis]}.`,
-    });
-    setForm(next);
-    setBad([]);
-  };
-
-  const handleUndo = () => {
-    if (!undo) return;
-    haptics.tap();
-    setForm(undo.form);
-    setUndo(null);
-  };
-
   const basisCaption =
     form.basis === 'perServing'
       ? `Type the column for one serving${form.servingText.trim() ? `: ${form.servingText.trim()}` : ''}.`
       : form.basis === 'per100g'
         ? 'Type the column for 100 g.'
         : 'Type the column for 100 ml.';
-
-  const servingsCount = (() => {
-    const n = readPanelNumber(servingsText);
-    return typeof n === 'number' && n > 0 ? n : null;
-  })();
-  const canDivideServings = servingsCount !== null && divideAmountsByServings(form, servingsCount) !== null;
-
-  const handleDivideServings = () => {
-    if (servingsCount === null) return;
-    const next = divideAmountsByServings(form, servingsCount);
-    if (!next) return;
-    haptics.success();
-    setUndo({
-      form,
-      note: `Divided by ${servingsCount} servings. Figures are now per serving.`,
-    });
-    setForm(next);
-    setBad([]);
-  };
 
   const handleSave = () => {
     const invalid = invalidPanelFields(form);
@@ -635,24 +562,6 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
                   gives only a volume. Ounces are saved as grams.
                 </HelpText>
               </View>
-
-              <View style={styles.field}>
-                <Text style={styles.fieldLabel}>Servings per container</Text>
-                <TextField
-                  style={styles.textInput}
-                  value={servingsText}
-                  onChangeText={setServingsText}
-                  placeholder="e.g. 8"
-                  placeholderTextColor={colors.textTertiary}
-                  keyboardType="decimal-pad"
-                  inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
-                  accessibilityLabel="Servings per container"
-                />
-                <HelpText style={styles.hint}>
-                  Optional, and not saved. Only used to divide whole-package totals into
-                  one serving, below the figures.
-                </HelpText>
-              </View>
             </View>
 
             <Text style={styles.groupLabel}>NUTRIENTS</Text>
@@ -661,54 +570,12 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
                 label="The figures on the label are"
                 options={BASIS_OPTIONS}
                 value={form.basis}
-                onChange={basis => { setUndo(null); setForm(f => ({ ...f, basis })); }}
+                onChange={basis => setForm(f => ({ ...f, basis }))}
                 surface="card"
               />
               <HelpText style={styles.hint}>{basisCaption}</HelpText>
             </View>
             <NutrientFieldsCard amounts={form.amounts} bad={bad} onChange={setAmount} />
-
-            <Text style={styles.groupLabel}>CONVERT THE FIGURES (OPTIONAL)</Text>
-            <View style={styles.card}>
-              {!!basisConvertTarget && canConvertBasis && (
-                <View style={styles.field}>
-                  <InlineAction
-                    label={`Convert to ${NUTRITION_BASIS_LABEL[basisConvertTarget]}`}
-                    icon="swap-horizontal-outline"
-                    variant="neutral"
-                    onPress={handleConvertBasis}
-                    style={styles.convertAction}
-                  />
-                  <HelpText style={styles.hint}>
-                    {`Rewrites the figures above using the ${form.servingGrams.trim()} g serving weight.${
-                      convertExample ? ` ${convertExample}.` : ''
-                    } Optional: ${NUTRITION_BASIS_LABEL[form.basis]} is saved and logged correctly as it is.`}
-                  </HelpText>
-                </View>
-              )}
-              {!!undo && (
-                <View style={styles.undoRow}>
-                  <Text style={styles.undoNote}>{undo.note}</Text>
-                  <InlineAction label="Undo" variant="neutral" onPress={handleUndo} />
-                </View>
-              )}
-              {(!!basisConvertTarget && canConvertBasis) || !!undo ? <View style={styles.rule} /> : null}
-              <View style={styles.field}>
-                <InlineAction
-                  label={servingsCount === null ? 'Divide by servings per container' : `Divide by ${servingsCount} servings`}
-                  icon="calculator-outline"
-                  variant="neutral"
-                  disabled={!canDivideServings}
-                  onPress={handleDivideServings}
-                  style={styles.convertAction}
-                />
-                <HelpText style={styles.hint}>
-                  For a label that only gives whole-package totals. Type the totals above and
-                  fill in Servings per container, then divide. Every figure is divided and set
-                  to per serving.
-                </HelpText>
-              </View>
-            </View>
 
             <Text style={styles.groupLabel}>PROCESSING</Text>
             <View style={styles.card}>
@@ -810,14 +677,7 @@ function makeStyles(colors: Colors) {
     // this, and letting the track stretch would pull it away from the field
     // it belongs to.
     weightUnitToggle: { width: 104 },
-    // A card's cross axis stretches by default, which would turn a solo pill
-    // into a full-width button — same fix `SubstituteSheet`'s own solo
-    // `InlineAction` needs (see its `suggestAsk` style).
-    convertAction: { alignSelf: 'flex-start' },
     basisCard: { gap: spacing.sm },
-    undoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
-    undoNote: { flex: 1, color: colors.text, fontSize: font.sm, lineHeight: 18 },
-    rule: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator, marginHorizontal: -spacing.md },
     hint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16 },
     error: { color: colors.redText, fontSize: font.sm, lineHeight: 18, marginTop: spacing.md },
   });
