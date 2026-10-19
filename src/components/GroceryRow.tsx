@@ -59,6 +59,8 @@ interface Props {
   /** While true, a tap selects instead of toggling, and neither drag nor edit fires. */
   selectionMode?: boolean;
   selected?: boolean;
+  /** Its item sheet is the one open in the pane beside the list. Outlined, not tinted: an outline stays opaque in a swipe row. */
+  paneActive?: boolean;
   onSelect?: (id: string) => void;
   /**
    * Swipe left to enter bulk selection with this row pre-selected — the same
@@ -191,6 +193,7 @@ export const GroceryRow = React.memo(function GroceryRow({
   isActive = false,
   selectionMode = false,
   selected = false,
+  paneActive = false,
   onSelect,
   onSwipeSelect,
   onOpenSubstitutes,
@@ -783,6 +786,7 @@ export const GroceryRow = React.memo(function GroceryRow({
         styles.itemWrapper,
         item.checked && styles.itemWrapperChecked,
         isActive && styles.itemWrapperActive,
+        paneActive && !selectionMode && styles.itemWrapperPaneActive,
         choicePosition === 'first' && styles.itemWrapperChoiceFirst,
         choicePosition === 'middle' && styles.itemWrapperChoiceMiddle,
         choicePosition === 'last' && styles.itemWrapperChoiceLast,
@@ -832,6 +836,12 @@ function makeStyles(colors: Colors) {
       marginVertical: spacing.xxs,
       borderRadius: radius.md,
       overflow: 'hidden',
+    },
+    // An outline, drawn inside the card, so the row is no taller than its neighbors.
+    itemWrapperPaneActive: {
+      outlineWidth: 2,
+      outlineColor: colors.accent,
+      outlineOffset: -2,
     },
     itemWrapperActive: {
       // The lifted card, one surface brighter — the same "picked up" treatment

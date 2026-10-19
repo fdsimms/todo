@@ -29,6 +29,7 @@ describe('columnUncappedFor', () => {
     expect(columnUncappedFor(1440, 'Recipes')).toBe(true);
     expect(columnUncappedFor(1440, 'Projects')).toBe(true);
     expect(columnUncappedFor(1440, 'Today')).toBe(true);
+    expect(columnUncappedFor(1440, 'Groceries')).toBe(true);
   });
 
   it('keeps the cap on every other screen', () => {

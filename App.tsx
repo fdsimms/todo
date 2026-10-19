@@ -22,6 +22,7 @@ import { useDailyAgendaSync } from './src/utils/dailyAgendaSync';
 import { useNotificationTapSync } from './src/utils/notificationTapSync';
 import { useShakeToUndo } from './src/utils/useShakeToUndo';
 import { useKeyShortcuts } from './src/hooks/useKeyShortcuts';
+import { useMacMirroringDefault } from './src/hooks/useMacMirroringDefault';
 import { useTaskDeepLinks } from './src/utils/deepLinks';
 import { useHomeScreenQuickActions } from './src/utils/quickActions';
 import { useWidgetSync } from './src/utils/widgetSync';
@@ -94,6 +95,8 @@ function AppContent() {
   // Beside the shake: both are app-wide ways in from outside the screen, and
   // the shortcuts' ⌘Z is the shake's replacement in iPhone Mirroring.
   useKeyShortcuts();
+  // A Mac gets iPhone Mirroring mode's buttons and shortcuts without asking for them.
+  useMacMirroringDefault();
   return (
     <View style={{ flex: 1 }}>
       <StatusBar style={isDark ? 'light' : 'dark'} />

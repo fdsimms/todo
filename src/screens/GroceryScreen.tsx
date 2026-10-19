@@ -100,6 +100,8 @@ import type { GroceryItem, ItemProduct, Recipe, Shop } from '../types';
 import { describeProduct, preferredProductOf } from '../utils/groceryProduct';
 import { entryFor, itemsOnList, listNameFor, isAwayList, HOME_LIST_NAME } from '../utils/groceryLists';
 import { LazySheet } from '../components/LazySheet';
+import { TwoPane } from '../components/TwoPane';
+import { useTwoPane } from '../hooks/useTwoPane';
 import { BUTTON_LABEL } from '../copy/shared';
 
 /** The collapse and scroll key of one store's section in the store lens. */
@@ -181,6 +183,9 @@ function AddGroceryFabWithDropLabel({
 
 export function GroceryScreen() {
   const insets = useSafeAreaInsets();
+  // On a window with room for two panes (`twoPaneFor`) the item sheet opens
+  // beside the list, drawn in place, instead of as a sheet over it.
+  const twoPane = useTwoPane();
   const fabBottom = useFabBottom();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
@@ -1544,6 +1549,7 @@ export function GroceryScreen() {
           isActive={isActive}
           selectionMode={selectionMode}
           selected={selectedIds.has(row.item.id)}
+          paneActive={twoPane && editingId === row.item.id}
           onSelect={toggleSelection}
           onSwipeSelect={enterSelectionMode}
           alternatives={alternativeCaptionById.get(row.item.id)}
@@ -1594,8 +1600,33 @@ export function GroceryScreen() {
     />
   );
 
+  // The item sheet, over the list or (inline) beside it. One definition so the
+  // two can't drift apart.
+  const itemSheet = (inline: boolean) => (
+    <GroceryItemSheet
+      inline={inline}
+      visible={editingId !== null}
+      itemId={editingId}
+      onClose={() => {
+        setEditingId(null);
+        const returnTo = itemReturnToRef.current;
+        itemReturnToRef.current = null;
+        if (returnTo) navigateToTab(returnTo);
+      }}
+      onOpenRecipe={recipeId => {
+        setEditingId(null);
+        openRecipe(recipeId);
+      }}
+      onOpenSettings={entryId => {
+        setEditingId(null);
+        navigateToFoodSearchSettings(navigation, entryId);
+      }}
+      recipeExists={recipeId => recipeIds.has(recipeId)}
+    />
+  );
+
   // ==== render. Everything below is JSX ====
-  return (
+  const screenBody = (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader
         // The title *is* the list you're looking at, which is why it opens the
@@ -1917,27 +1948,12 @@ export function GroceryScreen() {
           onClose={() => setSubstitutesForId(null)}
         />
       </LazySheet>
-      <LazySheet open={editingId !== null}>
-        <GroceryItemSheet
-          visible={editingId !== null}
-          itemId={editingId}
-          onClose={() => {
-            setEditingId(null);
-            const returnTo = itemReturnToRef.current;
-            itemReturnToRef.current = null;
-            if (returnTo) navigateToTab(returnTo);
-          }}
-          onOpenRecipe={recipeId => {
-            setEditingId(null);
-            openRecipe(recipeId);
-          }}
-          onOpenSettings={entryId => {
-            setEditingId(null);
-            navigateToFoodSearchSettings(navigation, entryId);
-          }}
-          recipeExists={recipeId => recipeIds.has(recipeId)}
-        />
-      </LazySheet>
+      {/* A sheet over the list, unless there is room for it beside it (below). */}
+      {!twoPane && (
+        <LazySheet open={editingId !== null}>
+          {itemSheet(false)}
+        </LazySheet>
+      )}
       <LazySheet open={aiMode !== null}>
         <GroceryAISheet
           visible={aiMode !== null}
@@ -1969,6 +1985,24 @@ export function GroceryScreen() {
       </LazySheet>
       {pullSearch.sheet}
     </View>
+  );
+
+  return (
+    <TwoPane
+      list={screenBody}
+      detail={(
+        <>
+          {editingId === null && (
+            <EmptyState
+              icon="cart-outline"
+              title="Pick an item"
+              subtitle="Tap the ellipsis on an item to edit it here."
+            />
+          )}
+          {twoPane && itemSheet(true)}
+        </>
+      )}
+    />
   );
 }
 
