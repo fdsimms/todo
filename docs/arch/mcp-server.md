@@ -857,6 +857,12 @@ Checked lives on the membership row, and `dbSetGroceryListEntry` is also the onl
 mirror columns on the item (`dbSyncGroceryHomeColumns`), so the row and its entry cannot end up
 disagreeing. Removing parks the row and clears a recipe's claim on the quantity, which is two lines.
 
+**`add_grocery_item` takes `inCart` for an incidental** (something bought that was never listed, see
+"Incidental purchases" in `groceries.md`). It is the add followed by the same tick, the two writes the
+app's `addToCartMany` makes, so the trip counts it as bought. It also ticks a row already on the list,
+the one case a plain add leaves alone. It is a parameter rather than a tool because the person's
+sentence is "I added X", and a second tool for the same add would be one more way to pick wrong.
+
 **Every grocery tool is about the list at home, the read included.** The writes all act on the home
 list's entry (`listId` null), so `list_grocery_items` reports that list and each item's tick on it,
 read off `groceryListEntries()`. It used to filter on `GroceryItem.onList`, which is the broader "in
