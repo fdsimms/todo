@@ -1,6 +1,8 @@
 import type { FoodNutrition, GroceryItem, MealPlanEntry, Recipe, RecipeIngredient } from '../types';
 import { groceryNameKey } from '../utils/groceryParse';
-import { choiceGroupKey } from '../utils/recipeComponents';
+import { choiceGroupKey, entryResolution } from '../utils/recipeComponents';
+import { eitherPairKey, UNANSWERED } from '../utils/itemEither';
+import { standingSwapMap } from '../utils/standingSwaps';
 import {
   describeNutritionCoverage,
   describeRecipeNutrition,
@@ -1008,5 +1010,71 @@ describe('optional lines count only when a meal picks them', () => {
     expect(describeRecipeNutritionRange(low, low)).toBe(describeRecipeNutrition(low));
     expect(describeRecipeNutritionRange(low, null)).toBe(describeRecipeNutrition(low));
     expect(describeRecipeNutritionRange(null, high)).toBeNull();
+  });
+});
+
+describe('an "either one" pair', () => {
+  const RANGE = { startKey: '2026-08-09', endKey: '2026-08-15' };
+  const butter = item({ name: 'Butter', nutrition: panel({ amounts: { calorieKcal: 700 } }) });
+  const vegan = item({ name: 'Vegan butter', nutrition: panel({ amounts: { calorieKcal: 600 } }) });
+  const pairKey = eitherPairKey(butter.nameKey, vegan.nameKey);
+  const links = [
+    { itemId: butter.id, subItemId: vegan.id, note: null, createdAt: '2026-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null, standing: false, either: true },
+    { itemId: vegan.id, subItemId: butter.id, note: null, createdAt: '2026-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null, standing: false, either: true },
+  ];
+  const catalog = [butter, vegan];
+  const swaps = () => standingSwapMap(links, catalog);
+  const loaf = () => recipe('Banana bread', [ing('Butter', { quantity: '100 g' })]);
+  const kcal = (r: Recipe, resolution?: Parameters<typeof recipeNutrition>[4]) =>
+    recipeNutrition(r, catalog, [], new Map([[r.id, r]]), resolution, 1, swaps())?.total.calorieKcal;
+
+  it('reads the line as written for a read with no cooking in hand', () => {
+    // The recipe page and every other context-free read: nothing changed.
+    expect(kcal(loaf())).toBe(700);
+  });
+
+  it('refuses to put figures on a cooking that has not said which was used', () => {
+    expect(kcal(loaf(), { itemPicks: [] })).toBeUndefined();
+    expect(recipeNutritionLines(loaf(), catalog, [], new Map(), { itemPicks: [] }, 1, swaps())).toEqual([]);
+    expect(kcal(loaf(), UNANSWERED)).toBeUndefined();
+  });
+
+  it('measures the item that was used, either way round', () => {
+    expect(kcal(loaf(), { itemPicks: [{ pair: pairKey, use: 'vegan butter' }] })).toBe(600);
+    expect(kcal(loaf(), { itemPicks: [{ pair: pairKey, use: 'butter' }] })).toBe(700);
+  });
+
+  it('answers every recipe in the cooking with the one pick, through a used recipe', () => {
+    const glaze = recipe('Glaze', [ing('Vegan butter', { quantity: '100 g' })]);
+    const cake = recipe('Cake', [ing('Butter', { quantity: '100 g' })], {
+      components: [{ id: 'c1', recipeId: glaze.id, name: 'Glaze', choiceGroup: null }],
+    });
+    const byId = new Map([[cake.id, cake], [glaze.id, glaze]]);
+    const asked = entryResolution({ recipeChoices: [], recipeOverrides: [], itemPicks: [{ pair: pairKey, use: 'butter' }] });
+    expect(recipeNutrition(cake, catalog, [], byId, asked, 1, swaps())?.total.calorieKcal).toBe(1400);
+    const vegans = entryResolution({ recipeChoices: [], recipeOverrides: [], itemPicks: [{ pair: pairKey, use: 'vegan butter' }] });
+    expect(recipeNutrition(cake, catalog, [], byId, vegans, 1, swaps())?.total.calorieKcal).toBe(1200);
+  });
+
+  it('treats a planned meal as a cooking in hand, so entryResolution refuses until it is answered', () => {
+    const r = loaf();
+    expect(recipeNutrition(r, catalog, [], new Map([[r.id, r]]), entryResolution(entry('2026-08-10', r.id)), 1, swaps())).toBeNull();
+    expect(recipeNutrition(
+      r, catalog, [], new Map([[r.id, r]]),
+      entryResolution(entry('2026-08-10', r.id, { itemPicks: [{ pair: pairKey, use: 'vegan butter' }] })), 1, swaps(),
+    )?.total.calorieKcal).toBe(600);
+  });
+
+  it('is unaffected for a dish that names neither item', () => {
+    const toast = recipe('Toast', [ing('Butter', { quantity: '100 g', noSwap: true })]);
+    expect(kcal(toast, { itemPicks: [] })).toBe(700);
+  });
+
+  it('counts an unanswered planned meal against the week rather than as either item', () => {
+    const r = loaf();
+    const byId = new Map([[r.id, r]]);
+    expect(weekNutrition([entry('2026-08-10', r.id)], byId, catalog, RANGE, [], swaps())).toBeNull();
+    const answered = entry('2026-08-10', r.id, { itemPicks: [{ pair: pairKey, use: 'vegan butter' }] });
+    expect(weekNutrition([answered], byId, catalog, RANGE, [], swaps())?.total.calorieKcal).toBe(600);
   });
 });

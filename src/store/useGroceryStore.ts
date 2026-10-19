@@ -1573,6 +1573,8 @@ interface GroceryStore extends UndoHistoryActions {
        * would swap into itself.
        */
       standing?: boolean;
+      /** "Either one" (`ItemSubLink.either`): written both ways, never with `standing`. */
+      either?: boolean;
     }
   ) => void;
   /**
@@ -1606,6 +1608,13 @@ interface GroceryStore extends UndoHistoryActions {
    * Turning it on enforces the same exclusivity `linkItemSub` does.
    */
   setItemSubStanding: (itemId: string, subItemId: string, standing: boolean) => void;
+  /**
+   * Turns "either one" on or off for a pair, both rows together, keeping the
+   * note and ratio the link already has. On clears any "always" rule on either
+   * item and any other pair either was in (`subLinkRows`); off leaves the
+   * substitute recorded, like `setItemSubStanding`.
+   */
+  setItemSubEither: (itemId: string, subItemId: string, either: boolean) => void;
   /**
    * "Not at Safeway · or margarine", tapped: puts the substitute on the list
    * and takes the original off. The original's quantity carries over —
@@ -5296,13 +5305,47 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const { itemSubs } = get();
     const link = itemSubs.find(l => l.itemId === itemId && l.subItemId === subItemId);
     if (!link || link.standing === standing) return;
-    const next: ItemSubLink = { ...link, standing };
+    const next: ItemSubLink = { ...link, standing, ...(standing ? { either: false } : {}) };
     dbSetItemSubLink(next);
-    const cleared = standing ? clearOtherStandingLinks(itemSubs, itemId, subItemId) : [];
+    // An "always" answer ends any "either one" this item was half of: they are
+    // different answers to the same question (`ItemSubLink.either`).
+    const cleared = standing
+      ? [
+          ...clearOtherStandingLinks(itemSubs, itemId, subItemId),
+          ...itemSubs
+            .filter(l => l.either && (l.itemId === itemId || l.subItemId === itemId))
+            .map(l => ({ ...l, either: false })),
+        ]
+      : [];
     for (const other of cleared) dbSetItemSubLink(other);
 
     const key = (l: { itemId: string; subItemId: string }) => `${l.itemId}|${l.subItemId}`;
     const byKey = new Map([next, ...cleared].map(l => [key(l), l]));
+    set(s => ({ itemSubs: s.itemSubs.map(l => byKey.get(key(l)) ?? l) }));
+  },
+
+  setItemSubEither(itemId, subItemId, either) {
+    const { itemSubs } = get();
+    const link = itemSubs.find(l => l.itemId === itemId && l.subItemId === subItemId);
+    if (!link) return;
+    if (either) {
+      get().linkItemSub(itemId, subItemId, {
+        note: link.note,
+        ratioFrom: link.ratioFrom,
+        ratioTo: link.ratioTo,
+        either: true,
+      });
+      return;
+    }
+    // Both rows go together: a pair half on would be a rule on one side only.
+    const key = (l: { itemId: string; subItemId: string }) => `${l.itemId}|${l.subItemId}`;
+    const off = itemSubs
+      .filter(l => l.either && ((l.itemId === itemId && l.subItemId === subItemId)
+        || (l.itemId === subItemId && l.subItemId === itemId)))
+      .map(l => ({ ...l, either: false }));
+    if (off.length === 0) return;
+    for (const l of off) dbSetItemSubLink(l);
+    const byKey = new Map(off.map(l => [key(l), l]));
     set(s => ({ itemSubs: s.itemSubs.map(l => byKey.get(key(l)) ?? l) }));
   },
 

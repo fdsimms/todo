@@ -1,7 +1,7 @@
-import type { ComponentPlacement, MealPlanEntry, Recipe, RecipeComponent, RecipeIngredient, RecipeOverride, RecipePrepTask } from '../types';
+import type { ComponentPlacement, ItemPick, MealPlanEntry, Recipe, RecipeComponent, RecipeIngredient, RecipeOverride, RecipePrepTask } from '../types';
 import { GROCERY_QUANTITY_MAX_LENGTH, RECIPE_CHOICE_GROUP_MAX_LENGTH, RECIPE_NAME_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH } from '../types';
 import { generateId } from './id';
-import { applyStandingSwap, NO_STANDING_SWAPS, type StandingSwapMap } from './standingSwaps';
+import { applyStandingSwap, NO_STANDING_SWAPS, type StandingSwapMap, type SwappedIngredient } from './standingSwaps';
 
 /**
  * Composed recipes: one recipe used as a part of another.
@@ -297,6 +297,13 @@ export function makeComponent(target: Recipe, choiceGroup: string | null = null)
  */
 export interface ChoiceResolution {
   /**
+   * This cooking's answers to "either one" pairs (`MealPlanEntry.itemPicks`,
+   * `ItemSubLink.either`). **Absent is a read with no cooking in hand and
+   * resolves nothing; empty is a cooking nobody has answered, which is
+   * undecided.** `entryResolution` always sets it. See `itemEither.ts`.
+   */
+  itemPicks?: readonly ItemPick[];
+  /**
    * Chosen ids — MealPlanEntry.recipeChoices, verbatim. Names component links
    * and ingredient lines alike; each is looked up only against the list it
    * could have come from, so the two can't collide.
@@ -398,12 +405,15 @@ export function toggleOptionalPick(chosen: readonly string[], id: string): strin
  * `noBareEntryResolution.test.ts` fails the build on the hand-built form.
  */
 export function entryResolution(
-  entry: Pick<MealPlanEntry, 'recipeChoices' | 'recipeOverrides'> | null | undefined,
-  extra: Omit<ChoiceResolution, 'chosen' | 'overrides'> = {},
+  entry: Pick<MealPlanEntry, 'recipeChoices' | 'recipeOverrides' | 'itemPicks'> | null | undefined,
+  extra: Omit<ChoiceResolution, 'chosen' | 'overrides' | 'itemPicks'> = {},
 ): ChoiceResolution {
   return {
     chosen: entry?.recipeChoices ?? [],
     ...(entry?.recipeOverrides?.length ? { overrides: entry.recipeOverrides } : {}),
+    // Always present, even empty: a cooking in hand with nothing answered is
+    // *undecided*, which is different from a read with no cooking at all.
+    itemPicks: entry?.itemPicks ?? [],
     ...extra,
   };
 }
@@ -704,6 +714,12 @@ export interface FlatIngredient {
    */
   swappedFrom?: string | null;
   /**
+   * Set when the line names an "either one" pair and the walk had a cooking's
+   * answers to read (`ChoiceResolution.itemPicks`). `undecided` is what
+   * `recipeNutritionLines` refuses on; see `itemEither.ts`.
+   */
+  either?: NonNullable<SwappedIngredient['either']>;
+  /**
    * The heading the component this line came through is placed under in its
    * parent (`ComponentPlacement.section`), null for the root's own lines and for
    * a part with no placement. `ingredientHeadings` reads it to open that heading
@@ -796,8 +812,8 @@ export function flattenRecipeIngredients(
         if (replace(item.ingredient.id, item.ingredient.name)) continue;
         // Swapped after the choice is resolved, never before: an option the
         // user isn't cooking has nothing to be swapped into.
-        const { ingredient, swappedFrom } = applyStandingSwap(item.ingredient, swaps);
-        out.push({ ingredient, recipe: node, depth, swappedFrom, linkSection });
+        const { ingredient, swappedFrom, either } = applyStandingSwap(item.ingredient, swaps, resolution?.itemPicks);
+        out.push({ ingredient, recipe: node, depth, swappedFrom, linkSection, ...(either ? { either } : {}) });
         continue;
       }
       const { component } = item;

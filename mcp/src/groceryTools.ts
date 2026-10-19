@@ -132,7 +132,7 @@ export interface GroceryItemDetail {
   boxes: { id: string; brand?: string; variant?: string; note?: string; rating?: string; portion?: boolean; gtin?: string; nutrition?: NutritionPanelDetail }[];
   stores: { id: string; name: string; timesBought: number; unavailable?: boolean; price?: number }[];
   /** Items that can stand in for this one. */
-  substitutes: { itemId: string; name: string; note?: string; ratio?: string; standing?: boolean }[];
+  substitutes: { itemId: string; name: string; note?: string; ratio?: string; standing?: boolean; either?: boolean }[];
   /** Names printed on receipts that mean this item. */
   receiptNames: { store: string; text: string }[];
 }
@@ -220,6 +220,7 @@ export function getGroceryItem(replica: Replica, ref: { id?: string; name?: stri
       ...(l.note ? { note: l.note } : {}),
       ...(l.ratioFrom && l.ratioTo ? { ratio: `${l.ratioFrom} = ${l.ratioTo}` } : {}),
       ...(l.standing ? { standing: true } : {}),
+      ...(l.either ? { either: true } : {}),
     })),
     receiptNames: replica.storeAliases().filter(a => a.itemId === item.id).map(a => ({ store: a.shopId ? shops.get(a.shopId)?.name ?? 'unknown' : 'any store', text: a.rawKey })),
   };
@@ -318,7 +319,7 @@ export interface UpdateGroceryItemInput {
   onlyPreferredBrand?: boolean;
   linkStores?: string[];
   unlinkStores?: string[];
-  addSubstitutes?: { name?: string; itemId?: string; note?: string | null; ratioFrom?: string | null; ratioTo?: string | null; standing?: boolean; bothWays?: boolean }[];
+  addSubstitutes?: { name?: string; itemId?: string; note?: string | null; ratioFrom?: string | null; ratioTo?: string | null; standing?: boolean; either?: boolean; bothWays?: boolean }[];
   removeSubstitutes?: string[];
 }
 

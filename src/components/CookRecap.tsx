@@ -82,8 +82,8 @@ export function CookRecap() {
     // the recap names what was actually consumed (see ChoiceResolution.onHand).
     return classifyPlanned(
       plannedIngredientsForRecipe(
-        recipe, recipesById, { chosen: shownRecap.choices, overrides: shownRecap.overrides, onHand: onHandNameKeys(items, new Date(), itemProducts) }, shownRecap.scale, swaps
-      ),
+        recipe, recipesById, { chosen: shownRecap.choices, overrides: shownRecap.overrides, itemPicks: shownRecap.itemPicks, onHand: onHandNameKeys(items, new Date(), itemProducts) }, shownRecap.scale, swaps
+      ).filter(line => !line.undecidedItem),
       items,
       new Date(),
       [],
@@ -109,7 +109,7 @@ export function CookRecap() {
     // With the standing swaps, the same read the after-meal prompt measures
     // the weight against: a dish whose figures exist only once "oat milk for
     // milk" is applied still has something for a weight to divide.
-    return recipeNutrition(recipe, items, itemProducts, recipesById, { chosen: shownRecap?.choices ?? [], overrides: shownRecap?.overrides }, 1, swaps) !== null;
+    return recipeNutrition(recipe, items, itemProducts, recipesById, { chosen: shownRecap?.choices ?? [], overrides: shownRecap?.overrides, itemPicks: shownRecap?.itemPicks ?? [] }, 1, swaps) !== null;
   }, [recipe, items, itemProducts, recipesById, shownRecap, swaps]);
 
   const restockList = useMemo(

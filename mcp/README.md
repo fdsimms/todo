@@ -193,7 +193,7 @@ only the fallback until the first sync.
 | `delete_tag` | **Write.** Takes a tag off every task and out of the tag list. |
 | `set_completion_date` | **Write.** Corrects when a completed task was done, as the Logbook's date edit does. |
 | `reopen_task` | **Write.** Reopens a completed or missed task and takes back what its completion did. Needs `MCP_WRITE_TOKEN`. |
-| `update_meal` | **Write.** Moves a planned meal, swaps or renames it, sets a recipe's scale, answers its either/or choices, uses something else for this one cooking (`replacements`: a line or used recipe swapped for another ingredient, or left out; the recipe is not edited), or sets its shopping, thaw and log answers. |
+| `update_meal` | **Write.** Moves a planned meal, swaps or renames it, sets a recipe's scale, answers its either/or choices, says which of two interchangeable items it used (`picks`, for a pair set as either one), uses something else for this one cooking (`replacements`: a line or used recipe swapped for another ingredient, or left out; the recipe is not edited), or sets its shopping, thaw and log answers. |
 | `remove_meal` | **Write.** Takes a meal off the plan. |
 | `create_person` | **Write.** Adds a person: name, nickname (several, comma-separated), notes, birthday, contact details (phone, fax, email, link), location (free text), group, archived, birthday task opt-outs. Never a cadence or nudge. |
 | `delete_person` | **Write.** Deletes a person and the notes about them; tasks naming them stay. Restorable from Activity. |
@@ -227,7 +227,7 @@ only the fallback until the first sync.
 | `add_grocery_item` | **Write.** Puts something on the home list, re-using the shelf item the user already has where there is one. |
 | `check_off_grocery_item` | **Write.** Checks something off on the home list, or un-checks it. |
 | `remove_from_grocery_list` | **Write.** Takes something off the home list. Does not delete it. |
-| `update_grocery_item` | **Write.** Rename, aisle, quantity, note, last price, kind-of, other names, preferred brand, stores and substitutes. Field edits are undoable from Activity. |
+| `update_grocery_item` | **Write.** Rename, aisle, quantity, note, last price, kind-of, other names, preferred brand, stores and substitutes (including a pair marked either one). Field edits are undoable from Activity. |
 | `save_grocery_box` | **Write.** Add, edit or delete a brand or variant of an item, set the barcode a scan of it lands on, and rate a variant (loved, fine or avoid) with the reason in its note. |
 | `save_store` | **Write.** Add or rename a store, or set its receipt style. |
 | `update_store` | **Write.** A store's own aisles and walk order, whether it is suggested, or delete it. |

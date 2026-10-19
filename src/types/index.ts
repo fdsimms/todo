@@ -5557,6 +5557,14 @@ export interface FoodLogEntry {
   productId: string | null;
   mealPlanEntryId: string | null;
   /**
+   * Which of two interchangeable items this dish was made with
+   * (`ItemSubLink.either`), kept so re-measuring the dish later (`refresh_dish_entry`,
+   * the entry sheet) reads the same lines the log did. `nutrition` is still the
+   * snapshot; this is only what a re-measure needs. Optional: absent and empty
+   * read the same.
+   */
+  itemPicks?: ItemPick[];
+  /**
    * The task whose completion wrote this entry (`Task.logSavedMealId`), so
    * un-completing it can take the entry back, the way `MedicationLog.taskId`
    * does for a dose. Provenance only and free to dangle: deleting the task
@@ -7109,6 +7117,33 @@ export interface ItemSubLink {
    * in laminated pastry) is `RecipeIngredient.noSwap`, per line.
    */
   standing: boolean;
+  /**
+   * **"Either one"** — butter and vegan butter are interchangeable for this
+   * person, and which one went into a cooking is theirs to say each time.
+   * Written on both rows of the pair (it is the one bit that is symmetric by
+   * construction), and exclusive with `standing`: "always this one" and "ask me"
+   * are two different answers to the same question, so setting either clears the
+   * other on the items it names.
+   *
+   * Nothing is rewritten until a meal says which was used
+   * (`MealPlanEntry.itemPicks`), and until it does the pair is **undecided**, not
+   * defaulted: a recipe line for either one reads as written, and a read that
+   * would put figures on a plate (`recipeNutritionLines`) refuses, the way it
+   * already refuses an undecided either/or, because the two have different
+   * nutrition and a guess logs the wrong one. See `itemEither.ts`.
+   */
+  either?: boolean;
+}
+
+/**
+ * One answer to an "either one" pair for a single cooking: `use` is the
+ * `nameKey` that went into it, `pair` is `eitherPairKey` of the two (sorted, so
+ * the key is the same whichever item a line names). Stored on
+ * `MealPlanEntry.itemPicks` and `FoodLogEntry.itemPicks`.
+ */
+export interface ItemPick {
+  pair: string;
+  use: string;
 }
 
 /**
@@ -8161,6 +8196,15 @@ export interface MealPlanEntry {
    * meal or week is copied: "this time" is about this time.
    */
   recipeOverrides: RecipeOverride[];
+  /**
+   * Which of two interchangeable items went into this cooking ("either one",
+   * `ItemSubLink.either`), across every recipe in it. Empty means nothing has
+   * been answered, which is **undecided and not a default**: lines read as
+   * written and nutrition refuses until it is. Like `recipeChoices` it is a
+   * fact about one cooking, so it resets when the recipe is swapped and does
+   * not carry on a copy. Optional: absent and empty read the same.
+   */
+  itemPicks?: ItemPick[];
   /**
    * How much of the recipe this meal makes — 1 for as-written, 2 for a doubled
    * Sunday, 0.5 for cooking for one. Applied to every ingredient quantity when

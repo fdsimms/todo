@@ -27,6 +27,7 @@ import { SheetActionRow } from './SheetActionRow';
 import { dayKeyOf } from '../utils/dateUtils';
 import { slotLabel } from '../utils/mealPlan';
 import type { ChoiceGroup } from '../utils/recipeComponents';
+import { describeEitherPair, type EitherPairInUse } from '../utils/itemEither';
 import { RecipeScaleChips } from './RecipeScaleChips';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SheetScrim } from './SheetScrim';
@@ -110,6 +111,14 @@ interface Props {
   choiceGroups?: ChoiceGroup[];
   /** Records a pick. Absent alongside an empty `choiceGroups`. */
   onChoose?: (group: ChoiceGroup, componentId: string) => void;
+  /**
+   * The "either one" pairs this meal's recipes name ("Butter or vegan butter")
+   * and which of the two this cooking used. One answer covers every recipe in the
+   * meal. Empty for nearly every meal, and the section then renders nothing.
+   */
+  itemPairs?: EitherPairInUse[];
+  /** Records which item of a pair went in, by `nameKey`. */
+  onPickItem?: (pair: EitherPairInUse, use: string) => void;
   /**
    * What this meal uses instead of its recipe's own lines, as plain sentences
    * (`describeOverrides`), each with the target it replaces so a row can be taken
@@ -245,7 +254,7 @@ const TOP_INSET = 72;
 
 export function MealEntrySheet({
   visible, entry, title, weekDays, onMove, onMoveFurther, onCopyTo, onCopyFurther, copiedDays, onReplace, onChooseRecipe, onSaveAsRecipe, matchingRecipeName,
-  onRemove, onRename, choiceGroups = [], onChoose, overrideLines = [], onRemoveOverride, onOverride, blankFill = null, onFillBlanks, optionalLines = [], onToggleOptional,
+  onRemove, onRename, choiceGroups = [], onChoose, itemPairs = [], onPickItem, overrideLines = [], onRemoveOverride, onOverride, blankFill = null, onFillBlanks, optionalLines = [], onToggleOptional,
   onScale, baseServings, baseServingsMax, onSetCooked, onViewFoodLogEntry, onLogMeal, onOpenRecipe, onAddToList, onAddPrepTasks,
   onLogLeftovers,
   onFinishLeftover, onSetCookTask, hasCookTask = false, onClose,
@@ -454,6 +463,37 @@ export function MealEntrySheet({
                   );
                 })}
               </View>
+            </View>
+          ))}
+
+          {/* Which of two interchangeable items went in. Unanswered is shown as
+              unanswered: nutrition and the pantry wait for it rather than guess. */}
+          {itemPairs.map(pair => (
+            <View key={pair.pair}>
+              <Text style={styles.label}>{describeEitherPair(pair.items)}</Text>
+              <View style={styles.chips}>
+                {pair.items.map(item => {
+                  const on = pair.use === item.nameKey;
+                  return (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={[styles.chip, on && styles.chipOn]}
+                      onPress={() => { haptics.tap(); onPickItem?.(pair, item.nameKey); }}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: on }}
+                      accessibilityLabel={`Used ${item.name}`}
+                    >
+                      <Text style={[styles.chipText, on && styles.chipTextOn]}>{item.name}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <HelpText style={styles.optionalHint}>
+                {pair.use === null
+                  ? 'Pick the one you used. Nutrition waits for it.'
+                  : `Applies to every recipe in this meal: ${pair.lines.map(l => `${l.quantity} ${l.name}`.trim()).join(', ')}.`}
+              </HelpText>
             </View>
           ))}
 

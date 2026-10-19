@@ -791,6 +791,7 @@ export function replacedMealEntry(
     title: replacement.title,
     recipeChoices: [],
     recipeOverrides: [],
+    itemPicks: [],
     leftoverId: null,
     recipeScale: entry.recipeId === replacement.recipeId && entry.recipeId
       ? entry.recipeScale

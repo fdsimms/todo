@@ -97,6 +97,7 @@ import { parseSavedViewClauses, serializeSavedViewClauses } from '../utils/saved
 import { parseFollowUpTaskDraft } from '../utils/followUpTask';
 import { cookbookKey, parseRecipeIngredients, parsePrepTasks, parseSteps } from '../utils/recipeUtils';
 import { parseRecipeTags } from '../utils/recipeTags';
+import { parseItemPicks } from '../utils/itemEither';
 import { parseRecipeChoices, parseRecipeComponents, parseRecipeOverrides } from '../utils/recipeComponents';
 import { parseRecipeBlanks } from '../utils/recipeBlanks';
 import { parseFoodKinds, serializeFoodKinds } from '../utils/foodKinds';
@@ -1152,6 +1153,9 @@ function runInitDatabase(): void {
     // never buys. No backfill could ever be right here — a rule that rewrites
     // what lands in the trolley has to be ticked by the person it rewrites for.
     'ALTER TABLE grocery_item_subs ADD COLUMN standing INTEGER NOT NULL DEFAULT 0',
+    // "Either one": the pair is interchangeable and each cooking says which was
+    // used. See ItemSubLink.either.
+    'ALTER TABLE grocery_item_subs ADD COLUMN either INTEGER NOT NULL DEFAULT 0',
     // Nullable, and null is the value every existing row wants: a task nobody
     // imported from Reminders has no suggestion pending. JSON, like
     // series_defaults, because it holds a Partial<Task> rather than a scalar.
@@ -2288,6 +2292,10 @@ function runInitDatabase(): void {
     // JSON array of one-off replacements for one planned meal, '[]' on every
     // existing entry: none has replaced a line yet. See MealPlanEntry.recipeOverrides.
     "ALTER TABLE meal_plan_entries ADD COLUMN recipe_overrides TEXT NOT NULL DEFAULT '[]'",
+    // Which of two "either one" items this cooking used. See MealPlanEntry.itemPicks.
+    "ALTER TABLE meal_plan_entries ADD COLUMN item_picks TEXT NOT NULL DEFAULT '[]'",
+    // The same answer kept on the dish it measured. See FoodLogEntry.itemPicks.
+    "ALTER TABLE food_logs ADD COLUMN item_picks TEXT NOT NULL DEFAULT '[]'",
     // Null on every existing item: nobody has filed one, so the name's guess
     // applies. See GroceryItem.foodKinds.
     'ALTER TABLE grocery_items ADD COLUMN food_kinds TEXT',
@@ -6809,6 +6817,7 @@ function rowToItemSubLink(row: Record<string, unknown>): ItemSubLink {
     ratioFrom: (row.ratio_from as string) ?? null,
     ratioTo: (row.ratio_to as string) ?? null,
     standing: row.standing === 1,
+    ...(row.either === 1 ? { either: true } : {}),
   };
 }
 
@@ -6826,13 +6835,14 @@ export function dbGetAllItemSubLinks(): ItemSubLink[] {
  */
 export function dbSetItemSubLink(link: ItemSubLink): void {
   db.runSync(
-    `INSERT INTO grocery_item_subs (item_id, sub_item_id, note, created_at, ratio_from, ratio_to, standing)
-     VALUES (?,?,?,?,?,?,?)
+    `INSERT INTO grocery_item_subs (item_id, sub_item_id, note, created_at, ratio_from, ratio_to, standing, either)
+     VALUES (?,?,?,?,?,?,?,?)
      ON CONFLICT(item_id, sub_item_id)
      DO UPDATE SET note = excluded.note,
                    ratio_from = excluded.ratio_from,
                    ratio_to = excluded.ratio_to,
-                   standing = excluded.standing`,
+                   standing = excluded.standing,
+                   either = excluded.either`,
     [
       link.itemId,
       link.subItemId,
@@ -6841,6 +6851,7 @@ export function dbSetItemSubLink(link: ItemSubLink): void {
       link.ratioFrom ?? null,
       link.ratioTo ?? null,
       link.standing ? 1 : 0,
+      link.either ? 1 : 0,
     ]
   );
 }
@@ -7079,6 +7090,15 @@ export function dbRecipeImagePaths(ids?: readonly string[]): Map<string, string>
 
 // ─── Meal plan ──────────────────────────────────────────────────────────────
 
+/**
+ * `itemPicks` only when there is one, so a row that never answered an "either
+ * one" pair reads exactly as it did before the column existed.
+ */
+function itemPicksField(raw: unknown): { itemPicks?: ReturnType<typeof parseItemPicks> } {
+  const picks = parseItemPicks(raw);
+  return picks.length > 0 ? { itemPicks: picks } : {};
+}
+
 function rowToMealPlanEntry(row: Record<string, unknown>): MealPlanEntry {
   return {
     id: row.id as string,
@@ -7098,6 +7118,7 @@ function rowToMealPlanEntry(row: Record<string, unknown>): MealPlanEntry {
     leftoverId: (row.leftover_id as string) ?? null,
     recipeChoices: parseRecipeChoices(row.recipe_choices),
     recipeOverrides: parseRecipeOverrides(row.recipe_overrides),
+    ...itemPicksField(row.item_picks),
     // Clamped rather than trusted: the column defaults to 1, but a restored
     // backup or a hand-edited row carrying 0 would otherwise render a meal with
     // no quantities at all.
@@ -8110,6 +8131,7 @@ function rowToFoodLogEntry(row: Record<string, unknown>): FoodLogEntry | null {
     taskId: (row.task_id as string) || null,
     savedMealId: (row.saved_meal_id as string) || null,
     savedMealName: (row.saved_meal_name as string) || null,
+    ...itemPicksField(row.item_picks),
     quantity: (row.quantity as string) ?? '',
     grams: typeof row.grams === 'number' && Number.isFinite(row.grams) ? row.grams : null,
     nutrition,
@@ -8178,8 +8200,8 @@ export function dbInsertFoodLogEntry(entry: FoodLogEntry): void {
   db.runSync(
     `INSERT INTO food_logs (id, day_key, at_iso, slot, label, recipe_id, item_id, product_id,
        meal_plan_entry_id, quantity, grams, nutrition, source_panel, health_sample_ids,
-       health_write_pending, sort_order, created_at, task_id, saved_meal_id, saved_meal_name)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       health_write_pending, sort_order, created_at, task_id, saved_meal_id, saved_meal_name, item_picks)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       entry.id, entry.dayKey, entry.atISO, entry.slot, entry.label,
       entry.recipeId, entry.itemId, entry.productId, entry.mealPlanEntryId,
@@ -8188,6 +8210,7 @@ export function dbInsertFoodLogEntry(entry: FoodLogEntry): void {
       JSON.stringify(entry.healthSampleIds), entry.healthWritePending ? 1 : 0,
       entry.sortOrder, entry.createdAt, entry.taskId ?? null,
       entry.savedMealId ?? null, entry.savedMealName ?? null,
+      JSON.stringify(entry.itemPicks ?? []),
     ]
   );
 }
@@ -8196,7 +8219,7 @@ export function dbUpdateFoodLogEntry(entry: FoodLogEntry): void {
   db.runSync(
     `UPDATE food_logs SET day_key=?, at_iso=?, slot=?, label=?, recipe_id=?, item_id=?,
        product_id=?, meal_plan_entry_id=?, quantity=?, grams=?, nutrition=?, source_panel=?,
-       health_sample_ids=?, health_write_pending=?, sort_order=?
+       health_sample_ids=?, health_write_pending=?, sort_order=?, item_picks=?
      WHERE id=?`,
     [
       entry.dayKey, entry.atISO, entry.slot, entry.label,
@@ -8204,7 +8227,7 @@ export function dbUpdateFoodLogEntry(entry: FoodLogEntry): void {
       entry.quantity, entry.grams, serializeFoodNutrition(entry.nutrition),
       serializeFoodNutrition(entry.sourcePanel ?? null),
       JSON.stringify(entry.healthSampleIds), entry.healthWritePending ? 1 : 0,
-      entry.sortOrder, entry.id,
+      entry.sortOrder, JSON.stringify(entry.itemPicks ?? []), entry.id,
     ]
   );
 }
@@ -8593,8 +8616,8 @@ export function dbGetMealPlanEntriesForLeftover(leftoverId: string): MealPlanEnt
 
 export function dbInsertMealPlanEntry(entry: MealPlanEntry): void {
   db.runSync(
-    `INSERT INTO meal_plan_entries (id, date, slot, recipe_id, title, sort_order, created_at, cooked_at, leftover_id, recipe_choices, recipe_overrides, recipe_scale, cook_task, shop_task, log_meal, calendar_event_id, thaw_task, calendar_event_external_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO meal_plan_entries (id, date, slot, recipe_id, title, sort_order, created_at, cooked_at, leftover_id, recipe_choices, recipe_overrides, recipe_scale, cook_task, shop_task, log_meal, calendar_event_id, thaw_task, calendar_event_external_id, item_picks)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       entry.id, entry.date, entry.slot, entry.recipeId ?? null,
       entry.title, entry.sortOrder, entry.createdAt, entry.cookedAt ?? null,
@@ -8607,13 +8630,14 @@ export function dbInsertMealPlanEntry(entry: MealPlanEntry): void {
       entry.calendarEventId ?? null,
       entry.thawTask === null || entry.thawTask === undefined ? null : (entry.thawTask ? 1 : 0),
       entry.calendarEventExternalId ?? null,
+      JSON.stringify(entry.itemPicks ?? []),
     ]
   );
 }
 
 export function dbUpdateMealPlanEntry(entry: MealPlanEntry): void {
   db.runSync(
-    `UPDATE meal_plan_entries SET date=?, slot=?, recipe_id=?, title=?, sort_order=?, cooked_at=?, leftover_id=?, recipe_choices=?, recipe_overrides=?, recipe_scale=?, cook_task=?, shop_task=?, log_meal=?, calendar_event_id=?, thaw_task=?, calendar_event_external_id=? WHERE id=?`,
+    `UPDATE meal_plan_entries SET date=?, slot=?, recipe_id=?, title=?, sort_order=?, cooked_at=?, leftover_id=?, recipe_choices=?, recipe_overrides=?, recipe_scale=?, cook_task=?, shop_task=?, log_meal=?, calendar_event_id=?, thaw_task=?, calendar_event_external_id=?, item_picks=? WHERE id=?`,
     [
       entry.date, entry.slot, entry.recipeId ?? null, entry.title, entry.sortOrder,
       entry.cookedAt ?? null, entry.leftoverId ?? null,
@@ -8625,6 +8649,7 @@ export function dbUpdateMealPlanEntry(entry: MealPlanEntry): void {
       entry.calendarEventId ?? null,
       entry.thawTask === null || entry.thawTask === undefined ? null : (entry.thawTask ? 1 : 0),
       entry.calendarEventExternalId ?? null,
+      JSON.stringify(entry.itemPicks ?? []),
       entry.id,
     ]
   );

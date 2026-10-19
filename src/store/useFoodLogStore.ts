@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { FoodLogEntry, FoodNutrition, MealPlanEntry, MealSlot, RecipeOverride } from '../types';
+import type { FoodLogEntry, FoodNutrition, ItemPick, MealPlanEntry, MealSlot, RecipeOverride } from '../types';
 import { NUTRIENT_KEYS } from '../types';
 import {
   dbBulkDeleteFoodLogEntries,
@@ -95,6 +95,8 @@ export interface FoodLogDraft {
   itemId?: string | null;
   productId?: string | null;
   mealPlanEntryId?: string | null;
+  /** Which of two "either one" items the dish used. See `FoodLogEntry.itemPicks`. */
+  itemPicks?: ItemPick[];
   /** The task whose completion is writing this entry. See `FoodLogEntry.taskId`. */
   taskId?: string | null;
   /** The saved meal this entry is being logged as part of. See `FoodLogEntry.savedMealId`. */
@@ -146,6 +148,12 @@ export interface PendingMealLog {
   choices: string[];
   /** That cooking's one-off replacements (`MealPlanEntry.recipeOverrides`), for the same reason as `choices`. */
   overrides?: RecipeOverride[];
+  /**
+   * Which of two "either one" items that cooking used (`MealPlanEntry.itemPicks`).
+   * Absent or empty means nothing was answered, and the prompt asks before it
+   * measures: see `itemEither.ts`.
+   */
+  itemPicks?: ItemPick[];
   /**
    * What the plate or the container weighed, when something already knows —
    * today only a finished leftover, which was weighed when it went in the
@@ -914,6 +922,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
           scale: entry.recipeScale,
           choices: entry.recipeChoices,
           overrides: entry.recipeOverrides,
+          itemPicks: entry.itemPicks ?? [],
           // A meal cooked tonight has nothing weighed yet — the prompt asks.
           // Only a container that was weighed on the way into the fridge
           // arrives with a figure (see finishLeftover).

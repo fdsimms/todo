@@ -3160,6 +3160,7 @@ function registerWriteTools(
         ratioFrom: z.string().nullable().optional().describe('With ratioTo: "1 cup butter" = "3/4 cup oil".'),
         ratioTo: z.string().nullable().optional(),
         standing: z.boolean().optional().describe('Always use this instead, in recipes.'),
+        either: z.boolean().optional().describe('The two are interchangeable and each cooking says which was used (written both ways, and not together with standing). Recipes asking for either one hold their nutrition, shopping and pantry use until update_meal picks which; give picks there.'),
         bothWays: z.boolean().optional(),
       })).optional(),
       removeSubstitutes: z.array(z.string()).optional().describe('Substitute items to remove, by name or id.'),
@@ -4058,7 +4059,7 @@ function registerWriteTools(
 
   server.tool(
     'update_meal',
-    "Change a planned meal (ids from list_meal_plan): move it to another date or slot, swap what it is (recipeId, or recipeId: null with a title for a typed meal), rename a typed one, set a recipe's scale (0.5 halves it, 2 doubles it), answer its either/or questions (choices, by the group and option names list_meal_plan shows), use something else for this one cooking only (replacements: each names a line or used recipe of the recipe, and either what this meal uses instead, as an ingredient is printed, or null to leave it out; the list replaces the meal's earlier replacements and [] goes back to the recipe as written; shopping, cost and cooking follow it and the recipe is never edited), or say whether this meal gets a shopping task, a thaw task or the offer to log it (null hands the choice back to the setting). A leftover night is not swapped here. Whether a meal gets a cook task is set on the phone, which writes or removes that task as it is changed. The phone catches up the meal's task and calendar event the next time it opens.",
+    "Change a planned meal (ids from list_meal_plan): move it to another date or slot, swap what it is (recipeId, or recipeId: null with a title for a typed meal), rename a typed one, set a recipe's scale (0.5 halves it, 2 doubles it), answer its either/or questions (choices, by the group and option names list_meal_plan shows), say which of two interchangeable items it used (picks, for a pair marked either one: nutrition waits for the answer, and the app asks the person when it logs the meal if you haven't), use something else for this one cooking only (replacements: each names a line or used recipe of the recipe, and either what this meal uses instead, as an ingredient is printed, or null to leave it out; the list replaces the meal's earlier replacements and [] goes back to the recipe as written; shopping, cost and cooking follow it and the recipe is never edited), or say whether this meal gets a shopping task, a thaw task or the offer to log it (null hands the choice back to the setting). A leftover night is not swapped here. Whether a meal gets a cook task is set on the phone, which writes or removes that task as it is changed. The phone catches up the meal's task and calendar event the next time it opens.",
     {
       id: z.string().min(1),
       date: dayKey.optional(),
@@ -4067,6 +4068,7 @@ function registerWriteTools(
       scale: z.number().positive().optional(),
       recipeId: z.string().nullable().optional(),
       choices: z.array(z.object({ group: z.string().min(1), option: z.string().min(1) })).optional(),
+      picks: z.array(z.object({ use: z.string().min(1).describe('The item this cooking used, by name ("Vegan butter"), from a pair set as either one. It covers every recipe in the meal; naming the other item of the pair changes the answer.') })).optional().describe('Which of two interchangeable items this cooking used. list_meal_plan shows each pair under items, and used is null until answered.'),
       replacements: z.array(z.object({
         replace: z.string().min(1),
         in: z.string().optional().describe('The recipe the line or used recipe is on, only when the same name is on two.'),

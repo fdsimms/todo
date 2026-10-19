@@ -66,6 +66,7 @@ import {
   scalePanelToAmount,
 } from '../utils/foodLog';
 import { cookedDishGrams, mealHelping, servingGrams, weighedHelping } from '../utils/mealLog';
+import { UNANSWERED } from '../utils/itemEither';
 import { perServing, recipeNutrition, recipeNutritionLines, recipesWithoutFigures, type NutritionLine } from '../utils/recipeNutrition';
 import { standingSwapMap } from '../utils/standingSwaps';
 import { describeProduct } from '../utils/groceryProduct';
@@ -681,7 +682,7 @@ export function FoodLogEntrySheet({
       });
     }
     for (const recipe of recipes) {
-      const dish = recipeNutrition(recipe, items, itemProducts, recipesById, undefined, 1, swaps);
+      const dish = recipeNutrition(recipe, items, itemProducts, recipesById, UNANSWERED, 1, swaps);
       if (!dish) continue;
       const serving = recipeHelpingNutrition(perServing(dish), 1);
       // Scale 1: this sheet logs the recipe as written rather than one night's
@@ -944,7 +945,7 @@ export function FoodLogEntrySheet({
     // lines asked about here are lines of the dish being logged.
     // Optional lines included (a serving suggestion is the commonest of these):
     // an amount typed here is what picks one, and a blank adds nothing.
-    return recipeNutritionLines(recipe, items, itemProducts, recipesById, { withOptional: true }, 1, swaps).filter(line => {
+    return recipeNutritionLines(recipe, items, itemProducts, recipesById, { withOptional: true, ...UNANSWERED }, 1, swaps).filter(line => {
       if (line.state !== 'unmeasured' || !line.nutrition || !line.item) return false;
       return weighableLine(line.quantity, line.prep, line.nutrition, line.item.name) === null;
     });
@@ -974,7 +975,7 @@ export function FoodLogEntrySheet({
       // into a crash rather than a Save that quietly stays disabled.
       const recipe = recipes.find(r => r.id === picked.recipeId);
       if (!recipe) return null;
-      const dish = recipeNutrition(recipe, items, itemProducts, recipesById, undefined, 1, swaps);
+      const dish = recipeNutrition(recipe, items, itemProducts, recipesById, UNANSWERED, 1, swaps);
       if (!dish) return null;
       const figures = {
         total: dish.total,

@@ -1256,9 +1256,15 @@ describe('entryResolution', () => {
   it('builds from the picks and the overrides, and leaves the key off when there are none', () => {
     const o: RecipeOverride = { targetId: 'l', replacement: null };
     expect(entryResolution({ recipeChoices: ['a'], recipeOverrides: [o] }, { onHand: new Set(['x']) }))
-      .toEqual({ chosen: ['a'], overrides: [o], onHand: new Set(['x']) });
-    expect(entryResolution({ recipeChoices: ['a'], recipeOverrides: [] })).toEqual({ chosen: ['a'] });
-    expect(entryResolution(null)).toEqual({ chosen: [] });
+      .toEqual({ chosen: ['a'], overrides: [o], itemPicks: [], onHand: new Set(['x']) });
+    expect(entryResolution({ recipeChoices: ['a'], recipeOverrides: [] })).toEqual({ chosen: ['a'], itemPicks: [] });
+    expect(entryResolution(null)).toEqual({ chosen: [], itemPicks: [] });
+  });
+
+  it('always carries the meal\'s answers to "either one" pairs, even when there are none, so a cooking in hand is never read as no cooking', () => {
+    const picks = [{ pair: 'butter|vegan butter', use: 'butter' }];
+    expect(entryResolution({ recipeChoices: [], recipeOverrides: [], itemPicks: picks }).itemPicks).toEqual(picks);
+    expect(entryResolution({ recipeChoices: [], recipeOverrides: [] }).itemPicks).toEqual([]);
   });
 });
 

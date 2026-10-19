@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { MealPlanEntry, MealSlot, Recipe, RecipeOverride, Task } from '../types';
+import type { ItemPick, MealPlanEntry, MealSlot, Recipe, RecipeOverride, Task } from '../types';
 import {
   dbGetMealPlanEntries,
   dbGetMealPlanEntriesForRecipe,
@@ -161,6 +161,8 @@ export interface CookRecap {
   choices: string[];
   /** The meal's one-off replacements, carried with its picks (`MealPlanEntry.recipeOverrides`). */
   overrides: RecipeOverride[];
+  /** Which of two "either one" items the cooking used (`MealPlanEntry.itemPicks`). */
+  itemPicks: ItemPick[];
   scale: number;
 }
 
@@ -408,6 +410,12 @@ interface MealPlanStore extends UndoHistoryActions {
    * the whole new list. An empty list restores the recipe as written.
    */
   setRecipeOverrides: (id: string, recipeOverrides: RecipeOverride[]) => void;
+  /**
+   * Which of two "either one" items went into this cooking
+   * (`MealPlanEntry.itemPicks`). Writes the whole list, like the two setters
+   * above, and is a note about one cooking rather than a plan change.
+   */
+  setItemPicks: (id: string, itemPicks: ItemPick[]) => void;
 
   /**
    * Records that this meal is being cooked at some multiple of the recipe —
@@ -1072,7 +1080,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     // recipe that resolves), which would otherwise sit on "Tacos" as "2×" for
     // good. A recipe that came back by sync afterwards isn't this meal.
     const renamed: MealPlanEntry = dangling
-      ? { ...entry, title: cleaned, recipeId: null, recipeChoices: [], recipeOverrides: [], recipeScale: 1 }
+      ? { ...entry, title: cleaned, recipeId: null, recipeChoices: [], recipeOverrides: [], itemPicks: [], recipeScale: 1 }
       : { ...entry, title: cleaned };
     dbUpdateMealPlanEntry(renamed);
     set(s => ({ entries: s.entries.map(e => e.id === id ? renamed : e) }));
@@ -1102,6 +1110,14 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     const entry = get().entries.find(e => e.id === id);
     if (!entry) return;
     const next: MealPlanEntry = { ...entry, recipeOverrides };
+    dbUpdateMealPlanEntry(next);
+    set(s => ({ entries: s.entries.map(e => e.id === id ? next : e) }));
+  },
+
+  setItemPicks(id, itemPicks) {
+    const entry = get().entries.find(e => e.id === id);
+    if (!entry) return;
+    const next: MealPlanEntry = { ...entry, itemPicks };
     dbUpdateMealPlanEntry(next);
     set(s => ({ entries: s.entries.map(e => e.id === id ? next : e) }));
   },
@@ -1720,6 +1736,7 @@ function cookRecapFor(entry: MealPlanEntry): CookRecap {
     recipeName: recipe ? recipe.name : null,
     choices: [...entry.recipeChoices],
     overrides: [...entry.recipeOverrides],
+    itemPicks: [...(entry.itemPicks ?? [])],
     scale: normalizeScale(entry.recipeScale),
   };
 }

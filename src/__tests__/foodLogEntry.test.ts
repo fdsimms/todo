@@ -20,6 +20,12 @@ describe('buildFoodLogEntry', () => {
     expect(entry).toMatchObject({ id: 'id1', dayKey: '2026-10-04', label: 'Burrito', sortOrder: 5, healthSampleIds: [] });
   });
 
+  it('keeps the answers to an either-one pair only when there are some', () => {
+    const picks = [{ pair: 'butter|vegan butter', use: 'vegan butter' }];
+    expect(buildFoodLogEntry({ label: 'Loaf', quantity: '1', grams: null, nutrition: panel, itemPicks: picks }, () => [], () => 'a')?.itemPicks).toEqual(picks);
+    expect(buildFoodLogEntry({ label: 'Loaf', quantity: '1', grams: null, nutrition: panel, itemPicks: [] }, () => [], () => 'b')).not.toHaveProperty('itemPicks');
+  });
+
   it('refuses an entry with no name or no figures', () => {
     expect(buildFoodLogEntry({ label: ' ', quantity: '', grams: null, nutrition: panel }, () => [], () => 'x')).toBeNull();
     expect(buildFoodLogEntry({ label: 'Tea', quantity: '', grams: null, nutrition: { ...panel, amounts: {} } }, () => [], () => 'x')).toBeNull();

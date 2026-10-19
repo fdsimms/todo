@@ -118,6 +118,57 @@ describe('shopLinkRow and the shop rows', () => {
 describe('subLinkRows', () => {
   const existing: ItemSubLink[] = [];
 
+  it('writes an either-one pair both ways, never standing, with the ratio swapped on the reverse', () => {
+    const rows = subLinkRows('a', 'b', existing, { either: true, standing: true, ratioFrom: '1 cup', ratioTo: '3/4 cup' }, NOW)!;
+    expect(rows.written).toEqual([
+      expect.objectContaining({ itemId: 'a', subItemId: 'b', either: true, standing: false, ratioFrom: '1 cup', ratioTo: '3/4 cup' }),
+      expect.objectContaining({ itemId: 'b', subItemId: 'a', either: true, standing: false, ratioFrom: '3/4 cup', ratioTo: '1 cup' }),
+    ]);
+  });
+
+  it('writes an ordinary link without the flag at all', () => {
+    expect(subLinkRows('a', 'b', existing, { bothWays: true }, NOW)!.written.every(l => !('either' in l))).toBe(true);
+  });
+
+  it('clears the always rules on either item and any other pair either was half of', () => {
+    const base = { note: null, createdAt: 'old', ratioFrom: null, ratioTo: null };
+    const always: ItemSubLink = { ...base, itemId: 'a', subItemId: 'c', standing: true };
+    const reverseAlways: ItemSubLink = { ...base, itemId: 'b', subItemId: 'd', standing: true };
+    const otherPair: ItemSubLink[] = [
+      { ...base, itemId: 'a', subItemId: 'e', standing: false, either: true },
+      { ...base, itemId: 'e', subItemId: 'a', standing: false, either: true },
+    ];
+    const rows = subLinkRows('a', 'b', [always, reverseAlways, ...otherPair], { either: true }, NOW)!;
+    expect(rows.cleared).toEqual(expect.arrayContaining([
+      { ...always, standing: false },
+      { ...reverseAlways, standing: false },
+      { ...otherPair[0], either: false },
+      { ...otherPair[1], either: false },
+    ]));
+    expect(rows.cleared).toHaveLength(4);
+  });
+
+  it('leaves the pair itself alone when either one is written again', () => {
+    const base = { note: null, createdAt: 'old', ratioFrom: null, ratioTo: null, standing: false, either: true };
+    const pair: ItemSubLink[] = [{ ...base, itemId: 'a', subItemId: 'b' }, { ...base, itemId: 'b', subItemId: 'a' }];
+    expect(subLinkRows('a', 'b', pair, { either: true }, NOW)!.cleared).toEqual([]);
+  });
+
+  it('never lists a row it is itself writing as cleared, so a caller writing both in turn keeps the new one', () => {
+    const base = { note: null, createdAt: 'old', ratioFrom: null, ratioTo: null, standing: false, either: true };
+    const pair: ItemSubLink[] = [{ ...base, itemId: 'a', subItemId: 'b' }, { ...base, itemId: 'b', subItemId: 'a' }];
+    const rows = subLinkRows('a', 'b', pair, { standing: true }, NOW)!;
+    expect(rows.written).toEqual([expect.objectContaining({ itemId: 'a', subItemId: 'b', standing: true })]);
+    expect(rows.cleared).toEqual([{ ...pair[1], either: false }]);
+  });
+
+  it('a standing write turns off an either pair the item was in', () => {
+    const base = { note: null, createdAt: 'old', ratioFrom: null, ratioTo: null, standing: false, either: true };
+    const pair: ItemSubLink[] = [{ ...base, itemId: 'a', subItemId: 'z' }, { ...base, itemId: 'z', subItemId: 'a' }];
+    const rows = subLinkRows('a', 'b', pair, { standing: true }, NOW)!;
+    expect(rows.cleared).toEqual([{ ...pair[0], either: false }, { ...pair[1], either: false }]);
+  });
+
   it('refuses a self-link, needs both halves of a ratio, and swaps the ratio on the reverse row', () => {
     expect(subLinkRows('a', 'a', existing, {}, NOW)).toBeNull();
     expect(subLinkRows('a', 'b', existing, { ratioFrom: '1 cup' }, NOW)!.written[0]).toMatchObject({ ratioFrom: null, ratioTo: null });

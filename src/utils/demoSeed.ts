@@ -87,6 +87,7 @@ import { giftIdeasText } from './personNotes';
 import { mealShortfallLinkUrl, mealShortfallTitle } from './mealShortfallTasks';
 import { frozenForMeal, mealThawLinkUrl, mealThawTitle } from './mealThawTasks';
 import { standingSwapMap } from './standingSwaps';
+import { eitherPairKey } from './itemEither';
 import { mealLogNudgeLinkUrl, mealLogNudgeTitle } from './mealLogNudgeTasks';
 import { MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogSourceId, moodNudgeNotes, wantsMoodNudge } from './moodTasks';
 import { buildMoodDays, lowMoodRun } from './moodInsights';
@@ -5265,6 +5266,17 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     linkItemSub(itemNamed('Milk').id, oatMilk.id, { bothWays: true, standing: true });
   }
 
+  // "Either one" (`ItemSubLink.either`): butter and vegan butter, used almost
+  // interchangeably and with different nutrition, so which went into a cooking
+  // is asked rather than assumed. It is the one pair the seed leaves half
+  // answered on purpose: Sunday's steak says vegan butter below, while the
+  // carrot cake's frosting is left unpicked, which is the state the meal sheet
+  // and the log prompt ask about and nothing else in the seed can show.
+  const veganButter = ensureCatalogItem('Vegan butter');
+  if (veganButter) {
+    linkItemSub(itemNamed('Butter').id, veganButter.id, { either: true });
+  }
+
   // A ratio (#1573) — the issue's own motivating example, and a natural fit:
   // several seeded recipes already call for garlic in cloves ("2 cloves
   // garlic"), so this is a link whose ratio a demo user can actually see work
@@ -5742,7 +5754,7 @@ function seedMealPlanNudgeStack(
 }
 
 function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
-  const { loadRange, planMeal, setCooked, setRecipeScale, setRecipeChoices, setRecipeOverrides, stampAddedToList } =
+  const { loadRange, planMeal, setCooked, setRecipeScale, setRecipeChoices, setRecipeOverrides, setItemPicks, stampAddedToList } =
     useMealPlanStore.getState();
   const { markCooked } = useRecipeStore.getState();
   const { logLeftover, finishLeftover, setFrozen: setLeftoverFrozen } = useLeftoverStore.getState();
@@ -5984,6 +5996,9 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
     title: 'Seared steak with potatoes',
     recipeId: recipes.steak,
   });
+  // Basted in vegan butter that night: the "either one" answered for this
+  // cooking (MealPlanEntry.itemPicks), where the carrot cake below is not.
+  if (sundayRoast) setItemPicks(sundayRoast.id, [{ pair: eitherPairKey('butter', 'vegan butter'), use: 'vegan butter' }]);
   // Roast potatoes again this week, decided in advance.
   if (sundayRoast) {
     const roasted = componentIdFor(recipes.steak, recipes.roasties);

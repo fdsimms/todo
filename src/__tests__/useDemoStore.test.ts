@@ -62,12 +62,13 @@ import { awaySpanOf, awayStatus, awayNights, nextAwayProject } from '../utils/aw
 import { pantryEntries } from '../utils/grocerySuggest';
 import { substituteQuantity, substitutesFor } from '../utils/itemSubs';
 import { standingSwapMap } from '../utils/standingSwaps';
+import { eitherPairsInUse } from '../utils/itemEither';
 import { annotateSteps, stepIngredientLines } from '../utils/stepIngredients';
 import { coveringVariety, varietyIndex } from '../utils/itemVarieties';
 import { normalizeGtin } from '../utils/gtin';
 import { nutritionFor } from '../utils/foodNutrition';
 import { classifyPlanned, plannedIngredientsForRecipe } from '../utils/mealPlanGroceries';
-import { activeComponents, activeIngredients, flattenRecipeIngredients, recipeMap } from '../utils/recipeComponents';
+import { activeComponents, activeIngredients, entryResolution, flattenRecipeIngredients, recipeMap } from '../utils/recipeComponents';
 import { catalogMatchSummary, matchIngredientsToCatalog } from '../utils/ingredientCatalogMatch';
 import { cookSteps, stepsFromNotes } from '../utils/cookMode';
 import type { Recipe } from '../types';
@@ -3555,7 +3556,8 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const margarine = items.find(i => i.nameKey === 'margarine');
     expect(butter && margarine).toBeTruthy();
 
-    const oneWay = substitutesFor(butter!.id, itemSubs, items);
+    // Butter's "either one" partner (vegan butter) is its own seeded case, below.
+    const oneWay = substitutesFor(butter!.id, itemSubs, items).filter(s => !s.link.either);
     expect(oneWay.map(s => s.item.id)).toEqual([margarine!.id]);
     // The asymmetric case, and the caveat that stands in for a per-recipe scope.
     expect(oneWay[0].isMutual).toBe(false);
@@ -3606,6 +3608,26 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const mashLines = flattenRecipeIngredients(mash, recipesById, undefined, swaps);
     expect(mashLines.some(f => f.ingredient.nameKey === 'milk')).toBe(true);
     expect(mashLines.every(f => f.swappedFrom === null)).toBe(true);
+  });
+
+  it('seeds an either-one pair, answered for one meal and open for another', () => {
+    const { items, itemSubs } = useGroceryStore.getState();
+    const butter = items.find(i => i.nameKey === 'butter')!;
+    const vegan = items.find(i => i.nameKey === 'vegan butter')!;
+    // Written both ways, and never together with an always rule.
+    expect(itemSubs.filter(l => l.either).map(l => `${l.itemId}>${l.subItemId}`).sort())
+      .toEqual([`${butter.id}>${vegan.id}`, `${vegan.id}>${butter.id}`].sort());
+    expect(itemSubs.filter(l => l.either).every(l => !l.standing)).toBe(true);
+
+    const entries = useMealPlanStore.getState().entries;
+    const recipes = useRecipeStore.getState().recipes;
+    const recipesById = new Map(recipes.map(r => [r.id, r]));
+    const swaps = standingSwapMap(itemSubs, items);
+    // Every planned meal with this title: the steak is on the plan more than once.
+    const pairsOf = (title: string) => entries.filter(e => e.title === title).map(entry =>
+      eitherPairsInUse(flattenRecipeIngredients(recipesById.get(entry.recipeId!)!, recipesById, entryResolution(entry), swaps)));
+    expect(pairsOf('Seared steak with potatoes').flat().map(p => p.use)).toContain('vegan butter');
+    expect(pairsOf('Carrot cake with cream cheese frosting').flat().map(p => p.use)).toEqual([null]);
   });
 
   it('seeds an item with another name', () => {

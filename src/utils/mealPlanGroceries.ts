@@ -90,6 +90,12 @@ export interface PlannedIngredient {
    */
   swappedFrom?: string | null;
   /**
+   * The line names an "either one" pair this meal has not answered
+   * (`MealPlanEntry.itemPicks`). Carried for nutrition only: shopping still reads
+   * the line as the recipe wrote it.
+   */
+  undecidedItem?: true;
+  /**
    * `RecipeIngredient.optional`, carried through. Absent (the common case)
    * means the line is needed; present and `true` means it's a garnish or
    * serving suggestion. Same write-only-when-true convention as `noSwap` —
@@ -191,6 +197,7 @@ export function collectPlannedIngredients(
         recipeId: flat.recipe.id,
         recipeTitle: flat.recipe.name,
         swappedFrom: flat.swappedFrom ?? null,
+        ...(flat.either?.undecided ? { undecidedItem: true as const } : {}),
         // A picked optional line is an ordinary line for this meal (optionalCounts).
         ...(optionalCounts(flat.ingredient, resolution) ? {} : { optional: true }),
         ...(flat.ingredient.excludeFromNutrition ? { excludeFromNutrition: true } : {}),
@@ -280,6 +287,7 @@ export function plannedIngredientsForRecipe(
       recipeTitle: flat.recipe.name,
       choiceGroup: groupKeyIfUndecided(flat.recipe.id, flat.ingredient.choiceGroup, undecided),
       swappedFrom: flat.swappedFrom ?? null,
+      ...(flat.either?.undecided ? { undecidedItem: true as const } : {}),
       ...(optionalCounts(flat.ingredient, resolution) ? {} : { optional: true }),
     }));
 }
@@ -873,7 +881,7 @@ export function consumedRows(classified: readonly ClassifiedIngredient[]): Class
  * after the oat milk.
  */
 export function cookedConsumption(
-  entry: Pick<MealPlanEntry, 'recipeId' | 'recipeChoices' | 'recipeOverrides' | 'recipeScale'>,
+  entry: Pick<MealPlanEntry, 'recipeId' | 'recipeChoices' | 'recipeOverrides' | 'itemPicks' | 'recipeScale'>,
   recipes: readonly Recipe[],
   items: readonly GroceryItem[],
   itemSubs: readonly ItemSubLink[],
@@ -894,7 +902,11 @@ export function cookedConsumption(
         entryResolution(entry, { onHand: onHandNameKeys(items, now, products) }),
         normalizeScale(entry.recipeScale),
         standingSwapMap(itemSubs, items),
-      ),
+      )
+        // An "either one" this cooking never answered opens neither item: the
+        // read would be a guess about which jar was used, and "opened" starts a
+        // shelf-life clock (`itemEither.ts`).
+        .filter(line => !line.undecidedItem),
       items,
       now,
       [],

@@ -1558,6 +1558,21 @@ describe('what a cooking opened', () => {
     expect(cookedConsumption(entry('2026-03-02', null), [r], [oil], [], new Date(), [])).toEqual([]);
   });
 
+  it('marks nothing opened for an either-one pair the meal never answered, and the item that was used once it has', () => {
+    const now = new Date().toISOString();
+    const butter = item({ name: 'butter', lastPurchasedAt: now, purchaseCount: 3 });
+    const vegan = item({ name: 'vegan butter', lastPurchasedAt: now, purchaseCount: 3 });
+    const links = ['a', 'b'].map((_, i) => ({
+      itemId: i === 0 ? butter.id : vegan.id,
+      subItemId: i === 0 ? vegan.id : butter.id,
+      note: null, createdAt: now, ratioFrom: null, ratioTo: null, standing: false, either: true,
+    }));
+    const r = recipe('Banana bread', [ing('butter')]);
+    expect(cookedConsumption(entry('2026-03-02', r.id), [r], [butter, vegan], links, new Date(), [])).toEqual([]);
+    const answered = entry('2026-03-02', r.id, { itemPicks: [{ pair: 'butter|vegan butter', use: 'vegan butter' }] });
+    expect(cookedConsumption(answered, [r], [butter, vegan], links, new Date(), []).map(x => x.nameKey)).toEqual(['vegan butter']);
+  });
+
   it('resolves rows back to catalog ids, leaving out one already open and one with no row', () => {
     const oil = item({ name: 'olive oil' });
     const salt = item({ name: 'salt', openedAt: '2026-01-01T00:00:00.000Z' });

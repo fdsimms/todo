@@ -16,6 +16,7 @@ import { collectPlannedIngredients } from './mealPlanGroceries';
 import { flattenRecipeIngredients, optionalCounts, type ChoiceResolution } from './recipeComponents';
 import { normalizeScale, scaleQuantity } from './recipeScale';
 import { NO_STANDING_SWAPS, type StandingSwapMap } from './standingSwaps';
+import { hasUndecidedItem } from './itemEither';
 import { onHandNameKeys } from './grocerySuggest';
 import { groceryNameKey } from './groceryParse';
 import { parseQuantity, rationalToNumber } from './quantity';
@@ -501,6 +502,12 @@ export interface NutritionLine extends LineResolution {
  * options are in the flattened list, so a gap list built from it would ask
  * someone to fill in figures for the pepper they aren't cooking. The choice is
  * the thing to settle first, and `ComponentChoiceSheet` is where that happens.
+ *
+ * **So does a dish with an undecided "either one" pair** (`itemEither.ts`), for
+ * the same reason and one more: butter and vegan butter differ, and the figure
+ * on screen would be about whichever the walk happened to read. Only a read
+ * that has a cooking in hand (`ChoiceResolution.itemPicks`) can be undecided; the
+ * recipe page's own read is not, and shows the line as written.
  */
 export function recipeNutritionLines(
   recipe: Recipe,
@@ -513,7 +520,7 @@ export function recipeNutritionLines(
 ): NutritionLine[] {
   const flat = flattenRecipeIngredients(recipe, recipesById, resolution, swaps);
   if (flat.length === 0) return [];
-  if (hasUnresolvedChoice(flat)) return [];
+  if (hasUnresolvedChoice(flat) || hasUndecidedItem(flat)) return [];
 
   const byKey = itemKeyIndex(items);
   const productFor = preferredProductLookup(products);
@@ -577,7 +584,7 @@ export function excludedNutritionLines(
   swaps: StandingSwapMap = NO_STANDING_SWAPS,
 ): ExcludedNutritionLine[] {
   const flat = flattenRecipeIngredients(recipe, recipesById, resolution, swaps);
-  if (flat.length === 0 || hasUnresolvedChoice(flat)) return [];
+  if (flat.length === 0 || hasUnresolvedChoice(flat) || hasUndecidedItem(flat)) return [];
   return flat
     .filter(line => line.ingredient.excludeFromNutrition)
     .map(line => ({ id: line.ingredient.id, recipeId: line.recipe.id, name: line.ingredient.name }));
@@ -631,6 +638,12 @@ export function weekNutrition(
   for (const line of planned) {
     // `optional` on a planned row is an optional line its meal didn't pick.
     if (line.excludeFromNutrition || line.optional) continue;
+    // An "either one" nobody has answered for this meal is a line the week
+    // can't speak for: it counts against coverage rather than as either item.
+    if (line.undecidedItem) {
+      resolved.push({ state: 'unmatched', item: null, product: null, nutrition: null, multiplier: null });
+      continue;
+    }
     // Measured as written, then scaled, like a single recipe's lines: the
     // planned row's own `quantity` is the scaled shopping text (see the header).
     const one = resolveLine(

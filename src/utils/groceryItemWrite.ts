@@ -217,6 +217,12 @@ export interface SubLinkOptions {
   ratioFrom?: string | null;
   ratioTo?: string | null;
   standing?: boolean;
+  /**
+   * "Either one": the pair is interchangeable and each cooking says which was
+   * used (`ItemSubLink.either`). Always written both ways, since the relation is
+   * symmetric by construction, and never together with `standing`.
+   */
+  either?: boolean;
   bothWays?: boolean;
 }
 
@@ -228,6 +234,21 @@ export function clearOtherStandingLinks(links: readonly ItemSubLink[], itemId: s
       (l.itemId === itemId && l.subItemId !== subItemId)
       || (l.itemId === subItemId && l.subItemId === itemId))
     .map(l => ({ ...l, standing: false }));
+}
+
+/**
+ * Every "either one" row an item is part of, other than the pair being written,
+ * switched off. One item has one "either one" partner, for the reason it has one
+ * standing swap: a three-way set has no answer to "which pair is this pick for".
+ */
+export function clearOtherEitherLinks(links: readonly ItemSubLink[], itemId: string, subItemId: string): ItemSubLink[] {
+  const inPair = (l: ItemSubLink) =>
+    (l.itemId === itemId && l.subItemId === subItemId) || (l.itemId === subItemId && l.subItemId === itemId);
+  const touches = (l: ItemSubLink) =>
+    l.itemId === itemId || l.subItemId === itemId || l.itemId === subItemId || l.subItemId === subItemId;
+  return links
+    .filter(l => l.either && touches(l) && !inPair(l))
+    .map(l => ({ ...l, either: false }));
 }
 
 /**
@@ -248,11 +269,14 @@ export function subLinkRows(
   const ratioFrom = opts.ratioFrom?.trim() || null;
   const ratioTo = opts.ratioTo?.trim() || null;
   const hasRatio = !!ratioFrom && !!ratioTo;
-  const standing = !!opts.standing;
+  const either = !!opts.either;
+  // Either one and always are different answers to one question, and either one
+  // is symmetric, so it is written both ways and never standing.
+  const standing = !either && !!opts.standing;
   const pairs: Array<[string, string, string | null, string | null, boolean]> = [
     [itemId, subItemId, hasRatio ? ratioFrom : null, hasRatio ? ratioTo : null, standing],
   ];
-  if (opts.bothWays) pairs.push([subItemId, itemId, hasRatio ? ratioTo : null, hasRatio ? ratioFrom : null, false]);
+  if (opts.bothWays || either) pairs.push([subItemId, itemId, hasRatio ? ratioTo : null, hasRatio ? ratioFrom : null, false]);
   const written = pairs.map(([a, b, rFrom, rTo, isStanding]): ItemSubLink => ({
     itemId: a,
     subItemId: b,
@@ -261,8 +285,31 @@ export function subLinkRows(
     ratioFrom: rFrom,
     ratioTo: rTo,
     standing: isStanding,
+    ...(either ? { either: true } : {}),
   }));
-  return { written, cleared: standing ? clearOtherStandingLinks(existing, itemId, subItemId) : [] };
+  // Rows this write would conflict with: other standing rules for a standing
+  // write, and for an either-one write both the standing rules on either item
+  // and any other pair it was already half of.
+  const cleared: ItemSubLink[] = [];
+  if (standing) {
+    cleared.push(...clearOtherStandingLinks(existing, itemId, subItemId));
+    cleared.push(...existing
+      .filter(l => l.either && (l.itemId === itemId || l.subItemId === itemId))
+      .map(l => ({ ...l, either: false })));
+  }
+  if (either) {
+    cleared.push(...existing
+      .filter(l => l.standing && (l.itemId === itemId || l.itemId === subItemId))
+      .map(l => ({ ...l, standing: false })));
+    cleared.push(...clearOtherEitherLinks(existing, itemId, subItemId));
+  }
+  // A row this write is itself replacing is never also "cleared": a caller that
+  // writes `cleared` after `written` (the MCP replica does) would put the stale
+  // copy back over the new one.
+  return {
+    written,
+    cleared: cleared.filter(c => !written.some(w => w.itemId === c.itemId && w.subItemId === c.subItemId)),
+  };
 }
 
 // ---------------------------------------------------------------------------

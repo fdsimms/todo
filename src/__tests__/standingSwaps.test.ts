@@ -1,9 +1,11 @@
 import {
   applyStandingSwap,
   describeStandingSwap,
+  eitherSwaps,
   standingSwapMap,
   standingSwaps,
 } from '../utils/standingSwaps';
+import { eitherPairKey } from '../utils/itemEither';
 import { groceryNameKey } from '../utils/groceryParse';
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import type { GroceryItem, ItemSubLink, RecipeIngredient } from '../types';
@@ -278,5 +280,96 @@ describe('a rule and the line spelled one plural away (#2940)', () => {
 describe('describeStandingSwap', () => {
   it('names what the recipe said, lower-cased for a row subtitle', () => {
     expect(describeStandingSwap('Milk')).toBe('instead of milk');
+  });
+});
+
+describe('either one rules', () => {
+  const butter = makeItem('Butter');
+  const vegan = makeItem('Vegan butter');
+  const PAIR = eitherPairKey(butter.nameKey, vegan.nameKey);
+  const both = [
+    link(butter.id, vegan.id, { standing: false, either: true }),
+    link(vegan.id, butter.id, { standing: false, either: true }),
+  ];
+  const swaps = standingSwapMap(both, [butter, vegan]);
+
+  it('lists a pair written both ways as one rule per direction, and keeps them out of the standing list', () => {
+    expect(eitherSwaps(both, [butter, vegan]).map(r => `${r.from.name}>${r.to.name}`))
+      .toEqual(['Butter>Vegan butter', 'Vegan butter>Butter']);
+    expect(standingSwaps(both, [butter, vegan])).toEqual([]);
+  });
+
+  it('does nothing, and reports nothing, for a read with no cooking in hand', () => {
+    const result = applyStandingSwap(ingredient('butter', '1/2 cup'), swaps);
+    expect(result.ingredient.nameKey).toBe('butter');
+    expect(result.swappedFrom).toBeNull();
+    expect(result.either).toBeUndefined();
+  });
+
+  it('reports a pair nobody has answered as undecided and reads the line as written', () => {
+    const result = applyStandingSwap(ingredient('butter', '1/2 cup'), swaps, []);
+    expect(result.ingredient.nameKey).toBe('butter');
+    expect(result.swappedFrom).toBeNull();
+    expect(result.either).toMatchObject({ pair: PAIR, undecided: true, use: null });
+  });
+
+  it('rewrites a line to the other item when that is the one used, and says what the recipe wrote', () => {
+    const result = applyStandingSwap(ingredient('butter', '1/2 cup'), swaps, [{ pair: PAIR, use: 'vegan butter' }]);
+    expect(result.ingredient).toMatchObject({ name: 'Vegan butter', nameKey: 'vegan butter', quantity: '1/2 cup' });
+    expect(result.swappedFrom).toBe('butter');
+    expect(result.either).toMatchObject({ undecided: false, use: 'vegan butter' });
+  });
+
+  it('answers a line that names the other item the same way round', () => {
+    const picks = [{ pair: PAIR, use: 'butter' }];
+    expect(applyStandingSwap(ingredient('vegan butter', '1 tbsp'), swaps, picks).ingredient.nameKey).toBe('butter');
+    expect(applyStandingSwap(ingredient('butter', '1 tbsp'), swaps, picks).swappedFrom).toBeNull();
+  });
+
+  it('leaves a line as written, decided, when it already names the item that was used', () => {
+    const result = applyStandingSwap(ingredient('butter'), swaps, [{ pair: PAIR, use: 'butter' }]);
+    expect(result.ingredient.nameKey).toBe('butter');
+    expect(result.either).toMatchObject({ undecided: false, use: 'butter' });
+  });
+
+  it('treats a pick naming neither item as no answer', () => {
+    const result = applyStandingSwap(ingredient('butter'), swaps, [{ pair: PAIR, use: 'margarine' }]);
+    expect(result.either?.undecided).toBe(true);
+  });
+
+  it('never offers the pair on a line marked needs real butter', () => {
+    const result = applyStandingSwap(ingredient('butter', '1 cup', { noSwap: true }), swaps, [{ pair: PAIR, use: 'vegan butter' }]);
+    expect(result.ingredient.nameKey).toBe('butter');
+    expect(result.either).toBeUndefined();
+  });
+
+  it('answers the singular and plural spelling of a line like any other rule', () => {
+    const eggs = makeItem('Eggs');
+    const flax = makeItem('Flax eggs');
+    const map = standingSwapMap([
+      link(eggs.id, flax.id, { standing: false, either: true }),
+      link(flax.id, eggs.id, { standing: false, either: true }),
+    ], [eggs, flax]);
+    const picks = [{ pair: eitherPairKey(eggs.nameKey, flax.nameKey), use: 'flax eggs' }];
+    expect(applyStandingSwap(ingredient('egg', '2'), map, picks).ingredient.name).toBe('Flax eggs');
+  });
+
+  it('refuses an answered pair whose ratio cannot be applied, rather than log the item that was not used', () => {
+    const map = standingSwapMap([
+      link(butter.id, vegan.id, { standing: false, either: true, ratioFrom: '1 cup', ratioTo: '3/4 cup' }),
+    ], [butter, vegan]);
+    const result = applyStandingSwap(ingredient('butter', 'a knob'), map, [{ pair: PAIR, use: 'vegan butter' }]);
+    expect(result.ingredient.nameKey).toBe('butter');
+    expect(result.either?.undecided).toBe(true);
+  });
+
+  it('lets an always rule outrank an either one on the same item', () => {
+    const margarine = makeItem('Margarine');
+    const map = standingSwapMap([
+      link(butter.id, margarine.id),
+      link(butter.id, vegan.id, { standing: false, either: true }),
+    ], [butter, vegan, margarine]);
+    expect(map.get('butter')?.to.name).toBe('Margarine');
+    expect(map.get('butter')?.either).toBeUndefined();
   });
 });

@@ -193,6 +193,7 @@ type FoodLogModule = typeof import('../../src/utils/foodLog');
 type ProduceModule = typeof import('../../src/utils/produceServings');
 type RecipeProduceModule = typeof import('../../src/utils/recipeProduce');
 type StandingSwapsModule = typeof import('../../src/utils/standingSwaps');
+type ItemEitherModule = typeof import('../../src/utils/itemEither');
 type MoodHistoryModule = typeof import('../../src/utils/moodHistory');
 type MedicationModule = typeof import('../../src/utils/medicationLog');
 type MedicationSettingsModule = typeof import('../../src/utils/medicationSettings');
@@ -469,6 +470,14 @@ export interface MealPatch {
   /** Answers to its either/or questions, by the group's label and the option's name. */
   choices?: { group: string; option: string }[];
   /**
+   * Which of two interchangeable items (an "either one" pair, set on the item
+   * with update_grocery_item's addSubstitutes either) this cooking used, by the
+   * item's name. One answer covers every recipe in the meal; naming the other
+   * item of the pair changes it. Nutrition, shopping and the pantry wait for it
+   * rather than guess.
+   */
+  picks?: { use: string }[];
+  /**
    * What this one cooking uses instead of a line or used recipe of its recipe,
    * by name, replacing the whole list (`[]` goes back to the recipe as written).
    * `with` is an ingredient as printed ("8 oz vegan fish fillets"), or null to
@@ -523,6 +532,16 @@ export interface MealCooking {
   opened: string[];
   /** Titles of the tasks the cooking completed. */
   tasksCompleted: string[];
+  /** "Either one" pairs this meal never answered ("Butter or vegan butter"): nothing was marked opened for them. */
+  unanswered: string[];
+}
+
+/** One "either one" pair a planned meal names, and which of the two it used. */
+export interface MealItem {
+  pair: string;
+  items: string[];
+  /** The item used, or null while unanswered. */
+  used: string | null;
 }
 
 export interface MealUncooking {
@@ -771,7 +790,7 @@ export interface GroceryItemChange {
   /** Stores this item can be bought at (store ids). */
   linkShops?: string[];
   unlinkShops?: string[];
-  addSubstitutes?: { itemId: string; note?: string | null; ratioFrom?: string | null; ratioTo?: string | null; standing?: boolean; bothWays?: boolean }[];
+  addSubstitutes?: { itemId: string; note?: string | null; ratioFrom?: string | null; ratioTo?: string | null; standing?: boolean; either?: boolean; bothWays?: boolean }[];
   removeSubstitutes?: string[];
 }
 
@@ -2142,6 +2161,8 @@ export interface Replica {
   mealChoices(entry: MealPlanEntry): MealChoice[];
   /** What a planned meal uses instead of its recipe's own lines, one plain sentence each. */
   mealReplacements(entry: MealPlanEntry): string[];
+  /** The "either one" pairs a planned meal's recipes name, and which item it used. */
+  mealItems(entry: MealPlanEntry): MealItem[];
   /** A planned meal's blanks, what fills each this time, and what the kitchen holds that could. */
   mealFills(entry: MealPlanEntry): MealFill[];
   /** A planned meal's optional lines, and whether it includes each. */
@@ -2309,6 +2330,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const produce = require('../../src/utils/produceServings') as ProduceModule;
   const recipeProduce = require('../../src/utils/recipeProduce') as RecipeProduceModule;
   const standingSwaps = require('../../src/utils/standingSwaps') as StandingSwapsModule;
+  const itemEither = require('../../src/utils/itemEither') as ItemEitherModule;
   const moodHistory = require('../../src/utils/moodHistory') as MoodHistoryModule;
   const medication = require('../../src/utils/medicationLog') as MedicationModule;
   // Medications added by name before any dose: part of the list alongside the logged ones.
@@ -3635,6 +3657,24 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     return mealPlanUtils.entriesForSlot(day, source.dayKey, source.slot)[0]?.id ?? null;
   };
 
+  /** The "either one" pairs a planned meal's recipes name, and which item it used. */
+  const mealItemsOf = (entry: MealPlanEntry): MealItem[] => {
+    if (!entry.recipeId) return [];
+    const recipes = db.dbGetAllRecipes();
+    const recipe = recipes.find(r => r.id === entry.recipeId);
+    if (!recipe) return [];
+    const items = db.dbGetAllGroceryItems();
+    const swaps = standingSwaps.standingSwapMap(db.dbGetAllItemSubLinks(), items);
+    const flat = components().flattenRecipeIngredients(
+      recipe, new Map(recipes.map(r => [r.id, r])), components().entryResolution(entry), swaps,
+    );
+    return itemEither.eitherPairsInUse(flat).map(p => ({
+      pair: itemEither.describeEitherPair(p.items),
+      items: p.items.map(i => i.name),
+      used: p.use === null ? null : (p.items.find(i => i.nameKey === p.use)?.name ?? null),
+    }));
+  };
+
   /**
    * A planned meal marked cooked, as the app's `setCookedPaired` marks one:
    * the stamp, the recipe's own counters (`useRecipeStore.markCooked`), the
@@ -3687,7 +3727,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       next = liveGeneratedTask(tasks(), 'mealSlot', sourceId);
     }
     refresh();
-    return { entry: cooked, opened, tasksCompleted };
+    return { entry: cooked, opened, tasksCompleted, unanswered: mealItemsOf(entry).filter(m => m.used === null).map(m => m.pair) };
   };
 
   /**
@@ -5102,9 +5142,19 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const recipeNutrition = require('../../src/utils/recipeNutrition') as typeof import('../../src/utils/recipeNutrition'); // eslint-disable-line @typescript-eslint/no-require-imports
       const mealLog = require('../../src/utils/mealLog') as typeof import('../../src/utils/mealLog'); // eslint-disable-line @typescript-eslint/no-require-imports
       const items = db.dbGetAllGroceryItems();
+      const swaps = standingSwaps.standingSwapMap(db.dbGetAllItemSubLinks(), items);
+      const byId = new Map(recipes.map(r => [r.id, r]));
+      // Read under the answers the log kept, so a dish made with vegan butter is
+      // measured with it. An entry that never recorded one for a pair it asks
+      // about cannot be re-measured: that would guess.
+      const resolution = { itemPicks: entry.itemPicks ?? [] };
+      const open = itemEither.eitherPairsInUse(components().flattenRecipeIngredients(recipe, byId, resolution, swaps))
+        .filter(p => p.use === null);
+      if (open.length > 0) {
+        throw new Error(`"${recipe.name}" asks for ${open.map(p => itemEither.describeEitherPair(p.items)).join(' and ')}, and this entry never recorded which was used, so it is not re-measured. Correct the figures with update_food_entry.`);
+      }
       const dish = recipeNutrition.recipeNutrition(
-        recipe, items, db.dbGetAllItemProducts(), new Map(recipes.map(r => [r.id, r])), undefined, 1,
-        standingSwaps.standingSwapMap(db.dbGetAllItemSubLinks(), items),
+        recipe, items, db.dbGetAllItemProducts(), byId, resolution, 1, swaps,
       );
       const figures = dish
         ? { total: dish.total, perServing: recipeNutrition.perServing(dish), servings: dish.servings, cookedGrams: mealLog.cookedDishGrams(recipe.cookedWeightG, 1) }
@@ -8117,7 +8167,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         const cleaned = mealPlanUtils.cleanMealTitle(patch.title);
         if (!cleaned) throw new Error('A meal needs a title.');
         // A renamed meal whose recipe is gone is a different meal now, as in the app.
-        next = gone ? { ...next, title: cleaned, recipeId: null, recipeChoices: [], recipeOverrides: [], recipeScale: 1 } : { ...next, title: cleaned };
+        next = gone ? { ...next, title: cleaned, recipeId: null, recipeChoices: [], recipeOverrides: [], itemPicks: [], recipeScale: 1 } : { ...next, title: cleaned };
       }
 
       if (patch.choices !== undefined) {
@@ -8141,6 +8191,23 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           chosen = components().applyChoice(chosen, group, option.id);
         }
         next = { ...next, recipeChoices: chosen };
+      }
+
+      if (patch.picks !== undefined) {
+        if (!next.recipeId) throw new Error('Only a meal with a recipe has items to pick.');
+        const items = db.dbGetAllGroceryItems();
+        const rules = standingSwaps.eitherSwaps(db.dbGetAllItemSubLinks(), items);
+        let picks = [...(next.itemPicks ?? [])];
+        for (const pick of patch.picks) {
+          const key = pick.use.trim().toLowerCase();
+          const rule = rules.find(r => r.from.name.toLowerCase() === key || r.to.name.toLowerCase() === key);
+          if (!rule) {
+            throw new Error(`"${pick.use}" is not half of an "either one" pair${rules.length ? ` (the pairs are: ${rules.map(r => `${r.from.name} / ${r.to.name}`).join('; ')})` : ' (there are none: set one with update_grocery_item addSubstitutes either)'}.`);
+          }
+          const used = rule.from.name.toLowerCase() === key ? rule.from : rule.to;
+          picks = itemEither.withItemPick(picks, itemEither.eitherPairKey(rule.from.nameKey, rule.to.nameKey), used.nameKey);
+        }
+        next = { ...next, itemPicks: picks };
       }
 
       if (patch.replacements !== undefined) {
@@ -8344,6 +8411,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const recipe = recipes.find(r => r.id === entry.recipeId);
       if (!recipe) return [];
       return components().describeOverrides(recipe, new Map(recipes.map(r => [r.id, r])), entry.recipeOverrides);
+    },
+
+    mealItems(entry: MealPlanEntry): MealItem[] {
+      return mealItemsOf(entry);
     },
 
     mealOptional(entry: MealPlanEntry): { name: string; included: boolean }[] {

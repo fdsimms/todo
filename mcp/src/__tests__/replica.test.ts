@@ -387,6 +387,73 @@ describe('the replica', () => {
       expect(() => replica.updateMeal('nope', {})).toThrow(/No planned meal/);
     });
 
+    describe('an either-one pair', () => {
+      const panelOf = (kcal: number) => ({
+        basis: 'per100g' as const, servingGrams: null, servingText: null, amounts: { calorieKcal: kcal },
+        portions: [], source: 'estimated' as const, sourceId: null, recordedAt: '2026-09-01T00:00:00.000Z',
+      });
+
+      const setUp = () => {
+        // In the cupboard rather than on the list, so a cooking has something to open.
+        const [butter, vegan] = replica.addToPantry(['Butter', 'Vegan butter']).map(x => x.item);
+        replica.setNutritionPanel(butter.id, null, panelOf(700));
+        replica.setNutritionPanel(vegan.id, null, panelOf(600));
+        replica.updateGroceryItem(butter.id, { addSubstitutes: [{ itemId: vegan.id, either: true }] });
+        const recipe = replica.createRecipe({ name: 'Banana bread', ingredients: [{ text: '100 g butter' }] });
+        const meal = replica.planMeal({ date: '2026-09-25', slot: 'dinner', recipeId: recipe.id });
+        return { butter, vegan, recipe, meal };
+      };
+
+      it('writes the pair both ways and clears an always rule on either item', () => {
+        const { butter, vegan } = setUp();
+        const links = replica.itemSubLinks();
+        expect(links.filter(l => l.either).map(l => `${l.itemId}>${l.subItemId}`).sort())
+          .toEqual([`${butter.id}>${vegan.id}`, `${vegan.id}>${butter.id}`].sort());
+        replica.updateGroceryItem(butter.id, { addSubstitutes: [{ itemId: vegan.id, standing: true }] });
+        expect(replica.itemSubLinks().some(l => l.either && l.itemId === butter.id)).toBe(false);
+        expect(replica.itemSubLinks().find(l => l.itemId === butter.id)?.standing).toBe(true);
+      });
+
+      it('lists the pair as unanswered, takes the answer by the used item\'s name, and changes it', () => {
+        const { meal } = setUp();
+        expect(replica.mealItems(replica.mealPlan('2026-09-25', '2026-09-25')[0])).toEqual([
+          { pair: 'Butter or vegan butter', items: ['Butter', 'Vegan butter'], used: null },
+        ]);
+        const answered = replica.updateMeal(meal.id, { picks: [{ use: 'Vegan butter' }] });
+        expect(answered.itemPicks).toEqual([{ pair: 'butter|vegan butter', use: 'vegan butter' }]);
+        expect(replica.mealItems(answered)[0].used).toBe('Vegan butter');
+        expect(replica.updateMeal(meal.id, { picks: [{ use: 'butter' }] }).itemPicks).toEqual([{ pair: 'butter|vegan butter', use: 'butter' }]);
+      });
+
+      it('refuses a pick that is not half of a pair, naming the pairs there are', () => {
+        const { meal } = setUp();
+        expect(() => replica.updateMeal(meal.id, { picks: [{ use: 'Margarine' }] })).toThrow(/not half of an "either one" pair.*Butter \/ Vegan butter/);
+        const typed = replica.planMeal({ date: '2026-09-26', slot: 'dinner', title: 'Takeout' });
+        expect(() => replica.updateMeal(typed.id, { picks: [{ use: 'Butter' }] })).toThrow(/Only a meal with a recipe/);
+      });
+
+      it('will not re-measure a dish that never recorded which was used, and reads the answer once it has one', () => {
+        const { recipe } = setUp();
+        const dish = replica.logFood({ label: 'Banana bread', quantity: '1 serving', amounts: { calorieKcal: 1 } });
+        mockRaw.runSync('UPDATE food_logs SET recipe_id = ? WHERE id = ?', [recipe.id, dish.id]);
+        expect(() => replica.refreshDishEntry(dish.id)).toThrow(/never recorded which was used/);
+        mockRaw.runSync('UPDATE food_logs SET item_picks = ? WHERE id = ?', [JSON.stringify([{ pair: 'butter|vegan butter', use: 'butter' }]), dish.id]);
+        expect(() => replica.refreshDishEntry(dish.id)).not.toThrow(/never recorded which was used/);
+      });
+
+      it('marks nothing opened for an unanswered pair and says so, then opens the item that was used', () => {
+        const { meal } = setUp();
+        const unanswered = replica.setMealCooked(meal.id, true);
+        expect('unanswered' in unanswered && unanswered.unanswered).toEqual(['Butter or vegan butter']);
+        expect('opened' in unanswered && unanswered.opened).toEqual([]);
+        replica.setMealCooked(meal.id, false);
+        replica.updateMeal(meal.id, { picks: [{ use: 'Vegan butter' }] });
+        const answered = replica.setMealCooked(meal.id, true);
+        expect('opened' in answered && answered.opened).toEqual(['Vegan butter']);
+        expect('unanswered' in answered && answered.unanswered).toEqual([]);
+      });
+    });
+
     it('removes a meal, but not one marked cooked', () => {
       const a = replica.planMeal({ date: '2026-09-23', slot: 'dinner', title: 'Pasta' });
       expect(replica.removeMeal(a.id).title).toBe('Pasta');

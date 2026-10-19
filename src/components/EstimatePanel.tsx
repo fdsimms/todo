@@ -53,6 +53,7 @@ import { creditedKeys, foodLogRecency, rankByRecency } from '../utils/foodLogRec
 import { MAX_ESTIMATE_MULTIPLE, describeEstimateCount, estimateCountNoun, savedMealAmounts, savedMealsMatching, scalePanelToAmount, wholeEstimate } from '../utils/foodLog';
 import { useSavedMealsStore } from '../store/useSavedMealsStore';
 import { formatQuantityAmount } from '../utils/quantity';
+import { UNANSWERED } from '../utils/itemEither';
 import { perServing, recipeNutrition } from '../utils/recipeNutrition';
 import { standingSwapMap } from '../utils/standingSwaps';
 import { packageHelping } from '../utils/scanPortion';
@@ -457,7 +458,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
       if (Object.keys(amounts).length > 0) out.push({ label: meal.name, quantity: '1 saved meal', amounts });
     }
     for (const recipe of matches) {
-      const serving = perServing(recipeNutrition(recipe, items, itemProducts, recipesById, undefined, 1, swaps));
+      const serving = perServing(recipeNutrition(recipe, items, itemProducts, recipesById, UNANSWERED, 1, swaps));
       if (serving) out.push({ label: recipe.name, quantity: '1 serving', amounts: serving });
     }
     return out.slice(0, MAX_CONTEXT_FOODS);
@@ -1215,7 +1216,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
                     doesn't ask, so its row opens the picker rather than
                     logging, and a chevron says so where the others have +. */}
                 {matches.map((recipe, index) => {
-                  const serving = perServing(recipeNutrition(recipe, items, itemProducts, recipesById, undefined, 1, swaps));
+                  const serving = perServing(recipeNutrition(recipe, items, itemProducts, recipesById, UNANSWERED, 1, swaps));
                   return (
                     <TouchableOpacity
                       key={recipe.id}
