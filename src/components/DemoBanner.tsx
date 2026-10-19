@@ -8,13 +8,7 @@ import { useSettingsStore, type FabHand } from '../store/useSettingsStore';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-
-// The tab bar's own height, without the safe-area inset underneath it.
-// Hard-coded because this banner renders outside the tab navigator (it's a
-// sibling of the NavigationContainer, so it can sit over every screen), and
-// useBottomTabBarHeight() throws when called from there. Exported for
-// UndoBar, the other app-wide floating element with the same constraint.
-export const TAB_BAR_HEIGHT = 49;
+import { useBottomBarHeight } from '../hooks/useBottomBarHeight';
 
 // Always-visible marker that the list on screen isn't the user's own, and
 // the way back out. Deliberately app-wide rather than a per-screen banner:
@@ -34,6 +28,7 @@ export function DemoBanner() {
   const exitDemoMode = useDemoStore(s => s.exitDemoMode);
   const { colors, shadows } = useTheme();
   const insets = useSafeAreaInsets();
+  const barHeight = useBottomBarHeight();
   const fabHand = useSettingsStore(s => s.fabHand);
   const styles = useMemo(() => makeStyles(colors, fabHand), [colors, fabHand]);
 
@@ -58,7 +53,7 @@ export function DemoBanner() {
 
   return (
     <View
-      style={[styles.wrap, { bottom: insets.bottom + TAB_BAR_HEIGHT + spacing.md }]}
+      style={[styles.wrap, { bottom: insets.bottom + barHeight + spacing.md }]}
       pointerEvents="box-none"
     >
       <PressableScale

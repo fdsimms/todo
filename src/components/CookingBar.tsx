@@ -7,7 +7,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, iconSize, interaction, type Colors } from '../theme';
-import { TAB_BAR_HEIGHT } from './DemoBanner';
+import { useBottomBarHeight } from '../hooks/useBottomBarHeight';
 import { FAB_SIZE } from './Fab';
 import { cookTimerElapsed, isCookTimerRunning } from '../utils/recipeTimer';
 import { formatStopwatch } from '../utils/effort';
@@ -42,6 +42,7 @@ import { GlassLayer, glassSupported } from './GlassLayer';
 export function CookingBar() {
   const { colors, shadows } = useTheme();
   const insets = useSafeAreaInsets();
+  const barHeight = useBottomBarHeight();
   const styles = makeStyles(colors);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const cooking = useRecipeStore(useShallow(s => s.recipes.filter(isCookTimerRunning)));
@@ -64,7 +65,7 @@ export function CookingBar() {
   if (!shown) return null;
 
   const elapsed = formatStopwatch(cookTimerElapsed(recipe, nowTick));
-  const bottom = insets.bottom + TAB_BAR_HEIGHT + FAB_SIZE + spacing.lg;
+  const bottom = insets.bottom + barHeight + FAB_SIZE + spacing.lg;
 
   return (
     <View style={[styles.wrap, { bottom }]} pointerEvents="box-none">

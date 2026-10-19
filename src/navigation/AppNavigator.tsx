@@ -2,7 +2,8 @@ import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } 
 import { PanResponder, StyleSheet, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { navigationRef, navigateToTab, flushPendingNavigation, currentTabName } from './navigationRef';
-import { BottomTabBar, createBottomTabNavigator, type BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import { BottomTabBarHeightCallbackContext, createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { CoinIcon } from '../components/CoinIcon';
@@ -67,7 +68,8 @@ import { HubMenuOptionsProvider, TabHubMenuOverlay, hubTabButtonFor } from '../c
 import { BlankTabDiagnostic, freezeWhenBlurred } from '../components/FreezeWhenBlurred';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { SettingsGroupScreen } from '../screens/SettingsGroupScreen';
-import { DemoBanner, TAB_BAR_HEIGHT } from '../components/DemoBanner';
+import { DemoBanner } from '../components/DemoBanner';
+import { TAB_BAR_HEIGHT } from '../utils/frameWidth';
 import { UndoBar } from '../components/UndoBar';
 import { CoinToast } from '../components/CoinToast';
 import { EventCreatedToast } from '../components/EventCreatedToast';
@@ -298,25 +300,23 @@ interface MainTabsProps {
   tabPressHaptic: { tabPress: () => void };
   accentColor: string;
   onOpenMenu: () => void;
-  /** The sidebar is showing, so the bar is kept (screens pad for it) but not drawn. */
+  /** The sidebar is showing, so no bar is drawn. */
   hideTabBar: boolean;
 }
 
-// With a sidebar the bottom bar has nothing left to do, but half the app
-// positions itself against its height (`useBottomTabBarHeight`, `TAB_BAR_HEIGHT`),
-// so it stays mounted and measured and is only made invisible, untouchable and
-// unannounced. The cost is its footprint left empty at the bottom of the column.
-function InvisibleTabBar(props: BottomTabBarProps) {
-  return (
-    <View
-      style={[StyleSheet.absoluteFill, { opacity: 0 }]}
-      pointerEvents="none"
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
-    >
-      <BottomTabBar {...props} />
-    </View>
-  );
+// With a sidebar the bottom bar has nothing left to do, so none is drawn. The
+// navigator still tells `useBottomTabBarHeight` how much the bottom edge takes,
+// which with no bar is the safe-area inset alone: that is what the ~40 screens
+// padding their lists for the bar read, and what keeps a list's last row off
+// the home indicator. What floats above the bar from outside the navigator
+// reads `useBottomBarHeight`, which is zero here for the same reason.
+function HiddenTabBar() {
+  const insets = useSafeAreaInsets();
+  const reportHeight = useContext(BottomTabBarHeightCallbackContext);
+  useEffect(() => {
+    reportHeight?.(insets.bottom);
+  }, [reportHeight, insets.bottom]);
+  return null;
 }
 
 // Memoized so toggling unrelated screen-level state elsewhere in
@@ -347,7 +347,7 @@ const MainTabs = React.memo(function MainTabs({
     <Tab.Navigator
       initialRouteName={initialRouteName}
       screenOptions={screenOptions}
-      tabBar={hideTabBar ? InvisibleTabBar : undefined}
+      tabBar={hideTabBar ? HiddenTabBar : undefined}
     >
       {/* The chosen tabs, in the chosen order, then More, then every other
           route hidden. The bar draws its buttons in route order, so this

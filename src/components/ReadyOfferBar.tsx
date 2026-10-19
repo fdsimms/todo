@@ -7,7 +7,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { InlineAction } from './InlineAction';
 import { BannerBar } from './BannerBar';
 import { WhenPicker } from './WhenPicker';
-import { TAB_BAR_HEIGHT } from './DemoBanner';
+import { useBottomBarHeight } from '../hooks/useBottomBarHeight';
 import { FAB_SIZE } from './Fab';
 import { spacing } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -35,6 +35,7 @@ const VISIBLE_MS = 8000;
  */
 export function ReadyOfferBar() {
   const insets = useSafeAreaInsets();
+  const barHeight = useBottomBarHeight();
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const offer = useTaskStore(s => s.readyOffer);
   const titles = useTaskStore(useShallow(s =>
@@ -66,7 +67,7 @@ export function ReadyOfferBar() {
   };
 
   const label = titles.length === 1 ? `“${titles[0]}” is ready` : `${titles.length} tasks are ready`;
-  const bottom = insets.bottom + TAB_BAR_HEIGHT + FAB_SIZE + spacing.lg;
+  const bottom = insets.bottom + barHeight + FAB_SIZE + spacing.lg;
   // The label, held while the bar drops away after the offer clears. Its
   // titles are gone from the store by then, so it has to be kept, not re-read.
   const bar = useLingering(shown && !picking ? label : null);

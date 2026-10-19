@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { TAB_BAR_HEIGHT } from './DemoBanner';
+import { useBottomBarHeight } from '../hooks/useBottomBarHeight';
 import { BannerBar } from './BannerBar';
 import { InlineAction } from './InlineAction';
 import { useEventCreatedToastStore } from '../store/useEventCreatedToastStore';
@@ -23,6 +23,7 @@ const VISIBLE_MS = 5000;
  */
 export function EventCreatedToast() {
   const insets = useSafeAreaInsets();
+  const barHeight = useBottomBarHeight();
   const liveCreated = useEventCreatedToastStore(s => s.created);
   const clear = useEventCreatedToastStore(s => s.clear);
   // Still drawn while it drops away after the store clears (useLingering).
@@ -68,7 +69,7 @@ export function EventCreatedToast() {
 
   return (
     <BannerBar
-      bottom={insets.bottom + TAB_BAR_HEIGHT + spacing.md}
+      bottom={insets.bottom + barHeight + spacing.md}
       label={justSaved ? 'Added to saved events' : 'Added to Calendar'}
       layout="stacked"
       liveRegion

@@ -58,3 +58,12 @@ export function monthCellSizeFor(windowWidth: number, sideMargin: number): numbe
 export function pickerCardWidthFor(windowWidth: number): number {
   return Math.min(windowWidth - 32, 380);
 }
+
+/**
+ * The tab bar's own height, without the safe-area inset underneath it.
+ * Hard-coded because what floats above it (the demo banner, the undo bar, the
+ * toasts) renders outside the tab navigator, where `useBottomTabBarHeight()`
+ * throws. Read it through `useBottomBarHeight`, which is zero while the sidebar
+ * replaces the bar.
+ */
+export const TAB_BAR_HEIGHT = 49;

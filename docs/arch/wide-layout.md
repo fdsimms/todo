@@ -47,11 +47,13 @@ to know:
 - **The column is centered in what the sidebar leaves**, so `frameWidthFor` and `frameLeftFor` take
   the sidebar into account. They are for things inside the column (the month grid, the edge swipe).
   A full-screen sheet is framed by `AppFrame` alone, over the whole window.
-- **The tab bar stays mounted and measured, and is only made invisible** (`InvisibleTabBar`). Half
-  the app positions itself against its height (`useBottomTabBarHeight`, `TAB_BAR_HEIGHT` in the
-  toasts, the undo bar and the FAB), so unmounting it would move all of them. The cost is its
-  footprint left empty at the bottom of the column. Giving that back means one hook for "what the
-  bottom edge reserves" in place of those two, across about 40 files.
+- **No tab bar is drawn, and the bottom edge reports only the safe-area inset** (`HiddenTabBar`).
+  Half the app positions itself against the bar's height, in two ways. Screens inside the navigator
+  read `useBottomTabBarHeight`, which `HiddenTabBar` feeds the inset instead of a bar's height.
+  What floats above it from outside the navigator (the toasts, the undo bar, the FAB's neighbors)
+  reads `useBottomBarHeight`, which is zero while the sidebar shows. Reading `TAB_BAR_HEIGHT`
+  directly would hang those a bar's height above an empty edge, so `noFixedTabBarHeight.test.ts`
+  fails the build on it.
 - **Crossing the breakpoint** closes a drawer left open (`AppNavigator`'s effect), and the window is
   resizable, so nothing may cache which side of it it was on.
 

@@ -10,7 +10,7 @@ import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { InlineAction } from './InlineAction';
 import { BannerBar } from './BannerBar';
-import { TAB_BAR_HEIGHT } from './DemoBanner';
+import { useBottomBarHeight } from '../hooks/useBottomBarHeight';
 import { FAB_SIZE } from './Fab';
 import { spacing } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -74,6 +74,7 @@ const VISIBLE_MS = 6000;
  */
 export function UndoBar() {
   const insets = useSafeAreaInsets();
+  const barHeight = useBottomBarHeight();
   const everyAction = useSettingsStore(s => s.mirroringMode);
 
   const taskAction = useTaskStore(s => topOf(s.undoStack));
@@ -201,7 +202,7 @@ export function UndoBar() {
     setVisible(false);
   };
 
-  const bottom = insets.bottom + TAB_BAR_HEIGHT + FAB_SIZE + spacing.lg;
+  const bottom = insets.bottom + barHeight + FAB_SIZE + spacing.lg;
 
   const verb = shown.mode === 'redo' ? 'Redo' : 'Undo';
 
