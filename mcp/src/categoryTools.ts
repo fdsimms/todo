@@ -70,6 +70,7 @@ function updateCategoryResult(replica: Replica, name: string) {
     hideOnVacation: category.hideOnVacation,
     excludeFromSuggestions: category.excludeFromSuggestions,
     excludeFromNewTasksBanner: category.excludeFromNewTasksBanner,
+    slotIn: category.slotIn,
     defaultTimeSegments: category.defaultTimeSegments,
   };
 }

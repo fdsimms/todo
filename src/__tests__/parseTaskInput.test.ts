@@ -2567,3 +2567,40 @@ describe('contactForMention', () => {
     expect(contactForMention('Call @kelsey', { phoneNumber: null, email: null })).toEqual({ phone: null, email: null });
   });
 });
+
+describe('"~" before a date: wait if that day is full', () => {
+  it('reads "~thu" as Thursday that can wait', () => {
+    const r = parseTaskInput('call the dentist ~thu', NOW)!;
+    expect(r.cleanTitle).toBe('call the dentist');
+    expect(r.matchedText).toBe('~thu');
+    expectDay(r.schedule.dueDate, 2025, 5, 12);
+    expect(r.schedule.slotIn).toBe(true);
+  });
+
+  it('takes the longer date words and a space after the mark', () => {
+    expect(parseTaskInput('book purge ~tomorrow', NOW)!.schedule.slotIn).toBe(true);
+    expect(parseTaskInput('book purge ~ next week', NOW)!.schedule.slotIn).toBe(true);
+    const oct = parseTaskInput('book purge ~jun 20', NOW)!;
+    expectDay(oct.schedule.dueDate, 2025, 5, 20);
+    expect(oct.schedule.slotIn).toBe(true);
+  });
+
+  it('marks a plain date only', () => {
+    expect(parseTaskInput('book purge friday', NOW)!.schedule.slotIn).toBeUndefined();
+    // A clock time names an exact moment, so the mark is left in the title.
+    const timed = parseTaskInput('call the dentist ~tomorrow 5pm', NOW)!;
+    expect(timed.schedule.slotIn).toBeUndefined();
+    expect(timed.cleanTitle).toBe('call the dentist ~tomorrow');
+    expect(parseTaskInput('water plants ~every week', NOW)?.schedule.slotIn).toBeUndefined();
+  });
+
+  it('leaves an estimate to the estimate parser', () => {
+    expect(parseTaskInput('clean the garage ~2h', NOW)).toBeNull();
+    expect(parseEstimateInput('clean the garage ~2h')).toMatchObject({ minutes: 120 });
+  });
+
+  it('says it on the chip', () => {
+    const r = parseTaskInput('call the dentist ~thu', NOW)!;
+    expect(describeSchedule(r.schedule, NOW)).toContain('· Wait if full');
+  });
+});

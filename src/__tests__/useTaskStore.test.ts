@@ -6935,6 +6935,100 @@ describe('a task due at a meter reading', () => {
   });
 });
 
+// ─── applySlotIns ───────────────────────────────────────────────────────────
+
+describe('a task that waits for a lighter day', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+  const { dbGetSetting, dbSetSetting } = jest.requireMock('../db/database') as { dbGetSetting: jest.Mock; dbSetSetting: jest.Mock };
+  const categoryStore = jest.requireMock('../store/useCategoryStore') as { useCategoryStore: { getState: jest.Mock } };
+
+  const NOW = new Date(2026, 9, 19, 9, 0, 0);
+  const TODAY = '2026-10-19';
+  let categories: { name: string; slotIn: boolean }[] = [];
+
+  beforeAll(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+  });
+  afterAll(() => jest.useRealTimers());
+
+  beforeEach(() => {
+    useSettingsStore.getState.mockReturnValue({
+      dayResetTime: '00:00',
+      newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+      titleRules: [],
+      collapsedCategories: [],
+      calendarReadEnabled: false,
+    });
+    categories = [];
+    const base = categoryStore.useCategoryStore.getState();
+    categoryStore.useCategoryStore.getState.mockImplementation(() => ({ ...base, categories }));
+    useTaskStore.setState({ tasks: [] });
+    dbGetSetting.mockReturnValue(null);
+    dbSetSetting.mockClear();
+  });
+  afterEach(() => {
+    dbGetSetting.mockReturnValue(null);
+    categoryStore.useCategoryStore.getState.mockReset();
+    categoryStore.useCategoryStore.getState.mockImplementation(() => ({
+      categories: [], initialized: false, getCategoryByName: jest.fn().mockReturnValue(null),
+    }));
+  });
+
+  const add = (title: string, fields: Record<string, unknown>) => {
+    const task = useTaskStore.getState().addTask({ title });
+    useTaskStore.getState().updateTask(task.id, { dueDate: new Date(2026, 9, 19).toISOString(), estimatedMinutes: 30, ...fields });
+    return task.id;
+  };
+  const read = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id)!;
+  const held = (id: string) => read(id).deferUntil !== null && dayKeyOf(new Date(read(id).deferUntil!)) === '2026-10-20';
+
+  it('lets two through on a light day and holds the rest until tomorrow', () => {
+    const ids = [add('A', { slotIn: true }), add('B', { slotIn: true }), add('C', { slotIn: true })];
+    useTaskStore.getState().applySlotIns();
+    expect(ids.filter(held)).toHaveLength(1);
+    for (const id of ids) expect(read(id).slotDecidedOn).toBe(TODAY);
+    // The app's hold is not the person putting something off.
+    for (const id of ids) expect(read(id).postponeCount).toBe(0);
+  });
+
+  it('lets only one through on a full day', () => {
+    add('Big', { estimatedMinutes: 400 });
+    const ids = [add('A', { slotIn: true }), add('B', { slotIn: true })];
+    useTaskStore.getState().applySlotIns();
+    expect(ids.filter(held)).toHaveLength(1);
+  });
+
+  it('follows the category when the task has no answer of its own', () => {
+    categories = [{ name: 'Chores', slotIn: true }];
+    add('Big', { estimatedMinutes: 400 });
+    const ids = [add('A', { category: 'Chores' }), add('B', { category: 'Chores' }), add('C', { category: 'Chores', slotIn: false })];
+    useTaskStore.getState().applySlotIns();
+    expect(ids.filter(held)).toHaveLength(1);
+    expect(held(ids[2])).toBe(false);
+  });
+
+  it('decides a day once on this device', () => {
+    dbGetSetting.mockImplementation((key: string) => (key === 'slotInDecidedDay' ? TODAY : null));
+    add('Big', { estimatedMinutes: 400 });
+    const ids = [add('A', { slotIn: true }), add('B', { slotIn: true })];
+    useTaskStore.getState().applySlotIns();
+    expect(ids.filter(held)).toHaveLength(0);
+  });
+
+  it('lets go of a held task once it is no longer set to wait', () => {
+    const id = add('A', { slotIn: true });
+    useTaskStore.getState().updateTask(id, {
+      slotDecidedOn: TODAY, deferUntil: new Date(2026, 9, 20).toISOString(), slotWaitingSince: '2026-10-15', slotIn: false,
+    });
+    useTaskStore.getState().applySlotIns();
+    expect(read(id).deferUntil).toBeNull();
+    expect(read(id).slotWaitingSince).toBeNull();
+  });
+});
+
 // ─── checkWeatherTasks, the day-ahead pass ──────────────────────────────────
 
 describe('checkWeatherTasks (day ahead)', () => {

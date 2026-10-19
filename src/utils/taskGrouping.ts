@@ -1,6 +1,7 @@
 import type { ContextRow, Task, TaskGroup } from '../types';
 import { beginVisibleAtPass, getVisibleAt, windowBoundsFor } from './visibilityUtils';
-import { formatGroupHeader, formatHHMM, getDayStart } from './dateUtils';
+import { formatGroupHeader, formatHHMM, getDayStart, getLogicalDayKey } from './dateUtils';
+import { isSlotWaiting } from './slotIn';
 import type { DropZone, ScheduleInfo } from './fabDrop';
 
 export type CategoryListItem =
@@ -517,10 +518,27 @@ export interface LaterOrderedTask {
  */
 export function laterVisibleOrder(deferredTasks: Task[]): LaterOrderedTask[] {
   const pass = beginVisibleAtPass();
+  const todayKey = getLogicalDayKey(new Date());
+  // Ties on the day go to the tasks waiting for a lighter day, longest wait
+  // first, so their section (see laterDaySections) opens ahead of Tomorrow and
+  // lists them in the order the slot-in pass will let them through.
+  const waitKey = (task: Task) =>
+    isSlotWaiting(task, todayKey) ? task.slotWaitingSince ?? todayKey : null;
   return deferredTasks
-    .map(task => ({ task, visibleAt: getVisibleAt(task, pass) }))
-    .sort((a, b) => a.visibleAt.getTime() - b.visibleAt.getTime());
+    .map(task => ({ task, visibleAt: getVisibleAt(task, pass), wait: waitKey(task) }))
+    .sort((a, b) => {
+      const byTime = a.visibleAt.getTime() - b.visibleAt.getTime();
+      if (byTime !== 0) return byTime;
+      if (a.wait === b.wait) return 0;
+      if (a.wait === null) return 1;
+      if (b.wait === null) return -1;
+      return a.wait < b.wait ? -1 : 1;
+    })
+    .map(({ task, visibleAt }) => ({ task, visibleAt }));
 }
+
+/** The Later section the tasks waiting for a lighter day sit in, ahead of the dated ones. */
+export const SLOT_IN_SECTION_TITLE = 'Waiting for a lighter day';
 
 export interface LaterSectionsResult {
   sections: LaterDaySection[];
@@ -557,7 +575,7 @@ export function laterDaySections(
   const foldedCounts = new Map<string, number>();
   const days = new Map<
     string,
-    { dayKeys: Set<string>; groupIds: Set<string>; dateISO: string; segMap: Map<string, { label: string | null; segment: string | null; windowStart: string | null; windowEnd: string | null; data: Task[] }> }
+    { dayKeys: Set<string>; groupIds: Set<string>; dateISO: string; waiting: boolean; segMap: Map<string, { label: string | null; segment: string | null; windowStart: string | null; windowEnd: string | null; data: Task[] }> }
   >();
   // formatGroupHeader is the expensive call in this pass — a date-fns format()
   // plus its own "what is today" day-start computation — and it was being paid
@@ -581,8 +599,12 @@ export function laterDaySections(
 
   let placed = 0;
   let hasMore = false;
+  const todayKey = getLogicalDayKey(new Date());
   for (const { task, visibleAt } of ordered) {
-    const dayLabel = dayLabelOf(visibleAt);
+    // A task the slot-in pass is holding has no real date to sit under: its
+    // day is whichever one turns out not to be full.
+    const waiting = isSlotWaiting(task, todayKey);
+    const dayLabel = waiting ? SLOT_IN_SECTION_TITLE : dayLabelOf(visibleAt);
     const dayKey = getDayStart(visibleAt).toISOString();
     // First-paint only: a single day can hold dozens of rows (a day of
     // routines), and finishing it would mount all of them before anything
@@ -612,7 +634,7 @@ export function laterDaySections(
         hasMore = true;
         break;
       }
-      days.set(dayLabel, { dayKeys: new Set(), groupIds: new Set(), dateISO: dayKey, segMap: new Map() });
+      days.set(dayLabel, { dayKeys: new Set(), groupIds: new Set(), dateISO: dayKey, waiting, segMap: new Map() });
     }
     const day = days.get(dayLabel)!;
     day.dayKeys.add(dayKey);
@@ -644,7 +666,9 @@ export function laterDaySections(
       title,
       // Only a single-calendar-day bucket has one date to drop a task onto —
       // see LaterDaySection.dateISO.
-      dateISO: day.dayKeys.size === 1 ? day.dateISO : null,
+      // The waiting section has none either: a task dropped there would only
+      // be deferred to tomorrow, not set to wait.
+      dateISO: day.dayKeys.size === 1 && !day.waiting ? day.dateISO : null,
       segments: Array.from(day.segMap.values()),
     })),
     hasMore,

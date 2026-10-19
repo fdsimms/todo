@@ -126,18 +126,18 @@ describe('previewSeededFields', () => {
   it('reads the project default ahead of the global one', () => {
     const project: TaskFieldDefaults = { priority: 3, difficulty: null, effort: null, showStreak: null, vacationPause: null, excludeFromSuggestions: null };
     expect(previewSeededFields(project, { ...NO_GLOBAL, priority: 1 as Priority, effort: 2 as Effort }, false))
-      .toEqual({ priority: 3, effort: 2, showStreak: false, vacationPause: false, excludeFromSuggestions: false });
+      .toEqual({ priority: 3, effort: 2, showStreak: false, vacationPause: false, excludeFromSuggestions: false, slotIn: null });
   });
 
   it('falls back to none when nothing answers', () => {
-    expect(previewSeededFields(null, NO_GLOBAL, false)).toEqual({ priority: 0, effort: 0, showStreak: false, vacationPause: false, excludeFromSuggestions: false });
+    expect(previewSeededFields(null, NO_GLOBAL, false)).toEqual({ priority: 0, effort: 0, showStreak: false, vacationPause: false, excludeFromSuggestions: false, slotIn: null });
   });
 
   it('agrees with what seedTaskFields writes for an unanswered draft', () => {
     const project: TaskFieldDefaults = { priority: null, difficulty: null, effort: 4, showStreak: null, vacationPause: null, excludeFromSuggestions: null };
     const global = { ...NO_GLOBAL, priority: 2 as Priority };
     const seeded = seedTaskFields({}, resolveFieldDefaults(project), global, false);
-    expect(previewSeededFields(project, global, false)).toEqual({ priority: seeded.priority, effort: seeded.effort, showStreak: false, vacationPause: false, excludeFromSuggestions: false });
+    expect(previewSeededFields(project, global, false)).toEqual({ priority: seeded.priority, effort: seeded.effort, showStreak: false, vacationPause: false, excludeFromSuggestions: false, slotIn: null });
   });
 
   it('is what an explicit 0 from the draft would have blocked', () => {
@@ -310,5 +310,38 @@ describe('yes/no defaults', () => {
     expect(defaultsFromAnswer('vacation', {}, true)).toEqual({ vacationPause: false });
     expect(defaultsFromAnswer('suggestions', { excludeFromSuggestions: true }, false)).toEqual({ excludeFromSuggestions: true });
     expect(defaultsFromAnswer('reminder', {}, true)).toBeNull();
+  });
+});
+
+describe('slotIn as a group default', () => {
+  it('round-trips, and stays absent when unanswered', () => {
+    expect(parseTaskFieldDefaults({ slotIn: true })).toEqual({ ...NO_TASK_FIELD_DEFAULTS, slotIn: true });
+    expect(parseTaskFieldDefaults({ slotIn: false })).toEqual({ ...NO_TASK_FIELD_DEFAULTS, slotIn: false });
+    expect(parseTaskFieldDefaults({ priority: 2 })).not.toHaveProperty('slotIn');
+    expect(parseTaskFieldDefaults({ slotIn: 'yes' })).toBeNull();
+  });
+
+  it('takes the most specific answer', () => {
+    expect(resolveFieldDefaults({ ...NO_TASK_FIELD_DEFAULTS, slotIn: false }, { ...NO_TASK_FIELD_DEFAULTS, slotIn: true }).slotIn).toBe(false);
+    expect(resolveFieldDefaults(null, { ...NO_TASK_FIELD_DEFAULTS, slotIn: true }).slotIn).toBe(true);
+  });
+
+  it('seeds a new task, false included, under whatever the draft says', () => {
+    expect(seedTaskFields({}, { ...NO_TASK_FIELD_DEFAULTS, slotIn: false }, NO_GLOBAL, false).slotIn).toBe(false);
+    expect(seedTaskFields({ slotIn: true }, { ...NO_TASK_FIELD_DEFAULTS, slotIn: false }, NO_GLOBAL, false).slotIn).toBe(true);
+    expect(seedTaskFields({}, NO_TASK_FIELD_DEFAULTS, NO_GLOBAL, false).slotIn).toBeUndefined();
+  });
+
+  it('fills an existing dated task with no answer', () => {
+    const dated = task({ dueDate: new Date(2026, 9, 19).toISOString(), slotIn: null, targetCount: null, reminderTime: null } as Partial<Task>);
+    expect(existingTaskPatch(dated, { ...NO_TASK_FIELD_DEFAULTS, slotIn: true }, [])).toEqual({ slotIn: true });
+    expect(existingTaskPatch({ ...dated, slotIn: false }, { ...NO_TASK_FIELD_DEFAULTS, slotIn: true }, [])).toBeNull();
+  });
+
+  it('turns a Backfill answer into a default, and describes it', () => {
+    expect(defaultsFromAnswer('slotIn', { slotIn: true }, false)).toEqual({ slotIn: true });
+    expect(defaultsFromAnswer('slotIn', { slotIn: false }, false)).toEqual({ slotIn: false });
+    expect(defaultsFromAnswer('slotIn', {}, true)).toBeNull();
+    expect(describeTaskFieldDefaults({ ...NO_TASK_FIELD_DEFAULTS, slotIn: true })).toBe('Wait if the day is full');
   });
 });

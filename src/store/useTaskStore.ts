@@ -5,6 +5,8 @@ import type { Task, TaskDraft, Priority, TimeOfDay, TitleRule, Person, QuotaPeri
 import {
   initDatabase,
   ensureDatabaseReady,
+  dbGetSetting,
+  dbSetSetting,
   dbGetAllTasks,
   dbInsertTask,
   dbUpdateTask,
@@ -163,7 +165,7 @@ import {
 } from '../utils/weekendTasks';
 import { buildDayBuckets } from '../utils/calendarMonth';
 import { scheduleMoveUpdates } from '../utils/taskMoves';
-import { assumedMinutesFor, buildDayLoads } from '../utils/dayLoad';
+import { BUSY_DAY_MINUTES, assumedMinutesFor, buildDayLoads, weightFor } from '../utils/dayLoad';
 import { hasLogOnDay, hasLoggedSince } from '../utils/moodLog';
 import { useFoodLogStore } from './useFoodLogStore';
 import { useSavedMealsStore } from './useSavedMealsStore';
@@ -207,7 +209,8 @@ import { buildCompletion, completionSettings } from '../utils/taskCompletion';
 import { derivedId, spawnSeed } from '../utils/syncIds';
 import { reorderSubset } from '../utils/reorder';
 import { liveProjectSteps, slotUpdates } from '../utils/projectOrder';
-import { applyMeasuredTime, draftHasEstimate } from '../utils/effort';
+import { applyMeasuredTime, draftHasEstimate, estimatedMinutesFor } from '../utils/effort';
+import { isSlotInCandidate, planSlotIns, slotHoldPatch, slotLandPatch, slotReleasePatch, canSlotIn, effectiveSlotIn } from '../utils/slotIn';
 import {
   ruleEstimateDraft, withRuleEstimate, withGeneratorEstimate, holdsKindEstimate,
 } from '../utils/ruleEstimate';
@@ -584,6 +587,10 @@ function creditPenaltyShield(task: Task, now: Date): string | null {
  * date of the new set.
  */
 const SKIP_POSTPONE = { skipPostponeCount: true } as const;
+
+// Device-local (settings rows sync only when SYNCED_SETTING_KEYS names them):
+// the logical day this device last ran applySlotIns.
+const SLOT_IN_DAY_KEY = 'slotInDecidedDay';
 
 
 
@@ -2146,6 +2153,13 @@ interface TaskStore extends UndoHistoryActions {
    * fetches; see `src/utils/rainSkip.ts`.
    */
   applyRainSkips: () => void;
+  /**
+   * Decides, once per logical day, which tasks set to wait for a lighter day
+   * show today and which wait until tomorrow, from today's load as the busy
+   * cue reads it. Reads the calendar `useCalendarStore` already holds; see
+   * `src/utils/slotIn.ts` for the decision.
+   */
+  applySlotIns: () => void;
   checkEventTasks: () => void;
   /**
    * "Leave for X" for each upcoming event with a location, its reminder at the
@@ -7433,6 +7447,65 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // which is what keeps the subscription that re-runs this from looping.
       if (patch) get().updateTask(task.id, patch);
     }
+  },
+
+  applySlotIns() {
+    // The load half of this reads the real device calendar, which demo mode
+    // must never read from (same reason as checkWeekendNudgeTasks).
+    if (isDemoModeActive()) return;
+    const todayKey = dayKeyOf(getCurrentDayStart());
+    // Once per day on this device, so a day's answer holds however often the
+    // app comes back to the foreground. slotDecidedOn on each row is what
+    // stops a second device deciding the same task again.
+    if (dbGetSetting(SLOT_IN_DAY_KEY) === todayKey) return;
+    const settings = useSettingsStore.getState();
+    const categories = useCategoryStore.getState().categories;
+    const tasks = get().tasks;
+
+    // Let go of anything the pass marked that is no longer set to wait.
+    // A finished row's marks are history and are left as they are.
+    for (const task of tasks) {
+      if (task.completed || task.archived) continue;
+      if (!task.slotDecidedOn && !task.slotWaitingSince) continue;
+      if (canSlotIn(task) && effectiveSlotIn(task, categories)) continue;
+      const patch = slotReleasePatch(task, todayKey);
+      if (patch) get().updateTask(task.id, patch, SKIP_POSTPONE);
+    }
+
+    const candidates = get().tasks.filter(t =>
+      isSlotInCandidate(t, categories, todayKey) && !isWithheld(t) && !isHeldBack(t),
+    );
+    dbSetSetting(SLOT_IN_DAY_KEY, todayKey);
+    if (candidates.length === 0) return;
+
+    const candidateIds = new Set(candidates.map(t => t.id));
+    const others = get().tasks.filter(t => !candidateIds.has(t.id));
+    const today = dayKeyToDate(todayKey);
+    const buckets = buildDayBuckets(others, { from: today, to: today, dayResetTime: settings.dayResetTime });
+    const calendar = useCalendarStore.getState();
+    const assumed = assumedMinutesFor(get().tasks);
+    const load = buildDayLoads([today], buckets, {
+      taskById: new Map(others.map(t => [t.id, t])),
+      busyEvents: settings.calendarReadEnabled && calendar.loaded ? calendar.events : [],
+      busyWindow: calendar.windowStart && calendar.windowEnd
+        ? { start: new Date(calendar.windowStart), end: new Date(calendar.windowEnd) }
+        : null,
+      awaySpans: liveAwaySpans(useProjectStore.getState().projects, settings.dayResetTime),
+      dayResetTime: settings.dayResetTime,
+      assumedTaskMinutes: assumed,
+    }).get(todayKey);
+    const weight = weightFor(load);
+    const plan = planSlotIns(candidates, {
+      todayKey,
+      baseMinutes: load?.rankedMinutes ?? 0,
+      full: weight === 'full' || weight === 'away',
+      busyMinutes: BUSY_DAY_MINUTES,
+      minutesOf: t => estimatedMinutesFor(t) ?? assumed,
+    });
+    // SKIP_POSTPONE: a hold is the app's decision, not the person putting
+    // something off, so it must not climb toward "You've pushed this 3 times".
+    for (const task of plan.land) get().updateTask(task.id, slotLandPatch(todayKey), SKIP_POSTPONE);
+    for (const task of plan.hold) get().updateTask(task.id, slotHoldPatch(task, todayKey), SKIP_POSTPONE);
   },
 
   applyWeatherWaits() {

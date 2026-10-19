@@ -934,6 +934,16 @@ describe('demo mode', () => {
   });
 
   // Nothing seeded waiting on weather reads as a feature the app doesn't have.
+  it('seeds a task waiting for a lighter day', () => {
+    useDemoStore.getState().enterDemoMode();
+    const { tasks } = useTaskStore.getState();
+    const drawer = tasks.find(t => t.title === 'Sort out the junk drawer');
+    expect(drawer?.slotIn).toBe(true);
+    expect(drawer?.slotWaitingSince).not.toBeNull();
+    expect(drawer?.deferUntil).not.toBeNull();
+    useDemoStore.getState().exitDemoMode();
+  });
+
   it('seeds a task waiting for a sunny day', () => {
     useDemoStore.getState().enterDemoMode();
     const { tasks } = useTaskStore.getState();

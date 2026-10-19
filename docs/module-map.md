@@ -466,6 +466,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/simpleTaskForm.ts` — SIMPLE_QUICK_ADD_CHIPS, isSimpleChip
 - `src/utils/sleepLog.ts` — SleepEpisode, SleepStages, SLEEP_STAGE_ORDER, SLEEP_STAGE_LABEL, parseSleepEpisodes, SleepNight, sleepNights, sleepReadings, nightsInWindow, MIN_CLOCK_CONCENTRATION, +15 more
 - `src/utils/slipConfirm.ts` — SlipGuard, confirmSlip
+- `src/utils/slotIn.ts` — SLOT_IN_LIGHT_DAY_MAX, canSlotIn, effectiveSlotIn, slotInInUse, slotInFromCategory, isSlotHold, isSlotWaiting, slotWaitingSinceKey, isSlotInCandidate, SlotInDay, +7 more
 - `src/utils/snackNudgeTasks.ts` — DEFAULT_SNACK_NUDGE_FROM_HOUR, SNACK_NUDGE_FROM_HOUR_MIN, SNACK_NUDGE_FROM_HOUR_MAX, DEFAULT_SNACK_NUDGE_SHARE_PERCENT, SNACK_NUDGE_SHARE_PERCENT_MIN, SNACK_NUDGE_SHARE_PERCENT_MAX, SNACK_NUDGE_SHARE_PERCENT_STEP, clampSnackNudgeFromHour, clampSnackNudgeSharePercent, describeSnackNudgeHour, +4 more
 - `src/utils/snoozeEngine.ts` — SnoozeSuggestion, AWAY_PENALTY, computeSnoozeSuggestion
 - `src/utils/stableLists.ts` — reuseUnchangedLists
@@ -504,7 +505,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/taskDraft.ts` — applyTitleRulesToDraft, newTaskFromDraft, reanchorReminder, NO_RECURRENCE, buildSeriesRow
 - `src/utils/taskDuplicate.ts` — duplicateRows
 - `src/utils/taskFieldDefaults.ts` — NO_TASK_FIELD_DEFAULTS, hasTaskFieldDefaults, parseTaskFieldDefaults, serializeTaskFieldDefaults, parseGeneratedTaskDefaults, resolveFieldDefaults, SeededFieldsInput, SeededFields, seedTaskFields, previewSeededFields, +6 more
-- `src/utils/taskGrouping.ts` — CategoryListItem, ContextListItem, TodayListItem, LATER_TODAY_LABEL, makeCategoryGroups, DropResolution, resolveDrop, LaterListItem, LATER_STACK_FOLD_MIN, FlattenLaterOptions, +22 more
+- `src/utils/taskGrouping.ts` — CategoryListItem, ContextListItem, TodayListItem, LATER_TODAY_LABEL, makeCategoryGroups, DropResolution, resolveDrop, LaterListItem, LATER_STACK_FOLD_MIN, FlattenLaterOptions, +23 more
 - `src/utils/taskHome.ts` — TaskHome, taskHomeFor
 - `src/utils/taskInstances.ts` — InstanceGroup, normalizeTitle, getRepeatedInstances
 - `src/utils/taskKinds.ts` — TaskKind, TASK_KIND_META, taskKindOf, QuickAddChip, QUICK_ADD_CHIP_LABELS, QUICK_ADD_CHIP_LIMIT, TASK_KINDS, DEFAULT_TIMED_MINUTES, DEFAULT_TARGET_COUNT, COUNTDOWN_LADDER, +12 more
@@ -729,6 +730,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useSheetMount.ts` — useSheetMount
 - `src/hooks/useSheetSubject.ts` — useSheetSubject
 - `src/hooks/useShieldReasons.ts` — useShieldReasons
+- `src/hooks/useSlotInSync.ts` — useSlotInSync
 - `src/hooks/useStableCallback.ts` — useStableCallback
 - `src/hooks/useStartWorkout.ts` — useStartWorkout
 - `src/hooks/useStepTimers.ts` — StepTimersBinding, useStepTimers
@@ -751,7 +753,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 
 ## `src/db`
 
-- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, ensureDatabaseReady, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, +293 more
+- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, ensureDatabaseReady, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, +294 more
 - `src/db/syncTracking.ts` — SyncTable, KEY_SEPARATOR, SYNC_TRACKED_TABLES, SYNC_DEVICE_LOCAL_COLUMNS, isDeviceLocalColumn, withoutDeviceLocalColumns, SYNC_EXCLUDED_TABLES, SYNCED_SETTING_KEYS, isSyncedSettingKey, HEALTH_SYNC_TABLES, +16 more
 
 ## `src/services`

@@ -35,7 +35,7 @@ const NOT_SEEDED: Record<string, string[]> = {
     'waitingOnPersonSince', 'waitingFollowUpDeclinedAt', 'generatedKind', 'generatedSourceId', 'generatedReadyAt', 'calendarEventId',
     'calendarEventExternalId', 'completionCalendarEventId', 'completionCalendarEventExternalId', 'timeBlockEventId',
     'timeBlockExternalId', 'reminderUtcOffsetMinutes', 'recurrenceAnchorDay', 'recurrenceAnchorDate',
-    'meterHeldUntil', 'rainSkippedOn', 'reviewOfTaskId',
+    'meterHeldUntil', 'rainSkippedOn', 'reviewOfTaskId', 'slotDecidedOn', 'slotWaitingSince',
   ],
 
   // A group of apps is a selection of tokens that exists only on one phone, and

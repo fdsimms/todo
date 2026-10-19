@@ -39,6 +39,8 @@ export const TASK_DISMISS_LABELS: Record<BackfillFieldId, string> = {
   streak: "Don’t show streak chip",
   vacation: 'Keep visible on vacation',
   holidays: 'Leave as usual',
+  // Null follows the category, so this is the same "as usual" holidays has.
+  slotIn: 'Leave as usual',
   reminder: 'No reminder',
   suggestions: 'Keep in suggestions',
 };
