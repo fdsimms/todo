@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -30,6 +30,10 @@ import { ActiveTripBanner } from '../components/ActiveTripBanner';
 import { SharedLinkBanner } from '../components/SharedLinkBanner';
 import { useSharedLinkStore } from '../store/useSharedLinkStore';
 import { EmptyState } from '../components/EmptyState';
+import { EmbeddedRoute } from '../components/EmbeddedRoute';
+import { TwoPane } from '../components/TwoPane';
+import { useTwoPane } from '../hooks/useTwoPane';
+import { RecipeDetailScreen, type RecipeDetailParams } from './RecipeDetailScreen';
 import { RecipeCreateSheet } from '../components/RecipeCreateSheet';
 import { InventRecipeSheet } from '../components/InventRecipeSheet';
 import type { RecipeInputMode } from '../components/RecipeSourcePicker';
@@ -186,7 +190,18 @@ function usePantryCatalog() {
   };
 }
 
-export function RecipesScreen() {
+/**
+ * What a recipe row does with a tap when the page opens beside the list rather
+ * than over it. Null everywhere else (a phone, a narrow window), where a tap
+ * pushes the page as it always has.
+ */
+interface RecipePane {
+  selectedId: string | null;
+  select: (params: RecipeDetailParams) => void;
+}
+const RecipePaneContext = createContext<RecipePane | null>(null);
+
+function RecipesList() {
   const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const fabBottom = useFabBottom();
@@ -196,6 +211,16 @@ export function RecipesScreen() {
   const screenSettings = useScreenSettings('Recipes', 'Recipe settings');
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
+  const pane = useContext(RecipePaneContext);
+  // Every way into a recipe's page: beside the list in a pane, over it otherwise.
+  // Depends on the pane's `select`, which never changes, rather than on the pane
+  // itself, which does with every selection: a new handler on every row would
+  // defeat the rows' memo each time one is opened.
+  const paneSelect = pane?.select ?? null;
+  const openDetail = useCallback((params: RecipeDetailParams) => {
+    if (paneSelect) paneSelect(params);
+    else navigation.navigate('RecipeDetail', params);
+  }, [paneSelect, navigation]);
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   // Recipes another recipe shares a name with lead their subtitle with the book.
@@ -325,8 +350,8 @@ export function RecipesScreen() {
     if (!recipe) return;
     if (mealType !== null) setMealType(recipe.id, mealType);
     haptics.success();
-    navigation.navigate('RecipeDetail', { recipeId: recipe.id, openDetails: Date.now(), draft: true });
-  }, [addRecipe, setMealType, navigation]);
+    openDetail({ recipeId: recipe.id, openDetails: Date.now(), draft: true });
+  }, [addRecipe, setMealType, openDetail]);
 
   // Bottom-up: "New recipe" ends up closest to the button, so the plain add is
   // still the one under your thumb. The three import items sit in the same
@@ -397,8 +422,8 @@ export function RecipesScreen() {
   // different recipe hasn't dealt with the shared one, and it stays queued.
   const handleCreated = useCallback((recipeId: string, sourceUrl: string | null) => {
     if (sourceUrl) dismissSharedLink(sourceUrl);
-    navigation.navigate('RecipeDetail', { recipeId });
-  }, [dismissSharedLink, navigation]);
+    openDetail({ recipeId });
+  }, [dismissSharedLink, openDetail]);
 
   // The whole box's vocabulary, and the counts beside each chip. Derived from
   // the recipes rather than stored (see Recipe.tags), so the row holds exactly
@@ -629,8 +654,8 @@ export function RecipesScreen() {
 
   const openRecipe = useCallback((recipe: Recipe) => {
     haptics.tap();
-    navigation.navigate('RecipeDetail', { recipeId: recipe.id });
-  }, [navigation]);
+    openDetail({ recipeId: recipe.id });
+  }, [openDetail]);
 
   // The row's handlers. Stable, and each takes the recipe (or its id) it acts
   // on, so one function serves every row and `RecipeRow`'s memo holds through
@@ -663,6 +688,7 @@ export function RecipesScreen() {
       duplicateRow={duplicateRow}
       selectionMode={selectionMode}
       selected={selectedIds.has(recipe.id)}
+      paneActive={pane?.selectedId === recipe.id}
       onOpen={openRecipe}
       onToggleSelect={toggleSelection}
       onSwipeSelect={enterSelectionMode}
@@ -670,7 +696,7 @@ export function RecipesScreen() {
       onToggleUpNext={handleToggleUpNext}
     />
   ), [
-    rowDescriptions, pantryCounts, colors, styles, selectionMode, selectedIds, openRecipe, toggleSelection,
+    rowDescriptions, pantryCounts, colors, styles, selectionMode, selectedIds, pane?.selectedId, openRecipe, toggleSelection,
     enterSelectionMode, handlePlanRecipe, handleToggleUpNext,
   ]);
 
@@ -1016,7 +1042,7 @@ export function RecipesScreen() {
  * same rule.
  */
 const RecipeRow = React.memo(function RecipeRow({
-  recipe, description, colors, styles, drag, isActive, duplicateRow, selectionMode, selected,
+  recipe, description, colors, styles, drag, isActive, duplicateRow, selectionMode, selected, paneActive,
   onOpen, onToggleSelect, onSwipeSelect, onPlan, onToggleUpNext,
 }: {
   recipe: Recipe;
@@ -1039,6 +1065,8 @@ const RecipeRow = React.memo(function RecipeRow({
   duplicateRow: boolean;
   selectionMode: boolean;
   selected: boolean;
+  /** Its page is the one open in the pane beside the list. */
+  paneActive: boolean;
   onOpen: (recipe: Recipe) => void;
   onToggleSelect: (recipeId: string) => void;
   onSwipeSelect: (recipeId: string) => void;
@@ -1068,7 +1096,7 @@ const RecipeRow = React.memo(function RecipeRow({
 
   const rowBody = (
     <TouchableOpacity
-      style={[styles.row, selectionMode && selected && styles.rowSelected]}
+      style={[styles.row, selectionMode && selected && styles.rowSelected, paneActive && !selectionMode && styles.rowPaneActive]}
       onPress={() => (selectionMode ? toggleSelect() : onOpen(recipe))}
       onLongPress={selectionMode ? undefined : drag}
       activeOpacity={interaction.activeOpacity}
@@ -1172,6 +1200,59 @@ const RecipeRow = React.memo(function RecipeRow({
     </View>
   );
 });
+
+/**
+ * The recipes tab. On a window with room for two panes the list sits beside the
+ * recipe that is open (the page `RecipeDetailScreen` is, drawn in place by
+ * `EmbeddedRoute`); otherwise it is the list alone and a tap pushes the page.
+ */
+export function RecipesScreen() {
+  const twoPane = useTwoPane();
+  const [selection, setSelection] = useState<RecipeDetailParams | null>(null);
+  const selectedId = selection?.recipeId ?? null;
+  // A recipe deleted from its own page (or from the list) leaves nothing to show.
+  const stillThere = useRecipeStore(s => (selectedId ? s.recipes.some(r => r.id === selectedId) : true));
+  useEffect(() => {
+    if (!stillThere) setSelection(null);
+  }, [stillThere]);
+
+  const close = useCallback(() => setSelection(null), []);
+  // Opening another recipe from inside one (a component, an overlap pick) swaps the pane.
+  const handleNavigate = useCallback((name: string, params: RecipeDetailParams) => {
+    if (name !== 'RecipeDetail') return false;
+    setSelection(params);
+    return true;
+  }, []);
+  const pane = useMemo<RecipePane | null>(
+    () => (twoPane ? { selectedId, select: setSelection } : null),
+    [twoPane, selectedId],
+  );
+
+  return (
+    <RecipePaneContext.Provider value={pane}>
+      <TwoPane
+        list={<RecipesList />}
+        detail={selection ? (
+          <EmbeddedRoute
+            key={selection.recipeId}
+            name="RecipeDetail"
+            params={selection}
+            onClose={close}
+            onNavigate={handleNavigate}
+          >
+            <RecipeDetailScreen />
+          </EmbeddedRoute>
+        ) : (
+          <EmptyState
+            icon="restaurant-outline"
+            title="Pick a recipe"
+            subtitle="Its ingredients and steps open here."
+          />
+        )}
+      />
+    </RecipePaneContext.Provider>
+  );
+}
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: {
@@ -1310,6 +1391,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // behind this row mid-close-animation — see the note on `flattenOverlay`.
   rowSelected: {
     backgroundColor: flattenOverlay(colors.accent + '1A', colors.bgSecondary),
+  },
+  // The row whose page is open beside the list. An outline rather than a tint,
+  // which sits inside a SwipeableRow and so has to stay opaque, and rather than
+  // a border, which would make the row taller than its neighbors.
+  rowPaneActive: {
+    outlineWidth: 2,
+    outlineColor: colors.accent,
+    outlineOffset: -2,
   },
   // Subtle slot marking where a dragged recipe will land; mirrors the row's
   // own footprint (margin + radius), same treatment as Today's dropSlot.
