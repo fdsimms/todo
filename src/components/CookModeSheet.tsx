@@ -21,6 +21,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { SheetModal } from './SheetModal';
+import { CheckPop } from './CheckPop';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeepAwake } from 'expo-keep-awake';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -48,7 +49,7 @@ import { StepText } from './StepText';
 import { InlineAction } from './InlineAction';
 import { RecipeChoiceChips } from './RecipeChoiceChips';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, lineHeight, radius, iconSize, interaction, type Colors } from '../theme';
+import { spacing, font, fontWeight, lineHeight, radius, checkboxRadius, border, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { clearCookPosition, restingCookPosition, saveCookPosition } from '../utils/cookPosition';
@@ -288,6 +289,24 @@ export function CookModeSheet({
     () => restingCookPosition(recipe.id, recipe.timerStartedAt !== null, false).finished,
   );
   const [ingredientsOpen, setIngredientsOpen] = useState(false);
+  // Lines the cook has checked off, on both the mise en place screen and the
+  // tray's panel. Screen state and nothing more: it writes nothing to the
+  // recipe, the pantry or the list (Log as cooked is where that is offered).
+  // Keyed by node and line rather than index, so a pick that reshuffles the
+  // list doesn't move a check onto a different ingredient.
+  const [checkedLines, setCheckedLines] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleLine = (key: string) => {
+    haptics.tap();
+    setCheckedLines(prev => {
+      const next = new Set(prev);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+  };
+  const checkedCount = useMemo(
+    () => ingredients.filter(flat => checkedLines.has(`${flat.recipe.id}:${flat.ingredient.id}`)).length,
+    [ingredients, checkedLines],
+  );
   // Folded like the ingredients and, like them, kept across steps: the notes are
   // about the whole cooking, so moving on mustn't close them under the cook.
   const [notesOpen, setNotesOpen] = useState(false);
@@ -331,6 +350,8 @@ export function CookModeSheet({
       setIngredientsOpen(false);
       setNotesOpen(false);
       setFillingBlanks(false);
+      // A running cook timer keeps the place (see above), and the checks with it.
+      if (!cookRunning) setCheckedLines(new Set());
     }
   }, [visible, hasIngredients, cookRunning, recipe.id]);
   useEffect(() => {
@@ -636,15 +657,31 @@ export function CookModeSheet({
                 // gathering things by section.
                 const heading = headings[position];
                 const last = position === ingredients.length - 1;
+                const lineKey = `${flat.recipe.id}:${flat.ingredient.id}`;
+                const lineChecked = checkedLines.has(lineKey);
                 return (
-                  <View key={`${flat.recipe.id}:${flat.ingredient.id}`}>
+                  <View key={lineKey}>
                     {!!heading.parentSection && <Text style={styles.miseHeading}>{heading.parentSection}</Text>}
                     {heading.resume && <Text style={styles.miseHeading}>{flat.recipe.name}</Text>}
                     {heading.dish && <Text style={styles.miseHeading}>{flat.recipe.name}</Text>}
                     {!!heading.section && <Text style={styles.miseHeading}>{heading.section}</Text>}
-                    <View style={[styles.miseRow, last && styles.miseRowLast]}>
-                      <View style={styles.miseRowText}>
-                        <Text style={styles.miseName}>{flat.ingredient.name}</Text>
+                    <TouchableOpacity
+                      style={[styles.miseRow, last && styles.miseRowLast]}
+                      activeOpacity={interaction.activeOpacity}
+                      onPress={() => toggleLine(lineKey)}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: lineChecked }}
+                      accessibilityLabel={flat.ingredient.name}
+                    >
+                      <CheckPop
+                        checked={lineChecked}
+                        style={styles.lineBox}
+                        checkedStyle={styles.lineBoxChecked}
+                      >
+                        <Ionicons name="checkmark" size={iconSize.sm} color={colors.onDone} />
+                      </CheckPop>
+                      <View style={[styles.miseRowText, lineChecked && styles.lineChecked]}>
+                        <Text style={[styles.miseName, lineChecked && styles.lineNameChecked]}>{flat.ingredient.name}</Text>
                         {!!flat.swappedFrom && (
                           <Text style={styles.miseSwap} numberOfLines={1}>
                             {describeStandingSwap(flat.swappedFrom)}
@@ -655,7 +692,7 @@ export function CookModeSheet({
                         )}
                       </View>
                       {!!converted.text && (
-                        <View style={styles.qtyGroup}>
+                        <View style={[styles.qtyGroup, lineChecked && styles.lineChecked]}>
                           <View style={[styles.miseQtyPill, marked && styles.miseQtyPillMarked]}>
                             <Text
                               style={[styles.miseQtyText, marked && styles.miseQtyTextMarked]}
@@ -669,7 +706,7 @@ export function CookModeSheet({
                           )}
                         </View>
                       )}
-                    </View>
+                    </TouchableOpacity>
                   </View>
                 );
               })}
@@ -888,7 +925,9 @@ export function CookModeSheet({
                 accessibilityHint="Double tap for the amounts this cook needs"
               >
                 <Ionicons name="basket-outline" size={16} color={colors.accent} />
-                <Text style={styles.panelHeaderText}>Ingredients · {ingredients.length}</Text>
+                <Text style={styles.panelHeaderText}>
+                  Ingredients · {checkedCount > 0 ? `${ingredients.length - checkedCount} left` : ingredients.length}
+                </Text>
                 <Ionicons
                   name={ingredientsOpen ? 'chevron-up' : 'chevron-down'}
                   size={12}
@@ -928,8 +967,10 @@ export function CookModeSheet({
                     // read as a separator rather than as a heading and the
                     // heading under it.
                     const rule = position > 0 && !heading.dish && !heading.parentSection && !heading.resume && !!heading.section;
+                    const lineKey = `${flat.recipe.id}:${flat.ingredient.id}`;
+                    const lineChecked = checkedLines.has(lineKey);
                     return (
-                      <View key={`${flat.recipe.id}:${flat.ingredient.id}`}>
+                      <View key={lineKey}>
                         {rule && <View style={styles.panelDivider} />}
                         {!!heading.parentSection && (
                           <Text style={styles.panelHeading}>{heading.parentSection}</Text>
@@ -939,9 +980,23 @@ export function CookModeSheet({
                         {!!heading.section && (
                           <Text style={styles.panelHeading}>{heading.section}</Text>
                         )}
-                        <View style={styles.panelRow}>
-                          <View style={styles.panelRowText}>
-                            <Text style={styles.panelName}>{flat.ingredient.name}</Text>
+                        <TouchableOpacity
+                          style={styles.panelRow}
+                          activeOpacity={interaction.activeOpacity}
+                          onPress={() => toggleLine(lineKey)}
+                          accessibilityRole="checkbox"
+                          accessibilityState={{ checked: lineChecked }}
+                          accessibilityLabel={flat.ingredient.name}
+                        >
+                          <CheckPop
+                            checked={lineChecked}
+                            style={styles.lineBox}
+                            checkedStyle={styles.lineBoxChecked}
+                          >
+                            <Ionicons name="checkmark" size={iconSize.sm} color={colors.onDone} />
+                          </CheckPop>
+                          <View style={[styles.panelRowText, lineChecked && styles.lineChecked]}>
+                            <Text style={[styles.panelName, lineChecked && styles.lineNameChecked]}>{flat.ingredient.name}</Text>
                             {!!flat.swappedFrom && (
                               <Text style={styles.panelSwap} numberOfLines={1}>
                                 {describeStandingSwap(flat.swappedFrom)}
@@ -952,7 +1007,7 @@ export function CookModeSheet({
                             )}
                           </View>
                           {!!converted.text && (
-                            <View style={styles.qtyGroup}>
+                            <View style={[styles.qtyGroup, lineChecked && styles.lineChecked]}>
                               <View style={[styles.qtyPill, marked && styles.qtyPillMarked]}>
                                 <Text style={[styles.qtyText, marked && styles.qtyTextMarked]} numberOfLines={1}>
                                   {showContainerCount(converted.text)}
@@ -963,7 +1018,7 @@ export function CookModeSheet({
                               )}
                             </View>
                           )}
-                        </View>
+                        </TouchableOpacity>
                       </View>
                     );
                   })}
@@ -1407,6 +1462,20 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // The line's weight beside its pill (lineWeight.ts), same treatment as the
   // recipe page's.
   qtyGroup: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  // The check beside each ingredient line, on mise en place and in the panel.
+  // Same box and gold as a checked grocery row; the line it belongs to dims.
+  lineBox: {
+    width: 24,
+    height: 24,
+    borderRadius: checkboxRadius(24),
+    borderWidth: border.md,
+    borderColor: colors.controlBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lineBoxChecked: { backgroundColor: colors.done, borderColor: colors.done },
+  lineChecked: { opacity: 0.5 },
+  lineNameChecked: { textDecorationLine: 'line-through' },
   qtyWeight: {
     color: colors.textSecondary,
     fontSize: font.xs,
