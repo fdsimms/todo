@@ -237,6 +237,7 @@ function readLine(replica: Replica, line: string): { row: QuickAddRow; draft: Pa
     draft.recurrenceCount = s.recurrenceCount ?? null;
     draft.recurrenceFromCompletion = s.recurrenceFromCompletion ?? false;
     if (s.deadline) draft.deadline = s.deadline.toISOString();
+    if (s.slotIn) draft.slotIn = true;
     if (s.windowStart) draft.windowStart = s.windowStart;
     if (s.windowEnd) draft.windowEnd = s.windowEnd;
     if (s.explicitClockTime) {

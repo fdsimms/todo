@@ -79,3 +79,15 @@ Every write goes through `updateTask` with `SKIP_POSTPONE`. Without it each hold
 Turning the setting off releases the task at the next pass (`slotReleasePatch`). The editor and the
 MCP server also lift a live hold straight away when the answer becomes "Keep the date", since
 otherwise the task would stay hidden until tomorrow for no reason anyone could see.
+
+## From quick add, a template, and Backfill
+
+- **Quick add**: `~` before a date ("call the dentist ~thu") sets the date and `slotIn: true`
+  (`ParsedSchedule.slotIn`, peeled in `parseSuffix`). It shares the sigil with the time estimate,
+  which needs a number and a unit ("~30m"), so the two can't read the same text. Only a plain date
+  takes the mark: a repeat, deadline, set of dates, window or clock time names an exact moment, and
+  a time also brings a reminder, which `canSlotIn` refuses. The word "around" is deliberately not
+  read: "walk around tomorrow" is a walk, not a flexible date.
+- **Templates**: `TemplateItem.slotIn` seeds the task's answer; null leaves it to the category.
+- **Backfill** asks about the tasks on the fullest days first (`dayLoadOf`), since those are the
+  answers that change this week.

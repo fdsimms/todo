@@ -27,7 +27,7 @@ const TOKENS: TokenDef[] = [
   { char: '#', label: 'hash' },
   { char: '@', label: 'at' },
   { char: '!', label: 'exclamation' },
-  { char: '~', label: 'tilde, time estimate' },
+  { char: '~', label: 'tilde, time estimate or flexible date' },
   { char: '+', label: 'plus, project', more: true },
   { char: '->', label: 'arrow, next step', insert: '-> ', glyph: '→', more: true },
   // The trailing space is part of the syntax: `parseSubtasksInput` needs a

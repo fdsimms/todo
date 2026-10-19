@@ -253,6 +253,8 @@ export interface TaskDraft {
   polarity?: Polarity;
   /** Carried over from quick add's Difficulty chip. */
   difficulty?: Difficulty | null;
+  /** Carried over when quick add reads "~thu": the date waits if that day is full. */
+  slotIn?: boolean | null;
   /** What it waits on, carried over when quick add parses "after <another task>". */
   blockerIds?: string[];
   /** Carried over when quick add parses "pack: socks, charger". */
@@ -1312,7 +1314,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
       setVacationPause(false);
       setExcludeFromSuggestions(false);
       setDifficulty(initialDraft?.difficulty ?? null);
-      setSlotIn(null);
+      setSlotIn(initialDraft?.slotIn ?? null);
       // A new task starts as "Do this" unless the draft says otherwise: left
       // unset, it kept whatever the last task edited had.
       setPolarity(initialDraft?.polarity ?? 'positive');
@@ -1474,7 +1476,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
         ? (canFollowMeter(task) ? meterFieldsFromInput(meterInputFromTask(task), useMeterReadingStore.getState().readings) : NO_METER)
         : meterFieldsFromInput(meterInputFromDraft(initialDraft), useMeterReadingStore.getState().readings)),
       difficulty: task ? (task.difficulty ?? null) : (initialDraft?.difficulty ?? null),
-      slotIn: task ? (task.slotIn ?? null) : null,
+      slotIn: task ? (task.slotIn ?? null) : (initialDraft?.slotIn ?? null),
       bounty: task ? isBountyLive(task) : false,
       polarity: task ? (task.polarity ?? 'positive') : (initialDraft?.polarity ?? 'positive'),
       slipAllowance: task ? (task.slipAllowance ?? null) : null,
@@ -1783,6 +1785,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
     setTitle(nextTitle);
     titleCaret.moveCaret(nextTitle);
     setDueDate(parsedSchedule.schedule.dueDate);
+    if (parsedSchedule.schedule.slotIn) setSlotIn(true);
     if (parsedSchedule.schedule.extraDates?.length) setExtraDates(parsedSchedule.schedule.extraDates);
     // "after 5pm" / "before 9am": a window bound, which the phrase otherwise
     // dropped on the floor here while quick add kept it.
