@@ -121,7 +121,7 @@ import { BUTTON_LABEL } from '../copy/shared';
  * **Three pieces of arithmetic a person would otherwise do against the packet
  * are done here instead**, all in `nutritionPanelForm.ts`, display-only until
  * Save: a g/oz toggle on Serving weight, a "Convert to per 100g / per serving"
- * action, and a "Divide" action for whole-package totals. The last two live in
+ * action, and a "Divide by servings per container" action for whole-package totals (the count is a field of the SERVING card, since it is on the label with the serving size, but is never saved). The last two live in
  * an optional CONVERT card *below* the figures (they act on what is typed, so
  * offering them above the fields invited pressing them first, and a button
  * appearing above the fields would shift them under the finger). Converting is
@@ -469,7 +469,6 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
     });
     setForm(next);
     setBad([]);
-    setServingsText('');
   };
 
   const handleSave = () => {
@@ -636,6 +635,24 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
                   gives only a volume. Ounces are saved as grams.
                 </HelpText>
               </View>
+
+              <View style={styles.field}>
+                <Text style={styles.fieldLabel}>Servings per container</Text>
+                <TextField
+                  style={styles.textInput}
+                  value={servingsText}
+                  onChangeText={setServingsText}
+                  placeholder="e.g. 8"
+                  placeholderTextColor={colors.textTertiary}
+                  keyboardType="decimal-pad"
+                  inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
+                  accessibilityLabel="Servings per container"
+                />
+                <HelpText style={styles.hint}>
+                  Optional, and not saved. Only used to divide whole-package totals into
+                  one serving, below the figures.
+                </HelpText>
+              </View>
             </View>
 
             <Text style={styles.groupLabel}>NUTRIENTS</Text>
@@ -677,27 +694,18 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
               )}
               {(!!basisConvertTarget && canConvertBasis) || !!undo ? <View style={styles.rule} /> : null}
               <View style={styles.field}>
-                <Text style={styles.fieldLabel}>Typed whole-package totals?</Text>
-                <View style={styles.numberRow}>
-                  <TextField
-                    style={styles.numberInput}
-                    value={servingsText}
-                    onChangeText={setServingsText}
-                    placeholder="e.g. 8 servings in the package"
-                    placeholderTextColor={colors.textTertiary}
-                    keyboardType="decimal-pad"
-                    inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
-                    accessibilityLabel="Servings in the package, for dividing whole-package totals into one serving"
-                  />
-                  <InlineAction
-                    label="Divide"
-                    variant="neutral"
-                    disabled={!canDivideServings}
-                    onPress={handleDivideServings}
-                  />
-                </View>
+                <InlineAction
+                  label={servingsCount === null ? 'Divide by servings per container' : `Divide by ${servingsCount} servings`}
+                  icon="calculator-outline"
+                  variant="neutral"
+                  disabled={!canDivideServings}
+                  onPress={handleDivideServings}
+                  style={styles.convertAction}
+                />
                 <HelpText style={styles.hint}>
-                  Divides every figure above by the number of servings and sets them to per serving.
+                  For a label that only gives whole-package totals. Type the totals above and
+                  fill in Servings per container, then divide. Every figure is divided and set
+                  to per serving.
                 </HelpText>
               </View>
             </View>

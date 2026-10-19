@@ -118,6 +118,13 @@ describe('panelFormFrom', () => {
   });
 });
 
+describe('emptyPanelForm', () => {
+  it('starts on per serving, the US label column', () => {
+    expect(emptyPanelForm().basis).toBe('perServing');
+    expect(panelFormFrom(null).basis).toBe('perServing');
+  });
+});
+
 describe('invalidPanelFields', () => {
   it('names nothing for a blank form', () => {
     expect(invalidPanelFields(emptyPanelForm())).toEqual([]);

@@ -57,11 +57,15 @@ export function novaGroupToText(group: NovaGroup | null | undefined): NovaGroupT
 /** Which field a read failed on — the nutrient's own key, or the serving weight. */
 export type PanelFieldKey = NutrientKey | 'servingGrams';
 
-/** Every text field, blank. Used for a food with no record and as the reset. */
+/**
+ * Every text field, blank. Used for a food with no record and as the reset.
+ * The basis starts at `perServing`, the US label's one column, and a read photo
+ * or barcode overrides it with what the source states.
+ */
 export function emptyPanelForm(): PanelForm {
   const amounts = {} as Record<NutrientKey, string>;
   for (const key of NUTRIENT_KEYS) amounts[key] = '';
-  return { basis: 'per100g', servingText: '', servingGrams: '', amounts, novaGroup: '' };
+  return { basis: 'perServing', servingText: '', servingGrams: '', amounts, novaGroup: '' };
 }
 
 /**
