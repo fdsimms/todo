@@ -292,6 +292,9 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
       const sealUntil = canSeal && openOn ? dayKeyOf(openOn) : null;
       const entry = addEntry(kind, text, isToday ? undefined : noonOn(day), sealUntil, { tags, personIds });
       if (entry?.openOn) addSealedNoteReminder(entry);
+      // The page answers today's journal or dream task, so its row plays the
+      // tick and leaves. The request skips a task this entry doesn't answer.
+      if (entry) useTaskStore.getState().autoCompleteRecordTasks(kind === 'dream' ? 'dreamLog' : 'journalLog');
       // The same record the person's own "Add to history" row writes, for
       // everybody the page names, only when it was asked for here.
       if (offerHistory && historyKind) {

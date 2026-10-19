@@ -53,6 +53,7 @@ import { useAppShieldSync } from './src/hooks/useAppShieldSync';
 import { useSyncStore } from './src/store/useSyncStore';
 import { useSyncOnForeground } from './src/utils/useSyncOnForeground';
 import { runStartupSequence, runStartupStep } from './src/utils/startup';
+import { setAutoCompleteAttended } from './src/utils/autoCompleteScope';
 import { markMilestone } from './src/utils/perfLog';
 import { collectDeviceMetrics, savePerfRun } from './src/utils/perfReport';
 import { startDeviceMetrics } from './src/utils/deviceMetrics';
@@ -248,6 +249,10 @@ function AppRoot() {
     // Everything above was timed under its own name (runStartupStep). Saved
     // here, after the sequence, so the one write is not part of what it times.
     markMilestone('launch steps done');
+    // From here the person is in the app, so a task their own action satisfies
+    // may complete itself (src/utils/autoCompleteScope.ts). The launch passes
+    // above ran unattended and only marked rows ready.
+    setAutoCompleteAttended(true);
     // The reports iOS builds about the app (launch time, hangs, memory) come
     // in about once a day and only while something is listening, so listening
     // starts at every launch. Read straight after, for any already delivered.

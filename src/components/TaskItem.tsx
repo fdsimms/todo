@@ -762,6 +762,11 @@ const TaskItemRow = React.memo(function TaskItem({
   const [nowTick, setNowTick] = useState(() => Date.now());
   const timerRunning = task.timerStartedAt !== null;
   const completingRef = useRef(false);
+  // Set when the app is completing this row for the person (see
+  // useTaskStore.requestAutoComplete): the line saying why shows while it plays,
+  // and the store is told so a ready step the completion spawns follows it.
+  const autoCompletedRef = useRef(false);
+  const [autoNote, setAutoNote] = useState<string | null>(null);
   const completeAnimRef = useRef<Animated.CompositeAnimation | null>(null);
   // The answer the in-flight completion is carrying, if it was asked for one.
   // Held here rather than only in runCompletion's argument because the unmount
@@ -1103,6 +1108,7 @@ const TaskItemRow = React.memo(function TaskItem({
     pendingOutcomeRef.current = undefined;
     completeTask(task.id, {
       ...(deliverableValue !== undefined ? { deliverableValue, deliverableReasoning, reviewAfter } : {}),
+      ...(autoCompletedRef.current ? { autoCompleted: true } : {}),
       ...outcome,
     });
   }, []);
@@ -2283,6 +2289,7 @@ const TaskItemRow = React.memo(function TaskItem({
         completeTask(task.id, {
           ...(deliverableValue !== undefined ? { deliverableValue, deliverableReasoning, reviewAfter } : {}),
           ...(logEarly ? { logEarly: true } : {}),
+          ...(autoCompletedRef.current ? { autoCompleted: true } : {}),
           ...outcome,
         });
         endQuotaHold();
@@ -2357,11 +2364,32 @@ const TaskItemRow = React.memo(function TaskItem({
     completeTask(task.id, {
       ...(deliverableValue !== undefined ? { deliverableValue, deliverableReasoning, reviewAfter } : {}),
       ...(logEarly ? { logEarly: true } : {}),
+      ...(autoCompletedRef.current ? { autoCompleted: true } : {}),
       chainStepInPlace: true,
     });
     endQuotaHold();
     if (expandedRef.current) onPress(rowId);
   };
+
+  // The app is completing this task because something the person just did
+  // satisfied it (a mood saved, water logged). It plays the same completion a
+  // tap does, with the reason under the title, so the row leaves the way any
+  // other does and says why. Claimed from the store first: a row nobody claims
+  // (off screen) is completed by the store itself, and a pinned task's twin
+  // that loses the claim does nothing.
+  const autoReason = useTaskStore(s => s.autoComplete[task.id] ?? null);
+  useEffect(() => {
+    if (autoReason === null || task.completed) return;
+    const reason = useTaskStore.getState().claimAutoComplete(task.id);
+    if (reason === null) return;
+    if (completingRef.current || pacingOutRef.current) {
+      // Already being completed by hand: that completion is the one that counts.
+      return;
+    }
+    autoCompletedRef.current = true;
+    setAutoNote(reason);
+    void runCompletion();
+  }, [autoReason]);
 
   // ==== completing, quota taps, and their undos ====
 
@@ -2835,6 +2863,8 @@ const TaskItemRow = React.memo(function TaskItem({
     setCompleting(false);
     setStreakPreview(null);
     setAwaitingCollapse(false);
+    autoCompletedRef.current = false;
+    setAutoNote(null);
     // Only when a collapse actually committed a height and an opacity —
     // cancelling in flight (the path below), or an undo that beats the batch to
     // the row, never gets that far and shouldn't pay for a remount. The remount
@@ -3397,6 +3427,12 @@ const TaskItemRow = React.memo(function TaskItem({
         )}
         {weatherNote !== null && !nutrientRow && !isEditingTitle && (
           <Text style={[styles.scheduledLabel, styles.weatherNote]} numberOfLines={1}>{weatherNote}</Text>
+        )}
+        {autoNote !== null && completing && !nutrientRow && (
+          <Animated.View style={[styles.autoNote, { opacity: checkScale }]} accessibilityLiveRegion="polite">
+            <Ionicons name="checkmark-circle" size={iconSize.xs} color={colors.textSecondary} />
+            <Text style={styles.autoNoteText} numberOfLines={1}>{autoNote}</Text>
+          </Animated.View>
         )}
         {activeTitleOffer && (
           <TitleSuggestionBanner
@@ -5736,6 +5772,19 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
   },
   weatherNote: {
     marginTop: spacing.xxs,
+  },
+  // Why the app ticked this row, while it plays its completion.
+  autoNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.xxs,
+  },
+  autoNoteText: {
+    flexShrink: 1,
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.medium,
   },
   quotaLabel: {
     color: colors.accent,

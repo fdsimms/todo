@@ -11,6 +11,7 @@ import { useRewardStore } from '../store/useRewardStore';
 import { useShieldReleaseStore } from '../store/useShieldReleaseStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useMoodStore } from '../store/useMoodStore';
+import { setAutoCompleteAttended, runUnattended } from '../utils/autoCompleteScope';
 import { useJournalStore } from '../store/useJournalStore';
 import { UNDO_STACK_LIMIT } from '../utils/undoHistory';
 import { isMissed, isRealCompletion } from '../utils/missed';
@@ -7339,6 +7340,66 @@ describe('checkMoodTasks', () => {
       expect(tasksOfKind('moodLog')).toHaveLength(1);
       useTaskStore.getState().completeTask(check.id);
       expect(tasksOfKind('moodLog')).toHaveLength(0);
+    });
+
+    describe('completing itself when the person acts', () => {
+      afterEach(() => setAutoCompleteAttended(false));
+
+      const liveCheck = () => {
+        useTaskStore.getState().checkMoodTasks();
+        return tasksOfKind('moodLog')[0];
+      };
+
+      it('asks nothing of the row, or the store, while nobody is in the app', () => {
+        const check = liveCheck();
+        setLogs([entry(TODAY, 4)]);
+        useTaskStore.getState().autoCompleteRecordTasks('moodLog');
+        expect(useTaskStore.getState().autoComplete).toEqual({});
+        jest.advanceTimersByTime(2000);
+        expect(tasksOfKind('moodLog').map(t => t.id)).toEqual([check.id]);
+      });
+
+      it('requests the tick once the entry is saved, with the line that says why', () => {
+        setAutoCompleteAttended(true);
+        const check = liveCheck();
+        // No entry yet: the request would be refused by completeTask, so it is not made.
+        useTaskStore.getState().autoCompleteRecordTasks('moodLog');
+        expect(useTaskStore.getState().autoComplete).toEqual({});
+
+        setLogs([entry(TODAY, 4)]);
+        useTaskStore.getState().autoCompleteRecordTasks('moodLog');
+        expect(useTaskStore.getState().autoComplete).toEqual({ [check.id]: 'Logged your mood' });
+      });
+
+      it('completes a row nobody claimed once the pickup window passes', () => {
+        setAutoCompleteAttended(true);
+        liveCheck();
+        setLogs([entry(TODAY, 4)]);
+        useTaskStore.getState().autoCompleteRecordTasks('moodLog');
+        jest.advanceTimersByTime(700);
+        expect(tasksOfKind('moodLog')).toHaveLength(0);
+        expect(useTaskStore.getState().autoComplete).toEqual({});
+      });
+
+      it('leaves the completion to the row that claims it', () => {
+        setAutoCompleteAttended(true);
+        const check = liveCheck();
+        setLogs([entry(TODAY, 4)]);
+        useTaskStore.getState().autoCompleteRecordTasks('moodLog');
+        expect(useTaskStore.getState().claimAutoComplete(check.id)).toBe('Logged your mood');
+        expect(useTaskStore.getState().claimAutoComplete(check.id)).toBeNull();
+        jest.advanceTimersByTime(700);
+        // The row plays its animation and calls completeTask itself; the store's backstop does not.
+        expect(tasksOfKind('moodLog')).toHaveLength(1);
+      });
+
+      it('refuses inside an unattended pass', () => {
+        setAutoCompleteAttended(true);
+        liveCheck();
+        setLogs([entry(TODAY, 4)]);
+        runUnattended(() => useTaskStore.getState().autoCompleteRecordTasks('moodLog'));
+        expect(useTaskStore.getState().autoComplete).toEqual({});
+      });
     });
 
     it('writes nothing when the day has already been logged', () => {

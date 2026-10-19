@@ -10,7 +10,8 @@ import { WEIGH_IN_LINK_URL, weighInDayKey } from './weightTasks';
  *
  * "Log how you're feeling", "Write in your journal", "Write down your dream" and
  * "Record your weight" each have a sheet, and saving an entry for today
- * makes its row read ready (the tick stays the person's, for the coins). So
+ * makes its row read ready and completes it (`autoCompleteRecordTasks`); an
+ * entry that arrives any other way leaves the tick to the person. So
  * the app already knows whether the thing was done, and a checkbox that
  * completes the task regardless can only disagree with that: it marks the
  * question answered with no answer recorded.
@@ -19,8 +20,8 @@ import { WEIGH_IN_LINK_URL, weighInDayKey } from './weightTasks';
  * health task: until `isRecordAnswered` says there is an entry, the checkbox
  * opens the sheet (`'open-log'` in `completionTap.ts`) and `completeTask`
  * refuses; once there is one, the row reads *ready* and the tick completes it.
- * Nothing here completes a task on its own. A missed mark claims nothing, so
- * it is never gated.
+ * Nothing in this file completes a task. A missed mark claims nothing, so it
+ * is never gated.
  */
 const RECORD_KINDS: ReadonlySet<string> = new Set(['moodLog', 'journalLog', 'dreamLog', 'weighIn']);
 

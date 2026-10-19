@@ -733,12 +733,32 @@ one. Those three rules and the reasoning behind them are in
 ## A satisfied task stays, and reads ready
 
 A sweep that finds the thing a generated task asks for already done does **not
-delete the row and does not tick it for the person**. It sets
-`Task.generatedReadyAt`, the row draws its checkbox in the ready colour
-(`generatedReady` in `TaskItem`), and the tick, with its coins, is the person's.
-Deleting lost the coins and ticking for them invented a claim, so neither is
-allowed once the person has done the work. The mark is display only and gates
-nothing (the four record kinds below are the one gated family).
+delete the row**. It sets `Task.generatedReadyAt`, the row draws its checkbox in
+the ready colour (`generatedReady` in `TaskItem`), and the tick, with its coins,
+is the person's. Deleting lost the coins, so it is not allowed once the person
+has done the work. The mark is display only and gates nothing (the four record
+kinds below are the one gated family).
+
+- **A row completes itself only when the person's own action satisfied it.**
+  `markGeneratedReady` also calls `requestAutoComplete`, and the four record
+  sheets call `autoCompleteRecordTasks` on save. The request is refused unless
+  `canAutoComplete` (`src/utils/autoCompleteScope.ts`): the interface is up
+  (`App.tsx` sets it after the launch sequence) and the call is not inside a
+  launch or background step (`runStartupStep` wraps every one in `runUnattended`).
+  So something that happened while nobody was looking (Siri, another device,
+  Health overnight, an agent over MCP, which never sets the flag) is found by a
+  catch-up pass and stays ready. A row already marked is never asked again, which
+  is also why a ready row from an earlier day is still ticked by hand.
+- **The row plays the ordinary completion.** The request is a session-only map in
+  `useTaskStore.autoComplete` (task id to the line saying why). The row claims its
+  own id (`claimAutoComplete`), runs `runCompletion` (check pop, hold, batched
+  collapse) and shows the line under the title while it plays. A row nobody claims
+  (off screen, or in Search) is completed by the store after
+  `AUTO_COMPLETE_PICKUP_MS`. A chain's next step carries the mark, so
+  `completeTask`'s `autoCompleted` option requests it too.
+- **`autoComplete.ts` is both the captions and the allow-list.** A kind with no
+  entry never completes itself. `blockOffer` is left out because it reads ready
+  from the clock (a block ran its time), not from an action.
 
 - **Only satisfaction marks; withdrawal still deletes.** A source that went away,
   was declined, is out of its window or has its setting off is not "done", so those
@@ -755,9 +775,10 @@ nothing (the four record kinds below are the one gated family).
   be lost overnight.
 - **A tick on a ready `waterShortfall` logs nothing**: its tick normally logs the
   water, and the water is already in the log.
-- **Marking a meal cooked** (`setCooked`) now marks its cook and meal-slot rows
-  instead of completing every chain step; each step ticked spawns the next
-  already marked (`buildCompletion` carries the mark along a chain).
+- **Marking a meal cooked** (`setCooked`) marks its cook and meal-slot rows
+  ready, and they complete themselves while the app is attended; each step
+  spawns the next already marked (`buildCompletion` carries the mark along a
+  chain) and the next one follows.
 - **Not covered, on purpose**: a workout's linked task (finishing a session says
   so on its summary and is gated by `completeLinkedTask`) and a water quota task
   filling from the log (it is a meter, not a generated row).
