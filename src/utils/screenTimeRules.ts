@@ -57,11 +57,17 @@ export function clampThresholdMinutes(minutes: number): number {
  * trip a shipped default saves. Each still has its own `enabled`, and the
  * generator's settings toggle (`screenTimeTasks`) ships off, so nobody sees a
  * task from these until they turn the feature on and pick some apps.
+ *
+ * The ids are fixed rather than `generateId()`: these rules live only in
+ * memory until somebody saves the list, and a generated task's id is derived
+ * from its rule's (`spawnSeed.generated`). Minted fresh, two devices (or two
+ * launches of one) named the same default rule differently and each wrote its
+ * own copy of the task, which sync then delivered to both.
  */
 export function defaultScreenTimeRules(): ScreenTimeRule[] {
   return [
-    { id: generateId(), thresholdMinutes: 30, title: 'Take a walk', enabled: true, lastFiredDayKey: null },
-    { id: generateId(), thresholdMinutes: 90, title: 'Put the phone in another room', enabled: true, lastFiredDayKey: null },
+    { id: 'default-screentime-30', thresholdMinutes: 30, title: 'Take a walk', enabled: true, lastFiredDayKey: null },
+    { id: 'default-screentime-90', thresholdMinutes: 90, title: 'Put the phone in another room', enabled: true, lastFiredDayKey: null },
   ];
 }
 

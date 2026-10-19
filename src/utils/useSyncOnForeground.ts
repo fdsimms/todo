@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { AppState } from 'react-native';
-import { useSyncStore } from '../store/useSyncStore';
+import { hasUnsentChanges, useSyncStore } from '../store/useSyncStore';
 
 /**
  * How often the app syncs while it is on screen. Short, because the case it is
@@ -9,6 +9,14 @@ import { useSyncStore } from '../store/useSyncStore';
  * destination and reloads nothing (see `syncOnce`).
  */
 export const FOREGROUND_SYNC_INTERVAL_MS = 15_000;
+
+/**
+ * How often the app checks for an edit of its own that hasn't been sent. The
+ * check is one indexed query (`hasUnsentChanges`), and a sync starts only when
+ * it finds something, so an edit reaches the other device within a couple of
+ * seconds rather than waiting up to a full `FOREGROUND_SYNC_INTERVAL_MS`.
+ */
+export const LOCAL_CHANGE_PROBE_MS = 2_000;
 
 /**
  * Runs a sync when the app comes to the front, once at launch, and every
@@ -28,9 +36,10 @@ export const FOREGROUND_SYNC_INTERVAL_MS = 15_000;
  * saying "last synced", which is a fact, rather than "up to date", which
  * wouldn't be.
  *
- * `syncNow` is its own guard: it returns immediately if sync is off or a run
- * is already in flight, so a tick that lands mid-run is a no-op rather than a
- * second run stacked on the first.
+ * `syncNow` is its own guard: a call that lands mid-run never starts a second
+ * run stacked on the first. It asks the running one to go round once more
+ * when it finishes, since that run may have read its push window before the
+ * edit that prompted the call.
  */
 export function useSyncOnForeground(): void {
   // Either destination, not iCloud's switch alone: `enabled` is iCloud's, and
@@ -46,12 +55,24 @@ export function useSyncOnForeground(): void {
     void syncNow();
 
     let timer: ReturnType<typeof setInterval> | null = null;
+    let probe: ReturnType<typeof setInterval> | null = null;
     const startTimer = () => {
       if (timer === null) timer = setInterval(() => void syncNow(), FOREGROUND_SYNC_INTERVAL_MS);
+      // Not while the last sync is reporting a problem: its cursor hasn't
+      // moved, so every probe would say yes and retry a failing sync every
+      // couple of seconds. The slower timer above keeps retrying meanwhile.
+      if (probe === null) {
+        probe = setInterval(() => {
+          if (useSyncStore.getState().problem !== null) return;
+          if (hasUnsentChanges()) void syncNow();
+        }, LOCAL_CHANGE_PROBE_MS);
+      }
     };
     const stopTimer = () => {
       if (timer !== null) clearInterval(timer);
+      if (probe !== null) clearInterval(probe);
       timer = null;
+      probe = null;
     };
     if (AppState.currentState === 'active') startTimer();
 
@@ -61,6 +82,10 @@ export function useSyncOnForeground(): void {
         startTimer();
       } else {
         stopTimer();
+        // On the way out too, so an edit made just before the phone is locked
+        // or the app switched away goes now rather than at the next launch:
+        // iOS allows a few seconds after backgrounding, which a push fits in.
+        if (next === 'background') void syncNow();
       }
     });
     return () => {

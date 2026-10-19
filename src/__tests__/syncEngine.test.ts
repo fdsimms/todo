@@ -282,6 +282,58 @@ describe('runSync', () => {
     expect(device.titleOf('t1')).toBe('From peer');
   });
 
+  it('reports what landed as soon as it lands, before the next transport runs', async () => {
+    const device = new FakeDevice('a');
+    const first = new FakeCloud();
+    const second = new FakeCloud();
+    (second as { name: string }).name = 'second';
+    await first.push(serializePayload(payloadOf({
+      tables: { tasks: [{ id: 't1', title: 'From peer', updated_at: '2026-01-01T00:00:00.000Z' }] },
+    })));
+    const order: string[] = [];
+    const pull = second.pull.bind(second);
+    second.pull = async since => {
+      order.push('second pulled');
+      return pull(since);
+    };
+
+    await runSyncAll([first, second], device, applied => order.push(`reloaded ${applied.inserted}`));
+
+    expect(order).toEqual(['reloaded 1', 'second pulled']);
+  });
+
+  it('reports nothing when nothing landed', async () => {
+    const device = new FakeDevice('a');
+    const onApplied = jest.fn();
+
+    await runSync(new FakeCloud(), device, onApplied);
+
+    expect(onApplied).not.toHaveBeenCalled();
+  });
+
+  it('still reports what landed before a later payload failed to apply', async () => {
+    const device = new FakeDevice('a');
+    const cloud = new FakeCloud();
+    await cloud.push(serializePayload(payloadOf({
+      tables: { tasks: [{ id: 't1', title: 'First', updated_at: '2026-01-01T00:00:00.000Z' }] },
+    })));
+    await cloud.push(serializePayload(payloadOf({
+      tables: { tasks: [{ id: 't2', title: 'Second', updated_at: '2026-01-02T00:00:00.000Z' }] },
+    })));
+    const apply = device.apply.bind(device);
+    let calls = 0;
+    device.apply = payload => {
+      if (++calls === 2) throw new Error('apply blew up');
+      return apply(payload);
+    };
+    const onApplied = jest.fn();
+
+    const result = await runSync(cloud, device, onApplied);
+
+    expect(result.status).toBe('failed');
+    expect(onApplied).toHaveBeenCalledWith(expect.objectContaining({ inserted: 1 }));
+  });
+
   it('counts an unreadable payload instead of wedging', async () => {
     // A peer on a newer format will keep publishing. Throwing here would stop
     // this device ever syncing again, including with peers it *can* read.

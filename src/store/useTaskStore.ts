@@ -482,6 +482,32 @@ import {
  * no gate of its own at this level (the write lands in the throwaway database
  * like any other) and the one gate that matters stays where the bridge is.
  */
+/**
+ * Writes a row a completion spawned under a derived id (syncIds.ts), over the
+ * row already here if there is one. There can be: another device completed
+ * this occurrence and its successor synced in, while this device's own later
+ * edit kept the original open under last-writer-wins. That successor is this
+ * one by design, and a plain insert of the same id threw, which left the task
+ * impossible to complete on this device.
+ */
+function writeSpawnedTask(row: Task, held: ReadonlySet<string>): void {
+  if (held.has(row.id)) dbUpdateTask(row);
+  else dbInsertTask(row);
+}
+
+/** `tasks` with each spawned row in place of one sharing its id, the rest appended. */
+function withSpawnedTasks(tasks: Task[], spawned: readonly Task[]): Task[] {
+  if (spawned.length === 0) return tasks;
+  const byId = new Map(spawned.map(t => [t.id, t]));
+  const replaced = tasks.map(t => {
+    const next = byId.get(t.id);
+    if (!next) return t;
+    byId.delete(t.id);
+    return next;
+  });
+  return [...replaced, ...byId.values()];
+}
+
 function chargePenaltyShield(until: Date, reason: string): void {
   const settings = useSettingsStore.getState();
   if (!settings.penaltyShieldEnabled) return;
@@ -2248,7 +2274,8 @@ interface TaskStore extends UndoHistoryActions {
    */
   reorderProjectItems: (projectId: string, orderedIds: string[]) => void;
 
-  addSubtask: (parentId: string, title: string) => Task;
+  /** `id` is for a subtask the app makes unattended; see CreateProjectOptions.id. */
+  addSubtask: (parentId: string, title: string, id?: string) => Task;
   toggleSubtask: (id: string) => void;
   deleteSubtask: (id: string) => void;
   reorderSubtasks: (parentId: string, orderedIds: string[]) => void;
@@ -2259,7 +2286,7 @@ interface TaskStore extends UndoHistoryActions {
   addExistingToGroup: (taskId: string, groupId: string) => void;
   removeFromGroup: (taskId: string) => void;
   reorderGroupChildren: (groupId: string, orderedIds: string[]) => void;
-  groupTasks: (taskIds: string[], title: string, category: string | null) => TaskGroup;
+  groupTasks: (taskIds: string[], title: string, category: string | null, groupId?: string) => TaskGroup;
   /** Re-files the stack's live members under `category`; returns their prior values for undo. */
   applyGroupCategory: (groupId: string, category: string | null) => Array<{ id: string; category: string | null }>;
   /**
@@ -4164,34 +4191,34 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // for the day, it went on saying "one is due now" until evening.
     if (task.quotaReminders) cancelQuotaNudges(id);
 
+    const held = new Set(get().tasks.map(t => t.id));
     if (nextTask) {
-      dbInsertTask(nextTask);
+      writeSpawnedTask(nextTask, held);
       scheduleTaskReminder(nextTask);
       scheduleQuotaNudges(nextTask);
       reconcileDeadlineEvent(nextTask);
     }
     nextSubtasks.forEach(sub => {
-      dbInsertTask(sub);
+      writeSpawnedTask(sub, held);
       scheduleTaskReminder(sub);
     });
-    if (followUpTask) dbInsertTask(followUpTask);
-    followUpSubtasks.forEach(sub => dbInsertTask(sub));
-    if (reviewTask) dbInsertTask(reviewTask);
+    if (followUpTask) writeSpawnedTask(followUpTask, held);
+    followUpSubtasks.forEach(sub => writeSpawnedTask(sub, held));
+    if (reviewTask) writeSpawnedTask(reviewTask, held);
     rolledOver.forEach(row => {
-      dbInsertTask(row);
+      writeSpawnedTask(row, held);
       scheduleTaskReminder(row);
     });
 
     set(s => ({
-      tasks: [
-        ...s.tasks.map(t => (t.id === id ? completed : t)),
+      tasks: withSpawnedTasks(s.tasks.map(t => (t.id === id ? completed : t)), [
         ...(nextTask ? [nextTask] : []),
         ...nextSubtasks,
         ...rolledOver,
         ...(followUpTask ? [followUpTask] : []),
         ...followUpSubtasks,
         ...(reviewTask ? [reviewTask] : []),
-      ],
+      ]),
       // See the option's own doc comment: a row that already animated its own
       // transition to the successor's look has nothing left for the hold to
       // protect, and masking it back to its pre-transition content for the
@@ -5402,7 +5429,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       const effective: Task = { ...task, ...(task.seriesDefaults ?? {}) };
       spawned.push({
         ...effective,
-        id: derivedId(spawnSeed.catchUp(task.id)),
+        // The same seed completeTask's successor uses, because it is the same
+        // row: the next occurrence of this task. A partial day closed here on
+        // one device while the last unit was logged on the other spawned two
+        // successors under two seeds, and nothing merged them.
+        id: derivedId(spawnSeed.occurrence(task.id)),
         completed: false,
         completedAt: null,
         missedAt: null,
@@ -5466,9 +5497,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // this runs at launch and on every background refresh, and a day's worth
     // of quota tasks is a row each. Scheduling the reminders stays outside it,
     // since that reaches the notification system rather than the database.
+    const held = new Set(get().tasks.map(t => t.id));
     dbTransaction(() => {
       closed.forEach(dbUpdateTask);
-      spawned.forEach(dbInsertTask);
+      spawned.forEach(row => writeSpawnedTask(row, held));
     });
     spawned.forEach(scheduleTaskReminder);
     // The day's nudges belong to the row that just closed; the new day's come
@@ -5477,7 +5509,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     spawned.forEach(t => { scheduleQuotaNudges(t); });
     const closedById = new Map(closed.map(t => [t.id, t]));
     set(s => ({
-      tasks: [...s.tasks.map(t => closedById.get(t.id) ?? t), ...spawned],
+      tasks: withSpawnedTasks(s.tasks.map(t => closedById.get(t.id) ?? t), spawned),
     }));
   },
 
@@ -5958,10 +5990,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Resolve-or-shrug: a stack the user deleted reads back as null here and a
     // new one takes its place, rather than the week's tasks landing loose
     // because a row went missing.
-    const existing = settings.mealPlanNudgeGroupId
+    // The shared id is looked up too, so a stack another device made for the
+    // nudge and synced here is adopted rather than joined by a second one.
+    const sharedId = derivedId(spawnSeed.mealPlanNudgeStack());
+    const existing = (settings.mealPlanNudgeGroupId
       ? groupStore.getGroupById(settings.mealPlanNudgeGroupId)
-      : null;
-    const group = existing ?? groupStore.createGroup(due.title, category);
+      : null) ?? groupStore.getGroupById(sharedId);
+    const group = existing ?? groupStore.createGroup(due.title, category, null, sharedId);
     if (existing) {
       groupStore.updateGroup(group.id, { title: due.title, category });
     } else {
@@ -9107,12 +9142,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }
   },
 
-  addSubtask(parentId, title) {
+  addSubtask(parentId, title, id) {
     const now = new Date().toISOString();
     const siblings = get().tasks.filter(t => t.parentId === parentId);
     const maxOrder = siblings.reduce((m, t) => Math.max(m, t.sortOrder), 0);
     const subtask: Task = {
-      id: generateId(),
+      id: id ?? generateId(),
       title,
       notes: '',
       completed: false,
@@ -9545,8 +9580,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   // Members adopt the new stack's category as part of the same write that
   // files them into it. Not wrapped in a dbTransaction of its own:
   // applyTemplate already calls this from inside one.
-  groupTasks(taskIds, title, category) {
-    const group = useTaskGroupStore.getState().createGroup(title, category);
+  groupTasks(taskIds, title, category, groupId) {
+    const group = useTaskGroupStore.getState().createGroup(title, category, null, groupId);
     // A stack holds a slot in the list order like a task does (see
     // TaskGroup.sortOrder), so put the new one where its members already were
     // — the members' own sortOrders are about to be overwritten with their

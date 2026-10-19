@@ -130,6 +130,7 @@ import {
   dbDeleteLeftover,
   dbPurgeOldLeftovers,
   dbSyncChangesSince,
+  dbHasLocalChangesSince,
   dbRecipeImagePaths,
   dbFillTaskCalendarExternalIds,
   dbFillMealCalendarExternalIds,
@@ -4552,11 +4553,67 @@ describe('sync change tracking', () => {
     expect(keys).toEqual(['child', 'parent']);
   });
 
-  it('does not report a first read as having deletions', () => {
+  describe('dbHasLocalChangesSince', () => {
+    const cursor = () => dbSyncChangesSince(null).until;
+    const wait = () => {
+      const until = Date.now() + 3;
+      while (Date.now() < until) { /* let SQLite's clock move on */ }
+    };
+
+    it('is false once everything has gone out', () => {
+      dbInsertTask(makeTask({ id: 'probe-1' }));
+      const since = cursor();
+      expect(dbHasLocalChangesSince(since)).toBe(false);
+    });
+
+    it('sees a task edited after the cursor', () => {
+      dbInsertTask(makeTask({ id: 'probe-2' }));
+      const since = cursor();
+      wait();
+      dbUpdateTask(makeTask({ id: 'probe-2', title: 'Edited' }));
+      expect(dbHasLocalChangesSince(since)).toBe(true);
+    });
+
+    it('sees a local deletion', () => {
+      dbInsertTask(makeTask({ id: 'probe-3' }));
+      const since = cursor();
+      wait();
+      dbDeleteTask('probe-3');
+      expect(dbHasLocalChangesSince(since)).toBe(true);
+    });
+
+    // The sync writes its own cursors as settings rows: counted, they would
+    // read as an edit after every sync and start another one.
+    it('ignores a setting that never syncs', () => {
+      const since = cursor();
+      wait();
+      dbSetSyncCursor('cloudkit:push', since);
+      expect(dbHasLocalChangesSince(since)).toBe(false);
+    });
+
+    it('sees a setting that syncs', () => {
+      const since = cursor();
+      wait();
+      dbSetSetting('themeMode', 'light');
+      expect(dbHasLocalChangesSince(since)).toBe(true);
+    });
+
+    // A peer whose clock runs ahead stamps rows in this device's future.
+    it('ignores a row stamped later than now', () => {
+      const since = cursor();
+      dbInsertTask(makeTask({ id: 'probe-4' }));
+      mockRawDb.prepare('UPDATE tasks SET updated_at = ? WHERE id = ?').run('2999-01-01T00:00:00.000Z', 'probe-4');
+      expect(dbHasLocalChangesSince(since)).toBe(false);
+    });
+  });
+
+  it('reports every tombstone on a first read, since a peer may already hold the row', () => {
     dbInsertTask(makeTask({ id: 'sync-1' }));
     dbDeleteTask('sync-1');
 
-    expect(dbSyncChangesSince(null).deletions).toEqual([]);
+    expect(dbSyncChangesSince(null).deletions).toEqual([
+      expect.objectContaining({ table: 'tasks', rowKey: 'sync-1' }),
+    ]);
   });
 
   it('reports an allowlisted setting', () => {
@@ -4688,6 +4745,29 @@ describe('dbApplySyncChanges', () => {
 
     expect(report.skipped).toBe(1);
     expect(rowOf('p1')?.title).toBe('Local wins');
+  });
+
+  it('keeps a deletion that arrives before its row, so the older row stays deleted', () => {
+    const remote = peerTaskRow('p1', 'Deleted elsewhere', '2026-01-01T00:00:00.000Z');
+    dbApplySyncChanges(payload({
+      deletions: [{ table: 'tasks', rowKey: 'p1', deletedAt: '2026-02-01T00:00:00.000Z' }],
+    }));
+
+    const report = dbApplySyncChanges(payload({ tables: { tasks: [remote] } }));
+
+    expect(report.inserted).toBe(0);
+    expect(rowOf('p1')).toBeUndefined();
+  });
+
+  it('still lets a row edited after an early-arriving deletion come back', () => {
+    const remote = peerTaskRow('p1', 'Edited after', '2026-03-01T00:00:00.000Z');
+    dbApplySyncChanges(payload({
+      deletions: [{ table: 'tasks', rowKey: 'p1', deletedAt: '2026-02-01T00:00:00.000Z' }],
+    }));
+
+    dbApplySyncChanges(payload({ tables: { tasks: [remote] } }));
+
+    expect(rowOf('p1')?.title).toBe('Edited after');
   });
 
   // #2950. A peer without the meal calendar set used to "delete" this phone's

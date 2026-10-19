@@ -188,3 +188,13 @@ describe('crossingWantsTask', () => {
     expect(crossingWantsTask(makeRule({ enabled: false }), '2026-08-28')).toBe(false);
   });
 });
+
+// Their tasks' ids are derived from the rule's, so a default minted fresh on
+// each device (or each launch) wrote one copy of the same task per device.
+describe('defaultScreenTimeRules ids', () => {
+  it('names each default rule the same way every time', () => {
+    const ids = defaultScreenTimeRules().map(r => r.id);
+    expect(defaultScreenTimeRules().map(r => r.id)).toEqual(ids);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+});

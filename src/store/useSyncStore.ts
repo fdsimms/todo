@@ -13,9 +13,9 @@
  * device must not be able to switch the feature on for another one.
  */
 import { create } from 'zustand';
-import { dbGetSetting, dbGetSyncCursor, dbSetSetting, dbSetSyncCursor } from '../db/database';
+import { dbGetSetting, dbGetSyncCursor, dbHasLocalChangesSince, dbSetSetting, dbSetSyncCursor } from '../db/database';
 import { HEALTH_SYNC_SETTING_KEYS, HEALTH_SYNC_TABLES, JOURNAL_SYNC_TABLES } from '../db/syncTracking';
-import { cloudKitTransport, cloudKitUnavailableReason, isCloudKitSyncAvailable } from '../utils/cloudKitTransport';
+import { CLOUDKIT_SOURCE, cloudKitTransport, cloudKitUnavailableReason, isCloudKitSyncAvailable } from '../utils/cloudKitTransport';
 import { HTTP_SYNC_SOURCE, httpSyncTransport, isHttpSyncConfigured } from '../utils/httpSyncTransport';
 import {
   loadSecureKey,
@@ -190,6 +190,12 @@ async function configuredTransports(state: SyncConfig): Promise<SyncTransport[]>
 
 // See syncNow: claimed synchronously, so two calls can't both reach runSyncAll.
 let syncInFlight = false;
+// A sync asked for while one was running. That run may already have read its
+// push window, so an edit that prompted the ask would otherwise wait for the
+// next tick; the running call goes round once more instead.
+let syncAgain = false;
+/** Rounds one `syncNow` call may run back to back, so a steady stream of asks can't hold it forever. */
+const MAX_SYNC_ROUNDS = 3;
 
 /**
  * Re-reads every data store from the database after a sync wrote to it.
@@ -312,8 +318,10 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   },
 
   syncNow: async () => {
-    const { enabled, phase, serverUrl, serverHealthLogs, serverJournal } = get();
-    if (phase === 'syncing' || syncInFlight) return null;
+    if (get().phase === 'syncing' || syncInFlight) {
+      syncAgain = true;
+      return null;
+    }
     // Claimed before the first await rather than by `phase`, which is only set
     // once the transports are known: the keychain read in between left a window
     // where a foreground return and the mount-time sync both got past the check
@@ -321,9 +329,17 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     // transports sequentially exists to prevent.
     syncInFlight = true;
     try {
-      return await syncOnce({ enabled, serverUrl, serverHealthLogs, serverJournal });
+      let summary: SyncSummary | null = null;
+      for (let round = 0; round < MAX_SYNC_ROUNDS; round++) {
+        syncAgain = false;
+        const { enabled, serverUrl, serverHealthLogs, serverJournal } = get();
+        summary = await syncOnce({ enabled, serverUrl, serverHealthLogs, serverJournal });
+        if (!syncAgain) break;
+      }
+      return summary;
     } finally {
       syncInFlight = false;
+      syncAgain = false;
     }
   },
 }));
@@ -342,13 +358,12 @@ async function syncOnce(state: SyncConfig): Promise<SyncSummary | null> {
 
   set({ phase: 'syncing' });
   try {
-    const summary = summarizeRuns(await runSyncAll(transports, databaseSyncLocal()));
+    // The stores reload as each transport's rows land, not once at the end:
+    // see `onApplied` in runSync for the edit that would otherwise be lost.
+    // Including on a run that then failed, since the rows are in the database
+    // either way, and skipped when nothing came in, which is most runs.
+    const summary = summarizeRuns(await runSyncAll(transports, databaseSyncLocal(), reloadAfterSync));
 
-    // Before the summary is recorded, and whenever anything landed, including
-    // on a run where the other transport then failed: the rows are in the
-    // database either way. Skipped when nothing came in, which is most runs.
-    const a = summary.applied;
-    if (a.inserted + a.updated + a.deleted > 0) reloadAfterSync(a);
     if (summary.imagesReceived > 0) set(s => ({ recipeImagesVersion: s.recipeImagesVersion + 1 }));
 
     if (summary.ok) {
@@ -380,6 +395,34 @@ async function syncOnce(state: SyncConfig): Promise<SyncSummary | null> {
   } finally {
     set({ phase: 'idle' });
   }
+}
+
+/**
+ * Whether this device has an edit that hasn't gone to a destination it syncs
+ * with yet. Cheap (`dbHasLocalChangesSince`), so the foreground hook asks it
+ * every couple of seconds and starts a sync the moment the answer is yes,
+ * rather than leaving the edit for the next tick of the slower timer.
+ *
+ * False while a sync is running (it is about to send them), and for a
+ * destination that has never synced: its first sync is the one switching it
+ * on starts, and a probe that said yes to it would retry a failing first sync
+ * every couple of seconds.
+ */
+export function hasUnsentChanges(): boolean {
+  if (syncInFlight) return false;
+  const { enabled, serverUrl, hasServerToken } = useSyncStore.getState();
+  const cursors: string[] = [];
+  if (enabled && isCloudKitSyncAvailable()) {
+    const c = dbGetSyncCursor(pushCursorKey(CLOUDKIT_SOURCE));
+    if (c) cursors.push(c);
+  }
+  if (serverUrl && hasServerToken) {
+    const c = dbGetSyncCursor(pushCursorKey(HTTP_SYNC_SOURCE));
+    if (c) cursors.push(c);
+  }
+  if (cursors.length === 0) return false;
+  cursors.sort();
+  return dbHasLocalChangesSince(cursors[0]);
 }
 
 /**

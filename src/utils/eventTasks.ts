@@ -110,11 +110,17 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * own `enabled`, and the generator's settings toggle (`eventTasks`) ships off
  * — see `GENERATED_KIND_SPECS.eventTask` — so nobody sees a task from these
  * until they turn the feature on.
+ *
+ * The ids are fixed rather than `generateId()`: these rules live only in
+ * memory until somebody saves the list, and a generated task's id is derived
+ * from its rule's (`spawnSeed.generated`). Minted fresh, two devices (or two
+ * launches of one) named the same default rule differently and each wrote its
+ * own copy of the task, which sync then delivered to both.
  */
 export function defaultEventRules(): EventTaskRule[] {
   return [
-    { id: generateId(), matches: ['flight'], title: 'Pack a bag', leadDays: 2, enabled: true },
-    { id: generateId(), matches: ['dentist'], title: 'Bring your insurance card', leadDays: 0, enabled: true },
+    { id: 'default-event-flight', matches: ['flight'], title: 'Pack a bag', leadDays: 2, enabled: true },
+    { id: 'default-event-dentist', matches: ['dentist'], title: 'Bring your insurance card', leadDays: 0, enabled: true },
   ];
 }
 

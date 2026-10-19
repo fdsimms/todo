@@ -31,6 +31,7 @@ import { medicationVocabulary } from '../utils/medicationLog';
 import { renamedTemplateItem } from '../utils/medicationRename';
 import { useMedicationStore } from './useMedicationStore';
 import { dueTemplateRun, schedulesEqual } from '../utils/templateSchedule';
+import { derivedId, spawnSeed } from '../utils/syncIds';
 import { useSettingsStore } from './useSettingsStore';
 
 /** Everything the apply sheet collects beyond the item selection and anchors. */
@@ -69,6 +70,12 @@ export interface ApplyTemplateOptions {
    * members would.
    */
   targetProjectId?: string;
+  /**
+   * Gives every row the run creates a derived id rather than a random one.
+   * Only a scheduled run sets it (see spawnSeed.templateRun): a run somebody
+   * applied by hand is theirs, and running it twice means two copies.
+   */
+  idSeed?: { templateId: string; periodKey: string };
 }
 
 interface TemplateStore {
@@ -477,13 +484,44 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     // medicationChecklist. Read here rather than by each caller so the apply
     // sheet and a scheduled run agree.
     const medications = medicationVocabulary(useMedicationStore.getState().logs, useMedicationStore.getState().archived, useMedicationStore.getState().registered);
+    const seed = options?.idSeed;
+    const counts = new Map<string, number>();
+    const idFor = (kind: string): string | undefined => {
+      if (!seed) return undefined;
+      const n = counts.get(kind) ?? 0;
+      counts.set(kind, n + 1);
+      return derivedId(spawnSeed.templateRun(seed.templateId, seed.periodKey, kind, n));
+    };
     dbTransaction(() => {
       createdTasks = applyTemplateRun(template, templatesById, selectedItemIds, anchors, { medications, ...options }, {
-        addTask: draft => tasks.addTask(draft),
-        addSubtask: (parentId, title) => tasks.addSubtask(parentId, title),
-        createStack: (title, category) => groups.createGroup(title, category),
-        groupTasks: (ids, title, category) => tasks.groupTasks(ids, title, category),
-        createProject: (title, opts) => projects.createProject(title, opts),
+        // A derived id that is already here is the other device's run of this
+        // period, synced in before this device's own mark of it: that row is
+        // this one, so it is reused rather than inserted a second time.
+        addTask: draft => {
+          const id = idFor('task');
+          if (!id) return tasks.addTask(draft);
+          return useTaskStore.getState().tasks.find(t => t.id === id) ?? tasks.addTask(draft, id);
+        },
+        addSubtask: (parentId, title) => {
+          const id = idFor('subtask');
+          if (!id) return tasks.addSubtask(parentId, title);
+          return useTaskStore.getState().tasks.find(t => t.id === id) ?? tasks.addSubtask(parentId, title, id);
+        },
+        createStack: (title, category) => {
+          const id = idFor('stack');
+          if (!id) return groups.createGroup(title, category);
+          return groups.getGroupById(id) ?? groups.createGroup(title, category, null, id);
+        },
+        groupTasks: (ids, title, category) => {
+          const id = idFor('stack');
+          if (!id) return tasks.groupTasks(ids, title, category);
+          return groups.getGroupById(id) ?? tasks.groupTasks(ids, title, category, id);
+        },
+        createProject: (title, opts) => {
+          const id = idFor('project');
+          if (!id) return projects.createProject(title, opts);
+          return projects.getProjectById(id) ?? projects.createProject(title, { ...opts, id });
+        },
         getProject: id => projects.getProjectById(id) ?? undefined,
         updateProject: (id, patch) => projects.updateProject(id, patch),
         homeSection: (sectionId, projectId, checklist) => groups.updateGroup(sectionId, { projectId, checklist }),
@@ -569,6 +607,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
         if (selectedIds.size === 0) continue;
 
         get().applyTemplate(template.id, selectedIds, due.anchors, {
+          idSeed: { templateId: template.id, periodKey: due.periodKey },
           runName: due.runName,
           placeholders: placeholderValuesFor(questions, answers),
           answers,

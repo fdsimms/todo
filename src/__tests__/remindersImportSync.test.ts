@@ -1,4 +1,5 @@
 import type { Reminder } from 'expo-calendar/legacy';
+import { importedTaskId } from '../utils/remindersImport';
 
 /** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
 const localIso = (local: string) => new Date(local).toISOString();
@@ -38,7 +39,7 @@ jest.mock('react-native', () => ({
 const mockAddTask = jest.fn();
 // What the store already holds. Only read with deletion off, where the names
 // on these rows are what stands in for the delete.
-let mockTasks: { title: string }[] = [];
+let mockTasks: { id?: string; title: string }[] = [];
 jest.mock('../store/useTaskStore', () => ({
   useTaskStore: { getState: () => ({ addTask: mockAddTask, tasks: mockTasks }) },
 }));
@@ -312,6 +313,31 @@ describe('importReminders — the create/delete contract', () => {
     ]);
     await freshSync().importReminders();
     expect(mockAddTask.mock.calls.map(c => c[0].title)).toEqual(['First', 'Second']);
+  });
+
+  // Two devices draining one iCloud list before either syncs: the capture is
+  // named by what travels with the reminder, so both write the same task.
+  it('imports a reminder under an id another device would give it too', async () => {
+    mockCalendar.getRemindersAsync.mockResolvedValue([
+      reminder('here', { title: 'Call mum', creationDate: localIso('2026-08-06T09:00') }),
+    ]);
+    await freshSync().importReminders();
+    const id = mockAddTask.mock.calls[0][1];
+    expect(id).toMatch(/^d/);
+    expect(id).toBe(importedTaskId(reminder('elsewhere', { title: 'Call mum', creationDate: localIso('2026-08-06T09:00') })));
+  });
+
+  it('leaves a reminder another device already imported to the task that synced in', async () => {
+    const r = reminder('here', { title: 'Call mum', creationDate: localIso('2026-08-06T09:00') });
+    mockTasks = [{ id: importedTaskId(r)!, title: 'Call mum (renamed)' }];
+    mockCalendar.getRemindersAsync.mockResolvedValue([r]);
+    try {
+      await freshSync().importReminders();
+      expect(mockAddTask).not.toHaveBeenCalled();
+      expect(mockCalendar.deleteReminderAsync).toHaveBeenCalledWith('here');
+    } finally {
+      mockTasks = [];
+    }
   });
 
   it('neither imports nor deletes a completed reminder', async () => {

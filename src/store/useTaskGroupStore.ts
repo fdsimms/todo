@@ -17,7 +17,8 @@ interface TaskGroupStore {
   // its members — see TaskGroup.projectId. Omitted everywhere but a project's
   // own page, which is the only place a memberless stack has to be able to
   // sit; the stack editor can change it afterward through updateGroup.
-  createGroup: (title: string, category: string | null, projectId?: string | null) => TaskGroup;
+  /** `id` is for a stack the app makes unattended; see CreateProjectOptions.id. */
+  createGroup: (title: string, category: string | null, projectId?: string | null, id?: string) => TaskGroup;
   updateGroup: (id: string, patch: Partial<Pick<TaskGroup, 'title' | 'notes' | 'tags' | 'category' | 'sortOrder' | 'projectId' | 'checklist' | 'hideNextStep'>>) => void;
   setGroupCollapsed: (id: string, collapsed: boolean) => void;
   // Called by the Today screen with the ids of every stack currently on it,
@@ -41,10 +42,10 @@ export const useTaskGroupStore = create<TaskGroupStore>((set, get) => ({
     set({ groups, initialized: true });
   },
 
-  createGroup(title, category, projectId = null) {
+  createGroup(title, category, projectId = null, id) {
     const maxOrder = get().groups.reduce((m, g) => Math.max(m, g.sortOrder), 0);
     const group: TaskGroup = {
-      id: generateId(),
+      id: id ?? generateId(),
       title,
       notes: '',
       tags: [],

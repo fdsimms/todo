@@ -411,9 +411,25 @@ function addReport(into: ApplyReport, from: ApplyReport): void {
  */
 export async function runSync(
   transport: SyncTransport,
-  local: SyncLocal
+  local: SyncLocal,
+  /**
+   * Called once, as soon as this run's rows are in the database and before
+   * anything else is awaited, whenever the run wrote any. That is when the
+   * in-memory stores have to re-read: they write their whole copy of a row
+   * back on the next edit, so a store left stale across the photo downloads
+   * and the next transport's network calls would put an edit made in that
+   * window over the row a peer just sent, with a fresh stamp that then wins
+   * everywhere. Also called when a pull fails after some payloads landed.
+   */
+  onApplied?: (applied: ApplyReport) => void
 ): Promise<SyncRunResult> {
   const applied = emptyApplyReport();
+  let reported = false;
+  const reportApplied = () => {
+    if (reported || !onApplied) return;
+    reported = true;
+    if (applied.inserted + applied.updated + applied.deleted > 0) onApplied(applied);
+  };
 
   if (!local.isSyncable()) {
     return {
@@ -506,6 +522,7 @@ export async function runSync(
     // cursor where it was, so the whole batch is retried — the ones that
     // already landed apply again as no-ops.
     if (result.cursor !== null) local.setCursor(pullKey, result.cursor);
+    reportApplied();
 
     // After the rows, so the recipes are here to say which photos are wanted.
     if (transport.imageStore) {
@@ -516,6 +533,7 @@ export async function runSync(
       }
     }
   } catch (e) {
+    reportApplied();
     return {
       status: 'failed',
       pushed,
@@ -563,11 +581,13 @@ export interface NamedSyncRun {
  */
 export async function runSyncAll(
   transports: readonly SyncTransport[],
-  local: SyncLocal
+  local: SyncLocal,
+  /** Passed to each `runSync`: called with each transport's own rows as they land. */
+  onApplied?: (applied: ApplyReport) => void
 ): Promise<NamedSyncRun[]> {
   const runs: NamedSyncRun[] = [];
   for (const transport of transports) {
-    runs.push({ transport: transport.name, result: await runSync(transport, local) });
+    runs.push({ transport: transport.name, result: await runSync(transport, local, onApplied) });
   }
   return runs;
 }

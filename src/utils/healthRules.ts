@@ -467,11 +467,17 @@ function parseDirection(value: unknown): 'under' | 'over' | undefined {
  * conclude: "Keep today light" is a plan, where "You slept badly" would be the
  * app telling somebody about their own night. See `docs/arch/mood-log.md` for
  * the rule that comes from.
+ *
+ * The ids are fixed rather than `generateId()`: these rules live only in
+ * memory until somebody saves the list, and a generated task's id is derived
+ * from its rule's (`spawnSeed.generated`). Minted fresh, two devices (or two
+ * launches of one) named the same default rule differently and each wrote its
+ * own copy of the task, which sync then delivered to both.
  */
 export function defaultHealthRules(): HealthRule[] {
   return [
     {
-      id: generateId(),
+      id: 'default-health-sleep',
       metric: 'sleepHours',
       threshold: 6,
       title: 'Keep today light',
@@ -479,7 +485,7 @@ export function defaultHealthRules(): HealthRule[] {
       lastFiredDayKey: null,
     },
     {
-      id: generateId(),
+      id: 'default-health-steps',
       metric: 'steps',
       threshold: 3000,
       title: 'Go for a walk',

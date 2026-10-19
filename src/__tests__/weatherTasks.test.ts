@@ -288,3 +288,13 @@ describe('splitWeatherTitle', () => {
     });
   });
 });
+
+// Their tasks' ids are derived from the rule's, so a default minted fresh on
+// each device (or each launch) wrote one copy of the same task per device.
+describe('defaultWeatherRules ids', () => {
+  it('names each default rule the same way every time', () => {
+    const ids = defaultWeatherRules().map(r => r.id);
+    expect(defaultWeatherRules().map(r => r.id)).toEqual(ids);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+});
