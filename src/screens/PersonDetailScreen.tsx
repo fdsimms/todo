@@ -465,7 +465,7 @@ export function PersonDetailScreen() {
             and this screen is the only place it is allowed to appear at all. */}
         {last && (
           <View style={styles.summary}>
-            <Text style={styles.summaryLabel}>Last together</Text>
+            <Text style={styles.summaryLabel}>Last in touch</Text>
             <Text style={styles.summaryValue}>{describeLastTogether(last, today)}</Text>
             {/* Only once the phrase has become a plain date. Inside a week it
                 already says it ("Last Tuesday"), and "Last Tuesday · 5 days
@@ -635,7 +635,7 @@ export function PersonDetailScreen() {
           </>
         )}
 
-        <Text style={styles.groupLabel}>TOGETHER</Text>
+        <Text style={styles.groupLabel}>HISTORY</Text>
         {history.length === 0 ? (
           <View style={styles.card}>
             {/* "Nothing yet" and "0" are different claims — see the note on
