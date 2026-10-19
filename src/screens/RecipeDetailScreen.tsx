@@ -2308,6 +2308,19 @@ export function RecipeDetailScreen() {
         )}
         {tab === 'ingredients' && (
         <>
+        {/* A short banner of the Details photo, so the tab the recipe opens on
+            shows the dish. Display only: changing, adding and the missing-photo
+            note stay on Details, and Steps and Timers stay clear for cooking. */}
+        {recipe.imagePath && photoOnDevice && (
+          <View style={styles.photoBanner}>
+            <FadeInImage
+              source={{ uri: resolveRecipeImagePath(recipe.imagePath) ?? undefined }}
+              style={styles.heroImage}
+              resizeMode="cover"
+              accessibilityIgnoresInvertColors
+            />
+          </View>
+        )}
         {/* Above the list rather than up by the summary: it's the quantities
             below that visibly change, and a control that far from what it
             changes reads as another fact about the recipe. Gated the same as
@@ -3141,6 +3154,12 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   },
   hero: {
     height: 180,
+    borderRadius: radius.md,
+    overflow: 'hidden',
+    backgroundColor: colors.bgSecondary,
+  },
+  photoBanner: {
+    height: 96,
     borderRadius: radius.md,
     overflow: 'hidden',
     backgroundColor: colors.bgSecondary,
