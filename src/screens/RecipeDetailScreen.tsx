@@ -2155,6 +2155,26 @@ export function RecipeDetailScreen() {
         {...keyboardScroll.props}
         {...scrollTop.listProps}
       >
+        {/* A short banner of the Details photo on the other three tabs. A tap
+            opens Details, where changing, adding and the missing-photo note
+            live. */}
+        {tab !== 'details' && recipe.imagePath && photoOnDevice && (
+          <TouchableOpacity
+            style={styles.photoBanner}
+            activeOpacity={interaction.activeOpacity}
+            onPress={() => setTab('details')}
+            accessibilityRole="button"
+            accessibilityLabel="Recipe photo"
+            accessibilityHint="Opens the Details tab."
+          >
+            <FadeInImage
+              source={{ uri: resolveRecipeImagePath(recipe.imagePath) ?? undefined }}
+              style={styles.heroImage}
+              resizeMode="cover"
+              accessibilityIgnoresInvertColors
+            />
+          </TouchableOpacity>
+        )}
         {tab === 'details' && (
         <>
         {recipe.imagePath && photoOnDevice ? (
@@ -3111,6 +3131,12 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   },
   hero: {
     height: 180,
+    borderRadius: radius.md,
+    overflow: 'hidden',
+    backgroundColor: colors.bgSecondary,
+  },
+  photoBanner: {
+    height: 96,
     borderRadius: radius.md,
     overflow: 'hidden',
     backgroundColor: colors.bgSecondary,
