@@ -25,7 +25,7 @@ components below.
 - `src/screens/ArchivedScreen.tsx` — EmptyState, HubPills, PaintSelection, ScreenHeader, ScrollToTopButton, SearchField, SelectionDot, SimpleBulkBar, TaskEditor
 - `src/screens/AutomationsScreen.tsx` — GeneratedTasksSection, ScreenHeader, SearchField, SettingsFocus
 - `src/screens/BackfillScreen.tsx` — BirthdayPicker, CategoryPicker, CoinIcon, CountStepper, DetailHeader, EmptyState, InlineAction, LazySheet, NumberPadAccessory, NutritionPanelSheet, NutritionSearchSheet, PillGroup, +7 more
-- `src/screens/CalendarScreen.tsx` — DayTimeline, EmptyState, Fab, LazySheet, PeriodNav, QuickAddModal, QuickEventSheet, ScreenHeader, ScreenSettingsSheet, TaskEditor, TaskItem, TimeSlotMenu, +1 more
+- `src/screens/CalendarScreen.tsx` — BulkActionBar, DayTimeline, DeliverablePromptQueue, EmptyState, Fab, LazySheet, PaintSelection, PeriodNav, QuickAddModal, QuickEventSheet, ScreenHeader, ScreenSettingsSheet, +4 more
 - `src/screens/CategoriesScreen.tsx` — CategoryEditor, EmptyState, Fab, HubPills, QuickAddNameSheet, ReorderableList, ScreenHeader, ScreenSettingsSheet
 - `src/screens/CategoryDetailScreen.tsx` — BulkActionBar, DeliverablePromptQueue, DetailHeader, EmptyState, Fab, PaintSelection, PinIcon, QuickAddModal, ScrollToTopButton, SpotlightOverlay, TaskEditor, TaskItem
 - `src/screens/CookbookDetailScreen.tsx` — DetailHeader, EmptyNote, EmptyState, InlineAction, ScrollToTopButton, SearchField, SheetHeader, SheetHeaderButton, SheetModal
@@ -101,7 +101,7 @@ Where each component can appear.
 - `src/components/BlankPickerSheet.tsx` — on MealPlanScreen, RecipeDetailScreen, RecipesScreen
 - `src/components/BlockOfferRulesSheet.tsx` — on AutomationsScreen
 - `src/components/BlockScheduleSheet.tsx` — on ScreenTimeScreen
-- `src/components/BulkActionBar.tsx` — on CategoryDetailScreen, ProjectDetailScreen, ProjectsScreen, SavedViewDetailScreen, StackDetailScreen, TagsScreen, TodayScreen
+- `src/components/BulkActionBar.tsx` — on CalendarScreen, CategoryDetailScreen, ProjectDetailScreen, ProjectsScreen, SavedViewDetailScreen, StackDetailScreen, TagsScreen, TodayScreen
 - `src/components/CalendarChoiceSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SavedViewDetailScreen, SearchScreen, +4 more
 - `src/components/CalendarPicker.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SavedViewDetailScreen, +7 more
 - `src/components/CardSheet.tsx` — on ArchivedScreen, AutomationsScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, JournalScreen, KitchenScreen, LogbookScreen, MealPlanScreen, +29 more
@@ -142,7 +142,7 @@ Where each component can appear.
 - `src/components/DayContextRow.tsx` — on TodayScreen
 - `src/components/DayTimeline.tsx` — on CalendarScreen
 - `src/components/DeliverableKindPicker.tsx` — on ArchivedScreen, AutomationsScreen, CalendarScreen, CategoryDetailScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SavedViewDetailScreen, +6 more
-- `src/components/DeliverablePromptQueue.tsx` — on CategoryDetailScreen, MedicationScreen, ProjectDetailScreen, ProjectsScreen, SavedViewDetailScreen, StackDetailScreen, TagsScreen, TodayScreen, app shell
+- `src/components/DeliverablePromptQueue.tsx` — on CalendarScreen, CategoryDetailScreen, MedicationScreen, ProjectDetailScreen, ProjectsScreen, SavedViewDetailScreen, StackDetailScreen, TagsScreen, TodayScreen, app shell
 - `src/components/DeliverablePromptSheet.tsx` — on CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationScreen, ProjectDetailScreen, ProjectsScreen, SavedViewDetailScreen, SearchScreen, StackDetailScreen, StuckScreen, TagsScreen, TodayScreen, +1 more
 - `src/components/DeloadSheet.tsx` — on TodayScreen
 - `src/components/DemoBanner.tsx` — on app shell
@@ -271,7 +271,7 @@ Where each component can appear.
 - `src/components/NutritionSearchSheet.tsx` — on BackfillScreen, GroceryScreen, KitchenScreen, RecipeDetailScreen, RecipesScreen
 - `src/components/NutritionTargetsSheet.tsx` — on FoodLogScreen, SettingsGroupScreen
 - `src/components/OfferBanner.tsx` — on FoodLogScreen, GroceryScreen, KitchenScreen, ProjectDetailScreen, ProjectsScreen, RecipeDetailScreen, RecipesScreen
-- `src/components/PaintSelection.tsx` — on ArchivedScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, LogbookScreen, MealPlanScreen, PeopleScreen, ProjectDetailScreen, ProjectsScreen, RecipeDetailScreen, RecipesScreen, SavedViewDetailScreen, +6 more
+- `src/components/PaintSelection.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, LogbookScreen, MealPlanScreen, PeopleScreen, ProjectDetailScreen, ProjectsScreen, RecipeDetailScreen, RecipesScreen, +7 more
 - `src/components/PantryAnswerField.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SavedViewDetailScreen, +6 more
 - `src/components/PantryCheckSheet.tsx` — on CalendarScreen, CategoryDetailScreen, ProjectDetailScreen, ProjectsScreen, SavedViewDetailScreen, StackDetailScreen, TagsScreen, TodayScreen
 - `src/components/PantryReviewSheet.tsx` — on KitchenScreen
