@@ -32,6 +32,11 @@ interface Props {
    * per pick, so this is the only route to what that week actually held.
    */
   onShowWeek?: () => void;
+  /**
+   * Opens a new task like this one in the editor, to adjust and save (see
+   * `againDraft`). Omitted where there is nothing to start again.
+   */
+  onDoAgain?: () => void;
   /** Deletes the entry outright. The caller confirms — see LogbookScreen. */
   onDelete: () => void;
   onClose: () => void;
@@ -48,7 +53,7 @@ interface Props {
  * away from "Mark Incomplete".
  */
 export function LogbookEntryMenu({
-  visible, value, onMarkIncomplete, onChangeDate, onEditAnswer, hasAnswer = false, onShowWeek, onDelete, onClose, anchor,
+  visible, value, onMarkIncomplete, onChangeDate, onEditAnswer, hasAnswer = false, onShowWeek, onDoAgain, onDelete, onClose, anchor,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -127,6 +132,20 @@ export function LogbookEntryMenu({
       }
     >
       <View style={styles.optionsCard}>
+        {onDoAgain && (
+          <>
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => { haptics.tap(); closeThen(onDoAgain); }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+            >
+              <Ionicons name="refresh-outline" size={18} color={colors.accent} />
+              <Text style={styles.optionLabel}>Do again</Text>
+            </TouchableOpacity>
+            <View style={styles.inlineSep} />
+          </>
+        )}
         <TouchableOpacity style={styles.optionRow} onPress={markIncomplete} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
           <Ionicons name="arrow-undo-outline" size={18} color={colors.accent} />
           <Text style={styles.optionLabel}>Mark incomplete</Text>

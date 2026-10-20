@@ -28,6 +28,9 @@ import { isSameDay } from 'date-fns/isSameDay';
 import { addDays } from 'date-fns/addDays';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
+import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
+import { LazySheet } from '../components/LazySheet';
+import { againDraft } from '../utils/taskAgain';
 import { useProjectStore } from '../store/useProjectStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
@@ -295,6 +298,10 @@ export function LogbookScreen() {
   );
 
   const [menuTask, setMenuTask] = useState<Task | null>(null);
+  // A new task started from a finished one ("Do again"), open in the editor
+  // until it is saved or dropped.
+  const [againTaskDraft, setAgainTaskDraft] = useState<Partial<TaskDraft> | null>(null);
+  const closeAgainEditor = useCallback(() => setAgainTaskDraft(null), []);
   const [menuAnchor, setMenuAnchor] = useState<CardAnchor | null>(null);
   // A row's "…" hands over where it was tapped so the menu opens from it; the
   // swipe action has no point to give and gets the centered card.
@@ -867,6 +874,14 @@ export function LogbookScreen() {
         />
       )}
 
+      <LazySheet open={againTaskDraft !== null}>
+        <TaskEditor
+          visible={againTaskDraft !== null}
+          initialDraft={againTaskDraft ?? undefined}
+          onClose={closeAgainEditor}
+        />
+      </LazySheet>
+
       <LogbookEntryMenu
         visible={!!menuTask}
         value={menuTask?.completedAt ? new Date(menuTask.completedAt) : null}
@@ -900,6 +915,18 @@ export function LogbookScreen() {
           // closing one native Modal and presenting another in the same tick
           // can deadlock the iOS modal transition.
           setTimeout(() => setWeekTaskId(id), animation.duration.slow);
+        } : undefined}
+        // Not for a repeating task or a series date: the next occurrence or
+        // date is already there, so this would make a second copy of it.
+        onDoAgain={menuTask && !menuTask.parentId && menuTask.recurrenceType === 'none' && !menuTask.seriesId ? () => {
+          const source = menuTask;
+          setMenuTask(null);
+          const store = useTaskStore.getState();
+          const subtaskTitles = store.tasks.filter(t => t.parentId === source.id).map(t => t.title);
+          const project = source.projectId ? useProjectStore.getState().getProjectById(source.projectId) : null;
+          const draft = againDraft(source, subtaskTitles, !!project && !project.completed && !project.archived);
+          // Staggered like the answer prompt, for the same reason.
+          setTimeout(() => setAgainTaskDraft(draft), animation.duration.slow);
         } : undefined}
         onDelete={() => {
           const task = menuTask;

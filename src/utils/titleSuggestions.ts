@@ -3,6 +3,8 @@ import type { Task } from '../types';
 export interface TitleSuggestion {
   title: string;
   ranges: [number, number][]; // [start, end] ranges to highlight
+  /** The most recent completed task with this title, whose fields picking it fills in (see taskAgain.ts). */
+  taskId: string;
 }
 
 const MIN_QUERY_LENGTH = 3;
@@ -21,6 +23,7 @@ interface Candidate {
   ranges: [number, number][];
   recency: number; // ms timestamp used for tie-breaking and casing choice
   count: number; // number of completed occurrences seen for this title
+  taskId: string; // the occurrence `recency` belongs to
 }
 
 /**
@@ -105,7 +108,7 @@ export function suggestTitles(tasks: Task[], query: string, limit = 3, now: numb
     const recency = Date.parse(task.completedAt) || 0;
     const existing = byTitle.get(key);
     if (!existing) {
-      byTitle.set(key, { title, score, ranges, recency, count: 1 });
+      byTitle.set(key, { title, score, ranges, recency, count: 1, taskId: task.id });
     } else {
       existing.count += 1;
       // Keep the best score; use the most recent occurrence's casing/ranges.
@@ -114,6 +117,7 @@ export function suggestTitles(tasks: Task[], query: string, limit = 3, now: numb
         existing.recency = recency;
         existing.title = title;
         existing.ranges = ranges;
+        existing.taskId = task.id;
       }
     }
   }
@@ -122,5 +126,5 @@ export function suggestTitles(tasks: Task[], query: string, limit = 3, now: numb
     .filter(c => c.count > 1 || now - c.recency <= SINGLE_OCCURRENCE_STALE_MS)
     .sort((a, b) => (b.score - a.score) || (b.recency - a.recency))
     .slice(0, limit)
-    .map(({ title, ranges }) => ({ title, ranges }));
+    .map(({ title, ranges, taskId }) => ({ title, ranges, taskId }));
 }

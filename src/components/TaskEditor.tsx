@@ -511,7 +511,14 @@ const WINDOW_KIND_OPTIONS: SegmentOption<'time' | SunEvent>[] = [
 
 const NO_TASKS: Task[] = [];
 
-function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false }: Props) {
+function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inline = false }: Props) {
+  // ==== the task on screen ====
+  // Duplicate swaps the open sheet onto the copy it made, so the copy can be
+  // changed at once; the host's own task is what it shows again next time.
+  // Held only while the sheet is open on the task it was made from.
+  const [duplicated, setDuplicated] = useState<{ from: Task; copy: Task } | null>(null);
+  if (duplicated && (!visible || duplicated.from !== taskProp)) setDuplicated(null);
+  const task = duplicated && visible && duplicated.from === taskProp ? duplicated.copy : taskProp;
   // ==== store bindings ====
   const addTask = useTaskStore(s => s.addTask);
   const addTaskSeries = useTaskStore(s => s.addTaskSeries);
@@ -3146,8 +3153,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
     if (recurrenceCount === null) setRecurrenceCount(5);
   };
 
-  const handleCancel = () => {
-    const current = JSON.stringify({
+  // Whether the form differs from what it opened with.
+  const hasUnsavedChanges = (): boolean => JSON.stringify({
       title, notes, category, projectId: project, tags, personIds,
       dueDate: dueDate?.toISOString() ?? null,
       deadline: deadline?.toISOString() ?? null,
@@ -3238,12 +3245,37 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
       followUpTaskDraft,
       followUpTaskOneAtATime,
       followUpTaskAtEnd,
-    });
-    if (current !== initialStateRef.current) {
+    }) !== initialStateRef.current;
+
+  const handleCancel = () => {
+    if (hasUnsavedChanges()) {
       confirmDiscard(onClose);
     } else {
       onClose();
     }
+  };
+
+  // A copy of the task as saved, which the sheet then shows (see `duplicated`
+  // above). Edits not yet saved aren't in it, so it says so before it makes one.
+  const handleDuplicate = () => {
+    if (!task || !taskProp) return;
+    const from = taskProp;
+    const original = task;
+    const run = () => {
+      const copy = useTaskStore.getState().duplicateTask(original.id);
+      if (!copy) return;
+      haptics.success();
+      setDuplicated({ from, copy });
+    };
+    if (!hasUnsavedChanges()) { run(); return; }
+    Alert.alert(
+      'Duplicate the saved version?',
+      'Your changes here haven’t been saved, so the copy won’t have them.',
+      [
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
+        { text: 'Duplicate', onPress: run },
+      ],
+    );
   };
 
   // The questions a delete asks (missed instead, this date or all of them,
@@ -8682,6 +8714,20 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
                       Resuming stays open, where the switch does show the change. */}
                   {task.archived && <Toggle value onColor={colors.orange} />}
                 </TouchableOpacity>
+          <View style={styles.sep} />
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={handleDuplicate}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel="Duplicate task"
+          >
+            <Ionicons name="duplicate-outline" size={18} color={colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Duplicate</Text>
+              <Text style={styles.optionHint}>Make a copy, with its subtasks, and open it here</Text>
+            </View>
+          </TouchableOpacity>
           <View style={styles.sep} />
           <TouchableOpacity style={styles.optionRow} onPress={handleDelete} activeOpacity={interaction.activeOpacity}>
             <Ionicons name="trash-outline" size={18} color={colors.red} />

@@ -88,7 +88,8 @@ import { TitleTokenAccessory, QUICK_ADD_TITLE_TOKENS } from './TitleTokenAccesso
 import { tokenChipsFor, applyTokenChip, type TokenChip } from '../utils/titleTokenChips';
 import { chipUseKey, suggestExistingTags } from '../utils/chipUses';
 import { HighlightedText } from './HighlightedText';
-import { suggestTitles } from '../utils/titleSuggestions';
+import { suggestTitles, type TitleSuggestion } from '../utils/titleSuggestions';
+import { againFields, describeAgainFields } from '../utils/taskAgain';
 import { findArchivedMatch } from '../utils/archiveMatch';
 import { parseTaskInputAheadOfRainSkip, scheduleClockInstant, describeSchedule, scheduleHint, stripRemindPrefix, parseCategoryAndTagsInput, matchPersonMentions, contactForMention, findAmbiguousMention, getMentionSuggestions, getPhraseMentionSuggestion, unconfirmedPhraseMentions, phraseOverrideKey, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type ParsedTaskInput, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
 import { formatMeterAmount, knownMeterNames, latestReading, meterFieldsFromInput } from '../utils/meters';
@@ -1212,12 +1213,35 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     () => (activeMatch ? [] : suggestTitles(tasks, suggestQuery)),
     [tasks, suggestQuery, activeMatch]
   );
+  // Each suggestion's line of what it brings, keyed by the task it comes from.
+  const suggestionMeta = useMemo(() => {
+    const out = new Map<string, string | null>();
+    for (const s of suggestions) {
+      const source = tasks.find(t => t.id === s.taskId);
+      out.set(s.taskId, source ? describeAgainFields(againFields(source)) : null);
+    }
+    return out;
+  }, [suggestions, tasks]);
 
-  const applySuggestion = (suggestion: string) => {
+  // Picking a past title brings the rest of that task with it (its category,
+  // tags, priority, estimate and link; see taskAgain.ts), each only into a
+  // field nothing else has filled since the sheet opened: a value the
+  // person or a title rule put there stays.
+  const applySuggestion = (suggestion: TitleSuggestion) => {
     haptics.tap();
-    setTitle(suggestion);
-    titleCaret.moveCaret(suggestion);
+    setTitle(suggestion.title);
+    titleCaret.moveCaret(suggestion.title);
     inputRef.current?.focus();
+    const source = tasks.find(t => t.id === suggestion.taskId);
+    if (!source) return;
+    const fill = againFields(source);
+    const base = appliedRuleRef.current;
+    if (fill.category) setCategory(cur => (cur === (base?.category ?? null) ? fill.category : cur));
+    if (fill.priority) setPriority(cur => (cur === (base?.priority ?? 0) ? fill.priority : cur));
+    if (fill.effort) setEffort(cur => (cur === (base?.effort ?? 0) ? fill.effort : cur));
+    if (fill.estimatedMinutes !== null) setEstimatedMinutes(cur => cur ?? fill.estimatedMinutes);
+    if (fill.linkUrl) setLinkUrl(cur => cur ?? fill.linkUrl);
+    if (fill.tags.length > 0) setTags(cur => [...cur, ...fill.tags.filter(t => !cur.includes(t))]);
   };
 
   // Splices a token in at the current cursor position, same as a normal
@@ -2674,19 +2698,25 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                 <TouchableOpacity
                   key={s.title}
                   style={[styles.suggestionItem, i > 0 && styles.suggestionItemDivider]}
-                  onPress={() => applySuggestion(s.title)}
+                  onPress={() => applySuggestion(s)}
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
-                  accessibilityLabel={`Use previous task: ${s.title}`}
+                  accessibilityLabel={`Use previous task: ${s.title}${suggestionMeta.get(s.taskId) ? `, with ${suggestionMeta.get(s.taskId)}` : ''}`}
                 >
                   <Ionicons name="time-outline" size={15} color={colors.textSecondary} />
-                  <HighlightedText
-                    text={s.title}
-                    ranges={s.ranges}
-                    style={styles.suggestionTitle}
-                    highlightStyle={styles.suggestionTitleHighlight}
-                    numberOfLines={1}
-                  />
+                  <View style={styles.suggestionBody}>
+                    <HighlightedText
+                      text={s.title}
+                      ranges={s.ranges}
+                      style={styles.suggestionTitle}
+                      highlightStyle={styles.suggestionTitleHighlight}
+                      numberOfLines={1}
+                    />
+                    {/* What picking it fills in, said before it's picked. */}
+                    {!!suggestionMeta.get(s.taskId) && (
+                      <Text style={styles.suggestionMeta} numberOfLines={1}>{suggestionMeta.get(s.taskId)}</Text>
+                    )}
+                  </View>
                 </TouchableOpacity>
               ))}
             </View>
@@ -3922,11 +3952,12 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number, textScaleFactor = 1)
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.separator,
   },
+  suggestionBody: { flex: 1 },
   suggestionTitle: {
-    flex: 1,
     fontSize: font.sm,
     color: colors.textSecondary,
   },
+  suggestionMeta: { fontSize: font.xs, color: colors.textTertiary, marginTop: spacing.xxs },
   suggestionTitleHighlight: {
     color: colors.text,
     fontWeight: fontWeight.semibold,
