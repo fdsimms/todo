@@ -29,6 +29,12 @@ import { formatDeadlineDate } from '../utils/dateUtils';
 import { findArchivedMatch } from '../utils/archiveMatch';
 import { TITLE_MAX_LENGTH, type Project } from '../types';
 import { TextField } from './TextField';
+import { ApplyTemplateSheet } from './ApplyTemplateSheet';
+import { TemplatePickerSheet } from './TemplatePickerSheet';
+import { LazySheet } from './LazySheet';
+import { useTemplateStore } from '../store/useTemplateStore';
+import { matchTemplate } from '../utils/templateMatch';
+import type { TaskTemplate } from '../types';
 import { BUTTON_LABEL } from '../copy/shared';
 
 /** The in-progress project the quick-add hands off to the full editor. */
@@ -105,6 +111,12 @@ export function QuickAddProjectModal({
   // the departure. The return and the rest are in the editor.
   const [leaving, setLeaving] = useState<Date | null>(null);
   const [leavingPickerVisible, setLeavingPickerVisible] = useState(false);
+  // Starting the project from a template: picked from the Template chip, or
+  // offered when the name matches one (the way task quick add offers it).
+  const templates = useTemplateStore(useShallow(s => s.templates));
+  const [templatePickerVisible, setTemplatePickerVisible] = useState(false);
+  const [templateToApply, setTemplateToApply] = useState<TaskTemplate | null>(null);
+  const [dismissedTemplateIds, setDismissedTemplateIds] = useState<ReadonlySet<string>>(new Set());
   const [seedActive, setSeedActive] = useState(false);
   // Read only when the sheet opens: a seed that changes identity mid-edit must
   // not reset the fields under the person typing.
@@ -151,6 +163,9 @@ export function QuickAddProjectModal({
     setPlanning(false);
     setActivePanel(null);
     setDeadlinePickerVisible(false);
+    setTemplatePickerVisible(false);
+    setTemplateToApply(null);
+    setDismissedTemplateIds(new Set());
     scaleAnim.setValue(0.95);
     translateYAnim.setValue(16);
     sheetOpacity.setValue(0);
@@ -199,6 +214,26 @@ export function QuickAddProjectModal({
     });
     const project = useProjectStore.getState().getProjectById(created.id) ?? created;
     onCreated?.(project, seedActive);
+    dismiss();
+  };
+
+  const templateOffer = useMemo(
+    () => (visible && !templateToApply ? matchTemplate(title, templates, dismissedTemplateIds) : null),
+    [visible, templateToApply, title, templates, dismissedTemplateIds],
+  );
+  const startFromTemplate = (template: TaskTemplate) => {
+    Keyboard.dismiss();
+    setTemplateToApply(template);
+  };
+  // The run makes the project (`asProject`), named by what was typed; what
+  // the sheet chose that the run has no field for is filled in after.
+  const handleTemplateApplied = (tasks: { projectId: string | null }[]) => {
+    const projectId = tasks.find(t => t.projectId)?.projectId ?? null;
+    if (!projectId || submittedRef.current) return;
+    submittedRef.current = true;
+    if (category) useProjectStore.getState().updateProject(projectId, { category });
+    const project = useProjectStore.getState().getProjectById(projectId);
+    if (project) onCreated?.(project, seedActive);
     dismiss();
   };
 
@@ -420,7 +455,45 @@ export function QuickAddProjectModal({
               <Ionicons name="construct-outline" size={13} color={planning ? colors.accent : colors.textTertiary} />
               <Text style={[styles.toolChipText, planning && styles.toolChipTextSet]} numberOfLines={1}>Planning</Text>
             </TouchableOpacity>
+
+            {templates.length > 0 && (
+              <TouchableOpacity
+                style={styles.toolChip}
+                onPress={() => { haptics.tap(); Keyboard.dismiss(); setTemplatePickerVisible(true); }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel="Start from a template"
+              >
+                <Ionicons name="copy-outline" size={13} color={colors.textTertiary} />
+                <Text style={styles.toolChipText} numberOfLines={1}>Template</Text>
+              </TouchableOpacity>
+            )}
           </View>
+
+          {!!templateOffer && (
+            <View style={styles.templateRow}>
+              <Ionicons name="copy-outline" size={13} color={colors.textSecondary} />
+              <Text style={styles.templateText} numberOfLines={1}>
+                Use your “{templateOffer.name}” template?
+              </Text>
+              <TouchableOpacity
+                onPress={() => { haptics.tap(); startFromTemplate(templateOffer); }}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={`Use the ${templateOffer.name} template`}
+              >
+                <Text style={styles.templateAccept}>Use template</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setDismissedTemplateIds(prev => new Set(prev).add(templateOffer.id))}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Dismiss template suggestion"
+              >
+                <Ionicons name="close-circle" size={15} color={colors.textTertiary} />
+              </TouchableOpacity>
+            </View>
+          )}
 
           {activePanel === 'category' && (
             <View style={styles.panel}>
@@ -469,12 +542,38 @@ export function QuickAddProjectModal({
         onClear={() => { setLeaving(null); setLeavingPickerVisible(false); }}
         onCancel={() => setLeavingPickerVisible(false)}
       />
+      {/* Inside this sheet's Modal, beside the pickers, so each presents from
+          it rather than as a second sheet beside it. */}
+      <LazySheet open={templatePickerVisible}>
+        <TemplatePickerSheet
+          visible={visible && templatePickerVisible}
+          onClose={() => setTemplatePickerVisible(false)}
+          onSelect={template => { setTemplatePickerVisible(false); startFromTemplate(template); }}
+        />
+      </LazySheet>
+      <LazySheet open={templateToApply !== null}>
+        <ApplyTemplateSheet
+          visible={visible && templateToApply !== null}
+          template={templateToApply}
+          asProject
+          initialRunName={title.trim() || templateToApply?.name}
+          initialAnchors={leaving || deadline ? { start: leaving, end: deadline } : undefined}
+          onClose={() => setTemplateToApply(null)}
+          onApplied={handleTemplateApplied}
+        />
+      </LazySheet>
     </SheetModal>
   );
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   backdropDim: { backgroundColor: colors.backdrop },
+  templateRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
+    marginTop: spacing.xs, marginBottom: spacing.sm,
+  },
+  templateText: { flex: 1, color: colors.textSecondary, fontSize: font.xs },
+  templateAccept: { color: colors.accent, fontSize: font.xs, fontWeight: fontWeight.semibold },
   centeredContainer: {
     flex: 1,
     justifyContent: 'center',

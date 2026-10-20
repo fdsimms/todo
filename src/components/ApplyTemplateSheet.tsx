@@ -89,6 +89,8 @@ interface Props {
   onClose: () => void;
   /** Land every created task in this existing project instead of the template's own container — see ApplyTemplateOptions.targetProjectId. */
   projectId?: string;
+  /** Make the run a new project whatever the template's container — see ApplyTemplateOptions.asProject. */
+  asProject?: boolean;
   /** Fires once the sheet has finished dismissing, with every task the apply created (empty if the run had nothing selected). Lets a caller jump straight to the first one rather than leaving it to be found. */
   onApplied?: (tasks: Task[]) => void;
   /**
@@ -149,7 +151,7 @@ function runNameHint(container: TemplateContainer, upgraded: boolean, hasPlaceho
  * unchecked, including whole nested-template blocks; a conditioned one starts
  * on what the answers say), then create them all as real tasks.
  */
-export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, projectId, onApplied, initialAnchors, initialRunName, extraPersonIds }: Props) {
+export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, projectId, asProject = false, onApplied, initialAnchors, initialRunName, extraPersonIds }: Props) {
   // ==== store bindings and the template tree ====
   // Held past the host clearing it, so the `return null` below can't tear the
   // presented sheet out of the tree while it is still closing: every host
@@ -408,12 +410,14 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
   // rather than a second time as an unlabelled box.
   const answerValues = placeholderValuesFor(questions, answers);
   const placeholderNames = extractPlaceholders(selectedLeafItems).filter(name => !(name in answerValues));
-  const resolvedContainer = resolveApplyContainer(template.applyContainer, flatLeaves, templatesById);
+  const resolvedContainer = asProject ? 'project' : resolveApplyContainer(template.applyContainer, flatLeaves, templatesById);
   // Mirrors useTemplateStore.applyTemplate's downgrade: a project already
   // exists here, so a resolved 'project' container becomes a stack inside it
   // instead of a second project.
   const container = projectId && resolvedContainer === 'project' ? 'stack' : resolvedContainer;
-  const containerUpgraded = container !== template.applyContainer;
+  // Forced by the new project sheet rather than upgraded by the template's own
+  // groups, so the groups-become-stacks hint doesn't apply.
+  const containerUpgraded = !asProject && container !== template.applyContainer;
   // Nothing to name when the run has no container and no `{run}` to fill.
   const showRunField = container !== 'none' || declaresRunPlaceholder(selectedLeafItems);
 
@@ -430,6 +434,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
       placeholders: { ...placeholderValues, ...answerValues },
       answers,
       targetProjectId: projectId,
+      asProject,
       planning: createsProject && planning,
       personIds: [...new Set([...(extraPersonIds ?? []), ...personIdsForAnswers(questions, answers)])],
     });

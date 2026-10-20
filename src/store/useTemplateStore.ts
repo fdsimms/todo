@@ -70,6 +70,8 @@ export interface ApplyTemplateOptions {
    * members would.
    */
   targetProjectId?: string;
+  /** Make a named run a project whatever the template's container. See TemplateRunOptions.asProject. */
+  asProject?: boolean;
   /**
    * Gives every row the run creates a derived id rather than a random one.
    * Only a scheduled run sets it (see spawnSeed.templateRun): a run somebody
