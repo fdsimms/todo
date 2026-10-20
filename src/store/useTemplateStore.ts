@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { renameInTagList } from '../utils/tagRename';
 import type { ProjectTemplateDraft } from '../utils/projectTemplate';
 import type { Task, TaskTemplate, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule } from '../types';
 import {
@@ -114,6 +115,8 @@ interface TemplateStore {
    * which a rename has no business creating.
    */
   renameItemCategory: (from: string, to: string) => void;
+  /** Rewrites a renamed tag on every template item that carries it (see renameTag). */
+  renameItemTag: (from: string, to: string) => void;
   /** Rename the medication items record, following a medication rename. */
   renameItemMedication: (fromKey: string, to: string) => void;
   /** The stored item, or null if `templateId` names no template — see the note on the implementation. */
@@ -285,6 +288,23 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       const updated = {
         ...t,
         items: t.items.map(i => (i.category === from ? { ...i, category: to } : i)),
+      };
+      touched.push(updated);
+      return updated;
+    });
+    if (touched.length === 0) return;
+    touched.forEach(t => dbUpdateTemplate(t));
+    set(() => ({ templates: next }));
+  },
+
+  renameItemTag(from, to) {
+    if (from === to) return;
+    const touched: TaskTemplate[] = [];
+    const next = get().templates.map(t => {
+      if (!t.items.some(i => i.tags.includes(from))) return t;
+      const updated = {
+        ...t,
+        items: t.items.map(i => (i.tags.includes(from) ? { ...i, tags: renameInTagList(i.tags, from, to) } : i)),
       };
       touched.push(updated);
       return updated;

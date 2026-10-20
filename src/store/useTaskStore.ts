@@ -41,6 +41,16 @@ import { useWidgetCompletionStore } from './useWidgetCompletionStore';
 import { useCategoryStore, ensureCalendarEventCategory, ensureHealthCategory, ensureGeneratedTaskCategories, ensureGeneratedTaskCategory, renameGeneratedCategorySettings, clearGeneratedCategorySettings, setGeneratedCategory } from './useCategoryStore';
 import { renameInRuleCategories, ruleCategoryFor } from '../utils/ruleCategory';
 import { renameInFollowUpDraft, renameInReminderCaptures, renameInSeriesDefaults, renameInTitleRules, renameInViewClauses } from '../utils/categoryRename';
+import {
+  normalizeTagName,
+  renameInTagList,
+  renameTagInFollowUpDraft,
+  renameTagInGeneratedExtras,
+  renameTagInReminderCaptures,
+  renameTagInSeriesDefaults,
+  renameTagInTitleRules,
+  renameTagInViewClauses,
+} from '../utils/tagRename';
 import { useTemplateStore } from './useTemplateStore';
 import { useTaskGroupStore } from './useTaskGroupStore';
 import { useSavedViewStore } from './useSavedViewStore';
@@ -2435,6 +2445,14 @@ interface TaskStore extends UndoHistoryActions {
   bulkAddTags: (ids: string[], tags: string[], options?: { scope?: 'occurrence' | 'series' }) => void;
   addTag: (tag: string) => void;
   deleteTag: (tag: string) => void;
+  /**
+   * Renames a tag everywhere it is stored: every task, finished ones included,
+   * and every rule, stack, template, view and setting that names it. Renaming
+   * onto a tag that already exists merges the two. False for a blank name or
+   * an unchanged one. No undo, like `renameCategory`, since a merge can't be
+   * split back apart.
+   */
+  renameTag: (from: string, to: string) => boolean;
   allCategories: () => string[];
   addCategory: (name: string) => void;
   deleteCategory: (name: string) => void;
@@ -11272,6 +11290,59 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       settings.setCollapsedCategories(
         settings.collapsedCategories.map(c => (c === name ? trimmed : c)),
       );
+    }
+    return true;
+  },
+
+  renameTag(from, rawTo) {
+    const to = normalizeTagName(rawTo);
+    if (!to || to === from) return false;
+    // Every row that names it, finished and archived ones too: a tag is a
+    // name, and history filed under the old one would otherwise fall out of
+    // every list and Stats count that reads the new one.
+    const changed: Task[] = [];
+    const tasks = get().tasks.map(t => {
+      const tags = renameInTagList(t.tags, from, to);
+      const seriesDefaults = renameTagInSeriesDefaults(t.seriesDefaults, from, to);
+      const followUpTaskDraft = renameTagInFollowUpDraft(t.followUpTaskDraft, from, to);
+      if (tags === t.tags && seriesDefaults === t.seriesDefaults && followUpTaskDraft === t.followUpTaskDraft) return t;
+      const next = { ...t, tags, seriesDefaults, followUpTaskDraft };
+      changed.push(next);
+      return next;
+    });
+    const registry = get().tagRegistry;
+    const wasRegistered = registry.includes(from);
+    dbTransaction(() => {
+      for (const t of changed) dbUpdateTask(t);
+      if (wasRegistered) {
+        dbRemoveFromTagRegistry(from);
+        if (!registry.includes(to)) dbAddToTagRegistry(to);
+      }
+    });
+    set({
+      tasks,
+      tagRegistry: wasRegistered
+        ? [...registry.filter(t => t !== from && t !== to), to]
+        : registry,
+    });
+    const groups = useTaskGroupStore.getState();
+    for (const g of groups.groups) {
+      const tags = renameInTagList(g.tags, from, to);
+      if (tags !== g.tags) groups.updateGroup(g.id, { tags });
+    }
+    useTemplateStore.getState().renameItemTag(from, to);
+    const views = useSavedViewStore.getState();
+    for (const v of views.views) {
+      const clauses = renameTagInViewClauses(v.clauses, from, to);
+      if (clauses !== v.clauses) views.updateView(v.id, { clauses });
+    }
+    const settings = useSettingsStore.getState();
+    const titleRules = renameTagInTitleRules(settings.titleRules, from, to);
+    if (titleRules !== settings.titleRules) settings.setTitleRules(titleRules);
+    const captures = renameTagInReminderCaptures(settings.reminderCaptures, from, to);
+    if (captures !== settings.reminderCaptures) settings.setReminderCaptures(captures);
+    for (const [kind, extras] of Object.entries(renameTagInGeneratedExtras(settings.generatedTaskExtras, from, to))) {
+      settings.setGeneratedTaskExtras(kind as GeneratedKind, extras);
     }
     return true;
   },

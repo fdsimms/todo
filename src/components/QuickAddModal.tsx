@@ -171,6 +171,8 @@ interface Props {
   seed?: {
     category?: string | null;
     groupId?: string;
+    /** Tags the new task starts with (a tag's own page). Put in the Tags field, so they can be removed like any other. */
+    tags?: string[];
     pinned?: boolean;
     dueDate?: string | null;
     timeSegments?: TimeOfDay[];
@@ -733,6 +735,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
         if (seeded.windowStart) setWindowStart(seeded.windowStart);
         if (seeded.windowEnd) setWindowEnd(seeded.windowEnd);
         if (seeded.category != null) setCategory(seeded.category);
+        if (seeded.tags?.length) setTags(seeded.tags);
         setSeedActive(true);
       }
       setBurstAdded([]);
@@ -1875,7 +1878,8 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // One seed is the exception: a section and nothing else. Filling a section
   // is the case for adding several in a row, and every task it makes belongs
   // in the same section, so the seed is kept for each rather than spent.
-  const sectionOnlySeed = !!seed?.groupId && seed.dueDate === undefined && !seed.timeSegments
+  // A tag's page seeds the same way: every task added there carries the tag.
+  const sectionOnlySeed = (!!seed?.groupId || !!seed?.tags?.length) && seed.dueDate === undefined && !seed.timeSegments
     && !seed.windowStart && !seed.pinned && seed.category == null;
   const keepOpen = newTaskDefaults.keepOpenAfterQuickAdd && (!seedActive || sectionOnlySeed);
 
@@ -1998,6 +2002,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       setBurstAdded(prev => [...prev, finalTitle]);
       resetDraft('', { keepProject: true });
       if (keepSeed) setSeedActive(true);
+      if (keepSeed && seed?.tags?.length) setTags(seed.tags);
       inputRef.current?.focus();
       return;
     }
@@ -2606,6 +2611,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                       setDueDate(defaultDueDate());
                     }
                     if (seed?.timeSegments && timeSegments === seed.timeSegments) setTimeSegments([]);
+                    if (seed?.tags?.length) setTags(cur => cur.filter(t => !seed.tags!.includes(t)));
                     setSeedActive(false);
                   }}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
