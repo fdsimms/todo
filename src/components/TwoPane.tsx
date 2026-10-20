@@ -27,7 +27,7 @@ export function TwoPane({ list, detail }: Props) {
       >
         {list}
       </View>
-      {twoPane && <View style={styles.detail}>{detail}</View>}
+      {twoPane && <View style={[styles.detail, { backgroundColor: colors.bg }]}>{detail}</View>}
     </View>
   );
 }

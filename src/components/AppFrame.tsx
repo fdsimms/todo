@@ -37,5 +37,8 @@ const styles = StyleSheet.create({
   window: { flex: 1, alignItems: 'center' },
   column: { flex: 1, width: '100%', maxWidth: MAX_CONTENT_WIDTH },
   // A two-pane screen: the list and the page beside it are wider than one column.
-  columnUncapped: { maxWidth: undefined },
+  // An explicit number rather than `undefined`: a prop going from 720 to
+  // undefined is "unset" in the style diff, and a native view can keep the old
+  // cap, which left the two panes squeezed into one column's width.
+  columnUncapped: { maxWidth: 100000 },
 });
