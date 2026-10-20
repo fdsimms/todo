@@ -108,6 +108,7 @@ describe('the words', () => {
     const p = program({ weeks: 8 });
     expect(describeProgress(p, programProgress(p, [session('A')]), name)).toBe('Week 1 of 8 · Rep range · Next: Lower A');
     const short = program({ weeks: 1, scheme: 'percent' });
+    expect(describeProgress(program({ scheme: null }), programProgress(program({ scheme: null }), [session('A')]), name)).not.toContain('Rep range');
     expect(describeProgress(short, programProgress(short, [session('A'), session('B')]), name)).toBe('1-week cycle done · % of max · Next: Upper A');
     expect(describeProgress(program({ rotation: [] }), programProgress(program({ rotation: [] }), []), name)).toBe('Week 1 · Rep range · No routines yet');
   });

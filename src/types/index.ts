@@ -2146,7 +2146,8 @@ export interface WorkoutProgram {
   weeks: number | null;
   /** Routine ids in the order they come round. */
   rotation: string[];
-  scheme: ProgressionScheme;
+  /** How its exercises move on when their routine doesn't choose. Null: the app proposes nothing. */
+  scheme: ProgressionScheme | null;
   trainingMaxes: TrainingMax[];
   startedAt: string | null;
   archived: boolean;

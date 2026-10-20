@@ -107,7 +107,7 @@ import { normalizeTemplateItem, normalizeTemplateQuestion } from '../utils/templ
 import { isDeviceLocalSetting, projectRow, type BackupRow } from '../utils/backup';
 import { foldRows, foldWinner, NATURAL_KEYS, REFERENCES, SETTING_REFERENCES } from '../utils/naturalKeyFold';
 import {
-  exerciseNameKey, readEquipment, readExerciseKind, readIdList, readMuscles, readRoutineItems, readScheme,
+  NO_SCHEME, exerciseNameKey, readEquipment, readExerciseKind, readIdList, readMuscles, readRoutineItems, readProgramScheme,
   readSetKind, readTrainingMaxes,
 } from '../utils/workoutData';
 import {
@@ -7755,7 +7755,7 @@ function rowToWorkoutProgram(row: Record<string, unknown>): WorkoutProgram {
     name: String(row.name),
     weeks: numOrNull(row.weeks),
     rotation: readIdList(row.rotation),
-    scheme: readScheme(row.scheme),
+    scheme: readProgramScheme(row.scheme),
     trainingMaxes: readTrainingMaxes(row.training_maxes),
     startedAt: strOrNull(row.started_at),
     archived: Number(row.archived) === 1,
@@ -7774,7 +7774,7 @@ export function dbSaveWorkoutProgram(p: WorkoutProgram): void {
     `INSERT OR REPLACE INTO workout_programs (id, name, weeks, rotation, scheme, training_maxes, started_at, archived, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
-      p.id, p.name, p.weeks, JSON.stringify(p.rotation), p.scheme, JSON.stringify(p.trainingMaxes),
+      p.id, p.name, p.weeks, JSON.stringify(p.rotation), p.scheme ?? NO_SCHEME, JSON.stringify(p.trainingMaxes),
       p.startedAt, p.archived ? 1 : 0, p.createdAt,
     ]
   );

@@ -221,7 +221,8 @@ export interface ProgramRow {
   id: string;
   name: string;
   weeks?: number;
-  scheme: ProgressionScheme;
+  /** Absent when the program chooses none: loads move on only for exercises whose routine chooses. */
+  scheme?: ProgressionScheme;
   /** Routine names, in the order they come round. */
   rotation: string[];
   /** The routine ids, in the same order, for save_program. */
@@ -246,7 +247,7 @@ function programRow(
     id: p.id,
     name: p.name,
     ...(p.weeks !== null ? { weeks: p.weeks } : {}),
-    scheme: p.scheme,
+    ...(p.scheme ? { scheme: p.scheme } : {}),
     rotation: p.rotation.map(id => routineName.get(id) ?? 'A deleted routine'),
     rotationIds: [...p.rotation],
     ...(p.trainingMaxes.length ? {
@@ -660,7 +661,8 @@ export interface SaveProgramInput {
   name?: string;
   /** Routine ids in the order they come round; a routine may come round more than once. Replaces the rotation when given. */
   routineIds?: string[];
-  scheme?: ProgressionScheme;
+  /** Null for none: the phone proposes no loads for exercises whose routine doesn't choose. */
+  scheme?: ProgressionScheme | null;
   /** Passes through the rotation in a cycle; null for open-ended. */
   weeks?: number | null;
   /** Training maxes in kg, for a percentage scheme. Replaces them all when given. */

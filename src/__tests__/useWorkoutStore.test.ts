@@ -239,6 +239,20 @@ describe('routines and programs', () => {
     expect(state().routines.find(x => x.id === r.id)?.programId).toBeNull();
   });
 
+  it('keeps a program with no progression chosen, and lets one be chosen again', () => {
+    const p = ok(state().addProgram({ name: 'My own', scheme: null }));
+    expect(p.scheme).toBeNull();
+    reload();
+    expect(state().programs.find(x => x.id === p.id)?.scheme).toBeNull();
+    ok(state().updateProgram(p.id, { name: 'My own again' }));
+    expect(state().programs.find(x => x.id === p.id)?.scheme).toBeNull();
+    ok(state().updateProgram(p.id, { scheme: 'linear' }));
+    expect(state().programs.find(x => x.id === p.id)?.scheme).toBe('linear');
+    ok(state().updateProgram(p.id, { scheme: null }));
+    reload();
+    expect(state().programs.find(x => x.id === p.id)?.scheme).toBeNull();
+  });
+
   it('files a rotation\'s routines under the program, and frees the ones taken out of it', () => {
     const a = ok(state().addRoutine('Upper'));
     const b = ok(state().addRoutine('Lower'));

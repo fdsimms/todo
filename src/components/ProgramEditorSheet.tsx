@@ -35,7 +35,7 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { generateId } from '../utils/id';
 import { catalogExercise } from '../utils/exerciseCatalog';
 import { WEIGHT_PLACES, WEIGHT_STEP, WORKOUT_NAME_MAX_LENGTH, formatWeightWithUnit, weightFromDisplay, weightToDisplay } from '../utils/workoutData';
-import { PROGRESSION_HINTS, PROGRESSION_LABELS, describeRoutine } from '../utils/workoutRoutine';
+import { PROGRESSION_HINTS, PROGRESSION_NONE_HINT, PROGRESSION_LABELS, describeRoutine } from '../utils/workoutRoutine';
 import { programProgress, weekLabel } from '../utils/workoutProgram';
 import { percentExercises } from '../utils/workoutProgramLibrary';
 import { suggestedTrainingMaxKg } from '../utils/workoutProgression';
@@ -55,12 +55,12 @@ interface Slot {
   routineId: string;
 }
 
-const SCHEME_OPTIONS: SegmentOption<ProgressionScheme>[] = (
+const SCHEME_OPTIONS: SegmentOption<ProgressionScheme | null>[] = (
   ['double', 'linear', 'percent', 'rpe'] as const
 ).map(value => ({ value, label: PROGRESSION_LABELS[value] }));
 
 const toSlots = (ids: readonly string[]): Slot[] => ids.map(routineId => ({ id: generateId(), routineId }));
-const snapshotOf = (name: string, slots: readonly Slot[], scheme: ProgressionScheme, weeks: number | null, maxes: Record<string, number | null>) =>
+const snapshotOf = (name: string, slots: readonly Slot[], scheme: ProgressionScheme | null, weeks: number | null, maxes: Record<string, number | null>) =>
   JSON.stringify([name.trim(), slots.map(s => s.routineId), scheme, weeks, Object.entries(maxes).filter(([, kg]) => kg !== null).sort()]);
 
 /**
@@ -82,7 +82,7 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
   // ==== staged state, loaded each time the sheet opens ====
   const [name, setName] = useState('');
   const [slots, setSlots] = useState<Slot[]>([]);
-  const [scheme, setScheme] = useState<ProgressionScheme>('double');
+  const [scheme, setScheme] = useState<ProgressionScheme | null>('double');
   const [weeks, setWeeks] = useState<number | null>(null);
   const [maxes, setMaxes] = useState<Record<string, number | null>>({});
   const [adding, setAdding] = useState(false);
@@ -94,7 +94,7 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
     if (!visible) return;
     const n = program?.name ?? '';
     const s = toSlots(program?.rotation.filter(id => routines.some(r => r.id === id)) ?? []);
-    const sc = program?.scheme ?? 'double';
+    const sc = program ? program.scheme : 'double';
     const w = program?.weeks ?? null;
     const m: Record<string, number | null> = {};
     for (const t of program?.trainingMaxes ?? []) m[t.exerciseId] = t.kg;
@@ -317,8 +317,8 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
 
       <Text style={styles.groupLabel}>Progression</Text>
       <View style={[styles.card, styles.pad]}>
-        <SegmentedControl options={SCHEME_OPTIONS} value={scheme} onChange={setScheme} label="Progression" />
-        <HelpText style={styles.hint}>{PROGRESSION_HINTS[scheme]}</HelpText>
+        <SegmentedControl options={SCHEME_OPTIONS} value={scheme} onChange={setScheme} onDeselect={() => setScheme(null)} label="Progression" />
+        <HelpText style={styles.hint}>{scheme ? PROGRESSION_HINTS[scheme] : PROGRESSION_NONE_HINT}</HelpText>
         <View style={[styles.kv, styles.kvSep]}>
           <Text style={styles.cap}>Cycle length</Text>
           <CountStepper

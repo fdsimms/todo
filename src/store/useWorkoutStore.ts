@@ -133,7 +133,7 @@ export interface ProgramInput {
   name: string;
   weeks?: number | null;
   rotation?: string[];
-  scheme?: ProgressionScheme;
+  scheme?: ProgressionScheme | null;
   trainingMaxes?: TrainingMax[];
 }
 
@@ -1042,7 +1042,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         name,
         weeks: input.weeks && input.weeks > 0 ? Math.round(input.weeks) : null,
         rotation: (input.rotation ?? []).filter(Boolean),
-        scheme: input.scheme ?? 'double',
+        scheme: input.scheme === undefined ? 'double' : input.scheme,
         trainingMaxes: readTrainingMaxes(input.trainingMaxes ?? []),
         startedAt: null,
         archived: false,
@@ -1106,7 +1106,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         name,
         weeks: patch.weeks !== undefined ? (patch.weeks && patch.weeks > 0 ? Math.round(patch.weeks) : null) : existing.weeks,
         rotation: patch.rotation !== undefined ? patch.rotation.filter(Boolean) : existing.rotation,
-        scheme: patch.scheme ?? existing.scheme,
+        scheme: patch.scheme !== undefined ? patch.scheme : existing.scheme,
         trainingMaxes: patch.trainingMaxes !== undefined ? readTrainingMaxes(patch.trainingMaxes) : existing.trainingMaxes,
         startedAt: patch.startedAt !== undefined ? patch.startedAt : existing.startedAt,
         archived: patch.archived ?? existing.archived,
