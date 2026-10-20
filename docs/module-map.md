@@ -149,6 +149,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/eventTextParse.ts` — MAX_EVENT_TEXT_CHARS, ParsedEventText, parseEventText
 - `src/utils/exerciseCatalog.ts` — CatalogExercise, buildCatalog, activeExercises, catalogExercise, exerciseName, ExerciseFilters, ExerciseSearchResult, searchExercises, muscleFilterOptions, equipmentFilterOptions, +1 more
 - `src/utils/exerciseChart.ts` — ChartInput, ChartPoint, CHART_GAP_DAYS, daysBetween, chartPoints, chartSegments, recordIndexes, ChartDomain, chartDomain, domainFraction, +3 more
+- `src/utils/exerciseDayNote.ts` — exerciseDayNote, exerciseDayNotePatches
 - `src/utils/exerciseImages.ts` — EXERCISE_IMAGE_BASE_URL, ExercisePhotos, PHOTOGRAPHED_SLUGS, exercisePhotos
 - `src/utils/exerciseLibrary.ts` — LibraryExercise, LIBRARY_ID_PREFIX, EXERCISE_LIBRARY, libraryExercise, isLibraryId
 - `src/utils/exerciseSwap.ts` — swappableSets, swapCandidates
@@ -580,6 +581,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/widgetQuietTaps.ts` — QuietTap, QuietTapKind, WATCH_NOTE_MAX, WatchTickValues, WatchDoneSet, QuietTapAction, QuietTapWorkouts, widgetTapNeedsApp, parseQuietTaps, planQuietTaps, +7 more
 - `src/utils/widgetSnapshot.ts` — SnapshotCaps, WIDGET_CAPS, WATCH_CAPS, WidgetTask, WidgetUpcomingTask, WidgetGroceryList, WidgetGroceryRow, WidgetGroceries, WidgetMeal, WidgetKitchenItem, +19 more
 - `src/utils/widgetSync.ts` — drainWatchQueues, writeWidgetSnapshotNow, useWidgetSync
+- `src/utils/workoutCell.ts` — setFieldMax, parseSetCell
 - `src/utils/workoutCsv.ts` — ImportSource, ImportedSet, ImportedSession, CsvParseResult, SkippedRows, describeSkipped, ParseOptions, parseCsv, readCsv, parseImportDate, +34 more
 - `src/utils/workoutData.ts` — EXERCISE_KINDS, EXERCISE_EQUIPMENT, MUSCLE_GROUPS, WORKOUT_SET_KINDS, PROGRESSION_SCHEMES, EQUIPMENT_LABELS, MUSCLE_LABELS, WORKOUT_NAME_MAX_LENGTH, WORKOUT_EFFORT, exerciseNameKey, +26 more
 - `src/utils/workoutHistory.ts` — HEALTH_HISTORY_MAX_DAYS, WorkoutHistoryRow, healthHistoryWindow, SAME_WORKOUT_START_MS, overlapsSession, interleaveHistory, healthWorkoutSource, healthWorkoutTitle, healthWorkoutLine

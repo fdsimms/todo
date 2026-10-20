@@ -518,7 +518,7 @@ async function processQuietWidgetTaps(handOff: 'app' | 'requeue' = 'app'): Promi
         // action workout mode itself uses, with the watch's ids where it made
         // some, so the watch settles what it drew by them.
         case 'noteWorkoutSet':
-          useWorkoutStore.getState().editSet(action.sessionId, action.setId, { note: action.note });
+          useWorkoutStore.getState().noteExerciseOfSet(action.sessionId, action.setId, action.note);
           break;
         case 'addWorkoutSet':
           useWorkoutStore.getState().addPlannedSet(action.sessionId, action.exerciseId, { id: action.setId });
