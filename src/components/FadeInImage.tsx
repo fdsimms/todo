@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useLayoutEffect, useRef } from 'react';
 import { Animated, Easing, type ImageLoadEventData, type ImageProps, type NativeSyntheticEvent } from 'react-native';
 import { useReduceMotion } from '../utils/useReduceMotion';
 
@@ -26,7 +26,10 @@ export function FadeInImage({ onLoad, style, ...rest }: ImageProps) {
     ? rest.source.uri
     : undefined;
 
-  useEffect(() => {
+  // A layout effect, not a passive one: a cached photo can report its load
+  // before a passive effect has run, and the reset would then land after the
+  // load's `setValue(1)` and leave the photo invisible for good.
+  useLayoutEffect(() => {
     opacity.setValue(0);
     startedAt.current = Date.now();
   }, [uri, opacity]);
