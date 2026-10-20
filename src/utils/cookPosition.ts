@@ -6,6 +6,8 @@
 // back from a Live Activity tap) must not throw the place away. Held in memory
 // only: an app restart is a new sitting as far as this is concerned.
 
+import type { RecipeOverride } from '../types';
+
 export interface CookPosition {
   /** -1 is the mise en place screen, 0.. a step. */
   rawIndex: number;
@@ -26,6 +28,29 @@ export function savedCookPosition(recipeId: string): CookPosition | null {
 
 export function clearCookPosition(recipeId: string): void {
   positions.delete(recipeId);
+  setups.delete(recipeId);
+}
+
+/**
+ * What the cooking is for: the factor and the either/or picks. Screen state on
+ * RecipeDetailScreen, and re-entering through CookingBar navigates with fresh
+ * route params that carry none of it, so the screen reseeds to 1x. Kept here
+ * for the same reason the position is, and restored only on that re-entry.
+ */
+export interface CookSetup {
+  scale: number;
+  choices: string[];
+  overrides: RecipeOverride[];
+}
+
+const setups = new Map<string, CookSetup>();
+
+export function saveCookSetup(recipeId: string, setup: CookSetup): void {
+  setups.set(recipeId, { scale: setup.scale, choices: [...setup.choices], overrides: [...setup.overrides] });
+}
+
+export function savedCookSetup(recipeId: string): CookSetup | null {
+  return setups.get(recipeId) ?? null;
 }
 
 /**

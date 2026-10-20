@@ -48,6 +48,8 @@ import { StepTimerRow } from './StepTimerRow';
 import { StepText } from './StepText';
 import { InlineAction } from './InlineAction';
 import { RecipeChoiceChips } from './RecipeChoiceChips';
+import { RecipeScaleChips } from './RecipeScaleChips';
+import { CardSheet } from './CardSheet';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, lineHeight, radius, checkboxRadius, border, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -83,6 +85,11 @@ interface Props {
    * an edit to the recipe (see MealPlanEntry.recipeScale for where it does last).
    */
   scale: number;
+  /**
+   * Changes that factor from inside cook mode, owned by the screen like
+   * `choices`. Without it the header chip is only a label.
+   */
+  onScaleChange?: (scale: number) => void;
   /**
    * The either/or picks this cooking is for — MealPlanEntry.recipeChoices'
    * shape, owned by the screen that opened this. Shared rather than copied in:
@@ -172,7 +179,7 @@ interface Props {
  * keeps its own words.
  */
 export function CookModeSheet({
-  visible, recipe, recipesById, scale, choices, overrides, onChoicesChange, onOverridesChange, onClose, onLogCooked, onLogFood,
+  visible, recipe, recipesById, scale, onScaleChange, choices, overrides, onChoicesChange, onOverridesChange, onClose, onLogCooked, onLogFood,
 }: Props) {
   // ==== store bindings and derived data: the method, the ingredients ====
   const colors = useColors();
@@ -266,6 +273,7 @@ export function CookModeSheet({
   const blanks = useMemo(() => recipeBlanksIn(recipe, recipesById), [recipe, recipesById]);
   const hasIngredients = ingredients.length > 0 || blanks.length > 0;
   const [fillingBlanks, setFillingBlanks] = useState(false);
+  const [scaleOpen, setScaleOpen] = useState(false);
   // Cook mode has no planned meal, so the picker is handed a stand-in for this
   // cooking. Its day only orders "last time" and its id only has to be stable.
   const fillSubject = useMemo(
@@ -567,12 +575,23 @@ export function CookModeSheet({
             // written, and a chip repeating that is chrome. When it isn't, this
             // is the one thing on screen explaining why the amounts in the panel
             // below aren't the recipe's own numbers.
-            isUnscaled(scale) && !cookUnderway ? undefined : (
+            // Tappable when the screen lets the factor change from here, and
+            // then always shown, since it is the only way to reach the picker.
+            isUnscaled(scale) && !cookUnderway && !onScaleChange ? undefined : (
               <View style={styles.headerActions}>
-                {!isUnscaled(scale) && (
-                  <View style={styles.scaleChip}>
+                {(!isUnscaled(scale) || onScaleChange) && (
+                  <TouchableOpacity
+                    style={styles.scaleChip}
+                    disabled={!onScaleChange}
+                    onPress={() => setScaleOpen(true)}
+                    activeOpacity={interaction.activeOpacity}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Recipe scale ${formatScale(scale)}`}
+                    accessibilityHint={onScaleChange ? 'Changes how much the recipe makes' : undefined}
+                  >
                     <Text style={styles.scaleChipText}>{formatScale(scale)}</Text>
-                  </View>
+                  </TouchableOpacity>
                 )}
                 {/* Only once a cook is underway (the timer has time on it). */}
                 {cookUnderway && (
@@ -1200,6 +1219,20 @@ export function CookModeSheet({
           onSave={next => onOverridesChange(next)}
           onClose={() => setFillingBlanks(false)}
         />
+      )}
+      {/* Rendered inside this Modal so iOS can present it (two sibling Modals
+          can't both be up). Quantities in the panel and the step text follow
+          the new factor at once, since they read `scale` from the screen. */}
+      {onScaleChange && (
+        <CardSheet visible={scaleOpen && visible} onClose={() => setScaleOpen(false)} name="CookScale" cardStyle={{ padding: spacing.md }}>
+          <RecipeScaleChips
+            value={scale}
+            onChange={onScaleChange}
+            baseServings={recipe.servings}
+            baseServingsMax={recipe.servingsMax}
+            surface="card"
+          />
+        </CardSheet>
       )}
     </SheetModal>
   );
