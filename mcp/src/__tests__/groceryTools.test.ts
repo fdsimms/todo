@@ -435,7 +435,7 @@ describe('the catalog tools', () => {
       expect(replica.groceryItems()[0].purchaseCount).toBe(0);
     });
 
-    it('the pantry flow marks things on hand and a new packet clears the old one\'s state, without recording a purchase', () => {
+    it('the pantry flow marks things on hand and a new package clears the old one\'s state, without recording a purchase', () => {
       addGroceryItem(replica, 'spinach');
       const id = idOf('spinach');
       replica.updatePantryItem(id, { opened: true, runningLow: true });

@@ -38,7 +38,7 @@ const ROWS: Row[] = [
     icon: 'bag-add-outline',
     tone: 'accent',
     label: 'Bought more',
-    detail: 'You restocked, so the old packet no longer counts. Keeps it in your pantry as a fresh one.',
+    detail: 'You restocked, so the old package no longer counts. Keeps it in your pantry as a fresh one.',
     feedback: haptics.success,
   },
   {

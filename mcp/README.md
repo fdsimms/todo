@@ -249,7 +249,7 @@ only the fallback until the first sync.
 | `finish_grocery_trip` | **Write.** Records the checked-off items as bought and removes them from the list. |
 | `import_receipt` | **Write.** The in-app receipt flow, from lines Claude read. |
 | `update_pantry_item` | **Write.** One item's pantry state: on hand, out (with how it went), staple, frozen, opened, running low, use-by day, shelf life, use-up task. Several fields per call. |
-| `update_pantry_box` | **Write.** The same for one packet or frozen portion of an item. |
+| `update_pantry_box` | **Write.** The same for one package or frozen portion of an item. |
 | `add_to_pantry` | **Write.** "I have flour": marks a known item on hand, or adds a new one that is not on the shopping list. |
 | `answer_pantry_review` | **Write.** Records the person's answers (have, low, out) to `pantry_review` cards. |
 | `log_leftover` | **Write.** Logs a container of cooked food in the fridge or freezer. |

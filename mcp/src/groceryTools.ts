@@ -502,7 +502,7 @@ export function importReceipt(replica: Replica, input: ImportReceiptInput): Rece
   return {
     ...outcome,
     note: context === 'pantry'
-      ? 'Marked on hand, with a new packet clearing the old one\'s opened, frozen and running-low state. No purchase is recorded: the pantry flow only says the person has these.'
+      ? 'Marked on hand, with a new package clearing the old one\'s opened, frozen and running-low state. No purchase is recorded: the pantry flow only says the person has these.'
       : outcome.away
         ? 'Separate list: the lines left the list and nothing else was recorded.'
         : 'Recorded as a trip. Receipt names were remembered for this store, so the next receipt matches them first.',

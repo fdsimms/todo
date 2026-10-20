@@ -802,7 +802,7 @@ export const TIPS: Tip[] = [
     icon: 'barcode-outline',
     title: 'Scan a package to log it',
     body: 'The barcode button at the top looks the package up and logs a serving, or the whole package, from its own label. It needs no API key.',
-    keywords: ['barcode', 'scan', 'label', 'packet', 'camera'],
+    keywords: ['barcode', 'scan', 'label', 'package', 'camera'],
   },
   {
     id: 'food-log-search',
