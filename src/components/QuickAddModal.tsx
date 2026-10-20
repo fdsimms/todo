@@ -1119,7 +1119,8 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // The "#cat #tag" token is the one parse applied without a tap (the effect
   // under applyCategoryTags, and resolveTags/resolveCategory/handleAdd as a
   // fallback), so it's the one that has to honor "Not that" by hand: every
-  // other parse only ever applies from the tooltip, which a dismissal hides.
+  // other parse only ever applies from the tooltip or from Add while the
+  // tooltip is showing, and a dismissal hides it from both.
   // When it's present it's always rawMatch (it outranks everything but
   // `parsed`, which excludes it), so matchDismissed is about this token.
   const categoryTagsKept = matchDismissed ? null : categoryTagsParsed;
@@ -2063,7 +2064,8 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // RN field reports no modifiers. Gated on `confirmVisible` rather than the
   // raw parses because `applyActiveParse` doesn't know about "Not that": a
   // dismissed suggestion must let Return add. Off the mode, Return adds as it
-  // always has, since on the touch keyboard it's the Done key.
+  // always has, since on the touch keyboard it's the Done key, and adding
+  // takes whatever suggestion is on show (see handleAdd).
   const handleTitleSubmit = () => {
     if (mirroringMode && confirmVisible) {
       applyActiveParse();
@@ -2072,9 +2074,32 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     handleAdd();
   };
 
+  // Adding while a suggestion is on show takes it, as the tooltip's own tap
+  // would. The phrase is highlighted and the bubble says what it becomes, so
+  // pressing Add over it is the confirm the title rewrite needs, and "Not
+  // that" is still how to keep the words. The suggestions come one at a time
+  // ("fri 5pm", then "#home"), so each apply re-renders with the next one in
+  // view, and the effect brings that render's handleAdd back here until none
+  // is left. The signature stops the chain if an apply leaves its own phrase
+  // showing, rather than applying it again for ever.
+  const [addAfterApply, setAddAfterApply] = useState(0);
+  const lastAppliedOnAdd = useRef<string | null>(null);
+  useEffect(() => {
+    if (addAfterApply > 0) handleAdd();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addAfterApply]);
+
   const handleAdd = () => {
     if (eventText !== null) { void addAsEvent(eventText); return; }
     if (doseParse !== null) { void addAsDose(doseParse); return; }
+    const applySignature = confirmVisible ? `${rawMatchSignature}|${soleMentionCandidate?.id ?? ''}` : null;
+    if (applySignature !== null && applySignature !== lastAppliedOnAdd.current) {
+      lastAppliedOnAdd.current = applySignature;
+      applyActiveParse();
+      setAddAfterApply(n => n + 1);
+      return;
+    }
+    lastAppliedOnAdd.current = null;
     // A rule that strips takes its word out here rather than as you type —
     // rewriting the field under the cursor is the one way this feature would
     // be unusable. Nothing strips unless a rule asked to, and a strip that
