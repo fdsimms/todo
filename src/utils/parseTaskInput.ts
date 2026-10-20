@@ -2598,6 +2598,68 @@ export interface MentionSuggestion {
   end: number;
   token: string;
   candidates: MentionSuggestionCandidate[];
+  /**
+   * A multi-word name typed in full ("@eye q"). Confirming it records the link
+   * by `phraseOverrideKey` and leaves the title text as typed, so there is
+   * nothing to rewrite (see `getPhraseMentionSuggestion`).
+   */
+  exact?: boolean;
+}
+
+/**
+ * The key a confirmed multi-word name is stored under in a caller's overrides
+ * map. Overrides are otherwise keyed by a single "@" token, which can't hold a
+ * space, so this can't collide with one.
+ */
+export function phraseOverrideKey(text: string): string {
+  return `phrase:${text.trim().replace(/\s+/g, ' ').toLowerCase()}`;
+}
+
+/**
+ * Drops the multi-word "@name" matches (`matchPersonMentions` resolves "@eye q"
+ * as soon as the full name is typed) that the person hasn't confirmed yet. A
+ * single-word match is always kept: the name is short enough that no one
+ * mistakes it for a link. The mention stays plain text until the tap that
+ * `getPhraseMentionSuggestion` offers.
+ */
+export function unconfirmedPhraseMentions(
+  input: string,
+  matched: PersonMention[],
+  overrides: Record<string, string>
+): PersonMention[] {
+  return matched.filter(m => {
+    const text = input.slice(m.start + 1, m.end);
+    if (!text.includes(' ')) return true;
+    return overrides[phraseOverrideKey(text)] === m.personId;
+  });
+}
+
+/**
+ * A "@name" typed in full across more than one word, at the very end of the
+ * title, offered as a single tap-to-link row. Only while exactly one person
+ * answers to that phrase and it isn't confirmed yet. `getMentionSuggestions`
+ * deliberately stays silent on a finished name, so this runs first in quick add.
+ */
+export function getPhraseMentionSuggestion(
+  input: string,
+  people: PersonToken[],
+  overrides: Record<string, string>
+): MentionSuggestion | null {
+  const tail = trailingMentionToken(input);
+  if (!tail || !tail.typed.includes(' ')) return null;
+  const ids = buildPhraseIndex(people).get(tail.typed.trim().replace(/\s+/g, ' ').toLowerCase());
+  if (!ids || ids.length !== 1) return null;
+  const [personId] = ids;
+  if (overrides[phraseOverrideKey(tail.typed)] === personId) return null;
+  const person = people.find(p => p.id === personId);
+  if (!person) return null;
+  return {
+    start: tail.start,
+    end: tail.end,
+    token: tail.token,
+    exact: true,
+    candidates: [{ id: person.id, name: person.name, resolveKey: mentionResolveKey(person) }],
+  };
 }
 
 /**
