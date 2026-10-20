@@ -95,7 +95,8 @@ export interface QuietTap {
   /** `setNote`: the words, trimmed. */
   note?: string;
   /**
-   * `addSet`: the exercise the set is added to. `set`: the set's exercise, so
+   * `addSet`: the exercise the set is added to. `superset`: the partner, or
+   * absent to leave the superset. `set`: the set's exercise, so
    * a tick that overtakes the `addSet` of a set added on the watch can add it.
    */
   exerciseId?: string;
@@ -123,8 +124,9 @@ export interface QuietTap {
  * is a whole workout the watch ran on its own, sent once when it was finished.
  * And the four the watch adds to the phone's workout: `setNote` (a dictated
  * note on a set), `addSet` and `addExercise` (with the ids the watch gave
- * them), `moveExercise` (up or down), and `useSuggestion` (the load card's
- * Use).
+ * them), `moveExercise` (up or down), `superset` (an exercise paired with
+ * the one in `exerciseId`, or taken out of its superset when that is absent),
+ * and `useSuggestion` (the load card's Use).
  *
  * And the three of the watch's HealthKit session (phase 9): `measuring` (the
  * watch started measuring the session, or stopped without saving), which
@@ -135,12 +137,12 @@ export interface QuietTap {
 export type QuietTapKind =
   | 'complete' | 'unit' | 'grocery' | 'choose' | 'groceryAdd'
   | 'set' | 'restAdd' | 'restSkip' | 'finish' | 'watchSession'
-  | 'setNote' | 'addSet' | 'addExercise' | 'moveExercise' | 'useSuggestion'
+  | 'setNote' | 'addSet' | 'addExercise' | 'moveExercise' | 'superset' | 'useSuggestion'
   | 'measuring' | 'healthWorkout' | 'healthRetracted';
 
 const QUIET_TAP_KINDS: readonly QuietTapKind[] = [
   'complete', 'unit', 'grocery', 'choose', 'groceryAdd', 'set', 'restAdd', 'restSkip', 'finish', 'watchSession',
-  'setNote', 'addSet', 'addExercise', 'moveExercise', 'useSuggestion', 'measuring', 'healthWorkout', 'healthRetracted',
+  'setNote', 'addSet', 'addExercise', 'moveExercise', 'superset', 'useSuggestion', 'measuring', 'healthWorkout', 'healthRetracted',
 ];
 
 /**
@@ -149,7 +151,7 @@ const QUIET_TAP_KINDS: readonly QuietTapKind[] = [
  * Health two act on any session in the log, finished or not.
  */
 const SESSION_KINDS: ReadonlySet<QuietTapKind> = new Set([
-  'set', 'restAdd', 'restSkip', 'finish', 'setNote', 'addSet', 'addExercise', 'moveExercise', 'useSuggestion',
+  'set', 'restAdd', 'restSkip', 'finish', 'setNote', 'addSet', 'addExercise', 'moveExercise', 'superset', 'useSuggestion',
   'measuring', 'healthWorkout',
 ]);
 
@@ -214,6 +216,8 @@ export type QuietTapAction =
   | { type: 'addWorkoutExercise'; sessionId: string; exerciseId: string; setIds: string[] }
   /** `moveSessionExercise`. */
   | { type: 'moveWorkoutExercise'; sessionId: string; exerciseId: string; direction: 'up' | 'down' }
+  /** `joinSessionSuperset` with a partner, `leaveSessionSuperset` without. */
+  | { type: 'supersetWorkoutExercise'; sessionId: string; exerciseId: string; partnerId: string | null }
   /**
    * `applyProposal`, workout mode's own Use. `warmupIdPrefix` (the watch's tap
    * id) names any warm-ups a ramp adds `<prefix>-w<i>`, the ids the watch drew
@@ -311,6 +315,12 @@ export function parseQuietTaps(json: string): QuietTap[] {
       }
       if (kind === 'addExercise') {
         tap.setIds = Array.isArray(fields.setIds) ? fields.setIds.filter((x): x is string => idOf(x) !== null) : [];
+      }
+      if (kind === 'superset') {
+        // No partner is "leave"; a partner that isn't an id is a tap to drop.
+        if (fields.exerciseId !== undefined && fields.exerciseId !== null && idOf(fields.exerciseId) === null) continue;
+        const partner = idOf(fields.exerciseId);
+        if (partner) tap.exerciseId = partner;
       }
       if (kind === 'moveExercise') {
         if (fields.direction !== 'up' && fields.direction !== 'down') continue;
@@ -461,6 +471,13 @@ export function planQuietTaps(
     if (tap.kind === 'moveExercise') {
       if (!isLive(tap.sessionId) || !tap.direction || !inSession(tap.id)) continue;
       actions.push({ type: 'moveWorkoutExercise', sessionId: tap.sessionId!, exerciseId: tap.id, direction: tap.direction });
+      continue;
+    }
+    if (tap.kind === 'superset') {
+      // Both exercises in the workout in progress. Whether they can be paired
+      // (already together, or alone) is the store's answer, as a move past the end is.
+      if (!isLive(tap.sessionId) || !inSession(tap.id) || (tap.exerciseId && !inSession(tap.exerciseId))) continue;
+      actions.push({ type: 'supersetWorkoutExercise', sessionId: tap.sessionId!, exerciseId: tap.id, partnerId: tap.exerciseId ?? null });
       continue;
     }
     if (tap.kind === 'useSuggestion') {
