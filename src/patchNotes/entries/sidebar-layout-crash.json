@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the app showing \"Something went wrong\" on launch when the sidebar layout is showing, such as on a Mac or a wide iPad window",
+  "date": "2026-10-20"
+}
