@@ -363,6 +363,18 @@ describe('a live session', () => {
     expect(state().logSet(s.id, { exerciseId: 'nobody' })).toBe('notFound');
   });
 
+  it("files a note dictated on any set as the exercise's note, on its first set", () => {
+    const s = ok(state().startSession());
+    const a = ok(state().logSet(s.id, { exerciseId: 'lib:back-squat', weightKg: 100, reps: 5, note: 'old' }));
+    const b = ok(state().logSet(s.id, { exerciseId: 'lib:back-squat', weightKg: 100, reps: 5 }));
+    const other = ok(state().logSet(s.id, { exerciseId: 'lib:romanian-deadlift', weightKg: 80, reps: 8, note: 'keep' }));
+    state().noteExerciseOfSet(s.id, b.id, ' knees caved ');
+    const notes = Object.fromEntries(dbGetWorkoutSets(s.id).map(x => [x.id, x.note]));
+    expect(notes).toEqual({ [a.id]: 'knees caved', [b.id]: null, [other.id]: 'keep' });
+    state().noteExerciseOfSet(s.id, 'nope', 'ignored');
+    expect(dbGetWorkoutSets(s.id).find(x => x.id === a.id)?.note).toBe('knees caved');
+  });
+
   it('lays a set out as planned when completedAt is null', () => {
     const s = ok(state().startSession());
     expect(ok(state().logSet(s.id, { exerciseId: 'lib:plank', durationSeconds: 60, completedAt: null })).completedAt).toBeNull();
