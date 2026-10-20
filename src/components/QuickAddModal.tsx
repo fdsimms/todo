@@ -41,11 +41,15 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
+import { useTemplateStore } from '../store/useTemplateStore';
+import { matchTemplate } from '../utils/templateMatch';
+import { ApplyTemplateSheet } from './ApplyTemplateSheet';
+import { LazySheet } from './LazySheet';
 import { categoryLabel } from '../utils/categoryLabel';
 import { CategoryPickerSheet } from './CategoryPicker';
 import { ProjectPickerSheet } from './ProjectPickerSheet';
 import { useShallow } from 'zustand/react/shallow';
-import type { Priority, Effort, Difficulty, TimeOfDay, RecurrenceType, Task, ChainItem, QuotaPeriod, Polarity, WeatherCondition, TaskFieldDefaults } from '../types';
+import type { Priority, Effort, Difficulty, TimeOfDay, RecurrenceType, Task, ChainItem, QuotaPeriod, Polarity, WeatherCondition, TaskFieldDefaults, TaskTemplate } from '../types';
 import { PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { generateId } from '../utils/id';
 import {
@@ -453,6 +457,11 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // A pending suggestion, live only until the offer row is tapped or
   // dismissed — see applyParse, which is the only thing that sets it.
   const [reminderOffer, setReminderOffer] = useState<Date | null>(null);
+  // The template the typed title resembles, and the one being run from it.
+  // Dismissals are per template for the rest of this add, so a "no" isn't
+  // re-asked on the next keystroke.
+  const [templateToApply, setTemplateToApply] = useState<TaskTemplate | null>(null);
+  const [dismissedTemplateIds, setDismissedTemplateIds] = useState<ReadonlySet<string>>(() => new Set());
   // No field of its own in this sheet — see the seed prop's doc comment.
   const [windowStart, setWindowStart] = useState<string | null>(null);
   const [windowEnd, setWindowEnd] = useState<string | null>(null);
@@ -675,6 +684,8 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     tooltipAnim.setValue(0);
     hadParse.current = false;
     setDismissedMatchSignature(null);
+    setTemplateToApply(null);
+    setDismissedTemplateIds(new Set());
     setWhenPickerVisible(false);
     setCategoryPickerVisible(false);
     setProjectPickerVisible(false);
@@ -1287,6 +1298,26 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     // Accepting the offer is the person asking for a reminder: ask for the
     // permission now if it has never been asked.
     void askForReminderPermissionIfNeeded();
+  };
+
+  // Behind every phrase tooltip and the reminder offer: those answer what the
+  // line says, this answers what it resembles.
+  const templates = useTemplateStore(s => s.templates);
+  const templateOffer = useMemo(
+    () => (visible && !activeMatch && !reminderOffer ? matchTemplate(title, templates, dismissedTemplateIds) : null),
+    [visible, activeMatch, reminderOffer, title, templates, dismissedTemplateIds],
+  );
+  const openTemplateOffer = () => {
+    if (!templateOffer) return;
+    haptics.tap();
+    Keyboard.dismiss();
+    setTemplateToApply(templateOffer);
+  };
+  const dismissTemplateOffer = () => {
+    if (!templateOffer) return;
+    haptics.tap();
+    animateLayout();
+    setDismissedTemplateIds(prev => new Set(prev).add(templateOffer.id));
   };
 
   const dismissReminderOffer = () => {
@@ -2702,6 +2733,31 @@ parsed
           {/* The accepted reminder, with a way to take it back — the same
               row shape as the offer above, once the offer's own two actions
               have collapsed to one. */}
+          {!!templateOffer && (
+            <View style={styles.reminderRow}>
+              <Ionicons name="copy-outline" size={13} color={colors.textSecondary} />
+              <Text style={styles.reminderText} numberOfLines={1}>
+                Use your “{templateOffer.name}” template?
+              </Text>
+              <TouchableOpacity
+                onPress={openTemplateOffer}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={`Use the ${templateOffer.name} template`}
+              >
+                <Text style={styles.reminderAccept}>Use template</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={dismissTemplateOffer}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Dismiss template suggestion"
+              >
+                <Ionicons name="close-circle" size={15} color={colors.textTertiary} />
+              </TouchableOpacity>
+            </View>
+          )}
+
           {!reminderOffer && !!reminderTime && (
             <View style={styles.reminderRow}>
               <Ionicons name="notifications" size={13} color={colors.accent} />
@@ -3628,6 +3684,18 @@ parsed
         onSelect={pickProject}
         onClose={() => setProjectPickerVisible(false)}
       />
+      {/* Inside this sheet's own Modal, like the pickers above: what is typed
+          here has to survive a cancelled run. Applying closes both. */}
+      <LazySheet open={templateToApply !== null}>
+        <ApplyTemplateSheet
+          visible={templateToApply !== null}
+          template={templateToApply}
+          projectId={intoProjectId ?? undefined}
+          initialRunName={title.trim()}
+          onClose={() => setTemplateToApply(null)}
+          onApplied={tasks => { if (tasks.length > 0) dismiss(); }}
+        />
+      </LazySheet>
       <NumberPadAccessory />
       <TitleTokenAccessory
         nativeID={TITLE_TOKEN_ACCESSORY_ID}

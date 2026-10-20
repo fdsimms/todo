@@ -525,6 +525,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/taskUpdate.ts` — CONTENT_FIELDS, hasLaterRows, SCHEDULE_FIELDS, QUOTA_SPAN_FIELDS, ROTATION_TARGET_FIELDS, derivedTargetCount, nextPinnedOrder, captureField, TaskUpdateContext, mergeTaskUpdate, +1 more
 - `src/utils/templateApply.ts` — TemplateRunOptions, RunDraft, TemplateRunSink, applyTemplateRun
 - `src/utils/templateGrouping.ts` — TemplateListItem, groupTemplatesByCategory, TemplateDropResolution, resolveTemplateDrop
+- `src/utils/templateMatch.ts` — matchTemplate
 - `src/utils/templateQuestions.ts` — questionsForTree, answerFromDates, defaultAnswer, resolveAnswers, placeholderValuesFor, toggleAnswer, displayOptions, liveConditions, numberInRange, applyItemVariant, +15 more
 - `src/utils/templateRunDestination.ts` — TemplateRunView, TemplateRunDestination, templateRunDestination, templateRunDestinationLabel
 - `src/utils/templateSchedule.ts` — TemplateRunDue, DEFAULT_TEMPLATE_SCHEDULE_TIME, defaultTemplateSchedule, schedulesEqual, periodKeyFor, triggerDayFor, scheduledRunName, dueTemplateRun, ordinal, describeTemplateSchedule
