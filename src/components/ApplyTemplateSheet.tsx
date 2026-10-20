@@ -941,7 +941,7 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     paddingHorizontal: 11,
     borderRadius: radius.sm,
     borderWidth: border.sm,
-    borderColor: colors.accent,
+    borderColor: colors.controlBorder,
     backgroundColor: colors.bgTertiary,
   },
   runHint: {
