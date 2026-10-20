@@ -642,6 +642,11 @@ describe('matchExerciseName', () => {
       ['Lat Pulldown - Close Grip (Cable)', 'lib:close-grip-lat-pulldown'],
       ['Bent Over Row (Dumbbell)', 'lib:two-arm-dumbbell-row'],
       ['Bent Over Row (Barbell)', 'lib:barbell-row'],
+      ['Straight Arm Lat Pulldown (Cable)', 'lib:straight-arm-pulldown'],
+      ['Cable Fly Crossovers', 'lib:cable-fly'],
+      ['Treadmill', 'lib:treadmill-run'],
+      ['Seated Shoulder Press (Machine)', 'lib:machine-shoulder-press'],
+      ['Rear Delt Reverse Fly (Dumbbell)', 'lib:reverse-dumbbell-fly'],
     ]) {
       const m = matchExerciseName(name, catalog);
       expect(m).toMatchObject({ kind: 'words', exerciseId: id });

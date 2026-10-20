@@ -661,6 +661,9 @@ const PHRASE_ALIASES: [RegExp, string][] = [
   [/\bskullcrusher/g, 'skull crusher'],
   [/\bpull ?aparts?\b/g, 'pull apart'],
   [/\bbanded\b/g, 'band'],
+  [/\bstraight arm lat pulldown\b/g, 'straight arm pulldown'],
+  [/\bfly crossovers?\b/g, 'fly'],
+  [/^treadmill$/g, 'treadmill run'],
   [/\bfarmer[\u2019']?s (walk|carry)\b/g, 'farmer carry'],
 ];
 const aliasPhrases = (lower: string) => PHRASE_ALIASES.reduce((t, [re, to]) => t.replace(re, to), lower);
@@ -680,6 +683,8 @@ const BRACKET_EQUIPMENT: Record<string, ExerciseEquipment> = {
 const MOVEMENT_ALIASES: Record<string, string> = {
   'dumbbell|bent over row': 'two arm row',
   'barbell|bent over row': 'row',
+  'machine|press seated shoulder': 'shoulder press',
+  'dumbbell|delt fly rear reverse': 'bent over fly reverse',
 };
 
 /** "Hammer Curl (Dumbbell)" as its words without the equipment, and the equipment. Null when no bracket names one. */
