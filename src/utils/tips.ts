@@ -29,8 +29,7 @@ import { featureHidden, type SimpleFeatureId } from './simpleMode';
  *   your day" is not a tip.
  * - **Name a control by its on-screen label, and keep it true.** Nothing checks
  *   a tip against the UI, so renaming, moving or removing a control means
- *   grepping this file for it: tips sent people to a "Steps button" and a
- *   magnifying glass that didn't exist, and promised a comma-split add.
+ *   grepping this file for it.
  * - **One thing per tip.** They are shown one at a time and read in a list, so
  *   a tip covering three features is one nobody finishes.
  * - **Array order is priority.** `chooseTip` takes the first eligible unseen
