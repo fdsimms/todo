@@ -676,12 +676,20 @@ const BRACKET_EQUIPMENT: Record<string, ExerciseEquipment> = {
   'smith machine': 'smith_machine', 'ez bar': 'ez_bar', 'trap bar': 'trap_bar', band: 'band', bodyweight: 'bodyweight',
 };
 
+/** A bent-over row is the library's row on that equipment, which names it another way. Keyed by equipment and the sorted words. */
+const MOVEMENT_ALIASES: Record<string, string> = {
+  'dumbbell|bent over row': 'two arm row',
+  'barbell|bent over row': 'row',
+};
+
 /** "Hammer Curl (Dumbbell)" as its words without the equipment, and the equipment. Null when no bracket names one. */
 function splitEquipment(name: string): { base: string[]; equipment: ExerciseEquipment } | null {
   const m = /^(.*?)\s*\(([^)]+)\)\s*$/.exec(name);
   const equipment = m && BRACKET_EQUIPMENT[nameWords(m[2]).join(' ')];
   if (!m || !equipment) return null;
-  return { base: [...new Set(nameWords(m[1]))].sort(), equipment };
+  const base = [...new Set(nameWords(m[1]))].sort();
+  const alias = MOVEMENT_ALIASES[`${equipment}|${base.join(' ')}`];
+  return { base: alias ? alias.split(' ').sort() : base, equipment };
 }
 
 const sortedWords = (name: string) => [...new Set(nameWords(name))].sort();

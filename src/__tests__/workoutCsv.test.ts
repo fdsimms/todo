@@ -640,10 +640,16 @@ describe('matchExerciseName', () => {
       ['Skullcrusher (Dumbbell)', 'lib:dumbbell-skull-crusher'],
       ['Incline Chest Fly (Dumbbell)', 'lib:incline-dumbbell-fly'],
       ['Lat Pulldown - Close Grip (Cable)', 'lib:close-grip-lat-pulldown'],
+      ['Bent Over Row (Dumbbell)', 'lib:two-arm-dumbbell-row'],
+      ['Bent Over Row (Barbell)', 'lib:barbell-row'],
     ]) {
       const m = matchExerciseName(name, catalog);
       expect(m).toMatchObject({ kind: 'words', exerciseId: id });
     }
+  });
+
+  it('keeps a kettlebell goblet squat apart from the dumbbell one', () => {
+    expect(isAutoMatch(matchExerciseName('Kettlebell Goblet Squat', catalog))).toBe(false);
   });
 
   it('only offers the same movement on other equipment', () => {
