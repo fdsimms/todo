@@ -311,6 +311,18 @@ What that gives up, stated plainly: "saw them" and "texted them" are not
 separable unless you say so in the title. A tag covers it later if it ever
 matters, with no schema at all.
 
+**A catch-up task joins the history only when it is answered.** The generated
+reach-out task is written with no `personIds` (so the app never writes its own
+rows into your history) and asks "What did you do?" on completion
+(`deliverableKind: 'text'`). An answer is what says you did something, so
+`completeTask` then stamps the person on the row (every member, for a folded
+group: `reachOutNamedPeopleIds`) and the same row becomes the history entry,
+with the answer as `HistoryEntry.note`. A tick with no answer stamps nothing,
+so it can't reset the clock that wrote the task. `uncompleteTask` takes the
+people back off, and correcting or clearing the answer in the Logbook
+(`setDeliverableValue`) keeps the row in step. There is still one record, no
+second row.
+
 ## The birthday generator
 
 One of the generators (`docs/arch/generated-tasks.md`), and the one whose

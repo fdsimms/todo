@@ -42,6 +42,8 @@ import { TextField } from './TextField';
 import { SegmentedControl } from './SegmentedControl';
 import { REVIEW_AFTER_OPTIONS, type ReviewAfter } from '../utils/decisionReview';
 import { BUTTON_LABEL } from '../copy/shared';
+import { HelpText } from './HelpText';
+import { CATCH_UP_PROMPT } from '../utils/reachOutTasks';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -110,6 +112,8 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
   // The active chain step's question when there is one, so a two-step chain
   // asks only at the step that carries it — see deliverableKindFor.
   const kind = deliverableKindFor(task) ?? 'text';
+  // A generated catch-up task words its question for what it records.
+  const catchUp = task.generatedKind === 'reachOut' && kind === 'text';
   const meta = deliverableMeta(kind);
   // The step this answer is about to schedule, if it's one of those. Named
   // outright rather than left to be discovered when the next step turns up on
@@ -271,7 +275,7 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
         {/* Scrolls once Why is open: the card is capped above the keyboard
             (see CardSheet), and three fields can outgrow that. */}
         <ScrollView style={styles.body} keyboardShouldPersistTaps="handled" bounces={false}>
-        <Text style={styles.label}>Answer</Text>
+        <Text style={styles.label}>{catchUp ? CATCH_UP_PROMPT.label : 'Answer'}</Text>
 
         {options.length > 0 ? (
           <View style={styles.options}>
@@ -351,7 +355,7 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
               style={styles.input}
               value={draft}
               onChangeText={setDraft}
-              placeholder={kind === 'number' ? 'A number' : 'Your answer'}
+              placeholder={kind === 'number' ? 'A number' : catchUp ? CATCH_UP_PROMPT.placeholder : 'Your answer'}
               placeholderTextColor={colors.textTertiary}
               keyboardType={kind === 'number' ? 'decimal-pad' : 'default'}
               maxLength={kind === 'text' ? DELIVERABLE_TEXT_MAX_LENGTH : undefined}
@@ -361,6 +365,7 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
             />
           </View>
         )}
+        {catchUp && <HelpText style={styles.catchUpHelp}>{CATCH_UP_PROMPT.help}</HelpText>}
 
         {reasoningOpen ? (
           <>
@@ -454,7 +459,7 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
             accessibilityRole="button"
           >
             <Text style={styles.skipText}>
-              {mode === 'edit' ? 'Clear the answer' : 'Complete without an answer'}
+              {mode === 'edit' ? 'Clear the answer' : catchUp ? CATCH_UP_PROMPT.skip : 'Complete without an answer'}
             </Text>
           </TouchableOpacity>
         )}
@@ -531,6 +536,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   pills: {
     flexDirection: 'row',
     gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+  },
+  catchUpHelp: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
   },

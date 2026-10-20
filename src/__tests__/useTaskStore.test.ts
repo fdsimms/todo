@@ -38,6 +38,8 @@ import { useSavedMealsStore } from '../store/useSavedMealsStore';
 import { useUnattendedStore } from '../store/useUnattendedStore';
 import { useHealthStore } from '../store/useHealthStore';
 import { usePersonStore } from '../store/usePersonStore';
+import { usePersonGroupStore } from '../store/usePersonGroupStore';
+import { personHistory } from '../utils/personHistory';
 import { normalizeTemplateItem } from '../utils/templateUtils';
 import {
   initDatabase,
@@ -5589,6 +5591,79 @@ describe('checkReachOutTasks', () => {
 
     expect(usePersonStore.getState().people[0].reachOutDeclinedAt).toBeNull();
     expect(useTaskStore.getState().tasks.find(t => t.id === taskId)).toBeDefined();
+  });
+
+  // "What did you do?" is the log. The row names nobody until it is answered,
+  // so a bare tick can't reset the clock that wrote it.
+  describe('logging what you did', () => {
+    const generated = () => {
+      useTaskStore.getState().checkReachOutTasks();
+      return reachOutTasks()[0];
+    };
+    const row = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id)!;
+    const historyOf = (personId: string) =>
+      personHistory(useTaskStore.getState().tasks.filter(t => t.personIds.includes(personId)));
+
+    it('asks a typed question and names nobody up front', () => {
+      const task = generated();
+      expect(task.deliverableKind).toBe('text');
+      expect(task.personIds).toEqual([]);
+    });
+
+    it('joins the person\u2019s history, with its note, once answered', () => {
+      const task = generated();
+      useTaskStore.getState().completeTask(task.id, { deliverableValue: 'Called, talked about the move' });
+
+      expect(row(task.id).personIds).toEqual(['p1']);
+      const [entry] = historyOf('p1');
+      expect(entry.taskId).toBe(task.id);
+      expect(entry.note).toBe('Called, talked about the move');
+    });
+
+    it('claims nothing when ticked without an answer', () => {
+      const task = generated();
+      useTaskStore.getState().completeTask(task.id, { deliverableValue: null });
+
+      expect(row(task.id).personIds).toEqual([]);
+      expect(historyOf('p1')).toEqual([]);
+    });
+
+    it('leaves the history again on undo', () => {
+      const task = generated();
+      useTaskStore.getState().completeTask(task.id, { deliverableValue: 'Coffee' });
+      useTaskStore.getState().lastAction!.undo();
+
+      expect(row(task.id).completed).toBe(false);
+      expect(row(task.id).personIds).toEqual([]);
+    });
+
+    it('follows a corrected answer, and clearing it takes the entry back out', () => {
+      const task = generated();
+      useTaskStore.getState().completeTask(task.id, { deliverableValue: 'Coffee' });
+
+      useTaskStore.getState().setDeliverableValue(task.id, 'Lunch');
+      expect(historyOf('p1')[0].note).toBe('Lunch');
+
+      useTaskStore.getState().setDeliverableValue(task.id, null);
+      expect(row(task.id).personIds).toEqual([]);
+      expect(historyOf('p1')).toEqual([]);
+    });
+
+    it('names every member when the nudge was for a group', () => {
+      usePersonGroupStore.setState({
+        groups: [{ id: 'g1', name: 'The Ortegas', catchUpSeparately: false }] as never,
+        initialized: true,
+      });
+      usePersonStore.setState({
+        people: [duePerson({ id: 'p1', groupId: 'g1' }), duePerson({ id: 'p2', name: 'Jamie', groupId: 'g1' })],
+        initialized: true,
+      });
+      const task = generated();
+      useTaskStore.getState().completeTask(task.id, { deliverableValue: 'Dinner' });
+
+      expect(row(task.id).personIds.sort()).toEqual(['p1', 'p2']);
+      usePersonGroupStore.setState({ groups: [] });
+    });
   });
 });
 

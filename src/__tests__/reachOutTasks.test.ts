@@ -17,6 +17,7 @@ import {
   wantedReachOuts,
   collapseGroupedReachOuts,
   reachOutHistoryIds,
+  reachOutNamedPeopleIds,
   sharedReachOutGroupId,
   MIN_CADENCE_SAMPLES,
   REACH_OUT_DECLINE_DAYS,
@@ -52,6 +53,7 @@ const entriesEvery = (gapDays: number, count: number): HistoryEntry[] =>
     title: 'Coffee',
     at: daysAgo(i * gapDays).toISOString(),
     alsoPersonIds: ['p1'],
+    note: null,
   }));
 
 describe('the title', () => {
@@ -267,14 +269,14 @@ describe('the cadence the app can offer', () => {
     const steady = entriesEvery(14, 5);
     const withGap: HistoryEntry[] = [
       ...steady,
-      { taskId: 'old', title: 'Coffee', at: daysAgo(400).toISOString(), alsoPersonIds: ['p1'] },
+      { taskId: 'old', title: 'Coffee', at: daysAgo(400).toISOString(), alsoPersonIds: ['p1'], note: null },
     ];
     expect(observedCadenceDays(withGap)).toBe(14);
   });
 
   it('never suggests less than a day', () => {
     const sameDay = Array.from({ length: 6 }, (_, i) => ({
-      taskId: `t${i}`, title: 'Chat', at: daysAgo(0).toISOString(), alsoPersonIds: ['p1'],
+      taskId: `t${i}`, title: 'Chat', at: daysAgo(0).toISOString(), alsoPersonIds: ['p1'], note: null,
     }));
     expect(observedCadenceDays(sameDay)).toBe(1);
   });
@@ -432,5 +434,24 @@ describe('the day-reset grace window', () => {
     settingsState.dayResetTime = '02:00';
     const task = genTask({ completed: true, completedAt: new Date(2026, 2, 13, 1, 30).toISOString() });
     expect(reachOutsHandledRecently([task], new Date(2026, 2, 19, 2, 0), 7).size).toBe(0);
+  });
+});
+
+describe('who a catch-up answer is logged against', () => {
+  const people = [
+    { id: 'p1', groupId: 'g1' },
+    { id: 'p2', groupId: 'g1' },
+    { id: 'p3', groupId: null },
+  ];
+  const groups = [{ id: 'g1' }];
+
+  it('names the person for a solo nudge', () => {
+    expect(reachOutNamedPeopleIds('p3', people, groups)).toEqual(['p3']);
+  });
+  it('names every member for a folded group', () => {
+    expect(reachOutNamedPeopleIds('g1', people, groups)).toEqual(['p1', 'p2']);
+  });
+  it('names nobody once the source is gone', () => {
+    expect(reachOutNamedPeopleIds('deleted', people, groups)).toEqual([]);
   });
 });
