@@ -2675,6 +2675,22 @@ const TaskItemRow = React.memo(function TaskItem({
     await handleRotationPick(itemId);
   };
 
+  // A member that names a workout starts it from its pill. Same guards as the
+  // pill's other tap; finishing the session is what logs the member.
+  const handleRotationWorkout = async (itemId: string) => {
+    if (completingRef.current || pacingOutRef.current) return;
+    if (completionLocked) {
+      await haptics.error();
+      return;
+    }
+    const member = task.rotationItems.find(i => i.id === itemId);
+    if (!member) return;
+    if (isNew) markTaskSeen(task.id);
+    startWorkout(member.workoutProgramId
+      ? { programId: member.workoutProgramId, taskId: task.id, perWorkout: true }
+      : { routineId: member.workoutRoutineId, taskId: task.id, perWorkout: true });
+  };
+
   const handleRotationPick = async (itemId: string) => {
     setShowRotationPick(false);
     if (completingRef.current || pacingOutRef.current) return;
@@ -4094,6 +4110,7 @@ const TaskItemRow = React.memo(function TaskItem({
           <RotationPills
             task={task}
             onPick={handleRotationPillTap}
+            onStartWorkout={handleRotationWorkout}
             disabled={selectionMode || completing}
             onRaised={trayRaised}
           />

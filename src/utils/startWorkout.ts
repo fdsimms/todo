@@ -15,6 +15,12 @@ export interface StartWorkoutInput {
   programId?: string | null;
   /** The task occurrence it is for, which finishing completes. */
   taskId?: string | null;
+  /**
+   * The task names several workouts (a rotation's members), so the task alone
+   * doesn't say it is this one running: a live session must match the routine
+   * or program too to be opened rather than refused.
+   */
+  perWorkout?: boolean;
 }
 
 /** What a start did, for a caller that wants to know. */
@@ -42,6 +48,8 @@ export function startWorkout(input: StartWorkoutInput = {}): StartWorkoutResult 
   if (live) {
     const same = input.taskId
       ? live.taskId === input.taskId
+        && (!input.perWorkout
+          || (input.routineId ? live.routineId === input.routineId : input.programId ? live.programId === input.programId : true))
       : input.programId
         ? live.programId === input.programId
         : !!input.routineId && live.routineId === input.routineId;

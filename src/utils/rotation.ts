@@ -93,12 +93,47 @@ export function withPerWeek(item: RotationItem, perWeek: number): RotationItem {
   return n > 1 ? { ...rest, perWeek: n } : rest;
 }
 
+/** The member with its workout set (a routine or a program, or neither); picking one clears the other. */
+export function withWorkout(
+  item: RotationItem,
+  link: { routineId?: string | null; programId?: string | null },
+): RotationItem {
+  const { workoutRoutineId: _r, workoutProgramId: _p, ...rest } = item;
+  if (link.routineId) return { ...rest, workoutRoutineId: link.routineId };
+  if (link.programId) return { ...rest, workoutProgramId: link.programId };
+  return rest;
+}
+
+/**
+ * The member a finished workout counts for: the one linked to the routine it
+ * ran, else to the program it belongs to. Derived from the session rather than
+ * stored on it, so a member linked after the fact still answers for old
+ * sessions. When several members name the same workout, one still short of its
+ * count is preferred, so two "Cardio" days a week fill in turn.
+ */
+export function rotationMemberForWorkout(
+  members: readonly RotationMember[],
+  session: { routineId?: string | null; programId?: string | null },
+): RotationItem | null {
+  const byRoutine = members.filter(m => !!session.routineId && m.item.workoutRoutineId === session.routineId);
+  const pool = byRoutine.length > 0
+    ? byRoutine
+    : members.filter(m => !!session.programId && m.item.workoutProgramId === session.programId);
+  return (pool.find(m => m.doneAt === null) ?? pool[0])?.item ?? null;
+}
+
 /**
  * A member as the MCP tools accept it: a bare title, or a title with how many
  * times a week. A bare title means "unspecified", so an edit that re-sends names
  * keeps the counts already stored instead of resetting them to once.
  */
-export type RotationMemberInput = string | { title: string; timesPerWeek?: number };
+export type RotationMemberInput = string | {
+  title: string;
+  timesPerWeek?: number;
+  /** A routine or program the member starts; null clears one, and a routine wins a stated pair. Left out keeps what is stored. */
+  workoutRoutineId?: string | null;
+  workoutProgramId?: string | null;
+};
 
 export function rotationMemberTitle(m: RotationMemberInput): string {
   return (typeof m === 'string' ? m : m?.title ?? '').trim();
@@ -116,8 +151,10 @@ export function rotationItemFromInput(
 ): RotationItem {
   const title = rotationMemberTitle(m);
   const base: RotationItem = kept ? { ...kept, title } : { id: newId(), title, linkUrl: null };
-  const times = typeof m === 'string' ? undefined : m.timesPerWeek;
-  return times === undefined ? base : withPerWeek(base, times);
+  if (typeof m === 'string') return base;
+  const counted = m.timesPerWeek === undefined ? base : withPerWeek(base, m.timesPerWeek);
+  if (m.workoutRoutineId === undefined && m.workoutProgramId === undefined) return counted;
+  return withWorkout(counted, { routineId: m.workoutRoutineId, programId: m.workoutProgramId });
 }
 
 /** The inverse, for showing a stored member to an agent: a bare title unless it has a count. */
@@ -189,6 +226,13 @@ export function parseRotationItems(raw: unknown): RotationItem[] {
       ...(typeof c.perWeek === 'number' && rotationPerWeek({ perWeek: c.perWeek }) > 1
         ? { perWeek: rotationPerWeek({ perWeek: c.perWeek }) }
         : {}),
+      // A member names a routine or a program, never both; the routine wins a
+      // stored pair. Absent when unset, like `perWeek`.
+      ...(typeof c.workoutRoutineId === 'string' && c.workoutRoutineId
+        ? { workoutRoutineId: c.workoutRoutineId as string }
+        : typeof c.workoutProgramId === 'string' && c.workoutProgramId
+          ? { workoutProgramId: c.workoutProgramId as string }
+          : {}),
     }));
 }
 
@@ -296,6 +340,8 @@ export interface RotationPill {
   done: boolean;
   /** "1/3" for a member done more than once a week, null for one done once. */
   progress: string | null;
+  /** It names a workout, so its pill starts that rather than logging a pick. */
+  hasWorkout: boolean;
 }
 
 /**
@@ -317,6 +363,7 @@ export function rotationPills(
     title: m.item.title,
     done: m.doneAt !== null,
     progress: m.perWeek > 1 ? `${Math.min(m.count, m.perWeek)}/${m.perWeek}` : null,
+    hasWorkout: !!(m.item.workoutRoutineId || m.item.workoutProgramId),
   }));
 }
 

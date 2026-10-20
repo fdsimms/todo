@@ -3494,6 +3494,15 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         errors.push(`workoutProgramId: no program with id ${programId}. list_workouts lists the programs, and save_program makes one.`);
       }
     }
+    for (const member of patch.rotationItems ?? []) {
+      const { workoutRoutineId: routineId, workoutProgramId: programId } = member;
+      if (routineId && !db.dbGetAllWorkoutRoutines().some(r => r.id === routineId)) {
+        errors.push(`rotation member "${member.title}": no routine with id ${routineId}. list_workouts lists the routines, and save_routine makes one.`);
+      }
+      if (programId && !db.dbGetAllWorkoutPrograms().some(p => p.id === programId)) {
+        errors.push(`rotation member "${member.title}": no program with id ${programId}. list_workouts lists the programs, and save_program makes one.`);
+      }
+    }
     if (patch.personIds !== undefined) {
       const known = new Set(people().map(p => p.id));
       const missing = patch.personIds.filter(id => !known.has(id));

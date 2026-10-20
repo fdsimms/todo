@@ -335,6 +335,7 @@ Where each component can appear.
 - `src/components/RotationPickSheet.tsx` — on CalendarScreen, CategoryDetailScreen, ProjectDetailScreen, ProjectsScreen, SavedViewDetailScreen, StackDetailScreen, TagsScreen, TodayScreen
 - `src/components/RotationPills.tsx` — on CalendarScreen, CategoryDetailScreen, ProjectDetailScreen, ProjectsScreen, SavedViewDetailScreen, StackDetailScreen, TagsScreen, TodayScreen
 - `src/components/RotationWeekSheet.tsx` — on LogbookScreen
+- `src/components/RotationWorkoutSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SavedViewDetailScreen, SearchScreen, +5 more
 - `src/components/RoutineEditorSheet.tsx` — on WorkoutsScreen
 - `src/components/RoutineSetTable.tsx` — on WorkoutsScreen
 - `src/components/RoutineSwipeRow.tsx` — on WorkoutsScreen

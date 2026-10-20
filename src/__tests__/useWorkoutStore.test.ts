@@ -58,9 +58,10 @@ jest.mock('expo-sqlite', () => {
 // complete the right task.
 const mockCompleteTask = jest.fn();
 const mockLogQuotaUnit = jest.fn();
+const mockLogRotationUnit = jest.fn();
 let mockTasks: Task[] = [];
 jest.mock('../store/useTaskStore', () => ({
-  useTaskStore: { getState: () => ({ tasks: mockTasks, completeTask: mockCompleteTask, logQuotaUnit: mockLogQuotaUnit }) },
+  useTaskStore: { getState: () => ({ tasks: mockTasks, completeTask: mockCompleteTask, logQuotaUnit: mockLogQuotaUnit, logRotationUnit: mockLogRotationUnit }) },
 }));
 // The Health writer's two native calls and its switch, as fakes: what is
 // under test here is what the store does with each answer. The pure rules
@@ -632,6 +633,24 @@ describe('a session from a routine', () => {
     ok(state().finishSession(s.id));
     expect(mockLogQuotaUnit).toHaveBeenCalledWith('t3');
     expect(mockCompleteTask).not.toHaveBeenCalled();
+  });
+
+  it('logs the rotation member whose routine it ran, and leaves a rotation with no such member alone', () => {
+    const r = ok(state().addRoutine('Cardio A', items));
+    const members = [
+      { id: 'cardio', title: 'Cardio', linkUrl: null, workoutRoutineId: r.id },
+      { id: 'rest', title: 'Rest day', linkUrl: null },
+    ];
+    mockTasks = [task('rot', { rotationEnabled: true, rotationItems: members, recurrenceType: 'weekly', recurrenceInterval: 1 })];
+    const s = ok(state().startSession({ routineId: r.id, taskId: 'rot' }));
+    ok(state().finishSession(s.id));
+    expect(mockLogRotationUnit).toHaveBeenCalledWith('rot', 'cardio');
+    expect(mockCompleteTask).not.toHaveBeenCalled();
+    mockLogRotationUnit.mockClear();
+    mockTasks = [task('rot2', { rotationEnabled: true, rotationItems: members.slice(1).concat({ id: 'x', title: 'X', linkUrl: null }), recurrenceType: 'weekly', recurrenceInterval: 1 })];
+    const other = ok(state().startSession({ routineId: r.id, taskId: 'rot2' }));
+    ok(state().finishSession(other.id));
+    expect(mockLogRotationUnit).not.toHaveBeenCalled();
   });
 
   it('leaves the task alone when asked to, for a task that asks a question first', () => {

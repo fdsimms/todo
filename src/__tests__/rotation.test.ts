@@ -24,6 +24,9 @@ import {
   rotationItemsFrom,
   rotationCoveredOf,
   withPerWeek,
+  withWorkout,
+  rotationItemFromInput,
+  rotationMemberForWorkout,
   parseRotationPlan,
   plannedRotationItem,
   rotationPlanFor,
@@ -516,5 +519,48 @@ describe('rotationPills', () => {
   it('starts clean when the ledger belongs to an earlier week', () => {
     const lastWeek = workouts(['run', 'run', 'run', 'bike'], WED);
     expect(rotationPills(lastWeek, NEXT_MON, 1).every(p => !p.done)).toBe(true);
+  });
+});
+
+describe('workout links on a member', () => {
+  it('keeps a routine or a program through the parser, the routine winning a stored pair', () => {
+    expect(parseRotationItems([
+      { id: 'a', title: 'A', workoutRoutineId: 'r1', workoutProgramId: 'p1' },
+      { id: 'b', title: 'B', workoutProgramId: 'p1' },
+      { id: 'c', title: 'C', workoutRoutineId: '' },
+    ])).toEqual([
+      { id: 'a', title: 'A', linkUrl: null, workoutRoutineId: 'r1' },
+      { id: 'b', title: 'B', linkUrl: null, workoutProgramId: 'p1' },
+      { id: 'c', title: 'C', linkUrl: null },
+    ]);
+  });
+
+  it('setting one clears the other, and none clears both', () => {
+    const base = { id: 'a', title: 'A', linkUrl: null, workoutRoutineId: 'r1' };
+    expect(withWorkout(base, { programId: 'p1' })).toEqual({ id: 'a', title: 'A', linkUrl: null, workoutProgramId: 'p1' });
+    expect(withWorkout(base, {})).toEqual({ id: 'a', title: 'A', linkUrl: null });
+  });
+
+  it('a bare title keeps the stored link; a stated null removes it', () => {
+    const kept = { id: 'a', title: 'A', linkUrl: null, workoutRoutineId: 'r1' };
+    expect(rotationItemFromInput('A', kept, () => 'n').workoutRoutineId).toBe('r1');
+    expect(rotationItemFromInput({ title: 'A', workoutRoutineId: null }, kept, () => 'n').workoutRoutineId).toBeUndefined();
+    expect(rotationItemFromInput({ title: 'B', workoutProgramId: 'p9' }, undefined, () => 'n')).toMatchObject({ id: 'n', workoutProgramId: 'p9' });
+  });
+
+  it('matches a finished workout to its member by routine, else by program, preferring one still short', () => {
+    const task = {
+      ...loggedThisWeek([{ itemId: 'c1', at: '2026-09-15T10:00:00.000Z' }], WED),
+      rotationItems: [
+        { id: 'c1', title: 'Cardio', linkUrl: null, workoutRoutineId: 'cardio' },
+        { id: 'c2', title: 'Cardio 2', linkUrl: null, workoutRoutineId: 'cardio' },
+        { id: 'lift', title: 'Lift', linkUrl: null, workoutProgramId: 'ppl' },
+      ],
+    };
+    const members = rotationMembers(task, WED, 1);
+    expect(rotationMemberForWorkout(members, { routineId: 'cardio' })?.id).toBe('c2');
+    expect(rotationMemberForWorkout(members, { routineId: 'push', programId: 'ppl' })?.id).toBe('lift');
+    expect(rotationMemberForWorkout(members, { routineId: 'yoga' })).toBeNull();
+    expect(rotationPills(task, WED, 1).map(p => p.hasWorkout)).toEqual([true, true, true]);
   });
 });

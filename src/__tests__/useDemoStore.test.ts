@@ -1256,6 +1256,17 @@ describe('demo mode', () => {
     expect(plannedRotationItem(workouts, getCurrentDayStart())?.title).toBe('Peloton ride');
   });
 
+  // A rotation member can stand for a workout, and only the seed shows it.
+  it('seeds a rotation whose members start a program and a routine', () => {
+    useDemoStore.getState().enterDemoMode();
+    const { tasks } = useTaskStore.getState();
+    const exercise = tasks.find(t => t.rotationEnabled && t.title === 'Exercise routine')!;
+    expect(exercise).toBeDefined();
+    expect(exercise.rotationItems.some(r => !!r.workoutProgramId)).toBe(true);
+    expect(exercise.rotationItems.some(r => !!r.workoutRoutineId)).toBe(true);
+    expect(exercise.targetCount).toBe(rotationTargetTotal(exercise.rotationItems));
+  });
+
   // A timed task can hand its countdown out to its subtasks, and one that
   // hasn't reads exactly like every timed task did before that was possible.
   it('seeds a timed task with its countdown split across its subtasks', () => {

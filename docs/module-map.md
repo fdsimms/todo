@@ -423,7 +423,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/rewards.ts` — COINS_BY_EFFORT, STREAK_BONUS_EVERY, STREAK_BONUS_CAP, MAX_REWARD_COST, DIFFICULTY_MULTIPLIER, DIFFICULTY_SEGMENTS, DIFFICULTY_PICKER_SEGMENTS, DIFFICULTY_HINT, CoinSource, baseCoinsFor, +59 more
 - `src/utils/rhythms.ts` — SegmentBoundaries, DEFAULT_BOUNDARIES, RhythmOptions, MIN_SAMPLES, segmentOf, HourRange, RhythmProfile, buildRhythmProfile, formatHour, formatHourRange, +3 more
 - `src/utils/rhythmsSettings.ts` — rhythmOptionsFromSettings
-- `src/utils/rotation.ts` — RotationMember, RotationCarrier, MAX_ROTATION_PER_WEEK, rotationPerWeek, withPerWeek, RotationMemberInput, rotationMemberTitle, rotationItemFromInput, rotationMemberToInput, rotationItemsFrom, +27 more
+- `src/utils/rotation.ts` — RotationMember, RotationCarrier, MAX_ROTATION_PER_WEEK, rotationPerWeek, withPerWeek, withWorkout, rotationMemberForWorkout, RotationMemberInput, rotationMemberTitle, rotationItemFromInput, +29 more
 - `src/utils/routineGroups.ts` — RoutineGroup, RoutineSections, groupNames, resolveGroupName, routineSections, renamedRegistry, FlatRoutineRow, placementsFromList
 - `src/utils/routineUpdate.ts` — RoutineChange, RepRange, RoutineDiffInput, routineChanges, applyRoutineChanges, describeRoutineChange
 - `src/utils/rsvp.ts` — parseGuestNames
@@ -602,7 +602,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/workoutRoutine.ts` — RoutineItemShape, itemShape, MAX_ROUTINE_SETS, MAX_WARMUP_SETS, defaultTargets, newRoutineItem, withWarmups, WarmupMode, warmupMode, DEFAULT_WARMUP_SETS, +32 more
 - `src/utils/workoutSession.ts` — SessionExercise, sessionExercises, supersetGroup, roundRobin, walkOrder, movedExerciseOrder, nextSet, currentSetOf, AfterLog, afterLog, +23 more
 - `src/utils/workoutSiri.ts` — WorkoutRoutineIndexEntry, MAX_ROUTINE_INDEX_ENTRIES, buildRoutineIndex, QueuedWorkoutStart, parseQueuedWorkoutStarts, newestWorkoutStart, WorkoutStartPlan, QUEUED_START_MAX_AGE_MS, resolveQueuedWorkoutStart, myWorkoutStart
-- `src/utils/workoutTask.ts` — WorkoutTaskEffect, workoutTaskEffect, linkedTaskLine
+- `src/utils/workoutTask.ts` — WorkoutTaskEffect, rotationPickFor, workoutTaskEffect, linkedTaskLine
 - `src/utils/workoutTick.ts` — TickRest, TickOutcome, restLabelFor, tickOutcome, TickValues, tickSet
 
 ## `src/store`

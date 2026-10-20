@@ -50,6 +50,8 @@ import { ChainStepMedicationSheet } from './ChainStepMedicationSheet';
 import { StepMedication } from './StepMedication';
 import { StepLink } from './StepLink';
 import { ChainStepLinkSheet } from './ChainStepLinkSheet';
+import { disclosureValue } from '../theme/textStyles';
+import { RotationWorkoutSheet } from './RotationWorkoutSheet';
 import { format } from 'date-fns/format';
 import { addMonths } from 'date-fns/addMonths';
 import { addDays } from 'date-fns/addDays';
@@ -148,7 +150,7 @@ import { EditorRow } from './EditorRow';
 import { EditorGroup } from './EditorGroup';
 import { editorSearchTerms, matchesEditorQuery } from '../utils/editorSearch';
 import { CountStepper } from './CountStepper';
-import { MAX_ROTATION_PER_WEEK, rotationItemsFrom, rotationPerWeek, rotationTargetTotal, withPerWeek } from '../utils/rotation';
+import { MAX_ROTATION_PER_WEEK, rotationItemsFrom, rotationPerWeek, rotationTargetTotal, withPerWeek, withWorkout } from '../utils/rotation';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { TitleTokenAccessory, QUICK_ADD_TITLE_TOKENS } from './TitleTokenAccessory';
 import { tokenChipsFor, applyTokenChip, type TokenChip } from '../utils/titleTokenChips';
@@ -998,6 +1000,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
   const [newChainItemTitle, setNewChainItemTitle] = useState('');
   const [addingChainItem, setAddingChainItem] = useState(false);
   const [newRotationItemTitle, setNewRotationItemTitle] = useState('');
+  // The member whose workout the sheet is choosing (`RotationItem.workoutRoutineId`).
+  const [workoutMemberId, setWorkoutMemberId] = useState<string | null>(null);
   const [addingRotationItem, setAddingRotationItem] = useState(false);
   const [editingChainItemId, setEditingChainItemId] = useState<string | null>(null);
   const [chainItemTitleEdit, setChainItemTitleEdit] = useState('');
@@ -4135,6 +4139,16 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
               onClose={() => setLinkMemberId(null)}
             />
           </LazySheet>
+          <LazySheet open={workoutMemberId !== null}>
+            <RotationWorkoutSheet
+              visible={workoutMemberId !== null}
+              member={rotationItems.find(r => r.id === workoutMemberId) ?? null}
+              onSave={link => setRotationItems(prev => prev.map(
+                r => (r.id === workoutMemberId ? withWorkout(r, link) : r),
+              ))}
+              onClose={() => setWorkoutMemberId(null)}
+            />
+          </LazySheet>
           <LazySheet open={showFollowUpTaskSheet}>
             <FollowUpTaskSheet
               visible={showFollowUpTaskSheet}
@@ -5319,6 +5333,23 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
                             r => (r.id === item.id ? withPerWeek(r, n ?? 1) : r)))}
                         />
                       </View>
+                      {(workoutsEnabled || item.workoutRoutineId || item.workoutProgramId) && (
+                        <TouchableOpacity
+                          style={styles.rotationCountRow}
+                          onPress={() => setWorkoutMemberId(item.id)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Workout for ${item.title || 'this item'}`}
+                        >
+                          <Text style={styles.rotationCountLabel}>Workout</Text>
+                          <Text style={styles.rotationWorkoutValue} numberOfLines={1}>
+                            {item.workoutProgramId
+                              ? workoutPrograms.find(p => p.id === item.workoutProgramId)?.name ?? 'A deleted program'
+                              : item.workoutRoutineId
+                                ? workoutRoutines.find(r => r.id === item.workoutRoutineId)?.name ?? 'A deleted routine'
+                                : 'None'}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
                       </View>
                       )}
                     />
@@ -9249,6 +9280,7 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     paddingBottom: spacing.xsm,
   },
   rotationCountLabel: { color: colors.textSecondary, fontSize: font.xs },
+  rotationWorkoutValue: { ...disclosureValue(colors), flexShrink: 1, fontSize: font.xs },
   rotationItemRow: {
     flexDirection: 'row',
     alignItems: 'center',

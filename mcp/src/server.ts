@@ -131,7 +131,12 @@ const COOKWARE_TYPE = z.enum(['Pots', 'Pans', 'Baking', 'Bowls', 'Plates', 'Glas
 // A rotation member: a name, or a name with how many times a week.
 const rotationMemberSchema = z.union([
   z.string().min(1),
-  z.object({ title: z.string().min(1), timesPerWeek: z.number().int().min(1).max(7).optional() }),
+  z.object({
+    title: z.string().min(1),
+    timesPerWeek: z.number().int().min(1).max(7).optional(),
+    workoutRoutineId: z.string().nullable().optional().describe('A routine from list_workouts this member starts from its pill; finishing it logs the member. null removes the link.'),
+    workoutProgramId: z.string().nullable().optional().describe('A program whose next routine this member starts. A member names a routine or a program, not both. null removes the link.'),
+  }),
 ]);
 const dayKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD.');
 
@@ -1463,7 +1468,7 @@ const taskFieldsShape = {
   }).nullable().optional()
     .describe('A countdown the task runs once it is started, e.g. "stretch for 15 minutes". Also sets the estimate and effort from the countdown unless you name them. Not for a subtask. null removes it.'),
   rotation: z.object({
-    members: z.array(rotationMemberSchema).describe('At least two different members, in the order to show them. A member is a name, or { title, timesPerWeek } for one done more than once a week (1 to 7). A bare name keeps the count it already has.'),
+    members: z.array(rotationMemberSchema).describe('At least two different members, in the order to show them. A member is a name, or { title, timesPerWeek, workoutRoutineId or workoutProgramId } for one done more than once a week (1 to 7) or one that is a workout (the pill starts it, and finishing it logs the member). A bare name keeps the count and workout it already has.'),
   }).nullable().optional()
     .describe('A set of things done each week, in any order ("a podcast in each of my five languages", or "three runs and one bike ride"). Each member is done once a week unless it says timesPerWeek. The weekly target is the sum of the counts. A task with no repeat becomes weekly. Re-sending a member\'s name keeps its history. null removes it.'),
   healthTarget: z.object({

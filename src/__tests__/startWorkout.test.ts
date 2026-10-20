@@ -80,6 +80,9 @@ describe('startWorkout', () => {
     expect(mockStartSession).not.toHaveBeenCalled();
     mockLive = { id: 'w1', title: 'Push A', routineId: 'r1', taskId: 't1', programId: null };
     expect(startWorkout({ routineId: 'r2', taskId: 't1' })).toBe('opened');
+    // A rotation's members share one task, so there the routine has to match too.
+    expect(startWorkout({ routineId: 'r2', taskId: 't1', perWorkout: true })).toBe('asked');
+    expect(startWorkout({ routineId: 'r1', taskId: 't1', perWorkout: true })).toBe('opened');
   });
 
   it('says a different workout is going rather than replacing it, and offers to open it', () => {
