@@ -373,6 +373,12 @@ interface Props {
 // its own stretch, running the full height so the rows join up, and the last
 // one stops at its branch. It sits in the row's left padding, so nothing
 // positions outside the row's box (SortableList clips what does).
+/** Where a reschedule put a task, for the undo bar: "tomorrow", "Thursday", "Oct 22". */
+function movedDayLabel(date: Date): string {
+  const day = formatScheduledDate(date.toISOString());
+  return day === 'Today' || day === 'Tomorrow' ? day.toLowerCase() : day;
+}
+
 function SubtaskRail({ last, color }: { last: boolean; color: string }) {
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
@@ -5406,7 +5412,10 @@ const TaskItemRow = React.memo(function TaskItem({
               { markSeenOnBecomeVisible: true, ...(segmentScope === 'occurrence' ? { scope: 'occurrence' as const } : {}) },
             );
             setLastAction({
-              label: 'Task rescheduled',
+              label: date ? `Moved “${task.title}” to ${movedDayLabel(date)}` : 'Task rescheduled',
+              // On the bar, not only the shake: the row usually leaves the list
+              // it was on, so the bar is the one place left to take it back.
+              announce: true,
               undo: () => updateTask(snapshot.id, snapshot),
               redo: redoRestoringRows([task.id]),
             });
@@ -5423,7 +5432,8 @@ const TaskItemRow = React.memo(function TaskItem({
               ...(task.pinned ? { pinned: false } : {}),
             });
             setLastAction({
-              label: 'Task rescheduled',
+              label: `Took the date off “${task.title}”`,
+              announce: true,
               undo: () => updateTask(snapshot.id, snapshot),
               redo: redoRestoringRows([task.id]),
             });

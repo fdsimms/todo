@@ -59,15 +59,17 @@ export interface UndoableAction {
   /**
    * Marks an action irreversible-feeling enough to warrant the transient
    * UndoBar (src/components/UndoBar.tsx), not just the shake gesture — a
-   * delete or a clear, not an add or a reschedule. See UndoBar's own doc
+   * delete or a clear, not an add. (A reschedule is on the bar too, through
+   * `announce` below, without the warning haptic.) See UndoBar's own doc
    * comment for the full rule; this flag is the only thing it reads.
    */
   destructive?: boolean;
   /**
    * Raises the UndoBar without the warning haptic `destructive` carries: for a
    * routine action that wrote something into a log the person didn't type
-   * (a task's tick recording a dose or a meal), where the bar is how they see
-   * it happened and take it back.
+   * (a task's tick recording a dose or a meal), or that moved a task out of
+   * sight (a reschedule), where the bar is how they see it happened and take
+   * it back.
    */
   announce?: boolean;
 }

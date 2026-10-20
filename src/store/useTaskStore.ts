@@ -5862,6 +5862,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().updateTask(id, { deferUntil: until.toISOString() });
     get().setLastAction({
       label: 'Task rescheduled',
+      // On the bar as well as the shake: a reschedule moves the task out of
+      // sight, and the bar is how a mis-tapped day gets taken back.
+      announce: true,
       redo: () => get().deferTask(id, until),
       undo: () => get().updateTask(snapshot.id, snapshot),
     });
@@ -10821,6 +10824,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (snapshots.length > 0) {
       get().setLastAction({
         label: snapshots.length === 1 ? 'Task rescheduled' : `${snapshots.length} tasks rescheduled`,
+        announce: true,
         redo: () => get().bulkDefer(ids, until),
         undo: () => snapshots.forEach(snapshot => get().updateTask(snapshot.id, snapshot)),
       });
@@ -10899,6 +10903,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (snapshots.length > 0) {
       get().setLastAction({
         label: snapshots.length === 1 ? 'Task rescheduled' : `${snapshots.length} tasks rescheduled`,
+        announce: true,
         redo: () => get().bulkSetWhen(ids, date, timeSegments, options),
         undo: () => snapshots.forEach(snapshot => get().updateTask(snapshot.id, snapshot)),
       });
