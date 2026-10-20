@@ -1,4 +1,4 @@
-import { bumpChipUses, chipUseKey, parseChipUses, rankByUse } from '../utils/chipUses';
+import { bumpChipUses, chipUseKey, parseChipUses, rankByUse, suggestExistingTags } from '../utils/chipUses';
 
 describe('chipUses', () => {
   it('folds case in a key', () => {
@@ -21,5 +21,33 @@ describe('chipUses', () => {
     expect(parseChipUses(null)).toEqual({});
     expect(parseChipUses('not json')).toEqual({});
     expect(parseChipUses('[1,2]')).toEqual({});
+  });
+  describe('suggestExistingTags', () => {
+    const all = ['errand', 'homework', 'phone', 'work', 'workout'];
+
+    it('leaves out tags already chosen, in any case', () => {
+      expect(suggestExistingTags(all, ['Work', 'phone'], '', {}, 10)).toEqual(['errand', 'homework', 'workout']);
+    });
+
+    it('offers the most used first with nothing typed, then caps', () => {
+      const uses = { 'tag:workout': 3, 'tag:phone': 1 };
+      expect(suggestExistingTags(all, [], '', uses, 3)).toEqual(['workout', 'phone', 'errand']);
+    });
+
+    it('narrows to what is typed, a starting match ahead of one inside the name', () => {
+      expect(suggestExistingTags(all, [], 'wo', {}, 10)).toEqual(['work', 'workout', 'homework']);
+    });
+
+    it('ranks by use within each kind of match', () => {
+      expect(suggestExistingTags(all, [], 'wo', { 'tag:workout': 2 }, 10)).toEqual(['workout', 'work', 'homework']);
+    });
+
+    it('ignores a leading # and surrounding space', () => {
+      expect(suggestExistingTags(all, [], ' #ERR ', {}, 10)).toEqual(['errand']);
+    });
+
+    it('offers nothing when nothing matches', () => {
+      expect(suggestExistingTags(all, [], 'zzz', {}, 10)).toEqual([]);
+    });
   });
 });

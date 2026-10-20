@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import type { MedicationLog } from '../types';
@@ -14,6 +14,7 @@ import { WhenPicker } from './WhenPicker';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { confirmDelete } from '../utils/confirmDelete';
 import { defaultUsualDose, prefsFor } from '../utils/medicationSettings';
 import { getLogicalToday } from '../utils/dateUtils';
 import { DOSE_UNITS, formatDose, medicationKey, medicationVocabulary } from '../utils/medicationLog';
@@ -251,10 +252,10 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
 
   const handleDelete = () => {
     if (!log) { onClose(); return; }
-    Alert.alert('Delete this dose?', undefined, [
-      { text: BUTTON_LABEL.cancel, style: 'cancel' },
-      { text: BUTTON_LABEL.delete, style: 'destructive', onPress: () => { unrecordDose(log); onDeleted?.(log); onClose(); } },
-    ]);
+    confirmDelete({
+      title: 'Delete this dose?',
+      onConfirm: () => { unrecordDose(log); onDeleted?.(log); onClose(); },
+    });
   };
 
   return (

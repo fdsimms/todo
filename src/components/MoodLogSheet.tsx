@@ -7,6 +7,7 @@ import type { LoggedSymptom, MoodLevel, MoodLog, SymptomSeverity } from '../type
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import {
   DEFAULT_CONTEXT_TAGS,
@@ -390,21 +391,14 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
     accessibilityLabel: level.label,
   }));
 
-  const confirmDelete = () => {
+  const requestDelete = () => {
     if (!editing) return;
     const id = editing.id;
-    Alert.alert(
-      'Delete this entry?',
-      'It will be removed from your history and from every number on the Mood screen.',
-      [
-        { text: BUTTON_LABEL.cancel, style: 'cancel' },
-        {
-          text: BUTTON_LABEL.delete,
-          style: 'destructive',
-          onPress: () => { haptics.warning(); removeLog(id); onClose(); },
-        },
-      ],
-    );
+    confirmDelete({
+      title: 'Delete this entry?',
+      message: 'It will be removed from your history and from every number on the Mood screen.',
+      onConfirm: () => { haptics.warning(); removeLog(id); onClose(); },
+    });
   };
 
   return (
@@ -543,7 +537,7 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
       {editing && (
         <TouchableOpacity
           style={[styles.card, styles.deleteRow]}
-          onPress={confirmDelete}
+          onPress={requestDelete}
           activeOpacity={interaction.activeOpacity}
           accessibilityRole="button"
           accessibilityLabel="Delete entry"

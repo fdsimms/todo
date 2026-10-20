@@ -118,6 +118,7 @@ import { aimTooltip } from '../utils/tooltipAim';
 import { formatTimeOfDay, getCurrentDayStart, getLogicalNow } from '../utils/dateUtils';
 import { animateLayout } from '../utils/layoutAnimation';
 import { haptics } from '../utils/haptics';
+import { alertFailedWithSettings } from '../utils/permissionAlert';
 import { RotatingChevron } from './RotatingChevron';
 import { isDemoModeActive } from '../utils/demoState';
 import { TITLE_MAX_LENGTH } from '../types';
@@ -935,7 +936,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     // which isn't a failure to explain.
     if (!saved && isDemoModeActive()) return;
     if (!saved) {
-      Alert.alert(
+      alertFailedWithSettings(
         "Couldn’t add the event",
         'Check that calendar access is on in Settings, then try again. The event is still here.'
       );
@@ -1013,7 +1014,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     setBusy(false);
     if (!id) {
       if (isDemoModeActive()) return;
-      Alert.alert(
+      alertFailedWithSettings(
         "Couldn’t save the event",
         'Check that calendar access is on in Settings, then try again. Your changes are still here.'
       );
@@ -1045,7 +1046,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
               title: original.title,
             });
             if (!deleted) {
-              Alert.alert("Couldn’t delete the event", 'Check that calendar access is on in Settings, then try again.');
+              alertFailedWithSettings("Couldn’t delete the event", 'Check that calendar access is on in Settings, then try again.');
               return;
             }
             onDeleted?.();

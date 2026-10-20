@@ -36,6 +36,7 @@ import {
   describeAIError, nutritionLabelPhotoAiAvailable, readLabelPhotoWithAi,
 } from '../services/aiSuggestions';
 import { haptics } from '../utils/haptics';
+import { alertPermissionOff } from '../utils/permissionAlert';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { InlineAction } from './InlineAction';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
@@ -236,7 +237,7 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
     if (!stillHere()) return;
     if (picked.status === 'canceled') return;
     if (picked.status === 'denied') {
-      Alert.alert(
+      alertPermissionOff(
         source === 'camera' ? 'Camera access is off' : 'Photo access is off',
         'Turn it on in Settings to read a label from a photo, or type the figures in.',
       );

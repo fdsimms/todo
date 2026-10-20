@@ -19,6 +19,7 @@ import {
   scheduleMedicationOkAgain,
 } from './notifications';
 import { BUTTON_LABEL } from '../copy/shared';
+import { alertPermissionOff } from './permissionAlert';
 
 /**
  * How long the refill offer waits after the dose that set it off. Most doses
@@ -69,7 +70,7 @@ export function syncOkAgainNotification(name: string, now: Date = new Date()): v
 export async function allowOkAgainNotification(): Promise<boolean> {
   const granted = await requestNotificationPermissions().catch(() => false);
   if (!granted) {
-    Alert.alert(
+    alertPermissionOff(
       'Notifications are off',
       'Turn on notifications for dundundun in Settings to be told when the next dose is within your limit.',
     );

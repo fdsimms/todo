@@ -14,3 +14,17 @@ export function alertPermissionOff(title: string, message: string): void {
     { text: 'Open Settings', onPress: () => { void Linking.openSettings(); } },
   ]);
 }
+
+/**
+ * A failure whose usual cause is an access the person turned off, with a way
+ * to check it. The message says which access; the button opens the app's page
+ * in the Settings app, the same trip `alertPermissionOff` makes, so the alert
+ * isn't a dead end that only describes where to go. "OK" rather than Cancel:
+ * nothing is being asked, the thing already failed.
+ */
+export function alertFailedWithSettings(title: string, message: string): void {
+  Alert.alert(title, message, [
+    { text: 'OK', style: 'cancel' },
+    { text: 'Open Settings', onPress: () => { void Linking.openSettings(); } },
+  ]);
+}

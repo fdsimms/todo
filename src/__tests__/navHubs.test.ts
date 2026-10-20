@@ -209,6 +209,12 @@ describe('finding a screen', () => {
   it('never offers a destination the menu itself is hiding', () => {
     const off = menuDestinations({ ...FULL, kitchenEnabled: false });
     expect(searchMenu(off, menuSearchTerms('recipes'))).toEqual([]);
+    expect(searchMenu(off, menuSearchTerms('cookbook'))).toEqual([]);
+  });
+
+  it('finds a screen with no menu row of its own', () => {
+    expect(searchMenu(all(), menuSearchTerms('cookbook')).map(d => d.route)).toEqual(['Cookbooks']);
+    expect(searchMenu(all(), menuSearchTerms('water')).map(d => d.route)).toEqual(['FoodLog']);
   });
 });
 

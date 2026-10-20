@@ -50,3 +50,25 @@ export function parseChipUses(raw: string | null): ChipUses {
     return {};
   }
 }
+
+/**
+ * The existing tags to offer under a tag field: the ones not already on the
+ * task, narrowed to what's typed so far, most used first, capped. A tag that
+ * starts with the typed text leads one that only contains it, so "wo" offers
+ * "work" before "homework". With nothing typed, the most used lead.
+ */
+export function suggestExistingTags(
+  allTags: readonly string[],
+  chosen: readonly string[],
+  typed: string,
+  uses: ChipUses,
+  limit: number,
+): string[] {
+  const taken = new Set(chosen.map(t => t.toLowerCase()));
+  const open = rankByUse(allTags.filter(t => !taken.has(t.toLowerCase())), uses, t => chipUseKey('tag', t));
+  const query = typed.trim().toLowerCase().replace(/^#/, '');
+  if (!query) return open.slice(0, limit);
+  const starts = open.filter(t => t.toLowerCase().startsWith(query));
+  const contains = open.filter(t => !t.toLowerCase().startsWith(query) && t.toLowerCase().includes(query));
+  return [...starts, ...contains].slice(0, limit);
+}

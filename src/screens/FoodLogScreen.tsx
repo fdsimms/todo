@@ -73,6 +73,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useHealthStore } from '../store/useHealthStore';
 import { NUTRIENT_KEYS, type NutrientKey } from '../types';
 import { haptics } from '../utils/haptics';
+import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { featureHidden } from '../utils/simpleMode';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -579,23 +580,19 @@ export function FoodLogScreen() {
   }, [exitSelection, todayKey]);
 
 
+  // Through confirmDelete, so Settings' "Confirm before deleting" answers
+  // for these too; the store raises an undo bar either way.
   const handleDelete = useCallback((id: string, label: string) => {
-    Alert.alert(
-      `Forget ${label}?`,
-      'This removes it from the day’s totals.',
-      [
-        { text: BUTTON_LABEL.cancel, style: 'cancel' },
-        {
-          text: 'Forget',
-          style: 'destructive',
-          onPress: () => {
-            haptics.warning();
-            animateLayout();
-            removeEntry(id);
-          },
-        },
-      ],
-    );
+    confirmDelete({
+      title: `Forget ${label}?`,
+      message: 'This removes it from the day’s totals.',
+      confirmLabel: 'Forget',
+      onConfirm: () => {
+        haptics.warning();
+        animateLayout();
+        removeEntry(id);
+      },
+    });
   }, [removeEntry]);
 
   /**
@@ -746,23 +743,17 @@ export function FoodLogScreen() {
   const handleBulkDelete = () => {
     const ids = Array.from(selectedIds);
     const count = ids.length;
-    Alert.alert(
-      `Forget ${count} ${count === 1 ? 'entry' : 'entries'}?`,
-      'This removes them from the day’s totals.',
-      [
-        { text: BUTTON_LABEL.cancel, style: 'cancel' },
-        {
-          text: 'Forget',
-          style: 'destructive',
-          onPress: () => {
-            haptics.warning();
-            animateLayout();
-            removeEntries(ids);
-            exitSelection();
-          },
-        },
-      ],
-    );
+    confirmDelete({
+      title: `Forget ${count} ${count === 1 ? 'entry' : 'entries'}?`,
+      message: 'This removes them from the day’s totals.',
+      confirmLabel: 'Forget',
+      onConfirm: () => {
+        haptics.warning();
+        animateLayout();
+        removeEntries(ids);
+        exitSelection();
+      },
+    });
   };
 
   const handleBulkMove = (label: string | null) => {

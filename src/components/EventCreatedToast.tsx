@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomBarHeight } from '../hooks/useBottomBarHeight';
 import { BannerBar } from './BannerBar';
@@ -7,6 +6,7 @@ import { InlineAction } from './InlineAction';
 import { useEventCreatedToastStore } from '../store/useEventCreatedToastStore';
 import { spacing } from '../theme';
 import { openEventInSystemCalendar } from '../utils/calendarSync';
+import { alertFailedWithSettings } from '../utils/permissionAlert';
 import { readSavedEvents, saveEventAs, writeSavedEvents } from '../utils/savedEvents';
 import { haptics } from '../utils/haptics';
 import { useLingering } from '../hooks/useLingering';
@@ -51,7 +51,7 @@ export function EventCreatedToast() {
     // all-day or second-rounded start came back "not found" and nothing opened.
     void openEventInSystemCalendar(id).then(opened => {
       if (opened) return;
-      Alert.alert(
+      alertFailedWithSettings(
         "Couldn’t open the event",
         'Open the Calendar app to see it. If calendar access is off, turn it on in Settings.'
       );

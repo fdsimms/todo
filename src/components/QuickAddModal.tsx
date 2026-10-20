@@ -30,6 +30,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, animation, interaction, iconSize, border, type Colors, textScale } from '../theme';
 import { useTextScale } from '../hooks/useTextScale';
 import { haptics } from '../utils/haptics';
+import { alertFailedWithSettings } from '../utils/permissionAlert';
 import { askForReminderPermissionIfNeeded } from '../utils/reminderPermission';
 import { useTitleSelection } from '../hooks/useTitleSelection';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -83,7 +84,7 @@ import { CountStepper } from './CountStepper';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { TitleTokenAccessory, QUICK_ADD_TITLE_TOKENS } from './TitleTokenAccessory';
 import { tokenChipsFor, applyTokenChip, type TokenChip } from '../utils/titleTokenChips';
-import { chipUseKey } from '../utils/chipUses';
+import { chipUseKey, suggestExistingTags } from '../utils/chipUses';
 import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
@@ -2014,7 +2015,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     });
     const saved = await useEventPeopleStore.getState().saveEvent(quickEventSaveFields(input), draft.personIds);
     if (!saved) {
-      Alert.alert(
+      alertFailedWithSettings(
         "Couldn’t add the event",
         'Check that calendar access is on in Settings, then try again. The event is still here.'
       );
@@ -2226,6 +2227,10 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   const toggleExistingTag = (tag: string) => {
     haptics.tap();
     setTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]);
+    // The suggestions narrow to what's typed, so a tap usually finishes a
+    // half-typed name. Left in the field, resolveTags would add that fragment
+    // as a tag of its own when the task is created.
+    setTagInput('');
   };
 
 
@@ -2462,7 +2467,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   const visibleChips = chipOverflow.visible;
   const hiddenChipCount = chipOverflow.hiddenCount;
 
-  const suggestedTags = allTags.filter(t => !tags.includes(t)).slice(0, 8);
+  const suggestedTags = suggestExistingTags(allTags, tags, tagInput, chipUses, 8);
 
   // ==== render. Everything below is JSX ====
   return (
@@ -3421,7 +3426,7 @@ parsed
               </View>
               {/* Existing tag suggestions */}
               {suggestedTags.length > 0 && (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.suggestionsScroll}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.suggestionsScroll} keyboardShouldPersistTaps="handled">
                   <View style={styles.suggestionsRow}>
                     {suggestedTags.map(tag => (
                       <TouchableOpacity
@@ -3717,6 +3722,14 @@ parsed
           template={templateToApply}
           projectId={intoProjectId ?? undefined}
           initialRunName={title.trim()}
+          // What was already typed goes with it: a date picked or parsed here
+          // is the run's start, and an "@name" is who every task is with. The
+          // sheet's own default date isn't a choice, so it isn't passed: it
+          // would override a project's away span with today.
+          initialAnchors={dueDate && dueDate.getTime() !== defaultDueDate()?.getTime()
+            ? { start: dueDate, end: null }
+            : undefined}
+          extraPersonIds={personIds.length > 0 ? personIds : undefined}
           onClose={() => setTemplateToApply(null)}
           onApplied={tasks => { if (tasks.length > 0) dismiss(); }}
         />

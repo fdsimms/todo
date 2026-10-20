@@ -2636,9 +2636,11 @@ export function TodayScreen() {
     () => selectTodayMealEntries(mealEntries, mealRangeStart, mealRangeEnd, todayKey),
     [mealEntries, mealRangeStart, mealRangeEnd, todayKey]
   );
+  // Opens on today, not on whichever week the plan was last left showing:
+  // these rows are today's meals (see MealPlanScreen's focusDay/focusStamp).
   const openMealPlan = useCallback(() => {
-    navigation.navigate('MealPlan' as never);
-  }, [navigation]);
+    navigation.navigate({ name: 'MealPlan', params: { focusDay: todayKey, focusStamp: Date.now() } } as never);
+  }, [navigation, todayKey]);
   const setMealCookedPaired = useMealPlanStore(s => s.setCookedPaired);
   const setMealLastAction = useMealPlanStore(s => s.setLastAction);
   const leftovers = useLeftoverStore(useShallow(s => s.leftovers));
@@ -4883,6 +4885,14 @@ export function TodayScreen() {
     return savingForGoal(allRewards, coinEntries, rewardGoalId, r => (r.taskId ? byId.get(r.taskId) ?? null : null));
   }, [showCoinPill, allTasks, allRewards, coinEntries, rewardGoalId]);
   const headerActions: ScreenHeaderAction[] = [
+    // The same quick search a pull opens, on all four lenses: a pull is a
+    // gesture nothing on screen points to, and this is the screen people
+    // land on.
+    {
+      icon: 'search' as const,
+      onPress: () => setQuickSearchVisible(true),
+      accessibilityLabel: 'Search',
+    },
     // Sort and filter only apply to Today's own list.
     ...(viewMode === 'today' ? [{
       icon: 'funnel' as const,

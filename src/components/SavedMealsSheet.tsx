@@ -1,5 +1,5 @@
 import React, { useMemo, type ReactNode } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
@@ -7,6 +7,7 @@ import { border, font, fontWeight, iconSize, interaction, radius, spacing, type 
 import type { SavedMeal } from '../types';
 import { savedMealCalories } from '../utils/foodLog';
 import { haptics } from '../utils/haptics';
+import { confirmDelete } from '../utils/confirmDelete';
 import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
 import { SheetHeader } from './SheetHeader';
@@ -59,18 +60,12 @@ export function SavedMealsSheet({ visible, meals, onLog, onDelete, onReview, ove
   };
 
   const handleDelete = (meal: SavedMeal) => {
-    Alert.alert(
-      `Forget “${meal.name}”?`,
-      'Only the shortcut to log it again is removed. Anything already logged stays.',
-      [
-        { text: BUTTON_LABEL.cancel, style: 'cancel' },
-        {
-          text: 'Forget',
-          style: 'destructive',
-          onPress: () => { haptics.warning(); onDelete(meal); },
-        },
-      ],
-    );
+    confirmDelete({
+      title: `Forget “${meal.name}”?`,
+      message: 'Only the shortcut to log it again is removed. Anything already logged stays.',
+      confirmLabel: 'Forget',
+      onConfirm: () => { haptics.warning(); onDelete(meal); },
+    });
   };
 
   return (
