@@ -492,6 +492,15 @@ export function WorkoutsScreen() {
   const routineName = useCallback((id: string) => routines.find(r => r.id === id)?.name ?? null, [routines]);
   const livePrograms = useMemo(() => programs.filter(p => !p.archived), [programs]);
 
+  // A program with a routine due next: the start button asks which to run
+  // rather than assuming an empty workout. With none, it starts one at once.
+  const [startMenuOpen, setStartMenuOpen] = useState(false);
+  const startChoices = useMemo(() => livePrograms.flatMap(p => {
+    const next = programProgress(p, sessions, routines).nextRoutineId;
+    const name = next ? routineName(next) : null;
+    return name ? [{ program: p, routine: name }] : [];
+  }), [livePrograms, sessions, routines, routineName]);
+
   const renderProgram = useCallback(({ item }: { item: WorkoutProgram }) => {
     const progress = programProgress(item, sessions, routines);
     const next = progress.nextRoutineId ? routineName(progress.nextRoutineId) : null;
@@ -746,8 +755,28 @@ export function WorkoutsScreen() {
       <Fab
         icon="play"
         accessibilityLabel={live ? `Resume ${live.title}` : 'Start an empty workout'}
-        onPress={() => (live ? useWorkoutModeStore.getState().show() : startWorkout())}
+        onPress={() => {
+          if (live) useWorkoutModeStore.getState().show();
+          else if (startChoices.length > 0) setStartMenuOpen(true);
+          else startWorkout();
+        }}
       />
+      <LazySheet open={startMenuOpen}>
+        <ActionMenu
+          visible={startMenuOpen}
+          title="Start a workout"
+          onClose={() => setStartMenuOpen(false)}
+          actions={[
+            ...startChoices.map(c => ({
+              key: c.program.id,
+              label: startChoices.length > 1 ? `${c.program.name}: ${c.routine}` : `Next in ${c.program.name}: ${c.routine}`,
+              icon: 'play-outline' as const,
+              onPress: () => startWorkout({ programId: c.program.id }),
+            })),
+            { key: 'empty', label: 'Empty workout', icon: 'add-outline' as const, onPress: () => startWorkout() },
+          ]}
+        />
+      </LazySheet>
       <LazySheet open={menuOpen}>
         <ActionMenu
           visible={menuOpen}
