@@ -1,4 +1,4 @@
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, contactForMention, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput, parseMeterInput, parseRainSkipInput, parseTaskInputAheadOfRainSkip, parseSunWindowInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, parseAvoidInput, parseAvoidEnd, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseDifficultyInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, parseFromCompletionSuffix, scheduleClockInstant, scheduleHint, type ParsedSchedule } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, contactForMention, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput, parseMeterInput, parseRainSkipInput, parseTaskInputAheadOfRainSkip, parseSunWindowInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, parseAvoidInput, parseAvoidEnd, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseDifficultyInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, getPhraseMentionSuggestion, unconfirmedPhraseMentions, phraseOverrideKey, parseFromCompletionSuffix, scheduleClockInstant, scheduleHint, type ParsedSchedule } from '../utils/parseTaskInput';
 
 // Tuesday, June 10 2025, 10:00 AM — same anchor as parseNaturalDate.test.ts
 const NOW = new Date(2025, 5, 10, 10, 0, 0);
@@ -2602,5 +2602,45 @@ describe('"~" before a date: wait if that day is full', () => {
   it('says it on the chip', () => {
     const r = parseTaskInput('call the dentist ~thu', NOW)!;
     expect(describeSchedule(r.schedule, NOW)).toContain('· Wait if full');
+  });
+});
+
+describe('a multi-word @name typed in full waits for a tap', () => {
+  const PEOPLE = [
+    { id: 'g1', name: 'Gideon Reyes', nickname: '', kind: 'individual' as const },
+    { id: 'eq', name: 'Eye Q', nickname: '', kind: 'business' as const },
+  ];
+
+  it('matchPersonMentions still resolves the full name on its own', () => {
+    expect(matchPersonMentions('Order contacts @eye q', PEOPLE)).toEqual([{ start: 15, end: 21, personId: 'eq' }]);
+  });
+
+  it('unconfirmedPhraseMentions drops it until confirmed', () => {
+    const matched = matchPersonMentions('Order contacts @eye q', PEOPLE);
+    expect(unconfirmedPhraseMentions('Order contacts @eye q', matched, {})).toEqual([]);
+    const overrides = { [phraseOverrideKey('eye q')]: 'eq' };
+    expect(unconfirmedPhraseMentions('Order contacts @eye q', matched, overrides)).toEqual(matched);
+  });
+
+  it('a single-word mention is never held back', () => {
+    const matched = matchPersonMentions('call @gideon', PEOPLE);
+    expect(unconfirmedPhraseMentions('call @gideon', matched, {})).toEqual(matched);
+  });
+
+  it('offers one exact row for a finished full name, and nothing once confirmed', () => {
+    const suggestion = getPhraseMentionSuggestion('Order contacts @eye q', PEOPLE, {});
+    expect(suggestion).toMatchObject({ exact: true, start: 15, candidates: [{ id: 'eq', name: 'Eye Q' }] });
+    const overrides = { [phraseOverrideKey('eye q')]: 'eq' };
+    expect(getPhraseMentionSuggestion('Order contacts @eye q', PEOPLE, overrides)).toBeNull();
+  });
+
+  it('offers the row for an individual full name too, where getMentionSuggestions stays quiet', () => {
+    expect(getMentionSuggestions('see @gideon reyes', PEOPLE)).toBeNull();
+    expect(getPhraseMentionSuggestion('see @gideon reyes', PEOPLE, {})).toMatchObject({ exact: true, candidates: [{ id: 'g1' }] });
+  });
+
+  it('says nothing about a half-typed name or a single word', () => {
+    expect(getPhraseMentionSuggestion('Order @eye', PEOPLE, {})).toBeNull();
+    expect(getPhraseMentionSuggestion('call @gideon', PEOPLE, {})).toBeNull();
   });
 });

@@ -83,7 +83,7 @@ import { chipUseKey } from '../utils/chipUses';
 import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInputAheadOfRainSkip, scheduleClockInstant, describeSchedule, scheduleHint, stripRemindPrefix, parseCategoryAndTagsInput, matchPersonMentions, contactForMention, findAmbiguousMention, getMentionSuggestions, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type ParsedTaskInput, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
+import { parseTaskInputAheadOfRainSkip, scheduleClockInstant, describeSchedule, scheduleHint, stripRemindPrefix, parseCategoryAndTagsInput, matchPersonMentions, contactForMention, findAmbiguousMention, getMentionSuggestions, getPhraseMentionSuggestion, unconfirmedPhraseMentions, phraseOverrideKey, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type ParsedTaskInput, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
 import { formatMeterAmount, knownMeterNames, latestReading, meterFieldsFromInput } from '../utils/meters';
 import { canSkipForRain, formatRain, rainUnitFor } from '../utils/rainSkip';
 import { useMeterReadingStore } from '../store/useMeterReadingStore';
@@ -893,9 +893,9 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // doc comment for exactly which tokens this does and doesn't cover.
   const mentionSuggestion = useMemo(
     () => (!parsed && !categoryTagsParsed && !ambiguousMention && title.trim()
-      ? getMentionSuggestions(title, people, groupTokens)
+      ? getPhraseMentionSuggestion(title, people, personOverrides) ?? getMentionSuggestions(title, people, groupTokens)
       : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, people, groupTokens]
+    [title, parsed, categoryTagsParsed, ambiguousMention, people, groupTokens, personOverrides]
   );
   // Identifies the current candidate row (if any) by its pills, so the reset
   // below only fires when the row actually changes shape — a new token, a
@@ -1127,7 +1127,9 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // tooltip is layered on top here instead of changing the title text — see
   // applyMentionOverrides' doc comment for why.
   const personMentions = useMemo(() => {
-    const matched = matchPersonMentions(title, people, groupTokens);
+    // A multi-word name ("@eye q") stays plain until its tap-to-link row is
+    // confirmed; see unconfirmedPhraseMentions.
+    const matched = unconfirmedPhraseMentions(title, matchPersonMentions(title, people, groupTokens), personOverrides);
     return applyMentionOverrides(title, matched, personOverrides);
   }, [title, people, groupTokens, personOverrides]);
   const personIds = useMemo(
@@ -1346,6 +1348,14 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     if (!mentionSuggestion) return;
     haptics.success();
     animateLayout();
+    if (mentionSuggestion.exact) {
+      // The name is already typed in full, so confirming records the link and leaves the text alone.
+      setPersonOverrides(prev => ({
+        ...prev,
+        [phraseOverrideKey(title.slice(mentionSuggestion.start + 1, mentionSuggestion.end))]: candidate.id,
+      }));
+      return;
+    }
     const next = `${title.slice(0, mentionSuggestion.start)}@${candidate.resolveKey} `;
     setTitle(next);
     titleCaret.moveCaret(next);
