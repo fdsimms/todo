@@ -1,9 +1,8 @@
 // One routine item's planned sets as a table, the way workout mode lays them
 // out: a row per set, its badge (W, 1, 2, D, F) and its values. Nothing in
 // the table expands. Tapping a badge opens the set's type, Duplicate and
-// Remove; tapping a value opens a small card with its stepper, anchored to
-// the cell, so the other sets stay in view while one changes. Mock:
-// docs/arch/workouts-mocks/routine-sets.png.
+// Remove in a small card anchored to it; the values are fields typed in place,
+// like workout mode's. Mock: docs/arch/workouts-mocks/routine-sets.png.
 //
 // The rules (what each edit changes, warm-ups first, the last set that isn't a
 // warm-up never going) live in src/utils/workoutRoutine.ts; this file draws them.
@@ -11,18 +10,16 @@ import React, { useMemo, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View, type GestureResponderEvent } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { CardSheet, type CardAnchor } from './CardSheet';
-import { CountStepper } from './CountStepper';
-import { HelpText } from './HelpText';
 import { InlineAction } from './InlineAction';
+import { TextField } from './TextField';
 import type { ExerciseKind, RoutineSetTarget, WorkoutRoutineItem, WorkoutSetKind } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { useTextScale } from '../hooks/useTextScale';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import {
-  WEIGHT_PLACES, WEIGHT_STEP, formatRestSeconds, formatWeightNumber, weightFromDisplay, weightToDisplay,
-} from '../utils/workoutData';
+import { formatRestSeconds, formatWeightNumber } from '../utils/workoutData';
+import { parseRepsTarget, parseSetCell } from '../utils/workoutCell';
 import { columnLabel, fieldLabel, setBadge, setFieldsFor, setName, type SetField } from '../utils/workoutSession';
 import {
   MAX_ROUTINE_SETS, MAX_WARMUP_SETS, SET_KIND_LABELS, addSet, addWarmup, canDuplicateSet, canRemoveSet,
@@ -40,9 +37,8 @@ interface Props {
   onChange: (change: (item: WorkoutRoutineItem) => WorkoutRoutineItem) => void;
 }
 
-/** The card open over the table: a set's type menu, or one of its values. */
+/** The card open over the table: a set's type menu. */
 interface Editing {
-  field: 'kind' | 'weight' | 'reps' | 'duration';
   index: number;
   anchor: CardAnchor;
 }
@@ -66,23 +62,39 @@ export function RoutineSetTable({ item, kind, unit, rampLoads, onChange }: Props
   // laid out from a plain weight, so only that kind gets one.
   const takesWarmups = fields.includes('weight');
 
-  const open = (field: Editing['field'], index: number) => (e: GestureResponderEvent) => {
+  const open = (index: number) => (e: GestureResponderEvent) => {
     haptics.tap();
-    setEditing({ field, index, anchor: anchorOf(e) });
+    setEditing({ index, anchor: anchorOf(e) });
   };
 
+  // What the field holds while it is typed in, which for a reps range is the
+  // text it was read from ("8–12"), and for an AMRAP the floor without its "+".
   const cellText = (t: RoutineSetTarget, field: SetField): string | null => {
-    if (field === 'weight') {
-      if (t.weightKg != null) return formatWeightNumber(t.weightKg, unit);
-      return t.pctOfTm != null ? `${t.pctOfTm}%` : null;
-    }
+    if (field === 'weight') return t.weightKg != null ? formatWeightNumber(t.weightKg, unit) : null;
     if (field === 'reps') return describeTargetReps(t);
     if (field === 'duration') return t.durationSeconds != null ? formatRestSeconds(t.durationSeconds) : null;
     return null;
   };
 
+  const commitCell = (index: number, field: SetField, text: string) => {
+    if (field === 'reps') {
+      const reps = parseRepsTarget(text);
+      if (reps) onChange(i => withSetReps(i, index, reps.min, reps.max));
+      return;
+    }
+    const patch = parseSetCell(field, text, unit);
+    if (!patch) return;
+    if (field === 'weight') onChange(i => withSetWeight(i, index, patch.weightKg ?? null));
+    else if (field === 'duration') onChange(i => withSetDuration(i, index, patch.durationSeconds ?? null));
+  };
+
+  const placeholderFor = (t: RoutineSetTarget, field: SetField): string => {
+    if (field === 'weight') return 'Last time';
+    if (field === 'reps' && t.kind === 'amrap') return 'Max';
+    return 'Any';
+  };
+
   const editingTarget = editing ? item.targets[editing.index] : undefined;
-  const editingName = editing && editingTarget ? setName(editingTarget.kind, labels[editing.index] ?? '') : '';
 
   return (
     <View>
@@ -113,7 +125,7 @@ export function RoutineSetTable({ item, kind, unit, rampLoads, onChange }: Props
             <View style={styles.colBadge}>
               <TouchableOpacity
                 style={styles.badgeBox}
-                onPress={open('kind', index)}
+                onPress={open(index)}
                 activeOpacity={interaction.activeOpacity}
                 hitSlop={4}
                 accessibilityRole="button"
@@ -124,17 +136,26 @@ export function RoutineSetTable({ item, kind, unit, rampLoads, onChange }: Props
             </View>
             {fields.map(f => {
               const text = cellText(t, f);
+              // A set planned as a percentage of a training max has no weight
+              // to type; it reads as the percentage and the program owns it.
+              if (f === 'weight' && t.weightKg == null && t.pctOfTm != null) {
+                return (
+                  <View key={f} style={styles.colValue}>
+                    <View style={styles.cell}><Text style={styles.cellText} numberOfLines={1}>{`${t.pctOfTm}%`}</Text></View>
+                  </View>
+                );
+              }
               return (
                 <View key={f} style={styles.colValue}>
-                  <TouchableOpacity
-                    style={styles.cell}
-                    onPress={open(f as Editing['field'], index)}
-                    activeOpacity={interaction.activeOpacity}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${name} ${fieldLabel(f, kind).toLowerCase()}, ${text ?? 'from last time'}`}
-                  >
-                    <Text style={text ? styles.cellText : styles.cellEmpty} numberOfLines={1}>{text ?? '–'}</Text>
-                  </TouchableOpacity>
+                  <CellInput
+                    value={text ?? ''}
+                    field={f}
+                    placeholder={placeholderFor(t, f)}
+                    onCommit={v => commitCell(index, f, v)}
+                    styles={styles}
+                    placeholderColor={colors.textTertiary}
+                    accessibilityLabel={`${name} ${fieldLabel(f, kind).toLowerCase()}`}
+                  />
                 </View>
               );
             })}
@@ -165,159 +186,107 @@ export function RoutineSetTable({ item, kind, unit, rampLoads, onChange }: Props
         visible={editing !== null}
         onClose={() => setEditing(null)}
         anchor={editing?.anchor ?? null}
-        expectedHeight={editing?.field === 'kind' ? 340 : 200}
+        expectedHeight={340}
         name="RoutineSetEdit"
       >
         {close => {
           if (!editing || !editingTarget) return null;
           const index = editing.index;
-          if (editing.field === 'kind') {
-            const numberIfWorking = String(item.targets.slice(0, index).filter(x => x.kind === 'working').length + 1);
-            const act = (change: (i: WorkoutRoutineItem) => WorkoutRoutineItem) => close(() => {
-              animateLayout();
-              onChange(change);
-            });
-            return (
-              <View>
-                {kindsFor(item, index).map((k: WorkoutSetKind) => {
-                  const current = k === editingTarget.kind;
-                  return (
-                    <TouchableOpacity
-                      key={k}
-                      style={styles.menuRow}
-                      onPress={() => { haptics.tap(); act(i => withSetKind(i, index, k)); }}
-                      activeOpacity={interaction.activeOpacity}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: current }}
-                    >
-                      <Text style={[styles.menuBadge, setBadge(k) ? styles.badgeLetter : styles.badgeNumber]}>
-                        {setBadge(k) ?? numberIfWorking}
-                      </Text>
-                      <Text style={styles.menuLabel}>{SET_KIND_LABELS[k]}</Text>
-                      {current && <Ionicons name="checkmark" size={iconSize.md} color={colors.accentText} />}
-                    </TouchableOpacity>
-                  );
-                })}
-                {(canDuplicateSet(item, index) || canRemoveSet(item, index)) && <View style={styles.menuGap} />}
-                {canDuplicateSet(item, index) && (
-                  <TouchableOpacity
-                    style={styles.menuRow}
-                    onPress={() => { haptics.tap(); act(i => duplicateSet(i, index)); }}
-                    activeOpacity={interaction.activeOpacity}
-                    accessibilityRole="button"
-                  >
-                    <Ionicons name="copy-outline" size={iconSize.md} color={colors.textSecondary} style={styles.menuIcon} />
-                    <Text style={styles.menuLabel}>Duplicate set</Text>
-                  </TouchableOpacity>
-                )}
-                {canRemoveSet(item, index) && (
-                  <TouchableOpacity
-                    style={styles.menuRow}
-                    onPress={() => { haptics.tap(); act(i => removeSet(i, index)); }}
-                    activeOpacity={interaction.activeOpacity}
-                    accessibilityRole="button"
-                  >
-                    <Ionicons name="trash-outline" size={iconSize.md} color={colors.redText} style={styles.menuIcon} />
-                    <Text style={[styles.menuLabel, styles.menuDanger]}>Remove set</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            );
-          }
+          const numberIfWorking = String(item.targets.slice(0, index).filter(x => x.kind === 'working').length + 1);
+          const act = (change: (i: WorkoutRoutineItem) => WorkoutRoutineItem) => close(() => {
+            animateLayout();
+            onChange(change);
+          });
           return (
-            <View style={styles.pop}>
-              <Text style={styles.popTitle}>{editingName}</Text>
-              {editing.field === 'weight' && (
-                <>
-                  <View style={styles.popRow}>
-                    <Text style={styles.popLabel}>{fieldLabel('weight', kind)}</Text>
-                    <CountStepper
-                      value={editingTarget.weightKg != null ? weightToDisplay(editingTarget.weightKg, unit) : null}
-                      onChange={n => onChange(i => withSetWeight(i, index, n === null ? null : weightFromDisplay(n, unit)))}
-                      min={WEIGHT_STEP[unit]}
-                      max={unit === 'kg' ? 500 : 1100}
-                      step={WEIGHT_STEP[unit]}
-                      places={WEIGHT_PLACES[unit]}
-                      allowNull
-                      emptyLabel="Last time"
-                      format={n => `${n} ${unit}`}
-                      label={`${editingName} ${fieldLabel('weight', kind).toLowerCase()}`}
-                    />
-                  </View>
-                  <HelpText style={styles.popHint}>Leave it on Last time to start from the weight you lifted before.</HelpText>
-                </>
+            <View>
+              {kindsFor(item, index).map((k: WorkoutSetKind) => {
+                const current = k === editingTarget.kind;
+                return (
+                  <TouchableOpacity
+                    key={k}
+                    style={styles.menuRow}
+                    onPress={() => { haptics.tap(); act(i => withSetKind(i, index, k)); }}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: current }}
+                  >
+                    <Text style={[styles.menuBadge, setBadge(k) ? styles.badgeLetter : styles.badgeNumber]}>
+                      {setBadge(k) ?? numberIfWorking}
+                    </Text>
+                    <Text style={styles.menuLabel}>{SET_KIND_LABELS[k]}</Text>
+                    {current && <Ionicons name="checkmark" size={iconSize.md} color={colors.accentText} />}
+                  </TouchableOpacity>
+                );
+              })}
+              {(canDuplicateSet(item, index) || canRemoveSet(item, index)) && <View style={styles.menuGap} />}
+              {canDuplicateSet(item, index) && (
+                <TouchableOpacity
+                  style={styles.menuRow}
+                  onPress={() => { haptics.tap(); act(i => duplicateSet(i, index)); }}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                >
+                  <Ionicons name="copy-outline" size={iconSize.md} color={colors.textSecondary} style={styles.menuIcon} />
+                  <Text style={styles.menuLabel}>Duplicate set</Text>
+                </TouchableOpacity>
               )}
-              {editing.field === 'reps' && editingTarget.kind === 'amrap' && (
-                <View style={styles.popRow}>
-                  <Text style={styles.popLabel}>At least</Text>
-                  <CountStepper
-                    value={editingTarget.repsMin ?? editingTarget.repsMax ?? null}
-                    onChange={n => onChange(i => withSetReps(i, index, n, n))}
-                    min={1}
-                    max={100}
-                    allowNull
-                    emptyLabel="Max"
-                    label={`${editingName}, at least`}
-                  />
-                </View>
-              )}
-              {editing.field === 'reps' && editingTarget.kind !== 'amrap' && (
-                <>
-                  <View style={styles.popRow}>
-                    <Text style={styles.popLabel}>From</Text>
-                    <CountStepper
-                      value={editingTarget.repsMin ?? null}
-                      // Stepping one end past the other takes the other along,
-                      // so the end being pressed is always the one that moves;
-                      // either end stepped down to Any clears the range, which
-                      // is a set that starts from last time's reps.
-                      onChange={n => onChange(i => (n === null
-                        ? withSetReps(i, index, null, null)
-                        : withSetReps(i, index, n, Math.max(n, editingTarget.repsMax ?? n))))}
-                      min={1}
-                      max={100}
-                      allowNull
-                      emptyLabel="Any"
-                      label={`${editingName}, fewest reps`}
-                    />
-                  </View>
-                  <View style={styles.popRow}>
-                    <Text style={styles.popLabel}>To</Text>
-                    <CountStepper
-                      value={editingTarget.repsMax ?? null}
-                      onChange={n => onChange(i => (n === null
-                        ? withSetReps(i, index, null, null)
-                        : withSetReps(i, index, Math.min(n, editingTarget.repsMin ?? n), n)))}
-                      min={1}
-                      max={100}
-                      allowNull
-                      emptyLabel="Any"
-                      label={`${editingName}, most reps`}
-                    />
-                  </View>
-                </>
-              )}
-              {editing.field === 'duration' && (
-                <View style={styles.popRow}>
-                  <Text style={styles.popLabel}>Time</Text>
-                  <CountStepper
-                    value={editingTarget.durationSeconds ?? null}
-                    onChange={n => onChange(i => withSetDuration(i, index, n))}
-                    min={5}
-                    max={3600}
-                    step={5}
-                    allowNull
-                    emptyLabel="Any"
-                    format={formatRestSeconds}
-                    label={`${editingName} time`}
-                  />
-                </View>
+              {canRemoveSet(item, index) && (
+                <TouchableOpacity
+                  style={styles.menuRow}
+                  onPress={() => { haptics.tap(); act(i => removeSet(i, index)); }}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                >
+                  <Ionicons name="trash-outline" size={iconSize.md} color={colors.redText} style={styles.menuIcon} />
+                  <Text style={[styles.menuLabel, styles.menuDanger]}>Remove set</Text>
+                </TouchableOpacity>
               )}
             </View>
           );
         }}
       </CardSheet>
     </View>
+  );
+}
+
+/**
+ * One value cell, typed in place. The text is a draft held here until the field
+ * loses focus, because `TextField` takes a `value` only when it differs from
+ * what the field last reported, so writing each keystroke through would turn
+ * "10." into "10" under the person's finger (workout mode's `SetInput` does the
+ * same). A blank cell is "from last time", which the placeholder says.
+ */
+function CellInput({ value, field, placeholder, onCommit, styles, placeholderColor, accessibilityLabel }: {
+  value: string;
+  field: SetField;
+  placeholder: string;
+  onCommit: (text: string) => void;
+  styles: ReturnType<typeof makeStyles>;
+  placeholderColor: string;
+  accessibilityLabel: string;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = () => {
+    if (draft === null) return;
+    const text = draft;
+    setDraft(null);
+    if (text.trim() !== value) onCommit(text);
+  };
+  return (
+    <TextField
+      style={styles.cellInput}
+      value={draft ?? value}
+      onChangeText={setDraft}
+      onFocus={() => setDraft(value)}
+      onBlur={commit}
+      onSubmitEditing={commit}
+      placeholder={placeholder}
+      placeholderTextColor={placeholderColor}
+      keyboardType={field === 'weight' ? 'decimal-pad' : 'numbers-and-punctuation'}
+      selectTextOnFocus
+      returnKeyType="done"
+      accessibilityLabel={accessibilityLabel}
+    />
   );
 }
 
@@ -349,8 +318,11 @@ const makeStyles = (colors: Colors, textScale: number) => StyleSheet.create({
     minWidth: 72, minHeight: 36, paddingHorizontal: spacing.smd, borderRadius: radius.sm,
     backgroundColor: colors.bgTertiary, justifyContent: 'center',
   },
+  cellInput: {
+    minWidth: 72, minHeight: 36, paddingHorizontal: spacing.smd, borderRadius: radius.sm, backgroundColor: colors.bgTertiary,
+    color: colors.text, fontSize: font.lg, fontVariant: ['tabular-nums'],
+  },
   cellText: { color: colors.text, fontSize: font.lg, fontVariant: ['tabular-nums'] },
-  cellEmpty: { color: colors.textTertiary, fontSize: font.lg },
   rampText: { flex: 1, color: colors.textSecondary, fontSize: font.md },
   adds: {
     flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: spacing.md, paddingTop: spacing.md,
@@ -365,9 +337,4 @@ const makeStyles = (colors: Colors, textScale: number) => StyleSheet.create({
   menuLabel: { flex: 1, color: colors.text, fontSize: font.lg },
   menuDanger: { color: colors.redText },
   menuGap: { height: spacing.sm, backgroundColor: colors.separator, opacity: 0.5 },
-  pop: { padding: spacing.md, gap: spacing.smd },
-  popTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
-  popRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
-  popLabel: { color: colors.textSecondary, fontSize: font.md },
-  popHint: { color: colors.textTertiary, fontSize: font.xs },
 });

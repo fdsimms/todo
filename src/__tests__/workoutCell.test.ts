@@ -1,4 +1,4 @@
-import { parseSetCell } from '../utils/workoutCell';
+import { parseRepsTarget, parseSetCell } from '../utils/workoutCell';
 
 describe('parseSetCell', () => {
   it('clears a value when the text is blank', () => {
@@ -28,5 +28,26 @@ describe('parseSetCell', () => {
   it('refuses text that is not a number, and a negative one', () => {
     expect(parseSetCell('reps', 'abc', 'kg')).toBeUndefined();
     expect(parseSetCell('weight', '-5', 'kg')).toBeUndefined();
+  });
+});
+
+describe('parseRepsTarget', () => {
+  it('reads a count, a range, a floor and blank', () => {
+    expect(parseRepsTarget('8')).toEqual({ min: 8, max: 8 });
+    expect(parseRepsTarget('8-12')).toEqual({ min: 8, max: 12 });
+    expect(parseRepsTarget('8–12')).toEqual({ min: 8, max: 12 });
+    expect(parseRepsTarget('5+')).toEqual({ min: 5, max: 5 });
+    expect(parseRepsTarget('  ')).toEqual({ min: null, max: null });
+  });
+
+  it('clamps to the reps ceiling and floor of one', () => {
+    expect(parseRepsTarget('0')).toEqual({ min: 1, max: 1 });
+    expect(parseRepsTarget('5000')).toEqual({ min: 200, max: 200 });
+  });
+
+  it('refuses text that is not reps', () => {
+    expect(parseRepsTarget('abc')).toBeUndefined();
+    expect(parseRepsTarget('8-')).toBeUndefined();
+    expect(parseRepsTarget('-5')).toBeUndefined();
   });
 });
