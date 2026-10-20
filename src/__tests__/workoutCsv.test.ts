@@ -628,6 +628,31 @@ describe('matchExerciseName', () => {
     expect(isAutoMatch(m)).toBe(false);
   });
 
+  it('matches a bracketed equipment to a library name that leaves the usual equipment out', () => {
+    for (const [name, id] of [
+      ['Hammer Curl (Dumbbell)', 'lib:hammer-curl'],
+      ['Lat Pulldown (Cable)', 'lib:lat-pulldown'],
+      ['Leg Extension (Machine)', 'lib:leg-extension'],
+      ['Arnold Press (Dumbbell)', 'lib:arnold-press'],
+      ['Bulgarian Split Squat (Dumbbell)', 'lib:bulgarian-split-squat'],
+      ['Bicep Curl (Dumbbell)', 'lib:dumbbell-curl'],
+      ['Overhead Press (Dumbbell)', 'lib:dumbbell-shoulder-press'],
+      ['Skullcrusher (Dumbbell)', 'lib:dumbbell-skull-crusher'],
+      ['Incline Chest Fly (Dumbbell)', 'lib:incline-dumbbell-fly'],
+      ['Lat Pulldown - Close Grip (Cable)', 'lib:close-grip-lat-pulldown'],
+    ]) {
+      const m = matchExerciseName(name, catalog);
+      expect(m).toMatchObject({ kind: 'words', exerciseId: id });
+    }
+  });
+
+  it('only offers the same movement on other equipment', () => {
+    // "Lat pulldown" is the library's cable lift; a machine one is a choice.
+    const m = matchExerciseName('Lat Pulldown (Machine)', catalog);
+    expect(m).toMatchObject({ kind: 'suggest', exerciseId: 'lib:lat-pulldown' });
+    expect(isAutoMatch(m)).toBe(false);
+  });
+
   it('offers nothing for a name that is only vaguely like something', () => {
     expect(idOf('Mystery Machine')).toBeNull();
     expect(idOf('Press')).toBeNull();

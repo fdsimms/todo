@@ -637,15 +637,51 @@ export const isAutoMatch = (m: NameMatch): m is AutoMatch => m.kind === 'exact' 
  * the library's "Barbell bench press" come out as the same set.
  */
 export function nameWords(name: string): string[] {
-  return name
+  return aliasPhrases(name
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\u0300-\u036f]/g, ''))
     .replace(/[^a-z0-9]+/g, ' ')
     .trim()
     .split(' ')
     .filter(Boolean)
     .map(w => (w.length > 3 && w.endsWith('s') && !w.endsWith('ss') ? w.slice(0, -1) : w));
+}
+
+/**
+ * Other apps' wordings of a movement the library names another way, as a
+ * phrase swapped for the library's before the words are compared. Both sides go
+ * through it, so a pair only has to agree after it. Each is the same exercise,
+ * not a near one ("bicep curl" is a curl, a "chest fly" is a fly).
+ */
+const PHRASE_ALIASES: [RegExp, string][] = [
+  [/\bbiceps? curl/g, 'curl'],
+  [/\bchest fly\b/g, 'fly'],
+  [/\boverhead press\b/g, 'shoulder press'],
+  [/\bskullcrusher/g, 'skull crusher'],
+  [/\bpull ?aparts?\b/g, 'pull apart'],
+  [/\bbanded\b/g, 'band'],
+  [/\bfarmer[\u2019']?s (walk|carry)\b/g, 'farmer carry'],
+];
+const aliasPhrases = (lower: string) => PHRASE_ALIASES.reduce((t, [re, to]) => t.replace(re, to), lower);
+
+/** The equipment words a library name spells out, which the file keeps in brackets instead. */
+const EQUIPMENT_WORDS: Partial<Record<ExerciseEquipment, string[]>> = {
+  barbell: ['barbell'], dumbbell: ['dumbbell'], kettlebell: ['kettlebell'], machine: ['machine'],
+  cable: ['cable'], smith_machine: ['smith', 'machine'], ez_bar: ['ez', 'bar'], trap_bar: ['trap', 'bar'],
+  band: ['band'], bodyweight: ['bodyweight'],
+};
+const BRACKET_EQUIPMENT: Record<string, ExerciseEquipment> = {
+  barbell: 'barbell', dumbbell: 'dumbbell', kettlebell: 'kettlebell', machine: 'machine', cable: 'cable',
+  'smith machine': 'smith_machine', 'ez bar': 'ez_bar', 'trap bar': 'trap_bar', band: 'band', bodyweight: 'bodyweight',
+};
+
+/** "Hammer Curl (Dumbbell)" as its words without the equipment, and the equipment. Null when no bracket names one. */
+function splitEquipment(name: string): { base: string[]; equipment: ExerciseEquipment } | null {
+  const m = /^(.*?)\s*\(([^)]+)\)\s*$/.exec(name);
+  const equipment = m && BRACKET_EQUIPMENT[nameWords(m[2]).join(' ')];
+  if (!m || !equipment) return null;
+  return { base: [...new Set(nameWords(m[1]))].sort(), equipment };
 }
 
 const sortedWords = (name: string) => [...new Set(nameWords(name))].sort();
@@ -687,6 +723,25 @@ export function matchExerciseName(name: string, catalog: readonly CatalogExercis
   // Two exercises with the same words are two variants to choose between.
   if (sameWords.length > 1) return { kind: 'suggest', exerciseId: sameWords[0].id, exerciseName: sameWords[0].name };
 
+  // Hevy and Strong write the equipment in brackets and the library often leaves
+  // it out of the name when it is the usual one ("Hammer curl" is a dumbbell
+  // lift, "Lat pulldown" a cable one). The movement's own words matching and the
+  // equipment agreeing is the same exercise; the movement matching on another
+  // piece of equipment is only offered.
+  const split = splitEquipment(name);
+  let onOtherEquipment: CatalogExercise | undefined;
+  if (split) {
+    const sameMovement = live.filter(e => {
+      const drop = EQUIPMENT_WORDS[e.equipment] ?? [];
+      const w = sortedWords(e.name).filter(x => !drop.includes(x));
+      return w.length === split.base.length && w.every((x, i) => x === split.base[i]);
+    });
+    const agreeing = sameMovement.filter(e => e.equipment === split.equipment);
+    if (agreeing.length === 1) return { kind: 'words', exerciseId: agreeing[0].id, exerciseName: agreeing[0].name };
+    // Only offered when nothing closer turns up below ("Squat (Barbell)" has a better candidate than the bodyweight squat).
+    onOtherEquipment = agreeing[0] ?? sameMovement[0];
+  }
+
   // A name holding every word of the file's name ("Back Squat" in "Barbell back
   // squat") is offered ahead of anything scored by overlap or a one-letter typo,
   // fewest extra words first: the file's name is usually the library's with the
@@ -709,7 +764,11 @@ export function matchExerciseName(name: string, catalog: readonly CatalogExercis
       || (a.extra ?? 0) - (b.extra ?? 0)
       || b.score - a.score
       || a.e.name.localeCompare(b.e.name))[0];
-  if (!best) return { kind: 'none' };
+  if (!best) {
+    return onOtherEquipment
+      ? { kind: 'suggest', exerciseId: onOtherEquipment.id, exerciseName: onOtherEquipment.name }
+      : { kind: 'none' };
+  }
   return { kind: 'suggest', exerciseId: best.e.id, exerciseName: best.e.name };
 }
 
