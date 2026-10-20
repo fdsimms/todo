@@ -11305,6 +11305,35 @@ describe('reorderGroupChildren', () => {
   });
 });
 
+describe('bulkAddToGroup', () => {
+  it('adds a selection to an existing stack in pick order, as one undo', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1', title: 'Errands', category: 'Home' })] });
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'in', groupId: 'g1', sortOrder: 4, category: 'Home' }),
+        makeTask({ id: 'a', groupId: null, category: 'Work' }),
+        makeTask({ id: 'b', groupId: 'g2', category: null }),
+      ],
+      undoStack: [],
+    });
+    useTaskStore.getState().bulkAddToGroup(['b', 'a', 'in'], 'g1');
+    const byId = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id)!;
+    expect(byId('b').groupId).toBe('g1');
+    expect(byId('a').groupId).toBe('g1');
+    expect(byId('b').sortOrder).toBeLessThan(byId('a').sortOrder);
+    expect(byId('in').sortOrder).toBe(4);
+    expect(byId('a').category).toBe('Home');
+    expect(useTaskStore.getState().undoStack).toHaveLength(1);
+    expect(useTaskStore.getState().lastAction?.label).toBe('Added 2 to Errands');
+
+    useTaskStore.getState().undoLastAction();
+    expect(byId('a').groupId).toBeNull();
+    expect(byId('a').category).toBe('Work');
+    expect(byId('b').groupId).toBe('g2');
+    expect(byId('in').groupId).toBe('g1');
+  });
+});
+
 describe('addExistingToGroup / removeFromGroup', () => {
   it('sets groupId on an existing task', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1', groupId: null })] });

@@ -6,7 +6,7 @@ import {
   ScrollView,
   TextInput,
   TouchableOpacity,
-  
+  Platform,
   StyleSheet,
 } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -37,7 +37,8 @@ import { RecipeDetailScreen, type RecipeDetailParams } from './RecipeDetailScree
 import { RecipeCreateSheet } from '../components/RecipeCreateSheet';
 import { InventRecipeSheet } from '../components/InventRecipeSheet';
 import type { RecipeInputMode } from '../components/RecipeSourcePicker';
-import { RecipeSortFilterSheet } from '../components/RecipeSortFilterSheet';
+import { RecipeSortFilterSheet, recipeSortLabel } from '../components/RecipeSortFilterSheet';
+import { ActiveFilterPill } from '../components/ActiveFilterPill';
 import { FabMenu, FAB_SIZE, type FabDragHandlers, type FabMenuItem, useFabBottom } from '../components/Fab';
 import {
   FabDropZone,
@@ -140,11 +141,12 @@ import { BUTTON_LABEL } from '../copy/shared';
  * drag — see the doc comment on upNextBlock, below.
  */
 
-/** "tagged x, y" / "loved" / "tagged x, y and loved" — for the empty state. */
-function describeActiveFilters(tagFiltering: boolean, activeTags: string[], lovedOnly: boolean): string {
+/** "tagged x, y" / "loved" / "in Dinner" and any mix of them — for the empty state. */
+function describeActiveFilters(tagFiltering: boolean, activeTags: string[], lovedOnly: boolean, cookbookTitle: string | null): string {
   const parts: string[] = [];
   if (tagFiltering) parts.push(`tagged ${formatTagList(activeTags)}`);
   if (lovedOnly) parts.push('loved');
+  if (cookbookTitle) parts.push(`in ${cookbookTitle}`);
   return parts.join(' and ');
 }
 
@@ -302,6 +304,9 @@ function RecipesList() {
   const [planningRecipe, setPlanningRecipe] = useState<Recipe | null>(null);
   const { query, props: filterField } = useFilterField();
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  // One cookbook the box is narrowed to, for this visit only, like the tags.
+  const [cookbookFilter, setCookbookFilter] = useState<string | null>(null);
+  const cookbooks = useRecipeStore(useShallow(s => s.cookbooks));
   const [sortFilterVisible, setSortFilterVisible] = useState(false);
   const [importVisible, setImportVisible] = useState(false);
   const [importMode, setImportMode] = useState<RecipeInputMode>('photo');
@@ -440,10 +445,14 @@ function RecipesList() {
     [selectedTags, tagCounts]
   );
   const tagFiltering = activeTags.length > 0;
-  const filtering = tagFiltering || recipeLovedOnly;
+  // A cookbook deleted while it was the filter stops filtering, rather than
+  // emptying the box with nothing left to pick to undo it.
+  const activeCookbook = cookbookFilter ? cookbooks.find(c => c.id === cookbookFilter) ?? null : null;
+  const filtering = tagFiltering || recipeLovedOnly || activeCookbook !== null;
   // Every narrowing the list is under, tags included, so the badge on the
   // header's filter button matches what the sheet it opens shows as set.
-  const activeFilterCount = (recipeSort !== 'default' ? 1 : 0) + (recipeLovedOnly ? 1 : 0) + activeTags.length;
+  const activeFilterCount = (recipeSort !== 'default' ? 1 : 0) + (recipeLovedOnly ? 1 : 0) + activeTags.length
+    + (activeCookbook ? 1 : 0);
 
   const visible = useMemo(() => {
     // Filter, then rank — the same order GroceryCatalogSheet's store filter uses.
@@ -451,13 +460,14 @@ function RecipesList() {
     // ranked one would be a second pass over work already done.
     const byTag = filterRecipesByTags(recipes, activeTags);
     const byLoved = recipeLovedOnly ? byTag.filter(r => r.vote === 'loved') : byTag;
-    const matched = rankRecipes(query, byLoved);
+    const byBook = activeCookbook ? byLoved.filter(r => r.cookbookId === activeCookbook.id) : byLoved;
+    const matched = rankRecipes(query, byBook);
     // rankRecipes already orders a search by weight; only the unfiltered list
     // takes RecipeSortFilterSheet's own sort, or a name match would lose its
     // place to a recipe that merely ranks higher under it.
     if (query.trim()) return matched;
     return sortRecipesBy(matched, recipeSort);
-  }, [query, recipes, activeTags, recipeLovedOnly, recipeSort]);
+  }, [query, recipes, activeTags, recipeLovedOnly, recipeSort, activeCookbook]);
 
   // Grouping is only offered on the unfiltered box — see the doc comment
   // above. Built from `visible` (already sorted) so the flat and grouped
@@ -799,7 +809,9 @@ function RecipesList() {
         <EmptyState
           icon="restaurant-outline"
           title="No recipes yet"
-          subtitle="Save recipes with their ingredients, then add a whole recipe to the grocery list in one tap"
+          subtitle={Platform.OS === 'ios'
+            ? 'Save recipes with their ingredients, then add a whole recipe to the grocery list in one tap. To save one from a website, share the page to dundundun.'
+            : 'Save recipes with their ingredients, then add a whole recipe to the grocery list in one tap'}
           actionLabel="New recipe"
           onAction={startBlankRecipe}
           bottomOffset={tabBarHeight}
@@ -821,6 +833,48 @@ function RecipesList() {
               accessibilityLabel="Search recipes"
             />
           </View>
+          {/* What the box is narrowed by, each with a × to lift it, the way
+              Logbook shows its filters: the sort and Loved only persist across
+              visits, so without these a short list came back next time with
+              only the funnel's badge to say why. */}
+          {activeFilterCount > 0 && !selectionMode && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.activeFiltersScroll}
+              contentContainerStyle={styles.activeFilters}
+            >
+              {recipeSort !== 'default' && (
+                <ActiveFilterPill
+                  label={recipeSortLabel(recipeSort)}
+                  color={colors.accent}
+                  onRemove={() => { animateLayout(); setRecipeSort('default'); }}
+                />
+              )}
+              {recipeLovedOnly && (
+                <ActiveFilterPill
+                  label="Loved only"
+                  color={colors.orangeText}
+                  onRemove={() => { animateLayout(); setRecipeLovedOnly(false); }}
+                />
+              )}
+              {activeCookbook && (
+                <ActiveFilterPill
+                  label={activeCookbook.title}
+                  color={colors.accent}
+                  onRemove={() => { animateLayout(); setCookbookFilter(null); }}
+                />
+              )}
+              {activeTags.map(tag => (
+                <ActiveFilterPill
+                  key={tag}
+                  label={tag}
+                  color={tagColor(tag)}
+                  onRemove={() => { animateLayout(); setSelectedTags(prev => prev.filter(t => t !== tag)); }}
+                />
+              ))}
+            </ScrollView>
+          )}
 
           {visible.length === 0 ? (
             <EmptyState
@@ -831,11 +885,11 @@ function RecipesList() {
               // which one to lift.
               subtitle={filtering
                 ? query.trim()
-                  ? `No recipe ${describeActiveFilters(tagFiltering, activeTags, recipeLovedOnly)} is called “${query.trim()}” or uses it`
-                  : `No recipe here is ${describeActiveFilters(tagFiltering, activeTags, recipeLovedOnly)}`
+                  ? `No recipe ${describeActiveFilters(tagFiltering, activeTags, recipeLovedOnly, activeCookbook?.title ?? null)} is called “${query.trim()}” or uses it`
+                  : `No recipe here is ${describeActiveFilters(tagFiltering, activeTags, recipeLovedOnly, activeCookbook?.title ?? null)}`
                 : `No recipe here is called “${query.trim()}” or uses it`}
               actionLabel={filtering ? 'Clear filters' : undefined}
-              onAction={filtering ? () => { animateLayout(); setSelectedTags([]); setRecipeLovedOnly(false); } : undefined}
+              onAction={filtering ? () => { animateLayout(); setSelectedTags([]); setRecipeLovedOnly(false); setCookbookFilter(null); } : undefined}
               bottomOffset={tabBarHeight}
             />
           ) : grouped ? (
@@ -1006,6 +1060,9 @@ function RecipesList() {
           tagCounts={tagCounts}
           selectedTags={activeTags}
           onTagsChange={next => { animateLayout(); setSelectedTags(next); }}
+          cookbooks={cookbooks}
+          cookbookId={activeCookbook?.id ?? null}
+          onCookbookChange={id => { animateLayout(); setCookbookFilter(id); }}
         />
       </LazySheet>
 
@@ -1276,6 +1333,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textTertiary,
     fontSize: font.xs,
     fontWeight: fontWeight.medium,
+  },
+  // Same shape as Logbook's filter bar, and pinned the same way: a ScrollView
+  // grows to fill a column unless told not to.
+  activeFiltersScroll: { flexGrow: 0, flexShrink: 0 },
+  activeFilters: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+    gap: spacing.sm,
   },
   searchWrap: {
     flexDirection: 'row',

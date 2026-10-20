@@ -27,7 +27,7 @@ import { bulkAddTagsAsking, bulkSetPriorityAsking, bulkSetDifficultyAsking } fro
 import { useProjectStore, projectDecisions, projectProgress, projectCompletedRows, isProjectPastWindow, projectAnswerTallies, answerTallyParts } from '../store/useProjectStore';
 import { decisionOutcomes } from '../utils/decisionReview';
 import { AddGuestsSheet } from '../components/AddGuestsSheet';
-import { describeProjectActivity, overdueRoutines, projectActivity, projectCardCaption, projectProgressNote } from '../utils/projectList';
+import { describeProjectActivity, overdueRoutines, projectActivity, projectCardCaption, projectMoveTargets, projectProgressNote } from '../utils/projectList';
 import { isPausedOn, isPlanning } from '../utils/projectPause';
 import { LookAheadSheet } from '../components/LookAheadSheet';
 import { LinkedText } from '../components/LinkedText';
@@ -400,6 +400,7 @@ function ProjectDetailContent() {
   const bulkMarkMissed = useTaskStore(s => s.bulkMarkMissed);
   const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
   const groupTasks = useTaskStore(s => s.groupTasks);
+  const bulkAddToGroup = useTaskStore(s => s.bulkAddToGroup);
   const setDeliverableValue = useTaskStore(s => s.setDeliverableValue);
   const completeProject = useTaskStore(s => s.completeProject);
   const createTaskGroup = useTaskGroupStore(s => s.createGroup);
@@ -1374,12 +1375,16 @@ function ProjectDetailContent() {
   const shownForAdd = useMemo(() => eligibleForAdd.slice(0, EXISTING_PICKER_LIMIT), [eligibleForAdd]);
 
   // Where the bulk bar can move a selection: every other active project.
-  const moveTargets = useMemo(
-    () => projects
-      .filter(p => p.id !== projectId && !p.archived && !p.completed)
-      .sort((a, b) => a.sortOrder - b.sortOrder)
-      .map(p => ({ id: p.id, title: p.title })),
-    [projects, projectId],
+  const moveTargets = useMemo(() => projectMoveTargets(projects, projectId), [projects, projectId]);
+  // And the stacks it can add one to: the ones this page shows (a stack's
+  // projectId is only where it appears, so another project's stack would file
+  // these tasks somewhere this page doesn't show them).
+  const stackTargets = useMemo(
+    () => taskGroups
+      .filter(g => g.projectId === projectId)
+      .sort((a, b) => a.title.localeCompare(b.title))
+      .map(g => ({ id: g.id, title: g.title })),
+    [taskGroups, projectId],
   );
 
   // The line under the header: how far along the project is and its deadline,
@@ -2162,6 +2167,10 @@ function ProjectDetailContent() {
               }
               groupTasks(ids, title, category);
               exitSelection();
+            }}
+            addToGroup={{
+              groups: stackTargets,
+              onAdd: groupId => { animateLayout(); bulkAddToGroup(Array.from(selectedIds), groupId); exitSelection(); },
             }}
             // The other half of "Add existing task", which this screen has had
             // its own picker for since the start while taking one back out was

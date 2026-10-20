@@ -129,7 +129,7 @@ export function TemplateEditor({ visible, template: liveTemplate, onClose }: Pro
     if (!template) return;
     haptics.warning();
     const referencing = findTemplatesReferencing(templates, template.id);
-    const base = `Delete “${template.name}”? Tasks already created from it are unaffected. Shake your phone right after to undo.`;
+    const base = `Delete “${template.name}”? Tasks already created from it are unaffected. You can undo it right after.`;
     const message = referencing.length === 0
       ? base
       : referencing.length === 1

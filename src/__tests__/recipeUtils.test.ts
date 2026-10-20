@@ -1239,6 +1239,15 @@ describe('sortRecipesBy', () => {
     expect(sortRecipesBy([a, b], 'default').map(r => r.name)).toEqual(['B', 'A']);
   });
 
+  it('sorts quickest first by prep plus cook time, with no time trailing', () => {
+    const slow = recipe('Slow', { prepMinutes: 20, estimatedMinutes: 60 });
+    const quick = recipe('Quick', { prepMinutes: 5, estimatedMinutes: 10 });
+    const cookOnly = recipe('Cook only', { prepMinutes: null, estimatedMinutes: 30 });
+    const unknown = recipe('Unknown', { prepMinutes: null, estimatedMinutes: null });
+    expect(sortRecipesBy([unknown, slow, cookOnly, quick], 'quickest').map(r => r.name))
+      .toEqual(['Quick', 'Cook only', 'Slow', 'Unknown']);
+  });
+
   it('sorts by name A-Z, ignoring vote', () => {
     const a = recipe('Banana Bread', { vote: null });
     const b = recipe('Apple Pie', { vote: 'loved' });

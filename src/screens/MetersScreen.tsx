@@ -79,7 +79,9 @@ export function MetersScreen() {
         <EmptyState
           icon="speedometer-outline"
           title="No meters yet"
-          subtitle="A meter is something you read a number off, like a car’s odometer. Make a task due by usage in the task editor, under Schedule, and its readings show here."
+          subtitle="A meter is something you read a number off, like a car’s odometer. Make a task due by usage in the task editor, under When, and its readings show here."
+          actionLabel="New task"
+          onAction={() => { setEditingTask(null); setEditorVisible(true); }}
           bottomOffset={tabBarHeight}
         />
       ) : (

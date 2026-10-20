@@ -1622,6 +1622,17 @@ export function sortRecipesBy(recipes: readonly Recipe[], sort: RecipeSortOption
         if (!b.lastCookedAt) return -1;
         return a.lastCookedAt.localeCompare(b.lastCookedAt);
       });
+    // Prep plus cook (`totalMinutes`). A recipe with no time on it sorts last,
+    // like a never-cooked one above: it isn't quick, it's unknown.
+    case 'quickest':
+      return [...recipes].sort((a, b) => {
+        const ta = totalMinutes(a);
+        const tb = totalMinutes(b);
+        if (ta === null && tb === null) return 0;
+        if (ta === null) return 1;
+        if (tb === null) return -1;
+        return ta - tb;
+      });
     case 'ingredients-asc':
       return [...recipes].sort((a, b) => a.ingredients.length - b.ingredients.length);
     case 'ingredients-desc':

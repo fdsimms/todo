@@ -257,6 +257,13 @@ export function GroceryItemSheet({
   const runningLowAddsToList = lowAddsToListChoice ?? runningLowAddsToListSetting;
   const simpleMode = useSettingsStore(s => s.simpleMode);
   const removeFromList = useGroceryStore(s => s.removeFromList);
+  const addExisting = useGroceryStore(s => s.addExisting);
+  // The list "Add to list" puts it on: the one being viewed, as Remove's is.
+  // Named when it isn't the home list, since this sheet also opens from the
+  // Pantry, where nothing on screen says which list is open.
+  const viewedListName = useGroceryStore(s => (
+    s.activeListId === null ? null : s.lists.find(l => l.id === s.activeListId)?.name ?? null
+  ));
   const deleteItem = useGroceryStore(s => s.deleteItem);
   const shops = useGroceryStore(useShallow(s => s.shops));
   const itemShops = useGroceryStore(useShallow(s => s.itemShops));
@@ -771,10 +778,10 @@ export function GroceryItemSheet({
     );
     confirmDelete({
       title: `Forget ${item.name}?`,
-      message: `This removes it and its history from your catalog and can’t be undone.${loss ? `\n\n${loss}` : ''}\n\nTo take it off this week’s list instead, use “Remove from list”.`,
+      message: `This removes it and its history from your catalog. You can undo it right after.${loss ? `\n\n${loss}` : ''}\n\nTo take it off this week’s list instead, use “Remove from list”.`,
       confirmLabel: 'Forget',
       onConfirm: () => {
-        deleteItem(item.id);
+        deleteItem(item.id, { undoable: true });
         haptics.warning();
         Keyboard.dismiss();
         onClose();
@@ -1081,6 +1088,8 @@ export function GroceryItemSheet({
     || matchesEditorQuery({ key: 'useUpTask', label: 'Use-up task', keywords: ['reminder', 'notification', 'task'] }, searchTerms));
   const removeFromListVisible = onViewedList && (!searching
     || matchesEditorQuery({ key: 'removeFromList', label: 'Remove from list', keywords: ['take off', 'delete'] }, searchTerms));
+  const addToListVisible = !!item && !onViewedList && (!searching
+    || matchesEditorQuery({ key: 'addToList', label: 'Add to list', keywords: ['buy', 'shopping', 'restock', 'need'] }, searchTerms));
   const mergeVisible = !searching
     || matchesEditorQuery({ key: 'merge', label: 'Merge with another item', keywords: ['duplicate', 'combine', 'same thing'] }, searchTerms);
   const forgetVisible = !searching
@@ -1803,7 +1812,7 @@ export function GroceryItemSheet({
 
   const totalMatches = searching
     ? [nameVisible, brandVisible, variantVisible, quantityVisible, priceVisible, noteVisible,
-        useUpTaskVisible, removeFromListVisible, mergeVisible, forgetVisible].filter(Boolean).length
+        useUpTaskVisible, removeFromListVisible, addToListVisible, mergeVisible, forgetVisible].filter(Boolean).length
       + visibleCollapsibleRows.length
     : 0;
 
@@ -2191,6 +2200,31 @@ export function GroceryItemSheet({
             </TouchableOpacity>
           )}
 
+          {/* The mirror of Remove from list, for a row that isn't on it: the
+              quick way to restock something from the Pantry. */}
+          {addToListVisible && (
+            <TouchableOpacity
+              style={styles.actionRow}
+              activeOpacity={interaction.activeOpacity}
+              onPress={() => {
+                addExisting(item.id);
+                haptics.tap();
+                Keyboard.dismiss();
+                onClose();
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={viewedListName ? `Add to ${viewedListName}` : 'Add to list'}
+            >
+              <Ionicons name="add-circle-outline" size={iconSize.md} color={colors.textSecondary} />
+              <View style={styles.actionBody}>
+                <Text style={styles.actionLabel}>Add to list</Text>
+                <Text style={styles.actionHint}>
+                  {viewedListName ? `Puts it on ${viewedListName}.` : 'Puts it on your shopping list.'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          )}
+
           {mergeVisible && (
             <TouchableOpacity
               style={styles.actionRow}
@@ -2221,7 +2255,7 @@ export function GroceryItemSheet({
               <View style={styles.actionBody}>
                 <Text style={[styles.actionLabel, { color: colors.redText }]}>Forget this item</Text>
                 <Text style={styles.actionHint}>
-                  Deletes it and its history. This can’t be undone.
+                  Deletes it and its history.
                 </Text>
               </View>
             </TouchableOpacity>

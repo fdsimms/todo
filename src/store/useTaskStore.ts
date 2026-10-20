@@ -2342,6 +2342,11 @@ interface TaskStore extends UndoHistoryActions {
   groupRosterOf: (groupId: string) => Task[];
   addNewGroupedTask: (groupId: string, title: string) => Task;
   addExistingToGroup: (taskId: string, groupId: string) => void;
+  /**
+   * `addExistingToGroup` for a selection (the bulk bar's Stack panel), filed
+   * as one undo entry. Tasks already in the stack are left where they are.
+   */
+  bulkAddToGroup: (taskIds: string[], groupId: string) => void;
   removeFromGroup: (taskId: string) => void;
   reorderGroupChildren: (groupId: string, orderedIds: string[]) => void;
   groupTasks: (taskIds: string[], title: string, category: string | null, groupId?: string) => TaskGroup;
@@ -9746,6 +9751,24 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       label: group ? `Added to ${group.title}` : 'Added to stack',
       undo: () => get().updateTask(taskId, { groupId: prevGroupId, category: prevCategory }),
     });
+  },
+
+  bulkAddToGroup(taskIds, groupId) {
+    const joining = taskIds
+      .map(id => get().tasks.find(t => t.id === id))
+      .filter((t): t is Task => !!t && t.groupId !== groupId);
+    if (joining.length === 0) return;
+    const historyBefore = get().undoStack;
+    const group = useTaskGroupStore.getState().getGroupById(groupId);
+    const before = joining.map(t => ({ id: t.id, groupId: t.groupId, category: t.category }));
+    // One at a time so each lands after the last, in the order picked.
+    for (const t of joining) get().addExistingToGroup(t.id, groupId);
+    get().setLastAction({
+      label: group
+        ? `Added ${joining.length} to ${group.title}`
+        : `Added ${joining.length} to a stack`,
+      undo: () => { for (const b of before) get().updateTask(b.id, { groupId: b.groupId, category: b.category }); },
+    }, { replacing: historyBefore });
   },
 
   removeFromGroup(taskId) {

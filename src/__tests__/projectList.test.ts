@@ -9,6 +9,7 @@ import {
   projectMatchesQuery,
   projectNextStepTitle,
   overdueRoutines,
+  projectMoveTargets,
   projectProgressNote,
   sortProjects,
 } from '../utils/projectList';
@@ -283,5 +284,19 @@ describe('projectActivity', () => {
 
   it('says nothing for a project nothing has been done in', () => {
     expect(describeProjectActivity(projectActivity('p1', []))).toBeNull();
+  });
+});
+
+describe('projectMoveTargets', () => {
+  it('lists active projects in order, leaving out the one on screen', () => {
+    const projects = [
+      makeProject({ id: 'b', title: 'B', sortOrder: 2 }),
+      makeProject({ id: 'here', title: 'Here', sortOrder: 0 }),
+      makeProject({ id: 'a', title: 'A', sortOrder: 1 }),
+      makeProject({ id: 'done', title: 'Done', sortOrder: 3, completed: true }),
+      makeProject({ id: 'filed', title: 'Filed', sortOrder: 4, archived: true }),
+    ];
+    expect(projectMoveTargets(projects, 'here')).toEqual([{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }]);
+    expect(projectMoveTargets(projects).map(p => p.id)).toEqual(['here', 'a', 'b']);
   });
 });

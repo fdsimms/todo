@@ -25,6 +25,8 @@ import { useElevatedCellRenderer } from '../hooks/useElevatedCellRenderer';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { PaintSelectionProvider } from '../components/PaintSelection';
 import { useShallow } from 'zustand/react/shallow';
+import { projectMoveTargets } from '../utils/projectList';
+import { animateLayout } from '../utils/layoutAnimation';
 import { TaskItem } from '../components/TaskItem';
 import { SpotlightProvider, useSpotlightProgress } from '../components/SpotlightOverlay';
 import { TaskEditor } from '../components/TaskEditor';
@@ -80,9 +82,11 @@ export function SavedViewDetailScreen() {
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
   const bulkMarkMissed = useTaskStore(s => s.bulkMarkMissed);
+  const bulkMoveToProject = useTaskStore(s => s.bulkMoveToProject);
   const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
   const view = useSavedViewStore(s => s.views.find(v => v.id === viewId) ?? null);
   const projects = useProjectStore(useShallow(s => s.projects));
+  const moveTargets = useMemo(() => projectMoveTargets(projects), [projects]);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -325,6 +329,10 @@ export function SavedViewDetailScreen() {
             onSetPriority={p => bulkSetPriorityAsking(Array.from(selectedIds), p, exitSelection)}
             onSetDifficulty={rewardsEnabled ? d => bulkSetDifficultyAsking(Array.from(selectedIds), d, exitSelection) : undefined}
             onMarkMissed={() => { bulkMarkMissed(Array.from(selectedIds)); exitSelection(); }}
+            moveToProject={{
+              projects: moveTargets,
+              onMove: projectId => { animateLayout(); bulkMoveToProject(Array.from(selectedIds), projectId); exitSelection(); },
+            }}
             onSelectAll={() => selectAll(viewTasks.map(t => t.id))}
             onDeselectAll={deselectAll}
             onCancel={exitSelection}

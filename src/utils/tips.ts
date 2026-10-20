@@ -198,6 +198,16 @@ export const TIPS: Tip[] = [
     keywords: ['gesture', 'slide', 'reschedule', 'bulk', 'multi select'],
   },
   {
+    id: 'completion-options',
+    area: 'today',
+    screen: 'today',
+    icon: 'ellipsis-horizontal-circle-outline',
+    title: 'Hold the checkbox for other ways to finish',
+    body: 'Hold a task’s checkbox to record that someone else did it. On a repeating task you can also skip this time or mark it missed.',
+    when: s => s.taskCount >= 5,
+    keywords: ['long press', 'skip', 'missed', 'someone else', 'done by', 'partner'],
+  },
+  {
     id: 'quick-add-parsing',
     area: 'today',
     screen: 'today',

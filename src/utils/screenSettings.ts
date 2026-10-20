@@ -31,12 +31,12 @@ export const SCREEN_SETTINGS: Readonly<Record<string, readonly string[]>> = {
   FoodLog: ['mealLogPrompt', 'healthWrite'],
   Mood: ['gen:moodLog', 'gen:moodNudge'],
   // No word-goal row: the Journal's own target icon opens that sheet in place.
-  Journal: ['gen:journalLog'],
-  Dreams: ['gen:journalLog'],
+  Journal: ['gen:journalLog', 'journalPrompts'],
+  Dreams: ['gen:dreamLog'],
   // No goal row on Weight or Sleep: each screen's own target icon opens the goal
   // sheet in place, and the Settings row either round-trips through Settings back
   // to that sheet (weight) or edits the same value with a second control (sleep).
-  Weight: ['weightUnit', 'healthRead'],
+  Weight: ['weightUnit', 'healthRead', 'gen:weighIn'],
   Sleep: ['healthRead'],
   Logbook: ['retention', 'completionCalendar'],
   Stats: ['weekStartsOn'],

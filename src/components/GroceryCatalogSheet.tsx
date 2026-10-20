@@ -245,10 +245,10 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
     );
     confirmDelete({
       title: `Forget ${names.length} ${names.length === 1 ? 'item' : 'items'}?`,
-      message: `${names.slice(0, 6).join(', ')}${names.length > 6 ? '…' : ''}\n\nThis removes them from your catalog along with their purchase history, and can’t be undone.${loss ? `\n\n${loss}` : ''}`,
+      message: `${names.slice(0, 6).join(', ')}${names.length > 6 ? '…' : ''}\n\nThis removes them from your catalog along with their purchase history. You can undo it right after.${loss ? `\n\n${loss}` : ''}`,
       confirmLabel: 'Forget',
       onConfirm: () => {
-        deleteItems([...selected]);
+        deleteItems([...selected], { undoable: true });
         setSelected(new Set());
         haptics.warning();
       },
@@ -258,10 +258,10 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
   const confirmPrune = () => {
     confirmDelete({
       title: `Forget ${pruneable.length} unused ${pruneable.length === 1 ? 'item' : 'items'}?`,
-      message: `${pruneable.map(i => i.name).slice(0, 6).join(', ')}${pruneable.length > 6 ? '…' : ''}\n\nThese have never been bought and haven’t been added in months. This can’t be undone.`,
+      message: `${pruneable.map(i => i.name).slice(0, 6).join(', ')}${pruneable.length > 6 ? '…' : ''}\n\nThese have never been bought and haven’t been added in months. You can undo it right after.`,
       confirmLabel: 'Forget',
       onConfirm: () => {
-        deleteItems(pruneable.map(i => i.id));
+        deleteItems(pruneable.map(i => i.id), { undoable: true });
         haptics.warning();
       },
     });

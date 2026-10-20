@@ -82,7 +82,7 @@ export function PersonHistorySheet({ visible, personName, entry, onSave, onDelet
     if (!entry) return;
     confirmDelete({
       title: 'Delete entry',
-      message: `Delete “${entry.title}” from ${personName}’s history? Shake your phone right after to undo.`,
+      message: `Delete “${entry.title}” from ${personName}’s history? You can undo it right after.`,
       onConfirm: () => onDelete(entry.taskId),
     });
   };

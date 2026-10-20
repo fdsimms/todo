@@ -319,3 +319,18 @@ export function describeProjectActivity(activity: ProjectActivity): string | nul
       : `Last done ${activity.lastDoneDays} days ago`;
   return activity.doneLast30 > 0 ? `${last} · ${activity.doneLast30} in the last 30 days` : last;
 }
+
+/**
+ * Where the bulk bar's "Move to project" can send a selection: every active
+ * project (not archived, not completed) in the user's own order, less the one
+ * the selection is already being viewed in.
+ */
+export function projectMoveTargets(
+  projects: readonly Pick<Project, 'id' | 'title' | 'archived' | 'completed' | 'sortOrder'>[],
+  excludeId: string | null = null,
+): { id: string; title: string }[] {
+  return projects
+    .filter(p => p.id !== excludeId && !p.archived && !p.completed)
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map(p => ({ id: p.id, title: p.title }));
+}

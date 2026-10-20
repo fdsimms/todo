@@ -230,6 +230,7 @@ import { navigateToSettingsEntry } from '../navigation/openSettings';
 import { useScreenSettings } from '../hooks/useScreenSettings';
 import { stackCompletionScope } from '../utils/bulkCompletion';
 import { animateLayout } from '../utils/layoutAnimation';
+import { projectMoveTargets } from '../utils/projectList';
 import { emitNowTick } from '../utils/nowTick';
 import { useNowTick } from '../hooks/useNowTick';
 import { sumEstimatedMinutes, formatDuration } from '../utils/effort';
@@ -849,6 +850,8 @@ export function TodayScreen() {
   const pinGroup = useTaskStore(s => s.pinGroup);
   const groupRosterOf = useTaskStore(s => s.groupRosterOf);
   const groupTasks = useTaskStore(s => s.groupTasks);
+  const bulkAddToGroup = useTaskStore(s => s.bulkAddToGroup);
+  const bulkMoveToProject = useTaskStore(s => s.bulkMoveToProject);
   const applyGroupCategory = useTaskStore(s => s.applyGroupCategory);
   const reorderGroupChildren = useTaskStore(s => s.reorderGroupChildren);
   const reorderProjectItems = useTaskStore(s => s.reorderProjectItems);
@@ -2047,6 +2050,14 @@ export function TodayScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [route.params?.showViewModeAt, handledShowViewMode]);
   const projects = useProjectStore(useShallow(s => s.projects));
+  // Where the bulk bar can file a selection: any active project, and any stack
+  // that already exists. Stacks go by name, since a stack's sortOrder is a slot
+  // among its category's tasks rather than an order among stacks.
+  const bulkMoveTargets = useMemo(() => projectMoveTargets(projects), [projects]);
+  const bulkStackTargets = useMemo(
+    () => [...taskGroups].sort((a, b) => a.title.localeCompare(b.title)).map(g => ({ id: g.id, title: g.title })),
+    [taskGroups],
+  );
 
   // A lens with tasks in it that the type filter has emptied is a different
   // empty state from one with nothing in it: "Nothing for later" would be a lie.
@@ -2056,6 +2067,8 @@ export function TodayScreen() {
       icon="funnel-outline"
       title="No tasks match"
       subtitle="None of the tasks here are one of the selected types. Change the filter to see them."
+      actionLabel="Clear filter"
+      onAction={() => { animateLayout(); setFilterTypes([]); }}
       bottomOffset={tabBarHeight}
     />
   );
@@ -4508,6 +4521,13 @@ export function TodayScreen() {
         filtered: groupTallyFiltered,
         doneToday: completedToday.length,
       })}
+      // A finished day is when "what next" comes up, and the answer the app
+      // has is the projects' next steps. Not through a filter: that list was
+      // emptied by the filter, not by finishing.
+      actionLabel={!groupTallyFiltered && bulkMoveTargets.length > 0 ? 'Pull from projects' : undefined}
+      onAction={!groupTallyFiltered && bulkMoveTargets.length > 0
+        ? () => { setPullScopeProjectIds(undefined); setPullVisible(true); }
+        : undefined}
       bottomOffset={tabBarHeight}
     />
   );
@@ -4893,13 +4913,21 @@ export function TodayScreen() {
       onPress: () => setQuickSearchVisible(true),
       accessibilityLabel: 'Search',
     },
-    // Sort and filter only apply to Today's own list.
+    // Sort and filter only apply to Today's own list, except the type filter,
+    // which narrows the other three lenses too. So they show the funnel while
+    // one is set, counting only that, or a narrowed list says nothing of why.
     ...(viewMode === 'today' ? [{
       icon: 'funnel' as const,
       onPress: () => setFilterVisible(true),
       active: activeFilterCount > 0,
       badge: activeFilterCount,
       accessibilityLabel: 'Sort and filter',
+    }] : filterTypes.length > 0 ? [{
+      icon: 'funnel' as const,
+      onPress: () => setFilterVisible(true),
+      active: true,
+      badge: filterTypes.length,
+      accessibilityLabel: 'Filter by type',
     }] : []),
     // Suggested pins and starting a focus session live in the "…" menu now (two
     // more icon-only buttons on a screen whose job is the list). A *running*
@@ -4944,6 +4972,13 @@ export function TodayScreen() {
           title={VIEW_TITLES[viewMode]}
           overline={viewMode === 'today' ? today : undefined}
           subtitle={workloadSubtitle}
+          // The total is what makes a day feel too full, so it's where the way
+          // to lighten one lives: the same sheet the "…" menu opens, offered
+          // on the same terms.
+          onSubtitlePress={viewMode === 'today' && visibleTasks.length > 0 && !featureHidden('deload', simpleMode)
+            ? () => setDeloadVisible(true)
+            : undefined}
+          subtitleAccessibilityLabel={workloadSubtitle ? `${workloadSubtitle}. Lighten today` : undefined}
           actions={headerActions}
           titleAdornment={
             viewMode === 'today' && headerWeather ? (
@@ -5990,6 +6025,14 @@ export function TodayScreen() {
               }
               groupTasks(ids, title, category);
               exitSelection();
+            }}
+            addToGroup={{
+              groups: bulkStackTargets,
+              onAdd: groupId => { animateLayout(); bulkAddToGroup(Array.from(selectedIds), groupId); exitSelection(); },
+            }}
+            moveToProject={{
+              projects: bulkMoveTargets,
+              onMove: projectId => { animateLayout(); bulkMoveToProject(Array.from(selectedIds), projectId); exitSelection(); },
             }}
             onTogglePin={() => { animateLayout(); bulkTogglePin(Array.from(selectedIds)); exitSelection(); }}
             allPinned={selectedIds.size > 0 && Array.from(selectedIds).every(

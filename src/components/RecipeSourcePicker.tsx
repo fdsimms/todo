@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import {
   View,
   Text,
-  
+  Platform,
   TouchableOpacity,
   ActivityIndicator,
   ScrollView,
@@ -221,7 +221,11 @@ export function RecipeSourcePicker({
           <Text style={badUrl ? styles.linkBad : styles.linkHint}>
             {badUrl
               ? 'That doesn’t look like a web address yet.'
-              : 'Works on most recipe sites. If a link doesn’t work, copy the recipe and use the Paste tab.'}
+              : Platform.OS === 'ios'
+                // The share sheet is the quicker way in, and nothing else in
+                // the app says it exists (the extension is iOS only).
+                ? 'Works on most recipe sites. If a link doesn’t work, copy the recipe and use the Paste tab. You can also share a recipe page to dundundun from Safari.'
+                : 'Works on most recipe sites. If a link doesn’t work, copy the recipe and use the Paste tab.'}
           </Text>
         </View>
       ) : maxPhotos <= 1 ? (

@@ -102,6 +102,8 @@ export function RemindersScreen() {
             icon="alarm-outline"
             title="No reminders set"
             subtitle="Tasks with a reminder or alarm, soonest first."
+            actionLabel="New task"
+            onAction={() => { setEditingTask(null); setEditorVisible(true); }}
             bottomOffset={tabBarHeight}
           />
         }
