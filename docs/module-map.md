@@ -200,6 +200,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/groceryShops.ts` — isUnavailable, isAsserted, lacksWantedProduct, countsForItem, sellsAisle, isOutOfRange, describeShopAisles, shopWalkOrder, shopAisleOrderToSave, describeOwnAisleOrders, +14 more
 - `src/utils/grocerySuggest.ts` — GrocerySuggestion, GrocerySection, GroceryRecipeSection, NO_RECIPE_LABEL, matchWeight, rankGrocerySuggestions, rankedCatalogItems, sectionsInAisleOrder, buildGrocerySections, buildGroceryRecipeSections, +16 more
 - `src/utils/gtin.ts` — gtinCheckDigit, normalizeGtin, expandUpcE, isStoreInternalGtin, isGtin, formatGtin, GTIN_MISS_TTL_DAYS, isCacheEntryFresh
+- `src/utils/gymLocation.ts` — defaultGymId, applyLocationGym
+- `src/utils/gyms.ts` — GYM_DEFAULT_RADIUS_M, GYM_MIN_RADIUS_M, GYM_MAX_RADIUS_M, GYM_RADIUS_STEP_M, gymExerciseId, equipmentAvailable, unavailableExerciseIds, RoutineFit, routineFit, describeRoutineFit, +12 more
 - `src/utils/haptics.ts` — haptics
 - `src/utils/healthBridge.ts` — HealthBridge, healthBridge, isHealthSupported, openHealthApp
 - `src/utils/healthCompletionSync.ts` — logTaskHealthValue, unlogTaskNutrientFromFoodLog
@@ -583,7 +585,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/widgetSync.ts` — drainWatchQueues, writeWidgetSnapshotNow, useWidgetSync
 - `src/utils/workoutCell.ts` — setFieldMax, parseSetCell
 - `src/utils/workoutCsv.ts` — ImportSource, ImportedSet, ImportedSession, CsvParseResult, SkippedRows, describeSkipped, ParseOptions, parseCsv, readCsv, parseImportDate, +34 more
-- `src/utils/workoutData.ts` — EXERCISE_KINDS, EXERCISE_EQUIPMENT, MUSCLE_GROUPS, WORKOUT_SET_KINDS, PROGRESSION_SCHEMES, EQUIPMENT_LABELS, MUSCLE_LABELS, WORKOUT_NAME_MAX_LENGTH, WORKOUT_EFFORT, exerciseNameKey, +28 more
+- `src/utils/workoutData.ts` — EXERCISE_KINDS, EXERCISE_EQUIPMENT, MUSCLE_GROUPS, WORKOUT_SET_KINDS, PROGRESSION_SCHEMES, EQUIPMENT_LABELS, MUSCLE_LABELS, WORKOUT_NAME_MAX_LENGTH, WORKOUT_EFFORT, exerciseNameKey, +29 more
 - `src/utils/workoutHistory.ts` — HEALTH_HISTORY_MAX_DAYS, WorkoutHistoryRow, healthHistoryWindow, SAME_WORKOUT_START_MS, overlapsSession, interleaveHistory, healthWorkoutSource, healthWorkoutTitle, healthWorkoutLine
 - `src/utils/workoutLink.ts` — WORKOUT_LINK_VERBS, WorkoutLinkVerb, WorkoutLink, WORKOUT_OPEN_URL, workoutLinkUrl, WorkoutLinkPlan, planWorkoutLink
 - `src/utils/workoutLinkActions.ts` — applyWorkoutLink, skipRestFromLink
@@ -623,6 +625,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useFocusedRouteStore.ts` — useFocusedRouteStore
 - `src/store/useFoodLogStore.ts` — FOOD_INSIGHT_DAYS, FoodLogDraft, PendingMealLog, PendingManualMealLog, FoodLogPatch, FoodLogPlacement, sameEntries, useFoodLogStore
 - `src/store/useGroceryStore.ts` — subscribeCartHoldRelease, PlannedRow, PlanAddResult, describePlanAdd, useGroceryStore
+- `src/store/useGymStore.ts` — GymRefusal, GymInput, GymPatch, GymExercisePatch, useGymStore
 - `src/store/useHealthStore.ts` — HealthDay, EXERCISE_LIVE_WINDOW_DAYS, HEALTH_HISTORY_DAYS, WEIGHT_HISTORY_DAYS, SLEEP_HISTORY_DAYS, sameHealthHistory, useHealthStore, useHealthSync
 - `src/store/useHiddenEventsStore.ts` — useHiddenEventsStore
 - `src/store/useJournalLockStore.ts` — useJournalLockStore, isJournalLocked
@@ -759,7 +762,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 
 ## `src/db`
 
-- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, ensureDatabaseReady, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, +294 more
+- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, ensureDatabaseReady, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, +300 more
 - `src/db/syncTracking.ts` — SyncTable, KEY_SEPARATOR, SYNC_TRACKED_TABLES, SYNC_DEVICE_LOCAL_COLUMNS, isDeviceLocalColumn, withoutDeviceLocalColumns, SYNC_EXCLUDED_TABLES, SYNCED_SETTING_KEYS, isSyncedSettingKey, HEALTH_SYNC_TABLES, +16 more
 
 ## `src/services`

@@ -145,6 +145,8 @@ export interface StartSessionInput {
   routineId?: string | null;
   programId?: string | null;
   taskId?: string | null;
+  /** The gym it is done at; null or absent for none. */
+  gymId?: string | null;
   at?: Date;
 }
 
@@ -154,6 +156,8 @@ export interface SessionPatch {
   effort?: number | null;
   startedAt?: string;
   endedAt?: string | null;
+  /** Moves the session to another gym, or to none (null). */
+  gymId?: string | null;
 }
 
 export interface FinishOptions extends Omit<SessionPatch, 'endedAt'> {
@@ -1153,6 +1157,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         routineId: input.routineId ?? null,
         programId: input.programId ?? routine?.programId ?? null,
         taskId: input.taskId ?? null,
+        gymId: input.gymId ?? null,
         title: cleanWorkoutName(input.title ?? '') || routine?.name || 'Workout',
         startedAt: (input.at ?? new Date()).toISOString(),
         endedAt: null,
@@ -1201,6 +1206,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         effort: patch.effort !== undefined ? effortOf(patch.effort) : existing.effort,
         startedAt: patch.startedAt ?? existing.startedAt,
         endedAt: patch.endedAt !== undefined ? patch.endedAt : existing.endedAt,
+        gymId: patch.gymId !== undefined ? patch.gymId : existing.gymId ?? null,
       };
       if (row.endedAt !== null && new Date(row.endedAt).getTime() < new Date(row.startedAt).getTime()) return 'order';
       // A patch that changes nothing writes nothing. Saving the row anyway
@@ -1208,7 +1214,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       // one a peer has changed since (an agent's sets-only edit sending a
       // stale, unwritten copy over the phone's Health id is how a workout got
       // into Health twice).
-      if (row.title === existing.title && row.notes === existing.notes && row.effort === existing.effort && sameSpan(row, existing)) {
+      if (row.title === existing.title && row.notes === existing.notes && row.effort === existing.effort && (row.gymId ?? null) === (existing.gymId ?? null) && sameSpan(row, existing)) {
         return existing;
       }
       // Recorded, since nothing else says the times were moved by a person

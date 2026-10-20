@@ -16,6 +16,7 @@ import { WorkoutHeartRateCard } from './WorkoutHeartRateCard';
 import type { WorkoutSet } from '../types';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useGymStore } from '../store/useGymStore';
 import { useDemoStore } from '../store/useDemoStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
@@ -293,6 +294,7 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose }: Props) {
   };
 
   // ==== render ====
+  const gymName = useGymStore(s => (session?.gymId ? s.gyms.find(g => g.id === session.gymId)?.name ?? null : null));
   const startedAt = session ? new Date(session.startedAt) : null;
   const endedAt = session?.endedAt ? new Date(session.endedAt) : null;
   const minutes = session ? sessionMinutes(session) : 0;
@@ -329,7 +331,7 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose }: Props) {
             <View style={styles.headerSide} />
             <View style={styles.headerTitle}>
               <Text style={styles.title} numberOfLines={2}>{session?.title ?? 'Workout'}</Text>
-              {!!startedAt && <Text style={styles.subtitle}>{dayLabel(startedAt)}</Text>}
+              {!!startedAt && <Text style={styles.subtitle}>{gymName ? `${dayLabel(startedAt)} · ${gymName}` : dayLabel(startedAt)}</Text>}
             </View>
             <SheetHeaderButton label={BUTTON_LABEL.done} onPress={close} minWidth={64} />
           </View>
