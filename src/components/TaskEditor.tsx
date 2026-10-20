@@ -68,10 +68,8 @@ import { haptics } from '../utils/haptics';
 import { BOUNTY_WITHDRAWN, DIFFICULTY_HINT, DIFFICULTY_PICKER_SEGMENTS, DIFFICULTY_SEGMENTS, bountyCoinsFor, canPostBounty, describeBounty, formatCoins, isBountyLive, liveBountyCount } from '../utils/rewards';
 import { medicationVocabulary, medicationKey } from '../utils/medicationLog';
 import { useTitleSelection } from '../hooks/useTitleSelection';
-import { confirmDelete } from '../utils/confirmDelete';
-import { confirmDeleteGenerated } from '../utils/confirmDeleteGenerated';
+import { confirmDeleteTask } from '../utils/confirmDeleteTask';
 import { offerGeneratedCategoryWriteBack } from '../utils/generatedCategoryPrompt';
-import { stoppableGenerator } from '../utils/generatedTasks';
 import { animateLayout } from '../utils/layoutAnimation';
 import { formatPhoneInput } from '../utils/phone';
 import {
@@ -165,7 +163,7 @@ import { blockerFields, blockerIdsOf, describeBlocks, resolverFor, canBeBlockerO
 import { pickTitleSuggestion, suggestionMatch, describeTitleSuggestion } from '../utils/titleSuggestion';
 import { rainUnitFor } from '../utils/rainSkip';
 import { clampSupplyCount } from '../utils/supply';
-import { displayTitleFor, isMissableMealPlanTask, getVisibleAt, onLogicalDay, isQuotaTask, sunLocationOn } from '../utils/visibilityUtils';
+import { displayTitleFor, getVisibleAt, onLogicalDay, isQuotaTask, sunLocationOn } from '../utils/visibilityUtils';
 import { firstWeekAnchor, proratedFrom, proratedWeeklyTarget, quotaProrationPatch, weekDaysLeft } from '../utils/quotaSchedule';
 import { nextChainStepTitle } from '../utils/chain';
 import { RecurrencePicker } from './RecurrencePicker';
@@ -512,8 +510,6 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
   const addTaskSeries = useTaskStore(s => s.addTaskSeries);
   const applyTaskDates = useTaskStore(s => s.applyTaskDates);
   const updateTask = useTaskStore(s => s.updateTask);
-  const deleteTask = useTaskStore(s => s.deleteTask);
-  const markMissed = useTaskStore(s => s.markMissed);
   const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
   const bountyLimit = useSettingsStore(s => s.bountyLimit);
   const setLastAction = useTaskStore(s => s.setLastAction);
@@ -533,7 +529,6 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
   const seriesRowsOf = useTaskStore(s => s.seriesRowsOf);
   const blockedTasksOf = useTaskStore(s => s.blockedTasksOf);
   const setBlockedTasks = useTaskStore(s => s.setBlockedTasks);
-  const deleteSeries = useTaskStore(s => s.deleteSeries);
   const archiveTask = useTaskStore(s => s.archiveTask);
   const unarchiveTask = useTaskStore(s => s.unarchiveTask);
   const allTagsStore = useTaskStore(useShallow(s => s.allTags()));
@@ -3236,123 +3231,12 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
     }
   };
 
+  // The questions a delete asks (missed instead, this date or all of them,
+  // turn the generator off) live in `confirmDeleteTask`, shared with the
+  // trash on a row's panel.
   const handleDelete = () => {
     if (!task) return;
-    if (task.recurrenceType !== 'none') {
-      Alert.alert(
-        'Delete recurring task',
-        'This task repeats. Mark this one missed, or delete it and stop it repeating?',
-        [
-          { text: BUTTON_LABEL.cancel, style: 'cancel' },
-          {
-            text: 'Mark missed',
-            onPress: () => {
-              markMissed(task.id);
-              onClose();
-            },
-          },
-          {
-            text: 'Delete and stop repeating',
-            style: 'destructive',
-            onPress: () => {
-              haptics.success();
-              deleteTask(task.id);
-              onClose();
-            },
-          },
-        ],
-      );
-      return;
-    }
-    // A meal-plan task has the same choice a recurring one does, just no
-    // series to stop — tomorrow's row already exists on its own, so there's
-    // nothing "and stop" would mean here.
-    if (isMissableMealPlanTask(task)) {
-      Alert.alert(
-        'Delete meal task',
-        'This came from your meal plan. Mark it missed to keep a record, or delete it?',
-        [
-          { text: BUTTON_LABEL.cancel, style: 'cancel' },
-          {
-            text: 'Mark missed',
-            onPress: () => {
-              // Later steps of a meal-plan chain depend on this one.
-              markMissed(task.id, { wholeChain: true });
-              onClose();
-            },
-          },
-          {
-            text: BUTTON_LABEL.delete,
-            style: 'destructive',
-            onPress: () => {
-              haptics.success();
-              deleteTask(task.id);
-              onClose();
-            },
-          },
-          ...(stoppableGenerator(task, useSettingsStore.getState()) ? [{
-            text: 'Delete and turn off',
-            style: 'destructive' as const,
-            onPress: () => {
-              haptics.success();
-              deleteTask(task.id, { stopGenerator: true });
-              onClose();
-            },
-          }] : []),
-        ],
-      );
-      return;
-    }
-    // A dated series has real rows for its other dates, so deleting is
-    // ambiguous the same way it is for a recurrence — this date, or the lot.
-    // Either way the set's completed dates stay in the Logbook.
-    const seriesId = task.seriesId;
-    const remaining = seriesId
-      ? seriesRowsOf(seriesId).filter(t => !t.completed).length
-      : 0;
-    if (seriesId && remaining > 1) {
-      Alert.alert(
-        'Delete task on several dates',
-        `This task has ${remaining} dates left. Delete this date only, or all of them?`,
-        [
-          { text: BUTTON_LABEL.cancel, style: 'cancel' },
-          {
-            text: 'Just this date',
-            onPress: () => {
-              haptics.success();
-              deleteTask(task.id);
-              onClose();
-            },
-          },
-          {
-            text: 'All dates',
-            style: 'destructive',
-            onPress: () => {
-              haptics.success();
-              deleteSeries(seriesId);
-              onClose();
-            },
-          },
-        ],
-      );
-      return;
-    }
-    if (task.generatedKind) {
-      confirmDeleteGenerated(task, () => {
-        haptics.success();
-        onClose();
-      });
-      return;
-    }
-    confirmDelete({
-      title: 'Delete task?',
-      message: `Delete “${task.title}”?`,
-      onConfirm: () => {
-        haptics.success();
-        deleteTask(task.id);
-        onClose();
-      },
-    });
+    confirmDeleteTask(task, onClose);
   };
 
 

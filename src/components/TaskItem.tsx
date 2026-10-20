@@ -103,6 +103,7 @@ import { directionsUrl } from '../utils/maps';
 import { eventCoordinate } from '../utils/calendarSync';
 import { travelEventOf, travelModeFor, travelRowNote, travelSourceEventId, travelWalkUnderFor } from '../utils/travelTasks';
 import { useTravelTimeStore } from '../store/useTravelTimeStore';
+import { confirmDeleteTask } from '../utils/confirmDeleteTask';
 import { animateLayout } from '../utils/layoutAnimation';
 import { nextMeasuredHeight } from '../utils/measuredHeight';
 import { describePendingImport } from '../utils/remindersImport';
@@ -5127,6 +5128,23 @@ const TaskItemRow = React.memo(function TaskItem({
                   >
                     <Ionicons name="duplicate-outline" size={iconSize.sm} color={colors.textSecondary} />
                   </PressableScale>
+                  {/* A list line already has its trash in the date's place.
+                      Every other row asks what its kind needs asked first
+                      (missed instead, this date or all), the same questions
+                      the editor's Delete asks. */}
+                  {!listRow && (
+                    <PressableScale
+                      style={styles.iconActionBtn}
+                      onPress={() => {
+                        haptics.tap();
+                        confirmDeleteTask(task);
+                      }}
+                      hitSlop={8}
+                      accessibilityLabel={`Delete ${task.title}`}
+                    >
+                      <Ionicons name="trash-outline" size={iconSize.sm} color={colors.red} />
+                    </PressableScale>
+                  )}
                   {/* Back to where the app was told to write this: the
                       generator's row on Automations, or its rule list. In the
                       panel rather than on the collapsed row, which is already
