@@ -183,7 +183,7 @@ function makeStyles(colors: Colors) {
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.md,
       paddingHorizontal: spacing.md,
-      paddingVertical: spacing.smd,
+      minHeight: 44,
     },
     empty: { color: colors.textSecondary, fontSize: font.sm },
     card: { backgroundColor: colors.bgSecondary, borderRadius: radius.md },

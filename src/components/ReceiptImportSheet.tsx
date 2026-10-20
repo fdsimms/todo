@@ -1336,7 +1336,7 @@ function makeStyles(colors: Colors) {
       backgroundColor: colors.bgSunken,
       borderRadius: radius.md,
       paddingHorizontal: spacing.smd,
-      paddingVertical: spacing.smd,
+      minHeight: 44,
     },
     // Tighter than InlineAction's default, as the barcode sheet's row pills
     // are, so they read as part of the row rather than a grid of chips.

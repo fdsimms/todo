@@ -143,7 +143,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.smd,
+    minHeight: 44,
   },
   note: { color: colors.textSecondary, fontSize: font.sm },
   addRow: { alignItems: 'flex-start' },
