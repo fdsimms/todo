@@ -37,7 +37,7 @@ interface PlaceFieldProps {
  * back its pin. Suggestions answer to the same `placeSuggestionsEnabled`
  * switch as the new-event card, so with it off this is a plain text field.
  */
-function PlaceAddressField({ text, onChangeText, onPickPlace, picked, placeholder, accessibilityLabel }: PlaceFieldProps) {
+export function PlaceAddressField({ text, onChangeText, onPickPlace, picked, placeholder, accessibilityLabel }: PlaceFieldProps) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { results } = usePlaceSuggestions(text, !picked);

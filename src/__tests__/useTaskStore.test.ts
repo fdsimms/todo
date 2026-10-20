@@ -128,6 +128,8 @@ jest.mock('../db/database', () => ({
   // Workouts ride the same fan-out, right after the meter readings.
   dbGetAllExercises: jest.fn().mockReturnValue([]),
   dbGetAllWorkoutRoutines: jest.fn().mockReturnValue([]),
+  dbGetAllGyms: jest.fn().mockReturnValue([]),
+  dbGetAllGymExercises: jest.fn().mockReturnValue([]),
   dbGetAllWorkoutPrograms: jest.fn().mockReturnValue([]),
   dbGetAllWorkoutSessions: jest.fn().mockReturnValue([]),
   dbGetWorkoutSets: jest.fn().mockReturnValue([]),

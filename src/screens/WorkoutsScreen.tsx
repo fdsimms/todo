@@ -29,6 +29,7 @@ import { ActionMenu } from '../components/ActionMenu';
 import type { CardAnchor } from '../components/CardSheet';
 import { CsvExportSheet } from '../components/CsvExportSheet';
 import { WorkoutImportSheet } from '../components/WorkoutImportSheet';
+import { GymsSheet } from '../components/GymsSheet';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { pickBackupFile } from '../utils/backupFile';
 import { afterSheetsDismissed } from '../utils/sheetModal';
@@ -45,6 +46,8 @@ import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors }
 import { haptics } from '../utils/haptics';
 import { catalogExercise, describeExercise, searchExercises, type CatalogExercise } from '../utils/exerciseCatalog';
 import { describeRoutine } from '../utils/workoutRoutine';
+import { useGymStore } from '../store/useGymStore';
+import { describeRoutineFit, lastUsedGymId, routineFit } from '../utils/gyms';
 import { describeProgress, programProgress } from '../utils/workoutProgram';
 import { trainingMaxRaises } from '../utils/workoutProgression';
 import { formatWeightNumber } from '../utils/workoutData';
@@ -132,6 +135,12 @@ export function WorkoutsScreen() {
   const live = useWorkoutStore(s => s.sessions.find(x => x.endedAt === null) ?? null);
   const liveSets = useWorkoutStore(s => (live ? s.setsBySession[live.id] : undefined));
   const startWorkout = useStartWorkout();
+  // The gym a workout would start at, so a routine that needs what it lacks says so before Start.
+  const gyms = useGymStore(s => s.gyms);
+  const fitGym = useMemo(() => {
+    const id = lastUsedGymId(gyms, sessions);
+    return gyms.find(g => g.id === id) ?? null;
+  }, [gyms, sessions]);
   // Which routine the editor is on (null for a new one), kept through the
   // close so the sheet doesn't retitle itself while it slides away.
   const [editorOpen, setEditorOpen] = useState(false);
@@ -148,6 +157,7 @@ export function WorkoutsScreen() {
   const [importText, setImportText] = useState('');
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [gymsOpen, setGymsOpen] = useState(false);
   const workoutUnit = useSettingsStore(s => s.workoutUnit);
   const loadSets = useWorkoutStore(s => s.loadSets);
 
@@ -255,6 +265,11 @@ export function WorkoutsScreen() {
     setEditorOpen(true);
   }, []);
 
+  const fitLine = useCallback(
+    (routine: WorkoutRoutine) => (fitGym ? describeRoutineFit(routineFit(fitGym, routine, exercises), fitGym.name) : null),
+    [fitGym, exercises],
+  );
+
   const renderRoutine = useCallback(({ item }: { item: WorkoutRoutine }) => (
     <TouchableOpacity
       style={[styles.row, styles.routineRow]}
@@ -268,6 +283,7 @@ export function WorkoutsScreen() {
         <Text style={styles.detail}>
           {describeRoutine(item.items, id => catalogExercise(exercises, id)?.primaryMuscles ?? [])}
         </Text>
+        {!!fitLine(item) && <Text style={styles.fitDetail}>{fitLine(item)}</Text>}
       </View>
       <InlineAction
         label="Start"
@@ -275,7 +291,7 @@ export function WorkoutsScreen() {
         accessibilityLabel={`Start a workout from ${item.name}`}
       />
     </TouchableOpacity>
-  ), [styles, exercises, openEditor, startWorkout]);
+  ), [styles, exercises, openEditor, startWorkout, fitLine]);
 
   const openProgram = useCallback((programId: string | null) => {
     haptics.tap();
@@ -545,12 +561,16 @@ export function WorkoutsScreen() {
           anchor={menuAnchor}
           onClose={() => setMenuOpen(false)}
           actions={[
+            { key: 'gyms', label: 'Gyms', icon: 'location-outline', onPress: () => setGymsOpen(true) },
             { key: 'import', label: 'Import from Strong or Hevy', icon: 'download-outline', onPress: () => { void startImport(); } },
             ...(sessions.some(s => s.endedAt !== null)
               ? [{ key: 'export', label: 'Export as CSV', icon: 'share-outline' as const, onPress: () => setExportOpen(true) }]
               : []),
           ]}
         />
+      </LazySheet>
+      <LazySheet open={gymsOpen}>
+        <GymsSheet visible={gymsOpen} onClose={() => setGymsOpen(false)} />
       </LazySheet>
       <LazySheet open={importOpen}>
         <WorkoutImportSheet visible={importOpen} onClose={() => setImportOpen(false)} fileText={importText} />
@@ -642,6 +662,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   noticeValue: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold, fontVariant: ['tabular-nums'] },
   footHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.sm, marginHorizontal: spacing.xs },
   detail: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs },
+  fitDetail: { color: colors.orangeText, fontSize: font.sm, marginTop: spacing.xxs },
   healthTagRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.xxs },
   healthTag: {
     flexShrink: 1, color: colors.textSecondary, fontSize: font.xxs, fontWeight: fontWeight.semibold,

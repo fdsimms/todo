@@ -1139,6 +1139,8 @@ export type UnattendedSubject =
   | 'routine'
   // A workout program (`WorkoutProgram`) an agent saved or deleted. Record only.
   | 'program'
+  // A gym (`Gym`) an agent saved or deleted. Record only.
+  | 'gym'
   // A logged workout (`WorkoutSession`) an agent wrote after the fact, changed or deleted.
   // Titled by kind, never by what was lifted, for the mood entry's reason. Record only.
   | 'workout';
@@ -2129,6 +2131,43 @@ export interface WorkoutRoutine {
   createdAt: string;
 }
 
+/**
+ * A place the person trains, and the equipment it has. Plans, not the health
+ * record: gyms sync like routines do. `latitude`/`longitude` (a pair, or both
+ * null) and `radiusM` are what starting a workout compares a position against
+ * to offer this gym; nothing here reads the position itself.
+ */
+export interface Gym {
+  id: string;
+  name: string;
+  /** The equipment it has, from the closed `ExerciseEquipment` set. Empty means nothing is known yet, not "none". */
+  equipment: ExerciseEquipment[];
+  /** What the place was called when it was picked from a search, shown under the name. */
+  placeText: string;
+  latitude: number | null;
+  longitude: number | null;
+  radiusM: number;
+  sortOrder: number;
+  archived: boolean;
+  createdAt: string;
+}
+
+/**
+ * What differs about one exercise at one gym: a note ("seat 4"), and the bar
+ * and the load step (how much one click of the stack or one pair of plates
+ * adds) where they aren't the exercise's own. One row per (gym, exercise), its
+ * id derived from the pair so two devices writing the same one meet on it.
+ * A row with every field empty is deleted rather than kept.
+ */
+export interface GymExerciseSetting {
+  id: string;
+  gymId: string;
+  exerciseId: string;
+  notes: string;
+  barKg: number | null;
+  incrementKg: number | null;
+}
+
 /** A training max for one exercise, which a `percent` scheme's sets are measured from. */
 export interface TrainingMax {
   exerciseId: string;
@@ -2164,6 +2203,8 @@ export interface WorkoutSession {
   programId: string | null;
   /** The task occurrence it completed. Provenance only: allowed to dangle. */
   taskId: string | null;
+  /** The gym it was done at (`Gym.id`), or null for none chosen. Provenance only: allowed to dangle. */
+  gymId?: string | null;
   title: string;
   startedAt: string;
   /** Null while the session is live. */

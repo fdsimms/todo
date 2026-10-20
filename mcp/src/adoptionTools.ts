@@ -274,6 +274,18 @@ export const ADOPTION_CHECKS: readonly AdoptionCheck[] = [
     },
   },
   {
+    id: 'workout_gyms',
+    title: 'Gyms for workouts',
+    benefit: 'A gym is a place and the equipment it has. A workout picks the gym from where the phone is, flags an exercise the gym can\'t do and offers a replacement, and shows the notes you keep for each exercise there. Gyms are under the Workouts menu.',
+    advanced: true,
+    since: '2026-10-20',
+    evidence: ({ replica }) => {
+      if (!replica.settings().workoutsEnabled || replica.gyms().length > 0) return null;
+      const done = replica.workoutSessions('0000-01-01', '9999-12-31').filter(s => s.endedAt !== null).length;
+      return done >= 3 ? `${done} workouts are logged and no gym is saved.` : null;
+    },
+  },
+  {
     id: 'holiday_repeats',
     title: 'Repeating tasks and holidays',
     benefit: 'A repeating task can skip a public holiday or move to the next day, like a trash pickup after a holiday. It is chosen under Repeat in the task editor.',

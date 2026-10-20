@@ -169,6 +169,13 @@ function parseMaybeJson(raw: unknown): unknown {
   }
 }
 
+/** Known equipment only, each once, in the library's own order (not the order stored). */
+export function readEquipmentList(raw: unknown): ExerciseEquipment[] {
+  const parsed = parseMaybeJson(raw);
+  if (!Array.isArray(parsed)) return [];
+  return EXERCISE_EQUIPMENT.filter(e => parsed.includes(e));
+}
+
 /** Known muscle groups only, each once, in the order given. */
 export function readMuscles(raw: unknown): MuscleGroup[] {
   const parsed = parseMaybeJson(raw);

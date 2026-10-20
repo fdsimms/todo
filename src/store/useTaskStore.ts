@@ -180,6 +180,7 @@ import { useCookwareStore } from './useCookwareStore';
 import { useCopyFlagStore } from './useCopyFlagStore';
 import { useMeterReadingStore } from './useMeterReadingStore';
 import { useWorkoutStore } from './useWorkoutStore';
+import { useGymStore } from './useGymStore';
 import { useMedicationStore } from './useMedicationStore';
 import { useRewardStore } from './useRewardStore';
 import { guardChargeSeed, guardingReward } from '../utils/rewardGuard';
@@ -3275,6 +3276,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // part of the health record, so after a demo swap or a restore it has to
     // be read from the database the rest came from, never kept from the last.
     useWorkoutStore.getState().initialize();
+    // Gyms are read against the sessions that name them, so they swap with them.
+    useGymStore.getState().initialize();
     // The journal grew out of the mood entry's note, so it sits beside it on
     // the fan-out for the same swap-the-database reason.
     useJournalStore.getState().initialize();

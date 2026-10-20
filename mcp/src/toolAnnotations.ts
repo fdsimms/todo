@@ -135,6 +135,8 @@ export const WRITE_TOOLS: Record<string, { title: string; destructive: boolean; 
   delete_cookware: { title: 'Delete cookware', destructive: true, idempotent: true },
   save_routine: { title: 'Save a workout routine', destructive: true, idempotent: false },
   delete_routine: { title: 'Delete a workout routine', destructive: true, idempotent: true },
+  save_gym: { title: 'Save a gym', destructive: true, idempotent: false },
+  delete_gym: { title: 'Delete a gym', destructive: true, idempotent: true },
   save_program: { title: 'Save a workout program', destructive: true, idempotent: false },
   delete_program: { title: 'Delete a workout program', destructive: true, idempotent: true },
   log_workout: { title: 'Log a workout', destructive: false, idempotent: false },

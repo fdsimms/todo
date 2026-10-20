@@ -1432,6 +1432,23 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return routine;
     },
 
+    // A gym is a plan like a routine, named by its own name.
+    saveGym(input) {
+      const before = input.id ? replica.gyms().find(g => g.id === input.id) ?? null : null;
+      const gym = replica.saveGym(input);
+      const equipment = `${gym.equipment.length} ${gym.equipment.length === 1 ? 'kind' : 'kinds'} of equipment`;
+      log(before
+        ? { action: 'edited', subject: 'gym', title: gym.name, taskId: null, recordId: gym.id, note: `Change the gym "${before.name}"${before.name !== gym.name ? ` to "${gym.name}"` : ''} (${equipment})` }
+        : { action: 'created', subject: 'gym', title: gym.name, taskId: null, recordId: gym.id, note: `Add the gym "${gym.name}" (${equipment})` });
+      return gym;
+    },
+
+    deleteGym(id) {
+      const gym = replica.deleteGym(id);
+      log({ action: 'cleared', subject: 'gym', title: gym.name, taskId: null, recordId: gym.id, note: `Delete the gym "${gym.name}" and its exercise notes. Workouts done there keep their history. It cannot be restored from here.` });
+      return gym;
+    },
+
     // A program is a plan like a routine, named by its own name.
     saveProgram(input) {
       const before = input.id ? replica.workoutPrograms().find(p => p.id === input.id) ?? null : null;

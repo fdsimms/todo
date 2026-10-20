@@ -3,6 +3,7 @@ import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useWorkoutModeStore } from '../store/useWorkoutModeStore';
 import { haptics } from './haptics';
 import { programProgress } from './workoutProgram';
+import { applyLocationGym, defaultGymId } from './gymLocation';
 import { BUTTON_LABEL } from '../copy/shared';
 
 export interface StartWorkoutInput {
@@ -66,8 +67,13 @@ export function startWorkout(input: StartWorkoutInput = {}): StartWorkoutResult 
     routineId = programProgress(program, store.sessions, store.routines).nextRoutineId;
     if (!routineId) return 'nothing';
   }
-  const started = store.startSession({ routineId, programId: program?.id ?? null, taskId: input.taskId ?? null });
+  const started = store.startSession({
+    routineId, programId: program?.id ?? null, taskId: input.taskId ?? null, gymId: defaultGymId(),
+  });
   if (typeof started === 'string') return 'nothing';
+  // The workout opens at once at the gym last used; where the phone is follows
+  // in a moment and moves it, so a slow fix never holds the start back.
+  void applyLocationGym(started.id);
   haptics.impactMedium();
   show();
   return 'started';

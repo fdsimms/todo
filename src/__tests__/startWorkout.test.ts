@@ -13,6 +13,8 @@ jest.mock('../utils/haptics', () => ({ haptics: { tap: jest.fn(), impactMedium: 
 jest.mock('../store/useWorkoutModeStore', () => ({
   useWorkoutModeStore: { getState: () => ({ show: mockShow }) },
 }));
+// The position read is its own module's rules (gymLocation.test.ts); here a start only has to ask for it.
+jest.mock('../utils/gymLocation', () => ({ defaultGymId: () => null, applyLocationGym: jest.fn() }));
 jest.mock('../store/useWorkoutStore', () => ({
   useWorkoutStore: {
     getState: () => ({
@@ -49,13 +51,13 @@ beforeEach(() => {
 describe('startWorkout', () => {
   it('starts a routine for a task and opens workout mode', () => {
     expect(startWorkout({ routineId: 'r1', taskId: 't1' })).toBe('started');
-    expect(mockStartSession).toHaveBeenCalledWith({ routineId: 'r1', programId: null, taskId: 't1' });
+    expect(mockStartSession).toHaveBeenCalledWith({ routineId: 'r1', programId: null, taskId: 't1', gymId: null });
     expect(mockShow).toHaveBeenCalledTimes(1);
   });
 
   it('starts a program’s next routine, carrying the program', () => {
     expect(startWorkout({ programId: 'p1' })).toBe('started');
-    expect(mockStartSession).toHaveBeenCalledWith({ routineId: 'r1', programId: 'p1', taskId: null });
+    expect(mockStartSession).toHaveBeenCalledWith({ routineId: 'r1', programId: 'p1', taskId: null, gymId: null });
   });
 
   it('starts nothing for a program that is gone or has nothing in rotation', () => {

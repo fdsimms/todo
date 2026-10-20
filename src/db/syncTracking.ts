@@ -93,6 +93,9 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   { name: 'exercises', key: ['id'] },
   { name: 'workout_routines', key: ['id'] },
   { name: 'workout_programs', key: ['id'] },
+  // Gyms and what differs about an exercise at one: plans, so they travel like routines.
+  { name: 'gyms', key: ['id'] },
+  { name: 'gym_exercises', key: ['id'] },
   { name: 'workout_sessions', key: ['id'] },
   { name: 'workout_sets', key: ['id'] },
   // Journal and dream entries (JournalEntry). Same reasoning as mood_logs: a
