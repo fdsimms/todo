@@ -232,7 +232,7 @@ export const WRITE_TOOLS: Record<string, { title: string; destructive: boolean; 
   check_off_grocery_item: { title: 'Check off a grocery item', destructive: false, idempotent: true },
   remove_from_grocery_list: { title: 'Remove from the grocery list', destructive: false, idempotent: true },
   update_pantry_item: { title: 'Change what is in the pantry', destructive: true, idempotent: true },
-  update_pantry_box: { title: 'Change one packet in the pantry', destructive: true, idempotent: true },
+  update_pantry_box: { title: 'Change one package in the pantry', destructive: true, idempotent: true },
   add_to_pantry: { title: 'Add to the pantry', destructive: false, idempotent: true },
   answer_pantry_review: { title: 'Answer the pantry review', destructive: true, idempotent: true },
   update_grocery_item: { title: 'Edit a grocery item', destructive: true, idempotent: true },

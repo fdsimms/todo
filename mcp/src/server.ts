@@ -448,7 +448,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'get_pantry_item',
-    "Everything the app records about one item's place in the kitchen: whether it counts as on hand and why, its use-by day, opened and frozen state, shelf life, running-low and staple flags, purchase history, how often it went to waste, and its variants (brands, packets, frozen portions). A status of unknown means the app has no opinion, which is not the same as out. Takes an id from list_grocery_items or list_pantry, or a name.",
+    "Everything the app records about one item's place in the kitchen: whether it counts as on hand and why, its use-by day, opened and frozen state, shelf life, running-low and staple flags, purchase history, how often it went to waste, and its variants (brands, packages, frozen portions). A status of unknown means the app has no opinion, which is not the same as out. Takes an id from list_grocery_items or list_pantry, or a name.",
     { id: z.string().optional(), name: z.string().optional() },
     async input => {
       try {
@@ -3116,7 +3116,7 @@ function registerWriteTools(
 
   server.tool(
     'update_pantry_box',
-    "The same as update_pantry_item for one packet of an item: a brand or variant, or its frozen portion. Ids are the `boxes` of get_pantry_item or the boxId of a list_pantry row. Marking a frozen portion out deletes it.",
+    "The same as update_pantry_item for one package of an item: a brand or variant, or its frozen portion. Ids are the `boxes` of get_pantry_item or the boxId of a list_pantry row. Marking a frozen portion out deletes it.",
     {
       id: z.string().min(1),
       status: z.enum(['have', 'out', 'clear']).optional(),
@@ -3127,7 +3127,7 @@ function registerWriteTools(
       try {
         return json(withLink(await withWrite(() => updatePantryBox(replica, id, change)), LINKS?.pantry()));
       } catch (e) {
-        return json({ error: e instanceof Error ? e.message : 'Could not change that packet.' });
+        return json({ error: e instanceof Error ? e.message : 'Could not change that package.' });
       }
     }
   );
@@ -3611,7 +3611,7 @@ function registerWriteTools(
 
   server.tool(
     'import_receipt',
-    "Do what the app's receipt flow does, from a receipt you read (use match_receipt first, and show the person lines you are unsure of). context shopping (default): each line is put on the list if it is not there, checked off, and the trip is finished with the prices (finish: false only checks them off); finishing records everything checked off on the list, including items checked off before this receipt. context pantry: the lines are marked on hand, a repeat purchase clears the old packet's opened, frozen and running-low state, and prices are noted; no purchase is recorded. Each line needs an itemId (a match) or a name (which finds or creates the item). The text printed on a line is remembered as this store's name for the item. The preview lists every line.",
+    "Do what the app's receipt flow does, from a receipt you read (use match_receipt first, and show the person lines you are unsure of). context shopping (default): each line is put on the list if it is not there, checked off, and the trip is finished with the prices (finish: false only checks them off); finishing records everything checked off on the list, including items checked off before this receipt. context pantry: the lines are marked on hand, a repeat purchase clears the old package's opened, frozen and running-low state, and prices are noted; no purchase is recorded. Each line needs an itemId (a match) or a name (which finds or creates the item). The text printed on a line is remembered as this store's name for the item. The preview lists every line.",
     {
       context: z.enum(['shopping', 'pantry']).optional(),
       list: z.string().optional().describe('Shopping on a separate list. The list at home when omitted.'),
@@ -4182,7 +4182,7 @@ function registerWriteTools(
 
   server.tool(
     'set_meal_cooked',
-    'Mark a planned meal cooked, as its checkbox on the plan does: it counts toward the recipe\'s cooking history, marks the packets it was made from opened (only ones the app already thinks the person has), and completes the meal\'s task on Today. cooked: false takes the mark back and reopens that task; the recipe\'s count and the opened packets stay. The phone\'s questions after a cooking (what got used up, whether there are leftovers) are not asked from here, so ask the person yourself if it matters.',
+    'Mark a planned meal cooked, as its checkbox on the plan does: it counts toward the recipe\'s cooking history, marks the packages it was made from opened (only ones the app already thinks the person has), and completes the meal\'s task on Today. cooked: false takes the mark back and reopens that task; the recipe\'s count and the opened packages stay. The phone\'s questions after a cooking (what got used up, whether there are leftovers) are not asked from here, so ask the person yourself if it matters.',
     { id: z.string().min(1), cooked: z.boolean() },
     async ({ id, cooked }) => {
       try {

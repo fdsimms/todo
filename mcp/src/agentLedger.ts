@@ -1262,7 +1262,7 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       const before = itemId ? pantryState(itemId) : null;
       const outcome = replica.updatePantryBox(id, change);
       if (outcome.changed.length > 0) {
-        log({ action: 'edited', subject: 'pantry', title: outcome.item.name, taskId: null, recordId: outcome.item.id, revert: pantryRevert(before, pantryState(outcome.item.id)), note: `Change a packet of "${outcome.item.name}" in the pantry: ${outcome.changed.join(', ')}` });
+        log({ action: 'edited', subject: 'pantry', title: outcome.item.name, taskId: null, recordId: outcome.item.id, revert: pantryRevert(before, pantryState(outcome.item.id)), note: `Change a package of "${outcome.item.name}" in the pantry: ${outcome.changed.join(', ')}` });
       }
       return outcome;
     },

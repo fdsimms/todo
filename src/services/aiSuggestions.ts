@@ -2560,7 +2560,7 @@ export async function estimateMealNutrition(
       'When the description names more than one component (separate foods, or an item plus a side), also split the total across a breakdown array, one entry per component named. Each entry states every nutrient for that component, same rule as the total, and for every nutrient the entries must add up to the total. Work the total out from the components rather than the other way round. Skip the breakdown entirely for a single named item, or when you cannot split it sensibly.',
       'Set basis to "published" only when you are recalling figures a specific chain or manufacturer publishes, and name them in attribution. Otherwise set it to "typical" and leave attribution empty.',
       ...(offered.length > 0 ? [
-        'You may be given figures the user already has, for foods they have logged before, packets in their kitchen, and recipes they have saved. When the description refers to one of them, reason from those figures rather than recalling generic ones for the same food, including when only part of it was eaten or it was eaten alongside something else.',
+        'You may be given figures the user already has, for foods they have logged before, packages in their kitchen, and recipes they have saved. When the description refers to one of them, reason from those figures rather than recalling generic ones for the same food, including when only part of it was eaten or it was eaten alongside something else.',
         'Set basis to "own" when the figures you return lean on those records, and leave attribution empty for it: they are the user\'s own records rather than anything a manufacturer publishes. Use "published" or "typical" as usual for a meal the records say nothing about.',
         'Do not comment on the records themselves, and do not correct them. They are what the user has measured.',
       ] : []),
@@ -2775,7 +2775,7 @@ export async function readLabelPhotoWithAi(image: RecipeImage): Promise<LabelRea
   if (!image.base64) return null;
 
   const prompt = [
-    'This is a photo of a printed nutrition facts panel. It may be on a curved or angled surface, or have glare or reflections across part of it — read through that the way you would hold the packet up to the light yourself.',
+    'This is a photo of a printed nutrition facts panel. It may be on a curved or angled surface, or have glare or reflections across part of it — read through that the way you would hold the package up to the light yourself.',
     'Give each nutrient\'s figure exactly as printed, value and unit together ("7g", "490mg", "<0.5g") — do not convert a unit or compute a figure from a percentage. Leave a field empty if the panel does not print that nutrient at all; only write a figure for one the panel actually states, including one it states as zero.',
     'A panel sometimes prints more than one column of figures side by side, typically "per 100g" and "per serving". Read every column it prints, left to right, and give what that column\'s own heading states — per100g, per100ml, or perServing. Leave a column\'s basis empty only when the panel genuinely does not head it.',
     'The serving line, when printed, states a size ("2 cookies", "1 oz (28g)") — give it verbatim in servingText, and the gram weight separately in servingGrams if it states one in parentheses.',
