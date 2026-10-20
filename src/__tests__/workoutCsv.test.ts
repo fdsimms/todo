@@ -577,7 +577,7 @@ describe('matchExerciseName', () => {
     id: 'c1', name: 'Sled drag', kind: 'weight_reps', primaryMuscles: [], secondaryMuscles: [], equipment: 'other',
     barKg: null, notes: '', archived: false, isCustom: true, createdAt: '2026-01-01T00:00:00.000Z',
   };
-  const archived: Exercise = { ...custom, id: 'c2', name: 'Zottman curl', archived: true };
+  const archived: Exercise = { ...custom, id: 'c2', name: 'Cossack squat', archived: true };
   const catalog = buildCatalog([custom, archived]);
   const idOf = (name: string) => {
     const m = matchExerciseName(name, catalog);
@@ -593,6 +593,17 @@ describe('matchExerciseName', () => {
     expect(matchExerciseName('Bench Press (Barbell)', catalog)).toMatchObject({ kind: 'words' });
     expect(matchExerciseName('Pull Up', catalog)).toMatchObject({ kind: 'words' });
     expect(matchExerciseName('Overhead Press (Barbell)', catalog)).toMatchObject({ kind: 'words' });
+  });
+
+  it('matches the names an import file uses for exercises the library now has', () => {
+    for (const [name, id] of [
+      ['Glute Bridge', 'lib:bodyweight-glute-bridge'],
+      ['Kettlebell Goblet Squat', 'lib:kettlebell-goblet-squat'],
+      ['Clamshell', 'lib:clamshell'],
+      ['Zottman Curl', 'lib:zottman-curl'],
+    ]) {
+      expect(matchExerciseName(name, catalog)).toMatchObject({ kind: 'exact', exerciseId: id });
+    }
   });
 
   it('only suggests a one-letter typo, never decides it', () => {
@@ -673,9 +684,9 @@ describe('matchExerciseName', () => {
   });
 
   it('matches an archived exercise only by its exact name', () => {
-    expect(matchExerciseName('Zottman curl', catalog)).toMatchObject({ kind: 'exact', exerciseId: 'c2' });
-    expect(idOf('Curl Zottman Extra')).toBeNull();
-    expect(idOf('curl zottman')).toBeNull();
+    expect(matchExerciseName('Cossack squat', catalog)).toMatchObject({ kind: 'exact', exerciseId: 'c2' });
+    expect(idOf('Squat Cossack Extra')).toBeNull();
+    expect(idOf('squat cossack')).toBeNull();
   });
 
   it('puts only decided matches in the auto set when matching a whole file', () => {

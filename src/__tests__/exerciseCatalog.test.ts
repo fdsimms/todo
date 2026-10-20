@@ -127,7 +127,7 @@ describe('searchExercises', () => {
     expect(biceps.length).toBeGreaterThan(0);
     expect(biceps.every(r => r.exercise.primaryMuscles.includes('biceps'))).toBe(true);
     const cableBiceps = searchExercises([], 'curl', { muscle: 'biceps', equipment: 'cable' });
-    expect(names(cableBiceps.map(r => r.exercise))).toEqual(['Cable curl']);
+    expect(names(cableBiceps.map(r => r.exercise))).toEqual(['Cable curl', 'Cable hammer curl', 'Cable preacher curl']);
   });
 
   it('searches archived exercises only when asked to', () => {
