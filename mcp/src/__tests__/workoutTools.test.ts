@@ -15,7 +15,7 @@ const set = (id: string, exerciseId: string, extra: Partial<WorkoutSet> = {}): W
   durationSeconds: null, distanceM: null, rpe: null, completedAt: '2026-10-07T18:10:00.000Z', supersetKey: null, note: null, ...extra,
 });
 const routine: WorkoutRoutine = {
-  id: 'r1', name: 'Upper A', notes: '', programId: 'p1', sortOrder: 0, createdAt: '2026-10-01T10:00:00.000Z',
+  id: 'r1', name: 'Upper A', notes: '', programId: 'p1', sortOrder: 0, createdAt: '2026-10-01T10:00:00.000Z', groupName: null, archived: false,
   items: [{ exerciseId: 'lib:barbell-bench-press', supersetKey: null, restSeconds: 150, progression: null,
     targets: [{ kind: 'working', repsMin: 6, repsMax: 8, weightKg: 60 }] }],
 };

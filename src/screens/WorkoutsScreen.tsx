@@ -18,6 +18,9 @@ import { useWorkoutModeStore } from '../store/useWorkoutModeStore';
 import { useStartWorkout } from '../hooks/useStartWorkout';
 import { InlineAction } from '../components/InlineAction';
 import { RoutineEditorSheet } from '../components/RoutineEditorSheet';
+import { RoutineGroupSheet } from '../components/RoutineGroupSheet';
+import { RoutineSwipeRow } from '../components/RoutineSwipeRow';
+import { RotatingChevron } from '../components/RotatingChevron';
 import { ProgramEditorSheet } from '../components/ProgramEditorSheet';
 import { ProgramLibrarySheet } from '../components/ProgramLibrarySheet';
 import { EmptyNote } from '../components/EmptyNote';
@@ -45,6 +48,9 @@ import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors }
 import { haptics } from '../utils/haptics';
 import { catalogExercise, describeExercise, searchExercises, type CatalogExercise } from '../utils/exerciseCatalog';
 import { describeRoutine } from '../utils/workoutRoutine';
+import { routineSections } from '../utils/routineGroups';
+import { confirmDelete } from '../utils/confirmDelete';
+import { animateLayout } from '../utils/layoutAnimation';
 import { describeProgress, programProgress } from '../utils/workoutProgram';
 import { trainingMaxRaises } from '../utils/workoutProgression';
 import { formatWeightNumber } from '../utils/workoutData';
@@ -89,6 +95,10 @@ import {
  * them. An empty read adds nothing, not a prompt to connect Health, since a
  * refused read and no workouts look the same.
  */
+
+interface RoutineHeaderItem { kind: 'header'; key: string; name: string; count: number; open: boolean }
+interface RoutineRowItem { kind: 'routine'; key: string; routine: WorkoutRoutine }
+type RoutineListItem = RoutineHeaderItem | RoutineRowItem;
 
 type View_ = 'history' | 'routines' | 'programs' | 'exercises';
 
@@ -140,6 +150,14 @@ export function WorkoutsScreen() {
   const [programEditorOpen, setProgramEditorOpen] = useState(false);
   const [editorProgramId, setEditorProgramId] = useState<string | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  // The group sheet: a routine to move, or null for "New group". The id is kept
+  // through the close so the sheet doesn't switch modes while it slides away.
+  const [groupSheetOpen, setGroupSheetOpen] = useState(false);
+  const [groupSheetRoutineId, setGroupSheetRoutineId] = useState<string | null>(null);
+  // Headings the person has folded, by name, and whether Archived is open.
+  // Session only: a fold is a view, not data. Archived starts shut.
+  const [foldedGroups, setFoldedGroups] = useState<string[]>([]);
+  const [archivedOpen, setArchivedOpen] = useState(false);
 
   // The menu off the header's "…", the file picked to import (kept through the
   // sheet's close so it doesn't empty while it slides away) and the export sheet.
@@ -255,27 +273,108 @@ export function WorkoutsScreen() {
     setEditorOpen(true);
   }, []);
 
-  const renderRoutine = useCallback(({ item }: { item: WorkoutRoutine }) => (
-    <TouchableOpacity
-      style={[styles.row, styles.routineRow]}
-      activeOpacity={interaction.activeOpacity}
-      onPress={() => openEditor(item.id)}
-      accessibilityRole="button"
-      accessibilityLabel={`Edit ${item.name}`}
-    >
-      <View style={styles.flex}>
-        <Text style={styles.title}>{item.name}</Text>
-        <Text style={styles.detail}>
-          {describeRoutine(item.items, id => catalogExercise(exercises, id)?.primaryMuscles ?? [])}
-        </Text>
-      </View>
-      <InlineAction
-        label="Start"
-        onPress={() => startWorkout({ routineId: item.id })}
-        accessibilityLabel={`Start a workout from ${item.name}`}
-      />
-    </TouchableOpacity>
-  ), [styles, exercises, openEditor, startWorkout]);
+  const openGroupSheet = useCallback((routineId: string | null) => {
+    haptics.tap();
+    setGroupSheetRoutineId(routineId);
+    setGroupSheetOpen(true);
+  }, []);
+
+  const archiveRoutine = useCallback((routine: WorkoutRoutine) => {
+    useWorkoutStore.getState().updateRoutine(routine.id, { archived: !routine.archived });
+    haptics.success();
+  }, []);
+
+  const deleteRoutine = useCallback((routine: WorkoutRoutine) => {
+    confirmDelete({
+      title: 'Delete this routine?',
+      message: 'Workouts already logged from it stay in your history. Tasks linked to it stop offering it.',
+      onConfirm: () => {
+        useWorkoutStore.getState().deleteRoutine(routine.id);
+        haptics.success();
+      },
+    });
+  }, []);
+
+  const sections = useMemo(() => routineSections(routines), [routines]);
+  const routineItems = useMemo<RoutineListItem[]>(() => {
+    const out: RoutineListItem[] = sections.ungrouped.map(routine => ({ kind: 'routine', key: routine.id, routine }));
+    for (const g of sections.groups) {
+      const folded = foldedGroups.includes(g.name);
+      out.push({ kind: 'header', key: `group:${g.name}`, name: g.name, count: g.routines.length, open: !folded });
+      if (!folded) for (const routine of g.routines) out.push({ kind: 'routine', key: routine.id, routine });
+    }
+    if (sections.archived.length > 0) {
+      out.push({ kind: 'header', key: 'archived', name: 'Archived', count: sections.archived.length, open: archivedOpen });
+      if (archivedOpen) for (const routine of sections.archived) out.push({ kind: 'routine', key: routine.id, routine });
+    }
+    return out;
+  }, [sections, foldedGroups, archivedOpen]);
+
+  const toggleHeader = useCallback((item: RoutineHeaderItem) => {
+    haptics.tap();
+    animateLayout();
+    if (item.key === 'archived') setArchivedOpen(o => !o);
+    else setFoldedGroups(f => (f.includes(item.name) ? f.filter(n => n !== item.name) : [...f, item.name]));
+  }, []);
+
+  const renderRoutine = useCallback(({ item: entry }: { item: RoutineListItem }) => {
+    if (entry.kind === 'header') {
+      return (
+        <TouchableOpacity
+          style={styles.groupHeader}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => toggleHeader(entry)}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: entry.open }}
+          accessibilityLabel={`${entry.name}, ${entry.count} ${entry.count === 1 ? 'routine' : 'routines'}`}
+        >
+          <Text style={styles.groupTitle} numberOfLines={1}>{entry.name}</Text>
+          <Text style={styles.groupCount}>{entry.count}</Text>
+          <View style={styles.flex} />
+          <RotatingChevron open={entry.open} closed="forward" size={iconSize.xs} color={colors.textSecondary} />
+        </TouchableOpacity>
+      );
+    }
+    const item = entry.routine;
+    return (
+      <RoutineSwipeRow
+        name={item.name}
+        archived={item.archived}
+        onMove={() => openGroupSheet(item.id)}
+        onArchive={() => archiveRoutine(item)}
+        onDelete={() => deleteRoutine(item)}
+      >
+        <TouchableOpacity
+          style={[styles.row, styles.routineRow, item.archived && styles.archivedRow]}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => openEditor(item.id)}
+          accessibilityRole="button"
+          accessibilityLabel={`Edit ${item.name}`}
+        >
+          <View style={styles.flex}>
+            <Text style={styles.title}>{item.name}</Text>
+            <Text style={styles.detail}>
+              {describeRoutine(item.items, id => catalogExercise(exercises, id)?.primaryMuscles ?? [])}
+            </Text>
+          </View>
+          {item.archived ? (
+            <InlineAction
+              label="Restore"
+              variant="neutral"
+              onPress={() => archiveRoutine(item)}
+              accessibilityLabel={`Restore ${item.name}`}
+            />
+          ) : (
+            <InlineAction
+              label="Start"
+              onPress={() => startWorkout({ routineId: item.id })}
+              accessibilityLabel={`Start a workout from ${item.name}`}
+            />
+          )}
+        </TouchableOpacity>
+      </RoutineSwipeRow>
+    );
+  }, [styles, colors, exercises, openEditor, startWorkout, toggleHeader, openGroupSheet, archiveRoutine, deleteRoutine]);
 
   const openProgram = useCallback((programId: string | null) => {
     haptics.tap();
@@ -477,8 +576,8 @@ export function WorkoutsScreen() {
           />
         ) : (
           <FlatList
-            data={routines}
-            keyExtractor={r => r.id}
+            data={routineItems}
+            keyExtractor={r => r.key}
             renderItem={renderRoutine}
             refreshControl={pullSearch.refreshControl}
             contentContainerStyle={[styles.list, listBottom]}
@@ -545,6 +644,9 @@ export function WorkoutsScreen() {
           anchor={menuAnchor}
           onClose={() => setMenuOpen(false)}
           actions={[
+            ...(routines.some(r => !r.archived)
+              ? [{ key: 'group', label: 'New group', icon: 'folder-open-outline' as const, onPress: () => openGroupSheet(null) }]
+              : []),
             { key: 'import', label: 'Import from Strong or Hevy', icon: 'download-outline', onPress: () => { void startImport(); } },
             ...(sessions.some(s => s.endedAt !== null)
               ? [{ key: 'export', label: 'Export as CSV', icon: 'share-outline' as const, onPress: () => setExportOpen(true) }]
@@ -597,6 +699,13 @@ export function WorkoutsScreen() {
           onClose={() => setProgramEditorOpen(false)}
         />
       </LazySheet>
+      <LazySheet open={groupSheetOpen}>
+        <RoutineGroupSheet
+          visible={groupSheetOpen}
+          routineId={groupSheetRoutineId}
+          onClose={() => setGroupSheetOpen(false)}
+        />
+      </LazySheet>
       <LazySheet open={editorOpen}>
         <RoutineEditorSheet
           visible={editorOpen}
@@ -615,6 +724,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   list: { paddingHorizontal: spacing.md, paddingTop: spacing.xs, gap: spacing.sm },
   flex: { flex: 1 },
   routineRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd },
+  archivedRow: { opacity: 0.75 },
+  groupHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xsm,
+    paddingHorizontal: spacing.xs, paddingTop: spacing.smd, paddingBottom: spacing.xs,
+  },
+  groupTitle: {
+    flexShrink: 1, color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold,
+    letterSpacing: 0.8, textTransform: 'uppercase',
+  },
+  groupCount: { color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.semibold },
   exerciseRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd },
   liveCard: {
     gap: spacing.smd,

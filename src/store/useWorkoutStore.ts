@@ -54,6 +54,7 @@ import {
 import { libraryExercise } from '../utils/exerciseLibrary';
 import { loadContextFor, rampSteps } from '../utils/workoutProgression';
 import { libraryProgram } from '../utils/workoutProgramLibrary';
+import { resolveGroupName } from '../utils/routineGroups';
 import { useSettingsStore } from './useSettingsStore';
 import {
   PENDING_WORKOUT_WRITE_MAX_AGE_DAYS,
@@ -127,6 +128,9 @@ export interface RoutinePatch {
   notes?: string;
   programId?: string | null;
   items?: WorkoutRoutineItem[];
+  /** A name files it under that heading (spelled as an existing group is, if one matches); null or blank takes it out of its group. */
+  groupName?: string | null;
+  archived?: boolean;
 }
 
 export interface ProgramInput {
@@ -991,6 +995,8 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         sortOrder: routines.reduce((max, r) => Math.max(max, r.sortOrder), -1) + 1,
         items: read,
         createdAt: nowIso(),
+        groupName: null,
+        archived: false,
       };
       dbSaveWorkoutRoutine(row);
       set({ routines: [...routines, row] });
@@ -1013,6 +1019,8 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         notes: patch.notes !== undefined ? patch.notes.trim() : existing.notes,
         programId: patch.programId !== undefined ? patch.programId : existing.programId,
         items,
+        groupName: patch.groupName !== undefined ? resolveGroupName(patch.groupName, get().routines) : existing.groupName,
+        archived: patch.archived ?? existing.archived,
       };
       dbSaveWorkoutRoutine(row);
       set({ routines: get().routines.map(r => (r.id === id ? row : r)) });
@@ -1073,6 +1081,8 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         sortOrder: ++order,
         items: readRoutineItems(r.items),
         createdAt: nowIso(),
+        groupName: null,
+        archived: false,
       }));
       const program: WorkoutProgram = {
         id: programId,

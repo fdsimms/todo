@@ -6464,7 +6464,7 @@ describe('workouts', () => {
 
   it('round-trips a routine and a program, JSON and all', () => {
     const routine = {
-      id: 'r1', name: 'Upper A', notes: '', programId: 'p1', sortOrder: 0, createdAt: '2026-10-01T10:00:00.000Z',
+      id: 'r1', name: 'Upper A', notes: '', programId: 'p1', sortOrder: 0, createdAt: '2026-10-01T10:00:00.000Z', groupName: null, archived: false,
       items: [{ exerciseId: 'c1', supersetKey: 'a', restSeconds: 90, progression: { scheme: 'double' as const, incrementKg: 2.5 },
         targets: [{ kind: 'working' as const, repsMin: 8, repsMax: 10, weightKg: 40 }] }],
     };
@@ -6475,6 +6475,9 @@ describe('workouts', () => {
     dbSaveWorkoutRoutine(routine);
     dbSaveWorkoutProgram(program);
     expect(dbGetAllWorkoutRoutines()).toEqual([routine]);
+    dbSaveWorkoutRoutine({ ...routine, groupName: 'Gym', archived: true });
+    expect(dbGetAllWorkoutRoutines()).toEqual([{ ...routine, groupName: 'Gym', archived: true }]);
+    dbSaveWorkoutRoutine(routine);
     expect(dbGetAllWorkoutPrograms()).toEqual([program]);
   });
 

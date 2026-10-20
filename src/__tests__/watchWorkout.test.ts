@@ -55,6 +55,8 @@ const routine = (id: string, extra: Partial<WorkoutRoutine> = {}): WorkoutRoutin
   programId: null,
   sortOrder: 0,
   createdAt: STARTED,
+  groupName: null,
+  archived: false,
   items: [],
   ...extra,
 });

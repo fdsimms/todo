@@ -2127,6 +2127,14 @@ export interface WorkoutRoutine {
   sortOrder: number;
   items: WorkoutRoutineItem[];
   createdAt: string;
+  /**
+   * The heading it is listed under on the Routines tab, typed by the person.
+   * A group exists only while a routine holds its name (there is no group row),
+   * and a routine is in one group at most. Null for a routine on its own.
+   */
+  groupName: string | null;
+  /** Out of the way, not deleted: listed under Archived and still startable after a restore. */
+  archived: boolean;
 }
 
 /** A training max for one exercise, which a `percent` scheme's sets are measured from. */

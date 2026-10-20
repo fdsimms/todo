@@ -7966,7 +7966,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
                       noun="routine"
                       options={[
                         ...(programs.length > 0 ? [] : [none]),
-                        ...workoutRoutines.map(r => ({
+                        ...workoutRoutines.filter(r => !r.archived || r.id === workoutRoutineId).map(r => ({
                           key: r.id,
                           label: r.name,
                           selected: r.id === workoutRoutineId,

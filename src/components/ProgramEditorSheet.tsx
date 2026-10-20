@@ -304,7 +304,7 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
               <>
                 <PillGroup
                   noun="routine"
-                  options={routines.map(r => ({ key: r.id, label: r.name, selected: false, onPress: () => addRoutine(r.id) }))}
+                  options={routines.filter(r => !r.archived).map(r => ({ key: r.id, label: r.name, selected: false, onPress: () => addRoutine(r.id) }))}
                 />
                 <HelpText style={styles.hint}>Tap a routine to add it at the end. A routine can come round more than once.</HelpText>
                 <View style={styles.row}>

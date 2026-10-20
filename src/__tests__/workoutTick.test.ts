@@ -65,6 +65,8 @@ const routine = (items: { exerciseId: string; restSeconds: number }[]): WorkoutR
   programId: null,
   sortOrder: 0,
   createdAt: DONE,
+  groupName: null,
+  archived: false,
   items: items.map(i => ({ exerciseId: i.exerciseId, restSeconds: i.restSeconds, progression: 'none', targets: [] })) as unknown as WorkoutRoutine['items'],
 });
 

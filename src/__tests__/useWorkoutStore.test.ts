@@ -220,6 +220,28 @@ describe('routines and programs', () => {
     expect(state().updateRoutine(r.id, { name: '' })).toBe('blank');
   });
 
+  it('files a routine under a group, spelled as an existing group is, and takes it out again', () => {
+    const a = ok(state().addRoutine('Push'));
+    const b = ok(state().addRoutine('Pull'));
+    expect(a).toMatchObject({ groupName: null, archived: false });
+    ok(state().updateRoutine(a.id, { groupName: '  Gym ' }));
+    expect(ok(state().updateRoutine(b.id, { groupName: 'gym' })).groupName).toBe('Gym');
+    reload();
+    expect(state().routines.map(r => r.groupName)).toEqual(['Gym', 'Gym']);
+    expect(ok(state().updateRoutine(a.id, { groupName: '  ' })).groupName).toBeNull();
+    expect(ok(state().updateRoutine(b.id, { name: 'Pull B' })).groupName).toBe('Gym');
+  });
+
+  it('archives and restores a routine without touching its program or its sets', () => {
+    const r = ok(state().addRoutine('Push', [item]));
+    const program = ok(state().addProgram({ name: 'PPL', rotation: [r.id] }));
+    ok(state().updateRoutine(r.id, { archived: true }));
+    reload();
+    expect(state().routines[0]).toMatchObject({ archived: true, programId: program.id, items: [{ ...item, supersetKey: null }] });
+    expect(state().programs[0].rotation).toEqual([r.id]);
+    expect(ok(state().updateRoutine(r.id, { archived: false })).archived).toBe(false);
+  });
+
   it('takes a deleted routine out of every rotation it was in', () => {
     const a = ok(state().addRoutine('Upper'));
     const b = ok(state().addRoutine('Lower'));
