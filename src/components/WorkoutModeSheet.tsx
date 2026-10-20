@@ -14,9 +14,10 @@
 // src/utils/workoutProgression.ts; the design in docs/arch/workouts.md, the mocks
 // in docs/arch/workouts-mocks/workout-mode.png.
 import { format } from 'date-fns/format';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Keyboard, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Swipeable } from 'react-native-gesture-handler';
 import { useKeepAwake } from 'expo-keep-awake';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SheetModal } from './SheetModal';
@@ -44,7 +45,7 @@ import { useWorkoutModeStore } from '../store/useWorkoutModeStore';
 import { useRestTimer } from '../hooks/useRestTimer';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useColors } from '../theme/ThemeContext';
-import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
+import { flattenOverlay, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { formatTimeOfDay } from '../utils/dateUtils';
@@ -74,6 +75,7 @@ import {
   type SetField,
 } from '../utils/workoutSession';
 import { tickSet } from '../utils/workoutTick';
+import type { SessionExercise } from '../utils/workoutSession';
 import type { WeightUnit } from '../utils/weightLog';
 import { workoutSpanWritable } from '../utils/healthWorkoutSync';
 import { BUTTON_LABEL } from '../copy/shared';
@@ -152,7 +154,11 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const [sessionNotes, setSessionNotes] = useState('');
   // What the exercise picker is for: adding one, or swapping the shown one out.
   const [picking, setPicking] = useState<'add' | 'swap' | null>(null);
-  const [exNoteOpen, setExNoteOpen] = useState(false);
+  // The exercise whose note field is open (one at a time, across all cards).
+  const [exNoteFor, setExNoteFor] = useState<string | null>(null);
+  // Every exercise on one scrolling page, instead of one card at a time.
+  // Session-only, like the photos toggle.
+  const [allOpen, setAllOpen] = useState(false);
   const [exNoteDraft, setExNoteDraft] = useState('');
   // The routine changes ticked on the summary. Nothing starts ticked.
   const [accepted, setAccepted] = useState<ReadonlySet<string>>(new Set());
@@ -173,7 +179,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     setEffort(session?.effort ?? null);
     setSessionNotes(session?.notes ?? '');
     setPicking(null);
-    setExNoteOpen(false);
+    setExNoteFor(null);
     setAccepted(new Set());
     setDetailOpen(false);
     // On open only: a tick re-derives the view through its own handler.
@@ -193,69 +199,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
 
   const viewIndex = Math.max(0, exercises.findIndex(e => e.exerciseId === viewedId));
   const viewed = exercises[viewIndex] ?? null;
-  const viewedInfo = viewed ? catalogExercise(exerciseRows, viewed.exerciseId) : null;
-  const kind: ExerciseKind = viewedInfo?.kind ?? 'weight_reps';
-  const fields = setFieldsFor(kind);
-  const current = viewed ? currentSetOf(viewed) : null;
-  const openSet = viewed?.sets.find(s => s.id === (openSetId ?? current?.id)) ?? null;
-
-  // The plates for the open set's weight, for a barbell, EZ bar or trap bar: a
-  // dumbbell or a machine has nothing to load. A pound lifter who never set an
-  // inventory gets the pound default (`effectivePlateInventory`).
-  const plate = useMemo(() => {
-    if (!openSet || !viewedInfo || !isPlateLoaded(viewedInfo.equipment) || kind !== 'weight_reps' || !openSet.weightKg) return null;
-    const inventory = effectivePlateInventory(plateInventory, unit);
-    return plateLoad(openSet.weightKg, barKgFor(viewedInfo.barKg, inventory, viewedInfo.equipment, unit), inventory, unit);
-  }, [openSet, viewedInfo, kind, plateInventory, unit]);
-
-  // Last time, for the shown exercise: one read per exercise shown, not per row.
-  const previous = useMemo(
-    () => (viewed && session ? useWorkoutStore.getState().lastTimeFor(viewed.exerciseId, session.id) : []),
-    // sessionsList: a session finished elsewhere changes which one was last.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [viewed?.exerciseId, session?.id, sessionsList],
-  );
-  const previousBySet = useMemo(() => matchPrevious(viewed?.sets ?? [], previous), [viewed, previous]);
-  // What was written on this exercise's sets last time, read before the first set.
-  const lastNotes = useMemo(() => lastTimeNotes(previous), [previous]);
-  const canSwap = !!viewed && swappableSets(viewed.sets, viewed.exerciseId).length > 0;
-
-  // ==== the suggestion: the next load, proposed and never applied unasked ====
-  // The routine the workout follows and the program it belongs to decide
-  // which scheme moves the shown exercise on (`exerciseProposal`, shared with
-  // the Apple Watch's suggestion).
   const program = session?.programId ? programs.find(p => p.id === session.programId) ?? null : null;
-  const shownProposal = useMemo<ExerciseProposal | null>(() => {
-    if (!viewed || !session) return null;
-    return exerciseProposal({
-      exerciseId: viewed.exerciseId,
-      exercises: exerciseRows,
-      routine,
-      program,
-      sessions: sessionsList,
-      routines,
-      history: useWorkoutStore.getState().exerciseHistory(viewed.exerciseId),
-      exceptSessionId: session.id,
-      plateInventory,
-      unit,
-    });
-    // Keyed on the exercise and what decides its history, not on its sets: a
-    // set edited this session doesn't change what was lifted before.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewed?.exerciseId, session?.id, exerciseRows, routine, program, sessionsList, routines, plateInventory, unit]);
-  const proposal = shownProposal?.proposal ?? null;
-
-  /**
-   * "Use 82.5 kg": the proposal written onto the planned working sets, and a
-   * ramp's planned warm-ups worked out again from the new weight
-   * (`applyProposal`, which the watch's Use goes through too). Each is an
-   * ordinary edit, as if typed, and every one stays editable.
-   */
-  const useProposal = () => {
-    if (!session || !viewed || !shownProposal) return;
-    haptics.success();
-    applyProposal(session.id, viewed.exerciseId, { proposal: shownProposal });
-  };
   const upNext = exercises[viewIndex + 1] ?? null;
   const upNextInfo = upNext ? catalogExercise(exerciseRows, upNext.exerciseId) : null;
 
@@ -283,18 +227,18 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     setNotesOpen(false);
   };
 
-  const openRow = (set: WorkoutSet) => {
+  const openRow = (set: WorkoutSet, open: WorkoutSet | null) => {
     haptics.tap();
     animateLayout();
-    setOpenSetId(set.id === openSet?.id ? null : set.id);
+    setOpenSetId(set.id === open?.id ? null : set.id);
     setNotesOpen(false);
   };
 
-  const addSet = () => {
-    if (!session || !viewed) return;
+  const addSet = (exercise: SessionExercise) => {
+    if (!session) return;
     haptics.tap();
     animateLayout();
-    const added = useWorkoutStore.getState().addPlannedSet(session.id, viewed.exerciseId);
+    const added = useWorkoutStore.getState().addPlannedSet(session.id, exercise.exerciseId);
     if (typeof added !== 'string') setOpenSetId(added.id);
   };
 
@@ -306,21 +250,36 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     setOpenSetId(null);
   };
 
-  const sameAsLast = (set: WorkoutSet) => {
-    if (!viewed) return;
-    const values = valuesFromLastDone(viewed.sets, set.id);
+  const sameAsLast = (set: WorkoutSet, exercise: SessionExercise) => {
+    const values = valuesFromLastDone(exercise.sets, set.id);
     if (!values) return;
     haptics.tap();
     edit(set.id, values);
   };
 
-  const toggleNotes = () => {
+  const toggleNotes = (open: WorkoutSet | null) => {
     haptics.tap();
-    setNoteDraft(openSet?.note ?? '');
+    setNoteDraft(open?.note ?? '');
     setNotesOpen(v => !v);
   };
-  const commitNote = () => {
-    if (openSet && (openSet.note ?? '') !== noteDraft.trim()) edit(openSet.id, { note: noteDraft });
+  const commitNote = (open: WorkoutSet | null) => {
+    if (open && (open.note ?? '') !== noteDraft.trim()) edit(open.id, { note: noteDraft });
+  };
+
+  // "Use 82.5 kg": the proposal written onto the planned working sets, and a
+  // ramp's planned warm-ups worked out again from the new weight
+  // (`applyProposal`, which the watch's Use goes through too). Each is an
+  // ordinary edit, as if typed, and every one stays editable.
+  const useProposal = (exerciseId: string, shown: ExerciseProposal | null) => {
+    if (!session || !shown) return;
+    haptics.success();
+    applyProposal(session.id, exerciseId, { proposal: shown });
+  };
+
+  const toggleAll = () => {
+    haptics.tap();
+    animateLayout();
+    setAllOpen(v => !v);
   };
 
   const goTo = (index: number) => {
@@ -350,17 +309,17 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     setViewedId(toExerciseId);
     setOpenSetId(null);
     setNotesOpen(false);
-    setExNoteOpen(false);
+    setExNoteFor(null);
   };
 
-  const toggleExNote = () => {
+  const toggleExNote = (exercise: SessionExercise) => {
     haptics.tap();
-    setExNoteDraft(viewedInfo?.notes ?? '');
-    setExNoteOpen(v => !v);
+    setExNoteDraft(catalogExercise(exerciseRows, exercise.exerciseId)?.notes ?? '');
+    setExNoteFor(v => (v === exercise.exerciseId ? null : exercise.exerciseId));
   };
-  const commitExNote = () => {
-    if (viewed && (viewedInfo?.notes ?? '') !== exNoteDraft.trim()) {
-      useWorkoutStore.getState().updateExercise(viewed.exerciseId, { notes: exNoteDraft });
+  const commitExNote = (exercise: SessionExercise) => {
+    if ((catalogExercise(exerciseRows, exercise.exerciseId)?.notes ?? '') !== exNoteDraft.trim()) {
+      useWorkoutStore.getState().updateExercise(exercise.exerciseId, { notes: exNoteDraft });
     }
   };
 
@@ -642,6 +601,13 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
           >
             {exercises.length > 0 && (
               <View style={styles.position}>
+                {allOpen ? (
+                  <>
+                    <Text style={styles.positionText}>{`${exercises.length} exercises`}</Text>
+                    <View style={styles.flex} />
+                  </>
+                ) : (
+                <>
                 <TouchableOpacity
                   onPress={() => goTo(viewIndex - 1)}
                   disabled={viewIndex === 0}
@@ -672,11 +638,63 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                     );
                   })}
                 </View>
+                </>
+                )}
+                <InlineAction
+                  icon={allOpen ? undefined : 'list-outline'}
+                  label={allOpen ? 'One at a time' : 'All'}
+                  variant="neutral"
+                  onPress={toggleAll}
+                  accessibilityLabel={allOpen ? 'Show one exercise at a time' : 'Show every exercise on one page'}
+                />
               </View>
             )}
 
-            {viewed ? (
-              <View style={styles.card}>
+            {/* One card per shown exercise: the one the sheet is on, or every one in All. The param keeps the name `viewed`, so the card body reads as it always has. */}
+            {(allOpen ? exercises : viewed ? [viewed] : []).map(viewed => {
+              const viewedInfo = catalogExercise(exerciseRows, viewed.exerciseId);
+              const kind: ExerciseKind = viewedInfo?.kind ?? 'weight_reps';
+              const fields = setFieldsFor(kind);
+              const current = currentSetOf(viewed);
+              // Only the exercise the sheet is on starts with its next set open.
+              const openSet = viewed.sets.find(s => s.id === (openSetId ?? (viewed.exerciseId === viewedId ? current?.id : undefined))) ?? null;
+              const exNoteOpen = exNoteFor === viewed.exerciseId;
+
+              // The plates for the open set's weight, for a barbell, EZ bar or trap bar: a
+              // dumbbell or a machine has nothing to load. A pound lifter who never set an
+              // inventory gets the pound default (`effectivePlateInventory`).
+              const inventory = effectivePlateInventory(plateInventory, unit);
+              const plate = openSet && viewedInfo && isPlateLoaded(viewedInfo.equipment) && kind === 'weight_reps' && openSet.weightKg
+                ? plateLoad(openSet.weightKg, barKgFor(viewedInfo.barKg, inventory, viewedInfo.equipment, unit), inventory, unit)
+                : null;
+
+              // Last time, for this exercise: one read per exercise shown, not per row.
+              const previous = session ? useWorkoutStore.getState().lastTimeFor(viewed.exerciseId, session.id) : [];
+              const previousBySet = matchPrevious(viewed.sets, previous);
+              // What was written on this exercise's sets last time, read before the first set.
+              const lastNotes = lastTimeNotes(previous);
+              const canSwap = swappableSets(viewed.sets, viewed.exerciseId).length > 0;
+
+              // ==== the suggestion: the next load, proposed and never applied unasked ====
+              // The routine the workout follows and the program it belongs to decide
+              // which scheme moves this exercise on (`exerciseProposal`, shared with
+              // the Apple Watch's suggestion).
+              const shownProposal: ExerciseProposal | null = session ? exerciseProposal({
+                exerciseId: viewed.exerciseId,
+                exercises: exerciseRows,
+                routine,
+                program,
+                sessions: sessionsList,
+                routines,
+                history: useWorkoutStore.getState().exerciseHistory(viewed.exerciseId),
+                exceptSessionId: session.id,
+                plateInventory,
+                unit,
+              }) : null;
+              const proposal = shownProposal?.proposal ?? null;
+
+              return (
+              <View key={viewed.exerciseId} style={styles.card}>
                 <View style={styles.exHead}>
                   <TouchableOpacity
                     style={styles.exNameRow}
@@ -704,7 +722,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                       <InlineAction
                         icon="swap-horizontal"
                         label="Swap"
-                        onPress={() => { haptics.tap(); setPicking('swap'); }}
+                        onPress={() => { haptics.tap(); setViewedId(viewed.exerciseId); setPicking('swap'); }}
                         accessibilityLabel={`Swap ${viewedInfo?.name ?? 'this exercise'} for another`}
                       />
                     )}
@@ -712,7 +730,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                       icon="create-outline"
                       label={viewedInfo?.notes ? 'Edit note' : 'Add note'}
                       variant="neutral"
-                      onPress={toggleExNote}
+                      onPress={() => toggleExNote(viewed)}
                       accessibilityLabel={`${viewedInfo?.notes ? 'Edit' : 'Add'} the note on ${viewedInfo?.name ?? 'this exercise'}`}
                     />
                   </View>
@@ -729,8 +747,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                       style={styles.exNoteInput}
                       value={exNoteDraft}
                       onChangeText={setExNoteDraft}
-                      onBlur={commitExNote}
-                      onSubmitEditing={commitExNote}
+                      onBlur={() => commitExNote(viewed)}
+                      onSubmitEditing={() => commitExNote(viewed)}
                       placeholder="e.g. Use the dumbbell press if the bench is taken"
                       placeholderTextColor={colors.textTertiary}
                       multiline
@@ -751,7 +769,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                       // already asks for it; after that it is shown plainly,
                       // as the target being worked to.
                       offer={!workingSetLogged(viewed.sets) && !proposalApplied(viewed.sets, proposal, unit)}
-                      onUse={useProposal}
+                      onUse={() => useProposal(viewed.exerciseId, shownProposal)}
                       styles={styles}
                     />
                   )}
@@ -773,7 +791,12 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                   const prevLine = prev ? formatSetLine(prev, kind, unit) : null;
                   const label = labels.get(set.id) ?? '';
                   return (
-                    <View key={set.id}>
+                    <DeletableSet
+                      key={set.id}
+                      label={setName(set.kind, labels.get(set.id) ?? '')}
+                      onDelete={() => removeSet(set)}
+                      styles={styles}
+                    >
                       {isOpen ? (
                         <View style={styles.open}>
                           {/* Its own captions, since the table's header is lined up with the closed rows' columns, which an open row's steppers don't match. */}
@@ -790,7 +813,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                           <View style={styles.openRow}>
                             <TouchableOpacity
                               style={styles.colSet}
-                              onPress={() => openRow(set)}
+                              onPress={() => openRow(set, openSet)}
                               hitSlop={{ top: 10, bottom: 10, left: 10, right: 6 }}
                               accessibilityRole="button"
                               accessibilityState={{ expanded: true }}
@@ -822,16 +845,15 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                             {!!plate && <PlateLine load={plate} unit={unit} />}
                             <View style={styles.editActions}>
                               {!!valuesFromLastDone(viewed.sets, set.id) && (
-                                <InlineAction label="Same as last set" variant="neutral" surface="tray" onPress={() => sameAsLast(set)} />
+                                <InlineAction label="Same as last set" variant="neutral" surface="tray" onPress={() => sameAsLast(set, viewed)} />
                               )}
-                              <InlineAction icon="trash-outline" label="Remove set" tint={colors.redText} onPress={() => removeSet(set)} />
                             </View>
                           </View>
                         </View>
                       ) : (
                         <TouchableOpacity
                           style={styles.setRow}
-                          onPress={() => openRow(set)}
+                          onPress={() => openRow(set, openSet)}
                           activeOpacity={interaction.activeOpacity}
                           accessibilityRole="button"
                           accessibilityState={{ expanded: false }}
@@ -862,18 +884,18 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                           </TouchableOpacity>
                         </TouchableOpacity>
                       )}
-                    </View>
+                    </DeletableSet>
                   );
                 })}
 
                 <View style={styles.adds}>
-                  <InlineAction icon="add" label="Add set" onPress={addSet} />
+                  <InlineAction icon="add" label="Add set" onPress={() => addSet(viewed)} />
                   {openSet && (
                     <InlineAction
                       label={openSet.note ? 'Note' : 'Notes'}
                       icon={openSet.note ? 'document-text-outline' : undefined}
                       variant="neutral"
-                      onPress={toggleNotes}
+                      onPress={() => toggleNotes(openSet)}
                       accessibilityLabel={`Note on set ${labels.get(openSet.id) ?? ''}`}
                     />
                   )}
@@ -883,8 +905,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                     style={styles.noteInput}
                     value={noteDraft}
                     onChangeText={setNoteDraft}
-                    onBlur={commitNote}
-                    onSubmitEditing={commitNote}
+                    onBlur={() => commitNote(openSet)}
+                    onSubmitEditing={() => commitNote(openSet)}
                     placeholder="e.g. Paused at the bottom"
                     placeholderTextColor={colors.textTertiary}
                     autoFocus
@@ -893,13 +915,15 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                   />
                 )}
               </View>
-            ) : (
+              );
+            })}
+            {exercises.length === 0 && (
               <View style={styles.emptyWrap}>
                 <EmptyNote icon="barbell-outline">No exercises yet. Add the first one to start logging sets.</EmptyNote>
               </View>
             )}
 
-            {upNext && (
+            {upNext && !allOpen && (
               <>
                 <Text style={styles.groupLabel}>Up next</Text>
                 <TouchableOpacity
@@ -1077,6 +1101,43 @@ function FieldStepper({ set, field, unit, onEdit, stepperStyle, inline }: {
  * on offer. A proposal with nothing to propose yet (a percentage set with no
  * training max) shows only what is missing.
  */
+/**
+ * A set row that swipes left to reveal Delete. The swipe only opens the panel:
+ * the set goes when Delete is tapped, so a stray drag can't take a logged set
+ * away. It is the one destructive swipe in the app, and it stays inside this
+ * sheet because a full-swipe commit is too easy to trigger for something the
+ * app can't take back.
+ */
+function DeletableSet({ label, onDelete, children, styles }: {
+  label: string;
+  onDelete: () => void;
+  children: React.ReactNode;
+  styles: ReturnType<typeof makeStyles>;
+}) {
+  const ref = useRef<Swipeable>(null);
+  return (
+    <Swipeable
+      ref={ref}
+      friction={2}
+      overshootRight={false}
+      renderRightActions={() => (
+        <TouchableOpacity
+          style={styles.deletePanel}
+          onPress={() => { ref.current?.close(); onDelete(); }}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="button"
+          accessibilityLabel={`Delete ${label}`}
+        >
+          <Ionicons name="trash-outline" size={iconSize.sm} color={styles.deleteText.color} />
+          <Text style={styles.deleteText}>{BUTTON_LABEL.delete}</Text>
+        </TouchableOpacity>
+      )}
+    >
+      {children}
+    </Swipeable>
+  );
+}
+
 function SuggestionCard({ proposal, unit, offer, onUse, styles }: {
   proposal: Proposal;
   unit: WeightUnit;
@@ -1242,7 +1303,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 46,
     paddingHorizontal: spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator,
   },
-  open: { backgroundColor: colors.accentSubtle, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator },
+  open: { backgroundColor: flattenOverlay(colors.accentSubtle, colors.bgSecondary), borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator },
   openCaps: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, paddingTop: spacing.sm },
   openRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 48, paddingHorizontal: spacing.md },
   openCell: { flex: 1, textAlign: 'center' },
@@ -1261,6 +1322,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   checkDone: { backgroundColor: colors.done, borderColor: colors.done },
   edit: { paddingHorizontal: spacing.md, paddingBottom: spacing.smd, gap: spacing.smd },
+  deletePanel: { width: 88, alignSelf: 'stretch', backgroundColor: colors.redFill, alignItems: 'center', justifyContent: 'center', gap: spacing.xxs },
+  deleteText: { color: colors.onFill, fontSize: font.sm, fontWeight: fontWeight.semibold },
   editStepper: { backgroundColor: colors.bgSecondary },
   editActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   adds: {
