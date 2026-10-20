@@ -22,11 +22,15 @@ import { featureHidden, type SimpleFeatureId } from './simpleMode';
  * no control types: the two surfaces draw it differently, and a record that
  * knew how it was drawn could only serve one of them.
  *
- * Three rules for writing one:
+ * Four rules for writing one:
  *
  * - **Say the mechanism.** A tip exists because someone can't see the control.
  *   "Swipe right on a task to reschedule it" is the whole job; "stay on top of
  *   your day" is not a tip.
+ * - **Name a control by its on-screen label, and keep it true.** Nothing checks
+ *   a tip against the UI, so renaming, moving or removing a control means
+ *   grepping this file for it: tips sent people to a "Steps button" and a
+ *   magnifying glass that didn't exist, and promised a comma-split add.
  * - **One thing per tip.** They are shown one at a time and read in a list, so
  *   a tip covering three features is one nobody finishes.
  * - **Array order is priority.** `chooseTip` takes the first eligible unseen
