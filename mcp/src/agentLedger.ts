@@ -1419,7 +1419,7 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
     saveRoutine(input) {
       const before = input.id ? replica.workoutRoutines().find(r => r.id === input.id) ?? null : null;
       const routine = replica.saveRoutine(input);
-      const exercises = `${routine.items.length} ${routine.items.length === 1 ? 'exercise' : 'exercises'}`;
+      const exercises = `${routine.items.length} ${routine.items.length === 1 ? 'exercise' : 'exercises'}${routine.groupName ? `, in ${routine.groupName}` : ''}${routine.archived ? ', archived' : ''}`;
       log(before
         ? { action: 'edited', subject: 'routine', title: routine.name, taskId: null, recordId: routine.id, note: `Change the routine "${before.name}"${before.name !== routine.name ? ` to "${routine.name}"` : ''} (${exercises})` }
         : { action: 'created', subject: 'routine', title: routine.name, taskId: null, recordId: routine.id, note: `Add the routine "${routine.name}" (${exercises})` });
@@ -1430,6 +1430,20 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       const routine = replica.deleteRoutine(id);
       log({ action: 'cleared', subject: 'routine', title: routine.name, taskId: null, recordId: routine.id, note: `Delete the routine "${routine.name}". Workouts logged from it keep their history. It cannot be restored from here.` });
       return routine;
+    },
+
+    saveRoutineGroup(name, renameTo) {
+      const result = replica.saveRoutineGroup(name, renameTo);
+      log(renameTo === undefined
+        ? { action: 'created', subject: 'routine', title: result, taskId: null, recordId: result, note: `Add the routine group "${result}"` }
+        : { action: 'edited', subject: 'routine', title: result, taskId: null, recordId: result, note: `Rename the routine group "${name}" to "${result}"` });
+      return result;
+    },
+
+    deleteRoutineGroup(name) {
+      const held = replica.deleteRoutineGroup(name);
+      log({ action: 'cleared', subject: 'routine', title: name, taskId: null, recordId: name, note: `Delete the routine group "${name}". Its ${held === 1 ? 'routine stays' : `${held} routines stay`}, in no group.` });
+      return held;
     },
 
     // A gym is a plan like a routine, named by its own name.

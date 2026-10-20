@@ -188,6 +188,10 @@ export interface RoutineRow {
   name: string;
   notes?: string;
   program?: string;
+  /** The heading the Routines tab lists it under. Absent for a routine in no group. */
+  group?: string;
+  /** Put away under Archived: still startable, out of the list and the pickers. */
+  archived?: true;
   exercises: {
     exerciseId: string;
     name: string;
@@ -207,6 +211,8 @@ function routineRow(r: WorkoutRoutine, rows: readonly Exercise[], programName: R
     name: r.name,
     ...(r.notes ? { notes: r.notes } : {}),
     ...(r.programId && programName.has(r.programId) ? { program: programName.get(r.programId)! } : {}),
+    ...(r.groupName ? { group: r.groupName } : {}),
+    ...(r.archived ? { archived: true as const } : {}),
     exercises: r.items.map(i => ({
       exerciseId: i.exerciseId,
       name: catalogExercise(rows, i.exerciseId)?.name ?? 'Unknown exercise',
@@ -304,7 +310,7 @@ const allSessions = (replica: Replica) => replica.workoutSessions('0000-01-01', 
 export function listWorkouts(
   replica: Replica,
   input: LogRangeInput = {},
-): { range: DayRange; workouts: WorkoutRow[]; routines: RoutineRow[]; programs: ProgramRow[]; gyms: GymRow[]; note?: string } {
+): { range: DayRange; workouts: WorkoutRow[]; routines: RoutineRow[]; routineGroups: string[]; programs: ProgramRow[]; gyms: GymRow[]; note?: string } {
   const range = resolveRange(replica, input);
   const rows = replica.exercises();
   const routines = replica.workoutRoutines();
@@ -321,6 +327,7 @@ export function listWorkouts(
     range,
     workouts,
     routines: routines.map(r => routineRow(r, rows, programName)),
+    routineGroups: replica.routineGroups(),
     programs: programs.filter(p => !p.archived)
       .map(p => programRow(p, programProgress(p, allSessions(replica), routines), rows, routineName)),
     gyms: gyms.map(g => gymRow(g, replica.gymExercises(), rows)),
@@ -484,6 +491,9 @@ export interface SaveRoutineInput {
   id?: string;
   name?: string;
   notes?: string;
+  /** Files it under that group, which is made if it is new; null takes it out of its group. */
+  group?: string | null;
+  archived?: boolean;
   /** Replaces every exercise when given. */
   exercises?: RoutineExerciseInput[];
 }
@@ -546,6 +556,8 @@ export function saveRoutine(replica: Replica, input: SaveRoutineInput): { routin
     name: input.name,
     notes: input.notes,
     items: input.exercises ? routineItemsFrom(input.exercises, supersetKey) : undefined,
+    groupName: input.group,
+    archived: input.archived,
   });
   const names = namesOf(replica);
   return {
@@ -581,6 +593,20 @@ export function deleteGym(replica: Replica, id: string): { removed: { id: string
     removed: { id: gym.id, name: gym.name },
     note: 'Its exercise notes are deleted too. Workouts done there keep their history.',
   };
+}
+
+export function saveRoutineGroup(replica: Replica, input: { name: string; renameTo?: string }): { group: string; routineGroups: string[]; note: string } {
+  const group = replica.saveRoutineGroup(input.name, input.renameTo);
+  return {
+    group,
+    routineGroups: replica.routineGroups(),
+    note: 'A group is a heading on the Routines tab. A new one is empty until a routine is filed under it (save_routine with group). Renaming one renames it on its routines, and a name another group already has joins the two.',
+  };
+}
+
+export function deleteRoutineGroup(replica: Replica, name: string): { removed: string; routinesKeptUngrouped: number; note: string } {
+  const held = replica.deleteRoutineGroup(name);
+  return { removed: name, routinesKeptUngrouped: held, note: 'Its routines stay, in no group.' };
 }
 
 export function deleteRoutine(replica: Replica, id: string): { removed: { id: string; name: string }; note: string } {

@@ -1280,8 +1280,19 @@ export interface Replica {
    *
    * `saveRoutine` creates (no `id`) or changes a routine; fields left out stay.
    */
-  saveRoutine(input: { id?: string; name?: string; notes?: string; items?: WorkoutRoutineItem[] }): WorkoutRoutine;
+  saveRoutine(input: {
+    id?: string; name?: string; notes?: string; items?: WorkoutRoutineItem[];
+    /** A name files it under that group; null takes it out of its group. */
+    groupName?: string | null;
+    archived?: boolean;
+  }): WorkoutRoutine;
   deleteRoutine(id: string): WorkoutRoutine;
+  /** The group names the person made, in the Routines tab's order, empty groups included. A plan, like the routines. */
+  routineGroups(): string[];
+  /** Makes an empty group, or with `renameTo` renames one (on its routines too). Returns the name it now has. */
+  saveRoutineGroup(name: string, renameTo?: string): string;
+  /** Its routines stay, in no group. Returns how many were in it. */
+  deleteRoutineGroup(name: string): number;
   /**
    * `saveGym` creates (no `id`) or changes a gym through `useGymStore`'s own
    * actions, so its name rules and refusals are the app's; fields left out
@@ -4321,6 +4332,17 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     meterReadings: () => db.dbGetAllMeterReadings(),
     exercises: () => db.dbGetAllExercises(),
     workoutRoutines: () => db.dbGetAllWorkoutRoutines(),
+    routineGroups: () => {
+      const routines = db.dbGetAllWorkoutRoutines();
+      let registry: string[] = [];
+      try {
+        const parsed: unknown = JSON.parse(db.dbGetSetting('workoutRoutineGroups') ?? '[]');
+        if (Array.isArray(parsed)) registry = parsed.filter((n): n is string => typeof n === 'string' && n.trim() !== '');
+      } catch { /* an unreadable list reads as none */ }
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { groupNames } = require('../../src/utils/routineGroups') as typeof import('../../src/utils/routineGroups');
+      return groupNames(routines, registry);
+    },
     workoutPrograms: () => db.dbGetAllWorkoutPrograms(),
     gyms: () => db.dbGetAllGyms(),
     gymExercises: () => db.dbGetAllGymExercises(),
@@ -4344,16 +4366,39 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           ...(input.name !== undefined ? { name: input.name } : {}),
           ...(input.notes !== undefined ? { notes: input.notes } : {}),
           ...(input.items !== undefined ? { items: input.items } : {}),
+          ...(input.groupName !== undefined ? { groupName: input.groupName } : {}),
+          ...(input.archived !== undefined ? { archived: input.archived } : {}),
         });
         if (typeof result === 'string') throw new Error(WORKOUT_REFUSALS[result]);
         return result;
       }
       const made = store.addRoutine(input.name ?? '', input.items ?? []);
       if (typeof made === 'string') throw new Error(WORKOUT_REFUSALS[made]);
-      if (!input.notes?.trim()) return made;
-      const withNotes = store.updateRoutine(made.id, { notes: input.notes });
-      if (typeof withNotes === 'string') throw new Error(WORKOUT_REFUSALS[withNotes]);
-      return withNotes;
+      if (!input.notes?.trim() && !input.groupName && !input.archived) return made;
+      const withRest = store.updateRoutine(made.id, {
+        ...(input.notes?.trim() ? { notes: input.notes } : {}),
+        ...(input.groupName ? { groupName: input.groupName } : {}),
+        ...(input.archived ? { archived: true } : {}),
+      });
+      if (typeof withRest === 'string') throw new Error(WORKOUT_REFUSALS[withRest]);
+      return withRest;
+    },
+    saveRoutineGroup(name, renameTo) {
+      const store = workoutStore();
+      const result = renameTo === undefined ? store.addRoutineGroup(name) : store.renameRoutineGroup(name, renameTo);
+      if (result === 'blank') throw new Error('A group name cannot be blank.');
+      if (result === 'taken') throw new Error(`A group named "${name}" already exists. list_workouts lists routineGroups.`);
+      return result;
+    },
+    deleteRoutineGroup(name) {
+      const store = workoutStore();
+      const key = name.trim().toLowerCase();
+      const held = store.routines.filter(r => r.groupName?.trim().toLowerCase() === key).length;
+      if (held === 0 && !store.routineGroups.some(n => n.trim().toLowerCase() === key)) {
+        throw new Error(`No routine group named "${name}". list_workouts lists routineGroups.`);
+      }
+      store.deleteRoutineGroup(name);
+      return held;
     },
     saveGym(input) {
       const store = gymStore();

@@ -3362,6 +3362,16 @@ function seedWorkouts(today: Date): void {
     { exerciseId: 'lib:plank', restSeconds: 60, progression: null,
       targets: [{ kind: 'working', repsMin: null, repsMax: null, durationSeconds: 60 }] },
   ]);
+  // The two program routines under one heading, and a routine put away, so the
+  // Routines tab shows a group and its Archived section.
+  for (const r of useWorkoutStore.getState().routines.filter(x => x.programId === programId)) {
+    useWorkoutStore.getState().updateRoutine(r.id, { groupName: 'Gym' });
+  }
+  workouts.addRoutineGroup('Home');
+  const hotel = workouts.addRoutine('Hotel bodyweight', [
+    { exerciseId: 'lib:push-up', restSeconds: 60, progression: null, targets: [{ kind: 'working', repsMin: 10, repsMax: 15 }, { kind: 'working', repsMin: 10, repsMax: 15 }] },
+  ]);
+  if (typeof hotel !== 'string') useWorkoutStore.getState().updateRoutine(hotel.id, { groupName: 'Travel', archived: true });
   if (programId) {
     useWorkoutStore.getState().updateProgram(programId, { weeks: 8, startedAt: subDays(today, 6).toISOString() });
   }

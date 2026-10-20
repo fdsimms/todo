@@ -2347,6 +2347,10 @@ function runInitDatabase(): void {
     // Task.generatedReadyAt: when the thing a generated task asks for was seen
     // to be done. NULL on every existing row, which reads as not done yet.
     'ALTER TABLE tasks ADD COLUMN generated_ready_at TEXT',
+    // WorkoutRoutine.groupName / archived: the Routines tab's headings and its
+    // Archived section. NULL and 0 on every existing row, which reads as ungrouped and live.
+    'ALTER TABLE workout_routines ADD COLUMN group_name TEXT',
+    'ALTER TABLE workout_routines ADD COLUMN archived INTEGER NOT NULL DEFAULT 0',
     // Task.quotaRestAfterLog and Task.quotaLoggedDayKey: a weekly target that
     // steps aside for the rest of the day once a log puts it on pace. 0 / NULL
     // on every existing row, which reads as the pace rule it always had.
@@ -7761,6 +7765,8 @@ function rowToWorkoutRoutine(row: Record<string, unknown>): WorkoutRoutine {
     sortOrder: Number(row.sort_order ?? 0),
     items: readRoutineItems(row.items),
     createdAt: String(row.created_at),
+    groupName: strOrNull(row.group_name),
+    archived: row.archived === 1,
   };
 }
 
@@ -7772,9 +7778,9 @@ export function dbGetAllWorkoutRoutines(): WorkoutRoutine[] {
 
 export function dbSaveWorkoutRoutine(r: WorkoutRoutine): void {
   db.runSync(
-    `INSERT OR REPLACE INTO workout_routines (id, name, notes, program_id, sort_order, items, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [r.id, r.name, r.notes, r.programId, r.sortOrder, JSON.stringify(r.items), r.createdAt]
+    `INSERT OR REPLACE INTO workout_routines (id, name, notes, program_id, sort_order, items, created_at, group_name, archived)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [r.id, r.name, r.notes, r.programId, r.sortOrder, JSON.stringify(r.items), r.createdAt, r.groupName, r.archived ? 1 : 0]
   );
 }
 

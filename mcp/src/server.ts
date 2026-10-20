@@ -111,8 +111,8 @@ import { addCookware, deleteCookware, listCookware, updateCookware } from './coo
 import { listCopyFlags, resolveCopyFlag } from './copyFlagTools';
 import { deleteMeterReading, listMeterReadings, logMeterReading } from './meterTools';
 import {
-  DEFAULT_EXERCISE_LIMIT, MAX_EXERCISE_LIMIT, deleteGym, deleteProgram, deleteRoutine, deleteWorkout, exerciseHistory, listExercises,
-  listWorkouts, logWorkout, nextWorkout, saveGym, saveProgram, saveRoutine, updateWorkout,
+  DEFAULT_EXERCISE_LIMIT, MAX_EXERCISE_LIMIT, deleteGym, deleteProgram, deleteRoutine, deleteRoutineGroup, deleteWorkout, exerciseHistory, listExercises,
+  listWorkouts, logWorkout, nextWorkout, saveGym, saveProgram, saveRoutine, saveRoutineGroup, updateWorkout,
 } from './workoutTools';
 import { EXERCISE_EQUIPMENT, MUSCLE_GROUPS } from '../../src/utils/workoutData';
 import { deleteJournalEntry, listJournalEntries, logJournalEntry, searchJournalEntries, updateJournalEntry } from './journalTools';
@@ -644,6 +644,8 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
       id: z.string().min(1).optional().describe('A routine id from list_workouts, to change it. Leave out to create one.'),
       name: z.string().min(1).max(80).optional().describe('Required to create one.'),
       notes: z.string().max(2000).optional(),
+      group: z.string().max(80).nullable().optional().describe('The heading the routine is listed under on the Routines tab (routineGroups in list_workouts). A new name makes the group; null takes the routine out of its group. Leave out to keep it where it is.'),
+      archived: z.boolean().optional().describe('true puts the routine away under Archived (still startable, out of the list and the pickers); false restores it. Deleting is delete_routine.'),
       exercises: z.array(z.object({
         exerciseId: z.string().min(1).describe('From list_exercises.'),
         sets: z.array(routineSet).min(1).max(20),
@@ -658,6 +660,32 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
         return json(await withWrite(() => saveRoutine(replica, input)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not save the routine.' });
+      }
+    }
+  );
+
+  server.tool(
+    'save_routine_group',
+    'Make an empty group of routines (name), or rename one (name, renameTo; routineGroups in list_workouts lists them). A group is a heading on the person\'s Routines tab. File a routine under it with save_routine and group. Renaming changes it on every routine in it, and a name another group already has joins the two.',
+    { name: z.string().min(1).max(80), renameTo: z.string().min(1).max(80).optional() },
+    async input => {
+      try {
+        return json(await withWrite(() => saveRoutineGroup(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not save the group.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_routine_group',
+    'Delete a routine group by its name (routineGroups in list_workouts). Its routines stay, in no group; nothing else is removed.',
+    { name: z.string().min(1) },
+    async ({ name }) => {
+      try {
+        return json(await withWrite(() => deleteRoutineGroup(replica, name)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete the group.' });
       }
     }
   );
