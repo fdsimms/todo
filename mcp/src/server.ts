@@ -120,7 +120,7 @@ import { SAVED_VIEW_TASK_LIMIT, createSavedView, deleteSavedView, getSavedView, 
 import { setVacationMode } from './vacationTools';
 import { getSettings, updateSettings } from './settingsTools';
 import { SETTINGS_SPEC } from './settingsSpec';
-import { MAX_DELETE, deleteTag, deleteTasks, duplicateTask, setCompletionDate, setTaskDates, skipOccurrence } from './taskTools';
+import { MAX_DELETE, deleteTag, deleteTasks, duplicateTask, renameTag, setCompletionDate, setTaskDates, skipOccurrence } from './taskTools';
 import { MAX_BATCH, MAX_QUICK_ADD, batchUpdateTasks, planDay, quickAdd, rebalanceWeek, type BatchChange } from './agentTools';
 import { SERVER_ICONS } from './serverIcon';
 import { generateId } from '../../src/utils/id';
@@ -3011,6 +3011,19 @@ function registerWriteTools(
         return json(withLink(result, LINKS?.task(result.task.id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not copy the task.' });
+      }
+    }
+  );
+
+  server.tool(
+    'rename_tag',
+    'Rename a tag everywhere it is used, as the Tags screen\'s Rename does: every task that has it (finished ones included), the tag list, stacks, templates, saved views, title rules and Reminders captures. Renaming onto a tag that already exists merges the two, and they can\'t be separated again, so check with the person first when `to` is already a tag. The result says whether it merged.',
+    { tag: z.string().min(1), to: z.string().min(1) },
+    async ({ tag, to }) => {
+      try {
+        return json(await withWrite(() => renameTag(replica, tag, to)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not rename the tag.' });
       }
     }
   );

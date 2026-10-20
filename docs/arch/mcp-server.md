@@ -974,6 +974,13 @@ and follow-up drafts, saved views, template items, the generators' "File them un
 and Health sections, new-task defaults, every kind of rule and reminder capture. A name another
 category already has is refused with a pointer to `delete_category`'s `moveTo`, since that is a merge.
 
+`rename_tag` is the tag counterpart, and the app's `renameTag` shape: every task carrying the tag
+(finished and archived ones too), its series defaults and follow-up drafts, the tag list, stacks,
+template items, saved views, title rules, reminder captures and generator extras, through the shared
+helpers in `src/utils/tagRename.ts`. Unlike a category, renaming onto a tag that already exists is
+allowed and merges the two, so the tool's description asks Claude to check first and the result says
+`merged`. Each task it touched gets its own Activity entry with a revert.
+
 `update_project` now takes the rest of the project editor: a pause (`pausedUntil`, a day key after
 today) or Planning (`planning`, the same pause with no day, which `create_project` and `apply_template` take too and the
 serializer reports by name rather than as its sentinel day), `inOrder`, `ongoing`, people, links, and the nudge settings. Every one is in
