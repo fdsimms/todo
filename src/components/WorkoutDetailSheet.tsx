@@ -31,6 +31,7 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { formatTimeOfDay } from '../utils/dateUtils';
 import { catalogExercise } from '../utils/exerciseCatalog';
 import { sessionRecordSummary } from '../utils/workoutRecords';
+import { routineItemsFromSets } from '../utils/workoutRoutine';
 import { formatSetLine, sessionExercises, sessionMinutes, setBadge, setLabels, setName } from '../utils/workoutSession';
 import { WORKOUT_EFFORT } from '../utils/workoutData';
 import { workoutSpanWritable } from '../utils/healthWorkoutSync';
@@ -266,6 +267,37 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose }: Props) {
     if (typeof result !== 'string') haptics.success();
   };
 
+  // ==== saving as a routine ====
+  // What the routine would hold, from the done sets. Empty (no row offered)
+  // when the workout has no working set to build on.
+  const routineItems = useMemo(() => routineItemsFromSets(sets), [sets]);
+
+  const saveAsRoutine = () => {
+    if (!current || routineItems.length === 0) return;
+    Alert.prompt(
+      'Save as routine',
+      'Warm-up sets are left out. The weights and reps are the ones from this workout.',
+      [
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
+        {
+          text: BUTTON_LABEL.save,
+          onPress: (text?: string) => {
+            const result = useWorkoutStore.getState().addRoutine((text ?? '').trim(), routineItems);
+            if (typeof result === 'string') {
+              haptics.warning();
+              Alert.alert('Couldn’t save the routine', 'Give it a name and try again.');
+              return;
+            }
+            haptics.success();
+            Alert.alert('Saved as a routine', `“${result.name}” is in the Routines tab.`);
+          },
+        },
+      ],
+      'plain-text',
+      current.title,
+    );
+  };
+
   // ==== deleting ====
   const remove = () => {
     if (!current) return;
@@ -454,6 +486,18 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose }: Props) {
               />
             </View>
 
+            {routineItems.length > 0 && (
+              <TouchableOpacity
+                style={styles.actionRow}
+                onPress={saveAsRoutine}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityHint="Makes a routine from this workout's exercises and sets"
+              >
+                <Text style={styles.actionText}>Save as routine</Text>
+              </TouchableOpacity>
+            )}
+
             <TouchableOpacity
               style={styles.deleteRow}
               onPress={remove}
@@ -518,8 +562,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   setValue: { color: colors.textSecondary, fontSize: font.sm, fontVariant: ['tabular-nums'] },
   setNote: { color: colors.text, fontSize: font.sm, marginTop: spacing.xxs, marginBottom: spacing.xs },
   notesInput: { color: colors.text, fontSize: font.md, paddingHorizontal: spacing.md, paddingVertical: spacing.smd, minHeight: 64 },
-  deleteRow: {
+  actionRow: {
     alignItems: 'center', justifyContent: 'center', minHeight: 48, marginTop: spacing.lg,
+    paddingVertical: spacing.smd, backgroundColor: colors.bgSecondary, borderRadius: radius.md,
+  },
+  actionText: { color: colors.accentText, fontSize: font.md, fontWeight: fontWeight.semibold },
+  deleteRow: {
+    alignItems: 'center', justifyContent: 'center', minHeight: 48, marginTop: spacing.md,
     paddingVertical: spacing.smd, backgroundColor: colors.bgSecondary, borderRadius: radius.md,
   },
   deleteText: { color: colors.redText, fontSize: font.md, fontWeight: fontWeight.semibold },

@@ -1,4 +1,4 @@
-import type { WorkoutRoutineItem } from '../types';
+import type { WorkoutRoutineItem, WorkoutSet } from '../types';
 import {
   MAX_ROUTINE_SETS,
   MAX_WARMUP_SETS,
@@ -20,6 +20,7 @@ import {
   newRoutineItem,
   normalizeSupersets,
   removeSet,
+  routineItemsFromSets,
   routineSetLabels,
   settleOpenSlots,
   supersetRoles,
@@ -313,5 +314,62 @@ describe('dropping into a superset', () => {
     expect(normalizeSupersets([{ supersetKey: 'k' }], i => i === 0).map(i => i.supersetKey)).toEqual(['k']);
     expect(normalizeSupersets(rows, i => i === 1).map(i => i.supersetKey)).toEqual(['k', 'k']);
     expect(normalizeSupersets([{ supersetKey: 'k' }]).map(i => i.supersetKey)).toEqual([null]);
+  });
+});
+
+describe('routineItemsFromSets', () => {
+  const done = '2026-10-17T10:00:00.000Z';
+  const set = (over: Partial<WorkoutSet>): WorkoutSet => ({
+    id: 's', sessionId: 'w', exerciseId: 'a', position: 0, setIndex: 0, kind: 'working',
+    weightKg: null, reps: null, durationSeconds: null, distanceM: null, rpe: null,
+    completedAt: done, supersetKey: null, note: null, ...over,
+  });
+
+  it('makes one item per exercise, in the order done, with a target per set', () => {
+    const items = routineItemsFromSets([
+      set({ id: '3', exerciseId: 'b', position: 1, setIndex: 0, weightKg: 20, reps: 12 }),
+      set({ id: '2', exerciseId: 'a', position: 0, setIndex: 1, weightKg: 60, reps: 6 }),
+      set({ id: '1', exerciseId: 'a', position: 0, setIndex: 0, weightKg: 60, reps: 8 }),
+    ]);
+    expect(items.map(i => i.exerciseId)).toEqual(['a', 'b']);
+    expect(items[0].targets).toEqual([
+      { kind: 'working', repsMin: 8, repsMax: 8, weightKg: 60 },
+      { kind: 'working', repsMin: 6, repsMax: 6, weightKg: 60 },
+    ]);
+    expect(items[0]).toMatchObject({ restSeconds: null, progression: null });
+  });
+
+  it('leaves out warm-ups, sets never ticked, and an exercise with nothing else', () => {
+    const items = routineItemsFromSets([
+      set({ id: '1', exerciseId: 'a', setIndex: 0, kind: 'warmup', weightKg: 20, reps: 10 }),
+      set({ id: '2', exerciseId: 'a', setIndex: 1, weightKg: 60, reps: 8 }),
+      set({ id: '3', exerciseId: 'a', setIndex: 2, weightKg: 60, reps: 8, completedAt: null }),
+      set({ id: '4', exerciseId: 'b', position: 1, kind: 'warmup', reps: 10 }),
+    ]);
+    expect(items).toHaveLength(1);
+    expect(items[0].targets).toHaveLength(1);
+  });
+
+  it('keeps drop and failure sets, and time and distance', () => {
+    const [item] = routineItemsFromSets([
+      set({ id: '1', setIndex: 0, kind: 'drop', weightKg: 40, reps: 10 }),
+      set({ id: '2', setIndex: 1, kind: 'amrap', weightKg: 40, reps: 12 }),
+      set({ id: '3', setIndex: 2, durationSeconds: 45, distanceM: 500 }),
+    ]);
+    expect(item.targets.map(t => t.kind)).toEqual(['drop', 'amrap', 'working']);
+    expect(item.targets[2]).toMatchObject({ durationSeconds: 45, distanceM: 500 });
+  });
+
+  it('keeps a superset of neighbours and clears a key left on one exercise', () => {
+    const items = routineItemsFromSets([
+      set({ id: '1', exerciseId: 'a', position: 0, supersetKey: 'k' }),
+      set({ id: '2', exerciseId: 'b', position: 1, supersetKey: 'k' }),
+      set({ id: '3', exerciseId: 'c', position: 2, supersetKey: 'z' }),
+    ]);
+    expect(items.map(i => i.supersetKey)).toEqual(['k', 'k', null]);
+  });
+
+  it('is empty for a workout with no done working sets', () => {
+    expect(routineItemsFromSets([])).toEqual([]);
   });
 });
