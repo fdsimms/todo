@@ -125,6 +125,7 @@ import { CollapsibleField } from './CollapsibleField';
 import { canSlotIn, isSlotWaiting, slotInFromCategory } from '../utils/slotIn';
 import { PillGroup } from './PillGroup';
 import { EmptyNote } from './EmptyNote';
+import { RemindersOffNote } from './RemindersOffNote';
 import { HelpText } from './HelpText';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { pinnedPlaces } from '../utils/placeGate';
@@ -6012,6 +6013,11 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
               onPress={() => openPicker('reminder')}
               onClear={reminderTime ? () => { setReminderTime(null); setReminderKind('notification'); setReminderOffsetDays(null); setReminderTracksVisibility(false); setReminderTimeAnchor('wallClock'); setReminderTouched(true); } : undefined}
             />
+            {/* An alarm rings through AlarmKit, which has its own permission. */}
+            <RemindersOffNote
+              enabled={visible && !!reminderTime && reminderKind !== 'alarm'}
+              style={styles.reminderOffNote}
+            />
               </>
             ),
           },
@@ -9131,6 +9137,7 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     flexDirection: 'row', gap: spacing.xs,
     paddingHorizontal: spacing.md, paddingBottom: spacing.md,
   },
+  reminderOffNote: { marginHorizontal: spacing.md, marginBottom: spacing.md },
   schedulePill: {
     paddingHorizontal: spacing.smd, paddingVertical: 5,
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,

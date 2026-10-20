@@ -15,6 +15,7 @@ import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { EmptyState } from '../components/EmptyState';
+import { RemindersOffNote } from '../components/RemindersOffNote';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, font, lineHeight, fontWeight, iconSize, radius, interaction, type Colors } from '../theme';
 import { displayTitleFor } from '../utils/visibilityUtils';
@@ -78,6 +79,7 @@ export function RemindersScreen() {
         actions={withScreenSettings(undefined, screenSettings.action)}
       />
       <ScreenSettingsSheet {...screenSettings.sheet} />
+      <RemindersOffNote plural enabled={reminders.length > 0} style={styles.offNote} />
 
       <FlatList
         ref={scrollTop.ref}
@@ -185,6 +187,7 @@ const ReminderRow = React.memo(function ReminderRow({ task, categoryLabel, proje
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   listContent: { paddingTop: spacing.xxs, paddingBottom: 40 },
+  offNote: { marginHorizontal: spacing.md, marginBottom: spacing.sm },
   emptyContainer: { flexGrow: 1 },
   // The same inset-grouped card footprint as TaskItem rows / ArchivedScreen's.
   card: {

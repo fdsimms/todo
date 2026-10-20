@@ -712,6 +712,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useMeasuredTextWidth.ts` — useMeasuredTextWidth
 - `src/hooks/useMeterHoldSync.ts` — useMeterHoldSync
 - `src/hooks/useNavMenuOptions.ts` — useNavMenuOptions
+- `src/hooks/useNotificationPermission.ts` — useNotificationPermission
 - `src/hooks/useNowTick.ts` — useNowTick
 - `src/hooks/useOnDeviceAi.ts` — useOnDeviceAvailability, useAiRoute
 - `src/hooks/usePendingEdits.ts` — PendingEdits, usePendingEdits, useRegisterPendingEdit
