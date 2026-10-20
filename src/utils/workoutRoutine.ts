@@ -4,11 +4,12 @@ import type {
   ProgressionScheme,
   RoutineSetTarget,
   WorkoutRoutineItem,
+  WorkoutSet,
   WorkoutSetKind,
 } from '../types';
 import type { WeightUnit } from './weightLog';
 import { MUSCLE_LABELS, formatRestSeconds, formatWeightWithUnit } from './workoutData';
-import { formatDistance, setBadge } from './workoutSession';
+import { formatDistance, sessionExercises, setBadge } from './workoutSession';
 
 /**
  * The routine editor's rules: what an item's targets add up to, and the edits
@@ -565,4 +566,32 @@ export function describeRoutine(
   }
   const count = `${n} ${n === 1 ? 'exercise' : 'exercises'}`;
   return muscles.length ? `${count} · ${muscles.slice(0, 3).map(m => MUSCLE_LABELS[m]).join(', ')}` : count;
+}
+
+/**
+ * A routine's items made from a finished workout, for "Save as routine".
+ *
+ * Each exercise becomes one item in the order it was done, with a target per
+ * set that was ticked off: the weight and reps (or time, or distance) as they
+ * were lifted, so the routine starts where that workout was. **Warm-ups are
+ * left out**, since what a warm-up is lifted at is worked out again from the
+ * working weight when a workout starts, and an exercise that was only warmed
+ * up has no working set to build an item on. Sets never ticked are plans, not
+ * what happened, and are ignored. Supersets are kept. The rest, the
+ * progression and the RPE are not carried over: the workout never chose them.
+ */
+export function routineItemsFromSets(sets: readonly WorkoutSet[]): WorkoutRoutineItem[] {
+  const items: WorkoutRoutineItem[] = [];
+  for (const ex of sessionExercises(sets.filter(s => s.completedAt !== null && s.kind !== 'warmup'))) {
+    const targets: RoutineSetTarget[] = ex.sets.slice(0, MAX_ROUTINE_SETS).map(s => ({
+      kind: s.kind,
+      repsMin: s.reps,
+      repsMax: s.reps,
+      ...(s.weightKg != null ? { weightKg: s.weightKg } : {}),
+      ...(s.durationSeconds != null ? { durationSeconds: s.durationSeconds } : {}),
+      ...(s.distanceM != null ? { distanceM: s.distanceM } : {}),
+    }));
+    items.push({ exerciseId: ex.exerciseId, supersetKey: ex.supersetKey, restSeconds: null, progression: null, targets });
+  }
+  return normalizeSupersets(items);
 }

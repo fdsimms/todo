@@ -375,6 +375,31 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     setNoteEdit(null);
   };
 
+  const removeExercise = (exercise: SessionExercise, name: string) => {
+    if (!session) return;
+    const run = () => {
+      const index = exercises.findIndex(e => e.exerciseId === exercise.exerciseId);
+      const neighbor = exercises[index + 1] ?? exercises[index - 1];
+      if (useWorkoutStore.getState().removeSessionExercise(session.id, exercise.exerciseId) !== true) return;
+      haptics.success();
+      animateLayout();
+      setViewedId(neighbor?.exerciseId ?? null);
+      setOpenSetId(null);
+      setNoteEdit(null);
+    };
+    // Nothing logged on it, nothing lost: a planned exercise goes without asking.
+    if (!exercise.sets.some(s => s.completedAt !== null)) { run(); return; }
+    haptics.tap();
+    Alert.alert(
+      `Remove ${name}?`,
+      'The sets you logged on it will be deleted from this workout.',
+      [
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: run },
+      ],
+    );
+  };
+
   // ==== the exercise's two notes ====
   const savedNote = (exercise: SessionExercise, k: NoteKind) => (
     k === 'always' ? catalogExercise(exerciseRows, exercise.exerciseId)?.notes ?? '' : exerciseDayNote(exercise.sets)
@@ -888,6 +913,13 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                         accessibilityLabel={`Add a note on ${viewedInfo?.name ?? 'this exercise'}`}
                       />
                     )}
+                    <InlineAction
+                      icon="trash-outline"
+                      variant="neutral"
+                      tint={colors.redText}
+                      onPress={() => removeExercise(viewed, viewedInfo?.name ?? 'this exercise')}
+                      accessibilityLabel={`Remove ${viewedInfo?.name ?? 'this exercise'} from this workout`}
+                    />
                     {gym && gymNoteEdit !== viewed.exerciseId && (
                       <InlineAction
                         icon="location-outline"
