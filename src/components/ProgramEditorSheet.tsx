@@ -23,6 +23,8 @@ import { PillGroup } from './PillGroup';
 import { HelpText } from './HelpText';
 import { TextField } from './TextField';
 import { EmptyNote } from './EmptyNote';
+import { LazySheet } from './LazySheet';
+import { RoutineEditorSheet } from './RoutineEditorSheet';
 import type { ProgressionScheme } from '../types';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -95,6 +97,8 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
   const [maxes, setMaxes] = useState<Record<string, number | null>>({});
   const [adding, setAdding] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [viewId, setViewId] = useState<string | null>(null);
+  const [viewOpen, setViewOpen] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
   const baseline = useRef('');
 
@@ -112,6 +116,7 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
     setWeeks(w);
     setMaxes(m);
     setAdding(false);
+    setViewOpen(false);
     setRefusal(null);
     baseline.current = snapshotOf(n, s, sc, w, m);
     // Loaded on open only: a sync landing mid-edit must not overwrite what is
@@ -160,6 +165,13 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
     haptics.tap();
     animateLayout();
     setSlots(prev => [...prev, { id: generateId(), routineId }]);
+  };
+  // The routine opened from a row. The id is kept after the sheet closes so
+  // it doesn't reload as a blank new routine while it fades.
+  const openRoutine = (id: string) => {
+    haptics.tap();
+    setViewId(id);
+    setViewOpen(true);
   };
   const removeSlot = (id: string) => {
     haptics.tap();
@@ -230,6 +242,18 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
           right={<SheetHeaderButton label={BUTTON_LABEL.save} onPress={save} minWidth={64} />}
         />
       }
+      footer={
+        // Inside this sheet's own Modal, not beside it: the program's typed
+        // edits must survive, and a sibling Modal never appears over an open
+        // one (see "Two sibling Modals").
+        <LazySheet open={viewOpen}>
+          <RoutineEditorSheet
+            visible={visible && viewOpen}
+            routineId={viewId}
+            onClose={() => setViewOpen(false)}
+          />
+        </LazySheet>
+      }
     >
       <View style={styles.nameCard}>
         <TextField
@@ -275,10 +299,13 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
                   <Text style={styles.slotIndex}>{index + 1}</Text>
                   <TouchableOpacity
                     style={styles.flex}
+                    onPress={routine ? () => openRoutine(routine.id) : undefined}
                     onLongPress={drag}
                     delayLongPress={interaction.delayLongPress}
                     activeOpacity={interaction.activeOpacity}
+                    accessibilityRole={routine ? 'button' : undefined}
                     accessibilityLabel={label}
+                    accessibilityHint={routine ? 'Opens the routine' : undefined}
                   >
                     <Text style={styles.slotName}>{label}</Text>
                     {routine && <Text style={styles.slotMeta}>{describeRoutine(routine.items, musclesOf)}</Text>}
@@ -320,7 +347,7 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
         </View>
       </View>
       <HelpText style={styles.footHint}>
-        Touch and hold a routine to move it. A week is one pass through the rotation, so a week off waits for you.
+        Tap a routine to see or edit it. Touch and hold to move it. A week is one pass through the rotation, so a week off waits for you.
       </HelpText>
 
       <Text style={styles.groupLabel}>How it moves on</Text>
