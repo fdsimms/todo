@@ -163,6 +163,24 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
   // The amounts set up for this medication, as quick picks above the field.
   const usualDoses = prefsFor(settings, name).usualDoses ?? [];
 
+  // Picking a medication for a new dose starts it from what was set up for
+  // that medication, the same as opening the sheet on it by name does: its
+  // usual amount, and whether it's taken as needed. A medication with no
+  // usual dose leaves whatever amount was already typed. Editing a recorded
+  // dose only renames it, so there nothing else moves.
+  const pickMedication = (candidate: string) => {
+    haptics.tap();
+    setName(candidate);
+    if (log) return;
+    const prefs = prefsFor(settings, candidate);
+    const usual = defaultUsualDose(prefs);
+    if (usual) {
+      setAmount(String(usual.amount));
+      setUnit(usual.unit);
+    }
+    if (typeof prefs.asNeeded === 'boolean') setAsNeeded(prefs.asNeeded);
+  };
+
   const canSave = name.trim().length > 0;
 
   const backdated = day.toDateString() !== noonOfToday().toDateString();
@@ -302,7 +320,7 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
             key: medicationKey(candidate),
             label: candidate,
             selected: medicationKey(candidate) === medicationKey(name),
-            onPress: () => { haptics.tap(); setName(candidate); },
+            onPress: () => pickMedication(candidate),
           }))}
         />
       </View>

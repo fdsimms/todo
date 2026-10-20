@@ -2066,7 +2066,9 @@ export function TodayScreen() {
   // just reorders them — so only those should suppress a stack's "N/M" tally
   // (see the filtered prop on TaskGroupHeader). Later Today's groups don't go
   // through this filter at all (upcomingTaskIds is unfiltered), so this only
-  // applies to the main Today list's group rows below.
+  // applies to the main Today list's group rows below. The all-clear state
+  // reads it for the same reason: a saved sort can't empty the list, so it
+  // mustn't turn a finished day into "No tasks match these filters".
   const groupTallyFiltered = filterPriorities.length > 0 || filterEfforts.length > 0 || filterTypes.length > 0;
 
   // Both close the filter sheet first: a sheet raised while it is still
@@ -4498,10 +4500,10 @@ export function TodayScreen() {
   ) : (
     <EmptyState
       icon="checkmark-circle"
-      art={<AllClearMark filtered={activeFilterCount > 0} doneToday={completedToday.length} />}
+      art={<AllClearMark filtered={groupTallyFiltered} doneToday={completedToday.length} />}
       title="All clear"
       subtitle={describeAllClear({
-        filtered: activeFilterCount > 0,
+        filtered: groupTallyFiltered,
         doneToday: completedToday.length,
       })}
       bottomOffset={tabBarHeight}

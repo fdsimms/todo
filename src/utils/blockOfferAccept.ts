@@ -79,7 +79,7 @@ async function startBlock(task: Task, ruleId: string): Promise<void> {
     return !!count && count.applications + count.categories + (count.websites ?? 0) > 0;
   });
   if (!hasApps) {
-    Alert.alert('No apps chosen', 'This group has no apps, so the block would hold nothing. Choose its apps in Settings, under Screen Time.');
+    Alert.alert('No apps chosen', 'This group has no apps, so the block would hold nothing. Choose its apps on the Screen Time screen in the menu.');
     return;
   }
 
