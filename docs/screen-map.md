@@ -41,7 +41,7 @@ components below.
 - `src/screens/MetersScreen.tsx` — EmptyState, HubPills, InlineAction, MeterReadingSheet, ScreenHeader, TaskEditor
 - `src/screens/MoodDayScreen.tsx` — DetailHeader, EmptyState, JournalEntrySheet, JournalText, MoodLogSheet
 - `src/screens/MoodHistoryScreen.tsx` — ChipFilterSheet, DetailHeader, EmptyState, MoodEntryRow, MoodLogSheet, ScrollToTopButton, SearchField
-- `src/screens/MoodScreen.tsx` — ContrastBars, CsvExportSheet, EmptyState, HubPills, InlineAction, MilestoneSheet, MoodEntryRow, MoodLogSheet, ScreenHeader, ScreenSettingsSheet, ScrollToTopButton
+- `src/screens/MoodScreen.tsx` — ContrastBars, CsvExportSheet, EmptyState, HubPills, InlineAction, MilestoneSheet, MoodEntryRow, MoodLogSheet, PressableScale, ScreenHeader, ScreenSettingsSheet, ScrollToTopButton
 - `src/screens/PeopleScreen.tsx` — ContactPickerSheet, EmptyState, Fab, FabDropZones, HubPills, PaintSelection, PersonEditor, QuickAddNameSheet, ReorderableList, ScreenHeader, ScreenSettingsSheet, SelectionDot, +4 more
 - `src/screens/PersonDetailScreen.tsx` — DetailHeader, EmptyState, InlineAction, JournalDaySheet, PersonEditor, PersonHistorySheet, PersonNoteSheet, PinIcon, QuickEventSheet, ScrollToTopButton, TaskEditor
 - `src/screens/ProjectDetailScreen.tsx` — AddGuestsSheet, ApplyTemplateSheet, BulkActionBar, CardSheet, DeliverablePromptQueue, DeliverablePromptSheet, DetailHeader, EmptyState, Fab, FabDropZones, GroupDropTarget, InlineAction, +30 more
