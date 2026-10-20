@@ -67,7 +67,6 @@ import {
   BACKFILL_FIELDS, backfillCandidates, backfillFieldCounts, backfillSeriesPeers, dismissBackfillField,
   isFieldMissing, backfillFieldsFor, type BackfillFieldId,
 } from '../utils/fieldBackfill';
-import { slotInInUse } from '../utils/slotIn';
 import {
   isSuggestibleBackfillField, suggestionTasks, suggestionExamples, type BackfillSuggestion,
 } from '../utils/backfillSuggest';
@@ -555,10 +554,9 @@ export function BackfillScreen() {
   const suggestRoute = useAiRoute('backfillSuggestions');
 
   const holidaysConfigured = hasAnyHolidays({ set: holidaySet, custom: customHolidays });
-  const slotInUsed = useMemo(() => slotInInUse(tasks, categories), [tasks, categories]);
   const taskFields = useMemo(
-    () => backfillFieldsFor(simpleMode, rewardsEnabled, holidaysConfigured, slotInUsed),
-    [simpleMode, rewardsEnabled, holidaysConfigured, slotInUsed]
+    () => backfillFieldsFor(simpleMode, rewardsEnabled, holidaysConfigured),
+    [simpleMode, rewardsEnabled, holidaysConfigured]
   );
   const entitySegments = useMemo(
     () => ENTITY_KIND_SEGMENTS.filter(seg => kitchenEnabled || !KITCHEN_ENTITY_KINDS.has(seg.value)),

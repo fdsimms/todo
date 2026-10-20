@@ -39,10 +39,12 @@ own headers apply one bar, and a new feature has to be sorted against it:
    usage meters, app gating, penalties and a quota ramp all read as "not using it" when empty,
    so the card would ask everyone to consider a feature most of them have no use for.
 
-**If the day is full** (`slotIn`) is an opt-in feature that is asked about anyway, and the
-fifth rule is why it is gated: `backfillFieldsFor` offers it only once a task or a category has
-turned it on (`slotInInUse`). From then on "firm date or flexible?" is an honest gap on every task
-that could wait, the way a holiday rule is on every repeating task. Both answers are written onto
+**If the day is full** (`slotIn`) is offered from the start, though the feature is one a person
+opts into. It clears the fifth rule because the question isn't "do you want this feature": "firm
+date or flexible?" is an honest gap on every task that could wait, the way a holiday rule is on
+every repeating task, and answering it is how the feature gets turned on. An earlier version waited
+for a task or category to use it first, which hid the card from exactly the person meant to
+start there. Both answers are written onto
 the task, since `false` has to outrank a category set to wait, and the dismissal ("Leave as
 usual") leaves it following its category. A whole-category answer offers to turn the category on.
 
