@@ -2306,7 +2306,7 @@ export function RecipeDetailScreen() {
             method, and with steps they are the cook's own tips ("double the
             garlic"), which cook mode shows in its Notes panel too. They are
             not the method once steps exist, so nothing here repeats them. */}
-        {tab === 'steps' && !!recipe.notes.trim() && <Text style={styles.notes}>{recipe.notes}</Text>}
+        {tab === 'steps' && !!recipe.notes.trim() && <Text style={styles.notes} selectable>{recipe.notes}</Text>}
 
         {tab === 'timers' && (
         <>

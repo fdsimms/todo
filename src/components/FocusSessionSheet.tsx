@@ -524,7 +524,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
               details a person would otherwise have to back out of the
               session to go find on the row. */}
           {!isRest && currentTask && currentTask.notes.length > 0 && (
-            <Text style={styles.notesText}>{currentTask.notes}</Text>
+            <Text style={styles.notesText} selectable>{currentTask.notes}</Text>
           )}
 
           {!isRest && currentTask && (stepLink || callUrl || emailUrl) && (

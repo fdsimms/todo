@@ -488,7 +488,7 @@ export function PersonDetailScreen() {
 
         {person.notes.trim().length > 0 && (
           <View style={styles.notesCard}>
-            <Text style={styles.notes}>{person.notes}</Text>
+            <Text style={styles.notes} selectable>{person.notes}</Text>
           </View>
         )}
 
