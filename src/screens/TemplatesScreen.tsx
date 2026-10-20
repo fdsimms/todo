@@ -47,7 +47,9 @@ import { goToTemplateRun } from '../navigation/navigationRef';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { useRowSelection } from '../hooks/useRowSelection';
 import { usePullToSearch } from '../hooks/usePullToSearch';
-import { groupTemplatesByCategory, resolveTemplateDrop, type TemplateListItem } from '../utils/templateGrouping';
+import { groupTemplatesByCategory, resolveTemplateDrop, templateMatchesQuery, type TemplateListItem } from '../utils/templateGrouping';
+import { useFilterField } from '../hooks/useFilterField';
+import { SearchField } from '../components/SearchField';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, flattenOverlay, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -71,6 +73,8 @@ function AddTemplateFabWithDropLabel({
   });
   return <Fab {...props} dragLabel={label} />;
 }
+
+const SEARCH_BAR_MIN_TEMPLATES = 8;
 
 export function TemplatesScreen() {
   const pullSearch = usePullToSearch();
@@ -148,9 +152,20 @@ export function TemplatesScreen() {
     () => [...templateCategories].sort((a, b) => a.sortOrder - b.sortOrder).map(c => c.name),
     [templateCategories]
   );
+  // A filter over the list once it is long enough to need one, the way
+  // Projects does it: shown at SEARCH_BAR_MIN_TEMPLATES, and kept while a
+  // query is typed so clearing it can't strand the field. Reordering is off
+  // while it filters, since a drop between two matches has no honest place
+  // among the templates the filter hid.
+  const search = useFilterField();
+  const query = search.query.trim();
+  const showSearch = templates.length >= SEARCH_BAR_MIN_TEMPLATES || search.query.length > 0;
   const templateListItems = useMemo(
-    () => groupTemplatesByCategory(templates, templateCategoryOrder),
-    [templates, templateCategoryOrder]
+    () => groupTemplatesByCategory(
+      query ? templates.filter(t => templateMatchesQuery(t, query)) : templates,
+      templateCategoryOrder,
+    ),
+    [templates, templateCategoryOrder, query]
   );
   // What the bulk bar offers to file into: the registered categories, plus any
   // name a template still carries that was never registered — the list shows a
@@ -280,6 +295,14 @@ export function TemplatesScreen() {
       <ScreenHeader title="Templates" actions={withScreenSettings(undefined, screenSettings.action)} />
       <ScreenSettingsSheet {...screenSettings.sheet} />
       <HubPills hub="organize" active="Templates" />
+      {showSearch && (
+        <SearchField
+          field={search}
+          placeholder="Search templates and their tasks"
+          style={styles.searchBar}
+          accessibilityLabel="Search templates"
+        />
+      )}
 
       {/* A drag down the column of selection dots picks up a run of templates
           (#2944), as on every other selectable list. Outside the drop zones,
@@ -301,6 +324,7 @@ export function TemplatesScreen() {
         scrollEnabled={!fabDragging && !painting}
         scrollControlRef={scrollControl}
         scrollToTop={{ bottom: fabBottom }}
+        // Never fires while a query filters the list: no row offers a drag.
         onReorder={data => {
           const { templateIds, categoryUpdates } = resolveTemplateDrop(data, templateCategoryOrder);
           reorderTemplatesWithCategoryUpdates(templateIds, categoryUpdates);
@@ -316,7 +340,16 @@ export function TemplatesScreen() {
             ? null
             : <View style={{ height: selectionMode ? selectionListPadding : tabBarHeight + FAB_SIZE + spacing.xl }} />
         }
-        ListEmptyComponent={
+        ListEmptyComponent={query ? (
+          <EmptyState
+            icon="search-outline"
+            title="No matches"
+            subtitle={`No template or template task mentions “${query}”`}
+            actionLabel="Clear search"
+            onAction={search.clear}
+            bottomOffset={tabBarHeight}
+          />
+        ) : (
           <EmptyState
             icon="copy-outline"
             title="No templates yet"
@@ -325,7 +358,7 @@ export function TemplatesScreen() {
             onAction={() => setQuickAddVisible(true)}
             bottomOffset={tabBarHeight}
           />
-        }
+        )}
         // Every row doubles as a target for the add button being dragged in.
         // The wrapper only measures — it adds no styling and claims no
         // touches — so a row behaves exactly as it did without one, and the
@@ -352,7 +385,7 @@ export function TemplatesScreen() {
                 styles={styles}
                 // Reordering is off while selecting: the long press that would
                 // start a drag is how a mis-tapped row gets picked up instead.
-                drag={selectionMode ? undefined : drag}
+                drag={selectionMode || query ? undefined : drag}
                 isActive={isActive}
                 selectionMode={selectionMode}
                 selected={selectedIds.has(tpl.id)}
@@ -375,7 +408,7 @@ export function TemplatesScreen() {
           channel={fabIntentChannel}
           onPress={() => setQuickAddVisible(true)}
           accessibilityLabel="Add template"
-          drag={fabDrag}
+          drag={query ? undefined : fabDrag}
           dragHint="Drop on the list to add a template there. Drop on the button to cancel."
         />
       )}
@@ -598,6 +631,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // See the note on TemplateDetailScreen's: `flex: 1` needs a full-height box
   // to centre in, and the list's padding would move that centre.
   emptyContainer: { flexGrow: 1 },
+  searchBar: {
+    marginHorizontal: spacing.md,
+    marginTop: spacing.xs,
+    marginBottom: spacing.xs,
+  },
   categorySectionHeader: {
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
