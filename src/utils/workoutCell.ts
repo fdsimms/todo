@@ -12,6 +12,24 @@ export function setFieldMax(field: SetField, unit: WeightUnit): number {
 }
 
 /**
+ * What text typed into a routine set's reps cell plans: "8" is a fixed count,
+ * "8-12" (or "8–12") a range, "8+" a floor, and blank none. Either end alone
+ * is the same number for both ends, as `withSetReps` reads it, and the order
+ * the ends are typed in doesn't matter. Undefined is text that isn't reps, so
+ * the cell snaps back rather than writing a guess.
+ */
+export function parseRepsTarget(text: string): { min: number | null; max: number | null } | undefined {
+  const t = text.trim();
+  if (t === '') return { min: null, max: null };
+  const m = /^(\d+)\s*(?:[-–—]\s*(\d+)|\+)?$/.exec(t);
+  if (!m) return undefined;
+  const cap = (n: number) => Math.min(Math.max(1, n), setFieldMax('reps', 'kg'));
+  const lo = cap(Number(m[1]));
+  const hi = m[2] !== undefined ? cap(Number(m[2])) : lo;
+  return { min: lo, max: hi };
+}
+
+/**
  * What text typed into a set's cell writes: null clears the value, a number is
  * clamped to `setFieldMax`, and a duration may be seconds ("90") or m:ss
  * ("1:30"). Undefined means text that isn't a number, so the cell snaps back to
