@@ -1,0 +1,1 @@
+{ "message": "Fixed Today saying \"No tasks match these filters\" after you finished everything, when a sort was chosen. A sort only reorders tasks, so a finished day now shows All clear.", "date": "2026-10-20" }

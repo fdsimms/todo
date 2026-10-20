@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, Alert, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { isSameDay } from 'date-fns/isSameDay';
@@ -7,6 +7,7 @@ import type { JournalEntry, JournalKind } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { confirmDelete } from '../utils/confirmDelete';
 import { dayKeyOf, getLogicalToday } from '../utils/dateUtils';
 import {
   JOURNAL_KIND_COPY,
@@ -318,17 +319,13 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
     confirmDiscard(() => { if (!editing) clearJournalDraft(kind); onClose(); });
   };
 
-  const confirmDelete = () => {
+  const requestDelete = () => {
     if (!editing) return;
     const id = editing.id;
-    Alert.alert(`Delete this ${copy.one}?`, undefined, [
-      { text: BUTTON_LABEL.cancel, style: 'cancel' },
-      {
-        text: BUTTON_LABEL.delete,
-        style: 'destructive',
-        onPress: () => { haptics.warning(); removeEntry(id); dropSealedNoteReminder(id); onClose(); },
-      },
-    ]);
+    confirmDelete({
+      title: `Delete this ${copy.one}?`,
+      onConfirm: () => { haptics.warning(); removeEntry(id); dropSealedNoteReminder(id); onClose(); },
+    });
   };
 
   const title = editing
@@ -562,7 +559,7 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
       {editing && (
         <TouchableOpacity
           style={[styles.card, styles.deleteRow]}
-          onPress={confirmDelete}
+          onPress={requestDelete}
           activeOpacity={interaction.activeOpacity}
           accessibilityRole="button"
           accessibilityLabel={`Delete ${copy.one}`}

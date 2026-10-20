@@ -154,6 +154,7 @@ import { MAX_ROTATION_PER_WEEK, rotationItemsFrom, rotationPerWeek, rotationTarg
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { TitleTokenAccessory, QUICK_ADD_TITLE_TOKENS } from './TitleTokenAccessory';
 import { tokenChipsFor, applyTokenChip, type TokenChip } from '../utils/titleTokenChips';
+import { suggestExistingTags } from '../utils/chipUses';
 import { TitleSuggestionBanner } from './TitleSuggestionBanner';
 import { FollowUpTaskSheet } from './FollowUpTaskSheet';
 import { CalendarChoiceSheet } from './CalendarChoiceSheet';
@@ -1757,6 +1758,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
     }),
     [title, categories, allTags, projects, chipUses]
   );
+  // The existing tags offered under the Tags field, narrowed to what's typed.
+  const suggestedTags = suggestExistingTags(allTags, tags, newTag, chipUses, 6);
   const applyTitleChip = (chip: TokenChip) => {
     if (!titleChips) return;
     haptics.tap();
@@ -7444,13 +7447,16 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
                 <InlineAction icon="add" label="Add tag" variant="neutral" onPress={() => setAddingTag(true)} />
               )}
             </View>
-            {allTags.filter(t => !tags.includes(t)).length > 0 && (
+            {suggestedTags.length > 0 && (
               <View style={styles.tagSuggestions}>
-                {allTags.filter(t => !tags.includes(t)).slice(0, 6).map(tag => (
+                {suggestedTags.map(tag => (
                   <TouchableOpacity
                     key={tag}
                     style={styles.tagSuggestion}
-                    onPress={() => { haptics.tap(); setTags(prev => [...prev, tag]); }}
+                    // Clears the field too: the suggestions narrow to what's
+                    // typed, and addTagFromInput would otherwise save the
+                    // half-typed name as a second tag when the field blurs.
+                    onPress={() => { haptics.tap(); setTags(prev => [...prev, tag]); setNewTag(''); }}
                   >
                     <Text style={styles.tagSuggestionText}>{tag}</Text>
                   </TouchableOpacity>

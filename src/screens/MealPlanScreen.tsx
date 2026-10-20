@@ -116,6 +116,7 @@ import {
   optionalCounts,
   toggleOptionalPick,
 } from '../utils/recipeComponents';
+import { cookSteps } from '../utils/cookMode';
 import {
   dayKeyRange,
   describeAddedToList,
@@ -1775,6 +1776,12 @@ export function MealPlanScreen() {
   const selectedItemPairs = selected && selectedRecipe
     ? eitherPairsInUse(flattenRecipeIngredients(selectedRecipe, recipesById, selectedResolution, standingSwaps))
     : [];
+  // Whether "Cook" can open cook mode on it: the rule RecipeDetail's own Cook
+  // button uses (steps or ingredients to read out, and the feature shown).
+  const selectedCookable = !!selectedRecipe
+    && featureShown('cookMode', simpleMode)
+    && (cookSteps(selectedRecipe, recipesById, selectedResolution).length > 0
+      || flattenRecipeIngredients(selectedRecipe, recipesById).length > 0);
   // Its optional lines across the dish, and which this meal picked.
   const selectedOptionalLines = selected && selectedRecipe
     ? flattenRecipeIngredients(selectedRecipe, recipesById, selectedResolution)
@@ -2618,6 +2625,19 @@ export function MealPlanScreen() {
                   choices: selected.recipeChoices,
                   ...(selected.recipeOverrides.length > 0 ? { overrides: selected.recipeOverrides } : {}),
                   scale: selected.recipeScale,
+                })
+              : undefined
+          }
+          // Same params as Open recipe, plus the stamp RecipeDetail opens cook
+          // mode on (see its `openCookMode`).
+          onCook={
+            selected?.recipeId && selectedCookable
+              ? () => navigation.navigate('RecipeDetail', {
+                  recipeId: selected.recipeId,
+                  choices: selected.recipeChoices,
+                  ...(selected.recipeOverrides.length > 0 ? { overrides: selected.recipeOverrides } : {}),
+                  scale: selected.recipeScale,
+                  openCookMode: Date.now(),
                 })
               : undefined
           }

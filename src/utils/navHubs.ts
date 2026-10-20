@@ -89,6 +89,11 @@ export interface NavDestination {
    * for a hub member too; Workouts was one, in Health, before it got a row.
    */
   workouts?: boolean;
+  /**
+   * Dropped while `kitchenEnabled` is off. Only an extra destination needs it,
+   * since a row or hub carries its own `kitchen` flag.
+   */
+  kitchen?: boolean;
 }
 
 export interface NavHub {
@@ -130,7 +135,7 @@ const KITCHEN_HUB: NavHub = {
     // take it with the rest of the hub, same as the other three — a food
     // diary tied to groceries you've switched off is the accepted cost of
     // that connection.
-    { route: 'FoodLog', label: 'Food log', icon: 'nutrition-outline', keywords: ['ate', 'eaten', 'calories', 'diary', 'nutrition', 'macros'] },
+    { route: 'FoodLog', label: 'Food log', icon: 'nutrition-outline', keywords: ['ate', 'eaten', 'calories', 'diary', 'nutrition', 'macros', 'water', 'hydration', 'drink'] },
   ],
 };
 
@@ -156,7 +161,7 @@ const HISTORY_HUB: NavHub = {
   icon: 'time-outline',
   members: [
     { route: 'Logbook', label: 'Logbook', icon: 'checkmark-done-outline', keywords: ['done', 'completed', 'finished'] },
-    { route: 'Stats', label: 'Stats', icon: 'stats-chart-outline', keywords: ['numbers', 'charts', 'streaks', 'progress'] },
+    { route: 'Stats', label: 'Stats', icon: 'stats-chart-outline', keywords: ['numbers', 'charts', 'streaks', 'progress', 'habits'] },
     { route: 'Archived', label: 'Archived', icon: 'archive-outline', keywords: ['paused', 'filed', 'put away'] },
     // What the app did unattended — the generators, the expiry sweep and the
     // completed-task purge. In History because it is a record of things that
@@ -191,7 +196,7 @@ const HEALTH_HUB: NavHub = {
   icon: 'heart-outline',
   members: [
     { route: 'Mood', label: 'Mood', icon: 'happy-outline', keywords: ['feelings', 'symptoms', 'how i feel'] },
-    { route: 'Medications', label: 'Medications', icon: 'medkit-outline', keywords: ['medicine', 'pills', 'tablets', 'dose', 'supplement', 'inhaler', 'painkiller'] },
+    { route: 'Medications', label: 'Medications', icon: 'medkit-outline', keywords: ['medicine', 'pills', 'tablets', 'dose', 'supplement', 'vitamin', 'inhaler', 'painkiller'] },
     { route: 'Weight', label: 'Weight', icon: 'scale-outline', keywords: ['scale', 'kg', 'lb', 'pounds', 'body', 'mass'] },
     { route: 'Sleep', label: 'Sleep', icon: 'moon-outline', keywords: ['bedtime', 'asleep', 'night', 'rest', 'tired', 'woke'] },
     { route: 'Journal', label: 'Journal', icon: 'book-outline', keywords: ['diary', 'write', 'writing', 'notes', 'reflect'] },
@@ -424,8 +429,9 @@ export interface NavSearchResult extends NavDestination {
  * would otherwise be invisible to somebody who knows it exists and is looking
  * for it.
  *
- * These are RootStack cards rather than tabs, so opening one leaves the tab
- * highlight where it was — see PUSHED_ROUTES in AppNavigator.
+ * Saved views is a RootStack card rather than a tab, so opening it leaves the
+ * tab highlight where it was — see PUSHED_ROUTES in AppNavigator. Cookbooks
+ * is a tab route with no row, so it highlights nothing either.
  */
 export const NAV_EXTRA_DESTINATIONS: readonly NavDestination[] = [
   {
@@ -435,6 +441,14 @@ export const NAV_EXTRA_DESTINATIONS: readonly NavDestination[] = [
     icon: 'funnel-outline',
     label: 'Saved views',
     keywords: ['filter', 'filters', 'lens', 'preset', 'smart list', 'saved search'],
+  },
+  {
+    // Otherwise reached only from an icon in the Recipes header.
+    route: 'Cookbooks',
+    icon: 'library-outline',
+    label: 'Cookbooks',
+    keywords: ['collection', 'recipe book'],
+    kitchen: true,
   },
 ];
 
@@ -449,8 +463,14 @@ export function menuDestinations(options: NavMenuOptions): NavSearchResult[] {
   }
   // Appended rather than interleaved: these have no row, so there is no
   // position in the menu for them to hold, and the find field is the only
-  // place they appear.
-  for (const extra of NAV_EXTRA_DESTINATIONS) out.push({ ...extra, hubLabel: null });
+  // place they appear. The gates a row obeys hold here too, so a screen the
+  // menu is hiding is not findable either.
+  for (const extra of NAV_EXTRA_DESTINATIONS) {
+    if (extra.kitchen && !options.kitchenEnabled) continue;
+    if (extra.workouts && !options.workoutsEnabled) continue;
+    if (!screenShown(extra.route, options.simpleMode, options.counts)) continue;
+    out.push({ ...extra, hubLabel: null });
+  }
   return out;
 }
 

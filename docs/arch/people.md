@@ -219,7 +219,8 @@ Search and Quick Search, and `TaskEditor`'s own title field.
 
 - **It resolves live, with no tap to accept.** The other tooltip parsers in
   `QuickAddModal` mutate the title (strip a phrase, replace it with nothing)
-  and need a confirm step for that reason — this one doesn't touch the text,
+  and need a confirm step for that reason (the tooltip's tap, or Add pressed
+  while the tooltip is showing) — this one doesn't touch the text,
   so there's nothing to confirm. `personIds` is simply derived from whatever
   mentions are currently in the title; delete the "@name" and the link goes
   with it.

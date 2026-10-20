@@ -164,8 +164,10 @@ interface Props {
 /**
  * One line of the shopping list.
  *
- * Built for a hand holding a trolley: the whole row is the checkbox, the type
- * is a size up from a task row, and the box is 24pt rather than TaskItem's 20.
+ * Built for a hand holding a trolley: the type is a size up from a task row,
+ * and the box is 24pt rather than TaskItem's 20, since the box is the only
+ * thing that ticks the row off. A tap on the name renames it in place, on
+ * purpose: the row is not one big checkbox.
  * Long-press drags the row to another spot or another aisle; everything else is
  * behind the item sheet, reached by the trailing ellipsis, because a mis-swipe
  * in a supermarket aisle is a worse failure than an extra tap.

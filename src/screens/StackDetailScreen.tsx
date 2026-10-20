@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
 import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
 import { useTaskStore } from '../store/useTaskStore';
@@ -26,6 +27,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
 import { SpotlightProvider, useSpotlightProgress } from '../components/SpotlightOverlay';
 import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
+import { TaskGroupEditor } from '../components/TaskGroupEditor';
 import { EmptyState } from '../components/EmptyState';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { DetailHeader } from '../components/DetailHeader';
@@ -72,7 +74,8 @@ export function StackDetailScreen() {
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editorInitialDraft, setEditorInitialDraft] = useState<Partial<TaskDraft> | null>(null);
-  const [quickAddVisible, setQuickAddVisible] = useState(false);
+  // The stack's own editor: its title, and adding new or existing tasks to it.
+  const [groupEditorOpen, setGroupEditorOpen] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   // True while a subtask inside the expanded row is mid-drag; the list has to
   // stop scrolling for the duration (see TaskItem.onSubtaskDragStateChange).
@@ -209,11 +212,25 @@ export function StackDetailScreen() {
           title={group?.title ?? 'Stack'}
           onBack={onClose}
           actions={
-            roster.length > 0 ? (
-              <Text style={styles.tally} accessibilityLabel={`${doneCount} of ${roster.length} done`}>
-                {doneCount}/{roster.length}
-              </Text>
-            ) : undefined
+            <View style={styles.headerActions}>
+              {roster.length > 0 && (
+                <Text style={styles.tally} accessibilityLabel={`${doneCount} of ${roster.length} done`}>
+                  {doneCount}/{roster.length}
+                </Text>
+              )}
+              {!!group && (
+                <TouchableOpacity
+                  hitSlop={12}
+                  onPress={() => setGroupEditorOpen(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Edit stack"
+                >
+                  {/* A pencil, as on a project's page: it opens the editor
+                      straight away, where tasks are added to the stack. */}
+                  <Ionicons name="create-outline" size={20} color={colors.textSecondary} />
+                </TouchableOpacity>
+              )}
+            </View>
           }
         />
 
@@ -272,6 +289,8 @@ export function StackDetailScreen() {
                 icon="layers-outline"
                 title="No tasks in this stack"
                 subtitle="Add tasks from the stack’s editor, or drag them onto it on Today."
+                actionLabel={group ? 'Add tasks' : undefined}
+                onAction={group ? () => setGroupEditorOpen(true) : undefined}
               />
             }
           />
@@ -313,6 +332,12 @@ export function StackDetailScreen() {
           }}
         />
 
+        <TaskGroupEditor
+          visible={groupEditorOpen && !!group}
+          group={groupEditorOpen ? group : null}
+          onClose={() => setGroupEditorOpen(false)}
+        />
+
         <ScrollToTopButton {...scrollTop.buttonProps} />
       {pullSearch.sheet}
       </View>
@@ -324,6 +349,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   detailRoot: {
     flex: 1,
     backgroundColor: colors.bg,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
   },
   tally: {
     fontSize: font.sm,

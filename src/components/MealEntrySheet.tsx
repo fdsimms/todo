@@ -194,6 +194,12 @@ interface Props {
   /** Present only while the entry's recipe still resolves. */
   onOpenRecipe?: () => void;
   /**
+   * Opens the recipe straight into cook mode, at this meal's picks and scale.
+   * Present only while the recipe resolves, has something to cook from, and
+   * cook mode isn't switched off.
+   */
+  onCook?: () => void;
+  /**
    * Shops this one meal — opens the review sheet on its recipe, at this
    * meal's own scale and either/or picks. Present only while the entry's
    * recipe resolves, and present whether or not the meal is cooked: unlike
@@ -255,7 +261,7 @@ const TOP_INSET = 72;
 export function MealEntrySheet({
   visible, entry, title, weekDays, onMove, onMoveFurther, onCopyTo, onCopyFurther, copiedDays, onReplace, onChooseRecipe, onSaveAsRecipe, matchingRecipeName,
   onRemove, onRename, choiceGroups = [], onChoose, itemPairs = [], onPickItem, overrideLines = [], onRemoveOverride, onOverride, blankFill = null, onFillBlanks, optionalLines = [], onToggleOptional,
-  onScale, baseServings, baseServingsMax, onSetCooked, onViewFoodLogEntry, onLogMeal, onOpenRecipe, onAddToList, onAddPrepTasks,
+  onScale, baseServings, baseServingsMax, onSetCooked, onViewFoodLogEntry, onLogMeal, onOpenRecipe, onCook, onAddToList, onAddPrepTasks,
   onLogLeftovers,
   onFinishLeftover, onSetCookTask, hasCookTask = false, onClose,
 }: Props) {
@@ -379,9 +385,30 @@ export function MealEntrySheet({
 
           {/* What the sheet is usually opened for once the meal's day comes,
               so it sits under the title rather than below two rows of day
-              chips. Kept in this order: cooked, then logged. */}
-          {(!!onSetCooked || !!onViewFoodLogEntry || !!onLogMeal) && (
+              chips. Kept in the order the evening goes: cook it (or read the
+              recipe), mark it cooked, then log it. */}
+          {(!!onCook || !!onOpenRecipe || !!onSetCooked || !!onViewFoodLogEntry || !!onLogMeal) && (
             <View style={styles.closeOut}>
+              {!!onCook && (
+                <SheetActionRow
+                  icon="list-outline"
+                  color={colors.accent}
+                  label="Cook"
+                  onPress={() => { haptics.tap(); dismiss(onCook); }}
+                  accessibilityLabel="Cook this recipe one step at a time"
+                />
+              )}
+              {!!onCook && !!onOpenRecipe && <View style={styles.sep} />}
+              {!!onOpenRecipe && (
+                <SheetActionRow
+                  icon="restaurant-outline"
+                  color={colors.accent}
+                  label="Open recipe"
+                  onPress={() => { haptics.tap(); dismiss(onOpenRecipe); }}
+                  accessibilityLabel="Open this recipe"
+                />
+              )}
+              {(!!onCook || !!onOpenRecipe) && (!!onSetCooked || !!onViewFoodLogEntry || !!onLogMeal) && <View style={styles.sep} />}
               {!!onSetCooked && (
                 <SheetActionRow
                   icon={cooked ? 'close-circle-outline' : 'checkmark-circle-outline'}
@@ -629,25 +656,12 @@ export function MealEntrySheet({
             </>
           )}
 
-          {!!onOpenRecipe && (
-            <>
-              <View style={styles.sep} />
-              <SheetActionRow
-                icon="restaurant-outline"
-                color={colors.accent}
-                label="Open recipe"
-                onPress={() => { haptics.tap(); dismiss(onOpenRecipe); }}
-                accessibilityLabel="Open this recipe"
-              />
-            </>
-          )}
-
           {/*
             The one-meal end of the same three-scope shortcut the day headers'
             cart button and the week's own pill sit at the other end of: a
-            meal, a day, a week. Directly under "Open recipe" because it's the
-            other thing this sheet can do with the recipe behind the meal,
-            where the two rows below it both write a task.
+            meal, a day, a week. First of the rows that act on the recipe
+            behind the meal ("Cook" and "Open recipe" sit at the top), where
+            the two rows below it both write a task.
           */}
           {!!onAddToList && (
             <>

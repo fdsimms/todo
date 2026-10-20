@@ -2066,7 +2066,9 @@ export function TodayScreen() {
   // just reorders them — so only those should suppress a stack's "N/M" tally
   // (see the filtered prop on TaskGroupHeader). Later Today's groups don't go
   // through this filter at all (upcomingTaskIds is unfiltered), so this only
-  // applies to the main Today list's group rows below.
+  // applies to the main Today list's group rows below. The all-clear state
+  // reads it for the same reason: a saved sort can't empty the list, so it
+  // mustn't turn a finished day into "No tasks match these filters".
   const groupTallyFiltered = filterPriorities.length > 0 || filterEfforts.length > 0 || filterTypes.length > 0;
 
   // Both close the filter sheet first: a sheet raised while it is still
@@ -2634,9 +2636,11 @@ export function TodayScreen() {
     () => selectTodayMealEntries(mealEntries, mealRangeStart, mealRangeEnd, todayKey),
     [mealEntries, mealRangeStart, mealRangeEnd, todayKey]
   );
+  // Opens on today, not on whichever week the plan was last left showing:
+  // these rows are today's meals (see MealPlanScreen's focusDay/focusStamp).
   const openMealPlan = useCallback(() => {
-    navigation.navigate('MealPlan' as never);
-  }, [navigation]);
+    navigation.navigate({ name: 'MealPlan', params: { focusDay: todayKey, focusStamp: Date.now() } } as never);
+  }, [navigation, todayKey]);
   const setMealCookedPaired = useMealPlanStore(s => s.setCookedPaired);
   const setMealLastAction = useMealPlanStore(s => s.setLastAction);
   const leftovers = useLeftoverStore(useShallow(s => s.leftovers));
@@ -4498,10 +4502,10 @@ export function TodayScreen() {
   ) : (
     <EmptyState
       icon="checkmark-circle"
-      art={<AllClearMark filtered={activeFilterCount > 0} doneToday={completedToday.length} />}
+      art={<AllClearMark filtered={groupTallyFiltered} doneToday={completedToday.length} />}
       title="All clear"
       subtitle={describeAllClear({
-        filtered: activeFilterCount > 0,
+        filtered: groupTallyFiltered,
         doneToday: completedToday.length,
       })}
       bottomOffset={tabBarHeight}
@@ -4881,6 +4885,14 @@ export function TodayScreen() {
     return savingForGoal(allRewards, coinEntries, rewardGoalId, r => (r.taskId ? byId.get(r.taskId) ?? null : null));
   }, [showCoinPill, allTasks, allRewards, coinEntries, rewardGoalId]);
   const headerActions: ScreenHeaderAction[] = [
+    // The same quick search a pull opens, on all four lenses: a pull is a
+    // gesture nothing on screen points to, and this is the screen people
+    // land on.
+    {
+      icon: 'search' as const,
+      onPress: () => setQuickSearchVisible(true),
+      accessibilityLabel: 'Search',
+    },
     // Sort and filter only apply to Today's own list.
     ...(viewMode === 'today' ? [{
       icon: 'funnel' as const,
