@@ -251,14 +251,17 @@ export function CalendarScreen() {
   const awaySpans = useMemo(() => trips.map(t => t.span), [trips]);
   const dayHeaders = useMemo(() => weekdayHeaders(weekStartsOn), [weekStartsOn]);
 
+  // Keyed rather than a Date, so the memo below only rebuilds when the day turns.
+  const logicalTodayKey = dayKeyOf(getLogicalToday());
   const buckets = useMemo(
     () => buildDayBuckets(allTasks, {
       from: days[0],
       to: days[days.length - 1],
       dayResetTime,
       projecting,
+      projectFrom: dayKeyToDate(logicalTodayKey),
     }),
-    [allTasks, days, dayResetTime, projecting],
+    [allTasks, days, dayResetTime, projecting, logicalTodayKey],
   );
 
   const taskById = useMemo(() => new Map(allTasks.map(t => [t.id, t])), [allTasks]);

@@ -92,7 +92,15 @@ export function matchWeight(nameKey: string, queryKey: string): number {
   // letter of "spinach" offered bread, eggs and everything else at weight 2,
   // ranked purely by familiarity. A one-character query has no plural to be
   // tolerant of.
-  if (queryKey.length > 1 && queryKey.endsWith('s') && nameKey.startsWith(queryKey.slice(0, -1))) return 2;
+  //
+  // The stem has to end a word of the name. As a bare prefix, "peas" found
+  // Peanut butter and Pears, "eggs" Eggplant and "nuts" Nutmeg, and this
+  // weight also feeds ingredientCatalogMatch's "did you mean" offer, where
+  // that's a recipe line rewritten rather than a keystroke.
+  if (queryKey.length > 1 && queryKey.endsWith('s')) {
+    const stem = queryKey.slice(0, -1);
+    if (nameKey === stem || nameKey.startsWith(`${stem} `)) return 2;
+  }
   if (nameKey.startsWith(`${queryKey}s`)) return 3;
   // Last, and under every rung above it: the query's words found on the name in
   // some other order, which is what lets "butter peanut" reach "Peanut butter".

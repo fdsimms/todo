@@ -54,6 +54,8 @@ export function isNonFoodAisle(aisle: string, nonFoodAisles: readonly string[]):
  */
 export const AISLE_LEXICON: Record<string, string> = {
   // ─── Produce ───
+  // Tofu sits in the produce section's refrigerated case in most US stores.
+  romaine: 'Produce', tofu: 'Produce',
   apple: 'Produce', apples: 'Produce', apricot: 'Produce', apricots: 'Produce',
   artichoke: 'Produce', artichokes: 'Produce', arugula: 'Produce',
   asparagus: 'Produce', avocado: 'Produce', avocados: 'Produce',
@@ -105,7 +107,7 @@ export const AISLE_LEXICON: Record<string, string> = {
 
   // ─── Deli ───
   bacon: 'Deli', bologna: 'Deli', 'cold cuts': 'Deli', 'deli meat': 'Deli', ham: 'Deli',
-  hummus: 'Deli', 'lunch meat': 'Deli', mortadella: 'Deli',
+  guacamole: 'Deli', hummus: 'Deli', 'lunch meat': 'Deli', mortadella: 'Deli',
   olives: 'Deli', pastrami: 'Deli', pepperoni: 'Deli', prosciutto: 'Deli',
   salami: 'Deli', 'sliced turkey': 'Deli',
 
@@ -152,6 +154,11 @@ export const AISLE_LEXICON: Record<string, string> = {
   'frozen vegetables': 'Frozen', 'fish sticks': 'Frozen', 'french fries': 'Frozen',
   'ice cream': 'Frozen',
   popsicles: 'Frozen', sorbet: 'Frozen', 'tater tots': 'Frozen', waffles: 'Frozen',
+  // Bare "ice" is a bag of it, and as a token it also catches "ice cream
+  // sandwiches", whose last word names nothing. A bare "pizza" on a list is a
+  // frozen one; its sauce and dough are listed so they don't follow it here.
+  'egg rolls': 'Frozen', fries: 'Frozen', ice: 'Frozen', pizza: 'Frozen',
+  'pizza dough': 'Bakery', 'pizza sauce': 'Canned & Jarred',
 
   // ─── Pantry ───
   'almond butter': 'Pantry', 'balsamic vinegar': 'Pantry', barley: 'Pantry',
@@ -174,6 +181,9 @@ export const AISLE_LEXICON: Record<string, string> = {
   spaghetti: 'Pantry', 'sriracha': 'Pantry',
   stock: 'Pantry', syrup: 'Pantry', tahini: 'Pantry', vinegar: 'Pantry',
   'vegetable oil': 'Pantry', 'worcestershire sauce': 'Pantry',
+  // "mac & cheese" keys as "mac cheese" once the ampersand goes.
+  bouillon: 'Pantry', dressing: 'Pantry', 'mac and cheese': 'Pantry', 'mac cheese': 'Pantry',
+  'macaroni and cheese': 'Pantry', 'steak sauce': 'Pantry',
 
   // ─── Canned & Jarred ───
   'alfredo sauce': 'Canned & Jarred', applesauce: 'Canned & Jarred',
@@ -194,6 +204,9 @@ export const AISLE_LEXICON: Record<string, string> = {
   'pinto beans': 'Canned & Jarred',
   'refried beans': 'Canned & Jarred', 'tomato paste': 'Canned & Jarred',
   'tomato sauce': 'Canned & Jarred',
+  // "soup" as the head noun, so "tomato soup" isn't filed under tomatoes.
+  'apple sauce': 'Canned & Jarred', 'canned tuna': 'Canned & Jarred', soup: 'Canned & Jarred',
+  'vodka sauce': 'Canned & Jarred',
 
   // ─── Snacks ───
   almonds: 'Snacks', 'beef jerky': 'Snacks',
@@ -235,7 +248,8 @@ export const AISLE_LEXICON: Record<string, string> = {
   'bay leaves': 'Baking & Spices',
   'brown sugar': 'Baking & Spices', 'chili powder': 'Baking & Spices', cinnamon: 'Baking & Spices',
   'chocolate chips': 'Baking & Spices', cloves: 'Baking & Spices', cocoa: 'Baking & Spices',
-  cornstarch: 'Baking & Spices', cumin: 'Baking & Spices',
+  cornstarch: 'Baking & Spices', 'corn starch': 'Baking & Spices', cumin: 'Baking & Spices',
+  'ground ginger': 'Baking & Spices',
   'food coloring': 'Baking & Spices',
   flour: 'Baking & Spices', 'garlic powder': 'Baking & Spices', nutmeg: 'Baking & Spices',
   // "onion powder" would otherwise fall through to the any-token loop and hit
@@ -262,8 +276,14 @@ export const AISLE_LEXICON: Record<string, string> = {
   'plastic wrap': 'Household', 'stain remover': 'Household', sponges: 'Household',
   'toilet paper': 'Household',
   'trash bags': 'Household', 'trash can liners': 'Household', 'ziploc bags': 'Household',
+  // There is no pet aisle in DEFAULT_AISLES, so pet supplies go with Household.
+  'cat food': 'Household', 'cat litter': 'Household', 'coffee filters': 'Household',
+  'dog food': 'Household', 'kitty litter': 'Household', 'pet food': 'Household',
+  'sandwich bags': 'Household',
 
   // ─── Personal Care ───
+  advil: 'Personal Care', 'band aids': 'Personal Care', bandages: 'Personal Care',
+  tylenol: 'Personal Care',
   aspirin: 'Personal Care', 'baby wipes': 'Personal Care', chapstick: 'Personal Care',
   'cotton balls': 'Personal Care', 'cotton swabs': 'Personal Care',
   diapers: 'Personal Care', 'facial tissue': 'Personal Care',
@@ -283,8 +303,13 @@ export const AISLE_LEXICON: Record<string, string> = {
  * A fixed cascade rather than a fuzzy match, so it's deterministic and
  * testable: the full key first, then the *last* token (English puts the head
  * noun last — "greek yogurt" → "yogurt" → Dairy & Eggs, "frozen peas" is
- * already an exact entry), then any token ("chicken noodle soup" → chicken).
- * Multi-word entries win because the full key is tried first.
+ * already an exact entry), then any token ("chicken casserole" → chicken).
+ *
+ * Multi-word entries win wherever they end the name, not only when they are
+ * all of it: the trailing phrases are tried longest first, ahead of the last
+ * token. Otherwise one word in front of a compound threw it away, and its
+ * last word decided the aisle: "creamy peanut butter" was Dairy, "red bell
+ * pepper" Baking & Spices and "vanilla ice cream" Dairy.
  */
 export function aisleForName(name: string): string | null {
   const key = groceryNameKey(name);
@@ -299,6 +324,10 @@ export function aisleForName(name: string): string | null {
   // is. Without it the last-token rule sent both to the fresh aisles.
   if (tokens.length > 1 && tokens[0] === 'frozen') return 'Frozen';
   if (tokens.length > 1) {
+    for (let i = 1; i < tokens.length - 1; i++) {
+      const tail = AISLE_LEXICON[tokens.slice(i).join(' ')];
+      if (tail) return tail;
+    }
     const last = AISLE_LEXICON[tokens[tokens.length - 1]];
     if (last) return last;
     for (const token of tokens) {

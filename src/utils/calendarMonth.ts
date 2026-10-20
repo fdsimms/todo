@@ -310,6 +310,15 @@ export interface BuildBucketsOptions {
    * built from either way.
    */
   projecting?: boolean;
+  /**
+   * The earliest day an occurrence may be projected onto, which a grid a
+   * person reads passes as the logical today. An overdue recurring task is
+   * walked from its stored date, so without it the walk laid "expected"
+   * occurrences on days already gone, and nothing will ever create those
+   * rows: a completion lands after today and a skip on today. Left out,
+   * nothing is held back, which is what a window starting today needs anyway.
+   */
+  projectFrom?: Date;
 }
 
 /**
@@ -328,9 +337,10 @@ export function buildDayBuckets(
   tasks: readonly Task[],
   options: BuildBucketsOptions,
 ): Map<string, DayBucket> {
-  const { from, to, dayResetTime, projecting = true } = options;
+  const { from, to, dayResetTime, projecting = true, projectFrom } = options;
   const fromKey = dayKeyOf(from);
   const toKey = dayKeyOf(to);
+  const projectFromKey = projectFrom ? dayKeyOf(projectFrom) : null;
   const buckets = new Map<string, DayBucket>();
 
   const add = (key: string, mark: DayMark) => {
@@ -357,6 +367,7 @@ export function buildDayBuckets(
 
     if (!projecting) continue;
     for (const occurrence of projectOccurrences(task, from, to, dayResetTime)) {
+      if (projectFromKey && dayKeyOf(occurrence) < projectFromKey) continue;
       const ghost = { taskId: task.id, title: task.title, projected: true, completed: false };
       add(dayKeyOf(occurrence), { ...ghost, kind: 'due' });
       const deadline = projectedDeadlineFor(task, occurrence);
