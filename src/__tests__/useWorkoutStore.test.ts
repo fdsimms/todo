@@ -605,6 +605,21 @@ describe('a session from a routine', () => {
     expect(state().moveSessionExercise('nobody', fly, 'up')).toBe(false);
   });
 
+  it('makes a superset of two exercises mid-workout, saves it, and takes it apart again', () => {
+    const s = ok(state().startSession());
+    for (const id of ['lib:back-squat', bench, fly]) ok(state().logSet(s.id, { exerciseId: id, completedAt: null }));
+    expect(state().joinSessionSuperset(s.id, 'lib:back-squat', fly)).toBe(true);
+    const saved = dbGetWorkoutSets(s.id).sort((a, b) => a.position - b.position);
+    expect(saved.map(x => x.exerciseId)).toEqual(['lib:back-squat', fly, bench]);
+    expect(saved[0].supersetKey).not.toBeNull();
+    expect(saved[1].supersetKey).toBe(saved[0].supersetKey);
+    expect(saved[2].supersetKey).toBeNull();
+    expect(state().joinSessionSuperset(s.id, 'lib:back-squat', fly)).toBe(false);
+    expect(state().leaveSessionSuperset(s.id, fly)).toBe(true);
+    expect(dbGetWorkoutSets(s.id).every(x => x.supersetKey === null)).toBe(true);
+    expect(state().leaveSessionSuperset(s.id, fly)).toBe(false);
+  });
+
   it('finishes by dropping the sets never ticked', () => {
     const r = ok(state().addRoutine('Push A', items));
     const s = ok(state().startSession({ routineId: r.id }));

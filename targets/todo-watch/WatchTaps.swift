@@ -73,7 +73,8 @@ struct WatchTap: Codable, Identifiable {
     var body: String? = nil
     /// "setNote": the words dictated.
     var note: String? = nil
-    /// "addSet": the exercise the set (`itemId`) goes on. "set": the set's
+    /// "superset": the exercise (`itemId`) is paired with this one, or taken
+    /// out of its superset when nil. "addSet": the exercise the set (`itemId`) goes on. "set": the set's
     /// exercise, so a tick that overtakes the `addSet` of a set added here can
     /// add it on the phone.
     var exerciseId: String? = nil
@@ -103,7 +104,7 @@ struct WatchTap: Codable, Identifiable {
     /// a tap made by mistake.
     static let workoutKinds: Set<String> = [
         "set", "restAdd", "restSkip", "finish", "watchSession",
-        "setNote", "addSet", "addExercise", "moveExercise", "useSuggestion",
+        "setNote", "addSet", "addExercise", "moveExercise", "superset", "useSuggestion",
         // The HealthKit session's (phase 9, WatchHealthSession.swift).
         "measuring", "healthWorkout", "healthRetracted",
     ]
@@ -240,7 +241,7 @@ struct LocalTapState {
             case "set":
                 doneSets[tap.itemId] = (tap.values ?? WatchSetValues(), tap.at)
                 workoutTaps.append(tap)
-            case "restAdd", "restSkip", "setNote", "addSet", "addExercise", "moveExercise", "useSuggestion":
+            case "restAdd", "restSkip", "setNote", "addSet", "addExercise", "moveExercise", "superset", "useSuggestion":
                 workoutTaps.append(tap)
             case "finish":
                 finishedSessions.insert(tap.sessionId ?? tap.itemId)

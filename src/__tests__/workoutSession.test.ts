@@ -2,6 +2,8 @@ import type { WorkoutSet } from '../types';
 import {
   afterLog,
   copyLastSet,
+  joinedSuperset,
+  leftSuperset,
   currentSetOf,
   finishPlan,
   formatDistance,
@@ -117,6 +119,42 @@ describe('movedExerciseOrder', () => {
     expect(movedExerciseOrder(session(), 'bench', 'up')).toBeNull();
     expect(movedExerciseOrder(session(), 'triceps', 'down')).toBeNull();
     expect(movedExerciseOrder(session(), 'squat', 'up')).toBeNull();
+  });
+});
+
+describe('joinedSuperset', () => {
+  const keyOf = (sets: WorkoutSet[], id: string) => [...new Set(sets.filter(x => x.exerciseId === id).map(x => x.supersetKey))];
+  const orderOf = (sets: WorkoutSet[]) => sessionExercises(sets).map(e => e.exerciseId);
+
+  it('moves the partner below the exercise and gives both one key', () => {
+    const next = joinedSuperset(session(), 'bench', 'triceps', 'new')!;
+    expect(orderOf(next)).toEqual(['bench', 'triceps', 'incline', 'fly']);
+    expect(keyOf(next, 'bench')).toEqual(['new']);
+    expect(keyOf(next, 'triceps')).toEqual(['new']);
+  });
+
+  it('joins a superset the exercise is already in, under its own key', () => {
+    const [key] = keyOf(session(), 'incline');
+    const next = joinedSuperset(session(), 'fly', 'triceps', 'new')!;
+    expect(orderOf(next)).toEqual(['bench', 'incline', 'fly', 'triceps']);
+    expect(keyOf(next, 'triceps')).toEqual([key]);
+  });
+
+  it('is null for the same exercise, one already together, or an unknown one', () => {
+    expect(joinedSuperset(session(), 'bench', 'bench', 'k')).toBeNull();
+    expect(joinedSuperset(session(), 'incline', 'fly', 'k')).toBeNull();
+    expect(joinedSuperset(session(), 'bench', 'squat', 'k')).toBeNull();
+  });
+});
+
+describe('leftSuperset', () => {
+  it('takes a pair apart: the partner left alone leaves too', () => {
+    const next = leftSuperset(session(), 'fly')!;
+    expect(next.every(x => x.supersetKey === null)).toBe(true);
+  });
+
+  it('is null for an exercise in no superset', () => {
+    expect(leftSuperset(session(), 'bench')).toBeNull();
   });
 });
 

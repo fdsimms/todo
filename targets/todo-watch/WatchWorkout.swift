@@ -581,6 +581,10 @@ enum WatchWorkoutEdit {
     case addSet(exerciseId: String, setId: String)
     case addExercise(WatchRecentExercise, setIds: [String])
     case move(exerciseId: String, up: Bool)
+    /// The exercise paired with `partnerId` (`joinedSuperset` in workoutSession.ts),
+    /// or taken out of its superset when `partnerId` is nil (`leftSuperset`).
+    /// `key` is the superset's key when this starts one.
+    case superset(exerciseId: String, partnerId: String?, key: String)
     /// `idSeed` names any warm-ups a ramp adds, so they keep one id however
     /// many times the change is drawn.
     case useSuggestion(exerciseId: String, idSeed: String)
@@ -679,6 +683,17 @@ struct WatchWorkoutList {
             exercises.sort { (order[$0.id] ?? Int.max) < (order[$1.id] ?? Int.max) }
             return true
 
+        case let .superset(exerciseId, partnerId, key):
+            let relaid: (order: [String], keys: [String: String?])?
+            if let partnerId {
+                relaid = joined(exerciseId, with: partnerId, key: key)
+            } else {
+                relaid = left(exerciseId)
+            }
+            guard let relaid else { return false }
+            lay(relaid)
+            return true
+
         case let .useSuggestion(exerciseId, idSeed):
             guard let suggestion = offeredSuggestion(exerciseId),
                   let exercise = exercises.first(where: { $0.id == exerciseId }) else { return false }
@@ -717,6 +732,96 @@ struct WatchWorkoutList {
             return true
         }
     }
+
+    /// The exercises in walking order, each with the key its first set carries
+    /// (`sessionExercises`).
+    private var exerciseKeys: [(id: String, key: String?)] {
+        var out: [(id: String, key: String?)] = []
+        for set in sets {
+            if let at = out.firstIndex(where: { $0.id == set.exerciseId }) {
+                if out[at].key == nil, let key = set.supersetKey { out[at].key = key }
+            } else {
+                out.append((set.exerciseId, set.supersetKey))
+            }
+        }
+        return out
+    }
+
+    /// The exercises done together with `exerciseId`: the run of neighbours
+    /// that share its key, or the exercise alone (`supersetGroup`).
+    private func group(of exerciseId: String, in order: [(id: String, key: String?)]) -> [String] {
+        guard let at = order.firstIndex(where: { $0.id == exerciseId }) else { return [] }
+        guard let key = order[at].key else { return [exerciseId] }
+        var start = at
+        while start > 0, order[start - 1].key == key { start -= 1 }
+        var end = at
+        while end < order.count - 1, order[end + 1].key == key { end += 1 }
+        return order[start...end].map(\.id)
+    }
+
+    /// The exercise order and the key each carries after `exerciseId` is paired
+    /// with `partnerId`: the partner (and its own superset) moves to sit right
+    /// below the exercise's group, and both groups take one key, the
+    /// exercise's own when it has one. Nil when either is unknown or they are
+    /// already together.
+    private func joined(_ exerciseId: String, with partnerId: String, key: String) -> (order: [String], keys: [String: String?])? {
+        let order = exerciseKeys
+        let mine = group(of: exerciseId, in: order)
+        let theirs = group(of: partnerId, in: order)
+        guard exerciseId != partnerId, !mine.isEmpty, !theirs.isEmpty, !theirs.contains(exerciseId),
+              let last = mine.last else { return nil }
+        let shared = order.first(where: { $0.id == mine[0] })?.key ?? key
+        var ids = order.map(\.id).filter { !theirs.contains($0) }
+        guard let at = ids.firstIndex(of: last) else { return nil }
+        ids.insert(contentsOf: theirs, at: at + 1)
+        var keys = Dictionary(uniqueKeysWithValues: order.map { ($0.id, $0.key) })
+        for id in mine + theirs { keys[id] = shared }
+        return (ids, keys)
+    }
+
+    /// The same after `exerciseId` leaves its superset: out of the middle of a
+    /// run the half below takes a new key, and a partner left alone leaves too
+    /// (`leftSuperset`). Nil when it is in none.
+    private func left(_ exerciseId: String) -> (order: [String], keys: [String: String?])? {
+        let order = exerciseKeys
+        guard let key = order.first(where: { $0.id == exerciseId })?.key else { return nil }
+        let members = group(of: exerciseId, in: order)
+        guard members.count > 1, let at = members.firstIndex(of: exerciseId) else { return nil }
+        var keys = Dictionary(uniqueKeysWithValues: order.map { ($0.id, $0.key) })
+        keys[exerciseId] = .some(nil)
+        if at > 0, at < members.count - 1 {
+            for id in members[(at + 1)...] { keys[id] = "\(key):\(exerciseId)" }
+        }
+        for (id, value) in keys {
+            if let value, keys.values.filter({ $0 == value }).count < 2 { keys[id] = .some(nil) }
+        }
+        return (order.map(\.id), keys)
+    }
+
+    /// Lays the sets out for an exercise order and a key per exercise: each
+    /// exercise's sets together, in their own order, then every superset back
+    /// out round by round (`walkOrder`).
+    private mutating func lay(_ relaid: (order: [String], keys: [String: String?])) {
+        var out: [WatchWorkoutSet] = []
+        for id in relaid.order {
+            for var set in sets where set.exerciseId == id {
+                set.supersetKey = relaid.keys[id] ?? nil
+                out.append(set)
+            }
+        }
+        sets = out
+        let rank = Dictionary(uniqueKeysWithValues: relaid.order.enumerated().map { ($1, $0) })
+        exercises.sort { (rank[$0.id] ?? Int.max) < (rank[$1.id] ?? Int.max) }
+        for exercise in exercises where (relaid.keys[exercise.id] ?? nil) != nil { rewalkSuperset(of: exercise.id) }
+    }
+
+    /// Whether the exercise can be paired with another (there is one that isn't
+    /// already with it), and whether it is in a superset to leave.
+    func supersetPartners(_ exerciseId: String) -> [WatchWorkoutExercise] {
+        let together = group(of: exerciseId, in: exerciseKeys)
+        return exercises.filter { !together.contains($0.id) }
+    }
+    func inSuperset(_ exerciseId: String) -> Bool { group(of: exerciseId, in: exerciseKeys).count > 1 }
 
     /// Each exercise's first place in the walk.
     private var firstAppearance: [String: Int] {
@@ -891,6 +996,8 @@ struct WatchWorkoutScreen {
     var list: WatchWorkoutList { WatchWorkoutList(exercises: exercises, sets: sets) }
     func offeredSuggestion(_ exerciseId: String) -> WatchSuggestion? { list.offeredSuggestion(exerciseId) }
     func canMove(_ exerciseId: String, up: Bool) -> Bool { list.canMove(exerciseId, up: up) }
+    func supersetPartners(_ exerciseId: String) -> [WatchWorkoutExercise] { list.supersetPartners(exerciseId) }
+    func inSuperset(_ exerciseId: String) -> Bool { list.inSuperset(exerciseId) }
 
     /// A rest is shown only while it is about the newest set done: a rest
     /// older than that (left going by a superset partner) belongs to a set
@@ -1001,6 +1108,7 @@ extension WatchStore {
         case "addExercise":
             return recent.first(where: { $0.id == tap.itemId }).map { .addExercise($0, setIds: tap.setIds ?? []) }
         case "moveExercise": return tap.direction.map { .move(exerciseId: tap.itemId, up: $0 == "up") }
+        case "superset": return .superset(exerciseId: tap.itemId, partnerId: tap.exerciseId, key: tap.id)
         case "useSuggestion": return .useSuggestion(exerciseId: tap.itemId, idSeed: tap.id)
         default: return nil
         }
@@ -1163,6 +1271,15 @@ extension WatchStore {
     func moveExercise(_ exerciseId: String, up: Bool, in screen: WatchWorkoutScreen) {
         change(.move(exerciseId: exerciseId, up: up), in: screen) {
             _ = recordWorkoutTap(kind: "moveExercise", itemId: exerciseId, sessionId: screen.sessionId, direction: up ? "up" : "down")
+        }
+    }
+
+    /// An exercise paired with another (the partner moves to sit below it), or
+    /// taken out of its superset when `partnerId` is nil.
+    func superset(_ exerciseId: String, with partnerId: String?, in screen: WatchWorkoutScreen) {
+        let key = UUID().uuidString
+        change(.superset(exerciseId: exerciseId, partnerId: partnerId, key: key), in: screen) {
+            _ = recordWorkoutTap(kind: "superset", itemId: exerciseId, sessionId: screen.sessionId, exerciseId: partnerId)
         }
     }
 
