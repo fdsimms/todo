@@ -320,6 +320,13 @@ function HiddenTabBar() {
   return null;
 }
 
+// React Navigation calls `tabBar` as a plain function (`tabBar(props)`), not as
+// a component, so passing `HiddenTabBar` itself ran its hooks outside any
+// component ("Invalid hook call") the moment the sidebar replaced the bar.
+// Returning an element makes it a real component; module-level keeps the
+// function's identity stable across renders.
+const renderHiddenTabBar = () => <HiddenTabBar />;
+
 // Memoized so toggling unrelated screen-level state elsewhere in
 // AppNavigator (e.g. opening Settings) doesn't force every tab screen to
 // re-render and recompute its derived task lists — that recompute was
@@ -348,7 +355,7 @@ const MainTabs = React.memo(function MainTabs({
     <Tab.Navigator
       initialRouteName={initialRouteName}
       screenOptions={screenOptions}
-      tabBar={hideTabBar ? HiddenTabBar : undefined}
+      tabBar={hideTabBar ? renderHiddenTabBar : undefined}
     >
       {/* The chosen tabs, in the chosen order, then More, then every other
           route hidden. The bar draws its buttons in route order, so this
