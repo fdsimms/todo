@@ -665,7 +665,7 @@ describe('matchExerciseName', () => {
   });
 
   it('keeps a kettlebell goblet squat apart from the dumbbell one', () => {
-    expect(isAutoMatch(matchExerciseName('Kettlebell Goblet Squat', catalog))).toBe(false);
+    expect(matchExerciseName('Kettlebell Goblet Squat', catalog)).toMatchObject({ exerciseId: 'lib:kettlebell-goblet-squat' });
   });
 
   it('only offers the same movement on other equipment', () => {
