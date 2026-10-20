@@ -20,6 +20,7 @@ import { describeOnDeviceAvailability } from '../../services/onDeviceModel';
 import { useOnDeviceAvailability } from '../../hooks/useOnDeviceAi';
 import { TextField } from '../../components/TextField';
 import { BUTTON_LABEL } from '../../copy/shared';
+import { WaniKaniTokenRows } from './WaniKaniTokenRows';
 
 interface Props {
   /** The host screen's scroll view, so focusing the key field can reveal it. */
@@ -519,6 +520,15 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
           )}
         </SettingsSection>
       )}
+
+      {/* The same row Automations shows under the WaniKani task, so the token
+          is findable among the other keys. Both write one keychain entry. */}
+      <SettingsSection
+        label="WaniKani"
+        footer="Used for the WaniKani task in Automations. The token stays in this device’s keychain and is sent only to WaniKani."
+      >
+        <WaniKaniTokenRows entryId="wanikaniTokenPrivacy" />
+      </SettingsSection>
     </>
   );
 }
