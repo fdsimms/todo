@@ -12,6 +12,7 @@ import {
   plannedSetsFor,
   plannedSetsFromHistory,
   previousSets,
+  repeatedSets,
   restSecondsFor,
   sessionExercises,
   sessionMinutes,
@@ -221,6 +222,29 @@ describe('last time', () => {
     ];
     const matched = matchPrevious(current, prev);
     expect(current.map(s => matched.get(s.id)?.weightKg ?? null)).toEqual([40, null, 80, null]);
+  });
+});
+
+describe('repeatedSets', () => {
+  it('lays out the done sets again, warm-ups included, in their order from position zero', () => {
+    const done = [
+      set('row', 4, 1, { weightKg: 50, reps: 10, completedAt: DONE }),
+      set('row', 4, 0, { kind: 'warmup', weightKg: 30, reps: 12, completedAt: DONE }),
+      set('bench', 2, 0, { weightKg: 80, reps: 8, completedAt: DONE, supersetKey: 'ss' }),
+      // Planned and never ticked: not part of what was done.
+      set('bench', 2, 1, { weightKg: 80, reps: 8 }),
+      set('fly', 3, 0),
+    ];
+    expect(repeatedSets(done).map(p => [p.exerciseId, p.position, p.setIndex, p.values.kind, p.values.weightKg, p.values.reps, p.values.supersetKey]))
+      .toEqual([
+        ['bench', 0, 0, 'working', 80, 8, 'ss'],
+        ['row', 1, 0, 'warmup', 30, 12, null],
+        ['row', 1, 1, 'working', 50, 10, null],
+      ]);
+  });
+
+  it('lays out nothing for a workout with no set done', () => {
+    expect(repeatedSets([set('bench', 0, 0)])).toEqual([]);
   });
 });
 

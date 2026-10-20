@@ -387,6 +387,21 @@ describe('a live session', () => {
     expect(state().startSession()).toBe('live');
   });
 
+  it('lays out the sets it is handed when no routine is named, leaving out a deleted exercise', () => {
+    const values = { kind: 'working' as const, weightKg: 70, reps: 6, durationSeconds: null, distanceM: null, supersetKey: null };
+    const s = ok(state().startSession({
+      title: 'Monday again',
+      planned: [
+        { exerciseId: 'lib:back-squat', position: 0, setIndex: 0, values },
+        { exerciseId: 'gone', position: 1, setIndex: 0, values },
+      ],
+    }));
+    expect(s).toMatchObject({ title: 'Monday again', routineId: null, taskId: null });
+    expect(state().loadSets(s.id).map(x => [x.exerciseId, x.weightKg, x.reps, x.completedAt])).toEqual([
+      ['lib:back-squat', 70, 6, null],
+    ]);
+  });
+
   it('lays out a ramp ahead of the work, from the working weight, on loadable plates', () => {
     const r = ok(state().addRoutine('Squat day', [{
       exerciseId: 'lib:back-squat', restSeconds: null, progression: null, warmupRamp: true,

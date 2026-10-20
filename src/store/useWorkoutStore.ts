@@ -53,6 +53,7 @@ import {
   previousSets,
   sessionExercises,
   type PlannedSetValues,
+  type PlacedPlannedSet,
 } from '../utils/workoutSession';
 import { libraryExercise } from '../utils/exerciseLibrary';
 import { loadContextFor, rampSteps } from '../utils/workoutProgression';
@@ -155,6 +156,12 @@ export interface StartSessionInput {
   /** The gym it is done at; null or absent for none. */
   gymId?: string | null;
   at?: Date;
+  /**
+   * Sets to lay out when no routine is named, for a workout started from a
+   * finished one (`repeatedSets`). One naming an exercise that has since
+   * been deleted is left out.
+   */
+  planned?: readonly PlannedRoutineSet[];
 }
 
 export interface SessionPatch {
@@ -205,12 +212,7 @@ export interface FinishedSessionInput {
 }
 
 /** A planned set of a routine, at the place `startSession` gives it. */
-export interface PlannedRoutineSet {
-  exerciseId: string;
-  position: number;
-  setIndex: number;
-  values: PlannedSetValues;
-}
+export type PlannedRoutineSet = PlacedPlannedSet;
 
 /** A workout the watch ran on its own, as `parseWatchSession` reads it: kilograms, done sets only. */
 export interface WatchSessionInput {
@@ -1279,9 +1281,10 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         timesEdited: false,
       };
       putSession(row);
-      const planned = routine
-        ? get().plannedSetsForRoutine(routine.id, row.id).map(p => plannedRow(row.id, p.exerciseId, p.position, p.setIndex, p.values))
-        : [];
+      const planned = (routine
+        ? get().plannedSetsForRoutine(routine.id, row.id)
+        : (input.planned ?? []).filter(p => exerciseKnown(p.exerciseId))
+      ).map(p => plannedRow(row.id, p.exerciseId, p.position, p.setIndex, p.values));
       if (planned.length > 0) dbSaveWorkoutSets(planned);
       putSets(row.id, planned);
       return row;

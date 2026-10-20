@@ -55,6 +55,20 @@ describe('startWorkout', () => {
     expect(mockShow).toHaveBeenCalledTimes(1);
   });
 
+  it('starts a finished workout again from its done sets, with no task', () => {
+    const done = {
+      id: 'x', sessionId: 'old', exerciseId: 'lib:back-squat', position: 3, setIndex: 0, kind: 'working' as const,
+      weightKg: 100, reps: 5, durationSeconds: null, distanceM: null, rpe: null, completedAt: '2026-10-07T18:10:00Z',
+      supersetKey: null, note: null,
+    };
+    expect(startWorkout({ repeat: { title: 'Leg day', sets: [done] } })).toBe('started');
+    expect(mockStartSession).toHaveBeenCalledWith({
+      title: 'Leg day',
+      planned: [{ exerciseId: 'lib:back-squat', position: 0, setIndex: 0, values: expect.objectContaining({ weightKg: 100, reps: 5 }) }],
+      gymId: null,
+    });
+  });
+
   it('starts a program’s next routine, carrying the program', () => {
     expect(startWorkout({ programId: 'p1' })).toBe('started');
     expect(mockStartSession).toHaveBeenCalledWith({ routineId: 'r1', programId: 'p1', taskId: null, gymId: null });
