@@ -4546,7 +4546,7 @@ const TaskItemRow = React.memo(function TaskItem({
                 styles.sectionEnd,
                 (showSubtaskSection || isRotation || hasFollowUpRows) && styles.sectionDivider,
               ]}>
-                <Text style={styles.expandNotes}>{task.notes}</Text>
+                <Text style={styles.expandNotes} selectable>{task.notes}</Text>
               </View>
             )}
 
