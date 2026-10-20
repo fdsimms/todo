@@ -7306,7 +7306,8 @@ describe('checkMoodTasks', () => {
     jest.useFakeTimers();
     jest.setSystemTime(NOW);
     useSettingsStore.getState.mockReturnValue(settings());
-    useTaskStore.setState({ tasks: [] });
+    // autoComplete holds a request until its timer runs, which a test on fake timers may never reach.
+    useTaskStore.setState({ tasks: [], autoComplete: {} });
     setLogs([]);
   });
 
