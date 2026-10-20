@@ -138,6 +138,7 @@ import {
 import { SortableList } from '../components/SortableList';
 import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
 import { QuickAddModal } from '../components/QuickAddModal';
+import { InboxSortSheet } from '../components/InboxSortSheet';
 import { QuickSearchModal } from '../components/QuickSearchModal';
 import { EventImportSheet } from '../components/EventImportSheet';
 import type { ExtractedCalendarEvent } from '../services/aiSuggestions';
@@ -934,6 +935,8 @@ export function TodayScreen() {
   const [quickEventSeed, setQuickEventSeed] = useState<QuickEventSeed | null>(null);
   const [pullingToSearch, setPullingToSearch] = useState(false);
   const [quickSearchVisible, setQuickSearchVisible] = useState(false);
+  // The Inbox's one-card-at-a-time sort (InboxSortSheet).
+  const [inboxSortVisible, setInboxSortVisible] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
   // Non-null while the "save as view" form is open, holding the clauses the
   // filters it was opened from stand for.
@@ -4913,6 +4916,14 @@ export function TodayScreen() {
       onPress: () => setQuickSearchVisible(true),
       accessibilityLabel: 'Search',
     },
+    // Filing the Inbox a task at a time: its date, category and project on one
+    // card, where a row needs a swipe and a sheet per field and leaves the
+    // Inbox after the first.
+    ...(viewMode === 'inbox' && inboxTasks.length > 0 ? [{
+      icon: 'albums-outline' as const,
+      onPress: () => setInboxSortVisible(true),
+      accessibilityLabel: 'Sort the Inbox one task at a time',
+    }] : []),
     // Sort and filter only apply to Today's own list, except the type filter,
     // which narrows the other three lenses too. So they show the funnel while
     // one is set, counting only that, or a narrowed list says nothing of why.
@@ -5706,6 +5717,14 @@ export function TodayScreen() {
           seedLabel={quickAddSeedLabel}
           initialType={quickAddType}
         />
+
+        <LazySheet open={inboxSortVisible}>
+          <InboxSortSheet
+            visible={inboxSortVisible}
+            inbox={inboxTasks}
+            onClose={() => setInboxSortVisible(false)}
+          />
+        </LazySheet>
 
         {/* Opened by pulling any of the four lists down — Today, Later,
             Unscheduled and Inbox all wire the same refreshControl to it. */}
