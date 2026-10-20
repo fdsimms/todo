@@ -49,9 +49,9 @@ import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import { formatTimeOfDay } from '../utils/dateUtils';
+import { formatTimeOfDay, getCurrentDayStart } from '../utils/dateUtils';
 import { formatStopwatch } from '../utils/effort';
-import { linkedTaskLine, workoutTaskEffect } from '../utils/workoutTask';
+import { linkedTaskLine, rotationPickFor, workoutTaskEffect } from '../utils/workoutTask';
 import { displayTitleFor } from '../utils/visibilityUtils';
 import { catalogExercise } from '../utils/exerciseCatalog';
 import { swapCandidates, swappableSets } from '../utils/exerciseSwap';
@@ -446,7 +446,9 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   // What saving does to the task the workout was started from: what its own
   // checkbox would do (`workoutTaskEffect`). A question is asked by the host
   // once this sheet is down, so the store is told to leave that task alone.
-  const taskEffect = workoutTaskEffect(linkedTask);
+  const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
+  const pickMember = rotationPickFor(linkedTask, session ?? {}, getCurrentDayStart(), weekStartsOn);
+  const taskEffect = workoutTaskEffect(linkedTask, pickMember);
   const askFirst = taskEffect === 'ask';
   const summary = useMemo(
     () => (finishing && session ? sessionSummary(session, sets) : null),
@@ -670,7 +672,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                     ? `${plan.dropSetIds.length} planned ${plan.dropSetIds.length === 1 ? 'set wasn’t' : 'sets weren’t'} checked and won’t be saved.`
                     : null,
                 plan.loggedCount > 0 && linkedTask && !linkedTask.completed && !linkedTask.archived
-                  ? linkedTaskLine(taskEffect, displayTitleFor(linkedTask))
+                  ? linkedTaskLine(taskEffect, displayTitleFor(linkedTask), pickMember?.title)
                   : null,
                 // Only for a span the write would accept: Save ends the
                 // session now, so a workout left running past a day is saved

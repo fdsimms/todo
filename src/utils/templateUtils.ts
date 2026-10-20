@@ -22,7 +22,7 @@ import type {
   TemplateQuestionSource,
 } from '../types';
 import { generateId } from './id';
-import { parseRotationItems } from './rotation';
+import { parseRotationItems, withWorkout } from './rotation';
 import { parseChainItems } from './chain';
 
 /** The two anchor dates a template can be applied with. */
@@ -116,7 +116,10 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     chainEnabled: raw.chainEnabled ?? false,
     chainItems: parseChainItems(raw.chainItems),
     rotationEnabled: raw.rotationEnabled ?? false,
-    rotationItems: parseRotationItems(raw.rotationItems),
+    // A member's workout is a routine or program of this person's own, which a
+    // shared template would name and not find: the same reason the task-level
+    // link isn't seeded (templateItemParity.test.ts). Dropped on the way in.
+    rotationItems: parseRotationItems(raw.rotationItems).map(r => withWorkout(r, {})),
     chainIndex: raw.chainIndex ?? 0,
     subtasks: raw.subtasks ?? [],
     groupId: raw.groupId ?? null,

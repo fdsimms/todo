@@ -86,6 +86,13 @@ const makeItem = (overrides: Partial<TemplateItem> = {}): TemplateItem => ({
 });
 
 describe('normalizeTemplateItem', () => {
+  it('drops the workout a rotation member names, which is a row of this person\'s own', () => {
+    const item = normalizeTemplateItem({
+      rotationItems: [{ id: 'a', title: 'Cardio', linkUrl: null, workoutRoutineId: 'r1' }, { id: 'b', title: 'Lift', linkUrl: null, workoutProgramId: 'p1' }],
+    });
+    expect(item.rotationItems).toEqual([{ id: 'a', title: 'Cardio', linkUrl: null }, { id: 'b', title: 'Lift', linkUrl: null }]);
+  });
+
   it('fills every default for an empty object', () => {
     const item = normalizeTemplateItem({});
     expect(item.id).toBeTruthy();

@@ -40,7 +40,7 @@ import {
   dbTransaction,
 } from '../db/database';
 import { generateId } from '../utils/id';
-import { workoutTaskEffect } from '../utils/workoutTask';
+import { rotationPickFor, workoutTaskEffect } from '../utils/workoutTask';
 import { swappableSets } from '../utils/exerciseSwap';
 import { exerciseDayNotePatches } from '../utils/exerciseDayNote';
 import {
@@ -74,7 +74,7 @@ import {
 import { NEW_EXERCISE_PREFIX, indexAdd, indexExisting, indexHas, type PlannedImportSession } from '../utils/workoutCsv';
 import { overlappingSessions } from '../utils/watchWorkoutClash';
 import { watchCopyStale, type WatchWorkoutSpan } from '../utils/watchHealthWorkout';
-import { getLogicalDayKey } from '../utils/dateUtils';
+import { getCurrentDayStart, getLogicalDayKey } from '../utils/dateUtils';
 import { useWatchClashStore } from './useWatchClashStore';
 import { buildCatalog, catalogExercise } from '../utils/exerciseCatalog';
 import {
@@ -1405,9 +1405,11 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       if (completeLinkedTask && existing.taskId) {
         const tasks = taskStore();
         const task = tasks.tasks.find(t => t.id === existing.taskId) ?? null;
-        const effect = workoutTaskEffect(task);
+        const member = rotationPickFor(task, finished, getCurrentDayStart(), useSettingsStore.getState().weekStartsOn);
+        const effect = workoutTaskEffect(task, member);
         if (effect === 'complete') tasks.completeTask(task!.id);
         else if (effect === 'log-unit') tasks.logQuotaUnit(task!.id);
+        else if (effect === 'pick') tasks.logRotationUnit(task!.id, member!.id);
       }
       writeToHealth(finished, deferHealthWrite);
       return finished;
@@ -1511,11 +1513,13 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       if (session.taskId) {
         const tasks = taskStore();
         const task = tasks.tasks.find(t => t.id === session.taskId) ?? null;
-        const effect = workoutTaskEffect(task);
-        const { dayResetTime } = useSettingsStore.getState();
+        const { dayResetTime, weekStartsOn } = useSettingsStore.getState();
+        const member = rotationPickFor(task, session, getCurrentDayStart(), weekStartsOn);
+        const effect = workoutTaskEffect(task, member);
         const endedToday = getLogicalDayKey(new Date(endedAt), dayResetTime) === getLogicalDayKey(now, dayResetTime);
         if (effect === 'complete') tasks.completeTask(task!.id, { completedAt: endedAt });
         else if (effect === 'log-unit' && endedToday) tasks.logQuotaUnit(task!.id);
+        else if (effect === 'pick' && endedToday) tasks.logRotationUnit(task!.id, member!.id);
       }
       // A workout that reaches the phone more than a week after it ended is
       // history, not something to write now: the same answer the background

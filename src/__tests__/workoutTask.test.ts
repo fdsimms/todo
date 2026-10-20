@@ -1,5 +1,5 @@
 import type { Task, TaskDraft } from '../types';
-import { linkedTaskLine, workoutTaskEffect } from '../utils/workoutTask';
+import { linkedTaskLine, rotationPickFor, workoutTaskEffect } from '../utils/workoutTask';
 import { newTaskFromDraft } from '../utils/taskDraft';
 import { initDatabase } from '../db/database';
 
@@ -67,5 +67,28 @@ describe('linkedTaskLine', () => {
     expect(linkedTaskLine('locked', 'Leg day')).toBe('“Leg day” isn’t due yet, so it stays open.');
     expect(linkedTaskLine('none', 'Leg day')).toContain('Check it off from its row');
     expect(linkedTaskLine('complete', 'Leg day')).toBe('Saving completes “Leg day”.');
+  });
+});
+
+describe('a rotation', () => {
+  const members = [
+    { id: 'cardio', title: 'Cardio', linkUrl: null, workoutRoutineId: 'r1' },
+    { id: 'rest', title: 'Rest day', linkUrl: null },
+  ];
+  const rotation = (extra: Partial<Task> = {}) => task({ rotationEnabled: true, rotationItems: members, recurrenceType: 'weekly', recurrenceInterval: 1 }, extra);
+  const monday = new Date(2026, 8, 14);
+
+  it('picks the member the workout belongs to, and names it in the summary', () => {
+    const t = rotation();
+    const member = rotationPickFor(t, { routineId: 'r1' }, monday, 1);
+    expect(member?.id).toBe('cardio');
+    expect(workoutTaskEffect(t, member)).toBe('pick');
+    expect(linkedTaskLine('pick', 'Exercise routine', 'Cardio')).toBe('Saving logs Cardio on “Exercise routine”.');
+  });
+
+  it('is left alone when no member names the workout, or the task asks a question', () => {
+    expect(workoutTaskEffect(rotation(), rotationPickFor(rotation(), { routineId: 'other' }, monday, 1))).toBe('none');
+    const asks = rotation({ deliverableKind: 'text' });
+    expect(rotationPickFor(asks, { routineId: 'r1' }, monday, 1)).toBeNull();
   });
 });

@@ -684,6 +684,8 @@ export function taskFieldsPatch(
     } else {
       const titles = (input.rotation.members ?? []).map(rotationMemberTitle);
       const badCount = (input.rotation.members ?? []).some(m => typeof m !== 'string' && m.timesPerWeek !== undefined && (!Number.isInteger(m.timesPerWeek) || m.timesPerWeek < 1 || m.timesPerWeek > MAX_ROTATION_PER_WEEK));
+      const bothLinks = (input.rotation.members ?? []).some(m => typeof m !== 'string' && !!m.workoutRoutineId && !!m.workoutProgramId);
+      if (bothLinks) errors.push('rotation.members: name a workoutRoutineId or a workoutProgramId on a member, not both.');
       if (badCount) errors.push(`rotation.members timesPerWeek must be a whole number from 1 to ${MAX_ROTATION_PER_WEEK}.`);
       if (titles.length < MIN_ROTATION_ITEMS) errors.push(`A rotation needs at least ${MIN_ROTATION_ITEMS} members. One is just a task.`);
       if (titles.some(t => !t)) errors.push('rotation.members cannot contain a blank title.');
@@ -1076,7 +1078,7 @@ export function describeRepeat(t: Task): RepeatInput | null {
 }
 
 /** A rotation as `get_task` shows it: the members, and which this week's picks cover. */
-export function describeRotation(t: Task, doneIds: ReadonlySet<string>): { members: { title: string; doneThisWeek: boolean; timesPerWeek?: number; lastDone?: string }[] } | null {
+export function describeRotation(t: Task, doneIds: ReadonlySet<string>): { members: { title: string; doneThisWeek: boolean; timesPerWeek?: number; lastDone?: string; workoutRoutineId?: string; workoutProgramId?: string }[] } | null {
   if (!isRotationTask(t)) return null;
   const last = t.rotationLastDone ?? {};
   return {
@@ -1085,6 +1087,8 @@ export function describeRotation(t: Task, doneIds: ReadonlySet<string>): { membe
       doneThisWeek: doneIds.has(m.id),
       ...(rotationPerWeek(m) > 1 ? { timesPerWeek: rotationPerWeek(m) } : {}),
       ...(last[m.id] ? { lastDone: last[m.id] } : {}),
+      ...(m.workoutRoutineId ? { workoutRoutineId: m.workoutRoutineId } : {}),
+      ...(m.workoutProgramId ? { workoutProgramId: m.workoutProgramId } : {}),
     })),
   };
 }

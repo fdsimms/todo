@@ -3469,6 +3469,27 @@ function seedWorkouts(today: Date): void {
       workoutRoutineId: lower.id,
     });
   }
+  // A rotation whose members are workouts (RotationItem.workoutProgramId /
+  // workoutRoutineId): each pill starts its workout, and finishing the session
+  // logs that member. Unlinked "Rest day" sits beside them as a plain pill.
+  if (programId && typeof lower !== 'string') {
+    const lift = { id: generateId(), title: 'Lift', linkUrl: null, perWeek: 2, workoutProgramId: programId };
+    const legs = { id: generateId(), title: 'Leg day', linkUrl: null, workoutRoutineId: lower.id };
+    const rest = { id: generateId(), title: 'Rest day', linkUrl: null };
+    useTaskStore.getState().addTask({
+      title: 'Exercise routine',
+      notes: 'Tap a workout to start it. Finishing it checks it off here.',
+      category: 'Health',
+      dueDate: today.toISOString(),
+      rotationEnabled: true,
+      rotationItems: [lift, legs, rest],
+      targetCount: 4,
+      quotaPeriod: 'week',
+      recurrenceType: 'weekly',
+      recurrenceInterval: 1,
+      quotaAlwaysVisible: true,
+    });
+  }
 }
 
 /**

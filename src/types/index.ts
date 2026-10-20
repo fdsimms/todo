@@ -262,6 +262,13 @@ export interface RotationItem {
   // set's target is the sum (`rotationTargetTotal`), and a pick only covers
   // something while its member is under its own count.
   perWeek?: number;
+  // The workout this member stands for: a routine, or a program whose next
+  // routine it starts (`Task.workoutRoutineId`/`workoutProgramId`, per member).
+  // One or the other, never both. The pill starts it, and finishing that
+  // session logs this member (`rotationMemberForWorkout`). Resolve-or-shrug: a
+  // routine or program deleted since leaves a plain member.
+  workoutRoutineId?: string | null;
+  workoutProgramId?: string | null;
 }
 
 /**

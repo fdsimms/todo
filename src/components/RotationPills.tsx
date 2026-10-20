@@ -3,6 +3,7 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useWorkoutStore } from '../store/useWorkoutStore';
 import { getCurrentDayStart } from '../utils/dateUtils';
 import { rotationPills } from '../utils/rotation';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
@@ -12,6 +13,8 @@ interface Props {
   task: Task;
   /** A member was tapped. Logs it straight away, the way picking it in the sheet does. */
   onPick: (itemId: string) => void;
+  /** A member that names a workout was tapped: start it. Finishing it logs the member. */
+  onStartWorkout?: (itemId: string) => void;
   /** While the row is selecting or finishing, a tap on a pill must do nothing. */
   disabled?: boolean;
   /** The row sits on `bgTertiary` (a stack's tray), so a done pill needs the next step up to show. */
@@ -30,19 +33,36 @@ interface Props {
  * not re-count the week. It reads as done (a check, a quiet fill) rather than
  * as disabled.
  *
+ * **A member that names a workout starts it instead of logging**, and says so
+ * with a play mark. Finishing the session logs the member (`workoutTaskEffect`),
+ * and the checkbox's picker is still the way to log one done some other way.
+ * The link only counts while it leads somewhere: a deleted routine, or a
+ * program with nothing in its rotation, leaves a plain pill.
+ *
  * The set is shown whole, in the user's own order, and it wraps rather than
  * caps. A set big enough for that to matter is one this feature is the wrong
  * shape for (see `RotationPickSheet`).
  */
-export function RotationPills({ task, onPick, disabled = false, onRaised = false }: Props) {
+export function RotationPills({ task, onPick, onStartWorkout, disabled = false, onRaised = false }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
   const pills = rotationPills(task, getCurrentDayStart(), weekStartsOn);
+  const workoutsEnabled = useSettingsStore(s => s.workoutsEnabled);
+  // Ids only, so the row re-renders when a link starts or stops leading
+  // somewhere and not on every workout store write.
+  const liveWorkoutIds = useWorkoutStore(s => (!workoutsEnabled || !onStartWorkout ? '' : task.rotationItems
+    .filter(i => (i.workoutProgramId
+      ? s.programs.some(p => p.id === i.workoutProgramId && p.rotation.some(id => s.routines.some(r => r.id === id)))
+      : !!i.workoutRoutineId && s.routines.some(r => r.id === i.workoutRoutineId)))
+    .map(i => i.id)
+    .join(',')));
 
   return (
     <View style={styles.wrap}>
-      {pills.map(pill => (
+      {pills.map(pill => {
+        const starts = pill.hasWorkout && liveWorkoutIds.split(',').includes(pill.id);
+        return (
         <TouchableOpacity
           key={pill.id}
           style={[
@@ -53,21 +73,25 @@ export function RotationPills({ task, onPick, disabled = false, onRaised = false
           activeOpacity={interaction.activeOpacity}
           disabled={disabled}
           hitSlop={{ top: 6, bottom: 6, left: 2, right: 2 }}
-          onPress={() => onPick(pill.id)}
+          onPress={() => (starts ? onStartWorkout!(pill.id) : onPick(pill.id))}
           accessibilityRole="button"
           accessibilityLabel={
-            pill.done
-              ? `${pill.title}, already done this week. Log it again.`
-              : `Log ${pill.title}${pill.progress ? `, ${pill.progress} this week` : ''}`
+            starts
+              ? `Start the ${pill.title} workout${pill.done ? ', already done this week' : pill.progress ? `, ${pill.progress} this week` : ''}`
+              : pill.done
+                ? `${pill.title}, already done this week. Log it again.`
+                : `Log ${pill.title}${pill.progress ? `, ${pill.progress} this week` : ''}`
           }
         >
           {pill.done && <Ionicons name="checkmark" size={10} color={colors.done} />}
+          {starts && <Ionicons name="play" size={9} color={pill.done ? colors.textSecondary : colors.accent} />}
           <Text style={[styles.label, pill.done && styles.labelDone]} numberOfLines={1}>
             {pill.title}
             {!pill.done && pill.progress ? ` ${pill.progress}` : ''}
           </Text>
         </TouchableOpacity>
-      ))}
+        );
+      })}
     </View>
   );
 }
