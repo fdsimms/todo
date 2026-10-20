@@ -443,7 +443,7 @@ function makeStyles(colors: Colors) {
       backgroundColor: colors.bgTertiary,
       borderRadius: radius.sm,
       paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
+      minHeight: 44,
     },
     categoryRow: {
       flexDirection: 'row',

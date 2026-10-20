@@ -194,7 +194,7 @@ function makeStyles(colors: Colors) {
       backgroundColor: colors.bgTertiary,
       borderRadius: radius.sm,
       paddingHorizontal: spacing.sm,
-      paddingVertical: spacing.smd,
+      minHeight: 44,
     },
     pair: { flexDirection: 'row', gap: spacing.sm },
     half: { flex: 1 },

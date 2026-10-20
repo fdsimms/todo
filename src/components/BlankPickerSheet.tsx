@@ -527,7 +527,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.smd,
+    minHeight: 44,
     color: colors.text,
     fontSize: font.md,
     marginTop: spacing.sm,

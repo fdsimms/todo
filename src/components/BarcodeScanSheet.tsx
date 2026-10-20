@@ -1853,7 +1853,7 @@ function makeStyles(colors: Colors) {
       color: colors.text,
       fontSize: font.md,
       paddingHorizontal: spacing.smd,
-      paddingVertical: spacing.smd,
+      minHeight: 44,
       backgroundColor: colors.bgSunken,
       borderRadius: radius.md,
     },

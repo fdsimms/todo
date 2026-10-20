@@ -958,7 +958,7 @@ function makeStyles(colors: Colors) {
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.md,
       paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm + 2,
+      minHeight: 44,
       fontSize: font.md,
       color: colors.text,
     },
