@@ -2153,8 +2153,9 @@ export interface Gym {
 }
 
 /**
- * What differs about one exercise at one gym: a note ("seat 4"), and the bar if
- * it isn't the exercise's own. One row per (gym, exercise), its
+ * What differs about one exercise at one gym: a note ("seat 4"), and the bar
+ * and the load step (how much one click of the stack or one pair of plates
+ * adds) where they aren't the exercise's own. One row per (gym, exercise), its
  * id derived from the pair so two devices writing the same one meet on it.
  * A row with every field empty is deleted rather than kept.
  */
@@ -2164,6 +2165,7 @@ export interface GymExerciseSetting {
   exerciseId: string;
   notes: string;
   barKg: number | null;
+  incrementKg: number | null;
 }
 
 /** A training max for one exercise, which a `percent` scheme's sets are measured from. */

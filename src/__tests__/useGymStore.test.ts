@@ -78,10 +78,10 @@ describe('per-gym exercise settings', () => {
   it('writes a note, updates it, and deletes the row once it says nothing', () => {
     const g = ok(state().addGym({ name: 'A', equipment: [] }));
     expect(state().setGymExercise(g.id, 'lib:x', { notes: ' Seat 4 ' })).toMatchObject({ notes: 'Seat 4', barKg: null });
-    state().setGymExercise(g.id, 'lib:x', { barKg: 15 });
+    state().setGymExercise(g.id, 'lib:x', { barKg: 15, incrementKg: 2 });
     expect(dbGetAllGymExercises()).toHaveLength(1);
-    expect(state().settings[0]).toMatchObject({ notes: 'Seat 4', barKg: 15 });
-    state().setGymExercise(g.id, 'lib:x', { notes: '', barKg: null });
+    expect(state().settings[0]).toMatchObject({ notes: 'Seat 4', barKg: 15, incrementKg: 2 });
+    state().setGymExercise(g.id, 'lib:x', { notes: '', barKg: null, incrementKg: null });
     expect(state().settings).toEqual([]);
     expect(dbGetAllGymExercises()).toEqual([]);
   });
@@ -89,7 +89,7 @@ describe('per-gym exercise settings', () => {
   it('refuses a setting for a gym that does not exist, and drops a non-positive bar', () => {
     expect(state().setGymExercise('nope', 'lib:x', { notes: 'x' })).toBeNull();
     const g = ok(state().addGym({ name: 'A', equipment: [] }));
-    expect(state().setGymExercise(g.id, 'lib:x', { notes: 'n', barKg: -3 })).toMatchObject({ barKg: null });
+    expect(state().setGymExercise(g.id, 'lib:x', { notes: 'n', barKg: -3, incrementKg: 0 })).toMatchObject({ barKg: null, incrementKg: null });
   });
 
   it('deleting a gym takes its settings with it', () => {

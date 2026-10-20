@@ -56,6 +56,8 @@ export interface ExerciseProposalInput {
   unit: WeightUnit;
   /** The bar this exercise has at the workout's gym, where it differs (`GymExerciseSetting.barKg`). */
   gymBarKg?: number | null;
+  /** The load step this exercise has at that gym, which outranks the routine's own. */
+  gymIncrementKg?: number | null;
 }
 
 /** A proposal with what it was worked out against, which "Use" needs again. */
@@ -78,7 +80,8 @@ export function exerciseProposal(input: ExerciseProposalInput): ExerciseProposal
   const item = input.routine?.items.find(i => i.exerciseId === input.exerciseId) ?? null;
   const scheme = schemeFor(item, input.program);
   if (!scheme) return null;
-  const load = loadContextFor(info, input.plateInventory, input.unit, item);
+  const baseLoad = loadContextFor(info, input.plateInventory, input.unit, item);
+  const load = input.gymIncrementKg ? { ...baseLoad, incrementKg: input.gymIncrementKg } : baseLoad;
   // The week the program is in: the workout the proposal is for isn't
   // finished, so it isn't counted, and the finished ones say where it stands.
   const progress = input.program ? programProgress(input.program, input.sessions, input.routines) : null;

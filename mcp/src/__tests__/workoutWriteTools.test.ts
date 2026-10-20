@@ -64,6 +64,14 @@ describe('the workout write tools', () => {
       expect(() => saveGym(ledgered, { id: gym.id, exerciseNotes: [{ exerciseId: 'nope', notes: 'x' }] })).toThrow(/No exercise with id nope/);
     });
 
+    it('keeps a bar and a load step per exercise, leaves a note alone when only those are given, and clears them with null', () => {
+      const { gym } = saveGym(ledgered, { name: 'Big', exerciseNotes: [{ exerciseId: BENCH, notes: 'Rack 2' }] });
+      const set = saveGym(ledgered, { id: gym.id, exerciseNotes: [{ exerciseId: BENCH, barKg: 15, incrementKg: 2 }] }).gym;
+      expect(set.exerciseNotes).toEqual([{ exerciseId: BENCH, name: expect.any(String), notes: 'Rack 2', barKg: 15, incrementKg: 2 }]);
+      const cleared = saveGym(ledgered, { id: gym.id, exerciseNotes: [{ exerciseId: BENCH, barKg: null, incrementKg: null }] }).gym;
+      expect(cleared.exerciseNotes).toEqual([{ exerciseId: BENCH, name: expect.any(String), notes: 'Rack 2' }]);
+    });
+
     it('deletes a gym and its notes, and says what that leaves', () => {
       const { gym } = saveGym(ledgered, { name: 'Hotel', exerciseNotes: [{ exerciseId: BENCH, notes: 'x' }] });
       expect(deleteGym(ledgered, gym.id)).toMatchObject({ removed: { name: 'Hotel' }, note: expect.stringMatching(/keep their history/) });

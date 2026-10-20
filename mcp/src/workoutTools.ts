@@ -229,11 +229,11 @@ export interface GymRow {
   hasLocation?: true;
   archived?: true;
   /** What is noted for an exercise at this gym. */
-  exerciseNotes?: { exerciseId: string; name: string; notes: string }[];
+  exerciseNotes?: { exerciseId: string; name: string; notes?: string; barKg?: number; incrementKg?: number }[];
 }
 
 function gymRow(g: Gym, settings: readonly GymExerciseSetting[], rows: readonly Exercise[]): GymRow {
-  const notes = settings.filter(s => s.gymId === g.id && s.notes);
+  const notes = settings.filter(s => s.gymId === g.id);
   return {
     id: g.id,
     name: g.name,
@@ -241,7 +241,13 @@ function gymRow(g: Gym, settings: readonly GymExerciseSetting[], rows: readonly 
     ...(g.placeText ? { placeText: g.placeText } : {}),
     ...(g.latitude !== null && g.longitude !== null ? { hasLocation: true as const } : {}),
     ...(g.archived ? { archived: true as const } : {}),
-    ...(notes.length ? { exerciseNotes: notes.map(s => ({ exerciseId: s.exerciseId, name: exerciseName(rows, s.exerciseId), notes: s.notes })) } : {}),
+    ...(notes.length ? { exerciseNotes: notes.map(s => ({
+      exerciseId: s.exerciseId,
+      name: exerciseName(rows, s.exerciseId),
+      ...(s.notes ? { notes: s.notes } : {}),
+      ...(s.barKg ? { barKg: s.barKg } : {}),
+      ...(s.incrementKg ? { incrementKg: s.incrementKg } : {}),
+    })) } : {}),
   };
 }
 
@@ -552,7 +558,7 @@ export interface SaveGymInput {
   name?: string;
   equipment?: ExerciseEquipment[];
   placeText?: string;
-  exerciseNotes?: { exerciseId: string; notes: string }[];
+  exerciseNotes?: { exerciseId: string; notes?: string; barKg?: number | null; incrementKg?: number | null }[];
 }
 
 export function saveGym(replica: Replica, input: SaveGymInput): { gym: GymRow; note: string } {

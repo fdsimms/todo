@@ -32,6 +32,7 @@ export type GymPatch = Partial<GymInput> & { archived?: boolean };
 export interface GymExercisePatch {
   notes?: string;
   barKg?: number | null;
+  incrementKg?: number | null;
 }
 
 interface GymStore {
@@ -46,7 +47,7 @@ interface GymStore {
   updateGym: (id: string, patch: GymPatch) => Gym | GymRefusal;
   /** Deletes the gym and its notes. Past sessions keep their id, which then reads as no gym. */
   deleteGym: (id: string) => void;
-  /** Writes one exercise's note or bar at a gym; a patch leaving both empty deletes the row. */
+  /** Writes one exercise's note, bar or load step at a gym; a patch leaving all three empty deletes the row. */
   setGymExercise: (gymId: string, exerciseId: string, patch: GymExercisePatch) => GymExerciseSetting | null;
 }
 
@@ -147,6 +148,7 @@ export const useGymStore = create<GymStore>((set, get) => ({
       id, gymId, exerciseId,
       notes: patch.notes !== undefined ? patch.notes.trim() : existing?.notes ?? '',
       barKg: positive(patch.barKg, existing?.barKg ?? null),
+      incrementKg: positive(patch.incrementKg, existing?.incrementKg ?? null),
     };
     if (isEmptyGymSetting(next)) {
       if (existing) {

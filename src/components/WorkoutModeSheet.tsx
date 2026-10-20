@@ -57,7 +57,7 @@ import { GymLine, GymNoteBox, GymUnavailableBanner } from './GymWorkoutParts';
 import { GymsSheet } from './GymsSheet';
 import { useGymStore } from '../store/useGymStore';
 import {
-  describeLastLoad, exerciseIdsDoneAt, gymSettingFor, gymSwapCandidates, unavailableExerciseIds, withGymBar,
+  describeLastLoad, exerciseIdsDoneAt, gymIncrementKg, gymSettingFor, gymSwapCandidates, unavailableExerciseIds, withGymBar,
 } from '../utils/gyms';
 import { lastTimeNotes } from '../utils/lastTimeNotes';
 import { applyRoutineChanges, describeRoutineChange, routineChanges } from '../utils/routineUpdate';
@@ -273,11 +273,12 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
       plateInventory,
       unit,
       gymBarKg: gymSetting?.barKg ?? null,
+      gymIncrementKg: gymIncrementKg(gymSetting),
     });
     // Keyed on the exercise and what decides its history, not on its sets: a
     // set edited this session doesn't change what was lifted before.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewed?.exerciseId, session?.id, exerciseRows, routine, program, sessionsList, routines, plateInventory, unit, gymSetting?.barKg]);
+  }, [viewed?.exerciseId, session?.id, exerciseRows, routine, program, sessionsList, routines, plateInventory, unit, gymSetting?.barKg, gymSetting?.incrementKg]);
   const proposal = shownProposal?.proposal ?? null;
 
   /**
@@ -906,7 +907,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                             {fields.length === 1 && <View style={styles.openSpacer} />}
                             {fields.map(f => (
                               <View key={f} style={styles.openCell}>
-                                <FieldStepper set={set} field={f} unit={unit} onEdit={patch => edit(set.id, patch)} stepperStyle={styles.editStepper} inline />
+                                <FieldStepper set={set} field={f} unit={unit} weightStepKg={gymIncrementKg(gymSetting)} onEdit={patch => edit(set.id, patch)} stepperStyle={styles.editStepper} inline />
                               </View>
                             ))}
                             <TouchableOpacity
@@ -1102,26 +1103,29 @@ function inlineCaption(field: SetField, kind: ExerciseKind, unit: WeightUnit): s
   return name;
 }
 
-function FieldStepper({ set, field, unit, onEdit, stepperStyle, inline }: {
+function FieldStepper({ set, field, unit, weightStepKg, onEdit, stepperStyle, inline }: {
   set: WorkoutSet;
   field: SetField;
   unit: WeightUnit;
+  /** The load step at the workout's gym, in kg, where it names one; the unit's usual step otherwise. */
+  weightStepKg?: number | null;
   onEdit: (patch: Partial<WorkoutSet>) => void;
   stepperStyle: object;
   /** Sat in the open row's own cell: narrower keys, and no unit in the value, since the caption above it carries that. */
   inline?: boolean;
 }) {
   if (field === 'weight') {
+    const step = weightStepKg ? weightToDisplay(weightStepKg, unit) : WEIGHT_STEP[unit];
     return (
       <CountStepper
         value={set.weightKg !== null ? weightToDisplay(set.weightKg, unit) : null}
         onChange={n => onEdit({ weightKg: n === null ? null : weightFromDisplay(n, unit) })}
         min={0}
         max={unit === 'kg' ? 500 : 1100}
-        step={WEIGHT_STEP[unit]}
+        step={step}
         places={WEIGHT_PLACES[unit]}
         allowNull
-        start={WEIGHT_STEP[unit] * 8}
+        start={step * 8}
         emptyLabel="–"
         format={inline ? undefined : n => `${n} ${unit}`}
         label="Weight"

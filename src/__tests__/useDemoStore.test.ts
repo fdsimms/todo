@@ -2298,6 +2298,8 @@ describe('demo seed — people', () => {
     expect(gyms[0].equipment).not.toContain('cable');
     expect(gyms[1].equipment).toContain('cable');
     expect(gyms.every(g => g.latitude === null)).toBe(true);
+    expect(settings.find(s => s.barKg === 15)?.exerciseId).toBe('lib:back-squat');
+    expect(settings.find(s => s.incrementKg === 5)?.exerciseId).toBe('lib:triceps-pushdown');
     expect(settings.map(s => s.notes)).toEqual(expect.arrayContaining(['Rope attachment on the top pulley.', 'Safety bars at hole 4.']));
     const { sessions } = useWorkoutStore.getState();
     expect(new Set(sessions.map(s => s.gymId))).toEqual(new Set(gyms.map(g => g.id)));

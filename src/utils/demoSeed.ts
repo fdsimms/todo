@@ -3335,7 +3335,9 @@ function seedWorkouts(today: Date): void {
   const homeId = typeof homeGym === 'string' ? null : homeGym.id;
   const bigId = typeof bigGym === 'string' ? null : bigGym.id;
   if (bigId) gyms.setGymExercise(bigId, 'lib:triceps-pushdown', { notes: 'Rope attachment on the top pulley.' });
-  if (homeId) gyms.setGymExercise(homeId, 'lib:back-squat', { notes: 'Safety bars at hole 4.' });
+  if (homeId) gyms.setGymExercise(homeId, 'lib:back-squat', { notes: 'Safety bars at hole 4.', barKg: 15 });
+  // A stack that steps by 5 kg here, where the usual step is 2.5.
+  if (bigId) gyms.setGymExercise(bigId, 'lib:triceps-pushdown', { incrementKg: 5 });
   const upper = ownRoutine('Upper A', [
     { exerciseId: 'lib:barbell-bench-press', restSeconds: 150, progression: { scheme: 'double', incrementKg: 2.5 },
       targets: [working(6, 8, 60), working(6, 8, 60), working(6, 8, 60)] },

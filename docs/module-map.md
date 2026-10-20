@@ -200,7 +200,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/grocerySuggest.ts` — GrocerySuggestion, GrocerySection, GroceryRecipeSection, NO_RECIPE_LABEL, matchWeight, rankGrocerySuggestions, rankedCatalogItems, sectionsInAisleOrder, buildGrocerySections, buildGroceryRecipeSections, +16 more
 - `src/utils/gtin.ts` — gtinCheckDigit, normalizeGtin, expandUpcE, isStoreInternalGtin, isGtin, formatGtin, GTIN_MISS_TTL_DAYS, isCacheEntryFresh
 - `src/utils/gymLocation.ts` — defaultGymId, applyLocationGym
-- `src/utils/gyms.ts` — GYM_DEFAULT_RADIUS_M, GYM_MIN_RADIUS_M, GYM_MAX_RADIUS_M, GYM_RADIUS_STEP_M, gymExerciseId, equipmentAvailable, unavailableExerciseIds, RoutineFit, routineFit, describeRoutineFit, +8 more
+- `src/utils/gyms.ts` — GYM_DEFAULT_RADIUS_M, GYM_MIN_RADIUS_M, GYM_MAX_RADIUS_M, GYM_RADIUS_STEP_M, gymExerciseId, equipmentAvailable, unavailableExerciseIds, RoutineFit, routineFit, describeRoutineFit, +12 more
 - `src/utils/haptics.ts` — haptics
 - `src/utils/healthBridge.ts` — HealthBridge, healthBridge, isHealthSupported, openHealthApp
 - `src/utils/healthCompletionSync.ts` — logTaskHealthValue, unlogTaskNutrientFromFoodLog

@@ -77,13 +77,14 @@ export function routineFit(
   return { total: routine.items.length, blocked, missing };
 }
 
-/** "Fits this gym.", "Fits this gym except 1 exercise.", or "Missing: trap bar". */
-export function describeRoutineFit(fit: RoutineFit): string {
-  if (fit.blocked === 0) return 'Fits this gym.';
-  if (fit.blocked < fit.total) {
-    return `Fits this gym except ${fit.blocked} ${fit.blocked === 1 ? 'exercise' : 'exercises'}.`;
-  }
-  return `Missing: ${fit.missing.map(m => EQUIPMENT_LABELS[m].toLowerCase()).join(', ')}`;
+/**
+ * "At Planet Fitness, 1 of 6 exercises needs a trap bar.", or null when the
+ * gym can do all of it (a line that says everything is fine is noise on a list).
+ */
+export function describeRoutineFit(fit: RoutineFit, gymName: string): string | null {
+  if (fit.blocked === 0) return null;
+  const needs = fit.missing.map(m => EQUIPMENT_LABELS[m].toLowerCase()).join(', ');
+  return `At ${gymName}, ${fit.blocked} of ${fit.total} ${fit.total === 1 ? 'exercise needs' : 'exercises need'} ${needs}.`;
 }
 
 /**
@@ -161,9 +162,18 @@ export function withGymBar<T extends { barKg: number | null }>(info: T, setting:
   return setting?.barKg ? { ...info, barKg: setting.barKg } : info;
 }
 
+/**
+ * The load step at this gym, where it names one. It outranks the step a
+ * routine's progression chose: that is how much the person wants to add, and
+ * this is what the machines there can add.
+ */
+export function gymIncrementKg(setting: Pick<GymExerciseSetting, 'incrementKg'> | null): number | null {
+  return setting?.incrementKg && setting.incrementKg > 0 ? setting.incrementKg : null;
+}
+
 /** A setting that says nothing, which is deleted rather than kept. */
-export function isEmptyGymSetting(s: Pick<GymExerciseSetting, 'notes' | 'barKg'>): boolean {
-  return s.notes.trim() === '' && s.barKg === null;
+export function isEmptyGymSetting(s: Pick<GymExerciseSetting, 'notes' | 'barKg' | 'incrementKg'>): boolean {
+  return s.notes.trim() === '' && s.barKg === null && s.incrementKg === null;
 }
 
 /** The exercises done at `gymId` in finished-or-live sessions, from the sets' own sessions. */
@@ -210,4 +220,40 @@ export function describeLastLoad(
     if (!best || s.weightKg > best.weightKg) best = { weightKg: s.weightKg, reps: s.reps };
   }
   return best ? `last ${formatWeightWithUnit(best.weightKg, unit)} × ${best.reps}` : null;
+}
+
+/** The sets done in sessions at `gymId`; every set when it is null. */
+export function setsAtGym<T extends { sessionId: string }>(
+  sets: readonly T[],
+  sessions: readonly { id: string; gymId?: string | null }[],
+  gymId: string | null,
+): T[] {
+  if (gymId === null) return [...sets];
+  const here = new Set(sessions.filter(s => s.gymId === gymId).map(s => s.id));
+  return sets.filter(s => here.has(s.sessionId));
+}
+
+/** The gyms any of these sets were done at, in the order the gyms are listed. */
+export function gymsUsedBy(
+  sets: readonly { sessionId: string }[],
+  sessions: readonly { id: string; gymId?: string | null }[],
+  gyms: readonly Gym[],
+): Gym[] {
+  const gymOf = new Map(sessions.map(s => [s.id, s.gymId ?? null]));
+  const used = new Set(sets.map(s => gymOf.get(s.sessionId)).filter((id): id is string => !!id));
+  return gyms.filter(g => used.has(g.id));
+}
+
+/** "Seat 4 · bar 15 kg · step 2 kg": what is kept for an exercise at a gym, or null when nothing is. */
+export function describeGymSetting(
+  setting: Pick<GymExerciseSetting, 'notes' | 'barKg' | 'incrementKg'> | null,
+  unit: WeightUnit,
+): string | null {
+  if (!setting) return null;
+  const parts: string[] = [];
+  const note = setting.notes.trim().split('\n')[0];
+  if (note) parts.push(note);
+  if (setting.barKg) parts.push(`bar ${formatWeightWithUnit(setting.barKg, unit)}`);
+  if (setting.incrementKg) parts.push(`step ${formatWeightWithUnit(setting.incrementKg, unit)}`);
+  return parts.length ? parts.join(' · ') : null;
 }

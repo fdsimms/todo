@@ -1290,7 +1290,7 @@ export interface Replica {
   saveGym(input: {
     id?: string; name?: string; equipment?: ExerciseEquipment[]; placeText?: string;
     latitude?: number | null; longitude?: number | null; radiusM?: number;
-    exerciseNotes?: { exerciseId: string; notes: string }[];
+    exerciseNotes?: { exerciseId: string; notes?: string; barKg?: number | null; incrementKg?: number | null }[];
   }): Gym;
   deleteGym(id: string): Gym;
   /**
@@ -4369,7 +4369,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         if (typeof made === 'string') throw new Error(GYM_REFUSALS[made]);
         saved = made;
       }
-      for (const n of exerciseNotes ?? []) store.setGymExercise(saved.id, n.exerciseId, { notes: n.notes });
+      for (const { exerciseId, ...patch } of exerciseNotes ?? []) store.setGymExercise(saved.id, exerciseId, patch);
       return saved;
     },
     deleteGym(id) {

@@ -619,7 +619,8 @@ function runInitDatabase(): void {
       gym_id TEXT NOT NULL,
       exercise_id TEXT NOT NULL,
       notes TEXT NOT NULL DEFAULT '',
-      bar_kg REAL
+      bar_kg REAL,
+      increment_kg REAL
     );
 
     -- Routines in rotation. rotation (routine ids) and training_maxes are JSON.
@@ -7829,6 +7830,7 @@ function rowToGymExercise(row: Record<string, unknown>): GymExerciseSetting {
     exerciseId: String(row.exercise_id),
     notes: String(row.notes ?? ''),
     barKg: numOrNull(row.bar_kg),
+    incrementKg: numOrNull(row.increment_kg),
   };
 }
 
@@ -7838,8 +7840,8 @@ export function dbGetAllGymExercises(): GymExerciseSetting[] {
 
 export function dbSaveGymExercise(g: GymExerciseSetting): void {
   db.runSync(
-    `INSERT OR REPLACE INTO gym_exercises (id, gym_id, exercise_id, notes, bar_kg) VALUES (?, ?, ?, ?, ?)`,
-    [g.id, g.gymId, g.exerciseId, g.notes, g.barKg]
+    `INSERT OR REPLACE INTO gym_exercises (id, gym_id, exercise_id, notes, bar_kg, increment_kg) VALUES (?, ?, ?, ?, ?, ?)`,
+    [g.id, g.gymId, g.exerciseId, g.notes, g.barKg, g.incrementKg]
   );
 }
 

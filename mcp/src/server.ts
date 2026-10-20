@@ -677,7 +677,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'save_gym',
-    'Create a gym (no id) or change one (id from list_workouts). A gym is a place the person trains and the equipment it has (barbell, dumbbell, kettlebell, machine, cable, smith_machine, ez_bar, trap_bar, band, cardio_machine; bodyweight and other need nothing). During a workout the phone flags an exercise the gym can\'t do and proposes a replacement from what the gym has; nothing is swapped unasked. exerciseNotes sets the note shown under an exercise at this gym (seat positions, which rack), and an empty string clears one. Only write equipment the person told you the gym has: an empty list means nothing is known, which the phone treats as everything being available. Where a gym is can only be set on the phone. Fields left out stay; equipment replaces the whole list when given.',
+    'Create a gym (no id) or change one (id from list_workouts). A gym is a place the person trains and the equipment it has (barbell, dumbbell, kettlebell, machine, cable, smith_machine, ez_bar, trap_bar, band, cardio_machine; bodyweight and other need nothing). During a workout the phone flags an exercise the gym can\'t do and proposes a replacement from what the gym has; nothing is swapped unasked. exerciseNotes sets, per exercise, the note shown at this gym (seat positions, which rack; an empty string clears it), the bar weight and the load step in kg. Only write equipment the person told you the gym has: an empty list means nothing is known, which the phone treats as everything being available. Where a gym is can only be set on the phone. Fields left out stay; equipment replaces the whole list when given.',
     {
       id: z.string().min(1).optional().describe('A gym id from list_workouts, to change it. Leave out to create one.'),
       name: z.string().min(1).max(80).optional().describe('Required to create one.'),
@@ -685,8 +685,10 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
       placeText: z.string().max(200).optional().describe('An address or place name, shown under the gym. It does not set where the gym is.'),
       exerciseNotes: z.array(z.object({
         exerciseId: z.string().min(1).describe('From list_exercises.'),
-        notes: z.string().max(500).describe('Empty clears the note.'),
-      })).max(50).optional(),
+        notes: z.string().max(500).optional().describe('The note shown under the exercise at this gym. Empty clears it; leave out to keep it.'),
+        barKg: z.number().positive().max(100).nullable().optional().describe('The bar\'s weight in kg at this gym, where it isn\'t the usual one. null clears it.'),
+        incrementKg: z.number().positive().max(50).nullable().optional().describe('How much one step of the load adds at this gym, in kg (a stack\'s pin, a pair of plates). null clears it.'),
+      })).max(50).optional().describe('Per-exercise settings at this gym. Only what is given changes.'),
     },
     async input => {
       try {

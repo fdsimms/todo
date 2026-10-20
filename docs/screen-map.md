@@ -198,6 +198,7 @@ Where each component can appear.
 - `src/components/GroceryRow.tsx` — on GroceryScreen
 - `src/components/GroupDropTarget.tsx` — on ProjectDetailScreen, ProjectsScreen, TodayScreen
 - `src/components/GymEditorSheet.tsx` — on WorkoutsScreen, app shell
+- `src/components/GymExerciseSheet.tsx` — on WorkoutsScreen, app shell
 - `src/components/GymWorkoutParts.tsx` — on app shell
 - `src/components/GymsSheet.tsx` — on WorkoutsScreen, app shell
 - `src/components/HabitPickerSheet.tsx` — on RewardsScreen
