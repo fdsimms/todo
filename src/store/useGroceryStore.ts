@@ -18,6 +18,7 @@ import {
   chosenOptionRows,
   mergedItemRow,
   setOtherNamesRow,
+  deletedItemSnapshot,
 } from '../utils/groceryItemWrite';
 import {
   dbGetAllGroceryItems,
@@ -1379,8 +1380,15 @@ interface GroceryStore extends UndoHistoryActions {
    * `factSignature`.
    */
   undoForAdds: (addedIds: readonly string[], preexisting: ReadonlySet<string>) => () => void;
-  deleteItem: (id: string) => void;
-  deleteItems: (ids: string[]) => void;
+  /**
+   * `undoable` is for a delete a person just asked for (Forget): it snapshots
+   * each row first and offers the undo bar, which puts them back through
+   * `restoreDeletedItem`. The store's own deletes (an add's undo, a cleared
+   * list, a pantry tidy) leave it off, since they are already an undo or are
+   * undone by their own entry.
+   */
+  deleteItem: (id: string, opts?: { undoable?: boolean }) => void;
+  deleteItems: (ids: string[], opts?: { undoable?: boolean }) => void;
 
   /**
    * Ends the trip: everything checked comes off the list and counts as bought.
@@ -2438,7 +2446,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const addedIds = updates.map(u => u.id);
     get().setLastAction({
       label: `${addedIds.length} item${addedIds.length === 1 ? '' : 's'} added`,
-      undo: () => get().removeFromListMany(addedIds),
+      // The list they went on, by name: the active one may be another list by
+      // the time this runs (the pantry check adds to the home list whichever
+      // one is open).
+      undo: () => get().removeFromListMany(addedIds, { listId }),
     });
   },
 
@@ -4164,15 +4175,29 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
 
   /**
    * The one real delete, and the only way a row with anything on it ever
-   * leaves. There is no undo, so every caller confirms first.
+   * leaves. Every caller confirms first; a Forget also passes `undoable`.
    */
-  deleteItem(id) {
-    get().deleteItems([id]);
+  deleteItem(id, opts) {
+    get().deleteItems([id], opts);
   },
 
-  deleteItems(ids) {
+  deleteItems(ids, opts) {
     if (ids.length === 0) return;
     const gone = new Set(ids);
+    // Taken before anything goes, from the same rows the cascade below drops.
+    // The use-up task dropped at the end isn't in it; its generator writes a
+    // fresh one for a restored row if the row still wants one.
+    const snapshots = opts?.undoable
+      ? ids.flatMap(id => {
+          const st = get();
+          const snap = deletedItemSnapshot(id, {
+            items: st.items, entries: st.listEntries, boxes: st.itemProducts,
+            shopLinks: st.itemShops, subLinks: st.itemSubs, aliases: st.storeAliases,
+            aisleOverrides: st.aisleOverrides,
+          });
+          return snap ? [snap] : [];
+        })
+      : [];
     // dbDeleteGroceryItem cascades to the item's boxes, shop links, substitute
     // links and receipt aliases; mirror all four here so the in-memory copy
     // doesn't keep rows pointing at an item that's gone. Substitutes are
@@ -4202,6 +4227,20 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // answer written on a row that no longer exists; with the item already out
     // of state that write finds nothing and does nothing.
     for (const id of ids) dropUseUpTask(id);
+
+    if (snapshots.length > 0) {
+      get().setLastAction({
+        label: snapshots.length === 1
+          ? `Forgot “${snapshots[0].item.name}”`
+          : `Forgot ${snapshots.length} items`,
+        destructive: true,
+        // One at a time is safe for a pair of substitutes forgotten together:
+        // a link written before its other half is back is only a row, and the
+        // second restore's own copy of it replaces the first in state.
+        undo: () => { for (const snap of snapshots) get().restoreDeletedItem(snap); },
+        redo: () => get().deleteItems(snapshots.map(snap => snap.item.id)),
+      });
+    }
   },
 
   finishShopping(shopId = null, priceById = {}, purchasedAt = new Date().toISOString(), frozenIds, priceQuantityById = {}) {

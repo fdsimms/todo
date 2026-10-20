@@ -266,7 +266,7 @@ export function TemplatesScreen() {
     haptics.warning();
     confirmDelete({
       title: `Delete ${ids.length} ${plural}?`,
-      message: `This deletes ${ids.length} ${plural}. Shake your phone right after to undo.`,
+      message: `This deletes ${ids.length} ${plural}. You can undo it right after.`,
       onConfirm: () => {
         animateLayout();
         bulkDeleteTemplates(ids);

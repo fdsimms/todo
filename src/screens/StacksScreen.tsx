@@ -178,7 +178,7 @@ export function StacksScreen() {
     };
     Alert.alert(
       `Delete ${ids.length} ${stackWord}?`,
-      `This deletes ${ids.length} ${ids.length === 1 ? 'stack' : 'stacks'}. Shake your phone right after to undo.`,
+      `This deletes ${ids.length} ${ids.length === 1 ? 'stack' : 'stacks'}. You can undo it right after.`,
       anyMembers
         ? [
             { text: BUTTON_LABEL.cancel, style: 'cancel' },

@@ -2,7 +2,7 @@
 // is ~600 lines; the rows below it are separate memoised components:
 //
 //   ==== <name> ====        the section banners through the screen's logic half
-//   LogbookRow, KitchenRow, ActiveFilterPill   the rows, at module level
+//   LogbookRow, KitchenRow   the rows, at module level
 //   makeStyles              styles, at the bottom
 //
 // Filtering by tag or category is a bottom sheet, not a scrolling chip row; see
@@ -22,6 +22,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { ActiveFilterPill } from '../components/ActiveFilterPill';
 import { format } from 'date-fns/format';
 import { isSameDay } from 'date-fns/isSameDay';
 import { addDays } from 'date-fns/addDays';
@@ -446,7 +447,7 @@ export function LogbookScreen() {
     haptics.warning();
     confirmDelete({
       title: 'Clear Logbook?',
-      message: `This deletes all ${completedTasks.length} completed task${completedTasks.length === 1 ? '' : 's'}. Shake your phone right after to undo.`,
+      message: `This deletes all ${completedTasks.length} completed task${completedTasks.length === 1 ? '' : 's'}. You can undo it right after.`,
       confirmLabel: 'Clear',
       onConfirm: () => {
         animateLayout();
@@ -461,7 +462,7 @@ export function LogbookScreen() {
     haptics.warning();
     confirmDelete({
       title: 'Delete entry?',
-      message: `“${displayTitleFor(task)}” will be deleted from the Logbook. Shake your phone right after to undo.`,
+      message: `“${displayTitleFor(task)}” will be deleted from the Logbook. You can undo it right after.`,
       onConfirm: () => {
         animateLayout();
         // skipGeneratedOptOut: deleting a logbook entry is deleting history,
@@ -669,7 +670,6 @@ export function LogbookScreen() {
                     animateLayout();
                     setSelectedCategory(null);
                   }}
-                  styles={styles}
                 />
               )}
               {selectedTag && (
@@ -680,7 +680,6 @@ export function LogbookScreen() {
                     animateLayout();
                     setSelectedTag(null);
                   }}
-                  styles={styles}
                 />
               )}
               {/* The person filter had no pill of its own, so a person picked
@@ -694,7 +693,6 @@ export function LogbookScreen() {
                     animateLayout();
                     setSelectedPerson(null);
                   }}
-                  styles={styles}
                 />
               )}
               {selectedProject && (
@@ -705,7 +703,6 @@ export function LogbookScreen() {
                     animateLayout();
                     setSelectedProject(null);
                   }}
-                  styles={styles}
                 />
               )}
             </ScrollView>
@@ -1334,36 +1331,6 @@ const KitchenRow = React.memo(function KitchenRow({
 
 // An applied filter, shown under the header so the current state is
 // readable without opening the sheet. Tapping anywhere on it clears it.
-function ActiveFilterPill({
-  label,
-  color,
-  onRemove,
-  styles,
-}: {
-  label: string;
-  color: string;
-  onRemove: () => void;
-  styles: ReturnType<typeof makeStyles>;
-}) {
-  return (
-    <TouchableOpacity
-      // Tinted rather than filled, and colored text rather than onAccent —
-      // the same treatment every other removable tag chip uses (TaskEditor,
-      // QuickAddModal). A filled pill would put white text on a yellow tag.
-      style={[styles.activePill, { backgroundColor: color + '33' }]}
-      onPress={() => {
-        haptics.tap();
-        onRemove();
-      }}
-      activeOpacity={interaction.activeOpacity}
-      accessibilityRole="button"
-      accessibilityLabel={`Remove filter ${label}`}
-    >
-      <Text style={[styles.activePillText, { color }]} numberOfLines={1}>{label}</Text>
-      <Ionicons name="close" size={13} color={color} />
-    </TouchableOpacity>
-  );
-}
 
 const makeStyles = (colors: Colors, metrics: ReturnType<typeof logbookMetrics>) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
@@ -1385,21 +1352,6 @@ const makeStyles = (colors: Colors, metrics: ReturnType<typeof logbookMetrics>) 
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     gap: spacing.sm,
-  },
-  activePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    maxWidth: 220,
-    paddingLeft: spacing.md,
-    paddingRight: 10,
-    paddingVertical: 7,
-    borderRadius: radius.full,
-  },
-  activePillText: {
-    fontSize: font.sm,
-    fontWeight: fontWeight.semibold,
-    flexShrink: 1,
   },
   sectionHeader: {
     flexDirection: 'row',

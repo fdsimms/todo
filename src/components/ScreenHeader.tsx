@@ -60,6 +60,14 @@ interface Props {
   /** Spoken label for the title button. Falls back to the title itself. */
   titleAccessibilityLabel?: string;
   /**
+   * Makes the subtitle a button, with a chevron after it saying so: Today's
+   * workload line opens Lighten today, the thing to do about a total that
+   * reads too high. Plain `TouchableOpacity` for the reason `onTitlePress` is.
+   */
+  onSubtitlePress?: () => void;
+  /** Spoken label for the subtitle button. Falls back to the subtitle itself. */
+  subtitleAccessibilityLabel?: string;
+  /**
    * Small content rendered inline right after the title text, baseline-aligned
    * — e.g. Today's concise weather reading ("68° Sunny"). Not supported
    * alongside `onTitlePress`; nothing needs both today.
@@ -77,7 +85,7 @@ interface Props {
  * The standard large-title header used at the top of every screen, so
  * titles, counts and 34pt icon buttons render identically app-wide.
  */
-export function ScreenHeader({ title, subtitle, overline, actions, right, onTitlePress, titleAccessibilityLabel, titleAdornment, topRight }: Props) {
+export function ScreenHeader({ title, subtitle, overline, actions, right, onTitlePress, titleAccessibilityLabel, onSubtitlePress, subtitleAccessibilityLabel, titleAdornment, topRight }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const brandFace = useBrandFace('heavy');
@@ -112,7 +120,18 @@ export function ScreenHeader({ title, subtitle, overline, actions, right, onTitl
         ) : (
           <Text style={[styles.title, brandFace]}>{title}</Text>
         )}
-        {subtitle != null ? (
+        {subtitle != null && onSubtitlePress ? (
+          <TouchableOpacity
+            style={styles.subtitleRow}
+            onPress={onSubtitlePress}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel={subtitleAccessibilityLabel ?? subtitle}
+          >
+            <Text style={[styles.subtitle, styles.subtitleShrinks]}>{subtitle}</Text>
+            <Ionicons name="chevron-forward" size={iconSize.xs} color={colors.textSecondary} style={styles.subtitleChevron} />
+          </TouchableOpacity>
+        ) : subtitle != null ? (
           <Text style={styles.subtitle}>{subtitle}</Text>
         ) : (
           // Same reservation, one line down: without it, any screen whose
@@ -211,6 +230,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium,
     marginTop: spacing.xxs,
   },
+  // The pressable subtitle: the text keeps its own top margin, so the chevron
+  // is nudged down by the same amount to sit on its line.
+  subtitleRow: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: spacing.xxs },
+  subtitleShrinks: { flexShrink: 1 },
+  subtitleChevron: { marginTop: spacing.xxs },
   actions: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center', paddingBottom: spacing.xxs },
   iconBtn: {
     width: 34, height: 34, borderRadius: 17,

@@ -177,8 +177,8 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
     confirmDelete({
       title: 'Delete project category',
       message: count > 0
-        ? `Remove “${name}” from ${count} ${count === 1 ? 'project' : 'projects'}? Projects become ungrouped and keep all their tasks. Shake your phone right after to undo.`
-        : `Delete “${name}”? Shake your phone right after to undo.`,
+        ? `Remove “${name}” from ${count} ${count === 1 ? 'project' : 'projects'}? Projects become ungrouped and keep all their tasks. You can undo it right after.`
+        : `Delete “${name}”? You can undo it right after.`,
       onConfirm: () => { animateLayout(); deleteProjectCategory(name); },
     });
   };

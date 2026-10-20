@@ -262,7 +262,7 @@ export function DataResetSettings() {
   const confirmResetStreaks = () => {
     confirmDelete({
       title: 'Reset all streaks?',
-      message: 'This sets every task’s streak back to 0. Shake your phone right after to undo.',
+      message: 'This sets every task’s streak back to 0. You can undo it right after.',
       confirmLabel: 'Reset',
       onConfirm: () => resetAllStreaks(),
     });

@@ -76,6 +76,15 @@ interface Props {
     projects: ReadonlyArray<{ id: string; title: string }>;
     onMove: (projectId: string) => void;
   };
+  /**
+   * Files the selection into a stack that already exists, listed in the Stack
+   * panel under the field that makes a new one. Passed beside `onGroup`; with
+   * it left out the panel only makes new stacks, as it always did.
+   */
+  addToGroup?: {
+    groups: ReadonlyArray<{ id: string; title: string }>;
+    onAdd: (groupId: string) => void;
+  };
   /** True when every selected task is already pinned — the action then reads "Unpin". */
   allPinned?: boolean;
   onSelectAll: () => void;
@@ -108,6 +117,7 @@ export function BulkActionBar({
   onGroup,
   onRemoveFromProject,
   moveToProject,
+  addToGroup,
   onTogglePin,
   allPinned = false,
   onSelectAll,
@@ -167,6 +177,15 @@ export function BulkActionBar({
     const trimmed = groupTitle.trim();
     if (!trimmed || !onGroup) return;
     onGroup(trimmed);
+    setPanel('actions');
+    setGroupTitle('');
+  };
+
+  const existingGroups = addToGroup?.groups ?? [];
+  const handleAddToGroup = (groupId: string) => {
+    if (!addToGroup) return;
+    haptics.success();
+    addToGroup.onAdd(groupId);
     setPanel('actions');
     setGroupTitle('');
   };
@@ -517,9 +536,30 @@ export function BulkActionBar({
                 onChangeText={setGroupTitle}
                 returnKeyType="done"
                 onSubmitEditing={handleApplyGroup}
-                autoFocus
+                // Not when there are stacks to pick from: the keyboard would
+                // cover the list, and picking one is the likelier errand.
+                autoFocus={existingGroups.length === 0}
               />
             </View>
+            {existingGroups.length > 0 && (
+              <>
+                <Text style={styles.listLabel}>Or add to a stack</Text>
+                <ScrollView style={styles.projectList} contentContainerStyle={styles.projectListContent} keyboardShouldPersistTaps="handled">
+                  {existingGroups.map(g => (
+                    <TouchableOpacity
+                      key={g.id}
+                      style={styles.moreRow}
+                      onPress={() => handleAddToGroup(g.id)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Add to ${g.title}`}
+                    >
+                      <Ionicons name="layers-outline" size={18} color={colors.textSecondary} />
+                      <Text style={styles.moreRowText} numberOfLines={1}>{g.title}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </>
+            )}
           </View>
         )}
       </Animated.View>
@@ -637,6 +677,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // Tall enough for five rows before it scrolls, so a long list of projects
   // doesn't push the bar up over the tasks being moved.
   projectList: { maxHeight: 260 },
+  // The section-label treatment every list header in the app uses.
+  listLabel: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    paddingHorizontal: spacing.sm,
+    marginTop: spacing.md,
+    marginBottom: spacing.xs,
+  },
   projectListContent: { gap: spacing.xs },
   panelNote: {
     color: colors.textSecondary,

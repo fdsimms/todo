@@ -3140,7 +3140,10 @@ const TaskItemRow = React.memo(function TaskItem({
         accessibilityHint={
           isNegative
             ? (negativeHoldAvailable ? 'Double tap and hold for more options' : undefined)
-            : meterInteractive && task.progressCount > 0 ? 'Double tap and hold to take one back' : undefined
+            : meterInteractive && task.progressCount > 0 ? 'Double tap and hold to take one back'
+            // The completion menu (Skip, Mark missed, Done by someone else)
+            // has no visible sign it's there, so say so to VoiceOver at least.
+            : completionMenuOffered ? 'Double tap and hold for other ways to finish' : undefined
         }
       >
         {/* Bulk selection deliberately changes nothing about this circle: it's

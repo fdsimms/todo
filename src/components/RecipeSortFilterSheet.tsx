@@ -35,7 +35,17 @@ interface Props {
   /** How many recipes each tag is on (see recipeTagCounts). */
   tagCounts: ReadonlyMap<string, number>;
   selectedTags: readonly string[];
+  /** The shelf, in its own order; the Cookbook group shows only when there is one. */
+  cookbooks?: readonly { id: string; title: string }[];
+  /** The one cookbook the box is narrowed to, or null for every recipe. */
+  cookbookId?: string | null;
+  onCookbookChange?: (id: string | null) => void;
   onTagsChange: (tags: string[]) => void;
+}
+
+/** A sort's label as the sheet shows it, for the screen's active-filter pill. */
+export function recipeSortLabel(sort: RecipeSortOption): string {
+  return SORT_OPTIONS.find(o => o.value === sort)?.label ?? '';
 }
 
 const SORT_OPTIONS: { value: RecipeSortOption; label: string; icon: string }[] = [
@@ -43,6 +53,7 @@ const SORT_OPTIONS: { value: RecipeSortOption; label: string; icon: string }[] =
   { value: 'name', label: 'Name (A to Z)', icon: 'text' },
   { value: 'cooked-recent', label: 'Recently cooked', icon: 'time' },
   { value: 'cooked-oldest', label: 'Not cooked in a while', icon: 'hourglass' },
+  { value: 'quickest', label: 'Quickest', icon: 'timer-outline' },
   { value: 'ingredients-asc', label: 'Fewest ingredients', icon: 'remove-circle-outline' },
   { value: 'ingredients-desc', label: 'Most ingredients', icon: 'add-circle-outline' },
 ];
@@ -52,15 +63,14 @@ const SORT_OPTIONS: { value: RecipeSortOption; label: string; icon: string }[] =
  * SortFilterSheet for tasks, same chrome and the same controlled-component
  * shape (no internal sort/filter state, just the open/close animation).
  *
- * Filtering is a single "Loved only" toggle, not a chip grid like
- * priority/effort on the task sheet: category and meal-type filters (#1086,
- * #1104) aren't built yet, and one boolean doesn't need PillGroup's
- * open-vocabulary treatment or SortFilterSheet's multi-select chips. A future
- * dimension slots in as another `chips` group beside this one.
+ * Filtering is a "Loved only" toggle, the box's tags, and one cookbook, each
+ * its own `chips` group: category and meal-type filters (#1086, #1104) aren't
+ * built yet, and slot in as another group beside these.
  */
 export function RecipeSortFilterSheet({
   visible, onClose, sort, onSortChange, lovedOnly, onLovedOnlyChange,
   tags, tagCounts, selectedTags, onTagsChange,
+  cookbooks = [], cookbookId = null, onCookbookChange,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -103,12 +113,13 @@ export function RecipeSortFilterSheet({
     })
   ).current;
 
-  const activeCount = (sort !== 'default' ? 1 : 0) + (lovedOnly ? 1 : 0) + selectedTags.length;
+  const activeCount = (sort !== 'default' ? 1 : 0) + (lovedOnly ? 1 : 0) + selectedTags.length + (cookbookId ? 1 : 0);
 
   const reset = () => {
     onSortChange('default');
     onLovedOnlyChange(false);
     onTagsChange([]);
+    onCookbookChange?.(null);
   };
 
   return (
@@ -218,6 +229,33 @@ export function RecipeSortFilterSheet({
                         {on && <Ionicons name="checkmark" size={13} color={color} />}
                         <Text style={[styles.chipText, on && { color }]}>{tag}</Text>
                         <Text style={styles.chipCount}>{count}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
+            )}
+
+            {cookbooks.length > 0 && !!onCookbookChange && (
+              <>
+                <Text style={[styles.groupLabel, { marginTop: spacing.lg }]}>Cookbook</Text>
+                {/* One at a time: a recipe is in one book, so two picked would
+                    match nothing. Tapping the picked one again clears it. */}
+                <View style={styles.chips}>
+                  {cookbooks.map(book => {
+                    const on = cookbookId === book.id;
+                    return (
+                      <TouchableOpacity
+                        key={book.id}
+                        style={[styles.chip, on && styles.chipActive]}
+                        onPress={() => {
+                          haptics.tap();
+                          onCookbookChange(on ? null : book.id);
+                        }}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected: on }}
+                      >
+                        <Text style={[styles.chipText, on && styles.chipTextActive]}>{book.title}</Text>
                       </TouchableOpacity>
                     );
                   })}

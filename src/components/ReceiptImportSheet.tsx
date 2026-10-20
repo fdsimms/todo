@@ -480,6 +480,20 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
     });
   };
 
+  // A first receipt into the pantry is mostly lines nothing matched, and each
+  // used to need its own tap. Pantry only: on the shopping side an unmatched
+  // line is the exception, and checking one mints a catalog row named in the
+  // receipt's shorthand, which is worth a look each.
+  const toggleAllUnclaimed = (count: number, allOn: boolean) => {
+    haptics.tap();
+    if (allOn) {
+      setAddAsBought(new Set());
+      setFrozenUnclaimed(new Set());
+    } else {
+      setAddAsBought(new Set(Array.from({ length: count }, (_, i) => i)));
+    }
+  };
+
   const toggleAddAsBought = (index: number) => {
     haptics.tap();
     if (addAsBought.has(index)) setFrozenUnclaimed(prev => withoutKey(prev, index));
@@ -1011,6 +1025,19 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
                   ? 'These didn’t match anything on your list, or your list only asked for one. Check one to add it as bought, or match it to an item you already have.'
                   : 'None of these matched anything on your list. Check one to add it as bought, or match it to an item you already have.'}
             </Text>
+            {pantry && unclaimed.length > 1 && (() => {
+              const allOn = unclaimed.every((_, i) => addAsBought.has(i));
+              return (
+                <View style={styles.checkAllRow}>
+                  <InlineAction
+                    label={allOn ? 'Uncheck all' : 'Check all'}
+                    variant="neutral"
+                    onPress={() => toggleAllUnclaimed(unclaimed.length, allOn)}
+                    accessibilityLabel={allOn ? 'Uncheck every line left alone' : 'Check every line left alone, to add them all'}
+                  />
+                </View>
+              );
+            })()}
             <View style={styles.card}>
               {unclaimed.map((match, i) => {
                 const on = addAsBought.has(i);
@@ -1249,6 +1276,7 @@ function makeStyles(colors: Colors) {
       letterSpacing: 0.8,
       marginBottom: spacing.xs,
     },
+    checkAllRow: { flexDirection: 'row', marginBottom: spacing.sm },
     hint: {
       color: colors.textTertiary,
       fontSize: font.sm,

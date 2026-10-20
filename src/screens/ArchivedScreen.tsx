@@ -144,7 +144,7 @@ export function ArchivedScreen() {
     haptics.warning();
     Alert.alert(
       `Delete ${ids.length} ${plural}?`,
-      `This deletes ${ids.length === 1 ? 'it' : 'them'} along with the history. Shake your phone right after to undo.`,
+      `This deletes ${ids.length === 1 ? 'it' : 'them'} along with the history. You can undo it right after.`,
       [
         { text: BUTTON_LABEL.cancel, style: 'cancel' },
         {

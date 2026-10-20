@@ -309,7 +309,7 @@ function ProjectsList() {
     };
     Alert.alert(
       `Delete ${ids.length} ${plural}?`,
-      `${their} tasks can stay in your list without a project, or be deleted with ${them}. Shake your phone right after to undo.`,
+      `${their} tasks can stay in your list without a project, or be deleted with ${them}. You can undo it right after.`,
       [
         { text: BUTTON_LABEL.cancel, style: 'cancel' },
         { text: `Delete ${plural} only`, onPress: () => run(false) },

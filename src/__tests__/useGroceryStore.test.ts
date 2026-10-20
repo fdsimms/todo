@@ -1564,6 +1564,23 @@ describe('list membership', () => {
     expect(byId(eggs.id).onList).toBe(true);
   });
 
+  it('addExistingMany undoes against the list it added to, whichever list is open by then', () => {
+    const milk = makeItem({ name: 'Milk', onList: false });
+    seed([milk]);
+    const away = useGroceryStore.getState().addList('Airbnb')!;
+    useGroceryStore.getState().setActiveList(away.id);
+    useGroceryStore.getState().addExistingMany([milk.id], { listId: null });
+    useGroceryStore.getState().addExistingMany([milk.id]);
+    expect(entryFor(useGroceryStore.getState().listEntries, milk.id, away.id)).not.toBeNull();
+
+    // The second add (to the away list) undoes first, then the home one.
+    useGroceryStore.getState().undoLastAction();
+    expect(entryFor(useGroceryStore.getState().listEntries, milk.id, away.id)).toBeNull();
+    expect(entryFor(useGroceryStore.getState().listEntries, milk.id, null)).not.toBeNull();
+    useGroceryStore.getState().undoLastAction();
+    expect(entryFor(useGroceryStore.getState().listEntries, milk.id, null)).toBeNull();
+  });
+
   it('deleteItem is the one real delete', () => {
     const milk = makeItem({ name: 'Milk' });
     seed([milk]);
@@ -1572,6 +1589,28 @@ describe('list membership', () => {
 
     expect(dbDeleteGroceryItem).toHaveBeenCalledWith(milk.id);
     expect(useGroceryStore.getState().items).toEqual([]);
+  });
+
+  it('a Forget offers an undo that puts the items back; the store\'s own deletes offer none', () => {
+    const milk = makeItem({ name: 'Milk' });
+    const eggs = makeItem({ name: 'Eggs' });
+    seed([milk, eggs]);
+    const box = { id: 'b1', itemId: milk.id, gtin: null } as unknown as ItemProduct;
+    useGroceryStore.setState({ itemProducts: [box], lastAction: null });
+
+    useGroceryStore.getState().deleteItem(eggs.id);
+    expect(useGroceryStore.getState().lastAction).toBeNull();
+
+    useGroceryStore.getState().deleteItems([milk.id], { undoable: true });
+    const action = useGroceryStore.getState().lastAction;
+    expect(action?.label).toBe('Forgot “Milk”');
+    expect(action?.destructive).toBe(true);
+    expect(useGroceryStore.getState().items).toEqual([]);
+
+    useGroceryStore.getState().undoLastAction();
+    const state = useGroceryStore.getState();
+    expect(state.items.map(i => i.name)).toEqual(['Milk']);
+    expect(state.itemProducts).toEqual([box]);
   });
 
   it('restoreDeletedItem puts an item back with everything the delete took, and refuses when the name is back', () => {

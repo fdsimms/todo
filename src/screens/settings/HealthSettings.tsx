@@ -310,6 +310,60 @@ export function HealthSettings() {
       ? reading.steps.toLocaleString()
       : 'Open Health';
 
+  // The journal and mood rows have nothing to do with Health; they only live
+  // on this page. Rendered whether or not this device has Health, so a phone
+  // without it (an iPad, demo mode) still has its word goal, prompts and mood
+  // suggestions, and the Journal and Mood screens' gear rows land on them.
+  const journalAndMood = (
+    <>
+    <SettingsSection
+      label="Journal"
+      footer="The Journal shows each day’s word count against this and counts the days that reach it."
+    >
+      <SettingsRow
+        entryId="journalWordGoal"
+        icon="create-outline"
+        iconColor={journalWordGoal !== null ? colors.accent : undefined}
+        label="Word goal"
+        hint="Words you want each journal day to reach."
+        value={journalWordGoal === null ? 'None' : formatWordCount(journalWordGoal)}
+        onPress={() => { haptics.tap(); setWordGoalOpen(true); }}
+      />
+      <SettingsRow
+        entryId="journalPrompts"
+        icon="bulb-outline"
+        iconColor={journalCustomPrompts.length > 0 ? colors.accent : undefined}
+        label="Your prompts"
+        hint="Questions offered over a blank journal page, before the built-in ones."
+        value={journalCustomPrompts.length === 0 ? 'None' : String(journalCustomPrompts.length)}
+        onPress={() => { haptics.tap(); setPromptsOpen(true); }}
+      />
+    </SettingsSection>
+    <SettingsSection
+      label="Mood log suggestions"
+      footer="A new mood entry starts with these tags already picked when they apply. You can untap any of them before saving. They only ever add a tag; a day without one gets nothing."
+    >
+      {MOOD_SOURCE_ROWS.map(({ key, entryId, icon, label, hint }, i) => (
+        <React.Fragment key={key}>
+          {i > 0 && <View style={styles.sep} />}
+          <SettingsRow
+            entryId={entryId}
+            icon={icon}
+            iconColor={moodContextSources[key] ? colors.accent : undefined}
+            label={label}
+            hint={hint}
+            toggle={moodContextSources[key]}
+            onPress={() => setMoodContextSource(key, !moodContextSources[key])}
+            accessibilityLabel={label}
+          />
+        </React.Fragment>
+      ))}
+    </SettingsSection>
+    <JournalWordGoalSheet visible={wordGoalOpen} onClose={() => setWordGoalOpen(false)} />
+    <JournalPromptsSheet visible={promptsOpen} onClose={() => setPromptsOpen(false)} />
+    </>
+  );
+
   if (!supported) {
     return (
       <>
@@ -339,6 +393,7 @@ export function HealthSettings() {
             disabled
           />
         </SettingsSection>
+        {journalAndMood}
       </>
     );
   }
@@ -749,51 +804,7 @@ export function HealthSettings() {
         stepper for the same number. */}
     <SleepGoalSheet visible={sleepGoalOpen} onClose={() => setSleepGoalOpen(false)} />
 
-    <SettingsSection
-      label="Journal"
-      footer="The Journal shows each day’s word count against this and counts the days that reach it."
-    >
-      <SettingsRow
-        entryId="journalWordGoal"
-        icon="create-outline"
-        iconColor={journalWordGoal !== null ? colors.accent : undefined}
-        label="Word goal"
-        hint="Words you want each journal day to reach."
-        value={journalWordGoal === null ? 'None' : formatWordCount(journalWordGoal)}
-        onPress={() => { haptics.tap(); setWordGoalOpen(true); }}
-      />
-      <SettingsRow
-        entryId="journalPrompts"
-        icon="bulb-outline"
-        iconColor={journalCustomPrompts.length > 0 ? colors.accent : undefined}
-        label="Your prompts"
-        hint="Questions offered over a blank journal page, before the built-in ones."
-        value={journalCustomPrompts.length === 0 ? 'None' : String(journalCustomPrompts.length)}
-        onPress={() => { haptics.tap(); setPromptsOpen(true); }}
-      />
-    </SettingsSection>
-    <SettingsSection
-      label="Mood log suggestions"
-      footer="A new mood entry starts with these tags already picked when they apply. You can untap any of them before saving. They only ever add a tag; a day without one gets nothing."
-    >
-      {MOOD_SOURCE_ROWS.map(({ key, entryId, icon, label, hint }, i) => (
-        <React.Fragment key={key}>
-          {i > 0 && <View style={styles.sep} />}
-          <SettingsRow
-            entryId={entryId}
-            icon={icon}
-            iconColor={moodContextSources[key] ? colors.accent : undefined}
-            label={label}
-            hint={hint}
-            toggle={moodContextSources[key]}
-            onPress={() => setMoodContextSource(key, !moodContextSources[key])}
-            accessibilityLabel={label}
-          />
-        </React.Fragment>
-      ))}
-    </SettingsSection>
-    <JournalWordGoalSheet visible={wordGoalOpen} onClose={() => setWordGoalOpen(false)} />
-    <JournalPromptsSheet visible={promptsOpen} onClose={() => setPromptsOpen(false)} />
+    {journalAndMood}
     </>
   );
 }

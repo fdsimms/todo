@@ -473,8 +473,8 @@ export function setOtherNamesRow(
 
 /**
  * Everything `dbDeleteGroceryItem` removes with an item, captured so a delete
- * can be put back. The app keeps no such snapshot, which is why it has no
- * undo; the agent ledger records this one.
+ * can be put back. The agent ledger records one per delete, and a Forget in
+ * the app takes one for its undo bar (`deleteItems`' `undoable`).
  */
 export interface DeletedItemSnapshot {
   item: GroceryItem;

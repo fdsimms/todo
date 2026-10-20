@@ -60,6 +60,8 @@ import { PressableScale } from '../components/PressableScale';
 import { GroceryItemSheet, type CollapsibleFieldKey } from '../components/GroceryItemSheet';
 import { navigateToFoodSearchSettings } from '../components/NutritionSearchSheet';
 import { ItemDisposalOffer } from '../components/ItemDisposalOffer';
+import { buildPantryReviewDeck } from '../utils/pantryReview';
+import { PANTRY_REVIEW_TITLE, wantsPantryReview } from '../utils/pantryReviewTasks';
 import { ProductRatingOffer } from '../components/ProductRatingOffer';
 import { LeftoverSheet } from '../components/LeftoverSheet';
 import { useSheetMount } from '../hooks/useSheetMount';
@@ -295,6 +297,34 @@ export function KitchenScreen() {
   // the hub pills and the find-or-add field; two more permanent rows would push
   // the pantry itself off the first screen, which is the thing the user came
   // for.
+  // The review deck, offered as a row once it's big enough to be worth a pass:
+  // the header's own button is an unlabelled icon, and this is when it has
+  // something to say. The threshold is the review task's (wantsPantryReview),
+  // so the row and the task never disagree about whether there's a pass to do.
+  const reviewDeck = useMemo(
+    () => buildPantryReviewDeck(items, now, itemProducts),
+    [items, now, itemProducts]
+  );
+  const reviewCount = !query && wantsPantryReview(reviewDeck) ? reviewDeck.cards.length : 0;
+  const reviewRow = reviewCount === 0 ? null : (
+    <View style={[styles.suggestWrap, shownSuggestions.length > 0 && styles.suggestWrapFollowed]}>
+      <TouchableOpacity
+        style={styles.suggestRow}
+        activeOpacity={interaction.activeOpacity}
+        onPress={() => { haptics.tap(); setReviewOpen(true); }}
+        accessibilityRole="button"
+        accessibilityLabel={`${PANTRY_REVIEW_TITLE}. ${reviewCount} things to check, one at a time`}
+      >
+        <Ionicons name="albums-outline" size={iconSize.md} color={colors.accent} />
+        <View style={styles.suggestBody}>
+          <Text style={styles.suggestName} numberOfLines={1}>{PANTRY_REVIEW_TITLE}</Text>
+          <Text style={styles.suggestMeta} numberOfLines={1}>{reviewCount} things to check, one at a time</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
+      </TouchableOpacity>
+    </View>
+  );
+
   const suggestionHeader = shownSuggestions.length === 0 ? null : (
     <View style={styles.suggestWrap}>
       <Text style={styles.sectionTitle}>Recipes for what’s expiring</Text>
@@ -894,7 +924,7 @@ export function KitchenScreen() {
         dragRange={kitchenDragRange}
         placeholderStyle={styles.dropSlot}
         onReorder={reordered => applyMoves(resolveKitchenDrop(reordered))}
-        ListHeaderComponent={suggestionHeader}
+        ListHeaderComponent={reviewRow || suggestionHeader ? <>{reviewRow}{suggestionHeader}</> : null}
         // Full height when empty so the empty state's `flex: 1` has something
         // to centre in, and without the list's padding shifting that centre.
         contentContainerStyle={
@@ -1038,6 +1068,9 @@ function makeStyles(colors: Colors) {
       marginBottom: spacing.md,
       gap: spacing.xs,
     },
+    // The review row's wrap when the recipes header follows it: that one brings
+    // its own top margin, so this one drops its bottom.
+    suggestWrapFollowed: { marginBottom: 0 },
     suggestRow: {
       flexDirection: 'row',
       alignItems: 'center',

@@ -14,7 +14,7 @@ export type SortOption = 'default' | 'priority' | 'effort-asc' | 'effort-desc' |
  * sortProjects in utils/projectList.
  */
 export type ProjectSortOption = 'manual' | 'deadline' | 'progress' | 'name';
-export type RecipeSortOption = 'default' | 'name' | 'cooked-recent' | 'cooked-oldest' | 'ingredients-asc' | 'ingredients-desc';
+export type RecipeSortOption = 'default' | 'name' | 'cooked-recent' | 'cooked-oldest' | 'quickest' | 'ingredients-asc' | 'ingredients-desc';
 export type TimeOfDay = 'morning' | 'afternoon' | 'evening' | 'night';
 // 'persistent' is 'alarm' that re-rings on an interval until the task is
 // completed, rather than once — see src/utils/alarmChain.ts.

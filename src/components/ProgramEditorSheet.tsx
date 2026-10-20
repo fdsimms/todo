@@ -317,8 +317,19 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
         )}
         <View style={[styles.pad, styles.rowSep]}>
           {adding ? (
-            routines.length === 0 ? (
-              <EmptyNote icon="list-outline">No routines yet. Make one under Routines, then add it here.</EmptyNote>
+            // Archived routines aren't offered below, so only live ones count:
+            // with every routine archived this used to show an empty pill row.
+            routines.every(r => r.archived) ? (
+              <>
+                <EmptyNote icon="list-outline">No routines yet. Make one, then add it here.</EmptyNote>
+                <View style={[styles.row, styles.newRoutineRow]}>
+                  <InlineAction
+                    label="New routine"
+                    icon="add"
+                    onPress={() => { haptics.tap(); setViewId(null); setViewOpen(true); }}
+                  />
+                </View>
+              </>
             ) : (
               <>
                 <PillGroup
@@ -439,6 +450,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   scrollContent: { paddingHorizontal: spacing.md, paddingBottom: spacing.xl * 2 },
   flex: { flex: 1 },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  newRoutineRow: { marginTop: spacing.sm },
   nameCard: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden', marginTop: spacing.xs },
   nameInput: {
     color: colors.text, fontSize: font.lg, fontWeight: fontWeight.semibold,
