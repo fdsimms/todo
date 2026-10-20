@@ -199,6 +199,13 @@ const CHAIN_FINISH_PULSE_SCALE = 1.2;
 // The beat the pop would have taken, held still under Reduce Motion so the
 // tick has time to be seen before the row moves on.
 const STILL_POP_MS = 250;
+// A missed completion shakes its circle once, side to side: four legs of this
+// length. The gold pop is left out for both neutral send-offs (missed and done
+// by someone else), so the gold stays the look of the person's own completion.
+const SHAKE_STEP_MS = 80;
+type NeutralKind = 'missed' | 'byOther' | null;
+const neutralKindOf = (outcome?: CompletionOutcome | null): NeutralKind =>
+  outcome?.missed ? 'missed' : outcome?.byOther ? 'byOther' : null;
 // Where the checkmark's own entrance starts. Deliberately not 0: the glyph is a
 // rasterized font bitmap, so every fractional scale resamples it, and the
 // frames down near 0 undersample a 12pt stroke badly enough to read as jagged.
@@ -781,6 +788,12 @@ const TaskItemRow = React.memo(function TaskItem({
   // rather than an ordinary completion. Held for the same reason as the answer
   // above: the unmount salvage must record the same outcome, not a real tick.
   const pendingOutcomeRef = useRef<CompletionOutcome | undefined>(undefined);
+  // Which neutral send-off this row is playing, if any. A row that mounts already
+  // completed (Calendar) reads its outcome off the task, the same way it seeds
+  // `completing`. Read through sendOffKind, which only trusts it mid-completion.
+  const [neutralKind, setNeutralKind] = useState<NeutralKind>(() =>
+    task.completed ? neutralKindOf({ missed: !!task.missedAt, byOther: !!task.doneByOtherAt }) : null);
+  const sendOffKind = completing ? neutralKind : null;
   // Set for the span of one completion that was confirmed through the
   // "log early" prompt below, so whichever runCompletion call eventually
   // fires it (the deliverable prompt and the completion-timer alert both
@@ -806,6 +819,8 @@ const TaskItemRow = React.memo(function TaskItem({
     extrapolate: 'clamp',
   });
   const circleScale = useRef(new Animated.Value(1)).current;
+  // The sideways shake a missed completion plays on the circle (see runCompletion).
+  const circleShake = useRef(new Animated.Value(0)).current;
   // A row can mount already completed — Calendar keeps completed rows in its
   // day list, where every other screen filters them out before TaskItem ever
   // sees them (see the note on `completing` below). Starting the glyph's
@@ -2148,6 +2163,8 @@ const TaskItemRow = React.memo(function TaskItem({
     pendingReasoningRef.current = deliverableReasoning;
     pendingReviewAfterRef.current = reviewAfter;
     pendingOutcomeRef.current = outcome;
+    const kind = neutralKindOf(outcome);
+    setNeutralKind(kind);
     // Told up front, not at the end: the batched collapse holds for a row that
     // is still animating, so tapping the next task keeps the previous one's gap
     // open even though it finished a moment ago.
@@ -2159,8 +2176,10 @@ const TaskItemRow = React.memo(function TaskItem({
     // A routine's last step is haptics.chainFinish split across the animation:
     // the success here, and its heavy pulse on the second ring pulse below,
     // so the extra buzz lands on something you can see.
-    const finishing = isChainFinish(task);
-    haptics.success();
+    const finishing = !kind && isChainFinish(task);
+    if (kind === 'missed') haptics.warning();
+    else if (kind === 'byOther') haptics.tap();
+    else haptics.success();
     setCompleting(true);
     // Asked of the same function completeTask records it with, so the number
     // that rolls in is the number that gets stored.
@@ -2226,7 +2245,7 @@ const TaskItemRow = React.memo(function TaskItem({
     ).start();
     // The gold grows out from the centre inside the pop. A meter row has its
     // own fill, already risen to the brim by the time the circle pops.
-    if (!viaMeter) {
+    if (!viaMeter && !kind) {
       fillScale.stopAnimation();
       if (reduceMotion) {
         fillScale.setValue(1);
@@ -2235,10 +2254,20 @@ const TaskItemRow = React.memo(function TaskItem({
         Animated.spring(fillScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }).start();
       }
     }
+    // A missed circle shakes instead of popping, and holds for the shake. A
+    // done-by-someone-else circle just holds, its violet ring and glyph are the
+    // whole send-off.
+    const shakes = kind === 'missed' && !reduceMotion;
+    if (shakes) {
+      circleShake.setValue(0);
+      Animated.sequence([-3, 3, -2, 0].map(toValue =>
+        Animated.timing(circleShake, { toValue, duration: SHAKE_STEP_MS, useNativeDriver: true }),
+      )).start();
+    }
     const pop = Animated.sequence([
       ...(viaMeter ? [Animated.delay(QUOTA_TOPPING_MS)] : []),
-      ...(reduceMotion
-        ? [Animated.delay(STILL_POP_MS)]
+      ...(kind || reduceMotion
+        ? [Animated.delay(shakes ? SHAKE_STEP_MS * 4 : STILL_POP_MS)]
         : [
           Animated.spring(circleScale, { toValue: CIRCLE_POP_SCALE, ...animation.spring.snappy, useNativeDriver: true }),
           Animated.spring(circleScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
@@ -2853,6 +2882,8 @@ const TaskItemRow = React.memo(function TaskItem({
       ]).start(() => setUnwinding(false));
     }
     circleScale.setValue(1);
+    circleShake.stopAnimation();
+    circleShake.setValue(0);
     rowOpacity.setValue(1);
     // setValue stops the run-up mid-rise, so the meter drops back to the level
     // the store still has it at — the last unit was never logged.
@@ -3101,7 +3132,8 @@ const TaskItemRow = React.memo(function TaskItem({
             selection state lives on SelectionDot at the row's other end. */}
         <Animated.View style={[
           styles.circle,
-          completing && !quotaCompleting && !quotaPartial && styles.circleCompleting,
+          completing && !quotaCompleting && !quotaPartial && !sendOffKind && styles.circleCompleting,
+          sendOffKind === 'byOther' && styles.circleHandedOff,
           completionLocked && !hoursLoggable && styles.circleLocked,
           // Ready is a nudge, not a lock — the checkbox stays tappable either way.
           // The meal-plan nudge's full day borrows the same treatment on purpose:
@@ -3132,13 +3164,13 @@ const TaskItemRow = React.memo(function TaskItem({
           // swapped rather than animated because this node's transform is on
           // the native driver, and a JS-driven colour on the same node throws.
           quotaToppedOut && styles.circleQuotaDone,
-          { transform: [{ scale: circleScale }] },
+          { transform: [{ scale: circleScale }, { translateX: circleShake }] },
         ]}>
           {/* The gold, grown from the centre (fillScale). It reaches out under
               the ring by a border's width each side, so the ring covers its
               edge and no sliver of the row shows between the two. Not on a
               meter row, where the meter is the fill. */}
-          {!quotaCompleting && !quotaPartial && (
+          {!quotaCompleting && !quotaPartial && !sendOffKind && (
             <Animated.View
               style={[styles.circleFill, { transform: [{ scale: fillScaleClamped }] }]}
               pointerEvents="none"
@@ -3241,7 +3273,15 @@ const TaskItemRow = React.memo(function TaskItem({
               opacity: checkGlyphOpacity,
               transform: reduceMotion ? [] : [{ scale: checkGlyphScale }],
             }}>
-              <Ionicons name="checkmark" size={12} color={colors.onDone} />
+              {/* A missed one gets a grey cross and a done-by-someone-else one a
+                  violet person, neither in the gold ink of the person's own tick.
+                  Read off neutralKind rather than sendOffKind so the glyph is still
+                  the right one while an undo fades it out. */}
+              <Ionicons
+                name={neutralKind === 'missed' ? 'close' : neutralKind === 'byOther' ? 'person-outline' : 'checkmark'}
+                size={12}
+                color={neutralKind === 'missed' ? colors.textSecondary : neutralKind === 'byOther' ? colors.accentText : colors.onDone}
+              />
             </Animated.View>
           )}
           {isNegative && (
@@ -5503,6 +5543,11 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
   // The ring turns gold at once; the inside fills from the centre (circleFill).
   circleCompleting: {
     borderColor: colors.done,
+  },
+  // Done by someone else: the ring takes the accent and never fills. Gold is the
+  // person's own completion, so a completion they didn't make can't wear it.
+  circleHandedOff: {
+    borderColor: colors.accent,
   },
   circleFill: {
     position: 'absolute',
