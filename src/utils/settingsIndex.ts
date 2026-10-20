@@ -940,6 +940,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
       'diary', 'write', 'multiple', 'several', 'twice', 'once a day'] },
   { id: 'wanikaniToken', requires: 'gen:wanikani', groupId: 'generated', label: 'API token', section: 'WaniKani reviews',
     keywords: ['key', 'secret', 'password', 'account', 'connect', 'sign in', 'japanese'] },
+  { id: 'wanikaniTokenPrivacy', groupId: 'privacyAi', label: 'API token', section: 'WaniKani',
+    keywords: ['key', 'secret', 'password', 'account', 'connect', 'sign in', 'japanese', 'kanji'] },
   { id: 'wanikaniReviewThreshold', requires: 'gen:wanikani', groupId: 'generated', label: 'Add the task at', section: 'WaniKani reviews',
     keywords: ['reviews waiting', 'queue', 'how many', 'number', 'forecast', 'japanese'] },
   { id: 'wanikaniLessonsPerDay', requires: 'gen:wanikani', groupId: 'generated', label: 'Lessons', section: 'WaniKani reviews',

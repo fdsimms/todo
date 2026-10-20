@@ -484,4 +484,5 @@ Where each component can appear.
 - `src/screens/settings/TasksProjectsSettings.tsx` — on SettingsGroupScreen
 - `src/screens/settings/VacationTripsSettings.tsx` — on SettingsGroupScreen
 - `src/screens/settings/WaniKaniSettingsRows.tsx` — on AutomationsScreen
+- `src/screens/settings/WaniKaniTokenRows.tsx` — on AutomationsScreen, SettingsGroupScreen
 - `src/screens/settings/WorkoutsSettings.tsx` — on SettingsGroupScreen

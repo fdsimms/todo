@@ -665,7 +665,6 @@ describe('matchExerciseName', () => {
   });
 
   it('keeps a kettlebell goblet squat apart from the dumbbell one', () => {
-    // The library has the kettlebell one of its own now, so it matches that, never the dumbbell goblet squat.
     expect(matchExerciseName('Kettlebell Goblet Squat', catalog)).toMatchObject({ exerciseId: 'lib:kettlebell-goblet-squat' });
   });
 
