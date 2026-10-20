@@ -22,6 +22,8 @@ import { useKeepAwake } from 'expo-keep-awake';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SheetModal } from './SheetModal';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { ActionMenu } from './ActionMenu';
+import type { CardAnchor } from './CardSheet';
 import { CountStepper } from './CountStepper';
 import { CheckPop } from './CheckPop';
 import { InlineAction } from './InlineAction';
@@ -82,6 +84,7 @@ import {
   finishPlan, formatDistance, formatSetLine, matchPrevious, nextSet,
   columnLabel, fieldLabel, sessionExercises, sessionSummary, setBadge, setFieldsFor, setLabels, setName, valuesFromLastDone,
   type SetField,
+  supersetGroup,
 } from '../utils/workoutSession';
 import { tickSet } from '../utils/workoutTick';
 import type { SessionExercise } from '../utils/workoutSession';
@@ -344,6 +347,21 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     if (typeof added === 'string') return;
     setViewedId(exerciseId);
     setOpenSetId(null);
+  };
+
+  // ==== the exercise's "•••" menu: supersets ====
+  const [exerciseMenu, setExerciseMenu] = useState<{ exerciseId: string; anchor: CardAnchor } | null>(null);
+  const joinSuperset = (exerciseId: string, partnerId: string) => {
+    if (!session) return;
+    if (!useWorkoutStore.getState().joinSessionSuperset(session.id, exerciseId, partnerId)) return;
+    haptics.success();
+    animateLayout();
+  };
+  const leaveSuperset = (exerciseId: string) => {
+    if (!session) return;
+    if (!useWorkoutStore.getState().leaveSessionSuperset(session.id, exerciseId)) return;
+    haptics.tap();
+    animateLayout();
   };
 
   const swapExercise = (toExerciseId: string, fromExerciseId: string | undefined = viewed?.exerciseId) => {
@@ -801,6 +819,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
               return (
               <View key={viewed.exerciseId} style={[styles.card, cardIndex > 0 && styles.cardStacked]}>
                 <View style={styles.exHead}>
+                  <View style={styles.exTitleRow}>
                   <TouchableOpacity
                     style={styles.exNameRow}
                     onPress={() => { haptics.tap(); setDetailId(viewed.exerciseId); setDetailOpen(true); }}
@@ -811,6 +830,22 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                     <Text style={styles.exName}>{viewedInfo?.name ?? 'Unknown exercise'}</Text>
                     <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
                   </TouchableOpacity>
+                  {exercises.length > 1 && (
+                  <TouchableOpacity
+                    style={styles.exMenuButton}
+                    hitSlop={8}
+                    onPress={e => {
+                      haptics.tap();
+                      setExerciseMenu({ exerciseId: viewed.exerciseId, anchor: { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY } });
+                    }}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityLabel={`More options for ${viewedInfo?.name ?? 'this exercise'}`}
+                  >
+                    <Ionicons name="ellipsis-horizontal" size={iconSize.md} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                  )}
+                  </View>
                   {!!viewedInfo && viewedInfo.primaryMuscles.length > 0 && (
                     <Text style={styles.exMuscles}>
                       {viewedInfo.primaryMuscles.map(m => MUSCLE_LABELS[m]).join(', ')}
@@ -1102,6 +1137,35 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
       </View>
       {/* Inside this Modal, not beside it: a second sheet presented from the
           same view controller as this one never appears. */}
+      {(() => {
+        const menuId = exerciseMenu?.exerciseId ?? null;
+        const menuExercise = menuId ? exercises.find(e => e.exerciseId === menuId) ?? null : null;
+        const group = menuId ? supersetGroup(exercises, menuId) : [];
+        const partners = exercises.filter(e => !group.some(g => g.exerciseId === e.exerciseId));
+        const nameOf = (id: string) => catalogExercise(exerciseRows, id)?.name ?? 'Unknown exercise';
+        return (
+          <ActionMenu
+            visible={exerciseMenu !== null}
+            title={menuId ? nameOf(menuId) : ''}
+            anchor={exerciseMenu?.anchor ?? null}
+            onClose={() => setExerciseMenu(null)}
+            actions={menuId && menuExercise ? [
+              ...(partners.length > 0 ? [{
+                key: 'superset',
+                label: 'Superset with…',
+                icon: 'link-outline' as const,
+                choices: partners.map(p => ({ key: p.exerciseId, label: nameOf(p.exerciseId), onPress: () => joinSuperset(menuId, p.exerciseId) })),
+              }] : []),
+              ...(menuExercise.supersetKey && group.length > 1 ? [{
+                key: 'leave',
+                label: 'Leave superset',
+                icon: 'unlink-outline' as const,
+                onPress: () => leaveSuperset(menuId),
+              }] : []),
+            ] : []}
+          />
+        );
+      })()}
       <ExercisePickerSheet
         visible={visible && picking !== null}
         onClose={() => setPicking(null)}
@@ -1360,7 +1424,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   card: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden' },
   cardStacked: { marginTop: spacing.md },
   exHead: { paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.xs },
-  exNameRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  exTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  exNameRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  exMenuButton: { padding: spacing.xs },
   exName: { flexShrink: 1, color: colors.text, fontSize: font.xl, fontWeight: fontWeight.bold },
   exActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.smd },
   noteCard: { marginTop: spacing.smd, borderRadius: radius.sm, backgroundColor: colors.bgTertiary, overflow: 'hidden' },

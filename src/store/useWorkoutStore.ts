@@ -46,6 +46,8 @@ import { exerciseDayNotePatches } from '../utils/exerciseDayNote';
 import {
   copyLastSet,
   finishPlan,
+  joinedSuperset,
+  leftSuperset,
   matchPrevious,
   movedExerciseOrder,
   plannedSetsFor,
@@ -499,6 +501,14 @@ interface WorkoutStore {
    */
   moveSessionExercise: (sessionId: string, exerciseId: string, direction: 'up' | 'down') => boolean;
   /**
+   * Makes `partnerId` a superset with `exerciseId` (`joinedSuperset`): the
+   * partner moves to sit below it and both carry one key, on done and planned
+   * sets alike. False when they are unknown or already together.
+   */
+  joinSessionSuperset: (sessionId: string, exerciseId: string, partnerId: string) => boolean;
+  /** Takes the exercise out of its superset (`leftSuperset`). False when it isn't in one. */
+  leaveSessionSuperset: (sessionId: string, exerciseId: string) => boolean;
+  /**
    * Lays warm-up steps out as planned sets ahead of the exercise's other sets,
    * which move down to make room. Refuses a session, or an exercise not in it,
    * that nobody knows (`notFound`). What "Use" does for a ramp that had no
@@ -601,7 +611,7 @@ function renumber(sets: WorkoutSet[]): WorkoutSet[] {
   });
 }
 
-const changed = (a: WorkoutSet, b: WorkoutSet) => a.position !== b.position || a.setIndex !== b.setIndex;
+const changed = (a: WorkoutSet, b: WorkoutSet) => a.position !== b.position || a.setIndex !== b.setIndex || a.supersetKey !== b.supersetKey;
 
 /**
  * The task store, required when first used rather than imported:
@@ -1921,6 +1931,28 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       const order = movedExerciseOrder(get().loadSets(sessionId), exerciseId, direction);
       if (!order) return false;
       get().reorderExercises(sessionId, order);
+      return true;
+    },
+
+    joinSessionSuperset(sessionId, exerciseId, partnerId) {
+      if (!get().sessions.some(s => s.id === sessionId)) return false;
+      const sets = get().loadSets(sessionId);
+      const next = joinedSuperset(sets, exerciseId, partnerId, generateId());
+      if (!next) return false;
+      const before = new Map(sets.map(s => [s.id, s]));
+      dbSaveWorkoutSets(next.filter(s => changed(s, before.get(s.id)!)));
+      putSets(sessionId, next);
+      return true;
+    },
+
+    leaveSessionSuperset(sessionId, exerciseId) {
+      if (!get().sessions.some(s => s.id === sessionId)) return false;
+      const sets = get().loadSets(sessionId);
+      const next = leftSuperset(sets, exerciseId);
+      if (!next) return false;
+      const before = new Map(sets.map(s => [s.id, s]));
+      dbSaveWorkoutSets(next.filter(s => changed(s, before.get(s.id)!)));
+      putSets(sessionId, next);
       return true;
     },
 

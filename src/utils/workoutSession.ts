@@ -129,6 +129,72 @@ export function movedExerciseOrder(
   return blocks.flat();
 }
 
+/** The sets with each exercise's position and superset key rewritten from an exercise order and a key per exercise. */
+function relaidOut(sets: readonly WorkoutSet[], order: readonly string[], keys: ReadonlyMap<string, string | null>): WorkoutSet[] {
+  const positionOf = new Map(order.map((id, i) => [id, i]));
+  return sets
+    .map(s => ({ ...s, position: positionOf.get(s.exerciseId) ?? s.position, supersetKey: keys.get(s.exerciseId) ?? null }))
+    .sort(bySetOrder);
+}
+
+/**
+ * The session's sets with `partnerId` made a superset with `exerciseId`: the
+ * partner (and its own superset, if it has one) moves to sit right below the
+ * exercise's group, and every exercise in the two groups takes one key, the
+ * exercise's own when it already has one (`newKey` otherwise). Done and
+ * planned sets alike carry the key, so history shows the pair. Null when
+ * either is unknown or they are already together.
+ */
+export function joinedSuperset(
+  sets: readonly WorkoutSet[],
+  exerciseId: string,
+  partnerId: string,
+  newKey: string,
+): WorkoutSet[] | null {
+  const exercises = sessionExercises(sets);
+  if (exerciseId === partnerId) return null;
+  const mine = supersetGroup(exercises, exerciseId);
+  const theirs = supersetGroup(exercises, partnerId);
+  if (mine.length === 0 || theirs.length === 0) return null;
+  const mineIds = mine.map(e => e.exerciseId);
+  const theirIds = theirs.map(e => e.exerciseId);
+  if (theirIds.includes(exerciseId)) return null;
+  const key = mine[0].supersetKey ?? newKey;
+  const rest = exercises.map(e => e.exerciseId).filter(id => !theirIds.includes(id));
+  const at = rest.indexOf(mineIds[mineIds.length - 1]);
+  const order = [...rest.slice(0, at + 1), ...theirIds, ...rest.slice(at + 1)];
+  const keys = new Map(exercises.map(e => [e.exerciseId, e.supersetKey] as [string, string | null]));
+  for (const id of [...mineIds, ...theirIds]) keys.set(id, key);
+  return relaidOut(sets, order, keys);
+}
+
+/**
+ * The session's sets with `exerciseId` taken out of its superset. Out of the
+ * middle of a run the half below takes a new key, and a partner left alone
+ * leaves too (the routine editor's `leaveSuperset` rule). Null when the
+ * exercise isn't in one.
+ */
+export function leftSuperset(sets: readonly WorkoutSet[], exerciseId: string): WorkoutSet[] | null {
+  const exercises = sessionExercises(sets);
+  const index = exercises.findIndex(e => e.exerciseId === exerciseId);
+  if (index < 0 || !exercises[index].supersetKey) return null;
+  const key = exercises[index].supersetKey;
+  const keys = new Map(exercises.map(e => [e.exerciseId, e.supersetKey] as [string, string | null]));
+  keys.set(exerciseId, null);
+  // Out of the middle of a run the half below takes a new key, so the two
+  // halves aren't one superset with a gap in it.
+  const group = supersetGroup(exercises, exerciseId);
+  const at = group.findIndex(e => e.exerciseId === exerciseId);
+  if (at > 0 && at < group.length - 1) {
+    for (const e of group.slice(at + 1)) keys.set(e.exerciseId, `${key}:${exerciseId}`);
+  }
+  // A partner left alone is no longer in a superset.
+  for (const [id, k] of keys) {
+    if (k && [...keys.values()].filter(v => v === k).length < 2) keys.set(id, null);
+  }
+  return relaidOut(sets, exercises.map(e => e.exerciseId), keys);
+}
+
 /** The first set not yet done, in walking order; null once every set is done. */
 export function nextSet(sets: readonly WorkoutSet[]): WorkoutSet | null {
   return walkOrder(sets).find(s => !isDone(s)) ?? null;
