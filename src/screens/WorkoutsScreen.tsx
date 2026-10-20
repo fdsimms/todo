@@ -17,6 +17,7 @@ import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useWorkoutModeStore } from '../store/useWorkoutModeStore';
 import { useStartWorkout } from '../hooks/useStartWorkout';
 import { InlineAction } from '../components/InlineAction';
+import { Fab, FAB_SIZE } from '../components/Fab';
 import { RoutineEditorSheet } from '../components/RoutineEditorSheet';
 import { GroupNameSheet } from '../components/GroupNameSheet';
 import { ReorderableList } from '../components/ReorderableList';
@@ -286,7 +287,8 @@ export function WorkoutsScreen() {
     </TouchableOpacity>
   ), [styles, colors, openExercise]);
 
-  const listBottom = { paddingBottom: tabBarHeight + spacing.xl };
+  // Clears the start button floating in the corner, so the last row can scroll out from under it.
+  const listBottom = { paddingBottom: tabBarHeight + FAB_SIZE + spacing.xl };
 
   const openEditor = useCallback((routineId: string | null, newInGroup: string | null = null) => {
     haptics.tap();
@@ -619,9 +621,6 @@ export function WorkoutsScreen() {
   const routineActions = (
     <View style={styles.actions}>
       <InlineAction icon="add" label="New routine" surface="page" onPress={() => openEditor(null)} />
-      {!live && (
-        <InlineAction label="Empty workout" variant="neutral" surface="page" onPress={() => startWorkout()} />
-      )}
     </View>
   );
 
@@ -744,6 +743,11 @@ export function WorkoutsScreen() {
         </>
       )}
       {pullSearch.sheet}
+      <Fab
+        icon="play"
+        accessibilityLabel={live ? `Resume ${live.title}` : 'Start an empty workout'}
+        onPress={() => (live ? useWorkoutModeStore.getState().show() : startWorkout())}
+      />
       <LazySheet open={menuOpen}>
         <ActionMenu
           visible={menuOpen}
