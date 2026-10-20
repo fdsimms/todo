@@ -320,7 +320,7 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
         <SegmentedControl options={SCHEME_OPTIONS} value={scheme} onChange={setScheme} onDeselect={() => setScheme(null)} label="Progression" />
         <HelpText style={styles.hint}>{scheme ? PROGRESSION_HINTS[scheme] : PROGRESSION_NONE_HINT}</HelpText>
         <View style={[styles.kv, styles.kvSep]}>
-          <Text style={styles.cap}>Cycle length</Text>
+          <Text style={styles.cap}>Program length</Text>
           <CountStepper
             value={weeks}
             onChange={setWeeks}
@@ -329,13 +329,13 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
             start={4}
             allowNull
             emptyLabel="No end"
-            label="Cycle length in weeks"
+            label="Program length in weeks"
           />
         </View>
         <HelpText style={styles.hint}>
           {scheme === 'percent'
-            ? 'Weights rise over the first three weeks. In a cycle of four or more weeks, the last week is lighter.'
-            : 'Pick a number of weeks, or leave it on No end to keep repeating the program.'}
+            ? 'How many weeks the program runs. Weights rise over the first three weeks, and the last week of a program four or more weeks long is lighter.'
+            : 'How many weeks the program runs. This only changes the week count, like “Week 2 of 6”. Leave it on No end to keep going.'}
         </HelpText>
       </View>
 
