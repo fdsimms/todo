@@ -329,10 +329,10 @@ const makeStyles = (colors: Colors, textScale: number) => StyleSheet.create({
   // An alignment column, so it grows with the text it holds (see textScale in
   // src/theme/index.ts).
   colBadge: { width: 44 * textScale, alignItems: 'center' },
-  colValue: { flex: 1, alignItems: 'flex-start' },
+  colValue: { flex: 1, alignItems: 'stretch' },
   headSet: { textAlign: 'center' },
-  // In line with the text inside the cells below, not with their edges.
-  headValue: { paddingLeft: spacing.smd },
+  // The cells below center their text, so the label does too.
+  headValue: { textAlign: 'center' },
   row: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 52,
     paddingHorizontal: spacing.md, paddingVertical: spacing.xsm,
@@ -347,7 +347,7 @@ const makeStyles = (colors: Colors, textScale: number) => StyleSheet.create({
   badgeNumber: { color: colors.textSecondary, fontSize: font.md, fontWeight: fontWeight.semibold, fontVariant: ['tabular-nums'] },
   cell: {
     minWidth: 72, minHeight: 36, paddingHorizontal: spacing.smd, borderRadius: radius.sm,
-    backgroundColor: colors.bgTertiary, justifyContent: 'center',
+    backgroundColor: colors.bgTertiary, justifyContent: 'center', alignItems: 'center',
   },
   cellText: { color: colors.text, fontSize: font.lg, fontVariant: ['tabular-nums'] },
   cellEmpty: { color: colors.textTertiary, fontSize: font.lg },
