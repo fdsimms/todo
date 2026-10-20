@@ -490,6 +490,12 @@ interface WorkoutStore {
    * nothing left to move (`notFound`). The routine is not touched.
    */
   swapSessionExercise: (sessionId: string, fromExerciseId: string, toExerciseId: string) => WorkoutSet[] | WorkoutRefusal;
+  /**
+   * "Remove exercise": deletes every set the exercise has in the session, logged
+   * ones included, and closes the gap in the order. Refuses a session or an
+   * exercise that isn't there (`notFound`). The routine is not touched.
+   */
+  removeSessionExercise: (sessionId: string, exerciseId: string) => true | WorkoutRefusal;
   /** "Add set": one more planned set like the exercise's last (`copyLastSet`), with `id` as `SetInput.id`. */
   addPlannedSet: (sessionId: string, exerciseId: string, options?: { id?: string }) => WorkoutSet | WorkoutRefusal;
   /**
@@ -1824,6 +1830,21 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         dbSaveWorkoutSets(next.filter(s => changed(s, before.get(s.id)!)));
       });
       putSets(sessionId, next);
+    },
+
+    removeSessionExercise(sessionId, exerciseId) {
+      if (!get().sessions.some(s => s.id === sessionId)) return 'notFound';
+      const sets = get().loadSets(sessionId);
+      const dropped = sets.filter(s => s.exerciseId === exerciseId);
+      if (dropped.length === 0) return 'notFound';
+      const before = new Map(sets.map(s => [s.id, s]));
+      const next = renumber(sets.filter(s => s.exerciseId !== exerciseId));
+      dbTransaction(() => {
+        for (const s of dropped) dbDeleteWorkoutSet(s.id);
+        dbSaveWorkoutSets(next.filter(s => changed(s, before.get(s.id)!)));
+      });
+      putSets(sessionId, next);
+      return true;
     },
 
     lastTimeFor(exerciseId, exceptSessionId) {

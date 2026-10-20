@@ -716,6 +716,35 @@ describe('a session from a routine', () => {
     });
   });
 
+  describe('removeSessionExercise', () => {
+    const bench = 'lib:barbell-bench-press';
+    const squat = 'lib:back-squat';
+    const row = 'lib:barbell-row';
+
+    it('deletes every set of the exercise, logged ones too, and closes the gap in the order', () => {
+      const s = ok(state().startSession());
+      ok(state().logSet(s.id, { exerciseId: bench, kind: 'working', weightKg: 60, reps: 8, completedAt: '2026-10-01T18:10:00.000Z' }));
+      ok(state().logSet(s.id, { exerciseId: bench, kind: 'working', weightKg: 60, reps: 8, completedAt: null }));
+      ok(state().logSet(s.id, { exerciseId: squat, kind: 'working', weightKg: 100, reps: 5, completedAt: null }));
+      ok(state().logSet(s.id, { exerciseId: row, kind: 'working', weightKg: 50, reps: 8, completedAt: null }));
+
+      expect(state().removeSessionExercise(s.id, squat)).toBe(true);
+      // Written through, and the exercise after it moves up a place.
+      expect(dbGetWorkoutSets(s.id).map(x => [x.exerciseId, x.position, x.setIndex])).toEqual([
+        [bench, 0, 0], [bench, 0, 1], [row, 1, 0],
+      ]);
+      expect(state().removeSessionExercise(s.id, bench)).toBe(true);
+      expect(dbGetWorkoutSets(s.id).map(x => [x.exerciseId, x.position])).toEqual([[row, 0]]);
+    });
+
+    it('refuses an exercise the workout does not have, and a session that is not there', () => {
+      const s = ok(state().startSession());
+      ok(state().logSet(s.id, { exerciseId: bench, kind: 'working', weightKg: 60, reps: 8, completedAt: null }));
+      expect(state().removeSessionExercise(s.id, squat)).toBe('notFound');
+      expect(state().removeSessionExercise('nobody', bench)).toBe('notFound');
+    });
+  });
+
   it('lays warm-ups out ahead of an exercise\'s sets, which move down to make room', () => {
     const s = ok(state().startSession());
     ok(state().logSet(s.id, { exerciseId: 'lib:back-squat', weightKg: 100, reps: 5, completedAt: null }));
