@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { CardSheet, useCardSheet } from './CardSheet';
 import { EmptyNote } from './EmptyNote';
 import { HelpText } from './HelpText';
+import { InlineAction } from './InlineAction';
 import { PillGroup } from './PillGroup';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import type { RotationItem } from '../types';
@@ -18,6 +19,12 @@ interface Props {
   member: RotationItem | null;
   /** The new link, or `{}` for none. `onClose` follows it. */
   onSave: (link: { routineId?: string | null; programId?: string | null }) => void;
+  /**
+   * Make a routine for this member. The card closes first, and the host opens
+   * the routine editor and links what it saves; a sheet raised from this card
+   * would otherwise have to go in its `overlays`.
+   */
+  onNewRoutine?: () => void;
   onClose: () => void;
 }
 
@@ -27,7 +34,7 @@ interface Props {
  * for the reason `ChainStepLinkSheet` gives: the row lives in a `SortableList`
  * and can't change height mid-drag.
  */
-export function RotationWorkoutSheet({ visible, member, onSave, onClose }: Props) {
+export function RotationWorkoutSheet({ visible, member, onSave, onNewRoutine, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const card = useCardSheet();
@@ -64,7 +71,9 @@ export function RotationWorkoutSheet({ visible, member, onSave, onClose }: Props
         <Text style={styles.label}>Workout</Text>
         <ScrollView style={styles.body} keyboardShouldPersistTaps="handled">
           {routines.length === 0 ? (
-            <EmptyNote icon="barbell-outline">No routines yet. Make one on the Workouts screen, then link it here.</EmptyNote>
+            <EmptyNote icon="barbell-outline">
+              {onNewRoutine ? 'No routines yet. Make one here, and it’s linked to this workout.' : 'No routines yet. Make one on the Workouts screen, then link it here.'}
+            </EmptyNote>
           ) : (
             <>
               {livePrograms.length > 0 && (
@@ -102,6 +111,15 @@ export function RotationWorkoutSheet({ visible, member, onSave, onClose }: Props
               />
             </>
           )}
+          {onNewRoutine && (
+            <View style={styles.newRow}>
+              <InlineAction
+                label="New routine"
+                variant={routines.length === 0 ? 'accent' : 'neutral'}
+                onPress={() => { haptics.tap(); card.close(() => { onClose(); onNewRoutine(); }); }}
+              />
+            </View>
+          )}
         </ScrollView>
       </View>
     </CardSheet>
@@ -136,6 +154,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingBottom: spacing.sm,
   },
   body: { paddingHorizontal: spacing.md, maxHeight: 360 },
+  newRow: { flexDirection: 'row', marginTop: spacing.md },
   group: {
     color: colors.textSecondary,
     fontSize: font.xs,

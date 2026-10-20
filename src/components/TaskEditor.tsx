@@ -52,6 +52,7 @@ import { StepLink } from './StepLink';
 import { ChainStepLinkSheet } from './ChainStepLinkSheet';
 import { disclosureValue } from '../theme/textStyles';
 import { RotationWorkoutSheet } from './RotationWorkoutSheet';
+import { RoutineEditorSheet } from './RoutineEditorSheet';
 import { format } from 'date-fns/format';
 import { addMonths } from 'date-fns/addMonths';
 import { addDays } from 'date-fns/addDays';
@@ -999,6 +1000,9 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
   const [newRotationItemTitle, setNewRotationItemTitle] = useState('');
   // The member whose workout the sheet is choosing (`RotationItem.workoutRoutineId`).
   const [workoutMemberId, setWorkoutMemberId] = useState<string | null>(null);
+  // A routine being made from here, and what it is for: the task's own
+  // Workout row, or one rotation member. What it saves is linked to that.
+  const [newRoutineFor, setNewRoutineFor] = useState<'task' | { memberId: string } | null>(null);
   const [addingRotationItem, setAddingRotationItem] = useState(false);
   const [editingChainItemId, setEditingChainItemId] = useState<string | null>(null);
   const [chainItemTitleEdit, setChainItemTitleEdit] = useState('');
@@ -1366,7 +1370,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
     setShowBlockerPicker(false);
     setShowBlocks(false); setShowBlocksPicker(false);
     setShowLinkPicker(false); setCustomLinkText('');
-    setShowWorkoutPicker(false);
+    setShowWorkoutPicker(false); setNewRoutineFor(null);
     setShowPhoneField(false); setPhoneText(task?.phoneNumber ?? initialDraft?.phoneNumber ?? '');
     setShowEmailField(false); setEmailText(task?.emailAddress ?? initialDraft?.emailAddress ?? '');
     setShowLocationField(false); setLocationText(task?.location ?? initialDraft?.location ?? '');
@@ -4034,7 +4038,22 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
               onSave={link => setRotationItems(prev => prev.map(
                 r => (r.id === workoutMemberId ? withWorkout(r, link) : r),
               ))}
+              onNewRoutine={() => { if (workoutMemberId) setNewRoutineFor({ memberId: workoutMemberId }); }}
               onClose={() => setWorkoutMemberId(null)}
+            />
+          </LazySheet>
+          <LazySheet open={newRoutineFor !== null}>
+            <RoutineEditorSheet
+              visible={visible && newRoutineFor !== null}
+              routineId={null}
+              onSaved={routine => {
+                if (newRoutineFor === 'task') pickWorkout({ routineId: routine.id });
+                else if (newRoutineFor) {
+                  const { memberId } = newRoutineFor;
+                  setRotationItems(prev => prev.map(r => (r.id === memberId ? withWorkout(r, { routineId: routine.id }) : r)));
+                }
+              }}
+              onClose={() => setNewRoutineFor(null)}
             />
           </LazySheet>
           <LazySheet open={showFollowUpTaskSheet}>
@@ -7867,7 +7886,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
               return (
               <View style={styles.workoutPicker}>
                 {workoutRoutines.length === 0 ? (
-                  <EmptyNote icon="barbell-outline">No routines yet. Make one on the Workouts screen, then link it here.</EmptyNote>
+                  <EmptyNote icon="barbell-outline">No routines yet. Make one here, and it’s linked to this task.</EmptyNote>
                 ) : (
                   <>
                     {programs.length > 0 && (
@@ -7903,6 +7922,13 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
                     />
                   </>
                 )}
+                <View style={styles.workoutNewRow}>
+                  <InlineAction
+                    label="New routine"
+                    variant={workoutRoutines.length === 0 ? 'accent' : 'neutral'}
+                    onPress={() => { haptics.tap(); setNewRoutineFor('task'); }}
+                  />
+                </View>
               </View>
               );
             })()}
@@ -8974,6 +9000,7 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     color: colors.textSecondary, fontSize: font.xs, fontWeight: '700',
     textTransform: 'uppercase', letterSpacing: 0.8, marginTop: spacing.xs, marginBottom: spacing.sm,
   },
+  workoutNewRow: { flexDirection: 'row', marginTop: spacing.smd },
   workoutPickerHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xs, marginBottom: spacing.smd },
   linkPickerRow: {
     flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs,
