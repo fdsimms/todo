@@ -868,7 +868,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   search: { marginHorizontal: spacing.md, marginBottom: spacing.sm },
   list: { paddingHorizontal: spacing.md, paddingTop: spacing.xs, gap: spacing.sm },
   flex: { flex: 1 },
-  routineRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd },
+  // Flush: RoutineSwipeRow's clip rounds the card and its panels as one shape. A radius here opens a
+  // notch of backing between the row and the Archive panel while it slides over it.
+  routineRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd, borderRadius: 0 },
   archivedRow: { opacity: 0.75 },
   groupHeader: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
