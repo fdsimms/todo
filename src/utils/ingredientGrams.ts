@@ -381,11 +381,19 @@ export function gramsForLine(
    * the opposite case and is refused, which is the same call rule 4 makes
    * about "2 large onions" against a medium-only table.
    *
-   * Volume rows are out of the running because a bare count is not a measure
-   * of volume: "1 onion" is not one cup of onion.
+   * Volume and mass rows are out of the running because a bare count is a
+   * measure of neither: "1 onion" is not one cup of onion, and a can is not
+   * one ounce of what's in it.
    */
-  const wholeItem = portions.filter(p => densityOf(p) === null);
+  const wholeItem = portions.filter(p => !namesMeasure(p));
   return wholeItem.length === 1 ? value * gramsPerUnit(wholeItem[0]) : null;
+}
+
+/** Whether a portion row is a measure ("1 cup", "1 oz") rather than one whole item. */
+function namesMeasure(portion: FoodPortion): boolean {
+  const words = labelWords(portion.label);
+  if (words.length === 0) return false;
+  return (unitBase(words.join(' ')) ?? unitBase(words[0])) !== null;
 }
 
 /**

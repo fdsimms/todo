@@ -35,6 +35,17 @@ describe('what counts as history', () => {
     expect(entries.map(e => e.title)).toEqual(['Hike', 'Coffee']);
   });
 
+  // Only a typed answer reads as a note: a date or a number is data for
+  // something else and would look like noise under a title.
+  it('carries a typed answer as the note, and no other kind', () => {
+    const entries = personHistory([
+      make({ id: 'a', completed: true, completedAt: iso(2026, 3, 14), deliverableKind: 'text', deliverableValue: ' Called ' }),
+      make({ id: 'b', completed: true, completedAt: iso(2026, 3, 13), deliverableKind: 'number', deliverableValue: '4' }),
+      make({ id: 'c', completed: true, completedAt: iso(2026, 3, 12) }),
+    ]);
+    expect(entries.map(e => e.note)).toEqual(['Called', null, null]);
+  });
+
   it('leaves out anything still to do', () => {
     expect(personHistory([make({ completed: false })])).toEqual([]);
   });

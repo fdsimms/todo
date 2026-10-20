@@ -6436,7 +6436,7 @@ describe('workouts', () => {
     archived: false, isCustom: true, createdAt: '2026-10-01T10:00:00.000Z',
   };
   const session = {
-    id: 's1', routineId: 'r1', programId: null, taskId: null, title: 'Upper A', startedAt: '2026-10-10T22:00:00.000Z',
+    id: 's1', routineId: 'r1', programId: null, taskId: null, gymId: 'g1', title: 'Upper A', startedAt: '2026-10-10T22:00:00.000Z',
     endedAt: '2026-10-10T23:00:00.000Z', notes: '', effort: 7, healthWorkoutId: null, healthWritePending: false, measuredOnWatch: false, timesEdited: false,
   };
   const set = (id: string, extra: Partial<Parameters<typeof dbSaveWorkoutSet>[0]> = {}) => ({

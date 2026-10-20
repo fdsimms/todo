@@ -105,6 +105,7 @@ import { limitStatus, prefsFor, supplyRemaining } from '../utils/medicationSetti
 import { canClaimReward, isBountyLive } from '../utils/rewards';
 import { useRewardStore } from '../store/useRewardStore';
 import { useWorkoutStore } from '../store/useWorkoutStore';
+import { useGymStore } from '../store/useGymStore';
 import { catalogExercise } from '../utils/exerciseCatalog';
 import { linkFor } from '../constants/linkApps';
 import { buildMoodDays, contextTagMoodContrasts, describeNutrientInsight, lowMoodRun, foodMoodContrasts, foodPairedDays, symptomFoodContrasts, milestoneMoodContrast, moodCompletionInsight, nutrientInsight, symptomMoodContrasts, taskContrastTitles, taskMoodContrasts, trainingDayMoodContrast, MIN_PAIRED_DAYS } from '../utils/moodInsights';
@@ -2293,6 +2294,19 @@ describe('demo seed — people', () => {
     const sets = sessions.flatMap(s => useWorkoutStore.getState().loadSets(s.id));
     expect(sets.some(s => s.exerciseId === custom?.id)).toBe(true);
     expect(sets.some(s => s.kind === 'warmup')).toBe(true);
+  });
+
+  it('seeds two gyms with different equipment and a note each, and files the sessions under them', () => {
+    const { gyms, settings } = useGymStore.getState();
+    expect(gyms.map(g => g.name)).toEqual(['Home gym', 'Planet Fitness']);
+    expect(gyms[0].equipment).not.toContain('cable');
+    expect(gyms[1].equipment).toContain('cable');
+    expect(gyms.every(g => g.latitude === null)).toBe(true);
+    expect(settings.find(s => s.barKg === 15)?.exerciseId).toBe('lib:back-squat');
+    expect(settings.find(s => s.incrementKg === 5)?.exerciseId).toBe('lib:triceps-pushdown');
+    expect(settings.map(s => s.notes)).toEqual(expect.arrayContaining(['Rope attachment on the top pulley.', 'Safety bars at hole 4.']));
+    const { sessions } = useWorkoutStore.getState();
+    expect(new Set(sessions.map(s => s.gymId))).toEqual(new Set(gyms.map(g => g.id)));
   });
 
   it('seeds weeks of bench history that climb, with the latest session setting a record', () => {

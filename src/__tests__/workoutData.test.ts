@@ -1,7 +1,7 @@
 import {
   DEFAULT_PLATE_INVENTORY, DEFAULT_REST_SECONDS, REST_SECONDS_MAX, REST_SECONDS_MIN, WORKOUT_NAME_MAX_LENGTH,
   clampRestSeconds, cleanWorkoutName, exerciseNameKey, freeWorkoutName, normalizePlateInventory, parsePlateInventory, parseRestSeconds,
-  readEquipment, readExerciseKind, readIdList, readMuscles, readRoutineItems, readScheme, readSetKind, readTrainingMaxes,
+  readEquipment, readExerciseKind, readIdList, readMuscles, readRoutineItems, readProgramScheme, readScheme, readSetKind, readTrainingMaxes,
   WEIGHT_STEP, formatRestSeconds, formatWeightNumber, formatWeightWithUnit, weightFromDisplay, weightToDisplay,
 } from '../utils/workoutData';
 
@@ -40,6 +40,9 @@ describe('closed vocabularies', () => {
     expect(readSetKind(null)).toBe('working');
     expect(readScheme('rpe')).toBe('rpe');
     expect(readScheme('magic')).toBe('double');
+    expect(readProgramScheme('none')).toBeNull();
+    expect(readProgramScheme('rpe')).toBe('rpe');
+    expect(readProgramScheme('magic')).toBe('double');
   });
 
   it('keeps known muscles once each, from an array or its JSON', () => {

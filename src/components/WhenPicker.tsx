@@ -364,6 +364,7 @@ export function WhenPicker({
       from: calendarDays[0],
       to: calendarDays[calendarDays.length - 1],
       dayResetTime,
+      projectFrom: today,
     });
     const busyEvents = calendarReadEnabled && calendarLoaded ? calendarEvents : [];
     return buildDayLoads(calendarDays, buckets, {
@@ -377,7 +378,7 @@ export function WhenPicker({
       assumedTaskMinutes: assumedMinutesFor(tasks),
     });
   }, [visible, calendarDays, tasks, dayResetTime, calendarReadEnabled, calendarLoaded, calendarEvents,
-      calendarWindowStart, calendarWindowEnd, awaySpans]);
+      calendarWindowStart, calendarWindowEnd, awaySpans, today]);
 
   const toggleSegment = (seg: TimeOfDay) => {
     setSegments(prev =>

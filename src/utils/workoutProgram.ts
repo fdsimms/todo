@@ -111,9 +111,9 @@ export function describeProgress(
 ): string {
   const parts: string[] = [];
   parts.push(progress.cycleDone && progress.weeks !== null
-    ? `${progress.weeks}-week cycle done`
+    ? `${progress.weeks}-week program done`
     : weekLabel(progress));
-  parts.push(PROGRESSION_LABELS[program.scheme]);
+  if (program.scheme) parts.push(PROGRESSION_LABELS[program.scheme]);
   const next = progress.nextRoutineId ? routineName(progress.nextRoutineId) : null;
   parts.push(next ? `Next: ${next}` : 'No routines yet');
   return parts.join(' · ');

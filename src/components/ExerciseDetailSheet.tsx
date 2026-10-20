@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format } from 'date-fns/format';
 import { SheetModal } from './SheetModal';
@@ -11,13 +11,17 @@ import { InlineAction } from './InlineAction';
 import { HelpText } from './HelpText';
 import { ExerciseProgressChart, type ExerciseChartPoint } from './ExerciseProgressChart';
 import { ExerciseEditorSheet } from './ExerciseEditorSheet';
+import { GymExerciseSheet, type GymExerciseSubject } from './GymExerciseSheet';
+import { PillGroup } from './PillGroup';
+import { useGymStore } from '../store/useGymStore';
+import { describeGymSetting, gymSettingFor, gymsUsedBy, setsAtGym } from '../utils/gyms';
 import { ExercisePhotos } from './ExercisePhotos';
 import { haptics } from '../utils/haptics';
 import { chartPoints as toChartPoints, chartSegments } from '../utils/exerciseChart';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
-import { font, fontWeight, radius, spacing, type Colors } from '../theme';
+import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
 import { BUTTON_LABEL } from '../copy/shared';
 import { getLogicalDayKey } from '../utils/dateUtils';
 import { catalogExercise, describeExercise } from '../utils/exerciseCatalog';
@@ -78,6 +82,8 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const exercises = useWorkoutStore(s => s.exercises);
   const sessions = useWorkoutStore(s => s.sessions);
+  const gyms = useGymStore(s => s.gyms);
+  const gymSettings = useGymStore(s => s.settings);
   const unit = useSettingsStore(s => s.workoutUnit);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
 
@@ -88,15 +94,19 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
   const metric = metrics.includes(chosen) ? chosen : metrics[0];
   const [shown, setShown] = useState(HISTORY_STEP);
   const [editing, setEditing] = useState(false);
+  // A gym the history and records are narrowed to, or null for all of them.
+  const [gymFilter, setGymFilter] = useState<string | null>(null);
+  const [gymEdit, setGymEdit] = useState<GymExerciseSubject | null>(null);
+  const [gymEditOpen, setGymEditOpen] = useState(false);
 
   useEffect(() => {
-    if (visible) { setChosen(metricsFor(kind)[0]); setShown(HISTORY_STEP); setEditing(false); }
+    if (visible) { setChosen(metricsFor(kind)[0]); setShown(HISTORY_STEP); setEditing(false); setGymFilter(null); setGymEditOpen(false); }
     // On open only: the kind is the opened exercise's.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, exerciseId]);
 
   const todayKey = useMemo(() => getLogicalDayKey(new Date(), dayResetTime), [dayResetTime, visible]);
-  const sets = useMemo(
+  const allSets = useMemo(
     // Not gated on `visible`: the host keeps `exerciseId` through the close, and an
     // empty array while the sheet slides away would flash "No history yet".
     // `visible` is only a dependency, so each open re-reads the history.
@@ -105,6 +115,14 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [visible, exerciseId, sessions],
   );
+  // Narrowed to one gym when the person picks one: records then mean "at this
+  // gym", worked out by the same rules over only those sets, so a first time
+  // there sets no record, as a first time anywhere doesn't.
+  const sets = useMemo(() => setsAtGym(allSets, sessions, gymFilter), [allSets, sessions, gymFilter]);
+  const usedGyms = useMemo(() => gymsUsedBy(allSets, sessions, gyms), [allSets, sessions, gyms]);
+  // Worth offering once the sets aren't all from one place: two gyms, or one gym and some elsewhere.
+  const filterable = usedGyms.length >= 2
+    || (usedGyms.length === 1 && setsAtGym(allSets, sessions, usedGyms[0].id).length < allSets.length);
   const recSessions = useMemo(() => recordSessions(sessions, dayResetTime), [sessions, dayResetTime]);
   const analysis = useMemo(
     () => (exerciseId ? analyzeExercise(exerciseId, kind, sets, recSessions) : null),
@@ -169,6 +187,46 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
       {!!subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
       {!!about && <Text style={styles.about}>{about}</Text>}
       {!!info && !!exerciseId && <ExercisePhotos exerciseId={exerciseId} name={name} />}
+      {!!info && !!exerciseId && gyms.some(g => !g.archived) && (
+        <View style={styles.gymBlock}>
+          <Text style={styles.groupLabel}>At your gyms</Text>
+          <View style={styles.gymCard}>
+            {gyms.filter(g => !g.archived).map((g, i) => {
+              const kept = describeGymSetting(gymSettingFor(gymSettings, g.id, exerciseId), unit);
+              return (
+                <TouchableOpacity
+                  key={g.id}
+                  style={[styles.gymRow, i > 0 && styles.rowSep]}
+                  onPress={() => { haptics.tap(); setGymEdit({ gymId: g.id, exerciseId }); setGymEditOpen(true); }}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${kept ? 'Edit' : 'Add'} what is kept for ${name} at ${g.name}`}
+                >
+                  <Text style={styles.gymName}>{g.name}</Text>
+                  <Text style={[styles.gymValue, !kept && styles.gymValueEmpty]} numberOfLines={1}>{kept ?? 'Add a note'}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      )}
+      {!!info && filterable && (
+        <View style={styles.gymBlock}>
+          <Text style={styles.groupLabel}>Show history from</Text>
+          <PillGroup
+            noun="gym"
+            surface="page"
+            limit={usedGyms.length + 1}
+            options={[
+              { key: 'all', label: 'All gyms', selected: gymFilter === null, onPress: () => { haptics.tap(); setGymFilter(null); setShown(HISTORY_STEP); }, pinned: true },
+              ...usedGyms.map(g => ({
+                key: g.id, label: g.name, selected: gymFilter === g.id,
+                onPress: () => { haptics.tap(); setGymFilter(g.id); setShown(HISTORY_STEP); },
+              })),
+            ]}
+          />
+        </View>
+      )}
       {!!info && (
         <View style={styles.editRow}>
           <InlineAction
@@ -299,12 +357,13 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
             <EmptyState
               icon="stats-chart-outline"
               title="No history yet"
-              subtitle="Sets you log for this exercise show up here, with a chart of how it's going and your personal records."
+              subtitle={gymFilter ? 'No sets logged at this gym yet. Choose All gyms to see the rest.' : "Sets you log for this exercise show up here, with a chart of how it's going and your personal records."}
             />
           </View>
         )}
       </View>
       <ExerciseEditorSheet visible={visible && editing} exerciseId={exerciseId} onClose={() => setEditing(false)} />
+      <GymExerciseSheet visible={visible && gymEditOpen} subject={gymEdit} onClose={() => setGymEditOpen(false)} />
     </SheetModal>
   );
 }
@@ -320,6 +379,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   subtitle: { color: colors.textSecondary, fontSize: font.sm },
   about: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xs },
   editRow: { flexDirection: 'row', marginTop: spacing.xs },
+  gymBlock: { marginTop: spacing.xs },
+  gymCard: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden', marginTop: spacing.sm },
+  gymRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.smd,
+    paddingHorizontal: spacing.md, minHeight: 52,
+  },
+  gymName: { color: colors.text, fontSize: font.md, flexShrink: 0 },
+  gymValue: { color: colors.textSecondary, fontSize: font.sm, flex: 1, textAlign: 'right' },
+  gymValueEmpty: { color: colors.textTertiary },
   card: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden', marginTop: spacing.md },
   headline: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md, marginHorizontal: spacing.md },
   headlineValue: { color: colors.text, fontSize: font.xxl, fontWeight: fontWeight.bold, fontVariant: ['tabular-nums'] },

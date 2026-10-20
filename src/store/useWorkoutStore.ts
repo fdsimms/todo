@@ -40,6 +40,7 @@ import {
 import { generateId } from '../utils/id';
 import { workoutTaskEffect } from '../utils/workoutTask';
 import { swappableSets } from '../utils/exerciseSwap';
+import { exerciseDayNotePatches } from '../utils/exerciseDayNote';
 import {
   copyLastSet,
   finishPlan,
@@ -137,7 +138,7 @@ export interface ProgramInput {
   name: string;
   weeks?: number | null;
   rotation?: string[];
-  scheme?: ProgressionScheme;
+  scheme?: ProgressionScheme | null;
   trainingMaxes?: TrainingMax[];
 }
 
@@ -148,6 +149,8 @@ export interface StartSessionInput {
   routineId?: string | null;
   programId?: string | null;
   taskId?: string | null;
+  /** The gym it is done at; null or absent for none. */
+  gymId?: string | null;
   at?: Date;
 }
 
@@ -157,6 +160,8 @@ export interface SessionPatch {
   effort?: number | null;
   startedAt?: string;
   endedAt?: string | null;
+  /** Moves the session to another gym, or to none (null). */
+  gymId?: string | null;
 }
 
 export interface FinishOptions extends Omit<SessionPatch, 'endedAt'> {
@@ -421,6 +426,13 @@ interface WorkoutStore {
    */
   logSet: (sessionId: string, input: SetInput) => WorkoutSet | WorkoutRefusal;
   editSet: (sessionId: string, setId: string, patch: SetPatch) => WorkoutSet | WorkoutRefusal;
+  /**
+   * Writes the exercise's note for this workout, found through one of its sets
+   * (what the watch knows when it dictates one). The text replaces the note,
+   * kept on the exercise's first set (`exerciseDayNote.ts`), so a note dictated
+   * on set 3 is the exercise's note, not set 3's.
+   */
+  noteExerciseOfSet: (sessionId: string, setId: string, text: string) => void;
   /** Removes a set and closes the gap it leaves, in its exercise and, if it was the last, in the session. */
   deleteSet: (sessionId: string, setId: string) => void;
   /** Puts a session's exercises in this order. Exercises not named keep their order, after these. */
@@ -1050,7 +1062,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         name,
         weeks: input.weeks && input.weeks > 0 ? Math.round(input.weeks) : null,
         rotation: (input.rotation ?? []).filter(Boolean),
-        scheme: input.scheme ?? 'double',
+        scheme: input.scheme === undefined ? 'double' : input.scheme,
         trainingMaxes: readTrainingMaxes(input.trainingMaxes ?? []),
         startedAt: null,
         archived: false,
@@ -1116,7 +1128,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         name,
         weeks: patch.weeks !== undefined ? (patch.weeks && patch.weeks > 0 ? Math.round(patch.weeks) : null) : existing.weeks,
         rotation: patch.rotation !== undefined ? patch.rotation.filter(Boolean) : existing.rotation,
-        scheme: patch.scheme ?? existing.scheme,
+        scheme: patch.scheme !== undefined ? patch.scheme : existing.scheme,
         trainingMaxes: patch.trainingMaxes !== undefined ? readTrainingMaxes(patch.trainingMaxes) : existing.trainingMaxes,
         startedAt: patch.startedAt !== undefined ? patch.startedAt : existing.startedAt,
         archived: patch.archived ?? existing.archived,
@@ -1155,6 +1167,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         routineId: input.routineId ?? null,
         programId: input.programId ?? routine?.programId ?? null,
         taskId: input.taskId ?? null,
+        gymId: input.gymId ?? null,
         title: cleanWorkoutName(input.title ?? '') || routine?.name || 'Workout',
         startedAt: (input.at ?? new Date()).toISOString(),
         endedAt: null,
@@ -1203,6 +1216,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         effort: patch.effort !== undefined ? effortOf(patch.effort) : existing.effort,
         startedAt: patch.startedAt ?? existing.startedAt,
         endedAt: patch.endedAt !== undefined ? patch.endedAt : existing.endedAt,
+        gymId: patch.gymId !== undefined ? patch.gymId : existing.gymId ?? null,
       };
       if (row.endedAt !== null && new Date(row.endedAt).getTime() < new Date(row.startedAt).getTime()) return 'order';
       // A patch that changes nothing writes nothing. Saving the row anyway
@@ -1210,7 +1224,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       // one a peer has changed since (an agent's sets-only edit sending a
       // stale, unwritten copy over the phone's Health id is how a workout got
       // into Health twice).
-      if (row.title === existing.title && row.notes === existing.notes && row.effort === existing.effort && sameSpan(row, existing)) {
+      if (row.title === existing.title && row.notes === existing.notes && row.effort === existing.effort && (row.gymId ?? null) === (existing.gymId ?? null) && sameSpan(row, existing)) {
         return existing;
       }
       // Recorded, since nothing else says the times were moved by a person
@@ -1692,6 +1706,14 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       dbSaveWorkoutSet(row);
       putSets(sessionId, sets.map(s => (s.id === setId ? row : s)));
       return row;
+    },
+
+    noteExerciseOfSet(sessionId, setId, text) {
+      const sets = get().loadSets(sessionId);
+      const target = sets.find(s => s.id === setId);
+      if (!target) return;
+      const ofExercise = sets.filter(s => s.exerciseId === target.exerciseId);
+      for (const p of exerciseDayNotePatches(ofExercise, text)) get().editSet(sessionId, p.setId, { note: p.note });
     },
 
     deleteSet(sessionId, setId) {

@@ -655,10 +655,20 @@ export function PersonDetailScreen() {
                   onPress={() => { haptics.tap(); setEditingHistoryEntry(entry); }}
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
-                  accessibilityLabel={`Edit “${entry.title}”, ${describeLastTogether(new Date(entry.at), today)}`}
+                  accessibilityLabel={`Edit “${entry.title}”${entry.note ? `, ${entry.note}` : ''}, ${describeLastTogether(new Date(entry.at), today)}`}
                 >
-                  <Ionicons name="checkmark-circle-outline" size={14} color={colors.textTertiary} />
-                  <Text style={styles.entryTitle} numberOfLines={1}>{entry.title}</Text>
+                  <Ionicons
+                    name="checkmark-circle-outline"
+                    size={14}
+                    color={colors.textTertiary}
+                    style={entry.note ? styles.entryIconTop : undefined}
+                  />
+                  <View style={styles.entryText}>
+                    <Text style={styles.entryTitleStacked} numberOfLines={1}>{entry.title}</Text>
+                    {entry.note !== null && (
+                      <Text style={styles.entryNote} numberOfLines={2}>{entry.note}</Text>
+                    )}
+                  </View>
                   <Text style={styles.entryDate}>
                     {describeLastTogether(new Date(entry.at), today)}
                   </Text>
@@ -853,6 +863,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: spacing.smd,
   },
   entryTitle: { flex: 1, color: colors.text, fontSize: font.sm },
+  // `entryTitle` without the `flex: 1`, for a title stacked over its note.
+  entryTitleStacked: { color: colors.text, fontSize: font.sm },
+  entryText: { flex: 1 },
+  // What was said when the task was ticked, under its title. The icon drops to
+  // the first line so it stays beside the title rather than between the two.
+  entryNote: { color: colors.textSecondary, fontSize: font.sm, marginTop: 2 },
+  entryIconTop: { alignSelf: 'flex-start', marginTop: 3 },
   noteText: { flex: 1, color: colors.text, fontSize: font.sm, lineHeight: 19 },
   // Dimmer, and that is the whole treatment: a note whose day has passed is
   // shown quieter, never struck through, never coloured, and never deleted.

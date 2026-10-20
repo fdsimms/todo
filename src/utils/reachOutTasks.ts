@@ -78,6 +78,35 @@ export function reachOutPersonId(
 }
 
 /**
+ * Who a reach-out task's answer is logged against: the person when its source is
+ * a person, or every member when it is a `PersonGroup` the nudge folded several
+ * people into. Empty when the source no longer resolves (a deleted person),
+ * which leaves the task unlogged rather than writing an id nothing can read.
+ */
+export function reachOutNamedPeopleIds(
+  sourceId: string,
+  people: readonly Pick<Person, 'id' | 'groupId'>[],
+  groups: readonly Pick<PersonGroup, 'id'>[]
+): string[] {
+  if (people.some(p => p.id === sourceId)) return [sourceId];
+  if (!groups.some(g => g.id === sourceId)) return [];
+  return people.filter(p => p.groupId === sourceId).map(p => p.id);
+}
+
+/**
+ * The prompt a catch-up task asks when it is ticked, in place of the generic
+ * "Answer". **The answer is the log**: a catch-up task carries no `personIds`
+ * (see `checkReachOutTasks`), and `completeTask` stamps them only when this
+ * question was answered, so ticking it without one claims nothing happened.
+ */
+export const CATCH_UP_PROMPT = {
+  label: 'What did you do?',
+  placeholder: 'e.g. Called, talked about the move',
+  help: 'Added to their history.',
+  skip: 'Complete without logging',
+} as const;
+
+/**
  * The row's title.
  *
  * **The note wins when there is one**, which is rule 7 in miniature and most of

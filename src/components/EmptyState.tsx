@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo } from 'react';
-import { Text, StyleSheet } from 'react-native';
+import { AppState, Text, StyleSheet } from 'react-native';
 import Reanimated, {
   useSharedValue,
   useAnimatedStyle,
@@ -102,6 +102,19 @@ export function EmptyState({ icon, art, title, subtitle, actionLabel, onAction, 
     progress.value = withTiming(1, { duration: animation.duration.normal });
     iconScale.value = withSpring(1, animation.spring.smooth);
   }, [reduceMotion]);
+
+  // An empty state can mount while the app is leaving the foreground (the
+  // journal lock closes on 'inactive' and swaps its screen for one), and an
+  // entrance started there can be left at opacity 0 for good. Coming back to
+  // the foreground finishes it.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', next => {
+      if (next !== 'active') return;
+      progress.value = 1;
+      iconScale.value = 1;
+    });
+    return () => sub.remove();
+  }, []);
 
   const containerStyle = useAnimatedStyle(() => ({
     opacity: progress.value,

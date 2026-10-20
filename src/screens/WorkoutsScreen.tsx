@@ -32,6 +32,7 @@ import { ActionMenu } from '../components/ActionMenu';
 import type { CardAnchor } from '../components/CardSheet';
 import { CsvExportSheet } from '../components/CsvExportSheet';
 import { WorkoutImportSheet } from '../components/WorkoutImportSheet';
+import { GymsSheet } from '../components/GymsSheet';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { pickBackupFile } from '../utils/backupFile';
 import { afterSheetsDismissed } from '../utils/sheetModal';
@@ -51,6 +52,8 @@ import { describeRoutine } from '../utils/workoutRoutine';
 import { routineSections } from '../utils/routineGroups';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
+import { useGymStore } from '../store/useGymStore';
+import { describeRoutineFit, lastUsedGymId, routineFit } from '../utils/gyms';
 import { describeProgress, programProgress } from '../utils/workoutProgram';
 import { trainingMaxRaises } from '../utils/workoutProgression';
 import { formatWeightNumber } from '../utils/workoutData';
@@ -142,6 +145,12 @@ export function WorkoutsScreen() {
   const live = useWorkoutStore(s => s.sessions.find(x => x.endedAt === null) ?? null);
   const liveSets = useWorkoutStore(s => (live ? s.setsBySession[live.id] : undefined));
   const startWorkout = useStartWorkout();
+  // The gym a workout would start at, so a routine that needs what it lacks says so before Start.
+  const gyms = useGymStore(s => s.gyms);
+  const fitGym = useMemo(() => {
+    const id = lastUsedGymId(gyms, sessions);
+    return gyms.find(g => g.id === id) ?? null;
+  }, [gyms, sessions]);
   // Which routine the editor is on (null for a new one), kept through the
   // close so the sheet doesn't retitle itself while it slides away.
   const [editorOpen, setEditorOpen] = useState(false);
@@ -166,6 +175,7 @@ export function WorkoutsScreen() {
   const [importText, setImportText] = useState('');
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [gymsOpen, setGymsOpen] = useState(false);
   const workoutUnit = useSettingsStore(s => s.workoutUnit);
   const loadSets = useWorkoutStore(s => s.loadSets);
 
@@ -317,6 +327,11 @@ export function WorkoutsScreen() {
     else setFoldedGroups(f => (f.includes(item.name) ? f.filter(n => n !== item.name) : [...f, item.name]));
   }, []);
 
+  const fitLine = useCallback(
+    (routine: WorkoutRoutine) => (fitGym ? describeRoutineFit(routineFit(fitGym, routine, exercises), fitGym.name) : null),
+    [fitGym, exercises],
+  );
+
   const renderRoutine = useCallback(({ item: entry }: { item: RoutineListItem }) => {
     if (entry.kind === 'header') {
       return (
@@ -356,6 +371,7 @@ export function WorkoutsScreen() {
             <Text style={styles.detail}>
               {describeRoutine(item.items, id => catalogExercise(exercises, id)?.primaryMuscles ?? [])}
             </Text>
+            {!item.archived && !!fitLine(item) && <Text style={styles.fitDetail}>{fitLine(item)}</Text>}
           </View>
           {item.archived ? (
             <InlineAction
@@ -374,7 +390,7 @@ export function WorkoutsScreen() {
         </TouchableOpacity>
       </RoutineSwipeRow>
     );
-  }, [styles, colors, exercises, openEditor, startWorkout, toggleHeader, openGroupSheet, archiveRoutine, deleteRoutine]);
+  }, [styles, colors, exercises, openEditor, startWorkout, fitLine, toggleHeader, openGroupSheet, archiveRoutine, deleteRoutine]);
 
   const openProgram = useCallback((programId: string | null) => {
     haptics.tap();
@@ -426,7 +442,7 @@ export function WorkoutsScreen() {
         )}
         {(next || raises.length > 0) && (
           <View style={styles.actions}>
-            {raises.length > 0 && <InlineAction label="Start next cycle" onPress={startNextCycle} />}
+            {raises.length > 0 && <InlineAction label="Start again" onPress={startNextCycle} />}
             {next && (
               <InlineAction
                 icon="play"
@@ -647,12 +663,16 @@ export function WorkoutsScreen() {
             ...(routines.some(r => !r.archived)
               ? [{ key: 'group', label: 'New group', icon: 'folder-open-outline' as const, onPress: () => openGroupSheet(null) }]
               : []),
+            { key: 'gyms', label: 'Gyms', icon: 'location-outline', onPress: () => setGymsOpen(true) },
             { key: 'import', label: 'Import from Strong or Hevy', icon: 'download-outline', onPress: () => { void startImport(); } },
             ...(sessions.some(s => s.endedAt !== null)
               ? [{ key: 'export', label: 'Export as CSV', icon: 'share-outline' as const, onPress: () => setExportOpen(true) }]
               : []),
           ]}
         />
+      </LazySheet>
+      <LazySheet open={gymsOpen}>
+        <GymsSheet visible={gymsOpen} onClose={() => setGymsOpen(false)} />
       </LazySheet>
       <LazySheet open={importOpen}>
         <WorkoutImportSheet visible={importOpen} onClose={() => setImportOpen(false)} fileText={importText} />
@@ -761,6 +781,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   noticeValue: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold, fontVariant: ['tabular-nums'] },
   footHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.sm, marginHorizontal: spacing.xs },
   detail: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs },
+  fitDetail: { color: colors.orangeText, fontSize: font.sm, marginTop: spacing.xxs },
   healthTagRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.xxs },
   healthTag: {
     flexShrink: 1, color: colors.textSecondary, fontSize: font.xxs, fontWeight: fontWeight.semibold,

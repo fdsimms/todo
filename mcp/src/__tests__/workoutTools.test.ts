@@ -41,6 +41,8 @@ function fakeReplica(over: Partial<Replica> = {}): Replica {
     exercises: () => [custom],
     workoutRoutines: () => [routine],
     workoutPrograms: () => [program],
+    gyms: () => [],
+    gymExercises: () => [],
     workoutSessions: (from: string, to: string) => sessions.filter(s => s.startedAt.slice(0, 10) >= from && s.startedAt.slice(0, 10) <= to),
     workoutSets: (id: string) => (id === 's1'
       ? [set('a', 'lib:barbell-bench-press'), set('b', 'lib:barbell-bench-press', { setIndex: 1, reps: 7 }), set('c', 'c1', { position: 1, completedAt: null })]

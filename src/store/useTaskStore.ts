@@ -180,6 +180,7 @@ import { useCookwareStore } from './useCookwareStore';
 import { useCopyFlagStore } from './useCopyFlagStore';
 import { useMeterReadingStore } from './useMeterReadingStore';
 import { useWorkoutStore } from './useWorkoutStore';
+import { useGymStore } from './useGymStore';
 import { useMedicationStore } from './useMedicationStore';
 import { useRewardStore } from './useRewardStore';
 import { guardChargeSeed, guardingReward } from '../utils/rewardGuard';
@@ -341,6 +342,8 @@ import {
   wantedReachOuts,
   collapseGroupedReachOuts,
   reachOutHistoryIds,
+  reachOutNamedPeopleIds,
+  reachOutPersonId as reachOutSourceId,
   sharedReachOutGroupId,
   type ReachOutCandidate,
 } from '../utils/reachOutTasks';
@@ -552,6 +555,16 @@ function reminderOnto(effective: Task, due: Date, overrides: Partial<Task> = {})
  * undoes that completion. Without it, tick-then-untick shortened a block with
  * the task still undone.
  */
+/**
+ * The people a catch-up task's answer logs it against, or none when it isn't a
+ * catch-up task, has no answer, or its person is gone. See `CATCH_UP_PROMPT`.
+ */
+function catchUpLogIds(task: Task, answer: string | null | undefined): string[] {
+  const sourceId = reachOutSourceId(task);
+  if (!sourceId || !answer?.trim()) return [];
+  return reachOutNamedPeopleIds(sourceId, usePersonStore.getState().people, usePersonGroupStore.getState().groups);
+}
+
 function uncreditPenaltyShield(task: Task, now: Date): void {
   if (task.penaltyCreditedAt === null || task.penaltyMinutes === null) return;
   const settings = useSettingsStore.getState();
@@ -3154,9 +3167,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       const occurrence = task.recurrenceFromCompletion ? { date: today, gridDate: null } : getNextOccurrence(task, resetTime, { catchUp: true });
       if (!occurrence) continue;
       // The rule's own day as the anchor when a holiday moved this one off it.
+      // The anchor day goes back unchanged, as skipNextRecurrence's does: the
+      // app moved this row, so updateTask must not read a clamped Feb 28 off
+      // it and turn a routine on the 31st into one on the 28th for good.
       get().updateTask(task.id, {
         dueDate: occurrence.date.toISOString(),
         recurrenceAnchorDate: occurrence.gridDate?.toISOString() ?? null,
+        recurrenceAnchorDay: task.recurrenceAnchorDay,
         deferUntil: null,
       }, { skipPostponeCount: true });
     }
@@ -3263,6 +3280,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // part of the health record, so after a demo swap or a restore it has to
     // be read from the database the rest came from, never kept from the last.
     useWorkoutStore.getState().initialize();
+    // Gyms are read against the sessions that name them, so they swap with them.
+    useGymStore.getState().initialize();
     // The journal grew out of the mood entry's note, so it sits beside it on
     // the fan-out for the same swap-the-database reason.
     useJournalStore.getState().initialize();
@@ -4550,6 +4569,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       }
     }
 
+    // A catch-up task answered "what did you do?" is the record of it, so the
+    // people it was written for are named on the row now and it joins their
+    // history. Left unnamed when unanswered, which is the whole rule: a tick
+    // alone claims nothing. Reversed by `uncompleteTask`.
+    if (!missed) {
+      const logged = catchUpLogIds(task, completed.deliverableValue);
+      if (logged.length > 0) get().updateTask(id, { personIds: logged }, { skipPostponeCount: true });
+    }
+
     // A date answer that opted into being the trip's departure fills the
     // project's empty Leaving date. See departureFromAnswer. Remembered for
     // this completion's undo, which empties it again.
@@ -4704,7 +4732,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const task = get().tasks.find(t => t.id === id);
     if (!task || !task.completed) return;
     const original = task;
-    const updated = reopenedTask(task);
+    // A catch-up task is in a person's history only while answered and done.
+    const updated = reachOutSourceId(task) ? { ...reopenedTask(task), personIds: [] } : reopenedTask(task);
     uncreditPenaltyShield(task, new Date());
     // Whatever this completion or miss did to the coin balance goes with it.
     // Unlike the penalty credit above, nothing here can be bought back by a
@@ -4858,7 +4887,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (previous === value
       && nextReasoning.why === previousReasoning.why
       && nextReasoning.revisitIf === previousReasoning.revisitIf) return;
-    const updated = { ...task, deliverableValue: value, deliverableWhy: nextReasoning.why, deliverableRevisitIf: nextReasoning.revisitIf };
+    // A done catch-up task follows its answer: correcting one in the Logbook
+    // keeps it in the history, and clearing it takes it back out.
+    const personIds = task.completed && !task.missedAt && reachOutSourceId(task)
+      ? catchUpLogIds(task, value)
+      : task.personIds;
+    const updated = { ...task, personIds, deliverableValue: value, deliverableWhy: nextReasoning.why, deliverableRevisitIf: nextReasoning.revisitIf };
     dbUpdateTask(updated);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
     syncGatedReminders(id, get().tasks);
@@ -6507,10 +6541,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           // that the nudge is one tap from actually doing the thing.
           phoneNumber: want.phoneNumber,
           category,
-          // No personIds, for the reason the birthday task carries none: a task
-          // naming somebody is the record that something happened with them,
-          // and ticking this off would otherwise reset the very clock that
-          // wrote it without you having actually reached out.
+          // "What did you do?" on completion. No personIds, for the reason the
+          // birthday task carries none: a task naming somebody is the record
+          // that something happened with them, and ticking this off would
+          // otherwise reset the very clock that wrote it without you having
+          // actually reached out. An answer is what says you did, so
+          // `completeTask` stamps the people on only when there is one.
+          deliverableKind: 'text' as const,
           ...generatedBy('reachOut', want.sourceId),
         }),
       });

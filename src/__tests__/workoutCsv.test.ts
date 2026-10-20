@@ -577,7 +577,7 @@ describe('matchExerciseName', () => {
     id: 'c1', name: 'Sled drag', kind: 'weight_reps', primaryMuscles: [], secondaryMuscles: [], equipment: 'other',
     barKg: null, notes: '', archived: false, isCustom: true, createdAt: '2026-01-01T00:00:00.000Z',
   };
-  const archived: Exercise = { ...custom, id: 'c2', name: 'Zottman curl', archived: true };
+  const archived: Exercise = { ...custom, id: 'c2', name: 'Cossack squat', archived: true };
   const catalog = buildCatalog([custom, archived]);
   const idOf = (name: string) => {
     const m = matchExerciseName(name, catalog);
@@ -593,6 +593,17 @@ describe('matchExerciseName', () => {
     expect(matchExerciseName('Bench Press (Barbell)', catalog)).toMatchObject({ kind: 'words' });
     expect(matchExerciseName('Pull Up', catalog)).toMatchObject({ kind: 'words' });
     expect(matchExerciseName('Overhead Press (Barbell)', catalog)).toMatchObject({ kind: 'words' });
+  });
+
+  it('matches the names an import file uses for exercises the library now has', () => {
+    for (const [name, id] of [
+      ['Glute Bridge', 'lib:bodyweight-glute-bridge'],
+      ['Kettlebell Goblet Squat', 'lib:kettlebell-goblet-squat'],
+      ['Clamshell', 'lib:clamshell'],
+      ['Zottman Curl', 'lib:zottman-curl'],
+    ]) {
+      expect(matchExerciseName(name, catalog)).toMatchObject({ kind: 'exact', exerciseId: id });
+    }
   });
 
   it('only suggests a one-letter typo, never decides it', () => {
@@ -628,6 +639,43 @@ describe('matchExerciseName', () => {
     expect(isAutoMatch(m)).toBe(false);
   });
 
+  it('matches a bracketed equipment to a library name that leaves the usual equipment out', () => {
+    for (const [name, id] of [
+      ['Hammer Curl (Dumbbell)', 'lib:hammer-curl'],
+      ['Lat Pulldown (Cable)', 'lib:lat-pulldown'],
+      ['Leg Extension (Machine)', 'lib:leg-extension'],
+      ['Arnold Press (Dumbbell)', 'lib:arnold-press'],
+      ['Bulgarian Split Squat (Dumbbell)', 'lib:bulgarian-split-squat'],
+      ['Bicep Curl (Dumbbell)', 'lib:dumbbell-curl'],
+      ['Overhead Press (Dumbbell)', 'lib:dumbbell-shoulder-press'],
+      ['Skullcrusher (Dumbbell)', 'lib:dumbbell-skull-crusher'],
+      ['Incline Chest Fly (Dumbbell)', 'lib:incline-dumbbell-fly'],
+      ['Lat Pulldown - Close Grip (Cable)', 'lib:close-grip-lat-pulldown'],
+      ['Bent Over Row (Dumbbell)', 'lib:two-arm-dumbbell-row'],
+      ['Bent Over Row (Barbell)', 'lib:barbell-row'],
+      ['Straight Arm Lat Pulldown (Cable)', 'lib:straight-arm-pulldown'],
+      ['Cable Fly Crossovers', 'lib:cable-fly'],
+      ['Treadmill', 'lib:treadmill-run'],
+      ['Seated Shoulder Press (Machine)', 'lib:machine-shoulder-press'],
+      ['Rear Delt Reverse Fly (Dumbbell)', 'lib:reverse-dumbbell-fly'],
+    ]) {
+      const m = matchExerciseName(name, catalog);
+      expect(m).toMatchObject({ kind: 'words', exerciseId: id });
+    }
+  });
+
+  it('keeps a kettlebell goblet squat apart from the dumbbell one', () => {
+    // The library has the kettlebell one of its own now, so it matches that, never the dumbbell goblet squat.
+    expect(matchExerciseName('Kettlebell Goblet Squat', catalog)).toMatchObject({ exerciseId: 'lib:kettlebell-goblet-squat' });
+  });
+
+  it('only offers the same movement on other equipment', () => {
+    // "Lat pulldown" is the library's cable lift; a machine one is a choice.
+    const m = matchExerciseName('Lat Pulldown (Machine)', catalog);
+    expect(m).toMatchObject({ kind: 'suggest', exerciseId: 'lib:lat-pulldown' });
+    expect(isAutoMatch(m)).toBe(false);
+  });
+
   it('offers nothing for a name that is only vaguely like something', () => {
     expect(idOf('Mystery Machine')).toBeNull();
     expect(idOf('Press')).toBeNull();
@@ -637,9 +685,9 @@ describe('matchExerciseName', () => {
   });
 
   it('matches an archived exercise only by its exact name', () => {
-    expect(matchExerciseName('Zottman curl', catalog)).toMatchObject({ kind: 'exact', exerciseId: 'c2' });
-    expect(idOf('Curl Zottman Extra')).toBeNull();
-    expect(idOf('curl zottman')).toBeNull();
+    expect(matchExerciseName('Cossack squat', catalog)).toMatchObject({ kind: 'exact', exerciseId: 'c2' });
+    expect(idOf('Squat Cossack Extra')).toBeNull();
+    expect(idOf('squat cossack')).toBeNull();
   });
 
   it('puts only decided matches in the auto set when matching a whole file', () => {

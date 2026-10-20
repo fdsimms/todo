@@ -31,6 +31,12 @@ export interface HistoryEntry {
   at: string;
   /** The other people who were on the same row. */
   alsoPersonIds: string[];
+  /**
+   * What was said about it when the task was ticked, from a typed answer
+   * (`deliverableKind: 'text'`) only. A date, number or pick-one answer is data
+   * for something else and would read as noise under a title.
+   */
+  note: string | null;
 }
 
 /**
@@ -64,6 +70,7 @@ export function personHistory(tasks: readonly Task[]): HistoryEntry[] {
       title: t.title,
       at: t.completedAt!,
       alsoPersonIds: t.personIds,
+      note: t.deliverableKind === 'text' ? t.deliverableValue?.trim() || null : null,
     }))
     .sort((a, b) => b.at.localeCompare(a.at));
 }
