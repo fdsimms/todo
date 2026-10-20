@@ -135,12 +135,12 @@ function runNameHint(container: TemplateContainer, upgraded: boolean, hasPlaceho
   const fills = hasPlaceholders ? ' The name also fills in the blanks below.' : '';
   if (container === 'project') {
     return upgraded
-      ? `Names the project these tasks land in. This template’s groups become stacks inside it.${fills}`
-      : `Names the project these tasks land in, dated by the start and end dates above.${fills}`;
+      ? `Optional. Names the project these tasks land in. This template’s groups become stacks inside it.${fills}`
+      : `Optional. Names the project these tasks land in, dated by the start and end dates above.${fills}`;
   }
-  if (container === 'stack') return `Names the stack these tasks land in.${fills}`;
-  if (container === 'task') return `Names the task these become subtasks of.${fills}`;
-  return `Fills in the blanks below.${fills ? '' : ''}`;
+  if (container === 'stack') return `Optional. Names the stack these tasks land in.${fills}`;
+  if (container === 'task') return `Optional. Names the task these become subtasks of.${fills}`;
+  return `Optional. Fills in the blanks below.`;
 }
 
 /**
