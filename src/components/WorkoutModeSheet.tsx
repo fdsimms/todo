@@ -753,7 +753,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
             )}
 
             {/* One card per shown exercise: the one the sheet is on, or every one in All. The param keeps the name `viewed`, so the card body reads as it always has. */}
-            {(allOpen ? exercises : viewed ? [viewed] : []).map(viewed => {
+            {(allOpen ? exercises : viewed ? [viewed] : []).map((viewed, cardIndex) => {
               const viewedInfo = catalogExercise(exerciseRows, viewed.exerciseId);
               const kind: ExerciseKind = viewedInfo?.kind ?? 'weight_reps';
               const fields = setFieldsFor(kind);
@@ -799,7 +799,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
               const proposal = shownProposal?.proposal ?? null;
 
               return (
-              <View key={viewed.exerciseId} style={styles.card}>
+              <View key={viewed.exerciseId} style={[styles.card, cardIndex > 0 && styles.cardStacked]}>
                 <View style={styles.exHead}>
                   <TouchableOpacity
                     style={styles.exNameRow}
@@ -1358,6 +1358,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   dotDone: { backgroundColor: colors.done },
   dotOn: { width: 18, backgroundColor: colors.accent },
   card: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden' },
+  cardStacked: { marginTop: spacing.md },
   exHead: { paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.xs },
   exNameRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   exName: { flexShrink: 1, color: colors.text, fontSize: font.xl, fontWeight: fontWeight.bold },
