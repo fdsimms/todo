@@ -1664,6 +1664,17 @@ describe('a workout the Apple Watch ran on its own', () => {
     expect(mockLogQuotaUnit).not.toHaveBeenCalled();
   });
 
+  it('logs the rotation member whose routine it ran, only when the workout ended today', () => {
+    const r = ok(state().addRoutine('Cardio A'));
+    const members = [{ id: 'cardio', title: 'Cardio', linkUrl: null, workoutRoutineId: r.id }, { id: 'rest', title: 'Rest day', linkUrl: null }];
+    mockTasks = [task('rot', { rotationEnabled: true, rotationItems: members, recurrenceType: 'weekly', recurrenceInterval: 1 })];
+    ok(state().addWatchSession(watchWorkout({ taskId: 'rot', routineId: r.id }), { now: NOW }));
+    expect(mockLogRotationUnit).toHaveBeenCalledWith('rot', 'cardio');
+    mockLogRotationUnit.mockClear();
+    ok(state().addWatchSession(watchWorkout({ id: 'WATCH-OLD', taskId: 'rot', routineId: r.id, startedAt: at(6, 0, 15), endedAt: at(6, 50, 15) }), { now: NOW }));
+    expect(mockLogRotationUnit).not.toHaveBeenCalled();
+  });
+
   it('leaves a task already done, or one that asks a question, alone', () => {
     mockTasks = [task('done', {}, { completed: true, completedAt: at(7) }), task('asks', { deliverableKind: 'text' })];
     ok(state().addWatchSession(watchWorkout({ taskId: 'done' }), { now: NOW }));
