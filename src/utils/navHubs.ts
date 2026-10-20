@@ -429,8 +429,9 @@ export interface NavSearchResult extends NavDestination {
  * would otherwise be invisible to somebody who knows it exists and is looking
  * for it.
  *
- * These are RootStack cards rather than tabs, so opening one leaves the tab
- * highlight where it was — see PUSHED_ROUTES in AppNavigator.
+ * Saved views is a RootStack card rather than a tab, so opening it leaves the
+ * tab highlight where it was — see PUSHED_ROUTES in AppNavigator. Cookbooks
+ * is a tab route with no row, so it highlights nothing either.
  */
 export const NAV_EXTRA_DESTINATIONS: readonly NavDestination[] = [
   {
