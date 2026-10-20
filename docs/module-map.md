@@ -414,6 +414,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/refreshGuard.ts` — RefreshGuard, createRefreshGuard
 - `src/utils/releaseBlocks.ts` — releaseAllBlocks, applyKeyScan
 - `src/utils/reminderCaptures.ts` — CAPTURE_TITLE_MAX_LENGTH, MAX_REMINDER_CAPTURES, makeReminderCapture, parseReminderCaptures, serializeReminderCaptures, activeReminderCaptures, drainableReminderCaptures, captureListIds, captureDraftFields, describeReminderCaptureFiling
+- `src/utils/reminderDefault.ts` — DEFAULT_REMINDER_HHMM, defaultReminderAt
 - `src/utils/reminderNudge.ts` — ReminderNudge, nudgeReminderPastMeeting, meetingSignature, meetingAtStart
 - `src/utils/reminderPermission.ts` — askForReminderPermissionIfNeeded
 - `src/utils/remindersImport.ts` — draftFromReminder, recurrenceFromRule, reminderTimeFromAlarms, scheduleToDraft, pendingImportFor, describePendingImport, isImportableList, reminderListOptions, findReminderList, reminderCreatedAt, +14 more

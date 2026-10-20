@@ -70,6 +70,7 @@ import { BOUNTY_WITHDRAWN, DIFFICULTY_HINT, DIFFICULTY_PICKER_SEGMENTS, DIFFICUL
 import { medicationVocabulary, medicationKey } from '../utils/medicationLog';
 import { useTitleSelection } from '../hooks/useTitleSelection';
 import { confirmDeleteTask } from '../utils/confirmDeleteTask';
+import { defaultReminderAt } from '../utils/reminderDefault';
 import { offerGeneratedCategoryWriteBack } from '../utils/generatedCategoryPrompt';
 import { animateLayout } from '../utils/layoutAnimation';
 import { formatPhoneInput } from '../utils/phone';
@@ -280,6 +281,11 @@ export interface TaskDraft {
   recurrenceCount: number | null;
   /** Carried over when the draft already names a specific time — an imported event's appointment time, for instance. */
   reminderTime?: Date | null;
+  /** The rest of a reminder quick add's picker set, so More details keeps it. See Task.reminderKind and its neighbours. */
+  reminderKind?: ReminderKind;
+  reminderOffsetDays?: number | null;
+  reminderTimeAnchor?: 'wallClock' | 'fixed';
+  reminderTracksVisibility?: boolean;
   /** What failing this costs in blocked-app minutes, and the time it's judged at. */
   penaltyMinutes?: number | null;
   penaltyCutoffTime?: string | null;
@@ -1297,7 +1303,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
       // because the one before it was. A new field goes in both branches.
       setTitle(initialDraft?.title ?? ''); titleCaret.resetCaret(initialDraft?.title ?? ''); setNotes(initialDraft?.notes ?? ''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
-      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setDeadlineTime(null); setDeadlineTimePickerOpen(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setWindowStartSun(initialDraft?.windowStartSun ?? null); setWindowEndSun(initialDraft?.windowEndSun ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setGateGroupId(initialDraft?.gateGroupId ?? null); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day');  setStreakCountsUnits(false); setQuotaRampStep(null); setQuotaRampEvery(1); setQuotaRampGoal(null); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setCoinsPerTap(initialDraft?.coinsPerTap ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaPlaceIds(initialDraft?.quotaPlaceIds ?? []); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setQuotaRestAfterLog(initialDraft?.quotaRestAfterLog ?? false); setProrateFirstWeek(true); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setMeterInput(meterInputFromDraft(initialDraft)); setMeterOpen(false); setMeterReadingText(''); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
+      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setDeadlineTime(null); setDeadlineTimePickerOpen(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setWindowStartSun(initialDraft?.windowStartSun ?? null); setWindowEndSun(initialDraft?.windowEndSun ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setGateGroupId(initialDraft?.gateGroupId ?? null); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day');  setStreakCountsUnits(false); setQuotaRampStep(null); setQuotaRampEvery(1); setQuotaRampGoal(null); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setCoinsPerTap(initialDraft?.coinsPerTap ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaPlaceIds(initialDraft?.quotaPlaceIds ?? []); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setQuotaRestAfterLog(initialDraft?.quotaRestAfterLog ?? false); setProrateFirstWeek(true); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setMeterInput(meterInputFromDraft(initialDraft)); setMeterOpen(false); setMeterReadingText(''); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind(initialDraft?.reminderKind ?? 'notification'); setReminderTimeAnchor(initialDraft?.reminderTimeAnchor ?? 'wallClock'); setReminderOffsetDays(initialDraft?.reminderOffsetDays ?? null); setReminderTracksVisibility(initialDraft?.reminderTracksVisibility ?? false); setReminderTouched(false);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
@@ -2809,12 +2815,17 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
 
   const openPicker = (mode: PickerMode) => {
     if (mode === 'reminder') {
-      // Copied rather than used directly: setHours below mutates, and mutating
-      // `dueDate` here would move the task's own date to 09:00 as a side effect
-      // of opening the reminder picker. The logical day when there is no date,
-      // for the reason every other default in this file gives.
-      const defaultDate = new Date(dueDate ?? getLogicalToday());
-      defaultDate.setHours(9, 0, 0, 0);
+      // Copied rather than used directly, so working out the default can't
+      // move the task's own date. The logical day when there is no date, for
+      // the reason every other default in this file gives.
+      // Starts when the task's time of day begins, or 9:00 with none.
+      const { morningStart, afternoonStart, eveningStart, nightStart } = useSettingsStore.getState();
+      const defaultDate = defaultReminderAt(
+        new Date(dueDate ?? getLogicalToday()),
+        timeSegments,
+        { morning: morningStart, afternoon: afternoonStart, evening: eveningStart, night: nightStart },
+        dayResetTime,
+      );
       setPickerDate(reminderTime ?? defaultDate);
     }
     setPickerMode(mode);

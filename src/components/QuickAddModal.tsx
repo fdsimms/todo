@@ -50,7 +50,9 @@ import { categoryLabel } from '../utils/categoryLabel';
 import { CategoryPickerSheet } from './CategoryPicker';
 import { ProjectPickerSheet } from './ProjectPickerSheet';
 import { useShallow } from 'zustand/react/shallow';
-import type { Priority, Effort, Difficulty, TimeOfDay, RecurrenceType, Task, ChainItem, QuotaPeriod, Polarity, WeatherCondition, TaskFieldDefaults, TaskTemplate } from '../types';
+import type { Priority, Effort, Difficulty, TimeOfDay, RecurrenceType, Task, ChainItem, QuotaPeriod, Polarity, WeatherCondition, TaskFieldDefaults, TaskTemplate, ReminderKind } from '../types';
+import { RemindMePicker } from './RemindMePicker';
+import { defaultReminderAt } from '../utils/reminderDefault';
 import { PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { generateId } from '../utils/id';
 import {
@@ -269,6 +271,15 @@ const RECURRENCE_UNITS: Record<Exclude<RecurrenceType, 'none'>, [string, string]
 const NO_TASKS: Task[] = [];
 const NO_TAGS: string[] = [];
 
+/** A reminder's settings beyond its instant; see `reminderSettings` in the component. */
+interface QuickReminderSettings {
+  kind: ReminderKind;
+  offsetDays: number | null;
+  anchor: 'wallClock' | 'fixed';
+  tracksVisibility: boolean;
+}
+const PLAIN_REMINDER: QuickReminderSettings = { kind: 'notification', offsetDays: null, anchor: 'wallClock', tracksVisibility: false };
+
 export const QuickAddModal = React.memo(function QuickAddModal({
   visible, onClose, onOpenFull, context, onCreated, onResumed, seed, seedLabel,
   initialType = 'task', initialTitle, intoProjectId = null,
@@ -298,6 +309,10 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     (intoProjectId ? projects.find(p => p.id === intoProjectId)?.taskDefaults : null) ?? null;
   const tasks = useTaskStore(s => (visible ? s.tasks : NO_TASKS));
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  // Where a new reminder starts out: the start of the task's time of day.
+  const segmentStarts = useSettingsStore(useShallow(s => ({
+    morning: s.morningStart, afternoon: s.afternoonStart, evening: s.eveningStart, night: s.nightStart,
+  })));
   const mirroringMode = useSettingsStore(s => s.mirroringMode);
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
   const newTaskDefaults = useSettingsStore(s => s.newTaskDefaults);
@@ -458,6 +473,11 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // A pending suggestion, live only until the offer row is tapped or
   // dismissed — see applyParse, which is the only thing that sets it.
   const [reminderOffer, setReminderOffer] = useState<Date | null>(null);
+  // What the reminder picker chose beyond the instant (an alarm, days before
+  // the date, a fixed time zone, when it shows), written with the task so the
+  // chip's picker drops nothing it offered.
+  const [reminderSettings, setReminderSettings] = useState<QuickReminderSettings>(PLAIN_REMINDER);
+  const [reminderPickerVisible, setReminderPickerVisible] = useState(false);
   // The template the typed title resembles, and the one being run from it.
   // Dismissals are per template for the rest of this add, so a "no" isn't
   // re-asked on the next keystroke.
@@ -639,6 +659,8 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     setDeadline(null);
     setReminderTime(null);
     setReminderOffer(null);
+    setReminderSettings(PLAIN_REMINDER);
+    setReminderPickerVisible(false);
     setType(initialType);
     setTimedMinutes(initialType === 'timed' ? DEFAULT_TIMED_MINUTES : null);
     setCustomTimedText('');
@@ -1284,7 +1306,10 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     const clockAt = scheduleClockInstant(parsed.schedule, dayResetTime);
     if (clockAt && remindTitle) {
       setReminderTime(clockAt);
+      setReminderSettings(PLAIN_REMINDER);
       setReminderOffer(null);
+      // The editor asks here too: "remind me to" is the person asking for one.
+      void askForReminderPermissionIfNeeded();
     } else if (clockAt && !reminderTime) {
       setReminderOffer(clockAt);
     } else {
@@ -1296,6 +1321,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     if (!reminderOffer) return;
     haptics.success();
     setReminderTime(reminderOffer);
+    setReminderSettings(PLAIN_REMINDER);
     setReminderOffer(null);
     // Accepting the offer is the person asking for a reminder: ask for the
     // permission now if it has never been asked.
@@ -1848,6 +1874,12 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       deadline: deadline?.toISOString() ?? null,
       timeSegments,
       reminderTime: reminderTime?.toISOString() ?? null,
+      ...(reminderTime ? {
+        reminderKind: reminderSettings.kind,
+        reminderOffsetDays: reminderSettings.offsetDays,
+        reminderTimeAnchor: reminderSettings.anchor,
+        reminderTracksVisibility: reminderSettings.tracksVisibility,
+      } : {}),
       tags: resolveTags(),
       personIds,
       category: resolveCategory(),
@@ -2156,6 +2188,12 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       windowEndSun: titleWindowEnd ? titleWindowEndSun : null,
       polarity: avoidsHere ? 'negative' : 'positive',
       reminderTime,
+      ...(reminderTime ? {
+        reminderKind: reminderSettings.kind,
+        reminderOffsetDays: reminderSettings.offsetDays,
+        reminderTimeAnchor: reminderSettings.anchor,
+        reminderTracksVisibility: reminderSettings.tracksVisibility,
+      } : {}),
       tags: resolveTags(),
       personIds,
       category: resolveCategory(),
@@ -2366,6 +2404,16 @@ export const QuickAddModal = React.memo(function QuickAddModal({
         evening: colors.timeEvening,
         night: colors.timeNight,
       }[timeSegments[0]] : undefined,
+    },
+    {
+      key: 'reminder',
+      icon: reminderTime ? 'notifications' : 'notifications-outline',
+      value: reminderTime
+        ? (reminderSettings.tracksVisibility ? 'When it shows' : formatTimeOfDay(reminderTime))
+        : null,
+      // Keyboard dismissed first, as the date chip does: the picker takes no
+      // focus when it opens.
+      onPress: () => { Keyboard.dismiss(); setReminderPickerVisible(true); },
     },
     {
       key: 'priority', panel: 'priority',
@@ -2788,22 +2836,6 @@ parsed
             </View>
           )}
 
-          {!reminderOffer && !!reminderTime && (
-            <View style={styles.reminderRow}>
-              <Ionicons name="notifications" size={13} color={colors.accent} />
-              <Text style={styles.reminderText} numberOfLines={1}>
-                Reminder set for {formatTimeOfDay(reminderTime)}
-              </Text>
-              <TouchableOpacity
-                onPress={() => { haptics.tap(); setReminderTime(null); }}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Remove reminder"
-              >
-                <Ionicons name="close-circle" size={15} color={colors.textTertiary} />
-              </TouchableOpacity>
-            </View>
-          )}
 
           {/* What a title tooltip set that has no chip of its own to show it.
               Same row as the reminder above, and the same way out. */}
@@ -3700,6 +3732,34 @@ parsed
         }}
         onCancel={() => setWhenPickerVisible(false)}
       />
+      <LazySheet open={reminderPickerVisible}>
+        <RemindMePicker
+          visible={visible && reminderPickerVisible}
+          value={reminderTime ?? defaultReminderAt(
+            dueDate ?? getLogicalToday(),
+            timeSegments,
+            segmentStarts,
+            dayResetTime,
+          )}
+          kind={reminderSettings.kind}
+          dueDate={dueDate}
+          offsetDays={reminderSettings.offsetDays}
+          anchor={reminderSettings.anchor}
+          onConfirm={(date, kind, offsetDays, anchor) => {
+            setReminderTime(date);
+            setReminderSettings({ kind, offsetDays, anchor, tracksVisibility: false });
+            setReminderOffer(null);
+            setReminderPickerVisible(false);
+            void askForReminderPermissionIfNeeded();
+          }}
+          onClear={reminderTime ? () => {
+            setReminderTime(null);
+            setReminderSettings(PLAIN_REMINDER);
+            setReminderPickerVisible(false);
+          } : undefined}
+          onCancel={() => setReminderPickerVisible(false)}
+        />
+      </LazySheet>
       {/* Inside this sheet's own Modal, same as the date picker above — see
           TaskRelationPickerSheet, which the task editor opens the same way. */}
       <CategoryPickerSheet
