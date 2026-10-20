@@ -722,6 +722,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useNotificationPermission.ts` — useNotificationPermission
 - `src/hooks/useNowTick.ts` — useNowTick
 - `src/hooks/useOnDeviceAi.ts` — useOnDeviceAvailability, useAiRoute
+- `src/hooks/usePantryCatalog.ts` — usePantryCatalog
 - `src/hooks/usePendingEdits.ts` — PendingEdits, usePendingEdits, useRegisterPendingEdit
 - `src/hooks/usePlaceGateRefresh.ts` — usePlaceGateRefresh
 - `src/hooks/usePlaceSuggestions.ts` — usePlaceSuggestions
