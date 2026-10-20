@@ -1,4 +1,4 @@
-import { groupNames, resolveGroupName, routineSections } from '../utils/routineGroups';
+import { groupNames, placementsFromList, renamedRegistry, resolveGroupName, routineSections } from '../utils/routineGroups';
 
 const r = (id: string, sortOrder: number, groupName: string | null = null, archived = false) =>
   ({ id, sortOrder, groupName, archived });
@@ -43,5 +43,50 @@ describe('resolveGroupName', () => {
 describe('groupNames', () => {
   it('counts the group of an archived routine, so a restore has a place to land', () => {
     expect(groupNames([r('a', 1, 'Gym', true)])).toEqual(['Gym']);
+  });
+});
+
+describe('groups held in the registry', () => {
+  it('draws an empty group, in the registry order, ahead of names only a routine holds', () => {
+    const s = routineSections([r('a', 1, 'Solo')], ['Travel', 'Gym']);
+    expect(s.groups.map(g => [g.name, g.routines.length])).toEqual([['Travel', 0], ['Gym', 0], ['Solo', 1]]);
+  });
+
+  it('does not keep a heading alive for an archived routine alone', () => {
+    expect(routineSections([r('a', 1, 'Gone', true)]).groups).toEqual([]);
+  });
+
+  it('spells a typed name like a registry name', () => {
+    expect(resolveGroupName('travel', [], ['Travel'])).toBe('Travel');
+  });
+});
+
+describe('renamedRegistry', () => {
+  it('renames in place', () => {
+    expect(renamedRegistry(['Gym', 'Travel'], 'Gym', 'Lifting')).toEqual(['Lifting', 'Travel']);
+  });
+  it('joins a group that already has the new name', () => {
+    expect(renamedRegistry(['Gym', 'Travel'], 'Travel', 'gym')).toEqual(['Gym']);
+  });
+  it('adds the new name when the old one was only on routines', () => {
+    expect(renamedRegistry(['Gym'], 'Solo', 'Solo 2')).toEqual(['Gym', 'Solo 2']);
+  });
+});
+
+describe('placementsFromList', () => {
+  it('puts a routine in the nearest heading above it, and none above the first', () => {
+    expect(placementsFromList([
+      { kind: 'routine', id: 'a' },
+      { kind: 'header', name: 'Gym' },
+      { kind: 'routine', id: 'b' },
+      { kind: 'other' },
+      { kind: 'header', name: 'Travel' },
+      { kind: 'other' },
+      { kind: 'routine', id: 'c' },
+    ])).toEqual([
+      { id: 'a', groupName: null },
+      { id: 'b', groupName: 'Gym' },
+      { id: 'c', groupName: 'Travel' },
+    ]);
   });
 });

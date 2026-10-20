@@ -11,8 +11,6 @@ import { BUTTON_LABEL } from '../copy/shared';
 const PANEL_WIDTH = 80;
 
 interface Props {
-  /** Swipe right: file the routine under a group. */
-  onMove: () => void;
   /** Swipe left, first panel: Archive on a live routine, Restore on an archived one. */
   onArchive: () => void;
   archived: boolean;
@@ -25,16 +23,15 @@ interface Props {
 
 /**
  * A routine's row on the Routines tab with its own actions behind a swipe:
- * Move on the left, Archive (or Restore) and Delete on the right.
+ * Archive (or Restore) and Delete behind a left swipe. Moving a routine between groups is a drag, not a panel.
  *
  * This is deliberately not `SwipeableRow`, whose contract is one panel a side
  * and a left swipe that only enters bulk selection. Routines have no bulk mode
- * and need three actions, so they get panels of their own. **Nothing commits on
- * a swipe**: each panel runs on a tap, because two of the three change or
- * remove the routine and a full swipe that fires one by accident is the thing
+ * and need two panels on one side. **Nothing commits on a swipe**: each panel
+ * runs on a tap, because both change or remove the routine and a full swipe that fires one by accident is the thing
  * `SwipeableRow`'s "nothing destructive on a swipe" rule is there to prevent.
  */
-export function RoutineSwipeRow({ onMove, onArchive, archived, onDelete, name, children }: Props) {
+export function RoutineSwipeRow({ onArchive, archived, onDelete, name, children }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const ref = useRef<Swipeable>(null);
@@ -44,18 +41,6 @@ export function RoutineSwipeRow({ onMove, onArchive, archived, onDelete, name, c
     ref.current?.close();
     action();
   };
-
-  const renderLeft = archived ? undefined : () => (
-    <TouchableOpacity
-      style={[styles.panel, styles.move]}
-      onPress={() => fire(onMove)}
-      accessibilityRole="button"
-      accessibilityLabel={`Move ${name} to a group`}
-    >
-      <Ionicons name="folder-outline" size={iconSize.md} color={colors.onAccent} />
-      <Text style={styles.moveLabel}>Move</Text>
-    </TouchableOpacity>
-  );
 
   const renderRight = () => (
     <View style={styles.rightPanels}>
@@ -84,9 +69,7 @@ export function RoutineSwipeRow({ onMove, onArchive, archived, onDelete, name, c
     <View style={styles.clip}>
       <Swipeable
         ref={ref}
-        renderLeftActions={renderLeft}
         renderRightActions={renderRight}
-        overshootLeft={false}
         overshootRight={false}
         friction={2}
       >
@@ -100,9 +83,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   clip: { overflow: 'hidden', borderRadius: radius.lg },
   rightPanels: { flexDirection: 'row' },
   panel: { width: PANEL_WIDTH, alignItems: 'center', justifyContent: 'center', gap: spacing.xxs },
-  move: { backgroundColor: colors.accentFill },
   archive: { backgroundColor: colors.orangeFill },
   delete: { backgroundColor: colors.redFill },
   label: { color: colors.onFill, fontSize: font.xs, fontWeight: fontWeight.semibold },
-  moveLabel: { color: colors.onAccent, fontSize: font.xs, fontWeight: fontWeight.semibold },
 });

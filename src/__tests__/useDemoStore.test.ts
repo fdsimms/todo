@@ -2284,6 +2284,8 @@ describe('demo seed — people', () => {
     expect(inProgram.every(r => r.programId === program.id && r.items.length > 0)).toBe(true);
     // A group, and a routine put away, so the Routines tab shows both.
     expect(inProgram.every(r => r.groupName === 'Gym')).toBe(true);
+    // An empty group, so the tab shows the dashed tile.
+    expect(useWorkoutStore.getState().routineGroups).toContain('Home');
     expect(routines.find(r => r.name === 'Hotel bodyweight')).toMatchObject({ groupName: 'Travel', archived: true });
     // A superset, so the routine shape shows its pairing.
     expect(routines.some(r => r.items.filter(i => i.supersetKey === 'a').length === 2)).toBe(true);

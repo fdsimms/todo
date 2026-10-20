@@ -1,6 +1,6 @@
 import type { Exercise, WorkoutProgram, WorkoutRoutine, WorkoutSession, WorkoutSet } from '../../../src/types';
 import type { Replica } from '../replica';
-import { DEFAULT_EXERCISE_LIMIT, TREND_POINTS, exerciseHistory, listExercises, listWorkouts } from '../workoutTools';
+import { DEFAULT_EXERCISE_LIMIT, TREND_POINTS, deleteRoutineGroup, exerciseHistory, listExercises, listWorkouts, saveRoutine, saveRoutineGroup } from '../workoutTools';
 
 const custom: Exercise = {
   id: 'c1', name: 'Landmine row', kind: 'weight_reps', primaryMuscles: ['upper_back'], secondaryMuscles: [],
@@ -40,6 +40,7 @@ function fakeReplica(over: Partial<Replica> = {}): Replica {
   return {
     exercises: () => [custom],
     workoutRoutines: () => [routine],
+    routineGroups: () => ['Gym', 'Travel'],
     workoutPrograms: () => [program],
     gyms: () => [],
     gymExercises: () => [],
@@ -102,6 +103,36 @@ describe('list_workouts', () => {
     expect(w.exercises[0].sets[1]).toEqual({ kind: 'working', weightKg: 60, reps: 7, done: true });
     expect(w.exercises[1].sets[0].done).toBe(false);
     expect(result.note).toBeUndefined();
+  });
+
+  it('lists the routine groups, empty ones too, and a routine\'s group and archived state', () => {
+    const grouped = { ...routine, groupName: 'Gym', archived: true };
+    const result = listWorkouts(fakeReplica({ workoutRoutines: () => [grouped] }));
+    expect(result.routineGroups).toEqual(['Gym', 'Travel']);
+    expect(result.routines[0]).toMatchObject({ group: 'Gym', archived: true });
+    const plain = listWorkouts(fakeReplica()).routines[0];
+    expect(plain).not.toHaveProperty('group');
+    expect(plain).not.toHaveProperty('archived');
+  });
+
+  it('hands a routine\'s group and archived state to the write', () => {
+    const saved: unknown[] = [];
+    const replica = fakeReplica({ saveRoutine: input => { saved.push(input); return { ...routine, groupName: 'Gym' }; } });
+    const result = saveRoutine(replica, { id: 'r1', group: 'Gym', archived: true });
+    expect(saved).toEqual([expect.objectContaining({ id: 'r1', groupName: 'Gym', archived: true })]);
+    expect(result.routine.group).toBe('Gym');
+  });
+
+  it('makes, renames and deletes a group through the replica', () => {
+    const calls: unknown[][] = [];
+    const replica = fakeReplica({
+      saveRoutineGroup: (name, renameTo) => { calls.push(['save', name, renameTo]); return renameTo ?? name; },
+      deleteRoutineGroup: name => { calls.push(['delete', name]); return 2; },
+    });
+    expect(saveRoutineGroup(replica, { name: 'Gym' }).group).toBe('Gym');
+    expect(saveRoutineGroup(replica, { name: 'Gym', renameTo: 'Lifting' }).group).toBe('Lifting');
+    expect(deleteRoutineGroup(replica, 'Gym')).toMatchObject({ removed: 'Gym', routinesKeptUngrouped: 2 });
+    expect(calls).toEqual([['save', 'Gym', undefined], ['save', 'Gym', 'Lifting'], ['delete', 'Gym']]);
   });
 
   it('says a live workout is in progress', () => {

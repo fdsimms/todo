@@ -2131,8 +2131,9 @@ export interface WorkoutRoutine {
   createdAt: string;
   /**
    * The heading it is listed under on the Routines tab, typed by the person.
-   * A group exists only while a routine holds its name (there is no group row),
-   * and a routine is in one group at most. Null for a routine on its own.
+   * There is no group row: a heading is drawn while this name is held by a
+   * routine or is in the `workoutRoutineGroups` setting (which is what lets a
+   * group be empty). A routine is in one group at most. Null for none.
    */
   groupName: string | null;
   /** Out of the way, not deleted: listed under Archived and still startable after a restore. */

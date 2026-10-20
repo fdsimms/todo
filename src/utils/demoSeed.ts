@@ -3367,6 +3367,7 @@ function seedWorkouts(today: Date): void {
   for (const r of useWorkoutStore.getState().routines.filter(x => x.programId === programId)) {
     useWorkoutStore.getState().updateRoutine(r.id, { groupName: 'Gym' });
   }
+  workouts.addRoutineGroup('Home');
   const hotel = workouts.addRoutine('Hotel bodyweight', [
     { exerciseId: 'lib:push-up', restSeconds: 60, progression: null, targets: [{ kind: 'working', repsMin: 10, repsMax: 15 }, { kind: 'working', repsMin: 10, repsMax: 15 }] },
   ]);

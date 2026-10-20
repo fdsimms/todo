@@ -26,6 +26,7 @@ import {
   dbGetAllWorkoutRoutines,
   dbGetAllWorkoutSessions,
   dbGetPendingHealthWorkoutSessions,
+  dbGetSetting,
   dbGetWorkoutSession,
   dbGetWorkoutSets,
   dbGetWorkoutSetsForExercise,
@@ -35,6 +36,7 @@ import {
   dbSaveWorkoutSession,
   dbSaveWorkoutSet,
   dbSaveWorkoutSets,
+  dbSetSetting,
   dbTransaction,
 } from '../db/database';
 import { generateId } from '../utils/id';
@@ -55,7 +57,8 @@ import {
 import { libraryExercise } from '../utils/exerciseLibrary';
 import { loadContextFor, rampSteps } from '../utils/workoutProgression';
 import { libraryProgram } from '../utils/workoutProgramLibrary';
-import { resolveGroupName } from '../utils/routineGroups';
+import { groupNames, renamedRegistry, resolveGroupName } from '../utils/routineGroups';
+import { slotUpdates } from '../utils/projectOrder';
 import { useSettingsStore } from './useSettingsStore';
 import {
   PENDING_WORKOUT_WRITE_MAX_AGE_DAYS,
@@ -281,9 +284,24 @@ export type WorkoutRefusal =
   /** A routine item asks for a warm-up ramp on an exercise that doesn't record weight and reps. */
   | 'rampKind';
 
+/** The setting that holds the group names the person made, so a group can exist with no routine in it. */
+const ROUTINE_GROUPS_KEY = 'workoutRoutineGroups';
+
+function readRoutineGroups(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((n): n is string => typeof n === 'string' && n.trim() !== '') : [];
+  } catch {
+    return [];
+  }
+}
+
 interface WorkoutStore {
   exercises: Exercise[];
   routines: WorkoutRoutine[];
+  /** Group names in the order the Routines tab lists them. Unioned with the names routines hold (`routineGroups.ts`). */
+  routineGroups: string[];
   programs: WorkoutProgram[];
   /** Newest first. */
   sessions: WorkoutSession[];
@@ -311,6 +329,19 @@ interface WorkoutStore {
   updateRoutine: (id: string, patch: RoutinePatch) => WorkoutRoutine | WorkoutRefusal;
   /** Also takes it out of any program's rotation. Sessions keep naming it, as provenance. */
   deleteRoutine: (id: string) => void;
+  /** Makes an empty group. Refuses a blank name, and a name a group already has (ignoring case). */
+  addRoutineGroup: (name: string) => string | WorkoutRefusal;
+  /** Renames a group on its routines too. A name another group already has joins the two. */
+  renameRoutineGroup: (from: string, to: string) => string | WorkoutRefusal;
+  /** Its routines stay, in no group. */
+  deleteRoutineGroup: (name: string) => void;
+  /**
+   * What a drag on the Routines tab commits: the live routines in their new
+   * order, each with the group it now sits in, written in one transaction.
+   * Slots are handed back out the way `slotUpdates` does, so archived routines
+   * and everything not in the drag keep their place.
+   */
+  arrangeRoutines: (placements: ReadonlyArray<{ id: string; groupName: string | null }>) => void;
 
   /**
    * A program. A rotation given here or to `updateProgram` also files its
@@ -885,6 +916,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
   return {
     exercises: [],
     routines: [],
+    routineGroups: [],
     programs: [],
     sessions: [],
     setsBySession: {},
@@ -898,6 +930,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       set({
         exercises: dbGetAllExercises(),
         routines: dbGetAllWorkoutRoutines(),
+        routineGroups: readRoutineGroups(dbGetSetting(ROUTINE_GROUPS_KEY)),
         programs: dbGetAllWorkoutPrograms(),
         sessions,
         // Dropped wholesale on every load: a cache from the database before a
@@ -1031,7 +1064,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         notes: patch.notes !== undefined ? patch.notes.trim() : existing.notes,
         programId: patch.programId !== undefined ? patch.programId : existing.programId,
         items,
-        groupName: patch.groupName !== undefined ? resolveGroupName(patch.groupName, get().routines) : existing.groupName,
+        groupName: patch.groupName !== undefined ? resolveGroupName(patch.groupName, get().routines, get().routineGroups) : existing.groupName,
         archived: patch.archived ?? existing.archived,
       };
       dbSaveWorkoutRoutine(row);
@@ -1052,6 +1085,67 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         routines: get().routines.filter(r => r.id !== id),
         programs: get().programs.map(p => byId.get(p.id) ?? p),
       });
+    },
+
+    addRoutineGroup(name) {
+      const clean = cleanWorkoutName(name);
+      if (!clean) return 'blank';
+      const { routines, routineGroups } = get();
+      if (groupNames(routines, routineGroups).some(n => n.toLowerCase() === clean.toLowerCase())) return 'taken';
+      const next = [...routineGroups, clean];
+      dbSetSetting(ROUTINE_GROUPS_KEY, JSON.stringify(next));
+      set({ routineGroups: next });
+      return clean;
+    },
+
+    renameRoutineGroup(from, to) {
+      const clean = cleanWorkoutName(to);
+      if (!clean) return 'blank';
+      const { routines, routineGroups } = get();
+      const fromKey = from.trim().toLowerCase();
+      const target = resolveGroupName(clean, routines.filter(r => r.groupName?.trim().toLowerCase() !== fromKey), routineGroups.filter(n => n.trim().toLowerCase() !== fromKey)) ?? clean;
+      const next = renamedRegistry(routineGroups, from, target);
+      const moved = routines
+        .filter(r => r.groupName?.trim().toLowerCase() === fromKey)
+        .map(r => ({ ...r, groupName: target }));
+      dbTransaction(() => {
+        dbSetSetting(ROUTINE_GROUPS_KEY, JSON.stringify(next));
+        for (const r of moved) dbSaveWorkoutRoutine(r);
+      });
+      const byId = new Map(moved.map(r => [r.id, r]));
+      set({ routineGroups: next, routines: get().routines.map(r => byId.get(r.id) ?? r) });
+      return target;
+    },
+
+    deleteRoutineGroup(name) {
+      const key = name.trim().toLowerCase();
+      const next = get().routineGroups.filter(n => n.trim().toLowerCase() !== key);
+      const freed = get().routines
+        .filter(r => r.groupName?.trim().toLowerCase() === key)
+        .map(r => ({ ...r, groupName: null }));
+      dbTransaction(() => {
+        dbSetSetting(ROUTINE_GROUPS_KEY, JSON.stringify(next));
+        for (const r of freed) dbSaveWorkoutRoutine(r);
+      });
+      const byId = new Map(freed.map(r => [r.id, r]));
+      set({ routineGroups: next, routines: get().routines.map(r => byId.get(r.id) ?? r) });
+    },
+
+    arrangeRoutines(placements) {
+      const all = get().routines;
+      const slots = new Map(slotUpdates(all, placements.map(p => p.id)).map(u => [u.id, u.sortOrder]));
+      const groupOf = new Map(placements.map(p => [p.id, p.groupName]));
+      const changed: WorkoutRoutine[] = [];
+      for (const r of all) {
+        if (!groupOf.has(r.id)) continue;
+        const groupName = groupOf.get(r.id) ?? null;
+        const sortOrder = slots.get(r.id) ?? r.sortOrder;
+        if (groupName !== r.groupName || sortOrder !== r.sortOrder) changed.push({ ...r, groupName, sortOrder });
+      }
+      if (changed.length === 0) return;
+      dbTransaction(() => { for (const r of changed) dbSaveWorkoutRoutine(r); });
+      const byId = new Map(changed.map(r => [r.id, r]));
+      set({ routines: all.map(r => byId.get(r.id) ?? r) });
     },
 
     addProgram(input) {

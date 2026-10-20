@@ -619,6 +619,8 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'workoutUnit',
   'plateInventory',
   'defaultRestSeconds',
+  // The group names made on the Routines tab, so a group can be empty.
+  'workoutRoutineGroups',
   // The maximum a workout's heart-rate zones are shares of, when the person
   // typed one. A figure about a body, so it travels with the health record
   // too (HEALTH_SYNC_SETTING_KEYS).

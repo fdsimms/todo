@@ -55,6 +55,8 @@ interface Props {
   visible: boolean;
   /** The routine to edit, or null for a new one. */
   routineId: string | null;
+  /** The group a new routine is filed under when saved (an empty group's "Add new routine"). Ignored when editing. */
+  newInGroup?: string | null;
   onClose: () => void;
 }
 
@@ -103,7 +105,7 @@ const viewsOf = (rows: readonly Row[]): SupersetRowView[] =>
  * asks before throwing edits away (`confirmDiscard`); a full-screen sheet has
  * no swipe to guard, only the button.
  */
-export function RoutineEditorSheet({ visible, routineId, onClose }: Props) {
+export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const routines = useWorkoutStore(s => s.routines);
@@ -245,7 +247,9 @@ export function RoutineEditorSheet({ visible, routineId, onClose }: Props) {
       : (() => {
         const made = store.addRoutine(name, items);
         if (typeof made === 'string') return made;
-        return notes.trim() ? store.updateRoutine(made.id, { notes }) : made;
+        return notes.trim() || newInGroup
+          ? store.updateRoutine(made.id, { notes, groupName: newInGroup })
+          : made;
       })();
     if (typeof result === 'string') {
       haptics.warning();
