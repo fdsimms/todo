@@ -218,6 +218,21 @@ function onListIn(
  * exactly what you want offered while you're stocking a rental kitchen, and
  * reading `onList` bare would hide it. Omitted, this stays the home list.
  */
+/**
+ * What the add field offers before anything is typed: the things bought most
+ * and most lately that aren't on the list now, the "buy again" a person would
+ * otherwise type from memory. Only items bought at least once, so a catalog
+ * row that was only ever looked at doesn't pass for a habit.
+ */
+export function buyAgainItems(
+  items: readonly GroceryItem[],
+  now: Date,
+  limit = 5,
+  inTrolley?: ReadonlySet<string> | ReadonlyMap<string, unknown>,
+): GroceryItem[] {
+  return rankedCatalogItems(items.filter(i => i.purchaseCount > 0), now, limit, inTrolley);
+}
+
 export function rankedCatalogItems(
   items: readonly GroceryItem[],
   now: Date,

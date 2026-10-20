@@ -120,6 +120,10 @@ interface FabButtonProps {
   drag?: FabDragHandlers;
   dragHint?: string;
   dragLabel?: string | null;
+  /** A hold, for the menu behind a button whose tap adds straight away (`FabMenu`'s `tapKey`). */
+  onLongPress?: () => void;
+  /** Spoken name of what the hold does, offered to VoiceOver as an action too. */
+  longPressLabel?: string;
 }
 
 /**
@@ -131,7 +135,7 @@ interface FabButtonProps {
  */
 function FabButton({
   onPress, accessibilityLabel, icon, size, disabled, dimWhenDisabled, opacity,
-  drag, dragHint, dragLabel,
+  drag, dragHint, dragLabel, onLongPress, longPressLabel,
 }: FabButtonProps) {
   const bottom = useFabBottom();
   const colors = useColors();
@@ -168,6 +172,13 @@ function FabButton({
   // still visible — and added back on top of every post-grant dx/dy so the
   // button starts exactly under the finger.
   const grantOffsetRef = useRef({ x: 0, y: 0 });
+  // A hold opens the menu on release rather than the moment it registers, so
+  // "hold the + and drag it" (the tips' own wording) still drags: a hold that
+  // turns into a drag is a drag, and only one let go where it started opens
+  // the menu. `draggedRef` is set at grant, which RN delivers before it ends
+  // the press, so the release can tell the two apart.
+  const heldRef = useRef(false);
+  const draggedRef = useRef(false);
 
   const panResponder = useMemo(() => {
     /**
@@ -209,6 +220,7 @@ function FabButton({
       },
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: () => {
+        draggedRef.current = true;
         leftHomeRef.current = false;
         setCancelArmed(false);
         // Jump the button under the finger immediately, rather than at 0 and
@@ -311,8 +323,17 @@ function FabButton({
           pressScale={0.9}
           disabled={disabled}
           onPress={onPress}
+          onPressIn={() => { heldRef.current = false; draggedRef.current = false; }}
+          onLongPress={onLongPress ? () => { heldRef.current = true; haptics.impactMedium(); } : undefined}
+          onPressOut={onLongPress ? () => {
+            if (heldRef.current && !draggedRef.current) onLongPress();
+            heldRef.current = false;
+          } : undefined}
+          delayLongPress={interaction.delayLongPress}
           accessibilityLabel={accessibilityLabel}
-          accessibilityHint={drag ? dragHint : undefined}
+          accessibilityHint={[onLongPress && longPressLabel ? `Hold to ${longPressLabel.toLowerCase()}.` : null, drag ? dragHint : null].filter(Boolean).join(' ') || undefined}
+          accessibilityActions={onLongPress && longPressLabel ? [{ name: 'longpress', label: longPressLabel }] : undefined}
+          onAccessibilityAction={onLongPress ? e => { if (e.nativeEvent.actionName === 'longpress') onLongPress(); } : undefined}
         >
           {disabled && dimWhenDisabled ? null : (
             <GlassLayer
@@ -492,6 +513,13 @@ interface FabMenuProps {
   dragHint?: string;
   /** Names the current drop target beside the button while dragging, e.g. "New task in Work". */
   dragLabel?: string | null;
+  /**
+   * The item a tap performs straight away, with the rest of the menu behind a
+   * hold. For a screen where one entry is what nearly every press is for
+   * (Today's Task, the grocery list's Add an item), so the common case is one
+   * tap rather than two. Ignored when it names no item on the menu.
+   */
+  tapKey?: string;
 }
 
 /**
@@ -511,30 +539,43 @@ interface FabMenuProps {
  * Chain, Stack and Template from Today's; an Anthropic key is what puts the two
  * import entries in Recipes') therefore don't each need their own "or a plain
  * `Fab` if it came out at one" branch.
+ *
+ * **`tapKey` goes one further**: the tap performs that item even with others
+ * on the menu, and a hold opens the menu once it's let go without moving. A
+ * hold that moves is still a drag (see `heldRef` in FabButton).
  */
 export function FabMenu({
   items, onSelect, accessibilityLabel = 'Add', size = FAB_SIZE, disabled, opacity,
   drag, dragHint = 'Drop on the list to add a task there. Drop on the button to cancel.',
-  dragLabel,
+  dragLabel, tapKey,
 }: FabMenuProps) {
   const bottom = useFabBottom();
   const hand = useFabHand();
   const [menuVisible, setMenuVisible] = useState(false);
   const anim = useRef(new Animated.Value(0)).current;
   const only = items.length === 1 ? items[0] : null;
+  const tapItem = !only && tapKey ? items.find(i => i.key === tapKey) ?? null : null;
+
+  const showMenu = () => {
+    setMenuVisible(true);
+    anim.setValue(0);
+    Animated.spring(anim, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true }).start();
+  };
 
   const open = () => {
     // One haptic for a lone item, not the open's plus the selection's: this is
     // `Fab`'s single press, and this is the impact that button gives.
     haptics.impactLight();
-    if (only) {
-      onSelect(only.key);
+    const direct = only ?? tapItem;
+    if (direct) {
+      onSelect(direct.key);
       return;
     }
-    setMenuVisible(true);
-    anim.setValue(0);
-    Animated.spring(anim, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true }).start();
+    showMenu();
   };
+
+  // The hold's own haptic is FabButton's, at the moment it registers.
+  const holdOpen = () => showMenu();
 
   // The key a menu item was tapped for, held until `menuVisible` has actually
   // reached `false` before firing `onSelect`. Calling it in the same commit
@@ -568,6 +609,8 @@ export function FabMenu({
     <>
       <FabButton
         onPress={open}
+        onLongPress={tapItem ? holdOpen : undefined}
+        longPressLabel={tapItem ? 'Show more ways to add' : undefined}
         accessibilityLabel={accessibilityLabel}
         icon="add"
         size={size}

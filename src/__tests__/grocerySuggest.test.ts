@@ -1,6 +1,7 @@
 import {
   rankGrocerySuggestions,
   rankedCatalogItems,
+  buyAgainItems,
   buildGrocerySections,
   buildGroceryRecipeSections,
   catalogPruneCandidates,
@@ -273,6 +274,18 @@ describe('rankedCatalogItems', () => {
       makeItem({ name: 'Milk', purchaseCount: 30, lastPurchasedAt: daysAgo(4) }),
     ];
     expect(rankedCatalogItems(items, NOW)[0].name).toBe('Milk');
+  });
+});
+
+describe('buyAgainItems', () => {
+  it('offers only what has been bought, staples first, and nothing on the list', () => {
+    const items = [
+      makeItem({ name: 'Saffron', purchaseCount: 0 }),
+      makeItem({ name: 'Eggs', purchaseCount: 12, lastPurchasedAt: daysAgo(3) }),
+      makeItem({ name: 'Milk', onList: true, purchaseCount: 30 }),
+      makeItem({ name: 'Capers', purchaseCount: 1, lastPurchasedAt: daysAgo(90) }),
+    ];
+    expect(buyAgainItems(items, NOW).map(i => i.name)).toEqual(['Eggs', 'Capers']);
   });
 });
 

@@ -1922,6 +1922,9 @@ export function GroceryScreen() {
           channel={fabIntentChannel}
           items={addMenuItems}
           onSelect={handleAddMenuSelect}
+          // A tap adds the way the bottom entry does, the one nearly every
+          // press is for; the recipe and the scanner are a hold away.
+          tapKey={shopping ? 'cart' : 'item'}
           accessibilityLabel="Add groceries"
           drag={fabDrag}
           dragHint="Drop on the list to add an item there. Drop on the button to cancel."
