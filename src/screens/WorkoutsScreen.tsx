@@ -29,6 +29,7 @@ import { ActionMenu } from '../components/ActionMenu';
 import type { CardAnchor } from '../components/CardSheet';
 import { CsvExportSheet } from '../components/CsvExportSheet';
 import { WorkoutImportSheet } from '../components/WorkoutImportSheet';
+import { GymsSheet } from '../components/GymsSheet';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { pickBackupFile } from '../utils/backupFile';
 import { afterSheetsDismissed } from '../utils/sheetModal';
@@ -148,6 +149,7 @@ export function WorkoutsScreen() {
   const [importText, setImportText] = useState('');
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [gymsOpen, setGymsOpen] = useState(false);
   const workoutUnit = useSettingsStore(s => s.workoutUnit);
   const loadSets = useWorkoutStore(s => s.loadSets);
 
@@ -545,12 +547,16 @@ export function WorkoutsScreen() {
           anchor={menuAnchor}
           onClose={() => setMenuOpen(false)}
           actions={[
+            { key: 'gyms', label: 'Gyms', icon: 'location-outline', onPress: () => setGymsOpen(true) },
             { key: 'import', label: 'Import from Strong or Hevy', icon: 'download-outline', onPress: () => { void startImport(); } },
             ...(sessions.some(s => s.endedAt !== null)
               ? [{ key: 'export', label: 'Export as CSV', icon: 'share-outline' as const, onPress: () => setExportOpen(true) }]
               : []),
           ]}
         />
+      </LazySheet>
+      <LazySheet open={gymsOpen}>
+        <GymsSheet visible={gymsOpen} onClose={() => setGymsOpen(false)} />
       </LazySheet>
       <LazySheet open={importOpen}>
         <WorkoutImportSheet visible={importOpen} onClose={() => setImportOpen(false)} fileText={importText} />

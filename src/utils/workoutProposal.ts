@@ -11,6 +11,7 @@ import type {
 import type { WeightUnit } from './weightLog';
 import { catalogExercise } from './exerciseCatalog';
 import { programProgress } from './workoutProgram';
+import { withGymBar } from './gyms';
 import {
   loadContextFor,
   proposalEdits,
@@ -53,6 +54,8 @@ export interface ExerciseProposalInput {
   exceptSessionId: string | null;
   plateInventory: PlateInventory;
   unit: WeightUnit;
+  /** The bar this exercise has at the workout's gym, where it differs (`GymExerciseSetting.barKg`). */
+  gymBarKg?: number | null;
 }
 
 /** A proposal with what it was worked out against, which "Use" needs again. */
@@ -69,8 +72,9 @@ export interface ExerciseProposal {
  * history to move on from (`proposeNext`).
  */
 export function exerciseProposal(input: ExerciseProposalInput): ExerciseProposal | null {
-  const info = catalogExercise(input.exercises, input.exerciseId);
-  if (!info) return null;
+  const base = catalogExercise(input.exercises, input.exerciseId);
+  if (!base) return null;
+  const info = withGymBar(base, { barKg: input.gymBarKg ?? null });
   const item = input.routine?.items.find(i => i.exerciseId === input.exerciseId) ?? null;
   const scheme = schemeFor(item, input.program);
   if (!scheme) return null;

@@ -111,8 +111,8 @@ import { addCookware, deleteCookware, listCookware, updateCookware } from './coo
 import { listCopyFlags, resolveCopyFlag } from './copyFlagTools';
 import { deleteMeterReading, listMeterReadings, logMeterReading } from './meterTools';
 import {
-  DEFAULT_EXERCISE_LIMIT, MAX_EXERCISE_LIMIT, deleteProgram, deleteRoutine, deleteWorkout, exerciseHistory, listExercises,
-  listWorkouts, logWorkout, nextWorkout, saveProgram, saveRoutine, updateWorkout,
+  DEFAULT_EXERCISE_LIMIT, MAX_EXERCISE_LIMIT, deleteGym, deleteProgram, deleteRoutine, deleteWorkout, exerciseHistory, listExercises,
+  listWorkouts, logWorkout, nextWorkout, saveGym, saveProgram, saveRoutine, updateWorkout,
 } from './workoutTools';
 import { EXERCISE_EQUIPMENT, MUSCLE_GROUPS } from '../../src/utils/workoutData';
 import { deleteJournalEntry, listJournalEntries, logJournalEntry, searchJournalEntries, updateJournalEntry } from './journalTools';
@@ -585,7 +585,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_workouts',
-    'Workouts the person logged over a range of days, newest first, each with its exercises and sets (weights in kg, whatever unit the phone shows; done: false is a set laid out but not done), plus their routines (planned sets per exercise) and programs. Defaults to the last 7 days. Workout history is part of the health record: it is empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that they did not train. Routines and programs are plans and arrive either way. Report what was logged. Never estimate calories from sets, and never work anything out from body weight.',
+    'Workouts the person logged over a range of days, newest first, each with its exercises and sets (weights in kg, whatever unit the phone shows; done: false is a set laid out but not done), plus their routines (planned sets per exercise), programs and gyms (where they train, the equipment each has and a note for an exercise there). Defaults to the last 7 days. Workout history is part of the health record: it is empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that they did not train. Routines and programs are plans and arrive either way. Report what was logged. Never estimate calories from sets, and never work anything out from body weight.',
     logRange,
     async input => json(await withFresh(() => listWorkouts(replica, input)))
   );
@@ -671,6 +671,41 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
         return json(await withWrite(() => deleteRoutine(replica, id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not delete the routine.' });
+      }
+    }
+  );
+
+  server.tool(
+    'save_gym',
+    'Create a gym (no id) or change one (id from list_workouts). A gym is a place the person trains and the equipment it has (barbell, dumbbell, kettlebell, machine, cable, smith_machine, ez_bar, trap_bar, band, cardio_machine; bodyweight and other need nothing). During a workout the phone flags an exercise the gym can\'t do and proposes a replacement from what the gym has; nothing is swapped unasked. exerciseNotes sets the note shown under an exercise at this gym (seat positions, which rack), and an empty string clears one. Only write equipment the person told you the gym has: an empty list means nothing is known, which the phone treats as everything being available. Where a gym is can only be set on the phone. Fields left out stay; equipment replaces the whole list when given.',
+    {
+      id: z.string().min(1).optional().describe('A gym id from list_workouts, to change it. Leave out to create one.'),
+      name: z.string().min(1).max(80).optional().describe('Required to create one.'),
+      equipment: z.array(z.enum(['barbell', 'dumbbell', 'kettlebell', 'machine', 'cable', 'smith_machine', 'ez_bar', 'trap_bar', 'band', 'cardio_machine'])).max(10).optional().describe('Replaces the whole list when given.'),
+      placeText: z.string().max(200).optional().describe('An address or place name, shown under the gym. It does not set where the gym is.'),
+      exerciseNotes: z.array(z.object({
+        exerciseId: z.string().min(1).describe('From list_exercises.'),
+        notes: z.string().max(500).describe('Empty clears the note.'),
+      })).max(50).optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => saveGym(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not save the gym.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_gym',
+    'Delete a gym by its id from list_workouts, with the exercise notes kept for it. Workouts done there keep their history. It cannot be restored from here.',
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => deleteGym(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete the gym.' });
       }
     }
   );

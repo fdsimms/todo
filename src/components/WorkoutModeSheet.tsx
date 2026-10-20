@@ -53,6 +53,12 @@ import { linkedTaskLine, workoutTaskEffect } from '../utils/workoutTask';
 import { displayTitleFor } from '../utils/visibilityUtils';
 import { catalogExercise } from '../utils/exerciseCatalog';
 import { swapCandidates, swappableSets } from '../utils/exerciseSwap';
+import { GymLine, GymNoteBox, GymUnavailableBanner } from './GymWorkoutParts';
+import { GymsSheet } from './GymsSheet';
+import { useGymStore } from '../store/useGymStore';
+import {
+  describeLastLoad, exerciseIdsDoneAt, gymSettingFor, gymSwapCandidates, unavailableExerciseIds, withGymBar,
+} from '../utils/gyms';
 import { lastTimeNotes } from '../utils/lastTimeNotes';
 import { applyRoutineChanges, describeRoutineChange, routineChanges } from '../utils/routineUpdate';
 import { barKgFor, effectivePlateInventory, isPlateLoaded, plateLoad } from '../utils/plateMath';
@@ -120,6 +126,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const programs = useWorkoutStore(s => s.programs);
   const exerciseRows = useWorkoutStore(s => s.exercises);
   const sessionsList = useWorkoutStore(s => s.sessions);
+  const gyms = useGymStore(s => s.gyms);
+  const gymSettings = useGymStore(s => s.settings);
   const unit = useSettingsStore(s => s.workoutUnit);
   const plateInventory = useSettingsStore(s => s.plateInventory);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
@@ -154,6 +162,12 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const [picking, setPicking] = useState<'add' | 'swap' | null>(null);
   const [exNoteOpen, setExNoteOpen] = useState(false);
   const [exNoteDraft, setExNoteDraft] = useState('');
+  // The gym's own notice and note. "Keep" dismisses a notice for this workout
+  // only and is not stored.
+  const [gymPickerOpen, setGymPickerOpen] = useState(false);
+  const [keptIds, setKeptIds] = useState<ReadonlySet<string>>(new Set());
+  const [gymNoteOpen, setGymNoteOpen] = useState(false);
+  const [gymNoteDraft, setGymNoteDraft] = useState('');
   // The routine changes ticked on the summary. Nothing starts ticked.
   const [accepted, setAccepted] = useState<ReadonlySet<string>>(new Set());
   const [detailOpen, setDetailOpen] = useState(false);
@@ -174,6 +188,9 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     setSessionNotes(session?.notes ?? '');
     setPicking(null);
     setExNoteOpen(false);
+    setGymNoteOpen(false);
+    setGymPickerOpen(false);
+    setKeptIds(new Set());
     setAccepted(new Set());
     setDetailOpen(false);
     // On open only: a tick re-derives the view through its own handler.
@@ -195,6 +212,23 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const viewed = exercises[viewIndex] ?? null;
   const viewedInfo = viewed ? catalogExercise(exerciseRows, viewed.exerciseId) : null;
   const kind: ExerciseKind = viewedInfo?.kind ?? 'weight_reps';
+  // ==== the gym: which one, what it lacks, and what is noted for it ====
+  const gym = session?.gymId ? gyms.find(g => g.id === session.gymId) ?? null : null;
+  const gymSetting = gymSettingFor(gymSettings, gym?.id, viewed?.exerciseId ?? '');
+  // Exercises the gym can't do and that still have sets to do: one with every
+  // set ticked is a record, and a swap would have nothing to move.
+  const unavailableIds = useMemo(
+    () => unavailableExerciseIds(gym, exerciseRows, exercises.filter(e => swappableSets(e.sets, e.exerciseId).length > 0).map(e => e.exerciseId)),
+    [gym, exerciseRows, exercises],
+  );
+  const doneHere = useMemo(
+    () => (gym && unavailableIds.length > 0
+      ? exerciseIdsDoneAt(gym.id, sessionsList, useWorkoutStore.getState().allSets())
+      : new Set<string>()),
+    [gym, unavailableIds.length, sessionsList],
+  );
+  const candidatesFor = (exerciseId: string, taken: readonly string[] = exercises.map(e => e.exerciseId)) =>
+    gymSwapCandidates(exerciseRows, exerciseId, gym, taken, doneHere);
   const fields = setFieldsFor(kind);
   const current = viewed ? currentSetOf(viewed) : null;
   const openSet = viewed?.sets.find(s => s.id === (openSetId ?? current?.id)) ?? null;
@@ -205,8 +239,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const plate = useMemo(() => {
     if (!openSet || !viewedInfo || !isPlateLoaded(viewedInfo.equipment) || kind !== 'weight_reps' || !openSet.weightKg) return null;
     const inventory = effectivePlateInventory(plateInventory, unit);
-    return plateLoad(openSet.weightKg, barKgFor(viewedInfo.barKg, inventory, viewedInfo.equipment, unit), inventory, unit);
-  }, [openSet, viewedInfo, kind, plateInventory, unit]);
+    return plateLoad(openSet.weightKg, barKgFor(withGymBar(viewedInfo, gymSetting).barKg, inventory, viewedInfo.equipment, unit), inventory, unit);
+  }, [openSet, viewedInfo, kind, plateInventory, unit, gymSetting]);
 
   // Last time, for the shown exercise: one read per exercise shown, not per row.
   const previous = useMemo(
@@ -238,11 +272,12 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
       exceptSessionId: session.id,
       plateInventory,
       unit,
+      gymBarKg: gymSetting?.barKg ?? null,
     });
     // Keyed on the exercise and what decides its history, not on its sets: a
     // set edited this session doesn't change what was lifted before.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewed?.exerciseId, session?.id, exerciseRows, routine, program, sessionsList, routines, plateInventory, unit]);
+  }, [viewed?.exerciseId, session?.id, exerciseRows, routine, program, sessionsList, routines, plateInventory, unit, gymSetting?.barKg]);
   const proposal = shownProposal?.proposal ?? null;
 
   /**
@@ -328,6 +363,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     if (!target) return;
     haptics.tap();
     animateLayout();
+    // A gym note being written belongs to the exercise it was opened on.
+    if (gymNoteOpen) { commitGymNote(); setGymNoteOpen(false); }
     setViewedId(target.exerciseId);
     setOpenSetId(null);
     setNotesOpen(false);
@@ -351,6 +388,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     setOpenSetId(null);
     setNotesOpen(false);
     setExNoteOpen(false);
+    setGymNoteOpen(false);
   };
 
   const toggleExNote = () => {
@@ -470,6 +508,33 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     haptics.tap();
     useWorkoutStore.getState().discardSession();
     close();
+  };
+
+  const toggleGymNote = () => {
+    haptics.tap();
+    setGymNoteDraft(gymSetting?.notes ?? '');
+    setGymNoteOpen(v => !v);
+  };
+  const commitGymNote = () => {
+    if (gym && viewed && (gymSetting?.notes ?? '') !== gymNoteDraft.trim()) {
+      useGymStore.getState().setGymExercise(gym.id, viewed.exerciseId, { notes: gymNoteDraft });
+    }
+  };
+  // Swap every flagged exercise for the gym's best match for it, one at a time
+  // so two never take the same replacement. Each is the same swap as the one
+  // on its card, and one with no match is left for the person.
+  const swapAllUnavailable = () => {
+    if (!session) return;
+    haptics.success();
+    animateLayout();
+    const taken = exercises.map(e => e.exerciseId);
+    for (const id of unavailableIds) {
+      const best = candidatesFor(id, taken)[0];
+      if (!best) continue;
+      const moved = useWorkoutStore.getState().swapSessionExercise(session.id, id, best);
+      if (typeof moved !== 'string') taken.push(best);
+    }
+    setOpenSetId(null);
   };
 
   // ==== render. Everything below is JSX ====
@@ -640,6 +705,14 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
             {...keyboardScroll.props}
             ref={keyboardScroll.ref}
           >
+            {(gym || gyms.length > 0) && (
+              <GymLine
+                name={gym?.name ?? null}
+                unavailableCount={unavailableIds.length}
+                onChoose={() => setGymPickerOpen(true)}
+                onSwapAll={swapAllUnavailable}
+              />
+            )}
             {exercises.length > 0 && (
               <View style={styles.position}>
                 <TouchableOpacity
@@ -693,6 +766,19 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                       {viewedInfo.primaryMuscles.map(m => MUSCLE_LABELS[m]).join(', ')}
                     </Text>
                   )}
+                  {gym && unavailableIds.includes(viewed.exerciseId) && !keptIds.has(viewed.exerciseId) && (() => {
+                    const best = candidatesFor(viewed.exerciseId)[0] ?? null;
+                    return (
+                      <GymUnavailableBanner
+                        gymName={gym.name}
+                        candidateName={best ? catalogExercise(exerciseRows, best)?.name ?? null : null}
+                        candidateDetail={best && session ? describeLastLoad(useWorkoutStore.getState().lastTimeFor(best, session.id), unit) : null}
+                        onSwap={() => { if (best) swapExercise(best); }}
+                        onOther={() => { haptics.tap(); setPicking('swap'); }}
+                        onKeep={() => { haptics.tap(); setKeptIds(prev => new Set(prev).add(viewed.exerciseId)); }}
+                      />
+                    );
+                  })()}
                   <ExercisePhotos
                     exerciseId={viewed.exerciseId}
                     name={viewedInfo?.name ?? 'this exercise'}
@@ -715,7 +801,26 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                       onPress={toggleExNote}
                       accessibilityLabel={`${viewedInfo?.notes ? 'Edit' : 'Add'} the note on ${viewedInfo?.name ?? 'this exercise'}`}
                     />
+                    {gym && (
+                      <InlineAction
+                        icon="location-outline"
+                        label={gymSetting?.notes ? 'Edit gym note' : 'Add gym note'}
+                        variant="neutral"
+                        onPress={toggleGymNote}
+                        accessibilityLabel={`${gymSetting?.notes ? 'Edit' : 'Add'} the note on ${viewedInfo?.name ?? 'this exercise'} at ${gym.name}`}
+                      />
+                    )}
                   </View>
+                  {gym && (
+                    <GymNoteBox
+                      gymName={gym.name}
+                      note={gymSetting?.notes ?? ''}
+                      editing={gymNoteOpen}
+                      draft={gymNoteDraft}
+                      onChangeDraft={setGymNoteDraft}
+                      onCommit={commitGymNote}
+                    />
+                  )}
                   {lastNotes && (
                     <View style={styles.noteBox}>
                       <Text style={[styles.noteLabel, styles.noteLabelLast]}>{`Last time · ${format(new Date(lastNotes.at), 'MMM d')}`}</Text>
@@ -959,7 +1064,13 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
         onPick={picking === 'swap' ? swapExercise : addExercise}
         addedIds={exercises.map(e => e.exerciseId)}
         addedLabel="In workout"
-        suggestedIds={picking === 'swap' && viewed ? swapCandidates(exerciseRows, viewed.exerciseId, exercises.map(e => e.exerciseId)) : undefined}
+        suggestedIds={picking === 'swap' && viewed ? (gym ? candidatesFor(viewed.exerciseId) : swapCandidates(exerciseRows, viewed.exerciseId, exercises.map(e => e.exerciseId))) : undefined}
+      />
+      <GymsSheet
+        visible={visible && gymPickerOpen}
+        onClose={() => setGymPickerOpen(false)}
+        currentId={gym?.id ?? null}
+        onPick={gymId => { if (session) useWorkoutStore.getState().updateSession(session.id, { gymId }); }}
       />
       <ExerciseDetailSheet visible={visible && detailOpen} exerciseId={detailId} onClose={() => setDetailOpen(false)} />
     </SheetModal>

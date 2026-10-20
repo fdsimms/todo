@@ -21,6 +21,7 @@ import { useMilestoneStore } from '../store/useMilestoneStore';
 import { useCookwareStore } from '../store/useCookwareStore';
 import { useMeterReadingStore } from '../store/useMeterReadingStore';
 import { useWorkoutStore } from '../store/useWorkoutStore';
+import { useGymStore } from '../store/useGymStore';
 import { useJournalStore } from '../store/useJournalStore';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { installSupplementDoseEffects } from './supplementDoseSync';
@@ -3323,6 +3324,18 @@ function seedWorkouts(today: Date): void {
     const existing = libraryRoutine(name);
     return existing ? useWorkoutStore.getState().updateRoutine(existing.id, { items }) : workouts.addRoutine(name, items, programId);
   };
+  // Two gyms with different equipment, so a workout can be flagged at one and
+  // not the other: lower days at home (no cable), upper days at the big gym.
+  // Neither has a pin: demo mode never reads where the phone is.
+  const gyms = useGymStore.getState();
+  const homeGym = gyms.addGym({ name: 'Home gym', equipment: ['barbell', 'dumbbell', 'band'] });
+  const bigGym = gyms.addGym({
+    name: 'Planet Fitness', equipment: ['dumbbell', 'machine', 'cable', 'smith_machine', 'cardio_machine'], placeText: '12 Main St',
+  });
+  const homeId = typeof homeGym === 'string' ? null : homeGym.id;
+  const bigId = typeof bigGym === 'string' ? null : bigGym.id;
+  if (bigId) gyms.setGymExercise(bigId, 'lib:triceps-pushdown', { notes: 'Rope attachment on the top pulley.' });
+  if (homeId) gyms.setGymExercise(homeId, 'lib:back-squat', { notes: 'Safety bars at hole 4.' });
   const upper = ownRoutine('Upper A', [
     { exerciseId: 'lib:barbell-bench-press', restSeconds: 150, progression: { scheme: 'double', incrementKg: 2.5 },
       targets: [working(6, 8, 60), working(6, 8, 60), working(6, 8, 60)] },
@@ -3351,12 +3364,13 @@ function seedWorkouts(today: Date): void {
     useWorkoutStore.getState().updateProgram(programId, { weeks: 8, startedAt: subDays(today, 6).toISOString() });
   }
 
+  const lowerId = typeof lower === 'string' ? null : lower.id;
   type DemoSet = [exerciseId: string, weightKg: number | null, reps: number | null, durationSeconds?: number, warmup?: boolean];
   const session = (daysAgo: number, routine: typeof upper, sets: DemoSet[], effort: number) => {
     if (typeof routine === 'string') return;
     const start = subDays(today, daysAgo);
     start.setHours(18, 0, 0, 0);
-    const started = useWorkoutStore.getState().startSession({ routineId: routine.id, at: start });
+    const started = useWorkoutStore.getState().startSession({ routineId: routine.id, at: start, gymId: routine.id === lowerId ? homeId : bigId });
     if (typeof started === 'string') return;
     sets.forEach(([exerciseId, weightKg, reps, durationSeconds, warmup], i) => {
       useWorkoutStore.getState().logSet(started.id, {

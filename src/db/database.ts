@@ -18,6 +18,8 @@ import type {
   CopyFlag,
   MeterReading,
   Exercise,
+  Gym,
+  GymExerciseSetting,
   WorkoutRoutine,
   WorkoutProgram,
   WorkoutSession,
@@ -107,7 +109,7 @@ import { normalizeTemplateItem, normalizeTemplateQuestion } from '../utils/templ
 import { isDeviceLocalSetting, projectRow, type BackupRow } from '../utils/backup';
 import { foldRows, foldWinner, NATURAL_KEYS, REFERENCES, SETTING_REFERENCES } from '../utils/naturalKeyFold';
 import {
-  exerciseNameKey, readEquipment, readExerciseKind, readIdList, readMuscles, readRoutineItems, readScheme,
+  exerciseNameKey, readEquipment, readEquipmentList, readExerciseKind, readIdList, readMuscles, readRoutineItems, readScheme,
   readSetKind, readTrainingMaxes,
 } from '../utils/workoutData';
 import {
@@ -593,6 +595,31 @@ function runInitDatabase(): void {
       sort_order REAL NOT NULL DEFAULT 0,
       items TEXT NOT NULL DEFAULT '[]',
       created_at TEXT NOT NULL
+    );
+
+    -- Places the person trains (docs/arch/workouts.md, "Gyms"). equipment is a
+    -- JSON array of ExerciseEquipment. A pin is a pair of coordinates or neither.
+    CREATE TABLE IF NOT EXISTS gyms (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      equipment TEXT NOT NULL DEFAULT '[]',
+      place_text TEXT NOT NULL DEFAULT '',
+      latitude REAL,
+      longitude REAL,
+      radius_m REAL NOT NULL DEFAULT 150,
+      sort_order REAL NOT NULL DEFAULT 0,
+      archived INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
+
+    -- One row per (gym, exercise) that differs at that gym. The id is
+    -- gym_id + '|' + exercise_id (gymExerciseId), so it is the natural key.
+    CREATE TABLE IF NOT EXISTS gym_exercises (
+      id TEXT PRIMARY KEY NOT NULL,
+      gym_id TEXT NOT NULL,
+      exercise_id TEXT NOT NULL,
+      notes TEXT NOT NULL DEFAULT '',
+      bar_kg REAL
     );
 
     -- Routines in rotation. rotation (routine ids) and training_maxes are JSON.
@@ -2333,6 +2360,9 @@ function runInitDatabase(): void {
     // every existing row, which nothing reads until a watch's copy arrives for
     // it, and none can be waiting for one from before phase 9.
     'ALTER TABLE workout_sessions ADD COLUMN times_edited INTEGER NOT NULL DEFAULT 0',
+    // WorkoutSession.gymId: the gym it was done at. NULL on every existing
+    // session, which is one with no gym chosen.
+    'ALTER TABLE workout_sessions ADD COLUMN gym_id TEXT',
     // Task.slotIn: NULL on every existing row, which follows its category, and
     // every category starts at 0, so nothing waits until someone says so.
     'ALTER TABLE tasks ADD COLUMN slot_in INTEGER',
@@ -2760,6 +2790,8 @@ export const BACKUP_TABLES = [
   'exercises',
   'workout_programs',
   'workout_routines',
+  'gyms',
+  'gym_exercises',
   'workout_sessions',
   'workout_sets',
   // Journal and dream entries: standalone, beside the mood log they grew out of.
@@ -7749,6 +7781,72 @@ export function dbDeleteWorkoutRoutine(id: string): void {
   db.runSync('DELETE FROM workout_routines WHERE id = ?', [id]);
 }
 
+function rowToGym(row: Record<string, unknown>): Gym {
+  const lat = numOrNull(row.latitude);
+  const lon = numOrNull(row.longitude);
+  const pinned = lat !== null && lon !== null;
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    equipment: readEquipmentList(row.equipment),
+    placeText: String(row.place_text ?? ''),
+    latitude: pinned ? lat : null,
+    longitude: pinned ? lon : null,
+    radiusM: Number(row.radius_m ?? 150),
+    sortOrder: Number(row.sort_order ?? 0),
+    archived: Number(row.archived) === 1,
+    createdAt: String(row.created_at),
+  };
+}
+
+export function dbGetAllGyms(): Gym[] {
+  return db
+    .getAllSync<Record<string, unknown>>('SELECT * FROM gyms ORDER BY sort_order ASC, created_at ASC')
+    .map(rowToGym);
+}
+
+export function dbSaveGym(g: Gym): void {
+  db.runSync(
+    `INSERT OR REPLACE INTO gyms
+      (id, name, equipment, place_text, latitude, longitude, radius_m, sort_order, archived, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [g.id, g.name, JSON.stringify(g.equipment), g.placeText, g.latitude, g.longitude, g.radiusM, g.sortOrder, g.archived ? 1 : 0, g.createdAt]
+  );
+}
+
+/** Deletes a gym and what was noted for it. Sessions keep the id, which then reads as no gym. */
+export function dbDeleteGym(id: string): void {
+  withTransaction(() => {
+    db.runSync('DELETE FROM gym_exercises WHERE gym_id = ?', [id]);
+    db.runSync('DELETE FROM gyms WHERE id = ?', [id]);
+  });
+}
+
+function rowToGymExercise(row: Record<string, unknown>): GymExerciseSetting {
+  return {
+    id: String(row.id),
+    gymId: String(row.gym_id),
+    exerciseId: String(row.exercise_id),
+    notes: String(row.notes ?? ''),
+    barKg: numOrNull(row.bar_kg),
+  };
+}
+
+export function dbGetAllGymExercises(): GymExerciseSetting[] {
+  return db.getAllSync<Record<string, unknown>>('SELECT * FROM gym_exercises').map(rowToGymExercise);
+}
+
+export function dbSaveGymExercise(g: GymExerciseSetting): void {
+  db.runSync(
+    `INSERT OR REPLACE INTO gym_exercises (id, gym_id, exercise_id, notes, bar_kg) VALUES (?, ?, ?, ?, ?)`,
+    [g.id, g.gymId, g.exerciseId, g.notes, g.barKg]
+  );
+}
+
+export function dbDeleteGymExercise(id: string): void {
+  db.runSync('DELETE FROM gym_exercises WHERE id = ?', [id]);
+}
+
 function rowToWorkoutProgram(row: Record<string, unknown>): WorkoutProgram {
   return {
     id: String(row.id),
@@ -7790,6 +7888,7 @@ function rowToWorkoutSession(row: Record<string, unknown>): WorkoutSession {
     routineId: strOrNull(row.routine_id),
     programId: strOrNull(row.program_id),
     taskId: strOrNull(row.task_id),
+    gymId: strOrNull(row.gym_id),
     title: String(row.title),
     startedAt: String(row.started_at),
     endedAt: strOrNull(row.ended_at),
@@ -7839,11 +7938,11 @@ export function dbSaveWorkoutSession(s: WorkoutSession): void {
   db.runSync(
     `INSERT OR REPLACE INTO workout_sessions
       (id, routine_id, program_id, task_id, title, started_at, ended_at, notes, effort, health_workout_id, health_write_pending,
-       measured_on_watch, times_edited)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       measured_on_watch, times_edited, gym_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       s.id, s.routineId, s.programId, s.taskId, s.title, s.startedAt, s.endedAt, s.notes, s.effort,
-      s.healthWorkoutId, s.healthWritePending ? 1 : 0, s.measuredOnWatch ? 1 : 0, s.timesEdited ? 1 : 0,
+      s.healthWorkoutId, s.healthWritePending ? 1 : 0, s.measuredOnWatch ? 1 : 0, s.timesEdited ? 1 : 0, s.gymId ?? null,
     ]
   );
 }

@@ -69,7 +69,7 @@ components below.
 - `src/screens/TodayScreen.tsx` — AddTaskFab, AllClearMark, AnimatedCollapsible, AnimatedNumber, ApplyTemplateSheet, BulkActionBar, CardSheet, CategoryOrderSheet, CoinIcon, CompletionCollapse, CreatedTaskToast, DayContextRow, +46 more
 - `src/screens/UnattendedLogScreen.tsx` — ActivitySourceSheet, EmptyState, HubPills, InlineAction, ScreenHeader, ScreenSettingsSheet, ScrollToTopButton
 - `src/screens/WeightScreen.tsx` — EmptyState, HubPills, LogWeightSheet, ProgressBar, ScreenHeader, ScreenSettingsSheet, ScrollToTopButton, SegmentedControl, WeightChart, WeightGoalSheet
-- `src/screens/WorkoutsScreen.tsx` — ActionMenu, CardSheet, CsvExportSheet, EmptyNote, EmptyState, ExerciseDetailSheet, HelpText, InlineAction, LazySheet, ProgramEditorSheet, ProgramLibrarySheet, RoutineEditorSheet, +5 more
+- `src/screens/WorkoutsScreen.tsx` — ActionMenu, CardSheet, CsvExportSheet, EmptyNote, EmptyState, ExerciseDetailSheet, GymsSheet, HelpText, InlineAction, LazySheet, ProgramEditorSheet, ProgramLibrarySheet, +6 more
 
 ## Components
 
@@ -197,6 +197,9 @@ Where each component can appear.
 - `src/components/GroceryListSheet.tsx` — on GroceryScreen
 - `src/components/GroceryRow.tsx` — on GroceryScreen
 - `src/components/GroupDropTarget.tsx` — on ProjectDetailScreen, ProjectsScreen, TodayScreen
+- `src/components/GymEditorSheet.tsx` — on WorkoutsScreen, app shell
+- `src/components/GymWorkoutParts.tsx` — on app shell
+- `src/components/GymsSheet.tsx` — on WorkoutsScreen, app shell
 - `src/components/HabitPickerSheet.tsx` — on RewardsScreen
 - `src/components/HealthRulesSheet.tsx` — on AutomationsScreen
 - `src/components/HealthWriteRefusedNotice.tsx` — on app shell
@@ -336,7 +339,7 @@ Where each component can appear.
 - `src/components/RuleLogFields.tsx` — on AutomationsScreen, SettingsGroupScreen
 - `src/components/SafeBlurView.tsx` — on ArchivedScreen, AutomationsScreen, BackfillScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, JournalScreen, KitchenScreen, LogbookScreen, +31 more
 - `src/components/SavedDefaultsSheet.tsx` — on BackfillScreen
-- `src/components/SavedEntrySheets.tsx` — on SettingsGroupScreen
+- `src/components/SavedEntrySheets.tsx` — on SettingsGroupScreen, WorkoutsScreen, app shell
 - `src/components/SavedMealReviewSheet.tsx` — on FoodLogScreen
 - `src/components/SavedMealsSheet.tsx` — on FoodLogScreen
 - `src/components/SavedViewEditorSheet.tsx` — on SavedViewDetailScreen, SavedViewsScreen, TodayScreen

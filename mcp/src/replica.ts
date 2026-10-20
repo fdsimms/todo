@@ -81,6 +81,9 @@ import type {
   Exercise,
   WorkoutProgram,
   WorkoutRoutine,
+  Gym,
+  GymExerciseSetting,
+  ExerciseEquipment,
   WorkoutRoutineItem,
   WorkoutSession,
   WorkoutSet,
@@ -1249,6 +1252,9 @@ export interface Replica {
   workoutRoutines(): WorkoutRoutine[];
   /** Workout programs. Plans, like exercises. */
   workoutPrograms(): WorkoutProgram[];
+  /** Gyms, in the person's order, and what is noted for an exercise at each. Plans, like routines. */
+  gyms(): Gym[];
+  gymExercises(): GymExerciseSetting[];
   /**
    * Workout sessions started between two day keys, inclusive, newest first.
    * Part of the health record: empty unless the phone sends health logs to the
@@ -1276,6 +1282,17 @@ export interface Replica {
    */
   saveRoutine(input: { id?: string; name?: string; notes?: string; items?: WorkoutRoutineItem[] }): WorkoutRoutine;
   deleteRoutine(id: string): WorkoutRoutine;
+  /**
+   * `saveGym` creates (no `id`) or changes a gym through `useGymStore`'s own
+   * actions, so its name rules and refusals are the app's; fields left out
+   * stay. `exerciseNotes` sets the note for an exercise at the gym ('' clears it).
+   */
+  saveGym(input: {
+    id?: string; name?: string; equipment?: ExerciseEquipment[]; placeText?: string;
+    latitude?: number | null; longitude?: number | null; radiusM?: number;
+    exerciseNotes?: { exerciseId: string; notes: string }[];
+  }): Gym;
+  deleteGym(id: string): Gym;
   /**
    * `saveProgram` creates (no `id`) or changes a program; fields left out
    * stay. A rotation names routine ids, refused by name when one is unknown,
@@ -2307,6 +2324,20 @@ function workoutStore() {
   useWorkoutStore.getState().initialize();
   return useWorkoutStore.getState();
 }
+
+/** The gym store, loaded per write and hydrated before acting, like `workoutStore`. */
+function gymStore() {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { useGymStore } = require('../../src/store/useGymStore') as typeof import('../../src/store/useGymStore');
+  useGymStore.getState().initialize();
+  return useGymStore.getState();
+}
+
+const GYM_REFUSALS: Record<string, string> = {
+  blank: 'A gym needs a name.',
+  taken: 'Another gym already has that name. list_workouts lists the gyms.',
+  notFound: 'No gym with that id. list_workouts lists the gyms.',
+};
 
 /** What each of the store's refusals means, in words an agent can act on. */
 const WORKOUT_REFUSALS: Record<string, string> = {
@@ -4291,6 +4322,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     exercises: () => db.dbGetAllExercises(),
     workoutRoutines: () => db.dbGetAllWorkoutRoutines(),
     workoutPrograms: () => db.dbGetAllWorkoutPrograms(),
+    gyms: () => db.dbGetAllGyms(),
+    gymExercises: () => db.dbGetAllGymExercises(),
     workoutSessions: (from: string, to: string) =>
       db.dbGetAllWorkoutSessions().filter(s => {
         const day = dates.getLogicalDayKey(new Date(s.startedAt), useSettingsStore.getState().dayResetTime);
@@ -4321,6 +4354,30 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const withNotes = store.updateRoutine(made.id, { notes: input.notes });
       if (typeof withNotes === 'string') throw new Error(WORKOUT_REFUSALS[withNotes]);
       return withNotes;
+    },
+    saveGym(input) {
+      const store = gymStore();
+      const { id, exerciseNotes, ...fields } = input;
+      let saved: Gym;
+      if (id) {
+        if (!store.gyms.some(g => g.id === id)) throw new Error(`No gym with id ${id}. list_workouts lists the gyms.`);
+        const result = store.updateGym(id, fields);
+        if (typeof result === 'string') throw new Error(GYM_REFUSALS[result]);
+        saved = result;
+      } else {
+        const made = store.addGym({ name: fields.name ?? '', equipment: fields.equipment ?? [], ...fields });
+        if (typeof made === 'string') throw new Error(GYM_REFUSALS[made]);
+        saved = made;
+      }
+      for (const n of exerciseNotes ?? []) store.setGymExercise(saved.id, n.exerciseId, { notes: n.notes });
+      return saved;
+    },
+    deleteGym(id) {
+      const store = gymStore();
+      const gym = store.gyms.find(g => g.id === id);
+      if (!gym) throw new Error(`No gym with id ${id}. list_workouts lists the gyms.`);
+      store.deleteGym(id);
+      return gym;
     },
     deleteRoutine(id) {
       const store = workoutStore();

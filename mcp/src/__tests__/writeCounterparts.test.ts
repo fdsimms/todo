@@ -45,6 +45,7 @@ const COUNTERPARTS: Record<string, string[]> = {
   add_milestone: ['update_milestone', 'delete_milestone'],
   add_cookware: ['update_cookware', 'delete_cookware'],
   save_routine: ['save_routine', 'delete_routine'],
+  save_gym: ['save_gym', 'delete_gym'],
   save_program: ['save_program', 'delete_program'],
   log_workout: ['update_workout', 'delete_workout'],
   log_meter_reading: ['delete_meter_reading'],

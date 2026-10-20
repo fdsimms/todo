@@ -1528,6 +1528,10 @@ Four areas had no MCP read or write, and the shape of each answer follows from w
   `delete_routine` write plans: an exercise id the catalog doesn't know is refused by name, a
   superset is given as `supersetWithPrevious` and keyed by `joinPrevious`, the editor's own rule,
   and a progression is the person's choice of how loads move on, which only ever becomes a proposal.
+  `save_gym` and `delete_gym` write a gym through `useGymStore` (`addGym`/`updateGym`, which refuse a
+  blank or taken name): its equipment, address text and a per-exercise note, an empty string
+  clearing one. A gym's pin is deliberately not writable here, since it comes from the phone's
+  position; `list_workouts` reports only `hasLocation`. The Activity entry is a record only.
   `save_program` and `delete_program` write the plan above routines: a rotation of routine ids
   (refused by name when one is unknown), a scheme, a cycle length and training maxes in kg, through
   `addProgram`/`updateProgram`, which file the rotation's routines under the program the way the

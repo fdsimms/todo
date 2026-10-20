@@ -15,7 +15,7 @@
  * Every weight is kilograms, whatever unit the person's phone shows.
  */
 import type {
-  Exercise, ExerciseEquipment, MuscleGroup, ProgressionScheme, RoutineSetTarget, TrainingMax, WorkoutProgram, WorkoutRoutine,
+  Exercise, ExerciseEquipment, Gym, GymExerciseSetting, MuscleGroup, ProgressionScheme, RoutineSetTarget, TrainingMax, WorkoutProgram, WorkoutRoutine,
   WorkoutRoutineItem, WorkoutSession, WorkoutSet, WorkoutSetKind,
 } from '../../src/types';
 import type { Replica } from './replica';
@@ -117,6 +117,8 @@ export interface WorkoutRow {
   inProgress?: true;
   routine?: string;
   program?: string;
+  /** The gym it was done at. */
+  gym?: string;
   /** How hard it felt, 1 to 10, as the person typed it. */
   effort?: number;
   notes?: string;
@@ -129,6 +131,7 @@ interface RowNames {
   rows: readonly Exercise[];
   routineName: ReadonlyMap<string, string>;
   programName: ReadonlyMap<string, string>;
+  gymName: ReadonlyMap<string, string>;
 }
 
 function workoutRow(replica: Replica, s: WorkoutSession, sets: readonly WorkoutSet[], names: RowNames): WorkoutRow {
@@ -145,6 +148,7 @@ function workoutRow(replica: Replica, s: WorkoutSession, sets: readonly WorkoutS
     ...(s.endedAt ? { endedAt: s.endedAt } : { inProgress: true as const }),
     ...(s.routineId && names.routineName.has(s.routineId) ? { routine: names.routineName.get(s.routineId)! } : {}),
     ...(s.programId && names.programName.has(s.programId) ? { program: names.programName.get(s.programId)! } : {}),
+    ...(s.gymId && names.gymName.has(s.gymId) ? { gym: names.gymName.get(s.gymId)! } : {}),
     ...(s.effort !== null ? { effort: s.effort } : {}),
     ...(s.notes ? { notes: s.notes } : {}),
     // In Apple Health: the phone wrote it there, so only the phone can move or delete it.
@@ -162,6 +166,7 @@ function namesOf(replica: Replica): RowNames {
     rows: replica.exercises(),
     routineName: new Map(replica.workoutRoutines().map(r => [r.id, r.name])),
     programName: new Map(replica.workoutPrograms().map(p => [p.id, p.name])),
+    gymName: new Map(replica.gyms().map(g => [g.id, g.name])),
   };
 }
 
@@ -211,6 +216,32 @@ function routineRow(r: WorkoutRoutine, rows: readonly Exercise[], programName: R
       ...(i.warmupRamp ? { warmupRamp: true as const } : {}),
       targets: i.targets,
     })),
+  };
+}
+
+export interface GymRow {
+  id: string;
+  name: string;
+  /** What the gym has. Empty means nothing was told, not that it has none. */
+  equipment: ExerciseEquipment[];
+  placeText?: string;
+  /** Set once the person pinned the gym's place; workouts pick the gym by it. */
+  hasLocation?: true;
+  archived?: true;
+  /** What is noted for an exercise at this gym. */
+  exerciseNotes?: { exerciseId: string; name: string; notes: string }[];
+}
+
+function gymRow(g: Gym, settings: readonly GymExerciseSetting[], rows: readonly Exercise[]): GymRow {
+  const notes = settings.filter(s => s.gymId === g.id && s.notes);
+  return {
+    id: g.id,
+    name: g.name,
+    equipment: g.equipment,
+    ...(g.placeText ? { placeText: g.placeText } : {}),
+    ...(g.latitude !== null && g.longitude !== null ? { hasLocation: true as const } : {}),
+    ...(g.archived ? { archived: true as const } : {}),
+    ...(notes.length ? { exerciseNotes: notes.map(s => ({ exerciseId: s.exerciseId, name: exerciseName(rows, s.exerciseId), notes: s.notes })) } : {}),
   };
 }
 
@@ -266,16 +297,18 @@ const allSessions = (replica: Replica) => replica.workoutSessions('0000-01-01', 
 export function listWorkouts(
   replica: Replica,
   input: LogRangeInput = {},
-): { range: DayRange; workouts: WorkoutRow[]; routines: RoutineRow[]; programs: ProgramRow[]; note?: string } {
+): { range: DayRange; workouts: WorkoutRow[]; routines: RoutineRow[]; programs: ProgramRow[]; gyms: GymRow[]; note?: string } {
   const range = resolveRange(replica, input);
   const rows = replica.exercises();
   const routines = replica.workoutRoutines();
   const programs = replica.workoutPrograms();
   const routineName = new Map(routines.map(r => [r.id, r.name]));
   const programName = new Map(programs.map(p => [p.id, p.name]));
+  const gyms = replica.gyms();
+  const gymName = new Map(gyms.map(g => [g.id, g.name]));
 
   const workouts = replica.workoutSessions(range.from, range.to)
-    .map(s => workoutRow(replica, s, replica.workoutSets(s.id), { rows, routineName, programName }));
+    .map(s => workoutRow(replica, s, replica.workoutSets(s.id), { rows, routineName, programName, gymName }));
 
   return {
     range,
@@ -283,6 +316,7 @@ export function listWorkouts(
     routines: routines.map(r => routineRow(r, rows, programName)),
     programs: programs.filter(p => !p.archived)
       .map(p => programRow(p, programProgress(p, allSessions(replica), routines), rows, routineName)),
+    gyms: gyms.map(g => gymRow(g, replica.gymExercises(), rows)),
     ...(workouts.length === 0 ? { note: WITHHELD_NOTE } : {}),
   };
 }
@@ -510,6 +544,35 @@ export function saveRoutine(replica: Replica, input: SaveRoutineInput): { routin
   return {
     routine: routineRow(routine, names.rows, names.programName),
     note: 'A plan, not a record. A progression is the person\'s choice of how loads move on: workout mode shows the next load it proposes, and next_workout reads it, but nothing applies one unasked. To put it on their schedule, create or update a task with workoutRoutineId, or put it in a program (save_program).',
+  };
+}
+
+export interface SaveGymInput {
+  id?: string;
+  name?: string;
+  equipment?: ExerciseEquipment[];
+  placeText?: string;
+  exerciseNotes?: { exerciseId: string; notes: string }[];
+}
+
+export function saveGym(replica: Replica, input: SaveGymInput): { gym: GymRow; note: string } {
+  if (!input.id && !input.name?.trim()) throw new Error('A new gym needs a name.');
+  if (input.exerciseNotes) {
+    const unknown = unknownExercises(replica, input.exerciseNotes.map(n => n.exerciseId));
+    if (unknown.length) throw unknownError(unknown);
+  }
+  const gym = replica.saveGym(input);
+  return {
+    gym: gymRow(gym, replica.gymExercises(), replica.exercises()),
+    note: 'A gym is where the person trains and what it has. Starting a workout picks the gym by the phone\'s location, and an exercise the gym can\'t do is flagged with a replacement proposed, never swapped unasked. Where a gym is can only be set on the phone.',
+  };
+}
+
+export function deleteGym(replica: Replica, id: string): { removed: { id: string; name: string }; note: string } {
+  const gym = replica.deleteGym(id);
+  return {
+    removed: { id: gym.id, name: gym.name },
+    note: 'Its exercise notes are deleted too. Workouts done there keep their history.',
   };
 }
 

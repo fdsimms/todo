@@ -8,7 +8,7 @@ import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
 import { withAgentLedger, type AgentLedgerEntry } from '../agentLedger';
 import {
-  deleteProgram, deleteRoutine, deleteWorkout, listWorkouts, logWorkout, nextWorkout, routineItemsFrom, saveProgram, saveRoutine,
+  deleteGym, deleteProgram, deleteRoutine, deleteWorkout, listWorkouts, saveGym, logWorkout, nextWorkout, routineItemsFrom, saveProgram, saveRoutine,
   updateWorkout,
 } from '../workoutTools';
 import { createTask, getTask, updateTask } from '../tools';
@@ -35,10 +35,42 @@ describe('the workout write tools', () => {
   });
 
   beforeEach(() => {
-    for (const t of ['workout_routines', 'workout_programs', 'workout_sessions', 'workout_sets', 'exercises']) mockRaw.runSync(`DELETE FROM ${t}`);
+    for (const t of ['workout_routines', 'workout_programs', 'workout_sessions', 'workout_sets', 'exercises', 'gyms', 'gym_exercises']) mockRaw.runSync(`DELETE FROM ${t}`);
     replica.refresh();
     entries = [];
     ledgered = withAgentLedger(replica, e => { entries.push(...e); });
+  });
+
+  describe('save_gym', () => {
+    it('creates a gym with equipment and an exercise note, lists it and records it', () => {
+      const { gym, note } = saveGym(ledgered, {
+        name: ' Planet Fitness ', equipment: ['cable', 'dumbbell'], exerciseNotes: [{ exerciseId: FLY, notes: ' Seat 4 ' }],
+      });
+      expect(gym).toMatchObject({ name: 'Planet Fitness', equipment: ['dumbbell', 'cable'] });
+      expect(gym.exerciseNotes).toEqual([{ exerciseId: FLY, name: expect.any(String), notes: 'Seat 4' }]);
+      expect(note).toMatch(/Where a gym is can only be set on the phone/);
+      expect(listWorkouts(replica).gyms.map(g => g.name)).toEqual(['Planet Fitness']);
+      expect(entries).toEqual([expect.objectContaining({ action: 'created', subject: 'gym', title: 'Planet Fitness' })]);
+    });
+
+    it('changes only what it names, clears a note with an empty string, and refuses bad input', () => {
+      const { gym } = saveGym(ledgered, { name: 'Home', equipment: ['barbell'], exerciseNotes: [{ exerciseId: BENCH, notes: 'Left rack' }] });
+      const renamed = saveGym(ledgered, { id: gym.id, name: 'Garage', exerciseNotes: [{ exerciseId: BENCH, notes: '' }] }).gym;
+      expect(renamed).toMatchObject({ name: 'Garage', equipment: ['barbell'] });
+      expect(renamed.exerciseNotes).toBeUndefined();
+      expect(() => saveGym(ledgered, { equipment: ['cable'] })).toThrow(/needs a name/);
+      expect(() => saveGym(ledgered, { name: 'garage' })).toThrow(/already has that name/);
+      expect(() => saveGym(ledgered, { id: 'gone', name: 'Y' })).toThrow(/No gym with id gone/);
+      expect(() => saveGym(ledgered, { id: gym.id, exerciseNotes: [{ exerciseId: 'nope', notes: 'x' }] })).toThrow(/No exercise with id nope/);
+    });
+
+    it('deletes a gym and its notes, and says what that leaves', () => {
+      const { gym } = saveGym(ledgered, { name: 'Hotel', exerciseNotes: [{ exerciseId: BENCH, notes: 'x' }] });
+      expect(deleteGym(ledgered, gym.id)).toMatchObject({ removed: { name: 'Hotel' }, note: expect.stringMatching(/keep their history/) });
+      expect(listWorkouts(replica).gyms).toEqual([]);
+      expect(replica.gymExercises()).toEqual([]);
+      expect(entries.map(e => e.action)).toEqual(['created', 'cleared']);
+    });
   });
 
   describe('save_routine', () => {
