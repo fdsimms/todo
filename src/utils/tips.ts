@@ -217,6 +217,49 @@ export const TIPS: Tip[] = [
     when: s => s.taskCount >= 2,
     keywords: ['natural language', 'parse', 'shorthand', 'syntax', 'hashtag'],
   },
+  // The rest of what quick add reads, one tip per kind of phrase. Browse-only:
+  // the banner already has the one about dates, and these are for someone
+  // looking up a symbol they've seen or wondering what else it takes.
+  {
+    id: 'quick-add-phrases',
+    area: 'today',
+    icon: 'help-circle-outline',
+    title: 'See everything quick add reads',
+    body: 'In quick add, tap ⋯ on the bar above the keyboard, then ?. It lists every phrase quick add understands, each with an example.',
+    keywords: ['syntax', 'shorthand', 'help', 'symbols', 'what can I type'],
+  },
+  {
+    id: 'quick-add-priority-estimate',
+    area: 'today',
+    icon: 'flag-outline',
+    title: 'Set the priority and the time as you type',
+    body: '“file taxes !high ~2h” is a high priority task that takes two hours. Priority is !low, !med, !high or !urgent.',
+    keywords: ['priority', 'estimate', 'exclamation', 'tilde', 'syntax'],
+  },
+  {
+    id: 'quick-add-project-person',
+    area: 'today',
+    icon: 'briefcase-outline',
+    title: 'Name a project or a person in the title',
+    body: '“book hotel +japan” files the task in your Japan project, and “lunch @sam” says who it’s with.',
+    keywords: ['plus', 'at', 'mention', 'project', 'person', 'syntax'],
+  },
+  {
+    id: 'quick-add-steps',
+    area: 'today',
+    icon: 'list-outline',
+    title: 'Type subtasks and steps on one line',
+    body: '“pack: socks, charger, passport” adds three subtasks. “pick up cleaning -> drop off books” makes steps you do one after another.',
+    keywords: ['colon', 'arrow', 'chain', 'subtasks', 'syntax'],
+  },
+  {
+    id: 'quick-add-conditions',
+    area: 'today',
+    icon: 'partly-sunny-outline',
+    title: 'Let the weather or a reading decide when',
+    body: '“leave books out on the next sunny day” waits for the forecast, “water the garden every day unless it rains” skips rainy days, and “change the oil every 5,000 miles on the car” is due at a reading.',
+    keywords: ['weather', 'rain', 'meter', 'miles', 'odometer', 'syntax'],
+  },
   {
     id: 'expand-row',
     area: 'today',

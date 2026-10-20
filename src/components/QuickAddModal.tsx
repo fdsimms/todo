@@ -52,6 +52,7 @@ import { ProjectPickerSheet } from './ProjectPickerSheet';
 import { useShallow } from 'zustand/react/shallow';
 import type { Priority, Effort, Difficulty, TimeOfDay, RecurrenceType, Task, ChainItem, QuotaPeriod, Polarity, WeatherCondition, TaskFieldDefaults, TaskTemplate, ReminderKind } from '../types';
 import { RemindMePicker } from './RemindMePicker';
+import { QuickAddPhrasesSheet } from './QuickAddPhrasesSheet';
 import { defaultReminderAt } from '../utils/reminderDefault';
 import { PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { generateId } from '../utils/id';
@@ -479,6 +480,8 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // chip's picker drops nothing it offered.
   const [reminderSettings, setReminderSettings] = useState<QuickReminderSettings>(PLAIN_REMINDER);
   const [reminderPickerVisible, setReminderPickerVisible] = useState(false);
+  // "What can I type?", from the "?" on the keyboard bar.
+  const [phrasesVisible, setPhrasesVisible] = useState(false);
   // The template the typed title resembles, and the one being run from it.
   // Dismissals are per template for the rest of this add, so a "no" isn't
   // re-asked on the next keystroke.
@@ -662,6 +665,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     setReminderOffer(null);
     setReminderSettings(PLAIN_REMINDER);
     setReminderPickerVisible(false);
+    setPhrasesVisible(false);
     setType(initialType);
     setTimedMinutes(initialType === 'timed' ? DEFAULT_TIMED_MINUTES : null);
     setCustomTimedText('');
@@ -3833,7 +3837,16 @@ parsed
         onInsert={insertTitleToken}
         onConfirm={applyActiveParse}
         confirmVisible={confirmVisible}
+        onHelp={() => { Keyboard.dismiss(); setPhrasesVisible(true); }}
       />
+      <LazySheet open={phrasesVisible}>
+        <QuickAddPhrasesSheet
+          visible={visible && phrasesVisible}
+          onClose={() => setPhrasesVisible(false)}
+          // The keyboard went with the bar the "?" was on; this brings both back.
+          onDismiss={() => { if (visible) inputRef.current?.focus(); }}
+        />
+      </LazySheet>
     </SheetModal>
     {/* newTaskDefaults.openEditorAfterQuickAdd hand-off — see createTask. A
         sibling of the sheet above rather than something rendered inside it,
