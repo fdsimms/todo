@@ -35,7 +35,7 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { generateId } from '../utils/id';
 import { catalogExercise } from '../utils/exerciseCatalog';
 import { WEIGHT_PLACES, WEIGHT_STEP, WORKOUT_NAME_MAX_LENGTH, formatWeightWithUnit, weightFromDisplay, weightToDisplay } from '../utils/workoutData';
-import { PROGRESSION_LABELS, describeRoutine } from '../utils/workoutRoutine';
+import { PROGRESSION_HINTS, PROGRESSION_LABELS, describeRoutine } from '../utils/workoutRoutine';
 import { programProgress, weekLabel } from '../utils/workoutProgram';
 import { percentExercises } from '../utils/workoutProgramLibrary';
 import { suggestedTrainingMaxKg } from '../utils/workoutProgression';
@@ -58,14 +58,6 @@ interface Slot {
 const SCHEME_OPTIONS: SegmentOption<ProgressionScheme>[] = (
   ['double', 'linear', 'percent', 'rpe'] as const
 ).map(value => ({ value, label: PROGRESSION_LABELS[value] }));
-
-/** What the scheme control means for a program, under it. */
-const SCHEME_HINTS: Record<ProgressionScheme, string> = {
-  double: 'Workout mode suggests adding weight once every set reaches the top of its rep range. Used for exercises without their own rule in the routine.',
-  linear: 'Workout mode suggests adding weight after each workout where every set hits its target reps. Used for exercises without their own rule in the routine.',
-  percent: 'Each set uses a percentage of your training max, set below. Used for exercises without their own rule in the routine.',
-  rpe: 'Workout mode suggests a weight based on how hard your last top set felt. Used for exercises without their own rule in the routine.',
-};
 
 const toSlots = (ids: readonly string[]): Slot[] => ids.map(routineId => ({ id: generateId(), routineId }));
 const snapshotOf = (name: string, slots: readonly Slot[], scheme: ProgressionScheme, weeks: number | null, maxes: Record<string, number | null>) =>
@@ -323,10 +315,10 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
         Touch and hold a routine to move it. A week is one pass through the rotation, so a week off waits for you.
       </HelpText>
 
-      <Text style={styles.groupLabel}>How weight increases</Text>
+      <Text style={styles.groupLabel}>Progression</Text>
       <View style={[styles.card, styles.pad]}>
-        <SegmentedControl options={SCHEME_OPTIONS} value={scheme} onChange={setScheme} label="How weight increases" />
-        <HelpText style={styles.hint}>{SCHEME_HINTS[scheme]}</HelpText>
+        <SegmentedControl options={SCHEME_OPTIONS} value={scheme} onChange={setScheme} label="Progression" />
+        <HelpText style={styles.hint}>{PROGRESSION_HINTS[scheme]}</HelpText>
         <View style={[styles.kv, styles.kvSep]}>
           <Text style={styles.cap}>Cycle length</Text>
           <CountStepper
