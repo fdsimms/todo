@@ -2,7 +2,9 @@ import {
   clearCookPosition,
   restingCookPosition,
   saveCookPosition,
+  saveCookSetup,
   savedCookPosition,
+  savedCookSetup,
 } from '../utils/cookPosition';
 
 describe('cookPosition', () => {
@@ -21,6 +23,13 @@ describe('cookPosition', () => {
 
   it('falls back to the start when nothing was saved', () => {
     expect(restingCookPosition('r1', true, true)).toEqual({ rawIndex: -1, finished: false });
+  });
+
+  it('keeps the scale and picks, and drops them with the place', () => {
+    saveCookSetup('r1', { scale: 2, choices: ['a'], overrides: [] });
+    expect(savedCookSetup('r1')).toEqual({ scale: 2, choices: ['a'], overrides: [] });
+    clearCookPosition('r1');
+    expect(savedCookSetup('r1')).toBeNull();
   });
 
   it('clears a saved place', () => {
