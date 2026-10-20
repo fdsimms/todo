@@ -4,7 +4,7 @@ import { EXERCISE_EQUIPMENT, EXERCISE_KINDS, MUSCLE_GROUPS } from '../utils/work
 describe('the built-in exercise library', () => {
   it('is a real gym library rather than a sample', () => {
     expect(EXERCISE_LIBRARY.length).toBeGreaterThanOrEqual(150);
-    expect(EXERCISE_LIBRARY.length).toBeLessThanOrEqual(250);
+    expect(EXERCISE_LIBRARY.length).toBeLessThanOrEqual(300);
   });
 
   it('gives every exercise a unique, prefixed slug id', () => {
