@@ -28,7 +28,6 @@ import { ProgressBar } from './ProgressBar';
 import { EmptyNote } from './EmptyNote';
 import { TextField } from './TextField';
 import { HelpText } from './HelpText';
-import { SegmentedControl } from './SegmentedControl';
 import { ExercisePickerSheet } from './ExercisePickerSheet';
 import { ExerciseDetailSheet } from './ExerciseDetailSheet';
 import { ExercisePhotos } from './ExercisePhotos';
@@ -85,13 +84,9 @@ import { BUTTON_LABEL } from '../copy/shared';
 /** "today" is this workout's note on the exercise, "always" the exercise's own. */
 type NoteKind = 'today' | 'always';
 
-const NOTE_OPTIONS: { value: NoteKind; label: string }[] = [
-  { value: 'today', label: 'Today' },
-  { value: 'always', label: 'Every time' },
-];
 const NOTE_HELP: Record<NoteKind, string> = {
-  today: 'Only for this workout. It shows under "Last time" on your next one.',
-  always: 'Saved on the exercise and shown every time you do it.',
+  today: 'Only this workout. Shows as "Last time" next session.',
+  always: 'Saved on the exercise and shown every time.',
 };
 const NOTE_PLACEHOLDER: Record<NoteKind, string> = {
   today: 'e.g. Left shoulder felt tight',
@@ -171,10 +166,12 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const [sessionNotes, setSessionNotes] = useState('');
   // What the exercise picker is for: adding one, or swapping the shown one out.
   const [picking, setPicking] = useState<'add' | 'swap' | null>(null);
-  // Which of the exercise's two notes the field is open on (see `exerciseDayNote`
-  // for "today"; "always" is `Exercise.notes`), and what is typed in it.
-  const [noteKind, setNoteKind] = useState<NoteKind | null>(null);
-  const [noteDraft, setNoteDraft] = useState('');
+  // The notes editor, open with both fields at once (see `exerciseDayNote` for
+  // "today"; "always" is `Exercise.notes`). The value is the one that takes focus,
+  // and the two drafts are what is typed in them.
+  const [noteFocus, setNoteFocus] = useState<NoteKind | null>(null);
+  const [todayDraft, setTodayDraft] = useState('');
+  const [alwaysDraft, setAlwaysDraft] = useState('');
   // The routine changes ticked on the summary. Nothing starts ticked.
   const [accepted, setAccepted] = useState<ReadonlySet<string>>(new Set());
   const [detailOpen, setDetailOpen] = useState(false);
@@ -193,7 +190,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     setEffort(session?.effort ?? null);
     setSessionNotes(session?.notes ?? '');
     setPicking(null);
-    setNoteKind(null);
+    setNoteFocus(null);
     setAccepted(new Set());
     setDetailOpen(false);
     // On open only: a tick re-derives the view through its own handler.
@@ -208,7 +205,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     if (!viewRequest) return;
     setViewedId(viewRequest.exerciseId);
     setOpenSetId(null);
-    setNoteKind(null);
+    setNoteFocus(null);
   }, [viewRequest]);
 
   const viewIndex = Math.max(0, exercises.findIndex(e => e.exerciseId === viewedId));
@@ -299,7 +296,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     if (next.showExerciseId !== viewedId) animateLayout();
     setViewedId(next.showExerciseId);
     setOpenSetId(null);
-    setNoteKind(null);
+    setNoteFocus(null);
   };
 
   const openRow = (set: WorkoutSet) => {
@@ -350,7 +347,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     animateLayout();
     setViewedId(target.exerciseId);
     setOpenSetId(null);
-    setNoteKind(null);
+    setNoteFocus(null);
   };
 
   const addExercise = (exerciseId: string) => {
@@ -369,35 +366,34 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     animateLayout();
     setViewedId(toExerciseId);
     setOpenSetId(null);
-    setNoteKind(null);
+    setNoteFocus(null);
   };
 
   // ==== the exercise's two notes ====
   const savedNote = (k: NoteKind) => (k === 'always' ? viewedInfo?.notes ?? '' : viewed ? exerciseDayNote(viewed.sets) : '');
-  const openNote = (k: NoteKind) => {
+  const openNote = (focus: NoteKind) => {
     haptics.tap();
     animateLayout();
-    setNoteDraft(savedNote(k));
-    setNoteKind(k);
+    setTodayDraft(savedNote('today'));
+    setAlwaysDraft(savedNote('always'));
+    setNoteFocus(focus);
   };
-  // The segmented control moves the field between the notes, saving the one it leaves.
-  const switchNote = (k: NoteKind) => {
-    commitNote();
-    openNote(k);
-  };
-  const commitNote = () => {
-    if (!viewed || !session || !noteKind) return;
-    if (savedNote(noteKind).trim() === noteDraft.trim()) return;
-    if (noteKind === 'always') {
-      useWorkoutStore.getState().updateExercise(viewed.exerciseId, { notes: noteDraft });
+  // Each field saves on its own blur, so one never waits on the other.
+  const commitNote = (k: NoteKind) => {
+    if (!viewed || !session) return;
+    const draft = k === 'always' ? alwaysDraft : todayDraft;
+    if (savedNote(k).trim() === draft.trim()) return;
+    if (k === 'always') {
+      useWorkoutStore.getState().updateExercise(viewed.exerciseId, { notes: draft });
       return;
     }
-    for (const p of exerciseDayNotePatches(viewed.sets, noteDraft)) edit(p.setId, { note: p.note });
+    for (const p of exerciseDayNotePatches(viewed.sets, draft)) edit(p.setId, { note: p.note });
   };
   const closeNote = () => {
-    commitNote();
+    commitNote('today');
+    commitNote('always');
     animateLayout();
-    setNoteKind(null);
+    setNoteFocus(null);
   };
 
   // ==== leaving, finishing ====
@@ -744,7 +740,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                         accessibilityLabel={`Swap ${viewedInfo?.name ?? 'this exercise'} for another`}
                       />
                     )}
-                    {!noteKind && (!viewedInfo?.notes || !exerciseDayNote(viewed.sets)) && (
+                    {!noteFocus && (!viewedInfo?.notes || !exerciseDayNote(viewed.sets)) && (
                       <InlineAction
                         icon="create-outline"
                         label="Add note"
@@ -754,28 +750,27 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                       />
                     )}
                   </View>
-                  {(!!noteKind || !!viewedInfo?.notes || !!exerciseDayNote(viewed.sets) || !!lastNotes) && (
+                  {(!!noteFocus || !!viewedInfo?.notes || !!exerciseDayNote(viewed.sets) || !!lastNotes) && (
                     <View style={styles.noteCard}>
-                      {noteKind ? (
+                      {noteFocus ? (
                         <View style={styles.noteEditor}>
-                          <SegmentedControl
-                            options={NOTE_OPTIONS}
-                            value={noteKind}
-                            onChange={switchNote}
-                            label="Which note"
-                          />
-                          <HelpText style={styles.noteHelp}>{NOTE_HELP[noteKind]}</HelpText>
-                          <TextField
-                            style={styles.noteInput}
-                            value={noteDraft}
-                            onChangeText={setNoteDraft}
-                            onBlur={commitNote}
-                            placeholder={NOTE_PLACEHOLDER[noteKind]}
-                            placeholderTextColor={colors.textTertiary}
-                            multiline
-                            autoFocus
-                            accessibilityLabel={`${noteKind === 'today' ? 'Note for today on' : 'Note every time on'} ${viewedInfo?.name ?? 'this exercise'}`}
-                          />
+                          {(['today', 'always'] as const).map(k => (
+                            <View key={k} style={styles.noteField}>
+                              <Text style={styles.noteLabel}>{k === 'today' ? 'Today' : 'Every time'}</Text>
+                              <HelpText style={styles.noteHelp}>{NOTE_HELP[k]}</HelpText>
+                              <TextField
+                                style={styles.noteInput}
+                                value={k === 'today' ? todayDraft : alwaysDraft}
+                                onChangeText={k === 'today' ? setTodayDraft : setAlwaysDraft}
+                                onBlur={() => commitNote(k)}
+                                placeholder={NOTE_PLACEHOLDER[k]}
+                                placeholderTextColor={colors.textTertiary}
+                                multiline
+                                autoFocus={noteFocus === k}
+                                accessibilityLabel={`${k === 'today' ? 'Note for today on' : 'Note every time on'} ${viewedInfo?.name ?? 'this exercise'}`}
+                              />
+                            </View>
+                          ))}
                           <View style={styles.noteEditorActions}>
                             <InlineAction label={BUTTON_LABEL.done} onPress={closeNote} />
                           </View>
@@ -1204,6 +1199,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   noteLabelLast: { color: colors.warningText },
   noteText: { color: colors.text, fontSize: font.sm },
   noteEditor: { padding: spacing.smd, gap: spacing.sm },
+  noteField: { gap: spacing.xs },
   noteHelp: { color: colors.textSecondary, fontSize: font.xs },
   noteInput: {
     color: colors.text, fontSize: font.md, minHeight: 40,
