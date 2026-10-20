@@ -23,6 +23,8 @@ import { PillGroup } from './PillGroup';
 import { HelpText } from './HelpText';
 import { TextField } from './TextField';
 import { EmptyNote } from './EmptyNote';
+import { LazySheet } from './LazySheet';
+import { RoutineEditorSheet } from './RoutineEditorSheet';
 import type { ProgressionScheme } from '../types';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -35,7 +37,7 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { generateId } from '../utils/id';
 import { catalogExercise } from '../utils/exerciseCatalog';
 import { WEIGHT_PLACES, WEIGHT_STEP, WORKOUT_NAME_MAX_LENGTH, formatWeightWithUnit, weightFromDisplay, weightToDisplay } from '../utils/workoutData';
-import { PROGRESSION_LABELS, describeRoutine } from '../utils/workoutRoutine';
+import { PROGRESSION_HINTS, PROGRESSION_NONE_HINT, PROGRESSION_LABELS, describeRoutine } from '../utils/workoutRoutine';
 import { programProgress, weekLabel } from '../utils/workoutProgram';
 import { percentExercises } from '../utils/workoutProgramLibrary';
 import { suggestedTrainingMaxKg } from '../utils/workoutProgression';
@@ -55,20 +57,12 @@ interface Slot {
   routineId: string;
 }
 
-const SCHEME_OPTIONS: SegmentOption<ProgressionScheme>[] = (
+const SCHEME_OPTIONS: SegmentOption<ProgressionScheme | null>[] = (
   ['double', 'linear', 'percent', 'rpe'] as const
 ).map(value => ({ value, label: PROGRESSION_LABELS[value] }));
 
-/** What the scheme control means for a program, under it. */
-const SCHEME_HINTS: Record<ProgressionScheme, string> = {
-  double: 'For exercises whose routine doesn’t choose its own. Workout mode suggests more weight once every set reaches the top of the rep range.',
-  linear: 'For exercises whose routine doesn’t choose its own. Workout mode suggests more weight after every workout where each set reaches its reps.',
-  percent: 'For exercises whose routine doesn’t choose its own. Each set is a percentage of the training max below.',
-  rpe: 'For exercises whose routine doesn’t choose its own. Workout mode suggests a weight from how hard the last top set felt.',
-};
-
 const toSlots = (ids: readonly string[]): Slot[] => ids.map(routineId => ({ id: generateId(), routineId }));
-const snapshotOf = (name: string, slots: readonly Slot[], scheme: ProgressionScheme, weeks: number | null, maxes: Record<string, number | null>) =>
+const snapshotOf = (name: string, slots: readonly Slot[], scheme: ProgressionScheme | null, weeks: number | null, maxes: Record<string, number | null>) =>
   JSON.stringify([name.trim(), slots.map(s => s.routineId), scheme, weeks, Object.entries(maxes).filter(([, kg]) => kg !== null).sort()]);
 
 /**
@@ -90,11 +84,13 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
   // ==== staged state, loaded each time the sheet opens ====
   const [name, setName] = useState('');
   const [slots, setSlots] = useState<Slot[]>([]);
-  const [scheme, setScheme] = useState<ProgressionScheme>('double');
+  const [scheme, setScheme] = useState<ProgressionScheme | null>('double');
   const [weeks, setWeeks] = useState<number | null>(null);
   const [maxes, setMaxes] = useState<Record<string, number | null>>({});
   const [adding, setAdding] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [viewId, setViewId] = useState<string | null>(null);
+  const [viewOpen, setViewOpen] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
   const baseline = useRef('');
 
@@ -102,7 +98,7 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
     if (!visible) return;
     const n = program?.name ?? '';
     const s = toSlots(program?.rotation.filter(id => routines.some(r => r.id === id)) ?? []);
-    const sc = program?.scheme ?? 'double';
+    const sc = program ? program.scheme : 'double';
     const w = program?.weeks ?? null;
     const m: Record<string, number | null> = {};
     for (const t of program?.trainingMaxes ?? []) m[t.exerciseId] = t.kg;
@@ -112,6 +108,7 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
     setWeeks(w);
     setMaxes(m);
     setAdding(false);
+    setViewOpen(false);
     setRefusal(null);
     baseline.current = snapshotOf(n, s, sc, w, m);
     // Loaded on open only: a sync landing mid-edit must not overwrite what is
@@ -160,6 +157,13 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
     haptics.tap();
     animateLayout();
     setSlots(prev => [...prev, { id: generateId(), routineId }]);
+  };
+  // The routine opened from a row. The id is kept after the sheet closes so
+  // it doesn't reload as a blank new routine while it fades.
+  const openRoutine = (id: string) => {
+    haptics.tap();
+    setViewId(id);
+    setViewOpen(true);
   };
   const removeSlot = (id: string) => {
     haptics.tap();
@@ -230,6 +234,18 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
           right={<SheetHeaderButton label={BUTTON_LABEL.save} onPress={save} minWidth={64} />}
         />
       }
+      footer={
+        // Inside this sheet's own Modal, not beside it: the program's typed
+        // edits must survive, and a sibling Modal never appears over an open
+        // one (see "Two sibling Modals").
+        <LazySheet open={viewOpen}>
+          <RoutineEditorSheet
+            visible={visible && viewOpen}
+            routineId={viewId}
+            onClose={() => setViewOpen(false)}
+          />
+        </LazySheet>
+      }
     >
       <View style={styles.nameCard}>
         <TextField
@@ -275,10 +291,13 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
                   <Text style={styles.slotIndex}>{index + 1}</Text>
                   <TouchableOpacity
                     style={styles.flex}
+                    onPress={routine ? () => openRoutine(routine.id) : undefined}
                     onLongPress={drag}
                     delayLongPress={interaction.delayLongPress}
                     activeOpacity={interaction.activeOpacity}
+                    accessibilityRole={routine ? 'button' : undefined}
                     accessibilityLabel={label}
+                    accessibilityHint={routine ? 'Opens the routine' : undefined}
                   >
                     <Text style={styles.slotName}>{label}</Text>
                     {routine && <Text style={styles.slotMeta}>{describeRoutine(routine.items, musclesOf)}</Text>}
@@ -320,15 +339,15 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
         </View>
       </View>
       <HelpText style={styles.footHint}>
-        Touch and hold a routine to move it. A week is one pass through the rotation, so a week off waits for you.
+        Tap a routine to see or edit it. Touch and hold to move it. A week is one pass through the rotation, so a week off waits for you.
       </HelpText>
 
-      <Text style={styles.groupLabel}>How it moves on</Text>
+      <Text style={styles.groupLabel}>Progression</Text>
       <View style={[styles.card, styles.pad]}>
-        <SegmentedControl options={SCHEME_OPTIONS} value={scheme} onChange={setScheme} label="How it moves on" />
-        <HelpText style={styles.hint}>{SCHEME_HINTS[scheme]}</HelpText>
+        <SegmentedControl options={SCHEME_OPTIONS} value={scheme} onChange={setScheme} onDeselect={() => setScheme(null)} label="Progression" />
+        <HelpText style={styles.hint}>{scheme ? PROGRESSION_HINTS[scheme] : PROGRESSION_NONE_HINT}</HelpText>
         <View style={[styles.kv, styles.kvSep]}>
-          <Text style={styles.cap}>Weeks in a cycle</Text>
+          <Text style={styles.cap}>Program length</Text>
           <CountStepper
             value={weeks}
             onChange={setWeeks}
@@ -337,13 +356,13 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
             start={4}
             allowNull
             emptyLabel="No end"
-            label="Weeks in a cycle"
+            label="Program length in weeks"
           />
         </View>
         <HelpText style={styles.hint}>
           {scheme === 'percent'
-            ? 'The percentages climb for three weeks, and the last week of a cycle of four or more is lighter.'
-            : 'Leave it on No end for a program you run until you change it.'}
+            ? 'How many weeks the program runs. Weights rise over the first three weeks, and the last week of a program four or more weeks long is lighter.'
+            : 'How many weeks the program runs. This only changes the week count, like “Week 2 of 6”. Leave it on No end to keep going.'}
         </HelpText>
       </View>
 

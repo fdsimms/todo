@@ -466,8 +466,8 @@ describe('estimatePatchFor', () => {
 });
 
 describe('backfillFieldsFor', () => {
-  it('offers every field when simplified mode is off, rewards are on and slot-in is in use', () => {
-    expect(backfillFieldsFor(false, true, true, true)).toEqual(BACKFILL_FIELDS);
+  it('offers every field when simplified mode is off and rewards are on', () => {
+    expect(backfillFieldsFor(false, true)).toEqual(BACKFILL_FIELDS);
   });
 
   it('offers difficulty only while rewards are on, since only coins read it', () => {
@@ -489,7 +489,7 @@ describe('backfillFieldsFor', () => {
 
   it('keeps the fields the mode never touches, in their own order', () => {
     expect(backfillFieldsFor(true).map(f => f.id))
-      .toEqual(['priority', 'category', 'holidays', 'reminder', 'suggestions']);
+      .toEqual(['priority', 'category', 'holidays', 'slotIn', 'reminder', 'suggestions']);
   });
 
   it('drops the holiday question when no holidays are set up', () => {
@@ -587,9 +587,9 @@ describe('a task given several dates', () => {
 describe('the slotIn field', () => {
   const dated: Task = { ...baseTask, dueDate: new Date(2026, 9, 19).toISOString(), slotIn: null, category: 'Home' };
 
-  it('is offered only once slot-in is in use', () => {
-    expect(backfillFieldsFor(false).some(f => f.id === 'slotIn')).toBe(false);
-    expect(backfillFieldsFor(false, false, true, true).some(f => f.id === 'slotIn')).toBe(true);
+  it('is always offered, as a firm-or-flexible question about every dated task', () => {
+    expect(backfillFieldsFor(false).some(f => f.id === 'slotIn')).toBe(true);
+    expect(backfillFieldsFor(true).some(f => f.id === 'slotIn')).toBe(true);
   });
 
   it('asks about a dated task with no answer', () => {

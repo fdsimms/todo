@@ -253,11 +253,6 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
         {noHistory ? (
           <View style={styles.flex}>
             {nameBlock}
-            <EmptyState
-              icon="stats-chart-outline"
-              title="No history yet"
-              subtitle={gymFilter ? 'No sets logged at this gym yet. Choose All gyms to see the rest.' : "Sets you log for this exercise show up here, with a chart of how it's going and your personal records."}
-            />
           </View>
         ) : (
           <ScrollView style={styles.flex} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -354,6 +349,18 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
             )}
           </ScrollView>
         )}
+        {noHistory && (
+          // Laid over the whole sheet, header included, so the empty state
+          // centers on the screen rather than in the space beneath the name
+          // block. Touches pass through to the header and the Edit button.
+          <View style={styles.emptyLayer} pointerEvents="box-none">
+            <EmptyState
+              icon="stats-chart-outline"
+              title="No history yet"
+              subtitle={gymFilter ? 'No sets logged at this gym yet. Choose All gyms to see the rest.' : "Sets you log for this exercise show up here, with a chart of how it's going and your personal records."}
+            />
+          </View>
+        )}
       </View>
       <ExerciseEditorSheet visible={visible && editing} exerciseId={exerciseId} onClose={() => setEditing(false)} />
       <GymExerciseSheet visible={visible && gymEditOpen} subject={gymEdit} onClose={() => setGymEditOpen(false)} />
@@ -364,6 +371,7 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
 const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   flex: { flex: 1 },
+  emptyLayer: { ...StyleSheet.absoluteFill, justifyContent: 'center' },
   spacer: { minWidth: 64 },
   scroll: { paddingHorizontal: spacing.md, paddingBottom: spacing.xl },
   nameBlock: { paddingHorizontal: spacing.xs, paddingTop: spacing.xs, paddingBottom: spacing.xs, gap: spacing.xs },

@@ -106,7 +106,6 @@ export function backfillFieldsFor(
   simpleMode: boolean,
   rewardsEnabled = false,
   holidaysConfigured = true,
-  slotInInUse = false,
 ): BackfillFieldDef[] {
   return BACKFILL_FIELDS.filter(f => {
     // With no holidays set up in Settings the rule has nothing to act on, so the
@@ -117,11 +116,6 @@ export function backfillFieldsFor(
     // asks a question whose answer changes nothing: the editor hides its row
     // on the same terms.
     if (f.id === 'difficulty' && !rewardsEnabled) return false;
-    // Waiting for a lighter day is something a person opts into, so the
-    // question only appears once they have, on a task or a category
-    // (`slotInInUse`). Asked of everyone, it would be the opt-in feature
-    // docs/arch/backfill.md's fifth rule keeps off this screen.
-    if (f.id === 'slotIn' && !slotInInUse) return false;
     const feature = FIELD_SIMPLE_FEATURE[f.id];
     return !feature || !featureHidden(feature, simpleMode);
   });

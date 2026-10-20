@@ -343,7 +343,7 @@ export function WorkoutsScreen() {
         )}
         {(next || raises.length > 0) && (
           <View style={styles.actions}>
-            {raises.length > 0 && <InlineAction label="Start next cycle" onPress={startNextCycle} />}
+            {raises.length > 0 && <InlineAction label="Start again" onPress={startNextCycle} />}
             {next && (
               <InlineAction
                 icon="play"

@@ -147,7 +147,7 @@ export function GymExerciseSheet({ visible, subject: liveSubject, onClose }: Pro
           />
         </View>
         <HelpText style={styles.hint}>
-          How much one step adds on the machines here. Weight buttons and suggested loads use it at this gym.
+          How much one step adds on the machines here. Suggested loads at this gym move by it.
         </HelpText>
       </View>
     </CardSheet>

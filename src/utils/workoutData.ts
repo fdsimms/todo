@@ -149,6 +149,17 @@ export function readScheme(raw: unknown): ProgressionScheme {
   return oneOf(PROGRESSION_SCHEMES, raw, 'double');
 }
 
+/**
+ * The column a program with no scheme is stored as. The column is NOT NULL and
+ * a device on an older build reads anything it doesn't know as `double`, so a
+ * word rather than a null keeps both working.
+ */
+export const NO_SCHEME = 'none';
+
+export function readProgramScheme(raw: unknown): ProgressionScheme | null {
+  return raw === NO_SCHEME ? null : readScheme(raw);
+}
+
 function parseMaybeJson(raw: unknown): unknown {
   if (typeof raw !== 'string') return raw;
   try {

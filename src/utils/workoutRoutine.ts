@@ -354,6 +354,10 @@ export const PROGRESSION_HINTS: Record<ProgressionScheme, string> = {
   rpe: 'Workout mode suggests a weight from how hard the last top set felt, from 1 to 10.',
 };
 
+/** Under the control with nothing chosen, in a program: its own choice is the one a routine's exercises fall back to. */
+export const PROGRESSION_NONE_HINT =
+  'Nothing chosen. Workout mode suggests no weights, except for exercises whose routine chooses a progression.';
+
 // ==== supersets ====
 
 /** Where an item sits in a superset: on its own, or first, in the middle or last of a run. */
