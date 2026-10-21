@@ -5,6 +5,9 @@
 //   ==== matching ====         the step that settles exercise names
 //   ==== render ====           the two steps, `write` then `match`
 //
+// With `live` it describes into the running workout instead (workout mode's
+// "Describe"): same two steps, and the result goes to `live.onAdd`.
+//
 // Two steps, and the second is skipped when every name already matches. The
 // model answers with names (`draftWorkoutFromText`), and a name that isn't
 // plainly one of the person's exercises is theirs to settle before anything is
@@ -57,15 +60,40 @@ interface Props {
   visible: boolean;
   onClose: () => void;
   /** A routine was described and its names are settled. The caller opens the editor on it and closes this sheet. */
-  onRoutine: (draft: RoutineDraft) => void;
+  onRoutine?: (draft: RoutineDraft) => void;
   /** A past workout was described. The caller opens the import review on it and closes this sheet. */
-  onWorkout: (session: ImportedSession) => void;
+  onWorkout?: (session: ImportedSession) => void;
+  /**
+   * Describing into the workout that is running: the two modes become "to do"
+   * and "already done", and the settled exercises come back as routine items
+   * for the caller to add to the session (`addRoutineItems`) and close this
+   * sheet. `done` is whether they were already done.
+   */
+  live?: { onAdd: (draft: RoutineDraft, done: boolean) => void };
 }
 
 const MODE_OPTIONS: SegmentOption<DescribeMode>[] = [
   { value: 'routine', label: 'Routine' },
   { value: 'log', label: 'Workout I did' },
 ];
+
+const LIVE_MODE_OPTIONS: SegmentOption<DescribeMode>[] = [
+  { value: 'routine', label: 'To do' },
+  { value: 'log', label: 'Already done' },
+];
+
+const LIVE_COPY: Record<DescribeMode, { placeholder: string; hint: string; button: string }> = {
+  routine: {
+    placeholder: 'e.g. Bench press 3x5 at 185, then rows 3x8-12 supersetted with curls',
+    hint: 'These are added to this workout after what is already here, as sets still to do.',
+    button: 'Add to workout',
+  },
+  log: {
+    placeholder: 'e.g. Squat 5x5 at 225, then 20 minutes on the bike',
+    hint: 'These are added to this workout as sets you already did. Anything you don’t say stays empty.',
+    button: 'Add to workout',
+  },
+};
 
 const COPY: Record<DescribeMode, { placeholder: string; hint: string; button: string }> = {
   routine: {
@@ -91,7 +119,7 @@ interface Pending {
 
 type Choice = { kind: 'exercise'; exerciseId: string } | { kind: 'create' };
 
-export function DescribeWorkoutSheet({ visible, onClose, onRoutine, onWorkout }: Props) {
+export function DescribeWorkoutSheet({ visible, onClose, onRoutine, onWorkout, live }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const exercises = useWorkoutStore(s => s.exercises);
@@ -144,20 +172,22 @@ export function DescribeWorkoutSheet({ visible, onClose, onRoutine, onWorkout }:
   // ==== drafting ====
   const finishRoutine = (d: WorkoutDraft, resolutions: Record<string, NameResolution>) => {
     haptics.success();
-    onRoutine(routineFromDraft(
+    const made = routineFromDraft(
       d,
       resolutions,
       id => catalogExercise(useWorkoutStore.getState().exercises, id)?.kind ?? 'weight_reps',
       unit,
-    ));
+    );
+    if (live) live.onAdd(made, mode === 'log');
+    else onRoutine?.(made);
   };
 
   const received = (d: WorkoutDraft) => {
-    if (mode === 'log') {
+    if (mode === 'log' && !live) {
       const made = sessionFromDraft(d, unit, dayKeyOf(getLogicalToday()), new Date());
       if (!made.ok) { haptics.warning(); setError(made.error); return; }
       haptics.success();
-      onWorkout(made.session);
+      onWorkout?.(made.session);
       return;
     }
     const catalog = buildCatalog(exercises);
@@ -233,7 +263,7 @@ export function DescribeWorkoutSheet({ visible, onClose, onRoutine, onWorkout }:
   const matchedNames = draft ? draftNames(draft).filter(n => auto[n.key]) : [];
 
   // ==== render ====
-  const copy = COPY[mode];
+  const copy = (live ? LIVE_COPY : COPY)[mode];
   const writing = step === 'write';
   return (
     <SheetModal
@@ -245,7 +275,7 @@ export function DescribeWorkoutSheet({ visible, onClose, onRoutine, onWorkout }:
     >
       <View style={styles.root}>
         <SheetHeader
-          title={writing ? 'Describe a workout' : 'Match exercises'}
+          title={writing ? (live ? 'Describe exercises' : 'Describe a workout') : 'Match exercises'}
           left={writing
             ? <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={64} />
             : <SheetHeaderButton label="Back" role="cancel" onPress={() => setStep('write')} minWidth={64} />}
@@ -265,7 +295,7 @@ export function DescribeWorkoutSheet({ visible, onClose, onRoutine, onWorkout }:
           >
             <SegmentedControl
               label="What to describe"
-              options={MODE_OPTIONS}
+              options={live ? LIVE_MODE_OPTIONS : MODE_OPTIONS}
               value={mode}
               onChange={m => { setMode(m); setError(null); }}
               surface="page"
@@ -298,7 +328,9 @@ export function DescribeWorkoutSheet({ visible, onClose, onRoutine, onWorkout }:
             </PressableScale>
             {/* A consequence to read before tapping, so a plain Text: Hide help text must not remove it. */}
             <Text style={styles.note}>
-              Sent to Claude along with the names of your exercises. Nothing is saved until you check it.
+              {live
+                ? 'Sent to Claude along with the names of your exercises. Nothing is added until you check it.'
+                : 'Sent to Claude along with the names of your exercises. Nothing is saved until you check it.'}
             </Text>
           </ScrollView>
         ) : (

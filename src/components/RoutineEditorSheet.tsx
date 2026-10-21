@@ -41,8 +41,9 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { confirmDelete } from '../utils/confirmDelete';
 import { generateId } from '../utils/id';
-import { buildCatalog, catalogExercise } from '../utils/exerciseCatalog';
-import { REST_SECONDS_MAX, WORKOUT_NAME_MAX_LENGTH, exerciseNameKey, formatRestSeconds } from '../utils/workoutData';
+import { catalogExercise } from '../utils/exerciseCatalog';
+import { withCreatedExercises } from '../utils/describedExercises';
+import { REST_SECONDS_MAX, WORKOUT_NAME_MAX_LENGTH, formatRestSeconds } from '../utils/workoutData';
 import { NEW_EXERCISE_PREFIX } from '../utils/workoutCsv';
 import type { RoutineDraft } from '../utils/workoutDraft';
 import {
@@ -278,34 +279,11 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
     });
   };
 
-  /**
-   * The items with each `new:` exercise made and its real id put in. A name
-   * that was taken since the draft was read (made on another device, or by an
-   * earlier try at this same Save) is that exercise, not a second one.
-   */
-  const withCreatedExercises = (items: WorkoutRoutineItem[]): WorkoutRoutineItem[] | null => {
-    if (!seed) return items;
-    const store = useWorkoutStore.getState();
-    const made = new Map<string, string>();
-    for (const item of items) {
-      if (!item.exerciseId.startsWith(NEW_EXERCISE_PREFIX) || made.has(item.exerciseId)) continue;
-      const input = seed.newExercises[item.exerciseId.slice(NEW_EXERCISE_PREFIX.length)];
-      if (!input) return null;
-      const row = store.addExercise(input);
-      if (typeof row !== 'string') { made.set(item.exerciseId, row.id); continue; }
-      const holder = buildCatalog(useWorkoutStore.getState().exercises)
-        .find(e => exerciseNameKey(e.name) === exerciseNameKey(input.name));
-      if (!holder) return null;
-      made.set(item.exerciseId, holder.id);
-    }
-    return items.map(i => (made.has(i.exerciseId) ? { ...i, exerciseId: made.get(i.exerciseId)! } : i));
-  };
-
   const save = () => {
     const store = useWorkoutStore.getState();
     // Before anything is created: a refusal for the name shouldn't leave exercises behind.
     if (!routine && !name.trim()) { haptics.warning(); setRefusal(NAME_REFUSED.blank); return; }
-    const items = withCreatedExercises(savedItems(rows));
+    const items = seed ? withCreatedExercises(savedItems(rows), seed.newExercises) : savedItems(rows);
     if (!items) { haptics.warning(); setRefusal('This routine could not be saved.'); return; }
     const result = routine
       ? store.updateRoutine(routine.id, { name, notes, items })
