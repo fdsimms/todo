@@ -138,4 +138,12 @@ export const spawnSeed = {
    * (or two devices doing either) is one row, and a reopen names what to drop.
    */
   coinClean: (taskId: string, dayKey: string) => `coin-clean:${taskId}:${dayKey}`,
+  /**
+   * The first version of a routine saved before versions were kept, written
+   * the first time anything needs it. Every device derives the same id, so a
+   * workout stamped with it on one device names the row another device wrote.
+   */
+  routineVersionInitial: (routineId: string) => `routine-version:${routineId}:initial`,
+  /** The same for a program. */
+  programVersionInitial: (programId: string) => `program-version:${programId}:initial`,
 } as const;

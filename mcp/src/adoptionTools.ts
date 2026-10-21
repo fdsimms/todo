@@ -32,6 +32,7 @@
  * Suggestions, not verdicts: the result never says the person is doing it
  * wrong, and the server instructions tell the agent the same.
  */
+import { likelyRoutineCopies } from '../../src/utils/routineVersions';
 import { slotInInUse } from '../../src/utils/slotIn';
 import type { Task } from '../../src/types';
 import type { Replica } from './replica';
@@ -271,6 +272,21 @@ export const ADOPTION_CHECKS: readonly AdoptionCheck[] = [
       return routines >= 2 && replica.workoutPrograms().length === 0
         ? `${routines} workout routines are saved and none is in a program.`
         : null;
+    },
+  },
+  {
+    id: 'routine_history',
+    title: 'Routine history',
+    benefit: 'A routine keeps its earlier versions: History in the routine shows each one, what changed and how its workouts went, and can restore one, start a workout from one or copy it out. Merge in another routine folds a copy made by hand (like "Day One v2") into one history.',
+    advanced: true,
+    since: '2026-10-21',
+    evidence: ({ replica }) => {
+      if (!replica.settings().workoutsEnabled) return null;
+      const routines = replica.workoutRoutines().filter(r => r && typeof r.name === 'string');
+      const pair = likelyRoutineCopies(routines)[0];
+      if (!pair) return null;
+      const name = (id: string) => routines.find(r => r.id === id)?.name ?? '';
+      return `"${name(pair.copyId)}" looks like a copy of "${name(pair.originalId)}", and the two could share one history.`;
     },
   },
   {

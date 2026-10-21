@@ -2198,6 +2198,54 @@ export interface WorkoutRoutine {
   groupName: string | null;
   /** Out of the way, not deleted: listed under Archived and still startable after a restore. */
   archived: boolean;
+  /**
+   * The version (`WorkoutRoutineVersion.id`) this routine's content is, which
+   * a workout started from it records. Null or absent on a routine saved
+   * before versions were kept, which reads as one implicit first version.
+   */
+  currentVersionId?: string | null;
+}
+
+/** What wrote a routine version. Shown in History; changes nothing about how it behaves. */
+export type RoutineVersionSource = 'created' | 'initial' | 'edit' | 'workout' | 'restore' | 'copy' | 'agent';
+
+/**
+ * One version of a routine: the plan as it stood, kept so it can be compared
+ * and restored (docs/arch/workouts.md, "Routine and program history"). A
+ * version is what was trained on, so a save made after a workout on the
+ * current one is a new row, and one made before any workout amends it.
+ * Versions are numbered by `createdAt`, never by a stored number, so two
+ * devices each adding one end up with both rather than two "version 5"s.
+ */
+export interface WorkoutRoutineVersion {
+  id: string;
+  routineId: string;
+  createdAt: string;
+  /** The routine's name when this version was saved. */
+  name: string;
+  notes: string;
+  items: WorkoutRoutineItem[];
+  source: RoutineVersionSource;
+  /** A name the person gave this version ("Shoulder-friendly"). Null for none. */
+  label: string | null;
+}
+
+/**
+ * One version of a program's structure: its name, rotation, length and
+ * scheme, with the version of each routine in the rotation that was current
+ * when it was saved. Training maxes are not versioned: they move every cycle.
+ */
+export interface WorkoutProgramVersion {
+  id: string;
+  programId: string;
+  createdAt: string;
+  name: string;
+  weeks: number | null;
+  rotation: string[];
+  scheme: ProgressionScheme | null;
+  /** routineId → `WorkoutRoutineVersion.id` current when this version was saved. */
+  routineVersionIds: Record<string, string>;
+  label: string | null;
 }
 
 /**
@@ -2260,6 +2308,8 @@ export interface WorkoutProgram {
   startedAt: string | null;
   archived: boolean;
   createdAt: string;
+  /** The current `WorkoutProgramVersion.id`. Null or absent before versions were kept. */
+  currentVersionId?: string | null;
 }
 
 /**
@@ -2274,6 +2324,12 @@ export interface WorkoutSession {
   taskId: string | null;
   /** The gym it was done at (`Gym.id`), or null for none chosen. Provenance only: allowed to dangle. */
   gymId?: string | null;
+  /**
+   * The routine version it was done on (`WorkoutRoutineVersion.id`), stamped
+   * at start. Null on a workout from before versions were kept, which is
+   * counted against the version in effect when it started (`sessionVersionId`).
+   */
+  routineVersionId?: string | null;
   title: string;
   startedAt: string;
   /** Null while the session is live. */

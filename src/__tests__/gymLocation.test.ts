@@ -38,7 +38,7 @@ const HERE = { latitude: 40, longitude: -74, accuracyM: 20 };
 
 beforeAll(() => { initDatabase(); });
 beforeEach(() => {
-  for (const t of ['gyms', 'gym_exercises', 'workout_sessions', 'workout_sets', 'workout_routines']) mockRawDb.exec(`DELETE FROM ${t}`);
+  for (const t of ['gyms', 'gym_exercises', 'workout_sessions', 'workout_sets', 'workout_routines', 'workout_routine_versions']) mockRawDb.exec(`DELETE FROM ${t}`);
   useGymStore.getState().initialize();
   useWorkoutStore.getState().initialize();
   mockLocation.mockReset();
