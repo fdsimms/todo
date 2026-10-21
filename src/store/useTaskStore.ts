@@ -142,6 +142,7 @@ import {
   WANIKANI_LESSON_URL,
   WANIKANI_REVIEW_NOTES,
   WANIKANI_REVIEW_URL,
+  wanikaniLinkFor,
   decideWaniKaniReviews,
   wanikaniHeldUntil,
   wanikaniHoldFields,
@@ -8703,6 +8704,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       state: settings.wanikaniReviewState,
     });
     const action = decision.action;
+    const reviewLink = wanikaniLinkFor(settings.wanikaniClientLink, WANIKANI_REVIEW_URL);
+    const lessonLink = wanikaniLinkFor(settings.wanikaniClientLink, WANIKANI_LESSON_URL);
     if (action.type === 'drop' && open) deleteGeneratedTaskQuietly(open.id);
     if (action.type === 'write') {
       const title = wanikaniReviewTitle(action.count);
@@ -8720,6 +8723,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         drift: existing => {
           const patch: Partial<Task> = {};
           if (existing.title !== title) patch.title = title;
+          if (existing.linkUrl !== reviewLink) patch.linkUrl = reviewLink;
           const heldUntil = wanikaniHeldUntil(existing, reset);
           const isHeld = heldUntil !== null && heldUntil.getTime() > now.getTime();
           if (hold) {
@@ -8744,7 +8748,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           reminderTime,
           ...(reminderTime ? { notes: WANIKANI_REVIEW_NOTES } : {}),
           category,
-          linkUrl: WANIKANI_REVIEW_URL,
+          linkUrl: reviewLink,
           ...generatedBy('wanikani', action.sourceId),
         }),
       });
@@ -8783,12 +8787,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       kind: 'wanikani',
       sourceId: lessonsSourceId,
       wanted: true,
-      drift: existing => (existing.title === lessonTitle ? null : { title: lessonTitle }),
+      drift: existing => {
+        const patch: Partial<Task> = {};
+        if (existing.title !== lessonTitle) patch.title = lessonTitle;
+        if (existing.linkUrl !== lessonLink) patch.linkUrl = lessonLink;
+        return Object.keys(patch).length > 0 ? patch : null;
+      },
       draft: () => ({
         title: lessonTitle,
         dueDate: todayNoon.toISOString(),
         category,
-        linkUrl: WANIKANI_LESSON_URL,
+        linkUrl: lessonLink,
         ...generatedBy('wanikani', lessonsSourceId),
       }),
     });

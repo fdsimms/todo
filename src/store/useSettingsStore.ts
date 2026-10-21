@@ -1865,6 +1865,8 @@ interface SettingsStore {
   wanikaniLessonsPerDay: number | null;
   wanikaniApprenticeCap: number | null;
   wanikaniNotify: boolean;
+  // A third-party client's link for the task to open. Blank is WaniKani's website.
+  wanikaniClientLink: string;
   wanikaniReviewState: WaniKaniReviewState;
   wanikaniLessonsLastDayKey: string | null;
   // Whether a run of low-mood days adds a task to plan something you enjoy.
@@ -2403,6 +2405,7 @@ interface SettingsStore {
   setWanikaniLessonsPerDay: (count: number | null) => void;
   setWanikaniApprenticeCap: (count: number | null) => void;
   setWanikaniNotify: (on: boolean) => void;
+  setWanikaniClientLink: (link: string) => void;
   setWanikaniReviewState: (state: WaniKaniReviewState) => void;
   setWanikaniLessonsLastDayKey: (key: string | null) => void;
   setMoodNudgeTasks: (on: boolean) => void;
@@ -3187,6 +3190,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   wanikaniLessonsPerDay: null,
   wanikaniApprenticeCap: WANIKANI_APPRENTICE_CAP_DEFAULT,
   wanikaniNotify: false,
+  wanikaniClientLink: '',
   wanikaniReviewState: WANIKANI_INITIAL_REVIEW_STATE,
   wanikaniLessonsLastDayKey: null,
   moodNudgeTasks: false,
@@ -3728,6 +3732,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       ? null
       : clampWaniKaniApprenticeCap(storedWanikaniCap ? parseInt(storedWanikaniCap, 10) : undefined);
     const wanikaniNotify = dbGetSetting('wanikaniNotify') === 'true';
+    const wanikaniClientLink = dbGetSetting('wanikaniClientLink') ?? '';
     const wanikaniReviewState = parseWaniKaniReviewState(dbGetSetting('wanikaniReviewState'));
     const wanikaniLessonsLastDayKey = dbGetSetting('wanikaniLessonsLastDayKey') || null;
     const moodNudgeTasks = dbGetSetting('moodNudgeTasks') === 'true';
@@ -4188,6 +4193,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       waitingFollowUpTaskCategory,
       waitingFollowUpTasks,
       wanikaniApprenticeCap,
+      wanikaniClientLink,
       wanikaniLessonsLastDayKey,
       wanikaniLessonsPerDay,
       wanikaniNotify,
@@ -5087,6 +5093,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setWanikaniNotify(on: boolean) {
     dbSetSetting('wanikaniNotify', on ? 'true' : 'false');
     set({ wanikaniNotify: on });
+  },
+
+  setWanikaniClientLink(link: string) {
+    const trimmed = link.trim();
+    dbSetSetting('wanikaniClientLink', trimmed);
+    set({ wanikaniClientLink: trimmed });
   },
 
   setWanikaniReviewState(state: WaniKaniReviewState) {

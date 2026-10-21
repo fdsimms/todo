@@ -79,6 +79,20 @@ export const WANIKANI_APPRENTICE_CAP_STEP = 10;
 /** The pages a task's link opens. The person can point a task elsewhere (another app) and it stays. */
 export const WANIKANI_REVIEW_URL = 'https://www.wanikani.com/subjects/review';
 export const WANIKANI_LESSON_URL = 'https://www.wanikani.com/subjects/lesson';
+
+/**
+ * Where a WaniKani task opens: the link typed in Settings for a third-party
+ * client when there is one, else the website's own page. One link serves both
+ * tasks, since a client has one front door. An app scheme ("tsurukame://") is
+ * kept as typed and a bare address gets its https://, the way a link typed
+ * into a task does. This is the only reader of the setting, so the task
+ * writer and Settings can't disagree on what a blank one means.
+ */
+export function wanikaniLinkFor(custom: string | null | undefined, fallback: string): string {
+  const typed = (custom ?? '').trim();
+  if (!typed) return fallback;
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(typed) ? typed : `https://${typed}`;
+}
 /** Where a token is made, for the Settings row that asks for one. */
 export const WANIKANI_TOKEN_URL = 'https://www.wanikani.com/settings/personal_access_tokens';
 /**

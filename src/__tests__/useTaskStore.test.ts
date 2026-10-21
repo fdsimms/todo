@@ -6311,6 +6311,7 @@ describe('checkWaniKaniTasks', () => {
       wanikaniLessonsPerDay: null,
       wanikaniApprenticeCap: 100,
       wanikaniNotify: false,
+      wanikaniClientLink: '',
       wanikaniReviewState: { baseline: 0, openSourceId: null },
       wanikaniLessonsLastDayKey: null,
       setWanikaniReviewState: jest.fn((state: unknown) => { current.wanikaniReviewState = state; }),
@@ -6362,6 +6363,20 @@ describe('checkWaniKaniTasks', () => {
     expect(task.reminderTime).toBe(at(15).toISOString());
     // The note is the notification's body.
     expect(task.notes).toBe('Your reviews are up on WaniKani.');
+  });
+
+  it('opens WaniKani\'s own page unless a client link is set', () => {
+    check();
+    expect(live('reviews:')[0].linkUrl).toBe('https://www.wanikani.com/subjects/review');
+  });
+
+  it('opens the client link when one is set, and follows a change to it', () => {
+    setSettings({ wanikaniClientLink: 'tsurukame://' });
+    check();
+    expect(live('reviews:')[0].linkUrl).toBe('tsurukame://');
+    setSettings({ wanikaniClientLink: 'example.com/wk' });
+    check();
+    expect(live('reviews:')[0].linkUrl).toBe('https://example.com/wk');
   });
 
   it('writes no note on a task with no reminder', () => {

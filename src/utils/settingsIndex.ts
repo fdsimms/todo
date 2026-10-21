@@ -948,6 +948,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['new items', 'daily', 'per day', 'how many', 'japanese', 'kanji'] },
   { id: 'wanikaniApprenticeCap', requires: 'gen:wanikani', groupId: 'generated', label: 'Skip lessons at', section: 'WaniKani reviews',
     keywords: ['apprentice', 'limit', 'cap', 'workload', 'too many', 'japanese'] },
+  { id: 'wanikaniClientLink', requires: 'gen:wanikani', groupId: 'generated', label: 'Open in', section: 'WaniKani reviews',
+    keywords: ['link', 'url', 'third party', 'client', 'app', 'tsurukame', 'flaming durtles', 'japanese'] },
   { id: 'wanikaniNotify', requires: 'gen:wanikani', groupId: 'generated', label: 'Notify when reviews arrive', section: 'WaniKani reviews',
     keywords: ['notification', 'alert', 'remind', 'ping', 'japanese'] },
   // Spans both use-up generators, so it sits below the loop rather than inside

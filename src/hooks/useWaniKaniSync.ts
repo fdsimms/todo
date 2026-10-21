@@ -41,6 +41,7 @@ export function useWaniKaniSync(): void {
         state.wanikaniReviewThreshold !== prev.wanikaniReviewThreshold ||
         state.wanikaniTaskCategory !== prev.wanikaniTaskCategory ||
         state.wanikaniNotify !== prev.wanikaniNotify ||
+        state.wanikaniClientLink !== prev.wanikaniClientLink ||
         state.vacationMode !== prev.vacationMode
       ) {
         check();
