@@ -102,9 +102,8 @@ const GOAL_BAR_MIN_FILL = 0.05;
  * is the whole reason weight was allowed across the line the arch doc's
  * "deliberately not built yet" list draws: the app records and draws a number
  * somebody measured, and forms no opinion about the body it came from. The
- * change figure is two readings and the gap between them, with the number of
- * weigh-ins printed beside it, in the voice `MoodScreen` uses for every
- * comparison it makes.
+ * change figure is the gap between the range's first and last readings, in the
+ * voice `MoodScreen` uses for every comparison it makes.
  */
 
 export function WeightScreen() {
@@ -535,26 +534,6 @@ export function WeightScreen() {
             </>
           )}
         </View>
-
-        {change !== null && (
-          <>
-            <Text style={styles.sectionTitle}>ACROSS THIS RANGE</Text>
-            <View style={styles.card}>
-              {/* Two readings and the distance between them, with the sample
-                  size stated. Not a trend line, and not a verdict: see the
-                  file note above for why this screen stops here. */}
-              <Text style={styles.finding}>
-                {formatWeight(change.first.kilograms, unit)} on{' '}
-                {format(dayKeyToDate(change.first.dayKey), 'MMM d')}, and{' '}
-                {formatWeight(change.last.kilograms, unit)} on{' '}
-                {format(dayKeyToDate(change.last.dayKey), 'MMM d')}.
-              </Text>
-              <Text style={styles.chartCaption}>
-                From {change.readings} weigh-ins. Recorded in Apple Health.
-              </Text>
-            </View>
-          </>
-        )}
 
         {/* This screen keeps no copy of a weigh-in, so there is nothing here
             to edit or delete (see docs/arch/health-data.md). Correcting or

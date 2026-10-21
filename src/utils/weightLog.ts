@@ -214,6 +214,37 @@ export function weightFraction(kilograms: number, domain: WeightDomain): number 
   return Math.min(1, Math.max(0, fraction));
 }
 
+/** The most reference lines a chart draws; more would crowd the 160pt plot. */
+const MAX_WEIGHT_TICKS = 6;
+
+/**
+ * The weights, in kilograms, where the chart draws a reference line.
+ *
+ * Round numbers in the unit being shown (every 5 lb, every 2 kg), not round
+ * kilograms, because the person reads the axis in their own unit. The step is
+ * the smallest one that keeps the count at `MAX_WEIGHT_TICKS` or fewer, so a
+ * narrow window gets fine lines and a wide one gets coarse ones. Ascending.
+ */
+export function weightTicks(domain: WeightDomain, unit: WeightUnit): number[] {
+  const low = kgToUnit(domain.min, unit);
+  const high = kgToUnit(domain.max, unit);
+  if (!(high > low)) return [];
+
+  let step = 1;
+  for (let magnitude = 1; ; magnitude *= 10) {
+    const found = [1, 2, 5].map(m => m * magnitude).find(
+      candidate => Math.floor(high / candidate) - Math.ceil(low / candidate) + 1 <= MAX_WEIGHT_TICKS,
+    );
+    if (found !== undefined) { step = found; break; }
+  }
+
+  const ticks: number[] = [];
+  for (let value = Math.ceil(low / step) * step; value <= high; value += step) {
+    ticks.push(unitToKg(value, unit));
+  }
+  return ticks;
+}
+
 /** A reading together with where it sits in the window, for plotting. */
 export interface WeightPlotPoint {
   /** The reading's offset in days from the start of the window. */
