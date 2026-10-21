@@ -52,6 +52,7 @@ import {
   type FoodUnitOption,
   helpingNutrition,
   isDescriptionDraft,
+  isNutrientUnitOption,
   keptDatabasePanel,
   panelToKeep,
   wholeEstimate,
@@ -89,7 +90,7 @@ import {
 import { haptics } from '../utils/haptics';
 import type { PantryReviewAnswer } from '../utils/pantryReview';
 import { PantryAnswerField } from './PantryAnswerField';
-import { weighableLine } from '../utils/ingredientGrams';
+import { unfixableQuantityReason, weighableLine, type LineWeighing } from '../utils/ingredientGrams';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { CatalogLinkPicker } from './CatalogLinkPicker';
 import { EmptyState } from './EmptyState';
@@ -583,6 +584,10 @@ export function FoodLogEntrySheet({
   // What was typed for each of a dish's amount-varies lines, keyed by the
   // recipe ingredient's own id. See `varyingLines` below.
   const [varyingEntries, setVaryingEntries] = useState<Record<string, { number: string; unit: string | null }>>({});
+  // The grams typed for a unit a food has no weight for yet, and the line whose
+  // figures are being added, each keyed by the recipe line's id.
+  const [varyingWeighGrams, setVaryingWeighGrams] = useState<Record<string, string>>({});
+  const [figuresLineId, setFiguresLineId] = useState<string | null>(null);
   // Foods filed since the sheet opened, while "Add another" is on — the
   // sheet's own record of a burst, since nothing behind it is announcing
   // them (see handleSave). Cleared with the rest of the fields on open.
@@ -637,6 +642,7 @@ export function FoodLogEntrySheet({
   // fresh food starts with no weighed portion above.
   useEffect(() => {
     setVaryingEntries({});
+    setVaryingWeighGrams({});
   }, [picked]);
 
 
@@ -968,6 +974,10 @@ export function FoodLogEntrySheet({
     // Optional lines included (a serving suggestion is the commonest of these):
     // an amount typed here is what picks one, and a blank adds nothing.
     return recipeNutritionLines(recipe, items, itemProducts, recipesById, { withOptional: true, ...UNANSWERED }, 1, swaps).filter(line => {
+      // A food with no figures yet is asked about too when the recipe gives it
+      // no amount: it has nothing to count and nothing to be re-measured by,
+      // so the figures are the only thing missing, and this is where it shows.
+      if ((line.state === 'noPanel' || line.state === 'unmatched') && unfixableQuantityReason(line.quantity) === 'noAmount') return true;
       if (line.state !== 'unmeasured' || !line.nutrition || !line.item) return false;
       return weighableLine(line.quantity, line.prep, line.nutrition, line.item.name) === null;
     });
@@ -977,7 +987,22 @@ export function FoodLogEntrySheet({
   // panel, so the person picks a unit rather than typing one.
   const varyingUnitOptions = useMemo(() => {
     const out: Record<string, FoodUnitOption[]> = {};
-    for (const line of varyingLines) out[line.id] = line.nutrition ? foodUnitOptionsFor(line.nutrition) : [];
+    for (const line of varyingLines) {
+      const panel = line.nutrition;
+      if (!panel) { out[line.id] = []; continue; }
+      // An amount of one nutrient ("200 cal") is no way to say how much of a
+      // food you ate. The food's own name stands for one of it ("1 egg") on
+      // anything not measured by volume, and a weight asked for the first time
+      // it is used (`varyingWeighings`) makes it work.
+      const base = foodUnitOptionsFor(panel).filter(o => !isNutrientUnitOption(o));
+      const ownName = line.name.trim().toLowerCase();
+      if (panel.basis !== 'per100ml' && ownName && !base.some(o => o.key === ownName)) {
+        const firstFixed = base.findIndex(o => !panel.portions.some(p => p.label.toLowerCase() === o.key));
+        const own: FoodUnitOption = { key: ownName, label: ownName, suffix: ` ${ownName}` };
+        base.splice(firstFixed === -1 ? base.length : firstFixed, 0, own);
+      }
+      out[line.id] = base;
+    }
     return out;
   }, [varyingLines]);
 
@@ -1003,10 +1028,41 @@ export function FoodLogEntrySheet({
       const resolved = typed && line.nutrition
         ? scalePanelToAmount(line.nutrition, typed, line.prep, undefined, line.item?.name ?? null)
         : null;
-      return { line, typed, resolved };
+      // A unit the food has no weight for yet: asks for one of it, once, in
+      // the same shape the recipe's nutrition sheet saves a portion in.
+      const entry = varyingEntries[line.id];
+      const options = varyingUnitOptions[line.id] ?? [];
+      const unit = options.find(o => o.key === entry?.unit) ?? options[0];
+      const number = Number((entry?.number ?? '').trim().replace(',', '.'));
+      const weighing = typed && !resolved && line.nutrition && unit && number > 0
+        ? weighableLine(composeFoodAmount('1', unit), line.prep, line.nutrition, line.item?.name ?? line.name)
+        : null;
+      return { line, typed, resolved, weighing };
     }),
-    [varyingLines, varyingAmounts],
+    [varyingLines, varyingAmounts, varyingEntries, varyingUnitOptions],
   );
+
+  // Figures or a weight for one of those lines go to the food's own catalog row
+  // (or its preferred box, whichever `nutritionFor` read), so they answer every
+  // later meal too. A food with no catalog row yet gets one here.
+  const writeLinePanel = (line: NutritionLine, next: FoodNutrition | null) => {
+    if (line.product?.nutrition) { setProductNutrition(line.product.id, next); return; }
+    const item = line.item ?? ensureCatalogItem(line.name);
+    if (item) setItemNutrition(item.id, next);
+  };
+
+  const saveVaryingWeight = (line: NutritionLine, weighing: LineWeighing) => {
+    const grams = Number((varyingWeighGrams[line.id] ?? '').trim().replace(',', '.'));
+    const updated = line.nutrition && grams > 0
+      ? addCustomPortion(line.nutrition, weighing.label, weighing.amount, grams)
+      : null;
+    if (!updated) { haptics.error(); return; }
+    writeLinePanel(line, updated);
+    haptics.success();
+    setVaryingWeighGrams(w => ({ ...w, [line.id]: '' }));
+  };
+
+  const figuresLine = figuresLineId ? varyingLines.find(l => l.id === figuresLineId) ?? null : null;
 
   const built = useMemo<Built | null>(() => {
     if (!picked) return null;
@@ -2272,10 +2328,30 @@ export function FoodLogEntrySheet({
                   The recipe doesn’t say how much of these to use. Enter an amount
                   for anything you ate with this meal and it’s added to the totals above.
                 </HelpText>
-                {varyingResolved.map(({ line, typed, resolved }) => {
+                {varyingResolved.map(({ line, typed, resolved, weighing }) => {
                   const options = varyingUnitOptions[line.id] ?? [];
                   const entry = varyingEntries[line.id];
                   const unitKey = entry?.unit ?? options[0]?.key ?? null;
+                  // A food nothing is known about can't be measured at all, so
+                  // the row asks for its figures instead of an amount.
+                  if (!line.nutrition) {
+                    return (
+                      <View key={line.id} style={styles.varyingRow}>
+                        <Text style={styles.varyingName} numberOfLines={1}>{line.name}</Text>
+                        <Text style={styles.varyingAsk}>{`No nutrition info for ${line.name} yet.`}</Text>
+                        <HelpText style={styles.hint}>
+                          Search a food database, scan a label, or type the figures.
+                        </HelpText>
+                        <View style={styles.fileRow}>
+                          <InlineAction
+                            label="Add figures"
+                            icon="add"
+                            onPress={() => { haptics.tap(); setFiguresLineId(line.id); }}
+                          />
+                        </View>
+                      </View>
+                    );
+                  }
                   return (
                     <View key={line.id} style={styles.varyingRow}>
                       <Text style={styles.varyingName} numberOfLines={1}>{line.name}</Text>
@@ -2307,7 +2383,35 @@ export function FoodLogEntrySheet({
                           />
                         )}
                       </View>
-                      {!!typed && !resolved && (
+                      {!!weighing && (
+                        <>
+                          <Text style={styles.varyingAsk}>{`How many grams is 1 ${weighing.label}?`}</Text>
+                          <HelpText style={styles.hint}>
+                            {`Saved for ${line.item?.name ?? line.name}, so it’s used next time too.`}
+                          </HelpText>
+                          <View style={styles.inputRow}>
+                            <TextField
+                              style={styles.inputWithSuffix}
+                              value={varyingWeighGrams[line.id] ?? ''}
+                              onChangeText={text => setVaryingWeighGrams(w => ({ ...w, [line.id]: text }))}
+                              placeholder="Grams"
+                              placeholderTextColor={colors.textTertiary}
+                              keyboardType="decimal-pad"
+                              inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
+                              accessibilityLabel={`Grams in 1 ${weighing.label} of ${line.name}`}
+                            />
+                            <Text style={styles.servingsSuffix}>g</Text>
+                          </View>
+                          <View style={styles.fileRow}>
+                            <InlineAction
+                              label={BUTTON_LABEL.save}
+                              disabled={!(Number((varyingWeighGrams[line.id] ?? '').trim().replace(',', '.')) > 0)}
+                              onPress={() => saveVaryingWeight(line, weighing)}
+                            />
+                          </View>
+                        </>
+                      )}
+                      {!weighing && !!typed && !resolved && (
                         <Text style={styles.error}>Can’t measure that amount for this food.</Text>
                       )}
                     </View>
@@ -2560,6 +2664,15 @@ export function FoodLogEntrySheet({
         onClose={() => setFactsOpen(false)}
         onSave={handleSaveFacts}
       />
+      {/* Inside this Modal like the one above: the amounts typed here are
+          held by this sheet and would be lost with it. */}
+      <NutritionPanelSheet
+        visible={figuresLine !== null}
+        foodName={figuresLine?.name ?? ''}
+        nutrition={null}
+        onClose={() => setFiguresLineId(null)}
+        onSave={next => { if (figuresLine) writeLinePanel(figuresLine, next); }}
+      />
       {overlays}
       <LabelSubjectSheet
         visible={labelAsk}
@@ -2724,6 +2837,7 @@ function makeStyles(colors: Colors) {
     weighHint: { color: colors.textTertiary, fontSize: font.xs, lineHeight: 14 },
     varyingRow: { marginTop: spacing.sm },
     varyingName: { color: colors.text, fontSize: font.sm, marginBottom: spacing.xs },
+    varyingAsk: { color: colors.text, fontSize: font.sm, marginTop: spacing.smd },
     varyingInput: {
       color: colors.text,
       fontSize: font.md,
