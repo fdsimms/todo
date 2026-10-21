@@ -8,6 +8,7 @@ import {
   parseStepDurations,
   parseStepTimerQueue,
   sortStepTimers,
+  splitStepAtDurations,
   stepDurationOffers,
   stepTimerCancelPrompt,
   stepTimerElapsed,
@@ -362,5 +363,35 @@ describe('stepTimerOverSeconds', () => {
 describe('stepTimerCancelPrompt for a rest', () => {
   it('names the set the rest is after', () => {
     expect(stepTimerCancelPrompt(REST, at(0.5))?.message).toBe('After set 2 of Barbell bench press\n1:00 left');
+  });
+});
+
+describe('splitStepAtDurations', () => {
+  const text = 'Cook 7 to 9 minutes, then rest 2 minutes.';
+  const offers = parseStepDurations(text);
+
+  it('cuts the sentence at each duration and joins back to the text', () => {
+    const pieces = splitStepAtDurations(text, undefined, offers);
+    expect(pieces.map(p => p.text).join('')).toBe(text);
+    const taps = pieces.filter(p => p.kind === 'duration');
+    expect(taps.map(p => p.text)).toEqual(['7 to 9 minutes', '2 minutes']);
+  });
+
+  it('leaves an ingredient segment whole and splits the text around it', () => {
+    const segments = [
+      { kind: 'text' as const, text: 'Cook the ' },
+      { kind: 'ingredient' as const, text: 'rice', note: '200 g' },
+      { kind: 'text' as const, text: ' 7 to 9 minutes.' },
+    ];
+    const full = 'Cook the rice 7 to 9 minutes.';
+    const pieces = splitStepAtDurations(full, segments, parseStepDurations(full));
+    expect(pieces.map(p => p.text).join('')).toBe(full);
+    expect(pieces.some(p => p.kind === 'ingredient')).toBe(true);
+    expect(pieces.filter(p => p.kind === 'duration')).toHaveLength(1);
+  });
+
+  it('gives an explicit timerSeconds no phrase to tap', () => {
+    const pieces = splitStepAtDurations('Until dry.', undefined, stepDurationOffers({ text: 'Until dry.', timerSeconds: 300 }));
+    expect(pieces).toEqual([{ kind: 'text', text: 'Until dry.' }]);
   });
 });

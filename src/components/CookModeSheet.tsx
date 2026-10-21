@@ -56,7 +56,7 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { clearCookPosition, restingCookPosition, saveCookPosition } from '../utils/cookPosition';
 import { clampStepIndex, cookNotesPanel, cookSteps, describeStepPosition } from '../utils/cookMode';
-import { formatStepDuration, stepDurationOffers, stepTimerExcerpt } from '../utils/stepTimers';
+import { formatStepDuration, stepDurationOffers, stepTimerExcerpt, type StepDuration } from '../utils/stepTimers';
 import { recipeTimerResetPrompt, showsPrepRow, startCookingPlan } from '../utils/recipeTimer';
 import {
   applyChoice, choiceGroupKey, flattenRecipeIngredients, recipeChoiceGroups, type ChoiceGroup,
@@ -401,6 +401,21 @@ export function CookModeSheet({
   // up front would cost every open of the sheet a pass over text nobody is
   // looking at, and the offer is only ever made about the step on screen.
   const offers = useMemo(() => (step === null ? [] : stepDurationOffers(step)), [step]);
+
+  // One start for the chip under the sentence and the phrase inside it.
+  const startOffer = useCallback((offer: StepDuration) => {
+    if (step === null) return;
+    stepTimers.start({
+      recipeId: recipe.id,
+      recipeName: recipe.name,
+      stepId: step.id,
+      stepLabel: describeStepPosition(index, steps.length),
+      // The words the row is known by in the footer, since "Step 2 of 12"
+      // beside "Step 5 of 12" doesn't say which one is the rice.
+      stepExcerpt: stepTimerExcerpt(step.text, offer.start),
+      durationSeconds: offer.seconds,
+    });
+  }, [step, stepTimers, recipe.id, recipe.name, index, steps.length]);
 
   // The whole method at once, unlike the durations above: what a line's amount
   // *means* depends on whether the method spends it in one step or several, so
@@ -814,7 +829,13 @@ export function CookModeSheet({
                   and any standing swap named where the ingredient is. The
                   ingredient panel below holds the same two facts, and folded
                   away it holds them where nobody mid-step is looking. */}
-              <StepText text={step.text} segments={annotated.get(step.id)} style={styles.stepText} />
+              <StepText
+                text={step.text}
+                segments={annotated.get(step.id)}
+                style={styles.stepText}
+                durations={offers}
+                onDurationPress={startOffer}
+              />
               {/* Said out loud, because the split is the app's and not the
                   cook's: a recipe whose method lives in notes gets read as
                   steps here, and that has to be legible as a fallback rather
@@ -836,17 +857,7 @@ export function CookModeSheet({
                       icon="timer-outline"
                       label={`Set a ${formatStepDuration(offer.seconds)} timer`}
                       accessibilityLabel={`Set a ${formatStepDuration(offer.seconds)} timer for ${describeStepPosition(index, steps.length)}`}
-                      onPress={() => stepTimers.start({
-                        recipeId: recipe.id,
-                        recipeName: recipe.name,
-                        stepId: step.id,
-                        stepLabel: describeStepPosition(index, steps.length),
-                        // The words the row is known by in the footer, since
-                        // "Step 2 of 12" beside "Step 5 of 12" doesn't say
-                        // which one is the rice.
-                        stepExcerpt: stepTimerExcerpt(step.text, offer.start),
-                        durationSeconds: offer.seconds,
-                      })}
+                      onPress={() => startOffer(offer)}
                     />
                   ))}
                 </View>
