@@ -154,7 +154,7 @@ export function SearchActionRow({ action, description, describe, receipt, layout
       activeOpacity={interaction.activeOpacity}
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityHint={action.kind === 'mood' ? 'Double tap to open the mood log' : 'Double tap to do it now'}
+      accessibilityHint={action.kind === 'mood' ? 'Opens the mood log' : 'Runs it right away'}
     >
       {body}
     </TouchableOpacity>

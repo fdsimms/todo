@@ -333,7 +333,6 @@ export function TasksProjectsSettings() {
               entryId="postponeCheckThreshold"
               icon="hand-left-outline"
               label="Reschedule threshold"
-              hint="Number of times a task can be moved before the suggestion appears."
               tight
             />
             <View style={styles.cadenceRow}>

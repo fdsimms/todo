@@ -330,6 +330,7 @@ Where each component can appear.
 - `src/components/RecipeTabBar.tsx` — on RecipeDetailScreen, RecipesScreen
 - `src/components/RecipeTimerRow.tsx` — on RecipeDetailScreen, RecipesScreen
 - `src/components/RecipeToListSheet.tsx` — on GroceryScreen, MealPlanScreen, RecipeDetailScreen, RecipesScreen
+- `src/components/RecordBadge.tsx` — on StatsScreen, WorkoutsScreen, app shell
 - `src/components/RecurrencePicker.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SavedViewDetailScreen, +7 more
 - `src/components/RemindMePicker.tsx` — on ArchivedScreen, BackfillScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, +7 more
 - `src/components/ReminderCapturesSheet.tsx` — on SettingsGroupScreen

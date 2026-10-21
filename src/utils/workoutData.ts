@@ -28,10 +28,41 @@ export const EXERCISE_KINDS: readonly ExerciseKind[] = [
   'weight_reps', 'bodyweight_reps', 'assisted_reps', 'duration', 'distance', 'weight_distance',
 ];
 
-export const EXERCISE_EQUIPMENT: readonly ExerciseEquipment[] = [
-  'barbell', 'dumbbell', 'kettlebell', 'machine', 'cable', 'smith_machine',
-  'ez_bar', 'trap_bar', 'band', 'bodyweight', 'cardio_machine', 'other',
+/** Free weights, bars and the rest that are neither a strength machine nor a cardio one. */
+export const FREE_EQUIPMENT: readonly ExerciseEquipment[] = [
+  'barbell', 'dumbbell', 'kettlebell', 'cable', 'smith_machine', 'ez_bar', 'trap_bar', 'band',
 ];
+
+/** The strength machines with a value of their own. `machine` stands in for any other. */
+export const STRENGTH_MACHINES: readonly ExerciseEquipment[] = [
+  'leg_press', 'hack_squat', 'leg_extension', 'leg_curl', 'calf_raise_machine',
+  'hip_abduction_machine', 'hip_adduction_machine',
+  'chest_press_machine', 'pec_deck', 'shoulder_press_machine', 'row_machine', 'assisted_machine',
+];
+
+/** The cardio machines with a value of their own. `cardio_machine` stands in for any other. */
+export const CARDIO_MACHINES: readonly ExerciseEquipment[] = [
+  'treadmill', 'stationary_bike', 'air_bike', 'rowing_machine', 'elliptical', 'stair_climber', 'ski_erg',
+];
+
+export const EXERCISE_EQUIPMENT: readonly ExerciseEquipment[] = [
+  ...FREE_EQUIPMENT,
+  ...STRENGTH_MACHINES, 'machine',
+  ...CARDIO_MACHINES, 'cardio_machine',
+  'bodyweight', 'other',
+];
+
+/**
+ * The catch-all a specific machine sits under. A gym that has the catch-all
+ * ticked is read as having every machine under it: that is what ticking
+ * "Machine" meant before the specific ones existed, and it keeps a saved gym
+ * from suddenly lacking its leg press.
+ */
+export function machineParent(equipment: ExerciseEquipment): 'machine' | 'cardio_machine' | null {
+  if (STRENGTH_MACHINES.includes(equipment)) return 'machine';
+  if (CARDIO_MACHINES.includes(equipment)) return 'cardio_machine';
+  return null;
+}
 
 export const MUSCLE_GROUPS: readonly MuscleGroup[] = [
   'chest', 'lats', 'upper_back', 'lower_back', 'traps',
@@ -51,15 +82,34 @@ export const EQUIPMENT_LABELS: Record<ExerciseEquipment, string> = {
   barbell: 'Barbell',
   dumbbell: 'Dumbbell',
   kettlebell: 'Kettlebell',
-  machine: 'Machine',
   cable: 'Cable',
   smith_machine: 'Smith machine',
   ez_bar: 'EZ bar',
   trap_bar: 'Trap bar',
   band: 'Band',
   bodyweight: 'Bodyweight',
-  cardio_machine: 'Cardio machine',
   other: 'Other',
+  machine: 'Other machine',
+  leg_press: 'Leg press',
+  hack_squat: 'Hack squat',
+  leg_extension: 'Leg extension',
+  leg_curl: 'Leg curl',
+  calf_raise_machine: 'Calf raise',
+  hip_abduction_machine: 'Hip abduction',
+  hip_adduction_machine: 'Hip adduction',
+  chest_press_machine: 'Chest press',
+  pec_deck: 'Pec deck',
+  shoulder_press_machine: 'Shoulder press',
+  row_machine: 'Row machine',
+  assisted_machine: 'Assisted pull-up/dip',
+  cardio_machine: 'Other cardio machine',
+  treadmill: 'Treadmill',
+  stationary_bike: 'Exercise bike',
+  air_bike: 'Air bike',
+  rowing_machine: 'Rowing machine',
+  elliptical: 'Elliptical',
+  stair_climber: 'Stair climber',
+  ski_erg: 'Ski erg',
 };
 
 /** What a filter or a row calls each muscle group. */

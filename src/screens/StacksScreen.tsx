@@ -349,7 +349,6 @@ const StackRow = React.memo(function StackRow({
           accessibilityRole={selectionMode ? 'checkbox' : 'button'}
           accessibilityState={selectionMode ? { checked: selected } : undefined}
           accessibilityLabel={`${group.title}. ${spokenMeta}`}
-          accessibilityHint={selectionMode ? 'Double tap to select stack.' : 'Double tap to open this stack.'}
         >
           <View style={[styles.icon, { backgroundColor: colors.accentSubtle }]}>
             <Ionicons name="layers-outline" size={18} color={colors.accent} />

@@ -8,6 +8,7 @@ import { InlineAction } from './InlineAction';
 import { EmptyNote } from './EmptyNote';
 import { GymEditorSheet } from './GymEditorSheet';
 import { useGymStore } from '../store/useGymStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import type { Gym } from '../types';
@@ -46,6 +47,8 @@ export function GymsSheet({ visible, onClose, onPick, currentId = null }: Props)
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const gyms = useGymStore(s => s.gyms);
+  const defaultGymId = useSettingsStore(s => s.defaultGymId);
+  const setDefaultGymId = useSettingsStore(s => s.setDefaultGymId);
   const [subject, setSubject] = useState<string | 'new' | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const active = gyms.filter(g => !g.archived);
@@ -53,7 +56,9 @@ export function GymsSheet({ visible, onClose, onPick, currentId = null }: Props)
 
   const open = (id: string | 'new') => { haptics.tap(); setSubject(id); setEditorOpen(true); };
 
-  const row = (gym: Gym, i: number) => (
+  const row = (gym: Gym, i: number) => {
+    const isDefault = !gym.archived && gym.id === defaultGymId;
+    return (
     <View key={gym.id} style={[styles.row, i > 0 && styles.ruled]}>
       <TouchableOpacity
         style={styles.rowMain}
@@ -64,11 +69,34 @@ export function GymsSheet({ visible, onClose, onPick, currentId = null }: Props)
         accessibilityState={onPick ? { selected: gym.id === currentId } : undefined}
       >
         <View style={styles.rowText}>
-          <Text style={styles.name}>{gym.name}</Text>
+          <View style={styles.nameRow}>
+            <Text style={[styles.name, styles.nameText]} numberOfLines={1}>{gym.name}</Text>
+            {isDefault && (
+              <View style={styles.tag}>
+                <Text style={styles.tagText}>Default</Text>
+              </View>
+            )}
+          </View>
           <Text style={styles.meta} numberOfLines={1}>{describeGymEquipment(gym)}</Text>
         </View>
         {onPick && gym.id === currentId && <Ionicons name="checkmark" size={iconSize.md} color={colors.accent} />}
       </TouchableOpacity>
+      {!onPick && !gym.archived && (
+        <TouchableOpacity
+          onPress={() => { haptics.tap(); setDefaultGymId(isDefault ? null : gym.id); }}
+          hitSlop={8}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="button"
+          accessibilityLabel={isDefault ? `Stop using ${gym.name} as the default gym` : `Make ${gym.name} the default gym`}
+          accessibilityState={{ selected: isDefault }}
+        >
+          <Ionicons
+            name={isDefault ? 'star' : 'star-outline'}
+            size={iconSize.md}
+            color={isDefault ? colors.accent : colors.textTertiary}
+          />
+        </TouchableOpacity>
+      )}
       {onPick && (
         <TouchableOpacity
           onPress={() => open(gym.id)}
@@ -81,7 +109,8 @@ export function GymsSheet({ visible, onClose, onPick, currentId = null }: Props)
         </TouchableOpacity>
       )}
     </View>
-  );
+    );
+  };
 
   return (
     <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose} name="GymsSheet">
@@ -145,6 +174,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   rowText: { flex: 1 },
   ruled: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator },
   name: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  nameText: { flexShrink: 1 },
+  tag: { backgroundColor: colors.accentSubtle, borderRadius: radius.sm, paddingHorizontal: spacing.xsm, paddingVertical: spacing.xxs },
+  tagText: { color: colors.accentText, fontSize: font.xxs, fontWeight: fontWeight.semibold },
   meta: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs },
   addRow: { flexDirection: 'row', marginTop: spacing.md },
   label: {

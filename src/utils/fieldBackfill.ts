@@ -34,7 +34,7 @@ export const BACKFILL_FIELDS: BackfillFieldDef[] = [
   {
     id: 'category',
     label: 'Category',
-    hint: 'Which category each task falls under.',
+    hint: 'The section of Today each task sits in.',
   },
   {
     id: 'streak',

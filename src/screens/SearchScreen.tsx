@@ -166,7 +166,6 @@ const SearchResultItem = React.memo(function SearchResultItem({ result, onPress,
         hitSlop={{ top: 12, bottom: 12, right: spacing.md }}
         accessibilityRole="button"
         accessibilityLabel={a11yLabel}
-        accessibilityHint="Double tap to open task"
       >
         <HighlightedText
           text={displayTitle}
@@ -318,7 +317,6 @@ const StackResultItem = React.memo(function StackResultItem({ result, onPress, s
       activeOpacity={interaction.activeOpacity}
       accessibilityRole="button"
       accessibilityLabel={a11yLabel}
-      accessibilityHint="Double tap to open stack"
     >
       <View style={styles.statusIcon}>
         <View style={[styles.stackIcon, { backgroundColor: colors.accentSubtle }]}>
@@ -365,7 +363,6 @@ const ElsewhereResultItem = React.memo(function ElsewhereResultItem({ result, on
       activeOpacity={interaction.activeOpacity}
       accessibilityRole="button"
       accessibilityLabel={`${result.title}, ${described.accessibilityKind}`}
-      accessibilityHint="Double tap to open"
     >
       <View style={styles.statusIcon}>
         <View style={[styles.stackIcon, { backgroundColor: colors.accentSubtle }]}>
@@ -413,7 +410,6 @@ const ProjectResultItem = React.memo(function ProjectResultItem({ result, onPres
       activeOpacity={interaction.activeOpacity}
       accessibilityRole="button"
       accessibilityLabel={a11yLabel}
-      accessibilityHint="Double tap to open project"
     >
       <View style={styles.statusIcon}>
         <View style={[styles.stackIcon, { backgroundColor: colors.accentSubtle }]}>

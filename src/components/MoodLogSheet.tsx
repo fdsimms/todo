@@ -445,6 +445,7 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
           options={moodOptions}
           value={mood as MoodLevel}
           onChange={value => setMood(value)}
+          onDeselect={() => { haptics.tap(); setMood(null); }}
           label="Mood"
         />
         <Text style={styles.moodCaption}>
@@ -502,7 +503,7 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
             selected: contextTags.some(t => contextTagKey(t) === contextTagKey(name)),
             onPress: () => toggleContextTag(name),
             onLongPress: () => renameTag(name),
-            accessibilityHint: 'Double tap to toggle. Long press to rename.',
+            accessibilityHint: 'Long press to rename.',
           }))}
         />
       </View>

@@ -67,7 +67,8 @@ function timeLabel(date: Date, day: Date): string {
  * the History view of the Workouts screen, and built to the mock approved for it.
  *
  * - **Every edit commits as it is made**, through `updateSession`: effort on
- *   each step, notes on blur and on close, a time on the picker's Done. So
+ *   each step, notes on blur and on close, a time on the picker's Done, the
+ *   name on the title's prompt Save. So
  *   nothing is staged and there is no discard guard (CLAUDE.md's "commit
  *   immediately" answer), and a swipe down commits the notes the way Done
  *   does, since both are `close`.
@@ -203,6 +204,35 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose }: Props) {
     // 'notFound' is the only refusal for an effort, and the effect above
     // closes the page when the workout has gone.
     if (current) useWorkoutStore.getState().updateSession(current.id, { effort });
+  };
+
+  // ==== the name ====
+  const renameWorkout = () => {
+    if (!current) return;
+    haptics.tap();
+    Alert.prompt(
+      'Workout name',
+      undefined,
+      [
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
+        {
+          text: BUTTON_LABEL.save,
+          onPress: (text?: string) => {
+            const name = (text ?? '').trim();
+            if (name === current.title) return;
+            const result = useWorkoutStore.getState().updateSession(current.id, { title: name });
+            if (result === 'blank') {
+              haptics.warning();
+              Alert.alert('Couldn’t rename the workout', 'Give it a name and try again.');
+              return;
+            }
+            if (typeof result !== 'string') haptics.success();
+          },
+        },
+      ],
+      'plain-text',
+      current.title,
+    );
   };
 
   // ==== the times ====
@@ -382,7 +412,20 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose }: Props) {
           <View style={styles.headerRow}>
             <View style={styles.headerSide} />
             <View style={styles.headerTitle}>
-              <Text style={styles.title} numberOfLines={2}>{session?.title ?? 'Workout'}</Text>
+              <TouchableOpacity
+                onPress={renameWorkout}
+                disabled={!current}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={`Workout name: ${session?.title ?? 'Workout'}`}
+                accessibilityHint="Changes the name"
+              >
+                <Text style={styles.title} numberOfLines={2}>
+                  {session?.title ?? 'Workout'}
+                  {'  '}
+                  <Ionicons name="pencil" size={13} color={colors.textSecondary} />
+                </Text>
+              </TouchableOpacity>
               {!!startedAt && <Text style={styles.subtitle}>{gymName ? `${dayLabel(startedAt)} · ${gymName}` : dayLabel(startedAt)}</Text>}
             </View>
             <SheetHeaderButton label={BUTTON_LABEL.done} onPress={close} minWidth={64} />
@@ -593,7 +636,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   setBody: { flex: 1 },
   setValue: { color: colors.textSecondary, fontSize: font.sm, fontVariant: ['tabular-nums'] },
   setNote: { color: colors.text, fontSize: font.sm, marginTop: spacing.xxs, marginBottom: spacing.xs },
-  notesInput: { color: colors.text, fontSize: font.md, paddingHorizontal: spacing.md, paddingVertical: spacing.smd, minHeight: 64 },
+  notesInput: { color: colors.text, fontSize: font.md, paddingHorizontal: spacing.md, paddingTop: spacing.smd, paddingBottom: spacing.md, minHeight: 64 },
   actionRow: {
     alignItems: 'center', justifyContent: 'center', minHeight: 48, marginTop: spacing.lg,
     paddingVertical: spacing.smd, backgroundColor: colors.bgSecondary, borderRadius: radius.md,

@@ -13,7 +13,7 @@ import { useDemoStore } from '../store/useDemoStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { retentionCutoff } from '../utils/retention';
-import { MIN_PAIRED_DAYS, buildMoodDays, describeHealthInsight, healthInsight } from '../utils/moodInsights';
+import { MIN_PAIRED_DAYS, buildMoodDays, healthFindings } from '../utils/moodInsights';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -124,12 +124,7 @@ export function SleepScreen() {
   const findings = useMemo(() => {
     if (nights.length === 0) return [];
     const days = buildMoodDays(moodLogs, tasks, dayResetTime, sleepReadings(nights), completionsKnownFrom);
-    const rows: { key: string; text: string }[] = [];
-    for (const against of ['completed', 'mood'] as const) {
-      const text = describeHealthInsight(healthInsight(days, 'sleepHours', against));
-      if (text) rows.push({ key: against, text });
-    }
-    return rows;
+    return healthFindings(days, ['sleepHours']);
   }, [nights, moodLogs, tasks, dayResetTime, completionsKnownFrom]);
 
   const openGoal = () => { haptics.tap(); setGoalOpen(true); };

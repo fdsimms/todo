@@ -97,7 +97,6 @@ export function MoodDayScreen() {
         <EmptyState
           icon="book-outline"
           title="Nothing on this day"
-          subtitle="Entries you record for this day show up here."
         />
       ) : (
         <ScrollView

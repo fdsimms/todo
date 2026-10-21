@@ -16,6 +16,7 @@ import { PillGroup } from './PillGroup';
 import { useGymStore } from '../store/useGymStore';
 import { describeGymSetting, gymSettingFor, gymsUsedBy, setsAtGym } from '../utils/gyms';
 import { ExercisePhotos } from './ExercisePhotos';
+import { RecordBadge } from './RecordBadge';
 import { haptics } from '../utils/haptics';
 import { chartPoints as toChartPoints, chartSegments } from '../utils/exerciseChart';
 import { useWorkoutStore } from '../store/useWorkoutStore';
@@ -171,6 +172,9 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
     return out;
   }, [analysis, metric, kind, unit]);
 
+  // The page scroll is off while a finger is scrubbing the chart.
+  const [scrubbing, setScrubbing] = useState(false);
+
   const latest = analysis && plotted.length > 0 ? plotted[plotted.length - 1] : null;
   // The caption names a break only when the line has one.
   const hasGap = useMemo(() => chartSegments(toChartPoints(plotted)).length > 1, [plotted]);
@@ -255,7 +259,7 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
             {nameBlock}
           </View>
         ) : (
-          <ScrollView style={styles.flex} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+          <ScrollView style={styles.flex} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} scrollEnabled={!scrubbing}>
             {nameBlock}
             <View style={styles.card}>
               <SegmentedControl options={options} value={metric} onChange={setChosen} label="Show" />
@@ -272,6 +276,7 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
                     <ExerciseProgressChart
                       points={plotted}
                       formatAxis={v => formatAxisValue(v, metric, kind)}
+                      onScrubChange={setScrubbing}
                       summary={`${metricLabel(metric)} chart, ${plotted.length} ${plotted.length === 1 ? 'session' : 'sessions'}, latest ${latest.text}${metric === 'e1rm' ? ', estimated' : ''}`}
                     />
                   </View>
@@ -295,10 +300,8 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
                   {analysis!.records.map((r, i) => (
                     <View key={`${r.type}-${r.reps ?? 0}`} style={[styles.recordRow, i > 0 && styles.rowSep]}>
                       <View style={styles.recordLabelWrap}>
+                        {isNewRecordRow(r, analysis!.events, todayKey) && <RecordBadge accessibilityLabel="New record" />}
                         <Text style={styles.recordLabel}>{recordLabel(r.type, kind, r.reps)}</Text>
-                        {isNewRecordRow(r, analysis!.events, todayKey) && (
-                          <View style={styles.badge}><Text style={styles.badgeText}>New</Text></View>
-                        )}
                       </View>
                       <View style={styles.recordValueWrap}>
                         <Text style={styles.recordValue}>{formatRecordValue(r, kind, unit)}</Text>
@@ -406,8 +409,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   recordValueWrap: { alignItems: 'flex-end', flexShrink: 0 },
   recordValue: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold, fontVariant: ['tabular-nums'] },
   recordDate: { color: colors.textSecondary, fontSize: font.xs },
-  badge: { backgroundColor: colors.done, borderRadius: radius.full, paddingHorizontal: spacing.xsm, paddingVertical: 1 },
-  badgeText: { color: colors.onDone, fontSize: font.xxs, fontWeight: fontWeight.bold },
   historyRow: { paddingHorizontal: spacing.md, paddingVertical: spacing.smd },
   historyTitle: { color: colors.text, fontSize: font.md },
   historySets: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs, fontVariant: ['tabular-nums'] },

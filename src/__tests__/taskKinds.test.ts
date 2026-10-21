@@ -342,7 +342,7 @@ describe('taskKindOf', () => {
     expect(TASK_KIND_META.map(m => m.key)).toEqual(['task', 'timed', 'target', 'health', 'rotation', 'chain']);
     TASK_KIND_META.forEach(m => {
       expect(m.label).toBeTruthy();
-      expect(m.hint).toBeTruthy();
+      if (m.key !== 'task') expect(m.hint).toBeTruthy();
     });
   });
 });

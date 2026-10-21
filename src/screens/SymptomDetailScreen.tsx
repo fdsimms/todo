@@ -378,7 +378,7 @@ function severityColor(severity: SymptomSeverity, colors: Colors): string {
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   scroll: { flex: 1 },
-  scrollContent: { paddingHorizontal: spacing.md },
+  scrollContent: { paddingHorizontal: spacing.md, paddingTop: spacing.md },
   statRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg },
   statCell: {
     flex: 1,

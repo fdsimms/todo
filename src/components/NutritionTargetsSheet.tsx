@@ -259,7 +259,6 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
           }}
           accessibilityRole="button"
           accessibilityLabel="Turn on Apple Health reading in Settings"
-          accessibilityHint="Opens the Read Apple Health setting"
         >
           <Ionicons name="scale-outline" size={iconSize.sm} color={colors.textSecondary} />
           <Text style={styles.boostNoticeText}>
@@ -655,7 +654,6 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
                   }}
                   accessibilityRole="button"
                   accessibilityLabel="Turn on Apple Health reading in Settings"
-                  accessibilityHint="Opens the Read Apple Health setting"
                 >
                   <Ionicons name="heart-outline" size={iconSize.sm} color={colors.textSecondary} />
                   <Text style={styles.boostNoticeText}>
@@ -740,7 +738,6 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
                   }}
                   accessibilityRole="button"
                   accessibilityLabel="Turn on Apple Health reading in Settings"
-                  accessibilityHint="Opens the Read Apple Health setting"
                 >
                   <Ionicons name="heart-outline" size={iconSize.sm} color={colors.textSecondary} />
                   <Text style={styles.boostNoticeText}>

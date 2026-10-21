@@ -373,7 +373,6 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
           label="Effort"
           summary={draft.effort > 0 ? effortTimeLabel(draft.effort, '') : undefined}
           emptySummary="Not set"
-          hint="How long matching tasks take, used to size the day’s list."
           expanded={fieldOpen('effort')}
           onToggle={() => toggleField('effort')}
         >
@@ -392,7 +391,6 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
           label="Link"
           summary={draft.linkUrl ? linkAppLabel(draft.linkUrl) : undefined}
           emptySummary="Not set"
-          hint="Matching tasks get a link to an app or page, like the task editor’s Link field."
           expanded={fieldOpen('link')}
           onToggle={() => {
             if (!fieldOpen('link') && draft.linkUrl && !KNOWN_LINK_APPS.some(app => app.scheme === draft.linkUrl)) {

@@ -723,6 +723,16 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
               </View>
               <Toggle value={panCooked} />
             </TouchableOpacity>
+            {cookedInPan !== undefined && (
+              <View style={styles.panReset}>
+                <InlineAction
+                  label="Follow the recipe steps"
+                  variant="neutral"
+                  surface="card"
+                  onPress={() => { haptics.tap(); setCookedInPan(undefined); }}
+                />
+              </View>
+            )}
             {panReadout && (
               <Text style={styles.panReadout}>
                 Counts {panReadout.counted} of {panReadout.whole} cal
@@ -846,7 +856,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
             onPress={() => { haptics.tap(); setEditingItemId(catalogItem.id); }}
             accessibilityRole="button"
             accessibilityLabel={`${catalogItem.name}${catalogSummary ? `, ${catalogSummary}` : ''}`}
-            accessibilityHint="Double tap to edit the grocery item: its brand, stores, pantry and substitutes"
+            accessibilityHint="Edits the grocery item: its brand, stores, pantry and substitutes"
           >
             <Ionicons name="cart-outline" size={iconSize.md} color={colors.accent} />
             <View style={styles.catalogBody}>
@@ -1033,7 +1043,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
               }}
               accessibilityRole="button"
               accessibilityLabel={`Group name, ${groupLabel}`}
-              accessibilityHint="Double tap to rename it for every ingredient in the group"
+              accessibilityHint="Renames it for every ingredient in the group"
             >
               <Text style={styles.groupNameLabel}>Group name</Text>
               <View style={styles.groupNameValueRow}>
@@ -1293,6 +1303,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   toggleLabel: {
     color: colors.text,
     fontSize: font.md,
+  },
+  panReset: {
+    flexDirection: 'row',
+    marginTop: spacing.smd,
   },
   panReadout: {
     color: colors.text,

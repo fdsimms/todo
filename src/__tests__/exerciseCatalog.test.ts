@@ -86,6 +86,14 @@ describe('activeExercises and catalogExercise', () => {
 });
 
 describe('searchExercises', () => {
+  it('still finds a specific machine by the word machine, and by its own name', () => {
+    const machine = searchExercises([], 'machine').map(r => r.exercise.id);
+    expect(machine).toContain('lib:leg-press');
+    expect(machine).toContain('lib:treadmill-run');
+    expect(searchExercises([], 'leg press')[0].exercise.id).toBe('lib:leg-press');
+    expect(searchExercises([], 'barbell').map(r => r.exercise.id)).not.toContain('lib:leg-press');
+  });
+
   it('lists everything on offer for an empty query, by name', () => {
     expect(searchExercises([], '  ')).toHaveLength(EXERCISE_LIBRARY.length);
   });

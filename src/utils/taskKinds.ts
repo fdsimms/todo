@@ -33,10 +33,14 @@ export const TASK_KIND_META: {
   key: TaskKind;
   label: string;
   icon: string;
-  /** What picking it does, in one line. See `typeSummary` for the set-up version. */
-  hint: string;
+  /**
+   * What picking it does, in one line. See `typeSummary` for the set-up
+   * version. Standard has none: it is the default, and there is nothing to
+   * explain about a task you check off once.
+   */
+  hint?: string;
 }[] = [
-  { key: 'task', label: 'Standard', icon: 'checkbox-outline', hint: 'An ordinary task. Check it off once.' },
+  { key: 'task', label: 'Standard', icon: 'checkbox-outline' },
   { key: 'timed', label: 'Timed', icon: 'timer-outline', hint: 'Counts down a set time once you start it.' },
   { key: 'target', label: 'Daily target', icon: 'speedometer-outline', hint: 'Log it several times a day.' },
   // Beside Daily target because the two are easy to confuse and the hints are

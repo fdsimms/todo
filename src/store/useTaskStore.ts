@@ -2291,7 +2291,9 @@ interface TaskStore extends UndoHistoryActions {
   // Resuming an archived task deliberately breaks its streak (resets
   // streakCount/streakDate to 0/null) since the gap is real, but leaves past
   // completions untouched so Stats/Logbook history "picks up where it left off."
-  unarchiveTask: (id: string) => void;
+  // `dueDate` re-dates the task as it comes back: undefined keeps the stored
+  // day, null clears it, a string replaces it. The undo restores the old one.
+  unarchiveTask: (id: string, dueDate?: string | null) => void;
   /** Hand-order the Pinned section; see Task.pinnedOrder. */
   reorderPinnedTasks: (orderedIds: string[]) => void;
   clearAllPins: () => void;
@@ -9111,9 +9113,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
   },
 
-  unarchiveTask(id) {
+  unarchiveTask(id, dueDate) {
     const task = get().tasks.find(t => t.id === id);
     if (!task || !task.archived) return;
+    const { dueDate: oldDue, deferUntil, recurrenceAnchorDate } = task;
     // Resuming is lossy — it breaks the streak and drops the archived-on
     // stamp — so the undo restores those exact values rather than re-archiving
     // from scratch, which would stamp today and leave the streak at 0.
@@ -9127,10 +9130,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // history and stats carry over, and a run you actually completed before
       // filing the task away is history. Folded like any other ending.
       priorBestStreak: nextStreakRecord(task, 0),
+      // A plain reschedule: the stored day was the one the task was waiting
+      // on before it was filed away, so a defer laid over it would leave a
+      // stale "49d ago" underneath.
+      ...(dueDate !== undefined ? { dueDate, deferUntil: null } : {}),
     });
     get().setLastAction({
       label: 'Task resumed',
-      undo: () => get().updateTask(id, { archived: true, archivedAt, streakCount, streakDate, priorBestStreak }),
+      undo: () => get().updateTask(id, {
+        archived: true, archivedAt, streakCount, streakDate, priorBestStreak,
+        ...(dueDate !== undefined ? { dueDate: oldDue, deferUntil, recurrenceAnchorDate } : {}),
+      }),
       redo: redoRestoringRows([id]),
     });
   },

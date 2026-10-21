@@ -1,7 +1,7 @@
 import type { Exercise, Gym, GymExerciseSetting, WorkoutRoutine } from '../types';
 import {
   describeRoutineFit, equipmentAvailable, exerciseIdsDoneAt, gymAt, gymExerciseId, gymSettingFor, gymSwapCandidates,
-  describeGymSetting, describeLastLoad, gymIncrementKg, gymsUsedBy, isEmptyGymSetting, setsAtGym, lastUsedGymId, routineFit, unavailableExerciseIds, withGymBar,
+  describeGymSetting, describeLastLoad, gymIncrementKg, gymsUsedBy, isEmptyGymSetting, setsAtGym, lastUsedGymId, startingGymId, routineFit, unavailableExerciseIds, withGymBar,
 } from '../utils/gyms';
 import { EXERCISE_LIBRARY } from '../utils/exerciseLibrary';
 
@@ -30,6 +30,29 @@ describe('equipmentAvailable', () => {
   });
 });
 
+describe('equipmentAvailable with specific machines', () => {
+  it('blocks a machine the gym did not tick, and allows the one it did', () => {
+    const g = gym({ equipment: ['leg_press', 'treadmill'] });
+    expect(equipmentAvailable(g, 'leg_press')).toBe(true);
+    expect(equipmentAvailable(g, 'leg_curl')).toBe(false);
+    expect(equipmentAvailable(g, 'treadmill')).toBe(true);
+    expect(equipmentAvailable(g, 'rowing_machine')).toBe(false);
+    expect(equipmentAvailable(g, 'machine')).toBe(false);
+  });
+  it('reads a gym that ticked Machine or Cardio machine before as having every one of them', () => {
+    const g = gym({ equipment: ['machine', 'cardio_machine'] });
+    expect(equipmentAvailable(g, 'leg_press')).toBe(true);
+    expect(equipmentAvailable(g, 'pec_deck')).toBe(true);
+    expect(equipmentAvailable(g, 'treadmill')).toBe(true);
+    expect(equipmentAvailable(gym({ equipment: ['machine'] }), 'treadmill')).toBe(false);
+  });
+  it('names the missing machine in the routine fit', () => {
+    const legPress = EXERCISE_LIBRARY.find(e => e.equipment === 'leg_press')!.id;
+    const g = gym({ equipment: ['dumbbell'] });
+    expect(describeRoutineFit(routineFit(g, routine([legPress]), none), 'Planet')).toBe('At Planet, 1 of 1 exercise needs leg press.');
+  });
+});
+
 describe('unavailableExerciseIds and routineFit', () => {
   const barbell = byEquipment('barbell');
   const cable = byEquipment('cable');
@@ -54,7 +77,7 @@ describe('gymSwapCandidates', () => {
     expect(ids.length).toBeGreaterThan(0);
     const ex = (id: string) => EXERCISE_LIBRARY.find(e => e.id === id)!;
     for (const id of ids) {
-      expect(['dumbbell', 'machine', 'cable', 'bodyweight', 'other']).toContain(ex(id).equipment);
+      expect(equipmentAvailable(gym(), ex(id).equipment)).toBe(true);
       expect(ex(id).primaryMuscles).toContain('chest');
     }
   });
@@ -129,6 +152,19 @@ describe('lastUsedGymId', () => {
   it('skips an archived or deleted gym, and is null when nobody used one', () => {
     expect(lastUsedGymId(gyms, [{ gymId: 'c', startedAt: '2026-03-01' }, { gymId: 'gone', startedAt: '2026-04-01' }])).toBeNull();
     expect(lastUsedGymId(gyms, [{ startedAt: '2026-03-01' }])).toBeNull();
+  });
+});
+
+describe('startingGymId', () => {
+  const gyms = [gym({ id: 'a' }), gym({ id: 'b' }), gym({ id: 'c', archived: true })];
+  const sessions = [{ gymId: 'a', startedAt: '2026-01-01' }];
+  it('is the default gym over the one last used', () => {
+    expect(startingGymId('b', gyms, sessions)).toBe('b');
+  });
+  it('falls back to the last used gym with no default, or one archived or deleted', () => {
+    expect(startingGymId(null, gyms, sessions)).toBe('a');
+    expect(startingGymId('c', gyms, sessions)).toBe('a');
+    expect(startingGymId('gone', gyms, sessions)).toBe('a');
   });
 });
 
