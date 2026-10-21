@@ -1,3 +1,4 @@
+import { useSavedViewStore } from '../store/useSavedViewStore';
 import { useMemo, useState } from 'react';
 import { Platform } from 'react-native';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -42,6 +43,7 @@ export function useNavMenuOptions(): NavMenuOptions {
   const foodLogCount = useFoodLogStore(s => s.totalCount);
   const meterCount = useMeterReadingStore(s => s.readings.length);
   const workoutCount = useWorkoutStore(workoutContentCount);
+  const savedViewCount = useSavedViewStore(s => s.views.length);
   // Asked once: whether this build has the native half, on a phone new enough,
   // cannot change while the app runs. Demo mode answers yes on iOS even though
   // the bridge itself is refused there, because the page is built from stores
@@ -56,6 +58,6 @@ export function useNavMenuOptions(): NavMenuOptions {
     simpleMode,
     screenTimeSupported,
     workoutsEnabled,
-    counts: { stacks: stackCount, templates: templateCount, people: peopleCount, mood: moodCount, medications: medicationCount, foodLog: foodLogCount, journal: journalCount, dreams: dreamCount, meters: meterCount, workouts: workoutCount },
-  }), [kitchenEnabled, simpleMode, screenTimeSupported, workoutsEnabled, stackCount, templateCount, peopleCount, moodCount, medicationCount, foodLogCount, journalCount, dreamCount, meterCount, workoutCount]);
+    counts: { stacks: stackCount, templates: templateCount, people: peopleCount, mood: moodCount, medications: medicationCount, foodLog: foodLogCount, journal: journalCount, dreams: dreamCount, meters: meterCount, workouts: workoutCount, savedViews: savedViewCount },
+  }), [kitchenEnabled, simpleMode, screenTimeSupported, workoutsEnabled, stackCount, templateCount, peopleCount, moodCount, medicationCount, foodLogCount, journalCount, dreamCount, meterCount, workoutCount, savedViewCount]);
 }

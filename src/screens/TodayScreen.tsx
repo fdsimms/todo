@@ -2101,8 +2101,9 @@ export function TodayScreen() {
 
   const handleOpenSavedViews = useCallback(() => {
     setFilterVisible(false);
-    navigation.navigate({ name: 'SavedViews' } as never);
-  }, [navigation]);
+    // A tab route now (an Organize member), so through navigateToTab.
+    navigateToTab('SavedViews');
+  }, []);
 
   // Simplified mode takes the advanced half away, and a saved view is that.
   // `set` is the count rather than a flag for the reason featureShown exists:

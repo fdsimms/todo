@@ -100,6 +100,7 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { usePersonStore } from '../store/usePersonStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useMeterReadingStore } from '../store/useMeterReadingStore';
+import { useSavedViewStore } from '../store/useSavedViewStore';
 import { useMoodStore } from '../store/useMoodStore';
 
 const Tab = createBottomTabNavigator();
@@ -154,6 +155,7 @@ const TAB_SCREENS: Record<string, React.ComponentType<any>> = {
   Calendar: freezeWhenBlurred(CalendarScreen),
   Categories: freezeWhenBlurred(CategoriesScreen),
   Tags: freezeWhenBlurred(TagsScreen),
+  SavedViews: freezeWhenBlurred(SavedViewsScreen),
   Meters: freezeWhenBlurred(MetersScreen),
   People: freezeWhenBlurred(PeopleScreen),
   Stacks: freezeWhenBlurred(StacksScreen),
@@ -218,7 +220,7 @@ const PUSHED_ROUTES = new Set([
   // Saved views has no menu row (see NAV_EXTRA_DESTINATIONS): it is opened
   // from Today's filter sheet, and from the drawer's find field, which is why
   // handleDrawerNavigate below has to leave the tab highlight alone for these.
-  'SavedViews', 'SavedViewDetail',
+  'SavedViewDetail',
   'RecipeDetail', 'PersonDetail', 'CookbookDetail',
   // Reached from the Mood screen rather than from the menu. Both are the mood
   // log read at a narrower grain — every entry there is, and one symptom —
@@ -456,6 +458,7 @@ function initialScreenFromSettings(): string {
     foodLog: useFoodLogStore.getState().totalCount,
     meters: useMeterReadingStore.getState().readings.length,
     workouts: workoutContentCount(useWorkoutStore.getState()),
+    savedViews: useSavedViewStore.getState().views.length,
   })) return 'Today';
   // Restored but unproven until it has stayed up (a restore to Today needs no guard).
   if (lastVisitedScreen !== 'Today') markScreenUnproven(lastVisitedScreen);
@@ -701,11 +704,6 @@ export default function AppNavigator() {
           <RootStack.Screen
             name="StackDetail"
             component={StackDetailScreen}
-            options={{ presentation: 'card' }}
-          />
-          <RootStack.Screen
-            name="SavedViews"
-            component={SavedViewsScreen}
             options={{ presentation: 'card' }}
           />
           <RootStack.Screen

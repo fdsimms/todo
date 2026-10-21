@@ -56,6 +56,8 @@ export interface NavContentCounts {
   meters?: number;
   /** Workouts, custom exercises, routines and programs: the Workouts screen's content. */
   workouts?: number;
+  /** Saved views: the Saved views screen's content. */
+  savedViews?: number;
 }
 
 export type NavHubId = 'kitchen' | 'organize' | 'history' | 'health';
@@ -152,6 +154,10 @@ const ORGANIZE_HUB: NavHub = {
     { route: 'Meters', label: 'Meters', icon: 'speedometer-outline', keywords: ['odometer', 'mileage', 'miles', 'usage', 'readings', 'hours', 'counter', 'oil change'] },
     { route: 'Stacks', label: 'Stacks', icon: 'layers-outline', keywords: ['groups', 'routines', 'bundles'] },
     { route: 'Templates', label: 'Templates', icon: 'copy-outline', keywords: ['presets', 'checklists', 'reusable'] },
+    // A funnel, because that is the idea and that is where views are made:
+    // Today's filter sheet. A member rather than a row of its own, since a
+    // view is a way of organizing tasks the way a tag is.
+    { route: 'SavedViews', label: 'Saved views', icon: 'funnel-outline', keywords: ['filter', 'filters', 'lens', 'preset', 'smart list', 'saved search'] },
   ],
 };
 
@@ -429,19 +435,9 @@ export interface NavSearchResult extends NavDestination {
  * would otherwise be invisible to somebody who knows it exists and is looking
  * for it.
  *
- * Saved views is a RootStack card rather than a tab, so opening it leaves the
- * tab highlight where it was — see PUSHED_ROUTES in AppNavigator. Cookbooks
- * is a tab route with no row, so it highlights nothing either.
+ * Cookbooks is a tab route with no row, so opening it highlights nothing.
  */
 export const NAV_EXTRA_DESTINATIONS: readonly NavDestination[] = [
-  {
-    route: 'SavedViews',
-    // A funnel, because that is the idea and that is where it is reached from:
-    // Today's filter sheet.
-    icon: 'funnel-outline',
-    label: 'Saved views',
-    keywords: ['filter', 'filters', 'lens', 'preset', 'smart list', 'saved search'],
-  },
   {
     // Otherwise reached only from an icon in the Recipes header.
     route: 'Cookbooks',

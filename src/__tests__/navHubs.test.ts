@@ -154,7 +154,7 @@ describe('simplified mode', () => {
 describe('the subtitle under a hub row', () => {
   it('names every member it holds', () => {
     const organize = NAV_HUBS.find(h => h.id === 'organize')!;
-    expect(hubSubtitle(organize)).toBe('Categories, Tags, People, Meters, Stacks, Templates');
+    expect(hubSubtitle(organize)).toBe('Categories, Tags, People, Meters, Stacks, Templates, Saved views');
     const health = NAV_HUBS.find(h => h.id === 'health')!;
     expect(hubSubtitle(health)).toBe('Mood, Medications, Weight, Sleep, Journal, Dreams');
   });
@@ -192,7 +192,7 @@ describe('finding a screen', () => {
 
   it('finds a member by the hub holding it', () => {
     expect(searchMenu(all(), menuSearchTerms('organize')).map(d => d.route))
-      .toEqual(['Categories', 'Tags', 'People', 'Meters', 'Stacks', 'Templates']);
+      .toEqual(['Categories', 'Tags', 'People', 'Meters', 'Stacks', 'Templates', 'SavedViews']);
   });
 
   it('requires every term to match something, though not the same thing', () => {
