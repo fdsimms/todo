@@ -19,6 +19,7 @@ import { isSameDay } from 'date-fns/isSameDay';
 import { format } from 'date-fns/format';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, interaction, animation, type Colors, textScale } from '../theme';
+import { AnimatedText } from '../theme/AppFont';
 import { haptics } from '../utils/haptics';
 import {
   buildCalendarGrid, weekdayHeaders,
@@ -748,14 +749,14 @@ export function WhenPicker({
                         accessibilityRole="button"
                         accessibilityLabel={`${shortcut.label}${shortcut.label === 'On the day' ? '' : ' before'}, ${format(shortcut.date, 'EEEE, MMMM d')}`}
                       >
-                        <Animated.Text
+                        <AnimatedText
                           style={[
                             styles.projectShortcutText,
                             quickPendingKey === key && { transform: [{ scale: popAnim }] },
                           ]}
                         >
                           {shortcut.label}
-                        </Animated.Text>
+                        </AnimatedText>
                       </TouchableOpacity>
                     );
                   })}

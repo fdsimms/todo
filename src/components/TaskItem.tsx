@@ -50,6 +50,7 @@ import { useColors } from '../theme/ThemeContext';
 import { useTrayRaised } from './TaskGroupTray';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, checkboxRadius, type Colors, textScale } from '../theme';
+import { AnimatedText } from '../theme/AppFont';
 import { weatherWaitChipText } from '../utils/weatherWait';
 import { slotInChipText } from '../utils/slotIn';
 import { splitWeatherTitle } from '../utils/weatherTasks';
@@ -4171,9 +4172,9 @@ const TaskItemRow = React.memo(function TaskItem({
           accessibilityLabel={chainName ? `Step ${chainPosition} of “${chainName}”` : `Chain step ${chainPosition}`}
         >
           <Ionicons name="git-commit" size={9} color={colors.accent} />
-          <Animated.Text style={[styles.chainBadgeText, { opacity: chainStepOpacity, transform: [{ scale: chainStepAnim }] }]}>
+          <AnimatedText style={[styles.chainBadgeText, { opacity: chainStepOpacity, transform: [{ scale: chainStepAnim }] }]}>
             {chainPosition}
-          </Animated.Text>
+          </AnimatedText>
         </View>
       )}
 

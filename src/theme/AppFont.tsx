@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useReducer, useState, useSyncExternalStore } from 'react';
-import { StyleSheet, type TextStyle } from 'react-native';
+import { Animated, StyleSheet, Text, type TextStyle } from 'react-native';
 import * as Font from 'expo-font';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { resolveFontFace, type AppFont } from './fonts';
@@ -144,6 +144,19 @@ function applyFontPatch() {
 // Runs on import — ThemeContext imports this module, and App.tsx imports
 // ThemeContext, so the swap is in place well before the first render.
 applyFontPatch();
+
+/**
+ * `Animated.Text`, in the selected font. Use this, never `Animated.Text`.
+ *
+ * `Animated.Text` is built from the original `Text` when `react-native` first
+ * loads, so the swap above never reaches it: it renders in the system font
+ * while a plain `Text` beside it renders in the chosen one. A rolling digit
+ * showed that as a different typeface until the roll ended and the plain
+ * `Text` took over. Wrapping `Text` here, after the patch, picks up the font
+ * and the Dynamic Type cap. `noRawAnimatedText.test.ts` fails the build on the
+ * raw one.
+ */
+export const AnimatedText = Animated.createAnimatedComponent(Text);
 
 /**
  * Loads a font's faces before the app renders its first frame, so the tree
