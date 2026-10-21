@@ -108,7 +108,7 @@ export function selectPurgeableTaskIds(
   cutoff: Date,
   /**
    * Projects whose finished members are kept whatever their age: the ongoing
-   * ones (Project.ongoing). A checked-off task in "Books to read" is the
+   * ones and the lists (isOpenEnded). A checked-off task in "Books to read" is the
    * record of having read it, not a tombstone, and a retention window set for
    * everyday tasks would delete it.
    */

@@ -486,6 +486,7 @@ import {
   UndoHistoryActions,
   undoHistoryActions,
 } from '../utils/undoHistory';
+import { isOpenEnded } from '../utils/listMode';
 
 
 /**
@@ -3489,7 +3490,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // about tasks and is what the caller reports.
     useFocusStore.getState().purgeHistoryBefore(cutoff);
 
-    const ongoingIds = new Set(useProjectStore.getState().projects.filter(p => p.ongoing).map(p => p.id));
+    const ongoingIds = new Set(useProjectStore.getState().projects.filter(isOpenEnded).map(p => p.id));
     const ids = selectPurgeableTaskIds(get().tasks, cutoff, ongoingIds);
     if (ids.length === 0) return 0;
     const idSet = new Set(ids);
@@ -4391,9 +4392,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!missed && task.projectId && useSettingsStore.getState().autoCompleteProjectsOnDone) {
       const progress = projectProgress(task.projectId, get().tasks);
       const project = useProjectStore.getState().getProjectById(task.projectId);
-      // Never an ongoing one (Project.ongoing): a running list has no finish
+      // Never an ongoing one or a list (isOpenEnded): a running list has no finish
       // line, and every other "you're done" path already refuses it.
-      if (progress.total > 0 && progress.done === progress.total && project && !project.completed && !project.archived && !project.ongoing) {
+      if (progress.total > 0 && progress.done === progress.total && project && !project.completed && !project.archived && !isOpenEnded(project)) {
         useProjectStore.getState().applyProjectCompleted(task.projectId, true);
         autoCompletedProjectId = task.projectId;
       }
@@ -10281,16 +10282,18 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       inOrder: source.inOrder,
       hideNextStep: source.hideNextStep,
       groupOnToday: source.groupOnToday,
+      list: source.list ?? false,
     });
 
     const sectionFor = new Map<string, string>();
-    const checklistSections = new Set(
-      useTaskGroupStore.getState().groups.filter(g => g.checklist).map(g => g.id),
+    const sectionFlags = new Map(
+      useTaskGroupStore.getState().groups.map(g => [g.id, { checklist: !!g.checklist, keepsTasks: !!g.keepsTasks }]),
     );
     dbTransaction(() => {
       for (const section of blueprint.sections) {
         const copy = useTaskGroupStore.getState().createGroup(section.title, null, created.id);
-        if (checklistSections.has(section.id)) useTaskGroupStore.getState().updateGroup(copy.id, { checklist: true });
+        const flags = sectionFlags.get(section.id);
+        if (flags && (flags.checklist || flags.keepsTasks)) useTaskGroupStore.getState().updateGroup(copy.id, flags);
         sectionFor.set(section.id, copy.id);
       }
       const order: string[] = [];

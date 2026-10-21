@@ -332,7 +332,7 @@ interface ProjectStore {
   initialized: boolean;
   initialize: () => void;
   createProject: (title: string, options?: CreateProjectOptions) => Project;
-  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'deadline' | 'eventDate' | 'category' | 'defaultTaskCategory' | 'taskDefaults' | 'nudgeCadenceDays' | 'autoSchedule' | 'nudgeOptIn' | 'weekendSource' | 'reviewDeclinedAt' | 'reviewedAt' | 'backfillDismissedFields' | 'ongoing' | 'awayStart' | 'awayEnd' | 'awayPauses' | 'awayPauseDeclinedFor' | 'destination' | 'awayListId' | 'awayListDeclinedFor' | 'pausedUntil' | 'personIds' | 'links' | 'inOrder' | 'hideNextStep' | 'groupOnToday' | 'destinationLatitude' | 'destinationLongitude'>>) => void;
+  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'deadline' | 'eventDate' | 'category' | 'defaultTaskCategory' | 'taskDefaults' | 'nudgeCadenceDays' | 'autoSchedule' | 'nudgeOptIn' | 'weekendSource' | 'reviewDeclinedAt' | 'reviewedAt' | 'backfillDismissedFields' | 'ongoing' | 'awayStart' | 'awayEnd' | 'awayPauses' | 'awayPauseDeclinedFor' | 'destination' | 'awayListId' | 'awayListDeclinedFor' | 'pausedUntil' | 'personIds' | 'links' | 'inOrder' | 'hideNextStep' | 'groupOnToday' | 'list' | 'destinationLatitude' | 'destinationLongitude'>>) => void;
   /** Filing several projects at once from the Projects screen's bulk bar. */
   bulkSetProjectCategory: (ids: string[], category: string | null) => void;
   getProjectById: (id: string) => Project | null;
@@ -384,6 +384,13 @@ export interface CreateProjectOptions {
    * caller.
    */
   ongoing?: boolean;
+  /**
+   * A list (see Project.list), for a caller making a running collection.
+   * Unlike `ongoing` it sets nothing else: a list is never nudged or offered
+   * as complete because the readers ask `src/utils/listMode.ts`, not because
+   * a field was written here.
+   */
+  list?: boolean;
   category?: string | null;
   /**
    * The away span, for the one caller that knows one at creation: a template
@@ -484,6 +491,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       inOrder: false,
       hideNextStep: false,
       groupOnToday: false,
+      list: options.list ?? false,
     };
     dbInsertProject(project);
     set(s => ({ projects: [...s.projects, project] }));

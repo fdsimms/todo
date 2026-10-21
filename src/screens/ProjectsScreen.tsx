@@ -77,6 +77,7 @@ import { usePullToSearch } from '../hooks/usePullToSearch';
 import type { Project } from '../types';
 import { LazySheet } from '../components/LazySheet';
 import { BUTTON_LABEL } from '../copy/shared';
+import { isOpenEnded } from '../utils/listMode';
 
 /**
  * How many projects a list holds before it grows a search bar. Below this the
@@ -207,7 +208,7 @@ function ProjectsList() {
     const map = new Map<string, { progress: { done: number; total: number }; next: string | null }>();
     listProjects.forEach(p => map.set(p.id, {
       progress: projectProgress(p.id, allTasks),
-      next: projectFilter === 'active' && !p.hideNextStep ? projectNextStepTitle(p.id, allTasks, taskGroups, p.inOrder) : null,
+      next: projectFilter === 'active' && !p.hideNextStep && !p.list ? projectNextStepTitle(p.id, allTasks, taskGroups, p.inOrder) : null,
     }));
     return map;
   }, [listProjects, allTasks, projectFilter, taskGroups]);
@@ -542,7 +543,7 @@ function ProjectsList() {
     // An ongoing project (see Project.ongoing) never reads as done here
     // either, however many of its current tasks are — it has no finish line
     // for "every task done" to mean anything against.
-    const allDone = projectFilter === 'active' && !project.ongoing
+    const allDone = projectFilter === 'active' && !isOpenEnded(project)
       && progress.total > 0 && progress.done === progress.total;
     // A locked project keeps its row, so there is a sign the tasks exist, but
     // says nothing about what is in it: no progress, next step or dates.

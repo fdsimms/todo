@@ -175,11 +175,26 @@ describe('update_stack and delete_stack', () => {
     const b = make('Vitamin D');
     const stack = createStack(replica, { title: 'Supplements', taskIds: [a.id, b.id] }).stack!;
     mockRaw.runSync('DELETE FROM unattended_log');
-    const result = updateStack(replica, stack.id, { category: 'Evening Tasks', notes: 'With dinner', checklist: true });
+    const result = updateStack(replica, stack.id, { category: 'Evening Tasks', notes: 'With dinner' });
     expect(result.moved.map(m => m.category)).toEqual([{ from: 'Routine', to: 'Evening Tasks' }, { from: 'Routine', to: 'Evening Tasks' }]);
-    expect(result.stack).toMatchObject({ category: 'Evening Tasks', notes: 'With dinner', checklist: true });
+    expect(result.stack).toMatchObject({ category: 'Evening Tasks', notes: 'With dinner' });
     const edit = ledger().find(e => e.taskId === a.id)!;
     expect(agentRevertPlan(edit, replica.taskById(a.id)).kind).toBe('restore');
+  });
+
+  it('reads and writes a section as a list the way the section editor does', () => {
+    const ordinary = replica.createProjectPlan({ title: 'Lisbon', steps: [] } as never).project;
+    const packing = createStack(replica, { title: 'Packing', projectId: ordinary.id }).stack!;
+    expect(updateStack(replica, packing.id, { list: true }).stack).toMatchObject({ list: true });
+    expect(replica.stacks().find(g => g.id === packing.id)).toMatchObject({ checklist: true, keepsTasks: false });
+
+    // In a list project every section is a list, so false is the override.
+    const wishes = replica.createProjectPlan({ title: 'Wish list', list: true, steps: [] } as never).project;
+    const books = createStack(replica, { title: 'Books', projectId: wishes.id }).stack!;
+    expect(books).toMatchObject({ list: true });
+    const kept = updateStack(replica, books.id, { list: false }).stack;
+    expect(kept?.list).toBeUndefined();
+    expect(replica.stacks().find(g => g.id === books.id)).toMatchObject({ checklist: false, keepsTasks: true });
   });
 
   it('takes the tasks out on delete, and deletes the open ones with deleteTasks, restorable either way', () => {

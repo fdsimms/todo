@@ -2,6 +2,7 @@ import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Project, Task } from '../types';
 import { projectProgress } from '../store/useProjectStore';
 import { getDayStart } from './dateUtils';
+import { isOpenEnded } from './listMode';
 
 /**
  * What the Stats screen says about projects.
@@ -37,7 +38,7 @@ export interface ProjectStatsSummary {
   finishedThisYear: number;
   /**
    * Members done and total across the active projects, aggregated, leaving out
-   * ongoing ones (see Project.ongoing): a running list has no finish line, so
+   * open-ended ones (ongoing or a list, see isOpenEnded): a running list has no finish line, so
    * its members only ever dragged the fraction down.
    */
   activeDone: number;
@@ -83,7 +84,7 @@ export function projectStats(
 
   let activeDone = 0;
   let activeTotal = 0;
-  const tracked = active.filter(p => !p.ongoing);
+  const tracked = active.filter(p => !isOpenEnded(p));
   for (const project of tracked) {
     const progress = projectProgress(project.id, tasks as Task[]);
     activeDone += progress.done;

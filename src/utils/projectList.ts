@@ -5,6 +5,7 @@ import { dayKeyToDate, formatDeadlineDate, getCurrentDayStart, getDayStart as ge
 import { isPausedOn, isPlanning } from './projectPause';
 import { describeAwaySpan } from './awayDates';
 import { liveProjectSteps } from './projectOrder';
+import { listCountNote } from './listMode';
 import { buildProjectListItems } from './projectStacks';
 import { displayTitleFor, isHeldBack } from './visibilityUtils';
 
@@ -135,9 +136,12 @@ export function projectCardCaption(
  * open.
  */
 export function projectProgressNote(
-  project: Pick<Project, 'ongoing'>,
+  project: Pick<Project, 'ongoing' | 'list'>,
   progress: ProjectProgress,
 ): string | null {
+  // A list counts items, checked ones included, where a project would show a
+  // bar (src/utils/listMode.ts).
+  if (project.list) return listCountNote(progress.total - progress.done, progress.done);
   if (progress.total === 0) return 'No tasks yet';
   if (!project.ongoing) return null;
   const open = progress.total - progress.done;

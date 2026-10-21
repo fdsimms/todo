@@ -20,8 +20,8 @@ export interface SerializedStack {
   projectId?: string;
   notes?: string;
   tags?: string[];
-  /** Its members are ticked off in place, as a checklist. */
-  checklist?: true;
+  /** A list section: its members are items checked off rather than scheduled, set on the section or by a list project. */
+  list?: true;
   /** Its collapsed header shows no "Next:" task. */
   hideNextStep?: true;
   /**
@@ -64,7 +64,7 @@ function serializeStack(replica: Replica, stack: ReturnType<Replica['stacks']>[n
     ...(stack.projectId ? { projectId: stack.projectId } : {}),
     ...(stack.notes ? { notes: stack.notes } : {}),
     ...(stack.tags.length > 0 ? { tags: stack.tags } : {}),
-    ...(stack.checklist ? { checklist: true as const } : {}),
+    ...(stack.projectId && replica.lib().listMode.sectionIsList(stack, replica.projects().find(p => p.id === stack.projectId)) ? { list: true as const } : {}),
     ...(stack.hideNextStep ? { hideNextStep: true as const } : {}),
     members,
   };
@@ -190,7 +190,7 @@ export interface UpdateStackInput {
   /** A category from list_categories, or null. Re-files every open member with it. */
   category?: string | null;
   projectId?: string | null;
-  checklist?: boolean;
+  list?: boolean;
   hideNextStep?: boolean;
 }
 

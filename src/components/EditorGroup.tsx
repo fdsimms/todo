@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useMemo, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, type Colors } from '../theme';
@@ -6,6 +6,16 @@ import { filterEditorRows } from '../utils/editorSearch';
 import { editorRowShown } from '../utils/simpleMode';
 import { useSettingsStore } from '../store/useSettingsStore';
 import type { EditorJumpTracker } from '../utils/editorJump';
+
+/**
+ * A second row filter on top of Simplified mode's, set by the editor around
+ * its form: `(key, set) => shown`. The task editor uses it for a list item
+ * (src/utils/listMode.ts), which shows only the rows an item uses. Null, the
+ * default, filters nothing. A context rather than a prop for the same reason
+ * Simplified mode is read here: one filter in one component, not a condition
+ * at every call site.
+ */
+export const EditorRowFilterContext = createContext<((key: string, set: boolean) => boolean) | null>(null);
 
 export interface EditorGroupRow {
   key: string;
@@ -85,9 +95,12 @@ export function EditorGroup({
   // row already declares whether it holds a value — a chain task keeps its
   // chain, a plain one never sees the option.
   const simpleMode = useSettingsStore(s => s.simpleMode);
+  const rowFilter = useContext(EditorRowFilterContext);
   const rows = useMemo(
-    () => (simpleMode ? allRows.filter(r => editorRowShown(r.key, true, !!r.set)) : allRows),
-    [allRows, simpleMode]
+    () => (!simpleMode && !rowFilter ? allRows : allRows.filter(r =>
+      (!simpleMode || editorRowShown(r.key, true, !!r.set))
+      && (!rowFilter || rowFilter(r.key, !!r.set)))),
+    [allRows, simpleMode, rowFilter]
   );
 
   const searching = searchTerms.length > 0;

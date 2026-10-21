@@ -880,6 +880,28 @@ describe('ongoing at creation', () => {
   });
 });
 
+describe('list projects', () => {
+  it('is not a list unless a caller says so', () => {
+    useProjectStore.setState({ projects: [] });
+    expect(useProjectStore.getState().createProject('Kitchen refresh').list).toBe(false);
+  });
+
+  // A list is never nudged because the readers ask listMode, not because
+  // creating or converting one wrote the nudge fields, so turning it back off
+  // hands back exactly the project there was.
+  it('creates or converts a list without touching anything else', () => {
+    useProjectStore.setState({ projects: [] });
+    const created = useProjectStore.getState().createProject('Wish list', { list: true });
+    expect(created).toMatchObject({ list: true, ongoing: false });
+    expect(nudgeModeOf(created)).toBe('on-ask');
+
+    const plain = useProjectStore.getState().createProject('Gift ideas');
+    useProjectStore.getState().updateProject(plain.id, { list: true });
+    const converted = useProjectStore.getState().getProjectById(plain.id)!;
+    expect(converted).toEqual({ ...plain, list: true });
+  });
+});
+
 describe('projectAnswerTallies', () => {
   const guest = (id: string, overrides: Partial<Task> = {}): Task => makeTask({
     id,

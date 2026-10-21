@@ -3701,6 +3701,7 @@ function registerWriteTools(
       defaultTaskCategory: z.string().nullable().optional().describe('A task category (from list_categories) every step gets unless it names its own. Without it, every step needs its own category.'),
       newCategory: z.boolean().optional().describe('Create defaultTaskCategory as a new category.'),
       ongoing: z.boolean().optional().describe('No finish line: finishing its last task does not offer to complete it, and it is never nudged. For a running collection like gift ideas or questions for the doctor.'),
+      list: z.boolean().optional().describe('A list: steps are items to check off (a wish list, gift ideas, a bucket list) rather than tasks to schedule. It counts items instead of showing progress, is never nudged or offered as complete, and opens items in a shorter editor. Usually wanted with no dates on the steps.'),
       planning: z.boolean().optional().describe('Start it in Planning: its steps, dated ones too, stay off every list until it is marked ready (update_project planning: false). For a plan the person is still working out.'),
       steps: z.array(planStep).optional(),
     },
@@ -3763,6 +3764,7 @@ function registerWriteTools(
       planning: z.boolean().optional().describe('true puts it in Planning: its tasks, dated ones too, are held off every list and it gets no nudges until it is marked ready, for a project still being set up. false marks it ready. Not with pausedUntil.'),
       inOrder: z.boolean().optional().describe('Work the steps in page order: the app offers only the first open one.'),
       ongoing: z.boolean().optional().describe('Never finished: finishing its last task does not offer to complete it.'),
+      list: z.boolean().optional().describe('Make it a list (items to check off, never nudged or offered as complete) or a task project again. Changes nothing else: no task, nudge or ongoing setting is touched, so it is safe to try.'),
       personIds: z.array(z.string()).optional().describe('People it is with or for, by id from list_people. Replaces the list.'),
       links: z.array(z.object({ label: z.string().optional(), url: z.string() })).optional().describe('Links kept with it (the booking, the shared doc), in order. Replaces the list; [] clears it.'),
       nudgeCadenceDays: z.number().int().optional().describe('Days of quiet before the app offers its next task. 0 never offers.'),
@@ -3830,7 +3832,7 @@ function registerWriteTools(
 
   server.tool(
     'update_stack',
-    "Change a stack, as its editor does: title, notes, tags, which project page shows it as a section (projectId), whether its tasks are ticked off as a checklist, or its category. A stack owns its members' category, so a new category re-files every open task in it (the result lists each move; finished ones keep theirs). To reorder its tasks use reorder with kind tasks and stackId.",
+    "Change a stack, as its editor does: title, notes, tags, which project page shows it as a section (projectId), whether it is a list (its members are items to check off rather than tasks to schedule), or its category. A stack owns its members' category, so a new category re-files every open task in it (the result lists each move; finished ones keep theirs). To reorder its tasks use reorder with kind tasks and stackId.",
     {
       id: z.string().min(1),
       title: z.string().optional(),
@@ -3838,7 +3840,7 @@ function registerWriteTools(
       tags: z.array(z.string()).optional(),
       category: z.string().nullable().optional().describe('A category from list_categories, or null for none.'),
       projectId: z.string().nullable().optional().describe('The project whose page shows it as a section. Its tasks keep their own projects.'),
-      checklist: z.boolean().optional(),
+      list: z.boolean().optional().describe('A section on a project page: true makes its tasks list items, false keeps them tasks. In a list project every section is a list unless set false here.'),
       hideNextStep: z.boolean().optional().describe('Leave the "Next:" task off its collapsed header.'),
     },
     async ({ id, ...input }) => {

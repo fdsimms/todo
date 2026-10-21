@@ -19,6 +19,7 @@ import { useSheetMount } from '../hooks/useSheetMount';
 import { useProjectStore } from '../store/useProjectStore';
 import { AnimatedNumber } from './AnimatedNumber';
 import { RotatingChevron } from './RotatingChevron';
+import { listCountNote, sectionIsList } from '../utils/listMode';
 
 interface Props {
   group: TaskGroup;
@@ -181,10 +182,18 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
   // turning it on there doesn't mean visiting every section.
   const projectHidesNext = useProjectStore(s => !!group.projectId && !!s.projects.find(p => p.id === group.projectId)?.hideNextStep);
   const hideNext = !!group.hideNextStep || projectHidesNext;
+  // A list section on its project's page (src/utils/listMode.ts) counts
+  // items instead: no done/total badge and no "Next", since nothing on a list
+  // is next. On Today it is a stack like any other, counting today's work.
+  const isList = useProjectStore(s => !!group.projectId && sectionIsList(group, s.projects.find(p => p.id === group.projectId)));
+  // An empty one says nothing here: its body already says it has no items.
+  const listCount = isList && tallyScope === 'all' && !filtered && totalToday > 0
+    ? listCountNote(totalToday - doneToday, doneToday)
+    : null;
   // The count is the badge's job; spelling it out here again was redundant.
   const summary = totalToday === 0 || filtered || !nextUp || hideNext ? null
     : `Next: ${nextUp.title}`;
-  const showTally = totalToday > 0 && !filtered;
+  const showTally = totalToday > 0 && !filtered && listCount === null;
 
   const completeAll = () => {
     if (allDone) return;
@@ -288,9 +297,11 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
                 // a label set here overrides the row's children, so the
                 // "3/8" is invisible to a screen reader on its own.
                 accessibilityLabel={
-                  showTally
-                    ? `${group.title} ${group.checklist ? 'checklist' : group.projectId ? 'section' : 'stack'}, ${doneToday} of ${totalToday} done${tallyScope === 'today' ? ' today' : ''}`
-                    : `${group.title} ${group.checklist ? 'checklist' : group.projectId ? 'section' : 'stack'}`
+                  listCount !== null
+                    ? `${group.title} list, ${listCount}`
+                    : showTally
+                    ? `${group.title} ${isList ? 'list' : group.projectId ? 'section' : 'stack'}, ${doneToday} of ${totalToday} done${tallyScope === 'today' ? ' today' : ''}`
+                    : `${group.title} ${isList ? 'list' : group.projectId ? 'section' : 'stack'}`
                 }
                 accessibilityHint={onDrag ? 'Long press to reorder' : undefined}
                 // Complete-all is a long-press on the glyph, which VoiceOver
@@ -300,9 +311,9 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
                 onAccessibilityAction={e => { if (e.nativeEvent.actionName === 'longpress') completeAll(); }}
               >
                 <View style={styles.titleRow}>
-                  {/* Says a section is a checklist before its rows do: its
-                      lines hide their dates and Pull passes it over. */}
-                  {group.checklist && (
+                  {/* Says a section is a list before its rows do: its items
+                      are checked off, and Pull passes it over. */}
+                  {isList && (
                     <Ionicons name="checkbox-outline" size={iconSize.sm} color={colors.textTertiary} />
                   )}
                   <Text style={styles.title} numberOfLines={1}>{group.title}</Text>
@@ -331,7 +342,12 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
                     a jitter rather than a slide, and near the end of the list
                     the momentary content shrink also tripped ReorderableList's
                     bottom clamp. Collapsing was the same thing mirrored. */}
-                {summary !== null && (
+                {/* A list's count stays put open or closed: a line that never
+                    leaves can't cause the step the note above is about. */}
+                {listCount !== null && (
+                  <Text style={styles.summary} numberOfLines={1}>{listCount}</Text>
+                )}
+                {summary !== null && listCount === null && (
                   <AnimatedCollapsible expanded={!isExpanded}>
                     <Text style={styles.summary} numberOfLines={1}>{summary}</Text>
                   </AnimatedCollapsible>

@@ -32,6 +32,7 @@ import { StorageSettings } from './StorageSettings';
 import { type SegmentOption } from '../../components/SegmentedControl';
 import { makeSettingsStyles } from './settingsStyles';
 import { BUTTON_LABEL } from '../../copy/shared';
+import { isOpenEnded } from '../../utils/listMode';
 
 /**
  * Recipe photos are the one thing in a backup that isn't a table row (see the
@@ -222,7 +223,7 @@ export function DataResetSettings() {
     const cutoff = retentionCutoff(days, new Date(), dayResetTime);
     // The same exemption the purge applies, or the count here would name
     // tasks in an ongoing project that the purge then keeps.
-    const ongoingIds = new Set(useProjectStore.getState().projects.filter(p => p.ongoing).map(p => p.id));
+    const ongoingIds = new Set(useProjectStore.getState().projects.filter(isOpenEnded).map(p => p.id));
     const doomed = cutoff ? selectPurgeableTaskIds(allTasks, cutoff, ongoingIds) : [];
     // Finished focus sessions ride the same window, so they have to be in the
     // count too. The dialog is this feature's whole safety mechanism, and one
