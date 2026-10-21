@@ -221,10 +221,10 @@ export function WorkoutsScreen() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
   const search = useFilterField();
-  const results = useMemo(
-    () => searchExercises(exercises, search.query).map(r => r.exercise),
-    [exercises, search.query]
-  );
+  const found = useMemo(() => searchExercises(exercises, search.query), [exercises, search.query]);
+  const results = useMemo(() => found.map(r => r.exercise), [found]);
+  // Which results the search reached by another name, so their row can say so.
+  const viaOtherName = useMemo(() => new Map(found.flatMap(r => (r.viaOtherName ? [[r.exercise.id, r.viaOtherName] as const] : []))), [found]);
 
   const openExercise = useCallback((id: string) => {
     haptics.tap();
@@ -309,11 +309,11 @@ export function WorkoutsScreen() {
     >
       <View style={styles.flex}>
         <Text style={styles.title}>{item.name}</Text>
-        <Text style={styles.detail}>{describeExercise(item)}</Text>
+        <Text style={styles.detail}>{describeExercise(item, viaOtherName.get(item.id))}</Text>
       </View>
       <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
     </TouchableOpacity>
-  ), [styles, colors, openExercise]);
+  ), [styles, colors, openExercise, viaOtherName]);
 
   // Clears the start button floating in the corner, so the last row can scroll out from under it.
   const listBottom = { paddingBottom: tabBarHeight + FAB_SIZE + spacing.xl };

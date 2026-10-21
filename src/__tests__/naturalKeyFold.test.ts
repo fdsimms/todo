@@ -123,6 +123,12 @@ describe('custom exercises', () => {
     expect(foldRows('exercises', a, b)).toMatchObject({ id: 'a1', created_at: '2026-05-01', archived: 0, notes: 'Low pulley' });
   });
 
+  it('keep the other names of both copies', () => {
+    const a = { id: 'a1', name: 'Cable fly', name_key: 'cable fly', created_at: '2026-05-02', other_names: '["Pec fly"]' };
+    const b = { id: 'b2', name: 'cable fly', name_key: 'cable fly', created_at: '2026-05-01', other_names: '["Pec fly","Cable crossover"]' };
+    expect(JSON.parse(String(foldRows('exercises', a, b).other_names))).toEqual(['Pec fly', 'Cable crossover']);
+  });
+
   it('move the sets, routine items and training maxes that named the loser', () => {
     const refs = REFERENCES.filter(r => r.target === 'exercises');
     const byTable = (table: string) => refs.find(r => r.table === table)!;
