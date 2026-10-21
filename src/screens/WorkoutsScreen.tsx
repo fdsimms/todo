@@ -633,6 +633,7 @@ export function WorkoutsScreen() {
     <>
       <View style={styles.actions}>
         <InlineAction icon="add" label="New routine" surface="page" onPress={() => openEditor(null)} />
+        <InlineAction icon="folder-open-outline" label="New group" variant="neutral" surface="page" onPress={() => openGroupSheet(null)} />
         {!live && (
           <InlineAction variant="neutral" label="Start empty workout" surface="page" onPress={() => startWorkout()} />
         )}
@@ -793,7 +794,6 @@ export function WorkoutsScreen() {
           anchor={menuAnchor}
           onClose={() => setMenuOpen(false)}
           actions={[
-            { key: 'group', label: 'New group', icon: 'folder-open-outline' as const, onPress: () => openGroupSheet(null) },
             { key: 'gyms', label: 'Gyms', icon: 'location-outline', onPress: () => setGymsOpen(true) },
             { key: 'import', label: 'Import from Strong or Hevy', icon: 'download-outline', onPress: () => { void startImport(); } },
             ...(sessions.some(s => s.endedAt !== null)
