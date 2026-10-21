@@ -1141,14 +1141,17 @@ export function FoodLogScreen() {
   ) : (
     <View style={styles.totalsCard}>
       {shownKeys.map(key => (
-        <View key={key} style={styles.totalBlock}>
+        // The whole block is the button (label row, bar and the notes under
+        // it), so a tap anywhere on the nutrient opens its contributors.
         <TouchableOpacity
-          style={styles.totalRow}
+          key={key}
+          style={styles.totalBlock}
           activeOpacity={interaction.activeOpacity}
           onPress={() => { haptics.tap(); setContributorsKey(key); }}
           accessibilityRole="button"
           accessibilityLabel={`See which entries contributed to ${NUTRIENT_LABEL[key].label.toLowerCase()}`}
         >
+        <View style={styles.totalRow}>
           <View style={styles.totalLabelCol}>
             <Text style={styles.totalLabel}>{NUTRIENT_LABEL[key].label}</Text>
           </View>
@@ -1166,7 +1169,7 @@ export function FoodLogScreen() {
                 formats on one line. */}
             <Text style={styles.totalValue}>{totalText(key)}</Text>
           </View>
-        </TouchableOpacity>
+        </View>
         {/* Colored by distance from the target, never by direction:
             whether being over a target is good or bad is not knowable
             (somebody tracking protein wants to reach it, somebody
@@ -1211,7 +1214,7 @@ export function FoodLogScreen() {
             Apple Health
           </Text>
         )}
-        </View>
+        </TouchableOpacity>
       ))}
       {/* Withheld when expanding would add nothing. The list is
           filtered to nutrients the day actually stated or has a target
@@ -1252,26 +1255,26 @@ export function FoodLogScreen() {
       {/* One neutral bar for the combined "5 a day". Same accent as the other
           bars and no status colour: it shows how far along the day is, and
           nothing changes when it fills. */}
-      <View style={styles.totalBlock}>
-        <TouchableOpacity
-          style={styles.totalRow}
-          activeOpacity={interaction.activeOpacity}
-          onPress={() => { haptics.tap(); setProduceOpen(true); }}
-          accessibilityRole="button"
-          accessibilityLabel="See which entries counted as vegetables and fruit"
-        >
+      <TouchableOpacity
+        style={styles.totalBlock}
+        activeOpacity={interaction.activeOpacity}
+        onPress={() => { haptics.tap(); setProduceOpen(true); }}
+        accessibilityRole="button"
+        accessibilityLabel="See which entries counted as vegetables and fruit"
+      >
+        <View style={styles.totalRow}>
           <Text style={styles.totalLabel}>{`${DAILY_PRODUCE_SERVINGS} a day`}</Text>
           <Text style={styles.waterTarget}>
             {`about ${formatServings(produce.vegetable + produce.fruit)} of ${DAILY_PRODUCE_SERVINGS}`}
           </Text>
-        </TouchableOpacity>
+        </View>
         <ProgressBar
           progress={dailyProduceProgress(produce.vegetable, produce.fruit)}
           height={4}
           trackColor={colors.separator}
           accessibilityLabel={`Vegetables and fruit, about ${formatServings(produce.vegetable + produce.fruit)} of ${DAILY_PRODUCE_SERVINGS} servings`}
         />
-      </View>
+      </TouchableOpacity>
       <Text style={styles.boostNote}>
         {produce.unmeasured > 0
           ? `Servings of 80 g. ${produce.unmeasured === 1 ? '1 entry' : `${produce.unmeasured} entries`} could not be measured and ${produce.unmeasured === 1 ? 'is' : 'are'} not counted.`
