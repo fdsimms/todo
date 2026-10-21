@@ -68,7 +68,7 @@ import { parseSetCell } from '../utils/workoutCell';
 import { exerciseDayNote, exerciseDayNotePatches } from '../utils/exerciseDayNote';
 import { applyRoutineChanges, describeRoutineChange, routineChanges } from '../utils/routineUpdate';
 import { barKgFor, effectivePlateInventory, isPlateLoaded, plateLoad } from '../utils/plateMath';
-import { sessionRecordSummary } from '../utils/workoutRecords';
+import { liftVolumeKg, sessionRecordSummary } from '../utils/workoutRecords';
 import { proposalActionLabel, proposalApplied, proposalHeadline, workingSetLogged, type Proposal } from '../utils/workoutProgression';
 import { exerciseProposal, type ExerciseProposal } from '../utils/workoutProposal';
 import { applyProposal, liveProposal } from '../utils/workoutProposalApply';
@@ -608,6 +608,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
               minutes={summary.minutes}
               exercises={summary.exercises.length}
               sets={summary.setsDone}
+              volumeKg={liftVolumeKg(sets, id => catalogExercise(exerciseRows, id)?.kind ?? 'weight_reps')}
+              unit={unit}
               style={styles.stats}
             />
             {summary.exercises.length > 0 && (

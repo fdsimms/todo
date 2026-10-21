@@ -1,6 +1,8 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
+import { kgToUnit, type WeightUnit } from '../utils/weightLog';
+import { withThousands } from '../utils/workoutRecordText';
 import { font, fontWeight, radius, spacing, type Colors } from '../theme';
 
 interface Props {
@@ -8,21 +10,25 @@ interface Props {
   minutes: number;
   exercises: number;
   sets: number;
+  /** Kilograms lifted, `liftVolumeKg`; null or 0 reads as 0. */
+  volumeKg: number | null;
+  unit: WeightUnit;
   style?: StyleProp<ViewStyle>;
 }
 
 /**
- * A workout's three figures in a row of tiles: how long, how many exercises,
- * how many sets. Workout mode's finish summary and the workout page both draw
+ * A workout's four figures in a row of tiles: how long, how many exercises,
+ * how many sets, and the volume lifted (0 when nothing weighted was done). Workout mode's finish summary and the workout page both draw
  * it, so the figures read the same on both; each caller says what it counts.
  */
-export function WorkoutStatTiles({ minutes, exercises, sets, style }: Props) {
+export function WorkoutStatTiles({ minutes, exercises, sets, volumeKg, unit, style }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const tiles = [
     { value: `${minutes} min`, label: 'Time' },
     { value: String(exercises), label: exercises === 1 ? 'Exercise' : 'Exercises' },
     { value: String(sets), label: sets === 1 ? 'Set' : 'Sets' },
+    { value: withThousands(kgToUnit(volumeKg ?? 0, unit)), label: `Volume (${unit})` },
   ];
   return (
     <View style={[styles.row, style]}>

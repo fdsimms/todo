@@ -129,7 +129,7 @@ interface SessionStat { value: string | null; unit: string }
  * sets, volume) drawn apart from it. The set count is every set row the session
  * has (`setCounts`), the minutes are `sessionMinutes`, and the volume is
  * `liftVolumeKg`: the workout page's tiles read the same, so the row and the
- * page agree. A session with no weighted sets has no volume figure, not a zero.
+ * page agree. A session with no weighted sets reads 0, so every row has the same three figures.
  */
 function sessionFigures(
   session: WorkoutSession,
@@ -145,7 +145,7 @@ function sessionFigures(
     if (minutes > 0) stats.push({ value: String(minutes), unit: 'min' });
   }
   stats.push({ value: String(sets), unit: sets === 1 ? 'set' : 'sets' });
-  if (volumeKg) stats.push({ value: withThousands(kgToUnit(volumeKg, unit)), unit });
+  stats.push({ value: withThousands(kgToUnit(volumeKg ?? 0, unit)), unit });
   return { date: format(new Date(session.startedAt), 'EEE, MMM d'), stats };
 }
 
