@@ -228,6 +228,7 @@ export function RecipeDetailScreen() {
   const removePrepTask = useRecipeStore(s => s.removePrepTask);
   const addStep = useRecipeStore(s => s.addStep);
   const updateStep = useRecipeStore(s => s.updateStep);
+  const setRecipeNotes = useRecipeStore(s => s.setNotes);
   const removeStep = useRecipeStore(s => s.removeStep);
   const reorderSteps = useRecipeStore(s => s.reorderSteps);
   const addEmptyStepSection = useRecipeStore(s => s.addEmptyStepSection);
@@ -296,6 +297,8 @@ export function RecipeDetailScreen() {
   // Which tab of the page is showing. Session-only: a recipe always opens on
   // its ingredients, the thing most visits are for.
   const [tab, setTab] = useState<RecipeTab>('ingredients');
+  // The recipe's notes sit above the list on the two tabs that are the method.
+  const showsNotes = tab === 'steps' || tab === 'ingredients';
 
   // Which alternative the cost and nutrition estimates below are for, when the
   // recipe poses an either/or — "sourdough" and "baguette" don't share a
@@ -535,6 +538,9 @@ export function RecipeDetailScreen() {
   // every keystroke: the length stepper beside it writes straight through
   // because a press is one discrete value, and typed prose is not.
   const [noteDraft, setNoteDraft] = useState('');
+  // The recipe's own notes, edited in place on the Steps tab. A separate draft
+  // from `noteDraft` above, which belongs to one step.
+  const [recipeNotesDraft, setRecipeNotesDraft] = useState<string | null>(null);
   const stepInputRef = useRef<TextInput>(null);
   const [editorVisible, setEditorVisible] = useState(false);
   /**
@@ -2334,7 +2340,55 @@ export function RecipeDetailScreen() {
             method, and with steps they are the cook's own tips ("double the
             garlic"), which cook mode shows in its Notes panel too. They are
             not the method once steps exist, so nothing here repeats them. */}
-        {tab === 'steps' && !!recipe.notes.trim() && <Text style={styles.notes} selectable>{recipe.notes}</Text>}
+        {showsNotes && recipeNotesDraft === null && !!recipe.notes.trim() && (
+          <Text style={styles.notes} selectable>{recipe.notes}</Text>
+        )}
+        {/* The same field Recipe details edits, reachable from the page that shows
+            it. Saved on Save, not per keystroke: unlike a step's note this is
+            free prose, and Cancel has to be able to put it back. */}
+        {showsNotes && recipeNotesDraft === null && (
+          <View style={styles.notesActionRow}>
+            <InlineAction
+              label={recipe.notes.trim() ? 'Edit note' : 'Add a note'}
+              icon={recipe.notes.trim() ? 'create-outline' : 'add'}
+              variant={recipe.notes.trim() ? 'neutral' : 'accent'}
+              surface="page"
+              onPress={() => setRecipeNotesDraft(recipe.notes)}
+            />
+          </View>
+        )}
+        {showsNotes && recipeNotesDraft !== null && (
+          <View>
+            <View style={styles.notesEditCard}>
+              <TextField
+                style={styles.notesEditInput}
+                value={recipeNotesDraft}
+                onChangeText={setRecipeNotesDraft}
+                placeholder="e.g. double the garlic, or rest the dough longer in summer"
+                placeholderTextColor={colors.textTertiary}
+                multiline
+                autoFocus
+                textAlignVertical="top"
+                accessibilityLabel="Recipe notes"
+              />
+            </View>
+            <View style={styles.notesActionRow}>
+              <InlineAction
+                label={BUTTON_LABEL.cancel}
+                variant="neutral"
+                surface="page"
+                onPress={() => setRecipeNotesDraft(null)}
+              />
+              <InlineAction
+                label={BUTTON_LABEL.save}
+                onPress={() => {
+                  setRecipeNotes(recipe.id, recipeNotesDraft);
+                  setRecipeNotesDraft(null);
+                }}
+              />
+            </View>
+          </View>
+        )}
 
         {tab === 'timers' && (
         <>
@@ -3303,6 +3357,26 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     color: colors.text,
     fontSize: font.md,
     lineHeight: font.md * 1.4,
+  },
+  notesActionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  notesEditCard: {
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.controlBorder,
+    paddingHorizontal: spacing.smd,
+  },
+  notesEditInput: {
+    color: colors.text,
+    fontSize: font.md,
+    paddingVertical: spacing.smd,
+    minHeight: 96,
   },
   totalTimeSummary: {
     color: colors.textSecondary,
