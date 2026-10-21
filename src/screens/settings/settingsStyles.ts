@@ -13,6 +13,20 @@ export const makeSettingsStyles = (colors: Colors) => StyleSheet.create({
     textTransform: 'uppercase', letterSpacing: 0.8,
     marginBottom: spacing.sm, paddingHorizontal: spacing.sm,
   },
+  // The label with a help button at its end (`SettingsSection`'s `explain`).
+  // Same type as `sectionLabel`; the row takes over its bottom margin.
+  sectionLabelRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginBottom: spacing.sm, paddingHorizontal: spacing.sm,
+  },
+  sectionLabelInRow: {
+    color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase', letterSpacing: 0.8,
+  },
+  explainCard: { padding: spacing.md },
+  explainTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold, marginBottom: spacing.sm },
+  explainBody: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 19 },
+  explainBodyNext: { marginTop: spacing.sm },
   card: {
     backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden',
   },

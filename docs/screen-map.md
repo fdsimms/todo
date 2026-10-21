@@ -228,7 +228,7 @@ Where each component can appear.
 - `src/components/JournalWordGoalSheet.tsx` — on JournalScreen, SettingsGroupScreen
 - `src/components/LabelSubjectSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, +8 more
 - `src/components/LaterStackRow.tsx` — on TodayScreen
-- `src/components/LazySheet.tsx` — on ArchivedScreen, BackfillScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, KitchenScreen, LogbookScreen, MealPlanScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, +14 more
+- `src/components/LazySheet.tsx` — on ArchivedScreen, AutomationsScreen, BackfillScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, KitchenScreen, LogbookScreen, MealPlanScreen, MedicationDetailScreen, MedicationScreen, +17 more
 - `src/components/LeftoverSheet.tsx` — on KitchenScreen, MealPlanScreen, app shell
 - `src/components/LeftoversCard.tsx` — on MealPlanScreen
 - `src/components/LimitImpactLines.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, +8 more

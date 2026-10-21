@@ -125,7 +125,14 @@ export function ClaudeCalendarSettings() {
   return (
     <SettingsSection
       label="Claude’s events on your calendar"
-      footer="Events you ask Claude to add through your sync server go to the calendar you pick here on the next sync. Only one device adds them, so picking a calendar here turns this off on other devices. Claude can’t see your calendar and doesn’t change or delete events after they’re added."
+      footer="Events you ask Claude to add through your sync server go to the calendar you pick here on the next sync."
+      explain={{
+        title: 'How Claude’s events work',
+        paragraphs: [
+          'Only one device adds them, so picking a calendar here turns this off on other devices.',
+          'Claude can’t see your calendar and doesn’t change or delete events after they’re added.',
+        ],
+      }}
     >
       <SettingsRow
         entryId="claudeCalendar"
