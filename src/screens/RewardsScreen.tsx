@@ -1005,7 +1005,7 @@ export function RewardsScreen() {
         </Text>
         {bounties.length === 0 ? (
           <>
-            <View style={styles.emptyNote}>
+            <View style={[styles.emptyNote, suggestedBounties.length > 0 && styles.emptyNoteAboveList]}>
               <EmptyNote icon={COIN_ICON}>
                 {suggestedBounties.length > 0
                   ? 'No bounties posted. These tasks have been moved the most.'
@@ -1284,6 +1284,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   addRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: spacing.md, marginTop: spacing.sm },
   listPrompt: { gap: spacing.xxs },
   emptyNote: { marginHorizontal: spacing.md },
+  // The note introduces the suggested-bounty card right under it, so the two need a gap.
+  emptyNoteAboveList: { marginBottom: spacing.smd },
   // The same box as `input`, with the currency symbol inside it so the field
   // reads as money before anything is typed (the GroceryItemSheet price field).
   priceField: {
