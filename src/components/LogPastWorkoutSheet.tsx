@@ -15,6 +15,7 @@ import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useTextScale } from '../hooks/useTextScale';
+import type { WorkoutSet } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
 import { disclosureValue } from '../theme/textStyles';
@@ -24,7 +25,9 @@ import { catalogExercise } from '../utils/exerciseCatalog';
 import { formatTimeOfDay } from '../utils/dateUtils';
 import { workoutHealthWriteOn, workoutSpanWritable } from '../utils/healthWorkoutSync';
 import { WORKOUT_NAME_MAX_LENGTH } from '../utils/workoutData';
-import { columnLabel, setFieldsFor, type SetField } from '../utils/workoutSession';
+import {
+  columnLabel, formatSetLine, matchPreviousByPosition, previousBadge, setFieldsFor, type SetField,
+} from '../utils/workoutSession';
 import {
   PAST_WORKOUT_DEFAULT_MINUTES, PAST_WORKOUT_MAX_MINUTES, PAST_WORKOUT_MIN_MINUTES,
   buildPastWorkout, nextSetText, pastWorkoutTouched, type PastExerciseDraft, type PastSetText,
@@ -106,6 +109,16 @@ export function LogPastWorkoutSheet({ visible, onClose }: Props) {
   const changeSets = (exerciseId: string, change: (sets: PastSetText[]) => PastSetText[]) => {
     setExercises(prev => prev.map(e => (e.exerciseId === exerciseId ? { ...e, sets: change(e.sets) } : e)));
   };
+  // Last time each added exercise was done, for the Previous column. Read once per
+  // exercise added rather than on every keystroke.
+  const exerciseIdsKey = exercises.map(e => e.exerciseId).join(',');
+  const lastTime = useMemo(() => {
+    const out = new Map<string, WorkoutSet[]>();
+    for (const id of exerciseIdsKey ? exerciseIdsKey.split(',') : []) {
+      out.set(id, useWorkoutStore.getState().lastTimeFor(id, null));
+    }
+    return out;
+  }, [exerciseIdsKey]);
   const nameOf = (exerciseId: string) => catalogExercise(exerciseRows, exerciseId)?.name ?? 'Unknown exercise';
 
   // ==== saving, cancelling ====
@@ -221,6 +234,11 @@ export function LogPastWorkoutSheet({ visible, onClose }: Props) {
           <Text style={styles.groupLabel}>Exercises</Text>
           {exercises.map(ex => {
             const fields = setFieldsFor(ex.kind);
+            // Every row here is an ordinary set, so each pairs with the nth of last time's.
+            const previousBySet = matchPreviousByPosition(
+              ex.sets.map((_, i) => ({ id: String(i), kind: 'working' as const })),
+              lastTime.get(ex.exerciseId) ?? [],
+            );
             return (
               <View key={ex.exerciseId} style={[styles.card, styles.exercise]}>
                 <View style={styles.exerciseHead}>
@@ -237,6 +255,7 @@ export function LogPastWorkoutSheet({ visible, onClose }: Props) {
                 </View>
                 <View style={styles.tableHead}>
                   <View style={styles.colSet} />
+                  <Text style={[styles.headCell, styles.colValue]}>Previous</Text>
                   {fields.map(f => (
                     <Text key={f} style={[styles.headCell, styles.colValue]}>
                       {columnLabel(f, ex.kind, unit)}{COLUMN_UNIT[f] ? ` (${COLUMN_UNIT[f]})` : ''}
@@ -244,9 +263,21 @@ export function LogPastWorkoutSheet({ visible, onClose }: Props) {
                   ))}
                   <View style={styles.colRemove} />
                 </View>
-                {ex.sets.map((text, index) => (
+                {ex.sets.map((text, index) => {
+                  const prev = previousBySet.get(String(index));
+                  const prevLine = prev ? formatSetLine(prev, ex.kind, unit) : null;
+                  const prevMark = prev ? previousBadge(prev) : null;
+                  return (
                   <View key={index} style={styles.setRow}>
                     <View style={styles.colSet}><Text style={styles.setNumber}>{index + 1}</Text></View>
+                    <Text
+                      style={[styles.colValue, styles.prevText]}
+                      numberOfLines={1}
+                      accessibilityLabel={prevLine ? `Last time ${prevLine}` : 'No previous set'}
+                    >
+                      {prevLine ?? '–'}
+                      {prevLine && prevMark ? <Text style={styles.prevMark}>{`  ${prevMark}`}</Text> : null}
+                    </Text>
                     {fields.map(f => (
                       <View key={f} style={styles.colValue}>
                         <TextField
@@ -276,7 +307,8 @@ export function LogPastWorkoutSheet({ visible, onClose }: Props) {
                       )}
                     </View>
                   </View>
-                ))}
+                  );
+                })}
                 <View style={styles.adds}>
                   <InlineAction
                     icon="add"
@@ -358,6 +390,8 @@ const makeStyles = (colors: Colors, textScale: number) => StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator,
   },
   setNumber: { color: colors.textSecondary, fontSize: font.md, fontWeight: fontWeight.semibold, fontVariant: ['tabular-nums'] },
+  prevText: { color: colors.textTertiary, fontSize: font.md, textAlign: 'center', fontVariant: ['tabular-nums'] },
+  prevMark: { color: colors.orangeText, fontSize: font.sm, fontWeight: fontWeight.bold },
   cell: {
     minHeight: 36, paddingHorizontal: spacing.smd, borderRadius: radius.sm, backgroundColor: colors.bgTertiary,
     color: colors.text, fontSize: font.lg, textAlign: 'center', fontVariant: ['tabular-nums'],
