@@ -34,6 +34,8 @@ export interface PillHighlight {
   /** Measured and placed: draw the layers, and pills without backgrounds. */
   ready: boolean;
   frames: ReadonlyMap<string, PillFrame>;
+  /** The active pill's frame, for the highlight's own React-side style. */
+  activeFrame: PillFrame | undefined;
   x: SharedValue<number>;
   y: SharedValue<number>;
   width: SharedValue<number>;
@@ -119,6 +121,7 @@ export function usePillHighlight(activeKey: string): PillHighlight {
   return {
     ready: placed.current && frames.has(activeKey),
     frames,
+    activeFrame: frames.get(activeKey),
     x,
     y,
     width,
@@ -151,6 +154,15 @@ export function PillHighlightLayer({ highlight, keys, restColor, activeColor, ra
   // can miss the UI thread's one update of those values and sit at the 0 x 0
   // it was first rendered with: the label (always mounted) turns to the
   // accent's ink while no accent fill is behind it.
+  //
+  // The same thing happens when the row is re-committed under a mounted
+  // capsule (a tab frozen and thawed, as by a widget link that blurs and
+  // refocuses Today): the animated style is applied to the native view
+  // directly, React never wrote those numbers, so the re-commit puts back the
+  // 0 x 0 React did render. The capsule's React style therefore carries the
+  // active pill's frame in the same shape the animated style writes it, and
+  // the animated style only ever overrides it with the same or a nearer value.
+  const at = highlight.activeFrame;
   return (
     <>
       {keys.map(key => {
@@ -169,6 +181,7 @@ export function PillHighlightLayer({ highlight, keys, restColor, activeColor, ra
         style={[
           styles.capsule,
           { left: 0, top: 0, borderRadius: radius, backgroundColor: activeColor, opacity: highlight.ready ? 1 : 0 },
+          at && { transform: [{ translateX: at.x }, { translateY: at.y }], width: at.width, height: at.height },
           sliding,
         ]}
       />
