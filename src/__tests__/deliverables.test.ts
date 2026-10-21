@@ -214,11 +214,10 @@ describe('formatTaskDeliverable', () => {
 });
 
 describe('deliverableMeta', () => {
-  it('has a label and hint for every kind', () => {
+  it('has a label for every kind', () => {
     for (const kind of ['text', 'date', 'number'] as const) {
       const meta = deliverableMeta(kind);
       expect(meta.label).toBeTruthy();
-      expect(meta.hint).toBeTruthy();
     }
   });
 });

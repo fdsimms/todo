@@ -216,7 +216,6 @@ function QuickSearchRow({ result, onSelect, onTicked, styles, colors }: {
           quotaNext ? `next ${quotaNext}` : null,
           countLabel ? `and ${countLabel}` : null,
         ].filter(Boolean).join(', ')}
-        accessibilityHint="Double tap to open task"
       >
         <View style={styles.resultTitleRow}>
           <HighlightedText
@@ -284,7 +283,6 @@ function QuickSearchGroupRow({ result, onSelect, styles, colors }: {
       activeOpacity={interaction.activeOpacity}
       accessibilityRole="button"
       accessibilityLabel={`${group.title}, stack, ${memberLabel}`}
-      accessibilityHint="Double tap to open stack"
     >
       <View style={styles.entityIcon}>
         <Ionicons name="layers-outline" size={iconSize.sm} color={colors.accent} />
@@ -320,7 +318,6 @@ function QuickSearchProjectRow({ result, onSelect, styles, colors }: {
       activeOpacity={interaction.activeOpacity}
       accessibilityRole="button"
       accessibilityLabel={`${project.title}, project, ${progressLabel}`}
-      accessibilityHint="Double tap to open project"
     >
       <View style={styles.entityIcon}>
         <Ionicons name="briefcase-outline" size={iconSize.sm} color={colors.accent} />
@@ -360,7 +357,6 @@ function QuickSearchElsewhereRow({ result, onSelect, styles, colors }: {
       activeOpacity={interaction.activeOpacity}
       accessibilityRole="button"
       accessibilityLabel={`${result.title}, ${described.accessibilityKind}`}
-      accessibilityHint="Double tap to open"
     >
       <View style={styles.entityIcon}>
         <NamedIcon name={described.icon} size={iconSize.sm} color={colors.accent} />

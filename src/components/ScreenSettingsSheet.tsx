@@ -27,7 +27,7 @@ export interface ScreenSettingsSheetProps {
    * listed above `entries`. For a screen whose list settings live in a sheet
    * (Groceries: aisles, stores, sorting) so the gear is the one way in.
    */
-  extraRows?: { id: string; label: string; hint: string; onPress: () => void }[];
+  extraRows?: { id: string; label: string; hint?: string; onPress: () => void }[];
 }
 
 /**
@@ -77,11 +77,11 @@ export function ScreenSettingsSheet({ visible, onClose, anchor, title, route, en
               onPress={() => { haptics.tap(); card.close(row.onPress); }}
               activeOpacity={interaction.activeOpacity}
               accessibilityRole="button"
-              accessibilityLabel={`${row.label}, ${row.hint}`}
+              accessibilityLabel={row.hint ? `${row.label}, ${row.hint}` : row.label}
             >
               <View style={styles.rowBody}>
                 <Text style={styles.rowLabel}>{row.label}</Text>
-                <Text style={styles.rowHint}>{row.hint}</Text>
+                {!!row.hint && <Text style={styles.rowHint}>{row.hint}</Text>}
               </View>
               <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
             </TouchableOpacity>

@@ -325,7 +325,6 @@ export function HealthSettings() {
         icon="create-outline"
         iconColor={journalWordGoal !== null ? colors.accent : undefined}
         label="Word goal"
-        hint="Words you want each journal day to reach."
         value={journalWordGoal === null ? 'None' : formatWordCount(journalWordGoal)}
         onPress={() => { haptics.tap(); setWordGoalOpen(true); }}
       />
@@ -341,7 +340,7 @@ export function HealthSettings() {
     </SettingsSection>
     <SettingsSection
       label="Mood log suggestions"
-      footer="A new mood entry starts with these tags already picked when they apply. You can untap any of them before saving. They only ever add a tag; a day without one gets nothing."
+      footer="A new mood entry starts with these tags already picked when they apply. You can untap any of them before saving."
     >
       {MOOD_SOURCE_ROWS.map(({ key, entryId, icon, label, hint }, i) => (
         <React.Fragment key={key}>
@@ -367,12 +366,7 @@ export function HealthSettings() {
   if (!supported) {
     return (
       <>
-        <SettingsSection
-          label="Apple Health"
-          footer={demoActive
-            ? 'Demo mode does not read or write Apple Health.'
-            : "This device doesn’t have Health data, so there’s nothing to read."}
-        >
+        <SettingsSection label="Apple Health">
           <SettingsRow
             entryId="healthRead"
             icon="heart-outline"
@@ -381,10 +375,7 @@ export function HealthSettings() {
             disabled
           />
         </SettingsSection>
-        <SettingsSection
-          label="Log to Health"
-          footer={demoActive ? 'Demo mode does not read or write Apple Health.' : 'Not available on this device.'}
-        >
+        <SettingsSection label="Log to Health">
           <SettingsRow
             entryId="healthWrite"
             icon="create-outline"
@@ -551,7 +542,6 @@ export function HealthSettings() {
                 entryId="healthTodayRows"
                 icon="list-outline"
                 label="Readings shown"
-                hint="Turn off a reading to leave its row off Today."
                 tight
               />
               <View style={styles.pillGroupRow}>
@@ -590,11 +580,6 @@ export function HealthSettings() {
         icon="create-outline"
         iconColor={healthWriteEnabled ? colors.accent : undefined}
         label="Log to Health"
-        hint={healthWriteEnabled
-          ? workoutsEnabled && workoutHealthWrite
-            ? 'Water from tasks set up to log it, weights you record, meals you log and workouts you save'
-            : 'Water from tasks set up to log it, weights you record, and meals you log'
-          : 'Nothing is written to Health'}
         toggle={healthWriteEnabled}
         onPress={onToggleWrite}
         accessibilityLabel="Log to Health"
@@ -637,7 +622,6 @@ export function HealthSettings() {
             entryId="healthWriteNutrients"
             icon="nutrition-outline"
             label="Nutrients written per meal"
-            hint="Which of these a logged meal is allowed to carry into Health"
             tight
           />
           <View style={styles.pillGroupRow}>
@@ -691,7 +675,7 @@ export function HealthSettings() {
 
     <SettingsSection
       label="Weight"
-      footer="The unit weights are shown and typed in. Health stores kilograms either way."
+      footer="Health stores kilograms whichever unit you pick."
     >
       {/* Opens the sheet on the Weight screen rather than in place. The sheet
           needs the latest weigh-in to measure a goal from, and that is a read
@@ -703,7 +687,6 @@ export function HealthSettings() {
         icon="target"
         iconColor={weightGoal !== null ? colors.accent : undefined}
         label="Weight goal"
-        hint="Set a target weight and a rate, and calculate a daily calorie figure."
         value={weightGoal === null
           ? 'None'
           : goalDirection(weightGoal) === 'maintain'
@@ -755,7 +738,6 @@ export function HealthSettings() {
         icon="moon-outline"
         iconColor={sleepGoalMinutes !== null ? colors.accent : undefined}
         label="Sleep goal"
-        hint="Hours asleep you want each day to reach."
         value={sleepGoalMinutes === null ? 'None' : formatSleepDuration(sleepGoalMinutes)}
         onPress={() => { haptics.tap(); setSleepGoalOpen(true); }}
       />
@@ -768,7 +750,7 @@ export function HealthSettings() {
             label="Short night note"
             hint={shortNightNoteEnabled
               ? 'Lighten today says when Apple Health recorded less sleep than the threshold below'
-              : 'Lighten today does not mention sleep'}
+              : undefined}
             toggle={shortNightNoteEnabled}
             onPress={() => setShortNightNoteEnabled(!shortNightNoteEnabled)}
             accessibilityLabel="Short night note"
@@ -780,7 +762,6 @@ export function HealthSettings() {
                 entryId="shortNightThreshold"
                 icon="time-outline"
                 label="Short night threshold"
-                hint="The note appears when Apple Health recorded less sleep than this for today"
                 tight
               />
               <View style={styles.cadenceRow}>

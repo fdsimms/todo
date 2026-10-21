@@ -171,6 +171,9 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
     return out;
   }, [analysis, metric, kind, unit]);
 
+  // The page scroll is off while a finger is scrubbing the chart.
+  const [scrubbing, setScrubbing] = useState(false);
+
   const latest = analysis && plotted.length > 0 ? plotted[plotted.length - 1] : null;
   // The caption names a break only when the line has one.
   const hasGap = useMemo(() => chartSegments(toChartPoints(plotted)).length > 1, [plotted]);
@@ -255,7 +258,7 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
             {nameBlock}
           </View>
         ) : (
-          <ScrollView style={styles.flex} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+          <ScrollView style={styles.flex} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} scrollEnabled={!scrubbing}>
             {nameBlock}
             <View style={styles.card}>
               <SegmentedControl options={options} value={metric} onChange={setChosen} label="Show" />
@@ -272,6 +275,7 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
                     <ExerciseProgressChart
                       points={plotted}
                       formatAxis={v => formatAxisValue(v, metric, kind)}
+                      onScrubChange={setScrubbing}
                       summary={`${metricLabel(metric)} chart, ${plotted.length} ${plotted.length === 1 ? 'session' : 'sessions'}, latest ${latest.text}${metric === 'e1rm' ? ', estimated' : ''}`}
                     />
                   </View>

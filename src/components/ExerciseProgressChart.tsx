@@ -59,11 +59,18 @@ interface Props {
   formatAxis: (value: number) => string;
   /** The spoken summary of the whole chart, without the points. */
   summary: string;
+  /**
+   * Fires true when a finger lands on the plot and false when it lifts. The
+   * host turns its scroll view off for the duration: a native scroll view
+   * yields only to a responder that is its ancestor, and this one is a
+   * descendant, so without it the page scrolls under the scrub.
+   */
+  onScrubChange?: (scrubbing: boolean) => void;
 }
 
 const dayLabel = (dayKey: string) => format(new Date(`${dayKey}T12:00:00`), 'MMM d');
 
-export function ExerciseProgressChart({ points, formatAxis, summary }: Props) {
+export function ExerciseProgressChart({ points, formatAxis, summary, onScrubChange }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [width, setWidth] = useState(0);
@@ -107,14 +114,21 @@ export function ExerciseProgressChart({ points, formatAxis, summary }: Props) {
     scrubRef.current = nearest;
     setScrubIndex(nearest);
   };
+  const onScrubChangeRef = useRef(onScrubChange);
+  onScrubChangeRef.current = onScrubChange;
+  const startScrub = (event: GestureResponderEvent) => {
+    onScrubChangeRef.current?.(true);
+    scrubTo(event);
+  };
   const endScrub = () => {
     scrubRef.current = null;
     setScrubIndex(null);
+    onScrubChangeRef.current?.(false);
   };
   const panResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: () => true,
-    onPanResponderGrant: scrubTo,
+    onPanResponderGrant: startScrub,
     onPanResponderMove: scrubTo,
     onPanResponderRelease: endScrub,
     onPanResponderTerminate: endScrub,

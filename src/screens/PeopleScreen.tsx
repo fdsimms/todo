@@ -579,7 +579,7 @@ const PersonRow = React.memo(function PersonRow({
           activeOpacity={interaction.activeOpacity}
           accessibilityRole="button"
           accessibilityLabel={spokenMeta ? `${name}. ${spokenMeta}` : name}
-          accessibilityHint={selectionMode ? undefined : canDrag ? 'Double tap to open. Long press to reorder.' : 'Double tap to open.'}
+          accessibilityHint={selectionMode || !canDrag ? undefined : 'Long press to reorder'}
         >
           <View style={[styles.avatar, { backgroundColor: colors.accentSubtle }]}>
             <Text maxFontSizeMultiplier={textScale.badge} style={styles.avatarText}>{name.slice(0, 1).toUpperCase()}</Text>

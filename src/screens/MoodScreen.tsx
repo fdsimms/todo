@@ -41,10 +41,9 @@ import {
   buildMoodDays,
   categoryMoodContrasts,
   contextTagMoodContrasts,
-  describeHealthInsight,
   finishedDaysAverage,
   foodMoodContrasts,
-  healthInsight,
+  healthFindings,
   metricAverage,
   milestoneMoodContrast,
   moodBarFraction,
@@ -246,17 +245,10 @@ export function MoodScreen() {
   //
   // A pairing below MIN_PAIRED_DAYS describes as null and drops out, so a
   // person with steps but no Watch sees one line rather than two empty ones.
-  const healthFindings = useMemo(() => {
-    if (!healthReadEnabled || healthHistory === null) return [];
-    const rows: { key: string; text: string }[] = [];
-    for (const metric of ['steps', 'sleepHours'] as const) {
-      for (const against of ['completed', 'mood'] as const) {
-        const text = describeHealthInsight(healthInsight(days, metric, against));
-        if (text) rows.push({ key: `${metric}-${against}`, text });
-      }
-    }
-    return rows;
-  }, [days, healthReadEnabled, healthHistory]);
+  const healthFindingRows = useMemo(
+    () => (!healthReadEnabled || healthHistory === null ? [] : healthFindings(days)),
+    [days, healthReadEnabled, healthHistory],
+  );
 
   // The two averages, over the days that carry a reading rather than over the
   // window — an absent day is absent here as everywhere else.
@@ -662,7 +654,7 @@ export function MoodScreen() {
             )}
           </View>
 
-          {(healthFindings.length > 0 || averageSteps !== null || averageSleep !== null) && (
+          {(healthFindingRows.length > 0 || averageSteps !== null || averageSleep !== null) && (
             <>
               <Text style={styles.sectionTitle}>MOVEMENT AND SLEEP</Text>
               <View style={styles.card}>
@@ -672,7 +664,7 @@ export function MoodScreen() {
                     carries spacing.md. This card is the only one that stacks
                     them. */}
                 <View style={styles.findings}>
-                  {healthFindings.map(finding => (
+                  {healthFindingRows.map(finding => (
                     <Text key={finding.key} style={styles.finding}>{finding.text}</Text>
                   ))}
                 </View>
@@ -693,8 +685,8 @@ export function MoodScreen() {
                   </View>
                 )}
                 <Text style={styles.chartCaption}>
-                  From Apple Health, over the last {HEALTH_HISTORY_DAYS} days, counting only the
-                  {' '}days you logged. These patterns don’t show cause and effect.
+                  From Apple Health, last {HEALTH_HISTORY_DAYS} days, logged days only. Patterns
+                  {' '}aren’t cause and effect.
                 </Text>
               </View>
             </>

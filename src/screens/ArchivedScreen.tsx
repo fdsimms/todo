@@ -371,7 +371,6 @@ const ArchivedRow = React.memo(function ArchivedRow({
           projectTitle,
           pausedOn ? `paused ${pausedOn}` : null,
         ].filter(Boolean).join(', ')}
-        accessibilityHint={selectionMode ? undefined : 'Double tap to open task'}
       >
         <Text style={styles.taskTitle} numberOfLines={2}>{title}</Text>
         <View style={styles.metaRow}>

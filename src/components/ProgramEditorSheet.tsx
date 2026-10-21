@@ -297,7 +297,6 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
                     activeOpacity={interaction.activeOpacity}
                     accessibilityRole={routine ? 'button' : undefined}
                     accessibilityLabel={label}
-                    accessibilityHint={routine ? 'Opens the routine' : undefined}
                   >
                     <Text style={styles.slotName}>{label}</Text>
                     {routine && <Text style={styles.slotMeta}>{describeRoutine(routine.items, musclesOf)}</Text>}
@@ -336,7 +335,7 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
                   noun="routine"
                   options={routines.filter(r => !r.archived).map(r => ({ key: r.id, label: r.name, selected: false, onPress: () => addRoutine(r.id) }))}
                 />
-                <HelpText style={styles.hint}>Tap a routine to add it at the end. A routine can come round more than once.</HelpText>
+                <HelpText style={styles.hint}>A routine can come around more than once.</HelpText>
                 <View style={styles.row}>
                   <InlineAction label={BUTTON_LABEL.done} variant="neutral" onPress={() => { haptics.tap(); setAdding(false); }} />
                 </View>
@@ -372,8 +371,8 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
         </View>
         <HelpText style={styles.hint}>
           {scheme === 'percent'
-            ? 'How many weeks the program runs. Weights rise over the first three weeks, and the last week of a program four or more weeks long is lighter.'
-            : 'How many weeks the program runs. This only changes the week count, like “Week 2 of 6”. Leave it on No end to keep going.'}
+            ? 'Weights rise over the first three weeks, and the last week of a program four or more weeks long is lighter.'
+            : 'This only changes the week count, like “Week 2 of 6”. Leave it on No end to keep going.'}
         </HelpText>
       </View>
 

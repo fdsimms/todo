@@ -709,7 +709,7 @@ const TemplateItemRow = React.memo(function TemplateItemRow({
             // overrides its children, so it has to be spelled out here too.
             : `${readableTitle}${item.optional ? ', optional' : ''}${missingRefsLabel ? `, ${missingRefsLabel}` : ''}`
       }
-      accessibilityHint={selectionMode ? 'Double tap to select item' : broken ? undefined : isRef ? 'Double tap to open the nested template' : 'Double tap to edit item'}
+      accessibilityHint={selectionMode || broken ? undefined : isRef ? 'Opens the nested template' : 'Opens the item to edit'}
     >
       {/* The nesting glyph stays put while selecting. Selection is the
           SelectionDot at the other end of the row, the split every other

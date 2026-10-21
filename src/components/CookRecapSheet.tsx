@@ -668,7 +668,7 @@ export function CookRecapSheet({
                                 onPress={() => undoHave(row)}
                                 accessibilityRole="button"
                                 accessibilityLabel={`${row.name} is in your pantry`}
-                                accessibilityHint="Double tap to undo"
+                                accessibilityHint="Undoes it"
                               >
                                 <Ionicons name="checkmark" size={14} color={colors.onAccent} />
                                 <Text style={styles.haveOnLabel}>In your pantry</Text>

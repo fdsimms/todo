@@ -2316,6 +2316,7 @@ describe('demo seed — people', () => {
     expect(gyms.map(g => g.name)).toEqual(['Home gym', 'Planet Fitness']);
     expect(gyms[0].equipment).not.toContain('cable');
     expect(gyms[1].equipment).toContain('cable');
+    expect(gyms[1].equipment).toContain('leg_press');
     expect(gyms.every(g => g.latitude === null)).toBe(true);
     expect(settings.find(s => s.barKg === 15)?.exerciseId).toBe('lib:back-squat');
     expect(settings.find(s => s.incrementKg === 5)?.exerciseId).toBe('lib:triceps-pushdown');
