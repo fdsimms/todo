@@ -1,0 +1,4 @@
+{
+  "message": "The \"Anything else?\" amount field when logging a dish no longer suggests \"2 slices\" for every ingredient. It now shows a weight, or a cup for liquids",
+  "date": "2026-10-21"
+}

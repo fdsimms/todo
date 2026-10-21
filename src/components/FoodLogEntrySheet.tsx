@@ -2253,7 +2253,9 @@ export function FoodLogEntrySheet({
                       style={styles.varyingInput}
                       value={varyingAmounts[line.id] ?? ''}
                       onChangeText={text => setVaryingAmounts(a => ({ ...a, [line.id]: text }))}
-                      placeholder="e.g. 2 slices"
+                      // A weight reads right for any solid food; a liquid's panel
+                      // is per 100 ml, which a bare weight can't reach.
+                      placeholder={line.nutrition?.basis === 'per100ml' ? 'e.g. 1 cup' : 'e.g. 50 g'}
                       placeholderTextColor={colors.textTertiary}
                       accessibilityLabel={`How much ${line.name} you had`}
                     />
