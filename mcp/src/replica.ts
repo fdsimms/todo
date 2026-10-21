@@ -81,6 +81,7 @@ import type {
   Exercise,
   WorkoutProgram,
   WorkoutRoutine,
+  WorkoutRoutineVersion,
   Gym,
   GymExerciseSetting,
   ExerciseEquipment,
@@ -1259,6 +1260,10 @@ export interface Replica {
   exercises(): Exercise[];
   /** Workout routines, in the person's order. Plans, like exercises. */
   workoutRoutines(): WorkoutRoutine[];
+  /** Every stored routine version, oldest first. Plans, like routines. */
+  routineVersions(): WorkoutRoutineVersion[];
+  /** The rest a routine item with none of its own uses, which a version comparison resolves against. */
+  defaultRestSeconds(): number;
   /** Workout programs. Plans, like exercises. */
   workoutPrograms(): WorkoutProgram[];
   /** Gyms, in the person's order, and what is noted for an exercise at each. Plans, like routines. */
@@ -4364,6 +4369,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     meterReadings: () => db.dbGetAllMeterReadings(),
     exercises: () => db.dbGetAllExercises(),
     workoutRoutines: () => db.dbGetAllWorkoutRoutines(),
+    routineVersions: () => db.dbGetAllRoutineVersions(),
+    defaultRestSeconds: () => useSettingsStore.getState().defaultRestSeconds,
     routineGroups: () => {
       const routines = db.dbGetAllWorkoutRoutines();
       let registry: string[] = [];
@@ -4401,18 +4408,20 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           ...(input.items !== undefined ? { items: input.items } : {}),
           ...(input.groupName !== undefined ? { groupName: input.groupName } : {}),
           ...(input.archived !== undefined ? { archived: input.archived } : {}),
-        });
+        // `auto`: an agent can't be asked, so it amends the current version
+        // until a workout has been done on it, and starts a new one after.
+        }, { version: 'auto', source: 'agent' });
         if (typeof result === 'string') throw new Error(WORKOUT_REFUSALS[result]);
         return result;
       }
-      const made = store.addRoutine(input.name ?? '', input.items ?? []);
+      const made = store.addRoutine(input.name ?? '', input.items ?? [], null, { source: 'agent' });
       if (typeof made === 'string') throw new Error(WORKOUT_REFUSALS[made]);
       if (!input.notes?.trim() && !input.groupName && !input.archived) return made;
       const withRest = store.updateRoutine(made.id, {
         ...(input.notes?.trim() ? { notes: input.notes } : {}),
         ...(input.groupName ? { groupName: input.groupName } : {}),
         ...(input.archived ? { archived: true } : {}),
-      });
+      }, { version: 'amend' });
       if (typeof withRest === 'string') throw new Error(WORKOUT_REFUSALS[withRest]);
       return withRest;
     },

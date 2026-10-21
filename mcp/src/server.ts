@@ -112,7 +112,7 @@ import { listCopyFlags, resolveCopyFlag } from './copyFlagTools';
 import { deleteMeterReading, listMeterReadings, logMeterReading } from './meterTools';
 import {
   DEFAULT_EXERCISE_LIMIT, MAX_EXERCISE_LIMIT, deleteGym, deleteProgram, deleteRoutine, deleteRoutineGroup, deleteWorkout, exerciseHistory, listExercises,
-  listWorkouts, logWorkout, nextWorkout, saveGym, saveProgram, saveRoutine, saveRoutineGroup, updateWorkout,
+  listWorkouts, logWorkout, nextWorkout, routineHistoryOut, saveGym, saveProgram, saveRoutine, saveRoutineGroup, updateWorkout,
 } from './workoutTools';
 import { EXERCISE_EQUIPMENT, MUSCLE_GROUPS } from '../../src/utils/workoutData';
 import { deleteJournalEntry, listJournalEntries, logJournalEntry, searchJournalEntries, updateJournalEntry } from './journalTools';
@@ -593,6 +593,19 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     'Workouts the person logged over a range of days, newest first, each with its exercises and sets (weights in kg, whatever unit the phone shows; done: false is a set laid out but not done), plus their routines (planned sets per exercise), programs and gyms (where they train, the equipment each has and a note for an exercise there). Defaults to the last 7 days. Workout history is part of the health record: it is empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that they did not train. Routines and programs are plans and arrive either way. Report what was logged. Never estimate calories from sets, and never work anything out from body weight.',
     logRange,
     async input => json(await withFresh(() => listWorkouts(replica, input)))
+  );
+
+  server.tool(
+    'routine_history',
+    'One routine\'s versions, newest first: the plan each held (its exercises and planned sets, weights in kg), when it was in use, how many finished workouts were done on it, and what it changed from the one before, in the phone\'s words. A version is what was trained on: a change saved before any workout on the current version amends it, and one saved after starts a new one. list_workouts gives each routine\'s current version and each workout the version it was done on. Read-only: going back to a version, copying one or merging routines is done on the phone (save_routine changes only the current plan). Workout counts arrive only with Include health logs on, so a version with none is not evidence that nobody trained on it. Report the figures side by side; never call one version better than another.',
+    { routineId: z.string().min(1).describe('A routine from list_workouts.') },
+    async input => {
+      try {
+        return json(await withFresh(() => routineHistoryOut(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not read the routine history.' });
+      }
+    }
   );
 
   server.tool(

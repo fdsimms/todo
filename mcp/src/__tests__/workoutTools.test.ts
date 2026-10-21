@@ -1,6 +1,9 @@
-import type { Exercise, WorkoutProgram, WorkoutRoutine, WorkoutSession, WorkoutSet } from '../../../src/types';
+import type { Exercise, WorkoutProgram, WorkoutRoutine, WorkoutRoutineVersion, WorkoutSession, WorkoutSet } from '../../../src/types';
 import type { Replica } from '../replica';
-import { DEFAULT_EXERCISE_LIMIT, TREND_POINTS, deleteRoutineGroup, exerciseHistory, listExercises, listWorkouts, saveRoutine, saveRoutineGroup } from '../workoutTools';
+import {
+  DEFAULT_EXERCISE_LIMIT, TREND_POINTS, deleteRoutineGroup, exerciseHistory, listExercises, listWorkouts, routineHistoryOut, saveRoutine,
+  saveRoutineGroup,
+} from '../workoutTools';
 
 const custom: Exercise = {
   id: 'c1', name: 'Landmine row', kind: 'weight_reps', primaryMuscles: ['upper_back'], secondaryMuscles: [],
@@ -40,6 +43,8 @@ function fakeReplica(over: Partial<Replica> = {}): Replica {
   return {
     exercises: () => [custom],
     workoutRoutines: () => [routine],
+    routineVersions: () => [],
+    defaultRestSeconds: () => 90,
     routineGroups: () => ['Gym', 'Travel'],
     workoutPrograms: () => [program],
     gyms: () => [],
@@ -150,6 +155,46 @@ describe('list_workouts', () => {
       name: 'Upper and lower', rotation: ['Upper A', 'A deleted routine'],
       trainingMaxes: [{ exerciseId: 'lib:back-squat', name: 'Barbell back squat', kg: 120 }],
     });
+  });
+});
+
+describe('routine versions', () => {
+  const v1: WorkoutRoutineVersion = {
+    id: 'v1', routineId: 'r1', createdAt: '2026-08-01T10:00:00.000Z', name: 'Upper A', notes: '', source: 'created', label: 'Heavy',
+    items: [{ ...routine.items[0], targets: [routine.items[0].targets[0], routine.items[0].targets[0]] }],
+  };
+  const v2: WorkoutRoutineVersion = { ...v1, id: 'v2', createdAt: '2026-09-15T10:00:00.000Z', source: 'workout', label: null, items: routine.items };
+  const withVersions = (over: Partial<Replica> = {}) => fakeReplica({
+    workoutRoutines: () => [{ ...routine, currentVersionId: 'v2' }],
+    routineVersions: () => [v1, v2],
+    ...over,
+  });
+
+  it('gives each routine its current version, and each workout the version it was done on', () => {
+    const result = listWorkouts(withVersions({ todayKey: () => '2026-10-08' }));
+    expect(result.routines[0].version).toBe(2);
+    expect(result.workouts[0].routineVersion).toBe(2);
+  });
+
+  it('lists a routine\'s versions newest first, with their plans, workouts and changes', () => {
+    const result = routineHistoryOut(withVersions(), { routineId: 'r1' });
+    expect(result.routine).toBe('Upper A');
+    expect(result.versions.map(v => [v.version, v.current, v.label, v.from, v.until, v.workouts])).toEqual([
+      [2, true, undefined, '2026-09-15', undefined, 1],
+      [1, undefined, 'Heavy', '2026-08-01', '2026-09-15', 1],
+    ]);
+    expect(result.versions[0].changes).toBe('Barbell bench press 2 → 1 sets');
+    expect(result.versions[1]).not.toHaveProperty('changes');
+    expect(result.versions[1].exercises[0].targets).toHaveLength(2);
+    expect(result.note).toBeUndefined();
+  });
+
+  it('stands in one version for a routine saved before versions were kept, and refuses an unknown id', () => {
+    const result = routineHistoryOut(fakeReplica({ workoutSessions: () => [] }), { routineId: 'r1' });
+    expect(result.versions).toHaveLength(1);
+    expect(result.versions[0]).toMatchObject({ version: 1, current: true, source: 'initial', workouts: 0 });
+    expect(result.note).toMatch(/Include health logs/);
+    expect(() => routineHistoryOut(fakeReplica(), { routineId: 'nope' })).toThrow(/list_workouts/);
   });
 });
 

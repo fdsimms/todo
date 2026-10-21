@@ -1560,6 +1560,12 @@ Four areas had no MCP read or write, and the shape of each answer follows from w
   and the replica refuses a routine or program that isn't there. With Include health logs off the
   replica has no sessions, so a program reads as on its first routine and history-based proposals
   are missing; `next_workout` says so.
+  A routine keeps versions (`routineVersions.ts`, docs/arch/workouts.md "Routine and program
+  history"). `save_routine` passes `version: 'auto'` and `source: 'agent'`: an agent can't be asked
+  the editor's "new version or update this one" question, so it amends the current version until a
+  workout has been finished on it and starts a new one after, and History says the agent wrote it.
+  `routine_history` reads the versions with the app's own `routineHistory` and `summarizeDiff`;
+  restoring, copying and merging stay on the phone, where the person sees what moves.
   `exercise_history` is the one read that computes: it hands one exercise's sets to the app's own
   `analyzeExercise` (`src/utils/workoutRecords.ts`) and reports the records, the trend of the
   estimated 1RM and the last session, so Claude and the phone's exercise page cannot disagree about

@@ -10,9 +10,11 @@
 // and its sets are a table drawn by RoutineSetTable. The rules (what an edit
 // to an item changes, supersets) live in src/utils/workoutRoutine.ts; this
 // file draws them. Mocks: docs/arch/workouts-mocks/routine-editor.png, and
-// routine-sets.png for the set table and the spacing.
+// routine-sets.png for the set table and the spacing. The Progress and History
+// tabs are their own components; History's version page and merge picker
+// render in this sheet's footer, inside its Modal.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { EditorSheet } from './EditorSheet';
 import { SheetHeader } from './SheetHeader';
@@ -31,8 +33,15 @@ import { ExercisePickerSheet } from './ExercisePickerSheet';
 import { ExerciseDetailSheet } from './ExerciseDetailSheet';
 import { DescribeWorkoutSheet } from './DescribeWorkoutSheet';
 import { RoutineProgressView } from './RoutineProgressView';
-import type { ExerciseKind, ProgressionScheme, WorkoutRoutine, WorkoutRoutineItem } from '../types';
-import { useWorkoutStore } from '../store/useWorkoutStore';
+import { RoutineHistoryView } from './RoutineHistoryView';
+import { RoutineVersionSheet } from './RoutineVersionSheet';
+import { MergeRoutineSheet } from './MergeRoutineSheet';
+import type { ExerciseKind, ProgressionScheme, WorkoutRoutine, WorkoutRoutineItem, WorkoutRoutineVersion } from '../types';
+import { useWorkoutStore, type VersionMode } from '../store/useWorkoutStore';
+import { startWorkout } from '../utils/startWorkout';
+import {
+  currentRoutineVersion, routineContentChanged, routineSessionsByVersion, routineVersionsOf, versionNumber, workoutCountText,
+} from '../utils/routineVersions';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { weightHeadingSuffix, weightScale } from '../utils/dumbbellLoad';
@@ -44,7 +53,7 @@ import { confirmDiscard } from '../utils/confirmDiscard';
 import { confirmDelete } from '../utils/confirmDelete';
 import { generateId } from '../utils/id';
 import { buildCatalog, catalogExercise } from '../utils/exerciseCatalog';
-import { REST_SECONDS_MAX, WORKOUT_NAME_MAX_LENGTH, exerciseNameKey, formatRestSeconds } from '../utils/workoutData';
+import { REST_SECONDS_MAX, WORKOUT_NAME_MAX_LENGTH, exerciseNameKey, formatRestSeconds, readRoutineItems } from '../utils/workoutData';
 import { NEW_EXERCISE_PREFIX } from '../utils/workoutCsv';
 import type { RoutineDraft } from '../utils/workoutDraft';
 import {
@@ -67,6 +76,12 @@ interface Props {
   /** The routine as saved, before `onClose`: for a caller that links a new one to what it was made for. */
   onSaved?: (routine: WorkoutRoutine) => void;
   onClose: () => void;
+  /**
+   * Whether History offers to start a workout from an old version. Off where
+   * this editor sits inside another sheet (a program's), since workout mode
+   * can't appear until every sheet under it has gone.
+   */
+  canStartWorkout?: boolean;
 }
 
 /**
@@ -95,10 +110,11 @@ const PROGRESSION_GLOSSARY = [
   ['RPE', 'After a set, rate how hard it felt from 1 (very easy) to 10 (couldn’t do another rep), and the suggested weight follows.'],
 ] as const;
 
-type EditorTab = 'edit' | 'progress';
+type EditorTab = 'edit' | 'progress' | 'history';
 const TAB_OPTIONS: SegmentOption<EditorTab>[] = [
   { value: 'edit', label: 'Edit' },
   { value: 'progress', label: 'Progress' },
+  { value: 'history', label: 'History' },
 ];
 
 const NAME_REFUSED: Record<string, string> = {
@@ -120,7 +136,7 @@ const viewsOf = (rows: readonly Row[]): SupersetRowView[] =>
  * asks before throwing edits away (`confirmDiscard`); a full-screen sheet has
  * no swipe to guard, only the button.
  */
-export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSaved, onClose }: Props) {
+export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSaved, onClose, canStartWorkout = true }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const routines = useWorkoutStore(s => s.routines);
@@ -153,6 +169,14 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
   const [detailId, setDetailId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
+  // The version page opened from History, and the merge picker. The id is
+  // kept through the close, as the exercise page's is.
+  const [versionId, setVersionId] = useState<string | null>(null);
+  const [versionOpen, setVersionOpen] = useState(false);
+  const [mergeOpen, setMergeOpen] = useState(false);
+  // The version whose plan was restored into the editor, so a new version
+  // saved from it says so in History.
+  const [restoredFrom, setRestoredFrom] = useState<string | null>(null);
   const baseline = useRef('');
 
   useEffect(() => {
@@ -171,6 +195,9 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
     setScrubbing(false);
     setDetailOpen(false);
     setRefusal(null);
+    setVersionOpen(false);
+    setMergeOpen(false);
+    setRestoredFrom(null);
     // A draft is measured against an empty routine: nothing of it is saved
     // yet, so leaving it untouched still has something to lose.
     baseline.current = seed ? snapshotOf('', '', []) : snapshotOf(n, t, r);
@@ -322,14 +349,43 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
     return items.map(i => (made.has(i.exerciseId) ? { ...i, exerciseId: made.get(i.exerciseId)! } : i));
   };
 
+  /**
+   * Saving a changed plan once a workout has been done on the current version
+   * asks which it is: a new version, keeping the one those workouts were done
+   * on, or a change to it. Before any workout there is nothing to keep, and a
+   * rename or a change that isn't to the plan doesn't ask.
+   */
   const save = () => {
     const store = useWorkoutStore.getState();
     // Before anything is created: a refusal for the name shouldn't leave exercises behind.
     if (!routine && !name.trim()) { haptics.warning(); setRefusal(NAME_REFUSED.blank); return; }
     const items = withCreatedExercises(savedItems(rows));
     if (!items) { haptics.warning(); setRefusal('This routine could not be saved.'); return; }
+    // Compared the way the store will read them, or a field the editor leaves
+    // undefined (a superset key) would read as a change and ask on a rename.
+    if (routine && routineContentChanged(routine, { notes, items: readRoutineItems(items) }) && store.routineVersionTrained(routine.id)) {
+      const list = routineVersionsOf(routine, store.routineVersions);
+      const current = currentRoutineVersion(routine, list);
+      const n = versionNumber(list, current.id);
+      const done = routineSessionsByVersion(routine, list, store.sessions).get(current.id)?.length ?? 0;
+      Alert.alert(
+        `Save as version ${n + 1}?`,
+        `You’ve done ${workoutCountText(done).toLowerCase()} on version ${n}. A new version keeps version ${n} as it was. Updating it changes the plan those workouts were done on.`,
+        [
+          { text: 'New version', onPress: () => commit(items, 'new') },
+          { text: `Update version ${n}`, onPress: () => commit(items, 'amend') },
+          { text: BUTTON_LABEL.cancel, style: 'cancel' },
+        ],
+      );
+      return;
+    }
+    commit(items, 'auto');
+  };
+
+  const commit = (items: WorkoutRoutineItem[], version: VersionMode) => {
+    const store = useWorkoutStore.getState();
     const result = routine
-      ? store.updateRoutine(routine.id, { name, notes, items })
+      ? store.updateRoutine(routine.id, { name, notes, items }, { version, source: restoredFrom ? 'restore' : 'edit' })
       : (() => {
         const made = store.addRoutine(name, items);
         if (typeof made === 'string') return made;
@@ -345,6 +401,40 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
     haptics.success();
     onSaved?.(result);
     onClose();
+  };
+
+  // ==== history ====
+  /**
+   * An old version's plan goes into the editor as unsaved changes, so it can
+   * be looked over (or changed) before Save, which keeps it as the newest
+   * version. Changes not yet saved are asked about first.
+   */
+  const restore = (version: WorkoutRoutineVersion) => {
+    const apply = () => {
+      animateLayout();
+      setNotes(version.notes);
+      setRows(toRows(version.items));
+      setOpenRowId(null);
+      setRefusal(null);
+      setRestoredFrom(version.id);
+      setVersionOpen(false);
+      setTab('edit');
+    };
+    if (dirty) {
+      confirmDiscard(apply, { message: 'Restoring puts the old plan in place of the changes you haven’t saved.' });
+    } else apply();
+  };
+
+  const startFromVersion = (id: string) => {
+    if (!routine) return;
+    const go = () => {
+      setVersionOpen(false);
+      onClose();
+      startWorkout({ routineId: routine.id, routineVersionId: id });
+    };
+    if (dirty) {
+      confirmDiscard(go, { message: 'Starting a workout closes the routine, and the changes you haven’t saved will be lost.' });
+    } else go();
   };
 
   const remove = () => {
@@ -390,6 +480,15 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
             addedLabel="In routine"
           />
           <ExerciseDetailSheet visible={visible && detailOpen} exerciseId={detailId} onClose={() => setDetailOpen(false)} />
+          <RoutineVersionSheet
+            visible={visible && versionOpen}
+            routineId={routine?.id ?? null}
+            versionId={versionId}
+            onClose={() => setVersionOpen(false)}
+            onRestore={restore}
+            onStart={canStartWorkout ? startFromVersion : undefined}
+          />
+          <MergeRoutineSheet visible={visible && mergeOpen} intoId={routine?.id ?? null} onClose={() => setMergeOpen(false)} />
           <DescribeWorkoutSheet
             visible={visible && describing}
             mode="routine"
@@ -405,7 +504,13 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
           <SegmentedControl options={TAB_OPTIONS} value={tab} onChange={setTab} surface="page" label="Routine view" />
         </View>
       )}
-      {routine && tab === 'progress' ? (
+      {routine && tab === 'history' ? (
+        <RoutineHistoryView
+          routineId={routine.id}
+          onOpenVersion={id => { haptics.tap(); setVersionId(id); setVersionOpen(true); }}
+          onMerge={() => { haptics.tap(); setMergeOpen(true); }}
+        />
+      ) : routine && tab === 'progress' ? (
         <RoutineProgressView
           routineId={routine.id}
           exerciseIds={routine.items.map(i => i.exerciseId)}

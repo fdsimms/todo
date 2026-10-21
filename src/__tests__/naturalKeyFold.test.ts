@@ -136,6 +136,8 @@ describe('custom exercises', () => {
     const routine = byTable('workout_routines').rewrite(
       { items: JSON.stringify([{ exerciseId: 'b2', targets: [] }, { exerciseId: 'lib:barbell-squat', targets: [] }]) }, 'b2', 'a1');
     expect(JSON.parse(String(routine?.items)).map((i: { exerciseId: string }) => i.exerciseId)).toEqual(['a1', 'lib:barbell-squat']);
+    const version = byTable('workout_routine_versions').rewrite({ items: JSON.stringify([{ exerciseId: 'b2', targets: [] }]) }, 'b2', 'a1');
+    expect(JSON.parse(String(version?.items)).map((i: { exerciseId: string }) => i.exerciseId)).toEqual(['a1']);
     const program = byTable('workout_programs').rewrite({ training_maxes: JSON.stringify([{ exerciseId: 'b2', kg: 100 }]) }, 'b2', 'a1');
     expect(JSON.parse(String(program?.training_maxes))).toEqual([{ exerciseId: 'a1', kg: 100 }]);
   });

@@ -5,6 +5,7 @@ import type {
   PlateInventory,
   ProgressionScheme,
   RoutineProgression,
+  RoutineVersionSource,
   RoutineSetTarget,
   TrainingMax,
   WorkoutRoutineItem,
@@ -392,6 +393,26 @@ export function readIdList(raw: unknown): string[] {
   const parsed = parseMaybeJson(raw);
   if (!Array.isArray(parsed)) return [];
   return parsed.filter((v): v is string => typeof v === 'string' && v.length > 0);
+}
+
+/** A routine version's source; anything this build doesn't know reads as an edit. */
+export function readRoutineVersionSource(raw: unknown): RoutineVersionSource {
+  return typeof raw === 'string' && (ROUTINE_VERSION_SOURCES as readonly string[]).includes(raw)
+    ? (raw as RoutineVersionSource)
+    : 'edit';
+}
+
+const ROUTINE_VERSION_SOURCES: readonly RoutineVersionSource[] = ['created', 'initial', 'edit', 'workout', 'restore', 'copy', 'agent'];
+
+/** An id-to-id map (a program version's routine versions): string values only, blanks dropped. */
+export function readIdMap(raw: unknown): Record<string, string> {
+  const parsed = parseMaybeJson(raw);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+    if (k && typeof v === 'string' && v) out[k] = v;
+  }
+  return out;
 }
 
 /** A program's training maxes: one per exercise (the last given wins), positive loads only. */

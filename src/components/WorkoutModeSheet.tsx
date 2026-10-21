@@ -70,6 +70,7 @@ import { parseSetCell } from '../utils/workoutCell';
 import { weightHeadingSuffix, weightScale } from '../utils/dumbbellLoad';
 import { exerciseDayNote, exerciseDayNotePatches } from '../utils/exerciseDayNote';
 import { applyRoutineChanges, describeRoutineChange, routineChanges } from '../utils/routineUpdate';
+import { currentRoutineVersion, finishVersionText, routineVersionsOf, versionNumber } from '../utils/routineVersions';
 import { barKgFor, effectivePlateInventory, isPlateLoaded, plateLoad } from '../utils/plateMath';
 import { liftVolumeKg, liveSetRecords, sessionRecordSummary } from '../utils/workoutRecords';
 import { formatRecordChange, recordLabel, recordShortLabel } from '../utils/workoutRecordText';
@@ -156,6 +157,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const session = useWorkoutStore(s => s.sessions.find(x => x.endedAt === null) ?? null);
   const cachedSets = useWorkoutStore(s => (session ? s.setsBySession[session.id] : undefined));
   const routines = useWorkoutStore(s => s.routines);
+  const routineVersions = useWorkoutStore(s => s.routineVersions);
   const programs = useWorkoutStore(s => s.programs);
   const exerciseRows = useWorkoutStore(s => s.exercises);
   const sessionsList = useWorkoutStore(s => s.sessions);
@@ -173,6 +175,21 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const linkedTask = useTaskStore(s => (session?.taskId ? s.tasks.find(t => t.id === session.taskId) ?? null : null));
   const sets = useMemo(() => cachedSets ?? [], [cachedSets]);
   const routine = session?.routineId ? routines.find(r => r.id === session.routineId) ?? null : null;
+  // Which version of the routine this workout is on, and the current one's
+  // number. A workout started from an older version (History's "Start a
+  // workout from it") is measured against that version, and its summary
+  // offers to make it current again.
+  const versionInfo = useMemo(() => {
+    if (!session || !routine) return null;
+    const list = routineVersionsOf(routine, routineVersions);
+    const current = currentRoutineVersion(routine, list);
+    const own = session.routineVersionId ? list.find(v => v.id === session.routineVersionId) : undefined;
+    return {
+      currentNumber: versionNumber(list, current.id),
+      old: own && own.id !== current.id ? { version: own, number: versionNumber(list, own.id) } : null,
+    };
+  }, [session, routine, routineVersions]);
+  const oldVersion = versionInfo?.old ?? null;
   const exercises = useMemo(() => sessionExercises(sets), [sets]);
   // Numbered within each exercise: its working sets read 1, 2, 3.
   const labels = useMemo(
@@ -560,25 +577,35 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     () => {
       if (!finishing || !session || !routine) return [];
       return routineChanges({
-        items: routine.items,
+        items: oldVersion?.version.items ?? routine.items,
         sets,
         kindOf: id => catalogExercise(exerciseRows, id)?.kind ?? 'weight_reps',
         // A load taken from the suggestion is the plan working, not a change to it.
         suggestedKg: id => liveProposal(session.id, id)?.proposal.sets.find(x => x.kind !== 'warmup')?.weightKg ?? null,
       });
     },
-    [finishing, session, routine, sets, exerciseRows],
+    [finishing, session, routine, sets, exerciseRows, oldVersion],
   );
   const exerciseName = (id: string) => catalogExercise(exerciseRows, id)?.name ?? 'Unknown exercise';
+  // On a workout from an old version a change is to that version, so taking
+  // one takes the restore with it, and letting the restore go lets them go.
   const toggleChange = (id: string) => {
     haptics.tap();
     setAccepted(prev => {
       const next = new Set(prev);
-      if (!next.delete(id)) next.add(id);
+      if (next.delete(id)) {
+        if (id === RESTORE_CHANGE) return new Set();
+      } else {
+        next.add(id);
+        if (oldVersion) next.add(RESTORE_CHANGE);
+      }
       return next;
     });
   };
   const acceptedCount = routineDiff.filter(c => accepted.has(c.id)).length;
+  const restoring = oldVersion !== null && accepted.has(RESTORE_CHANGE);
+  const changeTotal = routineDiff.length + (oldVersion ? 1 : 0);
+  const selectedTotal = acceptedCount + (restoring ? 1 : 0);
 
   // What this workout beat, against everything before it. Read from each
   // exercise's own history (the live session's sets are in the database as
@@ -606,12 +633,22 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
       completeLinkedTask: !askFirst,
     });
     if (typeof finished === 'string') return;
-    // The ticked changes go into the routine as it is now. A routine that has
-    // since been deleted or refuses the edit leaves the saved workout alone.
+    // The ticked changes go into the routine as it is now, as a new version:
+    // this workout was done on the current one, which stays as it was. On a
+    // workout from an old version they go onto that version, restored as the
+    // newest. A routine that has since been deleted or refuses the edit
+    // leaves the saved workout alone.
     const picked = routineDiff.filter(c => accepted.has(c.id));
-    if (routine && picked.length > 0) {
-      const current = useWorkoutStore.getState().routines.find(r => r.id === routine.id);
-      if (current) useWorkoutStore.getState().updateRoutine(current.id, { items: applyRoutineChanges(current.items, picked) });
+    const store = useWorkoutStore.getState();
+    const current = routine ? store.routines.find(r => r.id === routine.id) : undefined;
+    if (current && oldVersion && restoring) {
+      store.updateRoutine(
+        current.id,
+        { items: applyRoutineChanges(oldVersion.version.items, picked), notes: oldVersion.version.notes },
+        { version: 'new', source: 'restore' },
+      );
+    } else if (current && !oldVersion && picked.length > 0) {
+      store.updateRoutine(current.id, { items: applyRoutineChanges(current.items, picked) }, { version: 'new', source: 'workout' });
     }
     haptics.chainFinish();
     close();
@@ -720,17 +757,35 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                 </View>
               </>
             )}
-            {routine && routineDiff.length > 0 && (
+            {routine && versionInfo && (routineDiff.length > 0 || oldVersion) && (
               <>
                 <Text style={styles.groupLabel}>{`Update ${routine.name}?`}</Text>
                 <View style={styles.card}>
+                  {oldVersion && (
+                    <TouchableOpacity
+                      style={styles.changeRow}
+                      onPress={() => toggleChange(RESTORE_CHANGE)}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: restoring }}
+                      accessibilityLabel={`Make version ${oldVersion.number} current again`}
+                    >
+                      <View style={styles.flex}>
+                        <Text style={styles.changeTitle}>{`Make version ${oldVersion.number} current again`}</Text>
+                        <Text style={styles.changeDetail}>
+                          {`This workout was done on it. Version ${versionInfo.currentNumber} stays in History.`}
+                        </Text>
+                      </View>
+                      <SelectionDot selected={restoring} onPress={() => toggleChange(RESTORE_CHANGE)} />
+                    </TouchableOpacity>
+                  )}
                   {routineDiff.map((c, i) => {
                     const text = describeRoutineChange(c, exerciseName, unit);
                     const on = accepted.has(c.id);
                     return (
                       <TouchableOpacity
                         key={c.id}
-                        style={[styles.changeRow, i > 0 && styles.rowSep]}
+                        style={[styles.changeRow, (i > 0 || oldVersion !== null) && styles.rowSep]}
                         onPress={() => toggleChange(c.id)}
                         activeOpacity={interaction.activeOpacity}
                         accessibilityRole="checkbox"
@@ -747,21 +802,27 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                   })}
                   <View style={[styles.changeFooter, styles.rowSep]}>
                     <InlineAction
-                      label={acceptedCount === routineDiff.length ? 'Clear all' : 'Select all'}
+                      label={selectedTotal === changeTotal ? 'Clear all' : 'Select all'}
                       variant="neutral"
                       surface="tray"
                       onPress={() => {
                         haptics.tap();
-                        setAccepted(acceptedCount === routineDiff.length ? new Set() : new Set(routineDiff.map(c => c.id)));
+                        setAccepted(selectedTotal === changeTotal
+                          ? new Set()
+                          : new Set([...routineDiff.map(c => c.id), ...(oldVersion ? [RESTORE_CHANGE] : [])]));
                       }}
                     />
-                    <Text style={styles.changeCount}>{`${acceptedCount} of ${routineDiff.length} selected`}</Text>
+                    <Text style={styles.changeCount}>{`${selectedTotal} of ${changeTotal} selected`}</Text>
                   </View>
                 </View>
                 <Text style={styles.consequence}>
-                  {routine.programId
-                    ? 'Only the selected changes are saved to the routine, and the program uses the same routine. Your logged workout is kept either way.'
-                    : 'Only the selected changes are saved to the routine. Your logged workout is kept either way.'}
+                  {finishVersionText({
+                    current: versionInfo.currentNumber,
+                    old: oldVersion?.number ?? null,
+                    restoring,
+                    changes: acceptedCount,
+                    inProgram: routine.programId !== null,
+                  })}
                 </Text>
               </>
             )}
@@ -1368,6 +1429,9 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
 }
 
 // ==== the cells and their steppers ====
+
+/** The finish summary's row that makes an old version current again; not a `RoutineChange`, so it has its own id. */
+const RESTORE_CHANGE = 'restore-version';
 
 function valueText(set: WorkoutSet, field: SetField, unit: WeightUnit, scale = 1): string | null {
   if (field === 'weight') return set.weightKg !== null ? formatWeightNumber(set.weightKg * scale, unit) : null;

@@ -59,9 +59,13 @@ jest.mock('expo-sqlite', () => {
 const mockCompleteTask = jest.fn();
 const mockLogQuotaUnit = jest.fn();
 const mockLogRotationUnit = jest.fn();
+const mockUpdateTask = jest.fn();
 let mockTasks: Task[] = [];
 jest.mock('../store/useTaskStore', () => ({
-  useTaskStore: { getState: () => ({ tasks: mockTasks, completeTask: mockCompleteTask, logQuotaUnit: mockLogQuotaUnit, logRotationUnit: mockLogRotationUnit }) },
+  useTaskStore: { getState: () => ({
+    tasks: mockTasks, completeTask: mockCompleteTask, logQuotaUnit: mockLogQuotaUnit, logRotationUnit: mockLogRotationUnit,
+    updateTask: mockUpdateTask,
+  }) },
 }));
 // The Health writer's two native calls and its switch, as fakes: what is
 // under test here is what the store does with each answer. The pure rules
@@ -90,7 +94,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  for (const t of ['exercises', 'workout_routines', 'workout_programs', 'workout_sessions', 'workout_sets']) {
+  for (const t of ['exercises', 'workout_routines', 'workout_programs', 'workout_routine_versions', 'workout_program_versions', 'workout_sessions', 'workout_sets']) {
     mockRawDb.exec(`DELETE FROM ${t}`);
   }
   useWorkoutStore.getState().initialize();
@@ -1826,5 +1830,179 @@ describe('a workout the Apple Watch ran on its own', () => {
   it('counts a workout still going on the phone as overlapping', () => {
     const going = ok(state().startSession({ at: new Date(2026, 9, 18, 6, 40) }));
     expect(ok(state().addWatchSession(watchWorkout(), { now: NOW })).clashesWith).toEqual([going.id]);
+  });
+});
+
+describe('routine and program history', () => {
+  const squat = 'lib:back-squat';
+  const bench = 'lib:barbell-bench-press';
+  const work = (exerciseId: string, sets = 3) => ({
+    exerciseId, supersetKey: null, restSeconds: null, progression: null,
+    targets: Array.from({ length: sets }, () => ({ kind: 'working' as const, repsMin: 5, repsMax: 5 })),
+  });
+  const versionsOf = (routineId: string) => state().routineVersions.filter(v => v.routineId === routineId);
+  const train = (routineId: string, extra: { routineVersionId?: string } = {}) => {
+    const s = ok(state().startSession({ routineId, ...extra }));
+    ok(state().finishSession(s.id));
+    return state().sessions.find(x => x.id === s.id)!;
+  };
+
+  it('writes a first version with a new routine, and stamps a workout with the version it was done on', () => {
+    const r = ok(state().addRoutine('Day One', [work(squat)]));
+    expect(versionsOf(r.id)).toHaveLength(1);
+    expect(versionsOf(r.id)[0]).toMatchObject({ id: r.currentVersionId, source: 'created', items: r.items });
+    expect(train(r.id).routineVersionId).toBe(r.currentVersionId);
+    reload();
+    expect(state().routineVersions).toHaveLength(1);
+  });
+
+  it('amends the current version until it has been trained on, then starts a new one', () => {
+    const r = ok(state().addRoutine('Day One', [work(squat)]));
+    ok(state().updateRoutine(r.id, { items: [work(squat, 4)] }));
+    expect(versionsOf(r.id)).toHaveLength(1);
+    expect(versionsOf(r.id)[0].items[0].targets).toHaveLength(4);
+    expect(state().routineVersionTrained(r.id)).toBe(false);
+
+    train(r.id);
+    expect(state().routineVersionTrained(r.id)).toBe(true);
+    const next = ok(state().updateRoutine(r.id, { items: [work(squat, 5)] }));
+    expect(versionsOf(r.id)).toHaveLength(2);
+    expect(next.currentVersionId).toBe(versionsOf(r.id)[1].id);
+    expect(versionsOf(r.id)[0].items[0].targets).toHaveLength(4);
+  });
+
+  it('does what the person chose when asked', () => {
+    const r = ok(state().addRoutine('Day One', [work(squat)]));
+    train(r.id);
+    ok(state().updateRoutine(r.id, { items: [work(squat, 4)] }, { version: 'amend' }));
+    expect(versionsOf(r.id)).toHaveLength(1);
+    ok(state().updateRoutine(r.id, { notes: 'Seat 4' }, { version: 'new', source: 'restore' }));
+    expect(versionsOf(r.id).map(v => v.source)).toEqual(['created', 'restore']);
+    expect(versionsOf(r.id)[1].notes).toBe('Seat 4');
+  });
+
+  it('keeps no version for a rename, archiving or grouping, beyond the current one taking the name', () => {
+    const r = ok(state().addRoutine('Day One', [work(squat)]));
+    train(r.id);
+    ok(state().updateRoutine(r.id, { name: 'Day 1', archived: true, groupName: 'Gym' }));
+    expect(versionsOf(r.id)).toHaveLength(1);
+    expect(versionsOf(r.id)[0].name).toBe('Day 1');
+  });
+
+  it('writes the implicit first version of a routine saved before versions were kept, from its old plan', () => {
+    const r = ok(state().addRoutine('Day One', [work(squat)]));
+    // As an older build left it: no version, and the routine naming none.
+    mockRawDb.exec('DELETE FROM workout_routine_versions');
+    mockRawDb.exec('UPDATE workout_routines SET current_version_id = NULL');
+    reload();
+    const legacy = train(r.id);
+    expect(state().routineVersions).toHaveLength(0);
+    ok(state().updateRoutine(r.id, { items: [work(squat, 5)] }));
+    const [first, second] = versionsOf(r.id);
+    expect(first).toMatchObject({ id: legacy.routineVersionId, source: 'initial' });
+    expect(first.items[0].targets).toHaveLength(3);
+    expect(second.items[0].targets).toHaveLength(5);
+  });
+
+  it('starts a workout from an old version, laying out that version\'s sets', () => {
+    const r = ok(state().addRoutine('Day One', [work(squat, 2)]));
+    const v1 = r.currentVersionId!;
+    train(r.id);
+    ok(state().updateRoutine(r.id, { items: [work(bench, 4)] }));
+    const s = ok(state().startSession({ routineId: r.id, routineVersionId: v1 }));
+    expect(s.routineVersionId).toBe(v1);
+    expect(dbGetWorkoutSets(s.id).map(x => x.exerciseId)).toEqual([squat, squat]);
+  });
+
+  it('copies a version into a routine of its own', () => {
+    const r = ok(state().addRoutine('Day One', [work(squat)]));
+    ok(state().updateRoutine(r.id, { notes: 'Old notes', groupName: 'Gym' }));
+    train(r.id);
+    ok(state().updateRoutine(r.id, { items: [work(bench)] }));
+    const copy = ok(state().copyRoutineVersion(versionsOf(r.id)[0].id));
+    expect(copy).toMatchObject({ name: 'Day One (version 1)', notes: 'Old notes', groupName: 'Gym' });
+    expect(copy.items.map(i => i.exerciseId)).toEqual([squat]);
+    expect(versionsOf(copy.id).map(v => v.source)).toEqual(['copy']);
+    expect(state().copyRoutineVersion('nope')).toBe('notFound');
+  });
+
+  it('names a version, and a blank name clears it', () => {
+    const r = ok(state().addRoutine('Day One', [work(squat)]));
+    expect(ok(state().labelRoutineVersion(r.currentVersionId!, ' Shoulder-friendly ')).label).toBe('Shoulder-friendly');
+    expect(ok(state().labelRoutineVersion(r.currentVersionId!, ' ')).label).toBeNull();
+  });
+
+  it('merges one routine into another as its earlier history', () => {
+    const old = ok(state().addRoutine('HW Day One', [work(squat)]));
+    const s1 = train(old.id);
+    const into = ok(state().addRoutine('HW Day One v2', [work(bench)]));
+    train(into.id);
+    const p = ok(state().addProgram({ name: 'HW', rotation: [old.id] }));
+    mockTasks = [
+      { id: 't1', completed: false, workoutRoutineId: old.id } as Task,
+      { id: 't2', completed: true, workoutRoutineId: old.id } as Task,
+    ];
+
+    const merged = ok(state().mergeRoutines(old.id, into.id));
+    expect(state().routines.map(r => r.id)).toEqual([into.id]);
+    expect(merged.currentVersionId).toBe(into.currentVersionId);
+    expect(versionsOf(into.id).map(v => v.name)).toEqual(['HW Day One', 'HW Day One v2']);
+    expect(state().sessions.find(s => s.id === s1.id)).toMatchObject({ routineId: into.id, routineVersionId: old.currentVersionId });
+    expect(state().programs.find(x => x.id === p.id)!.rotation).toEqual([into.id]);
+    expect(mockUpdateTask).toHaveBeenCalledTimes(1);
+    expect(mockUpdateTask).toHaveBeenCalledWith('t1', { workoutRoutineId: into.id });
+    mockTasks = [];
+
+    expect(state().mergeRoutines(into.id, into.id)).toBe('same');
+    expect(state().mergeRoutines('gone', into.id)).toBe('notFound');
+  });
+
+  it('won\'t merge a routine with a workout in progress', () => {
+    const a = ok(state().addRoutine('A', [work(squat)]));
+    const b = ok(state().addRoutine('B', [work(squat)]));
+    ok(state().startSession({ routineId: a.id }));
+    expect(state().mergeRoutines(a.id, b.id)).toBe('live');
+  });
+
+  it('deletes a routine\'s versions with it, and a workout keeps naming its version', () => {
+    const r = ok(state().addRoutine('Day One', [work(squat)]));
+    const s = train(r.id);
+    state().deleteRoutine(r.id);
+    reload();
+    expect(state().routineVersions).toEqual([]);
+    expect(state().sessions.find(x => x.id === s.id)!.routineVersionId).toBe(r.currentVersionId);
+  });
+
+  it('versions a program\'s structure, recording each routine\'s version, by the same rule', () => {
+    const a = ok(state().addRoutine('A', [work(squat)]));
+    const b = ok(state().addRoutine('B', [work(bench)]));
+    const p = ok(state().addProgram({ name: 'HW', rotation: [a.id] }));
+    const pv = () => state().programVersions.filter(v => v.programId === p.id);
+    expect(pv()).toHaveLength(1);
+    expect(pv()[0].routineVersionIds).toEqual({ [a.id]: a.currentVersionId });
+
+    ok(state().updateProgram(p.id, { rotation: [a.id, b.id] }));
+    expect(pv()).toHaveLength(1);
+    expect(pv()[0].routineVersionIds).toEqual({ [a.id]: a.currentVersionId, [b.id]: b.currentVersionId });
+
+    const s = ok(state().startSession({ routineId: a.id, programId: p.id }));
+    ok(state().finishSession(s.id));
+    expect(state().programVersionTrained(p.id)).toBe(true);
+    ok(state().updateProgram(p.id, { trainingMaxes: [{ exerciseId: squat, kg: 100 }], name: 'HW 2' }));
+    expect(pv()).toHaveLength(1);
+    expect(pv()[0].name).toBe('HW 2');
+    ok(state().updateProgram(p.id, { weeks: 6 }));
+    expect(pv()).toHaveLength(2);
+    expect(state().programs.find(x => x.id === p.id)!.currentVersionId).toBe(pv()[1].id);
+
+    state().deleteProgram(p.id);
+    expect(state().programVersions).toEqual([]);
+  });
+
+  it('writes versions for a library program and its routines', () => {
+    const made = ok(state().addLibraryProgram('push-pull-legs'));
+    expect(made.routines.every(r => versionsOf(r.id).length === 1)).toBe(true);
+    expect(state().programVersions).toHaveLength(1);
+    expect(Object.keys(state().programVersions[0].routineVersionIds).sort()).toEqual(made.routines.map(r => r.id).sort());
   });
 });

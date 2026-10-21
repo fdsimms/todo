@@ -35,7 +35,7 @@ describe('the workout write tools', () => {
   });
 
   beforeEach(() => {
-    for (const t of ['workout_routines', 'workout_programs', 'workout_sessions', 'workout_sets', 'exercises', 'gyms', 'gym_exercises']) mockRaw.runSync(`DELETE FROM ${t}`);
+    for (const t of ['workout_routines', 'workout_programs', 'workout_routine_versions', 'workout_program_versions', 'workout_sessions', 'workout_sets', 'exercises', 'gyms', 'gym_exercises']) mockRaw.runSync(`DELETE FROM ${t}`);
     replica.refresh();
     entries = [];
     ledgered = withAgentLedger(replica, e => { entries.push(...e); });
@@ -117,6 +117,21 @@ describe('the workout write tools', () => {
       expect(note).toMatch(/nothing applies one unasked/);
       expect(listWorkouts(replica).routines.map(r => r.name)).toEqual(['Push A']);
       expect(entries).toEqual([expect.objectContaining({ action: 'created', subject: 'routine', title: 'Push A' })]);
+    });
+
+    it('keeps the agent\'s plan as a version: amending it until a workout is done on it, a new one after', () => {
+      const { routine } = saveRoutine(ledgered, { name: 'Legs', exercises: [{ exerciseId: 'lib:back-squat', sets: [{ repsMin: 5 }] }] });
+      const versions = () => replica.routineVersions().filter(v => v.routineId === routine.id);
+      expect(versions().map(v => v.source)).toEqual(['agent']);
+      saveRoutine(ledgered, { id: routine.id, exercises: [{ exerciseId: 'lib:back-squat', sets: [{ repsMin: 5 }, { repsMin: 5 }] }] });
+      expect(versions()).toHaveLength(1);
+      logWorkout(replica, {
+        routineId: routine.id, startedAt: new Date(Date.now() - 3600_000).toISOString(),
+        exercises: [{ exerciseId: 'lib:back-squat', sets: [{ weightKg: 100, reps: 5 }] }],
+      });
+      saveRoutine(ledgered, { id: routine.id, exercises: [{ exerciseId: 'lib:back-squat', sets: [{ repsMin: 3 }] }] });
+      expect(versions().map(v => [v.source, v.items[0].targets.length])).toEqual([['agent', 2], ['agent', 1]]);
+      expect(listWorkouts(replica).routines.find(r => r.id === routine.id)?.version).toBe(2);
     });
 
     it('changes only what it names, and refuses an unknown exercise, a nameless new one and a set-less exercise', () => {

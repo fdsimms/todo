@@ -23,6 +23,9 @@ import type { Replica } from './replica';
 import { resolveRange, type DayRange, type LogRangeInput } from './tools';
 import { atFrom } from './logTools';
 import { joinPrevious } from '../../src/utils/workoutRoutine';
+import {
+  currentRoutineVersion, diffRoutines, routineHistory, routineVersionsOf, sessionVersionId, summarizeDiff, versionNumber,
+} from '../../src/utils/routineVersions';
 import type { SetInput } from '../../src/store/useWorkoutStore';
 import { catalogExercise, exerciseName, searchExercises, type CatalogExercise } from '../../src/utils/exerciseCatalog';
 import { analyzeExercise, countsForRecords, volumeUnit, type RecordSession, type RecordType } from '../../src/utils/workoutRecords';
@@ -126,6 +129,8 @@ export interface WorkoutRow {
   program?: string;
   /** The gym it was done at. */
   gym?: string;
+  /** The version of its routine it was done on (routine_history numbers them). */
+  routineVersion?: number;
   /** How hard it felt, 1 to 10, as the person typed it. */
   effort?: number;
   notes?: string;
@@ -139,6 +144,8 @@ interface RowNames {
   routineName: ReadonlyMap<string, string>;
   programName: ReadonlyMap<string, string>;
   gymName: ReadonlyMap<string, string>;
+  /** The version number of its routine a workout was done on, where it has one. */
+  routineVersion?: (s: WorkoutSession) => number | null;
 }
 
 function workoutRow(replica: Replica, s: WorkoutSession, sets: readonly WorkoutSet[], names: RowNames): WorkoutRow {
@@ -156,6 +163,7 @@ function workoutRow(replica: Replica, s: WorkoutSession, sets: readonly WorkoutS
     ...(s.routineId && names.routineName.has(s.routineId) ? { routine: names.routineName.get(s.routineId)! } : {}),
     ...(s.programId && names.programName.has(s.programId) ? { program: names.programName.get(s.programId)! } : {}),
     ...(s.gymId && names.gymName.has(s.gymId) ? { gym: names.gymName.get(s.gymId)! } : {}),
+    ...((() => { const n = names.routineVersion?.(s); return n ? { routineVersion: n } : {}; })()),
     ...(s.effort !== null ? { effort: s.effort } : {}),
     ...(s.notes ? { notes: s.notes } : {}),
     // In Apple Health: the phone wrote it there, so only the phone can move or delete it.
@@ -199,6 +207,8 @@ export interface RoutineRow {
   group?: string;
   /** Put away under Archived: still startable, out of the list and the pickers. */
   archived?: true;
+  /** The version it is on; routine_history lists them all. */
+  version?: number;
   exercises: {
     exerciseId: string;
     name: string;
@@ -212,7 +222,9 @@ export interface RoutineRow {
   }[];
 }
 
-function routineRow(r: WorkoutRoutine, rows: readonly Exercise[], programName: ReadonlyMap<string, string>): RoutineRow {
+function routineRow(
+  r: WorkoutRoutine, rows: readonly Exercise[], programName: ReadonlyMap<string, string>, version?: number,
+): RoutineRow {
   return {
     id: r.id,
     name: r.name,
@@ -220,7 +232,13 @@ function routineRow(r: WorkoutRoutine, rows: readonly Exercise[], programName: R
     ...(r.programId && programName.has(r.programId) ? { program: programName.get(r.programId)! } : {}),
     ...(r.groupName ? { group: r.groupName } : {}),
     ...(r.archived ? { archived: true as const } : {}),
-    exercises: r.items.map(i => ({
+    ...(version ? { version } : {}),
+    exercises: routineExercises(r.items, rows),
+  };
+}
+
+function routineExercises(items: readonly WorkoutRoutineItem[], rows: readonly Exercise[]): RoutineRow['exercises'] {
+  return items.map(i => ({
       exerciseId: i.exerciseId,
       name: catalogExercise(rows, i.exerciseId)?.name ?? 'Unknown exercise',
       ...(i.supersetKey ? { supersetKey: i.supersetKey } : {}),
@@ -228,8 +246,7 @@ function routineRow(r: WorkoutRoutine, rows: readonly Exercise[], programName: R
       ...(i.progression ? { progression: i.progression.scheme } : {}),
       ...(i.warmupRamp ? { warmupRamp: true as const } : {}),
       targets: i.targets,
-    })),
-  };
+  }));
 }
 
 export interface GymRow {
@@ -329,20 +346,87 @@ export function listWorkouts(
   const programName = new Map(programs.map(p => [p.id, p.name]));
   const gyms = replica.gyms();
   const gymName = new Map(gyms.map(g => [g.id, g.name]));
+  const storedVersions = replica.routineVersions();
+  const versionsOf = new Map(routines.map(r => [r.id, routineVersionsOf(r, storedVersions)]));
+  const routineVersion = (s: WorkoutSession): number | null => {
+    const list = s.routineId ? versionsOf.get(s.routineId) : undefined;
+    const id = list ? sessionVersionId(s, list) : null;
+    return list && id ? versionNumber(list, id) : null;
+  };
 
   const workouts = replica.workoutSessions(range.from, range.to)
-    .map(s => workoutRow(replica, s, replica.workoutSets(s.id), { rows, routineName, programName, gymName }));
+    .map(s => workoutRow(replica, s, replica.workoutSets(s.id), { rows, routineName, programName, gymName, routineVersion }));
 
   return {
     range,
     workouts,
-    routines: routines.map(r => routineRow(r, rows, programName)),
+    routines: routines.map(r => {
+      const list = versionsOf.get(r.id)!;
+      return routineRow(r, rows, programName, versionNumber(list, currentRoutineVersion(r, list).id));
+    }),
     routineGroups: replica.routineGroups(),
     programs: programs.filter(p => !p.archived)
       .map(p => programRow(p, programProgress(p, allSessions(replica), routines), rows, routineName)),
     gyms: gyms.map(g => gymRow(g, replica.gymExercises(), rows, replica.defaultGymId())),
     ...(workouts.length === 0 ? { note: WITHHELD_NOTE } : {}),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Routine history
+// ---------------------------------------------------------------------------
+
+export interface RoutineVersionRow {
+  version: number;
+  current?: true;
+  /** A name the person gave this version. */
+  label?: string;
+  /** The person's day it took over, and the day the next one did. */
+  from: string;
+  until?: string;
+  /** Finished workouts done on it. Zero without Include health logs, which is not evidence of none. */
+  workouts: number;
+  /** What wrote it: created, initial (from before versions were kept), edit, workout (from a finish summary), restore, copy or agent. */
+  source: string;
+  /** What it changed from the version before, in the phone's words; absent on the first. */
+  changes?: string;
+  notes?: string;
+  exercises: RoutineRow['exercises'];
+}
+
+/**
+ * A routine's versions, newest first: each one's plan, when it was in use,
+ * how many workouts were done on it and what it changed. Read-only: going
+ * back to a version is done on the phone, where Save asks how to keep it.
+ */
+export function routineHistoryOut(
+  replica: Replica,
+  input: { routineId: string },
+): { routine: string; versions: RoutineVersionRow[]; note?: string } {
+  const routine = replica.workoutRoutines().find(r => r.id === input.routineId);
+  if (!routine) throw new Error(`No routine with id ${input.routineId}. list_workouts lists the routines.`);
+  const rows = replica.exercises();
+  const entries = routineHistory(routine, replica.routineVersions(), allSessions(replica));
+  const nameOf = (id: string) => exerciseName(rows, id);
+  const versions = entries.map((e): RoutineVersionRow => {
+    const changes = e.previous
+      ? summarizeDiff(diffRoutines(e.previous, e.version, replica.defaultRestSeconds()), nameOf, 'kg', () => 1, 20) ?? 'No changes to the plan'
+      : null;
+    return {
+      version: e.number,
+      ...(e.current ? { current: true as const } : {}),
+      ...(e.version.label ? { label: e.version.label } : {}),
+      from: replica.logicalDayKeyOf(e.from),
+      ...(e.until ? { until: replica.logicalDayKeyOf(e.until) } : {}),
+      workouts: e.sessions.length,
+      source: e.version.source,
+      ...(changes ? { changes } : {}),
+      ...(e.version.notes ? { notes: e.version.notes } : {}),
+      exercises: routineExercises(e.version.items, rows),
+    };
+  });
+  const anyWorkouts = entries.some(e => e.sessions.length > 0);
+  return { routine: routine.name, versions, ...(anyWorkouts ? {} : { note: WITHHELD_NOTE }) };
 }
 
 // ---------------------------------------------------------------------------

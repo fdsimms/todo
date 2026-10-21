@@ -55,6 +55,11 @@ describe('startWorkout', () => {
     expect(mockShow).toHaveBeenCalledTimes(1);
   });
 
+  it('starts an older version of a routine when History asks for one', () => {
+    expect(startWorkout({ routineId: 'r1', routineVersionId: 'v1' })).toBe('started');
+    expect(mockStartSession).toHaveBeenCalledWith({ routineId: 'r1', programId: null, taskId: null, gymId: null, routineVersionId: 'v1' });
+  });
+
   it('starts a finished workout again from its done sets, with no task', () => {
     const done = {
       id: 'x', sessionId: 'old', exerciseId: 'lib:back-squat', position: 3, setIndex: 0, kind: 'working' as const,

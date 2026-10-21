@@ -61,6 +61,7 @@ export const READ_TOOLS: Record<string, string> = {
   list_exercises: 'Exercise library',
   list_workouts: 'Workout log',
   exercise_history: 'Exercise history and records',
+  routine_history: 'A routine\'s versions',
   next_workout: 'Next workout and suggested loads',
   list_saved_views: 'Saved views',
   get_saved_view: 'One saved view',

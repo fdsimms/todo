@@ -10,7 +10,7 @@
 // src/utils/workoutProgram.ts and only shown here, never edited. Mock:
 // the phase 4 PR's program-editor.png.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { EditorSheet } from './EditorSheet';
 import { SheetHeader } from './SheetHeader';
@@ -25,8 +25,11 @@ import { TextField } from './TextField';
 import { EmptyNote } from './EmptyNote';
 import { LazySheet } from './LazySheet';
 import { RoutineEditorSheet } from './RoutineEditorSheet';
-import type { ProgressionScheme } from '../types';
-import { useWorkoutStore } from '../store/useWorkoutStore';
+import type { ProgressionScheme, WorkoutProgramVersion } from '../types';
+import { useWorkoutStore, type ProgramInput, type VersionMode } from '../store/useWorkoutStore';
+import {
+  currentProgramVersion, programHistory, programStructureChanged, programVersionsOf, versionNumber, versionSpanText, workoutCountText,
+} from '../utils/routineVersions';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
@@ -80,6 +83,8 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
   const unit = useSettingsStore(s => s.workoutUnit);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const program = programId ? programs.find(p => p.id === programId) ?? null : null;
+  const programVersions = useWorkoutStore(s => s.programVersions);
+  const routineVersions = useWorkoutStore(s => s.routineVersions);
 
   // ==== staged state, loaded each time the sheet opens ====
   const [name, setName] = useState('');
@@ -152,6 +157,24 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
     return out;
   }, [visible, tmExercises, sessions, dayResetTime, exercises, unit]);
 
+  // ==== history: the program's versions, newest first ====
+  const history = useMemo(
+    () => (program ? programHistory(program, programVersions, routines, routineVersions, sessions) : []),
+    [program, programVersions, routines, routineVersions, sessions],
+  );
+  /** An old version's structure staged into the editor, for Save to keep as the newest. */
+  const restoreVersion = (v: WorkoutProgramVersion) => {
+    const apply = () => {
+      haptics.tap();
+      animateLayout();
+      setSlots(toSlots(v.rotation.filter(id => routines.some(r => r.id === id))));
+      setWeeks(v.weeks);
+      setScheme(v.scheme);
+    };
+    if (dirty) confirmDiscard(apply, { message: 'Restoring puts the old rotation, length and progression in place of the changes you haven’t saved.' });
+    else apply();
+  };
+
   // ==== editing the rotation ====
   const addRoutine = (routineId: string) => {
     haptics.tap();
@@ -182,6 +205,11 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
     });
   };
 
+  /**
+   * A change to the rotation, length or progression once a workout has been
+   * done in the program's current version asks, as a routine's does, whether
+   * it is a new version or a change to the one those workouts were done in.
+   */
   const save = () => {
     const store = useWorkoutStore.getState();
     const input = {
@@ -193,7 +221,26 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
         .filter((e): e is [string, number] => e[1] !== null && e[1] > 0)
         .map(([exerciseId, kg]) => ({ exerciseId, kg })),
     };
-    const result = program ? store.updateProgram(program.id, input) : store.addProgram(input);
+    if (program && programStructureChanged(program, input) && store.programVersionTrained(program.id)) {
+      const list = programVersionsOf(program, store.programVersions);
+      const n = versionNumber(list, currentProgramVersion(program, list).id);
+      Alert.alert(
+        `Save as version ${n + 1}?`,
+        `You’ve done workouts in version ${n} of this program. A new version keeps version ${n} as it was. Updating it changes the plan those workouts were done in.`,
+        [
+          { text: 'New version', onPress: () => commit(input, 'new') },
+          { text: `Update version ${n}`, onPress: () => commit(input, 'amend') },
+          { text: BUTTON_LABEL.cancel, style: 'cancel' },
+        ],
+      );
+      return;
+    }
+    commit(input, 'auto');
+  };
+
+  const commit = (input: ProgramInput, version: VersionMode) => {
+    const store = useWorkoutStore.getState();
+    const result = program ? store.updateProgram(program.id, input, { version }) : store.addProgram(input);
     if (typeof result === 'string') {
       haptics.warning();
       setRefusal(result === 'blank' ? 'Give the program a name.' : 'This program was deleted on another device.');
@@ -242,6 +289,7 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
           <RoutineEditorSheet
             visible={visible && viewOpen}
             routineId={viewId}
+            canStartWorkout={false}
             onClose={() => setViewOpen(false)}
           />
         </LazySheet>
@@ -424,6 +472,48 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
         </>
       )}
 
+      {program && history.length > 0 && (
+        <>
+          <Text style={styles.groupLabel}>History</Text>
+          <View style={styles.card}>
+            {history.map((e, i) => (
+              <View key={e.version.id} style={[styles.versionRow, i > 0 && styles.rowSep]}>
+                <View style={styles.versionTitleRow}>
+                  <Text style={styles.versionTitle}>{`Version ${e.number}`}</Text>
+                  {e.current && <Text style={styles.currentChip}>Current</Text>}
+                </View>
+                <Text style={styles.slotMeta}>{`${versionSpanText(e.from, e.until)} · ${workoutCountText(e.workouts)}`}</Text>
+                <Text style={styles.slotMeta}>
+                  {[
+                    e.version.weeks ? `${e.version.weeks} weeks` : 'No end',
+                    e.version.scheme ? PROGRESSION_LABELS[e.version.scheme] : 'No progression',
+                  ].join(' · ')}
+                </Text>
+                {e.routines.length > 0 && (
+                  <Text style={styles.slotMeta}>
+                    {e.routines.map(r => {
+                      const name = routineOf(r.routineId)?.name ?? 'A deleted routine';
+                      if (r.startNumber === null) return name;
+                      return r.endNumber !== null && r.endNumber !== r.startNumber
+                        ? `${name} v${r.startNumber} to v${r.endNumber}`
+                        : `${name} v${r.startNumber}`;
+                    }).join(', ')}
+                  </Text>
+                )}
+                {!e.current && (
+                  <View style={styles.newRoutineRow}>
+                    <InlineAction label={`Restore version ${e.number}`} variant="neutral" surface="card" onPress={() => restoreVersion(e.version)} />
+                  </View>
+                )}
+              </View>
+            ))}
+          </View>
+          <HelpText style={styles.footHint}>
+            A new version starts when you change the rotation, length or progression after a workout. A routine changed during a version shows both of its version numbers.
+          </HelpText>
+        </>
+      )}
+
       {program && (
         <TouchableOpacity
           style={styles.deleteRow}
@@ -488,4 +578,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginTop: spacing.lg, paddingVertical: spacing.smd, backgroundColor: colors.bgSecondary, borderRadius: radius.md,
   },
   deleteText: { color: colors.redText, fontSize: font.md, fontWeight: fontWeight.medium },
+  versionRow: { paddingHorizontal: spacing.md, paddingVertical: spacing.smd },
+  versionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xsm },
+  versionTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
+  currentChip: {
+    color: colors.accentText, backgroundColor: colors.accentSubtle, fontSize: font.xxs, fontWeight: fontWeight.semibold,
+    paddingHorizontal: spacing.sm, paddingVertical: spacing.xxs, borderRadius: radius.full, overflow: 'hidden',
+  },
 });
