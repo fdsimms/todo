@@ -480,3 +480,14 @@ The Routines tab can put routines under headings and put some away.
 - **Where groups are made.** "New group" is in the header's "…" menu and only asks for a name; the empty group shows a dashed "Add new routine" tile that opens the editor with the group already chosen. A heading's own "•••" has Rename group, Add routine and Delete group.
 - **Folds are session state.** A heading folded by hand is a view, not data; Archived starts shut.
 - **MCP.** `save_routine` takes `group` and `archived`, `list_workouts` returns them on each routine plus `routineGroups`, and `save_routine_group` / `delete_routine_group` make, rename and delete headings.
+
+## A routine's progress, as built
+
+Files: `src/utils/routineProgress.ts`, `RoutineProgressView.tsx`, and the Edit / Progress control at the top of `RoutineEditorSheet.tsx`. Built to a mock approved in the PR, with the exercise's name moved onto a row of its own so a long name is not cut by the figures beside it.
+
+- **A view of one routine, so it lives in the routine's editor.** A saved routine shows an Edit / Progress control; a new one has no workouts and shows no control. The Progress tab reads the routine as saved, not the staged edits, and tapping an exercise opens its own page inside the editor's Modal (a sibling sheet would never appear).
+- **Derived on open, never stored.** The routine's workouts are the finished sessions with its `routineId` (`routineSessions`). A live session is not progress yet, and a workout started some other way does not count toward it.
+- **Every figure is this routine's own history.** An exercise's row reads only the sets from those workouts, so "gold" means a heavier top set than any earlier workout of this routine, which can differ from the record on the exercise's page. The row says it is the routine's history only through the footnote.
+- **Rows are the routine's exercises as it stands now**, in its order. An exercise taken out drops off; one added later starts at its first workout with it.
+- **Volume is `liftVolumeKg`**, so only weighted lifts add to it and a bodyweight routine shows no volume tiles or chart. The percent is first workout to latest, and is withheld with fewer than two workouts.
+- **It judges nothing.** A lighter latest top set is a plain negative change in the neutral text color; only a gain is green, and gold is reserved for the latest record, as on the exercise chart.

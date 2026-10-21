@@ -1,7 +1,7 @@
 import type { ExerciseKind, WorkoutSet } from '../types';
 import type { WeightUnit } from './weightLog';
 import { kgToUnit } from './weightLog';
-import { formatRestSeconds, formatWeightWithUnit, weightToDisplay } from './workoutData';
+import { formatRestSeconds, formatWeightNumber, formatWeightWithUnit, weightToDisplay } from './workoutData';
 import { formatDistance } from './workoutSession';
 import type { RecordMetric, RecordType, SessionPoint, VolumeUnit } from './workoutRecords';
 import { volumeUnit } from './workoutRecords';
@@ -184,3 +184,34 @@ export function formatAxisValue(value: number, metric: RecordMetric, kind: Exerc
   return value >= 1000 ? withThousands(value) : String(Number(value.toFixed(1)));
 }
 
+
+/** A change in a best set as text: "+15 lb", "-5 lb", "+2 reps", "+0:10", "No change". The change is in the unit `metricNumber` gives. */
+export function formatProgressChange(change: number, kind: ExerciseKind, unit: WeightUnit): string {
+  if (change === 0) return 'No change';
+  const sign = change > 0 ? '+' : '-';
+  const size = Math.abs(change);
+  if (kind === 'weight_reps' || kind === 'weight_distance') return `${sign}${Number(size.toFixed(1))} ${unit}`;
+  if (kind === 'duration') return `${sign}${formatRestSeconds(size)}`;
+  if (kind === 'distance') return `${sign}${formatDistance(size)}`;
+  return `${sign}${size} ${size === 1 ? 'rep' : 'reps'}`;
+}
+
+/**
+ * The line under an exercise on a routine's progress: its best set from the
+ * first workout to the latest ("Top set 25 → 40 lb"), or just the one when
+ * there is only one workout.
+ */
+export function formatTopSetLine(
+  first: { value: number; set: WorkoutSet },
+  latest: { value: number; set: WorkoutSet },
+  workouts: number,
+  kind: ExerciseKind,
+  unit: WeightUnit,
+): string {
+  const label = kind === 'weight_reps' || kind === 'weight_distance' ? 'Top set' : 'Best set';
+  if (workouts < 2) return `${label} ${formatBestPoint(latest, kind, unit)}`;
+  if (kind === 'weight_reps' || kind === 'weight_distance') {
+    return `${label} ${formatWeightNumber(first.value, unit)} → ${formatWeightWithUnit(latest.value, unit)}`;
+  }
+  return `${label} ${formatRecordFigure('best', kind, first.value, unit)} → ${formatRecordFigure('best', kind, latest.value, unit)}`;
+}
