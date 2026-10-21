@@ -2759,7 +2759,7 @@ export function RecipeDetailScreen() {
         >
           <TextField
             ref={stepInputRef}
-            style={styles.composerInput}
+            style={[styles.composerInput, styles.stepComposerInput]}
             value={stepDraft}
             onChangeText={setStepDraft}
             onSubmitEditing={submitStepDraft}
@@ -3824,6 +3824,13 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     fontSize: font.md,
     minHeight: 44,
     maxHeight: 140,
+  },
+  // A step is a sentence or a paragraph, not a one-line ingredient, so its
+  // field opens at about three lines and grows further before it scrolls.
+  stepComposerInput: {
+    minHeight: 88,
+    maxHeight: 220,
+    textAlignVertical: 'top',
   },
   addInput: {
     flex: 1,
