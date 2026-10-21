@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
-import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
+import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { dayKeyOf, getCurrentDayStart, getLogicalToday } from '../utils/dateUtils';
 import {
@@ -117,6 +118,7 @@ interface Props {
 }
 
 export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Props) {
+  // ==== stores and form state ====
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -183,6 +185,8 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
   const [customProteinPct, setCustomProteinPct] = useState(30);
   const [customCarbsPct, setCustomCarbsPct] = useState(40);
 
+  // ==== seeding and the Health read ====
+
   // What a recent typical day of this person's actually recorded, fetched while
   // the sheet is open and stored nowhere. Cleared rather than kept when the
   // read cannot be made, so a revoked Health permission takes the measured
@@ -243,6 +247,8 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
     // is being typed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
+
+  // ==== the goal and the calorie figure it implies ====
 
   const maintaining = direction === 'maintain';
 
@@ -309,6 +315,8 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
   // below renders only while this holds.
   const canUseMeasured = measuredBudget !== null;
   const budget = measuredBasis && measuredBudget !== null ? measuredBudget : multiplierBudget;
+
+  // ==== saving, clearing, applying targets ====
 
   const save = () => {
     if (!canSave || startKg === null || targetKg === null) return;
@@ -383,6 +391,11 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
     setNutritionTarget('carbsG', macros.carbsG);
     setNutritionTarget('fatG', macros.fatG);
   };
+
+  // ==== render ====
+  // THE GOAL, FOR THE CALORIE ESTIMATE (the body fields), DAILY CALORIES (the
+  // current target beside the one this goal works out to, then the sum) and
+  // MACROS, in that order, each a card under a sectionTitle.
 
   const existingCalorieTarget = storedTargets.calorieKcal;
   const alreadyApplied = budget !== null && existingCalorieTarget === budget.proposedKcal;
@@ -599,60 +612,134 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
               </Text>
             ) : (
               <>
-                <Text style={styles.budgetValue}>
-                  {budget.proposedKcal.toLocaleString()} cal a day
-                </Text>
+                {/* The two figures people mix up: the target the food log is
+                    using right now, and the one this goal works out to. The
+                    estimate used to be the only large number here, so it read
+                    as the current target when it was only what saving would
+                    set. */}
+                {alreadyApplied ? (
+                  <View
+                    style={[styles.tile, styles.tileNew, styles.tileWide]}
+                    accessible
+                    accessibilityLabel={`Your calorie target, ${budget.proposedKcal.toLocaleString()} calories a day. Matches your goal.`}
+                  >
+                    <Text style={[styles.tileKey, styles.tileKeyNew]}>YOUR CALORIE TARGET</Text>
+                    <Text style={styles.tileValue} numberOfLines={1} adjustsFontSizeToFit>
+                      {budget.proposedKcal.toLocaleString()}
+                      <Text style={styles.tileUnitInline}> cal a day</Text>
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={styles.tiles}>
+                    <View
+                      style={[styles.tile, styles.tileOld]}
+                      accessible
+                      accessibilityLabel={
+                        existingCalorieTarget === undefined
+                          ? 'Your target now, not set'
+                          : `Your target now, ${existingCalorieTarget.toLocaleString()} calories a day`
+                      }
+                    >
+                      <Text style={styles.tileKey}>YOUR TARGET NOW</Text>
+                      <Text
+                        style={[styles.tileValue, styles.tileValueOld]}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                      >
+                        {existingCalorieTarget === undefined ? 'Not set' : existingCalorieTarget.toLocaleString()}
+                      </Text>
+                      <Text style={styles.tileUnit}>
+                        {existingCalorieTarget === undefined ? ' ' : 'cal a day'}
+                      </Text>
+                    </View>
+                    <Ionicons name="arrow-forward" size={iconSize.md} color={colors.textTertiary} />
+                    <View
+                      style={[styles.tile, styles.tileNew]}
+                      accessible
+                      accessibilityLabel={`After saving, ${budget.proposedKcal.toLocaleString()} calories a day`}
+                    >
+                      <Text style={[styles.tileKey, styles.tileKeyNew]}>AFTER SAVING</Text>
+                      <Text style={styles.tileValue} numberOfLines={1} adjustsFontSizeToFit>
+                        {budget.proposedKcal.toLocaleString()}
+                      </Text>
+                      <Text style={styles.tileUnit}>cal a day</Text>
+                    </View>
+                  </View>
+                )}
+                {alreadyApplied ? (
+                  <View style={styles.matchRow}>
+                    <Ionicons name="checkmark" size={iconSize.sm} color={colors.greenText} />
+                    <Text style={styles.matchText}>Matches your goal</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.status}>
+                    {existingCalorieTarget === undefined
+                      ? `Saving this goal sets your calorie target to ${budget.proposedKcal.toLocaleString()}.`
+                      : `Saving this goal changes your calorie target from ${existingCalorieTarget.toLocaleString()} to ${budget.proposedKcal.toLocaleString()}.`}
+                  </Text>
+                )}
+
+                <Text style={[styles.fieldLabel, styles.workedOutLabel]}>HOW IT’S WORKED OUT</Text>
                 {/* Only once there is a real measurement to offer. The two
                     are presented as two ways of arriving at the same figure,
                     in the order that puts the one somebody typed first, and
                     `measuredMaintenanceKcal` explains why neither is ranked
                     above the other. */}
                 {canUseMeasured && (
-                  <View style={styles.field}>
-                    <SegmentedControl
-                      options={[
-                        { value: false, label: 'Activity level' },
-                        { value: true, label: 'Apple Health' },
-                      ]}
-                      value={measuredBasis}
-                      onChange={next => setMeasuredBasis(next)}
-                      label="How activity is counted"
-                    />
-                    <Text style={styles.help}>
-                      {measuredBasis
-                        ? `Your resting rate plus ${(typicalActiveKcal ?? 0).toLocaleString()} cal of activity on a typical recent day${countDigestion ? `, plus about ${Math.round(budget.maintenanceKcal * DIGESTION_SHARE).toLocaleString()} cal for digesting food (about a tenth of what you eat)` : ''}. To raise the target on days you move more than usual, turn on Add active calories under Daily targets.`
-                        : `The activity level you picked above, as a multiplier on your resting rate.`}
-                    </Text>
-                    {measuredBasis && (
-                      <TouchableOpacity
-                        style={styles.toggleRow}
-                        activeOpacity={interaction.activeOpacity}
-                        onPress={() => setCountDigestion(on => !on)}
-                        accessibilityRole="switch"
-                        accessibilityState={{ checked: countDigestion }}
-                        accessibilityLabel="Count digestion calories"
-                      >
-                        <Text style={styles.toggleLabel}>Count digestion calories</Text>
-                        <Toggle value={countDigestion} />
-                      </TouchableOpacity>
-                    )}
-                  </View>
+                  <SegmentedControl
+                    options={[
+                      { value: false, label: 'Activity level' },
+                      { value: true, label: 'Apple Health' },
+                    ]}
+                    value={measuredBasis}
+                    onChange={next => setMeasuredBasis(next)}
+                    label="How activity is counted"
+                  />
                 )}
-                <View style={styles.workingRow}>
+                <Text style={styles.help}>
+                  {measuredBasis
+                    ? `Resting rate, plus ${(typicalActiveKcal ?? 0).toLocaleString()} cal of activity on a typical recent day${countDigestion ? `, plus about ${Math.round(budget.maintenanceKcal * DIGESTION_SHARE).toLocaleString()} cal for digesting food` : ''}.`
+                    : 'The activity level you picked above, as a multiplier on your resting rate.'}
+                </Text>
+                {canUseMeasured && measuredBasis && (
+                  <TouchableOpacity
+                    style={styles.toggleRow}
+                    activeOpacity={interaction.activeOpacity}
+                    onPress={() => setCountDigestion(on => !on)}
+                    accessibilityRole="switch"
+                    accessibilityState={{ checked: countDigestion }}
+                    accessibilityLabel="Count digestion calories"
+                  >
+                    <Text style={styles.toggleLabel}>Count digestion calories</Text>
+                    <Toggle value={countDigestion} />
+                  </TouchableOpacity>
+                )}
+                <View style={[styles.workingRow, styles.workingFirst]}>
                   <Text style={styles.workingLabel}>To hold your weight</Text>
                   <Text style={styles.workingValue}>
                     {budget.maintenanceKcal.toLocaleString()}
                   </Text>
                 </View>
-                <View style={styles.workingRow}>
-                  <Text style={styles.workingLabel}>
-                    {maintaining ? 'No change' : `To ${direction} ${formatRate(rate, unit)} a week`}
-                  </Text>
-                  <Text style={styles.workingValue}>
-                    {budget.adjustmentKcal > 0 ? '+' : ''}
-                    {budget.adjustmentKcal.toLocaleString()}
-                  </Text>
-                </View>
+                {!maintaining && (
+                  <View style={styles.workingRow}>
+                    <Text style={styles.workingLabel}>
+                      {`To ${direction} ${formatRate(rate, unit)} a week`}
+                    </Text>
+                    <Text style={styles.workingValue}>
+                      {budget.adjustmentKcal > 0 ? '+' : budget.adjustmentKcal < 0 ? '−' : ''}
+                      {Math.abs(budget.adjustmentKcal).toLocaleString()}
+                    </Text>
+                  </View>
+                )}
+                {(!maintaining || budget.raisedToFloor) && (
+                  <>
+                    <View style={styles.totalRule} />
+                    <View style={styles.workingRow}>
+                      <Text style={styles.totalLabel}>Daily target</Text>
+                      <Text style={styles.totalValue}>{budget.proposedKcal.toLocaleString()}</Text>
+                    </View>
+                  </>
+                )}
 
                 {budget.raisedToFloor && (
                   <Text style={styles.warning}>
@@ -663,24 +750,16 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                   </Text>
                 )}
 
-                <Text style={styles.help}>
+                <HelpText style={styles.help}>
                   {measuredBasis
-                    ? `Still an estimate: the resting rate comes from a population formula (Mifflin-St Jeor), ${countDigestion ? 'digestion is a rule of thumb, and ' : ''}only the activity is measured. Adjust it based on what the scale shows.`
+                    ? `Still an estimate. The resting rate comes from a population formula (Mifflin-St Jeor), ${countDigestion ? 'digestion is a rule of thumb, and ' : ''}only the activity is measured. Adjust it based on what the scale shows. To raise the target on days you move more than usual, turn on Add active calories under Daily targets.`
                     : 'An estimate from a population formula (Mifflin-St Jeor). Adjust it based on what the scale shows.'}
-                </Text>
+                </HelpText>
 
-                {alreadyApplied ? (
-                  <Text style={styles.appliedNote}>
-                    This is your calorie target.
-                  </Text>
-                ) : (
+                {!alreadyApplied && (
                   <InlineAction
                     icon="target"
-                    label={
-                      existingCalorieTarget === undefined
-                        ? 'Use as my calorie target'
-                        : `Replace my target (${existingCalorieTarget.toLocaleString()})`
-                    }
+                    label={`Set target to ${budget.proposedKcal.toLocaleString()} now`}
                     onPress={applyCalorieTarget}
                   />
                 )}
@@ -688,8 +767,8 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                     (autoCalorieTargetKcal), so say so here rather than let a
                     typed target change with nobody told why. */}
                 <Text style={styles.help}>
-                  Saving this goal also sets your calorie target to this figure. It’s
-                  recalculated each time the Weight screen reads your weight.
+                  Your target follows this figure. It updates each time the Weight
+                  screen reads a new weight.
                 </Text>
               </>
             )}
@@ -884,13 +963,60 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginTop: spacing.xs,
     marginBottom: spacing.sm,
   },
-  budgetValue: {
+  tiles: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  tile: {
+    flex: 1,
+    borderRadius: radius.md,
+    paddingVertical: spacing.smd,
+    paddingHorizontal: spacing.smd,
+    backgroundColor: colors.bgTertiary,
+  },
+  tileOld: {},
+  // A border as well as the tint, so the figure that will be the target reads
+  // as the answer in either theme rather than as one more grey tile.
+  tileNew: { backgroundColor: colors.accentSubtle, borderWidth: 1.5, borderColor: colors.accent },
+  tileWide: { flex: 0, alignSelf: 'stretch', marginTop: spacing.sm },
+  tileKey: {
+    fontSize: font.xxs,
+    fontWeight: fontWeight.semibold,
+    color: colors.textSecondary,
+    letterSpacing: 0.8,
+  },
+  tileKeyNew: { color: colors.accentText },
+  tileValue: {
     fontSize: font.xxl,
     fontWeight: fontWeight.bold,
     color: colors.text,
-    marginTop: spacing.xs,
-    marginBottom: spacing.sm,
+    marginTop: spacing.xxs,
   },
+  tileValueOld: { color: colors.textSecondary },
+  tileUnit: { fontSize: font.xs, color: colors.textTertiary },
+  tileUnitInline: { fontSize: font.md, fontWeight: fontWeight.semibold, color: colors.textSecondary },
+  status: {
+    fontSize: font.sm,
+    color: colors.textSecondary,
+    lineHeight: 19,
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  matchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xsm, marginTop: spacing.sm },
+  matchText: { fontSize: font.sm, fontWeight: fontWeight.semibold, color: colors.greenText },
+  workedOutLabel: { marginTop: spacing.md },
+  workingFirst: { marginTop: spacing.xs },
+  totalRule: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.controlBorder,
+    marginTop: spacing.xsm,
+    marginBottom: spacing.xs,
+  },
+  totalLabel: { flex: 1, fontSize: font.md, fontWeight: fontWeight.bold, color: colors.text },
+  totalValue: { fontSize: font.md, fontWeight: fontWeight.bold, color: colors.text },
   workingRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -907,12 +1033,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   toggleLabel: { flex: 1, fontSize: font.sm, color: colors.text },
   workingLabel: { flex: 1, fontSize: font.sm, color: colors.textSecondary },
   workingValue: { fontSize: font.sm, fontWeight: fontWeight.semibold, color: colors.text },
-  appliedNote: {
-    fontSize: font.sm,
-    color: colors.textSecondary,
-    marginTop: spacing.sm,
-    marginBottom: spacing.xs,
-  },
   macroRow: {
     flexDirection: 'row',
     gap: spacing.sm,
