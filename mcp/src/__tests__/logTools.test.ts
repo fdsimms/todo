@@ -91,7 +91,34 @@ describe('leaving an ingredient out of a recipe\'s nutrition', () => {
 
   it('needs a value for setIngredientNutrition', () => {
     const stock = seed();
-    expect(() => patchRecipe(replica, stock.id, [{ op: 'setIngredientNutrition', ingredient: 2 }])).toThrow(/excludeFromNutrition/);
+    expect(() => patchRecipe(replica, stock.id, [{ op: 'setIngredientNutrition', ingredient: 2 }])).toThrow(/excludeFromNutrition or cookedInPan/);
+  });
+});
+
+describe('a cooking oil cooked in a pan', () => {
+  const panNote = (detail: { ingredients: { name: string; cookedInPan?: string }[] }) =>
+    detail.ingredients.find(i => i.name === 'olive oil')?.cookedInPan;
+
+  it('shows the share when the steps cook it, and lets patch_recipe answer either way', () => {
+    const saved = saveRecipe(replica, {
+      name: 'Pan onions',
+      ingredients: [{ text: '2 tbsp olive oil' }, { text: '1 onion' }],
+      steps: [{ text: 'Heat the oil in a skillet and cook the onion.' }],
+    });
+    expect(panNote(saved)).toMatch(/75%/);
+    const off = patchRecipe(replica, saved.id, [{ op: 'setIngredientNutrition', ingredient: 1, expect: 'olive oil', cookedInPan: false }]);
+    expect(panNote(off)).toBeUndefined();
+    const on = patchRecipe(replica, saved.id, [{ op: 'setIngredientNutrition', ingredient: 1, expect: 'olive oil', cookedInPan: true }]);
+    expect(panNote(on)).toMatch(/75%/);
+  });
+
+  it('says nothing for a dressing', () => {
+    const saved = saveRecipe(replica, {
+      name: 'Dressing',
+      ingredients: [{ text: '2 tbsp olive oil' }, { text: '1 lemon' }],
+      steps: [{ text: 'Whisk the oil into the lemon juice.' }],
+    });
+    expect(panNote(saved)).toBeUndefined();
   });
 });
 

@@ -4501,6 +4501,15 @@ function seedRecipes(): DemoRecipes {
   setTags(soup.id, ['weeknight', 'vegetarian']);
   setServings(soup.id, 4);
   setEstimatedMinutes(soup.id, 35);
+  // The method is what makes the oil a pan-cooked one: with no step saying so,
+  // "2 tbsp olive oil" counts in full. The recipe's nutrition sheet then counts
+  // about three quarters of it and says why, and the oil line's "Cooked in the
+  // pan" toggle on the ingredient sheet starts on (RecipeIngredient.cookedInPan).
+  // Seeded because the rule reads the steps and is invisible without them.
+  [
+    'Heat the olive oil in a large pot and cook the onion, carrots and celery until soft, about 8 minutes.',
+    'Add the garlic and thyme, then the stock and tomatoes, and simmer for 20 minutes.',
+  ].forEach(text => addStep(soup.id, text));
   // A side with no fixed amount in the recipe — "however much bread was on
   // the table", not a line `recipeNutrition.ts`'s rollup could ever total
   // (there's no single right answer to write down once) and not one

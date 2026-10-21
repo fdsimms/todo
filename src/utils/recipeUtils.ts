@@ -147,6 +147,9 @@ export function normalizeIngredient(raw: unknown): RecipeIngredient | null {
   // missing here, which meant the flag was silently dropped on every reload
   // once the ingredient round-tripped through storage as JSON.
   if (r.excludeFromNutrition === true) normalized.excludeFromNutrition = true;
+  // The one tri-state here (see RecipeIngredient.cookedInPan): `false` is an
+  // answer that overrides the steps' guess, so it is kept, not dropped.
+  if (typeof r.cookedInPan === 'boolean') normalized.cookedInPan = r.cookedInPan;
   // Same rule again — a staple you'd already have, not something to shop for
   // (see RecipeIngredient.excludeFromShoppingList).
   if (r.excludeFromShoppingList === true) normalized.excludeFromShoppingList = true;

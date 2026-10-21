@@ -145,6 +145,34 @@ this"; nothing is excluded until the person taps. It is all or nothing: excludin
 the broth. The MCP sets it with `excludeFromNutrition` on `update_recipe`/`save_recipe` lines and
 `setIngredientNutrition` in `patch_recipe`, and `get_recipe` shows `notCountedInNutrition`.
 
+**A cooking fat cooked in a pan counts at part of its written amount (`panOil.ts`, `RecipeIngredient.cookedInPan`).**
+Two tablespoons of oil to sauté an onion is not two tablespoons eaten: some stays in the pan. A cooking fat's
+line counts at `PAN_OIL_SHARE` (75%) of its written amount when it was cooked in a pan, and the recipe's nutrition
+sheet and the ingredient row both say so. The share is an estimate with no source behind it, so the line is
+labelled and a person can switch it off per line.
+
+- **The field is tri-state, and the guess is never stored.** Absent means nobody answered, and the recipe's own steps
+  decide (`stepsCookMethod`: a step that names the oil and also heats, sautés, fries or sears; a sauté anywhere when no
+  step names the oil). `true` and `false` are answers the steps no longer overrule, and `false` is kept on purpose
+  (it is the answer that beats a guessed `true`). The ingredient sheet writes the field only after the toggle is
+  touched, so an untouched line keeps following the steps.
+- **A closed list of cooking fats, never a suffix match.** "Tuna in oil" ends in "oil" and "peanut butter" starts with
+  a fat. Oils, butter, ghee and sesame oil are on it because each is sometimes used to sauté. Only sometimes: a
+  cookie's butter and a finishing drizzle of sesame oil are eaten whole, so the steps decide the default and the same
+  75% is a rougher fit for those than for a plain oil.
+- **Deep frying has its own, much smaller share (`DEEP_FRY_SHARE`, 10%), and it is the roughest number here.** A pot of
+  frying oil is mostly left behind, and what the food takes up scales with the food's weight, which the recipe rarely
+  names, so a fraction of the oil poured stands in for it. A step is deep when it says so, names a fryer, or heats the
+  oil to frying temperature ("350°F", "2 inches of oil"), because the step naming the oil often never says "deep fry".
+  The same `cookedInPan` switch turns it off (the sheet's label reads "Deep fried" then). A deep fry step that doesn't
+  name a given oil doesn't make a sautéed olive oil in the same recipe deep.
+- **The share is applied after `resolveLine`, never inside it.** The bulk-staple check asks whether the amount
+  *written* is large, and a share applied first would tip a 100 g staple oil under its threshold and drop the line as
+  negligible. `NutritionLine.share` carries it for display, and `weekNutrition` gets it through
+  `PlannedIngredient.nutritionShare`, so a planned week and a single recipe agree.
+- **The MCP** shows `cookedInPan` on a `get_recipe` oil line and sets it with `patch_recipe`'s
+  `setIngredientNutrition`.
+
 **A component has a position among the ingredients (`RecipeComponent.placement`).** It is a row in
 the Ingredients list on the recipe page, dragged like an ingredient, and the position is honored by
 every surface that flattens the recipe, because there is one walk (`flattenRecipeIngredients`, over

@@ -314,6 +314,21 @@ export function RecipeNutritionSheet({ visible, reading, recipeId, recipeName, s
     [reading.lines],
   );
 
+  // The one sentence that says why a pan-cooked oil adds less than its written
+  // amount. A consequence of the figures on screen, so it is a plain Text and
+  // not a HelpText that Hide help text would remove.
+  const panOilNote = useMemo(() => {
+    const trimmed = covered.filter(({ line }) => line.share < 1).map(({ line }) => line);
+    if (trimmed.length === 0) return null;
+    const shares = new Set(trimmed.map(line => line.share));
+    const left = 'What’s left in the pan or fryer isn’t counted.';
+    if (trimmed.length === 1 || shares.size === 1) {
+      const names = trimmed.length === 1 ? `the ${trimmed[0].name}` : `${trimmed.length} cooking fats`;
+      return `Includes about ${Math.round(trimmed[0].share * 100)}% of ${names}. ${left}`;
+    }
+    return `Includes only part of ${trimmed.length} cooking fats. ${left}`;
+  }, [covered]);
+
   /**
    * Puts figures back on whichever row the ones on screen came from.
    *
@@ -626,6 +641,7 @@ export function RecipeNutritionSheet({ visible, reading, recipeId, recipeName, s
               );
             })}
           </View>
+          {panOilNote !== null && <Text style={styles.hint}>{panOilNote}</Text>}
         </>
       )}
 

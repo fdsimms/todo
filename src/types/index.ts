@@ -7460,6 +7460,13 @@ export interface RecipeIngredient {
   // ingredient wants counting in one recipe and not in another. Same
   // optional-boolean convention as noSwap/optional, for the same reason.
   excludeFromNutrition?: boolean;
+  // "I cooked this in a pan, so some of it stayed there": a cooking fat's line
+  // counts toward the dish's nutrition at PAN_OIL_SHARE of the written amount
+  // (panOil.ts). Only a cooking fat (oil, butter, ghee) has the question. Absent means nobody has
+  // answered, and the recipe's own steps decide; `true` and `false` are answers
+  // that the steps no longer overrule. Unlike the optional booleans around it,
+  // `false` is stored: it is the answer that beats a guess of `true`.
+  cookedInPan?: boolean;
   // "This is a staple you'd already have, not something to shop for" — water at
   // a stated amount, most often ("3/4 cup water" in a brine). Doesn't change
   // what's on the recipe or hide the line anywhere it's shown

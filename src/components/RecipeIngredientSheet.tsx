@@ -31,6 +31,9 @@ import { cleanChoiceGroup, defaultChoiceGroupLabel, splitIngredientAnd as andPar
 import { describeCatalogItem } from '../utils/groceryProduct';
 import { allSectionsOf } from '../utils/recipeSections';
 import { standingSwapMap } from '../utils/standingSwaps';
+import { isCookingFat, fatCooking, DEEP_FRY_SHARE, PAN_OIL_SHARE } from '../utils/panOil';
+import { recipeNutritionLines } from '../utils/recipeNutrition';
+import { panelMultiplier } from '../utils/ingredientGrams';
 import { disclosureValue } from '../theme/textStyles';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
@@ -44,6 +47,7 @@ import { InlineAction } from './InlineAction';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { TextField } from './TextField';
 import { HelpText } from './HelpText';
+import { Toggle } from './Toggle';
 import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
@@ -152,6 +156,9 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
   // Left out of this recipe's nutrition total on purpose — a garnish or a
   // small amount that doesn't move the figures (RecipeIngredient.excludeFromNutrition).
   const [excludeFromNutrition, setExcludeFromNutrition] = useState(false);
+  // Undefined until the person touches the toggle, so a line nobody answered keeps
+  // following the recipe's steps (RecipeIngredient.cookedInPan).
+  const [cookedInPan, setCookedInPan] = useState<boolean | undefined>(undefined);
   // A staple you'd already have, not something to shop for — water at a
   // stated amount, most often (RecipeIngredient.excludeFromShoppingList).
   const [excludeFromShoppingList, setExcludeFromShoppingList] = useState(false);
@@ -184,6 +191,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
     setNoSwap(!!ingredient.noSwap);
     setOptional(!!ingredient.optional);
     setExcludeFromNutrition(!!ingredient.excludeFromNutrition);
+    setCookedInPan(ingredient.cookedInPan);
     setExcludeFromShoppingList(!!ingredient.excludeFromShoppingList);
     setEditingItemId(null);
     setLinkOpen(false);
@@ -246,6 +254,36 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
     return renamed ?? cleanChoiceGroup(choiceGroup);
   };
 
+  // The pan question, for a cooking oil only. The draft name decides whether it
+  // applies, the same as the catalog card above reads the draft.
+  const recipeSteps = useRecipeStore(
+    useShallow(s => s.recipes.find(r => r.id === recipeId)?.steps ?? [])
+  );
+  const askPan = isCookingFat(name);
+  const cooking = askPan ? fatCooking({ name, cookedInPan }, recipeSteps) : null;
+  const panCooked = cooking?.cooked === true;
+  const deepFried = cooking?.method === 'deep';
+  const cookingShare = cooking?.share ?? 1;
+  const cookingLabel = deepFried ? 'Deep fried' : 'Cooked in the pan';
+  const sharePercent = Math.round((deepFried ? DEEP_FRY_SHARE : PAN_OIL_SHARE) * 100);
+  // What the line counts for, in calories, with and without the pan share. The
+  // saved line supplies the catalog figures; the amount is the draft's, so the
+  // readout follows what is being typed.
+  const panReadout = useMemo(() => {
+    if (!askPan || !ingredient) return null;
+    const recipe = allRecipes.find(r => r.id === recipeId);
+    if (!recipe) return null;
+    const line = recipeNutritionLines(
+      recipe, groceryItems, itemProducts, new Map(allRecipes.map(r => [r.id, r])),
+    ).find(l => l.id === ingredient.id);
+    const perHundred = line?.nutrition?.amounts.calorieKcal;
+    if (!line?.nutrition || perHundred === undefined) return null;
+    const multiplier = panelMultiplier(quantity, prep.trim() || null, line.nutrition);
+    if (multiplier === null) return null;
+    const whole = perHundred * multiplier;
+    return { whole: Math.round(whole), counted: Math.round(whole * cookingShare) };
+  }, [askPan, ingredient, allRecipes, recipeId, groceryItems, itemProducts, quantity, prep, cookingShare]);
+
   const saveAndClose = () => {
     if (!ingredient) { onClose(); return; }
     // Tapping Done can beat the group name field's own blur — flush it here
@@ -265,6 +303,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
       noSwap,
       optional,
       excludeFromNutrition,
+      cookedInPan,
       excludeFromShoppingList,
     });
     onClose();
@@ -661,6 +700,36 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
           The amount this recipe needs. What you normally buy is set on
           the item itself.
         </HelpText>
+
+        {askPan && (
+          <>
+            <View style={styles.separator} />
+
+            <TouchableOpacity
+              style={styles.toggleRow}
+              activeOpacity={interaction.activeOpacity}
+              onPress={() => { haptics.tap(); setCookedInPan(!panCooked); }}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: panCooked }}
+              accessibilityLabel={cookingLabel}
+            >
+              <View style={styles.toggleBody}>
+                <Text style={styles.toggleLabel}>{cookingLabel}</Text>
+                <HelpText style={styles.hint}>
+                  {panCooked
+                    ? `${deepFried ? 'The food only takes up some of it' : 'Some of it stays in the pan'}, so about ${sharePercent}% counts. Turn off if all of it goes into the dish.`
+                    : `The whole amount counts. Turn on if it was used to ${deepFried ? 'deep fry' : 'cook in a pan'}.`}
+                </HelpText>
+              </View>
+              <Toggle value={panCooked} />
+            </TouchableOpacity>
+            {panReadout && (
+              <Text style={styles.panReadout}>
+                Counts {panReadout.counted} of {panReadout.whole} cal
+              </Text>
+            )}
+          </>
+        )}
 
         <View style={styles.separator} />
 
@@ -1224,6 +1293,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   toggleLabel: {
     color: colors.text,
     fontSize: font.md,
+  },
+  panReadout: {
+    color: colors.text,
+    fontSize: font.md,
+    marginTop: spacing.smd,
   },
   catalogBody: {
     flex: 1,

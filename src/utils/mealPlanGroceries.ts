@@ -26,6 +26,7 @@ import {
   unitKey,
 } from './quantity';
 import { normalizeScale, scaleQuantity } from './recipeScale';
+import { panOilShare } from './panOil';
 
 /**
  * Everything decidable about turning a week plan into a grocery add, kept
@@ -111,6 +112,12 @@ export interface PlannedIngredient {
    * for the same reason.
    */
   excludeFromNutrition?: boolean;
+  /**
+   * The fraction of the written amount that counts toward nutrition, carried
+   * through from `panOilShare` so `weekNutrition` applies the same reduction a
+   * single recipe's own reading does. Written only when it is below 1.
+   */
+  nutritionShare?: number;
   /**
    * The line as the recipe wrote it and the entry's scale, present only when
    * that scale isn't 1 (at 1, `quantity` already is the line as written).
@@ -201,6 +208,9 @@ export function collectPlannedIngredients(
         // A picked optional line is an ordinary line for this meal (optionalCounts).
         ...(optionalCounts(flat.ingredient, resolution) ? {} : { optional: true }),
         ...(flat.ingredient.excludeFromNutrition ? { excludeFromNutrition: true } : {}),
+        ...(panOilShare(flat.ingredient, flat.recipe.steps ?? []) < 1
+          ? { nutritionShare: panOilShare(flat.ingredient, flat.recipe.steps ?? []) }
+          : {}),
         ...(scale !== 1 ? { unscaled: { quantity: flat.ingredient.quantity, factor: scale } } : {}),
       });
     }
