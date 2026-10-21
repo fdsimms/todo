@@ -103,7 +103,7 @@ Where each component can appear.
 - `src/components/BlockScheduleSheet.tsx` — on ScreenTimeScreen
 - `src/components/BulkActionBar.tsx` — on CalendarScreen, CategoryDetailScreen, ProjectDetailScreen, ProjectsScreen, SavedViewDetailScreen, StackDetailScreen, TagsScreen, TodayScreen
 - `src/components/CalendarChoiceSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SavedViewDetailScreen, +6 more
-- `src/components/CalendarPicker.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SavedViewDetailScreen, +8 more
+- `src/components/CalendarPicker.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SavedViewDetailScreen, +7 more
 - `src/components/CardSheet.tsx` — on ArchivedScreen, AutomationsScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, JournalScreen, KitchenScreen, LogbookScreen, MealPlanScreen, +29 more
 - `src/components/CatalogLinkPicker.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, KitchenScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, PersonDetailScreen, ProjectDetailScreen, +12 more
 - `src/components/CatalogLinkSheet.tsx` — on FoodLogScreen
@@ -460,6 +460,7 @@ Where each component can appear.
 - `src/components/WorkoutRecordsCard.tsx` — on WorkoutsScreen, app shell
 - `src/components/WorkoutStatTiles.tsx` — on WorkoutsScreen, app shell
 - `src/components/WorkoutStatsCards.tsx` — on StatsScreen
+- `src/components/WorkoutTimesSheet.tsx` — on WorkoutsScreen
 - `src/components/YearOfBirthSheet.tsx` — on SettingsGroupScreen
 - `src/screens/settings/AboutSettings.tsx` — on SettingsGroupScreen
 - `src/screens/settings/AgentNotesRows.tsx` — on SettingsGroupScreen
