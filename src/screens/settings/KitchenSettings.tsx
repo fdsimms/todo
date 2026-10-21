@@ -347,7 +347,7 @@ export function KitchenSettings() {
       {!simpleMode && (
       <SettingsSection
         label="Cookware"
-        footer="Pots, pans, lids and tubs and what each weighs empty. Weigh a dish with its pot and the app takes the pot's weight off."
+        footer="Pots, pans, lids and tubs and what each weighs empty. Weigh a dish with its pot and the app takes the pot’s weight off."
       >
         <SettingsRow
           entryId="cookware"

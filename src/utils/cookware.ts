@@ -59,7 +59,7 @@ export function netWeight(
   if (!(net > 0)) {
     return {
       ok: false,
-      reason: `That's less than the ${noun} weighs (${tare.toLocaleString('en-US')} g). Check the reading or pick ${noun === 'cookware' ? 'other cookware' : `a different ${noun}`}.`,
+      reason: `That’s less than the ${noun} weighs (${tare.toLocaleString('en-US')} g). Check the reading or pick ${noun === 'cookware' ? 'other cookware' : `a different ${noun}`}.`,
     };
   }
   return { ok: true, grams: Math.round(net) };

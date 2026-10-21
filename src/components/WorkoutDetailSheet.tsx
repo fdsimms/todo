@@ -471,7 +471,7 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose }: Props) {
                             activeOpacity={interaction.activeOpacity}
                             accessibilityRole="button"
                             accessibilityLabel={info.name}
-                            accessibilityHint="Opens this exercise's page"
+                            accessibilityHint="Opens this exercise’s page"
                           >
                             <Text style={styles.exerciseName}>{info.name}</Text>
                             <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
@@ -553,7 +553,7 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose }: Props) {
                 onPress={saveAsRoutine}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
-                accessibilityHint="Makes a routine from this workout's exercises and sets"
+                accessibilityHint="Makes a routine from this workout’s exercises and sets"
               >
                 <Text style={styles.actionText}>Save as routine</Text>
               </TouchableOpacity>

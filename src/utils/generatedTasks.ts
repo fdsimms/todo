@@ -586,7 +586,9 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     pausedOnVacation: true,
     enabledKey: 'pantryReviewTasks',
     label: 'Pantry reviews',
-    onHint: 'Adds a task to go through the pantry when several things are in doubt at once',
+    // "five" is MIN_PANTRY_REVIEW_CARDS (pantryReviewTasks.ts imports this
+    // file, so it can't be read from here); change the two together.
+    onHint: 'Adds a task to go through the pantry once there are five or more things you might not still have',
     offHint: 'No task to go through the pantry',
     icon: 'albums-outline',
     // Its source id is the day key the offer was raised on, which names a

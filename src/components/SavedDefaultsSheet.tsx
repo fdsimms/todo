@@ -90,7 +90,7 @@ export function SavedDefaultsSheet({ visible, onClose }: Props) {
     <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.root}>
         <SheetHeader
-          title="Defaults you've set"
+          title="Defaults you’ve set"
           left={<View style={styles.headerSpacer} />}
           right={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={onClose} minWidth={56} />}
         />
@@ -113,8 +113,8 @@ export function SavedDefaultsSheet({ visible, onClose }: Props) {
             {renderGroup('PROJECTS', rows.projects)}
             {renderGroup('AUTOMATIC TASKS', rows.automatic)}
             <Text style={styles.footnote}>
-              To change an answer instead of clearing it, open the project&apos;s “New task defaults”
-              or the automatic task&apos;s settings in Automations.
+              To change an answer instead of clearing it, open the project’s “New task defaults”
+              or the automatic task’s settings in Automations.
             </Text>
           </ScrollView>
         )}

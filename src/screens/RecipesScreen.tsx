@@ -710,7 +710,7 @@ function RecipesList() {
     <View style={styles.upNextBlock}>
       <View style={styles.upNextHeader}>
         <Ionicons name="bookmark" size={13} color={colors.accent} />
-        <Text style={styles.upNextTitle}>Up Next</Text>
+        <Text style={styles.upNextTitle}>Up next</Text>
         <Text style={styles.upNextCount}>{upNextRecipes.length}</Text>
       </View>
       <SortableList<Recipe>

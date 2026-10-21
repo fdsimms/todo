@@ -602,7 +602,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
             )}
             {ovenTempRefused && (
               <Text style={styles.ovenRefused}>
-                {`Oven temperatures run from ${OVEN_TEMP_RANGE[ovenUnit].min} to ${OVEN_TEMP_RANGE[ovenUnit].max}°${ovenUnit}. This one won't be saved.`}
+                {`Oven temperatures run from ${OVEN_TEMP_RANGE[ovenUnit].min} to ${OVEN_TEMP_RANGE[ovenUnit].max}°${ovenUnit}. This one won’t be saved.`}
               </Text>
             )}
           </>

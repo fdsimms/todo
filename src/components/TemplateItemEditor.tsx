@@ -2094,7 +2094,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                 label="If the day is full"
                 summary={slotIn === null ? undefined : slotIn ? 'Wait' : 'Keep the date'}
                 emptySummary="As its category"
-                hint="Wait moves tasks made from this item to the next day that isn't full. Keep the date holds them to it even in a category set to wait."
+                hint="Wait moves tasks made from this item to the next day that isn’t full. Keep the date holds them to it even in a category set to wait."
                 expanded={fieldOpen('slotIn')}
                 onToggle={() => toggleField('slotIn')}
               >
