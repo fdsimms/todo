@@ -56,7 +56,7 @@ import { placementsFromList, routineSections, type FlatRoutineRow } from '../uti
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { useGymStore } from '../store/useGymStore';
-import { describeRoutineFit, lastUsedGymId, routineFit } from '../utils/gyms';
+import { describeRoutineFit, routineFit, startingGymId } from '../utils/gyms';
 import { describeProgress, programProgress } from '../utils/workoutProgram';
 import { trainingMaxRaises } from '../utils/workoutProgression';
 import { formatWeightNumber } from '../utils/workoutData';
@@ -154,10 +154,11 @@ export function WorkoutsScreen() {
   const startWorkout = useStartWorkout();
   // The gym a workout would start at, so a routine that needs what it lacks says so before Start.
   const gyms = useGymStore(s => s.gyms);
+  const defaultGymId = useSettingsStore(s => s.defaultGymId);
   const fitGym = useMemo(() => {
-    const id = lastUsedGymId(gyms, sessions);
+    const id = startingGymId(defaultGymId, gyms, sessions);
     return gyms.find(g => g.id === id) ?? null;
-  }, [gyms, sessions]);
+  }, [defaultGymId, gyms, sessions]);
   // Which routine the editor is on (null for a new one), kept through the
   // close so the sheet doesn't retitle itself while it slides away.
   const [editorOpen, setEditorOpen] = useState(false);

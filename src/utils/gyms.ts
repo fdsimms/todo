@@ -206,6 +206,21 @@ export function lastUsedGymId(
 }
 
 /**
+ * The gym a workout starts at before any position is known: the one the person
+ * chose as their default if it is still there and not archived, else the gym
+ * last used. A default that was deleted or archived reads as none, so the
+ * setting never has to be cleaned up behind a gym.
+ */
+export function startingGymId(
+  defaultId: string | null | undefined,
+  gyms: readonly Pick<Gym, 'id' | 'archived'>[],
+  sessions: readonly { gymId?: string | null; startedAt: string }[],
+): string | null {
+  if (defaultId && gyms.some(g => g.id === defaultId && !g.archived)) return defaultId;
+  return lastUsedGymId(gyms, sessions);
+}
+
+/**
  * "last 100 kg × 5": the heaviest working set of last time, for the notice that
  * proposes a replacement. Null when last time has no set with both a load and
  * reps (a first time, or an exercise that isn't weight and reps).

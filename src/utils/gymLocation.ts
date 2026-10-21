@@ -1,23 +1,29 @@
 import { useGymStore } from '../store/useGymStore';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { getCurrentLocation } from './weatherLocation';
-import { gymAt, lastUsedGymId } from './gyms';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { gymAt, startingGymId } from './gyms';
 
 /**
  * Which gym a workout starts at (docs/arch/workouts.md, "Gyms"). The rules are
- * `gymAt` and `lastUsedGymId` in `gyms.ts`; this is the one place that reads
- * the position.
+ * `gymAt` and `startingGymId` in `gyms.ts` (the default gym, else the last
+ * used); this is the one place that reads the position.
  *
  * **It reads nothing unless a gym has a pin.** Starting a workout asks the
  * device where it is only when somebody saved a place for a gym, and it never
  * asks permission (`getCurrentLocation`): the permission is requested where the
  * pin is set, from the gym's own editor. With no pin, no permission or demo
- * mode there is no read and the workout starts at the gym it last used.
+ * mode there is no read and the workout starts at the default gym, or the gym
+ * it last used when none is set.
  */
 
 /** The gym a workout should start at before any position is known. */
 export function defaultGymId(): string | null {
-  return lastUsedGymId(useGymStore.getState().gyms, useWorkoutStore.getState().sessions);
+  return startingGymId(
+    useSettingsStore.getState().defaultGymId,
+    useGymStore.getState().gyms,
+    useWorkoutStore.getState().sessions,
+  );
 }
 
 /**
