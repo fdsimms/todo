@@ -8,6 +8,7 @@ import type { WorkoutProgram, WorkoutRoutine, WorkoutSession } from '../types';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
 import { SearchField } from '../components/SearchField';
+import { ExerciseFilterBar, useExerciseFilters } from '../components/ExerciseFilterBar';
 import { SegmentedControl } from '../components/SegmentedControl';
 import { useFilterField } from '../hooks/useFilterField';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
@@ -221,9 +222,10 @@ export function WorkoutsScreen() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
   const search = useFilterField();
+  const filter = useExerciseFilters();
   const results = useMemo(
-    () => searchExercises(exercises, search.query).map(r => r.exercise),
-    [exercises, search.query]
+    () => searchExercises(exercises, search.query, filter.filters).map(r => r.exercise),
+    [exercises, search.query, filter.filters]
   );
 
   const openExercise = useCallback((id: string) => {
@@ -765,11 +767,12 @@ export function WorkoutsScreen() {
             style={styles.search}
             accessibilityLabel="Search exercises by name, muscle or equipment"
           />
+          <ExerciseFilterBar state={filter} exercises={exercises} />
           {results.length === 0 ? (
             <EmptyState
               icon="search-outline"
               title="Nothing matches"
-              subtitle={`No exercise matches “${search.query.trim()}”. Try a muscle or a piece of equipment.`}
+              subtitle={filter.narrowed ? 'No exercise matches these filters. Remove one to see more.' : `No exercise matches “${search.query.trim()}”. Try a muscle or a piece of equipment.`}
               bottomOffset={tabBarHeight}
             />
           ) : (

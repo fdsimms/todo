@@ -37,6 +37,7 @@ import { ExerciseDetailSheet } from './ExerciseDetailSheet';
 import { ExercisePhotos } from './ExercisePhotos';
 import { PlateLine } from './PlateLine';
 import { SelectionDot } from './SelectionDot';
+import { SortableList } from './SortableList';
 import { WorkoutRecordsCard } from './WorkoutRecordsCard';
 import { WorkoutStatTiles } from './WorkoutStatTiles';
 import type { ExerciseKind, WorkoutSet, WorkoutSetKind } from '../types';
@@ -69,7 +70,8 @@ import { parseSetCell } from '../utils/workoutCell';
 import { exerciseDayNote, exerciseDayNotePatches } from '../utils/exerciseDayNote';
 import { applyRoutineChanges, describeRoutineChange, routineChanges } from '../utils/routineUpdate';
 import { barKgFor, effectivePlateInventory, isPlateLoaded, plateLoad } from '../utils/plateMath';
-import { liftVolumeKg, sessionRecordSummary } from '../utils/workoutRecords';
+import { liftVolumeKg, liveSetRecords, sessionRecordSummary } from '../utils/workoutRecords';
+import { formatRecordChange, recordLabel, recordShortLabel } from '../utils/workoutRecordText';
 import { proposalActionLabel, proposalApplied, proposalHeadline, workingSetLogged, type Proposal } from '../utils/workoutProgression';
 import { exerciseProposal, type ExerciseProposal } from '../utils/workoutProposal';
 import { applyProposal, liveProposal } from '../utils/workoutProposalApply';
@@ -82,7 +84,7 @@ import {
   stepTimerRemaining,
 } from '../utils/stepTimers';
 import {
-  finishPlan, formatDistance, formatSetLine, matchPrevious, nextSet,
+  finishPlan, formatDistance, formatSetLine, exerciseBlocks, matchPrevious, movedExerciseOrder, nextSet,
   columnLabel, fieldLabel, sessionExercises, sessionSummary, setBadge, setFieldsFor, setLabels, setName, valuesFromLastDone,
   type SetField,
   supersetGroup,
@@ -221,6 +223,10 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   // Every exercise on one scrolling page, instead of one card at a time.
   // Session-only, like the photos toggle.
   const [allOpen, setAllOpen] = useState(false);
+  // The compact list the exercises are dragged in, instead of their cards, and
+  // whether a row of it is in the air (which switches the page's scroll off).
+  const [reordering, setReordering] = useState(false);
+  const [dragging, setDragging] = useState(false);
   // The routine changes ticked on the summary. Nothing starts ticked.
   const [accepted, setAccepted] = useState<ReadonlySet<string>>(new Set());
   const [detailOpen, setDetailOpen] = useState(false);
@@ -239,6 +245,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     setEffort(session?.effort ?? null);
     setSessionNotes(session?.notes ?? '');
     setPicking(null);
+    setReordering(false);
     setNoteEdit(null);
     setGymNoteEdit(null);
     setGymPickerOpen(false);
@@ -284,6 +291,16 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     // A field left empty is done at the dimmed number the row showed in it.
     const next = tickSet(session.id, set.id, new Date(), ghostFill(set, exercise));
     if (!next) return;
+    // A tick that sets a record is worth a different buzz than an ordinary one.
+    const records = liveSetRecords(
+      session.id,
+      exercise.exerciseId,
+      catalogExercise(exerciseRows, exercise.exerciseId)?.kind ?? 'weight_reps',
+      useWorkoutStore.getState().exerciseHistory(exercise.exerciseId),
+      sessionsList,
+      dayResetTime,
+    );
+    if (records.has(set.id)) haptics.success();
     if (next.showExerciseId !== viewedId) animateLayout();
     setViewedId(next.showExerciseId);
     setOpenSetId(null);
@@ -340,7 +357,26 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const toggleAll = () => {
     haptics.tap();
     animateLayout();
+    setReordering(false);
     setAllOpen(v => !v);
+  };
+
+  const toggleReordering = () => {
+    haptics.tap();
+    animateLayout();
+    setOpenSetId(null);
+    setNoteEdit(null);
+    setReordering(v => !v);
+  };
+
+  // One draggable row per block (a superset is one), so a drop never splits a pair.
+  const reorderRows = useMemo(
+    () => exerciseBlocks(sets).map(block => ({ id: block[0].exerciseId, block })),
+    [sets],
+  );
+  const dropReorder = (next: typeof reorderRows) => {
+    if (!session) return;
+    useWorkoutStore.getState().reorderExercises(session.id, next.flatMap(r => r.block.map(e => e.exerciseId)));
   };
 
   const goTo = (index: number) => {
@@ -366,6 +402,13 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     if (!session) return;
     if (!useWorkoutStore.getState().joinSessionSuperset(session.id, exerciseId, partnerId)) return;
     haptics.success();
+    animateLayout();
+  };
+  // The view stays on the exercise that moved: `viewIndex` follows its id.
+  const moveExercise = (exerciseId: string, direction: 'up' | 'down') => {
+    if (!session) return;
+    if (!useWorkoutStore.getState().moveSessionExercise(session.id, exerciseId, direction)) return;
+    haptics.tap();
     animateLayout();
   };
   const leaveSuperset = (exerciseId: string) => {
@@ -746,6 +789,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
             style={styles.flex}
             contentContainerStyle={styles.scroll}
             keyboardShouldPersistTaps="handled"
+            scrollEnabled={!dragging}
             {...keyboardScroll.props}
             ref={keyboardScroll.ref}
           >
@@ -759,7 +803,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
             )}
             {exercises.length > 0 && (
               <View style={styles.position}>
-                {allOpen ? (
+                {allOpen || reordering ? (
                   <>
                     <Text style={styles.positionText}>{`${exercises.length} exercises`}</Text>
                     <View style={styles.flex} />
@@ -798,6 +842,15 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                 </View>
                 </>
                 )}
+                {exercises.length > 1 && (
+                  <InlineAction
+                    icon={reordering ? undefined : 'reorder-three-outline'}
+                    label="Reorder"
+                    variant={reordering ? 'accent' : 'neutral'}
+                    onPress={toggleReordering}
+                    accessibilityLabel={reordering ? 'Done reordering exercises' : 'Reorder exercises'}
+                  />
+                )}
                 <InlineAction
                   icon={allOpen ? undefined : 'list-outline'}
                   label={allOpen ? 'One at a time' : 'All'}
@@ -809,7 +862,43 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
             )}
 
             {/* One card per shown exercise: the one the sheet is on, or every one in All. The param keeps the name `viewed`, so the card body reads as it always has. */}
-            {(allOpen ? exercises : viewed ? [viewed] : []).map((viewed, cardIndex) => {
+            {reordering && (
+              <>
+                <Text style={styles.reorderHint}>Hold and drag to reorder</Text>
+                <View style={styles.reorderCard}>
+                  <SortableList
+                    data={reorderRows}
+                    onDragStateChange={setDragging}
+                    onReorder={dropReorder}
+                    renderItem={(row, index, drag, isActive) => {
+                      const names = row.block.map(e => catalogExercise(exerciseRows, e.exerciseId)?.name ?? 'Unknown exercise');
+                      const all = row.block.flatMap(e => e.sets);
+                      const done = all.filter(s => s.completedAt !== null).length;
+                      const detail = `${row.block.length > 1 ? 'Superset · ' : ''}${all.length} ${all.length === 1 ? 'set' : 'sets'} · ${done} done`;
+                      return (
+                        <TouchableOpacity
+                          style={[styles.reorderRow, index > 0 && styles.reorderRowSep, row.block.length > 1 && styles.reorderSuperset, isActive && styles.reorderActive]}
+                          onLongPress={drag}
+                          delayLongPress={interaction.delayLongPress}
+                          activeOpacity={interaction.activeOpacity}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Reorder ${names.join(' and ')}`}
+                          accessibilityHint="Touch and hold, then drag"
+                        >
+                          <Ionicons name="reorder-two-outline" size={iconSize.md} color={colors.textTertiary} />
+                          <View style={styles.flex}>
+                            <Text style={styles.reorderName}>{names.join(' + ')}</Text>
+                            <Text style={styles.reorderDetail}>{detail}</Text>
+                          </View>
+                          <View style={[styles.reorderDot, done === all.length && styles.reorderDotDone]} />
+                        </TouchableOpacity>
+                      );
+                    }}
+                  />
+                </View>
+              </>
+            )}
+            {(reordering ? [] : allOpen ? exercises : viewed ? [viewed] : []).map((viewed, cardIndex) => {
               const viewedInfo = catalogExercise(exerciseRows, viewed.exerciseId);
               const kind: ExerciseKind = viewedInfo?.kind ?? 'weight_reps';
               const fields = setFieldsFor(kind);
@@ -832,6 +921,17 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
               const previousBySet = matchPrevious(viewed.sets, previous);
               // What was written on this exercise's sets last time, read before the first set.
               const lastNotes = lastTimeNotes(previous);
+              // The records this workout has set on the exercise so far, by the set holding each.
+              const liveRecords = session && viewed.sets.some(s => s.completedAt !== null)
+                ? liveSetRecords(
+                  session.id,
+                  viewed.exerciseId,
+                  kind,
+                  useWorkoutStore.getState().exerciseHistory(viewed.exerciseId),
+                  sessionsList,
+                  dayResetTime,
+                )
+                : null;
               const canSwap = swappableSets(viewed.sets, viewed.exerciseId).length > 0;
 
               // ==== the suggestion: the next load, proposed and never applied unasked ====
@@ -1045,6 +1145,12 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                   const prev = previousBySet.get(set.id);
                   const prevLine = prev ? formatSetLine(prev, kind, unit) : null;
                   const label = labels.get(set.id) ?? '';
+                  const record = done ? liveRecords?.get(set.id)?.[0] ?? null : null;
+                  const recordShort = record ? recordShortLabel(record.type, kind, record.reps) : '';
+                  const recordChange = record ? formatRecordChange(record, kind, unit) : null;
+                  const recordText = record && recordChange
+                    ? `${recordLabel(record.type, kind, record.reps)}, was ${recordChange.before}`
+                    : null;
                   return (
                     <DeletableSet
                       key={set.id}
@@ -1075,6 +1181,16 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                           </TouchableOpacity>
                         ) : (
                           <Text style={[styles.colPrev, styles.prevText]} numberOfLines={1}>–</Text>
+                        )}
+                        {!!recordText && (
+                          <View
+                            style={styles.recordPill}
+                            accessible
+                            accessibilityLabel={`Personal record. ${recordText}`}
+                          >
+                            <Ionicons name="trophy" size={iconSize.xs} color={colors.accentText} />
+                            <Text style={styles.recordPillText}>{recordShort}</Text>
+                          </View>
                         )}
                         {fields.map(f => (
                           <SetInput
@@ -1197,6 +1313,14 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
             anchor={exerciseMenu?.anchor ?? null}
             onClose={() => setExerciseMenu(null)}
             actions={menuId && menuExercise ? [
+              ...(['up', 'down'] as const)
+                .filter(direction => movedExerciseOrder(sets, menuId, direction) !== null)
+                .map(direction => ({
+                  key: `move-${direction}`,
+                  label: direction === 'up' ? 'Move up' : 'Move down',
+                  icon: (direction === 'up' ? 'arrow-up-outline' : 'arrow-down-outline') as 'arrow-up-outline',
+                  onPress: () => moveExercise(menuId, direction),
+                })),
               ...(partners.length > 0 ? [{
                 key: 'superset',
                 label: 'Superset with…',
@@ -1495,6 +1619,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   dotOn: { width: 18, backgroundColor: colors.accent },
   card: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden' },
   cardStacked: { marginTop: spacing.md },
+  reorderHint: {
+    color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold, textTransform: 'uppercase',
+    letterSpacing: 0.8, marginHorizontal: spacing.xs, marginBottom: spacing.sm,
+  },
+  reorderCard: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden' },
+  reorderRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd, paddingHorizontal: spacing.md, paddingVertical: spacing.smd, backgroundColor: colors.bgSecondary },
+  reorderRowSep: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator },
+  reorderSuperset: { borderLeftWidth: 3, borderLeftColor: colors.accent },
+  reorderActive: { backgroundColor: colors.bgTertiary },
+  reorderName: { color: colors.text, fontSize: font.lg, fontWeight: fontWeight.semibold },
+  reorderDetail: { color: colors.textSecondary, fontSize: font.sm },
+  reorderDot: { width: 14, height: 14, borderRadius: 4, borderWidth: 2, borderColor: colors.controlBorder },
+  reorderDotDone: { backgroundColor: colors.done, borderColor: colors.done },
   exHead: { paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.xs },
   exTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   exNameRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
@@ -1546,6 +1683,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   setNumber: { color: colors.textSecondary, fontSize: font.md, fontWeight: fontWeight.semibold },
   setBadge: { color: colors.orangeText, fontSize: font.md, fontWeight: fontWeight.bold },
+  recordPill: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xxs, height: 22, paddingHorizontal: spacing.sm,
+    borderRadius: radius.full, backgroundColor: colors.accentSubtle,
+  },
+  recordPillText: { color: colors.accentText, fontSize: font.xxs, fontWeight: fontWeight.bold, letterSpacing: 0.4 },
   prevText: { color: colors.textTertiary, fontSize: font.md, fontVariant: ['tabular-nums'] },
   valuePlanned: { color: colors.textTertiary },
   check: {

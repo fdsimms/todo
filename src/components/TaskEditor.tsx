@@ -190,6 +190,7 @@ import { capitalize } from '../utils/capitalize';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { useFilterField } from '../hooks/useFilterField';
 import { TextField } from './TextField';
+import { TaskCheckbox } from './TaskCheckbox';
 import { LazySheet } from './LazySheet';
 import { NewSavedMealSheet } from './NewSavedMealSheet';
 import { ProgressBar } from './ProgressBar';
@@ -3256,6 +3257,20 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       followUpTaskAtEnd,
     }) !== initialStateRef.current;
 
+  // Completing or reopening from here closes the sheet, which takes any edits
+  // not yet saved with it, so that is asked before it goes through.
+  const confirmBeforeTick = (proceed: () => void) => {
+    if (!hasUnsavedChanges()) { proceed(); return; }
+    Alert.alert(
+      'Complete without your changes?',
+      'Your changes here haven’t been saved, so they’ll be lost. Cancel and tap Save to keep them.',
+      [
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
+        { text: 'Complete anyway', onPress: proceed },
+      ],
+    );
+  };
+
   const handleCancel = () => {
     if (hasUnsavedChanges()) {
       confirmDiscard(onClose);
@@ -4196,6 +4211,19 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       )}
 
       {titleVisible && (
+      <View style={styles.titleRow}>
+      {/* A saved task can be finished from here, with the same box and the
+          same rules as a search result (questions, targets, slips). */}
+      {liveStreakTask && (
+        <View style={styles.titleCheckbox}>
+          <TaskCheckbox
+            task={liveStreakTask}
+            taskLabel={liveStreakTask.title}
+            onTicked={() => onClose()}
+            confirmFirst={confirmBeforeTick}
+          />
+        </View>
+      )}
       <View style={styles.titleWrap}>
         {hasTitleOverlay && (
           <HighlightedText
@@ -4232,6 +4260,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
           onFocus={() => setTitleFocused(true)}
           onBlur={() => setTitleFocused(false)}
         />
+      </View>
       </View>
       )}
 
@@ -8774,8 +8803,13 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   disabled: { opacity: 0.4 },
   scroll: { flex: 1 },
   scrollContent: { paddingBottom: 320 },
+  titleRow: { flexDirection: 'row', alignItems: 'flex-start', paddingLeft: spacing.md },
+  // Level with the title's first line: its paddingTop plus half the gap
+  // between the box and one line of font.xl.
+  titleCheckbox: { marginTop: spacing.lg + 5 },
   titleWrap: {
     position: 'relative',
+    flex: 1,
   },
   titleInput: {
     color: colors.text, fontSize: font.xl, fontWeight: '500',

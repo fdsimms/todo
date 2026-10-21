@@ -87,6 +87,7 @@ import { recipeImageOnDevice, resolveRecipeImagePath } from '../utils/recipePhot
 import { allRecipeTags, filterRecipesByTags, formatTagList, recipeTagCounts } from '../utils/recipeTags';
 import { tagColor } from '../utils/tagColor';
 import { useFilterField } from '../hooks/useFilterField';
+import { FieldClearButton } from '../components/FieldClearButton';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { LazySheet } from '../components/LazySheet';
@@ -285,7 +286,7 @@ function RecipesList() {
   const { planRecipe, offerPrepTasks, earliestUnplannedSlotToday } = usePlanMeal();
   // The recipe whose day is being picked; null closes the sheet.
   const [planningRecipe, setPlanningRecipe] = useState<Recipe | null>(null);
-  const { query, props: filterField } = useFilterField();
+  const { query, clear: clearQuery, props: filterField } = useFilterField();
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   // One cookbook the box is narrowed to, for this visit only, like the tags.
   const [cookbookFilter, setCookbookFilter] = useState<string | null>(null);
@@ -808,9 +809,9 @@ function RecipesList() {
               autoCorrect={false}
               spellCheck={false}
               returnKeyType="search"
-              clearButtonMode="while-editing"
               accessibilityLabel="Search recipes"
             />
+            <FieldClearButton query={query} onClear={clearQuery} />
           </View>
           {/* What the box is narrowed by, each with a × to lift it, the way
               Logbook shows its filters: the sort and Loved only persist across

@@ -124,7 +124,14 @@ export function TasksProjectsSettings() {
           is a reason to meet them after the rest, not before it. */}
       <SettingsSection
         label="New tasks"
-        footer="What a new task starts with, and where quick add files it. A project’s own defaults come first, and none of these override a value you pick. A date typed in quick add overrides the destination below."
+        footer="What a new task starts with, and where quick add files it."
+      explain={{
+        title: 'How new task defaults apply',
+        paragraphs: [
+          'A project’s own defaults come first, and none of these override a value you pick.',
+          'A date typed in quick add overrides the destination below.',
+        ],
+      }}
       >
         <SettingsRow
   entryId="newTaskCategory" icon="pricetag-outline" label="Category" hint="Applied to every new task that doesn’t get one of its own." value={newTaskCategoryOptions.find(o => o.value === newTaskDefaults.category)?.label ?? 'None'} tight />
@@ -222,7 +229,13 @@ export function TasksProjectsSettings() {
 
       <SettingsSection
         label="Task form"
-        footer="This only changes quick add, where the other fields sit behind “more”. The task editor always keeps its rarely used fields under “More options” until a task uses them, and its field search still finds them."
+        footer="This only changes quick add, where the other fields sit behind “more”."
+      explain={{
+        title: 'Quick add and the task editor',
+        paragraphs: [
+          'The task editor always keeps its rarely used fields under “More options” until a task uses them, and its field search still finds them.',
+        ],
+      }}
       >
         <SettingsRow
           entryId="simpleTaskForm"

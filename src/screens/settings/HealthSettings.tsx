@@ -393,7 +393,14 @@ export function HealthSettings() {
     <>
     <SettingsSection
       label="Apple Health"
-      footer="Reads what Health has on this phone, to show beside your day and check against your rules. This section doesn’t write to Health, send anything or keep a copy: numbers are read when the app opens and cleared when it closes. iOS doesn’t tell apps whether a Health read was allowed, so a refusal looks like a day with nothing recorded."
+      footer="Reads what Health has on this phone, to show beside your day and check against your rules."
+      explain={{
+        title: 'Reading Apple Health',
+        paragraphs: [
+          'This section doesn’t write to Health, send anything or keep a copy: numbers are read when the app opens and cleared when it closes.',
+          'iOS doesn’t tell apps whether a Health read was allowed, so a refusal looks like a day with nothing recorded.',
+        ],
+      }}
     >
       <SettingsRow
         entryId="healthRead"
@@ -573,7 +580,15 @@ export function HealthSettings() {
 
     <SettingsSection
       label="Log to Health"
-      footer={`Writes water when a task you’ve set up to log it is completed, your weight when you record it, and a meal’s nutrition when you add it to the food log${workoutsEnabled ? ', and a workout when you save it with Workouts on' : ''}. Nothing else is written to Health. Deleting a food log entry${workoutsEnabled ? ' or a workout' : ''} removes what it wrote. Choose below which nutrients a logged meal can carry into Health. A nutrient a meal doesn’t state is never written, even if it is selected.`}
+      footer="Nothing else is written to Health. Deleting what the app wrote removes it from Health."
+      explain={{
+        title: 'What gets written to Health',
+        paragraphs: [
+          `Writes water when a task you’ve set up to log it is completed, your weight when you record it, and a meal’s nutrition when you add it to the food log${workoutsEnabled ? ', and a workout when you save it with Workouts on' : ''}. Nothing else is written to Health.`,
+          `Deleting a food log entry${workoutsEnabled ? ' or a workout' : ''} removes what it wrote.`,
+          'Choose below which nutrients a logged meal can carry into Health. A nutrient a meal doesn’t state is never written, even if it is selected.',
+        ],
+      }}
     >
       <SettingsRow
         entryId="healthWrite"

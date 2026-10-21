@@ -37,6 +37,7 @@ import { SheetScrim } from './SheetScrim';
 import { MEAL_SLOTS, RECIPE_NAME_MAX_LENGTH, type Leftover, type MealPlanEntry, type MealSlot } from '../types';
 import { useSheetMotion } from '../hooks/useSheetMotion';
 import { useFilterField } from '../hooks/useFilterField';
+import { FieldClearButton } from './FieldClearButton';
 import { BUTTON_LABEL } from '../copy/shared';
 
 export interface MealPick {
@@ -439,6 +440,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
               onSubmitEditing={() => { if (typed) pick(null, typed); }}
               accessibilityLabel="Search recipes, or type a meal"
             />
+            <FieldClearButton query={query} onClear={clearQuery} />
           </View>
 
           <ScrollView style={styles.list} bounces={false} keyboardShouldPersistTaps="handled">

@@ -37,6 +37,24 @@ export function recordLabel(type: RecordType, kind: ExerciseKind, reps?: number)
   }
 }
 
+/**
+ * A record as the few characters a badge has room for: "1RM", "8RM" for a best
+ * set of 8, "Max" for the heaviest weight, and the figure's own word for the
+ * kinds ranked by one number. `recordLabel` is the full name.
+ */
+export function recordShortLabel(type: RecordType, kind: ExerciseKind, reps?: number): string {
+  switch (type) {
+    case 'e1rm': return '1RM';
+    case 'weight': return 'Max';
+    case 'repsAt': return `${reps ?? 0}RM`;
+    case 'best':
+      if (kind === 'duration') return 'Time';
+      if (kind === 'distance') return 'Dist';
+      return 'Reps';
+    case 'volume': return 'Vol';
+  }
+}
+
 /** A volume in the unit its kind has, with that unit: "2,640 kg", "142 reps", "4:30", "1.2 km". */
 export function formatVolume(value: number, kind: ExerciseKind, unit: WeightUnit): string {
   const u: VolumeUnit = volumeUnit(kind);
