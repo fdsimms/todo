@@ -455,7 +455,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/searchActionRun.ts` — SearchActionReceipt, waterTodayMl, waterTargetTodayMl, openMoodLogFor, runSearchAction
 - `src/utils/searchActions.ts` — QUICK_ACTION_LIMIT, MAX_GLASSES, MAX_DOSE_STEPS, DoseAction, WaterAction, MoodAction, SymptomAction, GroceryAction, PantryAnswer, PantryAction, +12 more
 - `src/utils/searchCollapse.ts` — SearchOccurrence, CollapsedOccurrence, occurrenceFamilyKey, collapseOccurrences, formatOccurrenceCount
-- `src/utils/searchElsewhere.ts` — ElsewhereKind, ElsewhereResult, ElsewhereSources, ElsewhereSections, QUICK_ELSEWHERE_LIMIT, nameTier, termRanges, searchPeople, searchElsewhere, ElsewhereDescription, +5 more
+- `src/utils/searchElsewhere.ts` — ElsewhereKind, ElsewhereResult, ElsewhereSources, ElsewhereSections, QUICK_ELSEWHERE_LIMIT, nameTier, termRanges, searchPeople, searchElsewhere, ElsewhereDescription, +6 more
 - `src/utils/searchPantryRun.ts` — runPantry
 - `src/utils/sectionListLayout.ts` — CellLayout, sectionListCellLayout
 - `src/utils/sectionRegistry.ts` — registerSectionSource, sectionsNow, isChecklistRow

@@ -143,7 +143,7 @@ const titles = (results: { task: Task }[]) => results.map(r => r.task.title);
 
 describe('quickSearch', () => {
   describe('empty / trivial inputs', () => {
-    const nothing = { groupResults: [], projectResults: [], results: [], total: 0, overflow: 0 };
+    const nothing = { groupResults: [], projectResults: [], results: [], total: 0, overflow: 0, strongTaskCount: 0 };
 
     it('reports nothing for an empty query', () => {
       expect(quickSearch([makeTask()], '')).toEqual(nothing);
@@ -482,5 +482,13 @@ describe('quickSearch', () => {
       expect(results.map(r => r.task.id)).toContain('gym');
       expect(results[0].task.id).toBe('gym');
     });
+  });
+});
+
+describe('quickSearch strongTaskCount', () => {
+  it('counts the title matches among the rows it shows, not the scattered-letter ones', () => {
+    const tasks = [makeTask({ id: 'a', title: 'Sleep by 11' }), makeTask({ id: 'b', title: 'Sort ledger early' })];
+    const outcome = quickSearch(tasks, 'sleep');
+    expect(outcome.strongTaskCount).toBe(1);
   });
 });

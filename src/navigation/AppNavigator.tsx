@@ -2,6 +2,7 @@ import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } 
 import { PanResponder, StyleSheet, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { navigationRef, navigateToTab, flushPendingNavigation, currentTabName } from './navigationRef';
+import { navigateToSettingsEntry } from './openSettings';
 import { BottomTabBarHeightCallbackContext, createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -487,6 +488,14 @@ export default function AppNavigator() {
   const openSettings = useCallback(() => {
     navRef.current?.navigate('Settings' as never);
   }, []);
+  // From the menu's find field: one settings row, opened where it lives, and
+  // the whole query handed to Search.
+  const openSettingsEntry = useCallback((entryId: string) => {
+    navigateToSettingsEntry(navRef.current, entryId);
+  }, []);
+  const searchEverything = useCallback((query: string) => {
+    navigateToTab('Search', { query, at: Date.now() });
+  }, []);
 
   // Light selection tick on every tab switch, matching native tab bars.
   const tabPressHaptic = useMemo(() => ({
@@ -637,6 +646,8 @@ export default function AppNavigator() {
           activeTab={activeTab}
           onNavigate={handleSidebarNavigate}
           onOpenSettings={openSettings}
+          onOpenSettingsEntry={openSettingsEntry}
+          onSearchEverything={searchEverything}
         />
       )}
       <AppFrame followRoute>
@@ -765,6 +776,8 @@ export default function AppNavigator() {
         onClose={closeMenu}
         onNavigate={handleDrawerNavigate}
         onOpenSettings={openSettings}
+        onOpenSettingsEntry={openSettingsEntry}
+        onSearchEverything={searchEverything}
         activeTab={activeTab}
       />
       {!menuOpen && !sidebarShown && (

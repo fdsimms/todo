@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef } from 'react';
-import { Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SearchField } from './SearchField';
@@ -21,6 +21,10 @@ import { tipsFor } from '../utils/tips';
 import { hiddenResultsNote } from '../utils/simpleMode';
 import { useFilterField } from '../hooks/useFilterField';
 import { useNavMenuOptions } from '../hooks/useNavMenuOptions';
+import { useSyncStore } from '../store/useSyncStore';
+import { searchableSettingsEntries } from '../utils/settingsActiveRows';
+import { settingsGroup } from '../utils/settingsIndex';
+import { searchElsewhere, type ElsewhereResult } from '../utils/searchElsewhere';
 
 interface Props {
   /**
@@ -35,7 +39,14 @@ interface Props {
   /** Called with the route a row or a result opens. The caller owns the haptic and any closing. */
   onNavigate: (route: string) => void;
   onOpenSettings: () => void;
+  /** Opens one settings row a search found, where it lives. Omit to search screens only. */
+  onOpenSettingsEntry?: (entryId: string) => void;
+  /** Hands the query to the Search screen, for everything else it might mean. */
+  onSearchEverything?: (query: string) => void;
 }
+
+/** How many settings rows the find field lists under the screens it found. */
+const SETTINGS_RESULT_LIMIT = 4;
 
 /**
  * What the side menu holds: the find field, the Recent row, the rows and hubs
@@ -46,7 +57,7 @@ interface Props {
  * the surface and the column are the sidebar's, so this draws on no background
  * of its own.
  */
-export function MenuPanel({ variant, onScreen, activeTab, onNavigate, onOpenSettings }: Props) {
+export function MenuPanel({ variant, onScreen, activeTab, onNavigate, onOpenSettings, onOpenSettingsEntry, onSearchEverything }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const animate = variant === 'drawer';
@@ -93,6 +104,23 @@ export function MenuPanel({ variant, onScreen, activeTab, onNavigate, onOpenSett
     [menuOptions, terms],
   );
   const searching = terms.length > 0;
+  // Settings rows the query names, under the screens: "dark mode", "vacation"
+  // or "backup" are settings, and the field used to answer them with "No
+  // screen matches that." The same rows and order quick search offers.
+  const settingResults = useMemo(() => {
+    if (!onOpenSettingsEntry || terms.length === 0) return [];
+    return searchElsewhere({
+      destinations: [],
+      settingsEntries: searchableSettingsEntries(Platform.OS, useSettingsStore.getState(), useSyncStore.getState()),
+      settingsGroupTitle: id => settingsGroup(id)?.title ?? 'Settings',
+      people: [],
+      recipes: [],
+      groceryItems: [],
+      onListIds: new Set(),
+      now: new Date(),
+    }, query).goTo.filter((r): r is Extract<ElsewhereResult, { kind: 'setting' }> => r.kind === 'setting')
+      .slice(0, SETTINGS_RESULT_LIMIT);
+  }, [onOpenSettingsEntry, terms, query]);
 
   // Eleven rows and a footer fit on every phone this runs on, so the fade and
   // the flashed scrollbar are no longer load-bearing — they stay because the
@@ -142,9 +170,9 @@ export function MenuPanel({ variant, onScreen, activeTab, onNavigate, onOpenSett
         )}
         <SearchField
           field={searchFilter}
-          placeholder="Find a screen"
+          placeholder="Find a screen or setting"
           style={styles.search}
-          accessibilityLabel="Find a screen"
+          accessibilityLabel="Find a screen or setting"
         />
       </View>
 
@@ -250,11 +278,55 @@ export function MenuPanel({ variant, onScreen, activeTab, onNavigate, onOpenSett
               })}
             </>
           )}
-        {searching && results.length === 0 && (
+        {searching && settingResults.length > 0 && (
+          <>
+            <Text style={[styles.resultsCaption, { color: colors.textSecondary }]}>Settings</Text>
+            {settingResults.map(result => (
+              <TouchableOpacity
+                key={result.key}
+                style={rowStyle(compact, false, colors)}
+                onPress={() => onOpenSettingsEntry?.(result.entry.id)}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={`${result.entry.label}, in ${result.groupTitle} settings`}
+              >
+                <View style={iconWrapStyle(compact, false, colors)}>
+                  <Ionicons name="settings-outline" size={compact ? COMPACT_ICON : 18} color={colors.textSecondary} />
+                </View>
+                <View style={styles.itemBody}>
+                  <Text style={[styles.itemLabel, { color: colors.text }]}>{result.entry.label}</Text>
+                  <Text style={[styles.itemSubtitle, { color: colors.textSecondary }]}>in {result.groupTitle}</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </>
+        )}
+        {searching && results.length === 0 && settingResults.length === 0 && (
           <Text style={[styles.noResults, { color: colors.textSecondary }]}>
-            No screen matches that.
+            {onOpenSettingsEntry ? 'No screen or setting matches that.' : 'No screen matches that.'}
             {hiddenNote ? `\n\n${hiddenNote}` : ''}
           </Text>
+        )}
+        {/* Whatever else the words might be (a task, a person, a recipe) is
+            Search's to find, so the field hands the query over rather than
+            stopping at screens and settings. */}
+        {searching && onSearchEverything && (
+          <TouchableOpacity
+            style={rowStyle(compact, false, colors)}
+            onPress={() => onSearchEverything(query.trim())}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel={`Search everything for ${query.trim()}`}
+          >
+            <View style={iconWrapStyle(compact, false, colors)}>
+              <Ionicons name="search" size={compact ? COMPACT_ICON : 18} color={colors.accent} />
+            </View>
+            <View style={styles.itemBody}>
+              <Text style={[styles.itemLabel, { color: colors.accent }]} numberOfLines={2}>
+                Search everything for “{query.trim()}”
+              </Text>
+            </View>
+          </TouchableOpacity>
         )}
       </ScrollView>
       {/* Fades into the drawer's own frosted surface rather than to an
@@ -666,5 +738,14 @@ const styles = StyleSheet.create({
     fontSize: font.sm,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.md,
+  },
+  resultsCaption: {
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xs,
   },
 });

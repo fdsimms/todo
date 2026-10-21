@@ -273,6 +273,24 @@ export function allElsewhere(sections: ElsewhereSections): ElsewhereResult[] {
 }
 
 /**
+ * The screen and setting rows that lead the quick-search card, above its
+ * tasks: ones whose own name matches (tier 0 or 1), at most `limit`. Typing
+ * "sleep" is usually reaching for the Sleep screen, and with a history of
+ * tasks that mention sleep the screen used to get only whatever slots the
+ * tasks left, which was often none. A person, a recipe or a grocery row still
+ * waits below the tasks: those are things on lists, not places to go.
+ */
+export function leadingElsewhere(
+  sections: ElsewhereSections,
+  limit: number = QUICK_ELSEWHERE_LIMIT,
+): ElsewhereResult[] {
+  if (limit <= 0) return [];
+  return quickElsewhere(sections, Number.MAX_SAFE_INTEGER)
+    .filter(r => (r.kind === 'screen' || r.kind === 'setting') && r.tier <= 1)
+    .slice(0, limit);
+}
+
+/**
  * The few non-task rows the quick-search card has room for: the best title
  * matches across every kind, with places ahead of people ahead of food on a
  * tie. The card's other rows belong to tasks.
