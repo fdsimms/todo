@@ -298,7 +298,7 @@ export function SleepScreen() {
           </View>
         ) : (
           <>
-            <Text style={styles.sectionTitle}>WHEN YOU SLEPT</Text>
+            <Text style={styles.sectionTitle}>SLEEP TIMES BY DAY</Text>
             <View style={styles.card}>
               <SleepTimesChart dayKeys={dayKeys} nights={visible} use24Hour={use24Hour} />
               <Text style={styles.chartCaption}>
@@ -309,7 +309,7 @@ export function SleepScreen() {
 
             {stageAverage !== null && (
               <>
-                <Text style={styles.sectionTitle}>STAGES</Text>
+                <Text style={styles.sectionTitle}>AVERAGE STAGES</Text>
                 <View style={styles.card}>
                   <SleepStagesBar stages={stageAverage.stages} label="Average" />
                   <Text style={styles.chartCaption}>
@@ -321,7 +321,7 @@ export function SleepScreen() {
               </>
             )}
 
-            <Text style={styles.sectionTitle}>HOURS ASLEEP</Text>
+            <Text style={styles.sectionTitle}>HOURS ASLEEP BY DAY</Text>
             <View style={styles.card}>
               <SleepHoursChart dayKeys={dayKeys} nights={visible} goalMinutes={goal} />
               <Text style={styles.chartCaption}>
