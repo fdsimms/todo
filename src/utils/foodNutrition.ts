@@ -89,6 +89,12 @@ function readNovaField(value: unknown): { novaGroup: NovaGroup } | Record<string
   return value === 1 || value === 2 || value === 3 || value === 4 ? { novaGroup: value } : {};
 }
 
+/** A package weight when the stored value is a positive number, else absent. */
+function readPackageGramsField(value: unknown): { packageGrams: number } | Record<string, never> {
+  const grams = readServingGrams(value);
+  return grams === null ? {} : { packageGrams: grams };
+}
+
 function readBreakdownField(value: unknown): { breakdown: FoodBreakdownLine[] } | Record<string, never> {
   if (!Array.isArray(value)) return {};
   const lines: FoodBreakdownLine[] = [];
@@ -184,6 +190,7 @@ export function parseFoodNutrition(raw: string | null | undefined): FoodNutritio
         ? { foodCategory: parsed.foodCategory }
         : {}),
       ...readNovaField(parsed.novaGroup),
+      ...readPackageGramsField(parsed.packageGrams),
       ...readBreakdownField(parsed.breakdown),
     };
   } catch {

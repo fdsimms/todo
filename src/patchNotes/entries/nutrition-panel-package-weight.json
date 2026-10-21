@@ -1,0 +1,4 @@
+{
+  "message": "A nutrition label you type in now has a Package weight field under Serving weight, and scanning a barcode fills it when the package lists a weight. With it, scanning that food offers the whole package as one tap, even when the barcode didn't list a package size",
+  "date": "2026-10-21"
+}

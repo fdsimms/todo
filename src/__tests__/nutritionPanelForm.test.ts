@@ -39,6 +39,35 @@ describe('the processing group on the form', () => {
   });
 });
 
+describe('the package weight on the form', () => {
+  const withPack = (packageGrams: string) => form({ amounts: { calorieKcal: '100' }, packageGrams });
+
+  it('reads a stored weight into the form and builds it back', () => {
+    const stored = panelFormFrom({ ...panel(), packageGrams: 227 });
+    expect(stored.packageGrams).toBe('227');
+    expect(buildPanelNutrition(stored, null, NOW)?.packageGrams).toBe(227);
+  });
+
+  it('adds no key when blank, so clearing it clears it', () => {
+    expect('packageGrams' in buildPanelNutrition(withPack(''), { ...panel(), packageGrams: 227 }, NOW)!).toBe(false);
+  });
+
+  it('refuses a weight it cannot read or that is zero, like a serving weight', () => {
+    expect(invalidPanelFields(withPack('8 oz'))).toEqual(['packageGrams']);
+    expect(invalidPanelFields(withPack('0'))).toEqual(['packageGrams']);
+    expect(invalidPanelFields(withPack('227'))).toEqual([]);
+  });
+
+  it('counts a change as dirty', () => {
+    expect(panelFormDirty(withPack('227'), withPack(''))).toBe(true);
+    expect(panelFormDirty(withPack('227'), withPack('227'))).toBe(false);
+  });
+
+  it('is left alone by a barcode fill, which never states one', () => {
+    expect(applyFoodNutrition(withPack('227'), panel()).packageGrams).toBe('227');
+  });
+});
+
 const NOW = new Date('2026-03-04T09:00:00.000Z');
 
 type FormOverrides = Partial<Omit<PanelForm, 'amounts'>> & { amounts?: Partial<PanelForm['amounts']> };

@@ -242,7 +242,7 @@ only the fallback until the first sync.
 | `set_shopping_trip` | **Write.** Starts a trip at a store with an optional budget, changes the budget, or ends it. |
 | `mark_unavailable` | **Write.** A store doesn't carry an item, or its preferred brand; or does again. |
 | `set_nutrition_panels` | **Write.** Many items' panels in one call (one preview, one approval): the same panels as `set_nutrition_panel`, all or none, with `create: true` on an entry to add a catalog item that is not there yet (on no list, not in the pantry). |
-| `set_nutrition_panel` | **Write.** An item's or a brand's nutrition panel, with optional `portions` (what a tablespoon, cup or clove weighs) merged into its table by label. A recipe counts a volume or count line only when the item has a portion weighing it. |
+| `set_nutrition_panel` | **Write.** An item's or a brand's nutrition panel, with optional `portions` (what a tablespoon, cup or clove weighs) merged into its table by label, and optional `packageGrams` (what the whole package weighs). A recipe counts a volume or count line only when the item has a portion weighing it. |
 | `merge_grocery_items` | **Write.** Merges one item into another, with everything recorded on it. Not undoable from Activity. |
 | `delete_grocery_item` | **Write.** Deletes an item with everything attached. Restorable from Activity. |
 | `list_brands` / `rename_brand` | `list_brands` is read-only: every brand once with its variant count, items and the spellings in use. **`rename_brand` writes:** one spelling onto every variant of a brand, or a `renames` list of up to 50 under one confirmation. |

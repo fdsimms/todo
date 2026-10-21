@@ -23,12 +23,14 @@ import {
   labelColumnFieldCount,
   panelFormDirty,
   panelFormFrom,
+  readPanelNumber,
   servingWeightToGrams,
   type PanelFieldKey,
   type PanelForm,
   type ServingWeightUnit,
 } from '../utils/nutritionPanelForm';
 import { panelWarnings } from '../utils/nutritionSanity';
+import { packSizeGrams, servingsIn } from '../utils/scanPortion';
 import { canReadTextOnDevice } from '../utils/receiptOcr';
 import { readLabelPhoto, type LabelReading } from '../utils/labelOcr';
 import { pickRecipePhoto } from '../utils/recipePhoto';
@@ -144,6 +146,14 @@ import { BUTTON_LABEL } from '../copy/shared';
  * serving, and no dividing of whole-package totals: both bases log correctly as
  * typed, and the actions that rewrote typed figures were the part of this sheet
  * nobody could follow.
+ *
+ * **Package weight is typed the same way, and only a barcode's plain mass pack
+ * size ever fills it for you** (`packSizeGrams`; a photo never does). It is what lets a scan offer "the whole package"
+ * when the source stated no pack size (`servingsPerPackage`). It has its own
+ * unit state, kept apart from `form.packageGrams` for the reason Serving
+ * weight's is, and it is left alone by a photo read, a column switch, a food
+ * search pick, or a barcode that stated no mass size, since none of them says
+ * anything about the package.
  */
 
 interface Props {
@@ -220,6 +230,9 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
   // shows "1", not a round-tripped "1.00002". See `servingWeightToGrams`.
   const [weightUnit, setWeightUnit] = useState<ServingWeightUnit>('g');
   const [weightText, setWeightText] = useState(form.servingGrams);
+  // The same pair for Package weight.
+  const [packageUnit, setPackageUnit] = useState<ServingWeightUnit>('g');
+  const [packageText, setPackageText] = useState(form.packageGrams);
   // Kept in step so a handler triggered from outside a keystroke (a photo
   // read, a barcode fetch, a column switch) can read the form as it stands
   // right now without being recreated on every render to stay fresh.
@@ -250,6 +263,8 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
     setServingOpen(false);
     setWeightUnit('g');
     setWeightText(opened.servingGrams);
+    setPackageUnit('g');
+    setPackageText(opened.packageGrams);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
@@ -375,9 +390,17 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
    * one panel to apply — no column picker, since a fetched record states one
    * basis rather than a photographed panel's several.
    */
-  const handleBarcodeFound = useCallback((found: FoodNutrition, sourceName: string) => {
+  const handleBarcodeFound = useCallback((found: FoodNutrition, sourceName: string, packSize: string | null) => {
     haptics.success();
-    const next = applyFoodNutrition(formRef.current, found);
+    let next = applyFoodNutrition(formRef.current, found);
+    // A plain mass pack size fills Package weight; a volume or a count leaves
+    // what was typed, since there is no mass to put there.
+    const packGrams = packSizeGrams(packSize);
+    if (packGrams !== null) {
+      next = { ...next, packageGrams: String(packGrams) };
+      setPackageUnit('g');
+      setPackageText(String(packGrams));
+    }
     setForm(next);
     setWeightUnit('g');
     setWeightText(next.servingGrams);
@@ -389,7 +412,8 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
     const count = foodNutritionFieldCount(found);
     setScanNote(
       `Filled in ${count} ${count === 1 ? 'figure' : 'figures'} from the barcode for `
-      + `“${sourceName}”. Double-check them against the label before saving.`,
+      + `“${sourceName}”. Double-check them against the label before saving.`
+      + (packGrams !== null ? ' The package weight was filled in too.' : ''),
     );
   }, []);
 
@@ -434,12 +458,37 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
     setWeightText(gramsToServingWeight(grams, unit));
   };
 
+  const setPackageAmount = (text: string) => {
+    setPackageText(text);
+    setForm(f => ({ ...f, packageGrams: servingWeightToGrams(text, packageUnit) }));
+    setBad(b => b.filter(k => k !== 'packageGrams'));
+  };
+
+  const changePackageUnit = (unit: ServingWeightUnit) => {
+    if (unit === packageUnit) return;
+    const grams = servingWeightToGrams(packageText, packageUnit);
+    setPackageUnit(unit);
+    setPackageText(gramsToServingWeight(grams, unit));
+  };
+
+  // What the scan will offer for the whole package, shown while it is being typed
+  // so a mistyped unit (227 oz for 227 g) shows up as an absurd count at once.
+  // Withheld for a per-100ml panel: a mass package has no serving count there.
+  const packageGramsRead = readPanelNumber(form.packageGrams);
+  const servingGramsRead = readPanelNumber(form.servingGrams);
+  const servingsPerPack = form.basis !== 'per100ml'
+    && typeof packageGramsRead === 'number' && typeof servingGramsRead === 'number'
+    ? servingsIn(packageGramsRead, servingGramsRead)
+    : null;
+
   // Folded only while nothing in it is set and the figures don't depend on it.
   const servingFolded = form.basis !== 'perServing'
     && !servingOpen
     && form.servingText.trim() === ''
     && weightText.trim() === ''
-    && !bad.includes('servingGrams');
+    && packageText.trim() === ''
+    && !bad.includes('servingGrams')
+    && !bad.includes('packageGrams');
 
   const basisCaption =
     form.basis === 'perServing'
@@ -584,9 +633,9 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
                 onPress={() => { haptics.tap(); setServingOpen(true); }}
                 accessibilityRole="button"
                 accessibilityState={{ expanded: false }}
-                accessibilityLabel="Serving size and weight, not set"
+                accessibilityLabel="Serving and package weight, not set"
               >
-                <Text style={styles.servingRowLabel}>Serving size and weight</Text>
+                <Text style={styles.servingRowLabel}>Serving and package weight</Text>
                 <Text style={styles.servingRowValue}>Not set</Text>
                 <RotatingChevron open={false} size={14} color={colors.textSecondary} />
               </TouchableOpacity>
@@ -632,6 +681,38 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
                   What one serving weighs, if the label says. Leave it blank if the label
                   gives only a volume. Ounces are saved as grams.
                 </HelpText>
+              </View>
+
+              <View style={styles.field}>
+                <Text style={styles.fieldLabel}>Package weight</Text>
+                <View style={styles.numberRow}>
+                  <TextField
+                    style={[styles.numberInput, bad.includes('packageGrams') && styles.inputBad]}
+                    value={packageText}
+                    onChangeText={setPackageAmount}
+                    placeholder={packageUnit === 'g' ? 'e.g. 227' : 'e.g. 8'}
+                    placeholderTextColor={colors.textTertiary}
+                    keyboardType="decimal-pad"
+                    inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
+                    accessibilityLabel={`Package weight in ${packageUnit === 'g' ? 'grams' : 'ounces'}`}
+                  />
+                  <View style={styles.weightUnitToggle}>
+                    <SegmentedControl
+                      label="Package weight unit"
+                      options={WEIGHT_UNIT_OPTIONS}
+                      value={packageUnit}
+                      onChange={changePackageUnit}
+                      surface="card"
+                    />
+                  </View>
+                </View>
+                <HelpText style={styles.hint}>
+                  What the whole package weighs, if the label says. Lets you log all of
+                  it in one tap. Leave it blank if the label gives only a volume.
+                </HelpText>
+                {servingsPerPack !== null && (
+                  <Text style={styles.derived}>{`About ${servingsPerPack} servings per package`}</Text>
+                )}
               </View>
             </View>
             )}
@@ -753,6 +834,7 @@ function makeStyles(colors: Colors) {
     servingRowLabel: { flex: 1, color: colors.text, fontSize: font.md },
     servingRowValue: { color: colors.textSecondary, fontSize: font.sm },
     hint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16 },
+    derived: { color: colors.text, fontSize: font.xs, lineHeight: 16, fontWeight: fontWeight.semibold },
     error: { color: colors.redText, fontSize: font.sm, lineHeight: 18, marginTop: spacing.md },
   });
 }
