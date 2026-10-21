@@ -21,9 +21,6 @@ import {
 import { useFocusSession } from '../hooks/useFocusSession';
 import { useFocusStore } from '../store/useFocusStore';
 import { useTaskStore } from '../store/useTaskStore';
-import { useRecipeStore } from '../store/useRecipeStore';
-import { useSettingsStore } from '../store/useSettingsStore';
-import { isCookTimerRunning } from '../utils/recipeTimer';
 import { resetToFocusSession } from '../navigation/navigationRef';
 
 interface Props {
@@ -31,11 +28,9 @@ interface Props {
   onOpen: () => void;
   /**
    * Floats above the tab bar instead of sitting in the page's flow, for every
-   * screen that isn't Today (see `FocusFloatingBar`). `lifted` raises it one
-   * bar's height so it clears `CookingBar` when both are showing.
+   * screen that isn't Today (see `FocusFloatingBar`).
    */
   floating?: boolean;
-  lifted?: boolean;
 }
 
 /**
@@ -60,20 +55,18 @@ interface Props {
  * (`resetToFocusSession`), since that's where the sheet is mounted.
  */
 export function FocusFloatingBar({ hidden }: { hidden: boolean }) {
-  const cooking = useRecipeStore(s => s.recipes.some(isCookTimerRunning));
-  const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const session = useFocusStore(s => s.session);
   if (hidden || !session) return null;
   return (
     <View style={floatingWrap} pointerEvents="box-none">
-      <FocusBar floating lifted={cooking && kitchenEnabled} onOpen={resetToFocusSession} />
+      <FocusBar floating onOpen={resetToFocusSession} />
     </View>
   );
 }
 
 const floatingWrap = { position: 'absolute' as const, left: spacing.md, right: spacing.md, top: 0, bottom: 0 };
 
-export function FocusBar({ onOpen, floating = false, lifted = false }: Props) {
+export function FocusBar({ onOpen, floating = false }: Props) {
   const { colors, shadows } = useTheme();
   const insets = useSafeAreaInsets();
   const barHeight = useBottomBarHeight();
@@ -122,8 +115,7 @@ export function FocusBar({ onOpen, floating = false, lifted = false }: Props) {
       ? `+${formatStopwatch(-remaining)}`
       : formatStopwatch(remaining);
 
-  const bottom = insets.bottom + barHeight + FAB_SIZE + spacing.lg
-    + (lifted ? FLOATING_BAR_STEP : 0);
+  const bottom = insets.bottom + barHeight + FAB_SIZE + spacing.lg;
 
   return (
     <View
@@ -171,9 +163,6 @@ export function FocusBar({ onOpen, floating = false, lifted = false }: Props) {
     </View>
   );
 }
-
-/** Roughly one bar's height plus a gap, the room `lifted` leaves for CookingBar. */
-const FLOATING_BAR_STEP = 56;
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: {

@@ -649,6 +649,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useEventPeopleStore.ts` — EVENT_PEOPLE_SETTING_KEY, EVENT_PEOPLE_MIGRATION_FLAG, useEventPeopleStore
 - `src/store/useEventReminderStore.ts` — useEventReminderStore
 - `src/store/useEventTaskLinkStore.ts` — EVENT_TASK_LINKS_SETTING_KEY, useEventTaskLinkStore
+- `src/store/useFabPresenceStore.ts` — useFabPresenceStore
 - `src/store/useFocusStore.ts` — useFocusStore
 - `src/store/useFocusedRouteStore.ts` — useFocusedRouteStore
 - `src/store/useFoodLogStore.ts` — FOOD_INSIGHT_DAYS, FoodLogDraft, PendingMealLog, PendingManualMealLog, FoodLogPatch, FoodLogPlacement, sameEntries, useFoodLogStore
