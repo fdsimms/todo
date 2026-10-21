@@ -10255,6 +10255,27 @@ describe('unarchiveTask', () => {
     expect(task.streakDate).toBe('2024-12-31T00:00:00.000Z');
   });
 
+  it('replaces the stored day when handed one, and clears it for null', () => {
+    const archived = { archived: true, archivedAt: '2025-01-01T00:00:00.000Z', dueDate: '2025-01-05T00:00:00.000Z', deferUntil: '2025-01-09T00:00:00.000Z' };
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', ...archived }), makeTask({ id: 't2', ...archived })] });
+    useTaskStore.getState().unarchiveTask('t1', '2025-03-01T00:00:00.000Z');
+    useTaskStore.getState().unarchiveTask('t2', null);
+    const [a, b] = useTaskStore.getState().tasks;
+    expect([a.dueDate, a.deferUntil]).toEqual(['2025-03-01T00:00:00.000Z', null]);
+    expect([b.dueDate, b.deferUntil]).toEqual([null, null]);
+  });
+
+  it('keeps the stored day when none is handed, and undo restores a replaced one', () => {
+    const archived = { archived: true, archivedAt: '2025-01-01T00:00:00.000Z', dueDate: '2025-01-05T00:00:00.000Z' };
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', ...archived })], lastAction: null });
+    useTaskStore.getState().unarchiveTask('t1');
+    expect(useTaskStore.getState().tasks[0].dueDate).toBe('2025-01-05T00:00:00.000Z');
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', ...archived })], lastAction: null });
+    useTaskStore.getState().unarchiveTask('t1', null);
+    useTaskStore.getState().undoLastAction();
+    expect(useTaskStore.getState().tasks[0].dueDate).toBe('2025-01-05T00:00:00.000Z');
+  });
+
   it('leaves no undo entry when the task is not archived', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1', archived: false })], lastAction: null });
     useTaskStore.getState().unarchiveTask('t1');

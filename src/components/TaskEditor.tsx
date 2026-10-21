@@ -66,6 +66,7 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, border, interaction, animation, checkboxRadius, iconSize, type Colors, textScale } from '../theme';
 import { useTextScale } from '../hooks/useTextScale';
 import { haptics } from '../utils/haptics';
+import { resumeTasks } from '../utils/resumePrompt';
 import { BOUNTY_WITHDRAWN, DIFFICULTY_HINT, DIFFICULTY_PICKER_SEGMENTS, DIFFICULTY_SEGMENTS, bountyCoinsFor, canPostBounty, describeBounty, formatCoins, isBountyLive, liveBountyCount } from '../utils/rewards';
 import { medicationVocabulary, medicationKey } from '../utils/medicationLog';
 import { useTitleSelection } from '../hooks/useTitleSelection';
@@ -8689,7 +8690,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                   style={styles.optionRow}
                   onPress={() => {
                     if (task.archived) {
-                      unarchiveTask(task.id);
+                      resumeTasks([task], unarchiveTask);
                     } else {
                       haptics.success();
                       archiveTask(task.id);

@@ -6,6 +6,7 @@ import { useRoute } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { useTaskStore } from '../store/useTaskStore';
+import { resumeTasks } from '../utils/resumePrompt';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -117,21 +118,25 @@ export function ArchivedScreen() {
   }, [pendingFocusId, filtered]);
 
   const restore = useCallback((id: string) => {
-    haptics.tap();
-    animateLayout();
-    unarchiveTask(id);
+    const task = useTaskStore.getState().tasks.find(t => t.id === id);
+    if (!task) return;
+    resumeTasks([task], unarchiveTask, () => {
+      haptics.tap();
+      animateLayout();
+    });
   }, [unarchiveTask]);
 
   const handleBulkRestore = () => {
-    const ids = Array.from(selectedIds);
-    animateLayout();
+    const picked = useTaskStore.getState().tasks.filter(t => selectedIds.has(t.id));
     // One call per row: unarchiveTask restores the streak fields each task had
     // when it was archived, so there is nothing a single bulk write could do
     // that this doesn't. The last one's undo is the one that arms, which is
     // the same trade every other per-row loop in the app makes.
-    ids.forEach(id => unarchiveTask(id));
-    haptics.success();
-    exitSelection();
+    resumeTasks(picked, unarchiveTask, () => {
+      animateLayout();
+      haptics.success();
+      exitSelection();
+    });
   };
 
   // Deliberately not useTaskSelection's delete: that one asks whether a live

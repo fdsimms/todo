@@ -2185,11 +2185,9 @@ export const QuickAddModal = React.memo(function QuickAddModal({
             style: 'default',
             onPress: () => {
               haptics.success();
-              unarchiveTask(archivedMatch.id);
-              // The day typed here is the answer, so it replaces the old one
-              // outright. scheduleMoveUpdates would only lay a defer over a
-              // stale past date, leaving the row reading "49d ago".
-              if (dueDate) updateTask(archivedMatch.id, { dueDate: dueDate.toISOString(), deferUntil: null });
+              // The day typed here (or none) is the answer, so it replaces the
+              // old one outright rather than keeping a stale past date.
+              unarchiveTask(archivedMatch.id, dueDate?.toISOString() ?? null);
               onResumed?.(archivedMatch);
               dismiss();
             },

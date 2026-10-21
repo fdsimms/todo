@@ -1,1 +1,1 @@
-{ "message": "Resuming an archived task from quick add now uses the day you typed instead of its old date.", "date": "2026-10-21" }
+{ "message": "Resuming an archived task from quick add now uses the day you typed, or no date if you typed none. Resuming from the Archived screen or the task editor asks whether it should come back today, with no date, or on its old date when that day has passed.", "date": "2026-10-21" }
