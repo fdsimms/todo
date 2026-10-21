@@ -897,17 +897,20 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
         />
       </SettingsSection>
 
-      <SettingsSection label="Key tags">
+      <SettingsSection
+        label="Key tags"
+        footer="A key tag also ends any other block that is on. Each time it does, it is saved in the record below."
+      >
         <SettingsRow
           entryId="nfcKeyLock"
           icon="lock-closed-outline"
           iconColor={keyLocked ? colors.accent : undefined}
           label="Locked"
           hint={keyLocked
-            ? 'The apps are locked. Tap a key tag to unlock them. A tag also ends any other block that is on, and the use is saved in the record below.'
+            ? 'Your apps are blocked. Hold your phone to a key tag to unlock them.'
             : nfcKeys.length === 0
-              ? 'Add a key tag to use this.'
-              : 'Turn on to lock the apps until you tap a key tag. While anything else is blocking, a tap ends it instead.'}
+              ? 'Add a key tag below to use this.'
+              : 'Blocks your apps until you hold your phone to a key tag. Turn it on when you want to put your phone down.'}
           toggle={keyLocked}
           onPress={handleKeyLock}
         />
