@@ -2355,7 +2355,7 @@ export function FoodLogEntrySheet({
                   return (
                     <View key={line.id} style={styles.varyingRow}>
                       <Text style={styles.varyingName} numberOfLines={1}>{line.name}</Text>
-                      <View style={options.length > 0 ? styles.inputRow : undefined}>
+                      <View style={options.length > 0 ? [styles.inputRow, styles.varyingField] : undefined}>
                         <TextField
                           style={options.length > 0 ? styles.inputWithSuffix : styles.varyingInput}
                           value={entry?.number ?? ''}
@@ -2375,7 +2375,7 @@ export function FoodLogEntrySheet({
                             groups={[{ options }]}
                             selectedKey={unitKey}
                             noun="Unit"
-                            background={colors.bgTertiary}
+                            background={colors.bgQuaternary}
                             onSelect={key => setVaryingEntries(a => ({
                               ...a,
                               [line.id]: { number: a[line.id]?.number ?? '', unit: key },
@@ -2389,7 +2389,7 @@ export function FoodLogEntrySheet({
                           <HelpText style={styles.hint}>
                             {`Saved for ${line.item?.name ?? line.name}, so it’s used next time too.`}
                           </HelpText>
-                          <View style={styles.inputRow}>
+                          <View style={[styles.inputRow, styles.varyingField]}>
                             <TextField
                               style={styles.inputWithSuffix}
                               value={varyingWeighGrams[line.id] ?? ''}
@@ -2835,13 +2835,22 @@ function makeStyles(colors: Colors) {
     },
     weighUnit: { color: colors.textSecondary, fontSize: font.sm },
     weighHint: { color: colors.textTertiary, fontSize: font.xs, lineHeight: 14 },
-    varyingRow: { marginTop: spacing.sm },
-    varyingName: { color: colors.text, fontSize: font.sm, marginBottom: spacing.xs },
+    // One card per ingredient, so the follow-up under a row (a weight to ask
+    // for, figures to add) reads as part of that ingredient and not the next.
+    varyingRow: {
+      marginTop: spacing.smd,
+      padding: spacing.smd,
+      borderRadius: radius.md,
+      backgroundColor: colors.bgSecondary,
+    },
+    // Fields inside that card step down a surface so they don't vanish into it.
+    varyingField: { backgroundColor: colors.bgTertiary },
+    varyingName: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold, marginBottom: spacing.sm },
     varyingAsk: { color: colors.text, fontSize: font.sm, marginTop: spacing.smd },
     varyingInput: {
       color: colors.text,
       fontSize: font.md,
-      backgroundColor: colors.bgSecondary,
+      backgroundColor: colors.bgTertiary,
       borderRadius: radius.md,
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
