@@ -25,13 +25,11 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { convertQuantity, showContainerCount } from '../utils/unitConvert';
 import { defaultOnHandUntil } from '../utils/grocerySuggest';
 import type { ClassifiedIngredient } from '../utils/mealPlanGroceries';
-import { RECIPE_VOTE_LABELS, type RecipeVote } from '../types';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { CookwareWeighIn } from './CookwareWeighIn';
 import { useWeighIn } from '../hooks/useWeighIn';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
-import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { InlineAction } from './InlineAction';
 import { PressableScale } from './PressableScale';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
@@ -43,26 +41,10 @@ import { BUTTON_LABEL } from '../copy/shared';
 
 const CHECKBOX_SIZE = 22;
 
-// Typed against `RecipeVote | null` so the track can render with *nothing*
-// selected, which is exactly the state the section exists to fill in — a
-// never-rated recipe. Null is not an option anyone can pick: there is no
-// segment for it, and `onChange` can only ever hand back one of these three.
-const VOTE_OPTIONS: SegmentOption<RecipeVote | null>[] = [
-  { value: 'loved', label: RECIPE_VOTE_LABELS.loved },
-  { value: 'liked', label: RECIPE_VOTE_LABELS.liked },
-  { value: 'never', label: RECIPE_VOTE_LABELS.never },
-];
-
 interface Props {
   visible: boolean;
   /** The meal as it was cooked — the sheet's subject, under the title. */
   title: string;
-  /**
-   * The rating section, or null to leave it out. `value` is the recipe's
-   * current vote, which is null while it has never been rated — the state the
-   * section exists to fill in.
-   */
-  vote?: { value: RecipeVote | null; onChange: (vote: RecipeVote) => void };
   /** The fridge section, or null when this meal has nothing to put in one. */
   onLogLeftovers?: () => void;
   /**
@@ -103,8 +85,10 @@ interface Props {
 }
 
 /**
- * The post-cook sheet: how it was, what it left, and what it used up, asked
- * once, on the tap that said you cooked it.
+ * The post-cook sheet: what it left and what it used up, asked once, on the
+ * tap that said you cooked it. It does not ask how it was: a tick can come
+ * before anyone has eaten, so the rating is asked by `LogMealPrompt`, when a
+ * meal is logged as eaten.
  *
  * **It replaced three separate asks off one tap** (#2115). Marking a meal
  * cooked used to raise a native "How was it?" alert, then `CookedUseUpOffer`'s
@@ -137,8 +121,8 @@ interface Props {
  *   argument that the set is narrow, but it is only "known items with no record
  *   of you having them", which for someone who doesn't log purchases is most of
  *   a recipe, so a tap on Add would have bought the whole dish again.
- * - **The rating, the fridge, and "Add to list" write immediately; the pantry
- *   ticks wait for Done.** A segment, a logged container, and a restock add
+ * - **The fridge and "Add to list" write immediately; the pantry
+ *   ticks wait for Done.** A logged container and a restock add
  *   are each a complete answer on their own, while the pantry ticks are a
  *   batch — which is why the confirm button counts them ("Mark 2") rather
  *   than saying Done, the same wording the sheet this section came from used.
@@ -160,7 +144,6 @@ interface Props {
 export function CookRecapSheet({
   visible,
   title,
-  vote,
   onLogLeftovers,
   cookedWeight,
   rows,
@@ -488,20 +471,6 @@ export function CookRecapSheet({
           >
             <Text style={styles.subject} numberOfLines={2}>{title}</Text>
 
-            {vote && (
-              <>
-                <Text style={styles.groupLabel}>How was it?</Text>
-                <View style={styles.ratingSection}>
-                  <SegmentedControl
-                    options={VOTE_OPTIONS}
-                    value={vote.value}
-                    onChange={next => next && vote.onChange(next)}
-                    label="How was it?"
-                  />
-                </View>
-              </>
-            )}
-
             {onLogLeftovers && (
               <>
                 <Text style={styles.groupLabel}>Leftovers</Text>
@@ -760,9 +729,6 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     paddingHorizontal: spacing.md,
     paddingTop: spacing.lg,
     paddingBottom: spacing.sm,
-  },
-  ratingSection: {
-    marginHorizontal: spacing.md,
   },
   hint: {
     fontSize: font.sm,

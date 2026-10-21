@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Keyboard, KeyboardAvoidingView, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SheetModal } from './SheetModal';
 import { useStoreWhileOpen } from '../hooks/useStoreWhileOpen';
-import type { GroceryItem, ItemPick, ItemProduct, ItemSubLink, MealPlanEntry, Recipe } from '../types';
+import { RECIPE_VOTE_LABELS } from '../types';
+import type { GroceryItem, ItemPick, ItemProduct, ItemSubLink, MealPlanEntry, Recipe, RecipeVote } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
 import { useFoodLogStore } from '../store/useFoodLogStore';
@@ -30,6 +31,15 @@ import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessor
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { PressableScale } from './PressableScale';
 import { TextField } from './TextField';
+
+// Typed against `RecipeVote | null` so the track can render with *nothing*
+// selected, which is the state the row exists to fill in: a never-rated recipe.
+// There is no segment for null, so `onChange` only ever hands back one of three.
+const VOTE_OPTIONS: SegmentOption<RecipeVote | null>[] = [
+  { value: 'loved', label: RECIPE_VOTE_LABELS.loved },
+  { value: 'liked', label: RECIPE_VOTE_LABELS.liked },
+  { value: 'never', label: RECIPE_VOTE_LABELS.never },
+];
 
 /** The two ways of saying how much of a dish was eaten. */
 type Measure = 'weight' | 'servings';
@@ -63,6 +73,12 @@ const MEASURE_OPTIONS: SegmentOption<Measure>[] = [
  * leads whenever `Recipe.cookedWeightG` is set, servings stay for every dish
  * nobody has weighed, and either way the entry records the grams it knows —
  * see `mealLog.ts`.
+ *
+ * **It is also where a never-rated recipe is asked "How was it?"**, because
+ * this is the moment somebody says they ate it; the cook recap comes off a
+ * tick that can precede the meal. The vote writes on the tap, whether or not
+ * the meal is then logged, and the row is latched to the offer so it stays on
+ * screen showing what was chosen.
  *
  * **Declining costs one tap and is never punished.** No badge, no "you didn't
  * log", no streak, and the offer does not come back for that meal.
@@ -104,6 +120,7 @@ export function LogMealPrompt() {
   const itemSubs = useStoreWhileOpen(useGroceryStore, asking, s => s.itemSubs, NO_SUBS);
   const mealEntries = useStoreWhileOpen(useMealPlanStore, asking, s => s.entries, NO_ENTRIES);
   const setItemPicks = useMealPlanStore(s => s.setItemPicks);
+  const setVote = useRecipeStore(s => s.setVote);
   // The answers to "either one" pairs, held per offer: the pending flag carries
   // what the meal already had, and picking here adds to it. Keyed by the offer
   // itself so a stale answer from the last meal is never read for this one.
@@ -158,6 +175,15 @@ export function LogMealPrompt() {
   };
   const chosenFor = (pair: (typeof undecided)[number]): string | null => draftPicks[pair.pair] ?? suggestionFor(pair);
   const allChosen = undecided.every(p => chosenFor(p) !== null);
+
+  // Whether to ask how it was, decided once per offer rather than read live:
+  // live, picking one would take the row away under the finger. A ref, not
+  // state, so it is settled in the render the offer opens in.
+  const askVoteRef = useRef<{ offer: unknown; ask: boolean } | null>(null);
+  if (pending && askVoteRef.current?.offer !== pending) {
+    const rated = pending.recipeId ? recipes.find(r => r.id === pending.recipeId) : undefined;
+    askVoteRef.current = { offer: pending, ask: !!rated && rated.vote === null };
+  }
 
   const figures = useMemo(() => {
     if (!pending?.recipeId || !resolution || undecided.length > 0) return null;
@@ -253,6 +279,11 @@ export function LogMealPrompt() {
     ? weighedHelping(shownFigures, Number.isFinite(plated) ? plated : 0)
     : mealHelping(shownFigures, helpings ?? 0);
   const oneServing = shownFigures ? servingGrams(shownFigures) : null;
+  // The recipe being asked about, read live so the track shows the vote just
+  // given; `askVoteRef` is what decides whether the row exists at all.
+  const voteRecipe = askVoteRef.current?.ask && shown?.recipeId
+    ? recipes.find(r => r.id === shown.recipeId)
+    : undefined;
 
   const close = () => { Keyboard.dismiss(); setPending(null); };
 
@@ -450,6 +481,18 @@ export function LogMealPrompt() {
             </>
           )}
 
+          {voteRecipe && (
+            <View style={styles.vote}>
+              <Text style={styles.voteLabel}>How was it?</Text>
+              <SegmentedControl
+                options={VOTE_OPTIONS}
+                value={voteRecipe.vote}
+                onChange={next => next && setVote(voteRecipe.id, next)}
+                label="How was it?"
+              />
+            </View>
+          )}
+
           {/* One primary, one neutral beside it, and the two "no, and stop
               bringing it up" answers as quiet links underneath. They were four
               equal text rows, so the one that logs read as one of a list. */}
@@ -553,6 +596,14 @@ function makeStyles(colors: Colors) {
     },
     weightUnit: { color: colors.textSecondary, fontSize: font.sm },
     hint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16 },
+    vote: { marginTop: spacing.md, gap: spacing.sm },
+    voteLabel: {
+      color: colors.textSecondary,
+      fontSize: font.xs,
+      fontWeight: fontWeight.semibold,
+      letterSpacing: 0.8,
+      textTransform: 'uppercase',
+    },
     hintCentered: { textAlign: 'center' },
     hintDim: { color: colors.textTertiary },
     actions: { marginTop: spacing.md, gap: spacing.sm },
