@@ -1197,7 +1197,13 @@ ingredient panel's fold die with the modal.
   own steps (25°F, 10°C), since a cook sets 350 or 180, never 176 or 356. A temperature outside what an
   oven does (`cleanOvenTemp`) is refused, not clamped, and the editor says so while it's typed. A
   recipe that changes the heat mid-bake keeps that in its steps; this exists so the preheat is said
-  before step one. Imports fill it (`ovenTemp` on `ExtractedRecipe`, the unit never converted by the
+  before step one. **A recipe that preheats late says which step** (`Recipe.ovenTempStepId`, a step
+  id so reordering keeps it, cleared by `removeStep`): the mise en place row becomes an "At step N"
+  information row with a clock in place of the checkbox, and that step carries a "Preheat oven to
+  350°F" chip. `ovenSetupsFor` resolves it against the `cookSteps` being read, so a pointer to a
+  deleted or pick-hidden step reads as the start, never as an oven that is never turned on. The
+  extractor returns `ovenTempStep` (1-based, only a later step, only against its own `steps`, so it is
+  dropped when a page's separately-read steps are in use). Imports fill it (`ovenTemp` on `ExtractedRecipe`, the unit never converted by the
   model) and the page's own schema.org data has no such field, so the offline reader leaves it null.
 - **Ingredient lines can be checked off, as screen state only.** Both the mise en place list and the
   tray's panel carry a checkbox per line (`checkedLines` in `CookModeSheet`, keyed by node and line id

@@ -58,7 +58,7 @@ function recipe(id: string, name: string, overrides: Partial<Recipe> = {}): Reci
     servingsMax: null,
     recipeYield: null,
     cookedWeightG: null,
-    leftoverKeepDays: null, ovenTemp: null, ovenTempUnit: 'F',
+    leftoverKeepDays: null, ovenTemp: null, ovenTempUnit: 'F', ovenTempStepId: null,
     imagePath: null,
     estimatedMinutes: null,
     timerStartedAt: null,

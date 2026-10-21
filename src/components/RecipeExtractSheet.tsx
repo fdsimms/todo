@@ -153,6 +153,9 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const [leftoverKeepDaysText, setLeftoverKeepDaysText] = useState('');
   // One field in the unit it was written in ("350°F"), so the row needs no unit control.
   const [ovenTempText, setOvenTempText] = useState('');
+  // Which of `steps` turns the oven on, 1-based, when it isn't the first. Only set
+  // while `steps` is the model's own list, which is what the number counts in.
+  const [ovenStepNumber, setOvenStepNumber] = useState<number | null>(null);
   const [siteName, setSiteName] = useState('');
   const [sourceAuthor, setSourceAuthor] = useState('');
   const [sourcePageText, setSourcePageText] = useState('');
@@ -226,6 +229,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     setYieldText('');
     setLeftoverKeepDaysText('');
     setOvenTempText('');
+    setOvenStepNumber(null);
     setSiteName('');
     setSourceAuthor('');
     setSourcePageText('');
@@ -279,6 +283,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       setApplyPrepTasks(result.prepTasks.length > 0 && !recipeHasPrepTasks(recipe));
       setApplySource(!recipeHasAttribution(recipe));
       setSteps(methodStepsFound);
+      setOvenStepNumber(methodStepsFound === result.steps ? result.ovenTempStep : null);
       setAcceptedSteps(new Set(methodStepsFound.map((_, i) => i)));
       setPrepTasks(result.prepTasks);
       setAcceptedPrepTasks(new Set(result.prepTasks.map((_, i) => i)));
@@ -389,6 +394,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       .filter((i): i is NonNullable<typeof i> => i !== null);
     if (chosen.length > 0) addStructuredIngredients(recipe.id, chosen);
     components.commitTo(recipe.id);
+    let oven: ReturnType<typeof parseOvenTemp> = null;
     if (applyDetails) {
       // Whatever's in the box now, not what the model first said — the row is
       // editable, so `extracted` is only ever the starting value here.
@@ -411,19 +417,24 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
         const keepDays = parseInt(keepDaysRaw, 10);
         if (!Number.isNaN(keepDays)) setLeftoverKeepDays(recipe.id, keepDays);
       }
-      const oven = parseOvenTemp(pendingText('details:ovenTemp', ovenTempText));
+      oven = parseOvenTemp(pendingText('details:ovenTemp', ovenTempText));
       if (oven) setOvenTemp(recipe.id, oven.degrees, oven.unit);
     }
     // Appended, never replacing what's there. A recipe with its own method or
     // prep tasks arrives here unticked, so reaching this line at all means the
     // user asked for these on top of it — and appending is the only version
     // of that they can undo by hand.
+    let ovenStepId: string | null = null;
     if (applyMethod) {
       steps.forEach((step, i) => {
         if (!acceptedSteps.has(i)) return;
-        addStep(recipe.id, pendingText(`step:${i}:text`, step));
+        const added = addStep(recipe.id, pendingText(`step:${i}:text`, step));
+        if (added && ovenStepNumber === i + 1) ovenStepId = added.id;
       });
     }
+    // The pointer needs the step to exist, so it is written once they do. A step
+    // left unticked, or a temperature left unapplied, leaves the usual preheat.
+    if (oven && ovenStepId) setOvenTemp(recipe.id, oven.degrees, oven.unit, ovenStepId);
     if (applyPrepTasks) {
       prepTasks.forEach((task, i) => {
         if (!acceptedPrepTasks.has(i)) return;

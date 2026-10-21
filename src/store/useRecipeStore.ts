@@ -206,8 +206,12 @@ interface RecipeStore {
    * Null clears it. A figure that isn't a plausible oven setting for the unit
    * (`cleanOvenTemp`) clears it too, rather than storing a number cook mode
    * would then read out as "Preheat oven to 3500°F".
+   *
+   * `stepId` is the step the oven comes on at: omitted keeps the current one,
+   * null means before cooking starts, and an id that isn't one of this recipe's
+   * steps is null too. Clearing the temperature clears it.
    */
-  setOvenTemp: (id: string, degrees: number | null, unit?: OvenTempUnit) => void;
+  setOvenTemp: (id: string, degrees: number | null, unit?: OvenTempUnit, stepId?: string | null) => void;
   /**
    * Sets or clears a recipe's attached photo — `uri` is a file already saved
    * by `pickRecipeImage` (src/utils/recipePhoto.ts); this call just records
@@ -617,6 +621,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       leftoverKeepDays: null,
       ovenTemp: null,
       ovenTempUnit: 'F',
+      ovenTempStepId: null,
       imagePath: null,
       mealType: null,
       tags: [],
@@ -854,12 +859,14 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     save(set, { ...recipe, leftoverKeepDays: days === null ? null : clampKeepDays(days) });
   },
 
-  setOvenTemp(id, degrees, unit) {
+  setOvenTemp(id, degrees, unit, stepId) {
     const recipe = get().recipes.find(r => r.id === id);
     if (!recipe) return;
     const nextUnit = unit ?? recipe.ovenTempUnit;
     const ovenTemp = degrees === null ? null : cleanOvenTemp(degrees, nextUnit);
-    save(set, { ...recipe, ovenTemp, ovenTempUnit: nextUnit });
+    const wanted = stepId === undefined ? recipe.ovenTempStepId : stepId;
+    const ovenTempStepId = ovenTemp !== null && wanted && recipe.steps.some(s => s.id === wanted) ? wanted : null;
+    save(set, { ...recipe, ovenTemp, ovenTempUnit: nextUnit, ovenTempStepId });
   },
 
   setImage(id, uri) {
@@ -1569,7 +1576,11 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     if (!recipe) return;
     const steps = recipe.steps.filter(s => s.id !== stepId);
     if (steps.length === recipe.steps.length) return;
-    save(set, { ...recipe, steps });
+    save(set, {
+      ...recipe,
+      steps,
+      ...(recipe.ovenTempStepId === stepId ? { ovenTempStepId: null } : {}),
+    });
   },
 
   reorderSteps(recipeId, ids, sectionById) {

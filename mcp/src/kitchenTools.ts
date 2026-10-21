@@ -102,6 +102,8 @@ export interface RecipeDetail extends SerializedRecipe {
   /** The oven temperature as written, with its unit, when the recipe has one. */
   ovenTemp?: number;
   ovenTempUnit?: 'F' | 'C';
+  /** 1-based place of the step the oven is turned on at, when it is not before cooking starts. */
+  ovenTempStep?: number;
   /** Minutes the last measured cook took. */
   lastCookMinutes?: number;
 }
@@ -179,6 +181,9 @@ export function getRecipe(replica: Replica, id: string): RecipeDetail | null {
     ...(r.leftoverKeepDays != null ? { leftoverKeepDays: r.leftoverKeepDays } : {}),
     ...(r.cookedWeightG ? { cookedWeightG: r.cookedWeightG } : {}),
     ...(r.ovenTemp != null ? { ovenTemp: r.ovenTemp, ovenTempUnit: r.ovenTempUnit } : {}),
+    ...(r.ovenTemp != null && r.ovenTempStepId && r.steps.findIndex(s => s.id === r.ovenTempStepId) >= 1
+      ? { ovenTempStep: r.steps.findIndex(s => s.id === r.ovenTempStepId) + 1 }
+      : {}),
     ...(r.lastCookMinutes ? { lastCookMinutes: r.lastCookMinutes } : {}),
   };
 }

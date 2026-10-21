@@ -1643,6 +1643,7 @@ function registerWriteTools(
     cookedWeightG: z.number().int().nullable().optional().describe('What the whole finished dish weighs in grams, as written (1 to 50000; null clears). Counts a used recipe\'s ingredients in whole, so a composed recipe\'s weight includes its parts. Logging a plate divides by it.'),
     ovenTemp: z.number().int().nullable().optional().describe('The oven temperature it is cooked at, exactly as the recipe writes it (150 to 600 in F, 70 to 320 in C; null clears). Cook mode lists it as "Preheat oven" on the mise en place screen, converted to the reader\'s units. One figure for the whole dish; a recipe that changes the heat keeps that in its steps.'),
     ovenTempUnit: z.enum(['F', 'C']).optional().describe('The unit ovenTemp is written in. Omit to keep the recipe\'s current unit (F for a new one).'),
+    ovenTempStep: z.number().int().nullable().optional().describe('For a recipe that turns the oven on partway through: the 1-based place of that step in its steps (counted after any steps sent in this call). Cook mode then shows the Preheat oven line as "At step N" and a reminder on that step instead of asking to preheat before starting. null or 1 means before cooking starts. Needs an ovenTemp.'),
     components: z.array(z.object({
       recipeId: z.string().min(1),
       choiceGroup: z.string().nullable().optional(),

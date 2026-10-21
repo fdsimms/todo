@@ -276,8 +276,8 @@ export function CookModeSheet({
   // off with the rest of the gathering. A recipe that only has a temperature
   // still has a mise en place worth opening.
   const ovenSetups = useMemo(
-    () => ovenSetupsFor(recipe, recipesById, unitSystem, resolution),
-    [recipe, recipesById, unitSystem, resolution]
+    () => ovenSetupsFor(recipe, recipesById, unitSystem, steps, resolution),
+    [recipe, recipesById, unitSystem, steps, resolution]
   );
   const hasIngredients = ingredients.length > 0 || blanks.length > 0 || ovenSetups.length > 0;
   const [fillingBlanks, setFillingBlanks] = useState(false);
@@ -681,8 +681,33 @@ export function CookModeSheet({
                   // converted one says what the recipe wrote.
                   const detail = [
                     oven.whole ? null : oven.recipeName,
+                    oven.stepNumber !== null ? `At step ${oven.stepNumber}` : null,
                     oven.converted ? `Written as ${oven.written}` : null,
                   ].filter(Boolean).join(' · ');
+                  // An oven that comes on partway through is information here,
+                  // not something to do while gathering: a clock in place of the
+                  // checkbox, and the step itself carries the reminder.
+                  if (oven.stepNumber !== null) {
+                    return (
+                      <View
+                        key={lineKey}
+                        style={[styles.miseRow, position === ovenSetups.length - 1 && styles.miseRowLast]}
+                        accessible
+                        accessibilityLabel={`Preheat oven to ${oven.text} at step ${oven.stepNumber}`}
+                      >
+                        <View style={styles.ovenLaterIcon}>
+                          <Ionicons name="time-outline" size={iconSize.md} color={colors.textSecondary} />
+                        </View>
+                        <View style={styles.miseRowText}>
+                          <Text style={styles.miseName}>Preheat oven</Text>
+                          {!!detail && <Text style={styles.misePrep}>{detail}</Text>}
+                        </View>
+                        <View style={styles.miseQtyPill}>
+                          <Text style={styles.miseQtyText} numberOfLines={1}>{oven.text}</Text>
+                        </View>
+                      </View>
+                    );
+                  }
                   return (
                     <TouchableOpacity
                       key={lineKey}
@@ -857,6 +882,12 @@ export function CookModeSheet({
               {step.fromNotes && (
                 <Text style={styles.fromNotes}>From this recipe’s notes</Text>
               )}
+              {ovenSetups.filter(oven => oven.stepId === step.id).map(oven => (
+                <View key={oven.recipeId} style={styles.ovenChip} accessible accessibilityLabel={`Preheat oven to ${oven.text}`}>
+                  <Ionicons name="flame-outline" size={iconSize.sm} color={colors.accent} />
+                  <Text style={styles.ovenChipText}>Preheat oven to {oven.text}</Text>
+                </View>
+              ))}
 
               {/* The offer, under the sentence it was read out of rather than
                   down in the footer: the number belongs to this step, and
@@ -1617,6 +1648,31 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // block does.
   miseOven: {
     marginBottom: spacing.md,
+  },
+  ovenLaterIcon: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // The reminder on the step an oven comes on at. Accent text like the
+  // attribution line above the step, on a tertiary chip so it reads as a thing
+  // to do rather than a caption.
+  ovenChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: spacing.xsm,
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.smd,
+    paddingVertical: spacing.xsm,
+    marginTop: spacing.md,
+  },
+  ovenChipText: {
+    color: colors.accent,
+    fontSize: font.md,
+    fontWeight: fontWeight.semibold,
   },
   miseHeading: {
     color: colors.textSecondary,

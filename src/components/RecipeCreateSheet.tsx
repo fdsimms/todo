@@ -239,6 +239,9 @@ export function RecipeCreateSheet({
   const [leftoverKeepDaysText, setLeftoverKeepDaysText] = useState('');
   // One field in the unit it was written in ("350°F"), so the row needs no unit control.
   const [ovenTempText, setOvenTempText] = useState('');
+  // Which of `steps` turns the oven on, 1-based, when it isn't the first. Only set
+  // while `steps` is the model's own list, which is what the number counts in.
+  const [ovenStepNumber, setOvenStepNumber] = useState<number | null>(null);
   const [siteName, setSiteName] = useState('');
   const [sourceAuthor, setSourceAuthor] = useState('');
   const [sourcePageText, setSourcePageText] = useState('');
@@ -333,6 +336,7 @@ export function RecipeCreateSheet({
     setYieldText('');
     setLeftoverKeepDaysText('');
     setOvenTempText('');
+    setOvenStepNumber(null);
     setSiteName('');
     setSourceAuthor('');
     setSourceUrlText('');
@@ -420,6 +424,7 @@ export function RecipeCreateSheet({
         ? resolved.page!.steps
         : result.steps;
       setSteps(methodStepsFound);
+      setOvenStepNumber(methodStepsFound === result.steps ? result.ovenTempStep : null);
       setAcceptedSteps(new Set(methodStepsFound.map((_, i) => i)));
       setPrepTasks(result.prepTasks);
       setAcceptedPrepTasks(new Set(result.prepTasks.map((_, i) => i)));
@@ -645,6 +650,7 @@ export function RecipeCreateSheet({
     if (chosen.length > 0) addStructuredIngredients(recipe.id, chosen);
     // After the recipe exists, so the links have something to hang off.
     components.commitTo(recipe.id);
+    let oven: ReturnType<typeof parseOvenTemp> = null;
     if (applyDetails) {
       // Whatever's in the box now, not what the model first said — the row is
       // editable, so `extracted` is only ever the starting value here.
@@ -667,7 +673,7 @@ export function RecipeCreateSheet({
         const keepDays = parseInt(keepDaysRaw, 10);
         if (!Number.isNaN(keepDays)) setLeftoverKeepDays(recipe.id, keepDays);
       }
-      const oven = parseOvenTemp(pendingText('details:ovenTemp', ovenTempText));
+      oven = parseOvenTemp(pendingText('details:ovenTemp', ovenTempText));
       if (oven) setOvenTemp(recipe.id, oven.degrees, oven.unit);
     }
     if (plan) {
@@ -685,12 +691,17 @@ export function RecipeCreateSheet({
     // otherwise whatever the model read off the source itself. Both of these
     // used to be written unconditionally, announced only by a sentence in the
     // intro — now they're rows you can read and untick like everything else.
+    let ovenStepId: string | null = null;
     if (applyMethod) {
       steps.forEach((step, i) => {
         if (!acceptedSteps.has(i)) return;
-        addStep(recipe.id, pendingText(`step:${i}:text`, step));
+        const added = addStep(recipe.id, pendingText(`step:${i}:text`, step));
+        if (added && ovenStepNumber === i + 1) ovenStepId = added.id;
       });
     }
+    // The pointer needs the step to exist, so it is written once they do. A step
+    // left unticked, or a temperature left unapplied, leaves the usual preheat.
+    if (oven && ovenStepId) setOvenTemp(recipe.id, oven.degrees, oven.unit, ovenStepId);
     if (applyPrepTasks) {
       prepTasks.forEach((task, i) => {
         if (!acceptedPrepTasks.has(i)) return;

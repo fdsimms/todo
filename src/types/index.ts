@@ -7842,6 +7842,15 @@ export interface Recipe {
   ovenTemp: number | null;
   /** Meaningless while `ovenTemp` is null; 'F' is the default a new one opens on. */
   ovenTempUnit: 'F' | 'C';
+  /**
+   * The step the oven comes on at, for a recipe that preheats partway through
+   * ("step 10"), or null for the usual case of preheating before cooking starts.
+   * A `RecipeStep.id`, so reordering steps keeps it pointing at the same one.
+   * Resolve-or-shrug like every cross-row pointer here: a step that is deleted
+   * (`removeStep` clears it), or hidden by an either/or pick, reads as null.
+   * Meaningless while `ovenTemp` is null.
+   */
+  ovenTempStepId: string | null;
   // The user-attached photo — a file:// URI under the document directory
   // (src/utils/recipePhoto.ts `pickRecipeImage`), null until one's attached.
   // Deliberately not base64-in-the-row: a recipe photo is a picture the card

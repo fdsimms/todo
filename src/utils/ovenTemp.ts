@@ -2,6 +2,7 @@
 // unit go in, text comes out. Nothing here knows about the recipe store.
 
 import type { Recipe } from '../types';
+import type { CookStep } from './cookMode';
 import { cookedDishes, type ChoiceResolution } from './recipeComponents';
 import type { UnitSystem } from './unitConvert';
 
@@ -90,24 +91,37 @@ export interface OvenSetup {
   converted: boolean;
   /** The figure as the recipe wrote it, shown beside a converted one. */
   written: string;
+  /**
+   * The cook step the oven comes on at, and its 1-based place among the steps
+   * being read, or both null for the usual preheat before cooking. Null as well
+   * when the recipe's step is gone or hidden by a pick, so a stale pointer reads
+   * as "at the start" rather than as an oven that is never turned on.
+   */
+  stepId: string | null;
+  stepNumber: number | null;
 }
 
 /**
  * The oven settings a cooking of `recipe` calls for, root dish first. Walks the
  * same `cookedDishes` the method and the ingredients do, so a component on the
  * road not taken contributes none, and each recipe is read once. A dish with no
- * temperature contributes nothing.
+ * temperature contributes nothing. `steps` is what `cookSteps` returned for this
+ * cooking, which is what a dish's `ovenTempStepId` is resolved against.
  */
 export function ovenSetupsFor(
   recipe: Recipe,
   recipesById: ReadonlyMap<string, Recipe>,
   system: UnitSystem,
+  steps: CookStep[] = [],
   resolution?: ChoiceResolution,
 ): OvenSetup[] {
   const out: OvenSetup[] = [];
   for (const dish of cookedDishes(recipe, recipesById, resolution)) {
     const temp = ovenTempFor(dish.recipe, system);
     if (!temp) continue;
+    const at = dish.recipe.ovenTempStepId
+      ? steps.findIndex(s => s.recipe.id === dish.recipe.id && s.id === dish.recipe.ovenTempStepId)
+      : -1;
     out.push({
       recipeId: dish.recipe.id,
       recipeName: dish.recipe.name,
@@ -115,6 +129,8 @@ export function ovenSetupsFor(
       text: formatOvenTemp(temp.degrees, temp.unit),
       converted: temp.converted,
       written: formatOvenTemp(dish.recipe.ovenTemp as number, dish.recipe.ovenTempUnit),
+      stepId: at >= 0 ? steps[at].id : null,
+      stepNumber: at >= 0 ? at + 1 : null,
     });
   }
   return out;

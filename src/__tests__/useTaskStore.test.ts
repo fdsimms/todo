@@ -8624,7 +8624,7 @@ describe('checkMealSlotTasks', () => {
       backfillDismissedFields: [],
       id, name: 'Chili', nameKey: 'chili', notes: '', sourceUrl: null, sourceName: null,
       author: null, source: null, servings: null, servingsMax: null, recipeYield: null, cookedWeightG: null,
-      leftoverKeepDays: null, ovenTemp: null, ovenTempUnit: 'F', imagePath: null, mealType: null, tags: [], ingredients: [],
+      leftoverKeepDays: null, ovenTemp: null, ovenTempUnit: 'F', ovenTempStepId: null, imagePath: null, mealType: null, tags: [], ingredients: [],
       emptySections: [], components: [], blanks: [], prepTasks: [], steps: [], emptyStepSections: [], sortOrder: 1,
       createdAt: '2026-01-01T00:00:00.000Z', cookCount: 0, lastCookedAt: null, vote: null,
       upNext: false, upNextOrder: 0,
@@ -9077,7 +9077,7 @@ describe('checkMealShortfallTasks', () => {
       backfillDismissedFields: [],
       id, name, nameKey: name.toLowerCase(), notes: '', sourceUrl: null, sourceName: null,
       author: null, source: null, servings: null, servingsMax: null, recipeYield: null, cookedWeightG: null,
-      leftoverKeepDays: null, ovenTemp: null, ovenTempUnit: 'F', imagePath: null, mealType: null, tags: [],
+      leftoverKeepDays: null, ovenTemp: null, ovenTempUnit: 'F', ovenTempStepId: null, imagePath: null, mealType: null, tags: [],
       ingredients: ingredientNames.map((n, i) => ({
         id: `${id}-i${i}`, name: n, nameKey: n.toLowerCase(), quantity: '', aisle: null,
         prep: null, purpose: null, section: null, choiceGroup: null,
@@ -9353,7 +9353,7 @@ describe('checkMealThawTasks', () => {
     backfillDismissedFields: [],
     id: 'r1', name: 'Stir-fry', nameKey: 'stir-fry', notes: '', sourceUrl: null, sourceName: null,
     author: null, source: null, servings: null, servingsMax: null, recipeYield: null, cookedWeightG: null,
-    leftoverKeepDays: null, ovenTemp: null, ovenTempUnit: 'F', imagePath: null, mealType: null, tags: [],
+    leftoverKeepDays: null, ovenTemp: null, ovenTempUnit: 'F', ovenTempStepId: null, imagePath: null, mealType: null, tags: [],
     ingredients: [{
       id: 'r1-i0', name: 'Chicken', nameKey: 'chicken', quantity: '', aisle: null,
       prep: null, purpose: null, section: null, choiceGroup: null,

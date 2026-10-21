@@ -371,7 +371,11 @@ export function useRecipeComponentImports(
         // Same two writes `RecipeCreateSheet` makes for a recipe imported on
         // its own — a component read off a photo is a recipe like any other,
         // and one that arrived with no method would be the odd one out.
-        extracted.steps.forEach(step => store.addStep(target.id, step));
+        const addedSteps = extracted.steps.map(step => store.addStep(target.id, step));
+        const ovenStep = extracted.ovenTempStep !== null ? addedSteps[extracted.ovenTempStep - 1] : null;
+        if (extracted.ovenTemp !== null && ovenStep) {
+          store.setOvenTemp(target.id, extracted.ovenTemp, extracted.ovenTempUnit, ovenStep.id);
+        }
         extracted.prepTasks.forEach(task => {
           const added = store.addPrepTask(target.id, task.title);
           if (added && task.offsetDays !== added.offsetDays) {

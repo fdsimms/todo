@@ -87,6 +87,26 @@ describe('update_recipe', () => {
     expect(saveRecipe(replica, { name: 'Focaccia', ovenTemp: 220, ovenTempUnit: 'C' }).ovenTemp).toBe(220);
   });
 
+  it('points the oven at a later step by its place, and lets it go with the step', () => {
+    const r = saveRecipe(replica, { name: 'Focaccia', steps: [{ text: 'Mix.' }, { text: 'Rest.' }, { text: 'Heat the oven.' }, { text: 'Bake.' }] });
+    expect(() => updateRecipe(replica, r.id, { ovenTempStep: 3 })).toThrow(/needs an ovenTemp/);
+    expect(() => updateRecipe(replica, r.id, { ovenTemp: 450, ovenTempStep: 9 })).toThrow(/from 1 to 4/);
+
+    expect(updateRecipe(replica, r.id, { ovenTemp: 450, ovenTempStep: 3 })).toMatchObject({ ovenTemp: 450, ovenTempStep: 3 });
+    // 1 and null both mean before cooking starts.
+    expect(updateRecipe(replica, r.id, { ovenTempStep: 1 }).ovenTempStep).toBeUndefined();
+    updateRecipe(replica, r.id, { ovenTempStep: 3 });
+    expect(updateRecipe(replica, r.id, { ovenTempStep: null }).ovenTempStep).toBeUndefined();
+
+    // The same step keeps its id across a rewrite of the others, so the pointer follows it.
+    updateRecipe(replica, r.id, { ovenTempStep: 3 });
+    expect(updateRecipe(replica, r.id, { steps: [{ text: 'Mix.' }, { text: 'Heat the oven.' }, { text: 'Bake.' }] }).ovenTempStep).toBe(2);
+    // Dropping the step drops the pointer and keeps the temperature.
+    const dropped = updateRecipe(replica, r.id, { steps: [{ text: 'Mix.' }, { text: 'Bake.' }] });
+    expect(dropped.ovenTempStep).toBeUndefined();
+    expect(dropped.ovenTemp).toBe(450);
+  });
+
   it('keeps a step whose text is unchanged, with its timer and note', () => {
     const r = saveRecipe(replica, { name: 'Rice', steps: [{ text: 'Rinse.' }, { text: 'Simmer.' }] });
     updateRecipe(replica, r.id, { steps: [{ text: 'Rinse.' }, { text: 'Simmer until the water is gone.', timerSeconds: 900 }] });

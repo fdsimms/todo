@@ -37,7 +37,7 @@ function recipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     servingsMax: null,
     recipeYield: null,
     cookedWeightG: null,
-    leftoverKeepDays: null, ovenTemp: null, ovenTempUnit: 'F',
+    leftoverKeepDays: null, ovenTemp: null, ovenTempUnit: 'F', ovenTempStepId: null,
     imagePath: null,
     mealType: null,
     tags: [],

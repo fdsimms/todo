@@ -1145,6 +1145,14 @@ export interface ExtractedRecipe {
    */
   ovenTemp: number | null;
   ovenTempUnit: OvenTempUnit;
+  /**
+   * Which of `steps` first sets the oven, 1-based, when that isn't the first
+   * step — a recipe that preheats at step 10. Null when it is the first, when
+   * the recipe says "preheat" up front, or when there is no temperature or no
+   * method to point into. It indexes the model's own `steps`, so it is only
+   * meaningful against them, never against a page's separately-read steps.
+   */
+  ovenTempStep: number | null;
   ingredients: RecipeGroceryItem[];
   /**
    * Where the source says it's from — the four fields that map onto `Recipe`'s
@@ -1286,7 +1294,7 @@ export async function extractRecipe(
 
   const empty: ExtractedRecipe = {
     name: '', servings: null, servingsMax: null, prepMinutes: null, recipeYield: null,
-    leftoverKeepDays: null, ovenTemp: null, ovenTempUnit: 'F', ingredients: [],
+    leftoverKeepDays: null, ovenTemp: null, ovenTempUnit: 'F', ovenTempStep: null, ingredients: [],
     sourceTitle: null, sourceAuthor: null, sourcePage: null, sourceType: null,
     references: [], steps: [], prepTasks: [],
   };
@@ -1385,6 +1393,12 @@ export async function extractRecipe(
             enum: ['F', 'C'],
             description: 'The unit "ovenTemp" was written in. "F" when ovenTemp is 0.',
           },
+          ...(includeMethod ? {
+            ovenTempStep: {
+              type: 'integer',
+              description: 'The number, in the "steps" you return, of the step where the oven is first turned on or set, when that is not step 1 (the oven goes on at step 10 -> 10). 0 when the oven comes on in step 1, when the recipe says to preheat before starting, or when ovenTemp is 0.',
+            },
+          } : {}),
           items: groceryItemsSchema(
             availableAisles,
             'The things a shopper needs to buy for this recipe.',
@@ -1468,7 +1482,7 @@ export async function extractRecipe(
   const toolUse = data.content?.find(c => c.type === 'tool_use');
   const input = toolUse?.input as {
     name?: unknown; servings?: unknown; servingsMax?: unknown; prepMinutes?: unknown; recipeYield?: unknown; items?: unknown;
-    leftoverKeepDays?: unknown; ovenTemp?: unknown; ovenTempUnit?: unknown;
+    leftoverKeepDays?: unknown; ovenTemp?: unknown; ovenTempUnit?: unknown; ovenTempStep?: unknown;
     sourceTitle?: unknown; sourceAuthor?: unknown; sourcePage?: unknown; sourceKind?: unknown;
     referencedRecipes?: unknown; steps?: unknown; prepTasks?: unknown;
   } | undefined;
@@ -1497,6 +1511,13 @@ export async function extractRecipe(
   // it, and a figure outside that range is dropped rather than clamped.
   const ovenTempUnit: OvenTempUnit = input.ovenTempUnit === 'C' ? 'C' : 'F';
   const ovenTemp = cleanOvenTemp(input.ovenTemp, ovenTempUnit);
+  const steps = includeMethod ? parseExtractedSteps(input.steps) : [];
+  // Step 1 is the default, so only a later step is worth keeping, and only one
+  // the returned method actually has.
+  const ovenTempStep = ovenTemp !== null && typeof input.ovenTempStep === 'number'
+    && Number.isInteger(input.ovenTempStep) && input.ovenTempStep >= 2 && input.ovenTempStep <= steps.length
+    ? input.ovenTempStep
+    : null;
 
   const sourceTitle = includeSource ? parseExtractedSourceTitle(input.sourceTitle, name) : null;
   const sourceAuthor = includeSource ? sourceField(input.sourceAuthor) : null;
@@ -1506,11 +1527,11 @@ export async function extractRecipe(
     : null;
 
   return {
-    name, servings, servingsMax, prepMinutes, recipeYield, leftoverKeepDays, ovenTemp, ovenTempUnit,
+    name, servings, servingsMax, prepMinutes, recipeYield, leftoverKeepDays, ovenTemp, ovenTempUnit, ovenTempStep,
     sourceTitle, sourceAuthor, sourcePage, sourceType,
     ingredients: parseExtractedItems(input.items, availableAisles),
     references: includeReferences ? parseExtractedReferences(input.referencedRecipes) : [],
-    steps: includeMethod ? parseExtractedSteps(input.steps) : [],
+    steps,
     prepTasks: includeMethod ? parseExtractedPrepTasks(input.prepTasks) : [],
   };
 }

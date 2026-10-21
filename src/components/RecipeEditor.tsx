@@ -140,6 +140,8 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
   const [ovenTemp, setOvenTempDraft] = useState('');
   const [ovenUnit, setOvenUnitDraft] = useState<OvenTempUnit>('F');
   const [ovenOpen, setOvenOpen] = useState(false);
+  // 1-based place of the step the oven comes on at; null is before cooking starts.
+  const [ovenStep, setOvenStepDraft] = useState<number | null>(null);
   const [estimatedMinutes, setEstimatedMinutesDraft] = useState<number | null>(null);
   const [prepMinutes, setPrepMinutesDraft] = useState<number | null>(null);
   const [durationOpen, setDurationOpen] = useState(false);
@@ -264,6 +266,8 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
     setOvenTempDraft(recipe.ovenTemp === null ? '' : String(recipe.ovenTemp));
     setOvenUnitDraft(recipe.ovenTempUnit);
     setOvenOpen(false);
+    const ovenStepAt = recipe.ovenTempStepId ? recipe.steps.findIndex(s => s.id === recipe.ovenTempStepId) : -1;
+    setOvenStepDraft(ovenStepAt >= 1 ? ovenStepAt + 1 : null);
     setEstimatedMinutesDraft(recipe.estimatedMinutes);
     setPrepMinutesDraft(recipe.prepMinutes);
     setDurationOpen(false);
@@ -346,7 +350,9 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
     setLeftoverKeepDays(recipe.id, leftoverKeepDays);
     // A figure no oven does keeps what the recipe already had; the row says so
     // while it's being typed, so a refused number is never a silent one.
-    if (!ovenTempRefused) setOvenTemp(recipe.id, ovenTempValue, ovenUnit);
+    if (!ovenTempRefused) {
+      setOvenTemp(recipe.id, ovenTempValue, ovenUnit, ovenStep ? (recipe.steps[ovenStep - 1]?.id ?? null) : null);
+    }
     setEstimatedMinutes(recipe.id, estimatedMinutes);
     setPrepMinutes(recipe.id, prepMinutes);
     setMealType(recipe.id, mealType);
@@ -576,6 +582,24 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
                 surface="page"
               />
             </View>
+            {recipe.steps.length > 1 && (
+              <View style={styles.stepperRow}>
+                <Text style={styles.stepperLabel}>Turned on at</Text>
+                <CountStepper
+                  value={ovenStep}
+                  onChange={setOvenStepDraft}
+                  min={2}
+                  max={recipe.steps.length}
+                  // Stepping below step 2 clears it, back to preheating before
+                  // cooking starts, which is what most recipes mean.
+                  allowNull
+                  emptyLabel="Start"
+                  format={n => `Step ${n}`}
+                  label="Oven turned on at step"
+                  describeValue={n => (n === null ? 'before cooking starts' : `step ${n}`)}
+                />
+              </View>
+            )}
             {ovenTempRefused && (
               <Text style={styles.ovenRefused}>
                 {`Oven temperatures run from ${OVEN_TEMP_RANGE[ovenUnit].min} to ${OVEN_TEMP_RANGE[ovenUnit].max}°${ovenUnit}. This one won't be saved.`}

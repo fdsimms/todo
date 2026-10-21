@@ -422,6 +422,13 @@ export interface RecipeInput {
    */
   ovenTemp?: number | null;
   ovenTempUnit?: 'F' | 'C';
+  /**
+   * The step the oven is turned on at, as its 1-based place in the recipe's
+   * steps (counted after any `steps` in this same call), for a recipe that
+   * preheats partway through. null or 1 means before cooking starts. Needs an
+   * oven temperature on the recipe.
+   */
+  ovenTempStep?: number | null;
   /** Other recipes used inside this one, replacing the list. Sharing a choiceGroup makes them alternatives. */
   components?: { recipeId: string; choiceGroup?: string | null; amountUsed?: string | null }[];
   /** Tasks written ahead of a planned meal of it ("soak the beans"), replacing the list. */
@@ -2613,6 +2620,14 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const { min, max } = lib.ovenTemp.OVEN_TEMP_RANGE[unit];
       whole('ovenTemp', f.ovenTemp, min, max);
     }
+    if (f.ovenTempStep != null) {
+      const stepCount = f.steps ? f.steps.filter(s => s.text.trim()).length : recipe?.steps.length ?? 0;
+      if (!Number.isInteger(f.ovenTempStep) || f.ovenTempStep < 1 || f.ovenTempStep > stepCount) {
+        throw new Error(`ovenTempStep is the 1-based place of a step in the recipe, from 1 to ${stepCount}, or null for before cooking starts.`);
+      }
+      const willHaveTemp = f.ovenTemp !== undefined ? f.ovenTemp !== null : recipe?.ovenTemp != null;
+      if (!willHaveTemp) throw new Error('ovenTempStep needs an ovenTemp: set the temperature first (or in the same call).');
+    }
     if (f.sourcePage != null && f.sourcePage.trim().length > lib.types.RECIPE_PAGE_MAX_LENGTH) {
       throw new Error(`A page is at most ${lib.types.RECIPE_PAGE_MAX_LENGTH} characters, as printed ("142", "112-115").`);
     }
@@ -2864,6 +2879,15 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     }
     for (const [stepId, names] of givenOnlyWith) {
       store().setStepOnlyWhen(id, stepId, names && names.length > 0 ? optionIdsFor(current(), names) : null);
+    }
+    // After the steps, which it points into. Replacing the steps can drop the one
+    // an earlier call pointed at, and the store keeps only a pointer that still
+    // resolves, so re-saving the temperature is what lets a stale one go.
+    if (f.ovenTempStep !== undefined || f.steps !== undefined) {
+      const wanted = f.ovenTempStep !== undefined
+        ? (f.ovenTempStep && f.ovenTempStep >= 2 ? current().steps[f.ovenTempStep - 1]?.id ?? null : null)
+        : current().ovenTempStepId;
+      store().setOvenTemp(id, current().ovenTemp, undefined, wanted);
     }
   }
 

@@ -85,6 +85,7 @@ export function recipeFromPageOffline(
     leftoverKeepDays: null,
     ovenTemp: null,
     ovenTempUnit: 'F',
+    ovenTempStep: null,
     ingredients,
     // The page's own attribution is read by `sourceFieldsFor` off the page
     // itself, so there is nothing for these to add.

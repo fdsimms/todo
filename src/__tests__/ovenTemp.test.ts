@@ -1,6 +1,7 @@
 import { cleanOvenTemp, describeOvenTemp, ovenSetupsFor, ovenTempFor, parseOvenTemp } from '../utils/ovenTemp';
 import { recipeMap } from '../utils/recipeComponents';
-import type { Recipe, RecipeComponent } from '../types';
+import { cookSteps } from '../utils/cookMode';
+import type { Recipe, RecipeComponent, RecipeStep } from '../types';
 
 describe('cleanOvenTemp', () => {
   it('rounds and keeps a plausible setting', () => {
@@ -69,7 +70,7 @@ describe('ovenTempFor', () => {
 
 describe('ovenSetupsFor', () => {
   const dish = (id: string, name: string, extra: Partial<Recipe> = {}): Recipe => ({
-    id, name, components: [], ovenTemp: null, ovenTempUnit: 'F', ...extra,
+    id, name, components: [], ovenTemp: null, ovenTempUnit: 'F', ovenTempStepId: null, ...extra,
   } as unknown as Recipe);
   const link = (recipeId: string, name: string): RecipeComponent =>
     ({ id: `link-${recipeId}`, recipeId, name, choiceGroup: null } as unknown as RecipeComponent);
@@ -82,7 +83,7 @@ describe('ovenSetupsFor', () => {
   it('reads the recipe itself, converted for the reader', () => {
     const r = dish('r', 'Cake', { ovenTemp: 180, ovenTempUnit: 'C' });
     expect(ovenSetupsFor(r, recipeMap([r]), 'us')).toEqual([
-      { recipeId: 'r', recipeName: 'Cake', whole: true, text: '350°F', converted: true, written: '180°C' },
+      { recipeId: 'r', recipeName: 'Cake', whole: true, text: '350°F', converted: true, written: '180°C', stepId: null, stepNumber: null },
     ]);
   });
 
@@ -94,5 +95,29 @@ describe('ovenSetupsFor', () => {
       ['Pie', '350°F', true],
       ['Pie crust', '375°F', false],
     ]);
+  });
+
+  describe('the step the oven comes on at', () => {
+    const steps: RecipeStep[] = ['Mix.', 'Rest.', 'Shape.', 'Heat the oven.', 'Bake.'].map((text, i) => ({ id: `s${i + 1}`, text }));
+    const bread = (extra: Partial<Recipe> = {}) =>
+      dish('b', 'Bread', { ovenTemp: 450, ovenTempUnit: 'F', steps, ...extra });
+
+    it('is null for the usual preheat before cooking starts', () => {
+      const r = bread();
+      const [setup] = ovenSetupsFor(r, recipeMap([r]), 'asWritten', cookSteps(r, recipeMap([r])));
+      expect(setup).toMatchObject({ stepId: null, stepNumber: null });
+    });
+
+    it('resolves to the step and its place among the steps being read', () => {
+      const r = bread({ ovenTempStepId: 's4' });
+      const [setup] = ovenSetupsFor(r, recipeMap([r]), 'asWritten', cookSteps(r, recipeMap([r])));
+      expect(setup).toMatchObject({ stepId: 's4', stepNumber: 4 });
+    });
+
+    it('reads a step that no longer exists as the start, not as an oven never turned on', () => {
+      const r = bread({ ovenTempStepId: 'gone' });
+      const [setup] = ovenSetupsFor(r, recipeMap([r]), 'asWritten', cookSteps(r, recipeMap([r])));
+      expect(setup).toMatchObject({ stepId: null, stepNumber: null });
+    });
   });
 });
