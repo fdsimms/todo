@@ -286,7 +286,7 @@ export function LogPastWorkoutSheet({ visible, onClose }: Props) {
                           onChangeText={t => changeSets(ex.exerciseId, sets => sets.map((s, i) => (i === index ? { ...s, [f]: t } : s)))}
                           placeholder="–"
                           placeholderTextColor={colors.textTertiary}
-                          keyboardType={f === 'weight' ? 'decimal-pad' : 'numbers-and-punctuation'}
+                          keyboardType={f === 'weight' || f === 'distance' ? 'decimal-pad' : f === 'duration' ? 'numbers-and-punctuation' : 'number-pad'}
                           selectTextOnFocus
                           returnKeyType="done"
                           accessibilityLabel={`${nameOf(ex.exerciseId)} set ${index + 1} ${columnLabel(f, ex.kind, unit)}`}
