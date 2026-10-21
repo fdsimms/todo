@@ -60,6 +60,8 @@ export interface SerializedProjectDetail {
   inOrder?: true;
   /** Never finished on its own. */
   ongoing?: true;
+  /** A list: its rows are items to check off, counted rather than shown as progress, never nudged or offered as complete. */
+  list?: true;
   /** Who it is with or for. */
   people?: { id: string; name: string }[];
   links?: { label: string; url: string }[];
@@ -132,6 +134,7 @@ function serializeProject(replica: Replica, p: Project): SerializedProjectDetail
     ...(p.pausedUntil === '9999-12-31' ? { planning: true as const } : p.pausedUntil ? { pausedUntil: p.pausedUntil } : {}),
     ...(p.inOrder ? { inOrder: true as const } : {}),
     ...(p.ongoing ? { ongoing: true as const } : {}),
+    ...(p.list ? { list: true as const } : {}),
     ...((p.personIds ?? []).length > 0
       ? { people: p.personIds.flatMap(pid => { const person = replica.people().find(x => x.id === pid); return person ? [{ id: pid, name: person.name }] : []; }) }
       : {}),

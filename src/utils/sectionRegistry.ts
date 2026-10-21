@@ -1,4 +1,5 @@
-import type { TaskGroup } from '../types';
+import type { Project, TaskGroup } from '../types';
+import { sectionIsList } from './listMode';
 
 /**
  * The stacks and project sections, for the pure modules that need them
@@ -10,7 +11,7 @@ import type { TaskGroup } from '../types';
  */
 
 let source: (() => readonly TaskGroup[]) | null = null;
-let cache: { groups: readonly TaskGroup[]; checklists: Set<string> } | null = null;
+let cache: { groups: readonly TaskGroup[]; byId: Map<string, TaskGroup> } | null = null;
 
 /** Called once by useTaskGroupStore at module load. Tests can point it at a fixture. */
 export function registerSectionSource(fn: (() => readonly TaskGroup[]) | null): void {
@@ -24,15 +25,27 @@ export function sectionsNow(): readonly TaskGroup[] {
 }
 
 /**
- * Whether this task is a line in a checklist section (`TaskGroup.checklist`):
- * ticked off rather than scheduled, so never pulled or dated for it.
+ * Whether this task is a list item (src/utils/listMode.ts): checked off
+ * rather than scheduled, so never pulled or dated for it.
+ *
+ * `project` is the task's own project, which the caller already holds: a list
+ * project makes its loose rows and its sections items unless a section keeps
+ * tasks (`TaskGroup.keepsTasks`). Without it, only a section's own List
+ * setting (`TaskGroup.checklist`) counts.
  */
-export function isChecklistRow(task: { groupId: string | null }): boolean {
-  if (!task.groupId) return false;
+export function isChecklistRow(
+  task: { groupId: string | null },
+  project?: Pick<Project, 'id' | 'list'> | null,
+): boolean {
   const groups = source?.();
-  if (!groups) return false;
-  if (!cache || cache.groups !== groups) {
-    cache = { groups, checklists: new Set(groups.filter(g => g.checklist).map(g => g.id)) };
+  if (task.groupId && groups) {
+    if (!cache || cache.groups !== groups) {
+      cache = { groups, byId: new Map(groups.map(g => [g.id, g])) };
+    }
+    const group = cache.byId.get(task.groupId);
+    if (group?.projectId) {
+      return sectionIsList(group, project && group.projectId === project.id ? project : null);
+    }
   }
-  return cache.checklists.has(task.groupId);
+  return !!project?.list;
 }

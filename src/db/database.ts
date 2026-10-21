@@ -2381,6 +2381,15 @@ function runInitDatabase(): void {
     'ALTER TABLE categories ADD COLUMN slot_in INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE exercises ADD COLUMN dumbbells INTEGER',
     'ALTER TABLE exercises ADD COLUMN load_entry TEXT',
+    // Off on every existing project and section: nothing reads as a list until
+    // somebody turns it on. Deliberately new columns rather than reviving
+    // projects.kind, whose leftover 'list' values predate this and were never
+    // a decision made about this feature. See Project.list / TaskGroup.keepsTasks.
+    'ALTER TABLE projects ADD COLUMN is_list INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE task_groups ADD COLUMN keeps_tasks INTEGER NOT NULL DEFAULT 0',
+    // Off on every existing template, so none starts making lists. See
+    // TaskTemplate.list.
+    'ALTER TABLE templates ADD COLUMN is_list INTEGER NOT NULL DEFAULT 0',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -5156,6 +5165,7 @@ function rowToTaskGroup(row: Record<string, unknown>): TaskGroup {
     onToday: Boolean(row.on_today),
     projectId: (row.project_id as string) ?? null,
     checklist: row.checklist === 1,
+    keepsTasks: row.keeps_tasks === 1,
     hideNextStep: row.hide_next_step === 1,
   };
 }
@@ -5170,22 +5180,24 @@ export function dbInsertTaskGroup(group: TaskGroup): void {
     // completed_at is deliberately absent: it held the old "stack dismissed
     // for today" stamp, which no longer exists (see TaskGroup). The column
     // stays on the table for installs that already have it, and stays null.
-    'INSERT INTO task_groups (id, title, notes, tags, category, sort_order, collapsed, on_today, project_id, checklist, hide_next_step) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO task_groups (id, title, notes, tags, category, sort_order, collapsed, on_today, project_id, checklist, hide_next_step, keeps_tasks) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
     [
       group.id, group.title, group.notes, JSON.stringify(group.tags),
       group.category ?? null, group.sortOrder, group.collapsed ? 1 : 0,
       group.onToday ? 1 : 0, group.projectId ?? null, group.checklist ? 1 : 0, group.hideNextStep ? 1 : 0,
+      group.keepsTasks ? 1 : 0,
     ]
   );
 }
 
 export function dbUpdateTaskGroup(group: TaskGroup): void {
   db.runSync(
-    'UPDATE task_groups SET title=?, notes=?, tags=?, category=?, sort_order=?, collapsed=?, on_today=?, project_id=?, checklist=?, hide_next_step=? WHERE id=?',
+    'UPDATE task_groups SET title=?, notes=?, tags=?, category=?, sort_order=?, collapsed=?, on_today=?, project_id=?, checklist=?, hide_next_step=?, keeps_tasks=? WHERE id=?',
     [
       group.title, group.notes, JSON.stringify(group.tags),
       group.category ?? null, group.sortOrder, group.collapsed ? 1 : 0,
-      group.onToday ? 1 : 0, group.projectId ?? null, group.checklist ? 1 : 0, group.hideNextStep ? 1 : 0, group.id,
+      group.onToday ? 1 : 0, group.projectId ?? null, group.checklist ? 1 : 0, group.hideNextStep ? 1 : 0,
+      group.keepsTasks ? 1 : 0, group.id,
     ]
   );
 }
@@ -9196,6 +9208,7 @@ function rowToProject(row: Record<string, unknown>): Project {
     inOrder: row.in_order === 1,
     hideNextStep: row.hide_next_step === 1,
     groupOnToday: row.group_on_today === 1,
+    list: row.is_list === 1,
     eventDate: (row.event_date as string) ?? null,
     taskDefaults: parseTaskFieldDefaults(row.task_defaults),
   };
@@ -9208,7 +9221,7 @@ export function dbGetAllProjects(): Project[] {
 
 export function dbInsertProject(project: Project): void {
   db.runSync(
-    'INSERT INTO projects (id, title, notes, target_end_date, category, default_task_category, sort_order, archived, archived_at, completed, completed_at, ongoing, created_at, nudge_cadence_days, auto_schedule, nudge_opt_in, weekend_source, review_declined_at, reviewed_at, backfill_dismissed_fields, away_start, away_end, away_pauses, away_pause_declined_for, destination, away_list_id, away_list_declined_for, paused_until, person_ids, links, in_order, hide_next_step, event_date, task_defaults, destination_latitude, destination_longitude, group_on_today) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO projects (id, title, notes, target_end_date, category, default_task_category, sort_order, archived, archived_at, completed, completed_at, ongoing, created_at, nudge_cadence_days, auto_schedule, nudge_opt_in, weekend_source, review_declined_at, reviewed_at, backfill_dismissed_fields, away_start, away_end, away_pauses, away_pause_declined_for, destination, away_list_id, away_list_declined_for, paused_until, person_ids, links, in_order, hide_next_step, event_date, task_defaults, destination_latitude, destination_longitude, group_on_today, is_list) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     [
       project.id, project.title, project.notes, project.deadline,
       project.category, project.defaultTaskCategory, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
@@ -9224,13 +9237,14 @@ export function dbInsertProject(project: Project): void {
       serializeTaskFieldDefaults(project.taskDefaults),
       project.destinationLatitude ?? null, project.destinationLongitude ?? null,
       project.groupOnToday ? 1 : 0,
+      project.list ? 1 : 0,
     ]
   );
 }
 
 export function dbUpdateProject(project: Project): void {
   db.runSync(
-    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, default_task_category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, ongoing=?, nudge_cadence_days=?, auto_schedule=?, nudge_opt_in=?, weekend_source=?, review_declined_at=?, reviewed_at=?, backfill_dismissed_fields=?, away_start=?, away_end=?, away_pauses=?, away_pause_declined_for=?, destination=?, away_list_id=?, away_list_declined_for=?, paused_until=?, person_ids=?, links=?, in_order=?, hide_next_step=?, event_date=?, task_defaults=?, destination_latitude=?, destination_longitude=?, group_on_today=? WHERE id=?',
+    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, default_task_category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, ongoing=?, nudge_cadence_days=?, auto_schedule=?, nudge_opt_in=?, weekend_source=?, review_declined_at=?, reviewed_at=?, backfill_dismissed_fields=?, away_start=?, away_end=?, away_pauses=?, away_pause_declined_for=?, destination=?, away_list_id=?, away_list_declined_for=?, paused_until=?, person_ids=?, links=?, in_order=?, hide_next_step=?, event_date=?, task_defaults=?, destination_latitude=?, destination_longitude=?, group_on_today=?, is_list=? WHERE id=?',
     [
       project.title, project.notes, project.deadline,
       project.category, project.defaultTaskCategory, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
@@ -9246,6 +9260,7 @@ export function dbUpdateProject(project: Project): void {
       serializeTaskFieldDefaults(project.taskDefaults),
       project.destinationLatitude ?? null, project.destinationLongitude ?? null,
       project.groupOnToday ? 1 : 0,
+      project.list ? 1 : 0,
       project.id,
     ]
   );
@@ -9459,6 +9474,7 @@ function rowToTemplate(row: Record<string, unknown>): TaskTemplate {
     schedule: parseTemplateSchedule(row.schedule),
     scheduleLastFiredKey: (row.schedule_last_fired_key as string) ?? null,
     anchorsAreAway: Boolean(row.anchors_are_away),
+    list: row.is_list === 1,
   };
 }
 
@@ -9517,15 +9533,15 @@ export function dbGetAllTemplates(): TaskTemplate[] {
 
 export function dbInsertTemplate(template: TaskTemplate): void {
   db.runSync(
-    'INSERT INTO templates (id, name, items, item_groups, questions, created_at, sort_order, category, apply_container, schedule, schedule_last_fired_key, anchors_are_away) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
-    [template.id, template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), JSON.stringify(template.questions), template.createdAt, template.sortOrder, template.category, template.applyContainer, template.schedule ? JSON.stringify(template.schedule) : null, template.scheduleLastFiredKey, template.anchorsAreAway ? 1 : 0]
+    'INSERT INTO templates (id, name, items, item_groups, questions, created_at, sort_order, category, apply_container, schedule, schedule_last_fired_key, anchors_are_away, is_list) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    [template.id, template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), JSON.stringify(template.questions), template.createdAt, template.sortOrder, template.category, template.applyContainer, template.schedule ? JSON.stringify(template.schedule) : null, template.scheduleLastFiredKey, template.anchorsAreAway ? 1 : 0, template.list ? 1 : 0]
   );
 }
 
 export function dbUpdateTemplate(template: TaskTemplate): void {
   db.runSync(
-    'UPDATE templates SET name = ?, items = ?, item_groups = ?, questions = ?, sort_order = ?, category = ?, apply_container = ?, schedule = ?, schedule_last_fired_key = ?, anchors_are_away = ? WHERE id = ?',
-    [template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), JSON.stringify(template.questions), template.sortOrder, template.category, template.applyContainer, template.schedule ? JSON.stringify(template.schedule) : null, template.scheduleLastFiredKey, template.anchorsAreAway ? 1 : 0, template.id]
+    'UPDATE templates SET name = ?, items = ?, item_groups = ?, questions = ?, sort_order = ?, category = ?, apply_container = ?, schedule = ?, schedule_last_fired_key = ?, anchors_are_away = ?, is_list = ? WHERE id = ?',
+    [template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), JSON.stringify(template.questions), template.sortOrder, template.category, template.applyContainer, template.schedule ? JSON.stringify(template.schedule) : null, template.scheduleLastFiredKey, template.anchorsAreAway ? 1 : 0, template.list ? 1 : 0, template.id]
   );
 }
 

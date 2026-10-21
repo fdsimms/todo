@@ -30,4 +30,16 @@ describe('sectionRegistry', () => {
     groups = [group({ id: 'pack', checklist: true })];
     expect(isChecklistRow({ groupId: 'pack' })).toBe(true);
   });
+
+  it('makes a list project\'s sections and loose rows list items, unless a section keeps tasks', () => {
+    const groups = [group({ id: 'books' }), group({ id: 'chores', keepsTasks: true }), group({ id: 'elsewhere', projectId: 'p2' })];
+    registerSectionSource(() => groups);
+    const wish = { id: 'p1', list: true };
+    expect(isChecklistRow({ groupId: 'books' }, wish)).toBe(true);
+    expect(isChecklistRow({ groupId: 'chores' }, wish)).toBe(false);
+    expect(isChecklistRow({ groupId: null }, wish)).toBe(true);
+    // A section homed on another project answers for that project, not this one.
+    expect(isChecklistRow({ groupId: 'elsewhere' }, wish)).toBe(false);
+    expect(isChecklistRow({ groupId: 'books' }, { id: 'p1', list: false })).toBe(false);
+  });
 });

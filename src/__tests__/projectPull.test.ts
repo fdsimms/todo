@@ -745,6 +745,23 @@ describe('diagnosePullEmpty', () => {
     }
   });
 
+  it('passes over a list in both modes, whatever its nudge setting says', () => {
+    const projects = [
+      makeProject({ id: 'p1', list: true }),
+      makeProject({ id: 'p2', list: true }),
+    ];
+    const tasks = [
+      makeTask({ id: 'a', projectId: 'p1' }),
+      makeTask({ id: 'b', projectId: 'p2' }),
+    ];
+
+    for (const mode of ['ask', 'nudge'] as const) {
+      const state = diagnosePullEmpty(projects, tasks, mode);
+      expect(state).toEqual({ reason: 'list', count: 2, total: 2 });
+      expect(describePullEmpty(state!)).toContain('list');
+    }
+  });
+
   it('reports vacation mode before looking at anything else', () => {
     settingsState.vacationMode = true;
 
@@ -860,6 +877,7 @@ describe('describePullEmpty', () => {
       'vacation',
       'no-projects',
       'nudge-excluded',
+      'list',
       'cadence-off',
       'auto-scheduled',
       'too-soon',

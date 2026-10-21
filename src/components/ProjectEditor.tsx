@@ -73,6 +73,7 @@ import { usePlaceSuggestions } from '../hooks/usePlaceSuggestions';
 import { placeSubtitle, type PlaceResult } from '../utils/places';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { Toggle } from './Toggle';
+import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
 
 const NUDGE_MODE_OPTIONS: SegmentOption<NudgeMode>[] = NUDGE_MODES.map(mode => ({
@@ -188,6 +189,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
   const [nudgeCadenceDays, setNudgeCadenceDays] = useState(FALLBACK_CADENCE_DAYS);
   const [autoSchedule, setAutoSchedule] = useState(false);
   const [ongoing, setOngoing] = useState(false);
+  const [list, setList] = useState(false);
   const [weekendSource, setWeekendSource] = useState(false);
   // Project.pausedUntil, held as the day it comes back.
   const [pausedUntil, setPausedUntil] = useState<Date | null>(null);
@@ -272,6 +274,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
     setNudgeCadenceDays(project.nudgeCadenceDays > 0 ? project.nudgeCadenceDays : FALLBACK_CADENCE_DAYS);
     setAutoSchedule(project.autoSchedule);
     setOngoing(project.ongoing);
+    setList(!!project.list);
     setWeekendSource(project.weekendSource);
     setPlanning(isPlanning(project));
     setPausedUntil(project.pausedUntil && !isPlanning(project) ? dayKeyToDate(project.pausedUntil) : null);
@@ -415,6 +418,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
       // (see dripCandidate) — this just means it is never asked.
       autoSchedule: nudgeMode === 'scheduled' && autoSchedule,
       ongoing,
+      list,
       weekendSource,
       pausedUntil: pausedUntilKey(),
       // A person archived since keeps their place: the page reads through
@@ -522,6 +526,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
       nudge.nudgeCadenceDays !== project.nudgeCadenceDays ||
       (nudgeMode === 'scheduled' && autoSchedule) !== project.autoSchedule ||
       ongoing !== project.ongoing ||
+      list !== !!project.list ||
       weekendSource !== project.weekendSource ||
       pausedUntilKey() !== project.pausedUntil ||
       personIds.join() !== (project.personIds ?? []).join() ||
@@ -1270,6 +1275,32 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
           </>
         )}
         <View style={styles.sepIcon} />
+        {/* Project.list. Flipping it rewrites nothing else, so it can be
+            tried and turned back; see src/utils/listMode.ts. */}
+        <TouchableOpacity
+          style={styles.optionRow}
+          onPress={() => { haptics.tap(); setList(v => !v); }}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="switch"
+          accessibilityLabel="List"
+          accessibilityState={{ checked: list }}
+        >
+          <Ionicons name="list-outline" size={18} color={list ? colors.accent : colors.textSecondary} />
+          <View style={styles.optionContent}>
+            <Text style={styles.optionLabel}>List</Text>
+            <HelpText style={styles.optionHint}>
+              {list
+                ? 'Items to check off, like a wish list. Counts items instead of progress, and is never offered as complete or brought up'
+                : 'For a wish list or gift ideas: items to check off rather than tasks to schedule'}
+            </HelpText>
+          </View>
+          <Toggle value={list} />
+        </TouchableOpacity>
+        {/* A list already has no finish line, so Ongoing would say nothing
+            more. Its own value is kept for if List is turned off. */}
+        {!list && (
+        <>
+        <View style={styles.sepIcon} />
         <TouchableOpacity
           style={styles.optionRow}
           onPress={() => { haptics.tap(); setOngoing(v => !v); }}
@@ -1289,6 +1320,8 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
           </View>
           <Toggle value={ongoing} />
         </TouchableOpacity>
+        </>
+        )}
       </View>
 
       {/* Actions, not settings. These were drawn as switches, but turning one

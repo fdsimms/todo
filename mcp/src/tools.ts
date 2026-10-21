@@ -897,6 +897,8 @@ export interface SerializedTemplate {
   questions?: { name: string; kind: string; options?: string[] }[];
   scheduled?: string;
   anchorsAreAway?: boolean;
+  /** A run that makes a project makes a list. */
+  list?: boolean;
 }
 
 /**
@@ -925,6 +927,7 @@ export function listTemplates(replica: Replica): SerializedTemplate[] {
       : undefined,
     scheduled: t.schedule ? t.schedule.frequency : undefined,
     anchorsAreAway: t.anchorsAreAway ? true : undefined,
+    list: t.list ? true : undefined,
   }));
 }
 
