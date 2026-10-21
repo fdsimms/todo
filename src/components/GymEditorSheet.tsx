@@ -209,23 +209,20 @@ export function GymEditorSheet({ visible, subject, onClose }: Props) {
             <View style={styles.row}>
               <Text style={styles.rowLabel}>Location</Text>
               <View style={styles.rowEnd}>
-                <Text style={styles.rowValue}>{v.pin ? 'Set' : 'Not set'}</Text>
+                <Text style={styles.rowValue}>{v.pin ? 'Saved' : 'Not set'}</Text>
                 {v.pin && (
-                  <TouchableOpacity
+                  <InlineAction
+                    label="Clear"
+                    variant="neutral"
                     onPress={() => { haptics.tap(); patch({ pin: null }); }}
-                    hitSlop={8}
-                    activeOpacity={interaction.activeOpacity}
-                    accessibilityRole="button"
                     accessibilityLabel="Clear the location"
-                  >
-                    <Text style={styles.clear}>Clear</Text>
-                  </TouchableOpacity>
+                  />
                 )}
               </View>
             </View>
             <View style={[styles.row, styles.ruled]}>
               <Text style={styles.rowLabel}>Use my current location</Text>
-              <InlineAction label={locating ? 'Finding…' : 'Set'} onPress={() => { void useHere(); }} disabled={locating} accessibilityLabel="Use my current location for this gym" />
+              <InlineAction label={locating ? 'Finding…' : 'Use'} onPress={() => { void useHere(); }} disabled={locating} accessibilityLabel="Use my current location for this gym" />
             </View>
             <View style={[styles.row, styles.ruled]}>
               <Text style={styles.rowLabel}>Within</Text>
@@ -353,7 +350,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   rowLabel: { color: colors.text, fontSize: font.md, flexShrink: 1 },
   rowEnd: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd },
   rowValue: { color: colors.textSecondary, fontSize: font.md },
-  clear: { color: colors.accent, fontSize: font.md },
   noteRow: { paddingHorizontal: spacing.md, paddingVertical: spacing.smd },
   noteName: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
   noteInput: { color: colors.textSecondary, fontSize: font.md, marginTop: spacing.xs, minHeight: 28, padding: 0 },
