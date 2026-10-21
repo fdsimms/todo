@@ -125,6 +125,8 @@ export function WeightScreen() {
   const refreshWeight = useHealthStore(s => s.refreshWeight);
 
   const [logOpen, setLogOpen] = useState(false);
+  // The page scroll is off while a finger is scrubbing the chart.
+  const [scrubbing, setScrubbing] = useState(false);
   const [goalOpen, setGoalOpen] = useState(false);
   const [rangeDays, setRangeDays] = useState<WeightChartRangeDays>(DEFAULT_RANGE_DAYS);
   const activeRange = WEIGHT_CHART_RANGES.find(r => r.days === rangeDays) ?? WEIGHT_CHART_RANGES[3];
@@ -369,6 +371,7 @@ export function WeightScreen() {
         {...scrollTop.listProps}
         refreshControl={pullSearch.refreshControl}
         style={styles.scroll}
+        scrollEnabled={!scrubbing}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(tabBarHeight + spacing.xl, scrollTop.clearance) }]}
       >
         <View style={styles.statRow}>
@@ -521,6 +524,7 @@ export function WeightScreen() {
         unit={unit}
         targetKg={goal?.targetKg ?? null}
         pacePoints={pacePoints}
+        onScrubChange={setScrubbing}
       />
               <Text style={styles.chartCaption}>
                 Each dot is a day you weighed in. The line breaks where more than

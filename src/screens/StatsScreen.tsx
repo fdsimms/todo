@@ -192,6 +192,8 @@ export function StatsScreen() {
   // recipe on its page. Rows that summarize one title's history open its live
   // occurrence, else its latest (`taskForTitleKey`).
   const [openTask, setOpenTask] = useState<Task | null>(null);
+  // The page scroll is off while a finger is scrubbing a chart.
+  const [chartScrubbing, setChartScrubbing] = useState(false);
   const closeTask = useCallback(() => setOpenTask(null), []);
   const openTaskByKey = (key: string) => {
     const task = taskForTitleKey(useTaskStore.getState().tasks, key);
@@ -600,6 +602,7 @@ export function StatsScreen() {
           ref={scrollTop.ref}
           {...scrollTop.listProps}
           refreshControl={pullSearch.refreshControl}
+          scrollEnabled={!chartScrubbing}
           contentContainerStyle={[styles.scroll, { paddingBottom: Math.max(insets.bottom + 100, scrollTop.clearance) }]}
           showsVerticalScrollIndicator={false}
         >
@@ -1237,6 +1240,7 @@ export function StatsScreen() {
                     days={nutrientChartDays}
                     label={NUTRIENT_LABEL[chartKey].label}
                     unit={NUTRIENT_LABEL[chartKey].unit}
+                    onScrubChange={setChartScrubbing}
                   />
                 </View>
               )}
