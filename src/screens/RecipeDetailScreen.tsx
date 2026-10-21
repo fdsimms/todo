@@ -1470,7 +1470,7 @@ export function RecipeDetailScreen() {
       ? catalogMatch
       : null;
     return (
-      <View style={choiceRuns.together.has(ingredient.id) && !choiceRuns.orBefore.has(ingredient.id) && styles.choiceRunStart}>
+      <View>
         {/* Its own treatment, deliberately not the section heading's. The two
             said entirely different things — "these belong to the frosting"
             versus "buy exactly one of these" — in identical uppercase grey,
@@ -1810,10 +1810,7 @@ export function RecipeDetailScreen() {
     const isDefault = componentGroups.defaults.has(resolved.component.id);
     const alternativeNote = alternativeNotesById.get(resolved.component.id);
     return (
-      <View
-        key={resolved.component.id}
-        style={choiceRuns.together.has(resolved.component.id) && !choiceRuns.orBefore.has(resolved.component.id) && styles.choiceRunStart}
-      >
+      <View key={resolved.component.id}>
         {choiceRuns.orBefore.has(resolved.component.id) && (
           <View style={styles.choiceOr} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
             <View style={styles.choiceOrLine} />
@@ -3659,10 +3656,6 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     borderLeftWidth: 2,
     borderLeftColor: colors.accent,
   },
-  // The first option of a group drawn together has no header to open it, so
-  // the bar would start flush against the row above. This is the gap a header
-  // gets from its own paddingTop.
-  choiceRunStart: { marginTop: spacing.md },
   // The "or" between two options of a group drawn together. The same bar as the
   // rows either side, so it reads as part of the one block; the rules and the
   // word are tertiary because it is a joint, not a row.
