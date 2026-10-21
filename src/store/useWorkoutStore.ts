@@ -83,6 +83,7 @@ import { useWatchClashStore } from './useWatchClashStore';
 import { buildCatalog, catalogExercise } from '../utils/exerciseCatalog';
 import { liftVolumeKg } from '../utils/workoutRecords';
 import {
+  cleanOtherNames,
   cleanWorkoutName,
   exerciseNameKey,
   freeWorkoutName,
@@ -126,9 +127,11 @@ export interface ExerciseInput {
   dumbbells?: 1 | 2 | null;
   loadEntry?: 'each' | 'pair' | null;
   notes?: string;
+  /** Other names it is known by. Cleaned (`cleanOtherNames`), and refused if another exercise already goes by one. */
+  otherNames?: string[];
 }
 
-/** What an edit may change. On a built-in exercise only `name`, `notes`, `barKg`, `dumbbells`, `loadEntry` and `archived` take effect. */
+/** What an edit may change. On a built-in exercise only `name`, `otherNames`, `notes`, `barKg`, `dumbbells`, `loadEntry` and `archived` take effect. */
 export type ExercisePatch = Partial<Omit<ExerciseInput, 'secondaryMuscles'>> & {
   secondaryMuscles?: MuscleGroup[];
   archived?: boolean;
@@ -289,6 +292,8 @@ export type SetPatch = Partial<Omit<SetInput, 'exerciseId' | 'id'>>;
 /** Why a write was refused, for the caller to say in its own words. */
 export type WorkoutRefusal =
   | 'blank' | 'taken' | 'notFound' | 'hasHistory' | 'live' | 'finished' | 'empty' | 'order'
+  /** An other name an exercise on offer already goes by, as its name or as one of its own other names. */
+  | 'otherNameTaken'
   /** A routine item asks for a warm-up ramp on an exercise that doesn't record weight and reps. */
   | 'rampKind';
 
@@ -687,6 +692,18 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       e.id !== exceptId && (!e.archived || e.isCustom) && exerciseNameKey(e.name) === key);
   };
 
+  /**
+   * Whether another exercise on offer already goes by one of these names, as its
+   * own name or as one of its other names. Two exercises answering to one name
+   * would leave a search, and an import's name match, with no way to say which.
+   */
+  const otherNameTaken = (names: readonly string[], exceptId: string | null): boolean => {
+    const keys = new Set(names.map(exerciseNameKey));
+    return buildCatalog(get().exercises).some(e =>
+      e.id !== exceptId && !e.archived
+      && [e.name, ...e.otherNames].some(n => keys.has(exerciseNameKey(n))));
+  };
+
   const putExercise = (row: Exercise) => {
     dbSaveExercise(row);
     const rest = get().exercises.filter(e => e.id !== row.id);
@@ -1002,9 +1019,12 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       const name = cleanWorkoutName(input.name);
       if (!name) return 'blank';
       if (nameTaken(name, null)) return 'taken';
+      const otherNames = cleanOtherNames(input.otherNames ?? [], name);
+      if (otherNameTaken(otherNames, null)) return 'otherNameTaken';
       const row: Exercise = {
         id: generateId(),
         name,
+        otherNames,
         kind: input.kind,
         primaryMuscles: readMuscles(input.primaryMuscles),
         secondaryMuscles: readMuscles(input.secondaryMuscles ?? []),
@@ -1030,6 +1050,9 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         if (!name) return 'blank';
         if (nameTaken(name, id)) return 'taken';
       }
+      // Cleaned against the name it ends up with, since renaming to one of its own other names makes that one redundant.
+      const otherNames = cleanOtherNames(patch.otherNames ?? existing?.otherNames ?? [], name);
+      if (patch.otherNames !== undefined && otherNameTaken(otherNames, id)) return 'otherNameTaken';
       const base: Exercise = existing ?? {
         // The first change to a built-in writes the row that carries it, with
         // the library's description of the movement beside the person's words.
@@ -1059,6 +1082,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       const row: Exercise = {
         ...base,
         name,
+        otherNames,
         notes: patch.notes !== undefined ? patch.notes.trim() : base.notes,
         barKg: patch.barKg !== undefined ? amount(patch.barKg) || null : base.barKg,
         archived: patch.archived ?? base.archived,

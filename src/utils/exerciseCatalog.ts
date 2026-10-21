@@ -9,8 +9,8 @@ import { scoreSubstring } from './ranges';
  *
  * Three kinds of row come out of `exercises`, and each merges differently:
  *
- * - **An override** reuses a built-in's id. It contributes the name, notes,
- *   bar weight, dumbbell count, weight entry and archived flag only; what the movement *is* (kind, muscles,
+ * - **An override** reuses a built-in's id. It contributes the name, other
+ *   names, notes, bar weight, dumbbell count, weight entry and archived flag only; what the movement *is* (kind, muscles,
  *   equipment, cue) stays the library's, so a correction in a later build
  *   still reaches somebody who renamed the exercise.
  * - **A custom exercise** has an id the library doesn't know, and is taken
@@ -20,6 +20,7 @@ import { scoreSubstring } from './ranges';
  *   dropped: the sets logged against it still need a name to show under.
  */
 export interface CatalogExercise extends Exercise {
+  otherNames: string[];
   /** The library's one-line cue. Null for a custom exercise, which has only its notes. */
   cue: string | null;
   /** From the library (overridden or not), rather than one the person made. */
@@ -32,6 +33,7 @@ function fromLibrary(lib: LibraryExercise, override: Exercise | undefined): Cata
   return {
     id: lib.id,
     name: override?.name.trim() ? override.name : lib.name,
+    otherNames: override?.otherNames ?? [],
     kind: lib.kind,
     primaryMuscles: [...lib.primaryMuscles],
     secondaryMuscles: [...lib.secondaryMuscles],
@@ -50,7 +52,7 @@ function fromLibrary(lib: LibraryExercise, override: Exercise | undefined): Cata
 }
 
 function fromRow(row: Exercise): CatalogExercise {
-  return { ...row, cue: null, builtIn: false, overridden: false };
+  return { ...row, otherNames: row.otherNames ?? [], cue: null, builtIn: false, overridden: false };
 }
 
 const byName = (a: CatalogExercise, b: CatalogExercise) =>
@@ -118,8 +120,10 @@ export interface ExerciseFilters {
 export interface ExerciseSearchResult {
   exercise: CatalogExercise;
   score: number;
-  /** Ranges of the name to highlight. Empty when the match was on a muscle or the equipment. */
+  /** Ranges of the name to highlight. Empty when the match was on a muscle, the equipment or another name. */
   nameMatches: [number, number][];
+  /** The other name that carried the match, when the name itself didn't: a row says "Also called …" under it. */
+  viaOtherName?: string;
 }
 
 const compact = (s: string) => s.toLowerCase().normalize('NFD').replace(/[^a-z0-9]/g, '');
@@ -180,15 +184,26 @@ export function searchExercises(
     ];
     let total = 0;
     let nameMatches: [number, number][] = [];
+    let viaOtherName: string | undefined;
     let every = true;
     for (const word of words) {
       const name = wordScore(exercise.name, word);
       const label = Math.max(0, ...labels.map(l => wordScore(l, word).score));
-      if (name.score === 0 && label === 0) { every = false; break; }
-      total += name.score * 2 + label;
+      // Another name counts as the name does when the name itself missed the word,
+      // so a search for "two arm" finds the exercise the person calls that.
+      let other = { score: 0, via: '' };
+      if (name.score === 0) {
+        for (const n of exercise.otherNames) {
+          const hit = wordScore(n, word).score;
+          if (hit > other.score) other = { score: hit, via: n };
+        }
+      }
+      if (name.score === 0 && other.score === 0 && label === 0) { every = false; break; }
+      if (name.score === 0 && other.score > 0) viaOtherName ??= other.via;
+      total += Math.max(name.score, other.score) * 2 + label;
       nameMatches = nameMatches.concat(name.ranges);
     }
-    if (every) results.push({ exercise, score: total, nameMatches });
+    if (every) results.push({ exercise, score: total, nameMatches, ...(viaOtherName ? { viaOtherName } : {}) });
   }
   return results.sort((a, b) => b.score - a.score || byName(a.exercise, b.exercise));
 }
@@ -206,7 +221,9 @@ export function equipmentFilterOptions(rows: readonly Exercise[]): ExerciseEquip
 }
 
 /** "Chest, Triceps · Barbell": what an exercise trains and what with, for a row's second line. */
-export function describeExercise(e: Pick<Exercise, 'primaryMuscles' | 'equipment'>): string {
+export function describeExercise(e: Pick<Exercise, 'primaryMuscles' | 'equipment'>, viaOtherName?: string): string {
   const muscles = e.primaryMuscles.map(m => MUSCLE_LABELS[m]).join(', ');
-  return muscles ? `${muscles} · ${EQUIPMENT_LABELS[e.equipment]}` : EQUIPMENT_LABELS[e.equipment];
+  const base = muscles ? `${muscles} · ${EQUIPMENT_LABELS[e.equipment]}` : EQUIPMENT_LABELS[e.equipment];
+  // A result found by another name says so, or it reads as a match with nothing in common.
+  return viaOtherName ? `Also called ${viaOtherName} · ${base}` : base;
 }

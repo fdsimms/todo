@@ -2306,6 +2306,8 @@ describe('demo seed — people', () => {
     expect(custom?.name).toBe('Landmine row');
     expect(catalogExercise(exercises, 'lib:barbell-bench-press')?.notes).toBe('Pause each rep on the chest.');
     expect(catalogExercise(exercises, 'lib:dumbbell-curl')).toMatchObject({ loadEntry: 'pair', dumbbells: null });
+    // A built-in with another name the person gave it, so the feature has a row to show.
+    expect(catalogExercise(exercises, 'lib:barbell-bench-press')?.otherNames).toEqual(['Flat bench']);
     // The custom exercise has history, so it reads as one in use.
     const sets = sessions.flatMap(s => useWorkoutStore.getState().loadSets(s.id));
     expect(sets.some(s => s.exerciseId === custom?.id)).toBe(true);

@@ -159,7 +159,7 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
       >
         <View style={styles.rowText}>
           <HighlightedText text={e.name} ranges={item.nameMatches} style={styles.rowName} highlightStyle={styles.rowNameHit} numberOfLines={2} />
-          <Text style={styles.rowMeta} numberOfLines={1}>{describeExercise(e)}</Text>
+          <Text style={styles.rowMeta} numberOfLines={1}>{describeExercise(e, item.viaOtherName)}</Text>
         </View>
         {isAdded && <Text style={styles.addedTag}>{addedLabel}</Text>}
       </TouchableOpacity>

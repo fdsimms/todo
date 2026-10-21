@@ -85,7 +85,7 @@ import {
   stepTimerRemaining,
 } from '../utils/stepTimers';
 import {
-  finishPlan, formatDistance, formatSetLine, exerciseBlocks, matchPrevious, movedExerciseOrder, nextSet,
+  finishPlan, formatDistance, formatSetLine, exerciseBlocks, matchPreviousByPosition, movedExerciseOrder, nextSet, previousBadge,
   columnLabel, fieldLabel, sessionExercises, sessionSummary, setBadge, setFieldsFor, setLabels, setName, valuesFromLastDone,
   type SetField,
   supersetGroup,
@@ -922,7 +922,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
 
               // Last time, for this exercise: one read per exercise shown, not per row.
               const previous = session ? useWorkoutStore.getState().lastTimeFor(viewed.exerciseId, session.id) : [];
-              const previousBySet = matchPrevious(viewed.sets, previous);
+              const previousBySet = matchPreviousByPosition(viewed.sets, previous);
               // What was written on this exercise's sets last time, read before the first set.
               const lastNotes = lastTimeNotes(previous);
               // The records this workout has set on the exercise so far, by the set holding each.
@@ -1150,6 +1150,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                   const done = set.completedAt !== null;
                   const prev = previousBySet.get(set.id);
                   const prevLine = prev ? formatSetLine(prev, kind, unit, false, scale) : null;
+                  const prevMark = prev ? previousBadge(prev) : null;
                   const label = labels.get(set.id) ?? '';
                   const record = done ? liveRecords?.get(set.id)?.[0] ?? null : null;
                   const recordShort = record ? recordShortLabel(record.type, kind, record.reps) : '';
@@ -1181,9 +1182,12 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                             onPress={() => fillFromPrevious(set, prev)}
                             hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
                             accessibilityRole="button"
-                            accessibilityLabel={`Use last time's ${prevLine} for ${setName(set.kind, label)}`}
+                            accessibilityLabel={`Use last time's ${prevLine}${prevMark ? ` (${setName(prev!.kind, '')})` : ''} for ${setName(set.kind, label)}`}
                           >
-                            <Text style={styles.prevText} numberOfLines={1}>{prevLine}</Text>
+                            <Text style={styles.prevText} numberOfLines={1}>
+                              {prevLine}
+                              {prevMark ? <Text style={styles.prevMark}>{`  ${prevMark}`}</Text> : null}
+                            </Text>
                           </TouchableOpacity>
                         ) : (
                           <Text style={[styles.colPrev, styles.prevText]} numberOfLines={1}>–</Text>
@@ -1697,6 +1701,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.full, backgroundColor: colors.accentSubtle,
   },
   recordPillText: { color: colors.accentText, fontSize: font.xxs, fontWeight: fontWeight.bold, letterSpacing: 0.4 },
+  prevMark: { color: colors.orangeText, fontSize: font.sm, fontWeight: fontWeight.bold },
   prevText: { color: colors.textTertiary, fontSize: font.md, fontVariant: ['tabular-nums'] },
   valuePlanned: { color: colors.textTertiary },
   check: {
