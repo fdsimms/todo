@@ -554,6 +554,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                 ]}
                 value={sex}
                 onChange={next => setSex(next)}
+                onDeselect={() => { haptics.tap(); setSex(null); }}
                 label="Sex"
               />
               <HelpText style={styles.help}>

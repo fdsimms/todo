@@ -671,27 +671,29 @@ function MedicationRow({
           <Text style={styles.medName} numberOfLines={1}>{stat.name}</Text>
           {stat.asNeeded && !archivedRow && <Text style={styles.medBadge}>AS NEEDED</Text>}
         </View>
-        <Text style={styles.medMeta}>
-          {[
-            stat.doses === 0
-              ? 'No doses recorded yet'
-              : `${stat.doses} ${stat.doses === 1 ? 'dose' : 'doses'} over ${stat.days} ${stat.days === 1 ? 'day' : 'days'}`,
-            stat.typicalDose ? `usually ${stat.typicalDose}` : null,
-            stat.lastTakenAt ? `last on ${format(new Date(stat.lastTakenAt), 'MMM d')}` : null,
-          ].filter(Boolean).join(' · ')}
+        {/* One fact per line, each short enough not to wrap, so the lines
+            stack as a list instead of one sentence breaking at random. */}
+        <Text style={styles.medLine}>
+          {stat.doses === 0
+            ? 'No doses recorded yet'
+            : `${stat.doses} ${stat.doses === 1 ? 'dose' : 'doses'} over ${stat.days} ${stat.days === 1 ? 'day' : 'days'}`}
         </Text>
-        {status.length > 0 && (
-          <Text style={styles.medStatus}>
-            {status.map((part, i) => (
-              <Text key={part.text} style={part.warn ? { color: colors.warningText } : undefined}>
-                {i > 0 ? ' · ' : ''}{part.text}
-              </Text>
-            ))}
+        {(stat.typicalDose || stat.lastTakenAt) && (
+          <Text style={styles.medLine}>
+            {[
+              stat.typicalDose ? `Usually ${stat.typicalDose}` : null,
+              stat.lastTakenAt ? `last on ${format(new Date(stat.lastTakenAt), 'MMM d')}` : null,
+            ].filter(Boolean).join(' · ').replace(/^l/, 'L')}
           </Text>
         )}
+        {status.map((part) => (
+          <Text key={part.text} style={[styles.medLine, part.warn && { color: colors.warningText }]}>
+            {part.text}
+          </Text>
+        ))}
         {trend && (
-          <Text style={[styles.medTrend, { color: colors.textSecondary }]}>
-            {trend.recent} in the last {trend.days} days, against {trend.previous} in the {trend.days} days before.
+          <Text style={styles.medLine}>
+            {trend.recent} in the last {trend.days} days, {trend.previous} before
           </Text>
         )}
       </TouchableOpacity>
@@ -783,19 +785,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textSecondary,
     letterSpacing: 0.6,
   },
-  medMeta: {
+  medLine: {
     fontSize: font.sm,
     color: colors.textSecondary,
     marginTop: spacing.xxs,
-  },
-  medStatus: {
-    fontSize: font.sm,
-    color: colors.textSecondary,
-    marginTop: spacing.xxs,
-  },
-  medTrend: {
-    fontSize: font.sm,
-    marginTop: spacing.xs,
   },
   recordButton: {
     width: 34,

@@ -1228,6 +1228,13 @@ interface SettingsStore {
    */
   workoutUnit: WeightUnit;
   /**
+   * The gym a workout starts at before the phone's position says otherwise
+   * (`startingGymId`, utils/gyms.ts). Null means the gym last used. Kept out of
+   * DEFAULT_SETTINGS for `plateInventory`'s reason: it names a row the person
+   * made, which a reset of appearance and formatting must not forget.
+   */
+  defaultGymId: string | null;
+  /**
    * The bars and plates the person has, in kg, for working a load out as
    * plates. Kept out of DEFAULT_SETTINGS/resetToDefaults for the mechanical
    * reason (an object can't round-trip through String()).
@@ -2240,6 +2247,7 @@ interface SettingsStore {
   setWaterUnit: (unit: WaterUnit) => void;
   setWorkoutsEnabled: (on: boolean) => void;
   setWorkoutUnit: (unit: WeightUnit) => void;
+  setDefaultGymId: (id: string | null) => void;
   setPlateInventory: (inventory: PlateInventory) => void;
   setDefaultRestSeconds: (seconds: number) => void;
   setWorkoutLiveActivity: (on: boolean) => void;
@@ -3097,6 +3105,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   waterUnit: 'ml',
   workoutsEnabled: false,
   workoutUnit: 'kg',
+  defaultGymId: null,
   plateInventory: DEFAULT_PLATE_INVENTORY,
   defaultRestSeconds: DEFAULT_REST_SECONDS,
   moodContextSources: NO_MOOD_CONTEXT_SOURCES,
@@ -3534,6 +3543,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // As weightUnit: anything that isn't 'lb' reads as kilograms.
     const workoutUnit: WeightUnit = dbGetSetting('workoutUnit') === 'lb' ? 'lb' : 'kg';
     const plateInventory = parsePlateInventory(dbGetSetting('plateInventory'));
+    const defaultGymId = dbGetSetting('defaultGymId') || null;
     const defaultRestSeconds = parseRestSeconds(dbGetSetting('defaultRestSeconds'));
     const moodContextSources = parseMoodContextSources(dbGetSetting('moodContextSources'));
     // Both parsers salvage rather than throw: an unreadable goal reads back as
@@ -3960,6 +3970,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       dailyAgendaTime,
       dayResetTime: resetTime,
       deadlineCalendarId,
+      defaultGymId,
       defaultProjectNudgeCadenceDays,
       defaultReminderLeadMinutes,
       defaultRestSeconds,
@@ -5859,6 +5870,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setWorkoutUnit(unit: WeightUnit) {
     dbSetSetting('workoutUnit', unit);
     set({ workoutUnit: unit });
+  },
+
+  setDefaultGymId(id: string | null) {
+    dbSetSetting('defaultGymId', id ?? '');
+    set({ defaultGymId: id });
   },
 
   setPlateInventory(inventory: PlateInventory) {

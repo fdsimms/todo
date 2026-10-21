@@ -93,7 +93,7 @@ export function ProgramLibrarySheet({ visible, onClose, onAdded }: Props) {
 const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   spacer: { minWidth: 64 },
-  scroll: { paddingHorizontal: spacing.md, paddingBottom: spacing.xl, gap: spacing.sm },
+  scroll: { paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.xl, gap: spacing.sm },
   intro: { color: colors.textSecondary, fontSize: font.sm, marginHorizontal: spacing.xs, marginBottom: spacing.xs },
   card: { backgroundColor: colors.bgSecondary, borderRadius: radius.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.smd },
   name: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },

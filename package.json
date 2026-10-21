@@ -19,7 +19,7 @@
     "bench": "jest --runInBand --testMatch '**/__bench__/*.bench.ts'",
     "copy": "node scripts/list-copy.js",
     "docs": "node scripts/build-module-map.js && node scripts/check-doc-stats.js && node scripts/build-screen-map.js",
-    "verify": "tsc --noEmit && npm test && npm run docs && git status --short"
+    "verify": "tsc --noEmit && tsc -p mcp/tsconfig.json && npm test && npm run docs && git status --short"
   },
   "jest": {
     "testEnvironment": "node",

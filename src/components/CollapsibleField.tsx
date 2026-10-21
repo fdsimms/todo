@@ -42,7 +42,7 @@ interface Props {
    * to stick is worse than showing none.
    */
   locked?: boolean;
-  /** Required alongside `locked`: one line explaining what owns the value. */
+  /** With `locked`, when the summary doesn't say what owns the value: one line explaining it. */
   lockedHint?: string;
   children: React.ReactNode;
 }

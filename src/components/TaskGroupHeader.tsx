@@ -181,8 +181,9 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
   // turning it on there doesn't mean visiting every section.
   const projectHidesNext = useProjectStore(s => !!group.projectId && !!s.projects.find(p => p.id === group.projectId)?.hideNextStep);
   const hideNext = !!group.hideNextStep || projectHidesNext;
-  const summary = totalToday === 0 || filtered ? null
-    : `${doneToday} of ${totalToday} done${tallyScope === 'today' ? ' today' : ''}${nextUp && !hideNext ? ` · Next: ${nextUp.title}` : ''}`;
+  // The count is the badge's job; spelling it out here again was redundant.
+  const summary = totalToday === 0 || filtered || !nextUp || hideNext ? null
+    : `Next: ${nextUp.title}`;
   const showTally = totalToday > 0 && !filtered;
 
   const completeAll = () => {
@@ -291,11 +292,7 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
                     ? `${group.title} ${group.checklist ? 'checklist' : group.projectId ? 'section' : 'stack'}, ${doneToday} of ${totalToday} done${tallyScope === 'today' ? ' today' : ''}`
                     : `${group.title} ${group.checklist ? 'checklist' : group.projectId ? 'section' : 'stack'}`
                 }
-                accessibilityHint={
-                  onDrag
-                    ? `${isExpanded ? 'Double tap to collapse.' : 'Double tap to expand.'} Long press to reorder.`
-                    : isExpanded ? 'Double tap to collapse' : 'Double tap to expand'
-                }
+                accessibilityHint={onDrag ? 'Long press to reorder' : undefined}
                 // Complete-all is a long-press on the glyph, which VoiceOver
                 // has no gesture for — it's offered here as a rotor action so
                 // it isn't sighted-only.

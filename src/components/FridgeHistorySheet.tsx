@@ -168,7 +168,7 @@ export function FridgeHistorySheet({ visible, leftovers, weekStartsOn, onOpen, o
                       activeOpacity={interaction.activeOpacity}
                       accessibilityRole="button"
                       accessibilityLabel={`${leftover.title}. ${describeOutcome(leftover)} ${describeFinishedWhen(leftover, new Date(), weekStartsOn)}.`}
-                      accessibilityHint="Double tap to reopen or delete this leftover."
+                      accessibilityHint="Reopens or deletes this leftover."
                     >
                       {/* The glyph carries the outcome as well as the caption,
                           so it isn't colour alone saying which ending it got —

@@ -1,7 +1,7 @@
 import type { Exercise, ExerciseEquipment, Gym, GymExerciseSetting, WorkoutRoutine, WorkoutSet } from '../types';
 import { buildCatalog } from './exerciseCatalog';
 import { distanceMeters, PLACE_MAX_FIX_ERROR_M, type PlaceFix } from './moodPlaces';
-import { EQUIPMENT_LABELS, formatWeightWithUnit } from './workoutData';
+import { EQUIPMENT_LABELS, formatWeightWithUnit, machineParent } from './workoutData';
 import type { WeightUnit } from './weightLog';
 
 /**
@@ -34,7 +34,10 @@ export function gymExerciseId(gymId: string, exerciseId: string): string {
 /** Whether `gym` has what `equipment` needs. No gym chosen, or no equipment told yet, means yes. */
 export function equipmentAvailable(gym: Pick<Gym, 'equipment'> | null | undefined, equipment: ExerciseEquipment): boolean {
   if (!gym || gym.equipment.length === 0) return true;
-  return ALWAYS_AVAILABLE.includes(equipment) || gym.equipment.includes(equipment);
+  if (ALWAYS_AVAILABLE.includes(equipment) || gym.equipment.includes(equipment)) return true;
+  // "Machine" ticked before the specific machines existed meant every one of them.
+  const parent = machineParent(equipment);
+  return parent !== null && gym.equipment.includes(parent);
 }
 
 /** The ids among `exerciseIds` that `gym` can't do, in the order given. */
@@ -203,6 +206,21 @@ export function lastUsedGymId(
     if (s.gymId && live.has(s.gymId) && (!best || s.startedAt > best.at)) best = { id: s.gymId, at: s.startedAt };
   }
   return best?.id ?? null;
+}
+
+/**
+ * The gym a workout starts at before any position is known: the one the person
+ * chose as their default if it is still there and not archived, else the gym
+ * last used. A default that was deleted or archived reads as none, so the
+ * setting never has to be cleaned up behind a gym.
+ */
+export function startingGymId(
+  defaultId: string | null | undefined,
+  gyms: readonly Pick<Gym, 'id' | 'archived'>[],
+  sessions: readonly { gymId?: string | null; startedAt: string }[],
+): string | null {
+  if (defaultId && gyms.some(g => g.id === defaultId && !g.archived)) return defaultId;
+  return lastUsedGymId(gyms, sessions);
 }
 
 /**

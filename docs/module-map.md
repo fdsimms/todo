@@ -202,7 +202,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/grocerySuggest.ts` — GrocerySuggestion, GrocerySection, GroceryRecipeSection, NO_RECIPE_LABEL, matchWeight, rankGrocerySuggestions, buyAgainItems, rankedCatalogItems, sectionsInAisleOrder, buildGrocerySections, +17 more
 - `src/utils/gtin.ts` — gtinCheckDigit, normalizeGtin, expandUpcE, isStoreInternalGtin, isGtin, formatGtin, GTIN_MISS_TTL_DAYS, isCacheEntryFresh
 - `src/utils/gymLocation.ts` — defaultGymId, applyLocationGym
-- `src/utils/gyms.ts` — GYM_DEFAULT_RADIUS_M, GYM_MIN_RADIUS_M, GYM_MAX_RADIUS_M, GYM_RADIUS_STEP_M, gymExerciseId, equipmentAvailable, unavailableExerciseIds, RoutineFit, routineFit, describeRoutineFit, +12 more
+- `src/utils/gyms.ts` — GYM_DEFAULT_RADIUS_M, GYM_MIN_RADIUS_M, GYM_MAX_RADIUS_M, GYM_RADIUS_STEP_M, gymExerciseId, equipmentAvailable, unavailableExerciseIds, RoutineFit, routineFit, describeRoutineFit, +13 more
 - `src/utils/haptics.ts` — haptics
 - `src/utils/healthBridge.ts` — HealthBridge, healthBridge, isHealthSupported, openHealthApp
 - `src/utils/healthCompletionSync.ts` — logTaskHealthValue, unlogTaskNutrientFromFoodLog
@@ -287,7 +287,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/moodDayOffers.ts` — moodDayOffersFor
 - `src/utils/moodExport.ts` — MOOD_EXPORT_COLUMNS, csvCell, moodExportCsv, moodExportFileName, moodExportSummary
 - `src/utils/moodHistory.ts` — MoodFilter, EMPTY_MOOD_FILTER, isMoodFilterActive, hasWrittenNote, toggleFilterValue, filterMoodLogs, searchMoodLogs, textMatchesQuery, adjacentLogDays, MoodLogDay, +10 more
-- `src/utils/moodInsights.ts` — MIN_PAIRED_DAYS, MIN_CONTRAST_DAYS, MoodDay, taskIdentityKey, HealthDayInput, FoodDayInput, NUTRIENT_INSIGHT_KEYS, InsightNutrient, completionDayKey, buildMoodDays, +44 more
+- `src/utils/moodInsights.ts` — MIN_PAIRED_DAYS, MIN_CONTRAST_DAYS, MoodDay, taskIdentityKey, HealthDayInput, FoodDayInput, NUTRIENT_INSIGHT_KEYS, InsightNutrient, completionDayKey, buildMoodDays, +45 more
 - `src/utils/moodLog.ts` — MOOD_LEVELS, LOW_MOOD_AT_OR_BELOW, DEFAULT_CONTEXT_TAGS, SYMPTOM_SEVERITIES, moodLabel, moodEmoji, severityLabel, symptomKey, withSymptom, withoutSymptom, +14 more
 - `src/utils/moodPlaceNow.ts` — moodPlaceTagNow
 - `src/utils/moodPlaces.ts` — PLACE_MATCH_RADIUS_M, PLACE_MAX_FIX_ERROR_M, PlaceFix, distanceMeters, moodPlacesOf, placeTagName, placeAt, placeTagAt
@@ -425,6 +425,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/remindersImportSync.ts` — RemindersPermission, ImportOutcome, lastImportOutcome, getRemindersPermission, requestRemindersPermission, listReminderLists, countImportableReminders, groceryMirrorSignature, importReminders, useRemindersImportSync
 - `src/utils/removedBeforeEating.ts` — isUsuallyRemovedBeforeEating
 - `src/utils/reorder.ts` — moveItem, dropIndexFromTranslation, cumulativeOffsets, rowDragOffset, rowIndexAtContentY, dragRange, dragTranslation, clampCardToSlots, reorderSubset
+- `src/utils/resumeDate.ts` — ResumeDate, hasStaleDate, resumeDueDateFor
+- `src/utils/resumePrompt.ts` — confirmResume, resumeTasks
 - `src/utils/retention.ts` — RetentionDays, RETENTION_OPTIONS, retentionLabel, parseRetentionDays, retentionCutoff, selectPurgeableTaskIds, selectPurgeableFocusSessionIds, LEDGER_MAX_DAYS, ledgerCutoff, selectPurgeableUnattendedIds, +1 more
 - `src/utils/rewardGuard.ts` — GuardedSlip, canGuard, isGuardableHabit, guardingReward, planGuardedSlip, guardChargeSeed, claimedSince, guardedSlipPrompt, describeGuard
 - `src/utils/rewards.ts` — COINS_BY_EFFORT, STREAK_BONUS_EVERY, STREAK_BONUS_CAP, MAX_REWARD_COST, DIFFICULTY_MULTIPLIER, DIFFICULTY_SEGMENTS, DIFFICULTY_PICKER_SEGMENTS, DIFFICULTY_HINT, CoinSource, baseCoinsFor, +59 more
@@ -599,7 +601,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/widgetSync.ts` — drainWatchQueues, writeWidgetSnapshotNow, useWidgetSync
 - `src/utils/workoutCell.ts` — setFieldMax, parseRepsTarget, parseSetCell
 - `src/utils/workoutCsv.ts` — ImportSource, ImportedSet, ImportedSession, CsvParseResult, SkippedRows, describeSkipped, ParseOptions, parseCsv, readCsv, parseImportDate, +34 more
-- `src/utils/workoutData.ts` — EXERCISE_KINDS, EXERCISE_EQUIPMENT, MUSCLE_GROUPS, WORKOUT_SET_KINDS, PROGRESSION_SCHEMES, EQUIPMENT_LABELS, MUSCLE_LABELS, WORKOUT_NAME_MAX_LENGTH, WORKOUT_EFFORT, exerciseNameKey, +29 more
+- `src/utils/workoutData.ts` — EXERCISE_KINDS, FREE_EQUIPMENT, STRENGTH_MACHINES, CARDIO_MACHINES, EXERCISE_EQUIPMENT, machineParent, MUSCLE_GROUPS, WORKOUT_SET_KINDS, PROGRESSION_SCHEMES, EQUIPMENT_LABELS, +33 more
 - `src/utils/workoutHistory.ts` — HEALTH_HISTORY_MAX_DAYS, WorkoutHistoryRow, healthHistoryWindow, SAME_WORKOUT_START_MS, overlapsSession, interleaveHistory, healthWorkoutSource, healthWorkoutTitle, healthWorkoutLine
 - `src/utils/workoutLink.ts` — WORKOUT_LINK_VERBS, WorkoutLinkVerb, WorkoutLink, WORKOUT_OPEN_URL, workoutLinkUrl, WorkoutLinkPlan, planWorkoutLink
 - `src/utils/workoutLinkActions.ts` — applyWorkoutLink, skipRestFromLink

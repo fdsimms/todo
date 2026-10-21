@@ -11,6 +11,7 @@ import {
   correlation,
   correlationStrength,
   describeHealthInsight,
+  healthFindings,
   describeNutrientInsight,
   foodMoodContrasts,
   foodPairedDays,
@@ -1248,5 +1249,27 @@ describe('trainingDayMoodContrast', () => {
     const training = new Set([0, 1, 2, 6, 7, 8].map(dayKey));
     const contrast = trainingDayMoodContrast(days, training)!;
     expect(contrast.withDays).toBe(5);
+  });
+});
+
+describe('healthFindings', () => {
+  // Each series reads one bit of the day index, so no two of them correlate.
+  const unrelated = (n: number): MoodDay[] => daysWithMoods(
+    Array.from({ length: n }, (_, i) => (i & 1 ? 2 : 4)),
+    Array.from({ length: n }, (_, i) => (i & 2 ? 1 : 3)),
+  ).map((d, i) => ({
+    ...d,
+    steps: i & 4 ? 4000 : 8000,
+    sleepHours: i & 8 ? 6 : 8,
+  }));
+
+  it('says "no clear pattern" once when nothing relates', () => {
+    const rows = healthFindings(unrelated(32));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].text).toMatch(/^No clear pattern/);
+  });
+
+  it('says nothing below the paired-day floor', () => {
+    expect(healthFindings(unrelated(2))).toEqual([]);
   });
 });

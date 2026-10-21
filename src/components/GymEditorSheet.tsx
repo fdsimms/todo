@@ -7,6 +7,7 @@ import { PillGroup } from './PillGroup';
 import { CountStepper } from './CountStepper';
 import { HelpText } from './HelpText';
 import { InlineAction } from './InlineAction';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { TextField } from './TextField';
 import { PlaceAddressField } from './SavedEntrySheets';
 import { ExercisePickerSheet } from './ExercisePickerSheet';
@@ -14,14 +15,16 @@ import { useGymStore } from '../store/useGymStore';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useColors } from '../theme/ThemeContext';
-import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
+import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import type { ExerciseEquipment } from '../types';
 import { haptics } from '../utils/haptics';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { alertPermissionOff } from '../utils/permissionAlert';
 import { getCurrentLocation, requestLocationPermission } from '../utils/weatherLocation';
 import { exerciseName } from '../utils/exerciseCatalog';
-import { EQUIPMENT_LABELS, EXERCISE_EQUIPMENT, WORKOUT_NAME_MAX_LENGTH } from '../utils/workoutData';
+import {
+  CARDIO_MACHINES, EQUIPMENT_LABELS, FREE_EQUIPMENT, STRENGTH_MACHINES, WORKOUT_NAME_MAX_LENGTH,
+} from '../utils/workoutData';
 import { GYM_DEFAULT_RADIUS_M, GYM_MAX_RADIUS_M, GYM_MIN_RADIUS_M, GYM_RADIUS_STEP_M } from '../utils/gyms';
 import { BUTTON_LABEL } from '../copy/shared';
 
@@ -32,8 +35,16 @@ interface Props {
   onClose: () => void;
 }
 
-/** Bodyweight and Other need nothing from a gym, so they aren't offered. */
-const GYM_EQUIPMENT = EXERCISE_EQUIPMENT.filter(e => e !== 'bodyweight' && e !== 'other');
+/**
+ * What a gym can have, in three groups so the machines don't bury the free
+ * weights. Bodyweight and Other need nothing from a gym, so they aren't offered.
+ * The catch-all ends each machine group, for a machine with no chip of its own.
+ */
+const GYM_EQUIPMENT_GROUPS: { title: string; items: readonly ExerciseEquipment[] }[] = [
+  { title: 'Free weights', items: FREE_EQUIPMENT },
+  { title: 'Strength machines', items: [...STRENGTH_MACHINES, 'machine'] },
+  { title: 'Cardio', items: [...CARDIO_MACHINES, 'cardio_machine'] },
+];
 
 const REFUSED: Record<string, string> = {
   blank: 'Give the gym a name.',
@@ -130,7 +141,7 @@ export function GymEditorSheet({ visible, subject, onClose }: Props) {
         Alert.alert('Couldn’t find your location', 'Try again in a moment, or search for the address instead.');
         return;
       }
-      patch({ pin: { latitude: fix.latitude, longitude: fix.longitude } });
+      patch({ pin: { latitude: fix.latitude, longitude: fix.longitude }, placeText: '' });
     } finally {
       setLocating(false);
     }
@@ -204,68 +215,82 @@ export function GymEditorSheet({ visible, subject, onClose }: Props) {
           />
           {refusal && <Text style={styles.refusal}>{refusal}</Text>}
 
-          <Text style={styles.label}>Where it is</Text>
-          <View style={styles.card}>
-            <View style={styles.row}>
-              <Text style={styles.rowLabel}>Location</Text>
-              <View style={styles.rowEnd}>
-                <Text style={styles.rowValue}>{v.pin ? 'Set' : 'Not set'}</Text>
-                {v.pin && (
+          <Text style={styles.label}>Location</Text>
+          {v.pin ? (
+            <>
+              <View style={styles.card}>
+                <View style={styles.row}>
+                  <Ionicons name="location" size={iconSize.md} color={colors.accentText} />
+                  <Text style={[styles.rowLabel, styles.grow]} numberOfLines={2}>{v.placeText.trim() || 'Current location'}</Text>
                   <TouchableOpacity
-                    onPress={() => { haptics.tap(); patch({ pin: null }); }}
+                    onPress={() => { haptics.tap(); patch({ pin: null, placeText: '' }); }}
                     hitSlop={8}
                     activeOpacity={interaction.activeOpacity}
                     accessibilityRole="button"
                     accessibilityLabel="Clear the location"
                   >
-                    <Text style={styles.clear}>Clear</Text>
+                    <Ionicons name="close-circle" size={iconSize.md} color={colors.textTertiary} />
                   </TouchableOpacity>
-                )}
+                </View>
+                <View style={[styles.row, styles.ruled]}>
+                  <Text style={styles.rowLabel}>Within</Text>
+                  <CountStepper
+                    value={v.radiusM}
+                    onChange={n => patch({ radiusM: n ?? GYM_DEFAULT_RADIUS_M })}
+                    min={GYM_MIN_RADIUS_M}
+                    max={GYM_MAX_RADIUS_M}
+                    step={GYM_RADIUS_STEP_M}
+                    format={n => `${n} m`}
+                    label="Distance from the location"
+                    describeValue={n => `${n ?? GYM_DEFAULT_RADIUS_M} meters`}
+                  />
+                </View>
               </View>
-            </View>
-            <View style={[styles.row, styles.ruled]}>
-              <Text style={styles.rowLabel}>Use my current location</Text>
-              <InlineAction label={locating ? 'Finding…' : 'Set'} onPress={() => { void useHere(); }} disabled={locating} accessibilityLabel="Use my current location for this gym" />
-            </View>
-            <View style={[styles.row, styles.ruled]}>
-              <Text style={styles.rowLabel}>Within</Text>
-              <CountStepper
-                value={v.radiusM}
-                onChange={n => patch({ radiusM: n ?? GYM_DEFAULT_RADIUS_M })}
-                min={GYM_MIN_RADIUS_M}
-                max={GYM_MAX_RADIUS_M}
-                step={GYM_RADIUS_STEP_M}
-                format={n => `${n} m`}
-                label="Distance from the location"
-                describeValue={n => `${n ?? GYM_DEFAULT_RADIUS_M} meters`}
+              <HelpText style={styles.hint}>Starting a workout inside this distance picks this gym.</HelpText>
+            </>
+          ) : (
+            <>
+              <PlaceAddressField
+                text={v.placeText}
+                onChangeText={t => patch({ placeText: t })}
+                onPickPlace={pin => { if (pin) patch({ pin }); }}
+                picked={false}
+                placeholder="Search for an address or place"
+                accessibilityLabel="Gym address"
               />
-            </View>
-          </View>
-          <HelpText style={styles.hint}>Used to pick this gym when you start a workout.</HelpText>
-
-          <Text style={styles.label}>Or find it by address</Text>
-          <PlaceAddressField
-            text={v.placeText}
-            onChangeText={t => patch({ placeText: t })}
-            onPickPlace={pin => { if (pin) patch({ pin }); }}
-            picked={v.pin !== null}
-            placeholder="e.g. 12 Main St, or the gym's name"
-            accessibilityLabel="Gym address"
-          />
+              <TouchableOpacity
+                style={[styles.card, styles.row, styles.actionRow]}
+                onPress={() => { void useHere(); }}
+                disabled={locating}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel="Use my current location for this gym"
+              >
+                <Ionicons name="navigate" size={iconSize.md} color={colors.accentText} />
+                <Text style={styles.actionText}>{locating ? 'Finding…' : 'Use my current location'}</Text>
+              </TouchableOpacity>
+              <HelpText style={styles.hint}>Used to pick this gym when you start a workout.</HelpText>
+            </>
+          )}
 
           <Text style={styles.label}>Equipment here</Text>
-          <PillGroup
-            noun="piece of equipment"
-            pluralNoun="pieces of equipment"
-            surface="page"
-            limit={GYM_EQUIPMENT.length}
-            options={GYM_EQUIPMENT.map(e => ({
-              key: e,
-              label: EQUIPMENT_LABELS[e],
-              selected: v.equipment.includes(e),
-              onPress: () => toggle(e),
-            }))}
-          />
+          {GYM_EQUIPMENT_GROUPS.map(group => (
+            <View key={group.title}>
+              <Text style={styles.subLabel}>{group.title}</Text>
+              <PillGroup
+                noun="piece of equipment"
+                pluralNoun="pieces of equipment"
+                surface="page"
+                limit={group.items.length}
+                options={group.items.map(e => ({
+                  key: e,
+                  label: EQUIPMENT_LABELS[e],
+                  selected: v.equipment.includes(e),
+                  onPress: () => toggle(e),
+                }))}
+              />
+            </View>
+          ))}
           <HelpText style={styles.hint}>
             Exercises that need something this gym doesn’t have are flagged during a workout. Leave all of it off if you’d rather not say.
           </HelpText>
@@ -341,19 +366,23 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold, textTransform: 'uppercase',
     letterSpacing: 0.8, marginTop: spacing.lg, marginBottom: spacing.sm, marginHorizontal: spacing.xs,
   },
+  subLabel: {
+    color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.semibold,
+    marginTop: spacing.md, marginBottom: spacing.sm, marginHorizontal: spacing.xs,
+  },
   hint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.sm, marginHorizontal: spacing.xs },
   card: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden' },
   // Every row of the card is the same height, whatever its control, so the
   // lines sit at an even interval.
   row: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.smd,
     paddingHorizontal: spacing.md, minHeight: 52,
   },
   ruled: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator },
   rowLabel: { color: colors.text, fontSize: font.md, flexShrink: 1 },
-  rowEnd: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd },
-  rowValue: { color: colors.textSecondary, fontSize: font.md },
-  clear: { color: colors.accent, fontSize: font.md },
+  grow: { flex: 1 },
+  actionRow: { justifyContent: 'flex-start', marginTop: spacing.sm },
+  actionText: { color: colors.accentText, fontSize: font.md, fontWeight: fontWeight.semibold },
   noteRow: { paddingHorizontal: spacing.md, paddingVertical: spacing.smd },
   noteName: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
   noteInput: { color: colors.textSecondary, fontSize: font.md, marginTop: spacing.xs, minHeight: 28, padding: 0 },

@@ -46,7 +46,7 @@ export function RecipeChoiceChips({
           onPress={onRename}
           accessibilityRole="button"
           accessibilityLabel={`Group name, ${group.label}`}
-          accessibilityHint="Double tap to rename this group"
+          accessibilityHint="Renames this group"
         >
           <Text style={[styles.sectionLabel, styles.labelText]}>{group.label}</Text>
           <Ionicons name="create-outline" size={iconSize.xs} color={colors.textTertiary} />

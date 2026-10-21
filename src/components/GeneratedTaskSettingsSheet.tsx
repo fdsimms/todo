@@ -79,6 +79,7 @@ export function GeneratedTaskSettingsSheet({ visible, kind, spec, generatorLabel
   const birthdayGiftLeadDays = useSettingsStore(s => s.birthdayGiftLeadDays);
   const mealShortfallLeadDays = useSettingsStore(s => s.mealShortfallLeadDays);
   const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
+  const hideHelpText = useSettingsStore(s => s.hideHelpText);
   const setGeneratedTaskDefaults = useSettingsStore(s => s.setGeneratedTaskDefaults);
   const setGeneratedTaskExtras = useSettingsStore(s => s.setGeneratedTaskExtras);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
@@ -197,7 +198,7 @@ export function GeneratedTaskSettingsSheet({ visible, kind, spec, generatorLabel
                 <CollapsibleField
                   label={field.label}
                   summary={field.summary}
-                  lockedHint={field.hint}
+                  lockedHint={hideHelpText ? undefined : field.hint}
                   locked
                   expanded={false}
                   onToggle={() => {}}
@@ -294,11 +295,7 @@ export function GeneratedTaskSettingsSheet({ visible, kind, spec, generatorLabel
               label="Ask on completion"
               summary={extras.deliverableKind ? deliverableMeta(extras.deliverableKind).label : undefined}
               emptySummary="Nothing"
-              hint={
-                extras.deliverableKind
-                  ? deliverableMeta(extras.deliverableKind).hint
-                  : 'Asks for an answer when the task is completed and keeps it in the Logbook.'
-              }
+              hint="Asks for an answer when the task is completed and keeps it in the Logbook."
               expanded={open === 'deliverable'}
               onToggle={() => toggle('deliverable')}
             >

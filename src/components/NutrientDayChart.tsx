@@ -51,9 +51,15 @@ interface Props {
   label: string;
   /** "cal", "g" or "mg", as the axis and summary write it. */
   unit: string;
+  /**
+   * Fires true when a finger lands on the plot and false when it lifts. The host
+   * turns its scroll view off for the duration: a native scroll view yields only
+   * to a responder that is its ancestor, and this one is a descendant.
+   */
+  onScrubChange?: (scrubbing: boolean) => void;
 }
 
-export function NutrientDayChart({ days, label, unit }: Props) {
+export function NutrientDayChart({ days, label, unit, onScrubChange }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [width, setWidth] = useState(0);
@@ -81,9 +87,17 @@ export function NutrientDayChart({ days, label, unit }: Props) {
     setScrubIndex(nearest);
   };
 
+  const onScrubChangeRef = useRef(onScrubChange);
+  onScrubChangeRef.current = onScrubChange;
+  const startScrub = (event: GestureResponderEvent) => {
+    onScrubChangeRef.current?.(true);
+    scrubTo(event);
+  };
+
   const endScrub = () => {
     scrubIndexRef.current = null;
     setScrubIndex(null);
+    onScrubChangeRef.current?.(false);
   };
 
   const panResponder = useMemo(() => PanResponder.create({
@@ -91,7 +105,7 @@ export function NutrientDayChart({ days, label, unit }: Props) {
     // `WeightChart` documents: a scroll that starts on the plot becomes a scrub.
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: () => true,
-    onPanResponderGrant: scrubTo,
+    onPanResponderGrant: startScrub,
     onPanResponderMove: scrubTo,
     onPanResponderRelease: endScrub,
     onPanResponderTerminate: endScrub,

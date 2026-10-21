@@ -1275,6 +1275,8 @@ export interface Replica {
    * own suggestion is.
    */
   workoutLoads(): { unit: 'kg' | 'lb'; plateInventory: PlateInventory };
+  /** The gym a workout starts at before a position says otherwise, or null for the one last used. */
+  defaultGymId(): string | null;
   /**
    * Workout writes, through `useWorkoutStore`'s own actions (hydrated per
    * write, like the milestone store): its name rules, its set cleaning and its
@@ -1299,9 +1301,11 @@ export interface Replica {
    * `saveGym` creates (no `id`) or changes a gym through `useGymStore`'s own
    * actions, so its name rules and refusals are the app's; fields left out
    * stay. `exerciseNotes` sets the note for an exercise at the gym ('' clears it).
+   * `isDefault` true makes it the default gym; false clears the default only if
+   * this gym is it.
    */
   saveGym(input: {
-    id?: string; name?: string; equipment?: ExerciseEquipment[]; placeText?: string;
+    id?: string; name?: string; equipment?: ExerciseEquipment[]; placeText?: string; isDefault?: boolean;
     latitude?: number | null; longitude?: number | null; radiusM?: number;
     exerciseNotes?: { exerciseId: string; notes?: string; barKg?: number | null; incrementKg?: number | null }[];
   }): Gym;
@@ -4377,6 +4381,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const s = useSettingsStore.getState();
       return { unit: s.workoutUnit, plateInventory: s.plateInventory };
     },
+    defaultGymId: () => useSettingsStore.getState().defaultGymId,
     saveRoutine(input) {
       const store = workoutStore();
       if (input.id) {
@@ -4421,7 +4426,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     },
     saveGym(input) {
       const store = gymStore();
-      const { id, exerciseNotes, ...fields } = input;
+      const { id, exerciseNotes, isDefault, ...fields } = input;
       let saved: Gym;
       if (id) {
         if (!store.gyms.some(g => g.id === id)) throw new Error(`No gym with id ${id}. list_workouts lists the gyms.`);
@@ -4434,6 +4439,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         saved = made;
       }
       for (const { exerciseId, ...patch } of exerciseNotes ?? []) store.setGymExercise(saved.id, exerciseId, patch);
+      const settings = useSettingsStore.getState();
+      if (isDefault === true) settings.setDefaultGymId(saved.id);
+      else if (isDefault === false && settings.defaultGymId === saved.id) settings.setDefaultGymId(null);
       return saved;
     },
     deleteGym(id) {

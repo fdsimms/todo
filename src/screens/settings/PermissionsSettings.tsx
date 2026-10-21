@@ -173,7 +173,7 @@ export function PermissionsSettings() {
 
       <SettingsSection
         label="App permissions"
-        footer="What dundundun can read or write on this device. Tap a permission that needs attention to fix it. Turning one off in Settings stops dundundun from using it until you turn it back on."
+        footer="What dundundun can read or write on this device. Tap a permission that needs attention to fix it."
       >
         {PERMISSIONS
           .map((permission, index) => ({ permission, index }))

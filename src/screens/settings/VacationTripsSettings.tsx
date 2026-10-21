@@ -57,7 +57,6 @@ export function VacationTripsSettings() {
           icon="airplane-outline"
           iconColor={vacationMode ? colors.accent : undefined}
           label="Vacation mode"
-          hint="Hides tasks marked for vacation pause."
           toggle={vacationMode}
           onPress={() => {
             if (vacationMode) {
@@ -111,7 +110,6 @@ export function VacationTripsSettings() {
           icon="partly-sunny-outline"
           iconColor={destinationForecastEnabled ? colors.accent : undefined}
           label="Destination forecast"
-          hint="Looks up the weather where you’re going."
           toggle={destinationForecastEnabled}
           onPress={() => setDestinationForecastEnabled(!destinationForecastEnabled)}
         />

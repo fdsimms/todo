@@ -278,7 +278,6 @@ export function KitchenSettings() {
           entryId="currencySymbol"
           icon="pricetag-outline"
           label="Currency"
-          hint="The currency symbol shown with grocery prices."
           tight
         />
         <View style={styles.pillGroupRow}>

@@ -105,7 +105,6 @@ export function FocusSettings() {
           entryId="focusDefaultWorkMinutes"
           icon="help-circle-outline"
           label="Length without an estimate"
-          hint="How long a stretch runs for a task that has no time estimate."
           tight
         />
         <View style={styles.cadenceRow}>
@@ -138,7 +137,7 @@ export function FocusSettings() {
           entryId="focusRestAfterMinutes"
           icon="time-outline"
           label="Break after this much work"
-          hint="Minutes of work before a break is added. Set to Off to skip time-based breaks."
+          hint="Set to Off to skip time-based breaks."
           tight
         />
         <View style={styles.cadenceRow}>
@@ -160,7 +159,7 @@ export function FocusSettings() {
           entryId="focusRestAfterTasks"
           icon="list-outline"
           label="Break after this many tasks"
-          hint="Tasks finished before a break is added. Set to Off to skip task-based breaks."
+          hint="Set to Off to skip task-based breaks."
           tight
         />
         <View style={styles.cadenceRow}>
@@ -305,7 +304,7 @@ export function FocusSettings() {
             label="Suggest a focus session while scrolling"
             hint={scrollNudgeEnabled
               ? 'Shows a banner on Today with a button to start a focus session'
-              : 'Off. Nothing is suggested, however long you scroll'}
+              : undefined}
             toggle={scrollNudgeEnabled}
             onPress={() => setScrollNudgeEnabled(!scrollNudgeEnabled)}
           />
@@ -316,7 +315,6 @@ export function FocusSettings() {
                 entryId="scrollNudgeSeconds"
                 icon="time-outline"
                 label="Scroll time before suggesting"
-                hint="How long the lists can scroll with no tap before the banner appears."
                 tight
               />
               <View style={styles.cadenceRow}>
@@ -337,7 +335,6 @@ export function FocusSettings() {
                 entryId="scrollNudgeCooldownMinutes"
                 icon="hourglass-outline"
                 label="Time between suggestions"
-                hint="Minutes to wait after the banner appears before it can appear again."
                 tight
               />
               <View style={styles.cadenceRow}>
@@ -358,7 +355,6 @@ export function FocusSettings() {
                 entryId="scrollNudgeDailyCap"
                 icon="today-outline"
                 label="Most suggestions per day"
-                hint="The banner stops for the rest of the day after appearing this many times."
                 tight
               />
               <View style={styles.cadenceRow}>
