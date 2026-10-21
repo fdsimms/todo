@@ -5,6 +5,8 @@ import { useShallow } from 'zustand/react/shallow';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useBulkBarPresenceStore } from '../store/useBulkBarPresenceStore';
+import { useFabPresenceStore } from '../store/useFabPresenceStore';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, iconSize, interaction, type Colors } from '../theme';
 import { useBottomBarHeight } from '../hooks/useBottomBarHeight';
@@ -16,7 +18,7 @@ import { resetToRecipeDetail } from '../navigation/navigationRef';
 import { GlassLayer, glassSupported } from './GlassLayer';
 
 /**
- * "Cooking Chili · 4:12", floating above the tab bar on every screen while a
+ * "Cooking Chili · 4:12", floating just above the tab bar on every screen while a
  * recipe's cook timer is running — the one way back into Cook Mode once
  * RecipeDetailScreen is left behind. A shopping trip gets `ActiveTripBanner`
  * on the four kitchen screens because there's always a kitchen screen to
@@ -47,7 +49,12 @@ export function CookingBar() {
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const cooking = useRecipeStore(useShallow(s => s.recipes.filter(isCookTimerRunning)));
   const recipe = cooking[0];
-  const shown = kitchenEnabled && !!recipe;
+  // Its offset above the tab bar is where a bulk bar's count and close button
+  // land, so it steps aside while one is up rather than covering them.
+  const bulkSelecting = useBulkBarPresenceStore(s => s.count > 0);
+  const shown = kitchenEnabled && !!recipe && !bulkSelecting;
+  const fabShown = useFabPresenceStore(s => s.count > 0);
+  const fabHand = useSettingsStore(s => s.fabHand);
 
   // Same once-a-second-while-visible clock useRecipeTimer keeps, kept
   // separately here rather than through that hook: this has no single
@@ -65,10 +72,14 @@ export function CookingBar() {
   if (!shown) return null;
 
   const elapsed = formatStopwatch(cookTimerElapsed(recipe, nowTick));
-  const bottom = insets.bottom + barHeight + FAB_SIZE + spacing.lg;
+  // Just above the tab bar, stopping short of the add button's corner when the
+  // screen has one (it rests in the same band, see `FAB_BOTTOM_OFFSET`).
+  const bottom = insets.bottom + barHeight + spacing.sm;
+  const clearance = spacing.lg + FAB_SIZE + spacing.sm;
+  const sideInset = fabShown ? { [fabHand === 'left' ? 'left' : 'right']: clearance } : null;
 
   return (
-    <View style={[styles.wrap, { bottom }]} pointerEvents="box-none">
+    <View style={[styles.wrap, { bottom }, sideInset]} pointerEvents="box-none">
       <TouchableOpacity
         style={[styles.bar, glassSupported() ? styles.barGlass : shadows.fab]}
         activeOpacity={interaction.activeOpacity}
