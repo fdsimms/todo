@@ -876,24 +876,16 @@ function ProjectDetailContent() {
     setSectionLine({ groupId: group.id, n: 0 });
   };
 
-  // Stable, and a no-op on an empty section. An empty one always draws open
-  // (it has no rows to hide, and collapsed it would hide its own Add task),
-  // but the tap still stored `collapsed`, so the first task added to it
-  // arrived in a section that snapped shut over it.
+  // Stable. An empty section collapses too, so a project with several
+  // not-yet-filled sections can fold them away.
   const handleGroupToggleCollapse = useCallback((groupId: string) => {
     if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
     const group = useTaskGroupStore.getState().getGroupById(groupId);
     if (!group) return;
-    // Finished rows count too, to match `empty` in the render: a section whose
-    // only members are done is not empty, so it has to be able to collapse.
-    const hasRows = useTaskStore.getState().tasks.some(
-      t => t.groupId === groupId && t.projectId === projectId && t.parentId === null && !t.archived,
-    );
-    if (!hasRows) return;
     haptics.tap();
     setDraggingGroupId(null);
     setGroupCollapsed(groupId, !group.collapsed);
-  }, [expandedTaskId, setGroupCollapsed, projectId]);
+  }, [expandedTaskId, setGroupCollapsed]);
 
   // Dragged out of a section, a task lands just below it rather than wherever
   // its within-section order happens to fall in the project's number space.
@@ -1014,9 +1006,8 @@ function ProjectDetailContent() {
       0,
     );
     updateTaskGroup(group.id, { sortOrder: lastSlot + 1 });
-    // createGroup makes it collapsed. Empty, it draws open regardless, but the
-    // stored value would snap it shut over its first task (see
-    // handleGroupToggleCollapse).
+    // createGroup makes it collapsed. A new section should open, ready for
+    // its first task.
     setGroupCollapsed(group.id, false);
   };
 
@@ -1920,11 +1911,11 @@ function ProjectDetailContent() {
                 // has no items and lock its chevron.
                 const doneHere = allChildren.some(t => t.completed && !t.archived && t.parentId === null && t.projectId === projectId);
                 const empty = children.length === 0 && !doneHere;
-                // Collapse hides rows, and an empty stack has none to hide —
-                // collapsed it would be a bare title with no way to reach the
-                // button that fills it in. The header takes the same value so
-                // its chevron describes what is actually under it.
-                const stackExpanded = empty || !group.collapsed;
+                // An empty section collapses like any other: its chevron opens
+                // it again, and "Add a task" is under it. Adding to a collapsed
+                // one opens it (openAddToSection). The header takes the same
+                // value so its chevron describes what is actually under it.
+                const stackExpanded = !group.collapsed;
                 return (
                   <FabDropZone zone={zone}>
                   <GroupDropTargetRow channel={fabIntentChannel} groupId={group.id} dragTarget={joinTargetChannel}>

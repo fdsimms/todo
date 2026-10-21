@@ -52,13 +52,9 @@ interface Props {
   tallyScope?: 'today' | 'all';
   /**
    * What is actually drawn under this header, when a caller can't take that
-   * from `group.collapsed` alone. A project screen force-opens an empty stack
-   * whatever the stored flag says (collapse hides rows and an empty one has
-   * none, so collapsed it would be a bare title with no way to reach the
-   * button that fills it in) — and the chevron read the flag raw, so that
-   * stack sat open under a collapsed chevron and a tap moved only the
-   * chevron. Defaults to the stored flag, which is what every other caller
-   * wants.
+   * from `group.collapsed` alone (a drag folds the body without touching the
+   * stored flag, say). Defaults to the stored flag, which is what every other
+   * caller wants.
    */
   expanded?: boolean;
   // Takes the group's own id back for the reason the four below it do, and
