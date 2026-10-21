@@ -69,7 +69,7 @@ components below.
 - `src/screens/TodayScreen.tsx` — AddTaskFab, AllClearMark, AnimatedCollapsible, AnimatedNumber, ApplyTemplateSheet, BulkActionBar, CardSheet, CategoryOrderSheet, CoinIcon, CompletionCollapse, CreatedTaskToast, DayContextRow, +47 more
 - `src/screens/UnattendedLogScreen.tsx` — ActivitySourceSheet, EmptyState, HubPills, InlineAction, ScreenHeader, ScreenSettingsSheet, ScrollToTopButton
 - `src/screens/WeightScreen.tsx` — EmptyState, HubPills, LogWeightSheet, ProgressBar, ScreenHeader, ScreenSettingsSheet, ScrollToTopButton, SegmentedControl, WeightChart, WeightGoalSheet
-- `src/screens/WorkoutsScreen.tsx` — ActionMenu, CardSheet, CsvExportSheet, EmptyNote, EmptyState, ExerciseDetailSheet, Fab, GroupNameSheet, GymsSheet, HelpText, InlineAction, LazySheet, +11 more
+- `src/screens/WorkoutsScreen.tsx` — ActionMenu, CardSheet, CsvExportSheet, EmptyNote, EmptyState, ExerciseDetailSheet, Fab, GroupNameSheet, GymsSheet, HelpText, InlineAction, LazySheet, +12 more
 
 ## Components
 
@@ -237,6 +237,7 @@ Where each component can appear.
 - `src/components/LockedTaskRow.tsx` — on CalendarScreen, CategoryDetailScreen, ProjectDetailScreen, ProjectsScreen, SavedViewDetailScreen, StackDetailScreen, TagsScreen, TodayScreen
 - `src/components/LogMealEntrySheet.tsx` — on app shell
 - `src/components/LogMealPrompt.tsx` — on app shell
+- `src/components/LogPastWorkoutSheet.tsx` — on WorkoutsScreen
 - `src/components/LogWeightSheet.tsx` — on WeightScreen
 - `src/components/LogbookEntryMenu.tsx` — on LogbookScreen
 - `src/components/LogbookFilterSheet.tsx` — on LogbookScreen

@@ -88,6 +88,7 @@ New files in `src/utils/`, each with its test in `src/__tests__/`. The first thr
 - it holds exercises, routines, programs and sessions, with sets loaded per session or exercise on demand;
 - its actions are `startSession`, `logSet`, `editSet`, `deleteSet`, `reorderExercises`, `finishSession`, `discardSession`, plus CRUD for routines, programs and custom exercises;
 - `finishSession` answers the linked task through the task store, never the reverse: `completeTask`, or `logQuotaUnit` for a target below its count (`workoutTaskEffect`). Ticking the task off without a session does not invent a session.
+- a workout done earlier is logged from `LogPastWorkoutSheet` (Workouts › … › Log a past workout) through `buildPastWorkout` (`src/utils/pastWorkout.ts`) into `addFinishedSession`: staged until Save, a blank set dropped and a non-number refused by name, never ending in the future, and its Health write left to the pending pass (`healthWritePending`). Mock: `workouts-mocks/past-workout.png`.
 - a custom exercise is never removed, only archived, because sets logged on another device never arrive over iCloud and can't be counted from here; an archived custom exercise keeps its name (the database's unique `name_key`); deleting a built-in's row puts the library's back. Deleting a session deletes its sets in the same transaction.
 
 ### Rest timer
