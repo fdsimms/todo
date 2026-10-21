@@ -101,15 +101,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.smd,
-    paddingVertical: spacing.smd,
+    paddingVertical: spacing.md,
     paddingHorizontal: spacing.md,
-    minHeight: 56,
   },
-  icon: { marginTop: spacing.xxs },
-  text: { flex: 1 },
+  // The label's line box is 24pt and the icon 20pt, so this offset centres the icon on the title
+  // whatever the detail line below it does (centering it on the whole block parks it between
+  // the two lines instead).
+  icon: { marginTop: (lineHeight.lg - iconSize.md) / 2 },
+  // flexShrink + minWidth let the detail wrap inside the row rather than clip at its edge.
+  text: { flex: 1, flexShrink: 1, minWidth: 0 },
   label: {
     color: colors.text,
     fontSize: font.lg,
+    lineHeight: lineHeight.lg,
   },
   missLabel: { color: colors.redText },
   detail: {
