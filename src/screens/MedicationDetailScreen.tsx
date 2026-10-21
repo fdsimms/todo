@@ -17,6 +17,7 @@ import {
   medicationKey,
   hasScheduledTask,
   medicationStats,
+  doseStripScale,
   taskSupplyFor,
 } from '../utils/medicationLog';
 import {
@@ -48,7 +49,7 @@ import { describeSupplementPanel } from '../utils/supplementDose';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { useLingering } from '../hooks/useLingering';
-import { HelpText } from '../components/HelpText';
+import { useTextScale } from '../hooks/useTextScale';
 import { BUTTON_LABEL } from '../copy/shared';
 
 type RootStackParamList = {
@@ -61,6 +62,11 @@ type RootStackParamList = {
 /** How many days the dose strip covers. A fortnight, like the mood chart. */
 const CHART_DAYS = 14;
 const BAR_HEIGHT = 60;
+
+/** A bar stops this far short of its guide line rather than ending on it. */
+const BAR_GUIDE_GAP = 2;
+/** Width of the count column at the default text size; scaled with the text. */
+const GUIDE_LABEL_WIDTH = 22;
 
 /**
  * One medication: its last fortnight, when in the day you take it, the limit
@@ -80,6 +86,7 @@ export function MedicationDetailScreen() {
   const scrollTop = useListScrollToTop();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const guideGutter = Math.round(GUIDE_LABEL_WIDTH * useTextScale());
 
   const logs = useMedicationStore(s => s.logs);
   const archived = useMedicationStore(s => s.archived);
@@ -129,7 +136,7 @@ export function MedicationDetailScreen() {
     }
     return out;
   }, [logs, key]);
-  const stripMax = Math.max(1, ...strip.map(d => d.count));
+  const scale = useMemo(() => doseStripScale(Math.max(0, ...strip.map(d => d.count))), [strip]);
   const timeOfDay = useMemo(() => timeOfDayOf(entries), [entries]);
 
   // Hooks sit above the early return, where the page may have no medication.
@@ -382,23 +389,36 @@ export function MedicationDetailScreen() {
           />
         </View>
 
-        <Text style={styles.sectionTitle}>THE LAST TWO WEEKS</Text>
+        <Text style={styles.sectionTitle}>DOSES IN THE LAST TWO WEEKS</Text>
         <View style={styles.card}>
-          <View style={styles.stripInner}>
-            {strip.map(day => (
-              <View key={day.key} style={styles.stripCol} accessible accessibilityLabel={day.a11y}>
-                <View style={styles.barTrack}>
-                  {day.count > 0 && (
-                    <View style={[styles.bar, { height: (day.count / stripMax) * BAR_HEIGHT }]} />
-                  )}
+          <View>
+            {/* Drawn before the bars so each bar sits on top of its line. */}
+            <View style={styles.guides} pointerEvents="none">
+              {scale.levels.map(level => (
+                <View key={level} style={[styles.guide, { top: BAR_HEIGHT - (level / scale.top) * BAR_HEIGHT }]}>
+                  <Text style={[styles.guideLabel, { width: guideGutter }]} numberOfLines={1}>{level}</Text>
+                  <View style={styles.guideLine} />
                 </View>
-                <Text style={styles.barLabel}>{day.label}</Text>
-              </View>
-            ))}
+              ))}
+            </View>
+            <View style={[styles.stripInner, { paddingLeft: guideGutter }]}>
+              {strip.map(day => (
+                <View key={day.key} style={styles.stripCol} accessible accessibilityLabel={day.a11y}>
+                  <View style={styles.barTrack}>
+                    {day.count > 0 && (
+                      <View
+                        style={[
+                          styles.bar,
+                          { height: Math.max((day.count / scale.top) * BAR_HEIGHT - BAR_GUIDE_GAP, 1) },
+                        ]}
+                      />
+                    )}
+                  </View>
+                  <Text style={styles.barLabel}>{day.label}</Text>
+                </View>
+              ))}
+            </View>
           </View>
-          <HelpText style={styles.caption}>
-            Doses recorded each day. A day with no bar had no doses recorded.
-          </HelpText>
         </View>
 
         {timeOfDay.length > 0 && (
@@ -771,12 +791,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   formCard: { paddingHorizontal: 0, paddingVertical: spacing.sm },
   listCard: { paddingVertical: 0 },
+  guides: { position: 'absolute', top: 0, left: 0, right: 0, height: BAR_HEIGHT },
+  // Zero height, so the label and line centre on the level's own y.
+  guide: { position: 'absolute', left: 0, right: 0, height: 0, flexDirection: 'row', alignItems: 'center' },
+  guideLabel: { color: colors.textTertiary, fontSize: font.xxs },
+  guideLine: { flex: 1, height: 1, backgroundColor: colors.separator, opacity: 0.6 },
   stripInner: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
   stripCol: { flex: 1, alignItems: 'center' },
   barTrack: { width: 12, height: BAR_HEIGHT, justifyContent: 'flex-end' },
   bar: { width: 12, borderRadius: 4, backgroundColor: colors.accent },
   barLabel: { marginTop: 4, color: colors.textTertiary, fontSize: font.xxs, fontWeight: fontWeight.medium },
-  caption: { fontSize: font.xs, color: colors.textSecondary, marginTop: spacing.sm },
   countRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.xs },
   countLabel: { flex: 1, fontSize: font.sm, color: colors.text },
   countValue: { fontSize: font.sm, color: colors.textSecondary, fontWeight: fontWeight.medium },

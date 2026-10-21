@@ -664,3 +664,20 @@ export function hasScheduledTask<T extends MedicationSource & Pick<Task,
   return tasks.some(t => !t.completed && !t.archived && !t.parentId && t.recurrenceType !== 'none'
     && medicationKey(medicationFor(t)?.name ?? '') === key);
 }
+
+/**
+ * The scale behind the dose strip's guide lines: the top of the chart and the
+ * counts a line is drawn at, from the busiest day in the window.
+ *
+ * Up to three doses a day every count gets a line. Past that the lines step by
+ * a third of the busiest day, rounded up, so the chart never has more than four
+ * (including zero) and the top line can sit above the busiest day as headroom.
+ */
+export function doseStripScale(busiestDay: number): { top: number; levels: number[] } {
+  const max = Math.max(1, Math.floor(busiestDay));
+  const step = max <= 3 ? 1 : Math.ceil(max / 3);
+  const top = step * Math.ceil(max / step);
+  const levels: number[] = [];
+  for (let level = 0; level <= top; level += step) levels.push(level);
+  return { top, levels };
+}

@@ -36,7 +36,7 @@ components below.
 - `src/screens/KitchenScreen.tsx` — ActiveTripBanner, BarcodeScanSheet, EmptyState, GroceryItemSheet, HubPills, InlineAction, ItemDisposalOffer, LazySheet, LeftoverSheet, PantryReviewSheet, PressableScale, ProductRatingOffer, +5 more
 - `src/screens/LogbookScreen.tsx` — ActiveFilterPill, CardSheet, DeliverablePromptSheet, EmptyState, HighlightedText, HubPills, LazySheet, LogbookEntryMenu, LogbookFilterSheet, PaintSelection, RotationWeekSheet, ScreenHeader, +9 more
 - `src/screens/MealPlanScreen.tsx` — ActiveTripBanner, AddMealsToListSheet, BlankPickerSheet, FabDropZones, FridgeHistorySheet, HubPills, InlineAction, LazySheet, LeftoverSheet, LeftoversCard, ListBulkBar, MealEntrySheet, +15 more
-- `src/screens/MedicationDetailScreen.tsx` — CountStepper, DetailHeader, DoseAmountField, EmptyState, HelpText, InlineAction, MedicationLogSheet, MedicationRenameSheet, ScrollToTopButton, SegmentedControl, SheetUndoBar, SupplementPanelSheet
+- `src/screens/MedicationDetailScreen.tsx` — CountStepper, DetailHeader, DoseAmountField, EmptyState, InlineAction, MedicationLogSheet, MedicationRenameSheet, ScrollToTopButton, SegmentedControl, SheetUndoBar, SupplementPanelSheet
 - `src/screens/MedicationScreen.tsx` — DeliverablePromptQueue, EmptyState, HubPills, InlineAction, MedicationAddSheet, MedicationLogSheet, MedicationSummarySheet, PressableScale, ScreenHeader, ScrollToTopButton, SheetUndoBar, SwipeActionButtons, +1 more
 - `src/screens/MetersScreen.tsx` — EmptyState, HubPills, InlineAction, MeterReadingSheet, ScreenHeader, TaskEditor
 - `src/screens/MoodDayScreen.tsx` — DetailHeader, EmptyState, JournalEntrySheet, JournalText, MoodLogSheet
