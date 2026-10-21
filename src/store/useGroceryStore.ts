@@ -3630,7 +3630,18 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // Not adding reads as "already on the list" to the row rule, so
     // `lastAddedAt` stays as it was.
     const updated = runningLowRow(item, low, wasOnList || !adds, now);
-    if (!updated) return;
+    if (!updated) {
+      // Already running low, so the row has nothing to change, but a caller that
+      // asked outright for the list (the food log's switch on an item already
+      // marked low) still gets it, unless it is already there.
+      if (low && opts.addToList === true && !wasOnList) {
+        const stamped: GroceryItem = { ...item, lastAddedAt: now };
+        dbUpdateGroceryItem(stamped);
+        set(s => ({ items: s.items.map(i => (i.id === id ? stamped : i)) }));
+        joinList(id, listId, now);
+      }
+      return;
+    }
     dbUpdateGroceryItem(updated);
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
     const joins = low && adds && !wasOnList;

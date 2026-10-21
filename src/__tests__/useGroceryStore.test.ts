@@ -5991,6 +5991,20 @@ describe('setRunningLow', () => {
 
       expect(useGroceryStore.getState().items[0].onList).toBe(true);
     });
+
+    it('adds an item already marked low when the caller asks outright, and not twice', () => {
+      mockRunningLowAddsToList = false;
+      const flour = makeItem({ name: 'Flour', onList: false });
+      seed([flour]);
+      useGroceryStore.getState().setRunningLow(flour.id, true);
+      expect(useGroceryStore.getState().items[0].onList).toBe(false);
+
+      useGroceryStore.getState().setRunningLow(flour.id, true, { registerUndo: false, addToList: true });
+      useGroceryStore.getState().setRunningLow(flour.id, true, { registerUndo: false, addToList: true });
+
+      expect(useGroceryStore.getState().items[0].onList).toBe(true);
+      expect(useGroceryStore.getState().listEntries.filter(e => e.itemId === flour.id)).toHaveLength(1);
+    });
   });
 
   // One direction only: nothing on the row records *which* owner put it on the
