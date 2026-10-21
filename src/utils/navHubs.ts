@@ -669,3 +669,73 @@ export function hubEntryRoute(hub: NavHub, recent: readonly string[]): string {
   const visited = recent.find(route => hub.members.some(m => m.route === route));
   return visited ?? hub.members[0].route;
 }
+
+// ==== arranging the menu ====
+
+/**
+ * The rows somebody has pinned to the top of the menu or hidden from it, by
+ * `menuRowKey`, pins in the order they were pinned. Device-local, like
+ * `tabRoutes`: how this phone's menu is laid out.
+ */
+export interface MenuArrangement {
+  pinned: string[];
+  hidden: string[];
+}
+
+export const EMPTY_MENU_ARRANGEMENT: MenuArrangement = { pinned: [], hidden: [] };
+
+/** A row's stable name: its route, or its hub's id. */
+export function menuRowKey(row: NavMenuRow): string {
+  return row.kind === 'screen' ? `screen:${row.destination.route}` : `hub:${row.hub.id}`;
+}
+
+export function parseMenuArrangement(raw: string | null): MenuArrangement {
+  if (!raw) return EMPTY_MENU_ARRANGEMENT;
+  try {
+    const value = JSON.parse(raw) as Partial<MenuArrangement>;
+    const strings = (list: unknown): string[] =>
+      Array.isArray(list) ? [...new Set(list.filter((k): k is string => typeof k === 'string'))] : [];
+    return { pinned: strings(value.pinned), hidden: strings(value.hidden) };
+  } catch {
+    return EMPTY_MENU_ARRANGEMENT;
+  }
+}
+
+/**
+ * The menu as it's drawn: pinned rows first in the order they were pinned,
+ * then the rest in their own order, with hidden ones set apart rather than
+ * dropped so the menu can offer them back. A plain row for a screen that is
+ * already a tab (`tabRoutes`) is left out, the rule the Recent row follows,
+ * since the tab bar is a tap away; a hub always stays. The sidebar has no tab
+ * bar and passes none.
+ */
+export function arrangeMenuRows(
+  rows: readonly NavMenuRow[],
+  arrangement: MenuArrangement,
+  tabRoutes: readonly string[] = [],
+): { shown: NavMenuRow[]; hidden: NavMenuRow[] } {
+  const live = rows.filter(r => r.kind === 'hub' || !tabRoutes.includes(r.destination.route));
+  const hiddenKeys = new Set(arrangement.hidden);
+  const hidden = live.filter(r => hiddenKeys.has(menuRowKey(r)));
+  const visible = live.filter(r => !hiddenKeys.has(menuRowKey(r)));
+  const pinRank = new Map(arrangement.pinned.map((k, i) => [k, i]));
+  const pinned = visible
+    .filter(r => pinRank.has(menuRowKey(r)))
+    .sort((a, b) => pinRank.get(menuRowKey(a))! - pinRank.get(menuRowKey(b))!);
+  const rest = visible.filter(r => !pinRank.has(menuRowKey(r)));
+  return { shown: [...pinned, ...rest], hidden };
+}
+
+/** Pins a row to the top, or unpins one already there. */
+export function toggleMenuPin(arrangement: MenuArrangement, key: string): MenuArrangement {
+  return arrangement.pinned.includes(key)
+    ? { ...arrangement, pinned: arrangement.pinned.filter(k => k !== key) }
+    : { ...arrangement, pinned: [...arrangement.pinned, key] };
+}
+
+/** Hides a row, or shows a hidden one again. Hiding a pinned row unpins it. */
+export function toggleMenuHidden(arrangement: MenuArrangement, key: string): MenuArrangement {
+  return arrangement.hidden.includes(key)
+    ? { ...arrangement, hidden: arrangement.hidden.filter(k => k !== key) }
+    : { pinned: arrangement.pinned.filter(k => k !== key), hidden: [...arrangement.hidden, key] };
+}

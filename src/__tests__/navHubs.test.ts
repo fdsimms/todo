@@ -4,6 +4,7 @@ import {
   visibleMenuRows, addRecentScreen, parseRecentScreens, recentMenuDestinations, hubEntryRoute,
   RECENT_SCREEN_LIMIT, DEFAULT_TAB_ROUTES, MENU_ROUTES, normalizeTabRoutes, parseTabRoutes, setTabSlot, clearTabSlot,
   visibleTabRoutes, tabPickerGroups,
+  arrangeMenuRows, menuRowKey, toggleMenuPin, toggleMenuHidden, parseMenuArrangement, EMPTY_MENU_ARRANGEMENT,
 } from '../utils/navHubs';
 import { SIMPLE_HIDDEN_SCREENS } from '../utils/simpleMode';
 
@@ -420,5 +421,35 @@ describe('Screen Time', () => {
     const offered = tabPickerGroups(FULL).flatMap(g => g.destinations.map(d => d.route));
     expect(offered).toContain(route);
     expect(visibleTabRoutes(['Today', route, 'Groceries'], { ...FULL, screenTimeSupported: false })).not.toContain(route);
+  });
+});
+
+describe('arranging the menu', () => {
+  const rows = visibleMenuRows({ kitchenEnabled: true, simpleMode: false, counts: { stacks: 0, templates: 0 } });
+  const keys = (list: { kind: string }[]) => list.map(r => menuRowKey(r as never));
+
+  it('leaves out a plain row that is already a tab, but never a hub', () => {
+    const screenRow = rows.find(r => r.kind === 'screen')!;
+    const route = screenRow.kind === 'screen' ? screenRow.destination.route : '';
+    const { shown } = arrangeMenuRows(rows, EMPTY_MENU_ARRANGEMENT, [route]);
+    expect(keys(shown)).not.toContain(`screen:${route}`);
+    expect(shown.filter(r => r.kind === 'hub')).toHaveLength(rows.filter(r => r.kind === 'hub').length);
+  });
+
+  it('puts pinned rows first in pin order and sets hidden ones apart', () => {
+    const [a, b, c] = keys(rows);
+    const arrangement = toggleMenuHidden(toggleMenuPin(toggleMenuPin(EMPTY_MENU_ARRANGEMENT, c), b), a);
+    const { shown, hidden } = arrangeMenuRows(rows, arrangement);
+    expect(keys(shown).slice(0, 2)).toEqual([c, b]);
+    expect(keys(hidden)).toEqual([a]);
+    // Hiding a pinned row unpins it.
+    expect(toggleMenuHidden(arrangement, c).pinned).toEqual([b]);
+  });
+
+  it('reads back what it wrote, and nothing from junk', () => {
+    const arrangement = { pinned: ['hub:health'], hidden: ['screen:Tips'] };
+    expect(parseMenuArrangement(JSON.stringify(arrangement))).toEqual(arrangement);
+    expect(parseMenuArrangement('not json')).toEqual(EMPTY_MENU_ARRANGEMENT);
+    expect(parseMenuArrangement(null)).toEqual(EMPTY_MENU_ARRANGEMENT);
   });
 });

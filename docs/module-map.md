@@ -294,7 +294,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/moodTasks.ts` — MOOD_LOG_LINK_URL, MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, DEFAULT_MOOD_NUDGE_AFTER_DAYS, MOOD_NUDGE_AFTER_DAYS_MIN, MOOD_NUDGE_AFTER_DAYS_MAX, MOOD_NUDGE_COOLDOWN_DAYS, moodLogDayKey, moodLogSegmentOf, moodLogSourceId, +5 more
 - `src/utils/morningCheckIn.ts` — isMorningCheckInCandidate, morningCheckInTasks
 - `src/utils/naturalKeyFold.ts` — NaturalKey, NATURAL_KEYS, foldRows, Reference, REFERENCES, SettingReference, SETTING_REFERENCES, foldWinner
-- `src/utils/navHubs.ts` — NavContentCounts, NavHubId, NavDestination, NavHub, NavMenuRow, NAV_HUBS, NAV_MENU_ROWS, hubForRoute, visibleHubMembers, NavMenuOptions, +25 more
+- `src/utils/navHubs.ts` — NavContentCounts, NavHubId, NavDestination, NavHub, NavMenuRow, NAV_HUBS, NAV_MENU_ROWS, hubForRoute, visibleHubMembers, NavMenuOptions, +32 more
 - `src/utils/negativeHabits.ts` — NegativeHabitFields, isNegativeTask, slipsToday, slipAllowanceOf, nextSlipIsFree, lastSlipWasFree, isCleanToday, isFailedToday, slipPatch, undoSlipPatch, +9 more
 - `src/utils/negativeHold.ts` — negativeHoldNow, negativeHoldOffered
 - `src/utils/nfcBridge.ts` — NfcBridge, nfcBridge, isNfcSupported, NfcScanResult, parseScanAnswer, scanKeyTag

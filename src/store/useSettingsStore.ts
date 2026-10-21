@@ -106,7 +106,7 @@ import { DEFAULT_MEAL_SLOTS_ENABLED } from '../utils/mealSlotTasks';
 import { parseRetentionDays, type RetentionDays } from '../utils/retention';
 import { addRecentSearch, parseRecentSearches } from '../utils/recentSearches';
 import { bumpChipUses, parseChipUses, type ChipUses } from '../utils/chipUses';
-import { addRecentScreen, parseRecentScreens, parseTabRoutes, setTabSlot, clearTabSlot, DEFAULT_TAB_ROUTES } from '../utils/navHubs';
+import { addRecentScreen, parseRecentScreens, parseTabRoutes, setTabSlot, clearTabSlot, DEFAULT_TAB_ROUTES, EMPTY_MENU_ARRANGEMENT, parseMenuArrangement, type MenuArrangement } from '../utils/navHubs';
 import { parseExpiredTaskGrace, serializeExpiredTaskGrace, type ExpiredTaskGraceDays } from '../utils/expiredTaskGrace';
 import { DEFAULT_APP_LOCK_GRACE_SECONDS, parseGraceSeconds } from '../utils/appLock';
 import { FDC_KEY_SECURE_KEY, GO_UPC_KEY_SECURE_KEY, loadAnthropicApiKey, loadSecureKey, saveAnthropicApiKey, saveSecureKey } from '../utils/secureApiKey';
@@ -2024,6 +2024,9 @@ interface SettingsStore {
   // side menu reaches can be one. Device-local, like the rest of how this
   // phone's screen is laid out.
   tabRoutes: string[];
+  // Rows pinned to the top of the side menu or hidden from it (see
+  // arrangeMenuRows in utils/navHubs.ts). Device-local, like tabRoutes.
+  menuArrangement: MenuArrangement;
   // Idempotency state, not a preference — the day-key of the week the nudge
   // last fired in. Read only by dueMealPlanNudge, which compares it against
   // the current week rather than testing it for existence, so it "expires"
@@ -2467,6 +2470,7 @@ interface SettingsStore {
   setTabSlot: (slot: number, route: string) => void;
   clearTabSlot: (slot: number) => void;
   resetTabRoutes: () => void;
+  setMenuArrangement: (next: MenuArrangement) => void;
   resetToDefaults: () => void;
 }
 
@@ -2613,6 +2617,7 @@ const DEFAULT_SETTINGS = {
   mealPlanNudgeIgnoresVacation: false,
   mealPlanNudgeSlots: [...MEAL_PLAN_NUDGE_SLOTS],
   tabRoutes: [...DEFAULT_TAB_ROUTES],
+  menuArrangement: EMPTY_MENU_ARRANGEMENT,
   mealPlanNudgeWeekday: DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY,
   mealPlanNudgeTime: DEFAULT_MEAL_PLAN_NUDGE_TIME,
   mealPlanNudgeTaskCategory: null,
@@ -3223,6 +3228,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   mealPlanNudgeIgnoresVacation: false,
   mealPlanNudgeSlots: [...MEAL_PLAN_NUDGE_SLOTS],
   tabRoutes: [...DEFAULT_TAB_ROUTES],
+  menuArrangement: EMPTY_MENU_ARRANGEMENT,
   mealPlanNudgeWeekday: DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY,
   mealPlanNudgeTime: DEFAULT_MEAL_PLAN_NUDGE_TIME,
   mealPlanNudgeTaskCategory: null,
@@ -3800,6 +3806,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const mealPlanNudgeIgnoresVacation = dbGetSetting('mealPlanNudgeIgnoresVacation') === 'true';
     const mealPlanNudgeSlots = parseMealPlanNudgeSlots(dbGetSetting('mealPlanNudgeSlots'));
     const tabRoutes = parseTabRoutes(dbGetSetting('tabRoutes'));
+    const menuArrangement = parseMenuArrangement(dbGetSetting('menuArrangement'));
     // Never picked, it's the first day of the user's week (see pickedNudgeWeekday).
     const mealPlanNudgeWeekday = pickedNudgeWeekday() ?? weekStartsOn;
     const mealPlanNudgeTime = dbGetSetting('mealPlanNudgeTime') || DEFAULT_MEAL_PLAN_NUDGE_TIME;
@@ -4149,6 +4156,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       supplyReorderTaskCategory,
       supplyReorderTasks,
       tabRoutes,
+      menuArrangement,
       themeMode,
       timerLiveActivity,
       tipsEnabled,
@@ -6219,6 +6227,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const next = setTabSlot(get().tabRoutes, slot, route);
     dbSetSetting('tabRoutes', JSON.stringify(next));
     set({ tabRoutes: next });
+  },
+
+  setMenuArrangement(next: MenuArrangement) {
+    dbSetSetting('menuArrangement', JSON.stringify(next));
+    set({ menuArrangement: next });
   },
 
   resetTabRoutes() {
