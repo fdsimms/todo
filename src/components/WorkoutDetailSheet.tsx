@@ -593,7 +593,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   setBody: { flex: 1 },
   setValue: { color: colors.textSecondary, fontSize: font.sm, fontVariant: ['tabular-nums'] },
   setNote: { color: colors.text, fontSize: font.sm, marginTop: spacing.xxs, marginBottom: spacing.xs },
-  notesInput: { color: colors.text, fontSize: font.md, paddingHorizontal: spacing.md, paddingVertical: spacing.smd, minHeight: 64 },
+  notesInput: { color: colors.text, fontSize: font.md, paddingHorizontal: spacing.md, paddingTop: spacing.smd, paddingBottom: spacing.md, minHeight: 64 },
   actionRow: {
     alignItems: 'center', justifyContent: 'center', minHeight: 48, marginTop: spacing.lg,
     paddingVertical: spacing.smd, backgroundColor: colors.bgSecondary, borderRadius: radius.md,
