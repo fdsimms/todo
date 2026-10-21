@@ -905,13 +905,13 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
           entryId="nfcKeyLock"
           icon="lock-closed-outline"
           iconColor={keyLocked ? colors.accent : undefined}
-          label="Locked"
+          label={keyLocked ? 'Apps are locked' : 'Lock apps now'}
           hint={keyLocked
-            ? 'Your apps are blocked. Hold your phone to a key tag to unlock them.'
+            ? 'Hold your phone to a key tag to unlock them.'
             : nfcKeys.length === 0
-              ? 'Add a key tag below to use this.'
-              : 'Blocks your apps until you hold your phone to a key tag. Turn it on when you want to put your phone down.'}
-          toggle={keyLocked}
+              ? 'Add a key tag below first.'
+              : 'Blocks your apps until you hold your phone to a key tag.'}
+          value={keyLocked ? 'Scan tag' : undefined}
           onPress={handleKeyLock}
         />
         {nfcKeys.map(key => (
