@@ -20,7 +20,6 @@ import { useStartWorkout } from '../hooks/useStartWorkout';
 import { InlineAction } from '../components/InlineAction';
 import { Fab, FAB_SIZE } from '../components/Fab';
 import { RoutineEditorSheet } from '../components/RoutineEditorSheet';
-import { DescribeWorkoutSheet } from '../components/DescribeWorkoutSheet';
 import { GroupNameSheet } from '../components/GroupNameSheet';
 import { ReorderableList } from '../components/ReorderableList';
 import { RoutineSwipeRow } from '../components/RoutineSwipeRow';
@@ -36,9 +35,7 @@ import { ActionMenu } from '../components/ActionMenu';
 import type { CardAnchor } from '../components/CardSheet';
 import { CsvExportSheet } from '../components/CsvExportSheet';
 import { WorkoutImportSheet } from '../components/WorkoutImportSheet';
-import { useAiRoute } from '../hooks/useOnDeviceAi';
 import type { ImportedSession } from '../utils/workoutCsv';
-import type { RoutineDraft } from '../utils/workoutDraft';
 import { LogPastWorkoutSheet } from '../components/LogPastWorkoutSheet';
 import { GymsSheet } from '../components/GymsSheet';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -187,13 +184,8 @@ export function WorkoutsScreen() {
   // close so the sheet doesn't retitle itself while it slides away.
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorRoutineId, setEditorRoutineId] = useState<string | null>(null);
-  // A routine described in words, which the editor opens on instead of a blank one.
-  const [editorDraft, setEditorDraft] = useState<RoutineDraft | null>(null);
-  const [describeOpen, setDescribeOpen] = useState(false);
   // A past workout described in words, reviewed in the import sheet in place of a file.
   const [describedWorkout, setDescribedWorkout] = useState<ImportedSession | null>(null);
-  // Claude only (`workoutDraft` has no on-device engine), so no key or a switched-off feature means no button.
-  const canDescribe = useAiRoute('workoutDraft') !== 'unavailable';
   // The same for the program editor, and the library it can be opened from.
   const [programEditorOpen, setProgramEditorOpen] = useState(false);
   const [editorProgramId, setEditorProgramId] = useState<string | null>(null);
@@ -337,24 +329,15 @@ export function WorkoutsScreen() {
     haptics.tap();
     setEditorRoutineId(routineId);
     setEditorNewInGroup(newInGroup);
-    setEditorDraft(null);
     setEditorOpen(true);
   }, []);
 
-  // The describe sheet closes in the same commit the next one opens, which is
+  // The past-workout sheet closes in the same commit the review opens, which is
   // what `SheetModal` sequences, so neither handler waits on the other.
-  const openDescribed = useCallback((draft: RoutineDraft) => {
-    setEditorRoutineId(null);
-    setEditorNewInGroup(null);
-    setEditorDraft(draft);
-    setDescribeOpen(false);
-    setEditorOpen(true);
-  }, []);
-
   const openDescribedWorkout = useCallback((session: ImportedSession) => {
     setImportText('');
     setDescribedWorkout(session);
-    setDescribeOpen(false);
+    setLogPastOpen(false);
     setImportOpen(true);
   }, []);
 
@@ -694,14 +677,7 @@ export function WorkoutsScreen() {
     <>
       <View style={styles.actions}>
         <InlineAction icon="add" label="New routine" surface="page" onPress={() => openEditor(null)} />
-        {canDescribe && (
-          <InlineAction icon="sparkles-outline" label="Describe" variant="neutral" surface="page" onPress={() => { haptics.tap(); setDescribeOpen(true); }} />
-        )}
         <InlineAction icon="folder-open-outline" label="New group" variant="neutral" surface="page" onPress={() => openGroupSheet(null)} />
-        {!live && (
-          <InlineAction variant="neutral" label="Start empty workout" surface="page" onPress={() => startWorkout()} />
-        )}
-        <InlineAction variant="neutral" label="Log a past workout" surface="page" onPress={() => setLogPastOpen(true)} />
       </View>
       {archivedItems.map(entry => (
         <React.Fragment key={entry.key}>{renderRoutine({ item: entry, drag: () => {} })}</React.Fragment>
@@ -761,9 +737,6 @@ export function WorkoutsScreen() {
             subtitle="A routine is a list of exercises with the sets you plan for each. Start a workout from it with one tap."
             actionLabel="New routine"
             onAction={() => openEditor(null)}
-            secondaryActionLabel={canDescribe ? 'Describe' : undefined}
-            secondaryActionIcon="sparkles-outline"
-            onSecondaryAction={() => setDescribeOpen(true)}
             bottomOffset={tabBarHeight}
           />
         ) : (
@@ -863,11 +836,9 @@ export function WorkoutsScreen() {
           anchor={menuAnchor}
           onClose={() => setMenuOpen(false)}
           actions={[
+            ...(live ? [] : [{ key: 'startEmpty', label: 'Start empty workout', icon: 'add-outline' as const, onPress: () => startWorkout() }]),
             { key: 'logPast', label: 'Log a past workout', icon: 'time-outline', onPress: () => setLogPastOpen(true) },
             { key: 'gyms', label: 'Gyms', icon: 'location-outline', onPress: () => setGymsOpen(true) },
-            ...(canDescribe
-              ? [{ key: 'describe', label: 'Describe a workout', icon: 'sparkles-outline' as const, onPress: () => setDescribeOpen(true) }]
-              : []),
             { key: 'import', label: 'Import from Strong or Hevy', icon: 'download-outline', onPress: () => { void startImport(); } },
             ...(sessions.some(s => s.endedAt !== null)
               ? [{ key: 'export', label: 'Export as CSV', icon: 'share-outline' as const, onPress: () => setExportOpen(true) }]
@@ -876,7 +847,7 @@ export function WorkoutsScreen() {
         />
       </LazySheet>
       <LazySheet open={logPastOpen}>
-        <LogPastWorkoutSheet visible={logPastOpen} onClose={() => setLogPastOpen(false)} />
+        <LogPastWorkoutSheet visible={logPastOpen} onClose={() => setLogPastOpen(false)} onDescribed={openDescribedWorkout} />
       </LazySheet>
       <LazySheet open={gymsOpen}>
         <GymsSheet visible={gymsOpen} onClose={() => setGymsOpen(false)} />
@@ -973,16 +944,7 @@ export function WorkoutsScreen() {
           visible={editorOpen}
           routineId={editorRoutineId}
           newInGroup={editorNewInGroup}
-          draft={editorDraft}
           onClose={() => setEditorOpen(false)}
-        />
-      </LazySheet>
-      <LazySheet open={describeOpen}>
-        <DescribeWorkoutSheet
-          visible={describeOpen}
-          onClose={() => setDescribeOpen(false)}
-          onRoutine={openDescribed}
-          onWorkout={openDescribedWorkout}
         />
       </LazySheet>
     </View>
