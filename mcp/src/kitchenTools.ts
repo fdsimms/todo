@@ -3,7 +3,7 @@
  * plan. Same contract as tools.ts.
  */
 import type { MealPlanEntry, MealSlot, Recipe } from '../../src/types';
-import { oilCookedInPan, PAN_OIL_SHARE } from '../../src/utils/panOil';
+import { fatCookedInPan, PAN_OIL_SHARE } from '../../src/utils/panOil';
 import type { MealChoice, MealFill, MealPatch, Replica } from './replica';
 
 export const MEAL_SLOTS: readonly MealSlot[] = ['breakfast', 'lunch', 'dinner', 'snack'];
@@ -127,9 +127,9 @@ export function getRecipe(replica: Replica, id: string): RecipeDetail | null {
       ...(i.optional ? { optional: true } : {}),
       // Left out of the recipe's nutrition total (flavoring taken out before eating, a garnish).
       ...(i.excludeFromNutrition ? { notCountedInNutrition: true } : {}),
-      // A cooking oil cooked in a pan counts toward nutrition at a share of its written amount, from
+      // A cooking fat (oil, butter, ghee) cooked in a pan counts toward nutrition at a share of its written amount, from
       // the recipe's steps unless the person answered (set it with patch_recipe's setIngredientNutrition).
-      ...(oilCookedInPan(i, r.steps) === true ? { cookedInPan: `counted at about ${Math.round(PAN_OIL_SHARE * 100)}% in nutrition` } : {}),
+      ...(fatCookedInPan(i, r.steps) === true ? { cookedInPan: `counted at about ${Math.round(PAN_OIL_SHARE * 100)}% in nutrition` } : {}),
       // Lines sharing a group are alternatives: use one of them.
       ...(i.choiceGroup ? { oneOf: i.choiceGroup } : {}),
     })),

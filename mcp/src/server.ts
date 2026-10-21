@@ -1712,7 +1712,7 @@ function registerWriteTools(
         onlyWith: z.array(z.string()).nullable().optional(),
         alternativeGroup: z.string().nullable().optional(),
         excludeFromNutrition: z.boolean().optional(),
-        cookedInPan: z.boolean().optional().describe('setIngredientNutrition on a cooking oil: true counts only part of it toward nutrition because some stays in the pan; false counts all of it. Without an answer the recipe steps decide.'),
+        cookedInPan: z.boolean().optional().describe('setIngredientNutrition on a cooking fat (oil, butter, ghee): true counts only part of it toward nutrition because some stays in the pan; false counts all of it. Without an answer the recipe steps decide.'),
       })).min(1).max(50),
     },
     async ({ id, changes }) => {

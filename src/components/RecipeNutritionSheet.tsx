@@ -321,8 +321,8 @@ export function RecipeNutritionSheet({ visible, reading, recipeId, recipeName, s
   const panOilNote = useMemo(() => {
     const trimmed = covered.filter(({ line }) => line.share < 1).map(({ line }) => line.name);
     if (trimmed.length === 0) return null;
-    const names = trimmed.length === 1 ? `the ${trimmed[0]}` : `${trimmed.length} cooking oils`;
-    return `Includes about ${Math.round(PAN_OIL_SHARE * 100)}% of ${names}. Oil left in the pan isn’t counted.`;
+    const names = trimmed.length === 1 ? `the ${trimmed[0]}` : `${trimmed.length} cooking fats`;
+    return `Includes about ${Math.round(PAN_OIL_SHARE * 100)}% of ${names}. What’s left in the pan isn’t counted.`;
   }, [covered]);
 
   /**

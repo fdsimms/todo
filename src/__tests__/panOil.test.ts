@@ -1,22 +1,32 @@
-import { isCookingOil, oilCookedInPan, PAN_OIL_SHARE, panOilShare, stepsCookInPan } from '../utils/panOil';
+import { isCookingFat, fatCookedInPan, PAN_OIL_SHARE, panOilShare, stepsCookInPan } from '../utils/panOil';
 
 const steps = (...texts: string[]) => texts.map(text => ({ text }));
 
-describe('isCookingOil', () => {
+describe('isCookingFat', () => {
   it.each([
     'oil', 'olive oil', 'Extra virgin olive oil', 'vegetable oil', 'Canola Oil', 'avocado oil', 'coconut oil',
+    'butter', 'Unsalted butter', 'ghee', 'sesame oil', 'toasted sesame oil',
   ])('says yes to %s', name => {
-    expect(isCookingOil(name)).toBe(true);
+    expect(isCookingFat(name)).toBe(true);
   });
 
   it.each([
-    'sun-dried tomatoes in oil', 'tuna in oil', 'sesame oil', 'butter', 'ghee', 'oil spray', 'olives', 'boil',
+    'sun-dried tomatoes in oil', 'tuna in oil', 'peanut butter', 'butter beans', 'oil spray', 'olives', 'boil',
   ])('says no to %s', name => {
-    expect(isCookingOil(name)).toBe(false);
+    expect(isCookingFat(name)).toBe(false);
   });
 });
 
 describe('stepsCookInPan', () => {
+  it('is a yes for butter melted in a skillet and a no for butter creamed into a dough', () => {
+    expect(stepsCookInPan('butter', steps('Melt the butter in a skillet, then add the mushrooms.'))).toBe(true);
+    expect(stepsCookInPan('butter', steps('Cream the butter and sugar.', 'Fold in the flour and bake.'))).toBe(false);
+  });
+
+  it('reads "the oil" as the sesame oil it names', () => {
+    expect(stepsCookInPan('sesame oil', steps('Heat the oil in a wok.'))).toBe(true);
+  });
+
   it('is a yes when a step heats the oil in a pan', () => {
     expect(stepsCookInPan('olive oil', steps('Heat the oil in a large skillet over medium heat.'))).toBe(true);
   });
@@ -46,21 +56,21 @@ describe('stepsCookInPan', () => {
   });
 });
 
-describe('oilCookedInPan', () => {
+describe('fatCookedInPan', () => {
   const sauté = steps('Heat the oil in a skillet.');
 
-  it('is null for a line that is not a cooking oil', () => {
-    expect(oilCookedInPan({ name: 'Butter' }, sauté)).toBeNull();
+  it('is null for a line that is not a cooking fat', () => {
+    expect(fatCookedInPan({ name: 'Peanut butter' }, sauté)).toBeNull();
   });
 
   it('follows the steps until the person answers', () => {
-    expect(oilCookedInPan({ name: 'Olive oil' }, sauté)).toBe(true);
-    expect(oilCookedInPan({ name: 'Olive oil' }, steps('Drizzle the oil over the salad.'))).toBe(false);
+    expect(fatCookedInPan({ name: 'Olive oil' }, sauté)).toBe(true);
+    expect(fatCookedInPan({ name: 'Olive oil' }, steps('Drizzle the oil over the salad.'))).toBe(false);
   });
 
   it('lets an answer beat the steps in both directions', () => {
-    expect(oilCookedInPan({ name: 'Olive oil', cookedInPan: false }, sauté)).toBe(false);
-    expect(oilCookedInPan({ name: 'Olive oil', cookedInPan: true }, steps('Drizzle the oil over the salad.'))).toBe(true);
+    expect(fatCookedInPan({ name: 'Olive oil', cookedInPan: false }, sauté)).toBe(false);
+    expect(fatCookedInPan({ name: 'Olive oil', cookedInPan: true }, steps('Drizzle the oil over the salad.'))).toBe(true);
   });
 });
 
@@ -69,6 +79,6 @@ describe('panOilShare', () => {
     const sauté = steps('Heat the oil in a skillet.');
     expect(panOilShare({ name: 'Olive oil' }, sauté)).toBe(PAN_OIL_SHARE);
     expect(panOilShare({ name: 'Olive oil', cookedInPan: false }, sauté)).toBe(1);
-    expect(panOilShare({ name: 'Butter' }, sauté)).toBe(1);
+    expect(panOilShare({ name: 'Peanut butter' }, sauté)).toBe(1);
   });
 });

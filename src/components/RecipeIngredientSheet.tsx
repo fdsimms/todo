@@ -31,7 +31,7 @@ import { cleanChoiceGroup, defaultChoiceGroupLabel, splitIngredientAnd as andPar
 import { describeCatalogItem } from '../utils/groceryProduct';
 import { allSectionsOf } from '../utils/recipeSections';
 import { standingSwapMap } from '../utils/standingSwaps';
-import { isCookingOil, oilCookedInPan, PAN_OIL_SHARE } from '../utils/panOil';
+import { isCookingFat, fatCookedInPan, PAN_OIL_SHARE } from '../utils/panOil';
 import { recipeNutritionLines } from '../utils/recipeNutrition';
 import { panelMultiplier } from '../utils/ingredientGrams';
 import { disclosureValue } from '../theme/textStyles';
@@ -259,9 +259,9 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
   const recipeSteps = useRecipeStore(
     useShallow(s => s.recipes.find(r => r.id === recipeId)?.steps ?? [])
   );
-  const askPan = isCookingOil(name);
+  const askPan = isCookingFat(name);
   const panCooked = askPan
-    ? oilCookedInPan({ name, cookedInPan }, recipeSteps) === true
+    ? fatCookedInPan({ name, cookedInPan }, recipeSteps) === true
     : false;
   // What the line counts for, in calories, with and without the pan share. The
   // saved line supplies the catalog figures; the amount is the draft's, so the
@@ -714,7 +714,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
                 <Text style={styles.toggleLabel}>Cooked in the pan</Text>
                 <HelpText style={styles.hint}>
                   {panCooked
-                    ? `Some of the oil stays in the pan, so about ${Math.round(PAN_OIL_SHARE * 100)}% counts. Turn off for dressings and drizzles.`
+                    ? `Some of it stays in the pan, so about ${Math.round(PAN_OIL_SHARE * 100)}% counts. Turn off if all of it goes into the dish.`
                     : 'The whole amount counts. Turn on if it was used to cook in a pan.'}
                 </HelpText>
               </View>

@@ -2,7 +2,7 @@ import type { RecipeIngredient, RecipeStep } from '../types';
 import { groceryNameKey } from './groceryParse';
 
 /**
- * How much of a cooking oil reaches the plate.
+ * How much of a cooking fat (an oil, butter or ghee) reaches the plate.
  *
  * Two tablespoons of oil to sauté an onion is not two tablespoons eaten: some
  * stays in the pan, some on the pan's surface. The recipe's figures counted
@@ -26,15 +26,17 @@ import { groceryNameKey } from './groceryParse';
  * consulted again. The guess is a default, never a value that gets stored:
  * editing the steps later moves every line still on its default.
  *
- * **A closed list of oils, never a guess from the name.** The same reasoning as
- * `removedBeforeEating.ts`: "sun-dried tomatoes in oil" ends in "oil", and a
- * suffix match would offer the toggle on it. Butter and ghee are left out on
- * purpose (the share for a fat that melts into the dish is a different claim),
- * and so is sesame oil, which is mostly a finishing oil.
+ * **A closed list of cooking fats, never a guess from the name.** The same
+ * reasoning as `removedBeforeEating.ts`: "sun-dried tomatoes in oil" ends in
+ * "oil" and "peanut butter" starts with a fat, and a suffix match would offer
+ * the toggle on both. Butter, ghee and sesame oil are on the list because they
+ * are sometimes used to sauté. That is only sometimes (a cookie's butter and a
+ * finishing drizzle of sesame oil are eaten whole), so the steps decide the
+ * default and the same 75% is a rougher fit for them than for a plain oil.
  */
 export const PAN_OIL_SHARE = 0.75;
 
-const COOKING_OILS = new Set([
+const COOKING_FATS = new Set([
   'oil',
   'olive oil',
   'evoo',
@@ -50,20 +52,23 @@ const COOKING_OILS = new Set([
   'avocado oil',
   'grapeseed oil',
   'coconut oil',
+  'sesame oil',
+  'butter',
+  'ghee',
 ].map(groceryNameKey));
 
-/** Words that qualify an oil without changing which one it is ("extra virgin olive oil"). */
+/** Words that qualify a fat without changing which one it is ("extra virgin olive oil", "unsalted butter"). */
 const OIL_QUALIFIERS = new Set([
   'extra', 'virgin', 'light', 'pure', 'refined', 'unrefined', 'organic', 'cold', 'pressed',
-  'good', 'quality', 'mild', 'regular',
+  'good', 'quality', 'mild', 'regular', 'toasted', 'unsalted', 'salted', 'clarified',
 ]);
 
-/** Whether a line's name is a cooking oil, which is the only kind of line the pan toggle applies to. */
-export function isCookingOil(name: string): boolean {
+/** Whether a line's name is a cooking fat, which is the only kind of line the pan toggle applies to. */
+export function isCookingFat(name: string): boolean {
   const key = groceryNameKey(name);
   if (!key) return false;
   const words = key.split(' ').filter(word => !OIL_QUALIFIERS.has(word));
-  return words.length > 0 && COOKING_OILS.has(words.join(' '));
+  return words.length > 0 && COOKING_FATS.has(words.join(' '));
 }
 
 const DEEP_FRY = /\bdeep[- ]?fr(?:y|ied|ying)\b/;
@@ -75,23 +80,26 @@ const PAN_VERB = /(?<![a-z])(?:saut[eé](?:e?d|ing|s)?|fr(?:y|ies|ied|ying)|stir
 const PAN_WORD = /\b(?:heat(?:ed|ing)?|skillet|pan|wok|griddle)\b/;
 
 /**
- * Whether a recipe's method cooks `oilName` in a pan.
+ * Whether a recipe's method cooks `fatName` in a pan.
  *
- * A step counts when it names the oil and also names a pan verb or a pan, so
+ * A step counts when it names the fat and also names a pan verb or a pan, so
  * "heat the oil in a skillet" is a yes and "whisk the oil into the lemon" is a
  * no. A recipe whose steps never name the oil at all falls back to whether any
  * step sautés, fries or sears, since "sauté the onions until soft" is a recipe
  * written without saying what they cooked in. Deep frying anywhere makes it no.
  */
-export function stepsCookInPan(oilName: string, steps: readonly Pick<RecipeStep, 'text'>[]): boolean {
+export function stepsCookInPan(fatName: string, steps: readonly Pick<RecipeStep, 'text'>[]): boolean {
   const texts = steps.map(step => step.text.toLowerCase());
   if (texts.some(text => DEEP_FRY.test(text))) return false;
 
-  const words = groceryNameKey(oilName).split(' ').filter(word => !OIL_QUALIFIERS.has(word));
+  const words = groceryNameKey(fatName).split(' ').filter(word => !OIL_QUALIFIERS.has(word));
   const named = words.join(' ');
-  const namesOil = (text: string) => (named ? text.includes(named) : false) || /\boil\b/.test(text);
+  // The full name, or just its last word: "heat the oil" cooks an olive oil.
+  const last = words[words.length - 1] ?? '';
+  const namesFat = (text: string) =>
+    (named !== '' && text.includes(named)) || (last !== '' && new RegExp(`\\b${last}\\b`).test(text));
 
-  const naming = texts.filter(namesOil);
+  const naming = texts.filter(namesFat);
   if (naming.length > 0) return naming.some(text => PAN_VERB.test(text) || PAN_WORD.test(text));
   return texts.some(text => PAN_VERB.test(text));
 }
@@ -100,11 +108,11 @@ export function stepsCookInPan(oilName: string, steps: readonly Pick<RecipeStep,
  * Whether this line is cooked in the pan, or null for a line the question
  * doesn't apply to (anything that isn't a cooking oil).
  */
-export function oilCookedInPan(
+export function fatCookedInPan(
   ingredient: Pick<RecipeIngredient, 'name' | 'cookedInPan'>,
   steps: readonly Pick<RecipeStep, 'text'>[],
 ): boolean | null {
-  if (!isCookingOil(ingredient.name)) return null;
+  if (!isCookingFat(ingredient.name)) return null;
   if (ingredient.cookedInPan !== undefined) return ingredient.cookedInPan;
   return stepsCookInPan(ingredient.name, steps);
 }
@@ -114,5 +122,5 @@ export function panOilShare(
   ingredient: Pick<RecipeIngredient, 'name' | 'cookedInPan'>,
   steps: readonly Pick<RecipeStep, 'text'>[],
 ): number {
-  return oilCookedInPan(ingredient, steps) === true ? PAN_OIL_SHARE : 1;
+  return fatCookedInPan(ingredient, steps) === true ? PAN_OIL_SHARE : 1;
 }

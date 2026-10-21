@@ -145,8 +145,8 @@ this"; nothing is excluded until the person taps. It is all or nothing: excludin
 the broth. The MCP sets it with `excludeFromNutrition` on `update_recipe`/`save_recipe` lines and
 `setIngredientNutrition` in `patch_recipe`, and `get_recipe` shows `notCountedInNutrition`.
 
-**A cooking oil cooked in a pan counts at part of its written amount (`panOil.ts`, `RecipeIngredient.cookedInPan`).**
-Two tablespoons of oil to sauté an onion is not two tablespoons eaten: some stays in the pan. A cooking oil's
+**A cooking fat cooked in a pan counts at part of its written amount (`panOil.ts`, `RecipeIngredient.cookedInPan`).**
+Two tablespoons of oil to sauté an onion is not two tablespoons eaten: some stays in the pan. A cooking fat's
 line counts at `PAN_OIL_SHARE` (75%) of its written amount when it was cooked in a pan, and the recipe's nutrition
 sheet and the ingredient row both say so. The share is an estimate with no source behind it, so the line is
 labelled and a person can switch it off per line.
@@ -156,9 +156,10 @@ labelled and a person can switch it off per line.
   step names the oil). `true` and `false` are answers the steps no longer overrule, and `false` is kept on purpose
   (it is the answer that beats a guessed `true`). The ingredient sheet writes the field only after the toggle is
   touched, so an untouched line keeps following the steps.
-- **A closed list of oils, never a suffix match.** "Tuna in oil" ends in "oil". Butter, ghee and sesame oil are left
-  out on purpose: the share for a fat that melts into the dish is a different claim, and sesame is mostly a
-  finishing oil.
+- **A closed list of cooking fats, never a suffix match.** "Tuna in oil" ends in "oil" and "peanut butter" starts with
+  a fat. Oils, butter, ghee and sesame oil are on it because each is sometimes used to sauté. Only sometimes: a
+  cookie's butter and a finishing drizzle of sesame oil are eaten whole, so the steps decide the default and the same
+  75% is a rougher fit for those than for a plain oil.
 - **Deep frying is not modelled** and counts the whole amount, as it did before. What a fryer's oil leaves in the food
   scales with the food's weight, so a share of the poured oil is the wrong shape for it.
 - **The share is applied after `resolveLine`, never inside it.** The bulk-staple check asks whether the amount

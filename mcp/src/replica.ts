@@ -462,7 +462,7 @@ export interface RecipePatchOp {
   alternativeGroup?: string | null;
   /** Leaves the line out of the recipe's nutrition total (flavoring taken out before eating, a garnish). */
   excludeFromNutrition?: boolean;
-  /** For setIngredientNutrition on a cooking oil: true counts only part of it (cooked in a pan), false counts all of it. */
+  /** For setIngredientNutrition on a cooking fat (oil, butter, ghee): true counts only part of it (cooked in a pan), false counts all of it. */
   cookedInPan?: boolean;
 }
 
