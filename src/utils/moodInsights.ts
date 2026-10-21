@@ -56,6 +56,9 @@ export const MIN_PAIRED_DAYS = 10;
 /** The fewest days on each side before a two-group contrast is offered. */
 export const MIN_CONTRAST_DAYS = 3;
 
+/** `contextTagKey('Vacation')`, the one default tag that says the task list was away. */
+const VACATION_TAG_KEY = 'vacation';
+
 /** One logical day, with what you recorded and what you finished on it. */
 export interface MoodDay {
   dayKey: string;
@@ -76,7 +79,8 @@ export interface MoodDay {
    * Counted as zeros, those days would drag every completion read toward "you
    * finish nothing when you feel like that" — rule 3 of this file's header,
    * breached by the app's own housekeeping rather than by a gap in the data.
-   * See `completionsKnownFrom` in `buildMoodDays`.
+   * See `completionsKnownFrom` in `buildMoodDays`. A day tagged Vacation is
+   * null for the same reason: the work was away, not the mood.
    */
   completed: number | null;
   /** Categories completed that day, each counted once — the "kind" of work. Empty on a purged day. */
@@ -371,6 +375,19 @@ export function buildMoodDays(
       day.categories = [];
       day.taskKeys = [];
     }
+  }
+
+  // A day tagged Vacation says nothing about what you finish either: vacation
+  // mode hides the tasks that pause on it and stops most generated ones, so a
+  // low count is the list being away, not the mood. Cleared the way a purged
+  // day is, so every read about what got done leaves it out and the mood side
+  // (symptoms, tags, the average) keeps it. Only a day carrying the tag is
+  // caught: the app keeps no history of when vacation mode was on.
+  for (const day of days.values()) {
+    if (!day.contextTagKeys.includes(VACATION_TAG_KEY)) continue;
+    day.completed = null;
+    day.categories = [];
+    day.taskKeys = [];
   }
 
   // Health readings **decorate days that already exist and never create one.**
