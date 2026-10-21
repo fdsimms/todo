@@ -9,6 +9,7 @@
  * are genuinely separate stores and a leak between them would show up as a
  * real test failure rather than being papered over by a shared handle.
  */
+import { listItemFinder } from '../utils/listMode';
 import { splitIngredientAnd } from '../utils/recipeUtils';
 import { addDays } from 'date-fns/addDays';
 import { subDays } from 'date-fns/subDays';
@@ -1771,6 +1772,23 @@ describe('demo mode', () => {
     expect(giftIdeas?.ongoing).toBe(true);
   });
 
+  it('seeds a list project whose section is a list because its project is', () => {
+    useDemoStore.getState().enterDemoMode();
+
+    const wishList = useProjectStore.getState().projects.find(p => p.title === 'Wish list');
+    expect(wishList?.list).toBe(true);
+    const books = useTaskGroupStore.getState().groups.find(g => g.projectId === wishList?.id);
+    // Not the section's own flag: the project makes it a list.
+    expect(books?.checklist).toBeFalsy();
+    const isItem = listItemFinder(useTaskGroupStore.getState().groups, useProjectStore.getState().projects);
+    const items = useTaskStore.getState().tasks.filter(t => t.groupId === books?.id);
+    expect(items.length).toBeGreaterThan(0);
+    expect(items.every(isItem)).toBe(true);
+    expect(items.some(t => t.linkUrl)).toBe(true);
+    // Items aren't stamped with a category, so nothing repeats down the list.
+    expect(items.every(t => !t.category)).toBe(true);
+  });
+
   it('seeds a completed project, separate from archived', () => {
     useDemoStore.getState().enterDemoMode();
 
@@ -2262,7 +2280,7 @@ describe('demo seed — people', () => {
     expect(rewards.some(r => r.claimEveryDays === 7)).toBe(true);
     const listId = useSettingsStore.getState().rewardListProjectId;
     const list = useProjectStore.getState().projects.find(p => p.id === listId);
-    expect(list?.ongoing).toBe(true);
+    expect(list?.list).toBe(true);
     const fromList = rewards.find(r => r.taskId);
     expect(useTaskStore.getState().tasks.find(t => t.id === fromList?.taskId)?.projectId).toBe(listId);
     expect(rewards.some(r => r.id === useSettingsStore.getState().rewardGoalId)).toBe(true);

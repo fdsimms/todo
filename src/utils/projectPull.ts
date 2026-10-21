@@ -132,6 +132,8 @@ export type PullEmptyReason =
   | 'no-projects'
   /** Set to Never: the project is excluded from every nudge surface. */
   | 'nudge-excluded'
+  /** A list (Project.list): items to check off, never a project to pull from. */
+  | 'list'
   /** Paused until a day (Project.pausedUntil), or in Planning: left alone until then. */
   | 'paused'
   /** Set to “When I ask”: it belongs in this sheet, but never volunteers. */
@@ -278,6 +280,10 @@ function classifyProject(
   // reference list ("Gift ideas") is never a candidate to pull into today,
   // whether the app suggests it or the user goes looking.
   if (!project.nudgeOptIn) return { reason: 'nudge-excluded' };
+  // A list (Project.list) is the same kind of reference collection, said by
+  // the project rather than by its nudge setting, which turning List on
+  // deliberately leaves alone.
+  if (project.list) return { reason: 'list' };
   // A pause is the person saying "not until then", in both modes, like Never.
   if (isPausedOn(project, dayKeyOf(todayStart))) return { reason: 'paused' };
 
@@ -322,17 +328,17 @@ function classifyProject(
     return { reason: 'has-schedule' };
   }
 
-  // A checklist section's lines are ticked off, not scheduled, so they're
-  // never the task pulled in (see TaskGroup.checklist).
+  // A list section's items are checked off, not scheduled, so they're never
+  // the task pulled in (src/utils/listMode.ts).
   // A task already dated (further out than the check above) has its day, and
   // pulling it would move a date somebody chose rather than give one.
-  let pullable = oneOffs.filter(t => t.dueDate == null && isPullable(t) && !isChecklistRow(t));
+  let pullable = oneOffs.filter(t => t.dueDate == null && isPullable(t) && !isChecklistRow(t, project));
   // Worked in order: only the first open task on the page may be offered, and
   // if that one can't be (it's waiting on something), nothing after it jumps
   // the queue. Routines and checklist lines aren't steps, so they're skipped.
   if (project.inOrder) {
     const first = projectPageOrder(
-      members.filter(t => !isRoutine(t) && !isChecklistRow(t)),
+      members.filter(t => !isRoutine(t) && !isChecklistRow(t, project)),
       sectionsNow(),
       project.id,
     )[0];
@@ -523,6 +529,7 @@ export function describeQuietReason(quietDays: number): string {
  */
 const REASON_PRIORITY: readonly PullEmptyReason[] = [
   'nudge-excluded',
+  'list',
   'paused',
   'cadence-off',
   'too-soon',
@@ -614,6 +621,10 @@ export function describePullEmpty(state: PullEmptyState): string {
       return count === total
         ? 'Every project has “Bring this up” set to Never. Open one and set it to “When I ask” to have it show up here.'
         : `${projects(count)} of ${total} have “Bring this up” set to Never. Set “Bring this up” to “When I ask” on one to have it show up here.${rest}`;
+    case 'list':
+      return count === total
+        ? 'Every project is a list. Items on a list are checked off, not pulled in.'
+        : `${projects(count)} of ${total} are lists, whose items are checked off rather than pulled in.${rest}`;
     case 'paused':
       return count === total
         ? 'Every project is paused or in Planning. A paused one comes back on the day its pause ends, and one in Planning when you mark it ready.'

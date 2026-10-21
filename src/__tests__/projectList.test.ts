@@ -143,6 +143,11 @@ describe('projectProgressNote', () => {
     expect(projectProgressNote(makeProject({ ongoing: true }), { done: 2, total: 5 })).toBe('3 open');
     expect(projectProgressNote(makeProject({ ongoing: true }), { done: 5, total: 5 })).toBe('Nothing open');
   });
+
+  it('counts items on a list, checked ones too, in place of a bar', () => {
+    expect(projectProgressNote(makeProject({ list: true }), { done: 1, total: 8 })).toBe('7 items · 1 checked');
+    expect(projectProgressNote(makeProject({ list: true }), { done: 0, total: 0 })).toBe('No items yet');
+  });
 });
 
 describe('overdueRoutines', () => {

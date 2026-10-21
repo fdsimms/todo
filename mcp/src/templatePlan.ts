@@ -185,6 +185,8 @@ export interface TemplatePlan {
   container?: TemplateContainer;
   /** Whether the template's anchors mean "days away". Off unless said. */
   anchorsAreAway?: boolean;
+  /** A run that makes a project makes a list (TaskTemplate.list). Off unless said. */
+  list?: boolean;
   schedule?: SchedulePlan | null;
   groups?: GroupPlan[];
   questions?: QuestionPlan[];
@@ -677,6 +679,7 @@ export function templateToPlan(template: TaskTemplate): TemplatePlan & { id: str
     category: template.category,
     container: template.applyContainer,
     anchorsAreAway: template.anchorsAreAway,
+    ...(template.list ? { list: true } : {}),
     schedule: template.schedule,
     groups: template.itemGroups.map(g => ({ key: g.id, title: g.title, ...(g.checklist ? { checklist: true } : {}) })),
     questions: template.questions.map(q => ({
@@ -839,6 +842,7 @@ export function describeTemplateChanges(before: TaskTemplate, after: TaskTemplat
   if (before.category !== after.category) out.push(`Category: ${before.category ?? 'none'} → ${after.category ?? 'none'}.`);
   if (before.applyContainer !== after.applyContainer) out.push(`Runs into: ${before.applyContainer} → ${after.applyContainer}.`);
   if (before.anchorsAreAway !== after.anchorsAreAway) out.push(after.anchorsAreAway ? 'Its dates now mean days away.' : 'Its dates no longer mean days away.');
+  if (!!before.list !== !!after.list) out.push(after.list ? 'A run now makes a list.' : 'A run no longer makes a list.');
   if (JSON.stringify(stableValue(before.schedule)) !== JSON.stringify(stableValue(after.schedule))) {
     out.push(after.schedule ? (before.schedule ? 'Change the schedule.' : 'Add a schedule.') : 'Remove the schedule.');
   }

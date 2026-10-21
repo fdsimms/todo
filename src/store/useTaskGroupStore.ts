@@ -19,7 +19,7 @@ interface TaskGroupStore {
   // sit; the stack editor can change it afterward through updateGroup.
   /** `id` is for a stack the app makes unattended; see CreateProjectOptions.id. */
   createGroup: (title: string, category: string | null, projectId?: string | null, id?: string) => TaskGroup;
-  updateGroup: (id: string, patch: Partial<Pick<TaskGroup, 'title' | 'notes' | 'tags' | 'category' | 'sortOrder' | 'projectId' | 'checklist' | 'hideNextStep'>>) => void;
+  updateGroup: (id: string, patch: Partial<Pick<TaskGroup, 'title' | 'notes' | 'tags' | 'category' | 'sortOrder' | 'projectId' | 'checklist' | 'keepsTasks' | 'hideNextStep'>>) => void;
   setGroupCollapsed: (id: string, collapsed: boolean) => void;
   // Called by the Today screen with the ids of every stack currently on it,
   // visible rows and Later Today alike. A stack that wasn't on Today and now

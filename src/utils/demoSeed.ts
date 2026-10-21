@@ -3639,13 +3639,19 @@ function seedRewards(today: Date): void {
 
   // A wish list feeding the screen: one item already priced as a reward, the
   // others waiting to be. Through the stores, like everything else here.
+  // It is also the demo's list project (Project.list): counts instead of
+  // progress, items with no category chip, and a Books section that is a
+  // list because its project is, one item carrying the link it was found at.
   const { addTask, addExistingToProject } = useTaskStore.getState();
-  const wishList = useProjectStore.getState().createProject('Wish list', { ongoing: true });
+  const wishList = useProjectStore.getState().createProject('Wish list', { list: true });
   const wishes = ['Noise-canceling headphones', 'A cast iron pan', 'Concert tickets'].map(title => {
     const t = addTask({ title });
     addExistingToProject(t.id, wishList.id);
     return t;
   });
+  const wishBooks = useTaskGroupStore.getState().createGroup('Books', null, wishList.id);
+  addTask({ title: 'The Little Prince in Greek', projectId: wishList.id, groupId: wishBooks.id, linkUrl: 'https://example.com/little-prince-greek' }, undefined, { skipTitleRules: true, skipCategoryDefault: true });
+  addTask({ title: 'Sibley Guide to Trees', projectId: wishList.id, groupId: wishBooks.id }, undefined, { skipTitleRules: true, skipCategoryDefault: true });
   useSettingsStore.getState().setRewardListProjectId(wishList.id);
   rewards.addReward(wishes[0].title, 400, { taskId: wishes[0].id });
   // Provenance ids for earlier days' completions; the rows they name are

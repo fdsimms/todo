@@ -50,6 +50,8 @@ import { FieldClearButton } from './FieldClearButton';
 import { useScrollFieldIntoView } from '../hooks/useKeyboardInsetScroll';
 import { TextField } from './TextField';
 import { Toggle } from './Toggle';
+import { HelpText } from './HelpText';
+import { sectionIsList, sectionListPatch } from '../utils/listMode';
 import { BUTTON_LABEL } from '../copy/shared';
 
 /** Editor sections that collapse to a one-line summary of their current value. */
@@ -163,7 +165,10 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
   // The stack's own home (TaskGroup.projectId), not the `projectId` prop —
   // that one is the screen the sheet was opened from.
   const [homeProjectId, setHomeProjectId] = useState<string | null>(null);
-  const [checklist, setChecklist] = useState(false);
+  // Whether the section is a list, as the page shows it: its own setting or,
+  // in a list project, the project's. Saved back as whichever override that
+  // takes (sectionListPatch).
+  const [isList, setIsList] = useState(false);
   const [hideNextStep, setHideNextStep] = useState(false);
 
   // Set while a member row is being dragged, purely to take the sheet's own
@@ -218,7 +223,7 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
     setTags(group.tags);
     setCategory(group.category);
     setHomeProjectId(group.projectId);
-    setChecklist(group.checklist ?? false);
+    setIsList(sectionIsList(group, useProjectStore.getState().projects.find(p => p.id === group.projectId)));
     setHideNextStep(group.hideNextStep ?? false);
     setShowExistingPicker(false);
     clearExistingSearch();
@@ -406,7 +411,7 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
       // tasks in one stack can sit in different projects, and this field only
       // says which project's page shows the stack when it has nothing in it.
       projectId: homeProjectId,
-      checklist,
+      ...sectionListPatch(isList, projects.find(p => p.id === homeProjectId)),
       hideNextStep,
     });
     // The stack owns its members' category, so changing it here re-files
@@ -587,29 +592,29 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
           settings it can pick up later, from the same sheet, once it exists.
           The project field is left off a section opened from its own project
           page outright, since that answer is the page it was opened on. */}
-      {/* A section on a project page can be a checklist: a packing list
-          inside a trip. Only on a project's own section (not a stack on
-          Today). */}
+      {/* A section on a project page can be a list: a packing list inside
+          a trip, or a section of a list project kept as tasks. Only on a
+          project's own section (not a stack on Today). */}
       {checklistShown && (
         <View style={styles.sectionCard}>
           <TouchableOpacity
             style={styles.optionRow}
-            onPress={() => { haptics.tap(); setChecklist(v => !v); }}
+            onPress={() => { haptics.tap(); setIsList(v => !v); }}
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="switch"
-            accessibilityLabel="Checklist"
-            accessibilityState={{ checked: checklist }}
+            accessibilityLabel="List"
+            accessibilityState={{ checked: isList }}
           >
-            <Ionicons name="checkbox-outline" size={18} color={checklist ? colors.accent : colors.textSecondary} />
+            <Ionicons name="checkbox-outline" size={18} color={isList ? colors.accent : colors.textSecondary} />
             <View style={styles.optionContent}>
-              <Text style={styles.optionLabel}>Checklist</Text>
-              <Text style={styles.optionHint}>
-                {checklist
-                  ? "Its tasks are checked off with no schedule. Rows hide their dates and Pull doesn’t offer them. A task that already has a date still shows on Today that day"
+              <Text style={styles.optionLabel}>List</Text>
+              <HelpText style={styles.optionHint}>
+                {isList
+                  ? 'Items to check off rather than schedule. Pull doesn’t offer them, and one you give a date shows on Today that day'
                   : 'Its tasks are scheduled like the rest of the project'}
-              </Text>
+              </HelpText>
             </View>
-            <Toggle value={checklist} />
+            <Toggle value={isList} />
           </TouchableOpacity>
         </View>
       )}

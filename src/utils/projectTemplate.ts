@@ -1,4 +1,5 @@
 import { blockerIdsOf } from './blocking';
+import { sectionIsList } from './listMode';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Project, Task, TaskDraft, TaskGroup, TaskTemplate, TemplateAnchor, TemplateItem, TemplateItemGroup } from '../types';
 import { generateId } from './id';
@@ -35,11 +36,15 @@ export interface ProjectBlueprint {
  *   live row left) carries its most recent row instead.
  * - A series (seriesId) counts once, through its earliest date.
  * - Subtasks ride on their parent rather than standing alone.
+ * - A section is saved as a list if it is one on the page, which in a list
+ *   project (`projectList`) is every section that doesn't keep tasks. A
+ *   template has no project-level list flag, so this is where it survives.
  */
 export function projectBlueprint(
   projectId: string,
   tasks: readonly Task[],
   groups: readonly TaskGroup[],
+  projectList = false,
 ): ProjectBlueprint {
   const members = tasks.filter(t => t.projectId === projectId && t.parentId === null && !t.archived);
   const byId = new Map(members.map(t => [t.id, t]));
@@ -94,7 +99,7 @@ export function projectBlueprint(
     .map(t => t.title);
 
   return {
-    sections: sections.map(g => ({ id: g.id, title: g.title.trim() || 'Untitled section', checklist: g.checklist ?? false })),
+    sections: sections.map(g => ({ id: g.id, title: g.title.trim() || 'Untitled section', checklist: sectionIsList(g, { list: projectList }) })),
     entries: slots.flatMap(slot => slot.entries.map(task => ({
       task,
       sectionId: slot.sectionId,
@@ -104,7 +109,7 @@ export function projectBlueprint(
 }
 
 /** What a template made from a project holds, short of its id and place in the list. */
-export type ProjectTemplateDraft = Pick<TaskTemplate, 'name' | 'items' | 'itemGroups' | 'applyContainer' | 'anchorsAreAway' | 'category'>;
+export type ProjectTemplateDraft = Pick<TaskTemplate, 'name' | 'items' | 'itemGroups' | 'applyContainer' | 'anchorsAreAway' | 'list' | 'category'>;
 
 /**
  * A task as "Start fresh" copies it into the new project: what the person
@@ -173,7 +178,7 @@ export function templateFromProject(
   groups: readonly TaskGroup[],
   dayResetTime?: string,
 ): ProjectTemplateDraft {
-  const blueprint = projectBlueprint(project.id, tasks, groups);
+  const blueprint = projectBlueprint(project.id, tasks, groups, !!project.list);
   const anchorsAreAway = project.awayStart !== null;
   const anchor: TemplateAnchor = anchorsAreAway ? 'start' : 'end';
   const anchorIso = anchorsAreAway ? project.awayStart : (project.eventDate ?? project.deadline);
@@ -260,6 +265,10 @@ export function templateFromProject(
     itemGroups,
     applyContainer: 'project',
     anchorsAreAway,
+    // The run makes a list too, loose items included: the sections already
+    // carry their own list flag (projectBlueprint), but a loose row has
+    // nowhere else to keep it.
+    list: !!project.list,
     category: null,
   };
 }

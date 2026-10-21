@@ -99,6 +99,8 @@ interface TemplateStore {
   setTemplateContainer: (id: string, container: TemplateContainer) => void;
   /** Whether a run's two dates are days away from home. See TaskTemplate.anchorsAreAway. */
   setTemplateAnchorsAreAway: (id: string, away: boolean) => void;
+  /** Whether a run that makes a project makes a list. See TaskTemplate.list. */
+  setTemplateList: (id: string, list: boolean) => void;
   // Deletion's undo lives in useTaskStore, mirroring restoreProject/restoreGroup —
   // these are the low-level row operations it calls, kept here so this store
   // never has to import useTaskStore.
@@ -185,6 +187,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       // Off, like every other opt-in: a template's anchors mean "days away"
       // only once somebody says so. See TaskTemplate.anchorsAreAway.
       anchorsAreAway: false,
+      list: false,
     };
     dbInsertTemplate(template);
     set(s => ({ templates: [...s.templates, template] }));
@@ -199,6 +202,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       itemGroups: draft.itemGroups,
       applyContainer: draft.applyContainer,
       anchorsAreAway: draft.anchorsAreAway,
+      list: draft.list ?? false,
       category: draft.category,
     };
     dbUpdateTemplate(template);
@@ -242,6 +246,14 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     const template = get().templates.find(t => t.id === id);
     if (!template) return;
     const updated = { ...template, anchorsAreAway: away };
+    dbUpdateTemplate(updated);
+    set(s => ({ templates: s.templates.map(t => (t.id === id ? updated : t)) }));
+  },
+
+  setTemplateList(id, list) {
+    const template = get().templates.find(t => t.id === id);
+    if (!template) return;
+    const updated = { ...template, list };
     dbUpdateTemplate(updated);
     set(s => ({ templates: s.templates.map(t => (t.id === id ? updated : t)) }));
   },

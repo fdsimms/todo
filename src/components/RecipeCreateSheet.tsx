@@ -50,6 +50,8 @@ import {
 } from '../services/aiSuggestions';
 import { describeImportError, isRetryableImportError } from '../services/recipePage';
 import { normalizeRecipeUrl, recipeImportedFrom } from '../utils/recipeUrl';
+import { ungroundedIngredientIndexes } from '../utils/ingredientGrounding';
+import { joinNames } from '../utils/shoppingTrip';
 import { recipeFromPageOffline } from '../utils/recipePageOffline';
 import {
   alreadyInRecipeNote, blockedReviewRows,
@@ -204,6 +206,11 @@ export function RecipeCreateSheet({
   // (#1608) — extracted itself is left untouched, since its .name/.servings
   // fields are still read straight off it below.
   const [ingredients, setIngredients] = useState<RecipeGroceryItem[]>([]);
+  // The text the model read the ingredients from, kept only when it was text
+  // the model could have answered around (a paste, or a page with no structured
+  // recipe). Null for a photo and for a page read verbatim, where there is
+  // nothing to compare against or nothing to doubt.
+  const [groundingText, setGroundingText] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [accepted, setAccepted] = useState<Set<number>>(new Set());
   const [applyDetails, setApplyDetails] = useState(true);
@@ -294,6 +301,13 @@ export function RecipeCreateSheet({
     ),
     [ingredients, accepted, covered],
   );
+  // Rows whose names appear nowhere in the text they were read from. Only a
+  // prompt to look: nothing is unticked or dropped, since a page can word a
+  // thing the model has every right to name.
+  const ungrounded = useMemo(
+    () => new Set(ungroundedIngredientIndexes(groundingText, ingredients)),
+    [groundingText, ingredients],
+  );
 
   // Every heading the Section picker can offer, for a recipe that doesn't
   // exist yet: just whatever this batch has already been filed under.
@@ -314,6 +328,7 @@ export function RecipeCreateSheet({
     setLoading(false);
     setError(null);
     setExtracted(null);
+    setGroundingText(null);
     setIngredients([]);
     setName('');
     setAccepted(new Set());
@@ -409,6 +424,12 @@ export function RecipeCreateSheet({
       // the next time this sheet opens.
       if (!visibleRef.current) return;
       setExtracted(result);
+      setGroundingText(
+        keyless ? null
+          : resolved.page ? (resolved.page.structured ? null : resolved.page.text)
+          : typeof resolved.source === 'string' ? resolved.source
+          : null,
+      );
       // "x or y" lines arrive as one row per option, filed as alternatives.
       const rows = splitImportedAlternatives(result.ingredients);
       setIngredients(rows);
@@ -1259,6 +1280,17 @@ export function RecipeCreateSheet({
 
         {renderReferences()}
 
+        {ungrounded.size > 0 && (
+          <View style={styles.groundingCard} accessibilityRole="alert">
+            <Text style={styles.groundingTitle}>
+              {ungrounded.size === 1 ? '1 ingredient isn’t on the page' : `${ungrounded.size} ingredients aren’t on the page`}
+            </Text>
+            <Text style={styles.groundingBody}>
+              {`The text doesn’t mention ${joinNames([...ungrounded].map(i => ingredients[i].name.toLowerCase()))}. Check ${ungrounded.size === 1 ? 'it' : 'them'} against the recipe before you create it.`}
+            </Text>
+          </View>
+        )}
+
         {ingredients.map((row, i) => {
           // A new heading whenever this row's section differs from the one
           // right before it — same display-only grouping RecipeDetailScreen
@@ -1285,6 +1317,7 @@ export function RecipeCreateSheet({
               note={
                 coveredBy ? `made from the ${coveredBy} recipe`
                   : blockedBy ? alreadyInRecipeNote(blockedBy)
+                  : ungrounded.has(i) ? 'not found on the page'
                   : null
               }
             />
@@ -1363,6 +1396,15 @@ function makeStyles(colors: Colors) {
       paddingBottom: spacing.xs,
     },
     groupBlock: { marginBottom: spacing.sm },
+    groundingCard: {
+      backgroundColor: colors.warningBg,
+      borderRadius: radius.md,
+      marginHorizontal: spacing.md,
+      marginTop: spacing.md,
+      padding: spacing.smd,
+    },
+    groundingTitle: { color: colors.warningText, fontSize: font.md, fontWeight: fontWeight.semibold },
+    groundingBody: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xs },
     pasteWrap: { padding: spacing.md, gap: spacing.md },
     photoError: { color: colors.redText, fontSize: font.sm, textAlign: 'center' },
     nameCard: {

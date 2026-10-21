@@ -868,12 +868,18 @@ export interface TaskGroup {
   // belong to, so changing it moves no tasks — unlike `category`, which the
   // stack does own and cascades onto its members.
   projectId: string | null;
-  // A section whose rows are ticked off rather than scheduled: a packing list
-  // inside a trip. Its rows show no dates and are never offered by Pull or
-  // auto-schedule. Only meaningful on
-  // a project's section; ignored anywhere else. Optional for rows built before
-  // it existed.
+  // A list section: its rows are items checked off rather than tasks
+  // scheduled (a packing list inside a trip). Shown to people as "List"; the
+  // field keeps its older name for the reason `cycle_items` does. Only
+  // meaningful on a project's section; ignored anywhere else. Read through
+  // `sectionIsList` (src/utils/listMode.ts), since a list project makes every
+  // section a list without setting this. Optional for rows built before it
+  // existed.
   checklist?: boolean;
+  // The opposite override: a section that stays a task section inside a list
+  // project (Project.list). Ignored when the project isn't a list. Optional
+  // for rows built before it existed.
+  keepsTasks?: boolean;
   // Leaves the "Next: ..." part off this stack's collapsed header.
   // Presentation only. Optional for rows built before it existed.
   hideNextStep?: boolean;
@@ -1545,6 +1551,21 @@ export interface Project {
    * Unscheduled and Inbox ignore it. Optional for rows built before it existed.
    */
   groupOnToday?: boolean;
+  /**
+   * The project is a list (a wish list, gift ideas, a bucket list): its
+   * sections and loose rows are items to check off rather than tasks to
+   * schedule, unless a section says otherwise (`TaskGroup.keepsTasks`). What
+   * that changes is read through `src/utils/listMode.ts`, never off this field
+   * directly, because a section's own setting can override it.
+   *
+   * Presentation and read-time rules only. Turning it on or off rewrites
+   * nothing: not `ongoing`, not the nudge fields, not a single task. The List
+   * project type this replaces (#3574) did rewrite them on every conversion,
+   * which is half of why converting felt like a commitment. Items stay ordinary
+   * tasks, so a dated one is on Today like any other. Optional for rows built
+   * before it existed.
+   */
+  list?: boolean;
   /**
    * Where the trip goes, as free text.
    *
@@ -5090,6 +5111,14 @@ export interface TaskTemplate {
    * deliberately kept apart. See `docs/arch/away-dates.md`.
    */
   anchorsAreAway: boolean;
+  /**
+   * A run that makes a project makes a list (`Project.list`). Set when the
+   * template is saved from a list project, and on the editor's List row.
+   * Only read where a run creates its own project: a run applied into an
+   * existing project leaves that project's own setting alone. Optional for
+   * rows built before it existed.
+   */
+  list?: boolean;
 }
 
 // One row of the grocery catalog — which is also the shopping list. A row is

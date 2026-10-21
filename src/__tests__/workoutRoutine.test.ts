@@ -22,6 +22,7 @@ import {
   removeSet,
   routineItemsFromSets,
   routineSetLabels,
+  sameKindIndices,
   settleOpenSlots,
   supersetRoles,
   withProgression,
@@ -371,5 +372,16 @@ describe('routineItemsFromSets', () => {
 
   it('is empty for a workout with no done working sets', () => {
     expect(routineItemsFromSets([])).toEqual([]);
+  });
+});
+
+describe('sameKindIndices', () => {
+  it('keeps warm-ups apart from the working sets', () => {
+    expect(sameKindIndices(bench, 0)).toEqual([0]);
+    expect(sameKindIndices(bench, 1)).toEqual([1, 2, 3]);
+  });
+
+  it('names nothing for a position the item does not have', () => {
+    expect(sameKindIndices(bench, 9)).toEqual([]);
   });
 });

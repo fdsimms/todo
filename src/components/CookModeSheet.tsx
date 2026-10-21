@@ -56,7 +56,7 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { clearCookPosition, restingCookPosition, saveCookPosition } from '../utils/cookPosition';
 import { clampStepIndex, cookNotesPanel, cookSteps, describeStepPosition } from '../utils/cookMode';
-import { formatStepDuration, stepDurationOffers, stepTimerExcerpt } from '../utils/stepTimers';
+import { formatStepDuration, stepDurationOffers, stepTimerExcerpt, type StepDuration } from '../utils/stepTimers';
 import { recipeTimerResetPrompt, showsPrepRow, startCookingPlan } from '../utils/recipeTimer';
 import {
   applyChoice, choiceGroupKey, flattenRecipeIngredients, recipeChoiceGroups, type ChoiceGroup,
@@ -306,20 +306,29 @@ export function CookModeSheet({
     () => restingCookPosition(recipe.id, recipe.timerStartedAt !== null, false).finished,
   );
   const [ingredientsOpen, setIngredientsOpen] = useState(false);
-  // Lines the cook has checked off, on both the mise en place screen and the
-  // tray's panel. Screen state and nothing more: it writes nothing to the
-  // recipe, the pantry or the list (Log as cooked is where that is offered).
-  // Keyed by node and line rather than index, so a pick that reshuffles the
-  // list doesn't move a check onto a different ingredient.
+  // Two separate marks per line, both screen state and nothing more: they
+  // write nothing to the recipe, the pantry or the list (Log as cooked is where
+  // that is offered). `gatheredLines` is the mise en place check, "it's out on
+  // the counter"; `checkedLines` is the tray's, "I've used it". Setting
+  // something out is not using it, so neither reads the other. Both are keyed by
+  // node and line rather than index, so a pick that reshuffles the list doesn't
+  // move a mark onto a different ingredient.
   const [checkedLines, setCheckedLines] = useState<ReadonlySet<string>>(() => new Set());
-  const toggleLine = (key: string) => {
+  const [gatheredLines, setGatheredLines] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleIn = (set: typeof setCheckedLines) => (key: string) => {
     haptics.tap();
-    setCheckedLines(prev => {
+    set(prev => {
       const next = new Set(prev);
       if (!next.delete(key)) next.add(key);
       return next;
     });
   };
+  const toggleLine = toggleIn(setCheckedLines);
+  const toggleGathered = toggleIn(setGatheredLines);
+  const gatheredCount = useMemo(
+    () => ingredients.filter(flat => gatheredLines.has(`${flat.recipe.id}:${flat.ingredient.id}`)).length,
+    [ingredients, gatheredLines],
+  );
   const checkedCount = useMemo(
     () => ingredients.filter(flat => checkedLines.has(`${flat.recipe.id}:${flat.ingredient.id}`)).length,
     [ingredients, checkedLines],
@@ -368,7 +377,10 @@ export function CookModeSheet({
       setNotesOpen(false);
       setFillingBlanks(false);
       // A running cook timer keeps the place (see above), and the checks with it.
-      if (!cookRunning) setCheckedLines(new Set());
+      if (!cookRunning) {
+        setCheckedLines(new Set());
+        setGatheredLines(new Set());
+      }
     }
   }, [visible, hasIngredients, cookRunning, recipe.id]);
   useEffect(() => {
@@ -397,6 +409,21 @@ export function CookModeSheet({
   // up front would cost every open of the sheet a pass over text nobody is
   // looking at, and the offer is only ever made about the step on screen.
   const offers = useMemo(() => (step === null ? [] : stepDurationOffers(step)), [step]);
+
+  // One start for the chip under the sentence and the phrase inside it.
+  const startOffer = useCallback((offer: StepDuration) => {
+    if (step === null) return;
+    stepTimers.start({
+      recipeId: recipe.id,
+      recipeName: recipe.name,
+      stepId: step.id,
+      stepLabel: describeStepPosition(index, steps.length),
+      // The words the row is known by in the footer, since "Step 2 of 12"
+      // beside "Step 5 of 12" doesn't say which one is the rice.
+      stepExcerpt: stepTimerExcerpt(step.text, offer.start),
+      durationSeconds: offer.seconds,
+    });
+  }, [step, stepTimers, recipe.id, recipe.name, index, steps.length]);
 
   // The whole method at once, unlike the durations above: what a line's amount
   // *means* depends on whether the method spends it in one step or several, so
@@ -624,8 +651,9 @@ export function CookModeSheet({
             <Text style={styles.miseTitle}>Mise en place</Text>
             <Text style={styles.miseSubtitle}>
               {steps.length > 0
-                ? 'Everything this recipe needs, before you start cooking.'
-                : 'Everything this recipe needs. It has no steps yet, so add them in the recipe to read the method here.'}
+                ? 'Check each one as you set it out, before you start cooking.'
+                : 'Check each one as you set it out. It has no steps yet, so add them in the recipe to read the method here.'}
+              {gatheredCount > 0 ? ` ${gatheredCount} of ${ingredients.length} out.` : ''}
             </Text>
             {/* Where the recipe offers a choice, it's made here, as the
                 ingredients are gathered — the list below follows the pick. */}
@@ -676,7 +704,7 @@ export function CookModeSheet({
               <View style={[styles.miseCard, styles.miseOven]}>
                 {ovenSetups.map((oven, position) => {
                   const lineKey = `oven:${oven.recipeId}`;
-                  const lineChecked = checkedLines.has(lineKey);
+                  const lineOut = gatheredLines.has(lineKey);
                   // A component's temperature is named for its dish, and a
                   // converted one says what the recipe wrote.
                   const detail = [
@@ -713,23 +741,23 @@ export function CookModeSheet({
                       key={lineKey}
                       style={[styles.miseRow, position === ovenSetups.length - 1 && styles.miseRowLast]}
                       activeOpacity={interaction.activeOpacity}
-                      onPress={() => toggleLine(lineKey)}
+                      onPress={() => toggleGathered(lineKey)}
                       accessibilityRole="checkbox"
-                      accessibilityState={{ checked: lineChecked }}
+                      accessibilityState={{ checked: lineOut }}
                       accessibilityLabel={`Preheat oven to ${oven.text}${oven.whole ? '' : `, for ${oven.recipeName}`}`}
                     >
                       <CheckPop
-                        checked={lineChecked}
+                        checked={lineOut}
                         style={styles.lineBox}
-                        checkedStyle={styles.lineBoxChecked}
+                        checkedStyle={styles.lineBoxOut}
                       >
-                        <Ionicons name="checkmark" size={iconSize.sm} color={colors.onDone} />
+                        <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />
                       </CheckPop>
-                      <View style={[styles.miseRowText, lineChecked && styles.lineChecked]}>
-                        <Text style={[styles.miseName, lineChecked && styles.lineNameChecked]}>Preheat oven</Text>
+                      <View style={styles.miseRowText}>
+                        <Text style={styles.miseName}>Preheat oven</Text>
                         {!!detail && <Text style={styles.misePrep}>{detail}</Text>}
                       </View>
-                      <View style={[styles.miseQtyPill, lineChecked && styles.lineChecked]}>
+                      <View style={styles.miseQtyPill}>
                         <Text style={styles.miseQtyText} numberOfLines={1}>{oven.text}</Text>
                       </View>
                     </TouchableOpacity>
@@ -755,7 +783,7 @@ export function CookModeSheet({
                 const heading = headings[position];
                 const last = position === ingredients.length - 1;
                 const lineKey = `${flat.recipe.id}:${flat.ingredient.id}`;
-                const lineChecked = checkedLines.has(lineKey);
+                const lineOut = gatheredLines.has(lineKey);
                 return (
                   <View key={lineKey}>
                     {!!heading.parentSection && <Text style={styles.miseHeading}>{heading.parentSection}</Text>}
@@ -765,20 +793,20 @@ export function CookModeSheet({
                     <TouchableOpacity
                       style={[styles.miseRow, last && styles.miseRowLast]}
                       activeOpacity={interaction.activeOpacity}
-                      onPress={() => toggleLine(lineKey)}
+                      onPress={() => toggleGathered(lineKey)}
                       accessibilityRole="checkbox"
-                      accessibilityState={{ checked: lineChecked }}
+                      accessibilityState={{ checked: lineOut }}
                       accessibilityLabel={flat.ingredient.name}
                     >
                       <CheckPop
-                        checked={lineChecked}
+                        checked={lineOut}
                         style={styles.lineBox}
-                        checkedStyle={styles.lineBoxChecked}
+                        checkedStyle={styles.lineBoxOut}
                       >
-                        <Ionicons name="checkmark" size={iconSize.sm} color={colors.onDone} />
+                        <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />
                       </CheckPop>
-                      <View style={[styles.miseRowText, lineChecked && styles.lineChecked]}>
-                        <Text style={[styles.miseName, lineChecked && styles.lineNameChecked]}>{flat.ingredient.name}</Text>
+                      <View style={styles.miseRowText}>
+                        <Text style={styles.miseName}>{flat.ingredient.name}</Text>
                         {!!flat.swappedFrom && (
                           <Text style={styles.miseSwap} numberOfLines={1}>
                             {describeStandingSwap(flat.swappedFrom)}
@@ -789,7 +817,7 @@ export function CookModeSheet({
                         )}
                       </View>
                       {!!converted.text && (
-                        <View style={[styles.qtyGroup, lineChecked && styles.lineChecked]}>
+                        <View style={styles.qtyGroup}>
                           <View style={[styles.miseQtyPill, marked && styles.miseQtyPillMarked]}>
                             <Text
                               style={[styles.miseQtyText, marked && styles.miseQtyTextMarked]}
@@ -874,7 +902,13 @@ export function CookModeSheet({
                   and any standing swap named where the ingredient is. The
                   ingredient panel below holds the same two facts, and folded
                   away it holds them where nobody mid-step is looking. */}
-              <StepText text={step.text} segments={annotated.get(step.id)} style={styles.stepText} />
+              <StepText
+                text={step.text}
+                segments={annotated.get(step.id)}
+                style={styles.stepText}
+                durations={offers}
+                onDurationPress={startOffer}
+              />
               {/* Said out loud, because the split is the app's and not the
                   cook's: a recipe whose method lives in notes gets read as
                   steps here, and that has to be legible as a fallback rather
@@ -902,17 +936,7 @@ export function CookModeSheet({
                       icon="timer-outline"
                       label={`Set a ${formatStepDuration(offer.seconds)} timer`}
                       accessibilityLabel={`Set a ${formatStepDuration(offer.seconds)} timer for ${describeStepPosition(index, steps.length)}`}
-                      onPress={() => stepTimers.start({
-                        recipeId: recipe.id,
-                        recipeName: recipe.name,
-                        stepId: step.id,
-                        stepLabel: describeStepPosition(index, steps.length),
-                        // The words the row is known by in the footer, since
-                        // "Step 2 of 12" beside "Step 5 of 12" doesn't say
-                        // which one is the rice.
-                        stepExcerpt: stepTimerExcerpt(step.text, offer.start),
-                        durationSeconds: offer.seconds,
-                      })}
+                      onPress={() => startOffer(offer)}
                     />
                   ))}
                 </View>
@@ -1600,6 +1624,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     justifyContent: 'center',
   },
   lineBoxChecked: { backgroundColor: colors.done, borderColor: colors.done },
+  // Mise en place's check is accent rather than the gold of done, and the line
+  // stays at full strength: it is out on the counter, not finished with.
+  lineBoxOut: { backgroundColor: colors.accent, borderColor: colors.accent },
   lineChecked: { opacity: 0.5 },
   lineNameChecked: { textDecorationLine: 'line-through' },
   qtyWeight: {

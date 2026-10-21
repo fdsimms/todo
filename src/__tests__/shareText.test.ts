@@ -1,7 +1,7 @@
 import type { GroceryItem, MealPlanEntry, MealSlot, Recipe, RecipeComponent, RecipeIngredient } from '../types';
 import {
   buildGroceryListShareText, buildGroceryListText, buildIngredientsText, buildRecipeShareText,
-  buildWeekPlanShareText,
+  buildIngredientSections, buildWeekPlanShareText, servingsLineFor,
 } from '../utils/shareText';
 import { weightLookups } from '../utils/lineWeight';
 
@@ -599,5 +599,51 @@ describe('weights in shared text', () => {
   it('adds nothing without the lookups', () => {
     const r = recipe('r1', 'Mash', { ingredients: [ing('Butter', { quantity: '4 tbsp' })] });
     expect(buildIngredientsText(r, recipeMap([r]))).toBe('4 tbsp Butter');
+  });
+});
+
+describe('buildIngredientSections', () => {
+  it('groups lines under the recipe\'s own sections and keeps names without amounts', () => {
+    const r = recipe('r1', 'Orzo', {
+      ingredients: [
+        ing('orzo', { quantity: '1 lb', section: 'Salad' }),
+        ing('feta', { quantity: '4 oz', prep: 'crumbled', section: 'Salad' }),
+        ing('olive oil', { quantity: '1/2 cup', section: 'Dressing' }),
+      ],
+    });
+    const sections = buildIngredientSections(r, new Map([[r.id, r]]));
+    expect(sections.map(s => s.heading)).toEqual(['Salad', 'Dressing']);
+    expect(sections[0].lines).toEqual(['1 lb orzo', '4 oz feta, crumbled']);
+    expect(sections[0].names).toEqual(['orzo', 'feta']);
+  });
+
+  it('scales the lines and leaves an unsectioned recipe under no heading', () => {
+    const r = recipe('r2', 'Plain', { ingredients: [ing('flour', { quantity: '1 cup' })] });
+    const sections = buildIngredientSections(r, new Map([[r.id, r]]), { scale: 2 });
+    expect(sections).toEqual([{ heading: null, lines: ['2 cups flour'], names: ['flour'] }]);
+  });
+
+  it('keeps every option of an either/or in the names', () => {
+    const r = recipe('r3', 'Salsa', {
+      ingredients: [
+        ing('serrano', { quantity: '1', choiceGroup: 'pepper' }),
+        ing('jalapeño', { quantity: '2', choiceGroup: 'pepper' }),
+      ],
+    });
+    const [section] = buildIngredientSections(r, new Map([[r.id, r]]));
+    expect(section.names).toEqual(['serrano', 'jalapeño']);
+    expect(section.lines).toHaveLength(1);
+  });
+
+  it('returns nothing for a recipe with no ingredients', () => {
+    const r = recipe('r4', 'Empty');
+    expect(buildIngredientSections(r, new Map([[r.id, r]]))).toEqual([]);
+  });
+});
+
+describe('servingsLineFor', () => {
+  it('words the scaled servings, and is null with none stated', () => {
+    expect(servingsLineFor(recipe('s1', 'A', { servings: 6 }), 2)).toBe('Serves 12');
+    expect(servingsLineFor(recipe('s2', 'B'), 1)).toBeNull();
   });
 });

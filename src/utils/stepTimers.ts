@@ -424,6 +424,54 @@ export function stepDurationOffers(step: { text: string; timerSeconds?: number |
   return parseStepDurations(step.text);
 }
 
+// ==== the duration as a tap target in the sentence ====
+
+/** A piece of a step's text, with the offer it starts when it is a duration phrase. */
+export type StepTextPiece =
+  | { kind: 'text'; text: string }
+  | { kind: 'ingredient'; text: string; note: string }
+  | { kind: 'duration'; text: string; offer: StepDuration };
+
+/**
+ * The step's text cut at each offered duration, so the phrase itself can be the
+ * thing a cook taps ("7 to 9 minutes") instead of a chip underneath it.
+ *
+ * Takes the annotated segments `annotateSteps` made (or none) and splits only
+ * their plain text; an ingredient segment is left whole, since a duration
+ * inside the words an amount was pinned to is not a case worth a split. An
+ * offer with no span (`timerSeconds`, whose `start` and `end` are both 0) has
+ * no phrase to tap and gets only its chip. The pieces always join back to the
+ * step's text.
+ */
+export function splitStepAtDurations(
+  text: string,
+  segments: ({ kind: 'text'; text: string } | { kind: 'ingredient'; text: string; note: string })[] | undefined,
+  offers: StepDuration[],
+): StepTextPiece[] {
+  const spans = offers.filter(o => o.end > o.start).sort((a, b) => a.start - b.start);
+  const base = segments && segments.length > 0 ? segments : [{ kind: 'text' as const, text }];
+  const out: StepTextPiece[] = [];
+  let at = 0;
+  for (const segment of base) {
+    const segStart = at;
+    const segEnd = at + segment.text.length;
+    at = segEnd;
+    if (segment.kind !== 'text') {
+      out.push(segment);
+      continue;
+    }
+    let cursor = segStart;
+    for (const offer of spans) {
+      if (offer.start < cursor || offer.end > segEnd) continue;
+      if (offer.start > cursor) out.push({ kind: 'text', text: text.slice(cursor, offer.start) });
+      out.push({ kind: 'duration', text: text.slice(offer.start, offer.end), offer });
+      cursor = offer.end;
+    }
+    if (cursor < segEnd) out.push({ kind: 'text', text: text.slice(cursor, segEnd) });
+  }
+  return out;
+}
+
 // ==== what a running timer is called ====
 
 /** How long a timer's excerpt runs before it is cut at a word. */

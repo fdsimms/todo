@@ -31,12 +31,15 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/aiRouting.ts` — AiRoute, OnDeviceEngine, onDeviceEngineFor, ON_DEVICE_FEATURES, supportsOnDevice, AiRouteInput, routeForFeature
 - `src/utils/alarmChain.ts` — ALARM_RING_INTERVAL_MINUTES, ALARM_MAX_RINGS, alarmChainTimes, taskAlarmUuid, alarmChainIds, stepTimerAlarmUuid
 - `src/utils/allClear.ts` — completedOnDay, describeAllClear, shouldPlayBeat
+- `src/utils/allergenGuess.ts` — Allergen, guessAllergens, describeAllergens
 - `src/utils/appGate.ts` — isGateTask, gateGroupFor, outstandingGates, gateShieldWanted, GATE_WINDOW_MINUTES, GATE_ARM_HORIZON_MS, GateWindow, gateWindowFor, PendingGate, nextPendingGate, +1 more
 - `src/utils/appGroups.ts` — APP_GROUPS_SETTING, GROUP_ASSIGNMENTS_SETTING, BASE_GROUP_NAME_SETTING, FALLBACK_GROUP_SETTING, DEFAULT_GROUP_ID, DEFAULT_GROUP_NAME, MAX_APP_GROUPS, MAX_SUPERGROUPS, MAX_GROUP_NAME_LENGTH, AppGroup, +31 more
 - `src/utils/appLock.ts` — APP_LOCK_GRACE_OPTIONS, DEFAULT_APP_LOCK_GRACE_SECONDS, graceLabel, parseGraceSeconds, shouldLockOnResume, biometryLabel
 - `src/utils/appLockAuth.ts` — AppLockCapability, AppLockSupport, getAppLockSupport, UnlockResult, authenticateForAppLock
 - `src/utils/appShield.ts` — AppShieldState, ShieldReasonKind, ShieldReasonEntry, shieldReasons, shieldGroupIds, shieldAllowSets, appShieldWanted, syncAppShield
 - `src/utils/appShieldReconcile.ts` — reconcileAppShield, outstandingGatesNow, liveGatesNow, currentShieldReasons, keyLockedNow, gateKeyNow, gateTitlesNow
+- `src/utils/applyToAll.ts` — ApplyScope, applyToAllLabel, applyTargets
+- `src/utils/applyToAllOffer.ts` — ApplyOffer, setApplyOffer, clearApplyOffer, getApplyOffer, subscribeApplyOffer, resetApplyOffer
 - `src/utils/archiveMatch.ts` — findArchivedMatch
 - `src/utils/autoComplete.ts` — autoCompleteReason
 - `src/utils/autoCompleteScope.ts` — setAutoCompleteAttended, runUnattended, canAutoComplete
@@ -124,6 +127,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/demoHold.ts` — runOrHoldForDemo, replayHeldForDemo
 - `src/utils/demoSeed.ts` — seedDemoData
 - `src/utils/demoState.ts` — isDemoModeActive, setDemoModeActive
+- `src/utils/describedExercises.ts` — withCreatedExercises
 - `src/utils/deviceMetrics.ts` — startDeviceMetrics, readDevicePayloads
 - `src/utils/deviceTimeZone.ts` — DEVICE_TIME_ZONE_KEY, isValidTimeZone, currentTimeZone, recordDeviceTimeZone
 - `src/utils/digitRoll.ts` — RollColumn, rollColumns, rollDirection
@@ -222,6 +226,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/incidentalPurchases.ts` — incidentalIds, SubstituteReason, SubstituteCandidate, substituteCandidates, INCIDENTAL_PICK_LIMIT, incidentalPicks
 - `src/utils/ingredientCatalogMatch.ts` — IngredientMatchReason, IngredientMatchKind, IngredientCatalogMatch, matchIngredientToCatalog, matchIngredientsToCatalog, CatalogMatchSummary, catalogMatchSummary
 - `src/utils/ingredientGrams.ts` — portionsWithServing, volumeFromMass, hasKnownDensity, measureLineAmount, gramsForLine, panelMultiplier, UnfixableQuantity, unfixableQuantityReason, LineWeighing, weighableLine
+- `src/utils/ingredientGrounding.ts` — ungroundedIngredientIndexes
+- `src/utils/ingredientPrintout.ts` — IngredientPrintInput, ALLERGEN_CAVEAT, ingredientPageHtml, ingredientCardHtml, ingredientFileName
 - `src/utils/itemAliases.ts` — otherNameKeysOf, aliasIndex, itemKeyIndex, itemForOtherName, OtherNamesResult, cleanOtherNames, describeOtherNames
 - `src/utils/itemBackfill.ts` — ItemBackfillFieldId, LATER_LABEL_NUTRIENTS, ItemBackfillFieldDef, ITEM_BACKFILL_FIELDS, unratedBoxesOf, isItemFieldMissing, isItemFieldApplicable, isItemBackfillDismissed, itemBackfillCandidates, itemBackfillFieldCounts, +1 more
 - `src/utils/itemDisposal.ts` — DisposalOutcome, REPEAT_WASTE_THRESHOLD, disposalAnswerCount, describeDisposalHistory, wantsShelfLifePrompt
@@ -250,6 +256,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/limitWarningTasks.ts` — LimitReading, limitReadings, limitWarningKeyOf, figure, shortName, limitWarningTitle, LIMIT_WARNING_LINK, LIMIT_WARNING_TOP_FOODS, LIMIT_WARNING_NOTES, describeLimitContributors, +4 more
 - `src/utils/lineWeight.ts` — lineWeightGrams, lineWeightText, panelForLine, WeightLookups, weightLookups, ingredientWeightText
 - `src/utils/listLineParse.ts` — LineParseContext, LineMarkerFields, lineMarkerFields, LineSuggestion, lineSuggestion, LinePending, NO_LINE_PENDING, confirmLineSuggestion, linePendingFields
+- `src/utils/listMode.ts` — sectionIsList, sectionListPatch, listItemFinder, isOpenEnded, listCountNote, LIST_ITEM_EDITOR_ROWS, listItemRowShown
 - `src/utils/liveActivity.ts` — TimerRunKind, TimerRun, buildTimerRuns, useTimerLiveActivitySync
 - `src/utils/livePickerConfirm.ts` — confirmLivePicker
 - `src/utils/lookAhead.ts` — LookAheadWindow, LookAheadDay, AwayEntry, TightDeadline, LookAheadTotals, LookAhead, BuildLookAheadOptions, buildLookAhead, carriedOverTasks, awayEntries, +8 more
@@ -476,7 +483,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/settingsSearch.ts` — SettingsSearchResult, searchSettings
 - `src/utils/settingsSummary.ts` — SettingsSummaryInput, settingsSummaries
 - `src/utils/shakeDetect.ts` — ShakeSample, SHAKE_UPDATE_INTERVAL_MS, SHAKE_THRESHOLD_G, SHAKE_JOLTS_REQUIRED, SHAKE_WINDOW_MS, SHAKE_COOLDOWN_MS, SHAKE_ARM_DELAY_MS, ShakeState, createShakeState, armShakeState, +3 more
-- `src/utils/shareText.ts` — buildRecipeShareText, buildIngredientsText, buildGroceryListShareText, buildGroceryListText, buildWeekPlanShareText
+- `src/utils/shareText.ts` — buildRecipeShareText, servingsLineFor, IngredientPrintSection, buildIngredientSections, buildIngredientsText, buildGroceryListShareText, buildGroceryListText, buildWeekPlanShareText
 - `src/utils/sharedRecipeLinks.ts` — SHARED_LINK_QUEUE_CAP, mergeSharedLinks, parseSharedLinkQueue, serializeSharedLinkQueue, sharedLinkLabel
 - `src/utils/sheetModal.ts` — SheetVisibilityStep, nextSheetVisibility, PresentationLevel, createPresentationLevel, PresentationLevelContext, subscribePresentation, canHideSheet, beginDismissal, endDismissal, canShowSheet, +14 more
 - `src/utils/sheetMotion.ts` — SHEET_TRAVEL_SLACK, sheetTravel
@@ -500,7 +507,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/stats.ts` — OnTimeSummary, onTimeSummary
 - `src/utils/stepGoal.ts` — STEP_GOAL_MIN, STEP_GOAL_MAX, STEP_GOAL_STEP, STEP_GOAL_DEFAULT, clampStepGoal, parseStepGoal
 - `src/utils/stepIngredients.ts` — AnnotatableStep, StepIngredientLine, StepSegment, stepIngredientLines, annotateSteps, stepNamesIngredient
-- `src/utils/stepTimers.ts` — StepDuration, MIN_STEP_TIMER_SECONDS, MAX_STEP_TIMER_SECONDS, parseStepDurations, formatStepDuration, describeStepDuration, stepTimerElapsed, stepTimerRemaining, stepTimerProgress, isStepTimerRunning, +16 more
+- `src/utils/stepTimers.ts` — StepDuration, MIN_STEP_TIMER_SECONDS, MAX_STEP_TIMER_SECONDS, parseStepDurations, formatStepDuration, describeStepDuration, stepTimerElapsed, stepTimerRemaining, stepTimerProgress, isStepTimerRunning, +18 more
 - `src/utils/stepper.ts` — StepRange, clampCount, parseStepperInput, stepCount, canStep, holdRepeatDelay
 - `src/utils/storageReport.ts` — StorageTable, StorageStats, formatBytes, MIN_RECLAIMABLE_BYTES, worthOptimizing, optimizeBlockedReason, topAreas, describeAreas
 - `src/utils/storeAliases.ts` — aliasKeyFor, gtinAliasText, aliasItemIdFor, AliasDraft, aliasDraftsFrom
@@ -619,7 +626,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/workoutProposalApply.ts` — liveProposal, ApplyProposalOptions, applyProposal
 - `src/utils/workoutRecordText.ts` — withThousands, recordLabel, recordShortLabel, formatVolume, formatRecordFigure, formatRecordValue, formatRecordChange, metricLabel, metricNote, metricCaption, +6 more
 - `src/utils/workoutRecords.ts` — E1RM_MAX_REPS, REP_RECORD_MAX, SECONDARY_MUSCLE_WEIGHT, NEW_RECORD_DAYS, RECENT_RECORD_DAYS, countsForRecords, estimatedOneRepMax, setVolume, liftVolumeKg, VolumeUnit, +33 more
-- `src/utils/workoutRoutine.ts` — RoutineItemShape, itemShape, MAX_ROUTINE_SETS, MAX_WARMUP_SETS, defaultTargets, newRoutineItem, withWarmups, WarmupMode, warmupMode, DEFAULT_WARMUP_SETS, +33 more
+- `src/utils/workoutRoutine.ts` — RoutineItemShape, itemShape, MAX_ROUTINE_SETS, MAX_WARMUP_SETS, defaultTargets, newRoutineItem, withWarmups, WarmupMode, warmupMode, DEFAULT_WARMUP_SETS, +34 more
 - `src/utils/workoutSession.ts` — SessionExercise, sessionExercises, supersetGroup, roundRobin, walkOrder, movedExerciseOrder, exerciseBlocks, joinedSuperset, leftSuperset, nextSet, +30 more
 - `src/utils/workoutSiri.ts` — WorkoutRoutineIndexEntry, MAX_ROUTINE_INDEX_ENTRIES, buildRoutineIndex, QueuedWorkoutStart, parseQueuedWorkoutStarts, newestWorkoutStart, WorkoutStartPlan, QUEUED_START_MAX_AGE_MS, resolveQueuedWorkoutStart, myWorkoutStart
 - `src/utils/workoutTask.ts` — WorkoutTaskEffect, rotationPickFor, workoutTaskEffect, linkedTaskLine
