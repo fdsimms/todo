@@ -112,6 +112,7 @@ export function GymExerciseSheet({ visible, subject: liveSubject, onClose }: Pro
             <View style={styles.row}>
               <Text style={styles.rowLabel}>Bar weight</Text>
               <CountStepper
+                style={styles.stepper}
                 value={barKg !== null ? weightToDisplay(barKg, unit) : null}
                 onChange={n => setBarKg(n === null ? null : weightFromDisplay(n, unit))}
                 min={STEP[unit]}
@@ -132,6 +133,7 @@ export function GymExerciseSheet({ visible, subject: liveSubject, onClose }: Pro
         <View style={styles.row}>
           <Text style={styles.rowLabel}>Step</Text>
           <CountStepper
+            style={styles.stepper}
             value={incrementKg !== null ? weightToDisplay(incrementKg, unit) : null}
             onChange={n => setIncrementKg(n === null ? null : weightFromDisplay(n, unit))}
             min={STEP[unit]}
@@ -174,5 +176,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm, minHeight: 48 },
   rowLabel: { color: colors.text, fontSize: font.md },
+  // CountStepper's own `alignSelf: 'flex-start'` beats the row's centering.
+  stepper: { alignSelf: 'center' },
   hint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.sm },
 });
