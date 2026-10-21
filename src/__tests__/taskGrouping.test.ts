@@ -1187,21 +1187,40 @@ describe('sectionTaskIds', () => {
     expect([...ids.values()].flat()).not.toContain('loose');
   });
 
-  // A stack is a row with its own children and its own hold — collapsing the
-  // header over it would strand the tray under the section above.
-  it('drops a section that holds a stack', () => {
+  // The tray collapses on its children's ids, so the header must wait on the
+  // same ones or it outlives a section made of a stack.
+  it("includes a stack's children, and the tasks after it", () => {
     const ids = sectionTaskIds([
       { type: 'header', label: 'work' },
       { type: 'task', task: makeTask({ id: 'w1' }) },
-      { type: 'group', group: makeGroup({ id: 'g1', category: 'work' }), children: [makeTask({ id: 'c1' })] },
+      { type: 'group', group: makeGroup({ id: 'g1', category: 'work' }), children: [makeTask({ id: 'c1' }), makeTask({ id: 'c2' })] },
       { type: 'task', task: makeTask({ id: 'w2' }) },
       { type: 'header', label: 'home' },
       { type: 'task', task: makeTask({ id: 'h1' }) },
     ]);
-    expect(ids.has('work')).toBe(false);
-    // The section after it is unaffected — the stack disqualifies its own
-    // header, not the rest of the list.
+    expect(ids.get('work')).toEqual(['w1', 'c1', 'c2', 'w2']);
     expect(ids.get('home')).toEqual(['h1']);
+  });
+
+  // An event can't be ticked off, so it outlives the batch and needs its header.
+  it('drops a section that also holds a context row', () => {
+    const ids = sectionTaskIds([
+      { type: 'header', label: 'work' },
+      { type: 'task', task: makeTask({ id: 'w1' }) },
+      { type: 'context', row: { id: 'event-1' } as never },
+      { type: 'header', label: 'home' },
+      { type: 'task', task: makeTask({ id: 'h1' }) },
+    ]);
+    expect(ids.has('work')).toBe(false);
+    expect(ids.get('home')).toEqual(['h1']);
+  });
+
+  it('covers a section that is nothing but a stack', () => {
+    const ids = sectionTaskIds([
+      { type: 'header', label: 'evening' },
+      { type: 'group', group: makeGroup({ id: 'g1', category: 'evening' }), children: [makeTask({ id: 'c1' })] },
+    ]);
+    expect(ids.get('evening')).toEqual(['c1']);
   });
 
   // A collapsed category still renders its header, with none of its rows. It has
@@ -1247,8 +1266,8 @@ describe('sectionTasksByLabel', () => {
 
   // A stack's tray is the row on screen, and it sits under its own
   // group.category — so its children belong to that section whatever their own
-  // category says. sectionTaskIds abandons such a section; this one must not,
-  // or long-pressing a header made entirely of a stack would do nothing.
+  // category says. sectionTaskIds counts them the same way, and so
+  // must this, or long-pressing a header made entirely of a stack would do nothing.
   it("counts a stack's children towards the section its tray sits in", () => {
     const sections = sectionTasksByLabel([
       { type: 'header', label: 'work' },
