@@ -55,7 +55,7 @@ function allergenBlock(input: IngredientPrintInput): { line: string | null } {
 /** Full page: name, servings, allergen line, every ingredient with its amount under its heading. */
 export function ingredientPageHtml(input: IngredientPrintInput): string {
   const { line } = allergenBlock(input);
-  const sections = input.sections.map(section => `<div class="sec">${section.heading ? `<h2 class="sh">${e(section.heading)}</h2>` : ''}${
+  const sections = input.sections.map(section => `<div class="sec">${section.heading ? `<div class="sh">${e(section.heading)}</div>` : ''}${
     section.lines.map(l => `<div class="ing">${e(l)}</div>`).join('')
   }</div>`).join('');
   const allergens = input.showAllergens
@@ -63,21 +63,24 @@ export function ingredientPageHtml(input: IngredientPrintInput): string {
     : '';
   return `<!doctype html><html><head><meta charset="utf-8"><style>
 ${BASE_CSS}
-h1{font-size:30px}
-.sub{font-size:13px;margin-top:6px}
-hr{border:0;border-top:1px solid #C9C6CF;margin:18px 0 14px}
-.allergen-box{margin-bottom:14px;font-size:13px;line-height:1.45}
-.caveat{font-size:11px}
-.cols{column-count:2;column-gap:36px}
-.sec{margin-bottom:16px}
-.sh{margin:2px 0 6px}
-.ing{font-size:14px;line-height:1.35;padding:4px 0}
+.top{border-top:6px solid #6A3FDB;padding-top:18px}
+h1{font-size:34px;line-height:1.1}
+.sub{display:inline-block;font-size:13px;font-weight:600;color:#4B2BA8;background:#F0EAFC;border-radius:12px;padding:4px 12px;margin-top:12px}
+.allergen-box{background:#FBF6EA;border-left:4px solid #D99A1E;border-radius:4px;padding:10px 14px;margin-top:20px;font-size:13px;line-height:1.45}
+.allergens{font-size:14px}
+.caveat{font-size:11px;margin-top:2px}
+.main{font-size:20px;font-weight:700;letter-spacing:-.2px;margin:26px 0 14px;padding-bottom:8px;border-bottom:2px solid #17131C}
+.cols{column-count:2;column-gap:40px}
+.sec{margin-bottom:20px}
+.sh{font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#6A3FDB;margin:0 0 4px}
+.ing{font-size:15px;line-height:1.35;padding:6px 0}
 </style></head><body>
+<div class="top">
 <h1>${e(input.name)}</h1>
 ${input.servingsLine ? `<div class="sub">${e(input.servingsLine)}</div>` : ''}
-<hr>
+</div>
 ${allergens}
-<h2 style="margin-bottom:8px">Ingredients</h2>
+<div class="main">Ingredients</div>
 <div class="cols">${sections}</div>
 </body></html>`;
 }
@@ -95,13 +98,13 @@ export function ingredientCardHtml(input: IngredientPrintInput): string {
     .join(' · ');
   return `<!doctype html><html><head><meta charset="utf-8"><style>
 ${BASE_CSS}
-.card{width:100%;border:1px dashed #C9C6CF;padding:22px 26px}
-h1{font-size:24px}
+.card{width:100%;border:1px dashed #C9C6CF;border-top:5px solid #6A3FDB;padding:20px 26px}
+h1{font-size:26px}
 .sub{font-size:12px;margin-top:4px}
-hr{border:0;border-top:1px solid #C9C6CF;margin:12px 0 8px}
+hr{border:0;border-top:2px solid #17131C;margin:12px 0 8px}
 .cols{column-count:2;column-gap:24px}
 .ing{font-size:13px;line-height:1.3;padding:3px 0}
-.allergens{font-size:12px;margin-top:12px}
+.allergens{font-size:12px;margin-top:12px;background:#FBF6EA;border-left:4px solid #D99A1E;border-radius:4px;padding:6px 10px}
 .caveat{font-size:10px;margin-top:2px}
 </style></head><body><div class="card">
 <h1>${e(input.name)}</h1>
