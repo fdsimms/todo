@@ -31,7 +31,7 @@ import { cleanChoiceGroup, defaultChoiceGroupLabel, splitIngredientAnd as andPar
 import { describeCatalogItem } from '../utils/groceryProduct';
 import { allSectionsOf } from '../utils/recipeSections';
 import { standingSwapMap } from '../utils/standingSwaps';
-import { isCookingFat, fatCookedInPan, PAN_OIL_SHARE } from '../utils/panOil';
+import { isCookingFat, fatCooking, DEEP_FRY_SHARE, PAN_OIL_SHARE } from '../utils/panOil';
 import { recipeNutritionLines } from '../utils/recipeNutrition';
 import { panelMultiplier } from '../utils/ingredientGrams';
 import { disclosureValue } from '../theme/textStyles';
@@ -260,9 +260,12 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
     useShallow(s => s.recipes.find(r => r.id === recipeId)?.steps ?? [])
   );
   const askPan = isCookingFat(name);
-  const panCooked = askPan
-    ? fatCookedInPan({ name, cookedInPan }, recipeSteps) === true
-    : false;
+  const cooking = askPan ? fatCooking({ name, cookedInPan }, recipeSteps) : null;
+  const panCooked = cooking?.cooked === true;
+  const deepFried = cooking?.method === 'deep';
+  const cookingShare = cooking?.share ?? 1;
+  const cookingLabel = deepFried ? 'Deep fried' : 'Cooked in the pan';
+  const sharePercent = Math.round((deepFried ? DEEP_FRY_SHARE : PAN_OIL_SHARE) * 100);
   // What the line counts for, in calories, with and without the pan share. The
   // saved line supplies the catalog figures; the amount is the draft's, so the
   // readout follows what is being typed.
@@ -278,8 +281,8 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
     const multiplier = panelMultiplier(quantity, prep.trim() || null, line.nutrition);
     if (multiplier === null) return null;
     const whole = perHundred * multiplier;
-    return { whole: Math.round(whole), counted: Math.round(whole * (panCooked ? PAN_OIL_SHARE : 1)) };
-  }, [askPan, ingredient, allRecipes, recipeId, groceryItems, itemProducts, quantity, prep, panCooked]);
+    return { whole: Math.round(whole), counted: Math.round(whole * cookingShare) };
+  }, [askPan, ingredient, allRecipes, recipeId, groceryItems, itemProducts, quantity, prep, cookingShare]);
 
   const saveAndClose = () => {
     if (!ingredient) { onClose(); return; }
@@ -708,14 +711,14 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
               onPress={() => { haptics.tap(); setCookedInPan(!panCooked); }}
               accessibilityRole="switch"
               accessibilityState={{ checked: panCooked }}
-              accessibilityLabel="Cooked in the pan"
+              accessibilityLabel={cookingLabel}
             >
               <View style={styles.toggleBody}>
-                <Text style={styles.toggleLabel}>Cooked in the pan</Text>
+                <Text style={styles.toggleLabel}>{cookingLabel}</Text>
                 <HelpText style={styles.hint}>
                   {panCooked
-                    ? `Some of it stays in the pan, so about ${Math.round(PAN_OIL_SHARE * 100)}% counts. Turn off if all of it goes into the dish.`
-                    : 'The whole amount counts. Turn on if it was used to cook in a pan.'}
+                    ? `${deepFried ? 'The food only takes up some of it' : 'Some of it stays in the pan'}, so about ${sharePercent}% counts. Turn off if all of it goes into the dish.`
+                    : `The whole amount counts. Turn on if it was used to ${deepFried ? 'deep fry' : 'cook in a pan'}.`}
                 </HelpText>
               </View>
               <Toggle value={panCooked} />

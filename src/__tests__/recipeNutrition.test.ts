@@ -424,6 +424,15 @@ describe('recipeNutrition', () => {
       expect(read.nutrition!.total.calorieKcal).toBe(675);
     });
 
+    it('counts only DEEP_FRY_SHARE of an oil the steps deep fry', () => {
+      const dish = recipe('Fritters', [ing('Vegetable oil', { quantity: '100 g' })], {
+        steps: [{ id: 's1', text: 'Heat the oil to 350°F and deep fry the fritters.' }] as Recipe['steps'],
+      });
+      const read = readRecipeNutrition(dish, [item({ name: 'Vegetable oil', nutrition: oilPanel() })]);
+      expect(read.nutrition!.total.calorieKcal).toBe(90);
+      expect(read.lines[0].share).toBe(0.1);
+    });
+
     it('applies the same share to a planned week', () => {
       const dish = recipe('Onions', [ing('Olive oil', { quantity: '100 g' })], { steps: sauté });
       const recipesById = new Map([[dish.id, dish]]);

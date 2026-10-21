@@ -15,10 +15,11 @@ import { groceryNameKey } from './groceryParse';
  * much was poured off), so the line it came from is shown as counted at that
  * share rather than as measured, and the person can switch it off per line.
  *
- * **Deep frying is not modelled.** What a deep fryer's oil leaves in the food
- * scales with the food's weight, not with the amount poured, so a share of the
- * written oil is the wrong shape for it. A recipe that deep-fries is read as
- * "not cooked in the pan" and counts the whole amount, as before.
+ * **Deep frying has its own, much smaller share.** A pot of frying oil is mostly
+ * left behind: what the food takes up scales with the food's weight, not with
+ * the oil poured, and the recipe rarely names that weight. So `DEEP_FRY_SHARE`
+ * is a rough stand-in for "a small part of it", used when the steps deep fry
+ * the fat. It is the roughest number here, and the same switch turns it off.
  *
  * **Tri-state on purpose.** `RecipeIngredient.cookedInPan` is absent until the
  * person answers. Absent means "decide from the method", which is what the
@@ -35,6 +36,9 @@ import { groceryNameKey } from './groceryParse';
  * default and the same 75% is a rougher fit for them than for a plain oil.
  */
 export const PAN_OIL_SHARE = 0.75;
+
+/** The fraction of a deep-frying oil's written amount that counts. See the header. */
+export const DEEP_FRY_SHARE = 0.1;
 
 const COOKING_FATS = new Set([
   'oil',
@@ -71,7 +75,12 @@ export function isCookingFat(name: string): boolean {
   return words.length > 0 && COOKING_FATS.has(words.join(' '));
 }
 
-const DEEP_FRY = /\bdeep[- ]?fr(?:y|ied|ying)\b/;
+/**
+ * A step that deep fries, by name, by the fryer, or by the depth and heat of the
+ * oil ("heat 2 inches of oil to 350°F"). The last two matter because the step
+ * that names the oil often never says "deep fry".
+ */
+const DEEP_STEP = /deep[- ]?fr(?:y|ied|ying)|\bfryer\b|inches of oil|enough oil to (?:cover|submerge|fill)|\boil\b[^.]*\b(?:3[0-9]{2}|1[6-9][0-9])\s*°/;
 /** A verb that puts oil in a pan and leaves some of it there. Not "brown": brown sugar. */
 // Lookarounds rather than \b: the accented "é" is not a word character, so a
 // trailing \b after "sauté" never matches.
@@ -79,48 +88,70 @@ const PAN_VERB = /(?<![a-z])(?:saut[eé](?:e?d|ing|s)?|fr(?:y|ies|ied|ying)|stir
 /** Cookware or heat, enough to say the oil in the same sentence went into a pan. */
 const PAN_WORD = /\b(?:heat(?:ed|ing)?|skillet|pan|wok|griddle)\b/;
 
+export type CookMethod = 'pan' | 'deep';
+
 /**
- * Whether a recipe's method cooks `fatName` in a pan.
+ * How a recipe's method cooks `fatName`, or null when it doesn't cook it.
  *
  * A step counts when it names the fat and also names a pan verb or a pan, so
- * "heat the oil in a skillet" is a yes and "whisk the oil into the lemon" is a
- * no. A recipe whose steps never name the oil at all falls back to whether any
- * step sautés, fries or sears, since "sauté the onions until soft" is a recipe
- * written without saying what they cooked in. Deep frying anywhere makes it no.
+ * "heat the oil in a skillet" is a pan and "whisk the oil into the lemon" is
+ * nothing. A naming step that deep fries makes it deep. A recipe whose steps
+ * never name the fat at all falls back to the recipe as a whole: any deep-fry
+ * step makes it deep, else any step that sautés, fries or sears makes it a pan,
+ * since "sauté the onions until soft" is written without saying what they
+ * cooked in.
  */
-export function stepsCookInPan(fatName: string, steps: readonly Pick<RecipeStep, 'text'>[]): boolean {
+export function stepsCookMethod(fatName: string, steps: readonly Pick<RecipeStep, 'text'>[]): CookMethod | null {
   const texts = steps.map(step => step.text.toLowerCase());
-  if (texts.some(text => DEEP_FRY.test(text))) return false;
 
   const words = groceryNameKey(fatName).split(' ').filter(word => !OIL_QUALIFIERS.has(word));
   const named = words.join(' ');
   // The full name, or just its last word: "heat the oil" cooks an olive oil.
   const last = words[words.length - 1] ?? '';
+  // The last word alone ("the oil") stands for this fat only when the step
+  // doesn't name another one: "heat the vegetable oil" is not about an olive oil.
+  const namesOther = (text: string) =>
+    [...COOKING_FATS].some(fat => fat !== 'oil' && fat !== named && text.includes(fat));
   const namesFat = (text: string) =>
-    (named !== '' && text.includes(named)) || (last !== '' && new RegExp(`\\b${last}\\b`).test(text));
+    (named !== '' && text.includes(named))
+    || (last !== '' && new RegExp(`\\b${last}\\b`).test(text) && !namesOther(text));
 
   const naming = texts.filter(namesFat);
-  if (naming.length > 0) return naming.some(text => PAN_VERB.test(text) || PAN_WORD.test(text));
-  return texts.some(text => PAN_VERB.test(text));
+  if (naming.length > 0) {
+    if (naming.some(text => DEEP_STEP.test(text))) return 'deep';
+    return naming.some(text => PAN_VERB.test(text) || PAN_WORD.test(text)) ? 'pan' : null;
+  }
+  if (texts.some(text => DEEP_STEP.test(text))) return 'deep';
+  return texts.some(text => PAN_VERB.test(text)) ? 'pan' : null;
 }
 
-/**
- * Whether this line is cooked in the pan, or null for a line the question
- * doesn't apply to (anything that isn't a cooking oil).
- */
-export function fatCookedInPan(
+/** What a cooking fat's line is doing in this recipe. */
+export interface FatCooking {
+  /** Whether part of it is left behind: the person's answer, else what the steps say. */
+  cooked: boolean;
+  /** Which way it was cooked. A pan when the steps don't say, so an answer of "cooked" has a share to use. */
+  method: CookMethod;
+  /** The fraction of the written amount that counts toward the dish: 1 when not cooked. */
+  share: number;
+}
+
+/** What a line is doing in the recipe, or null for a line that isn't a cooking fat. */
+export function fatCooking(
   ingredient: Pick<RecipeIngredient, 'name' | 'cookedInPan'>,
   steps: readonly Pick<RecipeStep, 'text'>[],
-): boolean | null {
+): FatCooking | null {
   if (!isCookingFat(ingredient.name)) return null;
-  if (ingredient.cookedInPan !== undefined) return ingredient.cookedInPan;
-  return stepsCookInPan(ingredient.name, steps);
+  const fromSteps = stepsCookMethod(ingredient.name, steps);
+  const cooked = ingredient.cookedInPan ?? fromSteps !== null;
+  const method = fromSteps ?? 'pan';
+  const share = !cooked ? 1 : method === 'deep' ? DEEP_FRY_SHARE : PAN_OIL_SHARE;
+  return { cooked, method, share };
 }
 
-/** The fraction of this line's written amount that counts toward the dish: 1, or `PAN_OIL_SHARE`. */
+/** The fraction of this line's written amount that counts toward the dish: 1, `PAN_OIL_SHARE` or `DEEP_FRY_SHARE`. */
 export function panOilShare(
   ingredient: Pick<RecipeIngredient, 'name' | 'cookedInPan'>,
   steps: readonly Pick<RecipeStep, 'text'>[],
 ): number {
-  return fatCookedInPan(ingredient, steps) === true ? PAN_OIL_SHARE : 1;
+  return fatCooking(ingredient, steps)?.share ?? 1;
 }

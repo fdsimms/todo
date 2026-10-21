@@ -3,8 +3,16 @@
  * plan. Same contract as tools.ts.
  */
 import type { MealPlanEntry, MealSlot, Recipe } from '../../src/types';
-import { fatCookedInPan, PAN_OIL_SHARE } from '../../src/utils/panOil';
+import { fatCooking } from '../../src/utils/panOil';
 import type { MealChoice, MealFill, MealPatch, Replica } from './replica';
+
+/** A cooking fat that is cooked, with how much of it counts toward the recipe's nutrition. */
+function cookedNote(ingredient: Recipe['ingredients'][number], steps: Recipe['steps']): { cookedInPan?: string } {
+  const cooking = fatCooking(ingredient, steps);
+  if (!cooking?.cooked) return {};
+  const how = cooking.method === 'deep' ? 'deep fried' : 'cooked in the pan';
+  return { cookedInPan: `${how}, counted at about ${Math.round(cooking.share * 100)}% in nutrition` };
+}
 
 export const MEAL_SLOTS: readonly MealSlot[] = ['breakfast', 'lunch', 'dinner', 'snack'];
 export const RECIPE_LIMIT = 50;
@@ -129,7 +137,7 @@ export function getRecipe(replica: Replica, id: string): RecipeDetail | null {
       ...(i.excludeFromNutrition ? { notCountedInNutrition: true } : {}),
       // A cooking fat (oil, butter, ghee) cooked in a pan counts toward nutrition at a share of its written amount, from
       // the recipe's steps unless the person answered (set it with patch_recipe's setIngredientNutrition).
-      ...(fatCookedInPan(i, r.steps) === true ? { cookedInPan: `counted at about ${Math.round(PAN_OIL_SHARE * 100)}% in nutrition` } : {}),
+      ...cookedNote(i, r.steps),
       // Lines sharing a group are alternatives: use one of them.
       ...(i.choiceGroup ? { oneOf: i.choiceGroup } : {}),
     })),

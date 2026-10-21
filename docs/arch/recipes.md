@@ -152,7 +152,7 @@ sheet and the ingredient row both say so. The share is an estimate with no sourc
 labelled and a person can switch it off per line.
 
 - **The field is tri-state, and the guess is never stored.** Absent means nobody answered, and the recipe's own steps
-  decide (`stepsCookInPan`: a step that names the oil and also heats, sautés, fries or sears; a sauté anywhere when no
+  decide (`stepsCookMethod`: a step that names the oil and also heats, sautés, fries or sears; a sauté anywhere when no
   step names the oil). `true` and `false` are answers the steps no longer overrule, and `false` is kept on purpose
   (it is the answer that beats a guessed `true`). The ingredient sheet writes the field only after the toggle is
   touched, so an untouched line keeps following the steps.
@@ -160,8 +160,12 @@ labelled and a person can switch it off per line.
   a fat. Oils, butter, ghee and sesame oil are on it because each is sometimes used to sauté. Only sometimes: a
   cookie's butter and a finishing drizzle of sesame oil are eaten whole, so the steps decide the default and the same
   75% is a rougher fit for those than for a plain oil.
-- **Deep frying is not modelled** and counts the whole amount, as it did before. What a fryer's oil leaves in the food
-  scales with the food's weight, so a share of the poured oil is the wrong shape for it.
+- **Deep frying has its own, much smaller share (`DEEP_FRY_SHARE`, 10%), and it is the roughest number here.** A pot of
+  frying oil is mostly left behind, and what the food takes up scales with the food's weight, which the recipe rarely
+  names, so a fraction of the oil poured stands in for it. A step is deep when it says so, names a fryer, or heats the
+  oil to frying temperature ("350°F", "2 inches of oil"), because the step naming the oil often never says "deep fry".
+  The same `cookedInPan` switch turns it off (the sheet's label reads "Deep fried" then). A deep fry step that doesn't
+  name a given oil doesn't make a sautéed olive oil in the same recipe deep.
 - **The share is applied after `resolveLine`, never inside it.** The bulk-staple check asks whether the amount
   *written* is large, and a share applied first would tip a 100 g staple oil under its threshold and drop the line as
   negligible. `NutritionLine.share` carries it for display, and `weekNutrition` gets it through

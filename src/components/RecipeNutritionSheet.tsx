@@ -25,7 +25,6 @@ import { usePendingRecipeEstimateStore } from '../store/usePendingRecipeEstimate
 import { isQueueableFailure } from '../utils/estimateQueue';
 import { liveFor } from '../utils/recipeEstimateQueue';
 import { isUsuallyRemovedBeforeEating } from '../utils/removedBeforeEating';
-import { PAN_OIL_SHARE } from '../utils/panOil';
 import { EditorSheet } from './EditorSheet';
 import { GroceryItemSheet } from './GroceryItemSheet';
 import { InlineAction } from './InlineAction';
@@ -319,10 +318,15 @@ export function RecipeNutritionSheet({ visible, reading, recipeId, recipeName, s
   // amount. A consequence of the figures on screen, so it is a plain Text and
   // not a HelpText that Hide help text would remove.
   const panOilNote = useMemo(() => {
-    const trimmed = covered.filter(({ line }) => line.share < 1).map(({ line }) => line.name);
+    const trimmed = covered.filter(({ line }) => line.share < 1).map(({ line }) => line);
     if (trimmed.length === 0) return null;
-    const names = trimmed.length === 1 ? `the ${trimmed[0]}` : `${trimmed.length} cooking fats`;
-    return `Includes about ${Math.round(PAN_OIL_SHARE * 100)}% of ${names}. What’s left in the pan isn’t counted.`;
+    const shares = new Set(trimmed.map(line => line.share));
+    const left = 'What’s left in the pan or fryer isn’t counted.';
+    if (trimmed.length === 1 || shares.size === 1) {
+      const names = trimmed.length === 1 ? `the ${trimmed[0].name}` : `${trimmed.length} cooking fats`;
+      return `Includes about ${Math.round(trimmed[0].share * 100)}% of ${names}. ${left}`;
+    }
+    return `Includes only part of ${trimmed.length} cooking fats. ${left}`;
   }, [covered]);
 
   /**
