@@ -941,7 +941,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
           label="Tasks from app usage"
           hint="Add a task when you pass an amount of time in an app. These are set up under Automations."
           value={activeRuleCount === 0 ? 'No rules' : activeRuleCount === 1 ? '1 rule' : `${activeRuleCount} rules`}
-          onPress={() => { haptics.tap(); navigateToSettingsEntry(navigation, 'gen:screenTime', 'ScreenTime'); }}
+          onPress={() => { haptics.tap(); navigateToSettingsEntry(navigation, 'gen:screenTime'); }}
         />
       </SettingsSection>
 
