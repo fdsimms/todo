@@ -5,6 +5,7 @@ import {
   RECENT_SCREEN_LIMIT, DEFAULT_TAB_ROUTES, MENU_ROUTES, normalizeTabRoutes, parseTabRoutes, setTabSlot, clearTabSlot,
   visibleTabRoutes, tabPickerGroups,
   arrangeMenuRows, menuRowKey, toggleMenuPin, toggleMenuHidden, parseMenuArrangement, EMPTY_MENU_ARRANGEMENT,
+  switchedOffMatches,
 } from '../utils/navHubs';
 import { SIMPLE_HIDDEN_SCREENS } from '../utils/simpleMode';
 
@@ -451,5 +452,20 @@ describe('arranging the menu', () => {
     expect(parseMenuArrangement(JSON.stringify(arrangement))).toEqual(arrangement);
     expect(parseMenuArrangement('not json')).toEqual(EMPTY_MENU_ARRANGEMENT);
     expect(parseMenuArrangement(null)).toEqual(EMPTY_MENU_ARRANGEMENT);
+  });
+});
+
+describe('switchedOffMatches', () => {
+  it('names the area whose switch hides a screen the search would find', () => {
+    expect(switchedOffMatches({ ...FULL, workoutsEnabled: false }, ['gym']))
+      .toEqual([{ label: 'Workouts', settingId: 'workoutsEnabled' }]);
+    expect(switchedOffMatches({ ...FULL, kitchenEnabled: false }, ['recipes']))
+      .toEqual([{ label: 'Groceries & meals', settingId: 'kitchenEnabled' }]);
+  });
+
+  it('says nothing while the area is on, or when the words match nothing there', () => {
+    expect(switchedOffMatches(FULL, ['gym'])).toEqual([]);
+    expect(switchedOffMatches({ ...FULL, workoutsEnabled: false }, ['logbook'])).toEqual([]);
+    expect(switchedOffMatches({ ...FULL, workoutsEnabled: false }, [])).toEqual([]);
   });
 });

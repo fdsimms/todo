@@ -6,6 +6,7 @@ import {
   filterTips,
   tipsFor,
   tipsForArea,
+  suggestedTips,
   unseenTipsForScreen,
   type Tip,
   type TipSignals,
@@ -142,7 +143,7 @@ describe('the tip content itself', () => {
       'Today', 'Groceries', 'Projects', 'Search', 'Recipes', 'MealPlan', 'Kitchen',
       'Calendar', 'Categories', 'Tags', 'Stacks', 'Templates', 'Logbook', 'Stats',
       'Mood', 'People', 'Cookbooks', 'Backfill', 'Stuck', 'Archived', 'Tips', 'Settings',
-      'Automations',
+      'Automations', 'Medications', 'Rewards',
     ]);
     for (const t of TIPS) {
       if (!t.link) continue;
@@ -380,5 +381,25 @@ describe('filterTips', () => {
     for (const term of ['swipe', 'pin', 'stack', 'recipe', 'freezer', 'widget', 'backup', 'calories', 'usda']) {
       expect(`${term}: ${filterTips(term).length > 0}`).toBe(`${term}: true`);
     }
+  });
+});
+
+describe('suggestedTips', () => {
+  const signals = { taskCount: 10 } as TipSignals;
+
+  it('offers unread tips whose trigger holds and that have no screen to surface on', () => {
+    const tips = [
+      tip({ id: 'banner', screen: 'today', when: () => true }),
+      tip({ id: 'always' }),
+      tip({ id: 'ready', when: s => s.taskCount >= 5 }),
+      tip({ id: 'notYet', when: s => s.taskCount >= 50 }),
+      tip({ id: 'read', when: () => true }),
+    ];
+    expect(suggestedTips(signals, ['read'], tips).map(t => t.id)).toEqual(['ready']);
+  });
+
+  it('keeps array order and stops at the limit', () => {
+    const tips = ['a', 'b', 'c', 'd'].map(id => tip({ id, when: () => true }));
+    expect(suggestedTips(signals, [], tips, 2).map(t => t.id)).toEqual(['a', 'b']);
   });
 });

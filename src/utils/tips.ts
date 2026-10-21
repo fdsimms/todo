@@ -42,7 +42,7 @@ import { featureHidden, type SimpleFeatureId } from './simpleMode';
  * under on `TipsScreen`, so these track the way the drawer already splits the
  * app rather than being a second taxonomy over it.
  */
-export type TipArea = 'today' | 'organize' | 'groceries' | 'kitchen' | 'recipes' | 'mealPlan' | 'foodLog' | 'app';
+export type TipArea = 'today' | 'organize' | 'groceries' | 'kitchen' | 'recipes' | 'mealPlan' | 'foodLog' | 'health' | 'app';
 
 /**
  * A hub screen that hosts the tip banner. Only these seven render a `TipHost`:
@@ -173,6 +173,7 @@ export const TIP_AREAS: TipAreaInfo[] = [
   { id: 'recipes', title: 'Recipes', icon: 'restaurant-outline' },
   { id: 'mealPlan', title: 'Meal planning', icon: 'calendar-outline' },
   { id: 'foodLog', title: 'The food log', icon: 'nutrition-outline' },
+  { id: 'health', title: 'Health and habits', icon: 'heart-outline' },
   { id: 'app', title: 'Around the app', icon: 'settings-outline' },
 ];
 
@@ -905,6 +906,67 @@ export const TIPS: Tip[] = [
     keywords: ['saved meal', 'usual', 'repeat', 'again', 'breakfast'],
   },
 
+  // ==== Health and habits ====
+  // The Health hub's screens, Workouts and Coins. All browse-only: none of
+  // them is a hub screen that hosts a banner, and two are about areas that
+  // start off, which is exactly where nothing else would ever mention them.
+  {
+    id: 'mood-faces',
+    area: 'health',
+    icon: 'happy-outline',
+    title: 'Log a mood with one tap',
+    body: 'The Today card at the top of Mood has five faces. Tap one and the entry opens with that mood picked, ready for a symptom or a note.',
+    link: { label: 'Open Mood', screen: 'Mood' },
+    keywords: ['feeling', 'check in', 'emotion', 'journal'],
+    feature: 'moodScreen',
+  },
+  {
+    id: 'medication-task',
+    area: 'health',
+    icon: 'medkit-outline',
+    title: 'Record a regular dose by checking off a task',
+    body: 'Use a repeating task for anything you take on a schedule. Checking it off records the dose on Medications.',
+    link: { label: 'Open Medications', screen: 'Medications' },
+    keywords: ['medicine', 'pill', 'supplement', 'vitamin', 'dose'],
+    feature: 'medicationScreen',
+  },
+  {
+    id: 'weight-from-health',
+    area: 'health',
+    icon: 'scale-outline',
+    title: 'Weight comes from Apple Health',
+    body: 'Turn on Read Apple Health and weigh-ins already in Health show up on Weight. With Log to Health on too, one you record on Weight is saved to Health.',
+    link: { label: 'Open Settings', screen: 'Settings', entryId: 'healthRead' },
+    keywords: ['weigh', 'scale', 'body', 'healthkit'],
+  },
+  {
+    id: 'workouts-off',
+    area: 'health',
+    icon: 'barbell-outline',
+    title: 'Workouts start off',
+    body: 'Turn on Workouts to log strength training: routines, sets, a rest timer and your records. It adds a Workouts row to the menu.',
+    link: { label: 'Open Settings', screen: 'Settings', entryId: 'workoutsEnabled' },
+    keywords: ['gym', 'lifting', 'exercise', 'training', 'strength'],
+  },
+  {
+    id: 'workout-again',
+    area: 'health',
+    icon: 'repeat-outline',
+    title: 'Repeat a past workout',
+    body: 'Open a finished workout on Workouts and tap Do this again to start a new one with the same exercises and sets.',
+    keywords: ['gym', 'routine', 'again', 'copy'],
+  },
+  {
+    id: 'coins-off',
+    area: 'health',
+    icon: 'trophy-outline',
+    title: 'Earn coins for finishing tasks',
+    body: 'Coins and rewards start off. Turn them on from Rewards in the menu: finishing a task earns coins, and you spend them on rewards you set yourself.',
+    link: { label: 'Open Rewards', screen: 'Rewards' },
+    keywords: ['coins', 'points', 'gamify', 'treat', 'prize'],
+    feature: 'rewardsScreen',
+  },
+
   // ==== Around the app ====
   {
     id: 'settings-search',
@@ -1153,4 +1215,22 @@ export function filterTips(query: string, tips: Tip[] = TIPS): Tip[] {
     const haystack = [tip.title, tip.body, ...(tip.keywords ?? [])].join(' ').toLowerCase();
     return terms.every(term => haystack.includes(term));
   });
+}
+
+/**
+ * Tips worth reading now, for the top of `TipsScreen`: unread ones whose
+ * `when` holds and that have no screen to surface on, in array order. A tip
+ * with a `screen` gets its banner there; these have nowhere else to be met,
+ * so without this a trigger on one only ever decided nothing.
+ */
+export function suggestedTips(
+  signals: TipSignals,
+  seen: readonly string[],
+  tips: Tip[] = TIPS,
+  limit = 3,
+): Tip[] {
+  const seenSet = new Set(seen);
+  return tips
+    .filter(tip => !tip.screen && tip.when && !seenSet.has(tip.id) && tip.when(signals))
+    .slice(0, limit);
 }

@@ -1,5 +1,5 @@
 /**
- * The three questions the app asks the first time it opens, and when it does.
+ * The questions the app asks the first time it opens, and when it does.
  *
  * A new install otherwise lands on a full app: about thirty destinations, the
  * groceries and meals area on, and no notification permission asked for
@@ -19,6 +19,13 @@ export interface FirstRunAnswers {
   keepItSimple: boolean;
   /** Ask the system for notification permission on Done. */
   reminders: boolean;
+  /**
+   * The two areas that ship off (`workoutsEnabled`, `rewardsEnabled`). Asked
+   * here because off by default otherwise means never found: neither has a
+   * menu row or a tip until it's on.
+   */
+  workouts: boolean;
+  coins: boolean;
 }
 
 /** The answers the sheet opens on. They match the settings' own defaults, so Skip changes nothing. */
@@ -26,11 +33,25 @@ export const FIRST_RUN_DEFAULTS: FirstRunAnswers = {
   groceriesAndMeals: true,
   keepItSimple: false,
   reminders: true,
+  workouts: false,
+  coins: false,
 };
 
-/** The two settings the answers write. The third is a permission, not a setting. */
-export function firstRunSettings(a: FirstRunAnswers): { kitchenEnabled: boolean; simpleMode: boolean } {
-  return { kitchenEnabled: a.groceriesAndMeals, simpleMode: a.keepItSimple };
+export interface FirstRunSettings {
+  kitchenEnabled: boolean;
+  simpleMode: boolean;
+  workoutsEnabled: boolean;
+  rewardsEnabled: boolean;
+}
+
+/** The settings the answers write. Reminders is a permission, not a setting. */
+export function firstRunSettings(a: FirstRunAnswers): FirstRunSettings {
+  return {
+    kitchenEnabled: a.groceriesAndMeals,
+    simpleMode: a.keepItSimple,
+    workoutsEnabled: a.workouts,
+    rewardsEnabled: a.coins,
+  };
 }
 
 export interface FirstRunState {

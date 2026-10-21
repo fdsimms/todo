@@ -739,3 +739,29 @@ export function toggleMenuHidden(arrangement: MenuArrangement, key: string): Men
     ? { ...arrangement, hidden: arrangement.hidden.filter(k => k !== key) }
     : { pinned: arrangement.pinned.filter(k => k !== key), hidden: [...arrangement.hidden, key] };
 }
+
+/** An area switched off in Feature areas, and the settings row that turns it back on. */
+export interface SwitchedOffArea {
+  label: string;
+  settingId: 'kitchenEnabled' | 'workoutsEnabled';
+}
+
+/**
+ * The switched-off areas a menu search would have found a screen in. "gym"
+ * with Workouts off otherwise reads as an app that has no workouts, since the
+ * switch takes the screen out of the index along with the menu.
+ */
+export function switchedOffMatches(options: NavMenuOptions, terms: readonly string[]): SwitchedOffArea[] {
+  if (terms.length === 0) return [];
+  const found = new Set(searchMenu(menuDestinations(options), [...terms]).map(d => d.route));
+  const opensUp = (flipped: NavMenuOptions) =>
+    searchMenu(menuDestinations(flipped), [...terms]).some(d => !found.has(d.route));
+  const areas: SwitchedOffArea[] = [];
+  if (!options.workoutsEnabled && opensUp({ ...options, workoutsEnabled: true })) {
+    areas.push({ label: 'Workouts', settingId: 'workoutsEnabled' });
+  }
+  if (!options.kitchenEnabled && opensUp({ ...options, kitchenEnabled: true })) {
+    areas.push({ label: 'Groceries & meals', settingId: 'kitchenEnabled' });
+  }
+  return areas;
+}

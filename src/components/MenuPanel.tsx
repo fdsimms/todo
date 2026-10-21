@@ -14,7 +14,7 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import {
   arrangeMenuRows, hubEntryRoute, hubSubtitle, menuDestinations, menuRowKey, menuSearchTerms,
-  recentMenuDestinations, searchMenu, toggleMenuHidden, toggleMenuPin, visibleMenuRows, TAB_SLOT_COUNT,
+  recentMenuDestinations, searchMenu, switchedOffMatches, toggleMenuHidden, toggleMenuPin, visibleMenuRows, TAB_SLOT_COUNT,
   type NavDestination, type NavHub, type NavMenuRow, type NavSearchResult,
 } from '../utils/navHubs';
 import { currentTabName } from '../navigation/navigationRef';
@@ -118,6 +118,12 @@ export function MenuPanel({ variant, onScreen, activeTab, onNavigate, onOpenSett
     [menuOptions, terms],
   );
   const searching = terms.length > 0;
+  // An area switched off takes its screens out of the index too, so a search
+  // for one says the area is off rather than that nothing matched.
+  const offAreas = useMemo(
+    () => (onOpenSettingsEntry ? switchedOffMatches(menuOptions, terms) : []),
+    [onOpenSettingsEntry, menuOptions, terms],
+  );
   // Settings rows the query names, under the screens: "dark mode", "vacation"
   // or "backup" are settings, and the field used to answer them with "No
   // screen matches that." The same rows and order quick search offers.
@@ -133,8 +139,9 @@ export function MenuPanel({ variant, onScreen, activeTab, onNavigate, onOpenSett
       onListIds: new Set(),
       now: new Date(),
     }, query).goTo.filter((r): r is Extract<ElsewhereResult, { kind: 'setting' }> => r.kind === 'setting')
+      .filter(r => !offAreas.some(a => a.settingId === r.entry.id))
       .slice(0, SETTINGS_RESULT_LIMIT);
-  }, [onOpenSettingsEntry, terms, query]);
+  }, [onOpenSettingsEntry, terms, query, offAreas]);
 
   // Eleven rows and a footer fit on every phone this runs on, so the fade and
   // the flashed scrollbar are no longer load-bearing — they stay because the
@@ -378,6 +385,24 @@ export function MenuPanel({ variant, onScreen, activeTab, onNavigate, onOpenSett
               {showHidden && hiddenRows.map((row, index) => renderRow(row, menuRows.length + index))}
             </>
           )}
+        {searching && offAreas.map(area => (
+          <TouchableOpacity
+            key={area.settingId}
+            style={rowStyle(compact, false, colors)}
+            onPress={() => onOpenSettingsEntry?.(area.settingId)}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel={`${area.label} is off. Turn it on in Feature areas settings`}
+          >
+            <View style={iconWrapStyle(compact, false, colors)}>
+              <Ionicons name="eye-off-outline" size={compact ? COMPACT_ICON : 18} color={colors.textSecondary} />
+            </View>
+            <View style={styles.itemBody}>
+              <Text style={[styles.itemLabel, { color: colors.text }]}>{area.label} is off</Text>
+              <Text style={[styles.itemSubtitle, { color: colors.textSecondary }]}>Turn it on in Feature areas</Text>
+            </View>
+          </TouchableOpacity>
+        ))}
         {searching && settingResults.length > 0 && (
           <>
             <Text style={[styles.resultsCaption, { color: colors.textSecondary }]}>Settings</Text>
@@ -401,7 +426,7 @@ export function MenuPanel({ variant, onScreen, activeTab, onNavigate, onOpenSett
             ))}
           </>
         )}
-        {searching && results.length === 0 && settingResults.length === 0 && (
+        {searching && results.length === 0 && settingResults.length === 0 && offAreas.length === 0 && (
           <Text style={[styles.noResults, { color: colors.textSecondary }]}>
             {onOpenSettingsEntry ? 'No screen or setting matches that.' : 'No screen matches that.'}
             {hiddenNote ? `\n\n${hiddenNote}` : ''}
