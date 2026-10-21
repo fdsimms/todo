@@ -1,0 +1,1 @@
+{ "message": "Recipes can now have an oven temperature. Cook mode lists it as a Preheat oven line on the Mise en place screen, shown in °F or °C to match your units setting. For a recipe that turns the oven on partway through, pick the step in the recipe editor and cook mode reminds you on that step. Recipe import fills both in when the recipe names them.", "date": "2026-10-21" }

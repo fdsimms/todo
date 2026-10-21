@@ -29,6 +29,7 @@ import {
   recipeHasMethod, recipeHasPrepTasks, recipeHasAttribution,
 } from '../utils/recipeUtils';
 import { describeKeepDays } from '../utils/leftovers';
+import { formatOvenTemp, parseOvenTemp } from '../utils/ovenTemp';
 import { sourceFieldsFor, sourcePlanFor } from '../utils/recipeProvenance';
 import { aisleForName } from '../utils/groceryAisles';
 import { allSectionsOf, sectionsOf } from '../utils/recipeSections';
@@ -107,6 +108,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const setRecipeYield = useRecipeStore(s => s.setRecipeYield);
   const setEstimatedMinutes = useRecipeStore(s => s.setEstimatedMinutes);
   const setLeftoverKeepDays = useRecipeStore(s => s.setLeftoverKeepDays);
+  const setOvenTemp = useRecipeStore(s => s.setOvenTemp);
   const setSourceUrl = useRecipeStore(s => s.setSourceUrl);
   const setSource = useRecipeStore(s => s.setSource);
   const setAuthor = useRecipeStore(s => s.setAuthor);
@@ -149,6 +151,11 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const [minutesText, setMinutesText] = useState('');
   const [yieldText, setYieldText] = useState('');
   const [leftoverKeepDaysText, setLeftoverKeepDaysText] = useState('');
+  // One field in the unit it was written in ("350°F"), so the row needs no unit control.
+  const [ovenTempText, setOvenTempText] = useState('');
+  // Which of `steps` turns the oven on, 1-based, when it isn't the first. Only set
+  // while `steps` is the model's own list, which is what the number counts in.
+  const [ovenStepNumber, setOvenStepNumber] = useState<number | null>(null);
   const [siteName, setSiteName] = useState('');
   const [sourceAuthor, setSourceAuthor] = useState('');
   const [sourcePageText, setSourcePageText] = useState('');
@@ -221,6 +228,8 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     setMinutesText('');
     setYieldText('');
     setLeftoverKeepDaysText('');
+    setOvenTempText('');
+    setOvenStepNumber(null);
     setSiteName('');
     setSourceAuthor('');
     setSourcePageText('');
@@ -260,7 +269,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       setAccepted(new Set(rows.map((_, i) => i)));
       setApplyDetails(
         result.servings !== null || result.prepMinutes !== null || result.recipeYield !== null
-          || result.leftoverKeepDays !== null,
+          || result.leftoverKeepDays !== null || result.ovenTemp !== null,
       );
       // A method is offered whichever source it came from — the page's own
       // steps when it publishes them, otherwise the model's read of the same
@@ -274,6 +283,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       setApplyPrepTasks(result.prepTasks.length > 0 && !recipeHasPrepTasks(recipe));
       setApplySource(!recipeHasAttribution(recipe));
       setSteps(methodStepsFound);
+      setOvenStepNumber(methodStepsFound === result.steps ? result.ovenTempStep : null);
       setAcceptedSteps(new Set(methodStepsFound.map((_, i) => i)));
       setPrepTasks(result.prepTasks);
       setAcceptedPrepTasks(new Set(result.prepTasks.map((_, i) => i)));
@@ -281,6 +291,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       setMinutesText(result.prepMinutes !== null ? String(result.prepMinutes) : '');
       setYieldText(result.recipeYield ?? '');
       setLeftoverKeepDaysText(result.leftoverKeepDays !== null ? String(result.leftoverKeepDays) : '');
+      setOvenTempText(result.ovenTemp !== null ? formatOvenTemp(result.ovenTemp, result.ovenTempUnit) : '');
       const source = sourceFieldsFor(page, result);
       setSiteName(source.source);
       setSourceAuthor(source.author);
@@ -383,6 +394,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       .filter((i): i is NonNullable<typeof i> => i !== null);
     if (chosen.length > 0) addStructuredIngredients(recipe.id, chosen);
     components.commitTo(recipe.id);
+    let oven: ReturnType<typeof parseOvenTemp> = null;
     if (applyDetails) {
       // Whatever's in the box now, not what the model first said — the row is
       // editable, so `extracted` is only ever the starting value here.
@@ -405,17 +417,24 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
         const keepDays = parseInt(keepDaysRaw, 10);
         if (!Number.isNaN(keepDays)) setLeftoverKeepDays(recipe.id, keepDays);
       }
+      oven = parseOvenTemp(pendingText('details:ovenTemp', ovenTempText));
+      if (oven) setOvenTemp(recipe.id, oven.degrees, oven.unit);
     }
     // Appended, never replacing what's there. A recipe with its own method or
     // prep tasks arrives here unticked, so reaching this line at all means the
     // user asked for these on top of it — and appending is the only version
     // of that they can undo by hand.
+    let ovenStepId: string | null = null;
     if (applyMethod) {
       steps.forEach((step, i) => {
         if (!acceptedSteps.has(i)) return;
-        addStep(recipe.id, pendingText(`step:${i}:text`, step));
+        const added = addStep(recipe.id, pendingText(`step:${i}:text`, step));
+        if (added && ovenStepNumber === i + 1) ovenStepId = added.id;
       });
     }
+    // The pointer needs the step to exist, so it is written once they do. A step
+    // left unticked, or a temperature left unapplied, leaves the usual preheat.
+    if (oven && ovenStepId) setOvenTemp(recipe.id, oven.degrees, oven.unit, ovenStepId);
     if (applyPrepTasks) {
       prepTasks.forEach((task, i) => {
         if (!acceptedPrepTasks.has(i)) return;
@@ -457,8 +476,8 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   // unmount the row mid-edit — there'd be no way to type a value back in.
   const foundDetails = !!extracted
     && (extracted.servings !== null || extracted.prepMinutes !== null || extracted.recipeYield !== null
-      || extracted.leftoverKeepDays !== null);
-  const hasDetails = !!servingsText || !!minutesText || !!yieldText || !!leftoverKeepDaysText;
+      || extracted.leftoverKeepDays !== null || extracted.ovenTemp !== null);
+  const hasDetails = !!servingsText || !!minutesText || !!yieldText || !!leftoverKeepDaysText || !!ovenTempText;
   // The page's own steps (verbatim structured data) when it has them,
   // otherwise whatever the model read off the source itself.
   const canApply = !loading && !!extracted && (
@@ -484,6 +503,8 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     if (leftoverKeepDaysText && !Number.isNaN(keepDaysNum)) {
       parts.push(`leftovers keep ${describeKeepDays(keepDaysNum).toLowerCase()}`);
     }
+    const oven = parseOvenTemp(ovenTempText);
+    if (oven) parts.push(`oven ${formatOvenTemp(oven.degrees, oven.unit)}`);
     if (parts.length === 0) return '';
     const [first, ...rest] = parts;
     return [capitalize(first), ...rest].join(', ');
@@ -512,7 +533,8 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   // — there's only one servings field — so the row says so when the recipe
   // already has one.
   const detailsReplace = recipe?.servings != null || recipe?.estimatedMinutes != null
-    || recipe?.recipeYield != null || recipe?.leftoverKeepDays != null;
+    || recipe?.recipeYield != null || recipe?.leftoverKeepDays != null
+    || recipe?.ovenTemp != null;
 
   const methodMeta = methodRowMeta(acceptedSteps.size, steps.length, recipeHasMethod(recipe));
   const prepTasksMeta = prepTasksRowMeta(
@@ -729,6 +751,21 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
                 numberOfLines={1}
               />
               <Text style={styles.detailSep}>days</Text>
+            </View>
+            <View style={styles.detailFields}>
+              <Text style={styles.detailSep}>Oven</Text>
+              <InlineEditableText
+                edits={edits}
+                editKey="details:ovenTemp"
+                value={ovenTempText}
+                onCommit={setOvenTempText}
+                allowEmpty
+                textStyle={styles.detailValue}
+                placeholder="e.g. 350°F"
+                accessibilityLabel="oven temperature"
+                maxLength={8}
+                numberOfLines={1}
+              />
             </View>
           </ImportApplyRow>
         )}

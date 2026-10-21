@@ -59,7 +59,7 @@ function makeRecipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     servingsMax: null,
     recipeYield: null,
     cookedWeightG: null,
-    leftoverKeepDays: null,
+    leftoverKeepDays: null, ovenTemp: null, ovenTempUnit: 'F', ovenTempStepId: null,
     imagePath: null,
     mealType: null,
     tags: [],
@@ -399,6 +399,69 @@ describe('field setters', () => {
 
     useRecipeStore.getState().setLeftoverKeepDays(r.id, -4);
     expect(useRecipeStore.getState().recipeById(r.id)!.leftoverKeepDays).toBe(0);
+  });
+
+  it('sets an oven temperature in either unit and clears it with null', () => {
+    const r = makeRecipe('Banana bread');
+    seed([r]);
+
+    useRecipeStore.getState().setOvenTemp(r.id, 350);
+    expect(useRecipeStore.getState().recipeById(r.id)).toMatchObject({ ovenTemp: 350, ovenTempUnit: 'F' });
+
+    // The unit rides along, and a later call without one keeps it.
+    useRecipeStore.getState().setOvenTemp(r.id, 180, 'C');
+    useRecipeStore.getState().setOvenTemp(r.id, 190);
+    expect(useRecipeStore.getState().recipeById(r.id)).toMatchObject({ ovenTemp: 190, ovenTempUnit: 'C' });
+
+    useRecipeStore.getState().setOvenTemp(r.id, null);
+    expect(useRecipeStore.getState().recipeById(r.id)!.ovenTemp).toBeNull();
+  });
+
+  it('points the oven at one of the recipe’s steps, and only while it has a temperature', () => {
+    const r = makeRecipe('Focaccia');
+    seed([r]);
+    const store = useRecipeStore.getState();
+    store.addStep(r.id, 'Mix.');
+    const late = store.addStep(r.id, 'Heat the oven.')!;
+
+    store.setOvenTemp(r.id, 450, 'F', late.id);
+    expect(useRecipeStore.getState().recipeById(r.id)!.ovenTempStepId).toBe(late.id);
+
+    // Omitted keeps it; null sends it back to preheating before cooking starts.
+    store.setOvenTemp(r.id, 425);
+    expect(useRecipeStore.getState().recipeById(r.id)!.ovenTempStepId).toBe(late.id);
+    store.setOvenTemp(r.id, 425, undefined, null);
+    expect(useRecipeStore.getState().recipeById(r.id)!.ovenTempStepId).toBeNull();
+
+    // A step that isn't this recipe's is not kept, and clearing the temperature clears the step.
+    store.setOvenTemp(r.id, 425, undefined, 'elsewhere');
+    expect(useRecipeStore.getState().recipeById(r.id)!.ovenTempStepId).toBeNull();
+    store.setOvenTemp(r.id, 425, undefined, late.id);
+    store.setOvenTemp(r.id, null);
+    expect(useRecipeStore.getState().recipeById(r.id)!.ovenTempStepId).toBeNull();
+  });
+
+  it('drops the oven’s step when that step is deleted, keeping the temperature', () => {
+    const r = makeRecipe('Focaccia');
+    seed([r]);
+    const store = useRecipeStore.getState();
+    store.addStep(r.id, 'Mix.');
+    const late = store.addStep(r.id, 'Heat the oven.')!;
+    store.setOvenTemp(r.id, 450, 'F', late.id);
+
+    store.removeStep(r.id, late.id);
+    expect(useRecipeStore.getState().recipeById(r.id)).toMatchObject({ ovenTemp: 450, ovenTempStepId: null });
+  });
+
+  it('refuses an oven temperature no oven does rather than storing it', () => {
+    const r = makeRecipe('Banana bread');
+    seed([r]);
+
+    useRecipeStore.getState().setOvenTemp(r.id, 3500);
+    expect(useRecipeStore.getState().recipeById(r.id)!.ovenTemp).toBeNull();
+    // 350 is a fine Fahrenheit setting and an impossible Celsius one.
+    useRecipeStore.getState().setOvenTemp(r.id, 350, 'C');
+    expect(useRecipeStore.getState().recipeById(r.id)!.ovenTemp).toBeNull();
   });
 
   it('sets and clears the meal type', () => {
