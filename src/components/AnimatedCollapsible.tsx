@@ -11,6 +11,7 @@ import Reanimated, {
 } from 'react-native-reanimated';
 import { animation } from '../theme';
 import { nextMeasuredHeight } from '../utils/measuredHeight';
+import { PaintSelectionSuspend } from './PaintSelection';
 
 interface Props {
   expanded: boolean;
@@ -149,7 +150,7 @@ export function AnimatedCollapsible({ expanded, clip = true, children }: Props) 
           rather than `hidden` (see `clip`), keeping that measurement costs
           nothing on any frame of the animation. */}
       <View onLayout={handleLayout}>
-        {children}
+        <PaintSelectionSuspend suspended={!expanded}>{children}</PaintSelectionSuspend>
       </View>
     </Reanimated.View>
   );
