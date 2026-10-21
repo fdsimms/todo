@@ -6,6 +6,8 @@ import { font, fontWeight, radius, spacing, type Colors } from '../theme';
 import { catalogExercise } from '../utils/exerciseCatalog';
 import type { ExerciseRecordsSummary } from '../utils/workoutRecords';
 import { formatRecordChange, recordLabel } from '../utils/workoutRecordText';
+import { weightScale } from '../utils/dumbbellLoad';
+import { useSettingsStore } from '../store/useSettingsStore';
 import type { WeightUnit } from '../utils/weightLog';
 
 interface Props {
@@ -27,25 +29,27 @@ interface Props {
 export function WorkoutRecordsCard({ records, exercises, unit, style }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const dumbbellEntry = useSettingsStore(st => st.dumbbellEntry);
   return (
     <View style={[styles.card, style]}>
       {records.map((r, i) => {
         const info = catalogExercise(exercises, r.exerciseId);
         const kind = info?.kind ?? 'weight_reps';
         const name = info?.name ?? 'Unknown exercise';
+        const scale = weightScale(info, dumbbellEntry);
         return (
           <View
             key={r.exerciseId}
             style={[styles.row, i > 0 && styles.rowSep]}
             accessible
             accessibilityLabel={`${name}. ${r.records.map(e => {
-              const change = formatRecordChange(e, kind, unit);
+              const change = formatRecordChange(e, kind, unit, scale);
               return `${recordLabel(e.type, kind, e.reps)}, up from ${change.before} to ${change.after}`;
             }).join('. ')}`}
           >
             <Text style={styles.name}>{name}</Text>
             {r.records.map(e => {
-              const change = formatRecordChange(e, kind, unit);
+              const change = formatRecordChange(e, kind, unit, scale);
               return (
                 <View key={`${e.type}-${e.reps ?? 0}`} style={styles.line}>
                   <Text style={styles.label}>{recordLabel(e.type, kind, e.reps)}</Text>

@@ -333,8 +333,8 @@ export function setFieldsFor(kind: ExerciseKind): SetField[] {
  * mock has it. Workout mode and the routine editor's set table share it, so
  * the two tables read alike.
  */
-export function columnLabel(field: SetField, kind: ExerciseKind, unit: WeightUnit): string {
-  if (field === 'weight') return kind === 'assisted_reps' ? `−${unit}` : unit;
+export function columnLabel(field: SetField, kind: ExerciseKind, unit: WeightUnit, weightSuffix = ''): string {
+  if (field === 'weight') return `${kind === 'assisted_reps' ? `−${unit}` : unit}${weightSuffix}`;
   if (field === 'reps') return 'Reps';
   if (field === 'duration') return 'Time';
   return 'Dist';
@@ -369,12 +369,14 @@ export function formatSetLine(
   kind: ExerciseKind,
   unit: WeightUnit,
   withUnit = false,
+  /** 2 reads a stored one-dumbbell weight as a pair total (`dumbbellLoad.ts`). */
+  scale = 1,
 ): string | null {
   const w = set.weightKg === null
     ? null
     : withUnit
-      ? `${kind === 'assisted_reps' && set.weightKg > 0 ? '−' : ''}${formatWeightWithUnit(set.weightKg, unit)}`
-      : formatWeightNumber(set.weightKg, unit);
+      ? `${kind === 'assisted_reps' && set.weightKg > 0 ? '−' : ''}${formatWeightWithUnit(set.weightKg * scale, unit)}`
+      : formatWeightNumber(set.weightKg * scale, unit);
   switch (kind) {
     case 'weight_reps':
     case 'assisted_reps':

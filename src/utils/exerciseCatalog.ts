@@ -10,7 +10,7 @@ import { scoreSubstring } from './ranges';
  * Three kinds of row come out of `exercises`, and each merges differently:
  *
  * - **An override** reuses a built-in's id. It contributes the name, notes,
- *   bar weight and archived flag only; what the movement *is* (kind, muscles,
+ *   bar weight, dumbbell count, weight entry and archived flag only; what the movement *is* (kind, muscles,
  *   equipment, cue) stays the library's, so a correction in a later build
  *   still reaches somebody who renamed the exercise.
  * - **A custom exercise** has an id the library doesn't know, and is taken
@@ -37,6 +37,8 @@ function fromLibrary(lib: LibraryExercise, override: Exercise | undefined): Cata
     secondaryMuscles: [...lib.secondaryMuscles],
     equipment: lib.equipment,
     barKg: override?.barKg ?? null,
+    dumbbells: override?.dumbbells ?? null,
+    loadEntry: override?.loadEntry ?? null,
     notes: override?.notes ?? '',
     archived: override?.archived ?? false,
     isCustom: false,

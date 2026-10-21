@@ -124,6 +124,12 @@ export interface LoadContext {
   unit: WeightUnit;
   /** The grid a dumbbell, machine or cable is stepped on, in kg. */
   incrementKg: number;
+  /**
+   * What a stored weight is multiplied by to be read: 2 for a two-dumbbell
+   * exercise logged as a pair total (`dumbbellLoad.ts`), else 1 or absent. It
+   * changes only the words, never a load: every weight here is one dumbbell's.
+   */
+  scale?: number;
 }
 
 /** The context for one exercise: its equipment and bar, the gym's plates, and the item's increment. */
@@ -132,8 +138,9 @@ export function loadContextFor(
   inventory: PlateInventory,
   unit: WeightUnit,
   item: Pick<WorkoutRoutineItem, 'progression'> | null,
+  scale = 1,
 ): LoadContext {
-  return { equipment: exercise.equipment, barKg: exercise.barKg, inventory, unit, incrementKg: incrementFor(item, unit) };
+  return { equipment: exercise.equipment, barKg: exercise.barKg, inventory, unit, incrementKg: incrementFor(item, unit), ...(scale !== 1 ? { scale } : {}) };
 }
 
 /** Hundredths of the shown unit: the integers loads are compared in, as `plateLoad` does. */
@@ -358,8 +365,8 @@ export function joinAnd(parts: readonly string[]): string {
 const repsList = (sets: readonly WorkoutSet[]) => joinAnd(sets.map(s => String(s.reps ?? 0)));
 
 /** "2.5 kg", "5 lb": the difference between two loads as the person reads it. */
-function deltaText(from: number, to: number, unit: WeightUnit): string {
-  const d = Math.abs(weightToDisplay(to, unit) - weightToDisplay(from, unit));
+function deltaText(from: number, to: number, unit: WeightUnit, scale = 1): string {
+  const d = Math.abs(weightToDisplay(to * scale, unit) - weightToDisplay(from * scale, unit));
   return `${Number(d.toFixed(2))} ${unit}`;
 }
 
@@ -402,7 +409,7 @@ export function proposeNext(input: ProposalInput): Proposal | null {
       const next = stepUp(lastKg, load);
       return {
         ...base, move: 'up', sets: sets(next, min), repsMin: min, repsMax: max, lastKg,
-        reason: `Up ${deltaText(lastKg, next, unit)} because every set last time reached ${max}.`,
+        reason: `Up ${deltaText(lastKg, next, unit, load.scale)} because every set last time reached ${max}.`,
         brief: `All sets hit ${max} last time`,
       };
     }
@@ -421,7 +428,7 @@ export function proposeNext(input: ProposalInput): Proposal | null {
       const next = stepUp(lastKg, load);
       return {
         ...base, move: 'up', sets: sets(next, reps), repsMin: reps, repsMax: reps, lastKg,
-        reason: `Up ${deltaText(lastKg, next, unit)} because every set last time reached ${reps}.`,
+        reason: `Up ${deltaText(lastKg, next, unit, load.scale)} because every set last time reached ${reps}.`,
         brief: `All sets hit ${reps} last time`,
       };
     }
@@ -441,13 +448,13 @@ export function proposeNext(input: ProposalInput): Proposal | null {
       if (!(next > 0) || !(hundredths(next, unit) < hundredths(lastKg, unit))) {
         return {
           ...base, move: 'same', sets: sets(lastKg, reps), repsMin: reps, repsMax: reps, lastKg,
-          reason: `Same weight. ${formatWeightNumber(lastKg, unit)} ${unit} is already the lightest load, so there is nothing lighter to go down to after ${misses} workouts short of ${reps} reps.`,
+          reason: `Same weight. ${formatWeightNumber(lastKg * (load.scale ?? 1), unit)} ${unit} is already the lightest load, so there is nothing lighter to go down to after ${misses} workouts short of ${reps} reps.`,
           brief: 'Already the lightest load',
         };
       }
       return {
         ...base, move: 'deload', sets: sets(next, reps), repsMin: reps, repsMax: reps, lastKg,
-        reason: `Down ${deltaText(lastKg, next, unit)} after ${misses} workouts in a row short of ${reps} reps at ${formatWeightNumber(lastKg, unit)} ${unit}.`,
+        reason: `Down ${deltaText(lastKg, next, unit, load.scale)} after ${misses} workouts in a row short of ${reps} reps at ${formatWeightNumber(lastKg * (load.scale ?? 1), unit)} ${unit}.`,
         brief: `Short of ${reps} reps ${misses} times in a row`,
       };
     }
@@ -486,7 +493,7 @@ export function proposeNext(input: ProposalInput): Proposal | null {
     if (!(hundredths(next, unit) > hundredths(lastKg, unit))) next = stepUp(lastKg, load);
     return {
       ...base, move: 'up', sets: sets(next, reps), repsMin: min, repsMax: max, lastKg,
-      reason: `Up ${deltaText(lastKg, next, unit)} because the top set last time was RPE ${felt}, under the ${target} planned.`,
+      reason: `Up ${deltaText(lastKg, next, unit, load.scale)} because the top set last time was RPE ${felt}, under the ${target} planned.`,
       brief: `Top set was RPE ${felt}, under ${target}`,
     };
   }
@@ -495,13 +502,13 @@ export function proposeNext(input: ProposalInput): Proposal | null {
   if (!(hundredths(next, unit) < hundredths(lastKg, unit))) {
     return {
       ...base, move: 'same', sets: sets(lastKg, reps), repsMin: min, repsMax: max, lastKg,
-      reason: `Same weight. The top set last time was RPE ${felt}, over the ${target} planned, but ${formatWeightNumber(lastKg, unit)} ${unit} is already the lightest load.`,
+      reason: `Same weight. The top set last time was RPE ${felt}, over the ${target} planned, but ${formatWeightNumber(lastKg * (load.scale ?? 1), unit)} ${unit} is already the lightest load.`,
       brief: 'Already the lightest load',
     };
   }
   return {
     ...base, move: 'down', sets: sets(next, reps), repsMin: min, repsMax: max, lastKg,
-    reason: `Down ${deltaText(lastKg, next, unit)} because the top set last time was RPE ${felt}, over the ${target} planned.`,
+    reason: `Down ${deltaText(lastKg, next, unit, load.scale)} because the top set last time was RPE ${felt}, over the ${target} planned.`,
     brief: `Top set was RPE ${felt}, over ${target}`,
   };
 }
@@ -546,8 +553,8 @@ function proposePercent(input: ProposalInput, targets: RoutineSetTarget[]): Prop
   const when = weeks !== null ? `Week ${week} of ${weeks}: ` : '';
   return {
     ...base, move: 'percent', sets, trainingMaxKg: tm,
-    reason: `${when}${joinAnd(pcts.map(p => `${p}%`))} of a ${formatWeightNumber(tm, unit)} ${unit} training max.`,
-    brief: weeks !== null ? `Week ${week} of ${weeks} of the program` : `From a ${formatWeightNumber(tm, unit)} ${unit} training max`,
+    reason: `${when}${joinAnd(pcts.map(p => `${p}%`))} of a ${formatWeightNumber(tm * (load.scale ?? 1), unit)} ${unit} training max.`,
+    brief: weeks !== null ? `Week ${week} of ${weeks} of the program` : `From a ${formatWeightNumber(tm * (load.scale ?? 1), unit)} ${unit} training max`,
   };
 }
 
@@ -557,12 +564,12 @@ function proposePercent(input: ProposalInput, targets: RoutineSetTarget[]): Prop
  * "Today 3 × 6–8 at 82.5 kg.", "Today 3 × 5 at 65, 75 and 85 kg.": what the
  * proposal asks for, as the card's first line. Null for one with no sets.
  */
-export function proposalHeadline(p: Proposal, unit: WeightUnit): string | null {
+export function proposalHeadline(p: Proposal, unit: WeightUnit, scale = 1): string | null {
   if (p.sets.length === 0) return null;
   const reps = p.repsMin !== null && p.repsMax !== null && p.repsMin !== p.repsMax
     ? `${p.repsMin}–${p.repsMax}`
     : p.repsMin ?? p.repsMax;
-  const shown = p.sets.map(s => formatWeightNumber(s.weightKg, unit));
+  const shown = p.sets.map(s => formatWeightNumber(s.weightKg * scale, unit));
   const weights = shown.every(w => w === shown[0]) ? shown[0] : joinAnd(shown);
   return reps === null
     ? `Today ${p.sets.length} ${p.sets.length === 1 ? 'set' : 'sets'} at ${weights} ${unit}.`
@@ -570,8 +577,8 @@ export function proposalHeadline(p: Proposal, unit: WeightUnit): string | null {
 }
 
 /** "Use 82.5 kg", or "Use these weights" for sets at different loads. */
-export function proposalActionLabel(p: Proposal, unit: WeightUnit): string {
-  const shown = p.sets.map(s => formatWeightNumber(s.weightKg, unit));
+export function proposalActionLabel(p: Proposal, unit: WeightUnit, scale = 1): string {
+  const shown = p.sets.map(s => formatWeightNumber(s.weightKg * scale, unit));
   return shown.length > 0 && shown.every(w => w === shown[0]) ? `Use ${shown[0]} ${unit}` : 'Use these weights';
 }
 

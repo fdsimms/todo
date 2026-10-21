@@ -33,6 +33,7 @@ import {
   recordLabel,
 } from '../utils/workoutRecordText';
 import { formatSetLine, setLabels, setName } from '../utils/workoutSession';
+import { weightScale } from '../utils/dumbbellLoad';
 import type { WorkoutSet } from '../types';
 
 /**
@@ -86,8 +87,11 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
   const gymSettings = useGymStore(s => s.settings);
   const unit = useSettingsStore(s => s.workoutUnit);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  const dumbbellEntry = useSettingsStore(s => s.dumbbellEntry);
 
   const info = exerciseId ? catalogExercise(exercises, exerciseId) : null;
+  // A pair total reads every stored one-dumbbell weight doubled (`dumbbellLoad.ts`).
+  const scale = weightScale(info, dumbbellEntry);
   const kind = info?.kind ?? 'weight_reps';
   const metrics = metricsFor(kind);
   const [chosen, setChosen] = useState<RecordMetric>('e1rm');
@@ -164,12 +168,12 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
     if (!analysis) return [];
     const out: ExerciseChartPoint[] = [];
     for (const p of analysis.points) {
-      const value = metricNumber(p, metric, kind, unit);
-      const text = formatMetricPoint(p, metric, kind, unit);
+      const value = metricNumber(p, metric, kind, unit, scale);
+      const text = formatMetricPoint(p, metric, kind, unit, scale);
       if (value !== null && text !== null) out.push({ dayKey: p.dayKey, value, text });
     }
     return out;
-  }, [analysis, metric, kind, unit]);
+  }, [analysis, metric, kind, unit, scale]);
 
   // The page scroll is off while a finger is scrubbing the chart.
   const [scrubbing, setScrubbing] = useState(false);
@@ -305,7 +309,7 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
                         )}
                       </View>
                       <View style={styles.recordValueWrap}>
-                        <Text style={styles.recordValue}>{formatRecordValue(r, kind, unit)}</Text>
+                        <Text style={styles.recordValue}>{formatRecordValue(r, kind, unit, scale)}</Text>
                         <Text style={styles.recordDate}>{shortDate(r.dayKey, todayKey)}</Text>
                       </View>
                     </View>
@@ -318,7 +322,7 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
             <View style={styles.card}>
               {history.slice(0, shown).map((p, i) => {
                 const list = setsBySession.get(p.sessionId) ?? [];
-                const line = list.map(s => formatSetLine(s, kind, unit)).filter(Boolean).join(', ');
+                const line = list.map(s => formatSetLine(s, kind, unit, false, scale)).filter(Boolean).join(', ');
                 // A set's note, filed under the set it was written on, so
                 // "left shoulder twinged" outlives the workout it was said in.
                 const done = doneBySession.get(p.sessionId) ?? [];

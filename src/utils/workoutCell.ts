@@ -1,6 +1,7 @@
 import type { WorkoutSet } from '../types';
 import type { WeightUnit } from './weightLog';
 import { weightFromDisplay } from './workoutData';
+import { storedKgFromTyped } from './dumbbellLoad';
 import type { SetField } from './workoutSession';
 
 /** The most a field takes, a typo check like `MAX_SET_WEIGHT_KG`: the ceilings the steppers had. */
@@ -31,11 +32,11 @@ export function parseRepsTarget(text: string): { min: number | null; max: number
 
 /**
  * What text typed into a set's cell writes: null clears the value, a number is
- * clamped to `setFieldMax`, and a duration may be seconds ("90") or m:ss
+ * clamped to `setFieldMax` (as typed, before a pair total is halved), and a duration may be seconds ("90") or m:ss
  * ("1:30"). Undefined means text that isn't a number, so the cell snaps back to
  * what it held rather than writing a guess.
  */
-export function parseSetCell(field: SetField, text: string, unit: WeightUnit): Partial<WorkoutSet> | undefined {
+export function parseSetCell(field: SetField, text: string, unit: WeightUnit, scale = 1): Partial<WorkoutSet> | undefined {
   const t = text.trim().replace(',', '.');
   const key = field === 'weight' ? 'weightKg' : field === 'reps' ? 'reps' : field === 'duration' ? 'durationSeconds' : 'distanceM';
   if (t === '') return { [key]: null };
@@ -48,6 +49,7 @@ export function parseSetCell(field: SetField, text: string, unit: WeightUnit): P
   }
   if (!Number.isFinite(n) || n < 0) return undefined;
   n = Math.min(n, setFieldMax(field, unit));
-  if (field === 'weight') return { weightKg: weightFromDisplay(n, unit) };
+  // A pair total typed for two dumbbells is stored as one dumbbell's weight (`dumbbellLoad.ts`).
+  if (field === 'weight') return { weightKg: scale === 1 ? weightFromDisplay(n, unit) : storedKgFromTyped(n, unit, scale) };
   return { [key]: Math.round(n) };
 }

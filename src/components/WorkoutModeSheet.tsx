@@ -65,6 +65,7 @@ import {
 } from '../utils/gyms';
 import { lastTimeNotes } from '../utils/lastTimeNotes';
 import { parseSetCell } from '../utils/workoutCell';
+import { weightHeadingSuffix, weightScale } from '../utils/dumbbellLoad';
 import { exerciseDayNote, exerciseDayNotePatches } from '../utils/exerciseDayNote';
 import { applyRoutineChanges, describeRoutineChange, routineChanges } from '../utils/routineUpdate';
 import { barKgFor, effectivePlateInventory, isPlateLoaded, plateLoad } from '../utils/plateMath';
@@ -149,6 +150,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const gyms = useGymStore(s => s.gyms);
   const gymSettings = useGymStore(s => s.settings);
   const unit = useSettingsStore(s => s.workoutUnit);
+  const dumbbellEntry = useSettingsStore(s => s.dumbbellEntry);
   const plateInventory = useSettingsStore(s => s.plateInventory);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   // Whether Save also writes the workout to Health (`workoutHealthWriteOn`,
@@ -622,7 +624,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                 <View style={styles.card}>
                   {summary.exercises.map((e, i) => {
                     const info = catalogExercise(exerciseRows, e.exerciseId);
-                    const heaviest = e.heaviest && info ? heaviestLine(e.heaviest, info.kind, unit) : null;
+                    const heaviest = e.heaviest && info ? heaviestLine(e.heaviest, info.kind, unit, weightScale(info, dumbbellEntry)) : null;
                     return (
                       <View key={e.exerciseId} style={[styles.summaryRow, i > 0 && styles.rowSep]}>
                         <Text style={styles.summaryName}>{info?.name ?? 'Unknown exercise'}</Text>
@@ -803,6 +805,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
               // The set whose tray is open: only one tapped by hand, none by default.
               const openSet = viewed.sets.find(s => s.id === openSetId) ?? null;
               const gymSetting = gymSettingFor(gymSettings, gym?.id, viewed.exerciseId);
+              // A pair total reads each stored dumbbell weight doubled (`dumbbellLoad.ts`).
+              const scale = weightScale(viewedInfo, dumbbellEntry);
               const noteFocus = noteEdit?.exerciseId === viewed.exerciseId ? noteEdit.focus : null;
               const todayNote = exerciseDayNote(viewed.sets);
 
@@ -838,6 +842,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                 unit,
                 gymBarKg: gymSetting?.barKg ?? null,
                 gymIncrementKg: gymIncrementKg(gymSetting),
+                dumbbellEntry,
               }) : null;
               const proposal = shownProposal?.proposal ?? null;
 
@@ -1007,6 +1012,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                     <SuggestionCard
                       proposal={proposal}
                       unit={unit}
+                      scale={scale}
                       // Offered until a working set is logged or the plan
                       // already asks for it; after that it is shown plainly,
                       // as the target being worked to.
@@ -1021,7 +1027,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                   <Text style={[styles.headCell, styles.colSet]}>Set</Text>
                   <Text style={[styles.headCell, styles.colPrev]}>Previous</Text>
                   {fields.map(f => (
-                    <Text key={f} style={[styles.headCell, styles.colValue]}>{f === 'distance' ? 'Dist (m)' : columnLabel(f, kind, unit)}</Text>
+                    <Text key={f} style={[styles.headCell, styles.colValue]}>{f === 'distance' ? 'Dist (m)' : columnLabel(f, kind, unit, weightHeadingSuffix(viewedInfo, dumbbellEntry))}</Text>
                   ))}
                   <View style={styles.colCheck} />
                 </View>
@@ -1030,7 +1036,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                   const isTray = openSet?.id === set.id;
                   const done = set.completedAt !== null;
                   const prev = previousBySet.get(set.id);
-                  const prevLine = prev ? formatSetLine(prev, kind, unit) : null;
+                  const prevLine = prev ? formatSetLine(prev, kind, unit, false, scale) : null;
                   const label = labels.get(set.id) ?? '';
                   return (
                     <DeletableSet
@@ -1069,6 +1075,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                             set={set}
                             field={f}
                             unit={unit}
+                            scale={scale}
                             done={done}
                             onEdit={patch => edit(set.id, patch)}
                             styles={styles}
@@ -1219,17 +1226,17 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
 
 // ==== the cells and their steppers ====
 
-function valueText(set: WorkoutSet, field: SetField, unit: WeightUnit): string | null {
-  if (field === 'weight') return set.weightKg !== null ? formatWeightNumber(set.weightKg, unit) : null;
+function valueText(set: WorkoutSet, field: SetField, unit: WeightUnit, scale = 1): string | null {
+  if (field === 'weight') return set.weightKg !== null ? formatWeightNumber(set.weightKg * scale, unit) : null;
   if (field === 'reps') return set.reps !== null ? String(set.reps) : null;
   if (field === 'duration') return set.durationSeconds !== null ? formatRestSeconds(set.durationSeconds) : null;
   return set.distanceM !== null ? formatDistance(set.distanceM) : null;
 }
 
 /** "82.5 kg × 8": the heaviest set, with its unit, for the summary. */
-function heaviestLine(set: WorkoutSet, kind: ExerciseKind, unit: WeightUnit): string | null {
+function heaviestLine(set: WorkoutSet, kind: ExerciseKind, unit: WeightUnit, scale = 1): string | null {
   if (set.weightKg === null) return null;
-  const w = `${formatWeightNumber(set.weightKg, unit)} ${unit}`;
+  const w = `${formatWeightNumber(set.weightKg * scale, unit)} ${unit}`;
   if (kind === 'weight_distance' && set.distanceM !== null) return `${w} × ${formatDistance(set.distanceM)}`;
   return set.reps !== null ? `${w} × ${set.reps}` : w;
 }
@@ -1242,10 +1249,11 @@ function heaviestLine(set: WorkoutSet, kind: ExerciseKind, unit: WeightUnit): st
  * value reads dim and a done one reads full, as the cells did before they
  * became fields.
  */
-function SetInput({ set, field, unit, done, onEdit, styles, placeholderColor, accessibilityLabel }: {
+function SetInput({ set, field, unit, scale, done, onEdit, styles, placeholderColor, accessibilityLabel }: {
   set: WorkoutSet;
   field: SetField;
   unit: WeightUnit;
+  scale: number;
   done: boolean;
   onEdit: (patch: Partial<WorkoutSet>) => void;
   styles: ReturnType<typeof makeStyles>;
@@ -1253,12 +1261,12 @@ function SetInput({ set, field, unit, done, onEdit, styles, placeholderColor, ac
   accessibilityLabel: string;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
-  const shown = valueText(set, field, unit) ?? '';
+  const shown = valueText(set, field, unit, scale) ?? '';
   // Distance is typed in meters; the row's own read-back says "1.2 km".
   const stored = field === 'distance' && set.distanceM !== null ? String(Math.round(set.distanceM)) : shown;
   const commit = () => {
     if (draft === null) return;
-    const patch = parseSetCell(field, draft, unit);
+    const patch = parseSetCell(field, draft, unit, scale);
     setDraft(null);
     if (patch) onEdit(patch);
   };
@@ -1326,14 +1334,15 @@ function DeletableSet({ label, onDelete, children, styles }: {
   );
 }
 
-function SuggestionCard({ proposal, unit, offer, onUse, styles }: {
+function SuggestionCard({ proposal, unit, scale, offer, onUse, styles }: {
   proposal: Proposal;
   unit: WeightUnit;
+  scale: number;
   offer: boolean;
   onUse: () => void;
   styles: ReturnType<typeof makeStyles>;
 }) {
-  const headline = proposalHeadline(proposal, unit);
+  const headline = proposalHeadline(proposal, unit, scale);
   return (
     <View style={styles.suggest}>
       <Text style={styles.suggestText}>
@@ -1343,9 +1352,9 @@ function SuggestionCard({ proposal, unit, offer, onUse, styles }: {
       {offer && headline && (
         <View style={styles.suggestActions}>
           <InlineAction
-            label={proposalActionLabel(proposal, unit)}
+            label={proposalActionLabel(proposal, unit, scale)}
             onPress={onUse}
-            accessibilityLabel={`${proposalActionLabel(proposal, unit)} on the sets not done yet`}
+            accessibilityLabel={`${proposalActionLabel(proposal, unit, scale)} on the sets not done yet`}
           />
         </View>
       )}

@@ -2305,6 +2305,7 @@ describe('demo seed — people', () => {
     const custom = exercises.find(e => e.isCustom);
     expect(custom?.name).toBe('Landmine row');
     expect(catalogExercise(exercises, 'lib:barbell-bench-press')?.notes).toBe('Pause each rep on the chest.');
+    expect(catalogExercise(exercises, 'lib:dumbbell-curl')).toMatchObject({ loadEntry: 'pair', dumbbells: null });
     // The custom exercise has history, so it reads as one in use.
     const sets = sessions.flatMap(s => useWorkoutStore.getState().loadSets(s.id));
     expect(sets.some(s => s.exerciseId === custom?.id)).toBe(true);

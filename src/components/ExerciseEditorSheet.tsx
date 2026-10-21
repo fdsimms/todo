@@ -19,6 +19,7 @@ import { haptics } from '../utils/haptics';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { catalogExercise, describeExercise } from '../utils/exerciseCatalog';
 import { libraryExercise } from '../utils/exerciseLibrary';
+import { DUMBBELL_ENTRY_LABELS, dumbbellsUsed } from '../utils/dumbbellLoad';
 import { barKgFor, effectivePlateInventory, isPlateLoaded } from '../utils/plateMath';
 import {
   EQUIPMENT_LABELS, EXERCISE_EQUIPMENT, MUSCLE_GROUPS, MUSCLE_LABELS, WEIGHT_PLACES, WORKOUT_NAME_MAX_LENGTH,
@@ -43,7 +44,7 @@ const REFUSED: Record<string, string> = {
 /** The bar weight steps by half a kilogram, or a pound: bars come in odd weights. */
 const BAR_STEP = { kg: 0.5, lb: 1 } as const;
 
-const snapshotOf = (v: Staged) => JSON.stringify([v.name.trim(), v.kind, v.equipment, v.primary, v.secondary, v.barKg, v.notes.trim()]);
+const snapshotOf = (v: Staged) => JSON.stringify([v.name.trim(), v.kind, v.equipment, v.primary, v.secondary, v.barKg, v.dumbbells, v.loadEntry, v.notes.trim()]);
 
 interface Staged {
   name: string;
@@ -52,6 +53,9 @@ interface Staged {
   primary: MuscleGroup[];
   secondary: MuscleGroup[];
   barKg: number | null;
+  /** The count in use: the library's answer or the person's, resolved. */
+  dumbbells: 1 | 2;
+  loadEntry: 'each' | 'pair' | null;
   notes: string;
 }
 
@@ -78,7 +82,7 @@ export function ExerciseEditorSheet({ visible, exerciseId, onClose }: Props) {
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
   const [v, setV] = useState<Staged>({
-    name: '', kind: 'weight_reps', equipment: 'barbell', primary: [], secondary: [], barKg: null, notes: '',
+    name: '', kind: 'weight_reps', equipment: 'barbell', primary: [], secondary: [], barKg: null, dumbbells: 2, loadEntry: null, notes: '',
   });
   const [refusal, setRefusal] = useState<string | null>(null);
   // Whether a set is logged on this device with the exercise: what a set
@@ -95,6 +99,8 @@ export function ExerciseEditorSheet({ visible, exerciseId, onClose }: Props) {
       primary: [...info.primaryMuscles],
       secondary: [...info.secondaryMuscles],
       barKg: info.barKg,
+      dumbbells: dumbbellsUsed(info) ?? 2,
+      loadEntry: info.loadEntry,
       notes: info.notes,
     };
     setV(next);
@@ -116,9 +122,15 @@ export function ExerciseEditorSheet({ visible, exerciseId, onClose }: Props) {
 
   const save = () => {
     if (!exerciseId) return;
+    // The library's own count is stored as nothing, so a correction to it in a later build still reaches this exercise.
+    const defaultCount = dumbbellsUsed({ id: exerciseId, equipment: 'dumbbell', dumbbells: null });
+    const dumbbellChange: ExercisePatch = isDumbbell
+      ? { dumbbells: v.dumbbells === defaultCount ? null : v.dumbbells, loadEntry: v.dumbbells === 2 ? v.loadEntry : null }
+      : {};
     const change: ExercisePatch = builtIn
-      ? { name: v.name, notes: v.notes, barKg: v.barKg }
+      ? { name: v.name, notes: v.notes, barKg: v.barKg, ...dumbbellChange }
       : {
+        ...dumbbellChange,
         name: v.name, notes: v.notes, barKg: isPlateLoaded(v.equipment) ? v.barKg : null,
         kind: v.kind, equipment: v.equipment, primaryMuscles: v.primary, secondaryMuscles: v.secondary.filter(m => !v.primary.includes(m)),
       };
@@ -132,6 +144,8 @@ export function ExerciseEditorSheet({ visible, exerciseId, onClose }: Props) {
     onClose();
   };
 
+  const isDumbbell = (builtIn ? info?.equipment : v.equipment) === 'dumbbell';
+  const dumbbellEntry = useSettingsStore(st => st.dumbbellEntry);
   const plateLoaded = isPlateLoaded(builtIn ? info?.equipment ?? 'other' : v.equipment);
   const inventory = effectivePlateInventory(plateInventory, unit);
   const defaultBar = barKgFor(null, inventory, builtIn ? info?.equipment ?? 'barbell' : v.equipment, unit);
@@ -236,6 +250,38 @@ export function ExerciseEditorSheet({ visible, exerciseId, onClose }: Props) {
                 </View>
               </View>
               <HelpText style={styles.hint}>The plates are worked out on this bar. Leave it for your gym’s usual bar.</HelpText>
+            </>
+          )}
+
+          {isDumbbell && (
+            <>
+              <Text style={styles.label}>Dumbbells used</Text>
+              <SegmentedControl
+                options={[{ value: 1 as const, label: '1' }, { value: 2 as const, label: '2' }]}
+                value={v.dumbbells}
+                onChange={n => patch({ dumbbells: n })}
+                label="Dumbbells used"
+                surface="page"
+              />
+              {v.dumbbells === 2 && (
+                <>
+                  <Text style={styles.label}>Log weight as</Text>
+                  <SegmentedControl
+                    options={[
+                      { value: 'default' as const, label: 'Default' },
+                      { value: 'each' as const, label: 'Each' },
+                      { value: 'pair' as const, label: 'Pair total' },
+                    ]}
+                    value={v.loadEntry ?? 'default'}
+                    onChange={o => patch({ loadEntry: o === 'default' ? null : o })}
+                    label="Log weight as"
+                    surface="page"
+                  />
+                  <HelpText style={styles.hint}>
+                    {`Default follows Settings, which is ${DUMBBELL_ENTRY_LABELS[dumbbellEntry].toLowerCase()}. The app keeps the weight of one dumbbell either way.`}
+                  </HelpText>
+                </>
+              )}
             </>
           )}
 

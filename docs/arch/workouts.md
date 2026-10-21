@@ -480,3 +480,27 @@ The Routines tab can put routines under headings and put some away.
 - **Where groups are made.** "New group" is in the header's "…" menu and only asks for a name; the empty group shows a dashed "Add new routine" tile that opens the editor with the group already chosen. A heading's own "•••" has Rename group, Add routine and Delete group.
 - **Folds are session state.** A heading folded by hand is a view, not data; Archived starts shut.
 - **MCP.** `save_routine` takes `group` and `archived`, `list_workouts` returns them on each routine plus `routineGroups`, and `save_routine_group` / `delete_routine_group` make, rename and delete headings.
+
+## Dumbbell weights, as built
+
+A weight is one dumbbell's, always. A set stores `weightKg` of a single dumbbell whether the person logs each
+dumbbell or the pair, so records, volume, a progression proposal, a CSV row and the MCP server all read one
+comparable number, and changing the choice rewrites nothing (`src/utils/dumbbellLoad.ts`).
+
+- **Two facts, one preference.** *How many dumbbells* is a fact about the movement: `Exercise.dumbbells` (1 or 2),
+  defaulting to the library's answer (`ONE_DUMBBELL_IDS`: goblet squat, one-arm row and the like are one, every other
+  dumbbell exercise is two; a custom one is two). *How the weight is typed* is a preference: Settings › Workouts ›
+  Dumbbell weights (`dumbbellEntry`, each or pair) and, per exercise, `Exercise.loadEntry` overriding it. Both ride
+  an override row for a built-in, like `barKg`. The library's own count is stored as null so a correction in a later
+  build still reaches a person who changed something else.
+- **One dumbbell has no pair.** `entryFor` is `each` for a one-dumbbell exercise whatever is set, so the preference can
+  never relabel a goblet squat. `dumbbells` and `loadEntry` are kept only on dumbbell equipment.
+- **The scale lives at the edge.** A pair total is halved on the way in (`parseSetCell`'s `scale`, via
+  `storedKgFromTyped`) and doubled on the way out (`weightScale` → `formatSetLine`, `valueText`, the record and chart
+  text in `workoutRecordText.ts`, and the proposal's words through `LoadContext.scale`). The column heading says
+  "kg each" or "kg pair" where two dumbbells are in play. A proposal's *loads* are never scaled, only its text.
+- **Where it is not applied, on purpose.** The Apple Watch, the CSV import and export, the Stats screen's record list
+  and the MCP server all stay per dumbbell. The MCP says so
+  (`dumbbells` on `list_exercises`, and the rule in `instructions.ts`), so Claude halves a pair total before writing.
+  A new surface that shows a dumbbell exercise's weight takes a `scale` from `weightScale` rather than reading
+  `weightKg` bare.

@@ -6432,7 +6432,7 @@ describe('reclaiming freed pages at launch', () => {
 describe('workouts', () => {
   const exercise = {
     id: 'c1', name: 'Landmine row', kind: 'weight_reps' as const, primaryMuscles: ['upper_back' as const],
-    secondaryMuscles: ['biceps' as const], equipment: 'barbell' as const, barKg: null, notes: 'V handle',
+    secondaryMuscles: ['biceps' as const], equipment: 'barbell' as const, barKg: null, dumbbells: null, loadEntry: null as 'each' | 'pair' | null, notes: 'V handle',
     archived: false, isCustom: true, createdAt: '2026-10-01T10:00:00.000Z',
   };
   const session = {
@@ -6443,6 +6443,13 @@ describe('workouts', () => {
     id, sessionId: 's1', exerciseId: 'lib:back-squat', position: 0, setIndex: 0, kind: 'working' as const,
     weightKg: 100, reps: 5, durationSeconds: null, distanceM: null, rpe: 8, completedAt: '2026-10-10T22:10:00.000Z',
     supersetKey: null, note: null, ...extra,
+  });
+
+  it('round-trips the dumbbell count and weight entry, and reads junk as nothing', () => {
+    dbSaveExercise({ ...exercise, equipment: 'dumbbell', dumbbells: 1, loadEntry: 'pair' });
+    expect(dbGetAllExercises()[0]).toMatchObject({ dumbbells: 1, loadEntry: 'pair' });
+    mockRawDb.prepare('UPDATE exercises SET dumbbells = 7, load_entry = ?').run('both');
+    expect(dbGetAllExercises()[0]).toMatchObject({ dumbbells: null, loadEntry: null });
   });
 
   it('round-trips an exercise, keying the name of a custom one only', () => {
