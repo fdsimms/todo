@@ -263,6 +263,7 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
   // not being in that project.
   const filingProjectId = projectId ?? homeProjectId;
   const checklistShown = !!homeProjectId || !!projectId;
+  const projectHidesNext = !!projects.find(p => p.id === filingProjectId)?.hideNextStep;
 
   // Same TaskGroup, two names: homed on a project it reads as "section" (the
   // vocabulary the project screen's own FAB and empty-state copy already use),
@@ -627,6 +628,8 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
             <Text style={styles.optionHint}>
               {hideNextStep
                 ? `The ${sectionWord} header does not show its next open task`
+                : projectHidesNext
+                ? 'The project hides next tasks, so this header does not show one'
                 : `The ${sectionWord} header shows its next open task`}
             </Text>
           </View>

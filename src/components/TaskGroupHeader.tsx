@@ -16,6 +16,7 @@ import { AnimatedCollapsible } from './AnimatedCollapsible';
 import { useTrayFold, useTrayRaised, TRAY_PAD, STACK_EDGE_DEPTH } from './TaskGroupTray';
 import { PinIcon } from './PinIcon';
 import { useSheetMount } from '../hooks/useSheetMount';
+import { useProjectStore } from '../store/useProjectStore';
 import { AnimatedNumber } from './AnimatedNumber';
 import { RotatingChevron } from './RotatingChevron';
 
@@ -180,8 +181,12 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
   // the roster ("8 tasks", in the editor) and today's work are different
   // numbers, and a bare "3/8" pill doesn't say which one it means.
   const nextUp = dueToday.find(c => !c.completed);
+  // A project that hides its next task hides it for its sections too, so
+  // turning it on there doesn't mean visiting every section.
+  const projectHidesNext = useProjectStore(s => !!group.projectId && !!s.projects.find(p => p.id === group.projectId)?.hideNextStep);
+  const hideNext = !!group.hideNextStep || projectHidesNext;
   const summary = totalToday === 0 || filtered ? null
-    : `${doneToday} of ${totalToday} done${tallyScope === 'today' ? ' today' : ''}${nextUp && !group.hideNextStep ? ` · Next: ${nextUp.title}` : ''}`;
+    : `${doneToday} of ${totalToday} done${tallyScope === 'today' ? ' today' : ''}${nextUp && !hideNext ? ` · Next: ${nextUp.title}` : ''}`;
   const showTally = totalToday > 0 && !filtered;
 
   const completeAll = () => {
