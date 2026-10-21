@@ -400,8 +400,11 @@ export function planGroceryAdd(
       // A row that had fallen off every list is functionally a fresh add: the
       // recipe that put it back is the reason it is there, and crediting a
       // stale recipe (possibly cooked and forgotten) is actively misleading.
-      sourceRecipeId: !onAnyList && source ? source.recipeId : existing.sourceRecipeId,
-      sourceRecipeTitle: !onAnyList && source ? source.recipeTitle : existing.sourceRecipeTitle,
+      // That holds when the add names no recipe too: a plain re-add of an
+      // off-list row starts with no credit, whatever a path that parked it
+      // without clearing one left behind.
+      sourceRecipeId: onAnyList ? existing.sourceRecipeId : (source?.recipeId ?? null),
+      sourceRecipeTitle: onAnyList ? existing.sourceRecipeTitle : (source?.recipeTitle ?? null),
       ...(ensured && preferBox ? { preferredProductId: ensured.product.id } : {}),
     };
     return {
