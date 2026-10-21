@@ -27,7 +27,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/agentRevert.ts` — DeletedTaskSnapshot, deletedTaskRevert, AgentRevertPlan, agentRevertPlan, agentRevertLabel
 - `src/utils/agentUndo.ts` — AgentUndo, AgentUndoAction, AgentUndoReaders, agentUndoPlan, agentUndoLabel, BatchRevertResult, revertableInBatch, revertBatch
 - `src/utils/agentUndoRun.ts` — agentUndoReaders, applyAgentUndo
-- `src/utils/aiFeatures.ts` — AiFeatureId, AI_FEATURE_IDS, AiModelId, DEFAULT_AI_MODEL, AI_MODEL_OPTIONS, isAiModelId, AiFeatureMeta, AI_FEATURES, aiFeaturesFor, AiFeatureConfig, +2 more
+- `src/utils/aiFeatures.ts` — AiFeatureId, AI_FEATURE_IDS, AiModelId, DEFAULT_AI_MODEL, AI_MODEL_OPTIONS, isAiModelId, currentAiModelId, AiFeatureMeta, AI_FEATURES, aiFeaturesFor, +3 more
 - `src/utils/aiRouting.ts` — AiRoute, OnDeviceEngine, onDeviceEngineFor, ON_DEVICE_FEATURES, supportsOnDevice, AiRouteInput, routeForFeature
 - `src/utils/alarmChain.ts` — ALARM_RING_INTERVAL_MINUTES, ALARM_MAX_RINGS, alarmChainTimes, taskAlarmUuid, alarmChainIds, stepTimerAlarmUuid
 - `src/utils/allClear.ts` — completedOnDay, describeAllClear, shouldPlayBeat
