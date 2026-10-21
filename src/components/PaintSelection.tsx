@@ -49,6 +49,29 @@ interface PaintSelectionContextValue {
 
 const PaintSelectionContext = createContext<PaintSelectionContextValue | null>(null);
 
+// True beneath a section that is closed. A closed `AnimatedCollapsible` clips
+// its children rather than unmounting them, and they keep their natural height,
+// so `measureInWindow` reports a band for each one that overlaps whatever is
+// drawn below the section. Left registered, a tap on a visible row resolved to
+// a hidden one: the count went up and the tapped row's dot stayed empty.
+const PaintSelectionSuspendedContext = createContext(false);
+
+/** Marks its children as off screen for paint selection while `suspended`. */
+export function PaintSelectionSuspend({
+  suspended,
+  children,
+}: {
+  suspended: boolean;
+  children: React.ReactNode;
+}) {
+  const inherited = useContext(PaintSelectionSuspendedContext);
+  return (
+    <PaintSelectionSuspendedContext.Provider value={inherited || suspended}>
+      {children}
+    </PaintSelectionSuspendedContext.Provider>
+  );
+}
+
 /**
  * Ref callback a selectable row attaches to its card view, so a paint gesture
  * can find which row the finger is over. A no-op outside a provider, so rows
@@ -60,17 +83,20 @@ const PaintSelectionContext = createContext<PaintSelectionContextValue | null>(n
  */
 export function usePaintSelectionRow(id: string | null) {
   const ctx = useContext(PaintSelectionContext);
+  const suspended = useContext(PaintSelectionSuspendedContext);
   return useCallback(
     // Typed loosely on purpose: this attaches to a host component whose own ref
     // type React won't reconcile with a narrower callback, and the only thing
     // needed off the instance is measureInWindow.
     (view: any) => {
-      if (id === null) return;
+      if (id === null || suspended) return;
       ctx?.register(id, (view as MeasurableView | null) ?? null);
     },
     // The context value is stable for the provider's lifetime, so this ref
     // callback is too — React won't churn it with null/node on every render.
-    [ctx, id],
+    // `suspended` changing swaps the callback, and React then detaches the old
+    // one (unregistering the row) before attaching the new one.
+    [ctx, id, suspended],
   );
 }
 
