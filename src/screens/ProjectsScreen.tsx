@@ -654,11 +654,9 @@ function ProjectsList() {
             icon={projectFilter === 'archived' ? 'archive-outline' : projectFilter === 'completed' ? 'checkmark-circle-outline' : 'briefcase-outline'}
             title={projectFilter === 'archived' ? 'No archived projects' : projectFilter === 'completed' ? 'No completed projects' : 'No projects yet'}
             subtitle={
-              projectFilter === 'archived'
-                ? 'Archived projects appear here.'
-                : projectFilter === 'completed'
-                  ? 'Completed projects appear here.'
-                  : 'Start a themed collection, like a summer bucket list, and pick tasks off it over time.'
+              projectFilter === 'archived' || projectFilter === 'completed'
+                ? undefined
+                : 'Start a themed collection, like a summer bucket list, and pick tasks off it over time.'
             }
             // The button is hidden on these two lists, so this is the way back.
             actionLabel={projectFilter === 'active' ? 'New project' : 'Show active projects'}

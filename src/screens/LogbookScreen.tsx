@@ -844,7 +844,6 @@ export function LogbookScreen() {
             <EmptyState
               icon="book-outline"
               title="No completed tasks"
-              subtitle="Tasks you complete will appear here"
               bottomOffset={tabBarHeight}
             />
           )

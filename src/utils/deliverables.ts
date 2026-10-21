@@ -71,19 +71,21 @@ export function reasoningOf(task: { deliverableWhy?: string | null; deliverableR
   return { why: task.deliverableWhy ?? null, revisitIf: task.deliverableRevisitIf ?? null };
 }
 
-/** Label, glyph, and what the answer is, in picker order. */
+/**
+ * Label and glyph for each kind of answer, in picker order. No per-kind hint:
+ * the label already says what is asked, and the field's own hint says what
+ * asking does.
+ */
 export const DELIVERABLE_META: {
   key: DeliverableKind;
   label: string;
   icon: string;
-  /** The one line under the picker — this is the only in-app documentation the field has. */
-  hint: string;
 }[] = [
-  { key: 'text', label: 'Text', icon: 'text-outline', hint: 'Asks you to type an answer when you complete it.' },
-  { key: 'date', label: 'Date', icon: 'calendar-outline', hint: 'Asks you to pick a date when you complete it.' },
-  { key: 'number', label: 'Number', icon: 'calculator-outline', hint: 'Asks you for a number when you complete it.' },
-  { key: 'yesno', label: 'Yes/No', icon: 'checkmark-done-outline', hint: 'Asks Yes or No when you complete it.' },
-  { key: 'choice', label: 'Pick one', icon: 'list-circle-outline', hint: 'Asks you to pick one of the options you list.' },
+  { key: 'text', label: 'Text', icon: 'text-outline' },
+  { key: 'date', label: 'Date', icon: 'calendar-outline' },
+  { key: 'number', label: 'Number', icon: 'calculator-outline' },
+  { key: 'yesno', label: 'Yes/No', icon: 'checkmark-done-outline' },
+  { key: 'choice', label: 'Pick one', icon: 'list-circle-outline' },
 ];
 
 /** The two answers a 'yesno' question offers, in the order they're shown. */

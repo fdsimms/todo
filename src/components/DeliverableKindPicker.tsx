@@ -34,7 +34,6 @@ export function DeliverableKindPicker({ value, onChange, exclude = [] }: Props) 
           value: meta.key,
           label: meta.label,
           icon: meta.icon,
-          accessibilityLabel: `${meta.label}. ${meta.hint}`,
         })),
       ]}
       value={value}

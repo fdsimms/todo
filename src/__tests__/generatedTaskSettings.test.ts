@@ -123,9 +123,9 @@ describe('TASK_SETTINGS_SPECS', () => {
   it('describes every owned field in plain copy', () => {
     for (const spec of Object.values(TASK_SETTINGS_SPECS)) {
       for (const field of spec!.owned(CTX)) {
-        expect(`${field.summary} ${field.hint}`).not.toMatch(/—/);
+        expect(`${field.summary} ${field.hint ?? ''}`).not.toMatch(/—/);
         expect(field.summary.length).toBeGreaterThan(0);
-        expect(field.hint.length).toBeGreaterThan(0);
+        if (field.hint !== undefined) expect(field.hint.length).toBeGreaterThan(0);
       }
     }
   });

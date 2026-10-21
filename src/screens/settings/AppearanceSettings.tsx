@@ -114,11 +114,6 @@ export function AppearanceSettings() {
           icon="shuffle-outline"
           iconColor={appFontRandomize ? colors.accent : undefined}
           label="Randomize"
-          hint={
-            appFontRandomize
-              ? 'Picks a random checked font each time you reopen the app'
-              : 'Always use the font selected below'
-          }
           toggle={appFontRandomize}
           onPress={() => handleToggleRandomize(!appFontRandomize)}
         />
@@ -177,7 +172,7 @@ export function AppearanceSettings() {
           label="Haptic feedback"
           hint={hapticsEnabled
             ? 'Vibrates when you complete a task, drag a row, or swipe'
-            : 'Nothing in the app vibrates'}
+            : undefined}
           toggle={hapticsEnabled}
           // The row's own tick runs before the flip, so switching haptics on
           // would be silent: tick again once they're on, to confirm it.
@@ -195,7 +190,7 @@ export function AppearanceSettings() {
           label="Shake to undo"
           hint={shakeToUndoEnabled
             ? 'Shake your phone right after completing, deleting or rescheduling to undo it'
-            : 'Shaking your phone does nothing'}
+            : undefined}
           toggle={shakeToUndoEnabled}
           onPress={() => setShakeToUndoEnabled(!shakeToUndoEnabled)}
         />
@@ -229,7 +224,7 @@ export function AppearanceSettings() {
           label="Confirm before deleting"
           hint={confirmBeforeDeleting
             ? 'Shows an alert before deleting a recipe, template, tag, category, or clearing a list'
-            : 'Deletes immediately, without asking first'}
+            : undefined}
           toggle={confirmBeforeDeleting}
           onPress={() => setConfirmBeforeDeleting(!confirmBeforeDeleting)}
         />

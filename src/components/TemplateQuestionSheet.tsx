@@ -317,7 +317,7 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
             maxLength={TITLE_MAX_LENGTH}
             returnKeyType="done"
           />
-          <HelpText style={styles.note}>What the field starts at. Leave empty to start blank.</HelpText>
+          <HelpText style={styles.note}>Leave empty to start blank.</HelpText>
         </View>
       )}
 

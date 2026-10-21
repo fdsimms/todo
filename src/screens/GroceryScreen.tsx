@@ -2008,7 +2008,6 @@ export function GroceryScreen() {
         extraRows={[{
           id: 'aisles',
           label: 'Aisles, stores and sorting',
-          hint: 'How the list is grouped and ordered',
           onPress: () => setAislesOpen(true),
         }]}
       />

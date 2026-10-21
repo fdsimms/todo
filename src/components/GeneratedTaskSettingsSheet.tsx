@@ -294,11 +294,7 @@ export function GeneratedTaskSettingsSheet({ visible, kind, spec, generatorLabel
               label="Ask on completion"
               summary={extras.deliverableKind ? deliverableMeta(extras.deliverableKind).label : undefined}
               emptySummary="Nothing"
-              hint={
-                extras.deliverableKind
-                  ? deliverableMeta(extras.deliverableKind).hint
-                  : 'Asks for an answer when the task is completed and keeps it in the Logbook.'
-              }
+              hint="Asks for an answer when the task is completed and keeps it in the Logbook."
               expanded={open === 'deliverable'}
               onToggle={() => toggle('deliverable')}
             >
