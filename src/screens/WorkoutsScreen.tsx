@@ -35,6 +35,7 @@ import { ActionMenu } from '../components/ActionMenu';
 import type { CardAnchor } from '../components/CardSheet';
 import { CsvExportSheet } from '../components/CsvExportSheet';
 import { WorkoutImportSheet } from '../components/WorkoutImportSheet';
+import { LogPastWorkoutSheet } from '../components/LogPastWorkoutSheet';
 import { GymsSheet } from '../components/GymsSheet';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { pickBackupFile } from '../utils/backupFile';
@@ -208,6 +209,7 @@ export function WorkoutsScreen() {
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [gymsOpen, setGymsOpen] = useState(false);
+  const [logPastOpen, setLogPastOpen] = useState(false);
   const workoutUnit = useSettingsStore(s => s.workoutUnit);
   const loadSets = useWorkoutStore(s => s.loadSets);
 
@@ -666,6 +668,7 @@ export function WorkoutsScreen() {
         {!live && (
           <InlineAction variant="neutral" label="Start empty workout" surface="page" onPress={() => startWorkout()} />
         )}
+        <InlineAction variant="neutral" label="Log a past workout" surface="page" onPress={() => setLogPastOpen(true)} />
       </View>
       {archivedItems.map(entry => (
         <React.Fragment key={entry.key}>{renderRoutine({ item: entry, drag: () => {} })}</React.Fragment>
@@ -824,6 +827,7 @@ export function WorkoutsScreen() {
           anchor={menuAnchor}
           onClose={() => setMenuOpen(false)}
           actions={[
+            { key: 'logPast', label: 'Log a past workout', icon: 'time-outline', onPress: () => setLogPastOpen(true) },
             { key: 'gyms', label: 'Gyms', icon: 'location-outline', onPress: () => setGymsOpen(true) },
             { key: 'import', label: 'Import from Strong or Hevy', icon: 'download-outline', onPress: () => { void startImport(); } },
             ...(sessions.some(s => s.endedAt !== null)
@@ -831,6 +835,9 @@ export function WorkoutsScreen() {
               : []),
           ]}
         />
+      </LazySheet>
+      <LazySheet open={logPastOpen}>
+        <LogPastWorkoutSheet visible={logPastOpen} onClose={() => setLogPastOpen(false)} />
       </LazySheet>
       <LazySheet open={gymsOpen}>
         <GymsSheet visible={gymsOpen} onClose={() => setGymsOpen(false)} />
