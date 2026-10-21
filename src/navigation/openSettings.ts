@@ -1,4 +1,4 @@
-import { navigateToTab } from './navigationRef';
+import { currentTabName, navigateToTab } from './navigationRef';
 import {
   settingsEntryTarget,
   settingsGroupTarget,
@@ -23,8 +23,12 @@ export function openSettingsTarget(navigation: unknown, target: SettingsTarget, 
     // A screen is a tab, which has no back button, so `returnTo` is how it
     // gets you back to the screen that sent you (Automations shows it as a
     // back row). A Settings group is a card pushed over where you were, so
-    // its own back already does that.
-    navigateToTab(target.route, { entryId: target.entryId, focusStamp: Date.now(), returnTo });
+    // its own back already does that. A caller that names no `returnTo` is
+    // handed back to the tab it was tapped on, so a link from Screen Time, a
+    // tip or a task row never strands you on a screen with no way back.
+    const tab = currentTabName();
+    const back = returnTo ?? (tab !== target.route ? tab : undefined);
+    navigateToTab(target.route, { entryId: target.entryId, focusStamp: Date.now(), returnTo: back });
     return;
   }
   (navigation as Navigation).navigate('SettingsGroup', { groupId: target.groupId, entryId: target.entryId });
