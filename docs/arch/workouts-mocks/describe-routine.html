@@ -1,0 +1,115 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="base.css">
+<style>
+body { flex-wrap: wrap; width: 1780px; gap: 24px; }
+.phone { height: 760px; }
+.field { background: var(--bg2); border-radius: 12px; padding: 12px 16px; font-size: 17px; font-weight: 600; margin-top: 4px; }
+.notes { color: var(--text2); font-weight: 400; font-size: 15px; border-top: 0.5px solid var(--sep); margin: 12px -16px -12px; padding: 12px 16px; }
+.area { background: var(--bg2); border-radius: 12px; padding: 14px 16px; font-size: 16px; line-height: 23px; min-height: 230px; margin-top: 8px; }
+.caret { display:inline-block; width:2px; height:18px; background: var(--accent); vertical-align:-3px; }
+.help { font-size: 13px; color: var(--text2); margin: 8px 4px 0; line-height: 18px; }
+.btn { background: var(--accent); color: var(--onAccent); border-radius: 12px; text-align:center; font-weight:600; font-size:17px; padding: 14px; margin-top: 20px; }
+.banner { background: var(--accentSubtle); border-radius: 12px; padding: 12px 16px; margin-top: 8px; display:flex; gap:10px; font-size: 14px; line-height: 19px; }
+.banner b { color: var(--accentText); }
+.item { background: var(--bg2); border-radius: 12px; margin-top: 8px; overflow: hidden; }
+.item .wrote { padding: 12px 16px 8px; }
+.item .wrote .cap { font-size: 11px; font-weight: 600; letter-spacing: 0.8px; color: var(--text2); text-transform: uppercase; }
+.item .wrote .n { font-size: 17px; font-weight: 600; margin-top: 2px; }
+.opt { display:flex; align-items:center; gap: 12px; padding: 12px 16px; border-top: 0.5px solid var(--sep); min-height: 44px; }
+.dot { width: 22px; height: 22px; border-radius: 11px; border: 1.5px solid var(--ctl); flex:none; }
+.dot.on { border: 6px solid var(--accent); }
+.tag { font-size: 12px; color: var(--accentText); font-weight: 600; margin-left: 6px; }
+.matched { display:flex; align-items:center; gap:10px; padding: 12px 16px; }
+.ok { color: var(--greenText); font-weight: 700; }
+.handle { color: var(--text3); font-size: 15px; letter-spacing: -1px; width: 14px; }
+.ex { flex:1; min-width:0; } .ex .name { font-size: 15px; } .ex .sec { margin-top: 2px; }
+.super { border-left: 3px solid var(--accent); border-top: 0.5px solid var(--sep); }
+.superTag { font-size: 11px; font-weight: 600; letter-spacing: 0.8px; color: var(--accentText); padding: 8px 16px 0 13px; }
+.chev { color: var(--text3); }
+.cap2 { font-size: 12px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: var(--text2); margin: 20px 4px 8px; }
+.step { font-size: 12px; color: var(--text3); text-align:center; margin-top: 10px; }
+</style></head><body>
+
+<template id="t">
+<div class="phone THEME">
+  <div class="status"><span>9:41</span><span>●●●</span></div>
+  <div class="sheetHeader"><span class="side">Cancel</span><span class="title">Describe routine</span><span class="side r"></span></div>
+  <div class="scroll">
+    <div class="seg" style="margin-top:4px"><span class="on">Routine</span><span>Workout I did</span></div>
+    <div class="area" style="min-height:200px">Push day. Bench press 3x5 at 185, two warm-up sets. DB incline press 3x8-12 supersetted with cable fly 3x12-15. Overhead tricep ext 3x10-12. Rest 2 min on the big lifts, 1 min otherwise. Finish with abs.<span class="caret"></span></div>
+    <div class="help">A routine is a plan you can start later. Name the lifts, sets and reps. Weights, rest and supersets are optional. Weights are read in lb.</div>
+    <div class="btn">Draft routine</div>
+    <div class="help" style="text-align:center">Sent to Claude along with the names of your exercises. Nothing is saved until you check it.</div>
+  </div>
+</div>
+<div class="phone THEME">
+  <div class="status"><span>9:41</span><span>●●●</span></div>
+  <div class="sheetHeader"><span class="side">Back</span><span class="title">Match exercises</span><span class="side r">Next</span></div>
+  <div class="scroll">
+    <div class="help" style="margin-top:0">2 of 5 exercises need a quick check. The rest matched your library.</div>
+    <div class="item">
+      <div class="wrote"><div class="cap">You wrote</div><div class="n">DB incline press</div></div>
+      <div class="opt"><span class="dot on"></span><span style="flex:1">Incline dumbbell press<span class="tag">Suggested</span></span></div>
+      <div class="opt"><span class="dot"></span><span style="flex:1">Incline barbell press</span></div>
+      <div class="opt"><span class="dot"></span><span style="flex:1">New exercise: DB incline press</span></div>
+    </div>
+    <div class="item">
+      <div class="wrote"><div class="cap">You wrote</div><div class="n">Overhead tricep ext</div></div>
+      <div class="opt"><span class="dot on"></span><span style="flex:1">Overhead triceps extension<span class="tag">Suggested</span></span></div>
+      <div class="opt"><span class="dot"></span><span style="flex:1">New exercise: Overhead tricep ext</span></div>
+    </div>
+    <div class="cap2">Matched</div>
+    <div class="card">
+      <div class="matched"><span class="ok">✓</span><span style="flex:1">Barbell bench press</span></div>
+      <div class="matched" style="border-top:0.5px solid var(--sep)"><span class="ok">✓</span><span style="flex:1">Cable fly</span></div>
+    </div>
+    <div class="step">Only shown when a name isn't an exact match.</div>
+  </div>
+</div>
+<div class="phone THEME">
+  <div class="status"><span>9:41</span><span>●●●</span></div>
+  <div class="sheetHeader"><span class="side">Cancel</span><span class="title">Routine</span><span class="side r">Save</span></div>
+  <div class="scroll">
+    <div class="banner"><span>✦</span><span><b>Drafted from your description.</b> Check the sets, then save. Anything that wasn't a lift went into Notes.</span></div>
+    <div class="field" style="margin-top:12px">Push day<div class="notes">Finish with abs</div></div>
+    <div class="groupLabel">Exercises</div>
+    <div class="card">
+      <div class="row"><span class="handle">≡</span><div class="ex"><div class="name">Barbell bench press</div><div class="sec">2 warm-up · 3 × 5 · 185 lb · rest 2:00</div></div><span class="chev">⌄</span></div>
+      <div class="super">
+        <div class="superTag">SUPERSET</div>
+        <div class="row" style="padding-left:13px;border-top:0"><span class="handle">≡</span><div class="ex"><div class="name">Incline dumbbell press</div><div class="sec">3 × 8–12 · rest 1:00 after the pair</div></div><span class="chev">⌄</span></div>
+        <div class="row" style="padding-left:13px"><span class="handle">≡</span><div class="ex"><div class="name">Cable fly</div><div class="sec">3 × 12–15</div></div><span class="chev">⌄</span></div>
+      </div>
+      <div class="row" style="border-top:0.5px solid var(--sep)"><span class="handle">≡</span><div class="ex"><div class="name">Overhead triceps extension</div><div class="sec">3 × 10–12 · rest 1:00</div></div><span class="chev">⌄</span></div>
+      <div class="row" style="border-top:0.5px solid var(--sep)"><span class="pill">+ Add exercise</span><span class="pill neutral">Superset</span></div>
+    </div>
+    <div class="help">No weight was given for the last three, so they start empty. Progression stays off until you pick one.</div>
+  </div>
+</div>
+
+<div class="phone THEME">
+  <div class="status"><span>9:41</span><span>●●●</span></div>
+  <div class="sheetHeader"><span class="side">Cancel</span><span class="title">Log workout</span><span class="side r"></span></div>
+  <div class="scroll">
+    <div class="card" style="padding:12px 16px;display:flex;flex-direction:column;gap:6px">
+      <span style="font-size:11px;font-weight:600;letter-spacing:.8px;color:var(--accentText);text-transform:uppercase">Described workout</span>
+      <span style="font-size:20px;font-weight:600">Legs, 3 sets</span>
+      <span class="sec">Tue, Oct 20, 2026</span>
+    </div>
+    <div class="help">A workout logged this way isn’t written to Apple Health.</div>
+    <div class="groupLabel">Needs a choice · 1</div>
+    <div class="card" style="padding:12px 16px;display:flex;flex-direction:column;gap:10px">
+      <div><div style="font-size:17px;font-weight:600">Bike</div><div class="sec">1 set in 1 workout</div></div>
+      <div class="seg"><span>Match</span><span class="on">Create</span><span>Skip</span></div>
+      <div class="sec">Added to your library as its own exercise.</div>
+    </div>
+    <div class="groupLabel">Matched · 1</div>
+    <div class="card"><div class="row"><span style="color:var(--greenText);font-weight:700">✓</span><span style="flex:1">Barbell squat</span><span class="chev">›</span></div></div>
+  </div>
+  <div style="margin-top:auto;padding:12px 16px 24px;border-top:0.5px solid var(--sep)"><div class="btn" style="margin-top:0">Log workout</div></div>
+</div>
+</template>
+<script>
+const t=document.getElementById('t').innerHTML;
+['light','dark'].forEach(th=>{ const d=document.createElement('div'); d.style.display='contents'; d.innerHTML=t.replaceAll('THEME',th); document.body.appendChild(d); });
+</script>
+</body></html>

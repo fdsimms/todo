@@ -298,6 +298,9 @@ const AI_FEATURE_KEYWORDS: Record<AiFeatureId, string[]> = {
   recipeNutritionEstimate: [
     'claude', 'model', 'calories', 'ingredients', 'guess',
   ],
+  workoutDraft: [
+    'claude', 'model', 'routine', 'exercise', 'gym', 'sets', 'reps', 'lifting', 'type', 'prose',
+  ],
 };
 
 /** One entry per row `PrivacyAiSettings` actually renders, in the same order. */
@@ -312,6 +315,8 @@ const AI_FEATURE_ENTRIES: SettingsEntry[] = AI_FEATURES.map(feature => ({
   // pointing at nothing. Same for the two that go with simplified mode.
   ...(feature.kitchen ? { kitchen: true } : {}),
   ...(feature.simple ? { simple: true } : {}),
+  // The Workouts switch is a row of its own, so the entry waits on it like the Health write rows do.
+  ...(feature.workouts ? { requiresAll: ['workoutsEnabled'] } : {}),
 }));
 
 /**

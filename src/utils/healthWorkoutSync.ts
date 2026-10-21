@@ -17,9 +17,10 @@ import { isDemoModeActive } from './demoState';
  * `useWorkoutStore` calls `logWorkoutToHealth` when Save is tapped on workout
  * mode's summary, and an edit of a written workout's times rewrites it. Nothing
  * sweeps history: a workout finished while the switch was off, before this
- * shipped, or imported from another app's file stays out of Health. The one
- * delayed caller is a workout an agent logged over MCP
- * (`WorkoutSession.healthWritePending`), the meal write's exception unchanged.
+ * shipped, or imported from another app's file stays out of Health. The
+ * delayed callers are a workout an agent logged over MCP and one the person
+ * described and said yes to on its review sheet (both
+ * `WorkoutSession.healthWritePending`), the meal write's exception unchanged.
  *
  * **Absent stays absent.** No energy is passed: nothing on the phone measured
  * any, and an estimate from sets is the one figure the workouts plan refuses.
@@ -122,6 +123,24 @@ export function pendingWorkoutWriteAction(session: WorkoutSession, now: Date = n
   // answers (`WATCH_WORKOUT_WAIT_MINUTES`).
   if (session.measuredOnWatch && age < WATCH_WORKOUT_WAIT_MINUTES * 60_000) return 'wait';
   return 'write';
+}
+
+/**
+ * Whether a workout somebody described after the fact can be added to Health,
+ * for the review sheet to offer the choice or say why not. The same limits the
+ * pending-write pass applies when it picks the flagged session up, decided
+ * first so the person is never offered a write that pass would drop or hold
+ * back for good: `noLength` (the description gave no duration, so the span is
+ * an instant) and `tooOld` (ended more than `PENDING_WORKOUT_WRITE_MAX_AGE_DAYS`
+ * ago). Pure, exported for its tests.
+ */
+export function describedWorkoutHealthOffer(
+  session: Pick<WorkoutSession, 'startedAt' | 'endedAt'>,
+  now: Date = new Date(),
+): 'offer' | 'noLength' | 'tooOld' {
+  const age = session.endedAt === null ? NaN : now.getTime() - new Date(session.endedAt).getTime();
+  if (Number.isFinite(age) && age > PENDING_WORKOUT_WRITE_MAX_AGE_DAYS * 86_400_000) return 'tooOld';
+  return workoutSpanWritable(session, now) ? 'offer' : 'noLength';
 }
 
 /**

@@ -7,12 +7,14 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { SegmentedControl } from './SegmentedControl';
 import { InlineAction } from './InlineAction';
 import { PressableScale } from './PressableScale';
+import { Toggle } from './Toggle';
 import { ExercisePickerSheet } from './ExercisePickerSheet';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { PENDING_WORKOUT_WRITE_MAX_AGE_DAYS, describedWorkoutHealthOffer } from '../utils/healthWorkoutSync';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { catalogExercise } from '../utils/exerciseCatalog';
 import { cleanWorkoutName } from '../utils/workoutData';
@@ -28,6 +30,8 @@ import {
   matchAll,
   parseWorkoutCsv,
   splitDuplicates,
+  type ImportedSession,
+  type CsvParseResult,
   type ExerciseNameUse,
   type NameResolution,
 } from '../utils/workoutCsv';
@@ -39,8 +43,16 @@ interface Props {
   visible: boolean;
   onClose: () => void;
   /** The text of the file the person picked. Already known to parse (the screen checks first). */
-  fileText: string;
+  fileText?: string;
+  /**
+   * One workout the person described in words (`sessionFromDraft`), reviewed
+   * here in place of a file: the same names to match, the same duplicate check,
+   * the same single write. Wins over `fileText` when both are given.
+   */
+  described?: ImportedSession | null;
 }
+
+const NO_SKIPPED = { restTimers: 0, emptySets: 0, badDates: 0, noExercise: 0, looseNotes: 0 };
 
 type Choice = 'match' | 'create' | 'skip';
 
@@ -73,7 +85,7 @@ const count = (n: number, one: string, many: string) => `${n.toLocaleString()} $
  * inside this sheet's own Modal rather than beside it: two sibling sheets can't
  * both present (CLAUDE.md, "Two sibling Modals").
  */
-export function WorkoutImportSheet({ visible, onClose, fileText }: Props) {
+export function WorkoutImportSheet({ visible, onClose, fileText = '', described = null }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const exercises = useWorkoutStore(s => s.exercises);
@@ -88,6 +100,8 @@ export function WorkoutImportSheet({ visible, onClose, fileText }: Props) {
   const [unitTouched, setUnitTouched] = useState(false);
   const [choices, setChoices] = useState<Record<string, NameResolution>>({});
   const [picking, setPicking] = useState<string | null>(null);
+  // Only a described workout asks; on by default because the person turned on logging workouts to Health.
+  const [toHealth, setToHealth] = useState(true);
 
   useEffect(() => {
     if (visible) {
@@ -95,12 +109,18 @@ export function WorkoutImportSheet({ visible, onClose, fileText }: Props) {
       setUnitTouched(false);
       setChoices({});
       setPicking(null);
+      setToHealth(true);
     }
     // Reset when the sheet opens on a file, not when the setting changes under it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, fileText]);
+  }, [visible, fileText, described]);
 
-  const parsed = useMemo(() => (fileText ? parseWorkoutCsv(fileText, { fallbackUnit: unit }) : null), [fileText, unit]);
+  const parsed = useMemo((): CsvParseResult | null => {
+    if (described) {
+      return { ok: true, source: 'text', sessions: [described], unitAssumed: false, skippedRows: 0, skipped: NO_SKIPPED };
+    }
+    return fileText ? parseWorkoutCsv(fileText, { fallbackUnit: unit }) : null;
+  }, [described, fileText, unit]);
   const ok = parsed && parsed.ok ? parsed : null;
 
   // Only the workouts the log doesn't have yet need their names decided.
@@ -150,10 +170,12 @@ export function WorkoutImportSheet({ visible, onClose, fileText }: Props) {
   const dirty = Object.keys(choices).length > 0 || unitTouched;
   const handleCancel = () => {
     if (!dirty) { onClose(); return; }
-    confirmDiscard(onClose, {
-      title: 'Discard this import?',
-      message: 'Nothing has been imported yet. If you leave now, your choices will be lost.',
-    });
+    confirmDiscard(onClose, described
+      ? { title: 'Discard this workout?', message: 'It hasn’t been logged yet. If you leave now, your choices will be lost.' }
+      : {
+        title: 'Discard this import?',
+        message: 'Nothing has been imported yet. If you leave now, your choices will be lost.',
+      });
   };
 
   const setChoice = (key: string, choice: Choice) => {
@@ -214,23 +236,38 @@ export function WorkoutImportSheet({ visible, onClose, fileText }: Props) {
         primaryMuscles: [],
       };
     }
-    const result = importSessions(plan.sessions, creates);
+    const sendToHealth = healthOffer === 'offer' && toHealth;
+    const result = importSessions(
+      sendToHealth ? plan.sessions.map(s => ({ ...s, healthWritePending: true })) : plan.sessions,
+      creates,
+    );
+    // The flag is what the pending pass writes from, and it runs when the app
+    // next comes to the front; starting it here puts the workout in Health now.
+    if (sendToHealth && result.sessions > 0) void useWorkoutStore.getState().writePendingHealthSessions();
     haptics.success();
     onClose();
-    const parts = [`${count(result.sessions, 'workout', 'workouts')} and ${count(result.sets, 'set', 'sets')} were added to your history.`];
+    const parts = [described
+      ? `${count(result.sets, 'set was', 'sets were')} added to your history.`
+      : `${count(result.sessions, 'workout', 'workouts')} and ${count(result.sets, 'set', 'sets')} were added to your history.`];
     if (result.created > 0) parts.push(`${count(result.created, 'exercise was', 'exercises were')} added to your library.`);
-    Alert.alert('Import finished', parts.join(' '));
+    Alert.alert(described ? 'Workout logged' : 'Import finished', parts.join(' '));
   };
 
+  // What Health can be asked, from the same limits the pending pass applies.
+  const healthOffer = described && writesToHealth ? describedWorkoutHealthOffer(described) : null;
   const summary = ok ? importSummary(ok.sessions) : { sessions: 0, sets: 0, from: null, to: null };
-  const sourceLabel = ok?.source === 'hevy' ? 'Hevy export' : 'Strong export';
-  const range = summary.from && summary.to
+  const sourceLabel = ok?.source === 'text' ? 'Described workout' : ok?.source === 'hevy' ? 'Hevy export' : 'Strong export';
+  const range = described
+    ? format(new Date(described.startedAt), 'EEE, MMM d, yyyy')
+    : summary.from && summary.to
     ? `${format(new Date(summary.from), 'MMM d, yyyy')} to ${format(new Date(summary.to), 'MMM d, yyyy')}`
     : '';
   const footerNote = undecided.length > 0
     ? `${count(undecided.length, 'name still needs', 'names still need')} a choice`
     : plan && plan.sessions.length === 0
-      ? 'Every workout in this file is already in your log, or has no sets left.'
+      ? described
+        ? 'A workout that started at this time is already in your log, or none of its sets are left.'
+        : 'Every workout in this file is already in your log, or has no sets left.'
       : plan && plan.skippedSets > 0
         ? `${count(plan.skippedSets, 'set is', 'sets are')} skipped with their exercises`
         : null;
@@ -245,7 +282,7 @@ export function WorkoutImportSheet({ visible, onClose, fileText }: Props) {
     >
       <View style={styles.root}>
         <SheetHeader
-          title="Import workouts"
+          title={described ? 'Log workout' : 'Import workouts'}
           left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={64} />}
           right={<View style={styles.headerSpacer} />}
         />
@@ -255,7 +292,9 @@ export function WorkoutImportSheet({ visible, onClose, fileText }: Props) {
           <View style={styles.card}>
             <Text style={styles.badge}>{sourceLabel}</Text>
             <Text style={styles.big}>
-              {`${count(summary.sessions, 'workout', 'workouts')}, ${count(summary.sets, 'set', 'sets')}`}
+              {described
+                ? `${described.title}, ${count(summary.sets, 'set', 'sets')}`
+                : `${count(summary.sessions, 'workout', 'workouts')}, ${count(summary.sets, 'set', 'sets')}`}
             </Text>
             {range ? <Text style={styles.detail}>{range}</Text> : null}
             {split.duplicates > 0 ? (
@@ -274,7 +313,27 @@ export function WorkoutImportSheet({ visible, onClose, fileText }: Props) {
               import to see before confirming it, so a plain Text: Hide help
               text must not remove it. Styled as workout mode's own line about
               Health on its summary. */}
-          {writesToHealth ? (
+          {healthOffer === 'offer' ? (
+            <TouchableOpacity
+              style={styles.healthRow}
+              onPress={() => { haptics.tap(); setToHealth(v => !v); }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: toHealth }}
+              accessibilityLabel="Add to Apple Health"
+            >
+              <Text style={styles.healthLabel}>Add to Apple Health</Text>
+              <Toggle value={toHealth} />
+            </TouchableOpacity>
+          ) : healthOffer === 'noLength' ? (
+            <Text style={styles.quietBelow}>
+              It isn’t added to Apple Health. To add it, include how long it took in your description.
+            </Text>
+          ) : healthOffer === 'tooOld' ? (
+            <Text style={styles.quietBelow}>
+              {`It isn’t added to Apple Health because it was more than ${PENDING_WORKOUT_WRITE_MAX_AGE_DAYS} days ago.`}
+            </Text>
+          ) : writesToHealth && !described ? (
             <Text style={styles.quietBelow}>
               Imported workouts aren’t written to Apple Health. The app they came from may have saved them there already.
             </Text>
@@ -396,10 +455,10 @@ export function WorkoutImportSheet({ visible, onClose, fileText }: Props) {
             style={[styles.importButton, !canImport && styles.importDisabled]}
             onPress={runImport}
             disabled={!canImport}
-            accessibilityLabel={plan ? `Import ${count(plan.sessions.length, 'workout', 'workouts')}` : 'Import'}
+            accessibilityLabel={described ? 'Log workout' : plan ? `Import ${count(plan.sessions.length, 'workout', 'workouts')}` : 'Import'}
           >
             <Text style={styles.importLabel}>
-              {plan && plan.sessions.length > 0 ? `Import ${count(plan.sessions.length, 'workout', 'workouts')}` : 'Import'}
+              {described ? 'Log workout' : plan && plan.sessions.length > 0 ? `Import ${count(plan.sessions.length, 'workout', 'workouts')}` : 'Import'}
             </Text>
           </PressableScale>
           {footerNote ? <Text style={styles.footerNote}>{footerNote}</Text> : null}
@@ -449,6 +508,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   name: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
   detail: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs },
   quiet: { color: colors.textSecondary, fontSize: font.sm },
+  healthRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md,
+    backgroundColor: colors.bgSecondary, borderRadius: radius.lg, minHeight: 48,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.smd, marginTop: spacing.sm,
+  },
+  healthLabel: { flex: 1, color: colors.text, fontSize: font.md },
   quietBelow: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xsm, marginHorizontal: spacing.xs },
   warn: { color: colors.warningText, fontSize: font.sm },
   chosen: { color: colors.accentText, fontSize: font.sm },

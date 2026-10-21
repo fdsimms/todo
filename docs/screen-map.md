@@ -69,7 +69,7 @@ components below.
 - `src/screens/TodayScreen.tsx` — AddTaskFab, AllClearMark, AnimatedCollapsible, AnimatedNumber, ApplyTemplateSheet, BulkActionBar, CardSheet, CategoryOrderSheet, CoinIcon, CompletionCollapse, CreatedTaskToast, DayContextRow, +47 more
 - `src/screens/UnattendedLogScreen.tsx` — ActivitySourceSheet, EmptyState, HubPills, InlineAction, ScreenHeader, ScreenSettingsSheet, ScrollToTopButton
 - `src/screens/WeightScreen.tsx` — EmptyState, HubPills, LogWeightSheet, ProgressBar, ScreenHeader, ScreenSettingsSheet, ScrollToTopButton, SegmentedControl, WeightChart, WeightGoalSheet
-- `src/screens/WorkoutsScreen.tsx` — ActionMenu, CardSheet, CsvExportSheet, EmptyNote, EmptyState, ExerciseDetailSheet, ExerciseFilterBar, Fab, GroupNameSheet, GymsSheet, HelpText, InlineAction, +13 more
+- `src/screens/WorkoutsScreen.tsx` — ActionMenu, CardSheet, CsvExportSheet, DescribeWorkoutSheet, EmptyNote, EmptyState, ExerciseDetailSheet, ExerciseFilterBar, Fab, GroupNameSheet, GymsSheet, HelpText, +14 more
 
 ## Components
 
@@ -147,6 +147,7 @@ Where each component can appear.
 - `src/components/DeliverablePromptSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SavedViewDetailScreen, +7 more
 - `src/components/DeloadSheet.tsx` — on TodayScreen
 - `src/components/DemoBanner.tsx` — on app shell
+- `src/components/DescribeWorkoutSheet.tsx` — on WorkoutsScreen
 - `src/components/DetailHeader.tsx` — on BackfillScreen, CategoryDetailScreen, CookbookDetailScreen, MedicationDetailScreen, MoodDayScreen, MoodHistoryScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RecipeDetailScreen, RecipesScreen, SavedViewDetailScreen, +6 more
 - `src/components/DoseAmountField.tsx` — on ArchivedScreen, AutomationsScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, +9 more
 - `src/components/DropTargetChannel.tsx` — on TodayScreen

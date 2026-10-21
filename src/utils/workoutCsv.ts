@@ -39,7 +39,8 @@ import { MIN_SIMILAR_LENGTH, withinOneEdit } from './textSimilar';
  * its milliseconds. The title is ignored.
  */
 
-export type ImportSource = 'strong' | 'hevy';
+/** Where a workout came from. `text` is one the person described in words (`workoutDraft.ts`), not a file. */
+export type ImportSource = 'strong' | 'hevy' | 'text';
 
 /** One set read from a file, before its exercise name is matched to anything. */
 export interface ImportedSet {
@@ -848,6 +849,12 @@ export interface PlannedImportSession {
   endedAt: string;
   notes: string;
   sets: PlannedImportSet[];
+  /**
+   * Flagged for the pending-write pass to add to Apple Health
+   * (`WorkoutSession.healthWritePending`). Only a workout the person described
+   * and said yes for sets it: a file's workouts stay out of Health.
+   */
+  healthWritePending?: boolean;
 }
 
 export interface ImportPlan {

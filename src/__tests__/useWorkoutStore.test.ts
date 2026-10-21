@@ -926,6 +926,13 @@ describe('importing sessions from a file', () => {
   });
   const creates = { 'sled drag': { name: 'Sled drag', kind: 'weight_reps' as const, equipment: 'other' as const, primaryMuscles: [] } };
 
+  it('flags only the sessions a described workout asked to send to Health, and leaves a file\'s alone', () => {
+    state().importSessions([planned('imp-a', 7), planned('imp-b', 9, { healthWritePending: true })], creates);
+    reload();
+    expect(state().sessions.find(x => x.id === 'imp-a')!.healthWritePending).toBe(false);
+    expect(state().sessions.find(x => x.id === 'imp-b')!.healthWritePending).toBe(true);
+  });
+
   it('writes the sessions, their sets and the custom exercise together, and reads back after a reload', () => {
     const result = state().importSessions([planned('imp-a', 7), planned('imp-b', 9)], creates);
     expect(result).toEqual({ sessions: 2, sets: 6, created: 1, duplicates: 0 });

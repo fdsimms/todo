@@ -211,7 +211,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/healthRules.ts` — HEALTH_NUTRIENT_METRICS, usesCheckpoint, HEALTH_RULE_TITLE_MAX_LENGTH, HEALTH_THRESHOLDS, HEALTH_METRIC_DIRECTION, healthRuleDirection, HEALTH_METRIC_EARLIEST_HOUR, HEALTH_METRICS, healthRuleCheckpointHour, HealthRuleReading, +23 more
 - `src/utils/healthTarget.ts` — HEALTH_TARGET_METRICS, HealthTargetState, HealthTargetReading, HEALTH_TARGET_RANGES, hasHealthTarget, healthTargetValue, followsRingGoal, effectiveHealthTarget, healthTargetProgress, isHealthTargetReady, +3 more
 - `src/utils/healthWeightSync.ts` — WeightWriteResult, logWeightToHealth
-- `src/utils/healthWorkoutSync.ts` — WORKOUT_HEALTH_ACTIVITY, PENDING_WORKOUT_WRITE_MAX_AGE_DAYS, WATCH_WORKOUT_WAIT_MINUTES, workoutSpanWritable, pendingWorkoutWriteAction, workoutHealthWriteOn, WorkoutWriteResult, logWorkoutToHealth, retractWorkoutFromHealth, retractWatchWorkouts, +2 more
+- `src/utils/healthWorkoutSync.ts` — WORKOUT_HEALTH_ACTIVITY, PENDING_WORKOUT_WRITE_MAX_AGE_DAYS, WATCH_WORKOUT_WAIT_MINUTES, workoutSpanWritable, pendingWorkoutWriteAction, describedWorkoutHealthOffer, workoutHealthWriteOn, WorkoutWriteResult, logWorkoutToHealth, retractWorkoutFromHealth, +3 more
 - `src/utils/healthWorkouts.ts` — HEALTH_WORKOUT_ACTIVITIES, HealthWorkoutActivity, HEALTH_WORKOUT_ACTIVITY_LABEL, HealthWorkout, parseHealthWorkouts, readHealthWorkouts
 - `src/utils/heartRateZones.ts` — HEART_RATE_ZONE_SHARES, AGE_ESTIMATE_BASE, MAX_HEART_RATE_RANGE, MAX_READING_GAP_SECONDS, MaxHeartRate, parseMaxHeartRate, resolveMaxHeartRate, describeMaxHeartRate, describeZoneBasis, HeartRateZone, +11 more
 - `src/utils/hiddenEvents.ts` — HiddenEvent, hiddenEventKey, hiddenEventFromEvent, isHiddenEventStale, pruneStaleHiddenEvents
@@ -606,6 +606,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/workoutCell.ts` — setFieldMax, parseRepsTarget, parseSetCell
 - `src/utils/workoutCsv.ts` — ImportSource, ImportedSet, ImportedSession, CsvParseResult, SkippedRows, describeSkipped, ParseOptions, parseCsv, readCsv, parseImportDate, +34 more
 - `src/utils/workoutData.ts` — EXERCISE_KINDS, FREE_EQUIPMENT, ACCESSORY_EQUIPMENT, STRENGTH_MACHINES, CARDIO_MACHINES, EXERCISE_EQUIPMENT, machineParent, EquipmentGroup, equipmentGroup, MUSCLE_GROUPS, +41 more
+- `src/utils/workoutDraft.ts` — DescribeMode, DESCRIBE_MAX_LENGTH, MAX_DRAFT_EXERCISES, DraftSet, DraftExercise, WorkoutDraft, readWorkoutDraft, draftNames, newExerciseFor, RoutineDraft, +4 more
 - `src/utils/workoutHistory.ts` — HEALTH_HISTORY_MAX_DAYS, WorkoutHistoryRow, healthHistoryWindow, SAME_WORKOUT_START_MS, overlapsSession, interleaveHistory, healthWorkoutSource, healthWorkoutTitle, healthWorkoutLine
 - `src/utils/workoutLink.ts` — WORKOUT_LINK_VERBS, WorkoutLinkVerb, WorkoutLink, WORKOUT_OPEN_URL, workoutLinkUrl, WorkoutLinkPlan, planWorkoutLink
 - `src/utils/workoutLinkActions.ts` — applyWorkoutLink, skipRestFromLink
@@ -791,7 +792,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 
 ## `src/services`
 
-- `src/services/aiSuggestions.ts` — describeAIError, TemplateItemSuggestion, suggestTemplateItems, ProjectTaskSuggestion, suggestProjectTasks, SubtaskSuggestion, suggestSubtasks, suggestBackfillValues, MAX_RECIPE_CHARS, suggestGroceryAisles, +24 more
+- `src/services/aiSuggestions.ts` — describeAIError, TemplateItemSuggestion, suggestTemplateItems, ProjectTaskSuggestion, suggestProjectTasks, SubtaskSuggestion, suggestSubtasks, suggestBackfillValues, MAX_RECIPE_CHARS, suggestGroceryAisles, +26 more
 - `src/services/foodSearch.ts` — FoodSearchHit, searchFoods, fetchFoodPortions, describeFoodSearchError, foodSearchErrorSettingsEntryId
 - `src/services/geocode.ts` — GeocodedPlace, geocodePlace
 - `src/services/onDeviceModel.ts` — isOnDeviceReady, onDeviceAvailability, describeOnDeviceAvailability, isOnDeviceErrorMessage, describeOnDeviceError, runOnDevice

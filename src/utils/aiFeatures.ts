@@ -7,13 +7,13 @@ export type AiFeatureId =
   | 'taskBreakdown' | 'templateSuggestions' | 'projectTaskSuggestions' | 'groceryAisles'
   | 'recipeExtraction' | 'mealIdeas' | 'substitutes' | 'receiptImport' | 'calendarImport'
   | 'cookHelp' | 'nutritionEstimate' | 'nutritionLabelPhoto' | 'backfillSuggestions'
-  | 'recipeNutritionEstimate';
+  | 'recipeNutritionEstimate' | 'workoutDraft';
 
 export const AI_FEATURE_IDS: AiFeatureId[] = [
   'taskBreakdown', 'templateSuggestions', 'projectTaskSuggestions', 'groceryAisles',
   'recipeExtraction', 'mealIdeas', 'substitutes', 'receiptImport', 'calendarImport',
   'cookHelp', 'nutritionEstimate', 'nutritionLabelPhoto', 'backfillSuggestions',
-  'recipeNutritionEstimate',
+  'recipeNutritionEstimate', 'workoutDraft',
 ];
 
 export type AiModelId = 'claude-haiku-5-5' | 'claude-sonnet-5-5' | 'claude-opus-5-5';
@@ -60,6 +60,11 @@ export interface AiFeatureMeta {
    * so a switch left behind would configure nothing.
    */
   simple?: boolean;
+  /**
+   * Configures the Workouts area, so its row goes when `workoutsEnabled` is off,
+   * the one-row-at-a-time treatment `kitchen` gives the grocery area.
+   */
+  workouts?: boolean;
 }
 
 export const AI_FEATURES: AiFeatureMeta[] = [
@@ -170,6 +175,15 @@ export const AI_FEATURES: AiFeatureMeta[] = [
     hint: 'Estimates a recipe’s nutrition from its ingredient list when too few ingredients have catalog data',
     kitchen: true,
   },
+  {
+    id: 'workoutDraft',
+    label: 'Describe a workout',
+    // Reached from the Describe button on the Workouts screen. Claude only: it
+    // needs the exercise library as context and a structured reply, which is
+    // more than Apple's on-device window holds (see `aiRouting.ts`).
+    hint: 'Turns a description of a routine, or of a workout you did, into one you can check and save',
+    workouts: true,
+  },
 ];
 
 /**
@@ -181,9 +195,9 @@ export const AI_FEATURES: AiFeatureMeta[] = [
  * and come back with it. Nothing needs to gate the calls themselves: all of
  * these are reached from inside a screen or sheet that has already gone.
  */
-export function aiFeaturesFor(kitchenEnabled: boolean, simpleMode = false): AiFeatureMeta[] {
+export function aiFeaturesFor(kitchenEnabled: boolean, simpleMode = false, workoutsEnabled = true): AiFeatureMeta[] {
   return AI_FEATURES.filter(f =>
-    (kitchenEnabled || !f.kitchen) && (!simpleMode || !f.simple));
+    (kitchenEnabled || !f.kitchen) && (!simpleMode || !f.simple) && (workoutsEnabled || !f.workouts));
 }
 
 export interface AiFeatureConfig {
@@ -269,5 +283,10 @@ export function defaultAiFeatureConfig(): AiFeatureConfigMap {
     // combine (a marinade mostly poured off, a batter's rise), which is where
     // a smaller model confabulates most confidently.
     recipeNutritionEstimate: { enabled: true, model: 'claude-sonnet-5-5' },
+    // The default model, for the reason `backfillSuggestions` keeps it: this is
+    // extraction, not judgment. The person's own words are the source, every
+    // exercise name is matched against their library in code rather than
+    // trusted, and nothing is saved before they have looked at the draft.
+    workoutDraft: { enabled: true, model: DEFAULT_AI_MODEL },
   };
 }
