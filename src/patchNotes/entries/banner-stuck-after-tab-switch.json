@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a bug where a banner (like the one after creating a task) could stay on screen after you switched to another page and back, until you swiped it away.",
+  "date": "2026-10-21"
+}
