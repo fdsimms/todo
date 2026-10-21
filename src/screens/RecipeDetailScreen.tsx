@@ -98,7 +98,8 @@ import {
   splitIngredientAnd,
   totalMinutes,
 } from '../utils/recipeUtils';
-import { buildIngredientsText, buildRecipeShareText } from '../utils/shareText';
+import { buildIngredientSections, buildIngredientsText, buildRecipeShareText, servingsLineFor } from '../utils/shareText';
+import { PrintIngredientsSheet } from '../components/PrintIngredientsSheet';
 import { allSectionsOf, sectionsFromMergedOrder, type SectionListEntry } from '../utils/recipeSections';
 import { PillGroup } from '../components/PillGroup';
 import { describeUnscaled, formatScale, normalizeScale, scaleQuantity } from '../utils/recipeScale';
@@ -691,6 +692,22 @@ export function RecipeDetailScreen() {
 
   const { copy: copyIngredients } = useCopyToClipboard();
 
+  // The ingredients as the printable page's sections, through the same scale
+  // and units the screen shows. Mounted on first use: an unopened sheet would
+  // otherwise re-render with every change to this screen.
+  const [printVisible, setPrintVisible] = useState(false);
+  const [printMounted, setPrintMounted] = useState(false);
+  const printRecipe = useMemo(
+    () => (printMounted && recipe
+      ? {
+          name: recipe.name,
+          servingsLine: servingsLineFor(recipe, scale),
+          sections: buildIngredientSections(recipe, recipesById, { scale, unitSystem, weights: weightLookups }),
+        }
+      : null),
+    [printMounted, recipe, recipesById, scale, unitSystem, weightLookups]
+  );
+
   // The ingredients list, plus one marker per heading it has — populated ones
   // where a row's section first differs from the row before it, and every
   // declared-but-empty one (Recipe.emptySections) trailing at the end. This is
@@ -1122,6 +1139,7 @@ export function RecipeDetailScreen() {
           ? [
               { key: 'copy', label: 'Copy ingredients', icon: 'copy-outline', onPress: () => copyIngredients(ingredientsText) } as const,
               { key: 'shareIngredients', label: 'Share ingredients only', icon: 'share-outline', onPress: handleShareIngredients } as const,
+              { key: 'printIngredients', label: 'Print ingredients', icon: 'print-outline', onPress: () => { setPrintMounted(true); setPrintVisible(true); } } as const,
             ]
           : []),
         ...(recipe.sourceUrl
@@ -3192,6 +3210,14 @@ export function RecipeDetailScreen() {
           are shared both ways: cook mode is where most of them actually get
           made, and a pick made there has to still be the pick back here.
           Neither is written to the recipe. */}
+      {printRecipe && (
+        <PrintIngredientsSheet
+          visible={printVisible}
+          recipe={printRecipe}
+          onClose={() => setPrintVisible(false)}
+        />
+      )}
+
       <CookModeSheet
         visible={cookModeVisible}
         recipe={recipe}
