@@ -274,7 +274,8 @@ Judge model and effort together (a `bug` is rarely `xhigh`; a big new sync-engin
 
 ```bash
 npm install          # dependencies; node_modules isn't checked in, so a fresh clone needs
-                     # this before tsc or jest will run at all
+                     # this before tsc or jest will run at all; `npm ci --prefix mcp` does the
+                     # same for the MCP package, which verify and CI typecheck separately
 npx expo start       # start dev server (scan QR with Expo Go)
 npx tsc --noEmit     # typecheck; ~4s warm, ~20s the first time in a fresh checkout
 npm test             # the whole suite, about a minute
@@ -293,7 +294,7 @@ npm run verify       # the whole verification loop, below
 **The verification loop is `npm run verify`**, which is:
 
 ```bash
-tsc --noEmit && npm test && npm run docs && git status --short
+tsc --noEmit && tsc -p mcp/tsconfig.json && npm test && npm run docs && git status --short
 ```
 
 It is one command rather than a chain to retype because the part that gets dropped is always the
@@ -316,7 +317,7 @@ other passing-bug call, ask rather than guess or widen the PR.
 
 Don't run `npx expo export` locally to check your work — it's the slowest thing CI does and only
 catches bundle-time breakage (a bad import path, a missing asset, a native config change), so run
-it only when you changed one of those. **CI runs `npx tsc --noEmit`, `npm test` under
+it only when you changed one of those. **CI runs `npx tsc --noEmit`, `npx tsc -p mcp/tsconfig.json` (the MCP package compiles `src/` types, so a change to a shared type can break it with no diff in `mcp/`), `npm test` under
 `--randomize` (the whole suite is order-independent, and randomizing is what keeps it so), and all
 three doc checks in `--check` mode on every PR and every push to `main`** — that whole list, not
 just the tests. `npx expo export

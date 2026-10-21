@@ -78,7 +78,7 @@ import {
   type RepeatEvery,
   type TaskFieldsInput,
 } from './taskFields';
-import type { DeliverableKind, MealSlot, TimeOfDay } from '../../src/types';
+import type { DeliverableKind, ExerciseEquipment, MealSlot, TimeOfDay } from '../../src/types';
 import { assignToStack, createStack, deleteStack, listStacks, renameStack, updateStack } from './stackTools';
 import { claimReward, createReward, deleteReward, getRewards, markMissed, setBounty, setRewardGoal, setSlip, unclaimReward, updateReward } from './rewardTools';
 import { addProjectSteps, createProject, deleteProject, getProject, nextInProject, saveProjectAsTemplate, saveProjectCategory, startFreshProject, updateProject, type CreateProjectInput, type ProjectPlanStepInput } from './projectTools';
@@ -714,7 +714,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     {
       id: z.string().min(1).optional().describe('A gym id from list_workouts, to change it. Leave out to create one.'),
       name: z.string().min(1).max(80).optional().describe('Required to create one.'),
-      equipment: z.array(z.enum(EXERCISE_EQUIPMENT.filter(e => e !== 'bodyweight' && e !== 'other') as [string, ...string[]])).max(EXERCISE_EQUIPMENT.length).optional().describe('Replaces the whole list when given.'),
+      equipment: z.array(z.enum(EXERCISE_EQUIPMENT.filter(e => e !== 'bodyweight' && e !== 'other') as [ExerciseEquipment, ...ExerciseEquipment[]])).max(EXERCISE_EQUIPMENT.length).optional().describe('Replaces the whole list when given.'),
       placeText: z.string().max(200).optional().describe('An address or place name, shown under the gym. It does not set where the gym is.'),
       isDefault: z.boolean().optional().describe('true makes this the default gym, which replaces any other; false clears it if this gym is the default. Leave out to keep it.'),
       exerciseNotes: z.array(z.object({

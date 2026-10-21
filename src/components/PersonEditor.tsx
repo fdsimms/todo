@@ -478,6 +478,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
           value={group?.name}
           hint="People you catch up with together, like a couple or household, share one reminder and one tag."
           onPress={() => setShowGroupEditor(true)}
+          onClear={group ? () => updatePerson(person.id, { groupId: null }) : undefined}
         />
       </View>
 

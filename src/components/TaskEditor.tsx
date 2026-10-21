@@ -2944,6 +2944,14 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     commitWindowSun(which, { event: kind, offsetMinutes: existing?.offsetMinutes ?? 0 }, daySunLocation);
   };
 
+  /** Empties one bound and leaves the other, which the row's own clear can't: it wipes both. */
+  const clearWindowBound = (which: 'start' | 'end') => {
+    if (which === 'start') { setWindowStart(null); setWindowStartSun(null); }
+    else { setWindowEnd(null); setWindowEndSun(null); }
+    setWindowPickerMode('none');
+    applyDerivedTargetCount(which === 'start' ? { windowStart: null } : { windowEnd: null });
+  };
+
   /** Moves the open sun bound to before / at / after its event, keeping the minutes. */
   const setWindowSunSide = (side: 'before' | 'at' | 'after') => {
     if (windowPickerMode === 'none' || windowPickerKind === 'time' || !daySunLocation) return;
@@ -3767,6 +3775,16 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
               value={windowPickerKind}
               onChange={chooseWindowKind}
               label={windowPickerMode === 'start' ? 'Start at' : 'End at'}
+            />
+          </View>
+        )}
+        {windowPickerMode !== 'none' && (windowPickerMode === 'start' ? !!windowStart : !!windowEnd) && (
+          <View style={styles.windowKindRow}>
+            <InlineAction
+              label={windowPickerMode === 'start' ? 'Clear start' : 'Clear end'}
+              variant="neutral"
+              surface="card"
+              onPress={() => clearWindowBound(windowPickerMode)}
             />
           </View>
         )}
@@ -5663,6 +5681,11 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                     // Keeping the date on a task the pass is holding brings it
                     // back now rather than at tomorrow's pass.
                     if (!wait && task && isSlotWaiting(task, getCurrentLogicalDayKey())) setDeferUntil(null);
+                    closeField('slotIn');
+                  }}
+                  // Back to following the category, the state the field starts in.
+                  onDeselect={() => {
+                    setSlotIn(null);
                     closeField('slotIn');
                   }}
                   options={SLOT_IN_SEGMENTS}
