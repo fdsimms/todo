@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { format } from 'date-fns/format';
 import { AnimatedBarFill } from './AnimatedBarFill';
+import { RecordBadge } from './RecordBadge';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, radius, spacing, type Colors } from '../theme';
 import type { WeightUnit } from '../utils/weightLog';
@@ -106,6 +107,7 @@ export function WorkoutRecordsCard({ records, unit }: { records: readonly Workou
             accessible
             accessibilityLabel={`${name}, ${recordLabel(event.type, kind, event.reps)} ${value}, ${date}`}
           >
+            <RecordBadge />
             <View style={styles.recordMain}>
               <Text style={styles.recordName}>{name}</Text>
               <Text style={styles.recordLabel}>{recordLabel(event.type, kind, event.reps)}</Text>
