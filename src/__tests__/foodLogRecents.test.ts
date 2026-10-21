@@ -6,9 +6,12 @@ import {
   helpingAgain,
   rankByRecency,
   recentUnlinkedHelpings,
+  sameMealYesterday,
+  entriesCalories,
+  usualSavedMeals,
   usualForSlot,
 } from '../utils/foodLogRecents';
-import type { FoodLogEntry } from '../types';
+import type { FoodLogEntry, SavedMeal } from '../types';
 
 let seq = 0;
 function entry(overrides: Partial<FoodLogEntry> = {}): FoodLogEntry {
@@ -342,5 +345,43 @@ describe('usualForSlot', () => {
   it('ignores a food logged under no row', () => {
     const log = [entry({ slot: 'breakfast' }), entry({ slot: 'breakfast' })];
     expect(usualForSlot(rows, log, 'breakfast', undefined, NOW)).toEqual([]);
+  });
+});
+
+describe('sameMealYesterday', () => {
+  it('lists the day before’s helpings at that meal in logging order, without water', () => {
+    const oats = entry({ label: 'Oats', dayKey: '2026-04-01', atISO: '2026-04-01T08:00:00.000Z' });
+    const coffee = entry({ label: 'Coffee', dayKey: '2026-04-01', atISO: '2026-04-01T07:30:00.000Z' });
+    const lunch = entry({ label: 'Soup', dayKey: '2026-04-01', slot: 'lunch' });
+    const water = entry({
+      label: 'Water', dayKey: '2026-04-01',
+      nutrition: { ...entry().nutrition, amounts: { waterMl: 500 } },
+    });
+    const today = entry({ label: 'Toast', dayKey: '2026-04-02' });
+    const got = sameMealYesterday([oats, coffee, lunch, water, today], '2026-04-02', 'breakfast');
+    expect(got.map(e => e.label)).toEqual(['Coffee', 'Oats']);
+    expect(entriesCalories(got)).toBe(298);
+  });
+
+  it('crosses a month boundary', () => {
+    const e = entry({ label: 'Oats', dayKey: '2026-03-31' });
+    expect(sameMealYesterday([e], '2026-04-01', 'breakfast')).toEqual([e]);
+  });
+});
+
+describe('usualSavedMeals', () => {
+  const meal = (id: string, name: string) => ({ id, name, items: [] }) as unknown as SavedMeal;
+  const NOW = new Date('2026-04-10T12:00:00.000Z');
+
+  it('offers a saved meal logged at this meal twice lately, counting each logging once', () => {
+    const run = (at: string, slot: FoodLogEntry['slot'] = 'breakfast') => [
+      entry({ savedMealId: 'm1', atISO: at, slot }),
+      entry({ savedMealId: 'm1', atISO: at, slot }),
+    ];
+    const once = [...run('2026-04-08T08:00:00.000Z')];
+    expect(usualSavedMeals(once, [meal('m1', 'Weekday breakfast')], 'breakfast', NOW)).toEqual([]);
+    const twice = [...once, ...run('2026-04-09T08:00:00.000Z')];
+    expect(usualSavedMeals(twice, [meal('m1', 'Weekday breakfast')], 'breakfast', NOW).map(m => m.id)).toEqual(['m1']);
+    expect(usualSavedMeals(twice, [meal('m1', 'Weekday breakfast')], 'lunch', NOW)).toEqual([]);
   });
 });

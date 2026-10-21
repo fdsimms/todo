@@ -82,6 +82,9 @@ import {
   rankByRecency,
   recentUnlinkedHelpings,
   usualForSlot,
+  sameMealYesterday,
+  entriesCalories,
+  usualSavedMeals,
 } from '../utils/foodLogRecents';
 import { haptics } from '../utils/haptics';
 import type { PantryReviewAnswer } from '../utils/pantryReview';
@@ -295,7 +298,8 @@ interface Props {
    */
   savedMeals?: SavedMeal[];
   onPickSavedMeal?: (meal: SavedMeal) => void;
-  onLogSavedMeal?: (meal: SavedMeal) => void;
+  /** Logs a saved meal as it was saved, into the meal the sheet has chosen. */
+  onLogSavedMeal?: (meal: SavedMeal, slot: MealSlot | null) => void;
   /**
    * "Don't ask about this meal" — the manual sheet's counterpart to
    * `LogMealPrompt`'s own secondary button of the same name. Present only
@@ -921,11 +925,26 @@ export function FoodLogEntrySheet({
 
   // Saved meals whose name matches what is typed. Nothing before typing starts:
   // the list of every one is the "Log a saved meal" button's.
+  //
+  // With nothing typed, the ones this meal usually is (`usualSavedMeals`), the
+  // way the usual foods lead: a saved meal's foods each credit their own row,
+  // so the weekday breakfast never reached the usual list on its own.
   const savedMatches = useMemo(
     () => (editing || onPickFood || !onPickSavedMeal || !onLogSavedMeal || !savedMeals
       ? []
-      : savedMealsMatching(savedMeals, query)),
-    [editing, onPickFood, onPickSavedMeal, onLogSavedMeal, savedMeals, query],
+      : query.trim()
+        ? savedMealsMatching(savedMeals, query)
+        : usualSavedMeals(recentLog, savedMeals, chosenSlot)),
+    [editing, onPickFood, onPickSavedMeal, onLogSavedMeal, savedMeals, query, recentLog, chosenSlot],
+  );
+
+  // What this meal was yesterday, to log again in one tap. Only before
+  // anything is typed, and never while correcting an entry or picking a food.
+  const yesterday = useMemo(
+    () => (editing || onPickFood || query.trim() || !chosenSlot
+      ? []
+      : sameMealYesterday(recentLog, getLogicalDayKey(at), chosenSlot)),
+    [editing, onPickFood, query, chosenSlot, recentLog, at],
   );
 
   // The dish's own lines with no fixed amount to count them by — a serving
@@ -1722,7 +1741,7 @@ export function FoodLogEntrySheet({
             <TouchableOpacity
               style={styles.helpingAdd}
               activeOpacity={interaction.activeOpacity}
-              onPress={() => { haptics.success(); Keyboard.dismiss(); onLogSavedMeal?.(meal); }}
+              onPress={() => { haptics.success(); Keyboard.dismiss(); onLogSavedMeal?.(meal, chosenSlot); }}
               accessibilityRole="button"
               accessibilityLabel={`Log ${meal.name} as saved, ${meta}`}
             >
@@ -1732,9 +1751,49 @@ export function FoodLogEntrySheet({
         );
       })}
       {/* The helpings and usual blocks label the list when they are in the header; with neither, this does. */}
-      {results.length > 0 && (
+      {results.length > 0 && usual.length === 0 && helpings.length === 0 && (
         <Text style={[styles.label, styles.listLabel]}>FOODS AND RECIPES</Text>
       )}
+    </View>
+  ) : null;
+
+  // Yesterday's helpings at this meal, logged again in one tap, each as it
+  // was (its panel, amount and the row it came from), into the meal chosen
+  // here. Each goes through `logNew`, so each finds its planned meal and its
+  // Health write the way a single log does.
+  const logYesterday = () => {
+    if (!chosenSlot) return;
+    Keyboard.dismiss();
+    let logged = 0;
+    for (const e of yesterday) {
+      const ok = logNew({
+        ...helpingAgain(e),
+        slot: chosenSlot,
+        recipeId: e.recipeId,
+        itemId: e.itemId,
+        productId: e.productId,
+      });
+      if (ok) logged += 1;
+    }
+    if (logged > 0) afterSave(`${MEAL_SLOT_LABELS[chosenSlot]} from yesterday`);
+  };
+  const yesterdayCalories = entriesCalories(yesterday);
+  const yesterdayBlock = yesterday.length > 0 && chosenSlot ? (
+    <View style={styles.usualGap}>
+      <Text style={[styles.label, styles.helpingsLabel]}>SAME AS YESTERDAY</Text>
+      <View style={[styles.row, styles.yesterdayRow]}>
+        <View style={styles.rowText}>
+          <Text style={styles.rowTitle} numberOfLines={2}>{yesterday.map(e => e.label).join(', ')}</Text>
+          <Text style={styles.rowMeta}>
+            {`${yesterday.length} ${yesterday.length === 1 ? 'item' : 'items'}${yesterdayCalories !== null ? ` · ${yesterdayCalories} cal` : ''}`}
+          </Text>
+        </View>
+        <InlineAction
+          label="Log all"
+          onPress={() => { haptics.tap(); logYesterday(); }}
+          accessibilityLabel={`Log yesterday’s ${MEAL_SLOT_LABELS[chosenSlot].toLowerCase()} again: ${yesterday.map(e => e.label).join(', ')}`}
+        />
+      </View>
     </View>
   ) : null;
 
@@ -2344,6 +2403,7 @@ export function FoodLogEntrySheet({
                 <>
                   {lookupOffers}
                   {lookupBlock}
+                  {yesterdayBlock}
                   {savedBlock}
                   {usualBlock}
                   {helpingsAfterResults ? null : helpingsBlock}
@@ -2354,7 +2414,7 @@ export function FoodLogEntrySheet({
               // usual foods: those are the
               // answer to "no matching food", and a full-height empty state
               // under them would say there was nothing while showing something.
-              ListEmptyComponent={lookupBlock || usualBlock || savedBlock ? null : (
+              ListEmptyComponent={lookupBlock || usualBlock || savedBlock || yesterdayBlock ? null : (
                 <EmptyState
                   icon="nutrition-outline"
                   // Said about the catalog when logged-before rows are showing
@@ -2769,6 +2829,7 @@ function makeStyles(colors: Colors) {
     helpingRow: { paddingHorizontal: 0, paddingVertical: 0, gap: 0, alignItems: 'stretch' },
     helpingBody: { flex: 1, justifyContent: 'center', paddingLeft: spacing.md, paddingVertical: spacing.md },
     helpingAdd: { justifyContent: 'center', paddingHorizontal: spacing.md },
+    yesterdayRow: { alignItems: 'center', gap: spacing.sm },
     quickBody: { flexDirection: 'row', alignItems: 'center' },
     helpingsLabel: { marginBottom: spacing.sm },
     listLabel: { marginTop: spacing.md, marginBottom: spacing.sm },
