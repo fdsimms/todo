@@ -73,6 +73,7 @@ import { parseQuantity, rationalToNumber } from './quantity';
 import type { FlatIngredient } from './recipeComponents';
 import { scaleQuantity } from './recipeScale';
 import { convertScaledQuantity, type UnitSystem } from './unitConvert';
+import { ingredientWeightText, type WeightLookups } from './lineWeight';
 
 /** A step, as the annotator needs it. */
 export interface AnnotatableStep {
@@ -109,6 +110,13 @@ export interface StepIngredientLine {
    * `stepIngredientLines` below is the one builder, for the same reason.
    */
   quantity: string;
+  /**
+   * What the line weighs ("≈280 g"), or empty. The ingredient row's own caption
+   * (`ingredientWeightText`), so a step and the row above it can't disagree: it
+   * exists only where the food's portion table can say, and a line already
+   * written as a weight has none.
+   */
+  weight: string;
 }
 
 /** One run of a step: its own words, or its own words plus what they're worth. */
@@ -189,6 +197,7 @@ interface Candidate {
   id: string;
   swappedTo: string | null;
   quantity: string;
+  weight: string;
 }
 
 interface Mention {
@@ -210,21 +219,29 @@ interface Mention {
  * rules on the way out, so `swappedFrom` holds the recipe's own word and the
  * line's `name` holds what the cook is actually using. Those are exactly the
  * two halves this needs, in exactly that order.
+ *
+ * The weight is read off the scaled amount *before* conversion, as the row does
+ * (a converted amount is already rounded), and is left out when no lookups are
+ * passed.
  */
 export function stepIngredientLines(
   flattened: readonly FlatIngredient[],
   scale: number,
   unitSystem: UnitSystem,
+  weights?: WeightLookups,
 ): StepIngredientLine[] {
-  return flattened.map(entry => ({
-    recipeId: entry.recipe.id,
-    name: entry.swappedFrom ?? entry.ingredient.name,
-    swappedTo: entry.swappedFrom ? entry.ingredient.name : null,
-    quantity: convertScaledQuantity(
-      scaleQuantity(entry.ingredient.quantity, scale),
-      unitSystem,
-    ).text,
-  }));
+  return flattened.map(entry => {
+    const scaled = scaleQuantity(entry.ingredient.quantity, scale);
+    return {
+      recipeId: entry.recipe.id,
+      name: entry.swappedFrom ?? entry.ingredient.name,
+      swappedTo: entry.swappedFrom ? entry.ingredient.name : null,
+      quantity: convertScaledQuantity(scaled, unitSystem).text,
+      weight: weights
+        ? ingredientWeightText(entry.ingredient, scaled.exact ?? scaled.text, weights, unitSystem) ?? ''
+        : '',
+    };
+  });
 }
 
 /**
@@ -388,12 +405,13 @@ function candidatesByRecipe(
     const swappedTo = swapped && swapped.toLowerCase() !== key ? swapped : null;
     const existing = group.get(key);
     const candidate: Candidate = existing === undefined
-      ? { key, id: key, swappedTo, quantity: line.quantity.trim() }
+      ? { key, id: key, swappedTo, quantity: line.quantity.trim(), weight: line.weight.trim() }
       : {
         key,
         id: key,
         swappedTo: existing.swappedTo === swappedTo ? swappedTo : null,
         quantity: '',
+        weight: '',
       };
     group.set(key, candidate);
 
@@ -531,7 +549,7 @@ function describeMention(
   spread: boolean,
 ): string | null {
   const parts: string[] = [];
-  const { swappedTo, quantity } = candidate;
+  const { swappedTo, quantity, weight } = candidate;
   // Lower-cased because this lands mid-sentence, where a catalog row's own
   // capital reads as the start of a new one. Same call `describeStandingSwap`
   // makes for the same reason, and the same trade: a genuinely capitalised
@@ -540,8 +558,15 @@ function describeMention(
   if (swappedTo && !alreadySaid(stepText, swappedTo)) {
     parts.push(`${swappedTo.toLowerCase()} instead`);
   }
-  if (quantity && !saysNothing(quantity) && !alreadySaid(stepText, quantity)) {
-    parts.push(spread ? `${quantity} in total` : quantity);
+  if (quantity && !saysNothing(quantity)) {
+    // The weight rides with the amount, so it follows the same refusals: "half
+    // the lemon" gets neither, and a method that wrote "2 cups flour" is still
+    // owed the grams it didn't say.
+    const amount = [
+      alreadySaid(stepText, quantity) ? null : quantity,
+      weight && !alreadySaid(stepText, weight) ? weight : null,
+    ].filter((part): part is string => part !== null).join(', ');
+    if (amount) parts.push(spread ? `${amount} in total` : amount);
   }
   return parts.length > 0 ? parts.join(', ') : null;
 }

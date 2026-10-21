@@ -20,7 +20,7 @@ function line(
   quantity = '',
   overrides: Partial<StepIngredientLine> = {},
 ): StepIngredientLine {
-  return { recipeId: 'r-cake', name, swappedTo: null, quantity, ...overrides };
+  return { recipeId: 'r-cake', name, swappedTo: null, quantity, weight: '', ...overrides };
 }
 
 /** The annotated sentence, written out the way the screen renders it. */
@@ -70,6 +70,37 @@ describe('annotateSteps', () => {
     const steps = [step('Warm the oat milk in a small pan.')];
     expect(readOne(steps, [line('milk', '240 ml', { swappedTo: 'Oat milk' })]))
       .toBe('Warm the oat milk (240 ml) in a small pan.');
+  });
+
+  describe('a weight beside the amount', () => {
+    it('adds the grams after the amount', () => {
+      const steps = [step('Whisk together the flour.')];
+      expect(readOne(steps, [line('flour', '2 1/4 cups', { weight: '≈280 g' })]))
+        .toBe('Whisk together the flour (2 1/4 cups, ≈280 g).');
+    });
+
+    it('carries the weight into "in total"', () => {
+      const steps = [step('Whisk half the flour in a bowl.'), step('Fold in the rest of the flour.')];
+      expect(readOne(steps, [line('flour', '2 cups', { weight: '≈250 g' })]))
+        .toBe('Whisk half the flour (2 cups, ≈250 g in total) in a bowl.');
+    });
+
+    it('still gives the grams when the sentence already says the amount', () => {
+      const steps = [step('Add 2 cups flour.')];
+      expect(readOne(steps, [line('flour', '2 cups', { weight: '≈250 g' })]))
+        .toBe('Add 2 cups flour (≈250 g).');
+    });
+
+    it('says nothing for an amount that says nothing, even with a weight', () => {
+      const steps = [step('Squeeze half the lemon.')];
+      expect(readOne(steps, [line('lemon', '1', { weight: '≈58 g' })])).toBeNull();
+    });
+
+    it('drops the weight when two lines share the name', () => {
+      const steps = [step('Add the salt.')];
+      const lines = [line('salt', '1 tsp', { weight: '≈6 g' }), line('salt', '2 tsp', { weight: '≈12 g' })];
+      expect(readOne(steps, lines)).toBeNull();
+    });
   });
 
   describe('matching', () => {
@@ -369,6 +400,7 @@ describe('stepIngredientLines', () => {
       name: 'Butter',
       swappedTo: null,
       quantity: '8 tbsp',
+      weight: '',
     });
   });
 
