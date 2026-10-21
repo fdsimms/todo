@@ -64,6 +64,22 @@ export function machineParent(equipment: ExerciseEquipment): 'machine' | 'cardio
   return null;
 }
 
+/** The kinds of equipment a picker narrows by first: weights, machines, bodyweight, cardio. */
+export type EquipmentGroup = 'free' | 'machine' | 'bodyweight' | 'cardio';
+
+/**
+ * Which group a piece of equipment sits in. Cable and the Smith machine count
+ * as machines (the weight is guided), and a band or "Other" sits in none, so
+ * only "All" and the equipment list reach them.
+ */
+export function equipmentGroup(equipment: ExerciseEquipment): EquipmentGroup | null {
+  if (equipment === 'bodyweight') return 'bodyweight';
+  if (CARDIO_MACHINES.includes(equipment) || equipment === 'cardio_machine') return 'cardio';
+  if (STRENGTH_MACHINES.includes(equipment) || equipment === 'machine' || equipment === 'cable' || equipment === 'smith_machine') return 'machine';
+  if (['barbell', 'dumbbell', 'kettlebell', 'ez_bar', 'trap_bar'].includes(equipment)) return 'free';
+  return null;
+}
+
 export const MUSCLE_GROUPS: readonly MuscleGroup[] = [
   'chest', 'lats', 'upper_back', 'lower_back', 'traps',
   'front_delts', 'side_delts', 'rear_delts',
