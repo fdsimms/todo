@@ -21,6 +21,11 @@ import {
 import { useFocusSession } from '../hooks/useFocusSession';
 import { useFocusStore } from '../store/useFocusStore';
 import { useTaskStore } from '../store/useTaskStore';
+import { useRecipeStore } from '../store/useRecipeStore';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { useBulkBarPresenceStore } from '../store/useBulkBarPresenceStore';
+import { useFabPresenceStore } from '../store/useFabPresenceStore';
+import { isCookTimerRunning } from '../utils/recipeTimer';
 import { resetToFocusSession } from '../navigation/navigationRef';
 
 interface Props {
@@ -28,9 +33,11 @@ interface Props {
   onOpen: () => void;
   /**
    * Floats above the tab bar instead of sitting in the page's flow, for every
-   * screen that isn't Today (see `FocusFloatingBar`).
+   * screen that isn't Today (see `FocusFloatingBar`). `lifted` raises it one
+   * bar's height so it clears `CookingBar` when both are showing.
    */
   floating?: boolean;
+  lifted?: boolean;
 }
 
 /**
@@ -56,17 +63,22 @@ interface Props {
  */
 export function FocusFloatingBar({ hidden }: { hidden: boolean }) {
   const session = useFocusStore(s => s.session);
-  if (hidden || !session) return null;
+  const cooking = useRecipeStore(s => s.recipes.some(isCookTimerRunning));
+  const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
+  // Same reason as CookingBar: its band is where a bulk bar's count and close
+  // button land.
+  const bulkSelecting = useBulkBarPresenceStore(s => s.count > 0);
+  if (hidden || !session || bulkSelecting) return null;
   return (
     <View style={floatingWrap} pointerEvents="box-none">
-      <FocusBar floating onOpen={resetToFocusSession} />
+      <FocusBar floating lifted={cooking && kitchenEnabled} onOpen={resetToFocusSession} />
     </View>
   );
 }
 
 const floatingWrap = { position: 'absolute' as const, left: spacing.md, right: spacing.md, top: 0, bottom: 0 };
 
-export function FocusBar({ onOpen, floating = false }: Props) {
+export function FocusBar({ onOpen, floating = false, lifted = false }: Props) {
   const { colors, shadows } = useTheme();
   const insets = useSafeAreaInsets();
   const barHeight = useBottomBarHeight();
@@ -115,11 +127,17 @@ export function FocusBar({ onOpen, floating = false }: Props) {
       ? `+${formatStopwatch(-remaining)}`
       : formatStopwatch(remaining);
 
-  const bottom = insets.bottom + barHeight + FAB_SIZE + spacing.lg;
+  // Just above the tab bar like CookingBar, stopping short of the add button's
+  // corner when the screen has one, and one bar higher while CookingBar shows.
+  const fabShown = useFabPresenceStore(s => s.count > 0);
+  const fabHand = useSettingsStore(s => s.fabHand);
+  const bottom = insets.bottom + barHeight + spacing.sm + (lifted ? FLOATING_BAR_STEP : 0);
+  const clearance = spacing.lg + FAB_SIZE + spacing.sm - spacing.md;
+  const sideInset = fabShown ? { [fabHand === 'left' ? 'marginLeft' : 'marginRight']: clearance } : null;
 
   return (
     <View
-      style={floating ? [styles.container, styles.floating, shadows.fab, { bottom }] : styles.container}
+      style={floating ? [styles.container, styles.floating, shadows.fab, { bottom }, sideInset] : styles.container}
     >
       <TouchableOpacity
         style={styles.summary}
@@ -164,6 +182,9 @@ export function FocusBar({ onOpen, floating = false }: Props) {
   );
 }
 
+/** One bar's height plus a gap, the room `lifted` leaves for CookingBar. */
+const FLOATING_BAR_STEP = 52;
+
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: {
     flexDirection: 'row',
@@ -183,6 +204,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
+    marginHorizontal: 0,
     marginTop: 0,
     marginBottom: 0,
     borderWidth: border.md,
