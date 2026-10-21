@@ -440,6 +440,7 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
           options={moodOptions}
           value={mood as MoodLevel}
           onChange={value => setMood(value)}
+          onDeselect={() => { haptics.tap(); setMood(null); }}
           label="Mood"
         />
         <Text style={styles.moodCaption}>

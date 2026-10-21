@@ -108,13 +108,16 @@ export function WaniKaniSettingsRows(): React.ReactElement {
           />
           <View style={styles.cadenceRow}>
             <CountStepper
-              value={s.apprenticeCap ?? WANIKANI_APPRENTICE_CAP_MAX}
-              onChange={next => s.setApprenticeCap(next ?? WANIKANI_APPRENTICE_CAP_DEFAULT)}
+              value={s.apprenticeCap}
+              onChange={s.setApprenticeCap}
+              allowNull
+              start={WANIKANI_APPRENTICE_CAP_DEFAULT}
+              emptyLabel="No limit"
               min={WANIKANI_APPRENTICE_CAP_MIN}
               max={WANIKANI_APPRENTICE_CAP_MAX}
               step={WANIKANI_APPRENTICE_CAP_STEP}
               label="Apprentice items"
-              describeValue={n => plural(n ?? WANIKANI_APPRENTICE_CAP_DEFAULT, 'item', 'items')}
+              describeValue={n => (n === null ? 'No limit' : plural(n, 'item', 'items'))}
             />
           </View>
         </>

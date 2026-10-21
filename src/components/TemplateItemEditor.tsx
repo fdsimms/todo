@@ -2150,6 +2150,20 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   />
                 </View>
               )}
+              {windowPickerMode !== 'none' && (windowPickerMode === 'start' ? !!windowStart : !!windowEnd) && (
+                <View style={styles.windowKindRow}>
+                  <InlineAction
+                    label={windowPickerMode === 'start' ? 'Clear start' : 'Clear end'}
+                    variant="neutral"
+                    surface="card"
+                    onPress={() => {
+                      if (windowPickerMode === 'start') { setWindowStart(null); setWindowStartSun(null); }
+                      else { setWindowEnd(null); setWindowEndSun(null); }
+                      setWindowPickerMode('none');
+                    }}
+                  />
+                </View>
+              )}
               {windowPickerMode !== 'none' && windowPickerKind !== 'time' && (
                 <SunBoundPanel
                   event={windowPickerKind}

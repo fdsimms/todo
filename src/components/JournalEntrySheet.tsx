@@ -592,6 +592,7 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
           setOpenOn(picked && !isSameDay(picked, getLogicalToday()) ? picked : null);
           setOpenOnPickerOpen(false);
         }}
+        onClear={() => { setOpenOn(null); setOpenOnPickerOpen(false); }}
         onCancel={() => setOpenOnPickerOpen(false)}
       />
     </EditorSheet>
