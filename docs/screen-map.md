@@ -379,7 +379,7 @@ Where each component can appear.
 - `src/components/SleepGoalSheet.tsx` — on SettingsGroupScreen, SleepScreen
 - `src/components/SlidingPills.tsx` — on ArchivedScreen, CategoriesScreen, FoodLogScreen, GroceryScreen, JournalScreen, KitchenScreen, LogbookScreen, MealPlanScreen, MedicationScreen, MetersScreen, MoodScreen, PeopleScreen, +10 more
 - `src/components/SortFilterSheet.tsx` — on TodayScreen
-- `src/components/SortableList.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RecipeDetailScreen, RecipesScreen, +10 more
+- `src/components/SortableList.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RecipeDetailScreen, RecipesScreen, +11 more
 - `src/components/SpotlightOverlay.tsx` — on CalendarScreen, CategoryDetailScreen, ProjectDetailScreen, ProjectsScreen, SavedViewDetailScreen, StackDetailScreen, StuckScreen, TagsScreen, TodayScreen
 - `src/components/StandingSwapsSheet.tsx` — on SettingsGroupScreen
 - `src/components/StartTripPrompt.tsx` — on GroceryScreen

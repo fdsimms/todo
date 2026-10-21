@@ -10,6 +10,7 @@ import {
   formatSetLine,
   matchPrevious,
   movedExerciseOrder,
+  exerciseBlocks,
   nextSet,
   plannedSetsFor,
   plannedSetsFromHistory,
@@ -425,5 +426,15 @@ describe('finishing', () => {
     expect(sessionMinutes({ startedAt: '2026-10-07T18:00:00.000Z', endedAt: '2026-10-07T18:52:59.000Z' })).toBe(52);
     expect(sessionMinutes({ startedAt: '2026-10-07T18:00:00.000Z', endedAt: null }, new Date('2026-10-07T18:10:30.000Z'))).toBe(10);
     expect(sessionMinutes({ startedAt: '2026-10-07T18:00:00.000Z', endedAt: '2026-10-07T17:59:00.000Z' })).toBe(0);
+  });
+});
+
+describe('exerciseBlocks', () => {
+  it('makes a superset one block and every other exercise its own', () => {
+    expect(exerciseBlocks(session()).map(b => b.map(e => e.exerciseId))).toEqual([['bench'], ['incline', 'fly'], ['triceps']]);
+  });
+
+  it('is empty for no sets', () => {
+    expect(exerciseBlocks([])).toEqual([]);
   });
 });

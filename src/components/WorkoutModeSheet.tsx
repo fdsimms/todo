@@ -36,6 +36,7 @@ import { ExerciseDetailSheet } from './ExerciseDetailSheet';
 import { ExercisePhotos } from './ExercisePhotos';
 import { PlateLine } from './PlateLine';
 import { SelectionDot } from './SelectionDot';
+import { SortableList } from './SortableList';
 import { WorkoutRecordsCard } from './WorkoutRecordsCard';
 import { WorkoutStatTiles } from './WorkoutStatTiles';
 import type { ExerciseKind, WorkoutSet } from '../types';
@@ -81,7 +82,7 @@ import {
   stepTimerRemaining,
 } from '../utils/stepTimers';
 import {
-  finishPlan, formatDistance, formatSetLine, matchPrevious, movedExerciseOrder, nextSet,
+  finishPlan, formatDistance, formatSetLine, exerciseBlocks, matchPrevious, movedExerciseOrder, nextSet,
   columnLabel, fieldLabel, sessionExercises, sessionSummary, setBadge, setFieldsFor, setLabels, setName, valuesFromLastDone,
   type SetField,
   supersetGroup,
@@ -211,6 +212,10 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   // Every exercise on one scrolling page, instead of one card at a time.
   // Session-only, like the photos toggle.
   const [allOpen, setAllOpen] = useState(false);
+  // The compact list the exercises are dragged in, instead of their cards, and
+  // whether a row of it is in the air (which switches the page's scroll off).
+  const [reordering, setReordering] = useState(false);
+  const [dragging, setDragging] = useState(false);
   // The routine changes ticked on the summary. Nothing starts ticked.
   const [accepted, setAccepted] = useState<ReadonlySet<string>>(new Set());
   const [detailOpen, setDetailOpen] = useState(false);
@@ -229,6 +234,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     setEffort(session?.effort ?? null);
     setSessionNotes(session?.notes ?? '');
     setPicking(null);
+    setReordering(false);
     setNoteEdit(null);
     setGymNoteEdit(null);
     setGymPickerOpen(false);
@@ -329,7 +335,26 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const toggleAll = () => {
     haptics.tap();
     animateLayout();
+    setReordering(false);
     setAllOpen(v => !v);
+  };
+
+  const toggleReordering = () => {
+    haptics.tap();
+    animateLayout();
+    setOpenSetId(null);
+    setNoteEdit(null);
+    setReordering(v => !v);
+  };
+
+  // One draggable row per block (a superset is one), so a drop never splits a pair.
+  const reorderRows = useMemo(
+    () => exerciseBlocks(sets).map(block => ({ id: block[0].exerciseId, block })),
+    [sets],
+  );
+  const dropReorder = (next: typeof reorderRows) => {
+    if (!session) return;
+    useWorkoutStore.getState().reorderExercises(session.id, next.flatMap(r => r.block.map(e => e.exerciseId)));
   };
 
   const goTo = (index: number) => {
@@ -740,6 +765,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
             style={styles.flex}
             contentContainerStyle={styles.scroll}
             keyboardShouldPersistTaps="handled"
+            scrollEnabled={!dragging}
             {...keyboardScroll.props}
             ref={keyboardScroll.ref}
           >
@@ -753,7 +779,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
             )}
             {exercises.length > 0 && (
               <View style={styles.position}>
-                {allOpen ? (
+                {allOpen || reordering ? (
                   <>
                     <Text style={styles.positionText}>{`${exercises.length} exercises`}</Text>
                     <View style={styles.flex} />
@@ -792,6 +818,15 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                 </View>
                 </>
                 )}
+                {exercises.length > 1 && (
+                  <InlineAction
+                    icon={reordering ? undefined : 'reorder-three-outline'}
+                    label="Reorder"
+                    variant={reordering ? 'accent' : 'neutral'}
+                    onPress={toggleReordering}
+                    accessibilityLabel={reordering ? 'Done reordering exercises' : 'Reorder exercises'}
+                  />
+                )}
                 <InlineAction
                   icon={allOpen ? undefined : 'list-outline'}
                   label={allOpen ? 'One at a time' : 'All'}
@@ -803,7 +838,43 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
             )}
 
             {/* One card per shown exercise: the one the sheet is on, or every one in All. The param keeps the name `viewed`, so the card body reads as it always has. */}
-            {(allOpen ? exercises : viewed ? [viewed] : []).map((viewed, cardIndex) => {
+            {reordering && (
+              <>
+                <Text style={styles.reorderHint}>Hold and drag to reorder</Text>
+                <View style={styles.reorderCard}>
+                  <SortableList
+                    data={reorderRows}
+                    onDragStateChange={setDragging}
+                    onReorder={dropReorder}
+                    renderItem={(row, index, drag, isActive) => {
+                      const names = row.block.map(e => catalogExercise(exerciseRows, e.exerciseId)?.name ?? 'Unknown exercise');
+                      const all = row.block.flatMap(e => e.sets);
+                      const done = all.filter(s => s.completedAt !== null).length;
+                      const detail = `${row.block.length > 1 ? 'Superset · ' : ''}${all.length} ${all.length === 1 ? 'set' : 'sets'} · ${done} done`;
+                      return (
+                        <TouchableOpacity
+                          style={[styles.reorderRow, index > 0 && styles.reorderRowSep, row.block.length > 1 && styles.reorderSuperset, isActive && styles.reorderActive]}
+                          onLongPress={drag}
+                          delayLongPress={interaction.delayLongPress}
+                          activeOpacity={interaction.activeOpacity}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Reorder ${names.join(' and ')}`}
+                          accessibilityHint="Touch and hold, then drag"
+                        >
+                          <Ionicons name="reorder-two-outline" size={iconSize.md} color={colors.textTertiary} />
+                          <View style={styles.flex}>
+                            <Text style={styles.reorderName}>{names.join(' + ')}</Text>
+                            <Text style={styles.reorderDetail}>{detail}</Text>
+                          </View>
+                          <View style={[styles.reorderDot, done === all.length && styles.reorderDotDone]} />
+                        </TouchableOpacity>
+                      );
+                    }}
+                  />
+                </View>
+              </>
+            )}
+            {(reordering ? [] : allOpen ? exercises : viewed ? [viewed] : []).map((viewed, cardIndex) => {
               const viewedInfo = catalogExercise(exerciseRows, viewed.exerciseId);
               const kind: ExerciseKind = viewedInfo?.kind ?? 'weight_reps';
               const fields = setFieldsFor(kind);
@@ -1470,6 +1541,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   dotOn: { width: 18, backgroundColor: colors.accent },
   card: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden' },
   cardStacked: { marginTop: spacing.md },
+  reorderHint: {
+    color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold, textTransform: 'uppercase',
+    letterSpacing: 0.8, marginHorizontal: spacing.xs, marginBottom: spacing.sm,
+  },
+  reorderCard: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden' },
+  reorderRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd, paddingHorizontal: spacing.md, paddingVertical: spacing.smd, backgroundColor: colors.bgSecondary },
+  reorderRowSep: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator },
+  reorderSuperset: { borderLeftWidth: 3, borderLeftColor: colors.accent },
+  reorderActive: { backgroundColor: colors.bgTertiary },
+  reorderName: { color: colors.text, fontSize: font.lg, fontWeight: fontWeight.semibold },
+  reorderDetail: { color: colors.textSecondary, fontSize: font.sm },
+  reorderDot: { width: 14, height: 14, borderRadius: 4, borderWidth: 2, borderColor: colors.controlBorder },
+  reorderDotDone: { backgroundColor: colors.done, borderColor: colors.done },
   exHead: { paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.xs },
   exTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   exNameRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
