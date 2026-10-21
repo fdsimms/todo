@@ -499,8 +499,10 @@ comparable number, and changing the choice rewrites nothing (`src/utils/dumbbell
   `storedKgFromTyped`) and doubled on the way out (`weightScale` → `formatSetLine`, `valueText`, the record and chart
   text in `workoutRecordText.ts`, and the proposal's words through `LoadContext.scale`). The column heading says
   "kg each" or "kg pair" where two dumbbells are in play. A proposal's *loads* are never scaled, only its text.
-- **Where it is not applied, on purpose.** The Apple Watch, the CSV import and export, the Stats screen's record list
-  and the MCP server all stay per dumbbell. The MCP says so
+- **Where it is not applied, on purpose.** The Apple Watch, the CSV import and export
+  and the MCP server all stay per dumbbell. The watch converts what it sends back to kilograms at parse time, before the
+  exercise is known (`tickValuesFromWatch`, `parseWatchSession`), so scaling it means moving that conversion to where
+  the exercise rows are; until then it is one dumbbell in both directions, which cannot corrupt a weight. The MCP says so
   (`dumbbells` on `list_exercises`, and the rule in `instructions.ts`), so Claude halves a pair total before writing.
   A new surface that shows a dumbbell exercise's weight takes a `scale` from `weightScale` rather than reading
   `weightKg` bare.
