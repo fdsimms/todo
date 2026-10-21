@@ -72,6 +72,16 @@ function setWaterOnDay(dayKey: string, totalMl: number, at: Date): void {
   });
 }
 
+/**
+ * Adds `ml` of water to the logical day `at` falls on, through the same day
+ * row the stepper commits to. For the Log Water Shortcut, whose glass may
+ * have been asked for before midnight and reach the app after it.
+ */
+export function addWaterAt(ml: number, at: Date): void {
+  const dayKey = getLogicalDayKey(at, useSettingsStore.getState().dayResetTime);
+  setWaterOnDay(dayKey, waterOnDay(dayKey).ml + ml, at);
+}
+
 /** Today's water in ml, for the row's "so far" line. */
 export function waterTodayMl(now: Date = new Date()): number {
   return waterOnDay(getLogicalDayKey(now, useSettingsStore.getState().dayResetTime)).ml;

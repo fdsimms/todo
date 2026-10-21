@@ -1,7 +1,8 @@
-import type { FoodLogEntry, FoodNutrition } from '../types';
+import type { FoodLogEntry, FoodNutrition, MealSlot, SavedMeal } from '../types';
 import { foodLogEntryEdit, type FoodLogEntryEdit } from './foodLog';
 import { groceryNameKey } from './groceryParse';
 import { isNutrientOnlyEntry } from './nutrientLog';
+import { isWaterEntry } from './waterLog';
 
 /**
  * What somebody actually eats, for the list they pick it from.
@@ -185,6 +186,61 @@ export function usualForSlot<T extends { key: string }>(
   const habitual = new Map([...inSlot].filter(([, seen]) => seen.count >= 2));
   return rankByRecency(candidates, habitual)
     .filter(c => habitual.has(c.key))
+    .slice(0, limit);
+}
+
+/**
+ * What was logged at this meal the day before `dayKey`, in the order it was
+ * logged, for "Same as yesterday": the breakfast that is the same most days,
+ * logged again in one tap rather than food by food. Water is left out: it is
+ * the day's running total, not part of the meal.
+ */
+export function sameMealYesterday(entries: readonly FoodLogEntry[], dayKey: string, slot: MealSlot): FoodLogEntry[] {
+  const day = new Date(`${dayKey}T12:00:00`);
+  day.setDate(day.getDate() - 1);
+  const yesterday = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+  return entries
+    .filter(e => e.dayKey === yesterday && e.slot === slot && !isWaterEntry(e))
+    .sort((a, b) => a.atISO.localeCompare(b.atISO) || a.sortOrder - b.sortOrder);
+}
+
+/** The calories a set of entries adds up to, or null when none of them states any. */
+export function entriesCalories(entries: readonly FoodLogEntry[]): number | null {
+  let total: number | null = null;
+  for (const e of entries) {
+    const kcal = e.nutrition.amounts.calorieKcal;
+    if (kcal === undefined) continue;
+    total = (total ?? 0) + kcal;
+  }
+  return total === null ? null : Math.round(total);
+}
+
+/**
+ * The saved meals this meal usually is, by the same rule as `usualForSlot`:
+ * logged at this meal at least twice in the last `USUAL_FOR_SLOT_DAYS` days.
+ * A saved meal's entries credit their foods, never the meal, so it is counted
+ * here by its runs: entries sharing one `savedMealId` and moment are one
+ * logging of it (`savedMealRuns`). Most-logged first.
+ */
+export function usualSavedMeals(
+  entries: readonly FoodLogEntry[],
+  meals: readonly SavedMeal[],
+  slot: MealSlot | null,
+  now: Date = new Date(),
+  limit = 2,
+): SavedMeal[] {
+  if (!slot) return [];
+  const cutoffISO = new Date(now.getTime() - USUAL_FOR_SLOT_DAYS * 86_400_000).toISOString();
+  const runs = new Map<string, Set<string>>();
+  for (const e of entries) {
+    if (!e.savedMealId || e.slot !== slot || e.atISO < cutoffISO) continue;
+    const seen = runs.get(e.savedMealId) ?? new Set<string>();
+    seen.add(e.atISO);
+    runs.set(e.savedMealId, seen);
+  }
+  return meals
+    .filter(m => (runs.get(m.id)?.size ?? 0) >= 2)
+    .sort((a, b) => (runs.get(b.id)!.size - runs.get(a.id)!.size) || a.name.localeCompare(b.name))
     .slice(0, limit);
 }
 

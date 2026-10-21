@@ -18,9 +18,13 @@ type Navigation = { navigate: (name: string, params: object) => void };
  * dropped. `focusStamp` makes a second jump to the same row look different
  * from the first, since a tab screen stays mounted and keeps its last params.
  */
-export function openSettingsTarget(navigation: unknown, target: SettingsTarget): void {
+export function openSettingsTarget(navigation: unknown, target: SettingsTarget, returnTo?: string): void {
   if (target.kind === 'screen') {
-    navigateToTab(target.route, { entryId: target.entryId, focusStamp: Date.now() });
+    // A screen is a tab, which has no back button, so `returnTo` is how it
+    // gets you back to the screen that sent you (Automations shows it as a
+    // back row). A Settings group is a card pushed over where you were, so
+    // its own back already does that.
+    navigateToTab(target.route, { entryId: target.entryId, focusStamp: Date.now(), returnTo });
     return;
   }
   (navigation as Navigation).navigate('SettingsGroup', { groupId: target.groupId, entryId: target.entryId });
@@ -41,9 +45,9 @@ export function openSettingsGroup(navigation: unknown, groupId: SettingsGroupId,
  * Returns false when no entry has that id, so a caller can leave its button
  * out rather than navigate somewhere arbitrary.
  */
-export function navigateToSettingsEntry(navigation: unknown, entryId: string): boolean {
+export function navigateToSettingsEntry(navigation: unknown, entryId: string, returnTo?: string): boolean {
   const target = settingsEntryTarget(entryId);
   if (!target) return false;
-  openSettingsTarget(navigation, target);
+  openSettingsTarget(navigation, target, returnTo);
   return true;
 }

@@ -192,6 +192,7 @@ only the fallback until the first sync.
 | `reorder` | **Write.** Puts a list in order, the ones named first and the rest after in their old order. `kind` picks the list: `tasks` (a project's open steps, a task's checklist, a stack, or the Pinned block), `templates`, `projects` (and their categories), `categories` (Today's sections), `people`, `aisles`, `stores_and_lists` and `up_next`. |
 | `set_task_dates` | **Write.** Puts one task on several dates (one row per date), changes the set, or takes it back to one; optionally monthly. |
 | `duplicate_task` | **Write.** Copies a task and its checklist, with its progress started over. |
+| `rename_tag` | **Write.** Renames a tag on every task, finished ones included, and wherever else the app names it; onto an existing tag it merges the two. |
 | `delete_tag` | **Write.** Takes a tag off every task and out of the tag list. |
 | `set_completion_date` | **Write.** Corrects when a completed task was done, as the Logbook's date edit does. |
 | `reopen_task` | **Write.** Reopens a completed or missed task and takes back what its completion did. Needs `MCP_WRITE_TOKEN`. |

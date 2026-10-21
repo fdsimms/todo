@@ -1599,8 +1599,9 @@ export function FoodLogScreen() {
           onSavedMeal={() => setSavedMealsOpen(true)}
           savedMeals={savedMeals}
           onPickSavedMeal={meal => openReview(meal.id, 'search')}
-          onLogSavedMeal={meal => {
-            logSavedMeal(meal, addingSlot, loggingAt);
+          onLogSavedMeal={(meal, slot) => {
+            // The meal the sheet has chosen, which can differ from the one it opened on.
+            logSavedMeal(meal, slot ?? addingSlot, loggingAt);
             keepAddSheetOrClose([meal.name]);
           }}
           // Inside that sheet's own Modal, not beside it: as siblings these

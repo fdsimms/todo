@@ -25,6 +25,7 @@ import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
 import { openEntries } from '../utils/journal';
 import { segmentOf } from '../utils/rhythms';
 import {
+  MOOD_LEVELS,
   contextTagKey,
   contextTagVocabulary,
   symptomKey,
@@ -68,6 +69,7 @@ import { EmptyState } from '../components/EmptyState';
 import { InlineAction } from '../components/InlineAction';
 import { MoodLogSheet, type MoodLogPrefill } from '../components/MoodLogSheet';
 import { MoodEntryRow } from '../components/MoodEntryRow';
+import { PressableScale } from '../components/PressableScale';
 import { CsvExportSheet } from '../components/CsvExportSheet';
 import { MilestoneSheet } from '../components/MilestoneSheet';
 import { ContrastBars } from '../components/ContrastBars';
@@ -431,9 +433,16 @@ export function MoodScreen() {
     return out;
   }, [days, todayKey]);
 
-  const recent = useMemo(() => logs.slice(0, 20), [logs]);
+  // Today's entries sit in their own card at the top, so the history below
+  // starts where they stop rather than listing them twice.
+  const todayLogs = useMemo(() => logs.filter(l => l.dayKey === todayKey), [logs, todayKey]);
+  const recent = useMemo(() => logs.filter(l => l.dayKey !== todayKey).slice(0, 20), [logs, todayKey]);
 
   const openNew = () => { haptics.tap(); setReturnTo(undefined); setPrefill(null); setEditing(null); setSheetOpen(true); };
+  // A face opens the sheet with that mood already picked rather than saving
+  // on the tap: the sheet is where symptoms, tags and the note go, and saving
+  // through it keeps the tag seeding and the mood task's auto-complete.
+  const openWithMood = (mood: MoodLevel) => { haptics.tap(); setReturnTo(undefined); setEditing(null); setPrefill({ mood, symptom: null }); setSheetOpen(true); };
   const openEdit = (log: MoodLog) => { haptics.tap(); setReturnTo(undefined); setPrefill(null); setEditing(log); setSheetOpen(true); };
   const closeSheet = () => {
     setSheetOpen(false);
@@ -493,6 +502,33 @@ export function MoodScreen() {
           style={styles.scroll}
           contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(tabBarHeight + spacing.xl, scrollTop.clearance) }]}
         >
+          <Text style={styles.sectionTitle}>TODAY</Text>
+          <View style={[styles.card, styles.todayCard]}>
+            <Text style={styles.todayPrompt}>
+              {todayLogs.length === 0 ? 'How are you doing?' : 'Log another'}
+            </Text>
+            <View style={styles.faceRow}>
+              {MOOD_LEVELS.map(level => (
+                <PressableScale
+                  key={level.value}
+                  style={styles.faceBtn}
+                  onPress={() => openWithMood(level.value)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Log ${level.label.toLowerCase()}`}
+                >
+                  <Text style={styles.faceEmoji}>{level.emoji}</Text>
+                </PressableScale>
+              ))}
+            </View>
+          </View>
+          {todayLogs.length > 0 && (
+            <View style={styles.todayEntries}>
+              {todayLogs.map(log => (
+                <MoodEntryRow key={log.id} log={log} showDate={false} onPress={() => openEdit(log)} />
+              ))}
+            </View>
+          )}
+
           <View style={styles.statRow}>
             <Stat
               styles={styles}
@@ -978,7 +1014,7 @@ export function MoodScreen() {
             )}
           </View>
 
-          <Text style={styles.sectionTitle}>RECENT ENTRIES</Text>
+          {recent.length > 0 && <Text style={styles.sectionTitle}>RECENT ENTRIES</Text>}
           {recent.map(log => (
             <MoodEntryRow
               key={log.id}
@@ -986,7 +1022,7 @@ export function MoodScreen() {
               onPress={() => openEdit(log)}
             />
           ))}
-          {logs.length > recent.length && (
+          {logs.length > todayLogs.length + recent.length && (
             <TouchableOpacity
               style={styles.seeAllRow}
               activeOpacity={interaction.activeOpacity}
@@ -1058,6 +1094,20 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: spacing.md },
+  todayCard: { marginBottom: spacing.md },
+  todayPrompt: { fontSize: font.md, fontWeight: fontWeight.semibold, color: colors.text, marginBottom: spacing.smd },
+  faceRow: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.sm },
+  faceBtn: {
+    flex: 1,
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.md,
+    backgroundColor: colors.bgTertiary,
+  },
+  // An emoji sized as an icon, which the type scale isn't for.
+  faceEmoji: { fontSize: 26 },
+  todayEntries: { marginBottom: spacing.md },
   statRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg },
   statCell: {
     flex: 1,

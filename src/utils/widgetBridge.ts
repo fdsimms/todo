@@ -66,6 +66,12 @@ export interface WidgetBridge {
    */
   drainPendingFoods?: () => Promise<string>;
   /**
+   * Log Water, Log Mood, Add to Grocery List and Open Screen, queued by
+   * ShortcutActionIntents.swift (`{ kind, value, count, at }` as JSON) — see
+   * shortcutQueue.ts. Optional for the reason the dose drain is.
+   */
+  drainPendingShortcutActions?: () => Promise<string>;
+  /**
    * Key codes queued by ToggleKeyLockIntent (`{ code, at }` as JSON) — see
    * keyScanQueue.ts. Optional for the reason the dose drain is.
    */

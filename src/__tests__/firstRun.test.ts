@@ -31,14 +31,15 @@ describe('shouldOfferFirstRun', () => {
 });
 
 describe('firstRunSettings', () => {
-  it('writes the two settings the answers name', () => {
-    expect(firstRunSettings({ groceriesAndMeals: false, keepItSimple: true, reminders: true }))
-      .toEqual({ kitchenEnabled: false, simpleMode: true });
+  it('writes the settings the answers name', () => {
+    expect(firstRunSettings({ groceriesAndMeals: false, keepItSimple: true, reminders: true, workouts: true, coins: false }))
+      .toEqual({ kitchenEnabled: false, simpleMode: true, workoutsEnabled: true, rewardsEnabled: false });
   });
 
   it('leaves the defaults unchanged when nothing is answered', () => {
     // The sheet opens on these, so Done without touching anything is a no-op
     // for the settings, the same as Skip.
-    expect(firstRunSettings(FIRST_RUN_DEFAULTS)).toEqual({ kitchenEnabled: true, simpleMode: false });
+    expect(firstRunSettings(FIRST_RUN_DEFAULTS))
+      .toEqual({ kitchenEnabled: true, simpleMode: false, workoutsEnabled: false, rewardsEnabled: false });
   });
 });

@@ -6,11 +6,12 @@ import {
   ScrollView,
   StyleSheet,
   Animated,
+  TouchableOpacity,
 } from 'react-native';
 import type { NutrientKey, TimeOfDay } from '../types';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { subDays } from 'date-fns/subDays';
@@ -27,11 +28,13 @@ import { NutrientDayChart } from '../components/NutrientDayChart';
 import { bestStreakOf, isStreakAtRecord } from '../utils/streakRecord';
 import { rankStreaks } from '../utils/streakLeaderboard';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, animation, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, animation, interaction, type Colors } from '../theme';
 import { useTextScale } from '../hooks/useTextScale';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { useReduceMotion } from '../utils/useReduceMotion';
-import { getRepeatedInstances, normalizeTitle } from '../utils/taskInstances';
+import { getRepeatedInstances, normalizeTitle, taskForTitleKey } from '../utils/taskInstances';
+import { TaskEditor } from '../components/TaskEditor';
+import type { Task } from '../types';
 import { onTimeSummary } from '../utils/stats';
 import { calibrationFrom, describeCalibration } from '../utils/estimateCalibration';
 import { useShallow } from 'zustand/react/shallow';
@@ -184,6 +187,26 @@ export function StatsScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const tasks = useWithoutLockedTasks(useTaskStore(s => s.tasks));
   const colors = useColors();
+  const navigation = useNavigation<any>();
+  // A row opens what it describes: a task in the editor here, a project or a
+  // recipe on its page. Rows that summarize one title's history open its live
+  // occurrence, else its latest (`taskForTitleKey`).
+  const [openTask, setOpenTask] = useState<Task | null>(null);
+  const closeTask = useCallback(() => setOpenTask(null), []);
+  const openTaskByKey = (key: string) => {
+    const task = taskForTitleKey(useTaskStore.getState().tasks, key);
+    if (!task) return;
+    haptics.tap();
+    setOpenTask(task);
+  };
+  const openProject = (projectId: string) => {
+    haptics.tap();
+    navigation.navigate({ name: 'ProjectDetail', params: { projectId } });
+  };
+  const openRecipe = (recipeId: string) => {
+    haptics.tap();
+    navigation.navigate({ name: 'RecipeDetail', params: { recipeId } });
+  };
   // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
   const screenSettings = useScreenSettings('Stats', 'Stats settings');
   const textScaleFactor = useTextScale();
@@ -758,7 +781,14 @@ export function StatsScreen() {
               <Text style={styles.sectionTitle}>STREAK LEADERBOARD</Text>
               <View style={styles.card}>
                 {streaks.map((t, i) => (
-                  <View key={t.id} style={[styles.row, i < streaks.length - 1 && styles.rowBorder]}>
+                  <TouchableOpacity
+                    key={t.id}
+                    style={[styles.row, i < streaks.length - 1 && styles.rowBorder]}
+                    activeOpacity={interaction.activeOpacity}
+                    onPress={() => { haptics.tap(); setOpenTask(t); }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${t.title}, streak ${liveStreakCount(t)}. Open task`}
+                  >
                     <Text style={styles.rank}>#{i + 1}</Text>
                     <Text style={styles.rowText} numberOfLines={1}>{t.title}</Text>
                     {/* Only where there is a longer run to compare against.
@@ -778,7 +808,8 @@ export function StatsScreen() {
                         {liveStreakCount(t)}
                       </Text>
                     </View>
-                  </View>
+                    <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+                  </TouchableOpacity>
                 ))}
               </View>
             </View>
@@ -792,10 +823,18 @@ export function StatsScreen() {
               <Text style={styles.sectionTitle}>HABIT COMPLETION (LAST 30 DAYS)</Text>
               <View style={styles.card}>
                 {habits.map(({ key, title, count, expected, rate }, i) => (
-                  <View key={key} style={[styles.habitRow, i < habits.length - 1 && styles.rowBorder]}>
+                  <TouchableOpacity
+                    key={key}
+                    style={[styles.habitRow, i < habits.length - 1 && styles.rowBorder]}
+                    activeOpacity={interaction.activeOpacity}
+                    onPress={() => openTaskByKey(key)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${title}, ${count} of ${expected}. Open task`}
+                  >
                     <View style={styles.habitTop}>
                       <Text style={styles.rowText} numberOfLines={1}>{title}</Text>
                       <Text style={styles.habitCount}>{count}/{expected}</Text>
+                      <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
                     </View>
                     <View style={styles.track}>
                       <AnimatedBarFill
@@ -811,7 +850,7 @@ export function StatsScreen() {
                       />
                     </View>
                     <Text style={styles.pct}>{Math.round(rate * 100)}%</Text>
-                  </View>
+                  </TouchableOpacity>
                 ))}
               </View>
             </View>
@@ -825,7 +864,14 @@ export function StatsScreen() {
               <Text style={styles.sectionTitle}>REPEATED TASKS</Text>
               <View style={styles.card}>
                 {repeated.map((g, i) => (
-                  <View key={g.key} style={[styles.row, i < repeated.length - 1 && styles.rowBorder]}>
+                  <TouchableOpacity
+                    key={g.key}
+                    style={[styles.row, i < repeated.length - 1 && styles.rowBorder]}
+                    activeOpacity={interaction.activeOpacity}
+                    onPress={() => openTaskByKey(g.key)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${g.title}, done ${g.count} times. Open task`}
+                  >
                     <View style={styles.instanceMain}>
                       <Text style={styles.instanceTitle} numberOfLines={1}>{g.title}</Text>
                       <Text style={styles.instanceMeta}>
@@ -836,7 +882,8 @@ export function StatsScreen() {
                       <Ionicons name="repeat" size={13} color={colors.accent} />
                       <Text style={[styles.badgeText, { color: colors.accent }]}>{g.count}</Text>
                     </View>
-                  </View>
+                    <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+                  </TouchableOpacity>
                 ))}
               </View>
             </View>
@@ -850,7 +897,14 @@ export function StatsScreen() {
               <Text style={styles.sectionTitle}>MOST MISSED</Text>
               <View style={styles.card}>
                 {missed.map((g, i) => (
-                  <View key={g.key} style={[styles.row, i < missed.length - 1 && styles.rowBorder]}>
+                  <TouchableOpacity
+                    key={g.key}
+                    style={[styles.row, i < missed.length - 1 && styles.rowBorder]}
+                    activeOpacity={interaction.activeOpacity}
+                    onPress={() => openTaskByKey(g.key)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${g.title}, missed ${g.count} times. Open task`}
+                  >
                     <View style={styles.instanceMain}>
                       <Text style={styles.instanceTitle} numberOfLines={1}>{g.title}</Text>
                       <Text style={styles.instanceMeta}>
@@ -861,7 +915,8 @@ export function StatsScreen() {
                       <Ionicons name="close-circle" size={13} color={colors.red} />
                       <Text style={[styles.badgeText, { color: colors.redText }]}>{g.count}</Text>
                     </View>
-                  </View>
+                    <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+                  </TouchableOpacity>
                 ))}
               </View>
             </View>
@@ -1019,7 +1074,14 @@ export function StatsScreen() {
                     .filter(Boolean)
                     .join(' · ');
                   return (
-                    <View key={r.id} style={[styles.row, i < mostCooked.length - 1 && styles.rowBorder]}>
+                    <TouchableOpacity
+                      key={r.id}
+                      style={[styles.row, i < mostCooked.length - 1 && styles.rowBorder]}
+                      activeOpacity={interaction.activeOpacity}
+                      onPress={() => openRecipe(r.id)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${r.name}, cooked ${r.count} times. Open recipe`}
+                    >
                       <Text style={styles.rank}>#{i + 1}</Text>
                       <View style={styles.instanceMain}>
                         <Text style={styles.instanceTitle} numberOfLines={1}>{r.name}</Text>
@@ -1029,7 +1091,8 @@ export function StatsScreen() {
                         <Ionicons name="restaurant" size={13} color={colors.accent} />
                         <Text style={[styles.badgeText, { color: colors.accent }]}>{r.count}</Text>
                       </View>
-                    </View>
+                      <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+                    </TouchableOpacity>
                   );
                 })}
               </View>
@@ -1322,15 +1385,20 @@ export function StatsScreen() {
               <Text style={styles.sectionTitle}>RECENTLY FINISHED</Text>
               <View style={styles.card}>
                 {projectSummary.recentlyFinished.map((f, i) => (
-                  <View
+                  <TouchableOpacity
                     key={f.project.id}
                     style={[styles.row, i < projectSummary.recentlyFinished.length - 1 && styles.rowBorder]}
+                    activeOpacity={interaction.activeOpacity}
+                    onPress={() => openProject(f.project.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${f.project.title}. Open project`}
                   >
                     <Text style={styles.rowText} numberOfLines={1}>{f.project.title}</Text>
                     <Text style={styles.badgeText}>
                       {f.days === 0 ? 'same day' : `${f.days} ${f.days === 1 ? 'day' : 'days'}`}
                     </Text>
-                  </View>
+                    <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+                  </TouchableOpacity>
                 ))}
               </View>
             </View>
@@ -1340,6 +1408,7 @@ export function StatsScreen() {
         </ScrollView>
       )}
       <ScrollToTopButton {...scrollTop.buttonProps} />
+      <TaskEditor visible={openTask !== null} task={openTask} onClose={closeTask} />
       {pullSearch.sheet}
     </View>
   );

@@ -226,11 +226,10 @@ export const SIMPLE_FEATURES: readonly SimpleFeature[] = [
   { id: 'workloadSubtitle', label: 'The workload line under the title', area: 'today' },
   { id: 'unscheduledLens', label: 'The Unscheduled view', area: 'today' },
   { id: 'paintSelect', label: 'Drag to select a run of tasks', area: 'today' },
-  // Reached from Today's filter sheet rather than a menu row, so it is gated
-  // at its two buttons rather than by `screenShown` — there is no route for
-  // that one to match. `featureShown`'s `set` arm carries the usual rule:
+  // Made from Today's filter sheet, whose buttons it gates; its screen is an
+  // Organize member, shown while there are views to show (`screenShown`), so
   // somebody who already kept a view keeps the way back to it.
-  { id: 'savedViews', label: 'Saved views', area: 'today' },
+  { id: 'savedViews', label: 'Saved views', area: 'today', screen: 'SavedViews', contentScreen: true },
 
   { id: 'barcodeScanning', label: 'Barcode scanning', area: 'kitchen' },
   { id: 'receiptImport', label: 'Receipt scanning', area: 'kitchen' },
@@ -306,7 +305,7 @@ export const SIMPLE_CONTENT_SCREENS: ReadonlySet<string> = new Set(
 export function screenShown(
   routeName: string,
   simpleMode: boolean,
-  contentCounts: { stacks: number; templates: number; people?: number; mood?: number; medications?: number; foodLog?: number; journal?: number; dreams?: number; meters?: number; workouts?: number } = { stacks: 0, templates: 0 },
+  contentCounts: { stacks: number; templates: number; people?: number; mood?: number; medications?: number; foodLog?: number; journal?: number; dreams?: number; meters?: number; workouts?: number; savedViews?: number } = { stacks: 0, templates: 0 },
 ): boolean {
   if (!simpleMode) return true;
   if (SIMPLE_HIDDEN_SCREENS.has(routeName)) return false;
@@ -331,6 +330,7 @@ export function screenShown(
   // Sessions, custom exercises, routines and programs together: anything the
   // person made there. The built-in library alone is not content.
   if (routeName === 'Workouts') return (contentCounts.workouts ?? 0) > 0;
+  if (routeName === 'SavedViews') return (contentCounts.savedViews ?? 0) > 0;
   return true;
 }
 

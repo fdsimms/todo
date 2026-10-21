@@ -201,6 +201,9 @@ export function TemplateDetailScreen() {
     if (!placed) return;
     reorderItems(templateId, placed.ids);
     if (placed.groupId) updateItem(templateId, created.id, { groupId: placed.groupId });
+    // The quick add stays open for the next item, which goes under this one
+    // rather than to the end.
+    pendingDropRef.current = { ...dropped, anchorKey: created.id, before: false };
   };
 
   const openQuickAdd = (drop: Extract<FabDropIntent, { kind: 'insert' }> | null) => {

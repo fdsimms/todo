@@ -5,7 +5,7 @@
  */
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
-import { deleteTag, deleteTasks, duplicateTask, reorderTasks, setCompletionDate, setTaskDates, skipOccurrence } from '../taskTools';
+import { deleteTag, deleteTasks, duplicateTask, renameTag, reorderTasks, setCompletionDate, setTaskDates, skipOccurrence } from '../taskTools';
 import { createTask, listTasks, updateTask } from '../tools';
 import { agentRevertPlan } from '../../../src/utils/agentRevert';
 import type { Task, UnattendedEntry } from '../../../src/types';
@@ -239,6 +239,27 @@ describe('duplicate_task, delete_tag and set_completion_date', () => {
     const entry = ledger().find(e => e.taskId === a.id)!;
     expect(agentRevertPlan(entry, replica.taskById(a.id)).kind).toBe('restore');
     expect(() => deleteTag(replica, 'nope')).toThrow(/No tag "nope"/);
+  });
+
+  it('renames a tag on every task, finished ones too, with an undo per task', () => {
+    const a = make('A', { tags: ['errand', 'home'] });
+    const b = make('B', { tags: ['errand'] });
+    replica.completeTask(b.id);
+    const result = renameTag(replica, '#Errand', 'Chores');
+    expect(result).toMatchObject({ from: 'errand', to: 'chores', merged: false, renamedOn: 2 });
+    expect(replica.taskById(a.id)!.tags).toEqual(['chores', 'home']);
+    expect(replica.taskById(b.id)!.tags).toEqual(['chores']);
+    expect(result.tags).not.toContain('errand');
+    const entry = ledger().find(e => e.taskId === a.id && e.action === 'edited')!;
+    expect(agentRevertPlan(entry, replica.taskById(a.id)).kind).toBe('restore');
+  });
+
+  it('merges onto a tag that exists, and refuses a missing or unchanged one', () => {
+    const a = make('A', { tags: ['chores', 'tidy'] });
+    expect(renameTag(replica, 'tidy', 'chores').merged).toBe(true);
+    expect(replica.taskById(a.id)!.tags).toEqual(['chores']);
+    expect(() => renameTag(replica, 'nope', 'x')).toThrow(/No tag "nope"/);
+    expect(() => renameTag(replica, 'chores', 'Chores')).toThrow(/already its name/);
   });
 
   it('moves a completion\'s date, and refuses a task that is not done', () => {

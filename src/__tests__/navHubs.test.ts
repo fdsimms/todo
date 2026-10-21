@@ -4,6 +4,8 @@ import {
   visibleMenuRows, addRecentScreen, parseRecentScreens, recentMenuDestinations, hubEntryRoute,
   RECENT_SCREEN_LIMIT, DEFAULT_TAB_ROUTES, MENU_ROUTES, normalizeTabRoutes, parseTabRoutes, setTabSlot, clearTabSlot,
   visibleTabRoutes, tabPickerGroups,
+  arrangeMenuRows, menuRowKey, toggleMenuPin, toggleMenuHidden, parseMenuArrangement, EMPTY_MENU_ARRANGEMENT,
+  switchedOffMatches, menuLabelFor,
 } from '../utils/navHubs';
 import { SIMPLE_HIDDEN_SCREENS } from '../utils/simpleMode';
 
@@ -154,7 +156,7 @@ describe('simplified mode', () => {
 describe('the subtitle under a hub row', () => {
   it('names every member it holds', () => {
     const organize = NAV_HUBS.find(h => h.id === 'organize')!;
-    expect(hubSubtitle(organize)).toBe('Categories, Tags, People, Meters, Stacks, Templates');
+    expect(hubSubtitle(organize)).toBe('Categories, Tags, People, Meters, Stacks, Templates, Saved views');
     const health = NAV_HUBS.find(h => h.id === 'health')!;
     expect(hubSubtitle(health)).toBe('Mood, Medications, Weight, Sleep, Journal, Dreams');
   });
@@ -192,7 +194,7 @@ describe('finding a screen', () => {
 
   it('finds a member by the hub holding it', () => {
     expect(searchMenu(all(), menuSearchTerms('organize')).map(d => d.route))
-      .toEqual(['Categories', 'Tags', 'People', 'Meters', 'Stacks', 'Templates']);
+      .toEqual(['Categories', 'Tags', 'People', 'Meters', 'Stacks', 'Templates', 'SavedViews']);
   });
 
   it('requires every term to match something, though not the same thing', () => {
@@ -420,5 +422,59 @@ describe('Screen Time', () => {
     const offered = tabPickerGroups(FULL).flatMap(g => g.destinations.map(d => d.route));
     expect(offered).toContain(route);
     expect(visibleTabRoutes(['Today', route, 'Groceries'], { ...FULL, screenTimeSupported: false })).not.toContain(route);
+  });
+});
+
+describe('arranging the menu', () => {
+  const rows = visibleMenuRows({ kitchenEnabled: true, simpleMode: false, counts: { stacks: 0, templates: 0 } });
+  const keys = (list: { kind: string }[]) => list.map(r => menuRowKey(r as never));
+
+  it('leaves out a plain row that is already a tab, but never a hub', () => {
+    const screenRow = rows.find(r => r.kind === 'screen')!;
+    const route = screenRow.kind === 'screen' ? screenRow.destination.route : '';
+    const { shown } = arrangeMenuRows(rows, EMPTY_MENU_ARRANGEMENT, [route]);
+    expect(keys(shown)).not.toContain(`screen:${route}`);
+    expect(shown.filter(r => r.kind === 'hub')).toHaveLength(rows.filter(r => r.kind === 'hub').length);
+  });
+
+  it('puts pinned rows first in pin order and sets hidden ones apart', () => {
+    const [a, b, c] = keys(rows);
+    const arrangement = toggleMenuHidden(toggleMenuPin(toggleMenuPin(EMPTY_MENU_ARRANGEMENT, c), b), a);
+    const { shown, hidden } = arrangeMenuRows(rows, arrangement);
+    expect(keys(shown).slice(0, 2)).toEqual([c, b]);
+    expect(keys(hidden)).toEqual([a]);
+    // Hiding a pinned row unpins it.
+    expect(toggleMenuHidden(arrangement, c).pinned).toEqual([b]);
+  });
+
+  it('reads back what it wrote, and nothing from junk', () => {
+    const arrangement = { pinned: ['hub:health'], hidden: ['screen:Tips'] };
+    expect(parseMenuArrangement(JSON.stringify(arrangement))).toEqual(arrangement);
+    expect(parseMenuArrangement('not json')).toEqual(EMPTY_MENU_ARRANGEMENT);
+    expect(parseMenuArrangement(null)).toEqual(EMPTY_MENU_ARRANGEMENT);
+  });
+});
+
+describe('switchedOffMatches', () => {
+  it('names the area whose switch hides a screen the search would find', () => {
+    expect(switchedOffMatches({ ...FULL, workoutsEnabled: false }, ['gym']))
+      .toEqual([{ label: 'Workouts', settingId: 'workoutsEnabled' }]);
+    expect(switchedOffMatches({ ...FULL, kitchenEnabled: false }, ['recipes']))
+      .toEqual([{ label: 'Groceries & meals', settingId: 'kitchenEnabled' }]);
+  });
+
+  it('says nothing while the area is on, or when the words match nothing there', () => {
+    expect(switchedOffMatches(FULL, ['gym'])).toEqual([]);
+    expect(switchedOffMatches({ ...FULL, workoutsEnabled: false }, ['logbook'])).toEqual([]);
+    expect(switchedOffMatches({ ...FULL, workoutsEnabled: false }, [])).toEqual([]);
+  });
+});
+
+describe('menuLabelFor', () => {
+  it('names a row, a hub member and Today the way the menu does', () => {
+    expect(menuLabelFor('Workouts')).toBe('Workouts');
+    expect(menuLabelFor('FoodLog')).toBe('Food log');
+    expect(menuLabelFor('Today')).toBe('Today');
+    expect(menuLabelFor('Nowhere')).toBe('Nowhere');
   });
 });

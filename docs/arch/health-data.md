@@ -896,6 +896,12 @@ Save measures a recalled amount like anything typed. It is the entry's own row
 that remembers, never the item behind a box: "1 container" is a portion of one
 pot's panel and may mean nothing to the generic row's.
 
+A scanned card (`ScanPortionSheet`) opens on its last amount by the same two
+functions, keyed on the product the scan resolved to, else its item. "Same as
+yesterday" in the add sheet logs yesterday's helpings at that meal as they were
+(`sameMealYesterday`, `helpingAgain`), each through the sheet's own `logNew` so
+each finds its planned meal and writes to Health like a single log.
+
 ### Water is the food log's, not a third write
 
 Water had a target and no way to fill it (#2515): a full `NutrientKey` with a

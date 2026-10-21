@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useRef } from 'react';
-import { Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View, type GestureResponderEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SearchField } from './SearchField';
@@ -13,14 +13,23 @@ import { listRemainingCount } from '../utils/groceryLists';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import {
-  hubEntryRoute, hubSubtitle, menuDestinations, menuSearchTerms, recentMenuDestinations, searchMenu,
-  visibleMenuRows, type NavDestination, type NavHub, type NavMenuRow, type NavSearchResult,
+  arrangeMenuRows, hubEntryRoute, hubSubtitle, menuDestinations, menuRowKey, menuSearchTerms,
+  recentMenuDestinations, searchMenu, switchedOffMatches, toggleMenuHidden, toggleMenuPin, visibleMenuRows, TAB_SLOT_COUNT,
+  type NavDestination, type NavHub, type NavMenuRow, type NavSearchResult,
 } from '../utils/navHubs';
 import { currentTabName } from '../navigation/navigationRef';
 import { tipsFor } from '../utils/tips';
 import { hiddenResultsNote } from '../utils/simpleMode';
 import { useFilterField } from '../hooks/useFilterField';
 import { useNavMenuOptions } from '../hooks/useNavMenuOptions';
+import { useSyncStore } from '../store/useSyncStore';
+import { searchableSettingsEntries } from '../utils/settingsActiveRows';
+import { settingsGroup } from '../utils/settingsIndex';
+import { searchElsewhere, type ElsewhereResult } from '../utils/searchElsewhere';
+import { useActionMenu } from '../hooks/useActionMenu';
+import type { ActionMenuAction } from './ActionMenu';
+import type { CardAnchor } from './CardSheet';
+import { haptics } from '../utils/haptics';
 
 interface Props {
   /**
@@ -35,7 +44,14 @@ interface Props {
   /** Called with the route a row or a result opens. The caller owns the haptic and any closing. */
   onNavigate: (route: string) => void;
   onOpenSettings: () => void;
+  /** Opens one settings row a search found, where it lives. Omit to search screens only. */
+  onOpenSettingsEntry?: (entryId: string) => void;
+  /** Hands the query to the Search screen, for everything else it might mean. */
+  onSearchEverything?: (query: string) => void;
 }
+
+/** How many settings rows the find field lists under the screens it found. */
+const SETTINGS_RESULT_LIMIT = 4;
 
 /**
  * What the side menu holds: the find field, the Recent row, the rows and hubs
@@ -46,7 +62,7 @@ interface Props {
  * the surface and the column are the sidebar's, so this draws on no background
  * of its own.
  */
-export function MenuPanel({ variant, onScreen, activeTab, onNavigate, onOpenSettings }: Props) {
+export function MenuPanel({ variant, onScreen, activeTab, onNavigate, onOpenSettings, onOpenSettingsEntry, onSearchEverything }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const animate = variant === 'drawer';
@@ -80,9 +96,18 @@ export function MenuPanel({ variant, onScreen, activeTab, onNavigate, onOpenSett
   const query = searchFilter.query;
   // Shared with the pull-down quick search, which searches the same screens.
   const menuOptions = useNavMenuOptions();
-  const menuRows = useMemo(() => visibleMenuRows(menuOptions), [menuOptions]);
   // Recent skips whatever has a tab button right now, which is the user's choice.
   const tabRoutes = useSettingsStore(s => s.tabRoutes);
+  // The rows as the user arranged them: pinned first, hidden set apart, and
+  // (in the drawer) a screen that's already a tab left out. The sidebar
+  // replaces the tab bar, so it leaves nothing out for one.
+  const menuArrangement = useSettingsStore(s => s.menuArrangement);
+  const { shown: menuRows, hidden: hiddenRows } = useMemo(
+    () => arrangeMenuRows(visibleMenuRows(menuOptions), menuArrangement, variant === 'drawer' ? tabRoutes : []),
+    [menuOptions, menuArrangement, variant, tabRoutes],
+  );
+  const [showHidden, setShowHidden] = useState(false);
+  const arrangeMenu = useActionMenu();
   const recentDestinations = useMemo(
     () => recentMenuDestinations(recentScreens, menuOptions, currentRoute, tabRoutes),
     [recentScreens, menuOptions, currentRoute, tabRoutes],
@@ -93,6 +118,30 @@ export function MenuPanel({ variant, onScreen, activeTab, onNavigate, onOpenSett
     [menuOptions, terms],
   );
   const searching = terms.length > 0;
+  // An area switched off takes its screens out of the index too, so a search
+  // for one says the area is off rather than that nothing matched.
+  const offAreas = useMemo(
+    () => (onOpenSettingsEntry ? switchedOffMatches(menuOptions, terms) : []),
+    [onOpenSettingsEntry, menuOptions, terms],
+  );
+  // Settings rows the query names, under the screens: "dark mode", "vacation"
+  // or "backup" are settings, and the field used to answer them with "No
+  // screen matches that." The same rows and order quick search offers.
+  const settingResults = useMemo(() => {
+    if (!onOpenSettingsEntry || terms.length === 0) return [];
+    return searchElsewhere({
+      destinations: [],
+      settingsEntries: searchableSettingsEntries(Platform.OS, useSettingsStore.getState(), useSyncStore.getState()),
+      settingsGroupTitle: id => settingsGroup(id)?.title ?? 'Settings',
+      people: [],
+      recipes: [],
+      groceryItems: [],
+      onListIds: new Set(),
+      now: new Date(),
+    }, query).goTo.filter((r): r is Extract<ElsewhereResult, { kind: 'setting' }> => r.kind === 'setting')
+      .filter(r => !offAreas.some(a => a.settingId === r.entry.id))
+      .slice(0, SETTINGS_RESULT_LIMIT);
+  }, [onOpenSettingsEntry, terms, query, offAreas]);
 
   // Eleven rows and a footer fit on every phone this runs on, so the fade and
   // the flashed scrollbar are no longer load-bearing — they stay because the
@@ -106,6 +155,7 @@ export function MenuPanel({ variant, onScreen, activeTab, onNavigate, onOpenSett
     // A query handed back on the next open is a filtered menu with no visible
     // reason why — the same rule the task editor's field search follows.
     searchFilter.clear();
+    setShowHidden(false);
     if (variant !== 'drawer') return;
     // After the slide-in, not during it: the indicator is drawn against the
     // drawer's own right edge, which is still crossing the screen. Cleared by
@@ -127,6 +177,126 @@ export function MenuPanel({ variant, onScreen, activeTab, onNavigate, onOpenSett
 
   const handleNavigate = onNavigate;
 
+  const tabLabel = (route: string) => menuDestinations(menuOptions).find(d => d.route === route)?.label ?? route;
+
+  /**
+   * Holding a row: pin it to the top, hide it, or (a screen, in the drawer)
+   * give it a tab. A full tab bar offers the tabs to swap it in for rather
+   * than saying no. All of it is undone from the same menu.
+   */
+  const openArrange = (row: NavMenuRow, anchor: CardAnchor | null) => {
+    haptics.impactMedium();
+    const key = menuRowKey(row);
+    const store = useSettingsStore.getState();
+    const arrangement = store.menuArrangement;
+    const hidden = arrangement.hidden.includes(key);
+    const pinned = arrangement.pinned.includes(key);
+    const actions: ActionMenuAction[] = [];
+    if (!hidden) {
+      actions.push({
+        key: 'pin',
+        label: pinned ? 'Unpin' : 'Pin to top',
+        icon: pinned ? 'arrow-down-outline' : 'arrow-up-outline',
+        onPress: () => useSettingsStore.getState().setMenuArrangement(toggleMenuPin(useSettingsStore.getState().menuArrangement, key)),
+      });
+    }
+    if (row.kind === 'screen' && variant === 'drawer' && !tabRoutes.includes(row.destination.route)) {
+      const route = row.destination.route;
+      actions.push(tabRoutes.length < TAB_SLOT_COUNT
+        ? {
+            key: 'tab',
+            label: 'Add to tab bar',
+            icon: 'albums-outline',
+            onPress: () => useSettingsStore.getState().setTabSlot(tabRoutes.length, route),
+          }
+        : {
+            key: 'tab',
+            label: 'Add to tab bar',
+            icon: 'albums-outline',
+            choices: tabRoutes.map((tab, slot) => ({
+              key: tab,
+              label: `In place of ${tabLabel(tab)}`,
+              onPress: () => useSettingsStore.getState().setTabSlot(slot, route),
+            })),
+          });
+    }
+    actions.push({
+      key: 'hide',
+      label: hidden ? 'Show in menu' : 'Hide from menu',
+      icon: hidden ? 'eye-outline' : 'eye-off-outline',
+      onPress: () => useSettingsStore.getState().setMenuArrangement(toggleMenuHidden(useSettingsStore.getState().menuArrangement, key)),
+    });
+    arrangeMenu.open({
+      title: row.kind === 'screen' ? row.destination.label : row.hub.label,
+      actions,
+      anchor,
+    });
+  };
+
+  const renderRow = (row: NavMenuRow, index: number) => {
+    const isActive = isRowActive(row);
+    if (row.kind === 'hub') {
+      return (
+        <ItemAppear animate={animate} key={row.hub.label} index={index + 1}>
+          <HubRow
+            hub={row.hub}
+            active={isActive}
+            compact={compact}
+            currentRoute={currentRoute}
+            recentScreens={recentScreens}
+            groceryCount={groceryCount}
+            colors={colors}
+            onNavigate={handleNavigate}
+            onLongPress={anchor => openArrange(row, anchor)}
+          />
+        </ItemAppear>
+      );
+    }
+    const badge = badgeFor(row);
+    const { label, icon, route } = row.destination;
+    return (
+      <ItemAppear animate={animate} key={label} index={index + 1}>
+        <TouchableOpacity
+          style={rowStyle(compact, isActive, colors)}
+          onPress={() => handleNavigate(route)}
+          onLongPress={e => openArrange(row, touchAnchor(e))}
+          delayLongPress={interaction.delayLongPress}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="button"
+          accessibilityState={{ selected: isActive }}
+          accessibilityLabel={label}
+          accessibilityActions={[{ name: 'longpress', label: 'Arrange' }]}
+          onAccessibilityAction={ev => {
+            if (ev.nativeEvent.actionName === 'longpress') openArrange(row, null);
+          }}
+        >
+          <View style={iconWrapStyle(compact, isActive, colors)}>
+            <NamedIcon
+              name={icon}
+              size={compact ? COMPACT_ICON : 20}
+              color={isActive ? colors.accent : colors.textSecondary}
+            />
+          </View>
+          <View style={styles.itemBody}>
+            <Text
+              style={[
+                styles.itemLabel,
+                { color: isActive ? colors.accent : colors.text },
+              ]}
+            >
+              {label}
+            </Text>
+          </View>
+          {badge > 0 && (
+            <View style={[styles.badge, { backgroundColor: colors.accentSubtle }]}>
+              <Text style={[styles.badgeText, { color: colors.accent }]}>{badge}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+      </ItemAppear>
+    );
+  };
+
   return (
     <>
       <View
@@ -142,9 +312,9 @@ export function MenuPanel({ variant, onScreen, activeTab, onNavigate, onOpenSett
         )}
         <SearchField
           field={searchFilter}
-          placeholder="Find a screen"
+          placeholder="Find a screen or setting"
           style={styles.search}
-          accessibilityLabel="Find a screen"
+          accessibilityLabel="Find a screen or setting"
         />
       </View>
 
@@ -192,69 +362,96 @@ export function MenuPanel({ variant, onScreen, activeTab, onNavigate, onOpenSett
                   </View>
                 </ItemAppear>
               )}
-              {menuRows.map((row, index) => {
-                const isActive = isRowActive(row);
-                if (row.kind === 'hub') {
-                  return (
-                    <ItemAppear animate={animate} key={row.hub.label} index={index + 1}>
-                      <HubRow
-                        hub={row.hub}
-                        active={isActive}
-                        compact={compact}
-                        currentRoute={currentRoute}
-                        recentScreens={recentScreens}
-                        groceryCount={groceryCount}
-                        colors={colors}
-                        onNavigate={handleNavigate}
-                      />
-                    </ItemAppear>
-                  );
-                }
-                const badge = badgeFor(row);
-                const { label, icon, route } = row.destination;
-                return (
-                  <ItemAppear animate={animate} key={label} index={index + 1}>
-                    <TouchableOpacity
-                      style={rowStyle(compact, isActive, colors)}
-                      onPress={() => handleNavigate(route)}
-                      activeOpacity={interaction.activeOpacity}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: isActive }}
-                      accessibilityLabel={label}
-                    >
-                      <View style={iconWrapStyle(compact, isActive, colors)}>
-                        <NamedIcon
-                          name={icon}
-                          size={compact ? COMPACT_ICON : 20}
-                          color={isActive ? colors.accent : colors.textSecondary}
-                        />
-                      </View>
-                      <View style={styles.itemBody}>
-                        <Text
-                          style={[
-                            styles.itemLabel,
-                            { color: isActive ? colors.accent : colors.text },
-                          ]}
-                        >
-                          {label}
-                        </Text>
-                      </View>
-                      {badge > 0 && (
-                        <View style={[styles.badge, { backgroundColor: colors.accentSubtle }]}>
-                          <Text style={[styles.badgeText, { color: colors.accent }]}>{badge}</Text>
-                        </View>
-                      )}
-                    </TouchableOpacity>
-                  </ItemAppear>
-                );
-              })}
+              {menuRows.map(renderRow)}
+              {/* Rows the user hid. Set apart rather than gone, so holding
+                  one can bring it back. */}
+              {hiddenRows.length > 0 && (
+                <TouchableOpacity
+                  style={styles.hiddenToggle}
+                  onPress={() => { haptics.tap(); setShowHidden(v => !v); }}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: showHidden }}
+                  accessibilityLabel={`${hiddenRows.length} hidden ${hiddenRows.length === 1 ? 'row' : 'rows'}`}
+                >
+                  <Text style={[styles.hiddenToggleLabel, { color: colors.textSecondary }]}>
+                    {hiddenRows.length} hidden
+                  </Text>
+                  <Text style={[styles.hiddenToggleAction, { color: colors.accent }]}>
+                    {showHidden ? 'Hide' : 'Show'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              {showHidden && hiddenRows.map((row, index) => renderRow(row, menuRows.length + index))}
             </>
           )}
-        {searching && results.length === 0 && (
+        {searching && offAreas.map(area => (
+          <TouchableOpacity
+            key={area.settingId}
+            style={rowStyle(compact, false, colors)}
+            onPress={() => onOpenSettingsEntry?.(area.settingId)}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel={`${area.label} is off. Turn it on in Feature areas settings`}
+          >
+            <View style={iconWrapStyle(compact, false, colors)}>
+              <Ionicons name="eye-off-outline" size={compact ? COMPACT_ICON : 18} color={colors.textSecondary} />
+            </View>
+            <View style={styles.itemBody}>
+              <Text style={[styles.itemLabel, { color: colors.text }]}>{area.label} is off</Text>
+              <Text style={[styles.itemSubtitle, { color: colors.textSecondary }]}>Turn it on in Feature areas</Text>
+            </View>
+          </TouchableOpacity>
+        ))}
+        {searching && settingResults.length > 0 && (
+          <>
+            <Text style={[styles.resultsCaption, { color: colors.textSecondary }]}>Settings</Text>
+            {settingResults.map(result => (
+              <TouchableOpacity
+                key={result.key}
+                style={rowStyle(compact, false, colors)}
+                onPress={() => onOpenSettingsEntry?.(result.entry.id)}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={`${result.entry.label}, in ${result.groupTitle} settings`}
+              >
+                <View style={iconWrapStyle(compact, false, colors)}>
+                  <Ionicons name="settings-outline" size={compact ? COMPACT_ICON : 18} color={colors.textSecondary} />
+                </View>
+                <View style={styles.itemBody}>
+                  <Text style={[styles.itemLabel, { color: colors.text }]}>{result.entry.label}</Text>
+                  <Text style={[styles.itemSubtitle, { color: colors.textSecondary }]}>in {result.groupTitle}</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </>
+        )}
+        {searching && results.length === 0 && settingResults.length === 0 && offAreas.length === 0 && (
           <Text style={[styles.noResults, { color: colors.textSecondary }]}>
-            No screen matches that.
+            {onOpenSettingsEntry ? 'No screen or setting matches that.' : 'No screen matches that.'}
             {hiddenNote ? `\n\n${hiddenNote}` : ''}
           </Text>
+        )}
+        {/* Whatever else the words might be (a task, a person, a recipe) is
+            Search's to find, so the field hands the query over rather than
+            stopping at screens and settings. */}
+        {searching && onSearchEverything && (
+          <TouchableOpacity
+            style={rowStyle(compact, false, colors)}
+            onPress={() => onSearchEverything(query.trim())}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel={`Search everything for ${query.trim()}`}
+          >
+            <View style={iconWrapStyle(compact, false, colors)}>
+              <Ionicons name="search" size={compact ? COMPACT_ICON : 18} color={colors.accent} />
+            </View>
+            <View style={styles.itemBody}>
+              <Text style={[styles.itemLabel, { color: colors.accent }]} numberOfLines={2}>
+                Search everything for “{query.trim()}”
+              </Text>
+            </View>
+          </TouchableOpacity>
         )}
       </ScrollView>
       {/* Fades into the drawer's own frosted surface rather than to an
@@ -284,6 +481,9 @@ export function MenuPanel({ variant, onScreen, activeTab, onNavigate, onOpenSett
           </TouchableOpacity>
         </ItemAppear>
       </View>
+      {/* Inside the drawer's own Modal when this is the drawer, so the menu
+          presents from it rather than beside it. */}
+      {arrangeMenu.element}
     </>
   );
 }
@@ -404,7 +604,7 @@ function MenuChip({
  * them from VoiceOver. The icon and the name are their own touchables instead.
  */
 function HubRow({
-  hub, active, compact, currentRoute, recentScreens, groceryCount, colors, onNavigate,
+  hub, active, compact, currentRoute, recentScreens, groceryCount, colors, onNavigate, onLongPress,
 }: {
   hub: NavHub;
   active: boolean;
@@ -414,6 +614,8 @@ function HubRow({
   groceryCount: number;
   colors: ReturnType<typeof useColors>;
   onNavigate: (route: string) => void;
+  /** Holding the row, to arrange it. Null as the anchor when VoiceOver asks, which centers the menu. */
+  onLongPress: (anchor: CardAnchor | null) => void;
 }) {
   const entry = hubEntryRoute(hub, recentScreens);
   const entryLabel = hub.members.find(m => m.route === entry)?.label ?? hub.label;
@@ -421,6 +623,8 @@ function HubRow({
     <View style={rowStyle(compact, active, colors)}>
       <TouchableOpacity
         onPress={() => onNavigate(entry)}
+        onLongPress={e => onLongPress(touchAnchor(e))}
+        delayLongPress={interaction.delayLongPress}
         activeOpacity={interaction.activeOpacity}
         accessible={false}
         importantForAccessibility="no"
@@ -436,11 +640,15 @@ function HubRow({
       <View style={styles.itemBody}>
         <TouchableOpacity
           onPress={() => onNavigate(entry)}
+          onLongPress={e => onLongPress(touchAnchor(e))}
+          delayLongPress={interaction.delayLongPress}
           activeOpacity={interaction.activeOpacity}
           accessibilityRole="button"
           accessibilityState={{ selected: active }}
           accessibilityLabel={`${hub.label}. Holds ${hubSubtitle(hub)}`}
           accessibilityHint={`Opens ${entryLabel}`}
+          accessibilityActions={[{ name: 'longpress', label: 'Arrange' }]}
+          onAccessibilityAction={ev => { if (ev.nativeEvent.actionName === 'longpress') onLongPress(null); }}
         >
           <Text style={[styles.itemLabel, { color: active ? colors.accent : colors.text }]}>{hub.label}</Text>
         </TouchableOpacity>
@@ -461,6 +669,8 @@ function HubRow({
     </View>
   );
 }
+
+const touchAnchor = (e: GestureResponderEvent): CardAnchor => ({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
 
 // The sidebar's rows are the drawer's, drawn tighter: a drawer is a sheet with
 // the whole height to itself and a phone's width, a sidebar is a 236pt strip
@@ -662,9 +872,36 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.8,
   },
+  hiddenToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  hiddenToggleLabel: {
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  hiddenToggleAction: {
+    fontSize: font.sm,
+    fontWeight: fontWeight.semibold,
+  },
   noResults: {
     fontSize: font.sm,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.md,
+  },
+  resultsCaption: {
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xs,
   },
 });

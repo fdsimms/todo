@@ -42,7 +42,7 @@ import { useCategoryStore } from '../store/useCategoryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { quickSearch, QUICK_SEARCH_LIMIT } from '../utils/quickSearch';
-import { allElsewhere, describeElsewhere, quickElsewhere, QUICK_ELSEWHERE_LIMIT, type ElsewhereResult } from '../utils/searchElsewhere';
+import { allElsewhere, describeElsewhere, leadingElsewhere, quickElsewhere, QUICK_ELSEWHERE_LIMIT, type ElsewhereResult } from '../utils/searchElsewhere';
 import { useElsewhereSearch } from '../hooks/useElsewhereSearch';
 import { useSearchActionReceipts, useSearchActions } from '../hooks/useSearchActions';
 import { QUICK_ACTION_LIMIT, type SearchAction } from '../utils/searchActions';
@@ -397,13 +397,14 @@ function QuickSearchElsewhereRow({ result, onSelect, styles, colors }: {
  * budget the task rows do (see `quickSearch`), rather than getting a budget
  * of their own on top.
  *
- * Everything that isn't a task leads ahead of both: screens, settings, people,
+ * Everything that isn't a task is offered too: screens, settings, people,
  * recipes and grocery items (`useElsewhereSearch`), so Weight, Tom's page or
  * the tomatoes on the list are a pull and a few letters away rather than the
- * menu, a hub row and a pill. They take at most `QUICK_ELSEWHERE_LIMIT` of the
- * seven slots between them, because the card is mostly for tasks; the
- * footer's count includes all of them, since the Search tab it opens lists
- * every kind.
+ * menu, a hub row and a pill. A screen or setting whose name matches leads the
+ * card (`leadingElsewhere`); the rest follow the tasks. They take at most
+ * `QUICK_ELSEWHERE_LIMIT` of the seven slots between them, because the card is
+ * mostly for tasks; the footer's count includes all of them, since the Search
+ * tab it opens lists every kind.
  */
 export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup, onSelectProject, onSelectElsewhere, onOpenFullSearch, onShown }: Props) {
   const insets = useSafeAreaInsets();
@@ -495,22 +496,34 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
   const { receipts, run: runReceipt, undo: undoAction, followUp: followUpAction, clear: clearReceipts } = useSearchActionReceipts(debouncedQuery);
   const searchBudget = QUICK_SEARCH_LIMIT - actions.length;
 
-  // Tasks, stacks and projects take the card's slots first; the non-task rows
-  // below them spend only what is left (at most QUICK_ELSEWHERE_LIMIT).
-  const { groupResults, projectResults, results, total: taskTotal } = useMemo(
+  // A screen or setting named by the query leads, above the tasks
+  // (leadingElsewhere): "sleep" is the Sleep screen before it is every task
+  // that mentions sleep. Out of the same budget and the same
+  // QUICK_ELSEWHERE_LIMIT as the rest of the non-task rows.
+  const leadResults = useMemo(
+    () => leadingElsewhere(elsewhereSections, Math.min(QUICK_ELSEWHERE_LIMIT, Math.max(0, searchBudget))),
+    [elsewhereSections, searchBudget],
+  );
+
+  // Tasks, stacks and projects take the card's slots next; the other non-task
+  // rows below them spend only what is left.
+  const { groupResults, projectResults, results, total: taskTotal, strongTaskCount } = useMemo(
     () => quickSearch(
-      tasks, debouncedQuery, projectNamesById, searchBudget, heldIds,
+      tasks, debouncedQuery, projectNamesById, searchBudget - leadResults.length, heldIds,
       groups, rosterByGroupId, projects, progressByProject
     ),
-    [tasks, debouncedQuery, projectNamesById, searchBudget, heldIds, groups, rosterByGroupId, projects, progressByProject]
+    [tasks, debouncedQuery, projectNamesById, searchBudget, leadResults.length, heldIds, groups, rosterByGroupId, projects, progressByProject]
   );
-  const elsewhereResults = useMemo(
-    () => quickElsewhere(
-      elsewhereSections,
-      Math.min(QUICK_ELSEWHERE_LIMIT, searchBudget - groupResults.length - projectResults.length - results.length)
-    ),
-    [elsewhereSections, searchBudget, groupResults.length, projectResults.length, results.length]
-  );
+  const elsewhereResults = useMemo(() => {
+    const led = new Set(leadResults.map(r => r.key));
+    const room = Math.min(
+      QUICK_ELSEWHERE_LIMIT - leadResults.length,
+      searchBudget - leadResults.length - groupResults.length - projectResults.length - results.length,
+    );
+    return quickElsewhere(elsewhereSections, QUICK_ELSEWHERE_LIMIT)
+      .filter(r => !led.has(r.key))
+      .slice(0, Math.max(0, room));
+  }, [elsewhereSections, leadResults, searchBudget, groupResults.length, projectResults.length, results.length]);
   // The footer's count is what the Search screen will show, which is now
   // everything this card found, not just the tasks.
   const total = taskTotal + elsewhereTotal;
@@ -628,7 +641,7 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
 
   const trimmed = query.trim();
   const hasTaskResults = groupResults.length > 0 || projectResults.length > 0 || results.length > 0;
-  const hasSearchResults = hasTaskResults || elsewhereResults.length > 0;
+  const hasSearchResults = hasTaskResults || elsewhereResults.length > 0 || leadResults.length > 0;
   const hasResults = hasSearchResults || actions.length > 0;
   const showNoMatches = trimmed.length > 0 && !hasResults;
 
@@ -641,6 +654,12 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
   const handleSubmit = () => {
     if (submitAction && query === debouncedQuery && !receipts.has(submitAction.key)) {
       runAction(submitAction);
+      return;
+    }
+    // A screen or setting the query names opens, unless a task matches by
+    // title too, in which case the query is ambiguous and Search lists both.
+    if (leadResults.length > 0 && strongTaskCount === 0) {
+      handleSelectElsewhere(leadResults[0]);
       return;
     }
     if (!hasTaskResults && elsewhereResults.length > 0) {
@@ -735,6 +754,15 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
                   onRun={runAction}
                   onUndo={undoAction}
                   onFollowUp={followUpAction}
+                />
+              ))}
+              {leadResults.map(result => (
+                <QuickSearchElsewhereRow
+                  key={result.key}
+                  result={result}
+                  onSelect={handleSelectElsewhere}
+                  styles={styles}
+                  colors={colors}
                 />
               ))}
               {/* Stacks and projects lead, same order and reasoning as the

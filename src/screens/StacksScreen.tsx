@@ -9,6 +9,7 @@ import {
   Alert,
 } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
@@ -19,7 +20,6 @@ import { useCategoryStore } from '../store/useCategoryStore';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
-import { TaskGroupEditor } from '../components/TaskGroupEditor';
 import { InlineNameField } from '../components/InlineNameField';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { Fab, FAB_SIZE } from '../components/Fab';
@@ -57,6 +57,7 @@ const NO_ROSTER: Task[] = [];
  * list of its own.
  */
 export function StacksScreen() {
+  const navigation = useNavigation();
   const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
@@ -70,8 +71,6 @@ export function StacksScreen() {
   const bulkSetGroupCategory = useTaskStore(s => s.bulkSetGroupCategory);
   const categories = useCategoryStore(useShallow(s => s.categories));
 
-  const [editingGroup, setEditingGroup] = useState<TaskGroup | null>(null);
-  const [editorVisible, setEditorVisible] = useState(false);
   // The "New stack" name field, open at the end of the list.
   const [naming, setNaming] = useState(false);
   const keyboardScroll = useKeyboardInsetScroll<FlatList>({ refreshing: pullSearch.pulling });
@@ -118,20 +117,17 @@ export function StacksScreen() {
     return (rostersPrev.current = reuseUnchangedLists(rostersPrev.current, rosters));
   }, [allTasks]);
 
-  const openEditor = useCallback((group: TaskGroup) => {
-    setEditingGroup(group);
-    setEditorVisible(true);
-  }, []);
-
-  // Stable and taking the stack it acts on, so `StackRow`'s memo holds — see
-  // its own note.
+  // A row opens the stack's own page, the same one Today's stack header
+  // opens: its members are what the row is about, and the page's pencil is
+  // the editor. Stable and taking the stack it acts on, so `StackRow`'s memo
+  // holds — see its own note.
   const handleOpenStack = useCallback((group: TaskGroup) => {
     haptics.tap();
-    openEditor(group);
-  }, [openEditor]);
+    (navigation as any).navigate('StackDetail', { groupId: group.id });
+  }, [navigation]);
 
   // A new stack is named in place, in a field at the end of the list where
-  // its row will land. The rest (category, members) is on the row's editor,
+  // its row will land. The rest (category, members) is on the stack's page,
   // one tap away once it exists.
   const startNaming = () => {
     setNaming(true);
@@ -143,11 +139,6 @@ export function StacksScreen() {
     animateLayout();
     haptics.tap();
     createGroup(name, null);
-  };
-
-  const closeEditor = () => {
-    setEditorVisible(false);
-    setEditingGroup(null);
   };
 
   // Extra bottom padding so the last rows aren't hidden behind the floating
@@ -302,11 +293,6 @@ export function StacksScreen() {
         onClose={() => setCategoryPickerVisible(false)}
       />
 
-      <TaskGroupEditor
-        visible={editorVisible}
-        group={editingGroup}
-        onClose={closeEditor}
-      />
       <ScrollToTopButton {...scrollTop.buttonProps} />
       {pullSearch.sheet}
     </View>
@@ -363,7 +349,7 @@ const StackRow = React.memo(function StackRow({
           accessibilityRole={selectionMode ? 'checkbox' : 'button'}
           accessibilityState={selectionMode ? { checked: selected } : undefined}
           accessibilityLabel={`${group.title}. ${spokenMeta}`}
-          accessibilityHint={selectionMode ? 'Double tap to select stack.' : 'Double tap to edit this stack.'}
+          accessibilityHint={selectionMode ? 'Double tap to select stack.' : 'Double tap to open this stack.'}
         >
           <View style={[styles.icon, { backgroundColor: colors.accentSubtle }]}>
             <Ionicons name="layers-outline" size={18} color={colors.accent} />

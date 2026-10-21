@@ -120,7 +120,7 @@ import { SAVED_VIEW_TASK_LIMIT, createSavedView, deleteSavedView, getSavedView, 
 import { setVacationMode } from './vacationTools';
 import { getSettings, updateSettings } from './settingsTools';
 import { SETTINGS_SPEC } from './settingsSpec';
-import { MAX_DELETE, deleteTag, deleteTasks, duplicateTask, setCompletionDate, setTaskDates, skipOccurrence } from './taskTools';
+import { MAX_DELETE, deleteTag, deleteTasks, duplicateTask, renameTag, setCompletionDate, setTaskDates, skipOccurrence } from './taskTools';
 import { MAX_BATCH, MAX_QUICK_ADD, batchUpdateTasks, planDay, quickAdd, rebalanceWeek, type BatchChange } from './agentTools';
 import { SERVER_ICONS } from './serverIcon';
 import { generateId } from '../../src/utils/id';
@@ -3016,6 +3016,19 @@ function registerWriteTools(
   );
 
   server.tool(
+    'rename_tag',
+    'Rename a tag everywhere it is used, as the Tags screen\'s Rename does: every task that has it (finished ones included), the tag list, stacks, templates, saved views, title rules and Reminders captures. Renaming onto a tag that already exists merges the two, and they can\'t be separated again, so check with the person first when `to` is already a tag. The result says whether it merged.',
+    { tag: z.string().min(1), to: z.string().min(1) },
+    async ({ tag, to }) => {
+      try {
+        return json(await withWrite(() => renameTag(replica, tag, to)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not rename the tag.' });
+      }
+    }
+  );
+
+  server.tool(
     'delete_tag',
     'Delete a tag: take it off every task that has it and out of the tag list, as the Tags screen does. The tasks themselves stay. To take a tag off some tasks only, use batch_update_tasks with their tags.',
     { tag: z.string().min(1) },
@@ -4117,7 +4130,7 @@ function registerWriteTools(
 
   server.tool(
     'plan_meal',
-    'Put a meal on the plan: a recipe (recipeId), a leftover in the fridge (leftoverId, from list_pantry\'s leftovers), or just a title ("Takeout"). The app scales a recipe to the household size it is set to. Planning a leftover does not mark it finished.',
+    'Put a meal on the plan: a recipe (recipeId), a leftover in the fridge (leftoverId, from list_pantry\'s leftovers), or just a title ("Takeout"). The app scales a recipe to the household size it is set to. Planning a recipe takes it off Up next, as the app does. Planning a leftover does not mark it finished.',
     {
       date: dayKey,
       slot: z.enum(KITCHEN_MEAL_SLOTS as unknown as [MealSlot, ...MealSlot[]]),

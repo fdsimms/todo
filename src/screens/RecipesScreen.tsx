@@ -19,6 +19,7 @@ import type { GroceryItem, Recipe, RecipeMealType } from '../types';
 import { RECIPE_MEAL_TYPES, RECIPE_MEAL_TYPE_LABELS } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useSyncStore } from '../store/useSyncStore';
+import { usePantryCatalog } from '../hooks/usePantryCatalog';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRowSelection } from '../hooks/useRowSelection';
 import { ScreenHeader } from '../components/ScreenHeader';
@@ -77,7 +78,6 @@ import {
   recipeListItemKey,
   recipeSectionKey,
   resolveRecipeMealTypeDrop,
-  samePantryCatalog,
   sharedRecipeNameKeys,
   sortRecipesBy,
   type RecipeListItem,
@@ -173,23 +173,6 @@ function AddRecipeFabMenuWithDropLabel({
 } & Omit<React.ComponentProps<typeof FabMenu>, 'dragLabel'>) {
   const label = useFabIntentSelector(channel, recipeDropLabel);
   return <FabMenu {...props} dragLabel={label} />;
-}
-
-/**
- * A grocery store selector for the catalog that keeps handing back the
- * previous array while `samePantryCatalog` says nothing a pantry count reads
- * has changed. zustand's own `useShallow` with that comparison in place of a
- * shallow one, and the same shape: the ref is the selector's memory between
- * renders.
- */
-function usePantryCatalog() {
-  const prev = useRef<GroceryItem[] | null>(null);
-  return (state: { items: GroceryItem[] }): GroceryItem[] => {
-    const next = state.items;
-    if (prev.current !== null && samePantryCatalog(prev.current, next)) return prev.current;
-    prev.current = next;
-    return next;
-  };
 }
 
 /**

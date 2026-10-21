@@ -83,6 +83,12 @@ interface TitleTokenAccessoryProps {
    */
   chips?: readonly TokenChip[];
   onChip?: (chip: TokenChip) => void;
+  /**
+   * Opens the list of everything the field reads ("What can I type?"). Shown
+   * as a "?" with the symbols behind "more", where the row has room for it,
+   * or at the end of the main row on a field with no "more".
+   */
+  onHelp?: () => void;
 }
 
 /**
@@ -112,7 +118,7 @@ interface TitleTokenAccessoryProps {
  * See the `floating` prop's own doc comment for the one field this can't
  * attach to as a real `InputAccessoryView` at all.
  */
-export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisible, floating, focused, tokens = DEFAULT_TITLE_TOKENS, chips, onChip }: TitleTokenAccessoryProps) {
+export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisible, floating, focused, tokens = DEFAULT_TITLE_TOKENS, chips, onChip, onHelp }: TitleTokenAccessoryProps) {
   const colors = useColors();
   // Shows the `more` symbols in place of the main row. A popover can't do
   // this: an InputAccessoryView clips to its own bounds, and a Modal would
@@ -237,6 +243,16 @@ export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisi
             <Text style={styles.tokenText}>{glyph ?? char}</Text>
           </PressableScale>
         ))}
+        {onHelp && (showMore || moreTokens.length === 0) && (
+          <PressableScale
+            style={[styles.tokenBtn, compact && styles.tokenBtnCompact]}
+            haptic
+            onPress={() => { setShowMore(false); onHelp(); }}
+            accessibilityLabel="What can I type?"
+          >
+            <Ionicons name="help-circle-outline" size={iconSize.md} color={colors.text} />
+          </PressableScale>
+        )}
         {!showMore && moreTokens.length > 0 && (
           <PressableScale
             style={[styles.tokenBtn, compact && styles.tokenBtnCompact]}

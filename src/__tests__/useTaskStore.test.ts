@@ -13993,6 +13993,50 @@ describe('deleteTag', () => {
   });
 });
 
+describe('renameTag', () => {
+  // The settings that can name a tag, which the shared default above leaves out.
+  beforeEach(() => {
+    const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as { useSettingsStore: { getState: jest.Mock } };
+    const base = useSettingsStore.getState();
+    useSettingsStore.getState.mockReturnValue({ ...base, titleRules: [], reminderCaptures: [], generatedTaskExtras: {} });
+  });
+
+  it('renames the tag on every task, finished ones included, and in the registry', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', tags: ['errand', 'home'] }),
+        makeTask({ id: 'b', tags: ['errand'], completed: true, completedAt: '2026-01-01T00:00:00.000Z' }),
+        makeTask({ id: 'c', tags: ['home'] }),
+      ],
+      tagRegistry: ['errand', 'home'],
+    });
+    expect(useTaskStore.getState().renameTag('errand', '#Errands')).toBe(true);
+    const tags = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id)?.tags;
+    expect(tags('a')).toEqual(['errands', 'home']);
+    expect(tags('b')).toEqual(['errands']);
+    expect(tags('c')).toEqual(['home']);
+    expect(useTaskStore.getState().tagRegistry).toEqual(['home', 'errands']);
+  });
+
+  it('merges into a tag that already exists without listing it twice', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', tags: ['errand', 'errands'] })],
+      tagRegistry: ['errand', 'errands'],
+    });
+    useTaskStore.getState().renameTag('errand', 'errands');
+    expect(useTaskStore.getState().tasks[0].tags).toEqual(['errands']);
+    expect(useTaskStore.getState().tagRegistry).toEqual(['errands']);
+  });
+
+  it('refuses a blank or unchanged name', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', tags: ['home'] })], tagRegistry: ['home'] });
+    const before = useTaskStore.getState().tasks;
+    expect(useTaskStore.getState().renameTag('home', '  ')).toBe(false);
+    expect(useTaskStore.getState().renameTag('home', 'Home')).toBe(false);
+    expect(useTaskStore.getState().tasks).toBe(before);
+  });
+});
+
 describe('addExistingToProject / removeFromProject', () => {
   it('assigns an existing task to a project', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: null })] });

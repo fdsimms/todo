@@ -16,6 +16,7 @@ import {
   CALENDAR_READ_KINDS,
   GENERATED_KIND_SPECS,
   generatorSwitchedOn,
+  generatorBlockedBy,
   listedGeneratedKinds,
   matchesAutomationQuery,
   type GeneratedKind,
@@ -354,22 +355,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
   // `entryId` is the prerequisite's own row in Settings, which the alert opens:
   // these generators live on Automations, so "turn it on in Settings, then
   // come back" was a trip to another part of the app with no way there.
-  const blockedBy = (kind: GeneratedKind): { setting: string; entryId: string } | null => {
-    if (kind === 'health' && !s.healthReadEnabled) {
-      return { setting: 'Read Apple Health', entryId: 'healthRead' };
-    }
-    if (CALENDAR_READ_KINDS.includes(kind) && !s.calendarReadEnabled) {
-      return { setting: 'Read my calendar', entryId: 'calendarRead' };
-    }
-    // The weigh-in needs both Health switches — see generatorSwitchedOn.
-    if (kind === 'weighIn' && !s.healthReadEnabled) {
-      return { setting: 'Read Apple Health', entryId: 'healthRead' };
-    }
-    if (kind === 'weighIn' && !s.healthWriteEnabled) {
-      return { setting: 'Log to Health', entryId: 'healthWrite' };
-    }
-    return null;
-  };
+  const blockedBy = (kind: GeneratedKind) => generatorBlockedBy(kind, s);
 
   const toggle = (kind: GeneratedKind): void => {
     const blocker = blockedBy(kind);

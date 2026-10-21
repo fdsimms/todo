@@ -5,6 +5,8 @@ import { haptics } from './haptics';
 import { programProgress } from './workoutProgram';
 import { applyLocationGym, defaultGymId } from './gymLocation';
 import { BUTTON_LABEL } from '../copy/shared';
+import { repeatedSets } from './workoutSession';
+import type { WorkoutSet } from '../types';
 
 export interface StartWorkoutInput {
   routineId?: string | null;
@@ -21,6 +23,12 @@ export interface StartWorkoutInput {
    * or program too to be opened rather than refused.
    */
   perWorkout?: boolean;
+  /**
+   * A finished workout to do again, for one with no routine to start: a new
+   * session under its name with its done sets laid out (`repeatedSets`). It
+   * carries no task, since the task it completed is done.
+   */
+  repeat?: { title: string; sets: readonly WorkoutSet[] } | null;
 }
 
 /** What a start did, for a caller that wants to know. */
@@ -75,9 +83,11 @@ export function startWorkout(input: StartWorkoutInput = {}): StartWorkoutResult 
     routineId = programProgress(program, store.sessions, store.routines).nextRoutineId;
     if (!routineId) return 'nothing';
   }
-  const started = store.startSession({
-    routineId, programId: program?.id ?? null, taskId: input.taskId ?? null, gymId: defaultGymId(),
-  });
+  const started = input.repeat && !routineId
+    ? store.startSession({ title: input.repeat.title, planned: repeatedSets(input.repeat.sets), gymId: defaultGymId() })
+    : store.startSession({
+      routineId, programId: program?.id ?? null, taskId: input.taskId ?? null, gymId: defaultGymId(),
+    });
   if (typeof started === 'string') return 'nothing';
   // The workout opens at once at the gym last used; where the phone is follows
   // in a moment and moves it, so a slow fix never holds the start back.

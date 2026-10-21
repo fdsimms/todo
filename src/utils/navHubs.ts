@@ -56,6 +56,8 @@ export interface NavContentCounts {
   meters?: number;
   /** Workouts, custom exercises, routines and programs: the Workouts screen's content. */
   workouts?: number;
+  /** Saved views: the Saved views screen's content. */
+  savedViews?: number;
 }
 
 export type NavHubId = 'kitchen' | 'organize' | 'history' | 'health';
@@ -152,6 +154,10 @@ const ORGANIZE_HUB: NavHub = {
     { route: 'Meters', label: 'Meters', icon: 'speedometer-outline', keywords: ['odometer', 'mileage', 'miles', 'usage', 'readings', 'hours', 'counter', 'oil change'] },
     { route: 'Stacks', label: 'Stacks', icon: 'layers-outline', keywords: ['groups', 'routines', 'bundles'] },
     { route: 'Templates', label: 'Templates', icon: 'copy-outline', keywords: ['presets', 'checklists', 'reusable'] },
+    // A funnel, because that is the idea and that is where views are made:
+    // Today's filter sheet. A member rather than a row of its own, since a
+    // view is a way of organizing tasks the way a tag is.
+    { route: 'SavedViews', label: 'Saved views', icon: 'funnel-outline', keywords: ['filter', 'filters', 'lens', 'preset', 'smart list', 'saved search'] },
   ],
 };
 
@@ -429,19 +435,9 @@ export interface NavSearchResult extends NavDestination {
  * would otherwise be invisible to somebody who knows it exists and is looking
  * for it.
  *
- * Saved views is a RootStack card rather than a tab, so opening it leaves the
- * tab highlight where it was — see PUSHED_ROUTES in AppNavigator. Cookbooks
- * is a tab route with no row, so it highlights nothing either.
+ * Cookbooks is a tab route with no row, so opening it highlights nothing.
  */
 export const NAV_EXTRA_DESTINATIONS: readonly NavDestination[] = [
-  {
-    route: 'SavedViews',
-    // A funnel, because that is the idea and that is where it is reached from:
-    // Today's filter sheet.
-    icon: 'funnel-outline',
-    label: 'Saved views',
-    keywords: ['filter', 'filters', 'lens', 'preset', 'smart list', 'saved search'],
-  },
   {
     // Otherwise reached only from an icon in the Recipes header.
     route: 'Cookbooks',
@@ -672,4 +668,117 @@ export function recentMenuDestinations(
 export function hubEntryRoute(hub: NavHub, recent: readonly string[]): string {
   const visited = recent.find(route => hub.members.some(m => m.route === route));
   return visited ?? hub.members[0].route;
+}
+
+// ==== arranging the menu ====
+
+/**
+ * The rows somebody has pinned to the top of the menu or hidden from it, by
+ * `menuRowKey`, pins in the order they were pinned. Device-local, like
+ * `tabRoutes`: how this phone's menu is laid out.
+ */
+export interface MenuArrangement {
+  pinned: string[];
+  hidden: string[];
+}
+
+export const EMPTY_MENU_ARRANGEMENT: MenuArrangement = { pinned: [], hidden: [] };
+
+/** A row's stable name: its route, or its hub's id. */
+export function menuRowKey(row: NavMenuRow): string {
+  return row.kind === 'screen' ? `screen:${row.destination.route}` : `hub:${row.hub.id}`;
+}
+
+export function parseMenuArrangement(raw: string | null): MenuArrangement {
+  if (!raw) return EMPTY_MENU_ARRANGEMENT;
+  try {
+    const value = JSON.parse(raw) as Partial<MenuArrangement>;
+    const strings = (list: unknown): string[] =>
+      Array.isArray(list) ? [...new Set(list.filter((k): k is string => typeof k === 'string'))] : [];
+    return { pinned: strings(value.pinned), hidden: strings(value.hidden) };
+  } catch {
+    return EMPTY_MENU_ARRANGEMENT;
+  }
+}
+
+/**
+ * The menu as it's drawn: pinned rows first in the order they were pinned,
+ * then the rest in their own order, with hidden ones set apart rather than
+ * dropped so the menu can offer them back. A plain row for a screen that is
+ * already a tab (`tabRoutes`) is left out, the rule the Recent row follows,
+ * since the tab bar is a tap away; a hub always stays. The sidebar has no tab
+ * bar and passes none.
+ */
+export function arrangeMenuRows(
+  rows: readonly NavMenuRow[],
+  arrangement: MenuArrangement,
+  tabRoutes: readonly string[] = [],
+): { shown: NavMenuRow[]; hidden: NavMenuRow[] } {
+  const live = rows.filter(r => r.kind === 'hub' || !tabRoutes.includes(r.destination.route));
+  const hiddenKeys = new Set(arrangement.hidden);
+  const hidden = live.filter(r => hiddenKeys.has(menuRowKey(r)));
+  const visible = live.filter(r => !hiddenKeys.has(menuRowKey(r)));
+  const pinRank = new Map(arrangement.pinned.map((k, i) => [k, i]));
+  const pinned = visible
+    .filter(r => pinRank.has(menuRowKey(r)))
+    .sort((a, b) => pinRank.get(menuRowKey(a))! - pinRank.get(menuRowKey(b))!);
+  const rest = visible.filter(r => !pinRank.has(menuRowKey(r)));
+  return { shown: [...pinned, ...rest], hidden };
+}
+
+/** Pins a row to the top, or unpins one already there. */
+export function toggleMenuPin(arrangement: MenuArrangement, key: string): MenuArrangement {
+  return arrangement.pinned.includes(key)
+    ? { ...arrangement, pinned: arrangement.pinned.filter(k => k !== key) }
+    : { ...arrangement, pinned: [...arrangement.pinned, key] };
+}
+
+/** Hides a row, or shows a hidden one again. Hiding a pinned row unpins it. */
+export function toggleMenuHidden(arrangement: MenuArrangement, key: string): MenuArrangement {
+  return arrangement.hidden.includes(key)
+    ? { ...arrangement, hidden: arrangement.hidden.filter(k => k !== key) }
+    : { pinned: arrangement.pinned.filter(k => k !== key), hidden: [...arrangement.hidden, key] };
+}
+
+/** An area switched off in Feature areas, and the settings row that turns it back on. */
+export interface SwitchedOffArea {
+  label: string;
+  settingId: 'kitchenEnabled' | 'workoutsEnabled';
+}
+
+/**
+ * The switched-off areas a menu search would have found a screen in. "gym"
+ * with Workouts off otherwise reads as an app that has no workouts, since the
+ * switch takes the screen out of the index along with the menu.
+ */
+export function switchedOffMatches(options: NavMenuOptions, terms: readonly string[]): SwitchedOffArea[] {
+  if (terms.length === 0) return [];
+  const found = new Set(searchMenu(menuDestinations(options), [...terms]).map(d => d.route));
+  const opensUp = (flipped: NavMenuOptions) =>
+    searchMenu(menuDestinations(flipped), [...terms]).some(d => !found.has(d.route));
+  const areas: SwitchedOffArea[] = [];
+  if (!options.workoutsEnabled && opensUp({ ...options, workoutsEnabled: true })) {
+    areas.push({ label: 'Workouts', settingId: 'workoutsEnabled' });
+  }
+  if (!options.kitchenEnabled && opensUp({ ...options, kitchenEnabled: true })) {
+    areas.push({ label: 'Groceries & meals', settingId: 'kitchenEnabled' });
+  }
+  return areas;
+}
+
+/**
+ * The name the menu gives a route (a row's label, or a hub member's), for a
+ * back row that says where it goes. The route itself when the menu doesn't
+ * name it, and "Today" for the first tab, which has no row.
+ */
+export function menuLabelFor(route: string): string {
+  if (route === 'Today') return 'Today';
+  for (const row of NAV_MENU_ROWS) {
+    if (row.kind === 'screen' && row.destination.route === route) return row.destination.label;
+    if (row.kind === 'hub') {
+      const member = row.hub.members.find(m => m.route === route);
+      if (member) return member.label;
+    }
+  }
+  return NAV_EXTRA_DESTINATIONS.find(d => d.route === route)?.label ?? route;
 }

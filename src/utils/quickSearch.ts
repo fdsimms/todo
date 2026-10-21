@@ -44,6 +44,8 @@ export interface QuickSearchOutcome {
   total: number;
   /** How many matches the card isn't showing, i.e. what the cap cut. */
   overflow: number;
+  /** How many of `results` match by title rather than by scattered letters or notes. */
+  strongTaskCount: number;
 }
 
 /**
@@ -143,6 +145,7 @@ export function quickSearch(
   const keptStrongGroups = take(strongGroups);
   const keptStrongProjects = take(strongProjects);
   const results = take(orderedTasks);
+  const strongTaskCount = results.filter(strongTask).length;
   const keptWeakGroups = take(weakGroups);
   const keptWeakProjects = take(weakProjects);
   const groupResults = [...keptStrongGroups, ...keptWeakGroups];
@@ -156,5 +159,6 @@ export function quickSearch(
     results,
     total,
     overflow: total - shown,
+    strongTaskCount,
   };
 }

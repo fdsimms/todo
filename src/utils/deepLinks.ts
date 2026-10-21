@@ -16,6 +16,7 @@ import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { haptics } from './haptics';
 import { normalizeLinkToken } from './nfcKey';
 import { requestDismissAllSheets } from './sheetModal';
+import { openScreenByName, openSettingsEntryById } from '../navigation/openScreen';
 import {
   resetToToday,
   resetToGroceries,
@@ -548,14 +549,49 @@ export function journalUrlEntryId(url: string): string | null {
   return (parseQuery(match[2] ?? '').entry ?? '').trim() || null;
 }
 
-// `dundundun://foodlog` — the Today widget's food log shortcut, the peer of
-// `groceries`/`mealplan`/`kitchen`: a plain "open this screen" link with no
-// query params, since nothing writes this one asking for a specific entry or
-// sheet the way a task's own links do.
-const FOOD_LOG_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?foodlog\\/?$`, 'i');
+// `dundundun://foodlog[?add=1]` — the Today widget's food log shortcut, the
+// peer of `groceries`/`mealplan`/`kitchen`. `add=1` opens the add sheet on
+// arrival, the mood link's `log=1`, so the widget's button lands on the thing
+// it's for rather than on the diary.
+const FOOD_LOG_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?foodlog\\/?(?:\\?(.*))?$`, 'i');
 
 export function isFoodLogUrl(url: string): boolean {
   return typeof url === 'string' && FOOD_LOG_RE.test(url.trim());
+}
+
+/** Does a food log link ask for the add sheet on arrival? */
+export function foodLogUrlWantsAdd(url: string): boolean {
+  if (typeof url !== 'string') return false;
+  const match = FOOD_LOG_RE.exec(url.trim());
+  if (!match) return false;
+  const value = (parseQuery(match[1] ?? '').add ?? '').trim();
+  return value === '1' || value.toLowerCase() === 'true';
+}
+
+// `dundundun://open?screen=<name>` — any screen the menu offers, by its route
+// or its label ("FoodLog", "food log"), for a Shortcut, a Focus filter or a
+// link someone keeps in a note. Which screens are reachable is the menu's call
+// (`resolveScreen`), made when the link lands.
+const OPEN_SCREEN_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?open\\/?(?:\\?(.*))?$`, 'i');
+
+/** The screen an `open` link names, or null for any other link or a missing name. */
+export function openUrlScreen(url: string): string | null {
+  if (typeof url !== 'string') return null;
+  const match = OPEN_SCREEN_RE.exec(url.trim());
+  if (!match) return null;
+  return (parseQuery(match[1] ?? '').screen ?? '').trim() || null;
+}
+
+// `dundundun://settings?entry=<id>` — one Settings row, highlighted where it
+// lives, by its id in `settingsIndex.ts` ("darkMode", "vacationMode").
+const SETTINGS_ENTRY_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?settings\\/?(?:\\?(.*))?$`, 'i');
+
+/** The Settings row a `settings` link names, or null. */
+export function settingsUrlEntry(url: string): string | null {
+  if (typeof url !== 'string') return null;
+  const match = SETTINGS_ENTRY_RE.exec(url.trim());
+  if (!match) return null;
+  return (parseQuery(match[1] ?? '').entry ?? '').trim() || null;
 }
 
 // `dundundun://medications` — the Medications widget's tap, the same plain
@@ -900,9 +936,13 @@ export function openInAppUrl(url: string | null | undefined): boolean {
     return true;
   }
   if (isFoodLogUrl(url)) {
-    resetToFoodLog();
+    resetToFoodLog(foodLogUrlWantsAdd(url));
     return true;
   }
+  const screen = openUrlScreen(url);
+  if (screen) return openScreenByName(screen);
+  const settingsEntry = settingsUrlEntry(url);
+  if (settingsEntry) return openSettingsEntryById(settingsEntry);
   if (isMedicationsUrl(url)) {
     resetToMedications();
     return true;

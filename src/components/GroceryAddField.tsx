@@ -22,7 +22,7 @@ import {
 import { entryFor, trolleyStateFor } from '../utils/groceryLists';
 import { reAddNotice } from '../utils/groceryAdd';
 import { useGroceryStore } from '../store/useGroceryStore';
-import { correctableHaveReason, rankGrocerySuggestions } from '../utils/grocerySuggest';
+import { buyAgainItems, correctableHaveReason, rankGrocerySuggestions } from '../utils/grocerySuggest';
 import { InlineAction } from './InlineAction';
 import { resolveGroceryTokens, splitAlternativeNames } from '../utils/groceryParse';
 import { haptics } from '../utils/haptics';
@@ -223,6 +223,13 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
     // went quiet for anybody who types the amount first.
     () => (focused ? rankGrocerySuggestions(tokens?.name || text, items, new Date(), 5, inTrolley) : []),
     [focused, text, tokens, items, inTrolley]
+  );
+
+  // With nothing typed, what you usually buy and haven't put on yet, so the
+  // common add is a tap rather than a name typed from memory.
+  const buyAgain = useMemo(
+    () => (focused && !text.trim() ? buyAgainItems(items, new Date(), 5, inTrolley) : []),
+    [focused, text, items, inTrolley]
   );
 
   // "pepper or thyme" wants to be two rows on the list, not one catalog entry
@@ -501,7 +508,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
     !!tokens && (tokens.quantityAccepted || tokens.prepAccepted || tokens.purposeAccepted);
   const hasResults =
     hasTokenChips || !!alternatives || !!status || !!pantryOffer || !!cartOffer
-    || suggestions.length > 0;
+    || suggestions.length > 0 || buyAgain.length > 0;
 
   // `results` is pinned off the bottom of everything static above it — see
   // fieldHeightAt's own note. The toolbar is there unless simplified mode took
@@ -792,6 +799,35 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
         </View>
       )}
 
+      {buyAgain.length > 0 && (
+        <View style={styles.matches}>
+          <Text style={styles.buyAgainLabel}>BUY AGAIN</Text>
+          <ScrollView keyboardShouldPersistTaps="handled" bounces={false} style={styles.matchesScroll}>
+            {buyAgain.map(item => (
+              <TouchableOpacity
+                key={item.id}
+                style={styles.suggestion}
+                activeOpacity={interaction.activeOpacity}
+                onPress={() => commit(item.name, {
+                  name: item.name,
+                  quantity: null,
+                  note: null,
+                  brand: brand.trim() || null,
+                  variant: variant.trim() || null,
+                })}
+                accessibilityRole="button"
+                accessibilityLabel={[`Add ${item.name}`, item.aisle].filter(Boolean).join(', ')}
+              >
+                <View style={styles.suggestionBody}>
+                  <Text style={styles.suggestionName} numberOfLines={1}>{item.name}</Text>
+                </View>
+                <Text style={styles.suggestionAisle} numberOfLines={1}>{item.aisle}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
       {suggestions.length > 0 && (
         <View style={styles.matches}>
           <ScrollView keyboardShouldPersistTaps="handled" bounces={false} style={styles.matchesScroll}>
@@ -1056,6 +1092,15 @@ function makeStyles(colors: Colors, textScaleFactor = 1) {
     suggestionBody: {
       flex: 1,
       gap: 1,
+    },
+    buyAgainLabel: {
+      fontSize: font.xs,
+      fontWeight: fontWeight.semibold,
+      color: colors.textSecondary,
+      letterSpacing: 0.8,
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.sm,
+      paddingBottom: spacing.xs,
     },
     suggestionName: {
       fontSize: font.md,

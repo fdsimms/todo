@@ -395,6 +395,15 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return changed;
     },
 
+    renameTag(tag, newName) {
+      const result = replica.renameTag(tag, newName);
+      for (const { before, after } of result.changed) {
+        log({ action: 'edited', subject: 'task', title: after.title, taskId: after.id, note: `Rename the tag "${result.from}" to "${result.to}" on "${after.title}"`, revert: taskRevert(before, after) });
+      }
+      if (result.changed.length === 0) log({ action: 'edited', subject: 'task', title: result.to, taskId: null, note: `Rename the unused tag "${result.from}" to "${result.to}"` });
+      return result;
+    },
+
     setCompletedAt(id, at) {
       const before = snapshot(id);
       const task = replica.setCompletedAt(id, at);

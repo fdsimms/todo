@@ -3,9 +3,11 @@ import { useWithoutLockedTasks } from '../hooks/useWithoutLockedTasks';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
-import { DetailHeader } from '../components/DetailHeader';
+import { ScreenHeader } from '../components/ScreenHeader';
+import { HubPills } from '../components/HubPills';
 import { ReorderableList } from '../components/ReorderableList';
 import { EmptyState } from '../components/EmptyState';
 import { SavedViewEditorSheet } from '../components/SavedViewEditorSheet';
@@ -39,6 +41,7 @@ import { useFabBottom } from '../components/Fab';
  */
 export function SavedViewsScreen() {
   const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
   const fabBottom = useFabBottom();
   const navigation = useNavigation();
   const colors = useColors();
@@ -80,28 +83,22 @@ export function SavedViewsScreen() {
   };
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top + spacing.md }]}>
-      <DetailHeader
+    <View style={[styles.root, { paddingTop: insets.top }]}>
+      {/* A member of the Organize hub (a tab screen), so its pills rather than
+          a back button: views are a way of organizing tasks, like tags. */}
+      <ScreenHeader
         title="Saved views"
-        onBack={() => navigation.goBack()}
-        actions={
-          <TouchableOpacity
-            onPress={handleCreate}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            accessibilityRole="button"
-            accessibilityLabel="New saved view"
-          >
-            <Ionicons name="add" size={24} color={colors.accent} />
-          </TouchableOpacity>
-        }
+        subtitle={views.length > 0 ? `${views.length} ${views.length === 1 ? 'view' : 'views'}` : undefined}
+        actions={[{ icon: 'add', onPress: handleCreate, accessibilityLabel: 'New saved view' }]}
       />
+      <HubPills hub="organize" active="SavedViews" />
 
       <ReorderableList
         data={views}
         keyExtractor={v => v.id}
         onReorder={handleReorder}
         scrollToTop={{ bottom: fabBottom }}
-        contentContainerStyle={[styles.listContent, views.length === 0 && styles.emptyContent]}
+        contentContainerStyle={[styles.listContent, { paddingBottom: tabBarHeight + spacing.xl }, views.length === 0 && styles.emptyContent]}
         renderItem={({ item, drag, isActive }) => {
           const count = counts.get(item.id) ?? 0;
           return (

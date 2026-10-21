@@ -77,3 +77,19 @@ export function resolveTemplateDrop(reordered: TemplateListItem[], categoryOrder
   const settled = groupTemplatesByCategory(orderedTemplates, categoryOrder);
   return { templateIds, categoryUpdates, settled };
 }
+
+/**
+ * Whether a template answers the Templates list's search. Every word has to
+ * appear in its name, its category or one of its items' titles, so "passport"
+ * finds the packing list that holds it. Order is left alone, the way
+ * `projectMatchesQuery` leaves it: a list that re-ranks as you type is one you
+ * can't find your place in.
+ */
+export function templateMatchesQuery(template: TaskTemplate, query: string): boolean {
+  const words = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return true;
+  const haystack = [template.name, template.category ?? '', ...template.items.map(i => i.title)]
+    .join('\n')
+    .toLocaleLowerCase();
+  return words.every(w => haystack.includes(w));
+}

@@ -482,6 +482,41 @@ export function plannedSetsFor(
   return [...warmups, ...planned];
 }
 
+/** A planned set at the place a new session gives it. */
+export interface PlacedPlannedSet {
+  exerciseId: string;
+  position: number;
+  setIndex: number;
+  values: PlannedSetValues;
+}
+
+/**
+ * A finished workout laid out again, for doing one with no routine behind it
+ * a second time: the sets it did, in its order, at the numbers it did them.
+ * Only done sets, since a planned set nobody ticked was never part of the
+ * workout, and warm-ups too, since they were done. Places are numbered from
+ * zero, so an exercise that was removed leaves no gap.
+ */
+export function repeatedSets(sets: readonly WorkoutSet[]): PlacedPlannedSet[] {
+  const out: PlacedPlannedSet[] = [];
+  sessionExercises(sets.filter(s => s.completedAt !== null)).forEach((ex, position) => {
+    ex.sets.forEach((s, setIndex) => out.push({
+      exerciseId: ex.exerciseId,
+      position,
+      setIndex,
+      values: {
+        kind: s.kind,
+        weightKg: s.weightKg,
+        reps: s.reps,
+        durationSeconds: s.durationSeconds,
+        distanceM: s.distanceM,
+        supersetKey: s.supersetKey,
+      },
+    }));
+  });
+  return out;
+}
+
 /**
  * The sets an exercise added mid-session lays out: last time's again, as
  * planned, or one empty working set for an exercise never done before.

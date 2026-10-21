@@ -216,6 +216,20 @@ describe('applyTemplateRun', () => {
     });
   });
 
+  describe('a run started as a new project', () => {
+    it('creates a project for a stack template, and nothing for an unnamed run', () => {
+      const tpl = makeTemplate({ items: [item('a', 'Pack')], applyContainer: 'stack' });
+      const named = makeSink();
+      applyTemplateRun(tpl, byId(tpl), select('a'), NO_ANCHORS, { runName: 'Japan', asProject: true }, named.sink);
+      expect(named.calls.createProject.map(p => p.title)).toEqual(['Japan']);
+      expect(named.calls.createStack).toEqual([]);
+
+      const unnamed = makeSink();
+      applyTemplateRun(tpl, byId(tpl), select('a'), NO_ANCHORS, { asProject: true }, unnamed.sink);
+      expect(unnamed.calls.createProject).toEqual([]);
+    });
+  });
+
   describe('an existing project', () => {
     it('lands the run in the target project as a stack rather than creating a second project', () => {
       const tpl = makeTemplate({

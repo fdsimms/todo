@@ -8,6 +8,8 @@ interface Props {
   activeTab: string;
   onNavigate: (route: string) => void;
   onOpenSettings: () => void;
+  onOpenSettingsEntry?: (entryId: string) => void;
+  onSearchEverything?: (query: string) => void;
 }
 
 /**
@@ -17,7 +19,7 @@ interface Props {
  * nothing in the menu can exist in one and not the other. Narrower windows
  * keep the drawer and the tab bar.
  */
-export function Sidebar({ activeTab, onNavigate, onOpenSettings }: Props) {
+export function Sidebar({ activeTab, onNavigate, onOpenSettings, onOpenSettingsEntry, onSearchEverything }: Props) {
   const colors = useColors();
   return (
     <View
@@ -32,6 +34,8 @@ export function Sidebar({ activeTab, onNavigate, onOpenSettings }: Props) {
         activeTab={activeTab}
         onNavigate={onNavigate}
         onOpenSettings={onOpenSettings}
+        onOpenSettingsEntry={onOpenSettingsEntry}
+        onSearchEverything={onSearchEverything}
       />
     </View>
   );
