@@ -180,8 +180,9 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
   // the roster ("8 tasks", in the editor) and today's work are different
   // numbers, and a bare "3/8" pill doesn't say which one it means.
   const nextUp = dueToday.find(c => !c.completed);
-  const summary = totalToday === 0 || filtered ? null
-    : `${doneToday} of ${totalToday} done${tallyScope === 'today' ? ' today' : ''}${nextUp && !group.hideNextStep ? ` · Next: ${nextUp.title}` : ''}`;
+  // The count is the badge's job; spelling it out here again was redundant.
+  const summary = totalToday === 0 || filtered || !nextUp || group.hideNextStep ? null
+    : `Next: ${nextUp.title}`;
   const showTally = totalToday > 0 && !filtered;
 
   const completeAll = () => {
