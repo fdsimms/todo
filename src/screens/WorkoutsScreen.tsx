@@ -343,12 +343,19 @@ export function WorkoutsScreen() {
       if (g.routines.length === 0) out.push({ kind: 'empty', key: `empty:${g.name}`, group: g.name });
       for (const routine of g.routines) out.push({ kind: 'routine', key: routine.id, routine });
     }
-    if (sections.archived.length > 0) {
-      out.push({ kind: 'archivedHeader', key: 'archived', count: sections.archived.length, open: archivedOpen });
-      if (archivedOpen) for (const routine of sections.archived) out.push({ kind: 'routine', key: routine.id, routine });
-    }
     return out;
-  }, [sections, foldedGroups, archivedOpen]);
+  }, [sections, foldedGroups]);
+
+  // Archived sits under the buttons, outside the draggable list: it is rarely
+  // opened and its rows are never dragged.
+  const archivedItems = useMemo<RoutineListItem[]>(() => {
+    if (sections.archived.length === 0) return [];
+    const out: RoutineListItem[] = [
+      { kind: 'archivedHeader', key: 'archived', count: sections.archived.length, open: archivedOpen },
+    ];
+    if (archivedOpen) for (const routine of sections.archived) out.push({ kind: 'routine', key: routine.id, routine });
+    return out;
+  }, [sections.archived, archivedOpen]);
 
   const toggleHeader = useCallback((item: RoutineHeaderItem | RoutineArchivedHeaderItem) => {
     haptics.tap();
@@ -366,12 +373,6 @@ export function WorkoutsScreen() {
         : { kind: 'other' }
     ));
     useWorkoutStore.getState().arrangeRoutines(placementsFromList(flat));
-  }, []);
-
-  // A live routine can move anywhere above the Archived heading, and no further.
-  const routineDragRange = useCallback((data: RoutineListItem[]): [number, number] => {
-    const archivedAt = data.findIndex(i => i.kind === 'archivedHeader');
-    return [0, (archivedAt === -1 ? data.length : archivedAt) - 1];
   }, []);
 
   const fitLine = useCallback(
@@ -629,9 +630,17 @@ export function WorkoutsScreen() {
   ) : null;
 
   const routineActions = (
-    <View style={styles.actions}>
-      <InlineAction icon="add" label="New routine" surface="page" onPress={() => openEditor(null)} />
-    </View>
+    <>
+      <View style={styles.actions}>
+        <InlineAction icon="add" label="New routine" surface="page" onPress={() => openEditor(null)} />
+        {!live && (
+          <InlineAction variant="neutral" label="Start empty workout" surface="page" onPress={() => startWorkout()} />
+        )}
+      </View>
+      {archivedItems.map(entry => (
+        <React.Fragment key={entry.key}>{renderRoutine({ item: entry, drag: () => {} })}</React.Fragment>
+      ))}
+    </>
   );
 
   return (
@@ -694,7 +703,6 @@ export function WorkoutsScreen() {
             keyExtractor={r => r.key}
             renderItem={({ item, drag }) => renderRoutine({ item, drag })}
             onReorder={commitArrangement}
-            dragRange={routineDragRange}
             placeholderStyle={styles.dropSlot}
             refreshControl={pullSearch.refreshControl}
             contentContainerStyle={[styles.list, listBottom]}
