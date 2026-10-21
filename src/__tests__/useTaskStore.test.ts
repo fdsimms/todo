@@ -10083,13 +10083,14 @@ describe('markMissed', () => {
     expect(next.recurrenceCount).toBe(4);
   });
 
-  it('does nothing on a non-recurring task — there is no next occurrence to move to', () => {
+  it('closes a one-off task as missed with no successor', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1', recurrenceType: 'none' })] });
     useTaskStore.getState().markMissed('t1');
     const tasks = useTaskStore.getState().tasks;
     expect(tasks).toHaveLength(1);
-    expect(tasks[0].completed).toBe(false);
-    expect(tasks[0].missedAt).toBeNull();
+    expect(tasks[0].completed).toBe(true);
+    expect(tasks[0].missedAt).not.toBeNull();
+    expect(tasks[0].doneByOtherAt ?? null).toBeNull();
   });
 
   it('does nothing on an already-closed row', () => {
@@ -10161,9 +10162,10 @@ describe('markMissed', () => {
     expect(tasks[0].missedAt).toBeNull();
   });
 
-  it('still does nothing on a plain generated task that is neither recurring nor a meal-plan task', () => {
+  it('still does nothing on a meal-plan task whose own day has not come', () => {
     useTaskStore.setState({ tasks: [makeTask({
-      id: 't1', recurrenceType: 'none', generatedKind: 'groceryUseUp', generatedSourceId: 'g-1',
+      id: 't1', recurrenceType: 'none', generatedKind: 'mealSlot', generatedSourceId: 'g-1',
+      dueDate: new Date(2025, 5, 20, 9, 0, 0).toISOString(),
     })] });
     useTaskStore.getState().markMissed('t1');
     const tasks = useTaskStore.getState().tasks;
@@ -12081,9 +12083,9 @@ describe('bulkMarkMissed', () => {
 
   // Same per-task guard as markMissed itself — a mixed selection just skips
   // whatever doesn't qualify rather than needing its own filtering here.
-  it('skips non-recurring tasks in a mixed selection', () => {
+  it('skips tasks that are already closed in a mixed selection', () => {
     useTaskStore.setState({
-      tasks: [recurring('a'), makeTask({ id: 'b', recurrenceType: 'none' })],
+      tasks: [recurring('a'), makeTask({ id: 'b', recurrenceType: 'none', completed: true, completedAt: new Date().toISOString() })],
     });
     useTaskStore.getState().bulkMarkMissed(['a', 'b']);
     expect(useTaskStore.getState().lastAction?.label).toBe('1 task marked missed');
@@ -12110,7 +12112,7 @@ describe('bulkMarkMissed', () => {
   });
 
   it('leaves no undo when nothing in the selection qualified', () => {
-    useTaskStore.setState({ tasks: [makeTask({ id: 'a', recurrenceType: 'none' })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', recurrenceType: 'none', completed: true, completedAt: new Date().toISOString() })] });
     useTaskStore.getState().bulkMarkMissed(['a']);
     expect(useTaskStore.getState().lastAction).toBeNull();
   });
@@ -18132,7 +18134,7 @@ describe('Task.logSavedMealId logs a named food when the task is completed', () 
 
   beforeEach(() => {
     addEntry = jest.fn().mockReturnValue({ id: 'e-1' });
-    removeEntriesForTask = jest.fn();
+    removeEntriesForTask = jest.fn(() => []);
     useFoodLogStore.setState({ pendingMealLog: null, pendingManualMealLog: null, addEntry, removeEntriesForTask });
     useSavedMealsStore.setState({ meals: [metamucil] });
   });
@@ -20777,6 +20779,19 @@ describe('a task that records a dose', () => {
     expect(useMedicationStore.getState().logs).toHaveLength(1);
     useTaskStore.getState().uncompleteTask('t1');
     expect(useMedicationStore.getState().logs).toHaveLength(0);
+  });
+
+  it('puts the dose back when the unticking is undone', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', medicationName: 'Vitamin D' })],
+    });
+    useTaskStore.getState().completeTask('t1');
+    const dose = useMedicationStore.getState().logs[0];
+    useTaskStore.getState().uncompleteTask('t1');
+    expect(useMedicationStore.getState().logs).toHaveLength(0);
+    useTaskStore.getState().lastAction?.undo();
+    expect(useTaskStore.getState().tasks.find(t => t.id === 't1')?.completed).toBe(true);
+    expect(useMedicationStore.getState().logs).toEqual([dose]);
   });
 
   it('carries the medication onto the next occurrence', () => {

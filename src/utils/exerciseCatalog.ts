@@ -208,16 +208,16 @@ export function searchExercises(
   return results.sort((a, b) => b.score - a.score || byName(a.exercise, b.exercise));
 }
 
-/** The muscles at least one exercise on offer trains as a primary mover, in the app's order: a filter's options. */
+/** The muscles at least one exercise on offer trains as a primary mover, A to Z by label: a filter's options. */
 export function muscleFilterOptions(rows: readonly Exercise[]): MuscleGroup[] {
   const used = new Set(activeExercises(rows).flatMap(e => e.primaryMuscles));
-  return MUSCLE_GROUPS.filter(m => used.has(m));
+  return MUSCLE_GROUPS.filter(m => used.has(m)).sort((a, b) => MUSCLE_LABELS[a].localeCompare(MUSCLE_LABELS[b]));
 }
 
-/** The equipment at least one exercise on offer uses, in the app's order: a filter's options. */
+/** The equipment at least one exercise on offer uses, A to Z by label: a filter's options. */
 export function equipmentFilterOptions(rows: readonly Exercise[]): ExerciseEquipment[] {
   const used = new Set(activeExercises(rows).map(e => e.equipment));
-  return EXERCISE_EQUIPMENT.filter(q => used.has(q));
+  return EXERCISE_EQUIPMENT.filter(q => used.has(q)).sort((a, b) => EQUIPMENT_LABELS[a].localeCompare(EQUIPMENT_LABELS[b]));
 }
 
 /** "Chest, Triceps · Barbell": what an exercise trains and what with, for a row's second line. */

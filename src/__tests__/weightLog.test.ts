@@ -11,6 +11,7 @@ import {
   weightPlotPoints,
   weightReadings,
   weightSegments,
+  weightTicks,
   weightTrendPoints,
   weightTrendSegments,
   type WeightPoint,
@@ -363,5 +364,28 @@ describe('weightDomain with a weight to make room for', () => {
   it('ignores a target that is not a number', () => {
     const points = series([80, 81]);
     expect(weightDomain(points, NaN)).toEqual(weightDomain(points));
+  });
+});
+
+describe('weightTicks', () => {
+  const inLb = (ticks: number[]) => ticks.map(t => Math.round(kgToUnit(t, 'lb')));
+
+  it('lands on round pounds inside the domain', () => {
+    const domain = { min: unitToKg(179.8, 'lb'), max: unitToKg(205.8, 'lb') };
+    expect(inLb(weightTicks(domain, 'lb'))).toEqual([180, 185, 190, 195, 200, 205]);
+  });
+
+  it('lands on round kilograms for a metric reader', () => {
+    expect(weightTicks({ min: 71.2, max: 80.4 }, 'kg')).toEqual([72, 74, 76, 78, 80]);
+  });
+
+  it('coarsens the step for a wide domain and never exceeds six lines', () => {
+    const ticks = weightTicks({ min: 50, max: 150 }, 'kg');
+    expect(ticks.length).toBeLessThanOrEqual(6);
+    expect(ticks).toEqual([60, 80, 100, 120, 140]);
+  });
+
+  it('draws nothing for an empty span', () => {
+    expect(weightTicks({ min: 70, max: 70 }, 'kg')).toEqual([]);
   });
 });

@@ -3,15 +3,18 @@ import { View, Text, StyleSheet, PanResponder, type GestureResponderEvent, type 
 import Svg, { Circle, Line, Polyline } from 'react-native-svg';
 import { format } from 'date-fns/format';
 import { useColors } from '../theme/ThemeContext';
+import { useGuideGutter } from './ChartGuides';
 import { spacing, font, fontWeight, radius, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { dayKeyToDate } from '../utils/dateUtils';
 import {
   formatWeight,
+  kgToUnit,
   weightDomain,
   weightFraction,
   weightPlotPoints,
   weightSegments,
+  weightTicks,
   weightTrendPoints,
   weightTrendSegments,
   type WeightPoint,
@@ -79,6 +82,9 @@ import type { PacePlotPoint } from '../utils/weightGoal';
  */
 
 const CHART_HEIGHT = 160;
+/** Width of the weight labels beside the plot at the default text size; scaled with the text. */
+const GUIDE_LABEL_WIDTH = 48;
+const TICK_LABEL_HEIGHT = 16;
 const DOT_RADIUS = 2.5;
 /** Keeps a dot at the very top or bottom of the domain from being clipped. */
 const VERTICAL_INSET = DOT_RADIUS + 1;
@@ -136,8 +142,10 @@ export function WeightChart({ points, unit, targetKg, pacePoints, onScrubChange 
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [width, setWidth] = useState(0);
+  const gutter = useGuideGutter(GUIDE_LABEL_WIDTH);
 
   const domain = useMemo(() => weightDomain(points, targetKg), [points, targetKg]);
+  const ticks = useMemo(() => (domain ? weightTicks(domain, unit) : []), [domain, unit]);
   const segments = useMemo(() => weightSegments(points), [points]);
   const trendSegments = useMemo(() => weightTrendSegments(points), [points]);
   // One entry per actual reading, in step with each other (both built from the
@@ -172,7 +180,7 @@ export function WeightChart({ points, unit, targetKg, pacePoints, onScrubChange 
   // A single-day window has no span to divide by, so its one reading is drawn
   // in the middle rather than at x=0 with a NaN beside it.
   const lastIndex = Math.max(1, points.length - 1);
-  const xFor = (index: number) => (index / lastIndex) * width;
+  const xFor = (index: number) => gutter + (index / lastIndex) * Math.max(width - gutter, 0);
 
   // The scrubbed reading, by its position in `plotPoints`/`trendPoints` — not a
   // dayKey, so a touch between two readings resolves to whichever is nearer in
@@ -248,10 +256,24 @@ export function WeightChart({ points, unit, targetKg, pacePoints, onScrubChange 
       <View style={styles.plot} onLayout={onLayout} {...panResponder.panHandlers}>
         {width > 0 && (
           <Svg width={width} height={CHART_HEIGHT}>
-            {/* Drawn first so the readings sit on top of the plan, never under it. */}
+            {/* A line at each round weight, so the axis can be read anywhere on
+                the plot. Drawn first, under the plan and the readings. */}
+            {ticks.map(tick => (
+              <Line
+                key={`tick-${tick}`}
+                x1={gutter}
+                y1={yFor(tick)}
+                x2={width}
+                y2={yFor(tick)}
+                stroke={colors.separator}
+                strokeOpacity={0.6}
+                strokeWidth={1}
+              />
+            ))}
+            {/* Drawn before the readings so they sit on top of the plan, never under it. */}
             {targetKg !== undefined && targetKg !== null && (
               <Line
-                x1={0}
+                x1={gutter}
                 y1={yFor(targetKg)}
                 x2={width}
                 y2={yFor(targetKg)}
@@ -328,8 +350,15 @@ export function WeightChart({ points, unit, targetKg, pacePoints, onScrubChange 
             )}
           </Svg>
         )}
-        <Text style={[styles.axis, styles.axisTop]}>{formatWeight(domain.max, unit)}</Text>
-        <Text style={[styles.axis, styles.axisBottom]}>{formatWeight(domain.min, unit)}</Text>
+        {ticks.map(tick => (
+          <View
+            key={`label-${tick}`}
+            style={[styles.tickLabelRow, { top: yFor(tick) - TICK_LABEL_HEIGHT / 2, width: gutter }]}
+            pointerEvents="none"
+          >
+            <Text style={styles.tickLabel} numberOfLines={1}>{Math.round(kgToUnit(tick, unit))} {unit}</Text>
+          </View>
+        ))}
         {scrubbed && (
           <View
             style={[styles.tooltip, { left: tooltipLeft, top: tooltipTop, height: tooltipHeight }]}
@@ -350,17 +379,8 @@ export function WeightChart({ points, unit, targetKg, pacePoints, onScrubChange 
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   plot: { height: CHART_HEIGHT, justifyContent: 'center' },
-  axis: {
-    position: 'absolute',
-    right: 0,
-    fontSize: font.xs,
-    fontWeight: fontWeight.medium,
-    color: colors.textTertiary,
-    backgroundColor: colors.bgSecondary,
-    paddingHorizontal: spacing.xs,
-  },
-  axisTop: { top: 0 },
-  axisBottom: { bottom: 0 },
+  tickLabelRow: { position: 'absolute', left: 0, height: TICK_LABEL_HEIGHT, justifyContent: 'center' },
+  tickLabel: { color: colors.textTertiary, fontSize: font.xxs },
   tooltip: {
     position: 'absolute',
     width: TOOLTIP_WIDTH,

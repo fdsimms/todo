@@ -62,6 +62,8 @@ export function PantryAnswerField({ itemId, value, onChange, addToList, onAddToL
     [item, itemProducts, itemId]
   );
 
+  // The home list, the one "Running low" joins (see answerPantryReview).
+  const onHomeList = useGroceryStore(s => s.listEntries.some(e => e.itemId === itemId && e.listId === null));
   const shown = value ?? standing?.answer ?? null;
   const dot =
     standing?.tone === 'good' ? colors.green
@@ -88,17 +90,26 @@ export function PantryAnswerField({ itemId, value, onChange, addToList, onAddToL
         label={label}
         surface={surface}
       />
-      {value === 'low' && onAddToListChange && (
+      {shown === 'low' && onAddToListChange && (onHomeList ? (
+        <Text style={styles.switchLabel}>Already on the grocery list</Text>
+      ) : (
         <View style={styles.switchRow}>
           <Text style={styles.switchLabel}>Add to grocery list</Text>
           <Switch
-            value={addToList ?? runningLowAddsToList}
-            onValueChange={on => { haptics.tap(); onAddToListChange(on); }}
+            value={value === 'low' ? (addToList ?? runningLowAddsToList) : false}
+            onValueChange={on => {
+              haptics.tap();
+              // Already marked low, so "Running low" isn't a change the sheet
+              // would write. Turning the switch on picks it, which is what makes
+              // the sheet add the item; turning it off puts the pick back.
+              if (standing?.answer === 'low') onChange(on ? 'low' : null);
+              onAddToListChange(on);
+            }}
             trackColor={{ false: colors.bgTertiary, true: colors.accent }}
             accessibilityLabel="Add to grocery list"
           />
         </View>
-      )}
+      ))}
     </View>
   );
 }

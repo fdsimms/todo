@@ -1656,6 +1656,15 @@ edit button.
   never start, extend or split an episode, so the totals above are unchanged
   by them. No stage is coloured as good or bad and nothing says how much of
   one is enough.
+- **The timeline is the same record with the *when* kept.** Each episode also
+  carries its staged stretches (`seg`, `[stage, seconds from the start, seconds
+  long]` per stretch), which `parseSleepEpisodes` reads into `SleepSegment`s and
+  `sleepNights` puts on the night. The totals above are these added up, so the
+  two can't disagree. Only the four stages are sent (an unspecified "asleep"
+  stretch counts toward minutes but isn't drawn), nothing is interpolated across
+  a gap, and `stagedNights` leaves out a night with totals but no stretches
+  rather than drawing an empty chart. The stepper on the Sleep screen walks
+  every night read, not the zoomed range.
 - **"With your days" is the Mood axis, not a second one.** It runs
   `healthInsight` for sleep against finished tasks and mood, with the same
   copy and the same `MIN_PAIRED_DAYS` floor, fed this screen's own nights

@@ -235,18 +235,6 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
           />
         </View>
       )}
-      {!!info && (
-        <View style={styles.editRow}>
-          <InlineAction
-            icon="create-outline"
-            label="Edit"
-            variant="neutral"
-            surface="page"
-            onPress={() => { haptics.tap(); setEditing(true); }}
-            accessibilityLabel={`Edit ${name}`}
-          />
-        </View>
-      )}
     </View>
   );
 
@@ -255,7 +243,17 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
       <View style={[styles.root, { paddingTop: insets.top }]}>
         <SheetHeader
           title="Exercise"
-          left={<View style={styles.spacer} />}
+          left={info ? (
+            // In the header, not under the gym list: that list is a different
+            // thing (per-gym notes), and a button below it read as editing it.
+            <SheetHeaderButton
+              label="Edit"
+              role="cancel"
+              onPress={() => { haptics.tap(); setEditing(true); }}
+              accessibilityLabel={`Edit ${name}`}
+              minWidth={64}
+            />
+          ) : <View style={styles.spacer} />}
           right={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={onClose} minWidth={64} />}
         />
         {noHistory ? (
@@ -385,7 +383,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   name: { color: colors.text, fontSize: font.xxl, fontWeight: fontWeight.bold, letterSpacing: -0.3 },
   subtitle: { color: colors.textSecondary, fontSize: font.sm },
   about: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xs },
-  editRow: { flexDirection: 'row', marginTop: spacing.xs },
   gymBlock: { marginTop: spacing.xs },
   gymCard: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden', marginTop: spacing.sm },
   gymRow: {

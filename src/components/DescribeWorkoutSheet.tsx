@@ -1,13 +1,9 @@
-// Describe a routine, or a workout you did, in words. Landmarks:
+// Describe a routine, or a workout you did, in words (one or the other, by `mode`). Landmarks:
 //
 //   ==== staged state ====     what the sheet holds while it is open
 //   ==== drafting ====         the request, and what comes back
 //   ==== matching ====         the step that settles exercise names
 //   ==== render ====           the two steps, `write` then `match`
-//
-// With `into` it describes into something being edited instead (the running
-// workout from workout mode, or the routine being edited): no mode switch, same
-// two steps, and the result goes to `into.onAdd`.
 //
 // Two steps, and the second is skipped when every name already matches. The
 // model answers with names (`draftWorkoutFromText`), and a name that isn't
@@ -17,7 +13,11 @@
 //
 // It hands the result to its caller rather than saving: a routine goes to the
 // routine editor (`RoutineDraft`), a past workout to the import review
-// (`ImportedSession`), and both of those write only on their own Save. Mock:
+// (`ImportedSession`), and both of those write only on their own Save. It is
+// With `into` it describes into the running workout instead (workout mode's
+// "Describe"), and the result goes to `into.onAdd`. It is opened from inside the editor it fills (`RoutineEditorSheet`, mode `routine`)
+// and from the past-workout sheet (`LogPastWorkoutSheet`, mode `log`), so the
+// person never has to say in advance that they will describe. Mock:
 // docs/arch/workouts-mocks/describe-routine.png.
 //
 // It is a `pageSheet` holding typed text, so a swipe-down and Cancel both go
@@ -30,7 +30,6 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { SheetModal } from './SheetModal';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
-import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { PressableScale } from './PressableScale';
 import { ExercisePickerSheet } from './ExercisePickerSheet';
 import { HelpText } from './HelpText';
@@ -59,36 +58,25 @@ import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
+  /** What is being described. Fixed for the life of the sheet: the opener already knows which it is. */
+  mode: DescribeMode;
   onClose: () => void;
   /** A routine was described and its names are settled. The caller opens the editor on it and closes this sheet. */
   onRoutine?: (draft: RoutineDraft) => void;
   /** A past workout was described. The caller opens the import review on it and closes this sheet. */
   onWorkout?: (session: ImportedSession) => void;
   /**
-   * Describing into a workout that is running or a routine being edited: there
-   * is no routine/workout switch, and the settled exercises come back as a
-   * `RoutineDraft` for the caller to add (to the session as sets to do, or to
-   * the editor's list) and to close this sheet.
+   * Describing into the workout that is running (workout mode, with `mode`
+   * `routine`): the settled exercises come back as a `RoutineDraft` for the
+   * caller to add to the session as sets to do, and to close this sheet.
    */
-  into?: { target: 'workout' | 'routine'; onAdd: (draft: RoutineDraft) => void };
+  into?: { onAdd: (draft: RoutineDraft) => void };
 }
 
-const MODE_OPTIONS: SegmentOption<DescribeMode>[] = [
-  { value: 'routine', label: 'Routine' },
-  { value: 'log', label: 'Workout I did' },
-];
-
 const INTO_COPY = {
-  workout: {
-    placeholder: 'e.g. Bench press 3x5 at 185, then rows 3x8-12 supersetted with curls',
-    hint: 'These are added to this workout after what is already here, as sets still to do. Check them off as you go.',
-    button: 'Add to workout',
-  },
-  routine: {
-    placeholder: 'e.g. Bench press 3x5 at 185, then rows 3x8-12 supersetted with curls',
-    hint: 'These are added to this routine after what is already here. Weights, rest and supersets are optional.',
-    button: 'Add to routine',
-  },
+  placeholder: 'e.g. Bench press 3x5 at 185, then rows 3x8-12 supersetted with curls',
+  hint: 'These are added to this workout after what is already here, as sets still to do. Check them off as you go.',
+  button: 'Add to workout',
 };
 
 const COPY: Record<DescribeMode, { placeholder: string; hint: string; button: string }> = {
@@ -115,7 +103,7 @@ interface Pending {
 
 type Choice = { kind: 'exercise'; exerciseId: string } | { kind: 'create' };
 
-export function DescribeWorkoutSheet({ visible, onClose, onRoutine, onWorkout, into }: Props) {
+export function DescribeWorkoutSheet({ visible, mode, onClose, onRoutine, onWorkout, into }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const exercises = useWorkoutStore(s => s.exercises);
@@ -123,7 +111,6 @@ export function DescribeWorkoutSheet({ visible, onClose, onRoutine, onWorkout, i
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
   // ==== staged state ====
-  const [mode, setMode] = useState<DescribeMode>('routine');
   const [text, setText] = useState('');
   const [step, setStep] = useState<Step>('write');
   const [busy, setBusy] = useState(false);
@@ -142,7 +129,6 @@ export function DescribeWorkoutSheet({ visible, onClose, onRoutine, onWorkout, i
 
   useEffect(() => {
     if (!visible) { ticket.current++; return; }
-    setMode('routine');
     setText('');
     setStep('write');
     setBusy(false);
@@ -259,7 +245,7 @@ export function DescribeWorkoutSheet({ visible, onClose, onRoutine, onWorkout, i
   const matchedNames = draft ? draftNames(draft).filter(n => auto[n.key]) : [];
 
   // ==== render ====
-  const copy = into ? INTO_COPY[into.target] : COPY[mode];
+  const copy = into ? INTO_COPY : COPY[mode];
   const writing = step === 'write';
   return (
     <SheetModal
@@ -271,7 +257,7 @@ export function DescribeWorkoutSheet({ visible, onClose, onRoutine, onWorkout, i
     >
       <View style={styles.root}>
         <SheetHeader
-          title={writing ? (into ? 'Describe exercises' : 'Describe a workout') : 'Match exercises'}
+          title={writing ? (into ? 'Describe exercises' : mode === 'routine' ? 'Describe a routine' : 'Describe a workout') : 'Match exercises'}
           left={writing
             ? <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={64} />
             : <SheetHeaderButton label="Back" role="cancel" onPress={() => setStep('write')} minWidth={64} />}
@@ -289,16 +275,7 @@ export function DescribeWorkoutSheet({ visible, onClose, onRoutine, onWorkout, i
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            {!into && (
-              <SegmentedControl
-                label="What to describe"
-                options={MODE_OPTIONS}
-                value={mode}
-                onChange={m => { setMode(m); setError(null); }}
-                surface="page"
-              />
-            )}
-            <View style={[styles.area, into && styles.areaLive]}>
+            <View style={styles.area}>
               <TextField
                 style={styles.input}
                 value={text}
@@ -326,9 +303,7 @@ export function DescribeWorkoutSheet({ visible, onClose, onRoutine, onWorkout, i
             </PressableScale>
             {/* A consequence to read before tapping, so a plain Text: Hide help text must not remove it. */}
             <Text style={styles.note}>
-              {into
-                ? 'Sent to Claude along with the names of your exercises. Nothing is added until you check it.'
-                : 'Sent to Claude along with the names of your exercises. Nothing is saved until you check it.'}
+              {`Sent to Claude along with the names of your exercises. Nothing is ${into ? 'added' : 'saved'} until you check it.`}
             </Text>
           </ScrollView>
         ) : (
@@ -413,8 +388,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   headerSpacer: { minWidth: 64 },
   body: { flex: 1 },
   bodyContent: { paddingHorizontal: spacing.md, paddingBottom: spacing.xl },
-  areaLive: { marginTop: 0 },
-  area: { backgroundColor: colors.bgSecondary, borderRadius: radius.lg, marginTop: spacing.smd },
+  area: { backgroundColor: colors.bgSecondary, borderRadius: radius.lg, marginTop: spacing.xs },
   input: {
     color: colors.text, fontSize: font.md,
     paddingHorizontal: spacing.md, paddingTop: spacing.smd, paddingBottom: spacing.smd, minHeight: 200,

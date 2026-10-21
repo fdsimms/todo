@@ -1141,7 +1141,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   searchBar: {
     marginHorizontal: spacing.md,
-    marginTop: spacing.xs,
-    marginBottom: spacing.xs,
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
   },
 });

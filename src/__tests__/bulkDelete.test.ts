@@ -86,7 +86,9 @@ const recurring = (id: string) =>
   makeTask({ id, recurrenceType: 'daily', dueDate: new Date(2026, 7, 10, 9).toISOString() });
 const meal = (id: string) =>
   makeTask({ id, generatedKind: 'mealSlot', dueDate: new Date(2020, 0, 1, 9).toISOString() });
-const plain = (id: string) => makeTask({ id });
+// Closed, so it has nothing a mark-missed would keep: stands in for "the rest".
+const plain = (id: string) => makeTask({ id, completed: true, completedAt: new Date(2026, 7, 9, 9).toISOString() });
+const oneOff = (id: string) => makeTask({ id });
 
 describe('bulkDeletePrompt', () => {
   it('is a plain confirm when nothing selected is missable', () => {
@@ -157,6 +159,40 @@ describe('bulkDeletePrompt', () => {
     expect(bulkDeletePrompt(['m', 'ghost', 'r'], [recurring('r'), meal('m')])).toMatchObject({
       missableIds: ['m', 'r'],
       restIds: ['ghost'],
+    });
+  });
+
+  it('offers to mark an open one-off task missed to keep a record', () => {
+    expect(bulkDeletePrompt(['o'], [oneOff('o')])).toEqual({
+      kind: 'missable',
+      missableIds: ['o'],
+      restIds: [],
+      message: 'Mark this one missed to keep a record, or delete it?',
+      deleteLabel: 'Delete',
+    });
+    expect(bulkDeletePrompt(['o1', 'o2', 'p'], [oneOff('o1'), oneOff('o2'), plain('p')])).toMatchObject({
+      missableIds: ['o1', 'o2'],
+      restIds: ['p'],
+      message: 'Mark these missed to keep a record, or delete them?',
+      deleteLabel: 'Delete anyway',
+    });
+  });
+
+  it('does not offer it for a subtask or an avoid-task', () => {
+    const tasks = [
+      makeTask({ id: 'sub', parentId: 'o' }),
+      makeTask({ id: 'avoid', polarity: 'negative' }),
+    ];
+    expect(bulkDeletePrompt(['sub', 'avoid'], tasks)).toEqual({ kind: 'delete' });
+  });
+
+  it('uses the shared wording when a one-off is selected beside a repeating or meal task', () => {
+    expect(bulkDeletePrompt(['o', 'r'], [oneOff('o'), recurring('r')])).toEqual({
+      kind: 'missable',
+      missableIds: ['o', 'r'],
+      restIds: [],
+      message: 'Mark these missed to keep a record, or delete the whole selection?',
+      deleteLabel: 'Delete anyway',
     });
   });
 });

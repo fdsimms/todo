@@ -1650,9 +1650,11 @@ describe('the replica', () => {
       expect(result.nextTask).toBeNull();
     });
 
-    it('refuses to mark a one-off task missed', () => {
+    it('marks a one-off task missed, closing it with no successor', () => {
       const t = replica.createTask({ title: 'One-off' });
-      expect(() => replica.markMissed(t.id)).toThrow(/repeating task/);
+      const result = replica.markMissed(t.id);
+      expect(result.completed.missedAt).toBeTruthy();
+      expect(result.nextTask).toBeNull();
     });
 
     it('logs a slip, costs coins, and undoes both; refuses a habit with a penalty', () => {

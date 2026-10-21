@@ -194,6 +194,8 @@ export const DIGESTION_SHARE = 0.1;
  * tenth of what somebody eats, and holding a weight means eating what you
  * burn, so it is a tenth of maintenance: `(resting + active) / (1 - share)`.
  * The sheet prints that part as its own figure rather than folding it in.
+ * `countDigestion` false leaves it out, for somebody who would rather work from
+ * the measured burn alone; the sheet offers that as a switch.
  *
  * Null on the same terms as `maintenanceKcal` — an incomplete profile — and
  * additionally when there is no activity figure to use.
@@ -203,13 +205,15 @@ export function measuredMaintenanceKcal(
   weightKg: number,
   today: Date,
   activeEnergyKcal: number | null,
+  countDigestion = true,
 ): number | null {
   const resting = restingEnergyKcal(profile, weightKg, today);
   if (resting === null) return null;
   if (activeEnergyKcal === null || !Number.isFinite(activeEnergyKcal) || activeEnergyKcal < 0) {
     return null;
   }
-  return (resting + activeEnergyKcal) / (1 - DIGESTION_SHARE);
+  const burned = resting + activeEnergyKcal;
+  return countDigestion ? burned / (1 - DIGESTION_SHARE) : burned;
 }
 
 /**

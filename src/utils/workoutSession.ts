@@ -59,7 +59,7 @@ export function sessionExercises(sets: readonly WorkoutSet[]): SessionExercise[]
  * exercises that share a key but sit apart are not alternated across the
  * ones between them.
  */
-export function supersetGroup(exercises: readonly SessionExercise[], exerciseId: string): SessionExercise[] {
+export function supersetGroup<T extends { exerciseId: string; supersetKey?: string | null }>(exercises: readonly T[], exerciseId: string): T[] {
   const i = exercises.findIndex(e => e.exerciseId === exerciseId);
   if (i < 0) return [];
   const key = exercises[i].supersetKey;

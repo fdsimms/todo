@@ -369,7 +369,9 @@ interface FoodLogStore extends UndoHistoryActions {
    * Never offers an undo of its own: the un-completing action that calls it has
    * the undo bar, and a second "Deleted ..." would replace it.
    */
-  removeEntriesForTask: (taskId: string) => void;
+  removeEntriesForTask: (taskId: string) => FoodLogEntry[];
+  /** Writes back rows `removeEntriesForTask` returned, for the undo of an unticked task. */
+  restoreRemovedEntries: (rows: FoodLogEntry[]) => void;
   /** Re-slot several entries at once — the bulk bar's Move to meal. */
   moveEntries: (ids: string[], slot: MealSlot | null) => void;
   /**
@@ -1023,9 +1025,15 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
   },
 
   removeEntriesForTask(taskId) {
-    for (const entry of dbGetFoodLogEntriesForTask(taskId)) {
+    const entries = dbGetFoodLogEntriesForTask(taskId);
+    for (const entry of entries) {
       get().removeEntry(entry.id, { undoable: false });
     }
+    return entries;
+  },
+
+  restoreRemovedEntries(rows) {
+    restoreEntries(rows, get, set);
   },
 
   moveEntries(ids, slot) {

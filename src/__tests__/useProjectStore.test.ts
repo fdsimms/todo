@@ -208,6 +208,15 @@ beforeEach(() => {
 // ─── projectProgress ────────────────────────────────────────────────────────
 
 describe('projectProgress', () => {
+  it('leaves a one-off step marked missed out of the count, so the project can finish', () => {
+    const at = new Date(2025, 5, 10).toISOString();
+    const tasks = [
+      makeTask({ id: 'a', projectId: 'p1', completed: true }),
+      makeTask({ id: 'b', projectId: 'p1', completed: true, missedAt: at }),
+    ];
+    expect(projectProgress('p1', tasks)).toEqual({ done: 1, total: 1 });
+  });
+
   it('is 0/0 for a project with no tasks', () => {
     expect(projectProgress('p1', [])).toEqual({ done: 0, total: 0 });
   });
@@ -245,7 +254,7 @@ describe('projectProgress', () => {
     // where the recurrence ran out on the very occurrence that got missed.
     const tasks = [
       makeTask({ id: 'a', projectId: 'p1', completed: true }),
-      makeTask({ id: 'b', projectId: 'p1', completed: true, missedAt: '2025-01-05T00:00:00.000Z' }),
+      makeTask({ id: 'b', projectId: 'p1', completed: true, missedAt: '2025-01-05T00:00:00.000Z', recurrenceType: 'daily' }),
     ];
     expect(projectProgress('p1', tasks)).toEqual({ done: 1, total: 2 });
   });
