@@ -23,7 +23,7 @@ import { alertPermissionOff } from '../utils/permissionAlert';
 import { getCurrentLocation, requestLocationPermission } from '../utils/weatherLocation';
 import { exerciseName } from '../utils/exerciseCatalog';
 import {
-  BODYWEIGHT_GEAR, CARDIO_MACHINES, EQUIPMENT_LABELS, FREE_EQUIPMENT, STRENGTH_MACHINES, WORKOUT_NAME_MAX_LENGTH,
+  ACCESSORY_EQUIPMENT, CARDIO_MACHINES, EQUIPMENT_LABELS, FREE_EQUIPMENT, STRENGTH_MACHINES, WORKOUT_NAME_MAX_LENGTH,
 } from '../utils/workoutData';
 import { GYM_DEFAULT_RADIUS_M, GYM_MAX_RADIUS_M, GYM_MIN_RADIUS_M, GYM_RADIUS_STEP_M } from '../utils/gyms';
 import { BUTTON_LABEL } from '../copy/shared';
@@ -42,7 +42,7 @@ interface Props {
  */
 const GYM_EQUIPMENT_GROUPS: { title: string; items: readonly ExerciseEquipment[] }[] = [
   { title: 'Free weights', items: FREE_EQUIPMENT },
-  { title: 'Bars and balls', items: BODYWEIGHT_GEAR },
+  { title: 'Bars and accessories', items: ACCESSORY_EQUIPMENT },
   { title: 'Strength machines', items: [...STRENGTH_MACHINES, 'machine'] },
   { title: 'Cardio', items: [...CARDIO_MACHINES, 'cardio_machine'] },
 ];
