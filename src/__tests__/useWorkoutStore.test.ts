@@ -774,22 +774,6 @@ describe('a session from a routine', () => {
       expect(sets.map(x => [x.position, x.setIndex, x.weightKg, x.reps, x.completedAt])).toEqual([[1, 0, 80, 5, null], [1, 1, 80, 5, null]]);
     });
 
-    it('writes stated sets as done, and leaves one that stated nothing planned', () => {
-      const s = ok(state().startSession());
-      ok(state().addRoutineItems(s.id, [item(bench, [target(5, 80), { kind: 'working', repsMin: null, repsMax: null }])], { done: true }));
-      const sets = state().loadSets(s.id);
-      expect(sets.map(x => x.completedAt !== null)).toEqual([true, false]);
-    });
-
-    it('does not borrow last time\'s weight for a set recorded as done', () => {
-      const before = ok(state().startSession({ at: new Date(2026, 9, 1, 18) }));
-      ok(state().logSet(before.id, { exerciseId: bench, kind: 'working', weightKg: 90, reps: 5, completedAt: '2026-10-01T18:10:00.000Z' }));
-      ok(state().finishSession(before.id));
-      const s = ok(state().startSession());
-      ok(state().addRoutineItems(s.id, [item(bench, [{ kind: 'working', repsMin: 5, repsMax: 5 }])], { done: true }));
-      expect(state().loadSets(s.id)[0].weightKg).toBeNull();
-    });
-
     it('drops a superset key whose partner was left out', () => {
       const s = ok(state().startSession());
       ok(state().addSessionExercise(s.id, squat));

@@ -6,7 +6,7 @@
 //   ==== render ====           the two steps, `write` then `match`
 //
 // With `live` it describes into the running workout instead (workout mode's
-// "Describe"): same two steps, and the result goes to `live.onAdd`.
+// "Describe"): no mode switch, same two steps, and the result goes to `live.onAdd`.
 //
 // Two steps, and the second is skipped when every name already matches. The
 // model answers with names (`draftWorkoutFromText`), and a name that isn't
@@ -64,12 +64,12 @@ interface Props {
   /** A past workout was described. The caller opens the import review on it and closes this sheet. */
   onWorkout?: (session: ImportedSession) => void;
   /**
-   * Describing into the workout that is running: the two modes become "to do"
-   * and "already done", and the settled exercises come back as routine items
-   * for the caller to add to the session (`addRoutineItems`) and close this
-   * sheet. `done` is whether they were already done.
+   * Describing into the workout that is running: there is no routine/workout
+   * switch, and the settled exercises come back as routine items for the
+   * caller to add to the session (`addRoutineItems`) as sets to do, and to
+   * close this sheet.
    */
-  live?: { onAdd: (draft: RoutineDraft, done: boolean) => void };
+  live?: { onAdd: (draft: RoutineDraft) => void };
 }
 
 const MODE_OPTIONS: SegmentOption<DescribeMode>[] = [
@@ -77,22 +77,10 @@ const MODE_OPTIONS: SegmentOption<DescribeMode>[] = [
   { value: 'log', label: 'Workout I did' },
 ];
 
-const LIVE_MODE_OPTIONS: SegmentOption<DescribeMode>[] = [
-  { value: 'routine', label: 'To do' },
-  { value: 'log', label: 'Already done' },
-];
-
-const LIVE_COPY: Record<DescribeMode, { placeholder: string; hint: string; button: string }> = {
-  routine: {
-    placeholder: 'e.g. Bench press 3x5 at 185, then rows 3x8-12 supersetted with curls',
-    hint: 'These are added to this workout after what is already here, as sets still to do.',
-    button: 'Add to workout',
-  },
-  log: {
-    placeholder: 'e.g. Squat 5x5 at 225, then 20 minutes on the bike',
-    hint: 'These are added to this workout as sets you already did. Anything you don’t say stays empty.',
-    button: 'Add to workout',
-  },
+const LIVE_COPY = {
+  placeholder: 'e.g. Bench press 3x5 at 185, then rows 3x8-12 supersetted with curls',
+  hint: 'These are added to this workout after what is already here, as sets still to do. Check them off as you go.',
+  button: 'Add to workout',
 };
 
 const COPY: Record<DescribeMode, { placeholder: string; hint: string; button: string }> = {
@@ -178,12 +166,12 @@ export function DescribeWorkoutSheet({ visible, onClose, onRoutine, onWorkout, l
       id => catalogExercise(useWorkoutStore.getState().exercises, id)?.kind ?? 'weight_reps',
       unit,
     );
-    if (live) live.onAdd(made, mode === 'log');
+    if (live) live.onAdd(made);
     else onRoutine?.(made);
   };
 
   const received = (d: WorkoutDraft) => {
-    if (mode === 'log' && !live) {
+    if (mode === 'log') {
       const made = sessionFromDraft(d, unit, dayKeyOf(getLogicalToday()), new Date());
       if (!made.ok) { haptics.warning(); setError(made.error); return; }
       haptics.success();
@@ -263,7 +251,7 @@ export function DescribeWorkoutSheet({ visible, onClose, onRoutine, onWorkout, l
   const matchedNames = draft ? draftNames(draft).filter(n => auto[n.key]) : [];
 
   // ==== render ====
-  const copy = (live ? LIVE_COPY : COPY)[mode];
+  const copy = live ? LIVE_COPY : COPY[mode];
   const writing = step === 'write';
   return (
     <SheetModal
@@ -293,14 +281,16 @@ export function DescribeWorkoutSheet({ visible, onClose, onRoutine, onWorkout, l
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            <SegmentedControl
-              label="What to describe"
-              options={live ? LIVE_MODE_OPTIONS : MODE_OPTIONS}
-              value={mode}
-              onChange={m => { setMode(m); setError(null); }}
-              surface="page"
-            />
-            <View style={styles.area}>
+            {!live && (
+              <SegmentedControl
+                label="What to describe"
+                options={MODE_OPTIONS}
+                value={mode}
+                onChange={m => { setMode(m); setError(null); }}
+                surface="page"
+              />
+            )}
+            <View style={[styles.area, live && styles.areaLive]}>
               <TextField
                 style={styles.input}
                 value={text}
@@ -415,6 +405,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   headerSpacer: { minWidth: 64 },
   body: { flex: 1 },
   bodyContent: { paddingHorizontal: spacing.md, paddingBottom: spacing.xl },
+  areaLive: { marginTop: 0 },
   area: { backgroundColor: colors.bgSecondary, borderRadius: radius.lg, marginTop: spacing.smd },
   input: {
     color: colors.text, fontSize: font.md,

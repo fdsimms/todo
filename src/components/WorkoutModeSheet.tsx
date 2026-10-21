@@ -408,10 +408,10 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
 
   // Described exercises are added after what is there, and the view goes to
   // the first new one. A `new:` exercise is made here, on confirm.
-  const addDescribed = (draft: RoutineDraft, done: boolean) => {
+  const addDescribed = (draft: RoutineDraft) => {
     if (!session) return;
     const items = withCreatedExercises(draft.items, draft.newExercises);
-    const result = items ? useWorkoutStore.getState().addRoutineItems(session.id, items, { done }) : 'notFound';
+    const result = items ? useWorkoutStore.getState().addRoutineItems(session.id, items) : 'notFound';
     if (typeof result === 'string') {
       haptics.warning();
       Alert.alert('Couldn’t add the exercises', 'Something went wrong while adding them. Nothing was changed, so you can try again.');
