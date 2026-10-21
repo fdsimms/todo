@@ -9,7 +9,7 @@ import Reanimated, {
 } from 'react-native-reanimated';
 import { useColors } from '../theme/ThemeContext';
 import { useBrandFace } from '../theme/AppFont';
-import { animation, font, fontWeight, lineHeight, spacing, radius, type Colors } from '../theme';
+import { animation, font, fontWeight, iconSize, lineHeight, spacing, radius, type Colors } from '../theme';
 import { PressableScale } from './PressableScale';
 import { CoinIcon, NamedIcon, type IconName } from './CoinIcon';
 import { COIN_ICON } from '../constants/coinIcon';
@@ -30,6 +30,14 @@ interface Props {
   /** Optional call-to-action pill button below the text. */
   actionLabel?: string;
   onAction?: () => void;
+  /**
+   * A quieter second pill under the first, for the other way to start from
+   * nothing (Workouts' "Describe" under "New routine"). Neutral rather than a
+   * second accent fill, so the empty state still has one thing to press first.
+   */
+  secondaryActionLabel?: string;
+  secondaryActionIcon?: IconName;
+  onSecondaryAction?: () => void;
   /**
    * Extra bottom padding so content centers in the space actually visible
    * above a floating (position: absolute) tab bar, instead of the full
@@ -81,7 +89,10 @@ interface Props {
  * moves the view in and out of its descriptor set — which is the other way to
  * arrive back at a permanently invisible empty state.
  */
-export function EmptyState({ icon, art, title, subtitle, actionLabel, onAction, bottomOffset }: Props) {
+export function EmptyState({
+  icon, art, title, subtitle, actionLabel, onAction,
+  secondaryActionLabel, secondaryActionIcon, onSecondaryAction, bottomOffset,
+}: Props) {
   const brandFace = useBrandFace('bold');
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -138,6 +149,12 @@ export function EmptyState({ icon, art, title, subtitle, actionLabel, onAction, 
           <Text style={styles.actionText}>{actionLabel}</Text>
         </PressableScale>
       )}
+      {secondaryActionLabel != null && onSecondaryAction != null && (
+        <PressableScale style={styles.secondaryBtn} onPress={onSecondaryAction} haptic>
+          {secondaryActionIcon ? <NamedIcon name={secondaryActionIcon} size={iconSize.sm} color={colors.text} /> : null}
+          <Text style={styles.secondaryText}>{secondaryActionLabel}</Text>
+        </PressableScale>
+      )}
     </Reanimated.View>
   );
 }
@@ -169,4 +186,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.full, backgroundColor: colors.accentFill,
   },
   actionText: { color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold },
+  secondaryBtn: {
+    marginTop: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: spacing.xsm,
+    paddingHorizontal: spacing.lg, paddingVertical: 10,
+    borderRadius: radius.full, backgroundColor: colors.bgTertiary,
+  },
+  secondaryText: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
 });

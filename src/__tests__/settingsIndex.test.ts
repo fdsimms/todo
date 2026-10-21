@@ -83,6 +83,13 @@ describe('settings index', () => {
       }
     });
 
+    it('hides a workouts feature\'s entry exactly when its row goes', () => {
+      for (const feature of AI_FEATURES) {
+        const entry = aiEntries.find(e => e.label === feature.label);
+        expect(entry?.requiresAll?.includes('workoutsEnabled') ?? false).toBe(feature.workouts ?? false);
+      }
+    });
+
     it('gives every one of them keywords, since the label is only half a name', () => {
       // "Recipe import" and "Meal ideas" are what the rows say; "paste",
       // "photo" and "dinner" are what someone types looking for them.

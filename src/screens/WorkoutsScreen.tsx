@@ -758,6 +758,9 @@ export function WorkoutsScreen() {
             subtitle="A routine is a list of exercises with the sets you plan for each. Start a workout from it with one tap."
             actionLabel="New routine"
             onAction={() => openEditor(null)}
+            secondaryActionLabel={canDescribe ? 'Describe' : undefined}
+            secondaryActionIcon="sparkles-outline"
+            onSecondaryAction={() => setDescribeOpen(true)}
             bottomOffset={tabBarHeight}
           />
         ) : (

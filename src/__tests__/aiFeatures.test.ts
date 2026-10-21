@@ -46,6 +46,13 @@ describe('aiFeaturesFor', () => {
       ]);
   });
 
+  it('drops the workout features when that area is off, and only then', () => {
+    expect(aiFeaturesFor(true, false, false).map(f => f.id)).not.toContain('workoutDraft');
+    expect(aiFeaturesFor(true, false, true).map(f => f.id)).toContain('workoutDraft');
+    // Independent of the other two gates: nothing else disappears with it.
+    expect(aiFeaturesFor(true, false, false)).toHaveLength(AI_FEATURES.length - 1);
+  });
+
   it('leaves the stored config alone, so the rows come back as they were', () => {
     // The point of hiding rather than clearing: someone who put Recipe import
     // on Opus and then put the whole area away should find it on Opus when

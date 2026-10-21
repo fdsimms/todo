@@ -42,6 +42,11 @@ export interface AiFeatureMeta {
    * so a switch left behind would configure nothing.
    */
   simple?: boolean;
+  /**
+   * Configures the Workouts area, so its row goes when `workoutsEnabled` is off,
+   * the one-row-at-a-time treatment `kitchen` gives the grocery area.
+   */
+  workouts?: boolean;
 }
 
 export const AI_FEATURES: AiFeatureMeta[] = [
@@ -159,6 +164,7 @@ export const AI_FEATURES: AiFeatureMeta[] = [
     // needs the exercise library as context and a structured reply, which is
     // more than Apple's on-device window holds (see `aiRouting.ts`).
     hint: 'Turns a description of a routine, or of a workout you did, into one you can check and save',
+    workouts: true,
   },
 ];
 
@@ -171,9 +177,9 @@ export const AI_FEATURES: AiFeatureMeta[] = [
  * and come back with it. Nothing needs to gate the calls themselves: all of
  * these are reached from inside a screen or sheet that has already gone.
  */
-export function aiFeaturesFor(kitchenEnabled: boolean, simpleMode = false): AiFeatureMeta[] {
+export function aiFeaturesFor(kitchenEnabled: boolean, simpleMode = false, workoutsEnabled = true): AiFeatureMeta[] {
   return AI_FEATURES.filter(f =>
-    (kitchenEnabled || !f.kitchen) && (!simpleMode || !f.simple));
+    (kitchenEnabled || !f.kitchen) && (!simpleMode || !f.simple) && (workoutsEnabled || !f.workouts));
 }
 
 export interface AiFeatureConfig {

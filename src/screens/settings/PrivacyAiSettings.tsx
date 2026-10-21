@@ -61,7 +61,11 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
   const goUpcApiKey = useSettingsStore(s => s.goUpcApiKey);
   const setGoUpcApiKey = useSettingsStore(s => s.setGoUpcApiKey);
   const aiFeatureConfig = useSettingsStore(s => s.aiFeatureConfig);
-  const aiFeatureList = useMemo(() => aiFeaturesFor(kitchenEnabled, simpleMode), [kitchenEnabled, simpleMode]);
+  const workoutsEnabled = useSettingsStore(s => s.workoutsEnabled);
+  const aiFeatureList = useMemo(
+    () => aiFeaturesFor(kitchenEnabled, simpleMode, workoutsEnabled),
+    [kitchenEnabled, simpleMode, workoutsEnabled],
+  );
   const setAiFeatureConfig = useSettingsStore(s => s.setAiFeatureConfig);
   const onDeviceAiEnabled = useSettingsStore(s => s.onDeviceAiEnabled);
   const setOnDeviceAiEnabled = useSettingsStore(s => s.setOnDeviceAiEnabled);
