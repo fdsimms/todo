@@ -2,6 +2,7 @@ import {
   DEFAULT_PLATE_INVENTORY, DEFAULT_REST_SECONDS, REST_SECONDS_MAX, REST_SECONDS_MIN, WORKOUT_NAME_MAX_LENGTH,
   clampRestSeconds, cleanWorkoutName, exerciseNameKey, freeWorkoutName, normalizePlateInventory, parsePlateInventory, parseRestSeconds,
   readEquipment, readExerciseKind, readIdList, readMuscles, readRoutineItems, readProgramScheme, readScheme, readSetKind, readTrainingMaxes,
+  EQUIPMENT_LABELS, EXERCISE_EQUIPMENT, machineParent,
   WEIGHT_STEP, formatRestSeconds, formatWeightNumber, formatWeightWithUnit, weightFromDisplay, weightToDisplay,
 } from '../utils/workoutData';
 
@@ -27,6 +28,21 @@ describe('names', () => {
     const free = freeWorkoutName(long, [long]);
     expect(free).toHaveLength(WORKOUT_NAME_MAX_LENGTH);
     expect(free.endsWith(' (2)')).toBe(true);
+  });
+});
+
+describe('machine equipment', () => {
+  it('files each specific machine under the catch-all of its kind, and nothing else', () => {
+    expect(machineParent('leg_press')).toBe('machine');
+    expect(machineParent('treadmill')).toBe('cardio_machine');
+    for (const e of ['machine', 'cardio_machine', 'cable', 'smith_machine', 'barbell', 'other'] as const) {
+      expect(machineParent(e)).toBeNull();
+    }
+  });
+  it('labels every value once and lists each once', () => {
+    expect(new Set(EXERCISE_EQUIPMENT).size).toBe(EXERCISE_EQUIPMENT.length);
+    expect(Object.keys(EQUIPMENT_LABELS).sort()).toEqual([...EXERCISE_EQUIPMENT].sort());
+    expect(readEquipment('leg_press')).toBe('leg_press');
   });
 });
 

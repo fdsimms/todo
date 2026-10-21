@@ -3330,7 +3330,12 @@ function seedWorkouts(today: Date): void {
   const gyms = useGymStore.getState();
   const homeGym = gyms.addGym({ name: 'Home gym', equipment: ['barbell', 'dumbbell', 'band'] });
   const bigGym = gyms.addGym({
-    name: 'Planet Fitness', equipment: ['dumbbell', 'machine', 'cable', 'smith_machine', 'cardio_machine'], placeText: '12 Main St',
+    name: 'Planet Fitness',
+    equipment: [
+      'dumbbell', 'cable', 'smith_machine', 'leg_press', 'leg_extension', 'leg_curl', 'chest_press_machine', 'pec_deck',
+      'shoulder_press_machine', 'row_machine', 'treadmill', 'stationary_bike', 'elliptical',
+    ],
+    placeText: '12 Main St',
   });
   const homeId = typeof homeGym === 'string' ? null : homeGym.id;
   const bigId = typeof bigGym === 'string' ? null : bigGym.id;
