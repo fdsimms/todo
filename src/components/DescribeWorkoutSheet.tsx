@@ -14,7 +14,9 @@
 // It hands the result to its caller rather than saving: a routine goes to the
 // routine editor (`RoutineDraft`), a past workout to the import review
 // (`ImportedSession`), and both of those write only on their own Save. It is
-// opened from inside the editor it fills (`RoutineEditorSheet`, mode `routine`)
+// With `into` it describes into something that already has content instead
+// (workout mode's "Describe", or a routine being edited that isn't empty), and
+// the result goes to `into.onAdd`. It is opened from inside the editor it fills (`RoutineEditorSheet`, mode `routine`)
 // and from the past-workout sheet (`LogPastWorkoutSheet`, mode `log`), so the
 // person never has to say in advance that they will describe. Mock:
 // docs/arch/workouts-mocks/describe-routine.png.
@@ -61,10 +63,31 @@ interface Props {
   mode: DescribeMode;
   onClose: () => void;
   /** A routine was described and its names are settled. The caller opens the editor on it and closes this sheet. */
-  onRoutine: (draft: RoutineDraft) => void;
+  onRoutine?: (draft: RoutineDraft) => void;
   /** A past workout was described. The caller opens the import review on it and closes this sheet. */
-  onWorkout: (session: ImportedSession) => void;
+  onWorkout?: (session: ImportedSession) => void;
+  /**
+   * Describing into something that already has content (with `mode`
+   * `routine`): the running workout from workout mode, or a routine that is
+   * being edited and isn't empty. The settled exercises come back as a
+   * `RoutineDraft` for the caller to add (to the session as sets to do, or to
+   * the end of the editor's list) and to close this sheet.
+   */
+  into?: { target: 'workout' | 'routine'; onAdd: (draft: RoutineDraft) => void };
 }
+
+const INTO_COPY = {
+  workout: {
+    placeholder: 'e.g. Bench press 3x5 at 185, then rows 3x8-12 supersetted with curls',
+    hint: 'These are added to this workout after what is already here, as sets still to do. Check them off as you go.',
+    button: 'Add to workout',
+  },
+  routine: {
+    placeholder: 'e.g. Bench press 3x5 at 185, then rows 3x8-12 supersetted with curls',
+    hint: 'These are added to this routine after what is already here. Weights, rest and supersets are optional.',
+    button: 'Add to routine',
+  },
+};
 
 const COPY: Record<DescribeMode, { placeholder: string; hint: string; button: string }> = {
   routine: {
@@ -90,7 +113,7 @@ interface Pending {
 
 type Choice = { kind: 'exercise'; exerciseId: string } | { kind: 'create' };
 
-export function DescribeWorkoutSheet({ visible, mode, onClose, onRoutine, onWorkout }: Props) {
+export function DescribeWorkoutSheet({ visible, mode, onClose, onRoutine, onWorkout, into }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const exercises = useWorkoutStore(s => s.exercises);
@@ -141,12 +164,14 @@ export function DescribeWorkoutSheet({ visible, mode, onClose, onRoutine, onWork
   // ==== drafting ====
   const finishRoutine = (d: WorkoutDraft, resolutions: Record<string, NameResolution>) => {
     haptics.success();
-    onRoutine(routineFromDraft(
+    const made = routineFromDraft(
       d,
       resolutions,
       id => catalogExercise(useWorkoutStore.getState().exercises, id)?.kind ?? 'weight_reps',
       unit,
-    ));
+    );
+    if (into) into.onAdd(made);
+    else onRoutine?.(made);
   };
 
   const received = (d: WorkoutDraft) => {
@@ -154,7 +179,7 @@ export function DescribeWorkoutSheet({ visible, mode, onClose, onRoutine, onWork
       const made = sessionFromDraft(d, unit, dayKeyOf(getLogicalToday()), new Date());
       if (!made.ok) { haptics.warning(); setError(made.error); return; }
       haptics.success();
-      onWorkout(made.session);
+      onWorkout?.(made.session);
       return;
     }
     const catalog = buildCatalog(exercises);
@@ -230,7 +255,7 @@ export function DescribeWorkoutSheet({ visible, mode, onClose, onRoutine, onWork
   const matchedNames = draft ? draftNames(draft).filter(n => auto[n.key]) : [];
 
   // ==== render ====
-  const copy = COPY[mode];
+  const copy = into ? INTO_COPY[into.target] : COPY[mode];
   const writing = step === 'write';
   return (
     <SheetModal
@@ -242,7 +267,7 @@ export function DescribeWorkoutSheet({ visible, mode, onClose, onRoutine, onWork
     >
       <View style={styles.root}>
         <SheetHeader
-          title={writing ? (mode === 'routine' ? 'Describe a routine' : 'Describe a workout') : 'Match exercises'}
+          title={writing ? (into ? 'Describe exercises' : mode === 'routine' ? 'Describe a routine' : 'Describe a workout') : 'Match exercises'}
           left={writing
             ? <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={64} />
             : <SheetHeaderButton label="Back" role="cancel" onPress={() => setStep('write')} minWidth={64} />}
@@ -288,7 +313,7 @@ export function DescribeWorkoutSheet({ visible, mode, onClose, onRoutine, onWork
             </PressableScale>
             {/* A consequence to read before tapping, so a plain Text: Hide help text must not remove it. */}
             <Text style={styles.note}>
-              Sent to Claude along with the names of your exercises. Nothing is saved until you check it.
+              {`Sent to Claude along with the names of your exercises. Nothing is ${into ? 'added' : 'saved'} until you check it.`}
             </Text>
           </ScrollView>
         ) : (

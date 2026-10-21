@@ -497,6 +497,14 @@ interface WorkoutStore {
    */
   addSessionExercise: (sessionId: string, exerciseId: string, options?: { ids?: readonly string[] }) => WorkoutSet[] | WorkoutRefusal;
   /**
+   * Appends described exercises (`routineFromDraft`'s items, `new:` ids already
+   * made) to a session, after what is there, laid out as a routine start lays
+   * an item out: planned, filled from last time where the description gave no
+   * number. An exercise already in the session is left out and named in
+   * `skipped`.
+   */
+  addRoutineItems: (sessionId: string, items: readonly WorkoutRoutineItem[]) => { added: string[]; skipped: string[] } | WorkoutRefusal;
+  /**
    * "Swap": moves the exercise's unticked sets to another exercise, in its
    * place (or just after it when some of its sets are already done, which stay
    * where they were logged). The moved sets take the new exercise's own last
@@ -1950,6 +1958,36 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       dbSaveWorkoutSets(added);
       putSets(sessionId, [...sets, ...added].sort(bySetOrder));
       return added;
+    },
+
+    addRoutineItems(sessionId, items) {
+      if (!get().sessions.some(s => s.id === sessionId)) return 'notFound';
+      const sets = get().loadSets(sessionId);
+      const taken = new Set(sets.map(s => s.exerciseId));
+      let position = sets.reduce((max, s) => Math.max(max, s.position), -1) + 1;
+      const added: string[] = [];
+      const skipped: string[] = [];
+      const rows: WorkoutSet[] = [];
+      for (const item of items) {
+        if (!exerciseKnown(item.exerciseId) || taken.has(item.exerciseId)) { skipped.push(item.exerciseId); continue; }
+        taken.add(item.exerciseId);
+        const last = previousSets(dbGetWorkoutSetsForExercise(item.exerciseId), get().sessions, sessionId);
+        const ramp = item.warmupRamp ? rampFor(item.exerciseId, item) : undefined;
+        plannedSetsFor(item, last, ramp).forEach((v, i) => {
+          rows.push(plannedRow(sessionId, item.exerciseId, position, i, v));
+        });
+        added.push(item.exerciseId);
+        position++;
+      }
+      // A superset needs two members; one left alone because its partner was skipped is a plain exercise.
+      const members = new Map<string, Set<string>>();
+      for (const r of rows) if (r.supersetKey) members.set(r.supersetKey, (members.get(r.supersetKey) ?? new Set()).add(r.exerciseId));
+      const placed = rows.map(r => (r.supersetKey && (members.get(r.supersetKey)?.size ?? 0) < 2 ? { ...r, supersetKey: null } : r));
+      if (placed.length > 0) {
+        dbSaveWorkoutSets(placed);
+        putSets(sessionId, [...sets, ...placed].sort(bySetOrder));
+      }
+      return { added, skipped };
     },
 
     swapSessionExercise(sessionId, fromExerciseId, toExerciseId) {

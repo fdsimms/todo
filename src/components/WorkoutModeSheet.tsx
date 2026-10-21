@@ -33,6 +33,7 @@ import { EmptyNote } from './EmptyNote';
 import { TextField } from './TextField';
 import { HelpText } from './HelpText';
 import { ExercisePickerSheet } from './ExercisePickerSheet';
+import { DescribeWorkoutSheet } from './DescribeWorkoutSheet';
 import { ExerciseDetailSheet } from './ExerciseDetailSheet';
 import { ExercisePhotos } from './ExercisePhotos';
 import { PlateLine } from './PlateLine';
@@ -48,6 +49,7 @@ import { useStepTimerStore } from '../store/useStepTimerStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useWorkoutModeStore } from '../store/useWorkoutModeStore';
 import { useRestTimer } from '../hooks/useRestTimer';
+import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
@@ -58,6 +60,8 @@ import { formatStopwatch } from '../utils/effort';
 import { linkedTaskLine, rotationPickFor, workoutTaskEffect } from '../utils/workoutTask';
 import { displayTitleFor } from '../utils/visibilityUtils';
 import { catalogExercise } from '../utils/exerciseCatalog';
+import { withCreatedExercises } from '../utils/describedExercises';
+import type { RoutineDraft } from '../utils/workoutDraft';
 import { swapCandidates, swappableSets } from '../utils/exerciseSwap';
 import { GymLine, GymNoteBox, GymUnavailableBanner } from './GymWorkoutParts';
 import { GymsSheet } from './GymsSheet';
@@ -209,6 +213,9 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const [sessionNotes, setSessionNotes] = useState('');
   // What the exercise picker is for: adding one, or swapping the shown one out.
   const [picking, setPicking] = useState<'add' | 'swap' | null>(null);
+  // Exercises described in words (`DescribeWorkoutSheet` with `into`). Claude only, so no key or a switched-off feature means no button.
+  const [describing, setDescribing] = useState(false);
+  const canDescribe = useAiRoute('workoutDraft') !== 'unavailable';
   // The notes editor, open on one exercise at a time across all cards, with both
   // fields at once (see `exerciseDayNote` for "today"; "always" is
   // `Exercise.notes`). `focus` is the field that takes the keyboard, and the two
@@ -247,6 +254,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     setEffort(session?.effort ?? null);
     setSessionNotes(session?.notes ?? '');
     setPicking(null);
+    setDescribing(false);
     setReordering(false);
     setNoteEdit(null);
     setGymNoteEdit(null);
@@ -396,6 +404,30 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     if (typeof added === 'string') return;
     setViewedId(exerciseId);
     setOpenSetId(null);
+  };
+
+  // Described exercises are added after what is there, and the view goes to
+  // the first new one. A `new:` exercise is made here, on confirm.
+  const addDescribed = (draft: RoutineDraft) => {
+    if (!session) return;
+    const items = withCreatedExercises(draft.items, draft.newExercises);
+    const result = items ? useWorkoutStore.getState().addRoutineItems(session.id, items) : 'notFound';
+    if (typeof result === 'string') {
+      haptics.warning();
+      Alert.alert('Couldn’t add the exercises', 'Something went wrong while adding them. Nothing was changed, so you can try again.');
+      return;
+    }
+    haptics.success();
+    animateLayout();
+    setDescribing(false);
+    if (result.added.length > 0) { setViewedId(result.added[0]); setOpenSetId(null); }
+    if (result.skipped.length > 0) {
+      const names = result.skipped.map(id => catalogExercise(useWorkoutStore.getState().exercises, id)?.name ?? 'An exercise');
+      Alert.alert(
+        result.added.length > 0 ? 'Some exercises were left out' : 'Nothing was added',
+        `${names.join(', ')} ${names.length === 1 ? 'is' : 'are'} already in this workout.`,
+      );
+    }
   };
 
   // ==== the exercise's "•••" menu: supersets ====
@@ -1279,6 +1311,9 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
             )}
             <View style={styles.addExercise}>
               <InlineAction icon="add" label="Add exercise" variant="neutral" surface="page" onPress={() => { haptics.tap(); setPicking('add'); }} />
+              {canDescribe && (
+                <InlineAction icon="sparkles-outline" label="Describe" surface="page" onPress={() => { haptics.tap(); setDescribing(true); }} />
+              )}
             </View>
           </ScrollView>
         )}
@@ -1355,6 +1390,12 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
         addedIds={exercises.map(e => e.exerciseId)}
         addedLabel="In workout"
         suggestedIds={picking === 'swap' && viewed ? (gym ? candidatesFor(viewed.exerciseId) : swapCandidates(exerciseRows, viewed.exerciseId, exercises.map(e => e.exerciseId))) : undefined}
+      />
+      <DescribeWorkoutSheet
+        visible={visible && describing}
+        onClose={() => setDescribing(false)}
+        mode="routine"
+        into={{ target: 'workout', onAdd: addDescribed }}
       />
       <GymsSheet
         visible={visible && gymPickerOpen}
@@ -1723,7 +1764,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   nextRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd, paddingHorizontal: spacing.md, paddingVertical: spacing.smd },
   nextName: { color: colors.text, fontSize: font.md },
   nextMeta: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs },
-  addExercise: { flexDirection: 'row', marginTop: spacing.md },
+  addExercise: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
   footer: {
     backgroundColor: colors.bgSecondary, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator,
     paddingHorizontal: spacing.md, paddingTop: spacing.smd,
