@@ -537,7 +537,12 @@ export function resetToGroceryItem(itemId: string, handBack = false): void {
 /** One project's own page (`dundundun://project?id=…`). */
 export function resetToProject(projectId: string, handBack = false): void {
   runWhenReady(() => {
-    navigateToTab('ProjectDetail', { projectId, returnTo: returnTabFor(handBack, 'ProjectDetail') });
+    // ProjectDetail is a card on the root stack, not a tab, so it is pushed
+    // over Projects the way resetToRecipeDetail pushes over Recipes. Handed to
+    // navigateToTab it named a tab that doesn't exist and went nowhere.
+    const returnTo = returnTabFor(handBack, 'ProjectDetail');
+    navigateToTab('Projects');
+    navigationRef.navigate({ name: 'ProjectDetail', params: { projectId, returnTo } });
   });
 }
 
