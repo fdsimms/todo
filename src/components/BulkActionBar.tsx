@@ -15,6 +15,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, border, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useBulkBarEntrance } from '../hooks/useBulkBarEntrance';
+import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { PRIORITY_LABELS, PRIORITY_COLORS, type Difficulty, type Priority, type TimeOfDay } from '../types';
 import { DIFFICULTY_SEGMENTS } from '../utils/rewards';
 import { tagColor } from '../utils/tagColor';
@@ -136,6 +137,13 @@ export function BulkActionBar({
   const [newTagText, setNewTagText] = useState('');
   const [groupTitle, setGroupTitle] = useState('');
 
+  // The bar floats at the bottom of the screen, so the Tags and Stack panels'
+  // fields open under the keyboard. Lift the bar onto it while one is up. The
+  // hook keeps its last height once inactive, hence the gate on `typing`.
+  const typing = panel === 'tags' || panel === 'group';
+  const liveKeyboardHeight = useKeyboardHeight(typing);
+  const keyboardHeight = typing ? liveKeyboardHeight : 0;
+
   const allSelected = selectedCount === totalCount;
   const none = selectedCount === 0;
 
@@ -200,7 +208,7 @@ export function BulkActionBar({
   return (
     <>
       <Animated.View
-        style={[styles.container, glassSupported() ? styles.containerGlass : shadows.sheet, { bottom: bottomInset + spacing.sm }, entranceStyle]}
+        style={[styles.container, glassSupported() ? styles.containerGlass : shadows.sheet, { bottom: (keyboardHeight > 0 ? keyboardHeight : bottomInset) + spacing.sm }, entranceStyle]}
         onLayout={onHeightChange ? e => onHeightChange(e.nativeEvent.layout.height) : undefined}
       >
         <GlassLayer style={styles.glassRadius} />
