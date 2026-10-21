@@ -85,6 +85,12 @@ export function RecipeTimerRow({
   const spoken = reading ? `${reading.clock} ${reading.state}` : idleText;
   const noun = verb.toLowerCase();
 
+  // The disclosure holds the summary and the by-hand field, and the field
+  // goes once a timer is in progress. With no summary either, it would open
+  // onto nothing but the row's gap, so the chevron isn't offered.
+  const hasDetails = !!summary || !inProgress;
+  const showDetails = expanded && hasDetails;
+
   // Asks while there's time on it to lose, which is always once it's shown.
   const handleReset = () => {
     const prompt = recipeTimerResetPrompt(verb, { running, elapsedSeconds });
@@ -102,10 +108,11 @@ export function RecipeTimerRow({
           style={styles.headerTap}
           activeOpacity={interaction.activeOpacity}
           onPress={() => { haptics.tap(); animateLayout(); setExpanded(v => !v); }}
-          accessibilityRole="button"
-          accessibilityState={{ expanded }}
+          disabled={!hasDetails}
+          accessibilityRole={hasDetails ? 'button' : 'text'}
+          accessibilityState={hasDetails ? { expanded: showDetails } : undefined}
           accessibilityLabel={`${verb} timer, ${spoken}`}
-          accessibilityHint="Double tap for the time it usually takes, and to log one by hand"
+          accessibilityHint={hasDetails ? 'Double tap for the time it usually takes, and to log one by hand' : undefined}
         >
           <Ionicons
             name="timer-outline"
@@ -120,11 +127,13 @@ export function RecipeTimerRow({
           ) : (
             <Text style={[styles.labels, styles.idleLabel]} numberOfLines={1}>{idleText}</Text>
           )}
-          <Ionicons
-            name={expanded ? 'chevron-up' : 'chevron-down'}
-            size={iconSize.xs}
-            color={colors.textTertiary}
-          />
+          {hasDetails && (
+            <Ionicons
+              name={showDetails ? 'chevron-up' : 'chevron-down'}
+              size={iconSize.xs}
+              color={colors.textTertiary}
+            />
+          )}
         </TouchableOpacity>
         {/* Furthest from the primary button and a wider gap from its
             neighbour (`resetBtn`), with no hitSlop anywhere on the row: the
@@ -164,7 +173,7 @@ export function RecipeTimerRow({
           <Ionicons name={running ? 'pause' : 'play'} size={iconSize.sm} color={running ? colors.onFill : colors.onAccent} />
         </TouchableOpacity>
       </View>
-      {expanded && (
+      {showDetails && (
         <View style={styles.details}>
           {!!summary && <Text style={styles.timerSummary}>{summary}</Text>}
           {!inProgress && (
