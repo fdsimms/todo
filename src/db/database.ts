@@ -8028,6 +8028,22 @@ export function dbCountWorkoutSetsBySession(): Record<string, number> {
   return out;
 }
 
+/**
+ * Weight times reps of every done, non-warm-up set that has both, summed per
+ * session and exercise: what a history list adds up into a volume without
+ * loading the sets. The exercise stays in the row because only a weighted lift
+ * counts, and what kind an exercise is lives in the catalog, not here.
+ */
+export function dbWorkoutLiftVolumes(): { sessionId: string; exerciseId: string; kilograms: number }[] {
+  return db
+    .getAllSync<{ session_id: string; exercise_id: string; kg: number }>(
+      `SELECT session_id, exercise_id, SUM(weight_kg * reps) AS kg FROM workout_sets
+       WHERE completed_at IS NOT NULL AND kind != 'warmup' AND weight_kg IS NOT NULL AND reps IS NOT NULL
+       GROUP BY session_id, exercise_id`
+    )
+    .map(r => ({ sessionId: r.session_id, exerciseId: r.exercise_id, kilograms: r.kg }));
+}
+
 export function dbSaveWorkoutSet(s: WorkoutSet): void {
   db.runSync(
     `INSERT OR REPLACE INTO workout_sets

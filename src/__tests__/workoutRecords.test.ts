@@ -8,6 +8,7 @@ import {
   estimatedOneRepMax,
   isNewRecord,
   isNewRecordRow,
+  liftVolumeKg,
   metricsFor,
   muscleWeeks,
   recentRecords,
@@ -77,6 +78,32 @@ describe('what counts', () => {
     expect(countsForRecords({ kind: 'amrap', completedAt: 'x' })).toBe(true);
     expect(countsForRecords({ kind: 'warmup', completedAt: 'x' })).toBe(false);
     expect(countsForRecords({ kind: 'working', completedAt: null })).toBe(false);
+  });
+});
+
+describe('liftVolumeKg', () => {
+  const kinds: Record<string, 'weight_reps' | 'bodyweight_reps'> = { pullup: 'bodyweight_reps' };
+  const kindOf = (id: string) => kinds[id] ?? 'weight_reps';
+
+  it('sums weight times reps over the done working sets of weighted lifts', () => {
+    const sets = [set('s1'), set('s1', { weightKg: 100, reps: 5 })];
+    expect(liftVolumeKg(sets, kindOf)).toBe(80 * 8 + 100 * 5);
+  });
+
+  it('leaves out warm-ups, planned sets, other kinds of exercise and sets missing a figure', () => {
+    const sets = [
+      set('s1', { kind: 'warmup' }),
+      set('s1', { completedAt: null }),
+      set('s1', { exerciseId: 'pullup', weightKg: null, reps: 10 }),
+      set('s1', { reps: null }),
+      set('s1', { weightKg: 50, reps: 10 }),
+    ];
+    expect(liftVolumeKg(sets, kindOf)).toBe(500);
+  });
+
+  it('is null, not zero, when nothing qualifies', () => {
+    expect(liftVolumeKg([], kindOf)).toBeNull();
+    expect(liftVolumeKg([set('s1', { exerciseId: 'pullup' })], kindOf)).toBeNull();
   });
 });
 

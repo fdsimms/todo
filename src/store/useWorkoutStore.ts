@@ -15,6 +15,7 @@ import type {
 } from '../types';
 import {
   dbCountWorkoutSetsBySession,
+  dbWorkoutLiftVolumes,
   dbDeleteExercise,
   dbDeleteWorkoutProgram,
   dbDeleteWorkoutRoutine,
@@ -80,6 +81,7 @@ import { watchCopyStale, type WatchWorkoutSpan } from '../utils/watchHealthWorko
 import { getCurrentDayStart, getLogicalDayKey } from '../utils/dateUtils';
 import { useWatchClashStore } from './useWatchClashStore';
 import { buildCatalog, catalogExercise } from '../utils/exerciseCatalog';
+import { liftVolumeKg } from '../utils/workoutRecords';
 import {
   cleanWorkoutName,
   exerciseNameKey,
@@ -313,6 +315,8 @@ interface WorkoutStore {
   setsBySession: Record<string, WorkoutSet[]>;
   /** How many sets each session holds, loaded or not. */
   setCounts: Record<string, number>;
+  /** Kilograms lifted in each session that has any (`liftVolumeKg`), loaded or not. A session with none has no entry. */
+  volumeKgBySession: Record<string, number>;
   initialized: boolean;
   initialize: () => void;
 
@@ -600,6 +604,22 @@ const effortOf = (v: number | null | undefined): number | null =>
   typeof v === 'number' && Number.isFinite(v) && v >= WORKOUT_EFFORT.min && v <= WORKOUT_EFFORT.max ? Math.round(v) : null;
 
 const byStartedDesc = (a: WorkoutSession, b: WorkoutSession) => b.startedAt.localeCompare(a.startedAt);
+
+/** `volumes` with one session's figure set, or dropped when it has none. */
+function withVolume(volumes: Record<string, number>, sessionId: string, kilograms: number | null): Record<string, number> {
+  const { [sessionId]: _old, ...rest } = volumes;
+  return kilograms === null ? rest : { ...rest, [sessionId]: kilograms };
+}
+
+/** Every session's lifted volume from the database, kinds read from `exercises`. */
+function volumeBySession(exercises: Exercise[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const row of dbWorkoutLiftVolumes()) {
+    if ((catalogExercise(exercises, row.exerciseId)?.kind ?? 'weight_reps') !== 'weight_reps') continue;
+    out[row.sessionId] = (out[row.sessionId] ?? 0) + row.kilograms;
+  }
+  return out;
+}
 const bySetOrder = (a: WorkoutSet, b: WorkoutSet) => a.position - b.position || a.setIndex - b.setIndex;
 
 /**
@@ -666,10 +686,14 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
     set({ sessions: [...get().sessions.filter(s => s.id !== row.id), row].sort(byStartedDesc) });
   };
 
+  /** Weighted lifts are the default kind, as everywhere else an exercise can't be found. */
+  const kindOfExercise = (id: string) => catalogExercise(get().exercises, id)?.kind ?? 'weight_reps';
+
   const putSets = (sessionId: string, sets: WorkoutSet[]) => {
     set({
       setsBySession: { ...get().setsBySession, [sessionId]: sets },
       setCounts: { ...get().setCounts, [sessionId]: sets.length },
+      volumeKgBySession: withVolume(get().volumeKgBySession, sessionId, liftVolumeKg(sets, kindOfExercise)),
     });
   };
 
@@ -939,14 +963,16 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
     sessions: [],
     setsBySession: {},
     setCounts: {},
+    volumeKgBySession: {},
     initialized: false,
     pendingHealthWriteRefusal: false,
 
     initialize() {
       const sessions = dbGetAllWorkoutSessions().sort(byStartedDesc);
       const live = sessions.find(s => s.endedAt === null);
+      const exercises = dbGetAllExercises();
       set({
-        exercises: dbGetAllExercises(),
+        exercises,
         routines: dbGetAllWorkoutRoutines(),
         routineGroups: readRoutineGroups(dbGetSetting(ROUTINE_GROUPS_KEY)),
         programs: dbGetAllWorkoutPrograms(),
@@ -955,6 +981,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         // sync, a restore or the demo swap describes rows that may not exist.
         setsBySession: live ? { [live.id]: dbGetWorkoutSets(live.id) } : {},
         setCounts: dbCountWorkoutSetsBySession(),
+        volumeKgBySession: volumeBySession(exercises),
         initialized: true,
       });
     },
@@ -1665,7 +1692,8 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       dbDeleteWorkoutSession(id);
       const { [id]: _sets, ...setsBySession } = get().setsBySession;
       const { [id]: _count, ...setCounts } = get().setCounts;
-      set({ sessions: get().sessions.filter(s => s.id !== id), setsBySession, setCounts });
+      const { [id]: _volume, ...volumeKgBySession } = get().volumeKgBySession;
+      set({ sessions: get().sessions.filter(s => s.id !== id), setsBySession, setCounts, volumeKgBySession });
     },
 
     discardSession() {
