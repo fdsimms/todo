@@ -38,6 +38,24 @@ export function recordLabel(type: RecordType, kind: ExerciseKind, reps?: number)
 }
 
 /**
+ * A record as the few characters a badge has room for: "1RM", "8RM" for a best
+ * set of 8, "Max" for the heaviest weight, and the figure's own word for the
+ * kinds ranked by one number. `recordLabel` is the full name.
+ */
+export function recordShortLabel(type: RecordType, kind: ExerciseKind, reps?: number): string {
+  switch (type) {
+    case 'e1rm': return '1RM';
+    case 'weight': return 'Max';
+    case 'repsAt': return `${reps ?? 0}RM`;
+    case 'best':
+      if (kind === 'duration') return 'Time';
+      if (kind === 'distance') return 'Dist';
+      return 'Reps';
+    case 'volume': return 'Vol';
+  }
+}
+
+/**
  * Every function here takes a `scale` (2 for a two-dumbbell exercise logged as a pair
  * total, `dumbbellLoad.ts`) that multiplies the stored one-dumbbell weights for
  * reading; the default 1 changes nothing.

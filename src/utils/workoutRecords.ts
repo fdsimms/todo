@@ -101,6 +101,27 @@ export function setVolume(set: Pick<WorkoutSet, 'weightKg' | 'reps' | 'durationS
   }
 }
 
+/**
+ * A workout's lifted volume in kilograms: weight times reps over the sets of
+ * its weighted lifts that count for records. Bodyweight, hold and distance
+ * work has volume in other units that don't add to kilograms, so it is left out
+ * rather than summed into a figure that means nothing. Null when nothing
+ * qualifies, so a row can leave the figure off instead of showing a zero.
+ * `dbWorkoutLiftVolumes` is the same sum for a history list.
+ */
+export function liftVolumeKg(
+  sets: Pick<WorkoutSet, 'exerciseId' | 'weightKg' | 'reps' | 'durationSeconds' | 'distanceM' | 'completedAt' | 'kind'>[],
+  kindOf: (exerciseId: string) => ExerciseKind,
+): number | null {
+  let total: number | null = null;
+  for (const set of sets) {
+    if (!countsForRecords(set) || kindOf(set.exerciseId) !== 'weight_reps') continue;
+    const v = setVolume(set, 'weight_reps');
+    if (v !== null) total = (total ?? 0) + v;
+  }
+  return total;
+}
+
 export type VolumeUnit = 'kg' | 'reps' | 'seconds' | 'm';
 
 /** The unit a kind's volume is in. `kg` means kilograms, shown in the person's unit. */
@@ -550,6 +571,35 @@ export function sessionRecordSummary(
   const recSessions = recordSessions(sessions, dayResetTime);
   const analyses = exerciseIds.map(id => analyzeExercise(id, kindOf(id), historyOf(id), recSessions));
   return summarizeRecords(recordsInSession(analyses, sessionId));
+}
+
+/**
+ * The records one exercise's sets hold in a workout that is still running, by
+ * the set that holds each: what a row can mark as it is ticked. The same walk
+ * as `sessionRecordSummary`, so the row and the finish summary agree.
+ *
+ * A session volume belongs to no one set and keeps rising with every tick, so
+ * it is left to the summary. Because a session is judged as a whole, the mark
+ * sits on the set holding the session's best so far and moves to a later set
+ * that beats it. Each set's records are most notable first.
+ */
+export function liveSetRecords(
+  sessionId: string,
+  exerciseId: string,
+  kind: ExerciseKind,
+  history: readonly WorkoutSet[],
+  sessions: readonly Pick<WorkoutSession, 'id' | 'startedAt'>[],
+  dayResetTime: string,
+): Map<string, RecordEvent[]> {
+  const out = new Map<string, RecordEvent[]>();
+  const analysis = analyzeExercise(exerciseId, kind, history, recordSessions(sessions, dayResetTime));
+  for (const e of analysis.events) {
+    if (e.sessionId !== sessionId || e.set === null) continue;
+    const list = out.get(e.set.id);
+    if (list) list.push(e); else out.set(e.set.id, [e]);
+  }
+  for (const list of out.values()) list.sort(byNotability);
+  return out;
 }
 
 /**

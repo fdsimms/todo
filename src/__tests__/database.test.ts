@@ -70,6 +70,7 @@ import {
   dbGetWorkoutSets,
   dbGetWorkoutSetsForExercise,
   dbCountWorkoutSetsBySession,
+  dbWorkoutLiftVolumes,
   dbSaveWorkoutSet,
   dbSaveWorkoutSets,
   dbDeleteWorkoutSet,
@@ -6498,6 +6499,23 @@ describe('workouts', () => {
     expect(dbCountWorkoutSetsBySession()).toEqual({ s1: 3 });
     dbDeleteWorkoutSet('b');
     expect(dbCountWorkoutSetsBySession()).toEqual({ s1: 2 });
+  });
+
+  it('sums weight times reps per session and exercise, from done working sets only', () => {
+    dbSaveWorkoutSession(session);
+    dbSaveWorkoutSets([
+      set('a', { weightKg: 50, reps: 10 }),
+      set('b', { setIndex: 1, weightKg: 60, reps: 5 }),
+      set('w', { setIndex: 2, kind: 'warmup', weightKg: 20, reps: 10 }),
+      set('p', { setIndex: 3, completedAt: null }),
+      set('n', { setIndex: 4, weightKg: null }),
+      set('c', { exerciseId: 'c1', position: 1, weightKg: 10, reps: 10 }),
+    ]);
+    const rows = dbWorkoutLiftVolumes().sort((x, y) => x.exerciseId.localeCompare(y.exerciseId));
+    expect(rows).toEqual([
+      { sessionId: 's1', exerciseId: 'c1', kilograms: 100 },
+      { sessionId: 's1', exerciseId: 'lib:back-squat', kilograms: 800 },
+    ]);
   });
 
   it('deletes a session\'s sets with it, and nobody else\'s', () => {

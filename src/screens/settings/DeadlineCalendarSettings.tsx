@@ -117,7 +117,14 @@ export function DeadlineCalendarSettings() {
   return (
     <SettingsSection
       label="Deadlines on your calendar"
-      footer="Adds an all-day deadline event to the calendar you pick, for tasks with “Add to calendar” turned on in their editor. If you pick a different calendar, a task’s event moves there the next time you edit that task. Moving or deleting the event doesn’t change the task’s deadline."
+      footer="Adds an all-day deadline event to the calendar you pick, for tasks with “Add to calendar” turned on in their editor."
+      explain={{
+        title: 'How deadline events work',
+        paragraphs: [
+          'If you pick a different calendar, a task’s event moves there the next time you edit that task.',
+          'Moving or deleting the event doesn’t change the task’s deadline.',
+        ],
+      }}
     >
       <SettingsRow
         entryId="deadlineCalendar"

@@ -449,6 +449,21 @@ describe('a live session', () => {
     expect(state().setCounts[s.id]).toBe(1);
   });
 
+  it('keeps each session\'s lifted volume in step with its sets, and the same after a reload', () => {
+    const s = ok(state().startSession());
+    ok(state().logSet(s.id, { exerciseId: 'lib:back-squat', weightKg: 100, reps: 5 }));
+    ok(state().logSet(s.id, { exerciseId: 'lib:back-squat', weightKg: 80, reps: 5 }));
+    expect(state().volumeKgBySession[s.id]).toBe(900);
+    reload();
+    expect(state().volumeKgBySession[s.id]).toBe(900);
+  });
+
+  it('has no volume entry for a session with no weighted sets', () => {
+    const s = ok(state().startSession());
+    ok(state().logSet(s.id, { exerciseId: 'lib:back-squat', reps: 5 }));
+    expect(state().volumeKgBySession[s.id]).toBeUndefined();
+  });
+
   it('keeps an exercise in its place and counts its sets from 0', () => {
     const s = ok(state().startSession());
     ok(state().logSet(s.id, { exerciseId: 'lib:back-squat', weightKg: 100, reps: 5 }));
@@ -541,6 +556,7 @@ describe('a live session', () => {
     expect(state().sessions).toEqual([]);
     expect(dbGetWorkoutSets(s.id)).toEqual([]);
     expect(state().setCounts[s.id]).toBeUndefined();
+    expect(state().volumeKgBySession[s.id]).toBeUndefined();
   });
 });
 

@@ -12,6 +12,7 @@ import {
   metricNote,
   metricNumber,
   recordLabel,
+  recordShortLabel,
   withThousands,
 } from '../utils/workoutRecordText';
 import type { SessionPoint } from '../utils/workoutRecords';
@@ -19,6 +20,17 @@ import type { SessionPoint } from '../utils/workoutRecords';
 const set = (extra: Partial<WorkoutSet> = {}): WorkoutSet => ({
   id: 's', sessionId: 'x', exerciseId: 'e', position: 0, setIndex: 0, kind: 'working', weightKg: 82.5, reps: 8,
   durationSeconds: null, distanceM: null, rpe: null, completedAt: 'z', supersetKey: null, note: null, ...extra,
+});
+
+describe('recordShortLabel', () => {
+  it('abbreviates each record to what a badge can hold', () => {
+    expect(recordShortLabel('e1rm', 'weight_reps')).toBe('1RM');
+    expect(recordShortLabel('weight', 'weight_reps')).toBe('Max');
+    expect(recordShortLabel('repsAt', 'weight_reps', 8)).toBe('8RM');
+    expect(recordShortLabel('best', 'bodyweight_reps')).toBe('Reps');
+    expect(recordShortLabel('best', 'duration')).toBe('Time');
+    expect(recordShortLabel('best', 'distance')).toBe('Dist');
+  });
 });
 
 describe('recordLabel', () => {

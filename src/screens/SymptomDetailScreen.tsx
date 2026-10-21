@@ -29,6 +29,7 @@ import { MoodEntryRow } from '../components/MoodEntryRow';
 import { MoodLogSheet } from '../components/MoodLogSheet';
 import { ContrastBars } from '../components/ContrastBars';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ChartGuides, BAR_GUIDE_GAP, useGuideGutter } from '../components/ChartGuides';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { HelpText } from '../components/HelpText';
 
@@ -43,6 +44,15 @@ type RootStackParamList = {
 const CHART_DAYS = 14;
 
 const BAR_HEIGHT = 60;
+
+/**
+ * The lines behind the strip, one per severity and one for none at the baseline,
+ * so the bars read against a scale without a numeric axis. A bar stops
+ * `BAR_GUIDE_GAP` short of its line rather than ending on it.
+ */
+const GUIDE_LEVELS = [3, 2, 1, 0] as const;
+/** Width of the label column at the default text size; scaled with the text. */
+const GUIDE_LABEL_WIDTH = 54;
 
 /**
  * One symptom: how often, how bad, when it last happened, and every entry
@@ -71,6 +81,7 @@ export function SymptomDetailScreen() {
   const scrollTop = useListScrollToTop();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const guideGutter = useGuideGutter(GUIDE_LABEL_WIDTH);
 
   const logs = useMoodStore(s => s.logs);
   const tasks = useTaskStore(s => s.tasks);
@@ -210,29 +221,37 @@ export function SymptomDetailScreen() {
 
         <Text style={styles.sectionTitle}>THE LAST TWO WEEKS</Text>
         <View style={styles.card}>
-          <View style={styles.stripInner}>
-            {strip.map(day => (
-              <View key={day.key} style={styles.stripCol} accessible accessibilityLabel={day.a11y}>
-                <View style={styles.barTrack}>
-                  {day.severity !== null && (
-                    <View
-                      style={[
-                        styles.bar,
-                        {
-                          height: (day.severity / 3) * BAR_HEIGHT,
-                          backgroundColor: severityColor(day.severity, colors),
-                        },
-                      ]}
-                    />
-                  )}
+          <View>
+            {/* Drawn before the bars so each bar sits on top of its line. */}
+            <ChartGuides
+              height={BAR_HEIGHT}
+              gutter={guideGutter}
+              guides={GUIDE_LEVELS.map(level => ({
+                fraction: level / 3,
+                label: level === 0 ? 'None' : severityLabel(level),
+              }))}
+            />
+            <View style={[styles.stripInner, { paddingLeft: guideGutter }]}>
+              {strip.map(day => (
+                <View key={day.key} style={styles.stripCol} accessible accessibilityLabel={day.a11y}>
+                  <View style={styles.barTrack}>
+                    {day.severity !== null && (
+                      <View
+                        style={[
+                          styles.bar,
+                          {
+                            height: (day.severity / 3) * BAR_HEIGHT - BAR_GUIDE_GAP,
+                            backgroundColor: severityColor(day.severity, colors),
+                          },
+                        ]}
+                      />
+                    )}
+                  </View>
+                  <Text style={styles.barLabel}>{day.label}</Text>
                 </View>
-                <Text style={styles.barLabel}>{day.label}</Text>
-              </View>
-            ))}
+              ))}
+            </View>
           </View>
-          <HelpText style={styles.caption}>
-            How bad it got each day. No bar means you didn’t log it.
-          </HelpText>
         </View>
 
         <Text style={styles.sectionTitle}>HOW BAD IT GETS</Text>

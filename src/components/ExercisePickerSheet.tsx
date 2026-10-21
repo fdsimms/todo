@@ -11,6 +11,7 @@ import { PillGroup } from './PillGroup';
 import { HelpText } from './HelpText';
 import { TextField } from './TextField';
 import { EmptyNote } from './EmptyNote';
+import { ExerciseFilterBar, useExerciseFilters } from './ExerciseFilterBar';
 import type { ExerciseEquipment, ExerciseKind, MuscleGroup } from '../types';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useFilterField } from '../hooks/useFilterField';
@@ -21,7 +22,7 @@ import { haptics } from '../utils/haptics';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { describeExercise, searchExercises, type ExerciseSearchResult } from '../utils/exerciseCatalog';
 import {
-  EQUIPMENT_LABELS, EXERCISE_EQUIPMENT, MUSCLE_GROUPS, MUSCLE_LABELS, WORKOUT_NAME_MAX_LENGTH, cleanWorkoutName,
+  EQUIPMENT_LABELS, EXERCISE_EQUIPMENT, MUSCLE_GROUPS, MUSCLE_LABELS, WORKOUT_NAME_MAX_LENGTH, cleanWorkoutName
 } from '../utils/workoutData';
 import { BUTTON_LABEL } from '../copy/shared';
 
@@ -75,17 +76,19 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
   const addExercise = useWorkoutStore(s => s.addExercise);
   const search = useFilterField();
   const added = useMemo(() => new Set(addedIds), [addedIds]);
+  const filter = useExerciseFilters();
+  const narrowed = filter.narrowed;
   const results = useMemo(() => {
     if (!visible) return [];
-    const found = searchExercises(exercises, search.query);
-    if (!suggestedIds || suggestedIds.length === 0 || search.query.trim() !== '') return found;
+    const found = searchExercises(exercises, search.query, filter.filters);
+    if (!suggestedIds || suggestedIds.length === 0 || search.query.trim() !== '' || narrowed) return found;
     const rank = new Map(suggestedIds.map((id, i) => [id, i]));
     // Suggested first, in the order given; the rest keep the catalog's.
     return [
       ...found.filter(r => rank.has(r.exercise.id)).sort((a, b) => rank.get(a.exercise.id)! - rank.get(b.exercise.id)!),
       ...found.filter(r => !rank.has(r.exercise.id)),
     ];
-  }, [visible, exercises, search.query, suggestedIds]);
+  }, [visible, exercises, search.query, suggestedIds, filter.filters, narrowed]);
 
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
@@ -107,6 +110,7 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
   const close = () => {
     resetForm();
     search.clear();
+    filter.clear();
     onClose();
   };
 
@@ -240,15 +244,19 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
               style={styles.search}
               accessibilityLabel="Search exercises"
             />
-            <View style={styles.createRow}>
-              <InlineAction
-                icon="add"
-                label={typed ? `Create “${typed.length > 28 ? `${typed.slice(0, 27)}…` : typed}”` : 'Create an exercise'}
-                variant="neutral"
-                surface="page"
-                onPress={openCreate}
-              />
-            </View>
+            <ExerciseFilterBar
+              state={filter}
+              exercises={exercises}
+              leading={
+                <InlineAction
+                  icon="add"
+                  label={typed ? `Create “${typed.length > 28 ? `${typed.slice(0, 27)}…` : typed}”` : 'Create an exercise'}
+                  variant="neutral"
+                  surface="page"
+                  onPress={openCreate}
+                />
+              }
+            />
             <FlatList
               data={results}
               keyExtractor={r => r.exercise.id}
@@ -259,7 +267,11 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
               keyboardDismissMode="on-drag"
               initialNumToRender={20}
               ListEmptyComponent={
-                <EmptyNote icon="search-outline">{`No exercise matches “${typed}”. Create it with the button above.`}</EmptyNote>
+                <EmptyNote icon="search-outline">
+                  {narrowed
+                    ? 'No exercise matches these filters. Remove one to see more.'
+                    : `No exercise matches “${typed}”. Create it with the button above.`}
+                </EmptyNote>
               }
             />
           </>
@@ -274,7 +286,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   flex: { flex: 1 },
   headerSpacer: { minWidth: 64 },
   search: { marginHorizontal: spacing.md, marginBottom: spacing.sm },
-  createRow: { flexDirection: 'row', paddingHorizontal: spacing.md, marginBottom: spacing.sm },
   list: { paddingHorizontal: spacing.md, paddingBottom: spacing.xl },
   emptyList: { paddingHorizontal: spacing.md, paddingTop: spacing.md },
   row: {

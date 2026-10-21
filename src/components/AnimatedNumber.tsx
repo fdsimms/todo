@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Animated, StyleSheet, Text, View, type LayoutChangeEvent, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import { animation } from '../theme';
+import { AnimatedText } from '../theme/AppFont';
 import { rollColumns, rollDirection, type RollColumn } from '../utils/digitRoll';
 import { useReduceMotion } from '../utils/useReduceMotion';
 
@@ -118,7 +119,7 @@ export function AnimatedNumber({ text, value, style, containerStyle, accessibili
         const leaving = col.to === '';
         return (
           <View key={i} style={[styles.column, { height }]}>
-            <Animated.Text
+            <AnimatedText
               maxFontSizeMultiplier={maxFontSizeMultiplier}
               style={[
                 style,
@@ -129,14 +130,14 @@ export function AnimatedNumber({ text, value, style, containerStyle, accessibili
               ]}
             >
               {leaving ? col.from : col.to}
-            </Animated.Text>
+            </AnimatedText>
             {!leaving && col.from !== '' && (
-              <Animated.Text
+              <AnimatedText
                 maxFontSizeMultiplier={maxFontSizeMultiplier}
                 style={[style, styles.figures, styles.outgoing, { opacity: outOpacity, transform: [{ translateY: outY }] }]}
               >
                 {col.from}
-              </Animated.Text>
+              </AnimatedText>
             )}
           </View>
         );

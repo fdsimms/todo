@@ -20,6 +20,12 @@ export interface SegmentOption<T> {
    * already picked: you could never see that Urgent is red without choosing it.
    */
   dot?: string;
+  /**
+   * Drawn in place of the label, for a set whose options are pictures (the
+   * mood faces). `label` is then only the fallback spoken name, so give it an
+   * `accessibilityLabel` or a readable `label`.
+   */
+  node?: (selected: boolean) => React.ReactNode;
   /** Spoken label, when the visible one is too terse to read aloud ("2nd"). */
   accessibilityLabel?: string;
   /**
@@ -264,12 +270,14 @@ export function SegmentedControl<T extends string | number | boolean | null>({
           />
         )}
         {!!opt.dot && <View style={[styles.dot, { backgroundColor: opt.dot }]} />}
-        <Text
-          style={[styles.segmentText, selected && styles.segmentTextSelected]}
-          numberOfLines={1}
-        >
-          {opt.label}
-        </Text>
+        {opt.node ? opt.node(selected) : (
+          <Text
+            style={[styles.segmentText, selected && styles.segmentTextSelected]}
+            numberOfLines={1}
+          >
+            {opt.label}
+          </Text>
+        )}
       </TouchableOpacity>
     );
   };

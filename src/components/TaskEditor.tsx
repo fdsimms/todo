@@ -190,6 +190,7 @@ import { capitalize } from '../utils/capitalize';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { useFilterField } from '../hooks/useFilterField';
 import { TextField } from './TextField';
+import { TaskCheckbox } from './TaskCheckbox';
 import { LazySheet } from './LazySheet';
 import { NewSavedMealSheet } from './NewSavedMealSheet';
 import { ProgressBar } from './ProgressBar';
@@ -2944,6 +2945,14 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     commitWindowSun(which, { event: kind, offsetMinutes: existing?.offsetMinutes ?? 0 }, daySunLocation);
   };
 
+  /** Empties one bound and leaves the other, which the row's own clear can't: it wipes both. */
+  const clearWindowBound = (which: 'start' | 'end') => {
+    if (which === 'start') { setWindowStart(null); setWindowStartSun(null); }
+    else { setWindowEnd(null); setWindowEndSun(null); }
+    setWindowPickerMode('none');
+    applyDerivedTargetCount(which === 'start' ? { windowStart: null } : { windowEnd: null });
+  };
+
   /** Moves the open sun bound to before / at / after its event, keeping the minutes. */
   const setWindowSunSide = (side: 'before' | 'at' | 'after') => {
     if (windowPickerMode === 'none' || windowPickerKind === 'time' || !daySunLocation) return;
@@ -3247,6 +3256,20 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       followUpTaskOneAtATime,
       followUpTaskAtEnd,
     }) !== initialStateRef.current;
+
+  // Completing or reopening from here closes the sheet, which takes any edits
+  // not yet saved with it, so that is asked before it goes through.
+  const confirmBeforeTick = (proceed: () => void) => {
+    if (!hasUnsavedChanges()) { proceed(); return; }
+    Alert.alert(
+      'Complete without your changes?',
+      'Your changes here haven’t been saved, so they’ll be lost. Cancel and tap Save to keep them.',
+      [
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
+        { text: 'Complete anyway', onPress: proceed },
+      ],
+    );
+  };
 
   const handleCancel = () => {
     if (hasUnsavedChanges()) {
@@ -3770,6 +3793,16 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
             />
           </View>
         )}
+        {windowPickerMode !== 'none' && (windowPickerMode === 'start' ? !!windowStart : !!windowEnd) && (
+          <View style={styles.windowKindRow}>
+            <InlineAction
+              label={windowPickerMode === 'start' ? 'Clear start' : 'Clear end'}
+              variant="neutral"
+              surface="card"
+              onPress={() => clearWindowBound(windowPickerMode)}
+            />
+          </View>
+        )}
         {windowPickerMode !== 'none' && windowPickerKind === 'time' && (
           <InlineTimePicker
             value={windowPickerDate}
@@ -4178,6 +4211,19 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       )}
 
       {titleVisible && (
+      <View style={styles.titleRow}>
+      {/* A saved task can be finished from here, with the same box and the
+          same rules as a search result (questions, targets, slips). */}
+      {liveStreakTask && (
+        <View style={styles.titleCheckbox}>
+          <TaskCheckbox
+            task={liveStreakTask}
+            taskLabel={liveStreakTask.title}
+            onTicked={() => onClose()}
+            confirmFirst={confirmBeforeTick}
+          />
+        </View>
+      )}
       <View style={styles.titleWrap}>
         {hasTitleOverlay && (
           <HighlightedText
@@ -4214,6 +4260,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
           onFocus={() => setTitleFocused(true)}
           onBlur={() => setTitleFocused(false)}
         />
+      </View>
       </View>
       )}
 
@@ -5663,6 +5710,11 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                     // Keeping the date on a task the pass is holding brings it
                     // back now rather than at tomorrow's pass.
                     if (!wait && task && isSlotWaiting(task, getCurrentLogicalDayKey())) setDeferUntil(null);
+                    closeField('slotIn');
+                  }}
+                  // Back to following the category, the state the field starts in.
+                  onDeselect={() => {
+                    setSlotIn(null);
                     closeField('slotIn');
                   }}
                   options={SLOT_IN_SEGMENTS}
@@ -8751,8 +8803,13 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   disabled: { opacity: 0.4 },
   scroll: { flex: 1 },
   scrollContent: { paddingBottom: 320 },
+  titleRow: { flexDirection: 'row', alignItems: 'flex-start', paddingLeft: spacing.md },
+  // Level with the title's first line: its paddingTop plus half the gap
+  // between the box and one line of font.xl.
+  titleCheckbox: { marginTop: spacing.lg + 5 },
   titleWrap: {
     position: 'relative',
+    flex: 1,
   },
   titleInput: {
     color: colors.text, fontSize: font.xl, fontWeight: '500',

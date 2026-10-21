@@ -20,7 +20,7 @@ import { useProjectStore } from '../store/useProjectStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { CollapsibleField } from './CollapsibleField';
@@ -46,6 +46,7 @@ import type { DragScroller, FabDropIntent } from '../utils/fabDrop';
 import { TaskEditor, type TaskDraft } from './TaskEditor';
 import { QuickAddModal } from './QuickAddModal';
 import { useFilterField } from '../hooks/useFilterField';
+import { FieldClearButton } from './FieldClearButton';
 import { useScrollFieldIntoView } from '../hooks/useKeyboardInsetScroll';
 import { TextField } from './TextField';
 import { Toggle } from './Toggle';
@@ -780,13 +781,16 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
           />
           {showExistingPicker && (
             <View style={styles.existingPicker}>
-              <TextInput
-                style={styles.existingSearch}
-                {...filterField}
-                onFocus={scrollIntoView}
-                placeholder="Search tasks"
-                placeholderTextColor={colors.textTertiary}
-              />
+              <View style={styles.existingSearchWrap}>
+                <TextInput
+                  style={styles.existingSearch}
+                  {...filterField}
+                  onFocus={scrollIntoView}
+                  placeholder="Search tasks"
+                  placeholderTextColor={colors.textTertiary}
+                />
+                <FieldClearButton query={existingSearch} onClear={clearExistingSearch} style={styles.existingSearchClear} />
+              </View>
               {eligibleForAdd.map(t => (
                 <TouchableOpacity
                   key={t.id}
@@ -907,8 +911,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   existingSearch: {
     color: colors.text, fontSize: font.sm,
     backgroundColor: colors.bgQuaternary, borderRadius: radius.md,
-    paddingHorizontal: spacing.sm, paddingVertical: spacing.xsm, marginBottom: spacing.xs,
+    paddingLeft: spacing.sm, paddingRight: spacing.sm + iconSize.sm + spacing.sm, paddingVertical: spacing.xsm,
   },
+  existingSearchWrap: { justifyContent: 'center', marginBottom: spacing.xs },
+  existingSearchClear: { position: 'absolute', right: spacing.sm },
   existingRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingVertical: 8,

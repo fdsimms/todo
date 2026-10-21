@@ -36,6 +36,7 @@ import { EditorSheet } from './EditorSheet';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SegmentedControl } from './SegmentedControl';
+import { MoodFace } from './MoodFace';
 import { PillGroup } from './PillGroup';
 import { EditorRow } from './EditorRow';
 import { WhenPicker } from './WhenPicker';
@@ -383,12 +384,16 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
 
   const moodOptions = MOOD_LEVELS.map(level => ({
     value: level.value as MoodLevel,
-    // The emoji alone: five words across a phone width truncates to "Very…"
+    // The face alone: five words across a phone width truncates to "Very…"
     // twice over, and the faces are the half anybody actually reads. The word
     // is spoken to screen readers and printed under the track once picked, so
-    // it is never the only thing carrying the meaning.
-    label: level.emoji,
+    // it is never the only thing carrying the meaning. Faces fade only once
+    // one is picked, so an empty choice reads as five open options.
+    label: level.label,
     accessibilityLabel: level.label,
+    node: (selected: boolean) => (
+      <MoodFace level={level.value} size={iconSize.xl + 2} dimmed={mood !== null && !selected} />
+    ),
   }));
 
   const requestDelete = () => {
@@ -440,6 +445,7 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
           options={moodOptions}
           value={mood as MoodLevel}
           onChange={value => setMood(value)}
+          onDeselect={() => { haptics.tap(); setMood(null); }}
           label="Mood"
         />
         <Text style={styles.moodCaption}>

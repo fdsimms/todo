@@ -8,6 +8,7 @@ import type { WorkoutProgram, WorkoutRoutine, WorkoutSession } from '../types';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
 import { SearchField } from '../components/SearchField';
+import { ExerciseFilterBar, useExerciseFilters } from '../components/ExerciseFilterBar';
 import { SegmentedControl } from '../components/SegmentedControl';
 import { useFilterField } from '../hooks/useFilterField';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
@@ -60,6 +61,8 @@ import { describeRoutineFit, routineFit, startingGymId } from '../utils/gyms';
 import { describeProgress, programProgress } from '../utils/workoutProgram';
 import { trainingMaxRaises } from '../utils/workoutProgression';
 import { formatWeightNumber } from '../utils/workoutData';
+import { withThousands } from '../utils/workoutRecordText';
+import { kgToUnit, type WeightUnit } from '../utils/weightLog';
 import { formatTimeOfDay } from '../utils/dateUtils';
 import { sessionMinutes } from '../utils/workoutSession';
 import { useHealthWorkoutHistory } from '../hooks/useHealthWorkoutHistory';
@@ -119,22 +122,37 @@ const VIEW_OPTIONS = [
 ];
 
 
+/** One figure on a History row: "55" beside "min". A row in progress has only the words. */
+interface SessionStat { value: string | null; unit: string }
+
 /**
- * "Tue, Oct 14 · 52 min · 17 sets". The set count is every set row the
- * session has (`setCounts`), and the minutes are `sessionMinutes`: the
- * workout page's tiles read the same two, so the row and the page agree.
+ * What a History row says about a session: its date, and its figures (minutes,
+ * sets, volume) drawn apart from it. The set count is every set row the session
+ * has (`setCounts`), the minutes are `sessionMinutes`, and the volume is
+ * `liftVolumeKg`: the workout page's tiles read the same, so the row and the
+ * page agree. A session with no weighted sets reads 0, so every row has the same three figures.
  */
-function sessionLine(session: WorkoutSession, sets: number): string {
-  const parts = [format(new Date(session.startedAt), 'EEE, MMM d')];
+function sessionFigures(
+  session: WorkoutSession,
+  sets: number,
+  volumeKg: number | undefined,
+  unit: WeightUnit,
+): { date: string; stats: SessionStat[] } {
+  const stats: SessionStat[] = [];
   if (session.endedAt === null) {
-    parts.push('In progress');
+    stats.push({ value: null, unit: 'In progress' });
   } else {
     const minutes = sessionMinutes(session);
-    if (minutes > 0) parts.push(`${minutes} min`);
+    if (minutes > 0) stats.push({ value: String(minutes), unit: 'min' });
   }
-  parts.push(`${sets} ${sets === 1 ? 'set' : 'sets'}`);
-  return parts.join(' · ');
+  stats.push({ value: String(sets), unit: sets === 1 ? 'set' : 'sets' });
+  stats.push({ value: withThousands(kgToUnit(volumeKg ?? 0, unit)), unit });
+  return { date: format(new Date(session.startedAt), 'EEE, MMM d'), stats };
 }
+
+/** The figures as one spoken line: "Tue, Oct 14, 52 min, 17 sets, 8,200 lb". */
+const figuresLabel = (date: string, stats: SessionStat[]) =>
+  [date, ...stats.map(s => (s.value === null ? s.unit : `${s.value} ${s.unit}`))].join(', ');
 
 export function WorkoutsScreen() {
   const pullSearch = usePullToSearch();
@@ -145,6 +163,7 @@ export function WorkoutsScreen() {
 
   const sessions = useWorkoutStore(s => s.sessions);
   const setCounts = useWorkoutStore(s => s.setCounts);
+  const volumeKgBySession = useWorkoutStore(s => s.volumeKgBySession);
   const exercises = useWorkoutStore(s => s.exercises);
   const routines = useWorkoutStore(s => s.routines);
   const routineGroups = useWorkoutStore(s => s.routineGroups);
@@ -203,9 +222,10 @@ export function WorkoutsScreen() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
   const search = useFilterField();
+  const filter = useExerciseFilters();
   const results = useMemo(
-    () => searchExercises(exercises, search.query).map(r => r.exercise),
-    [exercises, search.query]
+    () => searchExercises(exercises, search.query, filter.filters).map(r => r.exercise),
+    [exercises, search.query, filter.filters]
   );
 
   const openExercise = useCallback((id: string) => {
@@ -236,7 +256,8 @@ export function WorkoutsScreen() {
 
   const renderHistoryRow = useCallback(({ item }: { item: WorkoutHistoryRow }) => {
     if (item.kind === 'session') {
-      const line = sessionLine(item.session, setCounts[item.session.id] ?? 0);
+      const { date, stats } = sessionFigures(item.session, setCounts[item.session.id] ?? 0, volumeKgBySession[item.session.id], workoutUnit);
+      const line = figuresLabel(date, stats);
       return (
         <TouchableOpacity
           style={[styles.row, styles.exerciseRow]}
@@ -248,7 +269,15 @@ export function WorkoutsScreen() {
         >
           <View style={styles.flex}>
             <Text style={styles.title}>{item.session.title}</Text>
-            <Text style={styles.detail}>{line}</Text>
+            <Text style={styles.detail}>{date}</Text>
+            <View style={styles.statRow}>
+              {stats.map(stat => (
+                <Text key={stat.unit} style={styles.statUnit}>
+                  {stat.value !== null && <Text style={styles.statValue}>{`${stat.value} `}</Text>}
+                  {stat.unit}
+                </Text>
+              ))}
+            </View>
           </View>
           <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
         </TouchableOpacity>
@@ -269,7 +298,7 @@ export function WorkoutsScreen() {
         <Text style={styles.detail}>{line}</Text>
       </View>
     );
-  }, [styles, setCounts, colors, openSession]);
+  }, [styles, setCounts, volumeKgBySession, workoutUnit, colors, openSession]);
 
   const renderExercise = useCallback(({ item }: { item: CatalogExercise }) => (
     <TouchableOpacity
@@ -343,12 +372,19 @@ export function WorkoutsScreen() {
       if (g.routines.length === 0) out.push({ kind: 'empty', key: `empty:${g.name}`, group: g.name });
       for (const routine of g.routines) out.push({ kind: 'routine', key: routine.id, routine });
     }
-    if (sections.archived.length > 0) {
-      out.push({ kind: 'archivedHeader', key: 'archived', count: sections.archived.length, open: archivedOpen });
-      if (archivedOpen) for (const routine of sections.archived) out.push({ kind: 'routine', key: routine.id, routine });
-    }
     return out;
-  }, [sections, foldedGroups, archivedOpen]);
+  }, [sections, foldedGroups]);
+
+  // Archived sits under the buttons, outside the draggable list: it is rarely
+  // opened and its rows are never dragged.
+  const archivedItems = useMemo<RoutineListItem[]>(() => {
+    if (sections.archived.length === 0) return [];
+    const out: RoutineListItem[] = [
+      { kind: 'archivedHeader', key: 'archived', count: sections.archived.length, open: archivedOpen },
+    ];
+    if (archivedOpen) for (const routine of sections.archived) out.push({ kind: 'routine', key: routine.id, routine });
+    return out;
+  }, [sections.archived, archivedOpen]);
 
   const toggleHeader = useCallback((item: RoutineHeaderItem | RoutineArchivedHeaderItem) => {
     haptics.tap();
@@ -366,12 +402,6 @@ export function WorkoutsScreen() {
         : { kind: 'other' }
     ));
     useWorkoutStore.getState().arrangeRoutines(placementsFromList(flat));
-  }, []);
-
-  // A live routine can move anywhere above the Archived heading, and no further.
-  const routineDragRange = useCallback((data: RoutineListItem[]): [number, number] => {
-    const archivedAt = data.findIndex(i => i.kind === 'archivedHeader');
-    return [0, (archivedAt === -1 ? data.length : archivedAt) - 1];
   }, []);
 
   const fitLine = useCallback(
@@ -629,9 +659,18 @@ export function WorkoutsScreen() {
   ) : null;
 
   const routineActions = (
-    <View style={styles.actions}>
-      <InlineAction icon="add" label="New routine" surface="page" onPress={() => openEditor(null)} />
-    </View>
+    <>
+      <View style={styles.actions}>
+        <InlineAction icon="add" label="New routine" surface="page" onPress={() => openEditor(null)} />
+        <InlineAction icon="folder-open-outline" label="New group" variant="neutral" surface="page" onPress={() => openGroupSheet(null)} />
+        {!live && (
+          <InlineAction variant="neutral" label="Start empty workout" surface="page" onPress={() => startWorkout()} />
+        )}
+      </View>
+      {archivedItems.map(entry => (
+        <React.Fragment key={entry.key}>{renderRoutine({ item: entry, drag: () => {} })}</React.Fragment>
+      ))}
+    </>
   );
 
   return (
@@ -694,7 +733,6 @@ export function WorkoutsScreen() {
             keyExtractor={r => r.key}
             renderItem={({ item, drag }) => renderRoutine({ item, drag })}
             onReorder={commitArrangement}
-            dragRange={routineDragRange}
             placeholderStyle={styles.dropSlot}
             refreshControl={pullSearch.refreshControl}
             contentContainerStyle={[styles.list, listBottom]}
@@ -729,11 +767,12 @@ export function WorkoutsScreen() {
             style={styles.search}
             accessibilityLabel="Search exercises by name, muscle or equipment"
           />
+          <ExerciseFilterBar state={filter} exercises={exercises} />
           {results.length === 0 ? (
             <EmptyState
               icon="search-outline"
               title="Nothing matches"
-              subtitle={`No exercise matches “${search.query.trim()}”. Try a muscle or a piece of equipment.`}
+              subtitle={filter.narrowed ? 'No exercise matches these filters. Remove one to see more.' : `No exercise matches “${search.query.trim()}”. Try a muscle or a piece of equipment.`}
               bottomOffset={tabBarHeight}
             />
           ) : (
@@ -785,7 +824,6 @@ export function WorkoutsScreen() {
           anchor={menuAnchor}
           onClose={() => setMenuOpen(false)}
           actions={[
-            { key: 'group', label: 'New group', icon: 'folder-open-outline' as const, onPress: () => openGroupSheet(null) },
             { key: 'gyms', label: 'Gyms', icon: 'location-outline', onPress: () => setGymsOpen(true) },
             { key: 'import', label: 'Import from Strong or Hevy', icon: 'download-outline', onPress: () => { void startImport(); } },
             ...(sessions.some(s => s.endedAt !== null)
@@ -951,6 +989,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   noticeValue: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold, fontVariant: ['tabular-nums'] },
   footHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.sm, marginHorizontal: spacing.xs },
   detail: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs },
+  statRow: { flexDirection: 'row', flexWrap: 'wrap', columnGap: spacing.md, rowGap: spacing.xxs, marginTop: spacing.xs },
+  statUnit: { color: colors.textSecondary, fontSize: font.sm },
+  statValue: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold, fontVariant: ['tabular-nums'] },
   fitDetail: { color: colors.orangeText, fontSize: font.sm, marginTop: spacing.xxs },
   healthTagRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.xxs },
   healthTag: {

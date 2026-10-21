@@ -8,6 +8,7 @@ import { rankGrocerySuggestions } from '../utils/grocerySuggest';
 import { groceryNameKey } from '../utils/groceryParse';
 import { haptics } from '../utils/haptics';
 import { useFilterField } from '../hooks/useFilterField';
+import { FieldClearButton } from './FieldClearButton';
 
 interface Props {
   items: readonly GroceryItem[];
@@ -46,7 +47,7 @@ interface Props {
 export function CatalogLinkPicker({ items, initialQuery, excludeItemId, onPick, onCreate }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const { query, props: filterField } = useFilterField(initialQuery);
+  const { query, clear: clearQuery, props: filterField } = useFilterField(initialQuery);
 
   const results = useMemo(
     () => rankGrocerySuggestions(query, items, new Date(), 6)
@@ -75,6 +76,7 @@ export function CatalogLinkPicker({ items, initialQuery, excludeItemId, onPick, 
           autoCapitalize="none"
           accessibilityLabel="Find an item in your grocery catalog"
         />
+        <FieldClearButton query={query} onClear={clearQuery} />
       </View>
       {results.length > 0 ? (
         results.map(({ item, matchedName }) => (

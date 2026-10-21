@@ -8,6 +8,8 @@ import {
   estimatedOneRepMax,
   isNewRecord,
   isNewRecordRow,
+  liftVolumeKg,
+  liveSetRecords,
   metricsFor,
   muscleWeeks,
   recentRecords,
@@ -77,6 +79,32 @@ describe('what counts', () => {
     expect(countsForRecords({ kind: 'amrap', completedAt: 'x' })).toBe(true);
     expect(countsForRecords({ kind: 'warmup', completedAt: 'x' })).toBe(false);
     expect(countsForRecords({ kind: 'working', completedAt: null })).toBe(false);
+  });
+});
+
+describe('liftVolumeKg', () => {
+  const kinds: Record<string, 'weight_reps' | 'bodyweight_reps'> = { pullup: 'bodyweight_reps' };
+  const kindOf = (id: string) => kinds[id] ?? 'weight_reps';
+
+  it('sums weight times reps over the done working sets of weighted lifts', () => {
+    const sets = [set('s1'), set('s1', { weightKg: 100, reps: 5 })];
+    expect(liftVolumeKg(sets, kindOf)).toBe(80 * 8 + 100 * 5);
+  });
+
+  it('leaves out warm-ups, planned sets, other kinds of exercise and sets missing a figure', () => {
+    const sets = [
+      set('s1', { kind: 'warmup' }),
+      set('s1', { completedAt: null }),
+      set('s1', { exerciseId: 'pullup', weightKg: null, reps: 10 }),
+      set('s1', { reps: null }),
+      set('s1', { weightKg: 50, reps: 10 }),
+    ];
+    expect(liftVolumeKg(sets, kindOf)).toBe(500);
+  });
+
+  it('is null, not zero, when nothing qualifies', () => {
+    expect(liftVolumeKg([], kindOf)).toBeNull();
+    expect(liftVolumeKg([set('s1', { exerciseId: 'pullup' })], kindOf)).toBeNull();
   });
 });
 
@@ -392,6 +420,38 @@ describe('sessionRecordSummary', () => {
     // at the same reps is no record at all.
     const asBodyweight = sessionRecordSummary('s2', [BENCH], () => 'bodyweight_reps', historyOf, sessions, '00:00');
     expect(asBodyweight).toEqual([]);
+  });
+});
+
+describe('liveSetRecords', () => {
+  const sessions = [
+    { id: 's1', startedAt: new Date(2026, 8, 1, 18).toISOString() },
+    { id: 's2', startedAt: new Date(2026, 8, 8, 18).toISOString() },
+  ];
+  const live = (history: WorkoutSet[]) => liveSetRecords('s2', BENCH, 'weight_reps', history, sessions, '00:00');
+
+  it('marks the set that beat the earlier sessions, most notable record first', () => {
+    const old = set('s1', { weightKg: 80, reps: 8 });
+    const best = set('s2', { weightKg: 90, reps: 8 });
+    const warm = set('s2', { weightKg: 40, reps: 8 });
+    const marks = live([old, warm, best]);
+    expect([...marks.keys()]).toEqual([best.id]);
+    expect(marks.get(best.id)![0].type).toBe('e1rm');
+  });
+
+  it('moves the mark to a later set that beats the first', () => {
+    const old = set('s1', { weightKg: 80, reps: 8 });
+    const first = set('s2', { weightKg: 85, reps: 8 });
+    const second = set('s2', { weightKg: 90, reps: 8 });
+    expect([...live([old, first, second]).keys()]).toEqual([second.id]);
+  });
+
+  it('marks nothing for a first time, an unticked set, or a session volume', () => {
+    expect(live([set('s2', { weightKg: 90, reps: 8 })]).size).toBe(0);
+    const old = set('s1', { weightKg: 80, reps: 8 });
+    expect(live([old, set('s2', { weightKg: 100, reps: 8, completedAt: null })]).size).toBe(0);
+    // Same weight and reps over more sets raises the volume only.
+    expect(live([old, set('s2', { weightKg: 80, reps: 8 }), set('s2', { weightKg: 80, reps: 8 })]).size).toBe(0);
   });
 });
 

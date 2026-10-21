@@ -3,6 +3,7 @@ import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-na
 import type { Exercise } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, radius, spacing, type Colors } from '../theme';
+import { RecordBadge } from './RecordBadge';
 import { catalogExercise } from '../utils/exerciseCatalog';
 import type { ExerciseRecordsSummary } from '../utils/workoutRecords';
 import { formatRecordChange, recordLabel } from '../utils/workoutRecordText';
@@ -47,7 +48,10 @@ export function WorkoutRecordsCard({ records, exercises, unit, style }: Props) {
               return `${recordLabel(e.type, kind, e.reps)}, up from ${change.before} to ${change.after}`;
             }).join('. ')}`}
           >
-            <Text style={styles.name}>{name}</Text>
+            <View style={styles.head}>
+              <RecordBadge />
+              <Text style={styles.name}>{name}</Text>
+            </View>
             {r.records.map(e => {
               const change = formatRecordChange(e, kind, unit, scale);
               return (
@@ -71,7 +75,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   card: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden' },
   row: { paddingHorizontal: spacing.md, paddingVertical: spacing.smd },
   rowSep: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator },
-  name: { color: colors.text, fontSize: font.md },
+  head: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd },
+  name: { flex: 1, color: colors.text, fontSize: font.md },
   line: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: spacing.smd, marginTop: spacing.xs },
   label: { flex: 1, color: colors.textSecondary, fontSize: font.sm },
   value: { flexShrink: 0, color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold, fontVariant: ['tabular-nums'], textAlign: 'right' },

@@ -113,20 +113,30 @@ export function movedExerciseOrder(
   exerciseId: string,
   direction: 'up' | 'down',
 ): string[] | null {
-  const exercises = sessionExercises(sets);
-  const blocks: string[][] = [];
-  const seen = new Set<string>();
-  for (const ex of exercises) {
-    if (seen.has(ex.exerciseId)) continue;
-    const group = supersetGroup(exercises, ex.exerciseId).map(e => e.exerciseId);
-    group.forEach(id => seen.add(id));
-    blocks.push(group);
-  }
-  const at = blocks.findIndex(b => b.includes(exerciseId));
+  const blocks = exerciseBlocks(sets);
+  const at = blocks.findIndex(b => b.some(e => e.exerciseId === exerciseId));
   const to = direction === 'up' ? at - 1 : at + 1;
   if (at < 0 || to < 0 || to >= blocks.length) return null;
   [blocks[at], blocks[to]] = [blocks[to], blocks[at]];
-  return blocks.flat();
+  return blocks.flat().map(e => e.exerciseId);
+}
+
+/**
+ * The session's exercises as the blocks a reorder moves: a superset is one
+ * block (its run of partners), any other exercise a block of its own. The
+ * reorder list drags these, so a pair is never split by a drop.
+ */
+export function exerciseBlocks(sets: readonly WorkoutSet[]): SessionExercise[][] {
+  const exercises = sessionExercises(sets);
+  const blocks: SessionExercise[][] = [];
+  const seen = new Set<string>();
+  for (const ex of exercises) {
+    if (seen.has(ex.exerciseId)) continue;
+    const group = supersetGroup(exercises, ex.exerciseId);
+    group.forEach(e => seen.add(e.exerciseId));
+    blocks.push(group);
+  }
+  return blocks;
 }
 
 /** The sets with each exercise's position and superset key rewritten from an exercise order and a key per exercise. */
