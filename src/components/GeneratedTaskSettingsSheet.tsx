@@ -79,6 +79,7 @@ export function GeneratedTaskSettingsSheet({ visible, kind, spec, generatorLabel
   const birthdayGiftLeadDays = useSettingsStore(s => s.birthdayGiftLeadDays);
   const mealShortfallLeadDays = useSettingsStore(s => s.mealShortfallLeadDays);
   const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
+  const hideHelpText = useSettingsStore(s => s.hideHelpText);
   const setGeneratedTaskDefaults = useSettingsStore(s => s.setGeneratedTaskDefaults);
   const setGeneratedTaskExtras = useSettingsStore(s => s.setGeneratedTaskExtras);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
@@ -197,7 +198,7 @@ export function GeneratedTaskSettingsSheet({ visible, kind, spec, generatorLabel
                 <CollapsibleField
                   label={field.label}
                   summary={field.summary}
-                  lockedHint={field.hint}
+                  lockedHint={hideHelpText ? undefined : field.hint}
                   locked
                   expanded={false}
                   onToggle={() => {}}
