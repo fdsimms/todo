@@ -7,6 +7,7 @@ import { useFocusEffect, useRoute } from '@react-navigation/native';
 import { navigateToTab, navigationRef } from '../navigation/navigationRef';
 import { format } from 'date-fns/format';
 import { addDays } from 'date-fns/addDays';
+import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useHealthStore, WEIGHT_HISTORY_DAYS } from '../store/useHealthStore';
@@ -57,19 +58,26 @@ import { ProgressBar } from '../components/ProgressBar';
  * five is `SegmentedControl`'s job per CLAUDE.md's picker table, not a
  * `PillGroup`: there is no open-ended vocabulary here, just one of five fixed
  * spans.
+ *
+ * `days: null` is year to date, the one span with no fixed length: it runs from
+ * January 1 of the logical year, so it is measured when drawn
+ * (`daysSinceYearStart`). In January it is only a few points, and by December it
+ * is nearly the same as 1Y; that is what it means, not something to pad.
  */
-type WeightChartRangeDays = 7 | 30 | 90 | 180 | 365;
+type WeightChartRangeId = '1W' | '1M' | '6M' | 'YTD' | '1Y';
 
 const WEIGHT_CHART_RANGES: readonly {
-  days: WeightChartRangeDays;
+  id: WeightChartRangeId;
+  days: number | null;
   label: string;
   sectionTitle: string;
+  spoken: string;
 }[] = [
-  { days: 7, label: '1W', sectionTitle: 'THE LAST WEEK' },
-  { days: 30, label: '1M', sectionTitle: 'THE LAST MONTH' },
-  { days: 90, label: '3M', sectionTitle: 'THE LAST 3 MONTHS' },
-  { days: 180, label: '6M', sectionTitle: 'THE LAST 6 MONTHS' },
-  { days: 365, label: '1Y', sectionTitle: 'THE LAST YEAR' },
+  { id: '1W', days: 7, label: '1W', sectionTitle: 'THE LAST WEEK', spoken: 'Show the last week' },
+  { id: '1M', days: 30, label: '1M', sectionTitle: 'THE LAST MONTH', spoken: 'Show the last month' },
+  { id: '6M', days: 180, label: '6M', sectionTitle: 'THE LAST 6 MONTHS', spoken: 'Show the last 6 months' },
+  { id: 'YTD', days: null, label: 'YTD', sectionTitle: 'THE YEAR SO FAR', spoken: 'Show the year so far' },
+  { id: '1Y', days: 365, label: '1Y', sectionTitle: 'THE LAST YEAR', spoken: 'Show the last year' },
 ];
 
 /**
@@ -77,7 +85,12 @@ const WEIGHT_CHART_RANGES: readonly {
  * and narrow enough that a year's worth of daily dots isn't the first thing
  * anybody sees.
  */
-const DEFAULT_RANGE_DAYS: WeightChartRangeDays = 180;
+const DEFAULT_RANGE_ID: WeightChartRangeId = '6M';
+
+/** Days from January 1 of `today`'s year through `today`, inclusive. */
+function daysSinceYearStart(today: Date): number {
+  return differenceInCalendarDays(today, new Date(today.getFullYear(), 0, 1)) + 1;
+}
 
 // The goal bar's fill never drops below this share of the track. At the start
 // of a goal the true fraction is 0, and an empty track reads as a broken
@@ -127,8 +140,8 @@ export function WeightScreen() {
   // The page scroll is off while a finger is scrubbing the chart.
   const [scrubbing, setScrubbing] = useState(false);
   const [goalOpen, setGoalOpen] = useState(false);
-  const [rangeDays, setRangeDays] = useState<WeightChartRangeDays>(DEFAULT_RANGE_DAYS);
-  const activeRange = WEIGHT_CHART_RANGES.find(r => r.days === rangeDays) ?? WEIGHT_CHART_RANGES[3];
+  const [rangeId, setRangeId] = useState<WeightChartRangeId>(DEFAULT_RANGE_ID);
+  const activeRange = WEIGHT_CHART_RANGES.find(r => r.id === rangeId) ?? WEIGHT_CHART_RANGES[2];
   // "6M" reads as ambiguous shorthand in a stat label with no other context
   // around it; the section title above the chart already spells the same
   // range out ("THE LAST 6 MONTHS"), so reuse that instead of inventing a
@@ -195,6 +208,7 @@ export function WeightScreen() {
   // The selected range is purely a slice of what's already in memory — no
   // second Health query. `slice`'s negative-safe `Math.max` handles a range
   // wider than the data actually fetched.
+  const rangeDays = activeRange.days ?? daysSinceYearStart(getLogicalToday());
   const visiblePoints = useMemo(
     () => points.slice(Math.max(0, points.length - rangeDays)),
     [points, rangeDays],
@@ -414,18 +428,13 @@ export function WeightScreen() {
         <View style={styles.rangeRow}>
           <SegmentedControl
             options={WEIGHT_CHART_RANGES.map(r => ({
-              value: r.days,
+              value: r.id,
               label: r.label,
-              // SegmentedControl reads a spoken label straight off the option
-              // (unlike SettingsSegments, which derives it) — computed here
-              // rather than left to the bare "1M"/"3M" a screen reader would
-              // otherwise read as literal letters.
-              accessibilityLabel: `Show the last ${
-                r.days === 7 ? 'week' : r.days === 30 ? 'month' : r.days === 365 ? 'year' : `${r.days / 30} months`
-              }`,
+              // A spoken label, so a screen reader doesn't read "1M" or "YTD" as letters.
+              accessibilityLabel: r.spoken,
             }))}
-            value={rangeDays}
-            onChange={next => setRangeDays(next)}
+            value={rangeId}
+            onChange={next => setRangeId(next)}
             label="Chart range"
           />
         </View>
