@@ -46,7 +46,7 @@ components below.
 - `src/screens/PersonDetailScreen.tsx` — DetailHeader, EmptyState, InlineAction, JournalDaySheet, PersonEditor, PersonHistorySheet, PersonNoteSheet, PinIcon, QuickEventSheet, ScrollToTopButton, TaskEditor
 - `src/screens/ProjectDetailScreen.tsx` — AddGuestsSheet, ApplyTemplateSheet, BulkActionBar, CardSheet, DeliverablePromptQueue, DeliverablePromptSheet, DetailHeader, EmptyState, Fab, FabDropZones, GroupDropTarget, InlineAction, +30 more
 - `src/screens/ProjectsScreen.tsx` — CardSheet, EmbeddedRoute, EmptyState, Fab, FabDropZones, LazySheet, ListBulkBar, PaintSelection, ProgressBar, ProjectCategoriesSheet, ProjectDetailScreen, ProjectEditor, +10 more
-- `src/screens/RecipeDetailScreen.tsx` — BlankEditorSheet, ComponentChoiceSheet, CookModeSheet, CookwareWeighIn, CountStepper, DetailHeader, EmptyState, FadeInImage, HelpText, IngredientCatalogMatchSheet, InlineAction, ListBulkBar, +26 more
+- `src/screens/RecipeDetailScreen.tsx` — BlankEditorSheet, ComponentChoiceSheet, CookModeSheet, CookwareWeighIn, CountStepper, DetailHeader, EmptyState, FadeInImage, HelpText, IngredientCatalogMatchSheet, InlineAction, ListBulkBar, +27 more
 - `src/screens/RecipesScreen.tsx` — ActiveFilterPill, ActiveTripBanner, EmbeddedRoute, EmptyState, Fab, FabDropZones, FadeInImage, FieldClearButton, HubPills, InventRecipeSheet, LazySheet, ListBulkBar, +17 more
 - `src/screens/RemindersScreen.tsx` — EmptyState, RemindersOffNote, ScreenHeader, ScreenSettingsSheet, ScrollToTopButton, TaskEditor
 - `src/screens/RewardsScreen.tsx` — AnimatedNumber, CardSheet, CoinBurst, CoinIcon, CountStepper, EmptyNote, EmptyState, HabitPickerSheet, HelpText, InlineAction, ProgressBar, ProjectPickerSheet, +5 more
@@ -298,6 +298,7 @@ Where each component can appear.
 - `src/components/PrepTaskSheet.tsx` — on RecipeDetailScreen, RecipesScreen
 - `src/components/PrepTasksReviewSheet.tsx` — on MealPlanScreen
 - `src/components/PressableScale.tsx` — on ArchivedScreen, AutomationsScreen, BackfillScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookbookDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, JournalScreen, KitchenScreen, +37 more
+- `src/components/PrintIngredientsSheet.tsx` — on RecipeDetailScreen, RecipesScreen
 - `src/components/ProduceContributorsSheet.tsx` — on FoodLogScreen
 - `src/components/ProductPicker.tsx` — on FoodLogScreen, GroceryScreen, KitchenScreen, app shell
 - `src/components/ProductRatingOffer.tsx` — on FoodLogScreen, GroceryScreen, KitchenScreen, RecipeDetailScreen, RecipesScreen
