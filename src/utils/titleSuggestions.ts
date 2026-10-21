@@ -69,6 +69,8 @@ function matchTitle(title: string, query: string): { score: number; ranges: [num
  * and is still sitting open, and suggesting that title would just prompt a
  * duplicate of the task that already exists.
  *
+ * Tasks the app generated (`generatedKind`) are never offered.
+ *
  * A title completed only once is a genuine unknown — it might be about to
  * recur (retyping "use BOGO ticket" a day later, which this feature exists
  * to help spell consistently) or it might be a true one-off that will never
@@ -94,6 +96,9 @@ export function suggestTitles(tasks: Task[], query: string, limit = 3, now: numb
   for (const task of tasks) {
     if (task.parentId) continue; // skip subtasks, mirroring fuzzySearch
     if (!task.completed || !task.completedAt) continue;
+    // A task the app wrote ("Use up cottage cheese") isn't something the person typed, so
+    // it isn't a spelling to keep consistent; the generator makes it when it's wanted.
+    if (task.generatedKind) continue;
     const title = task.title.trim();
     if (!title) continue;
 
