@@ -222,6 +222,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/incidentalPurchases.ts` — incidentalIds, SubstituteReason, SubstituteCandidate, substituteCandidates, INCIDENTAL_PICK_LIMIT, incidentalPicks
 - `src/utils/ingredientCatalogMatch.ts` — IngredientMatchReason, IngredientMatchKind, IngredientCatalogMatch, matchIngredientToCatalog, matchIngredientsToCatalog, CatalogMatchSummary, catalogMatchSummary
 - `src/utils/ingredientGrams.ts` — portionsWithServing, volumeFromMass, hasKnownDensity, measureLineAmount, gramsForLine, panelMultiplier, UnfixableQuantity, unfixableQuantityReason, LineWeighing, weighableLine
+- `src/utils/ingredientGrounding.ts` — ungroundedIngredientIndexes
 - `src/utils/itemAliases.ts` — otherNameKeysOf, aliasIndex, itemKeyIndex, itemForOtherName, OtherNamesResult, cleanOtherNames, describeOtherNames
 - `src/utils/itemBackfill.ts` — ItemBackfillFieldId, LATER_LABEL_NUTRIENTS, ItemBackfillFieldDef, ITEM_BACKFILL_FIELDS, unratedBoxesOf, isItemFieldMissing, isItemFieldApplicable, isItemBackfillDismissed, itemBackfillCandidates, itemBackfillFieldCounts, +1 more
 - `src/utils/itemDisposal.ts` — DisposalOutcome, REPEAT_WASTE_THRESHOLD, disposalAnswerCount, describeDisposalHistory, wantsShelfLifePrompt
