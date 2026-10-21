@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { CountStepper } from '../../components/CountStepper';
+import { TextField } from '../../components/TextField';
 import { useColors } from '../../theme/ThemeContext';
 import {
   WANIKANI_APPRENTICE_CAP_DEFAULT,
@@ -39,6 +40,8 @@ export function WaniKaniSettingsRows(): React.ReactElement {
     lessonsPerDay: st.wanikaniLessonsPerDay,
     apprenticeCap: st.wanikaniApprenticeCap,
     notify: st.wanikaniNotify,
+    clientLink: st.wanikaniClientLink,
+    setClientLink: st.setWanikaniClientLink,
     setThreshold: st.setWanikaniReviewThreshold,
     setLessonsPerDay: st.setWanikaniLessonsPerDay,
     setApprenticeCap: st.setWanikaniApprenticeCap,
@@ -116,6 +119,29 @@ export function WaniKaniSettingsRows(): React.ReactElement {
           </View>
         </>
       )}
+
+      <View style={styles.sep} />
+      <SettingsRow
+        entryId="wanikaniClientLink"
+        icon="link-outline"
+        iconColor={s.clientLink ? colors.accent : undefined}
+        label="Open in"
+        hint="Where the task opens. Paste a link from the WaniKani app you use. Leave blank for wanikani.com."
+        alwaysShowHint
+      >
+        <TextField
+          style={[styles.apiKeyInput, { color: colors.text, borderBottomColor: colors.separator }]}
+          value={s.clientLink}
+          onChangeText={s.setClientLink}
+          placeholder="e.g. https://example.com/reviews"
+          placeholderTextColor={colors.textTertiary}
+          keyboardType="url"
+          autoCapitalize="none"
+          autoCorrect={false}
+          spellCheck={false}
+          accessibilityLabel="WaniKani task link"
+        />
+      </SettingsRow>
 
       <View style={styles.sep} />
       <SettingsRow

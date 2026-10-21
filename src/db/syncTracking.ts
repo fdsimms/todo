@@ -576,6 +576,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'wanikaniLessonsPerDay',
   'wanikaniApprenticeCap',
   'wanikaniNotify',
+  'wanikaniClientLink',
   'waterShortfallTaskCategory',
   'weatherTaskCategory',
   'weekendNudgeTaskCategory',
