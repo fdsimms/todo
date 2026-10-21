@@ -9,6 +9,8 @@ import {
   formatDistance,
   formatSetLine,
   matchPrevious,
+  matchPreviousByPosition,
+  previousBadge,
   movedExerciseOrder,
   exerciseBlocks,
   nextSet,
@@ -261,6 +263,51 @@ describe('last time', () => {
     ];
     const matched = matchPrevious(current, prev);
     expect(current.map(s => matched.get(s.id)?.weightKg ?? null)).toEqual([40, null, 80, null]);
+  });
+});
+
+describe('matchPreviousByPosition', () => {
+  const last = [
+    set('bench', 0, 0, { kind: 'warmup', weightKg: 40 }),
+    set('bench', 0, 1, { weightKg: 80, reps: 10 }),
+    set('bench', 0, 2, { weightKg: 80, reps: 10 }),
+    set('bench', 0, 3, { kind: 'amrap', weightKg: 80, reps: 14 }),
+  ];
+  const repsFor = (current: ReturnType<typeof set>[]) => {
+    const m = matchPreviousByPosition(current, last);
+    return current.map(s => m.get(s.id)?.reps ?? null);
+  };
+
+  it('pairs a third ordinary set with last time\'s set to failure', () => {
+    const current = [set('bench', 0, 0, { kind: 'warmup' }), set('bench', 0, 1), set('bench', 0, 2), set('bench', 0, 3)];
+    expect(repsFor(current)).toEqual([8, 10, 10, 14]);
+  });
+
+  it('gives a row the same previous whichever kind it is labelled', () => {
+    const asWorking = [set('bench', 0, 0), set('bench', 0, 1), set('bench', 0, 2)];
+    const asFailure = [set('bench', 0, 0), set('bench', 0, 1), set('bench', 0, 2, { kind: 'amrap' })];
+    expect(repsFor(asWorking)).toEqual(repsFor(asFailure));
+  });
+
+  it('keeps warm-ups to their own pool', () => {
+    const current = [set('bench', 0, 0), set('bench', 0, 1, { kind: 'warmup' })];
+    const m = matchPreviousByPosition(current, last);
+    expect(m.get(current[0].id)?.reps).toBe(10);
+    expect(m.get(current[1].id)?.weightKg).toBe(40);
+  });
+
+  it('is null when there is nothing left to pair', () => {
+    const current = [1, 2, 3, 4, 5].map(i => set('bench', 0, i));
+    expect(repsFor(current)).toEqual([10, 10, 14, null, null]);
+  });
+});
+
+describe('previousBadge', () => {
+  it('marks a set to failure or a drop set, and nothing else', () => {
+    expect(previousBadge({ kind: 'amrap' })).toBe('F');
+    expect(previousBadge({ kind: 'drop' })).toBe('D');
+    expect(previousBadge({ kind: 'working' })).toBeNull();
+    expect(previousBadge({ kind: 'warmup' })).toBeNull();
   });
 });
 
