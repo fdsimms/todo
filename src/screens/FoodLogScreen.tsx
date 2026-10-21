@@ -1028,7 +1028,7 @@ export function FoodLogScreen() {
           }}
           accessibilityRole="button"
           accessibilityLabel={describePlannedSlot(coverage)}
-          accessibilityHint="Double tap for options: log this planned meal or open it in the meal plan."
+          accessibilityHint="Shows options: log this planned meal or open it in the meal plan."
         >
           <Ionicons
             name={MEAL_SLOT_ICONS[coverage.slot] as keyof typeof Ionicons.glyphMap}

@@ -339,7 +339,6 @@ export function KitchenScreen() {
           }}
           accessibilityRole="button"
           accessibilityLabel={`${suggestion.recipe.name}. ${describeUseUpRecipe(suggestion)}`}
-          accessibilityHint="Opens the recipe"
         >
           <Ionicons name="restaurant-outline" size={iconSize.md} color={colors.accent} />
           <View style={styles.suggestBody}>

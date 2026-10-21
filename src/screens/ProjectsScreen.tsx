@@ -888,12 +888,12 @@ const ProjectRow = React.memo(function ProjectRow({
           }
           accessibilityHint={
             selectionMode
-              ? 'Double tap to select project'
+              ? undefined
               : locked
-                ? 'Double tap to unlock with Face ID and view this project.'
-              : drag
-                ? 'Double tap to view tasks in this project. Long press to reorder.'
-                : 'Double tap to view tasks in this project.'
+                ? 'Unlocks with Face ID to show its tasks'
+                : drag
+                  ? 'Long press to reorder'
+                  : undefined
           }
         >
           <View style={styles.projectInfo}>

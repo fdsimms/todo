@@ -76,7 +76,7 @@ export function ProjectDecisions({ decisions, onPress, label = 'Decisions', outc
               revisitIf ? `revisit if ${revisitIf}` : null,
               outcome ? `turned out: ${outcome}` : null,
             ].filter(Boolean).join(', ')}
-            accessibilityHint={onPress ? 'Double tap to change the answer' : undefined}
+            accessibilityHint={onPress ? 'Changes the answer' : undefined}
           >
             {/* Three lines, not one (#1737): unlike the Logbook/Search rows
                 these same fields also render in, nothing here pins the row to

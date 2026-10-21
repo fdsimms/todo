@@ -62,7 +62,7 @@ export function CookbooksScreen() {
         activeOpacity={interaction.activeOpacity}
         accessibilityRole="button"
         accessibilityLabel={`${item.title}${item.author ? `, by ${item.author}` : ''}. ${countLabel}`}
-        accessibilityHint="Double tap to view recipes from this book"
+        accessibilityHint="Shows recipes from this book"
       >
         <View style={styles.icon}>
           <Ionicons name="library-outline" size={18} color={colors.accent} />

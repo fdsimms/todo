@@ -1143,7 +1143,6 @@ const RecipeRow = React.memo(function RecipeRow({
       accessibilityRole={selectionMode ? 'checkbox' : 'button'}
       accessibilityState={selectionMode ? { checked: selected } : undefined}
       accessibilityLabel={`${recipe.name}. ${description}`}
-      accessibilityHint={selectionMode ? 'Double tap to select recipe' : 'Double tap to open recipe'}
     >
       {/* The photo or tile stays put while selecting. Selection is the
           SelectionDot at the other end of the row, the split every other

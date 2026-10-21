@@ -388,7 +388,7 @@ export function StuckScreen() {
               accessible
               accessibilityRole="button"
               accessibilityLabel={`Waiting on ${name}`}
-              accessibilityHint="Double tap to open their page"
+              accessibilityHint="Opens their page"
             >
               <Text style={styles.blockerOverline}>Waiting on</Text>
               <Text style={styles.blockerTitle} numberOfLines={2}>{name}</Text>
@@ -457,7 +457,7 @@ export function StuckScreen() {
             accessible
             accessibilityRole="button"
             accessibilityLabel={`Waiting on ${blockerTitle}, ${wait.text}`}
-            accessibilityHint="Double tap to open the blocking task"
+            accessibilityHint="Opens the blocking task"
           >
             <Text style={styles.blockerOverline}>Waiting on</Text>
             <Text style={styles.blockerTitle} numberOfLines={2}>{blockerTitle}</Text>
@@ -641,7 +641,6 @@ const WaiterRow = React.memo(function WaiterRow({ task, categoryLabel, dateLabel
         accessible
         accessibilityRole="button"
         accessibilityLabel={[title, projectTitle, categoryLabel, dateLabel, waitingLabel].filter(Boolean).join(', ')}
-        accessibilityHint="Double tap to open task"
       >
         <Text style={styles.taskTitle} numberOfLines={2}>{title}</Text>
         {(categoryLabel || dateLabel || projectTitle || waitingLabel) && (

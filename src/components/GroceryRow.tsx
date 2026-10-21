@@ -430,7 +430,7 @@ export const GroceryRow = React.memo(function GroceryRow({
         accessibilityLabel={label}
         accessibilityHint={
           selectionMode
-            ? selected ? 'Double tap to deselect' : 'Double tap to select'
+            ? undefined
             : drag ? 'Long press to move to another aisle' : 'Long press to edit'
         }
       >
@@ -460,11 +460,6 @@ export const GroceryRow = React.memo(function GroceryRow({
         accessibilityRole={selectionMode ? 'checkbox' : 'button'}
         accessibilityState={selectionMode ? { checked: selected } : undefined}
         accessibilityLabel={selectionMode ? label : `Rename ${item.name}`}
-        accessibilityHint={
-          selectionMode
-            ? selected ? 'Double tap to deselect' : 'Double tap to select'
-            : 'Double tap to rename'
-        }
       >
         <View style={styles.body}>
           {renaming ? (

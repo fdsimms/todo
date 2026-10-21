@@ -529,7 +529,6 @@ const TemplateRow = React.memo(function TemplateRow({
       accessibilityRole={selectionMode ? 'checkbox' : 'button'}
       accessibilityState={selectionMode ? { checked: selected } : undefined}
       accessibilityLabel={`${template.name}, ${template.items.length === 0 ? 'no items' : `${template.items.length} item${template.items.length === 1 ? '' : 's'}`}${broken ? ', a nested template is missing' : missingRefs ? ', uses a category or tag that no longer exists' : ''}`}
-      accessibilityHint={selectionMode ? 'Double tap to select template' : 'Double tap to edit template'}
     >
       {/* The tile stays put while selecting. Selection is the SelectionDot at
           the other end of the row, the split every other selectable list

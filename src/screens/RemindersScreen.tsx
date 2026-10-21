@@ -157,7 +157,6 @@ const ReminderRow = React.memo(function ReminderRow({ task, categoryLabel, proje
       accessible
       accessibilityRole="button"
       accessibilityLabel={[title, when, categoryLabel, projectTitle].filter(Boolean).join(', ')}
-      accessibilityHint="Double tap to open task"
     >
       <View style={styles.cardBody}>
         <Text style={styles.taskTitle} numberOfLines={2}>{title}</Text>

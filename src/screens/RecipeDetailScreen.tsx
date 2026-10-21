@@ -1537,7 +1537,7 @@ export function RecipeDetailScreen() {
              choiceGroup && (isChoiceDefault ? `usual choice for ${choiceGroup}` : `alternative for ${choiceGroup}`)]
               .filter(Boolean).join(', ')
           }
-          accessibilityHint={selectionMode ? 'Double tap to select' : 'Double tap to edit. Long press to reorder.'}
+          accessibilityHint={selectionMode ? undefined : 'Opens it to edit. Long press to reorder.'}
         >
           {/* Selection is the SelectionDot at the row's other end, where the
               remove × was, the split every other selectable list makes
@@ -1577,7 +1577,7 @@ export function RecipeDetailScreen() {
                   haptic
                   onPress={() => setEditingIngredient(ingredient)}
                   accessibilityLabel={`Split ${ingredient.name} into alternatives`}
-                  accessibilityHint="Double tap to review the split"
+                  accessibilityHint="Shows the suggested split"
                 >
                   <Ionicons name="git-branch-outline" size={iconSize.xs} color={colors.accent} />
                   <Text style={styles.splitPillText}>Split into {splitInto}…</Text>
@@ -1604,7 +1604,7 @@ export function RecipeDetailScreen() {
                   haptic
                   onPress={() => setEditingIngredient(ingredient)}
                   accessibilityLabel={`Split ${ingredient.name} into ${andInto} lines`}
-                  accessibilityHint="Double tap to review the split"
+                  accessibilityHint="Shows the suggested split"
                 >
                   <Ionicons name="copy-outline" size={iconSize.xs} color={colors.accent} />
                   <Text style={styles.splitPillText}>Split into {andInto} lines…</Text>
@@ -1634,7 +1634,7 @@ export function RecipeDetailScreen() {
                   accessibilityLabel={
                     `Did you mean ${catalogSuggestion.suggestedName}? It’s in your grocery catalog.`
                   }
-                  accessibilityHint="Double tap to review the match"
+                  accessibilityHint="Shows the suggested match"
                 >
                   <Ionicons name="basket-outline" size={iconSize.xs} color={colors.accent} />
                   <Text style={styles.matchPillText} numberOfLines={1}>
@@ -1730,7 +1730,7 @@ export function RecipeDetailScreen() {
           }}
           accessibilityRole="button"
           accessibilityLabel={`${row.name}, no ingredients yet`}
-          accessibilityHint="Double tap to start adding ingredients under this heading, or drag an ingredient here"
+          accessibilityHint="Starts adding ingredients under this heading, or drag an ingredient here"
         >
           <Text style={[styles.emptySectionTitle, isTarget && styles.emptySectionTitleTarget]}>
             {row.name}
@@ -1868,9 +1868,9 @@ export function RecipeDetailScreen() {
           }
           accessibilityHint={
             row
-              ? (target ? 'Double tap to open this recipe. Long press to reorder.' : 'Long press to reorder.')
+              ? (target ? 'Opens this recipe. Long press to reorder.' : 'Long press to reorder.')
               : target
-                ? 'Double tap to open this recipe. Long press to make it an alternative.'
+                ? 'Opens this recipe. Long press to make it an alternative.'
                 : 'Long press to make it an alternative.'
           }
         >
@@ -1920,7 +1920,7 @@ export function RecipeDetailScreen() {
         onPress={() => { haptics.tap(); setEditingBlank(blank.id); }}
         accessibilityRole="button"
         accessibilityLabel={[blank.label, describeBlankRule(blank.max), detail].filter(Boolean).join(', ')}
-        accessibilityHint="Double tap to edit"
+        accessibilityHint="Opens it to edit"
       >
         {/* componentMarker's badge, like a used recipe in the same card: the
             row is not an ingredient line, and the badge is what says so. */}
@@ -1948,7 +1948,7 @@ export function RecipeDetailScreen() {
       onPress={() => { haptics.tap(); setEditingPrepTask(prepTask); }}
       accessibilityRole="button"
       accessibilityLabel={`${prepTask.title}, ${formatOffsetLabel(prepTask.offsetDays)}`}
-      accessibilityHint="Double tap to edit"
+      accessibilityHint="Opens it to edit"
     >
       <View style={styles.ingredientText}>
         <Text style={styles.ingredientName}>{prepTask.title}</Text>
@@ -2008,7 +2008,7 @@ export function RecipeDetailScreen() {
         onPress={() => beginEditStep(step)}
         accessibilityRole="button"
         accessibilityLabel={step.text}
-        accessibilityHint="Double tap to edit"
+        accessibilityHint="Opens it to edit"
       >
         {/* The recipe's own sentence, with the amounts and swaps it implies
             marked in it — the same treatment and the same rule cook mode
@@ -2082,7 +2082,7 @@ export function RecipeDetailScreen() {
           }}
           accessibilityRole="button"
           accessibilityLabel={`${row.name}, no steps yet`}
-          accessibilityHint="Double tap to start adding steps under this heading, or drag a step here"
+          accessibilityHint="Starts adding steps under this heading, or drag a step here"
         >
           <Text style={[styles.emptySectionTitle, isTarget && styles.emptySectionTitleTarget]}>
             {row.name}
@@ -2261,7 +2261,7 @@ export function RecipeDetailScreen() {
             onPress={openImagePicker}
             accessibilityRole="button"
             accessibilityLabel="Recipe photo isn’t on this device"
-            accessibilityHint="Double tap to replace or remove it."
+            accessibilityHint="Replaces or removes it."
           >
             <Ionicons name="image-outline" size={iconSize.md} color={colors.textTertiary} />
             <Text style={styles.heroMissingTitle}>Photo isn’t on this device</Text>
@@ -2567,7 +2567,7 @@ export function RecipeDetailScreen() {
             onPress={() => { haptics.tap(); setNutritionSheetOpen(true); }}
             accessibilityRole="button"
             accessibilityLabel={nutritionLine ?? 'Nutrition'}
-            accessibilityHint="Double tap to open the full panel and fill in the ingredients it couldn’t count"
+            accessibilityHint="Opens the full panel to fill in the ingredients it couldn’t count"
           >
             <Ionicons name="nutrition-outline" size={iconSize.sm} color={colors.textSecondary} />
             <Text style={styles.matchSummaryText}>{nutritionLine}</Text>
@@ -2590,7 +2590,7 @@ export function RecipeDetailScreen() {
             accessibilityLabel={
               `${catalogSummary.linked} of ${catalogSummary.total} ingredients are in your grocery catalog`
             }
-            accessibilityHint="Double tap to review the ones that aren’t"
+            accessibilityHint="Shows the ones that aren’t"
           >
             <Ionicons name="basket-outline" size={iconSize.sm} color={colors.textSecondary} />
             <Text style={styles.matchSummaryText}>

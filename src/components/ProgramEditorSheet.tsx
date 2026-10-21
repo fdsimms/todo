@@ -297,7 +297,6 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
                     activeOpacity={interaction.activeOpacity}
                     accessibilityRole={routine ? 'button' : undefined}
                     accessibilityLabel={label}
-                    accessibilityHint={routine ? 'Opens the routine' : undefined}
                   >
                     <Text style={styles.slotName}>{label}</Text>
                     {routine && <Text style={styles.slotMeta}>{describeRoutine(routine.items, musclesOf)}</Text>}

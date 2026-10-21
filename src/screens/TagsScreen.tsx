@@ -343,7 +343,7 @@ export function TagsScreen() {
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
                 accessibilityLabel={`${tag}, ${count} ${count === 1 ? 'task' : 'tasks'}`}
-                accessibilityHint="Double tap to view tasks with this tag"
+                accessibilityHint="Shows tasks with this tag"
               >
                 <View style={[styles.tagIcon, { backgroundColor: color + '22' }]}>
                   <Ionicons name="pricetag" size={18} color={color} />

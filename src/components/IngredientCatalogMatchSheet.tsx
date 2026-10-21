@@ -164,7 +164,7 @@ export function IngredientCatalogMatchSheet({
                   style={styles.rowOpen}
                   accessibilityRole="button"
                   accessibilityLabel={`Open ${ingredient.name}`}
-                  accessibilityHint="Double tap to pick a different item, or leave this line as it is"
+                  accessibilityHint="Picks a different item, or leaves this line as it is"
                 >
                   <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
                 </TouchableOpacity>
@@ -189,7 +189,7 @@ export function IngredientCatalogMatchSheet({
               onPress={() => { haptics.tap(); onEditIngredient(ingredient); }}
               accessibilityRole="button"
               accessibilityLabel={`${ingredient.name}, not in your grocery catalog`}
-              accessibilityHint="Double tap to search your grocery catalog for it, or add it"
+              accessibilityHint="Searches your grocery catalog for it, or adds it"
             >
               <Text style={styles.rowName} numberOfLines={1}>{ingredient.name}</Text>
               <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />

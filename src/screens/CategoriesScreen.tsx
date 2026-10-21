@@ -135,7 +135,7 @@ export function CategoriesScreen() {
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
                 accessibilityLabel={`${cat}. ${spokenMeta}`}
-                accessibilityHint="Double tap to view tasks in this category. Long press to reorder."
+                accessibilityHint="Shows tasks in this category. Long press to reorder."
               >
                 <View style={[styles.catIcon, { backgroundColor: colors.accentSubtle }]}>
                   {catObj?.emoji ? (
