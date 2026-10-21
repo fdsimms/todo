@@ -3422,6 +3422,7 @@ function registerWriteTools(
           servingText: z.string().nullable().optional(),
           estimated: z.boolean().optional(),
           novaGroup: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).nullable().optional().describe('NOVA processing group, 1 unprocessed to 4 ultra-processed. Omit to keep the current one; null clears it. Only set what you know, never a guess from the name.'),
+          packageGrams: z.number().nullable().optional().describe('What the whole package weighs in grams, as the label prints it. Omit to keep the current one; null clears it. Leave out for a pack sold by volume.'),
           portions: z.array(z.object({
             label: z.string().min(1),
             grams: z.number(),
@@ -3452,6 +3453,7 @@ function registerWriteTools(
         servingText: z.string().nullable().optional().describe('As the label prints it: "1 cup (240ml)".'),
         estimated: z.boolean().optional(),
         novaGroup: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).nullable().optional().describe('NOVA processing group, 1 unprocessed to 4 ultra-processed. Omit to keep the current one; null clears it. Only set what you know, never a guess from the name.'),
+        packageGrams: z.number().nullable().optional().describe('What the whole package weighs in grams, as the label prints it. Omit to keep the current one; null clears it. Leave out for a pack sold by volume.'),
         portions: z.array(z.object({
           label: z.string().min(1),
           grams: z.number(),

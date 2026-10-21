@@ -152,6 +152,8 @@ export interface NutritionPanelDetail {
   amounts: Record<string, number>;
   /** The NOVA processing group (1 to 4), when set or stated by a barcode source. Absent is unclassified. */
   novaGroup?: number;
+  /** What the whole package weighs in grams, when typed from the label. Lets a scan offer "the whole package". */
+  packageGrams?: number;
   /** What an amount weighs; this is what lets a tablespoon or clove line be counted. `custom` is one the person weighed. */
   portions?: { label: string; grams: number; amount?: number; custom?: boolean }[];
   recordedAt: string;
@@ -167,6 +169,7 @@ function nutritionDetail(n: FoodNutrition | null | undefined): { nutrition?: Nut
       ...(n.servingText ? { servingText: n.servingText } : {}),
       amounts: { ...n.amounts } as Record<string, number>,
       ...(n.novaGroup ? { novaGroup: n.novaGroup } : {}),
+      ...(n.packageGrams ? { packageGrams: n.packageGrams } : {}),
       ...(n.portions.length > 0
         ? { portions: n.portions.map(p => ({ label: p.label, grams: p.grams, ...(p.amount !== 1 ? { amount: p.amount } : {}), ...(p.custom ? { custom: true } : {}) })) }
         : {}),
@@ -639,6 +642,12 @@ export interface NutritionPanelInput {
    */
   novaGroup?: 1 | 2 | 3 | 4 | null;
   /**
+   * What the whole package weighs in grams, as the label prints it. Omit to keep
+   * the one the panel already has; null clears it. A mass only: leave it out for
+   * a pack sold by volume.
+   */
+  packageGrams?: number | null;
+  /**
    * What an amount of the food weighs, so a recipe line in tablespoons or cloves
    * can be turned into grams ("tbsp" = 13.5, "cup, shredded" = 113). Merged into
    * the portions the item already has: a row with the same label replaces it, the
@@ -689,6 +698,10 @@ function buildPanel(input: NutritionPanelInput, previous: FoodNutrition | null):
     ...(() => {
       const group = input.novaGroup === undefined ? previous?.novaGroup ?? null : input.novaGroup;
       return group ? { novaGroup: group } : {};
+    })(),
+    ...(() => {
+      const grams = input.packageGrams === undefined ? previous?.packageGrams ?? null : input.packageGrams;
+      return grams && grams > 0 ? { packageGrams: grams } : {};
     })(),
   };
 }

@@ -576,6 +576,17 @@ describe('the catalog tools', () => {
       expect(getGroceryItem(replica, { name: 'lentils' }).nutrition).toBeUndefined();
     });
 
+    it('keeps a package weight across a rewrite that omits it, and clears it on null', () => {
+      addGroceryItem(replica, 'tempeh');
+      const amounts = { calorieKcal: 180 };
+      setNutritionPanel(replica, { item: 'tempeh', panel: { basis: 'perServing', amounts, servingGrams: 84, packageGrams: 227 } });
+      expect(getGroceryItem(replica, { name: 'tempeh' }).nutrition).toMatchObject({ packageGrams: 227 });
+      setNutritionPanel(replica, { item: 'tempeh', panel: { basis: 'perServing', amounts, servingGrams: 84 } });
+      expect(getGroceryItem(replica, { name: 'tempeh' }).nutrition).toMatchObject({ packageGrams: 227 });
+      setNutritionPanel(replica, { item: 'tempeh', panel: { basis: 'perServing', amounts, servingGrams: 84, packageGrams: null } });
+      expect(getGroceryItem(replica, { name: 'tempeh' }).nutrition?.packageGrams).toBeUndefined();
+    });
+
     it('merges portions into a panel by label, keeping the rest, and refuses a bad one', () => {
       addGroceryItem(replica, 'olive oil');
       const base = { basis: 'per100g' as const, amounts: { calorieKcal: 884 }, estimated: true };

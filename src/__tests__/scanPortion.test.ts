@@ -27,6 +27,24 @@ describe('servingsPerPackage', () => {
     expect(servingsPerPackage(panel(), '   ')).toBeNull();
   });
 
+  it('uses a package weight typed onto the panel when the source stated no pack size', () => {
+    expect(servingsPerPackage(panel({ packageGrams: 227 }), null)).toBe(5.0);
+  });
+
+  it('prefers the typed weight to the source string', () => {
+    expect(servingsPerPackage(panel({ packageGrams: 450 }), '500 g')).toBe(10);
+  });
+
+  it('still needs a serving weight, and refuses a typed weight on a per-100ml panel', () => {
+    expect(servingsPerPackage(panel({ packageGrams: 227, servingGrams: null }), null)).toBeNull();
+    expect(servingsPerPackage(panel({ packageGrams: 227, basis: 'per100ml' }), null)).toBeNull();
+  });
+
+  it('offers the whole package from a typed weight', () => {
+    const choices = packageChoices(panel({ packageGrams: 450 }), null);
+    expect(choices.find(c => c.key === 'package')?.servings).toBe(10);
+  });
+
   it('refuses a panel with no serving weight to divide by', () => {
     expect(servingsPerPackage(panel({ servingGrams: null }), '500 g')).toBeNull();
     expect(servingsPerPackage(panel({ servingGrams: 0 }), '500 g')).toBeNull();

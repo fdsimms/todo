@@ -227,6 +227,21 @@ describe('parseFoodNutrition', () => {
     });
   });
 
+  describe('package weight', () => {
+    it('keeps one the person typed, and adds no key without one', () => {
+      expect(parseFoodNutrition(stored(nutrition({ packageGrams: 227 })))!.packageGrams).toBe(227);
+      expect('packageGrams' in parseFoodNutrition(stored(nutrition()))!).toBe(false);
+    });
+
+    it('drops a weight of nothing or an unreadable one without dropping the record', () => {
+      for (const bad of [0, -5, '8 oz']) {
+        const parsed = parseFoodNutrition(stored(nutrition({ packageGrams: bad as never })));
+        expect(parsed).not.toBeNull();
+        expect('packageGrams' in parsed!).toBe(false);
+      }
+    });
+  });
+
   describe('provenance', () => {
     it.each(['fdc', 'openFoodFacts', 'manual', 'estimated'] as const)('keeps a known source (%s)', source => {
       expect(parseFoodNutrition(stored(nutrition({ source })))!.source).toBe(source);
