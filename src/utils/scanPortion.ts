@@ -73,6 +73,19 @@ export function servingsPerPackage(
 }
 
 /**
+ * A source's pack size ("227 g", "8 oz") as grams, or null when it is not a
+ * plain mass ("500 ml", "6 bars", nothing). The panel sheet uses it to fill
+ * Package weight from a scanned barcode, so a volume or a count is left for the
+ * person rather than guessed at.
+ */
+export function packSizeGrams(packSize: string | null): number | null {
+  if (!packSize?.trim()) return null;
+  const measured = measureParsedQuantity(parseQuantity(packSize));
+  if (!measured || measured.dimension !== 'mass') return null;
+  return Number.isFinite(measured.base) && measured.base > 0 ? Math.round(measured.base * 100) / 100 : null;
+}
+
+/**
  * How many servings a package weighing `packageGrams` holds, to a tenth, or
  * null when it works out to less than one. The sheet that types the package
  * weight calls this too, so the line it shows is the number the scan offers.

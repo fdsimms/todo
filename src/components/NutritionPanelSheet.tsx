@@ -30,7 +30,7 @@ import {
   type ServingWeightUnit,
 } from '../utils/nutritionPanelForm';
 import { panelWarnings } from '../utils/nutritionSanity';
-import { servingsIn } from '../utils/scanPortion';
+import { packSizeGrams, servingsIn } from '../utils/scanPortion';
 import { canReadTextOnDevice } from '../utils/receiptOcr';
 import { readLabelPhoto, type LabelReading } from '../utils/labelOcr';
 import { pickRecipePhoto } from '../utils/recipePhoto';
@@ -147,12 +147,13 @@ import { BUTTON_LABEL } from '../copy/shared';
  * typed, and the actions that rewrote typed figures were the part of this sheet
  * nobody could follow.
  *
- * **Package weight is typed the same way and is the one field here that no
- * photo or barcode fills.** It is what lets a scan offer "the whole package"
+ * **Package weight is typed the same way, and only a barcode's plain mass pack
+ * size ever fills it for you** (`packSizeGrams`; a photo never does). It is what lets a scan offer "the whole package"
  * when the source stated no pack size (`servingsPerPackage`). It has its own
  * unit state, kept apart from `form.packageGrams` for the reason Serving
- * weight's is, and it is left alone by a photo read, a column switch or a
- * barcode fill, since none of them says anything about the package.
+ * weight's is, and it is left alone by a photo read, a column switch, a food
+ * search pick, or a barcode that stated no mass size, since none of them says
+ * anything about the package.
  */
 
 interface Props {
@@ -389,9 +390,17 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
    * one panel to apply — no column picker, since a fetched record states one
    * basis rather than a photographed panel's several.
    */
-  const handleBarcodeFound = useCallback((found: FoodNutrition, sourceName: string) => {
+  const handleBarcodeFound = useCallback((found: FoodNutrition, sourceName: string, packSize: string | null) => {
     haptics.success();
-    const next = applyFoodNutrition(formRef.current, found);
+    let next = applyFoodNutrition(formRef.current, found);
+    // A plain mass pack size fills Package weight; a volume or a count leaves
+    // what was typed, since there is no mass to put there.
+    const packGrams = packSizeGrams(packSize);
+    if (packGrams !== null) {
+      next = { ...next, packageGrams: String(packGrams) };
+      setPackageUnit('g');
+      setPackageText(String(packGrams));
+    }
     setForm(next);
     setWeightUnit('g');
     setWeightText(next.servingGrams);
@@ -403,7 +412,8 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
     const count = foodNutritionFieldCount(found);
     setScanNote(
       `Filled in ${count} ${count === 1 ? 'figure' : 'figures'} from the barcode for `
-      + `“${sourceName}”. Double-check them against the label before saving.`,
+      + `“${sourceName}”. Double-check them against the label before saving.`
+      + (packGrams !== null ? ' The package weight was filled in too.' : ''),
     );
   }, []);
 

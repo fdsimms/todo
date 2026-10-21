@@ -1,5 +1,5 @@
 import type { FoodNutrition } from '../types';
-import { packageChoices, packageFractions, packageHelping, servingDescription, servingsPerPackage } from '../utils/scanPortion';
+import { packageChoices, packageFractions, packageHelping, packSizeGrams, servingDescription, servingsPerPackage } from '../utils/scanPortion';
 
 function panel(over: Partial<FoodNutrition> = {}): FoodNutrition {
   return {
@@ -14,6 +14,22 @@ function panel(over: Partial<FoodNutrition> = {}): FoodNutrition {
     ...over,
   };
 }
+
+describe('packSizeGrams', () => {
+  it('reads a plain mass as grams', () => {
+    expect(packSizeGrams('227 g')).toBe(227);
+    expect(packSizeGrams('8 oz')).toBe(226.8);
+    expect(packSizeGrams('1 lb')).toBe(453.59);
+  });
+
+  it('leaves a volume, a count or nothing for the person', () => {
+    expect(packSizeGrams('500 ml')).toBeNull();
+    expect(packSizeGrams('6 bars')).toBeNull();
+    expect(packSizeGrams('family size')).toBeNull();
+    expect(packSizeGrams(null)).toBeNull();
+    expect(packSizeGrams('  ')).toBeNull();
+  });
+});
 
 describe('servingsPerPackage', () => {
   it('divides a stated pack size by the stated serving', () => {
