@@ -1190,6 +1190,11 @@ text and the recipe screen's step rows — because the thing worth keeping ident
 the sentence is the app's. It takes the accent colour and nothing else, the mark a scaled or
 converted amount already carries on the ingredient row.
 
+The parenthetical also carries the line's weight where the ingredient row has one ("2 1/4 cups,
+≈280 g"), read through the same `ingredientWeightText` so the two can't disagree. It follows the
+amount's refusals (a bare "1" gets neither) and is still given when the sentence already says the
+amount, since the grams are the part it didn't.
+
 Display only, like everything else here: the recipe row is untouched, the step's text is untouched,
 and the amounts come from the ingredient lines rather than out of the prose.
 

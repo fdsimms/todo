@@ -401,10 +401,11 @@ export function RecipeDetailScreen() {
           flattenRecipeIngredients(recipe, recipesById, choiceResolution, standingSwaps),
           scale,
           unitSystem,
+          weightLookups,
         ),
       )
       : new Map<string, StepSegment[]>()),
-    [recipe, recipesById, choiceResolution, standingSwaps, scale, unitSystem]
+    [recipe, recipesById, choiceResolution, standingSwaps, scale, unitSystem, weightLookups]
   );
 
   // Only lines that *have* a quantity can fail to scale; a line with none was
