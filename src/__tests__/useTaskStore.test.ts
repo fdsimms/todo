@@ -10083,13 +10083,14 @@ describe('markMissed', () => {
     expect(next.recurrenceCount).toBe(4);
   });
 
-  it('does nothing on a non-recurring task — there is no next occurrence to move to', () => {
+  it('closes a one-off task as missed with no successor', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1', recurrenceType: 'none' })] });
     useTaskStore.getState().markMissed('t1');
     const tasks = useTaskStore.getState().tasks;
     expect(tasks).toHaveLength(1);
-    expect(tasks[0].completed).toBe(false);
-    expect(tasks[0].missedAt).toBeNull();
+    expect(tasks[0].completed).toBe(true);
+    expect(tasks[0].missedAt).not.toBeNull();
+    expect(tasks[0].doneByOtherAt ?? null).toBeNull();
   });
 
   it('does nothing on an already-closed row', () => {
@@ -10161,9 +10162,10 @@ describe('markMissed', () => {
     expect(tasks[0].missedAt).toBeNull();
   });
 
-  it('still does nothing on a plain generated task that is neither recurring nor a meal-plan task', () => {
+  it('still does nothing on a meal-plan task whose own day has not come', () => {
     useTaskStore.setState({ tasks: [makeTask({
-      id: 't1', recurrenceType: 'none', generatedKind: 'groceryUseUp', generatedSourceId: 'g-1',
+      id: 't1', recurrenceType: 'none', generatedKind: 'mealSlot', generatedSourceId: 'g-1',
+      dueDate: new Date(2025, 5, 20, 9, 0, 0).toISOString(),
     })] });
     useTaskStore.getState().markMissed('t1');
     const tasks = useTaskStore.getState().tasks;
@@ -12081,9 +12083,9 @@ describe('bulkMarkMissed', () => {
 
   // Same per-task guard as markMissed itself — a mixed selection just skips
   // whatever doesn't qualify rather than needing its own filtering here.
-  it('skips non-recurring tasks in a mixed selection', () => {
+  it('skips tasks that are already closed in a mixed selection', () => {
     useTaskStore.setState({
-      tasks: [recurring('a'), makeTask({ id: 'b', recurrenceType: 'none' })],
+      tasks: [recurring('a'), makeTask({ id: 'b', recurrenceType: 'none', completed: true, completedAt: new Date().toISOString() })],
     });
     useTaskStore.getState().bulkMarkMissed(['a', 'b']);
     expect(useTaskStore.getState().lastAction?.label).toBe('1 task marked missed');
@@ -12110,7 +12112,7 @@ describe('bulkMarkMissed', () => {
   });
 
   it('leaves no undo when nothing in the selection qualified', () => {
-    useTaskStore.setState({ tasks: [makeTask({ id: 'a', recurrenceType: 'none' })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', recurrenceType: 'none', completed: true, completedAt: new Date().toISOString() })] });
     useTaskStore.getState().bulkMarkMissed(['a']);
     expect(useTaskStore.getState().lastAction).toBeNull();
   });

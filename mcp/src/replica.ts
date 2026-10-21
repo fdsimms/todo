@@ -5970,11 +5970,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const task = tasks().find(t => t.id === id);
       if (!task) throw new Error(`No task with id ${id}.`);
       if (task.completed) throw new Error('That task is already completed, so it cannot be marked missed.');
-      // The app's own guards (useTaskStore.markMissed): a one-off has no
-      // occurrence to miss, and a repeat that has not come round yet is skipped
-      // silently there. Refused here instead, because a tool that says "missed"
-      // and rolls the task forward unmissed is a claim the person did not make.
-      if (task.recurrenceType === 'none') throw new Error('Only a repeating task has an occurrence to miss. Archive a one-off task instead.');
+      // A repeat that has not come round yet is skipped silently by the app's
+      // markMissed. Refused here instead (completionRefusal), because a tool that
+      // says "missed" and rolls the task forward unmissed is a claim the person
+      // did not make. A one-off closes as missed with no successor.
       const refusal = completion.completionRefusal(task);
       if (refusal) throw new Error(refusal);
       return finishCompletion(task, undefined, 'missed');

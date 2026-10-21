@@ -96,7 +96,15 @@ export function projectProgress(projectId: string, tasks: Task[]): { done: numbe
   for (const key of talliedMemberKeys(groups)) groups.delete(key);
 
   let done = 0;
-  for (const rows of groups.values()) {
+  for (const [key, rows] of [...groups]) {
+    // A one-off step the person marked missed was closed as never going to
+    // happen, so it is no more work left on the project than a branch not taken.
+    // Left in, it would hold the project short of done for good. A repeat that
+    // ended on a miss is different and stays counted (see below).
+    if (rows.every(r => r.completed && r.missedAt && r.recurrenceType === 'none')) {
+      groups.delete(key);
+      continue;
+    }
     // Two conditions, because a miss is stored as a completed row (see
     // Task.missedAt) and `completed` alone would count one as done. Normally
     // the second is redundant — marking an occurrence missed spawns its

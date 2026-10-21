@@ -12,7 +12,7 @@ interface Props {
   anchor?: CardAnchor | null;
   /** Moves to the next date with no record and no streak change. Omitted for a task that doesn't repeat, which has no next date. */
   onSkip?: () => void;
-  /** Records a miss and moves to the next date. Omitted with `onSkip`. */
+  /** Records a miss. Moves to the next date when `onSkip` is also given (the task repeats), otherwise closes the task. */
   onMiss?: () => void;
   /** Completes the occurrence with no coins and no streak change. */
   onSomeoneElse: () => void;
@@ -24,12 +24,14 @@ interface Props {
  * without having done it yourself. The expanded panel's Skip and Mark Missed
  * buttons do the first two for a repeating task; this puts them where the
  * thumb already is, next to a third that has no button anywhere else. A task
- * that doesn't repeat has nothing to skip or miss, so it gets only the third.
+ * that doesn't repeat has no next date to skip to, so it gets Mark missed
+ * (which closes it) and the third.
  */
 export function CompletionOptionsMenu({ visible, anchor, onSkip, onMiss, onSomeoneElse, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const card = useCardSheet();
+  const missDetail = onSkip ? 'Records a miss and moves to the next date.' : 'Records a miss and closes the task.';
 
   const choose = (feedback: () => void, action: () => void) => {
     feedback();
@@ -47,7 +49,7 @@ export function CompletionOptionsMenu({ visible, anchor, onSkip, onMiss, onSomeo
       popoverWidth={300}
       scrimLabel="Close menu"
     >
-      {onSkip && onMiss && (
+      {onSkip && (
         <>
           <TouchableOpacity
             style={styles.optionRow}
@@ -63,17 +65,21 @@ export function CompletionOptionsMenu({ visible, anchor, onSkip, onMiss, onSomeo
             </View>
           </TouchableOpacity>
           <View style={styles.sep} />
+        </>
+      )}
+      {onMiss && (
+        <>
           <TouchableOpacity
             style={styles.optionRow}
             onPress={() => choose(haptics.impactMedium, onMiss)}
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="button"
-            accessibilityLabel="Mark missed. Records a miss and moves to the next date."
+            accessibilityLabel={`Mark missed. ${missDetail}`}
           >
             <Ionicons name="close-circle-outline" size={iconSize.md} color={colors.redText} style={styles.icon} />
             <View style={styles.text}>
               <Text style={[styles.label, styles.missLabel]}>Mark missed</Text>
-              <Text style={styles.detail}>Records a miss and moves to the next date.</Text>
+              <Text style={styles.detail}>{missDetail}</Text>
             </View>
           </TouchableOpacity>
           <View style={styles.sep} />

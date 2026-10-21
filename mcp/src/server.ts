@@ -4094,7 +4094,7 @@ function registerWriteTools(
 
   server.tool(
     'mark_missed',
-    "Mark an occurrence of a repeating task as missed. Only when the person says they missed it: the app never decides that for them, and an overdue task costs nothing until they say so. It breaks the streak, creates the next occurrence, and costs coins when rewards are on (the result says how many). A one-off task and a repeat that is not due yet are refused. reopen_task puts it back and returns the coins.",
+    "Mark a task, or an occurrence of a repeating task, as missed. Only when the person says they missed it or gave up on it: the app never decides that for them, and an overdue task costs nothing until they say so. A repeat breaks its streak and gets its next occurrence; a one-off just closes, with no successor. It costs coins when rewards are on (the result says how many). A repeat that is not due yet is refused. reopen_task puts it back and returns the coins.",
     { id: z.string().min(1) },
     async ({ id }) => {
       try {

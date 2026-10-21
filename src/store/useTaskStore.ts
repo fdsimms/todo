@@ -4117,14 +4117,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   markMissed(id, options) {
     const task = get().tasks.find(t => t.id === id);
     if (!task || task.completed) return;
-    // A meal-plan task is recurring in every way a user would recognize —
-    // writeMealSlotTasks writes a fresh row per day of its rolling window
-    // regardless of what happened to this one — but it never carries a
-    // recurrenceType, since its schedule comes from that generator rather
-    // than the recurrence engine. isMissableMealPlanTask is its equivalent
-    // of "eligible, and its day has come" (it has no schedule to roll
-    // forward on, so unlike a recurring task it just isn't missable yet).
-    if (task.recurrenceType === 'none' && !isMissableMealPlanTask(task)) return;
+    // A one-off task can be missed too: it closes as a non-completion with no
+    // successor, the way a repeat that ran out its count does. That is the
+    // honest way out of a task that keeps getting moved, where the only
+    // alternative was a delete that erased it from the Logbook. A meal-plan
+    // task is not yet due until its own day has come, so it still waits.
+    if (task.generatedKind === 'mealSlot' && !isMissableMealPlanTask(task)) return;
     // A recurring row can be showing in Later ahead of its own day, and you
     // cannot have missed something that hasn't come round yet — completeTask
     // refuses it outright (isRecurrenceNotYetDue), which would make every
@@ -10630,9 +10628,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
   },
 
-  // Bulk equivalent of markMissed. Same per-task guard applies (recurring or
-  // a meal-plan task, and not already completed; a task not yet due rolls
-  // forward or is skipped instead of stamping a miss), so a mixed selection
+  // Bulk equivalent of markMissed. Same per-task guard applies (not already
+  // completed; a repeat not yet due rolls forward or is skipped instead of
+  // stamping a miss), so a mixed selection
   // just skips whatever doesn't qualify rather than needing its own
   // filtering here.
   bulkMarkMissed(ids) {
