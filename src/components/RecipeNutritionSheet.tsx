@@ -25,6 +25,7 @@ import { usePendingRecipeEstimateStore } from '../store/usePendingRecipeEstimate
 import { isQueueableFailure } from '../utils/estimateQueue';
 import { liveFor } from '../utils/recipeEstimateQueue';
 import { isUsuallyRemovedBeforeEating } from '../utils/removedBeforeEating';
+import { PAN_OIL_SHARE } from '../utils/panOil';
 import { EditorSheet } from './EditorSheet';
 import { GroceryItemSheet } from './GroceryItemSheet';
 import { InlineAction } from './InlineAction';
@@ -313,6 +314,16 @@ export function RecipeNutritionSheet({ visible, reading, recipeId, recipeName, s
       .map(line => ({ line, contribution: lineContribution(line) })),
     [reading.lines],
   );
+
+  // The one sentence that says why a pan-cooked oil adds less than its written
+  // amount. A consequence of the figures on screen, so it is a plain Text and
+  // not a HelpText that Hide help text would remove.
+  const panOilNote = useMemo(() => {
+    const trimmed = covered.filter(({ line }) => line.share < 1).map(({ line }) => line.name);
+    if (trimmed.length === 0) return null;
+    const names = trimmed.length === 1 ? `the ${trimmed[0]}` : `${trimmed.length} cooking oils`;
+    return `Includes about ${Math.round(PAN_OIL_SHARE * 100)}% of ${names}. Oil left in the pan isn’t counted.`;
+  }, [covered]);
 
   /**
    * Puts figures back on whichever row the ones on screen came from.
@@ -626,6 +637,7 @@ export function RecipeNutritionSheet({ visible, reading, recipeId, recipeName, s
               );
             })}
           </View>
+          {panOilNote !== null && <Text style={styles.hint}>{panOilNote}</Text>}
         </>
       )}
 

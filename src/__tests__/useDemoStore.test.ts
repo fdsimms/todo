@@ -195,6 +195,7 @@ import {
   recipeNutrition,
   recipeNutritionLines,
 } from '../utils/recipeNutrition';
+import { PAN_OIL_SHARE } from '../utils/panOil';
 import { weighableLine } from '../utils/ingredientGrams';
 import { lineWeightText, panelForLine } from '../utils/lineWeight';
 import { asksOnCompletion, chainStepDatedByAnswer, formatTaskDeliverable } from '../utils/deliverables';
@@ -3575,6 +3576,17 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const { items, itemProducts } = useGroceryStore.getState();
     const lines = recipeNutritionLines(owner, items, itemProducts);
     expect(lines.some(l => l.id === excludedLine!.id)).toBe(false);
+  });
+
+  it('seeds an oil cooked in a pan, counted at part of its written amount', () => {
+    // The rule reads the recipe's steps, so a seed with no method would leave
+    // the feature unreachable in demo mode.
+    const { recipes } = useRecipeStore.getState();
+    const owner = recipes.find(r => r.ingredients.some(i => i.nameKey === 'olive oil') && r.steps.length > 0)!;
+    expect(owner).toBeDefined();
+    const { items, itemProducts } = useGroceryStore.getState();
+    const oil = recipeNutritionLines(owner, items, itemProducts).find(l => l.name.toLowerCase() === 'olive oil');
+    expect(oil?.share).toBe(PAN_OIL_SHARE);
   });
 
   it('seeds a staple ingredient kept off the shopping list', () => {

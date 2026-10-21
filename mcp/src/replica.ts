@@ -462,6 +462,8 @@ export interface RecipePatchOp {
   alternativeGroup?: string | null;
   /** Leaves the line out of the recipe's nutrition total (flavoring taken out before eating, a garnish). */
   excludeFromNutrition?: boolean;
+  /** For setIngredientNutrition on a cooking oil: true counts only part of it (cooked in a pan), false counts all of it. */
+  cookedInPan?: boolean;
 }
 
 /** A change to a planned meal. Only what is given changes. */
@@ -4846,8 +4848,13 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
                     break;
                   }
                   if (op.op === 'setIngredientNutrition') {
-                    if (op.excludeFromNutrition === undefined) throw new Error('setIngredientNutrition needs excludeFromNutrition (true or false).');
-                    store().updateIngredient(id, target.id, { excludeFromNutrition: op.excludeFromNutrition });
+                    if (op.excludeFromNutrition === undefined && op.cookedInPan === undefined) {
+                      throw new Error('setIngredientNutrition needs excludeFromNutrition or cookedInPan (true or false).');
+                    }
+                    store().updateIngredient(id, target.id, {
+                      ...(op.excludeFromNutrition !== undefined ? { excludeFromNutrition: op.excludeFromNutrition } : {}),
+                      ...(op.cookedInPan !== undefined ? { cookedInPan: op.cookedInPan } : {}),
+                    });
                     break;
                   }
                   // Edited in place, so the line keeps its id: a planned meal's

@@ -139,6 +139,7 @@ import {
   readRecipeNutrition,
   recipeNutrition,
 } from '../utils/recipeNutrition';
+import { panOilShare, PAN_OIL_SHARE } from '../utils/panOil';
 import { formatOffsetLabel } from '../utils/templateUtils';
 import { groceryNameKey, splitAlternativeNames, splitGroceryLines } from '../utils/groceryParse';
 import { dayKeyOf, getCurrentDayStart, getLogicalToday } from '../utils/dateUtils';
@@ -1425,6 +1426,12 @@ export function RecipeDetailScreen() {
     const choiceGroup = ingredient.choiceGroup;
     const isChoiceDefault = ingredientGroups.defaults.has(ingredient.id);
     const alternativeNote = alternativeNotesById.get(ingredient.id);
+    // Says why a pan-cooked oil adds less to the nutrition total than it is
+    // written for, on the line itself (panOil.ts). Read off the line as written,
+    // not the swapped one, since the toggle belongs to the recipe's own row.
+    const panNote = panOilShare(ingredient, recipe?.steps ?? []) < 1
+      ? `cooked in the pan, ${Math.round(PAN_OIL_SHARE * 100)}% counted`
+      : null;
     // The raw detection, used for the mutual-exclusion check below regardless
     // of whether its own pill is currently dismissed — dismissing "split into
     // two" shouldn't hand the row over to a catalog suggestion it was never
@@ -1538,9 +1545,9 @@ export function RecipeDetailScreen() {
             {!!aliasNote && (
               <Text style={styles.alternativeNote} numberOfLines={1}>{aliasNote}</Text>
             )}
-            {(!!ingredient.prep || !!ingredient.purpose || !!ingredient.optional) && (
+            {(!!ingredient.prep || !!ingredient.purpose || !!ingredient.optional || !!panNote) && (
               <Text style={styles.ingredientPrep}>
-                {[ingredient.prep, ingredient.purpose && `for ${ingredient.purpose}`, ingredient.optional && 'optional']
+                {[ingredient.prep, ingredient.purpose && `for ${ingredient.purpose}`, ingredient.optional && 'optional', panNote]
                   .filter(Boolean).join(' · ')}
               </Text>
             )}

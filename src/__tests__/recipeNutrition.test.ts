@@ -392,6 +392,49 @@ describe('recipeNutrition', () => {
     expect(read.covered).toBe(1);
   });
 
+  describe('a cooking oil cooked in a pan', () => {
+    const oilPanel = () => panel({ amounts: { calorieKcal: 900 } });
+    const sauté = [{ id: 's1', text: 'Heat the oil in a skillet and cook the onion.' }] as Recipe['steps'];
+
+    it('counts PAN_OIL_SHARE of the written amount when the steps cook it in a pan', () => {
+      const dish = recipe('Onions', [ing('Olive oil', { quantity: '100 g' })], { steps: sauté });
+      const read = readRecipeNutrition(dish, [item({ name: 'Olive oil', nutrition: oilPanel() })]);
+      expect(read.nutrition!.total.calorieKcal).toBe(675);
+      expect(read.lines[0].share).toBe(0.75);
+    });
+
+    it('counts all of it when the steps do not cook it', () => {
+      const dish = recipe('Salad', [ing('Olive oil', { quantity: '100 g' })], {
+        steps: [{ id: 's1', text: 'Whisk the oil into the lemon juice.' }] as Recipe['steps'],
+      });
+      expect(recipeNutrition(dish, [item({ name: 'Olive oil', nutrition: oilPanel() })])!.total.calorieKcal).toBe(900);
+    });
+
+    it('counts all of it when the person said it was not cooked in the pan', () => {
+      const dish = recipe('Onions', [ing('Olive oil', { quantity: '100 g', cookedInPan: false })], { steps: sauté });
+      expect(recipeNutrition(dish, [item({ name: 'Olive oil', nutrition: oilPanel() })])!.total.calorieKcal).toBe(900);
+    });
+
+    it('still counts a bulk staple oil, since the staple check reads the written amount', () => {
+      // 100 g is the bulk threshold. Applying the share before that check would
+      // read it as 75 g and drop the line as negligible.
+      const dish = recipe('Onions', [ing('Olive oil', { quantity: '100 g' })], { steps: sauté });
+      const read = readRecipeNutrition(dish, [item({ name: 'Olive oil', isStaple: true, nutrition: oilPanel() })]);
+      expect(read.lines).toHaveLength(1);
+      expect(read.nutrition!.total.calorieKcal).toBe(675);
+    });
+
+    it('applies the same share to a planned week', () => {
+      const dish = recipe('Onions', [ing('Olive oil', { quantity: '100 g' })], { steps: sauté });
+      const recipesById = new Map([[dish.id, dish]]);
+      const read = weekNutrition(
+        [entry('2026-08-10', dish.id)], recipesById, [item({ name: 'Olive oil', nutrition: oilPanel() })],
+        { startKey: '2026-08-10', endKey: '2026-08-16' },
+      )!;
+      expect(read.total.calorieKcal).toBe(675);
+    });
+  });
+
   it('applies the scale to the total', () => {
     const dish = recipe('Chicken', [ing('Chicken', { quantity: '200 g' })]);
     const catalog = [item({ name: 'Chicken', nutrition: panel() })];

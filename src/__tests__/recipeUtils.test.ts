@@ -208,6 +208,19 @@ describe('parseRecipeIngredients', () => {
     expect('excludeFromNutrition' in plain[0]).toBe(false);
   });
 
+  it('keeps cookedInPan when it is true or false, and writes the key only when it is answered', () => {
+    // The one tri-state field: `false` is an answer that beats a guess of true,
+    // so dropping it on reload would quietly flip the line back.
+    const parsed = parseRecipeIngredients(JSON.stringify([
+      { id: 'a', name: 'Olive oil', nameKey: 'olive oil', quantity: '', cookedInPan: false },
+      { id: 'b', name: 'Olive oil', nameKey: 'olive oil', quantity: '', cookedInPan: true },
+      { id: 'c', name: 'Olive oil', nameKey: 'olive oil', quantity: '' },
+    ]));
+    expect(parsed[0].cookedInPan).toBe(false);
+    expect(parsed[1].cookedInPan).toBe(true);
+    expect('cookedInPan' in parsed[2]).toBe(false);
+  });
+
   it('keeps a line’s excludeFromShoppingList flag, and writes the key only when it is set', () => {
     // Same rebuild-field-by-field reasoning as noSwap/optional above — a
     // staple like water at a stated amount, not something to shop for.

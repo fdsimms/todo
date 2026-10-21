@@ -21,6 +21,7 @@ import { onHandNameKeys } from './grocerySuggest';
 import { groceryNameKey } from './groceryParse';
 import { parseQuantity, rationalToNumber } from './quantity';
 import { measureQuantity, ML_PER_TBSP } from './unitConvert';
+import { panOilShare } from './panOil';
 
 /**
  * What a recipe, or a week of planned meals, is made of.
@@ -482,6 +483,15 @@ export interface NutritionLine extends LineResolution {
    */
   quantity: string;
   prep: string | null;
+  /**
+   * The fraction of the written amount `multiplier` already counts: 1 for
+   * nearly every line, `PAN_OIL_SHARE` for a cooking oil cooked in a pan
+   * (`panOil.ts`). Applied after the line resolved, never inside `resolveLine`,
+   * because the staple check there asks whether the amount *written* is bulk,
+   * and a share would tip "1 tbsp" of oil under it and drop the line as
+   * negligible.
+   */
+  share: number;
 }
 
 /**
@@ -543,8 +553,11 @@ export function recipeNutritionLines(
       factor * (shares.get(line.recipe.id) ?? 1),
     );
     if (!resolved) continue;
+    const share = panOilShare(line.ingredient, line.recipe.steps ?? []);
     out.push({
       ...resolved,
+      multiplier: resolved.multiplier === null ? null : resolved.multiplier * share,
+      share,
       id: line.ingredient.id,
       recipeId: line.recipe.id,
       name: line.ingredient.name,
@@ -654,7 +667,10 @@ export function weekNutrition(
       productFor,
       line.unscaled?.factor ?? 1,
     );
-    if (one) resolved.push(one);
+    if (!one) continue;
+    // After resolving, for the staple reason on `NutritionLine.share`.
+    if (one.multiplier !== null && line.nutritionShare !== undefined) one.multiplier *= line.nutritionShare;
+    resolved.push(one);
   }
   return fold(resolved, null);
 }
