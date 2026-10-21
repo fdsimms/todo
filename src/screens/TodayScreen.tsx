@@ -3151,7 +3151,6 @@ export function TodayScreen() {
   // what each intent means here.
 
   const dropZonesRef = useRef<FabDropZonesHandle>(null);
-  const [fabDragging, setFabDragging] = useState(false);
   // The list the drag scrolls when it reaches the top or bottom of the screen.
   // One list now, so one control: the ReorderableList hands its own over.
   const todayScrollControl = useRef<DragScroller | null>(null);
@@ -3421,18 +3420,15 @@ export function TodayScreen() {
   const fabDrag: FabDragHandlers = {
     onStart: () => {
       setExpandedTaskId(null);
-      setFabDragging(true);
       dropZonesRef.current?.begin();
     },
     onMove: (pageY, home) => dropZonesRef.current?.moveTo(pageY, home),
     onEnd: (pageY, home) => {
-      setFabDragging(false);
       // end()/cancel() publish a null intent themselves, which is what clears
       // the label and any lit stack.
       openQuickAddForDrop(dropZonesRef.current?.end(pageY, home) ?? { kind: 'plain' });
     },
     onCancel: () => {
-      setFabDragging(false);
       dropZonesRef.current?.cancel();
     },
   };
@@ -3475,7 +3471,7 @@ export function TodayScreen() {
   useEffect(() => {
     const subscription = AppState.addEventListener('change', state => {
       if (state === 'active') {
-        setFabDragging(false);
+        dropZonesRef.current?.cancel();
         setDraggingStackChildGroupId(null);
         setDraggingPin(false);
         setDraggingSubtask(false);
@@ -5250,7 +5246,7 @@ export function TodayScreen() {
             // The user can't scroll during an add-button drag (the button's
             // responder has the touch); the drag scrolls it instead, through
             // this control.
-            scrollEnabled={!painting && !fabDragging && !draggingStackChildGroupId && !draggingSubtask && !draggingPin && !draggingBand}
+            scrollEnabled={!painting && !draggingStackChildGroupId && !draggingSubtask && !draggingPin && !draggingBand}
             scrollControlRef={todayScrollControl}
             onScrollActivity={scrollNudge.onUserScroll}
             rowScrollerRef={todayRowScroller}

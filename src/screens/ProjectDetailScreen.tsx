@@ -768,7 +768,6 @@ function ProjectDetailContent() {
   // row-drag's own dropIntoIndex/dropDisabled above already applies for a
   // dragged task.
   const dropZonesRef = useRef<FabDropZonesHandle>(null);
-  const [fabDragging, setFabDragging] = useState(false);
   const scrollControl = useRef<DragScroller | null>(null);
   // Scrolls back up to a list's add field when it's opened from the FAB.
   const listScroller = useRef<RowScroller | null>(null);
@@ -1202,18 +1201,15 @@ function ProjectDetailContent() {
   const fabDrag: FabDragHandlers = {
     onStart: () => {
       setExpandedTaskId(null);
-      setFabDragging(true);
       dropZonesRef.current?.begin();
     },
     onMove: (pageY, home) => dropZonesRef.current?.moveTo(pageY, home),
     onEnd: (pageY, home) => {
-      setFabDragging(false);
       // end()/cancel() publish a null intent themselves, which is what clears
       // the label and any lit stack.
       openQuickAddForDrop(dropZonesRef.current?.end(pageY, home) ?? { kind: 'plain' });
     },
     onCancel: () => {
-      setFabDragging(false);
       dropZonesRef.current?.cancel();
     },
   };
@@ -1621,7 +1617,7 @@ function ProjectDetailContent() {
             // The user can't scroll during an add-button drag (the button's
             // responder has the touch); the drag scrolls it instead, through
             // scrollControl below.
-            scrollEnabled={!painting && !draggingSubtask && !fabDragging && draggingSectionId === null}
+            scrollEnabled={!painting && !draggingSubtask && draggingSectionId === null}
             scrollControlRef={scrollControl}
             rowScrollerRef={listScroller}
             scrollToTop={{ bottom: fabBottom }}

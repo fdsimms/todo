@@ -811,7 +811,6 @@ export function GroceryScreen() {
   // what each intent means here.
 
   const dropZonesRef = useRef<FabDropZonesHandle>(null);
-  const [fabDragging, setFabDragging] = useState(false);
 
   // ——— The cart hold letting go ————————————————————————————————————
   //
@@ -827,8 +826,7 @@ export function GroceryScreen() {
   // the add button's drop zones are measured off rows that mustn't be moving.
   // The rows still sink then, just without the animation.
   const rowDraggingRef = useRef(false);
-  const fabDraggingRef = useRef(fabDragging);
-  fabDraggingRef.current = fabDragging;
+  const fabDraggingRef = useRef(false);
   const markRowDragging = useCallback(() => { rowDraggingRef.current = true; }, []);
   const clearRowDragging = useCallback(() => { rowDraggingRef.current = false; }, []);
   useEffect(
@@ -1026,18 +1024,18 @@ export function GroceryScreen() {
   // through a ref, and its responder is built once regardless.
   const fabDrag: FabDragHandlers = {
     onStart: () => {
-      setFabDragging(true);
+      fabDraggingRef.current = true;
       dropZonesRef.current?.begin();
     },
     onMove: (pageY, home) => dropZonesRef.current?.moveTo(pageY, home),
     onEnd: (pageY, home) => {
-      setFabDragging(false);
+      fabDraggingRef.current = false;
       // end()/cancel() publish a null intent themselves, which is what clears
       // the label.
       openAddForDrop(dropZonesRef.current?.end(pageY, home) ?? { kind: 'plain' });
     },
     onCancel: () => {
-      setFabDragging(false);
+      fabDraggingRef.current = false;
       dropZonesRef.current?.cancel();
     },
   };
@@ -1840,7 +1838,7 @@ export function GroceryScreen() {
         // responder has the touch); the drag scrolls it instead, through the
         // control below. Same while a paint gesture owns the touch: iOS has
         // to be told directly (see PaintSelectionProvider).
-        scrollEnabled={!fabDragging && !painting}
+        scrollEnabled={!painting}
         scrollControlRef={scrollControl}
         rowScrollerRef={rowScroller}
         scrollToTop={{ bottom: fabBottom }}

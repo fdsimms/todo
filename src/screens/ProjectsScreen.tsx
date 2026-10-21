@@ -326,7 +326,6 @@ function ProjectsList() {
   // into an intent, and everything below is what each intent means here.
 
   const dropZonesRef = useRef<FabDropZonesHandle>(null);
-  const [fabDragging, setFabDragging] = useState(false);
   // Lets the drag scroll the list once it reaches either end of the screen.
   const scrollControl = useRef<DragScroller | null>(null);
   // Separate from the drag scroller above: this one backs the tab-press
@@ -427,18 +426,15 @@ function ProjectsList() {
   // through a ref, and its responder is built once regardless.
   const fabDrag: FabDragHandlers = {
     onStart: () => {
-      setFabDragging(true);
       dropZonesRef.current?.begin();
     },
     onMove: (pageY, home) => dropZonesRef.current?.moveTo(pageY, home),
     onEnd: (pageY, home) => {
-      setFabDragging(false);
       // end()/cancel() publish a null intent themselves, which is what clears
       // the label.
       openQuickAddForDrop(dropZonesRef.current?.end(pageY, home) ?? { kind: 'plain' });
     },
     onCancel: () => {
-      setFabDragging(false);
       dropZonesRef.current?.cancel();
     },
   };
@@ -676,7 +672,7 @@ function ProjectsList() {
           // responder has the touch); the drag scrolls it instead, through the
           // control below. Same while a paint gesture owns the touch — see
           // PaintSelectionProvider.
-          scrollEnabled={!fabDragging && !painting}
+          scrollEnabled={!painting}
           scrollControlRef={scrollControl}
           rowScrollerRef={rowScroller}
           contentContainerStyle={styles.list}

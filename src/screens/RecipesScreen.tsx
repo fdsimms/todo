@@ -534,18 +534,15 @@ function RecipesList() {
   // enough for the row to settle into place once the store round-trips back
   // through groupRecipesByMealType.
   const dropZonesRef = useRef<FabDropZonesHandle>(null);
-  const [fabDragging, setFabDragging] = useState(false);
   const scrollControl = useRef<DragScroller | null>(null);
   const fabIntentChannel = useFabIntentChannel();
 
   const fabDrag: FabDragHandlers = {
     onStart: () => {
-      setFabDragging(true);
       dropZonesRef.current?.begin();
     },
     onMove: (pageY, home) => dropZonesRef.current?.moveTo(pageY, home),
     onEnd: (pageY, home) => {
-      setFabDragging(false);
       const intent = dropZonesRef.current?.end(pageY, home) ?? { kind: 'plain' as const };
       if (intent.kind === 'cancel') {
         haptics.tap();
@@ -557,7 +554,6 @@ function RecipesList() {
       startBlankRecipe();
     },
     onCancel: () => {
-      setFabDragging(false);
       dropZonesRef.current?.cancel();
     },
   };
@@ -895,7 +891,7 @@ function RecipesList() {
                 // shelf drag — see onDragStateChange on the SortableList in
                 // upNextBlock. Same while a paint gesture owns the touch: iOS
                 // has to be told directly (see PaintSelectionProvider).
-                scrollEnabled={!fabDragging && !upNextDragging && !painting}
+                scrollEnabled={!upNextDragging && !painting}
                 scrollControlRef={scrollControl}
                 ListHeaderComponent={upNextBlock}
                 renderItem={({ item, drag, isActive }) => {

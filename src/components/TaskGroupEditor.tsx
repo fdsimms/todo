@@ -182,7 +182,6 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
   const dropZonesRef = useRef<FabDropZonesHandle>(null);
   const dragScrollRef = useRef<DragScroller | null>(null);
   const fabIntentChannel = useFabIntentChannel();
-  const [fabDragging, setFabDragging] = useState(false);
   const pendingDropRef = useRef<{ anchorId: string; before: boolean; knownIds: Set<string> } | null>(null);
   const fabBottom = useFabBottom();
   const [showExistingPicker, setShowExistingPicker] = useState(false);
@@ -340,16 +339,13 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
   // through a ref and builds its responder once.
   const fabDrag: FabDragHandlers = {
     onStart: () => {
-      setFabDragging(true);
       dropZonesRef.current?.begin();
     },
     onMove: (pageY, home) => dropZonesRef.current?.moveTo(pageY, home),
     onEnd: (pageY, home) => {
-      setFabDragging(false);
       openQuickAddForDrop(dropZonesRef.current?.end(pageY, home) ?? { kind: 'plain' });
     },
     onCancel: () => {
-      setFabDragging(false);
       dropZonesRef.current?.cancel();
     },
   };
@@ -484,7 +480,7 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
       headerStyle={styles.header}
       scrollStyle={styles.scroll}
       scrollContentStyle={{ paddingBottom: fabBottom + FAB_SIZE + spacing.lg }}
-      scrollEnabled={!draggingChild && !fabDragging}
+      scrollEnabled={!draggingChild}
       dragScrollRef={dragScrollRef}
       wrapScroll={scroll => (
         <FabDropZoneProvider ref={dropZonesRef} onIntentChange={fabIntentChannel.publish} scroller={dragScrollRef}>

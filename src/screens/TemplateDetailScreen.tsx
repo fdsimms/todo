@@ -150,7 +150,6 @@ export function TemplateDetailScreen() {
   // every visible row is a drop target and a drop means a spot in the run.
 
   const dropZonesRef = useRef<FabDropZonesHandle>(null);
-  const [fabDragging, setFabDragging] = useState(false);
   // Lets the drag scroll the list once it reaches either end of the screen.
   const scrollControl = useRef<DragScroller | null>(null);
   // What the drag is aimed at goes through a channel rather than state, since it
@@ -215,12 +214,10 @@ export function TemplateDetailScreen() {
   // through a ref, and its responder is built once regardless.
   const fabDrag: FabDragHandlers = {
     onStart: () => {
-      setFabDragging(true);
       dropZonesRef.current?.begin();
     },
     onMove: (pageY, home) => dropZonesRef.current?.moveTo(pageY, home),
     onEnd: (pageY, home) => {
-      setFabDragging(false);
       const intent = dropZonesRef.current?.end(pageY, home) ?? { kind: 'plain' };
       if (intent.kind === 'cancel') {
         haptics.tap();
@@ -229,7 +226,6 @@ export function TemplateDetailScreen() {
       openQuickAdd(intent.kind === 'insert' ? intent : null);
     },
     onCancel: () => {
-      setFabDragging(false);
       dropZonesRef.current?.cancel();
     },
   };
@@ -440,7 +436,7 @@ export function TemplateDetailScreen() {
         // responder has the touch); the drag scrolls it instead, through the
         // control below. Same while a paint gesture owns the touch: iOS has to
         // be told directly (see PaintSelectionProvider).
-        scrollEnabled={!fabDragging && !painting}
+        scrollEnabled={!painting}
         scrollControlRef={scrollControl}
         onReorder={data => {
           if (!templateId) return;

@@ -559,6 +559,9 @@ export function ReorderableList<T>({
   // the offset as commanded, because the scroll event confirming it lands a
   // frame later and a caller stepping every frame would keep re-issuing the
   // offset it already asked for.
+  // The add-button drag's scroll lock, held here so only this list re-renders
+  // when it flips (see DragScroller.setScrollLocked).
+  const [fabLocked, setFabLocked] = useState(false);
   useImperativeHandle(scrollControlRef, () => ({
     getOffset: () => scrollOffsetRef.current,
     getMaxOffset: () => Math.max(0, contentHeightRef.current - viewportHeightRef.current),
@@ -566,6 +569,7 @@ export function ReorderableList<T>({
       scrollOffsetRef.current = y;
       scrollRef.current?.scrollTo({ y, animated: false });
     },
+    setScrollLocked: setFabLocked,
   }), [scrollRef]);
 
   // A key waiting for its row to lay out, armed by scrollToKey below and
@@ -1186,7 +1190,7 @@ export function ReorderableList<T>({
       <ScrollView
         ref={scrollRef}
         style={styles.scroll}
-        scrollEnabled={scrollEnabled && !isDragging}
+        scrollEnabled={scrollEnabled && !isDragging && !fabLocked}
         scrollEventThrottle={16}
         // See holdRowsOnHeaderResize. Index 0 is the header's wrapper and 1 the
         // sentinel, and the sentinel is always visible, so the anchor is

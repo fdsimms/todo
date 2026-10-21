@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   ScrollView,
@@ -154,6 +154,9 @@ export function EditorSheet({
   // time while a drag is in flight. The offset is written back synchronously by
   // scrollToOffset, because the scroll event confirming it lands a frame later.
   const metrics = useRef({ offset: 0, content: 0, viewport: 0 });
+  // The add-button drag's scroll lock, held here so flipping it re-renders the
+  // sheet and not the editor that owns it (see DragScroller.setScrollLocked).
+  const [fabLocked, setFabLocked] = useState(false);
   useEffect(() => {
     if (!dragScrollRef) return;
     dragScrollRef.current = {
@@ -163,6 +166,7 @@ export function EditorSheet({
         metrics.current.offset = y;
         keyboardScroll.ref.current?.scrollTo({ y, animated: false });
       },
+      setScrollLocked: setFabLocked,
     };
     return () => { dragScrollRef.current = null; };
   }, [dragScrollRef, keyboardScroll.ref]);
@@ -196,7 +200,7 @@ export function EditorSheet({
     <ScrollView
       ref={keyboardScroll.ref}
       style={scrollStyle}
-      scrollEnabled={scrollEnabled}
+      scrollEnabled={scrollEnabled && !fabLocked}
       keyboardShouldPersistTaps="handled"
       contentContainerStyle={scrollContentStyle}
       {...keyboardScroll.props}
