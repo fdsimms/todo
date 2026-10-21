@@ -289,6 +289,8 @@ export interface ContainerInfo {
   sizeUnit: string;
   /** The container word as written ("can", "cans"). */
   word: string;
+  /** Whether the size was written in parentheses ("2 (14 oz) cans"), so a restatement can keep them. */
+  parenthesized: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -412,8 +414,13 @@ const FLUID_OUNCE = /^fl\.?\s*oz\.?\b|^fluid\s+ounces?\b/i;
  */
 const BARE_CONTAINER = /^-?\s*([a-z]+)\.?\s+([a-z]+)$/i;
 
-/** A counted sized container's trailing half — "14 oz cans" out of "2 14 oz cans". */
-const COUNTED_CONTAINER = /^(\d+(?:\.\d+)?)\s*-?\s*([a-z]+)\.?\s+([a-z]+)$/i;
+/**
+ * A counted sized container's trailing half — "14 oz cans" out of "2 14 oz cans".
+ * The size may sit in parentheses, which is how an imported recipe prints it
+ * ("2 (8-ounce) packages"); without that it read as a bare count of 2 and the
+ * line was weighed as some other row of the food's table.
+ */
+const COUNTED_CONTAINER = /^\(?(\d+(?:\.\d+)?)\s*-?\s*([a-z]+)\.?\)?\s+([a-z]+)$/i;
 
 /**
  * A range's separator, right after the first amount — "to " ("1 to 2 tbsp")
@@ -525,6 +532,7 @@ export function parseQuantity(raw: string): Quantity {
         sizeText: text.slice(0, amount.length),
         sizeUnit: bare[1],
         word: bare[2],
+        parenthesized: false,
       },
     };
   }
@@ -540,6 +548,7 @@ export function parseQuantity(raw: string): Quantity {
         sizeText: withCount[1],
         sizeUnit: withCount[2],
         word: withCount[3],
+        parenthesized: rest.startsWith('('),
       },
     };
   }
