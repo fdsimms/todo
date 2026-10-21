@@ -44,6 +44,18 @@ export interface SleepEpisode {
   source: number;
   /** Null when the recording app doesn't stage sleep (see `SleepStages`). */
   stages: SleepStages | null;
+  /** The stretches the stages add up from, in order. Empty when there are none to draw. */
+  segments: SleepSegment[];
+}
+
+/**
+ * One stretch in one stage, in minutes from the episode's start. The stages
+ * above are these added up; this is the same record with the *when* kept.
+ */
+export interface SleepSegment {
+  stage: keyof SleepStages;
+  from: number;
+  to: number;
 }
 
 /**
@@ -73,6 +85,30 @@ export const SLEEP_STAGE_LABEL: Record<keyof SleepStages, string> = {
   deep: 'Deep',
 };
 
+/** `HKCategoryValueSleepAnalysis` raw values for the four stages, as the wire carries them. */
+const SEGMENT_STAGE: Record<number, keyof SleepStages> = { 2: 'awake', 3: 'core', 4: 'deep', 5: 'rem' };
+
+/**
+ * The wire's `[stage, offsetSeconds, lengthSeconds]` triples as segments,
+ * dropping any that are malformed or name no stage. A stretch that overruns the
+ * episode is clipped to it, so a chart can't draw outside the night.
+ */
+function parseSegments(value: unknown, episodeMinutes: number): SleepSegment[] {
+  if (!Array.isArray(value)) return [];
+  const out: SleepSegment[] = [];
+  for (const entry of value) {
+    if (!Array.isArray(entry) || entry.length < 3) continue;
+    const [code, offset, length] = entry as unknown[];
+    if (typeof code !== 'number' || typeof offset !== 'number' || typeof length !== 'number') continue;
+    const stage = SEGMENT_STAGE[code];
+    if (!stage || !Number.isFinite(offset) || !Number.isFinite(length) || length <= 0) continue;
+    const from = Math.max(0, offset / 60);
+    const to = Math.min(episodeMinutes, (offset + length) / 60);
+    if (to > from) out.push({ stage, from, to });
+  }
+  return out.sort((a, b) => a.from - b.from);
+}
+
 function stageMinutes(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0;
 }
@@ -91,19 +127,23 @@ export function parseSleepEpisodes(json: string): SleepEpisode[] {
     const out: SleepEpisode[] = [];
     for (const entry of parsed) {
       if (typeof entry !== 'object' || entry === null) continue;
-      const { start, end, minutes, source, core, deep, rem, awake } = entry as Record<string, unknown>;
+      const { start, end, minutes, source, core, deep, rem, awake, seg } = entry as Record<string, unknown>;
       if (typeof start !== 'string' || typeof end !== 'string') continue;
       const startAt = new Date(start);
       const endAt = new Date(end);
       if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime())) continue;
       if (endAt <= startAt) continue;
       if (typeof minutes !== 'number' || !Number.isFinite(minutes) || minutes <= 0) continue;
+      const stages = parseStages(core, deep, rem, awake);
       out.push({
         start: startAt,
         end: endAt,
         minutes,
         source: typeof source === 'number' && Number.isFinite(source) ? source : 0,
-        stages: parseStages(core, deep, rem, awake),
+        stages,
+        // Drawn from the span the stretches sit in, not from `minutes`, which
+        // leaves the awake time out.
+        segments: stages ? parseSegments(seg, (endAt.getTime() - startAt.getTime()) / 60000) : [],
       });
     }
     return out;
@@ -139,6 +179,8 @@ export interface SleepNight {
   mainMinutes: number;
   /** The main stretch's stages, or null when its source doesn't record them. */
   stages: SleepStages | null;
+  /** The main stretch's stretches in each stage, for the timeline; empty when `stages` is null. */
+  segments: SleepSegment[];
 }
 
 /**
@@ -187,6 +229,7 @@ export function sleepNights(episodes: readonly SleepEpisode[], dayResetTime: str
       wokeAt: main.end,
       mainMinutes: main.minutes,
       stages: main.stages,
+      segments: main.segments,
     });
   }
   return nights.sort((a, b) => (a.dayKey < b.dayKey ? -1 : a.dayKey > b.dayKey ? 1 : 0));
@@ -261,6 +304,44 @@ export function averageSleepStages(nights: readonly SleepNight[]): SleepStageAve
     stages: { core: mean('core'), deep: mean('deep'), rem: mean('rem'), awake: mean('awake') },
     nights: staged.length,
   };
+}
+
+/**
+ * The nights that have a timeline to draw, oldest first. A night with totals
+ * but no stretches (a source from before the wire carried them) is left out
+ * rather than drawn as an empty chart.
+ */
+export function stagedNights(nights: readonly SleepNight[]): SleepNight[] {
+  return nights.filter(n => n.stages !== null && n.segments.length > 0);
+}
+
+/** A labelled mark along a night's timeline, `fraction` of the way from fall-asleep to wake. */
+export interface TimelineTick {
+  at: Date;
+  fraction: number;
+}
+
+/**
+ * Whole-hour marks inside `start`..`end`: every hour on a stretch of 6 hours
+ * or less, every 2 beyond that, so labels along a phone-width axis don't touch.
+ * Marks on the very edge are dropped, since the stretch's own times are
+ * printed above the chart.
+ */
+export function timelineTicks(start: Date, end: Date): TimelineTick[] {
+  const span = end.getTime() - start.getTime();
+  if (span <= 0) return [];
+  const step = span > 6 * 3_600_000 ? 2 : 1;
+  const ticks: TimelineTick[] = [];
+  const at = new Date(start);
+  at.setMinutes(0, 0, 0);
+  at.setHours(at.getHours() + 1);
+  // Even hours for the 2-hour step, so a night reads 12, 2, 4, 6 whatever its start.
+  if (step === 2 && at.getHours() % 2 === 1) at.setHours(at.getHours() + 1);
+  for (; at < end; at.setHours(at.getHours() + step)) {
+    const fraction = (at.getTime() - start.getTime()) / span;
+    if (fraction > 0 && fraction < 1) ticks.push({ at: new Date(at), fraction });
+  }
+  return ticks;
 }
 
 /** What a window of nights adds up to. Null figures mean there was nothing to average. */

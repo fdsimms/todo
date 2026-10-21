@@ -16,6 +16,8 @@ import {
   type SleepEpisode,
   type SleepStages,
   averageSleepStages,
+  stagedNights,
+  timelineTicks,
 } from '@/utils/sleepLog';
 
 /** Local wall-clock instants, so the tests read the same in every zone. */
@@ -24,7 +26,7 @@ function at(day: string, hhmm: string): Date {
 }
 
 function episode(start: Date, end: Date, minutes?: number, source = 0, stages: SleepStages | null = null): SleepEpisode {
-  return { start, end, minutes: minutes ?? (end.getTime() - start.getTime()) / 60000, source, stages };
+  return { start, end, minutes: minutes ?? (end.getTime() - start.getTime()) / 60000, source, stages, segments: [] };
 }
 
 describe('parseSleepEpisodes', () => {
@@ -33,7 +35,7 @@ describe('parseSleepEpisodes', () => {
       { start: at('2026-10-03', '23:10').toISOString(), end: at('2026-10-04', '07:00').toISOString(), minutes: 455, source: 1 },
     ]);
     expect(parseSleepEpisodes(json)).toEqual([
-      { start: at('2026-10-03', '23:10'), end: at('2026-10-04', '07:00'), minutes: 455, source: 1, stages: null },
+      { start: at('2026-10-03', '23:10'), end: at('2026-10-04', '07:00'), minutes: 455, source: 1, stages: null, segments: [] },
     ]);
   });
 
@@ -146,6 +148,70 @@ describe('sleepReadings', () => {
       episode(at('2026-10-04', '14:00'), at('2026-10-04', '15:00')),
     ], '00:00');
     expect(sleepReadings(nights)).toEqual([{ dayKey: '2026-10-04', steps: null, sleepHours: 8 }]);
+  });
+});
+
+describe('stage segments', () => {
+  const base = { start: at('2026-10-03', '23:00').toISOString(), end: at('2026-10-04', '07:00').toISOString(), minutes: 460, source: 0 };
+  const staged = { core: 260, deep: 80, rem: 120, awake: 15 };
+
+  it('reads the stretches in order, in minutes from the start', () => {
+    const [parsed] = parseSleepEpisodes(JSON.stringify([
+      { ...base, ...staged, seg: [[4, 1500, 600], [3, 0, 1500], [2, 2100, 120]] },
+    ]));
+    expect(parsed.segments).toEqual([
+      { stage: 'core', from: 0, to: 25 },
+      { stage: 'deep', from: 25, to: 35 },
+      { stage: 'awake', from: 35, to: 37 },
+    ]);
+  });
+
+  it('drops a stretch with no stage or no length, and clips one that overruns the night', () => {
+    const [parsed] = parseSleepEpisodes(JSON.stringify([
+      { ...base, ...staged, seg: [[1, 0, 600], [3, 0, 0], ['x', 0, 60], [3, 60], [5, 28740, 600]] },
+    ]));
+    expect(parsed.segments).toEqual([{ stage: 'rem', from: 479, to: 480 }]);
+  });
+
+  it('has none for an unstaged episode, or one from before the wire carried them', () => {
+    const [unstaged, legacy] = parseSleepEpisodes(JSON.stringify([
+      { ...base, core: 0, deep: 0, rem: 0, awake: 0, seg: [[3, 0, 600]] },
+      { ...base, ...staged },
+    ]));
+    expect(unstaged.segments).toEqual([]);
+    expect(legacy.segments).toEqual([]);
+  });
+
+  it("puts the main stretch's segments on the night", () => {
+    const segments = [{ stage: 'core' as const, from: 0, to: 30 }];
+    const nights = sleepNights([
+      { ...episode(at('2026-10-03', '23:00'), at('2026-10-04', '07:00'), 470, 0, staged), segments },
+    ], '00:00');
+    expect(nights[0].segments).toEqual(segments);
+  });
+
+  it('offers only the nights that have something to draw', () => {
+    const drawn = { ...episode(at('2026-10-03', '23:00'), at('2026-10-04', '07:00'), 470, 0, staged), segments: [{ stage: 'core' as const, from: 0, to: 30 }] };
+    const nights = sleepNights([
+      drawn,
+      episode(at('2026-10-04', '23:00'), at('2026-10-05', '07:00')),
+      { ...episode(at('2026-10-05', '23:00'), at('2026-10-06', '07:00'), 470, 0, staged), segments: [] },
+    ], '00:00');
+    expect(stagedNights(nights).map(n => n.dayKey)).toEqual(['2026-10-04']);
+  });
+});
+
+describe('timelineTicks', () => {
+  it('marks whole hours across the span, every 2 hours for a night', () => {
+    const ticks = timelineTicks(at('2026-10-03', '23:12'), at('2026-10-04', '06:58'));
+    expect(ticks.map(t => t.at.getHours())).toEqual([0, 2, 4, 6]);
+    expect(ticks[0].fraction).toBeCloseTo(48 / 466, 5);
+  });
+
+  it('marks every hour on a short stretch and never outside it', () => {
+    const ticks = timelineTicks(at('2026-10-03', '14:10'), at('2026-10-03', '16:40'));
+    expect(ticks.map(t => t.at.getHours())).toEqual([15, 16]);
+    for (const t of ticks) expect(t.fraction).toBeGreaterThan(0);
   });
 });
 
