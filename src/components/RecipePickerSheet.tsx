@@ -414,7 +414,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
               <SegmentedControl
                 options={weekDays.map(d => ({ value: d.key, label: d.short, accessibilityLabel: d.label }))}
                 value={day}
-                onChange={next => { haptics.tap(); setDay(next); }}
+                onChange={setDay}
               />
             </View>
           )}
