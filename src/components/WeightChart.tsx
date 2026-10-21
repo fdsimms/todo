@@ -115,6 +115,12 @@ interface Props {
   targetKg?: number | null;
   /** The pace line's vertices, indexed into `points`. Empty or omitted draws none. */
   pacePoints?: PacePlotPoint[];
+  /**
+   * Fires true when a finger lands on the plot and false when it lifts. The host
+   * turns its scroll view off for the duration: a native scroll view yields only
+   * to a responder that is its ancestor, and this one is a descendant.
+   */
+  onScrubChange?: (scrubbing: boolean) => void;
 }
 
 /**
@@ -126,7 +132,7 @@ interface Props {
  * about not doing that (see the three rules above). They share one colour and
  * one dash pattern because together they are one statement.
  */
-export function WeightChart({ points, unit, targetKg, pacePoints }: Props) {
+export function WeightChart({ points, unit, targetKg, pacePoints, onScrubChange }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [width, setWidth] = useState(0);
@@ -191,9 +197,17 @@ export function WeightChart({ points, unit, targetKg, pacePoints }: Props) {
     setScrubIndex(nearest);
   };
 
+  const onScrubChangeRef = useRef(onScrubChange);
+  onScrubChangeRef.current = onScrubChange;
+  const startScrub = (event: GestureResponderEvent) => {
+    onScrubChangeRef.current?.(true);
+    scrubTo(event);
+  };
+
   const endScrub = () => {
     scrubIndexRef.current = null;
     setScrubIndex(null);
+    onScrubChangeRef.current?.(false);
   };
 
   const panResponder = useMemo(() => PanResponder.create({
@@ -201,10 +215,11 @@ export function WeightChart({ points, unit, targetKg, pacePoints }: Props) {
     // plain tap (no drag at all) still shows the tooltip for that point. The
     // cost — the same trade `PaintSelection` documents for its own gutter — is
     // that a scroll gesture starting with a finger already on the plot begins
-    // a scrub instead: the screen still scrolls from anywhere else on it.
+    // a scrub instead: the screen still scrolls from anywhere else on it. The
+    // host's scroll view is switched off for the scrub (`onScrubChange`).
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: () => true,
-    onPanResponderGrant: scrubTo,
+    onPanResponderGrant: startScrub,
     onPanResponderMove: scrubTo,
     onPanResponderRelease: endScrub,
     onPanResponderTerminate: endScrub,
