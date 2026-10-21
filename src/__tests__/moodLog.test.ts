@@ -9,7 +9,6 @@ import {
   hasLogOnDay,
   hasLoggedSince,
   logsOnDay,
-  moodEmoji,
   moodLabel,
   moodLogSummary,
   renamedContextTags,
@@ -47,10 +46,9 @@ describe('the scale', () => {
     expect(ok.value).toBeGreaterThan(LOW_MOOD_AT_OR_BELOW);
   });
 
-  it('labels and emoji every level, and falls back rather than throwing', () => {
+  it('labels every level, and falls back rather than throwing', () => {
     expect(moodLabel(1)).toBe('Very low');
     expect(moodLabel(5)).toBe('Very good');
-    expect(moodEmoji(3)).toBe('😐');
     expect(moodLabel(9 as MoodLevel)).toBe('OK');
     expect(severityLabel(3)).toBe('Severe');
   });
@@ -266,7 +264,7 @@ describe('logging since an instant', () => {
 describe('an entry summary', () => {
   it('leads with the mood, then names the symptoms', () => {
     expect(moodLogSummary(log({ mood: 4, symptoms: [{ name: 'Headache', severity: 1 }] })))
-      .toBe('🙂 Good · Headache');
+      .toBe('Good · Headache');
   });
 
   it('names the context tags after the symptoms', () => {
@@ -274,7 +272,7 @@ describe('an entry summary', () => {
       mood: 4,
       symptoms: [{ name: 'Headache', severity: 1 }],
       contextTags: ['Vacation'],
-    }))).toBe('🙂 Good · Headache · Vacation');
+    }))).toBe('Good · Headache · Vacation');
   });
 
   it('falls back to the note for an entry that is only a note', () => {

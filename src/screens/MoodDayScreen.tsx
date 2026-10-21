@@ -9,11 +9,12 @@ import { useMoodStore } from '../store/useMoodStore';
 import { useJournalStore } from '../store/useJournalStore';
 import { useJournalAccess } from '../hooks/useJournalAccess';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, lineHeight, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, lineHeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
 import { openEntries } from '../utils/journal';
-import { logsOnDay, moodEmoji, moodLabel, severityLabel } from '../utils/moodLog';
+import { MoodFace } from '../components/MoodFace';
+import { logsOnDay, moodLabel, severityLabel } from '../utils/moodLog';
 import { adjacentLogDays } from '../utils/moodHistory';
 import { DetailHeader } from '../components/DetailHeader';
 import { EmptyState } from '../components/EmptyState';
@@ -122,10 +123,10 @@ export function MoodDayScreen() {
               ].filter(Boolean).join('. ')}
               accessibilityHint="Opens this entry to edit"
             >
-              <Text style={styles.time}>
-                {format(new Date(log.loggedAt), 'h:mm a')}
-                {log.mood === null ? '' : `  ${moodEmoji(log.mood)}`}
-              </Text>
+              <View style={styles.timeRow} accessible={false}>
+                <Text style={styles.time}>{format(new Date(log.loggedAt), 'h:mm a')}</Text>
+                {log.mood !== null && <MoodFace level={log.mood} size={iconSize.sm} />}
+              </View>
               {!!log.note && <Text style={styles.note}>{log.note}</Text>}
               {log.symptoms.length > 0 && (
                 <Text style={styles.foot}>
@@ -259,7 +260,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     letterSpacing: 0.8,
     marginBottom: spacing.sm,
   },
-  time: { fontSize: font.sm, color: colors.textSecondary, marginBottom: spacing.xs },
+  timeRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xsm, marginBottom: spacing.xs },
+  time: { fontSize: font.sm, color: colors.textSecondary },
   note: { fontSize: font.lg, lineHeight: lineHeight.lg, color: colors.text },
   foot: { fontSize: font.sm, color: colors.textSecondary, marginTop: spacing.xs },
   pager: {

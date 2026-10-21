@@ -19,7 +19,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useHealthStore, HEALTH_HISTORY_DAYS } from '../store/useHealthStore';
 import { useFoodLogStore, FOOD_INSIGHT_DAYS } from '../store/useFoodLogStore';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
 import { openEntries } from '../utils/journal';
@@ -68,6 +68,7 @@ import { EmptyState } from '../components/EmptyState';
 import { InlineAction } from '../components/InlineAction';
 import { MoodLogSheet, type MoodLogPrefill } from '../components/MoodLogSheet';
 import { MoodEntryRow } from '../components/MoodEntryRow';
+import { MoodFace } from '../components/MoodFace';
 import { PressableScale } from '../components/PressableScale';
 import { CsvExportSheet } from '../components/CsvExportSheet';
 import { MilestoneSheet } from '../components/MilestoneSheet';
@@ -508,7 +509,7 @@ export function MoodScreen() {
                   accessibilityRole="button"
                   accessibilityLabel={`Log ${level.label.toLowerCase()}`}
                 >
-                  <Text style={styles.faceEmoji}>{level.emoji}</Text>
+                  <MoodFace level={level.value} size={iconSize.xl + 2} />
                 </PressableScale>
               ))}
             </View>
@@ -1097,8 +1098,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.md,
     backgroundColor: colors.bgTertiary,
   },
-  // An emoji sized as an icon, which the type scale isn't for.
-  faceEmoji: { fontSize: 26 },
   todayEntries: { marginBottom: spacing.md },
   statRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg },
   statCell: {
