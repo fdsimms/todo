@@ -36,6 +36,7 @@ import { InlineAction } from './InlineAction';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { useFilterField } from '../hooks/useFilterField';
+import { FieldClearButton } from './FieldClearButton';
 import { TextField } from './TextField';
 import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
@@ -827,6 +828,7 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
                 onSubmitEditing={canAdd ? handleAddTyped : undefined}
                 accessibilityLabel="Find an item, or type a name to add it"
               />
+              <FieldClearButton query={query} onClear={clearQuery} />
             </View>
 
             {canAdd && (
