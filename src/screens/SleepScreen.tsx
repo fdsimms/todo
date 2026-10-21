@@ -27,6 +27,7 @@ import {
   nightsInWindow,
   sleepReadings,
   sleepSummary,
+  stagedNights,
   type SleepNight,
 } from '../utils/sleepLog';
 import { ScreenHeader } from '../components/ScreenHeader';
@@ -36,7 +37,8 @@ import { usePullToSearch } from '../hooks/usePullToSearch';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { SegmentedControl } from '../components/SegmentedControl';
-import { SleepHoursChart, SleepStagesBar, SleepTimesChart } from '../components/SleepChart';
+import { PressableScale } from '../components/PressableScale';
+import { SleepHoursChart, SleepStageTimeline, SleepStagesBar, SleepTimesChart } from '../components/SleepChart';
 import { SleepGoalSheet } from '../components/SleepGoalSheet';
 import { InlineAction } from '../components/InlineAction';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
@@ -91,6 +93,8 @@ export function SleepScreen() {
   const [rangeDays, setRangeDays] = useState<SleepRangeDays>(DEFAULT_RANGE_DAYS);
   // The page scroll is off while a finger is scrubbing a chart.
   const [scrubbing, setScrubbing] = useState(false);
+  // The night the stage timeline shows; null means the latest one that has stages.
+  const [stageDayKey, setStageDayKey] = useState<string | null>(null);
   const activeRange = SLEEP_RANGES.find(r => r.days === rangeDays) ?? SLEEP_RANGES[1];
 
   // On every visit, for `WeightScreen`'s reason: the screen stays mounted for
@@ -112,6 +116,20 @@ export function SleepScreen() {
   const summary = useMemo(() => sleepSummary(visible, goal), [visible, goal]);
   const stageAverage = useMemo(() => averageSleepStages(visible), [visible]);
   const latest: SleepNight | null = nights.length > 0 ? nights[nights.length - 1] : null;
+  // Every night read, not only the zoomed range: stepping back is how a night
+  // outside it is reached.
+  const timelineNights = useMemo(() => stagedNights(nights), [nights]);
+  const timelineIndex = useMemo(() => {
+    const found = stageDayKey === null ? -1 : timelineNights.findIndex(n => n.dayKey === stageDayKey);
+    return found >= 0 ? found : timelineNights.length - 1;
+  }, [timelineNights, stageDayKey]);
+  const timelineNight = timelineIndex >= 0 ? timelineNights[timelineIndex] : null;
+  const stepTimeline = (by: -1 | 1) => {
+    const next = timelineNights[timelineIndex + by];
+    if (!next) return;
+    haptics.tap();
+    setStageDayKey(next.dayKey);
+  };
 
   // Sleep against what you got done and how you felt, over the whole read
   // window rather than the zoomed range: the comparison needs MIN_PAIRED_DAYS
@@ -324,6 +342,49 @@ export function SleepScreen() {
               </>
             )}
 
+            {timelineNight !== null && timelineNight.stages !== null && (
+              <>
+                <Text style={styles.sectionTitle}>STAGES BY NIGHT</Text>
+                <View style={styles.card}>
+                  <View style={styles.stepper}>
+                    <PressableScale
+                      style={[styles.stepButton, timelineIndex === 0 && styles.stepButtonOff]}
+                      onPress={() => stepTimeline(-1)}
+                      disabled={timelineIndex === 0}
+                      accessibilityLabel="Earlier night"
+                    >
+                      <Ionicons name="chevron-back" size={iconSize.md} color={colors.text} />
+                    </PressableScale>
+                    <View
+                      style={styles.stepperTitle}
+                      accessible
+                      accessibilityLabel={`Ended ${relativeDay(timelineNight.dayKey, todayKey)}, ${
+                        formatClockMinutes(clock(timelineNight.asleepAt), use24Hour)} to ${
+                        formatClockMinutes(clock(timelineNight.wokeAt), use24Hour)}`}
+                    >
+                      <Text style={styles.stepperDay}>Ended {relativeDay(timelineNight.dayKey, todayKey)}</Text>
+                      <Text style={styles.stepperRange}>
+                        {formatClockMinutes(clock(timelineNight.asleepAt), use24Hour)} to {formatClockMinutes(clock(timelineNight.wokeAt), use24Hour)}
+                      </Text>
+                    </View>
+                    <PressableScale
+                      style={[styles.stepButton, timelineIndex === timelineNights.length - 1 && styles.stepButtonOff]}
+                      onPress={() => stepTimeline(1)}
+                      disabled={timelineIndex === timelineNights.length - 1}
+                      accessibilityLabel="Later night"
+                    >
+                      <Ionicons name="chevron-forward" size={iconSize.md} color={colors.text} />
+                    </PressableScale>
+                  </View>
+                  <SleepStageTimeline night={timelineNight} use24Hour={use24Hour} />
+                  <SleepStagesBar stages={timelineNight.stages} label={`Ended ${relativeDay(timelineNight.dayKey, todayKey)}`} showBar={false} />
+                  <Text style={styles.chartCaption}>
+                    Each block is one stretch in a stage. Nights tracked by the iPhone alone have no stages, so they are skipped.
+                  </Text>
+                </View>
+              </>
+            )}
+
             <Text style={styles.sectionTitle}>HOURS ASLEEP BY DAY</Text>
             <View style={styles.card}>
               <SleepHoursChart dayKeys={dayKeys} nights={visible} goalMinutes={goal} onScrubChange={setScrubbing} />
@@ -462,6 +523,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   finding: { fontSize: font.md, color: colors.text, lineHeight: 22, marginTop: spacing.xxs },
   goalLine: { marginTop: spacing.smd },
   stages: { marginTop: spacing.md },
+  stepper: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md },
+  stepButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.bgTertiary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepButtonOff: { opacity: 0.4 },
+  stepperTitle: { flex: 1, alignItems: 'center' },
+  stepperDay: { fontSize: font.md, fontWeight: fontWeight.semibold, color: colors.text },
+  stepperRange: { fontSize: font.sm, color: colors.textSecondary, marginTop: spacing.xxs },
   goalAction: { flexDirection: 'row', marginTop: spacing.smd },
   chartCaption: { fontSize: font.xs, color: colors.textSecondary, marginTop: spacing.sm },
   healthLinkRow: {

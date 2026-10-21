@@ -15,6 +15,7 @@ import {
   formatClockMinutes,
   formatSleepDuration,
   sleepPlot,
+  timelineTicks,
   type SleepNight,
 } from '../utils/sleepLog';
 
@@ -377,6 +378,8 @@ interface StagesProps {
   stages: SleepStages;
   /** Read out ahead of the figures, e.g. "Most recent sleep" or "Average". */
   label: string;
+  /** False for the legend alone, under a chart that already draws the proportions. */
+  showBar?: boolean;
 }
 
 /**
@@ -384,7 +387,7 @@ interface StagesProps {
  * legend giving each stage's time. The legend carries the figures, so the bar
  * is an aid to reading them, the rule `ContrastBars` states for its own pair.
  */
-export function SleepStagesBar({ stages, label }: StagesProps) {
+export function SleepStagesBar({ stages, label, showBar = true }: StagesProps) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const total = SLEEP_STAGE_ORDER.reduce((sum, k) => sum + stages[k], 0);
@@ -394,18 +397,121 @@ export function SleepStagesBar({ stages, label }: StagesProps) {
     .join(', ');
   return (
     <View accessible accessibilityLabel={`${label} stages: ${spoken}.`}>
-      <View style={styles.stageTrack}>
-        {SLEEP_STAGE_ORDER.map(k => stages[k] > 0 && (
-          <View key={k} style={{ flex: stages[k], backgroundColor: sleepStageColor(k, colors) }} />
-        ))}
-      </View>
-      <View style={styles.stageLegend}>
+      {showBar && (
+        <View style={styles.stageTrack}>
+          {SLEEP_STAGE_ORDER.map(k => stages[k] > 0 && (
+            <View key={k} style={{ flex: stages[k], backgroundColor: sleepStageColor(k, colors) }} />
+          ))}
+        </View>
+      )}
+      <View style={[styles.stageLegend, !showBar && styles.stageLegendAlone]}>
         {SLEEP_STAGE_ORDER.map(k => (
           <View key={k} style={styles.stageItem}>
             <View style={[styles.stageDot, { backgroundColor: sleepStageColor(k, colors) }]} />
             <Text style={styles.stageName}>{SLEEP_STAGE_LABEL[k]}</Text>
             <Text style={styles.stageValue}>{formatSleepDuration(stages[k])}</Text>
           </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+const TIMELINE_ROW_HEIGHT = 30;
+const TIMELINE_HEIGHT = TIMELINE_ROW_HEIGHT * SLEEP_STAGE_ORDER.length;
+const TIMELINE_BLOCK_INSET = 5;
+const TIMELINE_TICK_WIDTH = 56;
+
+interface TimelineProps {
+  /** A night with stages and segments; the screen picks which one. */
+  night: SleepNight;
+  use24Hour: boolean;
+}
+
+/**
+ * One night's stages along the clock: a row per stage in the order Health
+ * lists them (awake at the top, deep at the bottom), a block wherever the night
+ * was in that stage, and a thin line joining each block to the next.
+ *
+ * The axis runs from falling asleep to waking, the same stretch the times chart
+ * draws as one bar, so the two read against each other. Only the stretches the
+ * Watch recorded are drawn: nothing is interpolated across a gap, and no stage
+ * is coloured as better than another (`sleepStageColor`). The legend and totals
+ * beside it are `SleepStagesBar`'s, since the figures are the record and this
+ * is an aid to reading them.
+ */
+export function SleepStageTimeline({ night, use24Hour }: TimelineProps) {
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const [width, setWidth] = useState(0);
+  const total = (night.wokeAt.getTime() - night.asleepAt.getTime()) / 60000;
+  if (night.segments.length === 0 || total <= 0) return null;
+
+  const plotWidth = Math.max(0, width - AXIS_WIDTH);
+  const x = (minutes: number) => (minutes / total) * plotWidth;
+  const rowOf = (stage: keyof SleepStages) => SLEEP_STAGE_ORDER.indexOf(stage);
+  const ticks = timelineTicks(night.asleepAt, night.wokeAt);
+  const summary = `Sleep stages through the night, from ${
+    formatClockMinutes(clockOf(night.asleepAt), use24Hour)} to ${formatClockMinutes(clockOf(night.wokeAt), use24Hour)}.`;
+
+  return (
+    <View accessible accessibilityLabel={summary} onLayout={(e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width)}>
+      <View style={{ height: TIMELINE_HEIGHT }}>
+        {SLEEP_STAGE_ORDER.map((stage, i) => (
+          <Text key={stage} style={[styles.axisLabel, { top: i * TIMELINE_ROW_HEIGHT + TIMELINE_ROW_HEIGHT / 2 - 7 }]}>
+            {SLEEP_STAGE_LABEL[stage]}
+          </Text>
+        ))}
+        {width > 0 && (
+          <Svg width={plotWidth} height={TIMELINE_HEIGHT} style={styles.svg}>
+            {SLEEP_STAGE_ORDER.slice(1).map((stage, i) => (
+              <Line
+                key={stage}
+                x1={0}
+                x2={plotWidth}
+                y1={(i + 1) * TIMELINE_ROW_HEIGHT}
+                y2={(i + 1) * TIMELINE_ROW_HEIGHT}
+                stroke={colors.separator}
+                strokeWidth={1}
+              />
+            ))}
+            {night.segments.map((seg, i) => {
+              const prev = i > 0 ? night.segments[i - 1] : null;
+              const mid = (stage: keyof SleepStages) => rowOf(stage) * TIMELINE_ROW_HEIGHT + TIMELINE_ROW_HEIGHT / 2;
+              return (
+                <React.Fragment key={`${seg.from}-${seg.stage}`}>
+                  {prev && prev.stage !== seg.stage && (
+                    <Line
+                      x1={x(seg.from)}
+                      x2={x(seg.from)}
+                      y1={mid(prev.stage)}
+                      y2={mid(seg.stage)}
+                      stroke={colors.separator}
+                      strokeWidth={1.5}
+                    />
+                  )}
+                  <Rect
+                    x={x(seg.from)}
+                    y={rowOf(seg.stage) * TIMELINE_ROW_HEIGHT + TIMELINE_BLOCK_INSET}
+                    width={Math.max(MIN_BAR_WIDTH, x(seg.to) - x(seg.from) - 1)}
+                    height={TIMELINE_ROW_HEIGHT - TIMELINE_BLOCK_INSET * 2}
+                    rx={4}
+                    fill={sleepStageColor(seg.stage, colors)}
+                  />
+                </React.Fragment>
+              );
+            })}
+          </Svg>
+        )}
+      </View>
+      <View style={styles.timelineAxis}>
+        {width > 0 && ticks.map(t => (
+          <Text
+            key={t.at.getTime()}
+            style={[styles.timelineTick, { left: AXIS_WIDTH + t.fraction * plotWidth - TIMELINE_TICK_WIDTH / 2 }]}
+          >
+            {formatHour(t.at.getHours(), use24Hour)}
+          </Text>
         ))}
       </View>
     </View>
@@ -462,6 +568,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginTop: spacing.xs,
   },
   dayLabel: { fontSize: font.xxs, color: colors.textSecondary },
+  timelineAxis: { height: 16, marginTop: spacing.xs },
+  timelineTick: {
+    position: 'absolute',
+    top: 0,
+    width: TIMELINE_TICK_WIDTH,
+    textAlign: 'center',
+    fontSize: font.xxs,
+    color: colors.textSecondary,
+  },
   stageTrack: {
     flexDirection: 'row',
     height: 10,
@@ -471,6 +586,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: 2,
   },
   stageLegend: { flexDirection: 'row', flexWrap: 'wrap', marginTop: spacing.smd, rowGap: spacing.sm },
+  stageLegendAlone: { marginTop: spacing.md },
   stageItem: { width: '50%', flexDirection: 'row', alignItems: 'center', gap: spacing.xsm },
   stageDot: { width: 8, height: 8, borderRadius: 4 },
   stageName: { fontSize: font.sm, color: colors.textSecondary },
