@@ -115,7 +115,14 @@ export function MealCalendarSettings() {
   return (
     <SettingsSection
       label="Meals on your calendar"
-      footer="Adds an all-day event to the calendar you pick for each meal you plan from now on, named for its slot, e.g. “Dinner: Lemon garlic salmon”. If you pick a different calendar, a meal’s event moves there the next time that meal changes. Moving or deleting the event doesn’t change the meal plan."
+      footer="Adds an all-day event to the calendar you pick for each meal you plan from now on."
+      explain={{
+        title: 'How meal events work',
+        paragraphs: [
+          'Each event is named for its slot, e.g. “Dinner: Lemon garlic salmon”.',
+          'If you pick a different calendar, a meal’s event moves there the next time that meal changes. Moving or deleting the event doesn’t change the meal plan.',
+        ],
+      }}
     >
       <SettingsRow
         entryId="mealCalendar"

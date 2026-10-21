@@ -50,7 +50,14 @@ export function VacationTripsSettings() {
       {(!simpleMode || vacationMode) && (
       <SettingsSection
         label="Vacation"
-        footer={`${vacationMode && vacationStart ? `On since ${format(new Date(vacationStart), 'MMM d')}. ` : ''}While on, tasks with “Vacation pause” turned on are hidden everywhere and their streaks are protected. Tasks in categories set to “Hide on vacation” are hidden too. Turning it off, manually or on the end date, forgives streaks.`}
+        footer={`${vacationMode && vacationStart ? `On since ${format(new Date(vacationStart), 'MMM d')}. ` : ''}While on, tasks set to pause on vacation are hidden and their streaks are protected.`}
+      explain={{
+        title: 'How vacation mode works',
+        paragraphs: [
+          'While on, tasks with “Vacation pause” turned on are hidden everywhere and their streaks are protected. Tasks in categories set to “Hide on vacation” are hidden too.',
+          'Turning it off, manually or on the end date, forgives streaks.',
+        ],
+      }}
       >
         <SettingsRow
           entryId="vacationMode"
@@ -103,7 +110,14 @@ export function VacationTripsSettings() {
 
       <SettingsSection
         label="Trips"
-        footer="With this on, a project’s destination is sent to Open-Meteo to look up its coordinates and the forecast for your dates. The project shows the temperature range and whether rain or snow is expected. Only projects with a destination and a departure date are looked up. Nothing is stored. Off means nothing leaves the app."
+        footer="With this on, a project’s destination is sent to Open-Meteo to look up the forecast. Off means nothing leaves the app."
+      explain={{
+        title: 'What a forecast lookup sends',
+        paragraphs: [
+          'With this on, a project’s destination is sent to Open-Meteo to look up its coordinates and the forecast for your dates. The project shows the temperature range and whether rain or snow is expected.',
+          'Only projects with a destination and a departure date are looked up. Nothing is stored. Off means nothing leaves the app.',
+        ],
+      }}
       >
         <SettingsRow
           entryId="destinationForecastEnabled"
