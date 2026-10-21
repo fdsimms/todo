@@ -122,7 +122,7 @@ export function panelWarnings(panel: FoodNutrition): PanelWarning[] {
     const expected = 4 * a.proteinG + 4 * a.carbsG + 9 * a.fatG;
     const gap = Math.abs(a.calorieKcal - expected);
     if (gap > ENERGY_MIN_GAP_KCAL && gap > expected * ENERGY_TOLERANCE) {
-      flag('calorieKcal', `${figure('calorieKcal', a.calorieKcal)} doesn't match the fat, carbs and protein, which come to about ${fmt(expected)} calories.`);
+      flag('calorieKcal', `${figure('calorieKcal', a.calorieKcal)} doesn’t match the fat, carbs and protein, which come to about ${fmt(expected)} calories.`);
     }
   }
 

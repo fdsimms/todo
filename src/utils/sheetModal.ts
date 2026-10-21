@@ -280,7 +280,7 @@ export function registerPresentation(
     'down and opens once the other has gone, which is what a hand-off wants and is not ' +
     'what a pair meant to be up together wants: that one waits for a sheet that is never ' +
     'going to close. Either hide the sheet underneath while this one is up, or render this ' +
-    "one inside it (React Native's Modal nests fine). See the sibling-Modal rule in CLAUDE.md."
+    "one inside it (React Native’s Modal nests fine). See the sibling-Modal rule in CLAUDE.md."
   );
 }
 
