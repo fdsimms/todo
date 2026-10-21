@@ -182,7 +182,7 @@ What phase 2 settled that the plan above left open. Files: `RoutineEditorSheet.t
 - **The progression is a stored choice** on each routine item; phase 4 turned it into a suggestion in workout mode. Warm-ups were a count in phase 2; phase 4 added the ramp.
 - **The finish screen** shows time, exercises, sets and each exercise's heaviest set, takes effort (1 to 10, optional) and notes, and says what saving drops and what it does to the task. The notes are on the exercise's card, not on its sets.
 - **Settings.** The Workouts switch is in Feature areas beside kitchen and rewards. The unit and the default rest are a Workouts section under Apple Health, shown while the area is on.
-- **Not built in phase 2:** reordering exercises inside a live session (the store has `reorderExercises`; workout mode has no drag yet), a floating bar for a live session on every screen (the Workouts screen's card is the way back), and the plate line and suggestion card in the mock (phases 3 and 4).
+- **Not built in phase 2:** dragging exercises to reorder inside a live session (workout mode moves one a place at a time from its "•••" menu, through `moveSessionExercise`, the way the watch does), a floating bar for a live session on every screen (the Workouts screen's card is the way back), and the plate line and suggestion card in the mock (phases 3 and 4).
 
 ## Phase 3, as built
 

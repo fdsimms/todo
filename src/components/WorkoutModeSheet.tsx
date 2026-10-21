@@ -81,7 +81,7 @@ import {
   stepTimerRemaining,
 } from '../utils/stepTimers';
 import {
-  finishPlan, formatDistance, formatSetLine, matchPrevious, nextSet,
+  finishPlan, formatDistance, formatSetLine, matchPrevious, movedExerciseOrder, nextSet,
   columnLabel, fieldLabel, sessionExercises, sessionSummary, setBadge, setFieldsFor, setLabels, setName, valuesFromLastDone,
   type SetField,
   supersetGroup,
@@ -355,6 +355,13 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     if (!session) return;
     if (!useWorkoutStore.getState().joinSessionSuperset(session.id, exerciseId, partnerId)) return;
     haptics.success();
+    animateLayout();
+  };
+  // The view stays on the exercise that moved: `viewIndex` follows its id.
+  const moveExercise = (exerciseId: string, direction: 'up' | 'down') => {
+    if (!session) return;
+    if (!useWorkoutStore.getState().moveSessionExercise(session.id, exerciseId, direction)) return;
+    haptics.tap();
     animateLayout();
   };
   const leaveSuperset = (exerciseId: string) => {
@@ -1182,6 +1189,14 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
             anchor={exerciseMenu?.anchor ?? null}
             onClose={() => setExerciseMenu(null)}
             actions={menuId && menuExercise ? [
+              ...(['up', 'down'] as const)
+                .filter(direction => movedExerciseOrder(sets, menuId, direction) !== null)
+                .map(direction => ({
+                  key: `move-${direction}`,
+                  label: direction === 'up' ? 'Move up' : 'Move down',
+                  icon: (direction === 'up' ? 'arrow-up-outline' : 'arrow-down-outline') as 'arrow-up-outline',
+                  onPress: () => moveExercise(menuId, direction),
+                })),
               ...(partners.length > 0 ? [{
                 key: 'superset',
                 label: 'Superset with…',
