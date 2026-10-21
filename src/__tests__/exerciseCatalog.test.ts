@@ -4,6 +4,7 @@ import {
   muscleFilterOptions, searchExercises,
 } from '../utils/exerciseCatalog';
 import { EXERCISE_LIBRARY } from '../utils/exerciseLibrary';
+import { equipmentGroup } from '../utils/workoutData';
 
 const row = (overrides: Partial<Exercise>): Exercise => ({
   id: 'c1',
@@ -93,6 +94,31 @@ describe('activeExercises and catalogExercise', () => {
   it('names an exercise nobody can resolve rather than throwing', () => {
     expect(catalogExercise([], 'gone')).toBeNull();
     expect(exerciseName([], 'gone')).toBe('Unknown exercise');
+  });
+});
+
+describe('searchExercises filters', () => {
+  const ids = (f: Parameters<typeof searchExercises>[2]) => searchExercises([], '', f).map(r => r.exercise);
+
+  it('narrows by equipment group', () => {
+    const machines = ids({ group: 'machine' });
+    expect(machines.map(e => e.id)).toContain('lib:leg-press');
+    expect(machines.every(e => equipmentGroup(e.equipment) === 'machine')).toBe(true);
+    expect(ids({ group: 'bodyweight' }).every(e => e.equipment === 'bodyweight')).toBe(true);
+    expect(ids({ group: 'free' }).map(e => e.equipment)).not.toContain('bodyweight');
+  });
+
+  it('takes any of several muscles and equipment, and combines with a group', () => {
+    const both = ids({ muscles: ['chest', 'biceps'] });
+    expect(both.every(e => e.primaryMuscles.some(m => m === 'chest' || m === 'biceps'))).toBe(true);
+    expect(both.length).toBeGreaterThan(ids({ muscles: ['chest'] }).length);
+    const dbOrBb = ids({ equipments: ['dumbbell', 'barbell'] });
+    expect(dbOrBb.every(e => e.equipment === 'dumbbell' || e.equipment === 'barbell')).toBe(true);
+    expect(ids({ group: 'machine', muscles: ['quads'] }).every(e => equipmentGroup(e.equipment) === 'machine')).toBe(true);
+  });
+
+  it('treats empty lists as no narrowing', () => {
+    expect(ids({ muscles: [], equipments: [] })).toHaveLength(ids({}).length);
   });
 });
 

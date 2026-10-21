@@ -27,6 +27,7 @@ import { recipeMap } from '../utils/recipeComponents';
 import { RECIPE_NAME_MAX_LENGTH } from '../types';
 import { useSheetMotion } from '../hooks/useSheetMotion';
 import { useFilterField } from '../hooks/useFilterField';
+import { FieldClearButton } from './FieldClearButton';
 import { BUTTON_LABEL } from '../copy/shared';
 
 export interface MealReplacement {
@@ -191,6 +192,7 @@ export function MealReplaceItemSheet({ visible, count, title, hint, onReplace, o
               onSubmitEditing={() => { if (typed) pick(null, typed); }}
               accessibilityLabel="Search recipes, or type a name"
             />
+            <FieldClearButton query={query} onClear={clearQuery} />
           </View>
 
           <ScrollView style={styles.list} bounces={false} keyboardShouldPersistTaps="handled">

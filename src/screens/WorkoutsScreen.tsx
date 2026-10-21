@@ -8,6 +8,7 @@ import type { WorkoutProgram, WorkoutRoutine, WorkoutSession } from '../types';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
 import { SearchField } from '../components/SearchField';
+import { ExerciseFilterBar, useExerciseFilters } from '../components/ExerciseFilterBar';
 import { SegmentedControl } from '../components/SegmentedControl';
 import { useFilterField } from '../hooks/useFilterField';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
@@ -221,7 +222,8 @@ export function WorkoutsScreen() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
   const search = useFilterField();
-  const found = useMemo(() => searchExercises(exercises, search.query), [exercises, search.query]);
+  const filter = useExerciseFilters();
+  const found = useMemo(() => searchExercises(exercises, search.query, filter.filters), [exercises, search.query, filter.filters]);
   const results = useMemo(() => found.map(r => r.exercise), [found]);
   // Which results the search reached by another name, so their row can say so.
   const viaOtherName = useMemo(() => new Map(found.flatMap(r => (r.viaOtherName ? [[r.exercise.id, r.viaOtherName] as const] : []))), [found]);
@@ -765,11 +767,12 @@ export function WorkoutsScreen() {
             style={styles.search}
             accessibilityLabel="Search exercises by name, muscle or equipment"
           />
+          <ExerciseFilterBar state={filter} exercises={exercises} />
           {results.length === 0 ? (
             <EmptyState
               icon="search-outline"
               title="Nothing matches"
-              subtitle={`No exercise matches “${search.query.trim()}”. Try a muscle or a piece of equipment.`}
+              subtitle={filter.narrowed ? 'No exercise matches these filters. Remove one to see more.' : `No exercise matches “${search.query.trim()}”. Try a muscle or a piece of equipment.`}
               bottomOffset={tabBarHeight}
             />
           ) : (

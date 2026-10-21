@@ -29,7 +29,7 @@ import { MoodEntryRow } from '../components/MoodEntryRow';
 import { MoodLogSheet } from '../components/MoodLogSheet';
 import { ContrastBars } from '../components/ContrastBars';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
-import { useTextScale } from '../hooks/useTextScale';
+import { ChartGuides, BAR_GUIDE_GAP, useGuideGutter } from '../components/ChartGuides';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { HelpText } from '../components/HelpText';
 
@@ -51,7 +51,6 @@ const BAR_HEIGHT = 60;
  * `BAR_GUIDE_GAP` short of its line rather than ending on it.
  */
 const GUIDE_LEVELS = [3, 2, 1, 0] as const;
-const BAR_GUIDE_GAP = 2;
 /** Width of the label column at the default text size; scaled with the text. */
 const GUIDE_LABEL_WIDTH = 54;
 
@@ -82,7 +81,7 @@ export function SymptomDetailScreen() {
   const scrollTop = useListScrollToTop();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const guideGutter = Math.round(GUIDE_LABEL_WIDTH * useTextScale());
+  const guideGutter = useGuideGutter(GUIDE_LABEL_WIDTH);
 
   const logs = useMoodStore(s => s.logs);
   const tasks = useTaskStore(s => s.tasks);
@@ -224,16 +223,14 @@ export function SymptomDetailScreen() {
         <View style={styles.card}>
           <View>
             {/* Drawn before the bars so each bar sits on top of its line. */}
-            <View style={styles.guides} pointerEvents="none">
-              {GUIDE_LEVELS.map(level => (
-                <View key={level} style={[styles.guide, { top: BAR_HEIGHT - (level / 3) * BAR_HEIGHT }]}>
-                  <Text style={[styles.guideLabel, { width: guideGutter }]} numberOfLines={1}>
-                    {level === 0 ? 'None' : severityLabel(level)}
-                  </Text>
-                  <View style={styles.guideLine} />
-                </View>
-              ))}
-            </View>
+            <ChartGuides
+              height={BAR_HEIGHT}
+              gutter={guideGutter}
+              guides={GUIDE_LEVELS.map(level => ({
+                fraction: level / 3,
+                label: level === 0 ? 'None' : severityLabel(level),
+              }))}
+            />
             <View style={[styles.stripInner, { paddingLeft: guideGutter }]}>
               {strip.map(day => (
                 <View key={day.key} style={styles.stripCol} accessible accessibilityLabel={day.a11y}>
@@ -425,11 +422,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     padding: spacing.md,
     marginBottom: spacing.lg,
   },
-  guides: { position: 'absolute', top: 0, left: 0, right: 0, height: BAR_HEIGHT },
-  // Zero height, so the label and line centre on the level's own y.
-  guide: { position: 'absolute', left: 0, right: 0, height: 0, flexDirection: 'row', alignItems: 'center' },
-  guideLabel: { color: colors.textTertiary, fontSize: font.xxs },
-  guideLine: { flex: 1, height: 1, backgroundColor: colors.separator, opacity: 0.6 },
   stripInner: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
   stripCol: { flex: 1, alignItems: 'center' },
   barTrack: { width: 12, height: BAR_HEIGHT, justifyContent: 'flex-end' },

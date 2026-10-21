@@ -21,6 +21,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import type { FoodNutrition } from '../types';
 import { useFilterField } from '../hooks/useFilterField';
+import { FieldClearButton } from './FieldClearButton';
 import { BUTTON_LABEL } from '../copy/shared';
 
 /**
@@ -188,6 +189,7 @@ export function NutritionSearchSheet({ visible, itemName, onClose, onPick, onOpe
             returnKeyType="search"
             autoCorrect={false}
           />
+          <FieldClearButton query={searchFilter.query} onClear={searchFilter.clear} />
           {searching && <ActivityIndicator color={colors.textSecondary} />}
         </View>
 

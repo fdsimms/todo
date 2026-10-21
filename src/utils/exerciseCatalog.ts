@@ -1,6 +1,6 @@
 import type { Exercise, ExerciseEquipment, MuscleGroup } from '../types';
 import { EXERCISE_LIBRARY, libraryExercise, type LibraryExercise } from './exerciseLibrary';
-import { EQUIPMENT_LABELS, EXERCISE_EQUIPMENT, MUSCLE_GROUPS, MUSCLE_LABELS, machineParent } from './workoutData';
+import { EQUIPMENT_LABELS, EXERCISE_EQUIPMENT, MUSCLE_GROUPS, MUSCLE_LABELS, equipmentGroup, machineParent, type EquipmentGroup } from './workoutData';
 import { scoreSubstring } from './ranges';
 
 /**
@@ -105,6 +105,12 @@ export interface ExerciseFilters {
   /** Only exercises that train this muscle as a primary mover. */
   muscle?: MuscleGroup | null;
   equipment?: ExerciseEquipment | null;
+  /** Any of these muscles as a primary mover. Empty or omitted means no narrowing. */
+  muscles?: readonly MuscleGroup[];
+  /** Any of these pieces of equipment. Empty or omitted means no narrowing. */
+  equipments?: readonly ExerciseEquipment[];
+  /** Weights, machines, bodyweight or cardio. */
+  group?: EquipmentGroup | null;
   /** Archived exercises too, for a search over history rather than a picker. */
   includeArchived?: boolean;
 }
@@ -140,6 +146,9 @@ function wordScore(text: string, word: string): { score: number; ranges: [number
 function matchesFilters(e: CatalogExercise, filters: ExerciseFilters): boolean {
   if (filters.muscle && !e.primaryMuscles.includes(filters.muscle)) return false;
   if (filters.equipment && e.equipment !== filters.equipment) return false;
+  if (filters.muscles?.length && !filters.muscles.some(m => e.primaryMuscles.includes(m))) return false;
+  if (filters.equipments?.length && !filters.equipments.includes(e.equipment)) return false;
+  if (filters.group && equipmentGroup(e.equipment) !== filters.group) return false;
   return true;
 }
 

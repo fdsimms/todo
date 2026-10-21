@@ -70,7 +70,8 @@ import { parseSetCell } from '../utils/workoutCell';
 import { exerciseDayNote, exerciseDayNotePatches } from '../utils/exerciseDayNote';
 import { applyRoutineChanges, describeRoutineChange, routineChanges } from '../utils/routineUpdate';
 import { barKgFor, effectivePlateInventory, isPlateLoaded, plateLoad } from '../utils/plateMath';
-import { liftVolumeKg, sessionRecordSummary } from '../utils/workoutRecords';
+import { liftVolumeKg, liveSetRecords, sessionRecordSummary } from '../utils/workoutRecords';
+import { formatRecordChange, recordLabel, recordShortLabel } from '../utils/workoutRecordText';
 import { proposalActionLabel, proposalApplied, proposalHeadline, workingSetLogged, type Proposal } from '../utils/workoutProgression';
 import { exerciseProposal, type ExerciseProposal } from '../utils/workoutProposal';
 import { applyProposal, liveProposal } from '../utils/workoutProposalApply';
@@ -290,6 +291,16 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     // A field left empty is done at the dimmed number the row showed in it.
     const next = tickSet(session.id, set.id, new Date(), ghostFill(set, exercise));
     if (!next) return;
+    // A tick that sets a record is worth a different buzz than an ordinary one.
+    const records = liveSetRecords(
+      session.id,
+      exercise.exerciseId,
+      catalogExercise(exerciseRows, exercise.exerciseId)?.kind ?? 'weight_reps',
+      useWorkoutStore.getState().exerciseHistory(exercise.exerciseId),
+      sessionsList,
+      dayResetTime,
+    );
+    if (records.has(set.id)) haptics.success();
     if (next.showExerciseId !== viewedId) animateLayout();
     setViewedId(next.showExerciseId);
     setOpenSetId(null);
@@ -910,6 +921,17 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
               const previousBySet = matchPrevious(viewed.sets, previous);
               // What was written on this exercise's sets last time, read before the first set.
               const lastNotes = lastTimeNotes(previous);
+              // The records this workout has set on the exercise so far, by the set holding each.
+              const liveRecords = session && viewed.sets.some(s => s.completedAt !== null)
+                ? liveSetRecords(
+                  session.id,
+                  viewed.exerciseId,
+                  kind,
+                  useWorkoutStore.getState().exerciseHistory(viewed.exerciseId),
+                  sessionsList,
+                  dayResetTime,
+                )
+                : null;
               const canSwap = swappableSets(viewed.sets, viewed.exerciseId).length > 0;
 
               // ==== the suggestion: the next load, proposed and never applied unasked ====
@@ -1123,6 +1145,12 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                   const prev = previousBySet.get(set.id);
                   const prevLine = prev ? formatSetLine(prev, kind, unit) : null;
                   const label = labels.get(set.id) ?? '';
+                  const record = done ? liveRecords?.get(set.id)?.[0] ?? null : null;
+                  const recordShort = record ? recordShortLabel(record.type, kind, record.reps) : '';
+                  const recordChange = record ? formatRecordChange(record, kind, unit) : null;
+                  const recordText = record && recordChange
+                    ? `${recordLabel(record.type, kind, record.reps)}, was ${recordChange.before}`
+                    : null;
                   return (
                     <DeletableSet
                       key={set.id}
@@ -1153,6 +1181,16 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                           </TouchableOpacity>
                         ) : (
                           <Text style={[styles.colPrev, styles.prevText]} numberOfLines={1}>–</Text>
+                        )}
+                        {!!recordText && (
+                          <View
+                            style={styles.recordPill}
+                            accessible
+                            accessibilityLabel={`Personal record. ${recordText}`}
+                          >
+                            <Ionicons name="trophy" size={iconSize.xs} color={colors.accentText} />
+                            <Text style={styles.recordPillText}>{recordShort}</Text>
+                          </View>
                         )}
                         {fields.map(f => (
                           <SetInput
@@ -1645,6 +1683,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   setNumber: { color: colors.textSecondary, fontSize: font.md, fontWeight: fontWeight.semibold },
   setBadge: { color: colors.orangeText, fontSize: font.md, fontWeight: fontWeight.bold },
+  recordPill: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xxs, height: 22, paddingHorizontal: spacing.sm,
+    borderRadius: radius.full, backgroundColor: colors.accentSubtle,
+  },
+  recordPillText: { color: colors.accentText, fontSize: font.xxs, fontWeight: fontWeight.bold, letterSpacing: 0.4 },
   prevText: { color: colors.textTertiary, fontSize: font.md, fontVariant: ['tabular-nums'] },
   valuePlanned: { color: colors.textTertiary },
   check: {

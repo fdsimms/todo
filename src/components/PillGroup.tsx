@@ -8,6 +8,7 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { useScrollFieldIntoView } from '../hooks/useKeyboardInsetScroll';
 import { useFilterField } from '../hooks/useFilterField';
+import { FieldClearButton } from './FieldClearButton';
 import {
   resolvePillOverflow,
   resolvePillSubmit,
@@ -218,6 +219,11 @@ export function PillGroup({
             filterPlaceholder ?? (onCreate ? `Find or add a ${noun}…` : `Find a ${noun}…`),
             styles.searchField,
           )}
+          <FieldClearButton
+            query={query}
+            onClear={() => { if (error) setError(null); filterField.clear(); }}
+            style={styles.searchClear}
+          />
         </View>
       )}
 
@@ -370,7 +376,11 @@ const makeStyles = (colors: Colors, surface: Surface) => {
       minHeight: 40,
     },
     // Clears the magnifier: its left inset, its own width, and a gap.
-    searchField: { paddingLeft: spacing.sm + 2 + iconSize.sm + spacing.sm },
+    searchField: {
+      paddingLeft: spacing.sm + 2 + iconSize.sm + spacing.sm,
+      paddingRight: spacing.sm + 2 + iconSize.sm + spacing.sm,
+    },
+    searchClear: { position: 'absolute', right: spacing.sm + 2 },
     addField: { flex: 1 },
     fieldError: { borderColor: colors.red },
     pills: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },

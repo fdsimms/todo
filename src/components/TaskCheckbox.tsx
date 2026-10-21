@@ -52,6 +52,12 @@ interface Props {
    * finger. Not fired for a logged unit, which moves nothing.
    */
   onTicked?: (taskId: string) => void;
+  /**
+   * Lets the host ask before a tap that completes or reopens the task goes
+   * through (the task editor, when the form holds edits that closing would
+   * lose). Call `proceed` to carry on; not calling it cancels the tap.
+   */
+  confirmFirst?: (proceed: () => void) => void;
 }
 
 /**
@@ -76,7 +82,7 @@ interface Props {
  * palette the box fills in place. A daily target's tap logs one unit and pops,
  * since its meter creeping up a twelfth is otherwise easy to miss.
  */
-export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
+export function TaskCheckbox({ task, taskLabel, onTicked, confirmFirst }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const completeTask = useTaskStore(s => s.completeTask);
@@ -166,6 +172,21 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
   };
 
   const runPress = async () => {
+    // Only the taps that change completion are held; a logged unit or a slip
+    // moves nothing the host would close over.
+    if (confirmFirst && (action === 'complete' || action === 'ask' || action === 'uncomplete')) {
+      await haptics.tap();
+      confirmFirst(() => {
+        if (busyRef.current) return;
+        busyRef.current = true;
+        performPress().finally(() => { busyRef.current = false; });
+      });
+      return;
+    }
+    await performPress();
+  };
+
+  const performPress = async () => {
     switch (action) {
       case 'locked':
         await haptics.error();
