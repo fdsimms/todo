@@ -10,7 +10,7 @@ import { haptics } from '../utils/haptics';
 interface Props {
   /** The row's swipe-right "when" action. Omit where the row has none, or where another button already does it. */
   whenAction?: WhenAction;
-  /** A finished record's swipe-right undo, shown in place of `whenAction`. */
+  /** A finished record's swipe-left undo, shown in place of `selectAction`. */
   undoAction?: UndoAction;
   /** The row's swipe-left action: enter bulk editing with this row selected. */
   selectAction?: SelectAction;

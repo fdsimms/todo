@@ -18132,7 +18132,7 @@ describe('Task.logSavedMealId logs a named food when the task is completed', () 
 
   beforeEach(() => {
     addEntry = jest.fn().mockReturnValue({ id: 'e-1' });
-    removeEntriesForTask = jest.fn();
+    removeEntriesForTask = jest.fn(() => []);
     useFoodLogStore.setState({ pendingMealLog: null, pendingManualMealLog: null, addEntry, removeEntriesForTask });
     useSavedMealsStore.setState({ meals: [metamucil] });
   });
@@ -20777,6 +20777,19 @@ describe('a task that records a dose', () => {
     expect(useMedicationStore.getState().logs).toHaveLength(1);
     useTaskStore.getState().uncompleteTask('t1');
     expect(useMedicationStore.getState().logs).toHaveLength(0);
+  });
+
+  it('puts the dose back when the unticking is undone', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', medicationName: 'Vitamin D' })],
+    });
+    useTaskStore.getState().completeTask('t1');
+    const dose = useMedicationStore.getState().logs[0];
+    useTaskStore.getState().uncompleteTask('t1');
+    expect(useMedicationStore.getState().logs).toHaveLength(0);
+    useTaskStore.getState().lastAction?.undo();
+    expect(useTaskStore.getState().tasks.find(t => t.id === 't1')?.completed).toBe(true);
+    expect(useMedicationStore.getState().logs).toEqual([dose]);
   });
 
   it('carries the medication onto the next occurrence', () => {

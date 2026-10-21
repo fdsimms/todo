@@ -628,8 +628,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   emptyContainer: { flexGrow: 1 },
   searchBar: {
     marginHorizontal: spacing.md,
-    marginTop: spacing.xs,
-    marginBottom: spacing.xs,
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
   },
   categorySectionHeader: {
     paddingHorizontal: spacing.md,

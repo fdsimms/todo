@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { addDays } from 'date-fns/addDays';
 import { startOfWeek } from 'date-fns/startOfWeek';
-import type { Task, TaskDraft, Priority, TimeOfDay, TitleRule, Person, QuotaPeriod, Polarity, Difficulty, MealPlanEntry, FoodLogEntry } from '../types';
+import type { Task, TaskDraft, Priority, TimeOfDay, TitleRule, Person, QuotaPeriod, Polarity, Difficulty, MealPlanEntry, FoodLogEntry, MedicationLog } from '../types';
 import {
   initDatabase,
   ensureDatabaseReady,
@@ -4764,7 +4764,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Whatever this completion or miss did to the coin balance goes with it.
     // Unlike the penalty credit above, nothing here can be bought back by a
     // round trip: the entry removed is exactly the one the completion wrote.
-    useRewardStore.getState().takeBackTask(id);
+    const takenBackCoins = useRewardStore.getState().takeBackTask(id);
     if (task.completionCalendarEventId) void deleteCompletionEvent(completionEventLink(task));
     // The dose this completion recorded goes with it. Unlike the Apple Health
     // write, which is one-shot because a sample is a historical record in
@@ -4777,16 +4777,23 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // logged: the earlier ones were logged unit by unit and stay, as the
     // progress count (target - 1, above) says they should. Removing every
     // log for the task wiped the whole day's doses on one uncheck.
+    //
+    // Kept so the undo below can write them back: the task row alone coming
+    // back left the dose gone from the log.
+    let removedDoses: MedicationLog[] = [];
     if (medicationFor(task)) {
       const medication = useMedicationStore.getState();
+      const loggedBefore = medication.logs.filter(l => l.taskId === id);
       if (isQuotaTask(task) && !isMissed(task)) medication.removeLatestLogForTask(id);
       else medication.removeLogsForTask(id);
+      const stillLogged = new Set(useMedicationStore.getState().logs.map(l => l.id));
+      removedDoses = loggedBefore.filter(l => !stillLogged.has(l.id));
     }
     // What a named food logged on completion goes with it, for the reason the
     // dose does above: a task ticked by mistake means the food was not eaten.
     // Matched on FoodLogEntry.taskId, so it finds the entries on whatever day
     // they were written and touches nothing the person logged by hand.
-    if (task.logSavedMealId) useFoodLogStore.getState().removeEntriesForTask(id);
+    const removedFood = task.logSavedMealId ? useFoodLogStore.getState().removeEntriesForTask(id) : [];
     dbUpdateTask(updated);
     // Reopened, so a deadline it still carries is live again.
     reconcileDeadlineEvent(updated);
@@ -4881,6 +4888,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       redo: () => get().uncompleteTask(id),
       undo: () => {
         dbUpdateTask(original);
+        removedDoses.forEach(log => useMedicationStore.getState().restoreLog(log));
+        if (takenBackCoins.length > 0) useRewardStore.getState().restoreEntries(takenBackCoins);
+        if (removedFood.length > 0) useFoodLogStore.getState().restoreRemovedEntries(removedFood);
         [...followUps, ...followUpSubtasks].forEach(t => {
           dbInsertTask(t);
           scheduleTaskReminder(t);

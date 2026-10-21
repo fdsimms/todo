@@ -325,3 +325,18 @@ describe('the task a suggestion fills in from', () => {
     expect(suggestTitles([older, newer], 'wat').map(s => s.taskId)).toEqual(['new']);
   });
 });
+
+describe('generated tasks', () => {
+  it('are never suggested', () => {
+    const generated = makeTask({
+      id: 'g',
+      title: 'Use up cottage cheese',
+      completed: true,
+      completedAt: '2025-05-01T00:00:00.000Z',
+      generatedKind: 'groceryUseUp',
+      generatedSourceId: 'item-1',
+    });
+    expect(suggestTitles([generated], 'cheese')).toEqual([]);
+    expect(suggestTitles([generated], 'use up')).toEqual([]);
+  });
+});
