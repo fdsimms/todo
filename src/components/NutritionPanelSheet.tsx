@@ -5,12 +5,13 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import { SheetModal } from './SheetModal';
 import { useColors } from '../theme/ThemeContext';
-import { border, font, fontWeight, radius, spacing, type Colors } from '../theme';
-import { type FoodNutrition, type NutrientKey } from '../types';
+import { border, font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
+import { type FoodNutrition, type FoodPortion, type NutrientKey } from '../types';
 import { NUTRITION_BASIS_LABEL } from '../utils/foodNutrition';
 import {
   applyFoodNutrition,
@@ -44,6 +45,7 @@ import { InlineAction } from './InlineAction';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { NutrientFieldsCard } from './NutrientFieldsCard';
 import { NutritionBarcodeScanSheet } from './NutritionBarcodeScanSheet';
+import { NutritionSearchSheet } from './NutritionSearchSheet';
 import { SegmentedControl } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
@@ -51,6 +53,7 @@ import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { TextField } from './TextField';
 import { useActionMenu } from '../hooks/useActionMenu';
 import { HelpText } from './HelpText';
+import { RotatingChevron } from './RotatingChevron';
 import { BUTTON_LABEL } from '../copy/shared';
 
 /**
@@ -121,6 +124,21 @@ import { BUTTON_LABEL } from '../copy/shared';
  * fields via `applyFoodNutrition` — the camera-scanned sibling of
  * `applyLabelReading`. Same review, same Save; only the source of the numbers
  * differs.
+ *
+ * **A food database search can fill it in too, for the food with no label to
+ * copy.** "Search foods" opens `NutritionSearchSheet`, the same ranked list the
+ * catalog sheet offers, and lays the chosen food's figures into these fields via
+ * `applyFoodNutrition`. Same review, same Save. The one difference from a barcode
+ * is the portion table (a cup of this weighs so many grams), which has no field
+ * here: it is held in `pickedPortions` and laid over what Save writes, since
+ * dropping it would cost a recipe its cup-to-gram coverage.
+ *
+ * **Serving folds to one row while the figures are per 100 g or per 100 ml.**
+ * Neither basis is scoped by the serving, so the two fields only describe the
+ * food, and two fields with two help paragraphs pushed the calories row off the
+ * first screen. The row opens by itself when it holds a value or one failed to
+ * read, and under "per serving" it is always open, since there it is the
+ * figures' own scope.
  *
  * **A g/oz toggle on Serving weight is the one piece of arithmetic done for
  * you** (`servingWeightToGrams`): a label with no metric figure needs no mental
@@ -201,6 +219,11 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
   // ever on screen.
   const [scanning, setScanning] = useState(false);
   const [scanNote, setScanNote] = useState<string | null>(null);
+  const [foodSearching, setFoodSearching] = useState(false);
+  // The portion table of a food picked from the search, merged into the saved
+  // panel; the form has no field for it. See the header note.
+  const pickedPortions = useRef<FoodPortion[] | null>(null);
+  const [servingOpen, setServingOpen] = useState(false);
   // What unit Serving weight is being typed in, and the raw text in that unit
   // — kept apart from `form.servingGrams` (always grams) so typing "1" in oz
   // shows "1", not a round-tripped "1.00002". See `servingWeightToGrams`.
@@ -234,6 +257,9 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
     setReading(false);
     setScanning(false);
     setScanNote(null);
+    setFoodSearching(false);
+    pickedPortions.current = null;
+    setServingOpen(false);
     setWeightUnit('g');
     setWeightText(opened.servingGrams);
     setPackageUnit('g');
@@ -381,6 +407,26 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
     );
   }, []);
 
+  /**
+   * A database food's figures, laid over the form the way a barcode's are.
+   * Closing is the search sheet's own doing once a food is picked.
+   */
+  const handleFoodPicked = useCallback((found: FoodNutrition, description: string) => {
+    const next = applyFoodNutrition(formRef.current, found);
+    setForm(next);
+    setWeightUnit('g');
+    setWeightText(next.servingGrams);
+    setBad([]);
+    setLabel(null);
+    setPhotoError(null);
+    pickedPortions.current = found.portions;
+    const count = foodNutritionFieldCount(found);
+    setScanNote(
+      `Filled in ${count} ${count === 1 ? 'figure' : 'figures'} from the food database for `
+      + `“${description}”. Check that it is the food you mean before saving.`,
+    );
+  }, []);
+
   const setAmount = (key: NutrientKey, text: string) => {
     setForm(f => ({ ...f, amounts: { ...f.amounts, [key]: text } }));
     setBad(b => (b.includes(key) ? b.filter(k => k !== key) : b));
@@ -425,6 +471,15 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
     ? servingsIn(packageGramsRead, servingGramsRead)
     : null;
 
+  // Folded only while nothing in it is set and the figures don't depend on it.
+  const servingFolded = form.basis !== 'perServing'
+    && !servingOpen
+    && form.servingText.trim() === ''
+    && weightText.trim() === ''
+    && packageText.trim() === ''
+    && !bad.includes('servingGrams')
+    && !bad.includes('packageGrams');
+
   const basisCaption =
     form.basis === 'perServing'
       ? `Copy the “Amount per serving” numbers${form.servingText.trim() ? ` (for ${form.servingText.trim()})` : ''}.`
@@ -439,7 +494,8 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
       setBad(invalid);
       return;
     }
-    const built = buildPanelNutrition(form, nutrition);
+    const typed = buildPanelNutrition(form, nutrition);
+    const built = typed && pickedPortions.current ? { ...typed, portions: pickedPortions.current } : typed;
     const warnings = built ? panelWarnings(built) : [];
     const commit = () => {
       haptics.success();
@@ -504,10 +560,16 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
             </Text>
 
             <View style={styles.photoRow}>
+              <InlineAction
+                label="Search foods"
+                icon="search-outline"
+                onPress={() => { haptics.tap(); setFoodSearching(true); }}
+              />
               {canPhotograph && (
                 <InlineAction
                   label={reading ? 'Reading the label…' : 'Read from a photo'}
                   icon="camera-outline"
+                  variant="neutral"
                   onPress={startPhoto}
                   disabled={reading}
                 />
@@ -554,6 +616,20 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
             )}
 
             <Text style={styles.groupLabel}>SERVING</Text>
+            {servingFolded ? (
+              <TouchableOpacity
+                style={styles.servingRow}
+                activeOpacity={interaction.activeOpacity}
+                onPress={() => { haptics.tap(); setServingOpen(true); }}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: false }}
+                accessibilityLabel="Serving and package weight, not set"
+              >
+                <Text style={styles.servingRowLabel}>Serving and package weight</Text>
+                <Text style={styles.servingRowValue}>Not set</Text>
+                <RotatingChevron open={false} size={14} color={colors.textSecondary} />
+              </TouchableOpacity>
+            ) : (
             <View style={styles.card}>
               <View style={styles.field}>
                 <Text style={styles.fieldLabel}>Serving size</Text>
@@ -629,6 +705,7 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
                 )}
               </View>
             </View>
+            )}
 
             <Text style={styles.groupLabel}>NUTRIENTS</Text>
             <View style={[styles.card, styles.basisCard]}>
@@ -658,6 +735,12 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
         visible={scanning}
         onClose={() => setScanning(false)}
         onFound={handleBarcodeFound}
+      />
+      <NutritionSearchSheet
+        visible={foodSearching}
+        itemName={foodName}
+        onClose={() => setFoodSearching(false)}
+        onPick={handleFoodPicked}
       />
       {actionMenu.element}
     </SheetModal>
@@ -728,6 +811,18 @@ function makeStyles(colors: Colors) {
     // it belongs to.
     weightUnitToggle: { width: 104 },
     basisCard: { gap: spacing.sm },
+    servingRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.lg,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.smd,
+      minHeight: 44,
+    },
+    servingRowLabel: { flex: 1, color: colors.text, fontSize: font.md },
+    servingRowValue: { color: colors.textSecondary, fontSize: font.sm },
     hint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16 },
     derived: { color: colors.text, fontSize: font.xs, lineHeight: 16, fontWeight: fontWeight.semibold },
     error: { color: colors.redText, fontSize: font.sm, lineHeight: 18, marginTop: spacing.md },

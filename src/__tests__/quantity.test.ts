@@ -143,6 +143,7 @@ describe('parseQuantity — containers', () => {
       sizeText: '14',
       sizeUnit: 'oz',
       word: 'can',
+      parenthesized: false,
     });
   });
 
@@ -154,6 +155,7 @@ describe('parseQuantity — containers', () => {
       sizeText: '14',
       sizeUnit: 'oz',
       word: 'cans',
+      parenthesized: false,
     });
     // The leading amount of a counted line is the count.
     expect(amount('2 14 oz cans')).toBe(2);
@@ -183,6 +185,19 @@ describe('parseQuantity — containers', () => {
     expect(parseQuantity('2 oz flour').container).toBeNull();
     // Three words after the amount is prose, not a container.
     expect(parseQuantity('2 oz cans black').container).toBeNull();
+  });
+
+  it('reads a size written in parentheses, as an imported recipe prints it', () => {
+    for (const text of ['2 (8-ounce) packages', '2 (14.5 oz) cans', '2 (8 oz) packages']) {
+      const q = parseQuantity(text);
+      expect(q.container?.count).toEqual({ num: 2, den: 1 });
+      expect(q.container?.word).toMatch(/^(packages|cans)$/);
+    }
+    const q = parseQuantity('2 (8-ounce) packages');
+    expect(q.container?.sizeText).toBe('8');
+    expect(q.container?.sizeUnit).toBe('ounce');
+    // A parenthesis that isn't a container size still isn't one.
+    expect(parseQuantity('2 (large) packages').container).toBeNull();
   });
 });
 

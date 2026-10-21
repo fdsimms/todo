@@ -199,19 +199,20 @@ export function scaleQuantity(quantity: string, factor: number): ScaledQuantity 
   if (q.amount === null) return unchanged;
 
   if (q.container) {
-    const { count, sizeText, sizeUnit, word } = q.container;
+    const { count, sizeText, sizeUnit, word, parenthesized } = q.container;
+    const size = parenthesized ? `(${sizeText} ${sizeUnit})` : `${sizeText} ${sizeUnit}`;
     if (count) {
       const scaled = multiplyRational(count, multiplier);
       const container = inflectUnit(word, rationalToNumber(scaled));
       return {
-        text: `${formatRational(scaled, q.decimal)} ${sizeText} ${sizeUnit} ${container}`,
+        text: `${formatRational(scaled, q.decimal)} ${size} ${container}`,
         scaled: true,
       };
     }
     // The factor *is* the new count: one 14 oz can, doubled, is two of them.
     if (!Number.isInteger(factor)) return unchanged;
     return {
-      text: `${factor} ${sizeText} ${sizeUnit} ${inflectUnit(word, factor)}`,
+      text: `${factor} ${size} ${inflectUnit(word, factor)}`,
       scaled: true,
     };
   }

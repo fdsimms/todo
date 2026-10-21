@@ -706,16 +706,36 @@ function buildPanel(input: NutritionPanelInput, previous: FoodNutrition | null):
   };
 }
 
+/**
+ * What a panel write changes, for the preview to show: the figures it replaces
+ * (with where they came from) and the portion table the item will have after
+ * it. Portions merge by label, so an old "cup" survives beside a new "cup,
+ * packed" and the two can disagree on density; listing the result is what lets
+ * the agent see that before it applies.
+ */
+function panelChange(previous: FoodNutrition | null, next: FoodNutrition | null) {
+  return {
+    ...(previous ? { replaced: `${describeFoodPanel(previous)} (${previous.source})` } : {}),
+    ...(next ? { portionsAfter: next.portions.map(p => `${p.label}: ${p.grams} g`) } : {}),
+  };
+}
+
 export function setNutritionPanel(replica: Replica, input: { item: string; boxId?: string; panel: NutritionPanelInput | null }) {
   const item = itemByIdOrName(replica, input.item);
   let panel: FoodNutrition | null = null;
+  let previous: FoodNutrition | null = null;
   if (input.panel) {
     const box = input.boxId ? replica.itemProducts().find(p => p.id === input.boxId) : null;
-    const previous = (input.boxId ? box?.nutrition : item.nutrition) ?? null;
+    previous = (input.boxId ? box?.nutrition : item.nutrition) ?? null;
     panel = buildPanel(input.panel, previous);
   }
   replica.setNutritionPanel(item.id, input.boxId ?? null, panel);
-  return { item: item.name, ...(input.boxId ? { boxId: input.boxId } : {}), panel: panel ? describeFoodPanel(panel) : null };
+  return {
+    item: item.name,
+    ...(input.boxId ? { boxId: input.boxId } : {}),
+    panel: panel ? describeFoodPanel(panel) : null,
+    ...panelChange(previous, panel),
+  };
 }
 
 /**
@@ -751,7 +771,12 @@ export function setNutritionPanels(
   const items = planned.map(p => {
     const item = p.existing ?? replica.createCatalogItem(p.entry.item).item;
     replica.setNutritionPanel(item.id, null, p.panel);
-    return { item: item.name, ...(p.existing ? {} : { created: true }), panel: describeFoodPanel(p.panel) };
+    return {
+      item: item.name,
+      ...(p.existing ? {} : { created: true }),
+      panel: describeFoodPanel(p.panel),
+      ...panelChange(p.existing?.nutrition ?? null, p.panel),
+    };
   });
   return { set: items.length, items };
 }

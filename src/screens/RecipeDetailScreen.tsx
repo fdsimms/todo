@@ -75,6 +75,7 @@ import { RecipeTimerRow } from '../components/RecipeTimerRow';
 import { RecipeTabBar, type RecipeTab } from '../components/RecipeTabBar';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from '../components/NumberPadAccessory';
 import { CookModeSheet } from '../components/CookModeSheet';
+import { savedCookSetup, saveCookSetup } from '../utils/cookPosition';
 import { cookSteps, stepsFromNotes } from '../utils/cookMode';
 import { MAX_STEP_TIMER_SECONDS, formatStepDuration, parseStepDurations, stepDurationOffers } from '../utils/stepTimers';
 import { featureHidden, featureShown } from '../utils/simpleMode';
@@ -571,8 +572,24 @@ export function RecipeDetailScreen() {
   useEffect(() => {
     if (openCookModeStamp === undefined || openCookModeStamp === handledCookModeStamp) return;
     setHandledCookModeStamp(openCookModeStamp);
+    // CookingBar navigates with no scale, picks or replacements, and the
+    // params change reseeded all three to their defaults. A request that names
+    // none of them is a return to a cooking underway, so put back what it was
+    // for. A planned meal's link names its own and keeps them.
+    const saved = route.params.scale === undefined && route.params.choices === undefined
+      && route.params.overrides === undefined ? savedCookSetup(route.params.recipeId) : null;
+    if (saved) {
+      setScale(saved.scale);
+      setChoices(saved.choices);
+      setOverrides(saved.overrides);
+    }
     if (cookModeAvailable && !featureHidden('cookMode', simpleMode)) setCookModeVisible(true);
-  }, [openCookModeStamp, handledCookModeStamp, cookModeAvailable, simpleMode]);
+  }, [openCookModeStamp, handledCookModeStamp, cookModeAvailable, simpleMode, route.params]);
+  // Remembered only while cook mode is up, so the reseed above can't overwrite
+  // it with the defaults before the return reads it back.
+  useEffect(() => {
+    if (cookModeVisible) saveCookSetup(route.params.recipeId, { scale, choices, overrides });
+  }, [cookModeVisible, scale, choices, overrides, route.params.recipeId]);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   // The footer is in the layout rather than floating, so the scroll-to-top
   // button (placed for a Fab) has to clear it by its measured height, which
@@ -3096,6 +3113,7 @@ export function RecipeDetailScreen() {
         recipe={recipe}
         recipesById={recipesById}
         scale={scale}
+        onScaleChange={setScale}
         choices={choices}
         overrides={overrides}
         onChoicesChange={setChoices}
