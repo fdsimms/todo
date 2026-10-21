@@ -826,11 +826,11 @@ export function applyCategoryCollapse(
  * Handing each header the ids beneath it lets it leave with them (see
  * CompletionCollapse).
  *
- * A section holding a stack is deliberately absent rather than empty-listed: the
- * stack's tray is a row with its own children and its own hold, so collapsing
- * the header over it would leave the tray stranded under the section above.
- * Same for the header-less loose group at the top, which has no header to take
- * away.
+ * A stack's visible children count as the section's ids. The tray collapses on
+ * those same ids (see CompletionCollapse in TodayScreen), so header and tray go
+ * in the same frame; leaving them out kept a section's header on screen after
+ * its last stack member was ticked off. The header-less loose run at the top
+ * has no header to take away, so its rows belong to no section.
  */
 export function sectionTaskIds(items: TodayListItem[]): Map<string, string[]> {
   const sections = new Map<string, string[]>();
@@ -847,8 +847,7 @@ export function sectionTaskIds(items: TodayListItem[]): Map<string, string[]> {
       continue;
     }
     if (item.type === 'group') {
-      sections.delete(label);
-      label = null;
+      sections.get(label)!.push(...item.children.map(c => c.id));
     }
   }
   // An empty section can't be emitted by makeCategoryGroups, but a caller's own

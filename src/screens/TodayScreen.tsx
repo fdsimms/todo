@@ -3036,12 +3036,10 @@ export function TodayScreen() {
   // context row out of a *collapsed* section, so reading off `data` would
   // always report a collapsed header's own count as 0, stack or no stack.
   // This also can't come from sectionTaskIds even pre-collapse — that map
-  // deliberately drops a whole section the moment it hits a group item (see
-  // its own doc comment: a collapsed header must not strand a stack's tray),
-  // which would silently drop every task row sharing that category from the
-  // count too, and it never counted context rows to begin with (it feeds
-  // CompletionCollapse, which animates a header out with the rows being
-  // ticked off — a header shouldn't wait on rows that can never complete).
+  // reads `data`, so a folded section is empty there, and it never counted
+  // context rows to begin with (it feeds CompletionCollapse, which animates a
+  // header out with the rows being ticked off — a header shouldn't wait on
+  // rows that can never complete).
   const sectionDisplayCounts = useMemo(() => {
     const visibleCountByGroupId = new Map(visibleGroupItems.map(g => [g.group.id, g.children.length]));
     const counts = new Map<string, number>();
