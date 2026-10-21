@@ -988,6 +988,53 @@ export function describeHealthInsight(insight: HealthInsight): string | null {
 }
 
 /**
+ * Every line the movement-and-sleep card has to say, steps before sleep and
+ * what you finished before mood within each.
+ *
+ * `nutrientFindings`' collapse, for the same reason: a metric that found
+ * nothing against either thing costs one line rather than two, and when every
+ * metric found nothing the card says so once. "No clear pattern" is still said
+ * out loud (rule 3 of `describeHealthInsight`); what goes is saying it four
+ * times in a row with a different noun.
+ */
+export function healthFindings(
+  days: readonly MoodDay[],
+  metrics: readonly HealthMetric[] = ['steps', 'sleepHours'],
+): { key: string; text: string }[] {
+  const pairs = metrics.map(metric => ({
+    metric,
+    done: healthInsight(days, metric, 'completed'),
+    mood: healthInsight(days, metric, 'mood'),
+  }));
+  const flat = (p: (typeof pairs)[number]) =>
+    p.done.strength === 'none' && p.mood.strength === 'none';
+
+  if (pairs.length > 1 && pairs.every(flat)) {
+    return [{
+      key: 'all-none',
+      text: 'No clear pattern between your steps or sleep and your mood or what you finish.',
+    }];
+  }
+
+  const rows: { key: string; text: string }[] = [];
+  for (const p of pairs) {
+    if (flat(p)) {
+      const subject = p.metric === 'steps' ? 'steps' : 'sleep';
+      rows.push({
+        key: `${p.metric}-none`,
+        text: `No clear pattern between your ${subject} and your mood or what you finish.`,
+      });
+      continue;
+    }
+    for (const insight of [p.done, p.mood]) {
+      const text = describeHealthInsight(insight);
+      if (text) rows.push({ key: `${insight.metric}-${insight.against}`, text });
+    }
+  }
+  return rows;
+}
+
+/**
  * How a nutrient is named in a sentence: what it is called as a thing, and
  * what "more of it" is called as a day.
  *
