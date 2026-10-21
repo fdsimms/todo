@@ -637,6 +637,32 @@ struct WorkoutListPage: View {
 
 /// Every set of one exercise, done or still to do, with its numbers and its
 /// note, and Add set, which lays one more out like the last.
+/// The exercises an exercise can be paired with: picking one moves it to sit
+/// below this one and does the superset's rounds from then on.
+struct WorkoutSupersetPartnersView: View {
+    @EnvironmentObject private var store: WatchStore
+    @Environment(\.dismiss) private var dismiss
+    let exerciseId: String
+
+    var body: some View {
+        if let screen = store.workoutScreen {
+            List(screen.supersetPartners(exerciseId)) { partner in
+                Button {
+                    store.superset(exerciseId, with: partner.id, in: screen)
+                    dismiss()
+                } label: {
+                    Text(partner.name)
+                        .lineLimit(2)
+                        .foregroundStyle(palette.text)
+                }
+            }
+            .navigationTitle("Superset with")
+        } else {
+            WatchNote(text: "This workout has ended.")
+        }
+    }
+}
+
 struct WorkoutExerciseSetsView: View {
     @EnvironmentObject private var store: WatchStore
     let exerciseId: String
@@ -654,6 +680,23 @@ struct WorkoutExerciseSetsView: View {
                 } label: {
                     Label("Add set", systemImage: "plus")
                         .foregroundStyle(palette.accent)
+                }
+                // Last and quiet: rare, so it sits below what is done every set.
+                if !screen.supersetPartners(exerciseId).isEmpty {
+                    NavigationLink {
+                        WorkoutSupersetPartnersView(exerciseId: exerciseId)
+                    } label: {
+                        Label("Superset with…", systemImage: "link")
+                            .foregroundStyle(palette.textSecondary)
+                    }
+                }
+                if screen.inSuperset(exerciseId) {
+                    Button {
+                        store.superset(exerciseId, with: nil, in: screen)
+                    } label: {
+                        Label("Leave superset", systemImage: "minus.circle")
+                            .foregroundStyle(palette.textSecondary)
+                    }
                 }
             }
             .navigationTitle(exercise.name)

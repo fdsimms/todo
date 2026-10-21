@@ -279,7 +279,7 @@ final class WatchSession: NSObject, WCSessionDelegate {
         if let notes = info["notes"] as? [[String: Any]] { entry["notes"] = notes }
       }
       appendToQueue(watchQuietTapsFileName, entry)
-    case "setNote", "addSet", "addExercise", "moveExercise", "useSuggestion":
+    case "setNote", "addSet", "addExercise", "moveExercise", "superset", "useSuggestion":
       // What the watch adds to the phone's workout: a dictated note on a set
       // ("id" is the set), a set or an exercise added under the ids the watch
       // gave it ("id" is the set, or the exercise with its sets' ids in

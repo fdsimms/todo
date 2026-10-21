@@ -17,6 +17,7 @@ import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useWorkoutModeStore } from '../store/useWorkoutModeStore';
 import { useStartWorkout } from '../hooks/useStartWorkout';
 import { InlineAction } from '../components/InlineAction';
+import { Fab, FAB_SIZE } from '../components/Fab';
 import { RoutineEditorSheet } from '../components/RoutineEditorSheet';
 import { GroupNameSheet } from '../components/GroupNameSheet';
 import { ReorderableList } from '../components/ReorderableList';
@@ -286,7 +287,8 @@ export function WorkoutsScreen() {
     </TouchableOpacity>
   ), [styles, colors, openExercise]);
 
-  const listBottom = { paddingBottom: tabBarHeight + spacing.xl };
+  // Clears the start button floating in the corner, so the last row can scroll out from under it.
+  const listBottom = { paddingBottom: tabBarHeight + FAB_SIZE + spacing.xl };
 
   const openEditor = useCallback((routineId: string | null, newInGroup: string | null = null) => {
     haptics.tap();
@@ -490,6 +492,15 @@ export function WorkoutsScreen() {
   const routineName = useCallback((id: string) => routines.find(r => r.id === id)?.name ?? null, [routines]);
   const livePrograms = useMemo(() => programs.filter(p => !p.archived), [programs]);
 
+  // A program with a routine due next: the start button asks which to run
+  // rather than assuming an empty workout. With none, it starts one at once.
+  const [startMenuOpen, setStartMenuOpen] = useState(false);
+  const startChoices = useMemo(() => livePrograms.flatMap(p => {
+    const next = programProgress(p, sessions, routines).nextRoutineId;
+    const name = next ? routineName(next) : null;
+    return name ? [{ program: p, routine: name }] : [];
+  }), [livePrograms, sessions, routines, routineName]);
+
   const renderProgram = useCallback(({ item }: { item: WorkoutProgram }) => {
     const progress = programProgress(item, sessions, routines);
     const next = progress.nextRoutineId ? routineName(progress.nextRoutineId) : null;
@@ -619,9 +630,6 @@ export function WorkoutsScreen() {
   const routineActions = (
     <View style={styles.actions}>
       <InlineAction icon="add" label="New routine" surface="page" onPress={() => openEditor(null)} />
-      {!live && (
-        <InlineAction label="Empty workout" variant="neutral" surface="page" onPress={() => startWorkout()} />
-      )}
     </View>
   );
 
@@ -744,6 +752,31 @@ export function WorkoutsScreen() {
         </>
       )}
       {pullSearch.sheet}
+      <Fab
+        icon="play"
+        accessibilityLabel={live ? `Resume ${live.title}` : 'Start an empty workout'}
+        onPress={() => {
+          if (live) useWorkoutModeStore.getState().show();
+          else if (startChoices.length > 0) setStartMenuOpen(true);
+          else startWorkout();
+        }}
+      />
+      <LazySheet open={startMenuOpen}>
+        <ActionMenu
+          visible={startMenuOpen}
+          title="Start a workout"
+          onClose={() => setStartMenuOpen(false)}
+          actions={[
+            ...startChoices.map(c => ({
+              key: c.program.id,
+              label: startChoices.length > 1 ? `${c.program.name}: ${c.routine}` : `Next in ${c.program.name}: ${c.routine}`,
+              icon: 'play-outline' as const,
+              onPress: () => startWorkout({ programId: c.program.id }),
+            })),
+            { key: 'empty', label: 'Empty workout', icon: 'add-outline' as const, onPress: () => startWorkout() },
+          ]}
+        />
+      </LazySheet>
       <LazySheet open={menuOpen}>
         <ActionMenu
           visible={menuOpen}

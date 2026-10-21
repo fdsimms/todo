@@ -73,8 +73,11 @@ interface Props {
   /**
    * Closes this sheet (and any ancestor sheet the caller is itself nested
    * in) and opens the Settings row named by `entryId`. See the note above.
+   * Optional for a host with no screen to navigate to (`NutritionPanelSheet`,
+   * opened from six places): without it the error still says what to fix and
+   * the button is simply absent.
    */
-  onOpenSettings: (entryId: string) => void;
+  onOpenSettings?: (entryId: string) => void;
 }
 
 /** Where "Open Settings" from this sheet always lands — one row in one group. */
@@ -105,7 +108,7 @@ export function NutritionSearchSheet({ visible, itemName, onClose, onPick, onOpe
   // it) and hands the row off.
   const openSettings = () => {
     haptics.tap();
-    if (!errorSettingsEntryId) return;
+    if (!errorSettingsEntryId || !onOpenSettings) return;
     Keyboard.dismiss();
     onOpenSettings(errorSettingsEntryId);
   };
@@ -207,8 +210,8 @@ export function NutritionSearchSheet({ visible, itemName, onClose, onPick, onOpe
                     ? 'Couldn’t run the search.'
                     : 'Try a plainer name. This database lists foods like “Onions, raw”, without brand names.'
                 }
-                actionLabel={errorSettingsEntryId ? 'Open Settings' : undefined}
-                onAction={errorSettingsEntryId ? openSettings : undefined}
+                actionLabel={errorSettingsEntryId && onOpenSettings ? 'Open Settings' : undefined}
+                onAction={errorSettingsEntryId && onOpenSettings ? openSettings : undefined}
               />
             )
           }

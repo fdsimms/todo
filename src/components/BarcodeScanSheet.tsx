@@ -45,7 +45,7 @@ import type { ReceiptMatch } from '../utils/receiptMatch';
 import { lookupGtin, describeLookupError } from '../services/productLookup';
 import { formatGtin, normalizeGtin } from '../utils/gtin';
 import { describeProduct, productsForItem } from '../utils/groceryProduct';
-import { nutritionFor, panelLooksWrongFor } from '../utils/foodNutrition';
+import { describeFoodPanel, nutritionFor, panelLooksWrongFor } from '../utils/foodNutrition';
 import { priceNearBarcode } from '../utils/shelfLabel';
 import { formatPrice } from '../utils/groceryPrice';
 import { pluNameFor } from '../utils/plu';
@@ -1358,11 +1358,27 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                 // Log-only, and only once there's a name to attach the figures to and
                 // nothing in the catalog has already answered for this row. When the
                 // row can't be logged without it, it sits right under the name.
-                const nutritionBlock = context === 'log' && !pendingId && !!row.name.trim() && (
+                // Outside a log nothing is asked of the figures, but a panel the
+                // lookup read is still worth saying so: it is filed with the item
+                // unseen otherwise.
+                const foundPanelNote = describeFoodPanel(row.scanPanel ?? null);
+                const nutritionBlock = !pendingId && !!row.name.trim() && (context !== 'log' ? (
+                        nutritionSource === 'database' && foundPanelNote ? (
+                          <ActionRow
+                            icon="nutrition-outline"
+                            title="Nutrition from the barcode lookup"
+                            note={foundPanelNote}
+                            tone="plain"
+                            done
+                            accessibilityLabel={`Nutrition facts for ${row.name.trim()} were found: ${foundPanelNote}`}
+                          />
+                        ) : null
+                      ) : (
                         nutritionSource ? (
                           <ActionRow
                             icon="nutrition-outline"
                             title={nutritionSource === 'catalog' ? 'Nutrition on file' : 'Nutrition from the barcode lookup'}
+                            note={nutritionSource === 'database' ? foundPanelNote : null}
                             tone="plain"
                             done
                             accessibilityLabel={`Nutrition facts for ${row.name.trim()} are already known`}
@@ -1385,7 +1401,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                             accessibilityLabel={`${row.name.trim()} has no nutrition facts yet`}
                           />
                         )
-                      );
+                      ));
                 return (
                   <View key={row.key} style={index > 0 ? styles.rowDivided : undefined}>
                   <View style={styles.row}>

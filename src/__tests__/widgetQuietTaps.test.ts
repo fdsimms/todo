@@ -468,6 +468,9 @@ describe('watch workout taps', () => {
         { kind: 'moveExercise', id: 'row', sessionId: 'w1', direction: 'sideways', at: AT },
         { kind: 'useSuggestion', id: 'bench', sessionId: 'w1', at: AT },
         { kind: 'useSuggestion', id: 'bench', at: AT },
+        { kind: 'superset', id: 'bench', sessionId: 'w1', exerciseId: 'row', at: AT },
+        { kind: 'superset', id: 'bench', sessionId: 'w1', at: AT },
+        { kind: 'superset', id: 'bench', sessionId: 'w1', exerciseId: 7, at: AT },
       ]));
       expect(taps.map(t => [t.kind, t.id, t.note ?? t.exerciseId ?? t.setIds ?? t.direction ?? null])).toEqual([
         ['setNote', 'set-3', 'Felt the left shoulder'],
@@ -476,6 +479,8 @@ describe('watch workout taps', () => {
         ['addExercise', 'curl', []],
         ['moveExercise', 'row', 'up'],
         ['useSuggestion', 'bench', null],
+        ['superset', 'bench', 'row'],
+        ['superset', 'bench', null],
       ]);
       expect(taps.every(t => t.sessionId === 'w1')).toBe(true);
     });
@@ -698,6 +703,16 @@ describe('watch workout taps', () => {
         { type: 'addWorkoutExercise', sessionId: 'w1', exerciseId: 'curl', setIds: [] },
         { type: 'moveWorkoutExercise', sessionId: 'w1', exerciseId: 'curl', direction: 'down' },
         { type: 'useWorkoutSuggestion', sessionId: 'w1', exerciseId: 'curl' },
+      ]);
+    });
+
+    it('pairs an exercise with another in the workout, or takes it out of its superset, and drops one with a partner it does not have', () => {
+      expect(plan([
+        sessionTap('superset', 'bench', { exerciseId: 'squat' }),
+        sessionTap('superset', 'bench', { exerciseId: 'a-row', sessionId: 'w0' }),
+        sessionTap('superset', 'bench'),
+      ], live(['a']))).toEqual([
+        { type: 'supersetWorkoutExercise', sessionId: 'w1', exerciseId: 'bench', partnerId: null },
       ]);
     });
 

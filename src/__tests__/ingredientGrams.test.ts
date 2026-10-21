@@ -1,4 +1,5 @@
 import {
+  measureLineAmount,
   gramsForLine,
   panelMultiplier,
   portionsWithServing,
@@ -198,7 +199,8 @@ describe('a line written as a count', () => {
       { amount: 1, label: 'oz', grams: 28.35 },
     ];
     expect(grams('2', null, table)).toBeNull();
-    expect(grams('1 (15-ounce) can', null, table)).toBeNull();
+    // A parenthesized size is a stated weight, not a bare count: 15 oz.
+    expect(grams('1 (15-ounce) can', null, table)).toBeCloseTo(425.24, 1);
     // A whole-item row beside them still answers.
     expect(grams('2', null, [...table, { amount: 1, label: 'medium', grams: 110 }])).toBeCloseTo(220, 4);
   });
@@ -499,5 +501,15 @@ describe('a packaged food whose serving is a weighed volume', () => {
   it("never overrides a volume the table already states", () => {
     const stated = { ...justEgg, portions: FLOUR };
     expect(portionsWithServing(stated)).toBe(FLOUR);
+  });
+});
+
+describe('measureLineAmount: a parenthesized container size', () => {
+  it('weighs "2 (8-ounce) packages" as sixteen ounces, like "2 8-ounce packages"', () => {
+    const a = measureLineAmount(parseQuantity('2 (8-ounce) packages'));
+    const b = measureLineAmount(parseQuantity('2 8-ounce packages'));
+    expect(a?.dimension).toBe('mass');
+    expect(a?.base).toBeCloseTo(453.59, 1);
+    expect(a).toEqual(b);
   });
 });

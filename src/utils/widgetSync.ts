@@ -589,6 +589,10 @@ async function processQuietWidgetTaps(handOff: 'app' | 'requeue' = 'app'): Promi
         case 'moveWorkoutExercise':
           useWorkoutStore.getState().moveSessionExercise(action.sessionId, action.exerciseId, action.direction);
           break;
+        case 'supersetWorkoutExercise':
+          if (action.partnerId) useWorkoutStore.getState().joinSessionSuperset(action.sessionId, action.exerciseId, action.partnerId);
+          else useWorkoutStore.getState().leaveSessionSuperset(action.sessionId, action.exerciseId);
+          break;
         case 'useWorkoutSuggestion':
           applyProposal(action.sessionId, action.exerciseId, {
             ...(action.warmupIdPrefix ? { warmupId: (i: number) => `${action.warmupIdPrefix}-w${i}` } : {}),
