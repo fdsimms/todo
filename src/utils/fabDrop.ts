@@ -430,5 +430,12 @@ export interface DragScroller {
   /** Largest scrollable offset — content height less viewport height, floored at 0. */
   getMaxOffset: () => number;
   scrollToOffset: (y: number) => void;
+  /**
+   * Suspends or restores the list's own scrolling for the length of an
+   * add-button drag. Lives on the scroller, rather than as screen state the
+   * screen passes back down as `scrollEnabled`, so flipping it re-renders the
+   * list alone and not the whole screen at the moment the drag is picked up.
+   */
+  setScrollLocked?: (locked: boolean) => void;
 }
 

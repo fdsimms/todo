@@ -231,7 +231,6 @@ export function PeopleScreen() {
   // drop there is a plain add.
 
   const dropZonesRef = useRef<FabDropZonesHandle>(null);
-  const [fabDragging, setFabDragging] = useState(false);
   const scrollControl = useRef<DragScroller | null>(null);
   const fabIntentChannel = useFabIntentChannel();
   // The spot a drop asked for, read by `add` when the person is created.
@@ -239,12 +238,10 @@ export function PeopleScreen() {
 
   const fabDrag: FabDragHandlers = {
     onStart: () => {
-      setFabDragging(true);
       dropZonesRef.current?.begin();
     },
     onMove: (pageY, home) => dropZonesRef.current?.moveTo(pageY, home),
     onEnd: (pageY, home) => {
-      setFabDragging(false);
       const intent = dropZonesRef.current?.end(pageY, home) ?? { kind: 'plain' };
       if (intent.kind === 'cancel') {
         haptics.tap();
@@ -254,7 +251,6 @@ export function PeopleScreen() {
       setQuickAddVisible(true);
     },
     onCancel: () => {
-      setFabDragging(false);
       dropZonesRef.current?.cancel();
     },
   };
@@ -356,7 +352,7 @@ export function PeopleScreen() {
             // A paint gesture owns the touch for its duration — see the note in
             // PaintSelectionProvider on why the list can't be allowed to scroll
             // out from under it.
-            scrollEnabled={!fabDragging && !painting}
+            scrollEnabled={!painting}
             scrollControlRef={scrollControl}
             ListFooterComponent={
               <View style={{

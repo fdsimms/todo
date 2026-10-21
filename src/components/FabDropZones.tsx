@@ -441,6 +441,7 @@ export const FabDropZoneProvider = forwardRef<FabDropZonesHandle, Props>(
       };
 
       const clear = () => {
+        scrollerRef.current?.current?.setScrollLocked?.(false);
         stopAutoscroll();
         draggingRef.current = false;
         targetRef.current = null;
@@ -457,6 +458,7 @@ export const FabDropZoneProvider = forwardRef<FabDropZonesHandle, Props>(
           lastHomeRef.current = 'inside';
           lastPageXRef.current = null;
           draggingRef.current = true;
+          scrollerRef.current?.current?.setScrollLocked?.(true);
           containerRef.current?.measureInWindow?.((_x, y, _w, h) => {
             if (Number.isFinite(y)) containerYRef.current = y;
             if (h > 0) containerHeightRef.current = h;

@@ -531,16 +531,13 @@ export function FoodLogScreen() {
   }, [listItems]);
 
   const dropZonesRef = useRef<FabDropZonesHandle>(null);
-  const [fabDragging, setFabDragging] = useState(false);
   const fabIntentChannel = useFabIntentChannel();
   const fabDrag: FabDragHandlers = {
     onStart: () => {
-      setFabDragging(true);
       dropZonesRef.current?.begin();
     },
     onMove: (pageY, home) => dropZonesRef.current?.moveTo(pageY, home),
     onEnd: (pageY, home) => {
-      setFabDragging(false);
       const intent = dropZonesRef.current?.end(pageY, home) ?? { kind: 'plain' as const };
       if (intent.kind === 'cancel') {
         haptics.tap();
@@ -551,7 +548,6 @@ export function FoodLogScreen() {
       setAddOpen(true);
     },
     onCancel: () => {
-      setFabDragging(false);
       dropZonesRef.current?.cancel();
     },
   };
@@ -1476,7 +1472,7 @@ export function FoodLogScreen() {
             // A paint gesture owns the touch for its duration, same reason
             // every other selectable list turns scrolling off for one, and
             // the add button's drag scrolls the list itself instead.
-            scrollEnabled={!painting && !fabDragging}
+            scrollEnabled={!painting}
             contentContainerStyle={[styles.scrollContent, { paddingTop: spacing.sm }]}
             placeholderStyle={styles.dropSlot}
             onReorder={handleReorder}
