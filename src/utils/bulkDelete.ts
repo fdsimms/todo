@@ -23,7 +23,7 @@ import { BUTTON_LABEL } from '../copy/shared';
  */
 
 /** An open, top-level, ordinary task that is none of the kinds above and can still be marked missed. */
-function isMissableOneOff(t: Task): boolean {
+export function isMissableOneOff(t: Task): boolean {
   return (
     !t.completed &&
     t.parentId === null &&

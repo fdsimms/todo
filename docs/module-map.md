@@ -62,7 +62,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/blocking.ts` — TaskResolver, resolverFor, canBlock, blockerIdsOf, blockerFields, waitIdsOf, answerOpensGate, isNotNeeded, openOccurrenceOf, liveBlockersOf, +17 more
 - `src/utils/brands.ts` — BrandSummary, brandSummaries, planBrandRename
 - `src/utils/bulkCompletion.ts` — tasksAskingOnCompletion, unansweredCompletionCopy, stackCompletionScope
-- `src/utils/bulkDelete.ts` — BulkDeletePrompt, bulkDeletePrompt
+- `src/utils/bulkDelete.ts` — isMissableOneOff, BulkDeletePrompt, bulkDeletePrompt
 - `src/utils/bulkScopePrompt.ts` — confirmBulkScope, bulkSetPriorityAsking, bulkSetDifficultyAsking, bulkAddTagsAsking
 - `src/utils/busyEvenings.ts` — BUSY_EVENING_MIN_MINUTES, BusyEvening, busyEveningOn, describeBusyEvening
 - `src/utils/calendarBusy.ts` — BusyEvent, hasVideoCallLink, BusyInterval, isLiveEvent, occupiesTime, allDayRangeMs, busyIntervalsIn, busyMinutesIn, freeGapsIn, freeMinutesIn, +4 more
