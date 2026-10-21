@@ -1,4 +1,4 @@
-// Describe a routine, or a workout you did, in words. Landmarks:
+// Describe a routine, or a workout you did, in words (one or the other, by `mode`). Landmarks:
 //
 //   ==== staged state ====     what the sheet holds while it is open
 //   ==== drafting ====         the request, and what comes back
@@ -13,7 +13,10 @@
 //
 // It hands the result to its caller rather than saving: a routine goes to the
 // routine editor (`RoutineDraft`), a past workout to the import review
-// (`ImportedSession`), and both of those write only on their own Save. Mock:
+// (`ImportedSession`), and both of those write only on their own Save. It is
+// opened from inside the editor it fills (`RoutineEditorSheet`, mode `routine`)
+// and from the past-workout sheet (`LogPastWorkoutSheet`, mode `log`), so the
+// person never has to say in advance that they will describe. Mock:
 // docs/arch/workouts-mocks/describe-routine.png.
 //
 // It is a `pageSheet` holding typed text, so a swipe-down and Cancel both go
@@ -26,7 +29,6 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { SheetModal } from './SheetModal';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
-import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { PressableScale } from './PressableScale';
 import { ExercisePickerSheet } from './ExercisePickerSheet';
 import { HelpText } from './HelpText';
@@ -55,17 +57,14 @@ import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
+  /** What is being described. Fixed for the life of the sheet: the opener already knows which it is. */
+  mode: DescribeMode;
   onClose: () => void;
   /** A routine was described and its names are settled. The caller opens the editor on it and closes this sheet. */
   onRoutine: (draft: RoutineDraft) => void;
   /** A past workout was described. The caller opens the import review on it and closes this sheet. */
   onWorkout: (session: ImportedSession) => void;
 }
-
-const MODE_OPTIONS: SegmentOption<DescribeMode>[] = [
-  { value: 'routine', label: 'Routine' },
-  { value: 'log', label: 'Workout I did' },
-];
 
 const COPY: Record<DescribeMode, { placeholder: string; hint: string; button: string }> = {
   routine: {
@@ -91,7 +90,7 @@ interface Pending {
 
 type Choice = { kind: 'exercise'; exerciseId: string } | { kind: 'create' };
 
-export function DescribeWorkoutSheet({ visible, onClose, onRoutine, onWorkout }: Props) {
+export function DescribeWorkoutSheet({ visible, mode, onClose, onRoutine, onWorkout }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const exercises = useWorkoutStore(s => s.exercises);
@@ -99,7 +98,6 @@ export function DescribeWorkoutSheet({ visible, onClose, onRoutine, onWorkout }:
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
   // ==== staged state ====
-  const [mode, setMode] = useState<DescribeMode>('routine');
   const [text, setText] = useState('');
   const [step, setStep] = useState<Step>('write');
   const [busy, setBusy] = useState(false);
@@ -118,7 +116,6 @@ export function DescribeWorkoutSheet({ visible, onClose, onRoutine, onWorkout }:
 
   useEffect(() => {
     if (!visible) { ticket.current++; return; }
-    setMode('routine');
     setText('');
     setStep('write');
     setBusy(false);
@@ -245,7 +242,7 @@ export function DescribeWorkoutSheet({ visible, onClose, onRoutine, onWorkout }:
     >
       <View style={styles.root}>
         <SheetHeader
-          title={writing ? 'Describe a workout' : 'Match exercises'}
+          title={writing ? (mode === 'routine' ? 'Describe a routine' : 'Describe a workout') : 'Match exercises'}
           left={writing
             ? <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={64} />
             : <SheetHeaderButton label="Back" role="cancel" onPress={() => setStep('write')} minWidth={64} />}
@@ -263,13 +260,6 @@ export function DescribeWorkoutSheet({ visible, onClose, onRoutine, onWorkout }:
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            <SegmentedControl
-              label="What to describe"
-              options={MODE_OPTIONS}
-              value={mode}
-              onChange={m => { setMode(m); setError(null); }}
-              surface="page"
-            />
             <View style={styles.area}>
               <TextField
                 style={styles.input}
@@ -383,7 +373,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   headerSpacer: { minWidth: 64 },
   body: { flex: 1 },
   bodyContent: { paddingHorizontal: spacing.md, paddingBottom: spacing.xl },
-  area: { backgroundColor: colors.bgSecondary, borderRadius: radius.lg, marginTop: spacing.smd },
+  area: { backgroundColor: colors.bgSecondary, borderRadius: radius.lg, marginTop: spacing.xs },
   input: {
     color: colors.text, fontSize: font.md,
     paddingHorizontal: spacing.md, paddingTop: spacing.smd, paddingBottom: spacing.smd, minHeight: 200,

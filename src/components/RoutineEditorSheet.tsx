@@ -29,10 +29,12 @@ import { RotatingChevron } from './RotatingChevron';
 import { EmptyNote } from './EmptyNote';
 import { ExercisePickerSheet } from './ExercisePickerSheet';
 import { ExerciseDetailSheet } from './ExerciseDetailSheet';
+import { DescribeWorkoutSheet } from './DescribeWorkoutSheet';
 import { RoutineProgressView } from './RoutineProgressView';
 import type { ExerciseKind, ProgressionScheme, WorkoutRoutine, WorkoutRoutineItem } from '../types';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { weightHeadingSuffix, weightScale } from '../utils/dumbbellLoad';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
@@ -65,12 +67,6 @@ interface Props {
   /** The routine as saved, before `onClose`: for a caller that links a new one to what it was made for. */
   onSaved?: (routine: WorkoutRoutine) => void;
   onClose: () => void;
-  /**
-   * A routine to start from, described in words (`routineFromDraft`), for a new
-   * routine. Nothing in it is saved until Save: its `new:` exercises are made
-   * then, so backing out leaves the library as it was. Ignored when editing.
-   */
-  draft?: RoutineDraft | null;
 }
 
 /**
@@ -124,7 +120,7 @@ const viewsOf = (rows: readonly Row[]): SupersetRowView[] =>
  * asks before throwing edits away (`confirmDiscard`); a full-screen sheet has
  * no swipe to guard, only the button.
  */
-export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSaved, onClose, draft = null }: Props) {
+export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSaved, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const routines = useWorkoutStore(s => s.routines);
@@ -134,8 +130,14 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
   const plateInventory = useSettingsStore(s => s.plateInventory);
   const dumbbellEntry = useSettingsStore(s => s.dumbbellEntry);
   const routine = routineId ? routines.find(r => r.id === routineId) ?? null : null;
+  // A routine described from inside this editor (`routineFromDraft`). Nothing in it is saved until Save:
+  // its `new:` exercises are made then, so backing out leaves the library as it was.
+  const [described, setDescribed] = useState<RoutineDraft | null>(null);
+  const [describing, setDescribing] = useState(false);
   // A draft only seeds a routine that doesn't exist yet.
-  const seed = routine ? null : draft;
+  const seed = routine ? null : described;
+  // Claude only (`workoutDraft` has no on-device engine), so no key or a switched-off feature means no row.
+  const canDescribe = useAiRoute('workoutDraft') !== 'unavailable';
 
   // ==== staged state, loaded each time the sheet opens ====
   const [name, setName] = useState('');
@@ -163,6 +165,8 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
     setRows(r);
     setOpenRowId(null);
     setPicking(null);
+    setDescribed(null);
+    setDescribing(false);
     setTab('edit');
     setScrubbing(false);
     setDetailOpen(false);
@@ -173,12 +177,12 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
     // Loaded on open only: a sync landing mid-edit must not overwrite what is
     // being typed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, routineId, draft]);
+  }, [visible, routineId]);
 
   const roles = useMemo(() => supersetRoles(rows.map(r => r.item)), [rows]);
   // An exercise the draft will create is named by its `new:` id until Save.
   const pending = (exerciseId: string) =>
-    exerciseId.startsWith(NEW_EXERCISE_PREFIX) ? draft?.newExercises[exerciseId.slice(NEW_EXERCISE_PREFIX.length)] ?? null : null;
+    exerciseId.startsWith(NEW_EXERCISE_PREFIX) ? seed?.newExercises[exerciseId.slice(NEW_EXERCISE_PREFIX.length)] ?? null : null;
   const kindOf = (exerciseId: string): ExerciseKind =>
     pending(exerciseId)?.kind ?? catalogExercise(exercises, exerciseId)?.kind ?? 'weight_reps';
   const nameOf = (exerciseId: string) =>
@@ -266,6 +270,23 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
     animateLayout();
     setOpenRowId(prev => (prev === rowId ? null : rowId));
   };
+
+  // ==== describing ====
+  /**
+   * A described routine fills the form in place. It is offered only while the
+   * form is still empty, so applying it never replaces anything typed, and the
+   * baseline stays the empty routine: nothing of it is saved until Save.
+   */
+  const applyDescribed = (d: RoutineDraft) => {
+    setDescribed(d);
+    setName(d.name);
+    setNotes(d.notes);
+    setRows(toRows(d.items));
+    setOpenRowId(null);
+    setRefusal(null);
+    setDescribing(false);
+  };
+  const canOfferDescribe = canDescribe && !routine && !seed && rows.length === 0 && !name.trim() && !notes.trim();
 
   // ==== saving, cancelling, deleting ====
   const dirty = visible && snapshotOf(name, notes, rows) !== baseline.current;
@@ -369,6 +390,13 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
             addedLabel="In routine"
           />
           <ExerciseDetailSheet visible={visible && detailOpen} exerciseId={detailId} onClose={() => setDetailOpen(false)} />
+          <DescribeWorkoutSheet
+            visible={visible && describing}
+            mode="routine"
+            onClose={() => setDescribing(false)}
+            onRoutine={applyDescribed}
+            onWorkout={() => setDescribing(false)}
+          />
         </>
       }
     >
@@ -417,6 +445,18 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
           accessibilityLabel="Routine notes"
         />
       </View>
+      {canOfferDescribe && (
+        <View style={styles.describeRow}>
+          <InlineAction
+            icon="sparkles-outline"
+            label="Describe it instead"
+            variant="neutral"
+            surface="page"
+            onPress={() => { haptics.tap(); setDescribing(true); }}
+            accessibilityLabel="Describe this routine in words"
+          />
+        </View>
+      )}
       {refusal && <Text style={styles.refusal}>{refusal}</Text>}
 
       <Text style={styles.groupLabel}>Exercises</Text>
@@ -730,6 +770,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   cardSep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator, marginLeft: spacing.md },
   notesInput: { color: colors.text, fontSize: font.md, paddingHorizontal: spacing.md, paddingTop: spacing.smd, paddingBottom: spacing.md, minHeight: 48 },
+  describeRow: { flexDirection: 'row', marginTop: spacing.smd },
   refusal: { color: colors.redText, fontSize: font.sm, marginTop: spacing.sm, marginHorizontal: spacing.xs },
   groupLabel: {
     color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold,

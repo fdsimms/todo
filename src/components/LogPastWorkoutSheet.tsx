@@ -9,10 +9,12 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { CountStepper } from './CountStepper';
 import { CalendarPicker } from './CalendarPicker';
 import { ExercisePickerSheet } from './ExercisePickerSheet';
+import { DescribeWorkoutSheet } from './DescribeWorkoutSheet';
 import { InlineAction } from './InlineAction';
 import { TextField } from './TextField';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useTextScale } from '../hooks/useTextScale';
 import type { WorkoutSet } from '../types';
@@ -32,11 +34,17 @@ import {
   PAST_WORKOUT_DEFAULT_MINUTES, PAST_WORKOUT_MAX_MINUTES, PAST_WORKOUT_MIN_MINUTES,
   buildPastWorkout, nextSetText, pastWorkoutTouched, type PastExerciseDraft, type PastSetText,
 } from '../utils/pastWorkout';
+import type { ImportedSession } from '../utils/workoutCsv';
 import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
   onClose: () => void;
+  /**
+   * A workout described in words, ready for the import review. The caller opens
+   * that review and closes this sheet; with no handler the row isn't offered.
+   */
+  onDescribed?: (session: ImportedSession) => void;
 }
 
 /** "Tue, Oct 20", with the year once it isn't this one. */
@@ -69,7 +77,7 @@ const COLUMN_UNIT: Partial<Record<SetField, string>> = { distance: 'm' };
  * - The exercise picker is rendered inside this sheet's Modal: a sibling sheet
  *   would never appear.
  */
-export function LogPastWorkoutSheet({ visible, onClose }: Props) {
+export function LogPastWorkoutSheet({ visible, onClose, onDescribed }: Props) {
   const colors = useColors();
   const textScale = useTextScale();
   const styles = useMemo(() => makeStyles(colors, textScale), [colors, textScale]);
@@ -84,6 +92,9 @@ export function LogPastWorkoutSheet({ visible, onClose }: Props) {
   const [exercises, setExercises] = useState<PastExerciseDraft[]>([]);
   const [pickingWhen, setPickingWhen] = useState(false);
   const [pickingExercise, setPickingExercise] = useState(false);
+  const [describing, setDescribing] = useState(false);
+  // Claude only (`workoutDraft` has no on-device engine), so no key or a switched-off feature means no row.
+  const canDescribe = useAiRoute('workoutDraft') !== 'unavailable';
 
   useEffect(() => {
     if (!visible) return;
@@ -93,6 +104,7 @@ export function LogPastWorkoutSheet({ visible, onClose }: Props) {
     setExercises([]);
     setPickingWhen(false);
     setPickingExercise(false);
+    setDescribing(false);
   }, [visible]);
 
   // ==== editing the list ====
@@ -185,6 +197,19 @@ export function LogPastWorkoutSheet({ visible, onClose }: Props) {
               accessibilityLabel="Workout name"
             />
           </View>
+
+          {onDescribed && canDescribe && !pastWorkoutTouched(title, exercises) && (
+            <View style={styles.describeRow}>
+              <InlineAction
+                icon="sparkles-outline"
+                label="Describe it instead"
+                variant="neutral"
+                surface="page"
+                onPress={() => { haptics.tap(); setDescribing(true); }}
+                accessibilityLabel="Describe this workout in words"
+              />
+            </View>
+          )}
 
           <Text style={styles.groupLabel}>When</Text>
           <View style={styles.card}>
@@ -345,6 +370,13 @@ export function LogPastWorkoutSheet({ visible, onClose }: Props) {
           addedIds={exercises.map(e => e.exerciseId)}
           addedLabel="In workout"
         />
+        <DescribeWorkoutSheet
+          visible={visible && describing}
+          mode="log"
+          onClose={() => setDescribing(false)}
+          onRoutine={() => setDescribing(false)}
+          onWorkout={session => { setDescribing(false); onDescribed?.(session); }}
+        />
       </View>
     </SheetModal>
   );
@@ -401,4 +433,5 @@ const makeStyles = (colors: Colors, textScale: number) => StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator,
   },
   addExercise: { flexDirection: 'row', marginTop: spacing.xs },
+  describeRow: { flexDirection: 'row', marginTop: spacing.smd },
 });
