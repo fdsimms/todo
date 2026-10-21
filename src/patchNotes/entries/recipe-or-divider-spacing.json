@@ -1,1 +1,1 @@
-{ "message": "In a recipe, the \"or\" between two ingredient options now has more space around it.", "date": "2026-10-21" }
+{ "message": "In a recipe, a group of either/or ingredients now has a gap above it, so it no longer touches the ingredient before it.", "date": "2026-10-21" }
