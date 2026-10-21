@@ -32,6 +32,10 @@ interface Props {
   item: WorkoutRoutineItem;
   kind: ExerciseKind;
   unit: WeightUnit;
+  /** 2 reads a stored one-dumbbell weight as a pair total (`dumbbellLoad.ts`). */
+  scale: number;
+  /** " each" or " pair" after the unit in the weight heading, or nothing. */
+  weightSuffix: string;
   /** "32.5, 50 and 65 kg": what a ramp lays out from the target weight, or null with none to ramp from. */
   rampLoads: string | null;
   onChange: (change: (item: WorkoutRoutineItem) => WorkoutRoutineItem) => void;
@@ -48,7 +52,7 @@ const EDITABLE: readonly SetField[] = ['weight', 'reps', 'duration'];
 
 const anchorOf = (e: GestureResponderEvent): CardAnchor => ({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
 
-export function RoutineSetTable({ item, kind, unit, rampLoads, onChange }: Props) {
+export function RoutineSetTable({ item, kind, unit, scale, weightSuffix, rampLoads, onChange }: Props) {
   const colors = useColors();
   const textScale = useTextScale();
   const styles = useMemo(() => makeStyles(colors, textScale), [colors, textScale]);
@@ -70,7 +74,7 @@ export function RoutineSetTable({ item, kind, unit, rampLoads, onChange }: Props
   // What the field holds while it is typed in, which for a reps range is the
   // text it was read from ("8–12"), and for an AMRAP the floor without its "+".
   const cellText = (t: RoutineSetTarget, field: SetField): string | null => {
-    if (field === 'weight') return t.weightKg != null ? formatWeightNumber(t.weightKg, unit) : null;
+    if (field === 'weight') return t.weightKg != null ? formatWeightNumber(t.weightKg * scale, unit) : null;
     if (field === 'reps') return describeTargetReps(t);
     if (field === 'duration') return t.durationSeconds != null ? formatRestSeconds(t.durationSeconds) : null;
     return null;
@@ -82,7 +86,7 @@ export function RoutineSetTable({ item, kind, unit, rampLoads, onChange }: Props
       if (reps) onChange(i => withSetReps(i, index, reps.min, reps.max));
       return;
     }
-    const patch = parseSetCell(field, text, unit);
+    const patch = parseSetCell(field, text, unit, scale);
     if (!patch) return;
     if (field === 'weight') onChange(i => withSetWeight(i, index, patch.weightKg ?? null));
     else if (field === 'duration') onChange(i => withSetDuration(i, index, patch.durationSeconds ?? null));
@@ -101,7 +105,7 @@ export function RoutineSetTable({ item, kind, unit, rampLoads, onChange }: Props
       <View style={styles.head} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
         <Text style={[styles.headCell, styles.colBadge, styles.headSet]}>Set</Text>
         {fields.map(f => (
-          <Text key={f} style={[styles.headCell, styles.colValue, styles.headValue]}>{columnLabel(f, kind, unit)}</Text>
+          <Text key={f} style={[styles.headCell, styles.colValue, styles.headValue]}>{columnLabel(f, kind, unit, weightSuffix)}</Text>
         ))}
       </View>
 

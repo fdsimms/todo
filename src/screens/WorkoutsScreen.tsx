@@ -39,6 +39,7 @@ import { WorkoutImportSheet } from '../components/WorkoutImportSheet';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
 import type { ImportedSession } from '../utils/workoutCsv';
 import type { RoutineDraft } from '../utils/workoutDraft';
+import { LogPastWorkoutSheet } from '../components/LogPastWorkoutSheet';
 import { GymsSheet } from '../components/GymsSheet';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { pickBackupFile } from '../utils/backupFile';
@@ -219,6 +220,7 @@ export function WorkoutsScreen() {
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [gymsOpen, setGymsOpen] = useState(false);
+  const [logPastOpen, setLogPastOpen] = useState(false);
   const workoutUnit = useSettingsStore(s => s.workoutUnit);
   const loadSets = useWorkoutStore(s => s.loadSets);
 
@@ -234,10 +236,10 @@ export function WorkoutsScreen() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const search = useFilterField();
   const filter = useExerciseFilters();
-  const results = useMemo(
-    () => searchExercises(exercises, search.query, filter.filters).map(r => r.exercise),
-    [exercises, search.query, filter.filters]
-  );
+  const found = useMemo(() => searchExercises(exercises, search.query, filter.filters), [exercises, search.query, filter.filters]);
+  const results = useMemo(() => found.map(r => r.exercise), [found]);
+  // Which results the search reached by another name, so their row can say so.
+  const viaOtherName = useMemo(() => new Map(found.flatMap(r => (r.viaOtherName ? [[r.exercise.id, r.viaOtherName] as const] : []))), [found]);
 
   const openExercise = useCallback((id: string) => {
     haptics.tap();
@@ -322,11 +324,11 @@ export function WorkoutsScreen() {
     >
       <View style={styles.flex}>
         <Text style={styles.title}>{item.name}</Text>
-        <Text style={styles.detail}>{describeExercise(item)}</Text>
+        <Text style={styles.detail}>{describeExercise(item, viaOtherName.get(item.id))}</Text>
       </View>
       <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
     </TouchableOpacity>
-  ), [styles, colors, openExercise]);
+  ), [styles, colors, openExercise, viaOtherName]);
 
   // Clears the start button floating in the corner, so the last row can scroll out from under it.
   const listBottom = { paddingBottom: tabBarHeight + FAB_SIZE + spacing.xl };
@@ -699,6 +701,7 @@ export function WorkoutsScreen() {
         {!live && (
           <InlineAction variant="neutral" label="Start empty workout" surface="page" onPress={() => startWorkout()} />
         )}
+        <InlineAction variant="neutral" label="Log a past workout" surface="page" onPress={() => setLogPastOpen(true)} />
       </View>
       {archivedItems.map(entry => (
         <React.Fragment key={entry.key}>{renderRoutine({ item: entry, drag: () => {} })}</React.Fragment>
@@ -860,6 +863,7 @@ export function WorkoutsScreen() {
           anchor={menuAnchor}
           onClose={() => setMenuOpen(false)}
           actions={[
+            { key: 'logPast', label: 'Log a past workout', icon: 'time-outline', onPress: () => setLogPastOpen(true) },
             { key: 'gyms', label: 'Gyms', icon: 'location-outline', onPress: () => setGymsOpen(true) },
             ...(canDescribe
               ? [{ key: 'describe', label: 'Describe a workout', icon: 'sparkles-outline' as const, onPress: () => setDescribeOpen(true) }]
@@ -870,6 +874,9 @@ export function WorkoutsScreen() {
               : []),
           ]}
         />
+      </LazySheet>
+      <LazySheet open={logPastOpen}>
+        <LogPastWorkoutSheet visible={logPastOpen} onClose={() => setLogPastOpen(false)} />
       </LazySheet>
       <LazySheet open={gymsOpen}>
         <GymsSheet visible={gymsOpen} onClose={() => setGymsOpen(false)} />

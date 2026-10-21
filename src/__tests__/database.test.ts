@@ -6433,7 +6433,7 @@ describe('reclaiming freed pages at launch', () => {
 describe('workouts', () => {
   const exercise = {
     id: 'c1', name: 'Landmine row', kind: 'weight_reps' as const, primaryMuscles: ['upper_back' as const],
-    secondaryMuscles: ['biceps' as const], equipment: 'barbell' as const, barKg: null, notes: 'V handle',
+    secondaryMuscles: ['biceps' as const], equipment: 'barbell' as const, barKg: null, dumbbells: null, loadEntry: null as 'each' | 'pair' | null, notes: 'V handle', otherNames: [] as string[],
     archived: false, isCustom: true, createdAt: '2026-10-01T10:00:00.000Z',
   };
   const session = {
@@ -6446,6 +6446,13 @@ describe('workouts', () => {
     supersetKey: null, note: null, ...extra,
   });
 
+  it('round-trips the dumbbell count and weight entry, and reads junk as nothing', () => {
+    dbSaveExercise({ ...exercise, equipment: 'dumbbell', dumbbells: 1, loadEntry: 'pair' });
+    expect(dbGetAllExercises()[0]).toMatchObject({ dumbbells: 1, loadEntry: 'pair' });
+    mockRawDb.prepare('UPDATE exercises SET dumbbells = 7, load_entry = ?').run('both');
+    expect(dbGetAllExercises()[0]).toMatchObject({ dumbbells: null, loadEntry: null });
+  });
+
   it('round-trips an exercise, keying the name of a custom one only', () => {
     dbSaveExercise(exercise);
     dbSaveExercise({ ...exercise, id: 'lib:back-squat', name: 'High-bar squat', isCustom: false });
@@ -6456,6 +6463,13 @@ describe('workouts', () => {
     ]);
     dbDeleteExercise('c1');
     expect(dbGetAllExercises().map(e => e.id)).toEqual(['lib:back-squat']);
+  });
+
+  it('round-trips an exercise\'s other names, and reads a row written without them as none', () => {
+    dbSaveExercise({ ...exercise, otherNames: ['Sled row', 'Landmine pull'] });
+    expect(dbGetAllExercises().find(e => e.id === 'c1')!.otherNames).toEqual(['Sled row', 'Landmine pull']);
+    mockRawDb.prepare('UPDATE exercises SET other_names = ? WHERE id = ?').run('garbled', 'c1');
+    expect(dbGetAllExercises().find(e => e.id === 'c1')!.otherNames).toEqual([]);
   });
 
   it('refuses a second custom exercise by the same name, whatever the spacing or case', () => {

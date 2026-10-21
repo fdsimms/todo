@@ -198,6 +198,43 @@ export function cleanWorkoutName(name: string): string {
   return name.trim().replace(/\s+/g, ' ').slice(0, WORKOUT_NAME_MAX_LENGTH);
 }
 
+/** The most other names one exercise keeps. */
+export const EXERCISE_OTHER_NAMES_MAX = 8;
+
+/**
+ * An exercise's other names as stored: each cleaned like a name, blanks and
+ * repeats dropped (judged on `exerciseNameKey`), the exercise's own name left
+ * out since it is already how it is found, and capped.
+ */
+export function cleanOtherNames(names: readonly string[], ownName: string): string[] {
+  const seen = new Set([exerciseNameKey(ownName)]);
+  const out: string[] = [];
+  for (const raw of names) {
+    const name = cleanWorkoutName(raw);
+    const key = exerciseNameKey(name);
+    if (!name || seen.has(key)) continue;
+    seen.add(key);
+    out.push(name);
+  }
+  return out.slice(0, EXERCISE_OTHER_NAMES_MAX);
+}
+
+/** The text a person types for a list of other names: one per comma. */
+export const parseOtherNames = (text: string): string[] => text.split(/[,\n;]/);
+
+export const formatOtherNames = (names: readonly string[]): string => names.join(', ');
+
+/** The `other_names` column read back: a JSON array of strings, anything else as none. */
+export function readOtherNames(raw: unknown): string[] {
+  if (typeof raw !== 'string' || !raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((n): n is string => typeof n === 'string' && n.trim() !== '') : [];
+  } catch {
+    return [];
+  }
+}
+
 /**
  * A name nobody else holds: the one given, else "Upper A (2)", "Upper A (3)"
  * and on. Clashes are judged on `exerciseNameKey`, the key this area's names

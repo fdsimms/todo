@@ -9,6 +9,10 @@ import type { WeightUnit } from '../utils/weightLog';
 import { MUSCLE_LABELS } from '../utils/workoutData';
 import type { MuscleRow, WeekBar } from '../utils/workoutRecords';
 import { formatRecordValue, recordLabel } from '../utils/workoutRecordText';
+import { weightScale } from '../utils/dumbbellLoad';
+import { catalogExercise } from '../utils/exerciseCatalog';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { useWorkoutStore } from '../store/useWorkoutStore';
 import type { WorkoutStatsRecord } from '../hooks/useWorkoutStats';
 
 /**
@@ -95,11 +99,14 @@ export function WorkoutMusclesCard({ muscles }: { muscles: readonly MuscleRow[] 
 export function WorkoutRecordsCard({ records, unit }: { records: readonly WorkoutStatsRecord[]; unit: WeightUnit }) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const exercises = useWorkoutStore(s => s.exercises);
+  const dumbbellEntry = useSettingsStore(s => s.dumbbellEntry);
   return (
     <View style={styles.card}>
       {records.map(({ event, name, kind }, i) => {
         const date = format(new Date(`${event.dayKey}T12:00:00`), 'MMM d');
-        const value = formatRecordValue(event, kind, unit);
+        // A pair total reads each stored one-dumbbell weight doubled (`dumbbellLoad.ts`).
+        const value = formatRecordValue(event, kind, unit, weightScale(catalogExercise(exercises, event.exerciseId), dumbbellEntry));
         return (
           <View
             key={`${event.exerciseId}-${event.sessionId}`}

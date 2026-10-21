@@ -14,6 +14,7 @@
  *
  * Every weight is kilograms, whatever unit the person's phone shows.
  */
+import { dumbbellsUsed } from '../../src/utils/dumbbellLoad';
 import type {
   Exercise, ExerciseEquipment, Gym, GymExerciseSetting, MuscleGroup, ProgressionScheme, RoutineSetTarget, TrainingMax, WorkoutProgram, WorkoutRoutine,
   WorkoutRoutineItem, WorkoutSession, WorkoutSet, WorkoutSetKind,
@@ -43,6 +44,8 @@ export interface ExerciseRow {
   secondaryMuscles?: MuscleGroup[];
   /** How it's done, from the library. */
   cue?: string;
+  /** Other names the person knows it by. list_exercises's query finds an exercise by them. */
+  otherNames?: string[];
   /** The person's own notes. */
   notes?: string;
   /** One the person made, rather than a built-in. */
@@ -52,6 +55,8 @@ export interface ExerciseRow {
   archived?: true;
   /** A bar weight the person set, in kg. */
   barKg?: number;
+  /** For a dumbbell exercise, how many dumbbells it is held in (1 or 2). A set's weightKg is one dumbbell's either way. */
+  dumbbells?: 1 | 2;
 }
 
 function exerciseRow(e: CatalogExercise): ExerciseRow {
@@ -63,11 +68,13 @@ function exerciseRow(e: CatalogExercise): ExerciseRow {
     primaryMuscles: e.primaryMuscles,
     ...(e.secondaryMuscles.length ? { secondaryMuscles: e.secondaryMuscles } : {}),
     ...(e.cue ? { cue: e.cue } : {}),
+    ...(e.otherNames.length ? { otherNames: e.otherNames } : {}),
     ...(e.notes ? { notes: e.notes } : {}),
     ...(!e.builtIn ? { custom: true as const } : {}),
     ...(e.overridden ? { changedByYou: true as const } : {}),
     ...(e.archived ? { archived: true as const } : {}),
     ...(e.barKg !== null ? { barKg: e.barKg } : {}),
+    ...(dumbbellsUsed(e) ? { dumbbells: dumbbellsUsed(e)! } : {}),
   };
 }
 
@@ -383,7 +390,7 @@ export function exerciseHistory(
   replica: Replica,
   input: ExerciseHistoryInput,
 ): {
-  exercise: { id: string; name: string; kind: string; equipment: ExerciseEquipment; primaryMuscles: MuscleGroup[]; secondaryMuscles?: MuscleGroup[]; barKg?: number };
+  exercise: { id: string; name: string; kind: string; equipment: ExerciseEquipment; primaryMuscles: MuscleGroup[]; secondaryMuscles?: MuscleGroup[]; barKg?: number; dumbbells?: 1 | 2 };
   sessions: number;
   firstDate?: string;
   lastDate?: string;
@@ -411,6 +418,7 @@ export function exerciseHistory(
     primaryMuscles: info.primaryMuscles,
     ...(info.secondaryMuscles.length ? { secondaryMuscles: info.secondaryMuscles } : {}),
     ...(info.barKg !== null ? { barKg: info.barKg } : {}),
+    ...(dumbbellsUsed(info) ? { dumbbells: dumbbellsUsed(info)! } : {}),
   };
   if (analysis.points.length === 0) {
     return { exercise, sessions: 0, personalRecords: [], note: WITHHELD_HISTORY_NOTE };

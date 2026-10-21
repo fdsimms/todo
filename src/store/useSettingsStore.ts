@@ -4,6 +4,7 @@ import { create } from 'zustand';
 import { dbGetAllSettings, dbGetDeviceId, dbGetSetting, dbSetSetting } from '../db/database';
 import type { ThemeMode } from '../theme';
 import type { WeightUnit } from '../utils/weightLog';
+import type { DumbbellEntry } from '../utils/dumbbellLoad';
 import type { WaterUnit } from '../utils/waterLog';
 import type { PlateInventory } from '../types';
 import { DEFAULT_PLATE_INVENTORY, clampRestSeconds, normalizePlateInventory, parsePlateInventory, parseRestSeconds, DEFAULT_REST_SECONDS } from '../utils/workoutData';
@@ -111,7 +112,7 @@ import { parseExpiredTaskGrace, serializeExpiredTaskGrace, type ExpiredTaskGrace
 import { DEFAULT_APP_LOCK_GRACE_SECONDS, parseGraceSeconds } from '../utils/appLock';
 import { FDC_KEY_SECURE_KEY, GO_UPC_KEY_SECURE_KEY, loadAnthropicApiKey, loadSecureKey, saveAnthropicApiKey, saveSecureKey } from '../utils/secureApiKey';
 import {
-  AI_FEATURE_IDS, defaultAiFeatureConfig, isAiModelId,
+  AI_FEATURE_IDS, currentAiModelId, defaultAiFeatureConfig,
   type AiFeatureConfig, type AiFeatureConfigMap, type AiFeatureId,
 } from '../utils/aiFeatures';
 import {
@@ -1227,6 +1228,8 @@ interface SettingsStore {
    * what a screen displays, never what a set's `weightKg` holds.
    */
   workoutUnit: WeightUnit;
+  /** How a weight is typed for an exercise held in two dumbbells (`src/utils/dumbbellLoad.ts`). */
+  dumbbellEntry: DumbbellEntry;
   /**
    * The gym a workout starts at before the phone's position says otherwise
    * (`startingGymId`, utils/gyms.ts). Null means the gym last used. Kept out of
@@ -2247,6 +2250,7 @@ interface SettingsStore {
   setWaterUnit: (unit: WaterUnit) => void;
   setWorkoutsEnabled: (on: boolean) => void;
   setWorkoutUnit: (unit: WeightUnit) => void;
+  setDumbbellEntry: (entry: DumbbellEntry) => void;
   setDefaultGymId: (id: string | null) => void;
   setPlateInventory: (inventory: PlateInventory) => void;
   setDefaultRestSeconds: (seconds: number) => void;
@@ -2618,6 +2622,7 @@ const DEFAULT_SETTINGS = {
   weightUnit: 'kg' as WeightUnit,
   waterUnit: 'ml' as WaterUnit,
   workoutUnit: 'kg' as WeightUnit,
+  dumbbellEntry: 'each' as DumbbellEntry,
   defaultRestSeconds: DEFAULT_REST_SECONDS,
   moodContextSources: NO_MOOD_CONTEXT_SOURCES,
   healthTasks: false,
@@ -3105,6 +3110,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   waterUnit: 'ml',
   workoutsEnabled: false,
   workoutUnit: 'kg',
+  dumbbellEntry: 'each',
   defaultGymId: null,
   plateInventory: DEFAULT_PLATE_INVENTORY,
   defaultRestSeconds: DEFAULT_REST_SECONDS,
@@ -3542,6 +3548,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const workoutsEnabled = dbGetSetting('workoutsEnabled') === 'true';
     // As weightUnit: anything that isn't 'lb' reads as kilograms.
     const workoutUnit: WeightUnit = dbGetSetting('workoutUnit') === 'lb' ? 'lb' : 'kg';
+    const dumbbellEntry: DumbbellEntry = dbGetSetting('dumbbellEntry') === 'pair' ? 'pair' : 'each';
     const plateInventory = parsePlateInventory(dbGetSetting('plateInventory'));
     const defaultGymId = dbGetSetting('defaultGymId') || null;
     const defaultRestSeconds = parseRestSeconds(dbGetSetting('defaultRestSeconds'));
@@ -3882,7 +3889,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
           if (!stored) continue;
           aiFeatureConfig[id] = {
             enabled: typeof stored.enabled === 'boolean' ? stored.enabled : aiFeatureConfig[id].enabled,
-            model: isAiModelId(stored.model) ? stored.model : aiFeatureConfig[id].model,
+            model: currentAiModelId(stored.model) ?? aiFeatureConfig[id].model,
             preferOnDevice: typeof stored.preferOnDevice === 'boolean'
               ? stored.preferOnDevice
               : aiFeatureConfig[id].preferOnDevice,
@@ -3978,6 +3985,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       dreamLogLastDayKey,
       dreamLogTaskCategory,
       dreamLogTasks,
+      dumbbellEntry,
       eveningStart,
       eventRules,
       eventTaskCategory,
@@ -5870,6 +5878,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setWorkoutUnit(unit: WeightUnit) {
     dbSetSetting('workoutUnit', unit);
     set({ workoutUnit: unit });
+  },
+
+  setDumbbellEntry(entry: DumbbellEntry) {
+    dbSetSetting('dumbbellEntry', entry);
+    set({ dumbbellEntry: entry });
   },
 
   setDefaultGymId(id: string | null) {

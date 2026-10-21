@@ -83,6 +83,7 @@ import { useWatchClashStore } from './useWatchClashStore';
 import { buildCatalog, catalogExercise } from '../utils/exerciseCatalog';
 import { liftVolumeKg } from '../utils/workoutRecords';
 import {
+  cleanOtherNames,
   cleanWorkoutName,
   exerciseNameKey,
   freeWorkoutName,
@@ -123,10 +124,14 @@ export interface ExerciseInput {
   primaryMuscles: MuscleGroup[];
   secondaryMuscles?: MuscleGroup[];
   barKg?: number | null;
+  dumbbells?: 1 | 2 | null;
+  loadEntry?: 'each' | 'pair' | null;
   notes?: string;
+  /** Other names it is known by. Cleaned (`cleanOtherNames`), and refused if another exercise already goes by one. */
+  otherNames?: string[];
 }
 
-/** What an edit may change. On a built-in exercise only `name`, `notes`, `barKg` and `archived` take effect. */
+/** What an edit may change. On a built-in exercise only `name`, `otherNames`, `notes`, `barKg`, `dumbbells`, `loadEntry` and `archived` take effect. */
 export type ExercisePatch = Partial<Omit<ExerciseInput, 'secondaryMuscles'>> & {
   secondaryMuscles?: MuscleGroup[];
   archived?: boolean;
@@ -287,6 +292,8 @@ export type SetPatch = Partial<Omit<SetInput, 'exerciseId' | 'id'>>;
 /** Why a write was refused, for the caller to say in its own words. */
 export type WorkoutRefusal =
   | 'blank' | 'taken' | 'notFound' | 'hasHistory' | 'live' | 'finished' | 'empty' | 'order'
+  /** An other name an exercise on offer already goes by, as its name or as one of its own other names. */
+  | 'otherNameTaken'
   /** A routine item asks for a warm-up ramp on an exercise that doesn't record weight and reps. */
   | 'rampKind';
 
@@ -589,6 +596,16 @@ interface WorkoutStore {
 const nowIso = () => new Date().toISOString();
 
 /** A finite number at or above zero, or null. */
+/** The dumbbell count and weight entry a row keeps: nothing for equipment that isn't a dumbbell. */
+function dumbbellFields(
+  equipment: ExerciseEquipment,
+  dumbbells: 1 | 2 | null | undefined,
+  loadEntry: 'each' | 'pair' | null | undefined,
+): Pick<Exercise, 'dumbbells' | 'loadEntry'> {
+  if (equipment !== 'dumbbell') return { dumbbells: null, loadEntry: null };
+  return { dumbbells: dumbbells === 1 || dumbbells === 2 ? dumbbells : null, loadEntry: loadEntry ?? null };
+}
+
 const amount = (v: number | null | undefined): number | null =>
   typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null;
 
@@ -673,6 +690,18 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
     const key = exerciseNameKey(name);
     return buildCatalog(get().exercises).some(e =>
       e.id !== exceptId && (!e.archived || e.isCustom) && exerciseNameKey(e.name) === key);
+  };
+
+  /**
+   * Whether another exercise on offer already goes by one of these names, as its
+   * own name or as one of its other names. Two exercises answering to one name
+   * would leave a search, and an import's name match, with no way to say which.
+   */
+  const otherNameTaken = (names: readonly string[], exceptId: string | null): boolean => {
+    const keys = new Set(names.map(exerciseNameKey));
+    return buildCatalog(get().exercises).some(e =>
+      e.id !== exceptId && !e.archived
+      && [e.name, ...e.otherNames].some(n => keys.has(exerciseNameKey(n))));
   };
 
   const putExercise = (row: Exercise) => {
@@ -990,14 +1019,18 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       const name = cleanWorkoutName(input.name);
       if (!name) return 'blank';
       if (nameTaken(name, null)) return 'taken';
+      const otherNames = cleanOtherNames(input.otherNames ?? [], name);
+      if (otherNameTaken(otherNames, null)) return 'otherNameTaken';
       const row: Exercise = {
         id: generateId(),
         name,
+        otherNames,
         kind: input.kind,
         primaryMuscles: readMuscles(input.primaryMuscles),
         secondaryMuscles: readMuscles(input.secondaryMuscles ?? []),
         equipment: input.equipment,
         barKg: amount(input.barKg) || null,
+        ...dumbbellFields(input.equipment, input.dumbbells, input.loadEntry),
         notes: input.notes?.trim() ?? '',
         archived: false,
         isCustom: true,
@@ -1017,6 +1050,9 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         if (!name) return 'blank';
         if (nameTaken(name, id)) return 'taken';
       }
+      // Cleaned against the name it ends up with, since renaming to one of its own other names makes that one redundant.
+      const otherNames = cleanOtherNames(patch.otherNames ?? existing?.otherNames ?? [], name);
+      if (patch.otherNames !== undefined && otherNameTaken(otherNames, id)) return 'otherNameTaken';
       const base: Exercise = existing ?? {
         // The first change to a built-in writes the row that carries it, with
         // the library's description of the movement beside the person's words.
@@ -1027,6 +1063,8 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         secondaryMuscles: [...lib!.secondaryMuscles],
         equipment: lib!.equipment,
         barKg: null,
+        dumbbells: null,
+        loadEntry: null,
         notes: '',
         archived: false,
         isCustom: false,
@@ -1044,6 +1082,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       const row: Exercise = {
         ...base,
         name,
+        otherNames,
         notes: patch.notes !== undefined ? patch.notes.trim() : base.notes,
         barKg: patch.barKg !== undefined ? amount(patch.barKg) || null : base.barKg,
         archived: patch.archived ?? base.archived,
@@ -1055,6 +1094,11 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
           secondaryMuscles: patch.secondaryMuscles ? readMuscles(patch.secondaryMuscles) : base.secondaryMuscles,
         } : {}),
       };
+      Object.assign(row, dumbbellFields(
+        row.equipment,
+        patch.dumbbells !== undefined ? patch.dumbbells : base.dumbbells,
+        patch.loadEntry !== undefined ? patch.loadEntry : base.loadEntry,
+      ));
       putExercise(row);
       return row;
     },
@@ -1602,6 +1646,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
           secondaryMuscles: readMuscles(input.secondaryMuscles ?? []),
           equipment: input.equipment,
           barKg: null,
+          ...dumbbellFields(input.equipment, input.dumbbells, input.loadEntry),
           notes: input.notes?.trim() ?? '',
           archived: false,
           isCustom: true,

@@ -3,6 +3,7 @@ import type { WatchSessionInput } from '../store/useWorkoutStore';
 import type { WeightUnit } from './weightLog';
 import { completionTapFor, offersMealLogOnCompletion } from './completionTap';
 import { workoutTaskEffect } from './workoutTask';
+import { storedKgFromShown } from './dumbbellLoad';
 import { WORKOUT_SET_KINDS, weightFromDisplay, weightToDisplay } from './workoutData';
 import type { WatchWorkoutSpan } from './watchHealthWorkout';
 
@@ -375,6 +376,13 @@ export function planQuietTaps(
   mealLogPrompt: boolean,
   isCurrentDay: (iso: string) => boolean,
   workouts: QuietTapWorkouts | null = null,
+  /**
+   * What an exercise's weights are multiplied by to be shown (2 for a two-dumbbell
+   * exercise logged as a pair total, `dumbbellLoad.ts`). The watch is sent shown
+   * weights and sends them back, and `tickValuesFromWatch` can't know the exercise,
+   * so the weights it read are put back to one dumbbell's here, where it is known.
+   */
+  weightScaleFor: (exerciseId: string) => number = () => 1,
 ): QuietTapAction[] {
   const byId = new Map(tasks.map(t => [t.id, t]));
   const working = new Map<string, Task>();
@@ -423,7 +431,7 @@ export function planQuietTaps(
   };
   const tick = (sessionId: string, setId: string, set: WorkingSet, at: string, sent: WatchTickValues, unit: WeightUnit) => {
     set.done = true;
-    actions.push({ type: 'tickWorkoutSet', sessionId, setId, at, values: changedWatchValues(sent, set.values, unit) });
+    actions.push({ type: 'tickWorkoutSet', sessionId, setId, at, values: changedWatchValues(perDumbbell(sent, weightScaleFor(set.exerciseId)), set.values, unit) });
   };
   const askFor = (taskId: string | null): Task | null => {
     const task = taskId ? byId.get(taskId) ?? null : null;
@@ -550,7 +558,13 @@ export function planQuietTaps(
       const workout = tap.workout;
       if (!workout || written.has(workout.id) || workouts?.sessionIds.has(workout.id)) continue;
       written.add(workout.id);
-      actions.push({ type: 'addWatchSession', workout });
+      actions.push({
+        type: 'addWatchSession',
+        workout: {
+          ...workout,
+          sets: workout.sets.map(s => (s.weightKg === null ? s : { ...s, weightKg: storedKgFromShown(s.weightKg, weightScaleFor(s.exerciseId)) })),
+        },
+      });
       const ask = askFor(workout.taskId);
       if (ask) actions.push({ type: 'handToApp', id: ask.id, at: workout.endedAt, fromWorkout: true });
       continue;
@@ -699,6 +713,11 @@ export function changedWatchValues(
   if (sent.distanceM !== undefined && sent.distanceM !== current.distanceM
     && !(current.distanceM === null && sent.distanceM === 0)) out.distanceM = sent.distanceM;
   return out;
+}
+
+/** A tick's numbers with its weight put back to one dumbbell's (`weightScaleFor`). */
+function perDumbbell(sent: WatchTickValues, scale: number): WatchTickValues {
+  return sent.weightKg === undefined || scale === 1 ? sent : { ...sent, weightKg: storedKgFromShown(sent.weightKg, scale) };
 }
 
 /** A set's numbers as the drain has them, to compare a tick's against. */

@@ -1,7 +1,7 @@
 import type { ExerciseKind, WorkoutSet } from '../types';
 import type { WeightUnit } from './weightLog';
 import { kgToUnit } from './weightLog';
-import { formatRestSeconds, formatWeightWithUnit, weightToDisplay } from './workoutData';
+import { formatRestSeconds, formatWeightNumber, formatWeightWithUnit, weightToDisplay } from './workoutData';
 import { formatDistance } from './workoutSession';
 import type { RecordMetric, RecordType, SessionPoint, VolumeUnit } from './workoutRecords';
 import { volumeUnit } from './workoutRecords';
@@ -55,28 +55,33 @@ export function recordShortLabel(type: RecordType, kind: ExerciseKind, reps?: nu
   }
 }
 
-/** A volume in the unit its kind has, with that unit: "2,640 kg", "142 reps", "4:30", "1.2 km". */
-export function formatVolume(value: number, kind: ExerciseKind, unit: WeightUnit): string {
+/**
+ * Every function here takes a `scale` (2 for a two-dumbbell exercise logged as a pair
+ * total, `dumbbellLoad.ts`) that multiplies the stored one-dumbbell weights for
+ * reading; the default 1 changes nothing.
+ *
+ * A volume in the unit its kind has, with that unit: "2,640 kg", "142 reps", "4:30", "1.2 km". */
+export function formatVolume(value: number, kind: ExerciseKind, unit: WeightUnit, scale = 1): string {
   const u: VolumeUnit = volumeUnit(kind);
-  if (u === 'kg') return `${withThousands(kgToUnit(value, unit))} ${unit}`;
+  if (u === 'kg') return `${withThousands(kgToUnit(value * scale, unit))} ${unit}`;
   if (u === 'seconds') return formatRestSeconds(value);
   if (u === 'm') return formatDistance(value);
   return `${withThousands(value)} ${value === 1 ? 'rep' : 'reps'}`;
 }
 
 /** A record's figure alone, without the set that holds it: what "was" is followed by. */
-export function formatRecordFigure(type: RecordType, kind: ExerciseKind, value: number, unit: WeightUnit): string {
+export function formatRecordFigure(type: RecordType, kind: ExerciseKind, value: number, unit: WeightUnit, scale = 1): string {
   switch (type) {
     case 'e1rm':
     case 'weight':
     case 'repsAt':
-      return formatWeightWithUnit(value, unit);
+      return formatWeightWithUnit(value * scale, unit);
     case 'best':
       if (kind === 'duration') return formatRestSeconds(value);
       if (kind === 'distance') return formatDistance(value);
       return `${value} ${value === 1 ? 'rep' : 'reps'}`;
     case 'volume':
-      return formatVolume(value, kind, unit);
+      return formatVolume(value, kind, unit, scale);
   }
 }
 
@@ -89,8 +94,9 @@ export function formatRecordValue(
   record: { type: RecordType; value: number; reps?: number; set: Pick<WorkoutSet, 'reps' | 'distanceM'> | null },
   kind: ExerciseKind,
   unit: WeightUnit,
+  scale = 1,
 ): string {
-  const figure = formatRecordFigure(record.type, kind, record.value, unit);
+  const figure = formatRecordFigure(record.type, kind, record.value, unit, scale);
   if (record.type === 'weight' || record.type === 'repsAt') {
     if (kind === 'weight_distance' && record.set?.distanceM != null) return `${figure} × ${formatDistance(record.set.distanceM)}`;
     const reps = record.type === 'repsAt' ? record.reps : record.set?.reps;
@@ -109,12 +115,13 @@ export function formatRecordChange(
   record: { type: RecordType; value: number; previous: number; reps?: number; set: Pick<WorkoutSet, 'reps' | 'distanceM'> | null },
   kind: ExerciseKind,
   unit: WeightUnit,
+  scale = 1,
 ): { before: string; after: string } {
   return {
-    before: formatRecordFigure(record.type, kind, record.previous, unit),
+    before: formatRecordFigure(record.type, kind, record.previous, unit, scale),
     after: record.type === 'repsAt'
-      ? formatRecordFigure(record.type, kind, record.value, unit)
-      : formatRecordValue(record, kind, unit),
+      ? formatRecordFigure(record.type, kind, record.value, unit, scale)
+      : formatRecordValue(record, kind, unit, scale),
   };
 }
 
@@ -146,33 +153,33 @@ export function metricCaption(metric: RecordMetric): string | null {
 }
 
 /** The best set of a point as a line: "90 kg × 3", "12 reps", "1:05". */
-export function formatBestPoint(best: { value: number; set: WorkoutSet }, kind: ExerciseKind, unit: WeightUnit): string {
+export function formatBestPoint(best: { value: number; set: WorkoutSet }, kind: ExerciseKind, unit: WeightUnit, scale = 1): string {
   if (kind === 'weight_reps') {
-    return best.set.reps !== null ? `${formatWeightWithUnit(best.value, unit)} × ${best.set.reps}` : formatWeightWithUnit(best.value, unit);
+    return best.set.reps !== null ? `${formatWeightWithUnit(best.value * scale, unit)} × ${best.set.reps}` : formatWeightWithUnit(best.value * scale, unit);
   }
   if (kind === 'weight_distance') {
-    return best.set.distanceM !== null ? `${formatWeightWithUnit(best.value, unit)} × ${formatDistance(best.set.distanceM)}` : formatWeightWithUnit(best.value, unit);
+    return best.set.distanceM !== null ? `${formatWeightWithUnit(best.value * scale, unit)} × ${formatDistance(best.set.distanceM)}` : formatWeightWithUnit(best.value * scale, unit);
   }
   return formatRecordFigure('best', kind, best.value, unit);
 }
 
 /** A point's value for a metric as text: what the headline and the scrub tooltip show. Null when the session has none. */
-export function formatMetricPoint(point: SessionPoint, metric: RecordMetric, kind: ExerciseKind, unit: WeightUnit): string | null {
-  if (metric === 'e1rm') return point.e1rm !== null ? formatWeightWithUnit(point.e1rm, unit) : null;
-  if (metric === 'best') return point.best ? formatBestPoint(point.best, kind, unit) : null;
-  return point.volume !== null ? formatVolume(point.volume, kind, unit) : null;
+export function formatMetricPoint(point: SessionPoint, metric: RecordMetric, kind: ExerciseKind, unit: WeightUnit, scale = 1): string | null {
+  if (metric === 'e1rm') return point.e1rm !== null ? formatWeightWithUnit(point.e1rm * scale, unit) : null;
+  if (metric === 'best') return point.best ? formatBestPoint(point.best, kind, unit, scale) : null;
+  return point.volume !== null ? formatVolume(point.volume, kind, unit, scale) : null;
 }
 
 /** A point's value as a plain number on the chart's axis, in the unit shown. Null when the session has none. */
-export function metricNumber(point: SessionPoint, metric: RecordMetric, kind: ExerciseKind, unit: WeightUnit): number | null {
+export function metricNumber(point: SessionPoint, metric: RecordMetric, kind: ExerciseKind, unit: WeightUnit, scale = 1): number | null {
   const weighted = kind === 'weight_reps' || kind === 'weight_distance';
-  if (metric === 'e1rm') return point.e1rm !== null ? weightToDisplay(point.e1rm, unit) : null;
+  if (metric === 'e1rm') return point.e1rm !== null ? weightToDisplay(point.e1rm * scale, unit) : null;
   if (metric === 'best') {
     if (!point.best) return null;
-    return weighted ? weightToDisplay(point.best.value, unit) : point.best.value;
+    return weighted ? weightToDisplay(point.best.value * scale, unit) : point.best.value;
   }
   if (point.volume === null) return null;
-  return volumeUnit(kind) === 'kg' ? Math.round(kgToUnit(point.volume, unit)) : point.volume;
+  return volumeUnit(kind) === 'kg' ? Math.round(kgToUnit(point.volume * scale, unit)) : point.volume;
 }
 
 /** An axis label for a number from `metricNumber`: bare for weights and reps, a clock for seconds, a distance for metres. */
@@ -184,3 +191,35 @@ export function formatAxisValue(value: number, metric: RecordMetric, kind: Exerc
   return value >= 1000 ? withThousands(value) : String(Number(value.toFixed(1)));
 }
 
+
+/** A change in a best set as text: "+15 lb", "-5 lb", "+2 reps", "+0:10", "No change". The change is in the unit `metricNumber` gives. */
+export function formatProgressChange(change: number, kind: ExerciseKind, unit: WeightUnit): string {
+  if (change === 0) return 'No change';
+  const sign = change > 0 ? '+' : '-';
+  const size = Math.abs(change);
+  if (kind === 'weight_reps' || kind === 'weight_distance') return `${sign}${Number(size.toFixed(1))} ${unit}`;
+  if (kind === 'duration') return `${sign}${formatRestSeconds(size)}`;
+  if (kind === 'distance') return `${sign}${formatDistance(size)}`;
+  return `${sign}${size} ${size === 1 ? 'rep' : 'reps'}`;
+}
+
+/**
+ * The line under an exercise on a routine's progress: its best set from the
+ * first workout to the latest ("Top set 25 → 40 lb"), or just the one when
+ * there is only one workout.
+ */
+export function formatTopSetLine(
+  first: { value: number; set: WorkoutSet },
+  latest: { value: number; set: WorkoutSet },
+  workouts: number,
+  kind: ExerciseKind,
+  unit: WeightUnit,
+  scale = 1,
+): string {
+  const label = kind === 'weight_reps' || kind === 'weight_distance' ? 'Top set' : 'Best set';
+  if (workouts < 2) return `${label} ${formatBestPoint(latest, kind, unit, scale)}`;
+  if (kind === 'weight_reps' || kind === 'weight_distance') {
+    return `${label} ${formatWeightNumber(first.value * scale, unit)} → ${formatWeightWithUnit(latest.value * scale, unit)}`;
+  }
+  return `${label} ${formatRecordFigure('best', kind, first.value, unit)} → ${formatRecordFigure('best', kind, latest.value, unit)}`;
+}

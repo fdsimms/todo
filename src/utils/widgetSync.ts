@@ -55,6 +55,8 @@ import { useStepTimerStore } from '../store/useStepTimerStore';
 import { useWatchHealthStore } from '../store/useWatchHealthStore';
 import { watchWorkoutTapTiming } from './watchHealthWorkout';
 import { workoutHealthWriteOn } from './healthWorkoutSync';
+import { weightScale } from './dumbbellLoad';
+import { catalogExercise } from './exerciseCatalog';
 import { WATCH_RECENT_DAYS, buildWatchWorkout, todaysWatchWorkout, type WatchWorkoutSnapshot } from './watchWorkout';
 import { tickSet } from './workoutTick';
 import { applyProposal } from './workoutProposalApply';
@@ -488,6 +490,7 @@ async function processQuietWidgetTaps(handOff: 'app' | 'requeue' = 'app'): Promi
       mealLogPrompt,
       iso => getLogicalDayKey(new Date(iso), dayResetTime) === todayKey,
       quietTapWorkouts(),
+      exerciseId => weightScale(catalogExercise(useWorkoutStore.getState().exercises, exerciseId), useSettingsStore.getState().dumbbellEntry),
     );
     // A cold launch woken by the watch has no React tree, so nothing has read
     // the step timers back yet: a rest started over an unread stack would be
@@ -856,7 +859,7 @@ function currentWorkoutReads(): WorkoutReads {
   const settings = useSettingsStore.getState();
   const liveId = workouts.liveSession()?.id ?? null;
   const otherSets = Object.entries(workouts.setsBySession).filter(([id]) => id !== liveId).map(([, sets]) => sets);
-  const deps = [workouts.sessions, workouts.routines, workouts.exercises, settings.workoutUnit, settings.plateInventory, ...otherSets];
+  const deps = [workouts.sessions, workouts.routines, workouts.exercises, settings.workoutUnit, settings.dumbbellEntry, settings.plateInventory, ...otherSets];
   if (!workoutReads || workoutReads.deps.length !== deps.length || workoutReads.deps.some((d, i) => d !== deps[i])) {
     workoutReads = { deps, plans: new Map(), history: new Map(), lastTime: new Map(), recentIds: null };
   }
@@ -913,6 +916,7 @@ function watchWorkoutSection(): WatchWorkoutSnapshot | null {
     watchRequests: useWatchHealthStore.getState().requests,
     now: new Date(),
     unit: settings.workoutUnit,
+    dumbbellEntry: settings.dumbbellEntry,
     quietHoursStart: settings.quietHoursStart,
     quietHoursEnd: settings.quietHoursEnd,
     exercises: workouts.exercises,
@@ -1084,6 +1088,7 @@ function subscribeToStores(): () => void {
         s.healthWriteEnabled !== p.healthWriteEnabled ||
         s.workoutHealthWrite !== p.workoutHealthWrite ||
         s.workoutUnit !== p.workoutUnit ||
+        s.dumbbellEntry !== p.dumbbellEntry ||
         s.defaultRestSeconds !== p.defaultRestSeconds ||
         s.plateInventory !== p.plateInventory ||
         s.quietHoursStart !== p.quietHoursStart ||

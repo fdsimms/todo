@@ -16,18 +16,36 @@ export const AI_FEATURE_IDS: AiFeatureId[] = [
   'recipeNutritionEstimate', 'workoutDraft',
 ];
 
-export type AiModelId = 'claude-haiku-4-5-20251001' | 'claude-sonnet-5' | 'claude-opus-5';
+export type AiModelId = 'claude-haiku-5-5' | 'claude-sonnet-5-5' | 'claude-opus-5-5';
 
-export const DEFAULT_AI_MODEL: AiModelId = 'claude-haiku-4-5-20251001';
+export const DEFAULT_AI_MODEL: AiModelId = 'claude-haiku-5-5';
 
 export const AI_MODEL_OPTIONS: { value: AiModelId; label: string }[] = [
-  { value: 'claude-haiku-4-5-20251001', label: 'Haiku' },
-  { value: 'claude-sonnet-5', label: 'Sonnet' },
-  { value: 'claude-opus-5', label: 'Opus' },
+  { value: 'claude-haiku-5-5', label: 'Haiku' },
+  { value: 'claude-sonnet-5-5', label: 'Sonnet' },
+  { value: 'claude-opus-5-5', label: 'Opus' },
 ];
 
 export function isAiModelId(value: unknown): value is AiModelId {
   return AI_MODEL_OPTIONS.some(o => o.value === value);
+}
+
+/**
+ * IDs that earlier builds saved, mapped to the model that replaced them. A saved
+ * ID that is no longer in `AI_MODEL_OPTIONS` would otherwise fall back to the
+ * feature's default and quietly undo what the person picked (Opus becoming
+ * Sonnet). Bumping a model adds the old ID here.
+ */
+const LEGACY_AI_MODEL_IDS: Record<string, AiModelId> = {
+  'claude-haiku-4-5-20251001': 'claude-haiku-5-5',
+  'claude-sonnet-5': 'claude-sonnet-5-5',
+  'claude-opus-5': 'claude-opus-5-5',
+};
+
+/** A saved model ID as it should be used now, or undefined if it is unknown. */
+export function currentAiModelId(value: unknown): AiModelId | undefined {
+  if (isAiModelId(value)) return value;
+  return typeof value === 'string' ? LEGACY_AI_MODEL_IDS[value] : undefined;
 }
 
 export interface AiFeatureMeta {
@@ -226,7 +244,7 @@ export function defaultAiFeatureConfig(): AiFeatureConfigMap {
     // a list and files a price against it — while the difference in what a scan
     // costs is a couple of cents a trip. Still per-feature switchable, so
     // anyone who disagrees can turn it down without touching the rest.
-    receiptImport: { enabled: true, model: 'claude-sonnet-5' },
+    receiptImport: { enabled: true, model: 'claude-sonnet-5-5' },
     // Off by default, unlike every other feature here: this is the one AI
     // feature that can send a photo of something that isn't the user's own
     // task data by nature — a doctor's appointment confirmation, someone
@@ -236,14 +254,14 @@ export function defaultAiFeatureConfig(): AiFeatureConfigMap {
     // type themselves. Sonnet for the same reason receiptImport picked it
     // over the default: a misread date or address is expensive to have
     // wrong, and the cost difference per import is negligible.
-    calendarImport: { enabled: false, model: 'claude-sonnet-5' },
+    calendarImport: { enabled: false, model: 'claude-sonnet-5-5' },
     // Sonnet for the reason receiptImport and calendarImport both picked it over
     // the default: the cost difference per question is a fraction of a cent, and
     // the expensive failure here is a confident wrong answer about whether
     // something is cooked through. Free text typed by the user goes out with
     // this one — the first feature here for which that's true — which is the
     // other reason to spend on the better read of it.
-    cookHelp: { enabled: true, model: 'claude-sonnet-5' },
+    cookHelp: { enabled: true, model: 'claude-sonnet-5-5' },
     // Sonnet, for a reason the other three overrides only half share. This one
     // wants real world knowledge about menus and portion sizes, which is
     // exactly where a smaller model confabulates most confidently — and a
@@ -251,7 +269,7 @@ export function defaultAiFeatureConfig(): AiFeatureConfigMap {
     // record, where `docs/arch/health-data.md` says a wrong write costs more
     // than a wrong read. Still per-feature switchable, so the picker can
     // overrule this.
-    nutritionEstimate: { enabled: true, model: 'claude-sonnet-5' },
+    nutritionEstimate: { enabled: true, model: 'claude-sonnet-5-5' },
     // Sonnet because every photo that reaches this one already failed the
     // on-device read — the easy panels never get here, so what's left is
     // disproportionately curved tubs, steep angles and glare, the same reasons
@@ -259,12 +277,12 @@ export function defaultAiFeatureConfig(): AiFeatureConfigMap {
     // default rather than opt-in like calendarImport: a nutrition label is the
     // user's own food packaging, not a third party's data, the same
     // distinction that keeps receiptImport on by default too.
-    nutritionLabelPhoto: { enabled: true, model: 'claude-sonnet-5' },
+    nutritionLabelPhoto: { enabled: true, model: 'claude-sonnet-5-5' },
     // Sonnet for the same reason `nutritionEstimate` picked it over the
     // default: this also wants real-world judgment about how ingredients
     // combine (a marinade mostly poured off, a batter's rise), which is where
     // a smaller model confabulates most confidently.
-    recipeNutritionEstimate: { enabled: true, model: 'claude-sonnet-5' },
+    recipeNutritionEstimate: { enabled: true, model: 'claude-sonnet-5-5' },
     // The default model, for the reason `backfillSuggestions` keeps it: this is
     // extraction, not judgment. The person's own words are the source, every
     // exercise name is matched against their library in code rather than

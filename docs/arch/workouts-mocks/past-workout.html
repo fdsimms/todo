@@ -1,0 +1,40 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="base.css">
+<style>
+body { width: 860px; }
+.field { padding: 12px 16px; font-size: 17px; }
+.row .l { flex: 1; font-size: 17px; } .row .v { color: var(--accentText); font-size: 17px; }
+.ex { background: var(--bg2); border-radius: 12px; overflow: hidden; margin-bottom: 12px; }
+.exHead { display:flex; align-items:center; gap:12px; padding: 14px 16px; }
+.exName { flex:1; font-size: 17px; font-weight: 600; } .more { color: var(--text3); }
+.thB { display:grid; grid-template-columns: 44px 1fr 1fr; padding: 0 16px 6px; column-gap: 8px; font-size: 11px; font-weight:600; letter-spacing:.8px; color: var(--text3); }
+.trB { display:grid; grid-template-columns: 44px 1fr 1fr; align-items:center; padding: 0 16px; column-gap: 8px; min-height: 48px; border-top: 0.5px solid var(--sep); font-size: 17px; }
+.trB .n { text-align:center; font-weight:600; color: var(--text2); font-size: 15px; }
+.cell { height: 36px; padding: 0 12px; border-radius: 8px; display:flex; align-items:center; background: var(--bg3); font-variant-numeric: tabular-nums; }
+.cell.ph { color: var(--text3); }
+.adds { display:flex; padding: 12px 16px 14px; border-top: 0.5px solid var(--sep); }
+.dim { opacity: .45; }
+.cap { color:#fff; font-size:12px; margin: 0 6px 6px; }
+</style></head><body>
+<script>
+const ex = (name, rows) => `<div class="ex"><div class="exHead"><span class="exName">${name}</span><span class="more">•••</span></div>
+ <div class="thB"><span></span><span>KG</span><span>REPS</span></div>
+ ${rows.map((r,i)=>`<div class="trB"><span class="n">${i+1}</span><span class="cell ${r[0]?'':'ph'}">${r[0]||'0'}</span><span class="cell ${r[1]?'':'ph'}">${r[1]||'0'}</span></div>`).join('')}
+ <div class="adds"><span class="pill">+ Add set</span></div></div>`;
+const screen = (cls) => `<div><div class="cap">${cls==='light'?'Light':'Dark'}: Log a workout, after it happened</div><div class="phone ${cls}">
+ <div class="status"><span>7:29</span><span>●●●</span></div>
+ <div class="sheetHeader"><span class="side">Cancel</span><span class="title">Log a workout</span><span class="side r">Save</span></div>
+ <div class="scroll">
+  <div class="card"><div class="field">Push day</div></div>
+  <div class="groupLabel">When</div>
+  <div class="card">
+   <div class="row"><span class="l">Day</span><span class="v">Tue, Oct 20</span></div>
+   <div class="row"><span class="l">Started</span><span class="v">6:15 PM</span></div>
+   <div class="row"><span class="l">Length</span><span class="stepper"><b>−</b><i>45 min</i><b>+</b></span></div>
+  </div>
+  <div class="groupLabel">Exercises</div>
+  ${ex('Bench press',[['60','8'],['60','8'],['60','6']])}
+  ${ex('Push-up',[['','20']])}
+  <span class="pill neutral">+ Add exercise</span>
+ </div></div></div>`;
+document.body.innerHTML = screen('light') + screen('dark');
+</script></body></html>

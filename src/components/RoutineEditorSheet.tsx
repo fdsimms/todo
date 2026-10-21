@@ -28,9 +28,12 @@ import { TextField } from './TextField';
 import { RotatingChevron } from './RotatingChevron';
 import { EmptyNote } from './EmptyNote';
 import { ExercisePickerSheet } from './ExercisePickerSheet';
+import { ExerciseDetailSheet } from './ExerciseDetailSheet';
+import { RoutineProgressView } from './RoutineProgressView';
 import type { ExerciseKind, ProgressionScheme, WorkoutRoutine, WorkoutRoutineItem } from '../types';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { weightHeadingSuffix, weightScale } from '../utils/dumbbellLoad';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -96,6 +99,12 @@ const PROGRESSION_GLOSSARY = [
   ['RPE', 'After a set, rate how hard it felt from 1 (very easy) to 10 (couldn’t do another rep), and the suggested weight follows.'],
 ] as const;
 
+type EditorTab = 'edit' | 'progress';
+const TAB_OPTIONS: SegmentOption<EditorTab>[] = [
+  { value: 'edit', label: 'Edit' },
+  { value: 'progress', label: 'Progress' },
+];
+
 const NAME_REFUSED: Record<string, string> = {
   blank: 'Give the routine a name.',
   notFound: 'This routine was deleted on another device.',
@@ -123,6 +132,7 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
   const unit = useSettingsStore(s => s.workoutUnit);
   const defaultRest = useSettingsStore(s => s.defaultRestSeconds);
   const plateInventory = useSettingsStore(s => s.plateInventory);
+  const dumbbellEntry = useSettingsStore(s => s.dumbbellEntry);
   const routine = routineId ? routines.find(r => r.id === routineId) ?? null : null;
   // A draft only seeds a routine that doesn't exist yet.
   const seed = routine ? null : draft;
@@ -134,6 +144,12 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
   const [openRowId, setOpenRowId] = useState<string | null>(null);
   const [picking, setPicking] = useState<'add' | { slotId: string } | null>(null);
   const [dragging, setDragging] = useState(false);
+  // The Progress tab reads the routine as saved. Only a saved routine has one: a new routine has no workouts.
+  const [tab, setTab] = useState<EditorTab>('edit');
+  const [scrubbing, setScrubbing] = useState(false);
+  // The exercise page opened from a progress row. The id is kept through the close, so the sheet doesn't retitle while it slides away.
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
   const baseline = useRef('');
 
@@ -147,6 +163,9 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
     setRows(r);
     setOpenRowId(null);
     setPicking(null);
+    setTab('edit');
+    setScrubbing(false);
+    setDetailOpen(false);
     setRefusal(null);
     // A draft is measured against an empty routine: nothing of it is saved
     // yet, so leaving it untouched still has something to lose.
@@ -173,9 +192,10 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
     const info = catalogExercise(exercises, item.exerciseId);
     const kg = itemShape(item).weightKg;
     if (!info || kg === null) return null;
-    const steps = rampSteps(kg, loadContextFor(info, plateInventory, unit, item));
+    const scale = weightScale(info, dumbbellEntry);
+    const steps = rampSteps(kg, loadContextFor(info, plateInventory, unit, item, scale));
     if (steps.length === 0) return null;
-    return `${joinAnd(steps.map(st => formatWeightNumber(st.kg, unit)))} ${unit}`;
+    return `${joinAnd(steps.map(st => formatWeightNumber(st.kg * scale, unit)))} ${unit}`;
   };
 
   // ==== editing the list ====
@@ -328,7 +348,7 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
       headerStyle={styles.header}
       scrollStyle={styles.scroll}
       scrollContentStyle={styles.scrollContent}
-      scrollEnabled={!dragging}
+      scrollEnabled={!dragging && !scrubbing}
       header={
         <SheetHeader
           bare
@@ -340,15 +360,32 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
       footer={
         // Inside this sheet's own Modal, not beside it: a sheet presented as a
         // sibling of an open one never appears (see "Two sibling Modals").
-        <ExercisePickerSheet
-          visible={visible && picking !== null}
-          onClose={() => setPicking(null)}
-          onPick={addExercise}
-          addedIds={rows.filter(r => !r.open).map(r => r.item.exerciseId)}
-          addedLabel="In routine"
-        />
+        <>
+          <ExercisePickerSheet
+            visible={visible && picking !== null}
+            onClose={() => setPicking(null)}
+            onPick={addExercise}
+            addedIds={rows.filter(r => !r.open).map(r => r.item.exerciseId)}
+            addedLabel="In routine"
+          />
+          <ExerciseDetailSheet visible={visible && detailOpen} exerciseId={detailId} onClose={() => setDetailOpen(false)} />
+        </>
       }
     >
+      {routine && (
+        <View style={styles.tabs}>
+          <SegmentedControl options={TAB_OPTIONS} value={tab} onChange={setTab} surface="page" label="Routine view" />
+        </View>
+      )}
+      {routine && tab === 'progress' ? (
+        <RoutineProgressView
+          routineId={routine.id}
+          exerciseIds={routine.items.map(i => i.exerciseId)}
+          onScrubChange={setScrubbing}
+          onOpenExercise={id => { haptics.tap(); setDetailId(id); setDetailOpen(true); }}
+        />
+      ) : (
+      <>
       {seed ? (
         <View style={styles.banner}>
           <Ionicons name="sparkles-outline" size={iconSize.sm} color={colors.accentText} />
@@ -466,6 +503,8 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
                         kind={kind}
                         role={itemRole}
                         unit={unit}
+                        scale={weightScale(catalogExercise(exercises, row.item.exerciseId), dumbbellEntry)}
+                        weightSuffix={weightHeadingSuffix(catalogExercise(exercises, row.item.exerciseId), dumbbellEntry)}
                         defaultRest={defaultRest}
                         canJoin={index > 0}
                         rampLoads={kind === 'weight_reps' ? rampLoads(row.item) : null}
@@ -508,6 +547,8 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
           <Text style={styles.deleteText}>Delete routine</Text>
         </TouchableOpacity>
       )}
+      </>
+      )}
     </EditorSheet>
   );
 }
@@ -544,6 +585,10 @@ interface ItemControlsProps {
   kind: ExerciseKind;
   role: SupersetRole;
   unit: WeightUnit;
+  /** Reads a stored one-dumbbell weight as a pair total where it is 2 (`dumbbellLoad.ts`). */
+  scale: number;
+  /** " each" or " pair" after the unit in the weight heading, or nothing. */
+  weightSuffix: string;
   defaultRest: number;
   canJoin: boolean;
   /** What the ramp lays out from the target weight, for the table's ramp row. */
@@ -562,7 +607,7 @@ interface ItemControlsProps {
  * each label beside or above its one control so no row has to hold two.
  */
 function ItemControls({
-  item, kind, role, unit, defaultRest, canJoin, rampLoads, colors, styles, onChange, onJoin, onLeave, onRemove,
+  item, kind, role, unit, scale, weightSuffix, defaultRest, canJoin, rampLoads, colors, styles, onChange, onJoin, onLeave, onRemove,
 }: ItemControlsProps) {
   const scheme = item.progression?.scheme ?? null;
   const [explainOpen, setExplainOpen] = useState(false);
@@ -570,7 +615,7 @@ function ItemControls({
   const ramp = item.warmupRamp === true;
   return (
     <View style={styles.controls}>
-      <RoutineSetTable item={item} kind={kind} unit={unit} rampLoads={rampLoads} onChange={onChange} />
+      <RoutineSetTable item={item} kind={kind} unit={unit} scale={scale} weightSuffix={weightSuffix} rampLoads={rampLoads} onChange={onChange} />
 
       <View style={styles.section}>
         {kind === 'weight_reps' && (
@@ -670,6 +715,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: spacing.md, paddingVertical: spacing.smd,
   },
+  tabs: { marginBottom: spacing.md },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: spacing.md, paddingBottom: spacing.xl * 2 },
   banner: {

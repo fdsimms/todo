@@ -42,7 +42,7 @@ This feature is a gym logger with the depth of a dedicated app. It includes an e
 
 The new types go in `src/types/index.ts`, and the tables go in `initDatabase` with indexes in the migrations array.
 
-- **`exercises`** (custom exercises and overrides of built-in ones): `id`, `name`, `kind` (`weight_reps | bodyweight_reps | assisted_reps | duration | distance | weight_distance`), `primaryMuscles` and `secondaryMuscles` (JSON), `equipment`, `barKg` (nullable), `notes`, `archived`, `isCustom`. An override row reuses the built-in's id, so renaming "Bench press" to "Flat bench" is one row.
+- **`exercises`** (custom exercises and overrides of built-in ones): `id`, `name`, `kind` (`weight_reps | bodyweight_reps | assisted_reps | duration | distance | weight_distance`), `primaryMuscles` and `secondaryMuscles` (JSON), `equipment`, `barKg` (nullable), `notes`, `otherNames` (JSON, other names the person knows it by), `archived`, `isCustom`. An override row reuses the built-in's id, so renaming "Bench press" to "Flat bench" is one row.
 - **`workout_routines`**: `id`, `name`, `notes`, `programId` (nullable), `sortOrder`, and `items` (JSON). Each item holds `{ exerciseId, supersetKey?, restSeconds, progression, targets: [{ kind: warmup|working|drop|amrap, repsMin, repsMax, weightKg?, pctOfTm?, rpe? }] }`.
 - **`workout_programs`**: `id`, `name`, `weeks`, `rotation` (an ordered list of routine ids), `scheme` (`double | linear | percent | rpe`, or none: null in the type, the word `none` in the NOT NULL column, which an older build reads as `double`), `trainingMaxes` (JSON, per exercise), `startedAt`, `archived`. The program's current week and next routine are derived from its sessions.
 - **`workout_sessions`**: `id`, `routineId?`, `programId?`, `taskId?` (the occurrence it completed), `title`, `startedAt`, `endedAt` (null while live), `notes`, `effort` (1 to 10, typed), `healthWorkoutId?`, `healthWritePending`, `measuredOnWatch` (phase 9: the Apple Watch measured it and saves it to Health itself).
@@ -64,7 +64,7 @@ New files in `src/utils/`, each with its test in `src/__tests__/`. The first thr
 - `src/utils/exerciseLibrary.ts` (built): about 250 built-in exercises (name, kind, muscles, equipment, a short text cue), with ids written out rather than derived, since an id is forever. No video.
 - `src/utils/exerciseImages.ts` (built): start and end photos for most of the library, from free-exercise-db (public domain, Unlicense). Not bundled: fetched from the dataset's own hosting when an exercise's page opens, only while Settings › Workouts › Exercise photos is on, and that switch ships off. The slug-to-photo map is written and checked by hand, because matching by name paired the wrong movements (a barbell bench press with the dumbbell one); an exercise with no confident match has no photos, and so does every custom one. A failed load hides the pair. Workout mode shows them behind a "Show form photos" row, collapsed by default because its sets are the point of that screen and photos above them would push them down; the open state lasts for the session.
 - **Equipment is a closed set with specific machines in it** (`EXERCISE_EQUIPMENT`, `workoutData.ts`): leg press, leg curl, chest press, treadmill and the like each have a value, so a gym can say which machines it has. `machine` and `cardio_machine` stay as the catch-alls for a machine with no value of its own, and `machineParent` says which catch-all a specific one sits under. A gym that ticked a catch-all before the specific machines existed is read as having all of them (`equipmentAvailable` in `gyms.ts`), so no saved gym lost anything and nothing was migrated. A new machine is one value in the type, `STRENGTH_MACHINES` or `CARDIO_MACHINES`, a label, and the library rows filed under it. Lat pulldowns and rows on a stack stay `cable`.
-- `src/utils/exerciseCatalog.ts` (built): merges the library with the custom rows, plus search (the substring scoring task search uses, without its scattered-letters fallback, which matched half the library) and muscle and equipment filters. An override row contributes only the name, notes, bar weight and archived flag; what the movement is stays the library's.
+- `src/utils/exerciseCatalog.ts` (built): merges the library with the custom rows, plus search (the substring scoring task search uses, without its scattered-letters fallback, which matched half the library) and muscle and equipment filters. An override row contributes only the name, other names, notes, bar weight and archived flag; what the movement is stays the library's. **Other names** are the person's own words for an exercise ("Two arm dumbbell row" for "Barbell row"). Search (the picker, the Exercises list, `list_exercises`) and the CSV import's name match read them and nothing else does; a result found only by one says "Also called …" under it. They are cleaned like a name (`cleanOtherNames`), may not repeat another exercise on offer's name or other name (`otherNameTaken`, so a name never answers for two exercises), and an import match on one is decided for the person like an exact name, since they wrote it. Two copies of one exercise folded by sync keep both lists. The import still remembers nothing: confirming a suggestion there does not add an other name.
 - `src/utils/workoutData.ts` (built): the closed vocabularies, their labels, the resolve-or-shrug readers every row mapper uses, and the rest and plate settings' defaults and parsers.
 - `src/utils/workoutProgression.ts` (built, phase 4): given the history for an exercise and its rule, propose the next session's targets:
   - **double:** hit the top of the rep range on every working set, then add an increment;
@@ -88,6 +88,7 @@ New files in `src/utils/`, each with its test in `src/__tests__/`. The first thr
 - it holds exercises, routines, programs and sessions, with sets loaded per session or exercise on demand;
 - its actions are `startSession`, `logSet`, `editSet`, `deleteSet`, `reorderExercises`, `finishSession`, `discardSession`, plus CRUD for routines, programs and custom exercises;
 - `finishSession` answers the linked task through the task store, never the reverse: `completeTask`, or `logQuotaUnit` for a target below its count (`workoutTaskEffect`). Ticking the task off without a session does not invent a session.
+- a workout done earlier is logged from `LogPastWorkoutSheet` (Workouts › … › Log a past workout) through `buildPastWorkout` (`src/utils/pastWorkout.ts`) into `addFinishedSession`: staged until Save, a blank set dropped and a non-number refused by name, never ending in the future, and its Health write left to the pending pass (`healthWritePending`). Mock: `workouts-mocks/past-workout.png`.
 - a custom exercise is never removed, only archived, because sets logged on another device never arrive over iCloud and can't be counted from here; an archived custom exercise keeps its name (the database's unique `name_key`); deleting a built-in's row puts the library's back. Deleting a session deletes its sets in the same transaction.
 
 ### Rest timer
@@ -480,6 +481,46 @@ The Routines tab can put routines under headings and put some away.
 - **Where groups are made.** "New group" is in the header's "…" menu and only asks for a name; the empty group shows a dashed "Add new routine" tile that opens the editor with the group already chosen. A heading's own "•••" has Rename group, Add routine and Delete group.
 - **Folds are session state.** A heading folded by hand is a view, not data; Archived starts shut.
 - **MCP.** `save_routine` takes `group` and `archived`, `list_workouts` returns them on each routine plus `routineGroups`, and `save_routine_group` / `delete_routine_group` make, rename and delete headings.
+
+## A routine's progress, as built
+
+Files: `src/utils/routineProgress.ts`, `RoutineProgressView.tsx`, and the Edit / Progress control at the top of `RoutineEditorSheet.tsx`. Built to a mock approved in the PR, with the exercise's name moved onto a row of its own so a long name is not cut by the figures beside it.
+
+- **A view of one routine, so it lives in the routine's editor.** A saved routine shows an Edit / Progress control; a new one has no workouts and shows no control. The Progress tab reads the routine as saved, not the staged edits, and tapping an exercise opens its own page inside the editor's Modal (a sibling sheet would never appear).
+- **Derived on open, never stored.** The routine's workouts are the finished sessions with its `routineId` (`routineSessions`). A live session is not progress yet, and a workout started some other way does not count toward it.
+- **Every figure is this routine's own history.** An exercise's row reads only the sets from those workouts, so "gold" means a heavier top set than any earlier workout of this routine, which can differ from the record on the exercise's page. The row says it is the routine's history only through the footnote.
+- **Rows are the routine's exercises as it stands now**, in its order. An exercise taken out drops off; one added later starts at its first workout with it.
+- **Volume is `liftVolumeKg`**, so only weighted lifts add to it and a bodyweight routine shows no volume tiles or chart. The percent is first workout to latest, and is withheld with fewer than two workouts.
+- **It judges nothing.** A lighter latest top set is a plain negative change in the neutral text color; only a gain is green, and gold is reserved for the latest record, as on the exercise chart.
+
+## Dumbbell weights, as built
+
+A weight is one dumbbell's, always. A set stores `weightKg` of a single dumbbell whether the person logs each
+dumbbell or the pair, so records, volume, a progression proposal, a CSV row and the MCP server all read one
+comparable number, and changing the choice rewrites nothing (`src/utils/dumbbellLoad.ts`).
+
+- **Two facts, one preference.** *How many dumbbells* is a fact about the movement: `Exercise.dumbbells` (1 or 2),
+  defaulting to the library's answer (`ONE_DUMBBELL_IDS`: goblet squat, one-arm row and the like are one, every other
+  dumbbell exercise is two; a custom one is two). *How the weight is typed* is a preference: Settings › Workouts ›
+  Dumbbell weights (`dumbbellEntry`, each or pair) and, per exercise, `Exercise.loadEntry` overriding it. Both ride
+  an override row for a built-in, like `barKg`. The library's own count is stored as null so a correction in a later
+  build still reaches a person who changed something else.
+- **One dumbbell has no pair.** `entryFor` is `each` for a one-dumbbell exercise whatever is set, so the preference can
+  never relabel a goblet squat. `dumbbells` and `loadEntry` are kept only on dumbbell equipment.
+- **The scale lives at the edge.** A pair total is halved on the way in (`parseSetCell`'s `scale`, via
+  `storedKgFromTyped`) and doubled on the way out (`weightScale` → `formatSetLine`, `valueText`, the record and chart
+  text in `workoutRecordText.ts`, the routine Progress tab through `routineProgress`'s `scaleOf` (its volume sums each exercise at its own scale), and the proposal's words through `LoadContext.scale`). The column heading says
+  "kg each" or "kg pair" where two dumbbells are in play. A proposal's *loads* are never scaled, only its text.
+- **The Apple Watch is sent the shown weights and sends them back.** `watchSetRows`, `watchSuggestion` and
+  `watchRecentExercises` scale outward (`WatchWorkoutInput.dumbbellEntry`). Inbound, `tickValuesFromWatch` and
+  `parseWatchSession` convert to kilograms before the exercise is known, so `planQuietTaps` takes a
+  `weightScaleFor(exerciseId)` and puts each weight back to one dumbbell's (`storedKgFromShown`) in `tick` and for
+  `addWatchSession`, comparing the Crown's no-change guard in that space. Changing the setting, or an exercise's entry,
+  re-sends the snapshot. A weight the watch sent for a snapshot made before the change is read at the new scale, a
+  one-tap window nobody can close without versioning the snapshot.
+- **Where it is not applied, on purpose.** CSV import and export and the MCP server stay per dumbbell. The MCP says so (`dumbbells` on `list_exercises`, and the rule in `instructions.ts`), so Claude halves a pair total before writing.
+  A new surface that shows a dumbbell exercise's weight takes a `scale` from `weightScale` rather than reading
+  `weightKg` bare.
 
 ## Describing a workout, as built
 

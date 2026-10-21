@@ -321,6 +321,40 @@ export function matchPrevious(
   return out;
 }
 
+/**
+ * What the PREVIOUS column shows: each set's counterpart from last time by
+ * position. Warm-ups pair with warm-ups; every other set (working, drop, to
+ * failure) shares one pool, so the nth of those today pairs with the nth of
+ * those last time whatever either was labelled. Relabelling a set therefore
+ * never moves its PREVIOUS, and a set with no counterpart of its own kind
+ * (a third working set after two and a failure set) still has something to
+ * compare against. The kind of the matched set is shown beside it
+ * (`previousBadge`), so a set that went to failure reads as one.
+ *
+ * Display only: `plannedSetsFor` and a swap keep `matchPrevious`, which pairs
+ * by kind, because they copy the matched reps into a set and a failure set's
+ * reps are not a target for an ordinary one.
+ */
+export function matchPreviousByPosition(
+  current: readonly Pick<WorkoutSet, 'id' | 'kind'>[],
+  previous: readonly WorkoutSet[],
+): Map<string, WorkoutSet | null> {
+  const pools = { warmup: [] as WorkoutSet[], rest: [] as WorkoutSet[] };
+  for (const s of previous) pools[s.kind === 'warmup' ? 'warmup' : 'rest'].push(s);
+  const used = { warmup: 0, rest: 0 };
+  const out = new Map<string, WorkoutSet | null>();
+  for (const s of current) {
+    const pool = s.kind === 'warmup' ? 'warmup' : 'rest';
+    out.set(s.id, pools[pool][used[pool]++] ?? null);
+  }
+  return out;
+}
+
+/** The letter shown beside a PREVIOUS figure: F or D when that set wasn't an ordinary one, else null. */
+export function previousBadge(prev: Pick<WorkoutSet, 'kind'>): string | null {
+  return prev.kind === 'amrap' || prev.kind === 'drop' ? setBadge(prev.kind) : null;
+}
+
 // ==== what a set records ====
 
 export type SetField = 'weight' | 'reps' | 'duration' | 'distance';
@@ -343,8 +377,8 @@ export function setFieldsFor(kind: ExerciseKind): SetField[] {
  * mock has it. Workout mode and the routine editor's set table share it, so
  * the two tables read alike.
  */
-export function columnLabel(field: SetField, kind: ExerciseKind, unit: WeightUnit): string {
-  if (field === 'weight') return kind === 'assisted_reps' ? `−${unit}` : unit;
+export function columnLabel(field: SetField, kind: ExerciseKind, unit: WeightUnit, weightSuffix = ''): string {
+  if (field === 'weight') return `${kind === 'assisted_reps' ? `−${unit}` : unit}${weightSuffix}`;
   if (field === 'reps') return 'Reps';
   if (field === 'duration') return 'Time';
   return 'Dist';
@@ -379,12 +413,14 @@ export function formatSetLine(
   kind: ExerciseKind,
   unit: WeightUnit,
   withUnit = false,
+  /** 2 reads a stored one-dumbbell weight as a pair total (`dumbbellLoad.ts`). */
+  scale = 1,
 ): string | null {
   const w = set.weightKg === null
     ? null
     : withUnit
-      ? `${kind === 'assisted_reps' && set.weightKg > 0 ? '−' : ''}${formatWeightWithUnit(set.weightKg, unit)}`
-      : formatWeightNumber(set.weightKg, unit);
+      ? `${kind === 'assisted_reps' && set.weightKg > 0 ? '−' : ''}${formatWeightWithUnit(set.weightKg * scale, unit)}`
+      : formatWeightNumber(set.weightKg * scale, unit);
   switch (kind) {
     case 'weight_reps':
     case 'assisted_reps':

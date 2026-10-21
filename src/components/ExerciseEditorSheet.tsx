@@ -19,10 +19,11 @@ import { haptics } from '../utils/haptics';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { catalogExercise, describeExercise } from '../utils/exerciseCatalog';
 import { libraryExercise } from '../utils/exerciseLibrary';
+import { DUMBBELL_ENTRY_LABELS, dumbbellsUsed } from '../utils/dumbbellLoad';
 import { barKgFor, effectivePlateInventory, isPlateLoaded } from '../utils/plateMath';
 import {
   EQUIPMENT_LABELS, EXERCISE_EQUIPMENT, MUSCLE_GROUPS, MUSCLE_LABELS, WEIGHT_PLACES, WORKOUT_NAME_MAX_LENGTH,
-  formatWeightWithUnit, weightFromDisplay, weightToDisplay,
+  cleanOtherNames, formatOtherNames, parseOtherNames, formatWeightWithUnit, weightFromDisplay, weightToDisplay,
 } from '../utils/workoutData';
 import { BUTTON_LABEL } from '../copy/shared';
 
@@ -36,6 +37,7 @@ interface Props {
 const REFUSED: Record<string, string> = {
   blank: 'Give the exercise a name.',
   taken: 'That name is taken.',
+  otherNameTaken: 'Another exercise already goes by one of those names.',
   notFound: 'This exercise is no longer in the library.',
   hasHistory: 'Kind can’t change once sets are logged with this exercise.',
 };
@@ -43,21 +45,26 @@ const REFUSED: Record<string, string> = {
 /** The bar weight steps by half a kilogram, or a pound: bars come in odd weights. */
 const BAR_STEP = { kg: 0.5, lb: 1 } as const;
 
-const snapshotOf = (v: Staged) => JSON.stringify([v.name.trim(), v.kind, v.equipment, v.primary, v.secondary, v.barKg, v.notes.trim()]);
+const snapshotOf = (v: Staged) => JSON.stringify([v.name.trim(), cleanOtherNames(parseOtherNames(v.otherNames), v.name), v.kind, v.equipment, v.primary, v.secondary, v.barKg, v.dumbbells, v.loadEntry, v.notes.trim()]);
 
 interface Staged {
   name: string;
+  /** The other names as typed, comma separated. */
+  otherNames: string;
   kind: ExerciseKind;
   equipment: ExerciseEquipment;
   primary: MuscleGroup[];
   secondary: MuscleGroup[];
   barKg: number | null;
+  /** The count in use: the library's answer or the person's, resolved. */
+  dumbbells: 1 | 2;
+  loadEntry: 'each' | 'pair' | null;
   notes: string;
 }
 
 /**
  * Edit an exercise: for one the person made, everything about it; for a
- * built-in, only its name, notes and bar weight, the override the catalog
+ * built-in, only its name, other names, notes and bar weight, the override the catalog
  * takes from a row (what the movement is stays the library's, so a later
  * correction still reaches it). Writes through `updateExercise`, which
  * enforces the same split and refuses a name another exercise has.
@@ -78,7 +85,7 @@ export function ExerciseEditorSheet({ visible, exerciseId, onClose }: Props) {
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
   const [v, setV] = useState<Staged>({
-    name: '', kind: 'weight_reps', equipment: 'barbell', primary: [], secondary: [], barKg: null, notes: '',
+    name: '', otherNames: '', kind: 'weight_reps', equipment: 'barbell', primary: [], secondary: [], barKg: null, dumbbells: 2, loadEntry: null, notes: '',
   });
   const [refusal, setRefusal] = useState<string | null>(null);
   // Whether a set is logged on this device with the exercise: what a set
@@ -90,11 +97,14 @@ export function ExerciseEditorSheet({ visible, exerciseId, onClose }: Props) {
     if (!visible || !info) return;
     const next: Staged = {
       name: info.name,
+      otherNames: formatOtherNames(info.otherNames),
       kind: info.kind,
       equipment: info.equipment,
       primary: [...info.primaryMuscles],
       secondary: [...info.secondaryMuscles],
       barKg: info.barKg,
+      dumbbells: dumbbellsUsed(info) ?? 2,
+      loadEntry: info.loadEntry,
       notes: info.notes,
     };
     setV(next);
@@ -116,10 +126,17 @@ export function ExerciseEditorSheet({ visible, exerciseId, onClose }: Props) {
 
   const save = () => {
     if (!exerciseId) return;
+    // The library's own count is stored as nothing, so a correction to it in a later build still reaches this exercise.
+    const defaultCount = dumbbellsUsed({ id: exerciseId, equipment: 'dumbbell', dumbbells: null });
+    const dumbbellChange: ExercisePatch = isDumbbell
+      ? { dumbbells: v.dumbbells === defaultCount ? null : v.dumbbells, loadEntry: v.dumbbells === 2 ? v.loadEntry : null }
+      : {};
+    const otherNames = parseOtherNames(v.otherNames);
     const change: ExercisePatch = builtIn
-      ? { name: v.name, notes: v.notes, barKg: v.barKg }
+      ? { name: v.name, otherNames, notes: v.notes, barKg: v.barKg, ...dumbbellChange }
       : {
-        name: v.name, notes: v.notes, barKg: isPlateLoaded(v.equipment) ? v.barKg : null,
+        ...dumbbellChange,
+        name: v.name, otherNames, notes: v.notes, barKg: isPlateLoaded(v.equipment) ? v.barKg : null,
         kind: v.kind, equipment: v.equipment, primaryMuscles: v.primary, secondaryMuscles: v.secondary.filter(m => !v.primary.includes(m)),
       };
     const result = useWorkoutStore.getState().updateExercise(exerciseId, change);
@@ -132,6 +149,8 @@ export function ExerciseEditorSheet({ visible, exerciseId, onClose }: Props) {
     onClose();
   };
 
+  const isDumbbell = (builtIn ? info?.equipment : v.equipment) === 'dumbbell';
+  const dumbbellEntry = useSettingsStore(st => st.dumbbellEntry);
   const plateLoaded = isPlateLoaded(builtIn ? info?.equipment ?? 'other' : v.equipment);
   const inventory = effectivePlateInventory(plateInventory, unit);
   const defaultBar = barKgFor(null, inventory, builtIn ? info?.equipment ?? 'barbell' : v.equipment, unit);
@@ -177,6 +196,19 @@ export function ExerciseEditorSheet({ visible, exerciseId, onClose }: Props) {
           />
           {refusal && <Text style={styles.refusal}>{refusal}</Text>}
           {lib && lib.name !== v.name.trim() && <Text style={styles.note}>{`Built in as ${lib.name}.`}</Text>}
+
+          <Text style={styles.label}>Also called</Text>
+          <TextField
+            style={styles.otherNamesInput}
+            value={v.otherNames}
+            onChangeText={t => patch({ otherNames: t })}
+            placeholder="e.g. Two arm dumbbell row, DB row"
+            placeholderTextColor={colors.textTertiary}
+            returnKeyType="done"
+            autoCapitalize="sentences"
+            accessibilityLabel="Other names for this exercise, separated by commas"
+          />
+          <HelpText style={styles.hint}>Search and imports find the exercise by these names. Separate them with commas.</HelpText>
 
           {!builtIn && (
             <>
@@ -239,6 +271,38 @@ export function ExerciseEditorSheet({ visible, exerciseId, onClose }: Props) {
             </>
           )}
 
+          {isDumbbell && (
+            <>
+              <Text style={styles.label}>Dumbbells used</Text>
+              <SegmentedControl
+                options={[{ value: 1 as const, label: '1' }, { value: 2 as const, label: '2' }]}
+                value={v.dumbbells}
+                onChange={n => patch({ dumbbells: n })}
+                label="Dumbbells used"
+                surface="page"
+              />
+              {v.dumbbells === 2 && (
+                <>
+                  <Text style={styles.label}>Log weight as</Text>
+                  <SegmentedControl
+                    options={[
+                      { value: 'default' as const, label: 'Default' },
+                      { value: 'each' as const, label: 'Each' },
+                      { value: 'pair' as const, label: 'Pair total' },
+                    ]}
+                    value={v.loadEntry ?? 'default'}
+                    onChange={o => patch({ loadEntry: o === 'default' ? null : o })}
+                    label="Log weight as"
+                    surface="page"
+                  />
+                  <HelpText style={styles.hint}>
+                    {`Default follows Settings, which is ${DUMBBELL_ENTRY_LABELS[dumbbellEntry].toLowerCase()}. The app keeps the weight of one dumbbell either way.`}
+                  </HelpText>
+                </>
+              )}
+            </>
+          )}
+
           <Text style={styles.label}>Notes</Text>
           <TextField
             style={styles.notesInput}
@@ -281,6 +345,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   card: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden' },
   kv: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   kvLabel: { color: colors.text, fontSize: font.md },
+  otherNamesInput: {
+    color: colors.text, fontSize: font.md, backgroundColor: colors.bgSecondary, borderRadius: radius.md,
+    paddingHorizontal: spacing.md, minHeight: 44,
+  },
   notesInput: {
     color: colors.text, fontSize: font.md, backgroundColor: colors.bgSecondary, borderRadius: radius.md,
     paddingHorizontal: spacing.md, paddingVertical: spacing.smd, minHeight: 64,

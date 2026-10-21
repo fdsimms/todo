@@ -575,7 +575,7 @@ describe('names', () => {
 describe('matchExerciseName', () => {
   const custom: Exercise = {
     id: 'c1', name: 'Sled drag', kind: 'weight_reps', primaryMuscles: [], secondaryMuscles: [], equipment: 'other',
-    barKg: null, notes: '', archived: false, isCustom: true, createdAt: '2026-01-01T00:00:00.000Z',
+    barKg: null, dumbbells: null, loadEntry: null, notes: '', archived: false, isCustom: true, createdAt: '2026-01-01T00:00:00.000Z',
   };
   const archived: Exercise = { ...custom, id: 'c2', name: 'Cossack squat', archived: true };
   const catalog = buildCatalog([custom, archived]);
@@ -583,6 +583,27 @@ describe('matchExerciseName', () => {
     const m = matchExerciseName(name, catalog);
     return m.kind === 'none' ? null : m.exerciseId;
   };
+
+  it('treats a name the person gave an exercise as its own', () => {
+    const named = buildCatalog([{ ...custom, id: 'lib:barbell-row', name: 'Barbell row', isCustom: false, otherNames: ['Pendlay-ish row'] }]);
+    expect(matchExerciseName('pendlay-ish  ROW', named)).toMatchObject({ kind: 'exact', exerciseId: 'lib:barbell-row' });
+  });
+
+  it('matches a file name with the equipment in brackets to a name the person gave', () => {
+    const named = buildCatalog([{ ...custom, id: 'lib:barbell-row', name: 'Barbell row', isCustom: false, otherNames: ['Hinged pull'] }]);
+    expect(matchExerciseName('Hinged Pull (Barbell)', named)).toMatchObject({ kind: 'words', exerciseId: 'lib:barbell-row' });
+  });
+
+  it('decides nothing when two exercises carry the same other name', () => {
+    const a: Exercise = { ...custom, id: 'a', name: 'Alpha lift', otherNames: ['The big one'] };
+    const b: Exercise = { ...custom, id: 'b', name: 'Beta lift', otherNames: ['The big one'] };
+    expect(matchExerciseName('the big one', buildCatalog([a, b])).kind).not.toBe('exact');
+  });
+
+  it('ignores another name on an archived exercise', () => {
+    const gone: Exercise = { ...custom, id: 'g', name: 'Gone lift', otherNames: ['Old name'], archived: true };
+    expect(matchExerciseName('Old name', buildCatalog([gone])).kind).toBe('none');
+  });
 
   it('matches the exact name key first, in any case and spacing', () => {
     expect(matchExerciseName('barbell  BENCH press', catalog)).toMatchObject({ kind: 'exact', exerciseId: 'lib:barbell-bench-press' });
@@ -807,7 +828,7 @@ describe('importSummary', () => {
 describe('export', () => {
   const exercises: Exercise[] = [{
     id: 'c1', name: 'Cable "fly", low', kind: 'weight_reps', primaryMuscles: [], secondaryMuscles: [], equipment: 'cable',
-    barKg: null, notes: '', archived: false, isCustom: true, createdAt: '2026-01-01T00:00:00.000Z',
+    barKg: null, dumbbells: null, loadEntry: null, notes: '', archived: false, isCustom: true, createdAt: '2026-01-01T00:00:00.000Z',
   }];
   const session = (over: Partial<WorkoutSession> = {}): WorkoutSession => ({
     id: 's1', routineId: null, programId: null, taskId: null, title: 'Push, heavy',

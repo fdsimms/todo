@@ -706,7 +706,8 @@ const SUGGEST_MIN_OVERLAP = 0.8;
 /**
  * The catalog exercise a file's name means, or the closest candidate to offer.
  *
- * Only two things are decided for the person: the exact name key, and the same
+ * Only two things are decided for the person: the exact name key (an other name
+ * the person gave an exercise counts as one, since they wrote it), and the same
  * words in any order (so "Bench Press (Barbell)" is "Barbell bench press" and
  * "pull up" is "Pull-up"). Everything fuzzier is a `suggest`: one letter out on
  * the whole name, or most of the words shared. A one-letter difference is often
@@ -726,13 +727,19 @@ export function matchExerciseName(name: string, catalog: readonly CatalogExercis
   const exact = catalog.find(e => exerciseNameKey(e.name) === key);
   if (exact) return { kind: 'exact', exerciseId: exact.id, exerciseName: exact.name };
 
+  // A name the person gave an exercise is as good as its own: they wrote it. One
+  // that two exercises both carry (a sync can bring that) decides nothing.
   const live = catalog.filter(e => !e.archived);
+  const byOtherName = live.filter(e => e.otherNames.some(n => exerciseNameKey(n) === key));
+  if (byOtherName.length === 1) return { kind: 'exact', exerciseId: byOtherName[0].id, exerciseName: byOtherName[0].name };
+
   const words = sortedWords(name);
   if (words.length === 0) return { kind: 'none' };
-  const sameWords = live.filter(e => {
-    const w = sortedWords(e.name);
+  const goesBy = (e: CatalogExercise) => [e.name, ...e.otherNames];
+  const sameWords = live.filter(e => goesBy(e).some(n => {
+    const w = sortedWords(n);
     return w.length === words.length && w.every((x, i) => x === words[i]);
-  });
+  }));
   if (sameWords.length === 1) return { kind: 'words', exerciseId: sameWords[0].id, exerciseName: sameWords[0].name };
   // Two exercises with the same words are two variants to choose between.
   if (sameWords.length > 1) return { kind: 'suggest', exerciseId: sameWords[0].id, exerciseName: sameWords[0].name };
@@ -747,8 +754,10 @@ export function matchExerciseName(name: string, catalog: readonly CatalogExercis
   if (split) {
     const sameMovement = live.filter(e => {
       const drop = EQUIPMENT_WORDS[e.equipment] ?? EQUIPMENT_WORDS[machineParent(e.equipment) ?? e.equipment] ?? [];
-      const w = sortedWords(e.name).filter(x => !drop.includes(x));
-      return w.length === split.base.length && w.every((x, i) => x === split.base[i]);
+      return goesBy(e).some(n => {
+        const w = sortedWords(n).filter(x => !drop.includes(x));
+        return w.length === split.base.length && w.every((x, i) => x === split.base[i]);
+      });
     });
     // A file's "(Machine)" is every strength machine here, since the library files each under its own.
     const agreeing = sameMovement.filter(e => e.equipment === split.equipment || machineParent(e.equipment) === split.equipment);

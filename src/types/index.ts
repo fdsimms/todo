@@ -2073,17 +2073,36 @@ export type MuscleGroup =
  * every set already logged against the id keeps pointing at it. From an
  * override, the catalog takes only `name`, `notes`, `barKg` and `archived`
  * (`src/utils/exerciseCatalog.ts`): what the movement is stays the library's,
- * so a corrected muscle list in a later build still reaches it.
+ * so a corrected muscle list in a later build still reaches it. `otherNames`
+ * is the fifth thing an override may carry, since it is the person's own words.
  */
 export interface Exercise {
   id: string;
   name: string;
+  /**
+   * Other names the person knows it by ("Two arm dumbbell row" for the library's
+   * "Bent over row"). Search and the CSV import's name match read them; nothing
+   * else does. Unset on a row from before the column existed, which reads as none.
+   */
+  otherNames?: string[];
   kind: ExerciseKind;
   primaryMuscles: MuscleGroup[];
   secondaryMuscles: MuscleGroup[];
   equipment: ExerciseEquipment;
   /** The bar's own weight where it isn't the default for the equipment. Null for the default. */
   barKg: number | null;
+  /**
+   * How many dumbbells a dumbbell exercise is held in, where the library's
+   * answer (two, except for a closed list of one-dumbbell movements) is wrong
+   * for the person. Null for the default, and for any other equipment.
+   */
+  dumbbells: 1 | 2 | null;
+  /**
+   * Whether this two-dumbbell exercise takes each dumbbell's weight or the
+   * pair's total, overriding Settings. Null follows the setting. A set stores
+   * one dumbbell either way (`src/utils/dumbbellLoad.ts`).
+   */
+  loadEntry: 'each' | 'pair' | null;
   notes: string;
   /** Hidden from the library and pickers; its history stays. */
   archived: boolean;

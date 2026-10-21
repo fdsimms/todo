@@ -1,3 +1,4 @@
+import { weightScale, type DumbbellEntry } from './dumbbellLoad';
 import type {
   Exercise,
   ExerciseKind,
@@ -273,6 +274,8 @@ export function watchSetRows(
     unit: WeightUnit;
     routine: Pick<WorkoutRoutine, 'items'> | null;
     defaultRestSeconds: number;
+    /** Scales a two-dumbbell exercise's weights to a pair total where the person logs one (`dumbbellLoad.ts`). */
+    dumbbellEntry?: DumbbellEntry;
   },
 ): WatchWorkoutSet[] {
   const walk = walkOrder(sets);
@@ -307,7 +310,7 @@ export function watchSetRows(
       rest,
     };
     if (badge !== null) row.badge = badge;
-    if (s.weightKg !== null) row.weight = weightToDisplay(s.weightKg, ctx.unit);
+    if (s.weightKg !== null) row.weight = weightToDisplay(s.weightKg * scaleOf(ctx.exercises, s.exerciseId, ctx.dumbbellEntry), ctx.unit);
     if (s.reps !== null) row.reps = s.reps;
     if (s.durationSeconds !== null) row.durationSeconds = s.durationSeconds;
     if (s.distanceM !== null) row.distanceM = s.distanceM;
@@ -318,10 +321,20 @@ export function watchSetRows(
   });
 }
 
+/**
+ * What an exercise's stored one-dumbbell weights are multiplied by for the
+ * watch: the watch is sent shown weights and sends them back, and
+ * `planQuietTaps` puts them back (`dumbbellLoad.ts`).
+ */
+function scaleOf(exercises: readonly Exercise[], exerciseId: string, entry: DumbbellEntry | undefined): number {
+  return weightScale(catalogExercise(exercises, exerciseId), entry ?? 'each');
+}
+
 /** What the exercises of one workout are read against, for their rest and their suggestion. */
 interface ExerciseContext {
   exercises: readonly Exercise[];
   unit: WeightUnit;
+  dumbbellEntry?: DumbbellEntry;
   routine: WorkoutRoutine | null;
   program: WorkoutProgram | null;
   sessions: readonly WorkoutSession[];
@@ -351,20 +364,22 @@ export function watchSuggestion(exerciseId: string, ctx: ExerciseContext, exerci
     exceptSessionId: ctx.exceptSessionId,
     plateInventory: ctx.plateInventory,
     unit: ctx.unit,
+    dumbbellEntry: ctx.dumbbellEntry,
   });
   if (!p || p.proposal.sets.length === 0) return undefined;
+  const scale = scaleOf(ctx.exercises, exerciseId, ctx.dumbbellEntry);
   if (exerciseSets.length > 0 && proposalApplied(exerciseSets, p.proposal, ctx.unit)) return undefined;
-  const shown = p.proposal.sets.map(s => formatWeightNumber(s.weightKg, ctx.unit));
+  const shown = p.proposal.sets.map(s => formatWeightNumber(s.weightKg * scale, ctx.unit));
   const out: WatchSuggestion = {
-    weight: weightToDisplay(p.proposal.sets[0].weightKg, ctx.unit),
+    weight: weightToDisplay(p.proposal.sets[0].weightKg * scale, ctx.unit),
     use: shown.every(w => w === shown[0]) ? `Use ${shown[0]}` : 'Use these',
     reason: p.proposal.brief,
     sets: p.proposal.sets.map(s => (s.reps === null
-      ? { weight: weightToDisplay(s.weightKg, ctx.unit) }
-      : { weight: weightToDisplay(s.weightKg, ctx.unit), reps: s.reps })),
+      ? { weight: weightToDisplay(s.weightKg * scale, ctx.unit) }
+      : { weight: weightToDisplay(s.weightKg * scale, ctx.unit), reps: s.reps })),
   };
   const ramp = proposalRamp(p);
-  if (ramp && ramp.length > 0) out.ramp = ramp.map(step => ({ weight: weightToDisplay(step.kg, ctx.unit), reps: step.reps }));
+  if (ramp && ramp.length > 0) out.ramp = ramp.map(step => ({ weight: weightToDisplay(step.kg * scale, ctx.unit), reps: step.reps }));
   return out;
 }
 
@@ -403,7 +418,7 @@ function exercisesOf(rows: readonly { exerciseId: string }[], sets: readonly Wor
  */
 export function watchRecentExercises(
   recent: readonly { exerciseId: string; lastTime: readonly WorkoutSet[] }[],
-  ctx: { exercises: readonly Exercise[]; unit: WeightUnit; defaultRestSeconds: number },
+  ctx: { exercises: readonly Exercise[]; unit: WeightUnit; defaultRestSeconds: number; dumbbellEntry?: DumbbellEntry },
 ): WatchRecentExercise[] {
   return recent
     .map(({ exerciseId, lastTime }): WatchRecentExercise => ({
@@ -413,7 +428,7 @@ export function watchRecentExercises(
       rest: ctx.defaultRestSeconds,
       sets: plannedSetsFromHistory(lastTime).map(v => {
         const set: WatchRecentExercise['sets'][number] = { kind: v.kind };
-        if (v.weightKg !== null) set.weight = weightToDisplay(v.weightKg, ctx.unit);
+        if (v.weightKg !== null) set.weight = weightToDisplay(v.weightKg * scaleOf(ctx.exercises, exerciseId, ctx.dumbbellEntry), ctx.unit);
         if (v.reps !== null) set.reps = v.reps;
         if (v.durationSeconds !== null) set.durationSeconds = v.durationSeconds;
         if (v.distanceM !== null) set.distanceM = v.distanceM;
@@ -485,6 +500,7 @@ export interface WatchWorkoutInput {
   /** Now, for which workouts finished lately and which requests still stand. */
   now: Date;
   unit: WeightUnit;
+  dumbbellEntry?: DumbbellEntry;
   quietHoursStart: string | null;
   quietHoursEnd: string | null;
   exercises: readonly Exercise[];
@@ -533,6 +549,7 @@ export function buildWatchWorkout(input: WatchWorkoutInput): WatchWorkoutSnapsho
   const contextFor = (routine: WorkoutRoutine | null, programId: string | null, exceptSessionId: string | null): ExerciseContext => ({
     exercises: input.exercises,
     unit: input.unit,
+    dumbbellEntry: input.dumbbellEntry,
     routine,
     program: programId ? input.programs.find(p => p.id === programId) ?? null : null,
     sessions: input.sessions,
@@ -545,7 +562,7 @@ export function buildWatchWorkout(input: WatchWorkoutInput): WatchWorkoutSnapsho
 
   if (input.live && input.live.session.endedAt === null) {
     const { session, sets, routine, rest } = input.live;
-    const rows = watchSetRows(sets, { exercises: input.exercises, unit: input.unit, routine, defaultRestSeconds: input.defaultRestSeconds });
+    const rows = watchSetRows(sets, { exercises: input.exercises, unit: input.unit, routine, defaultRestSeconds: input.defaultRestSeconds, dumbbellEntry: input.dumbbellEntry });
     const shown = rows.slice(0, MAX_WATCH_LIVE_SETS);
     return {
       ...base,
@@ -578,7 +595,7 @@ export function buildWatchWorkout(input: WatchWorkoutInput): WatchWorkoutSnapsho
     // A routine with nothing in it has nothing to log on the watch.
     if (planned.length === 0) continue;
     const rows = watchSetRows(planned, {
-      exercises: input.exercises, unit: input.unit, routine, defaultRestSeconds: input.defaultRestSeconds,
+      exercises: input.exercises, unit: input.unit, routine, defaultRestSeconds: input.defaultRestSeconds, dumbbellEntry: input.dumbbellEntry,
     });
     const plan = wholeExercises(rows, MAX_WATCH_PLAN_SETS).map(({ id: _id, doneAt: _doneAt, ...row }) => row);
     const programId = today ? today.programId : routine.programId;

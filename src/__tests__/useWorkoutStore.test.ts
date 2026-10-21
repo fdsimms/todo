@@ -18,7 +18,7 @@ import {
 } from '../utils/healthWorkoutSync';
 import { useWorkoutStore, workoutContentCount, type WatchSessionInput } from '../store/useWorkoutStore';
 import { useWatchClashStore } from '../store/useWatchClashStore';
-import { catalogExercise } from '../utils/exerciseCatalog';
+import { catalogExercise, searchExercises } from '../utils/exerciseCatalog';
 import { newTaskFromDraft } from '../utils/taskDraft';
 import type { Task, TaskDraft } from '../types';
 import {
@@ -187,11 +187,55 @@ describe('changes to a built-in exercise', () => {
     expect(bench.primaryMuscles).toEqual(['chest']);
   });
 
+  it('keeps other names for a built-in across a reload, cleaned, and finds it by them', () => {
+    ok(state().updateExercise('lib:barbell-row', { otherNames: [' Hinged  barbell pull', 'hinged  BARBELL pull', 'Barbell row', ''] }));
+    reload();
+    const row = catalogExercise(state().exercises, 'lib:barbell-row')!;
+    expect(row.otherNames).toEqual(['Hinged barbell pull']);
+    expect(searchExercises(state().exercises, 'hinged barbell').map(r => r.exercise.id)).toEqual(['lib:barbell-row']);
+  });
+
+  it('keeps the other names through an edit that does not mention them, and clears them when asked', () => {
+    ok(state().updateExercise('lib:barbell-row', { otherNames: ['DB row'] }));
+    ok(state().updateExercise('lib:barbell-row', { notes: 'Flat back' }));
+    expect(catalogExercise(state().exercises, 'lib:barbell-row')!.otherNames).toEqual(['DB row']);
+    ok(state().updateExercise('lib:barbell-row', { otherNames: [] }));
+    expect(catalogExercise(state().exercises, 'lib:barbell-row')!.otherNames).toEqual([]);
+  });
+
+  it('refuses an other name another exercise on offer already goes by', () => {
+    ok(state().updateExercise('lib:barbell-row', { otherNames: ['DB row'] }));
+    // Another exercise's name, another's other name, and a custom exercise made with one.
+    expect(state().updateExercise('lib:back-squat', { otherNames: ['Barbell bench press'] })).toBe('otherNameTaken');
+    expect(state().updateExercise('lib:back-squat', { otherNames: ['db ROW'] })).toBe('otherNameTaken');
+    expect(state().addExercise({ name: 'Sled row', kind: 'weight_reps', equipment: 'other', primaryMuscles: ['lats'], otherNames: ['DB row'] })).toBe('otherNameTaken');
+    expect(catalogExercise(state().exercises, 'lib:back-squat')!.otherNames).toEqual([]);
+  });
+
+  it('lets the same exercise keep an other name when it is saved again', () => {
+    ok(state().updateExercise('lib:barbell-row', { otherNames: ['DB row'] }));
+    expect(typeof state().updateExercise('lib:barbell-row', { otherNames: ['DB row', 'Two arm row'] })).toBe('object');
+  });
+
   it('puts the library back when the changes are deleted', () => {
     ok(state().updateExercise('lib:back-squat', { notes: 'High bar' }));
     expect(state().deleteExercise('lib:back-squat')).toBe(true);
     expect(state().exercises).toEqual([]);
     expect(catalogExercise([], 'lib:back-squat')?.notes).toBe('');
+  });
+
+  it('keeps the dumbbell count and weight entry on a built-in dumbbell exercise, through a reload', () => {
+    ok(state().updateExercise('lib:goblet-squat', { dumbbells: 2, loadEntry: 'pair' }));
+    reload();
+    expect(catalogExercise(state().exercises, 'lib:goblet-squat')).toMatchObject({ dumbbells: 2, loadEntry: 'pair' });
+    // Taking it back to nothing follows the library and the setting again.
+    ok(state().updateExercise('lib:goblet-squat', { dumbbells: null, loadEntry: null }));
+    expect(catalogExercise(state().exercises, 'lib:goblet-squat')).toMatchObject({ dumbbells: null, loadEntry: null });
+  });
+
+  it('keeps nothing of either for equipment that is not a dumbbell', () => {
+    ok(state().updateExercise('lib:back-squat', { dumbbells: 1, loadEntry: 'pair', notes: 'x' }));
+    expect(catalogExercise(state().exercises, 'lib:back-squat')).toMatchObject({ dumbbells: null, loadEntry: null });
   });
 
   it('does not count as content the person made', () => {

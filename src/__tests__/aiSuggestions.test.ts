@@ -34,19 +34,19 @@ import { LEFTOVER_KEEP_DAYS_MAX, RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH, type Tas
 // ---------------------------------------------------------------------------
 
 const TEST_AI_FEATURE_CONFIG = {
-  templateSuggestions: { enabled: true, model: 'claude-haiku-4-5-20251001' },
-  projectTaskSuggestions: { enabled: true, model: 'claude-haiku-4-5-20251001' },
-  groceryAisles: { enabled: true, model: 'claude-haiku-4-5-20251001' },
-  recipeExtraction: { enabled: true, model: 'claude-haiku-4-5-20251001' },
-  mealIdeas: { enabled: true, model: 'claude-haiku-4-5-20251001' },
-  substitutes: { enabled: true, model: 'claude-haiku-4-5-20251001' },
-  receiptImport: { enabled: true, model: 'claude-sonnet-5' },
-  calendarImport: { enabled: true, model: 'claude-sonnet-5' },
-  nutritionLabelPhoto: { enabled: true, model: 'claude-sonnet-5' },
-  recipeNutritionEstimate: { enabled: true, model: 'claude-sonnet-5' },
-  nutritionEstimate: { enabled: true, model: 'claude-sonnet-5' } as { enabled: boolean; model: string; webSearch?: boolean },
-  taskBreakdown: { enabled: true, model: 'claude-haiku-4-5-20251001' },
-  workoutDraft: { enabled: true, model: 'claude-haiku-4-5-20251001' },
+  templateSuggestions: { enabled: true, model: 'claude-haiku-5-5' },
+  projectTaskSuggestions: { enabled: true, model: 'claude-haiku-5-5' },
+  groceryAisles: { enabled: true, model: 'claude-haiku-5-5' },
+  recipeExtraction: { enabled: true, model: 'claude-haiku-5-5' },
+  mealIdeas: { enabled: true, model: 'claude-haiku-5-5' },
+  substitutes: { enabled: true, model: 'claude-haiku-5-5' },
+  receiptImport: { enabled: true, model: 'claude-sonnet-5-5' },
+  calendarImport: { enabled: true, model: 'claude-sonnet-5-5' },
+  nutritionLabelPhoto: { enabled: true, model: 'claude-sonnet-5-5' },
+  recipeNutritionEstimate: { enabled: true, model: 'claude-sonnet-5-5' },
+  nutritionEstimate: { enabled: true, model: 'claude-sonnet-5-5' } as { enabled: boolean; model: string; webSearch?: boolean },
+  taskBreakdown: { enabled: true, model: 'claude-haiku-5-5' },
+  workoutDraft: { enabled: true, model: 'claude-haiku-5-5' },
 };
 
 /**
@@ -1750,7 +1750,7 @@ describe('suggestMealIdeas', () => {
       'getState',
     ).mockReturnValue({
       anthropicApiKey: 'test-key-does-not-hit-network',
-      aiFeatureConfig: { ...TEST_AI_FEATURE_CONFIG, mealIdeas: { enabled: false, model: 'claude-haiku-4-5-20251001' } },
+      aiFeatureConfig: { ...TEST_AI_FEATURE_CONFIG, mealIdeas: { enabled: false, model: 'claude-haiku-5-5' } },
     });
     const spy = jest.spyOn(global, 'fetch');
 
@@ -1925,7 +1925,7 @@ describe('draftMealRecipe', () => {
       'getState',
     ).mockReturnValue({
       anthropicApiKey: 'test-key-does-not-hit-network',
-      aiFeatureConfig: { ...TEST_AI_FEATURE_CONFIG, mealIdeas: { enabled: false, model: 'claude-haiku-4-5-20251001' } },
+      aiFeatureConfig: { ...TEST_AI_FEATURE_CONFIG, mealIdeas: { enabled: false, model: 'claude-haiku-5-5' } },
     });
     const spy = jest.spyOn(global, 'fetch');
 
@@ -2065,7 +2065,7 @@ describe('suggestSubstitutes', () => {
       anthropicApiKey: 'test-key-does-not-hit-network',
       aiFeatureConfig: {
         ...TEST_AI_FEATURE_CONFIG,
-        substitutes: { enabled: false, model: 'claude-haiku-4-5-20251001' },
+        substitutes: { enabled: false, model: 'claude-haiku-5-5' },
       },
     });
     const spy = jest.spyOn(global, 'fetch');
