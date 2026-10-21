@@ -196,7 +196,7 @@ jest.mock('../store/useSettingsStore', () => ({
       // no-op" state every test here already ran in before that existed.
       anthropicApiKey: null,
       onDeviceAiEnabled: false,
-      aiFeatureConfig: { groceryAisles: { enabled: true, model: 'claude-haiku-4-5-20251001' } },
+      aiFeatureConfig: { groceryAisles: { enabled: true, model: 'claude-haiku-5-5' } },
     }),
   },
 }));

@@ -112,7 +112,7 @@ import { parseExpiredTaskGrace, serializeExpiredTaskGrace, type ExpiredTaskGrace
 import { DEFAULT_APP_LOCK_GRACE_SECONDS, parseGraceSeconds } from '../utils/appLock';
 import { FDC_KEY_SECURE_KEY, GO_UPC_KEY_SECURE_KEY, loadAnthropicApiKey, loadSecureKey, saveAnthropicApiKey, saveSecureKey } from '../utils/secureApiKey';
 import {
-  AI_FEATURE_IDS, defaultAiFeatureConfig, isAiModelId,
+  AI_FEATURE_IDS, currentAiModelId, defaultAiFeatureConfig,
   type AiFeatureConfig, type AiFeatureConfigMap, type AiFeatureId,
 } from '../utils/aiFeatures';
 import {
@@ -3889,7 +3889,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
           if (!stored) continue;
           aiFeatureConfig[id] = {
             enabled: typeof stored.enabled === 'boolean' ? stored.enabled : aiFeatureConfig[id].enabled,
-            model: isAiModelId(stored.model) ? stored.model : aiFeatureConfig[id].model,
+            model: currentAiModelId(stored.model) ?? aiFeatureConfig[id].model,
             preferOnDevice: typeof stored.preferOnDevice === 'boolean'
               ? stored.preferOnDevice
               : aiFeatureConfig[id].preferOnDevice,

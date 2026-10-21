@@ -1,7 +1,9 @@
 import {
   AI_FEATURES,
   AI_FEATURE_IDS,
+  AI_MODEL_OPTIONS,
   aiFeaturesFor,
+  currentAiModelId,
   defaultAiFeatureConfig,
 } from '../utils/aiFeatures';
 
@@ -53,5 +55,22 @@ describe('aiFeaturesFor', () => {
     const before = defaultAiFeatureConfig();
     aiFeaturesFor(false);
     expect(defaultAiFeatureConfig()).toEqual(before);
+  });
+});
+
+describe('currentAiModelId', () => {
+  it('keeps a current id as it is', () => {
+    for (const o of AI_MODEL_OPTIONS) expect(currentAiModelId(o.value)).toBe(o.value);
+  });
+
+  it('maps an id an earlier build saved to its replacement', () => {
+    expect(currentAiModelId('claude-haiku-4-5-20251001')).toBe('claude-haiku-5-5');
+    expect(currentAiModelId('claude-sonnet-5')).toBe('claude-sonnet-5-5');
+    expect(currentAiModelId('claude-opus-5')).toBe('claude-opus-5-5');
+  });
+
+  it('gives nothing for an id it has never heard of', () => {
+    expect(currentAiModelId('gpt-4')).toBeUndefined();
+    expect(currentAiModelId(undefined)).toBeUndefined();
   });
 });
