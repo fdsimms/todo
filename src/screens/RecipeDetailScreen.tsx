@@ -3577,6 +3577,9 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
+    // Air above and below so the joint sits between two options instead of
+    // touching the one above it.
+    paddingVertical: spacing.sm,
     borderLeftWidth: 2,
     borderLeftColor: colors.accent,
   },
