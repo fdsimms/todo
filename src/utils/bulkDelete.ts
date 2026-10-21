@@ -1,5 +1,6 @@
 import type { Task } from '../types';
 import { isLiveRecurring, isMissableMealPlanTask } from './visibilityUtils';
+import { isNegativeTask } from './negativeHabits';
 import { BUTTON_LABEL } from '../copy/shared';
 
 /**
@@ -16,7 +17,22 @@ import { BUTTON_LABEL } from '../copy/shared';
  * loses the record a mark-missed would have kept. For a mixed selection, "Mark
  * missed" marks just those tasks missed and deletes the rest; the destructive
  * button deletes the whole selection.
+ *
+ * An open one-off task is missable too: it can be marked missed (see
+ * `markMissed`), and that keeps it in the Logbook where a delete would not.
  */
+
+/** An open, top-level, ordinary task that is none of the kinds above and can still be marked missed. */
+export function isMissableOneOff(t: Task): boolean {
+  return (
+    !t.completed &&
+    t.parentId === null &&
+    t.recurrenceType === 'none' &&
+    t.generatedKind !== 'mealSlot' &&
+    !isNegativeTask(t)
+  );
+}
+
 export type BulkDeletePrompt =
   /** Nothing in the selection is missable: a plain confirm. */
   | { kind: 'delete' }
@@ -40,7 +56,7 @@ export type BulkDeletePrompt =
 export function bulkDeletePrompt(ids: readonly string[], tasks: readonly Task[]): BulkDeletePrompt {
   const missable = ids
     .map(id => tasks.find(t => t.id === id))
-    .filter((t): t is Task => !!t && (isLiveRecurring(t) || isMissableMealPlanTask(t)));
+    .filter((t): t is Task => !!t && (isLiveRecurring(t) || isMissableMealPlanTask(t) || isMissableOneOff(t)));
   if (missable.length === 0) return { kind: 'delete' };
   const missableIds = missable.map(t => t.id);
   const restIds = ids.filter(id => !missableIds.includes(id));
@@ -57,8 +73,29 @@ export function bulkDeletePrompt(ids: readonly string[], tasks: readonly Task[])
   // plan" in that case is just wrong, not merely hedged.
   const hasRecurring = missable.some(isLiveRecurring);
   const hasMealPlan = missable.some(isMissableMealPlanTask);
+  const hasOneOff = missable.some(isMissableOneOff);
   const one = missable.length === 1;
 
+  if (hasOneOff && !hasRecurring && !hasMealPlan) {
+    return {
+      kind: 'missable',
+      missableIds,
+      restIds,
+      message: one
+        ? 'Mark this one missed to keep a record, or delete it?'
+        : 'Mark these missed to keep a record, or delete them?',
+      deleteLabel: wholeSelectionMissable ? BUTTON_LABEL.delete : 'Delete anyway',
+    };
+  }
+  if (hasOneOff) {
+    return {
+      kind: 'missable',
+      missableIds,
+      restIds,
+      message: 'Mark these missed to keep a record, or delete the whole selection?',
+      deleteLabel: 'Delete anyway',
+    };
+  }
   if (hasRecurring && !hasMealPlan) {
     return {
       kind: 'missable',

@@ -4,6 +4,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { stoppableGenerator } from './generatedTasks';
 import { isMissableMealPlanTask } from './visibilityUtils';
+import { isMissableOneOff } from './bulkDelete';
 import { confirmDelete } from './confirmDelete';
 import { confirmDeleteGenerated } from './confirmDeleteGenerated';
 import { animateLayout } from './layoutAnimation';
@@ -12,7 +13,8 @@ import { BUTTON_LABEL } from '../copy/shared';
 
 /**
  * Deleting one task by hand, with the question its kind needs asked first: a
- * repeating task or a meal-plan task can be marked missed instead, a task on
+ * repeating task, a meal-plan task or an open one-off can be marked missed
+ * instead (a one-off keeps its Logbook row that way), a task on
  * several dates asks whether to delete just this date, and a generated one
  * offers to turn its generator off. Anything else gets the plain confirm,
  * which "Confirm before deleting" can switch off.
@@ -90,6 +92,18 @@ export function confirmDeleteTask(task: Task, onDone?: () => void): void {
       haptics.success();
       onDone?.();
     });
+    return;
+  }
+  if (isMissableOneOff(task)) {
+    Alert.alert(
+      'Delete task',
+      'Mark it missed to keep a record, or delete it?',
+      [
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
+        { text: 'Mark missed', onPress: () => finish(() => store().markMissed(task.id), false) },
+        { text: BUTTON_LABEL.delete, style: 'destructive', onPress: () => finish(() => store().deleteTask(task.id)) },
+      ],
+    );
     return;
   }
   confirmDelete({

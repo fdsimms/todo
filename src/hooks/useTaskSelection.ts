@@ -22,7 +22,8 @@ export function useTaskSelection(allTasks: Task[]) {
   // into this same bulk path). A meal-plan task whose day has come is the
   // same ambiguity for a different reason: it has no series to end, but
   // deleting it outright still loses the record a mark-missed would have
-  // kept. For a mixed selection, "Mark missed" marks just those tasks
+  // kept, and so is an open one-off task, which a mark-missed leaves in the
+  // Logbook. For a mixed selection, "Mark missed" marks just those tasks
   // missed and deletes the rest; the destructive button deletes the whole
   // selection. Which tasks are missable, and the words the question uses,
   // are `bulkDeletePrompt`'s (src/utils/bulkDelete.ts).
