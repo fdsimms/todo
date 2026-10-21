@@ -70,7 +70,7 @@ import { exerciseDayNote, exerciseDayNotePatches } from '../utils/exerciseDayNot
 import { applyRoutineChanges, describeRoutineChange, routineChanges } from '../utils/routineUpdate';
 import { barKgFor, effectivePlateInventory, isPlateLoaded, plateLoad } from '../utils/plateMath';
 import { liftVolumeKg, liveSetRecords, sessionRecordSummary } from '../utils/workoutRecords';
-import { formatRecordChange, recordLabel } from '../utils/workoutRecordText';
+import { formatRecordChange, recordLabel, recordShortLabel } from '../utils/workoutRecordText';
 import { proposalActionLabel, proposalApplied, proposalHeadline, workingSetLogged, type Proposal } from '../utils/workoutProgression';
 import { exerciseProposal, type ExerciseProposal } from '../utils/workoutProposal';
 import { applyProposal, liveProposal } from '../utils/workoutProposalApply';
@@ -1068,6 +1068,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                   const prevLine = prev ? formatSetLine(prev, kind, unit) : null;
                   const label = labels.get(set.id) ?? '';
                   const record = done ? liveRecords?.get(set.id)?.[0] ?? null : null;
+                  const recordShort = record ? recordShortLabel(record.type, kind, record.reps) : '';
                   const recordChange = record ? formatRecordChange(record, kind, unit) : null;
                   const recordText = record && recordChange
                     ? `${recordLabel(record.type, kind, record.reps)}, was ${recordChange.before}`
@@ -1110,7 +1111,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                             accessibilityLabel={`Personal record. ${recordText}`}
                           >
                             <Ionicons name="trophy" size={iconSize.xs} color={colors.accentText} />
-                            <Text style={styles.recordPillText}>PR</Text>
+                            <Text style={styles.recordPillText}>{recordShort}</Text>
                           </View>
                         )}
                         {fields.map(f => (
@@ -1140,9 +1141,6 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                           </CheckPop>
                         </TouchableOpacity>
                       </View>
-                      {!!recordText && (
-                        <Text style={styles.recordLine} importantForAccessibility="no-hide-descendants">{recordText}</Text>
-                      )}
                       {isTray && (
                         <View style={styles.tray}>
                           <SegmentedControl
@@ -1591,8 +1589,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.full, backgroundColor: colors.accentSubtle,
   },
   recordPillText: { color: colors.accentText, fontSize: font.xxs, fontWeight: fontWeight.bold, letterSpacing: 0.4 },
-  // Under the row, lined up with the Previous column: 16 padding + 34 set column + 8 gap.
-  recordLine: { color: colors.accentText, fontSize: font.xs, paddingLeft: 58, paddingRight: spacing.md, paddingBottom: spacing.sm, marginTop: -spacing.xsm },
   prevText: { color: colors.textTertiary, fontSize: font.md, fontVariant: ['tabular-nums'] },
   valuePlanned: { color: colors.textTertiary },
   check: {
