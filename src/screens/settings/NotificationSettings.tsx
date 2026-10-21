@@ -318,7 +318,7 @@ export function NotificationSettings() {
         label="Trip reminder"
         hint={tripReminderEnabled
           ? 'One notification if a shopping trip is still running two hours after it started'
-          : 'Nothing arrives if you leave a shopping trip running'}
+          : undefined}
         toggle={tripReminderEnabled}
         onPress={() => onToggleTripReminder(!tripReminderEnabled)}
       />
@@ -416,7 +416,6 @@ export function NotificationSettings() {
           copies, so there is still one place each setting is changed. */}
       <SettingsSection
         label="Other reminders and nudges"
-        footer="Each of these has its own times and switches."
       >
         <SettingsRow
           icon="sparkles-outline"
@@ -428,7 +427,6 @@ export function NotificationSettings() {
         <SettingsRow
           icon="folder-open-outline"
           label="Project nudges"
-          hint="How often a quiet project is brought back up."
           onPress={() => { haptics.tap(); navigateToSettingsEntry(navigation, 'defaultProjectNudgeCadence'); }}
         />
       </SettingsSection>

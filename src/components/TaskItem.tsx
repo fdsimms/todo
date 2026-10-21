@@ -3364,13 +3364,6 @@ const TaskItemRow = React.memo(function TaskItem({
           selectionMode ? { checked: selected } : expandable ? { expanded } : {}
         }
         accessibilityLabel={markerA11y ? `${displayTitle}, ${markerA11y}` : displayTitle}
-        accessibilityHint={
-          selectionMode || !expandable
-            ? undefined
-            : expanded
-              ? 'Double tap to collapse details'
-              : 'Double tap to expand details'
-        }
       >
         {measuresMarkers && (
           // Lays the title out with its markers at the width the real one gets,

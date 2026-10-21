@@ -26,6 +26,11 @@ interface Props {
    * The line under the label. Give one only where the control doesn't already
    * say what it does — a toggle labelled "24-hour time" doesn't need a hint
    * reading "Times read as 5:30 PM".
+   *
+   * A hint that changes with a toggle follows the same rule for each state:
+   * the off text is the opposite of the on text, so give it only when it says
+   * something the label and the on text don't (a contrast, a consequence).
+   * "Nothing in the app vibrates" under "Haptic feedback" is not one.
    */
   hint?: string;
   /**

@@ -1892,7 +1892,6 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           <OffsetRow
             icon="calendar"
             label="Due date"
-            hint="When the task is due."
             offset={dueOffsetDays}
             anchor={anchor}
             away={tripTemplate}
@@ -2528,7 +2527,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           <CollapsibleField
             label="Category"
             summary={category ? categoryLabel(category, categories) : undefined}
-            hint="One home for the task. Drives the Categories screen and its filters."
+            hint="The section of Today the task sits in. A task has one."
             expanded={fieldOpen('category')}
             onToggle={() => toggleField('category')}
           >
@@ -2556,7 +2555,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           <CollapsibleField
             label="Tags"
             summary={tags.length > 0 ? tags.join(', ') : undefined}
-            hint="Free-form labels. A task can carry several, and you can filter or search by them."
+            hint="Free-form labels. A task can have several."
             expanded={fieldOpen('tags')}
             onToggle={() => toggleField('tags')}
           >
@@ -2695,7 +2694,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           <CollapsibleField
             label="Location"
             summary={locationText.trim() || undefined}
-            hint="Where each task made from this item happens, like an appointment’s address or a venue."
+            hint="Adds a directions button to each task."
             expanded={fieldOpen('location')}
             onToggle={() => toggleField('location')}
           >
@@ -2719,7 +2718,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           <CollapsibleField
             label="Link"
             summary={parseLabelledLink(linkText) ? linkHost(parseLabelledLink(linkText)!.url) : undefined}
-            hint="A page each task made from this item opens from its row, like a booking page or a form."
+            hint="Each task gets a button that opens this, like a booking page or a form."
             expanded={fieldOpen('link')}
             onToggle={() => toggleField('link')}
           >
@@ -2746,7 +2745,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           <CollapsibleField
             label="Phone"
             summary={phoneText.trim() || undefined}
-            hint="A number each task made from this item can call, like the clinic or the office."
+            hint="Each task gets call and text buttons for this number, like the clinic or the office."
             expanded={fieldOpen('phone')}
             onToggle={() => toggleField('phone')}
           >
@@ -2767,7 +2766,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           <CollapsibleField
             label="Email"
             summary={emailText.trim() || undefined}
-            hint="An address each task made from this item can write to."
+            hint="Each task gets an email button for this address."
             expanded={fieldOpen('email')}
             onToggle={() => toggleField('email')}
           >
@@ -2797,11 +2796,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             label="Ask on completion"
             summary={deliverableKind ? deliverableMeta(deliverableKind).label : undefined}
             emptySummary="Nothing"
-            hint={
-              deliverableKind
-                ? deliverableMeta(deliverableKind).hint
-                : 'Asks for an answer when the task is completed and keeps it in the Logbook.'
-            }
+            hint="Asks for an answer when the task is completed and keeps it in the Logbook."
             expanded={fieldOpen('deliverable')}
             onToggle={() => toggleField('deliverable')}
           >
@@ -3011,7 +3006,7 @@ function OffsetRow({
 }: {
   icon: React.ComponentProps<typeof Ionicons>['name'];
   label: string;
-  hint: string;
+  hint?: string;
   offset: number | null;
   anchor: TemplateAnchor;
   /** A trip template's: its anchors read as leaving and coming back. */
@@ -3026,9 +3021,11 @@ function OffsetRow({
         <Ionicons name={icon} size={18} color={offset !== null ? colors.accent : colors.textSecondary} />
         <View style={styles.optionContent}>
           <Text style={styles.optionLabel}>{label}</Text>
-          <Text style={styles.optionHint}>
-            {offset !== null ? formatOffsetWithAnchor(offset, anchor, away) : hint}
-          </Text>
+          {(offset !== null || !!hint) && (
+            <Text style={styles.optionHint}>
+              {offset !== null ? formatOffsetWithAnchor(offset, anchor, away) : hint}
+            </Text>
+          )}
         </View>
         {offset !== null ? (
           <TouchableOpacity

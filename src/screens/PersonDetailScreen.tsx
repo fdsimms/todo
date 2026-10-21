@@ -513,7 +513,7 @@ export function PersonDetailScreen() {
                       activeOpacity={interaction.activeOpacity}
                       accessibilityRole="button"
                       accessibilityLabel={note.text}
-                      accessibilityHint="Double tap to edit this note"
+                      accessibilityHint="Edits this note"
                     >
                       <Text
                         style={[styles.entryTitle, stale && styles.noteStale]}

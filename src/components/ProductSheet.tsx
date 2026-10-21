@@ -355,9 +355,6 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
           </HelpText>
 
           <Text style={[styles.label, styles.labelSpaced]}>NOTE</Text>
-          <HelpText style={styles.hint}>
-            Why you rated it this way, or anything else worth remembering.
-          </HelpText>
           <TextField
             style={[styles.input, styles.noteInput]}
             value={note}

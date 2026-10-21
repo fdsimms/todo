@@ -4535,7 +4535,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                   columns={2}
                   options={kindSegmentsFor(simpleMode, kind)}
                 />
-                <Text style={styles.kindHint}>{kindMeta.hint}</Text>
+                {!!kindMeta.hint && <HelpText style={styles.kindHint}>{kindMeta.hint}</HelpText>}
               </View>
             )}
               </>
@@ -5221,10 +5221,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                         ? '1 thing, add one more'
                         : 'Nothing in the set yet'
                   }
-                  hint={
-                    'A set of things to do each week, in any order, each with its own weekly target. '
-                    + 'Checking the task off asks which one you did. It leaves Today while you are on pace for the week and comes back when you fall behind.'
-                  }
+                  hint="Checking the task off asks which one you did. It leaves Today while you are on pace for the week and comes back when you fall behind."
                   expanded={fieldOpen('rotationSet', true)}
                   onToggle={() => toggleField('rotationSet', true)}
                 >
@@ -5653,8 +5650,8 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                 icon="hourglass-outline"
                 summary={slotInShown ? 'Wait' : 'Keep the date'}
                 hint={slotInCategory !== null
-                  ? `Wait moves this to the next day that isn't full. One waiting task still shows every day, starting with the one that has waited longest. Set for every task in ${slotInCategory}.`
-                  : "Wait moves this to the next day that isn't full. One waiting task still shows every day, starting with the one that has waited longest."}
+                  ? `Wait moves this to the next day that isn't full, but at least one waiting task still shows every day. Set for every task in ${slotInCategory}.`
+                  : "Wait moves this to the next day that isn't full, but at least one waiting task still shows every day."}
                 expanded={fieldOpen('slotIn')}
                 onToggle={() => toggleField('slotIn')}
               >
@@ -5951,7 +5948,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                   ? 'Ring an alarm from this time until the task is completed'
                   : reminderKind === 'alarm'
                     ? 'Ring an alarm at this time'
-                    : 'Send a notification at this time'
+                    : undefined
               }
               value={reminderValue}
               caption={reminderNudge
@@ -6062,7 +6059,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
             <EditorRow
               icon="speedometer-outline"
               label="Due by usage"
-              hint="Due at a meter reading."
+              hint="Due at a reading, like every 5,000 miles on a car’s odometer."
               value={meterFields.meterName
                 ? (meterFields.meterEvery !== null
                     ? `Every ${formatMeterAmount(meterFields.meterEvery, meterFields.meterUnit)}`
@@ -6832,7 +6829,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                     <EditorRow
                       icon="options-outline"
                       label="Details"
-                      hint="Notes, category, priority and a checklist for the task this adds."
                       value={describeFollowUpTaskDraft(
                         followUpTaskDraft,
                         followUpTaskDraft?.category ? categoryLabel(followUpTaskDraft.category, categories) : null,
@@ -7336,7 +7332,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
             icon="folder-outline"
             summary={category ? categoryLabel(category, categories) : undefined}
             emptySummary={defaultCategoryLabel}
-            hint="One home for the task. Drives the Categories screen and its filters."
+            hint="The section of Today the task sits in. A task has one."
             expanded={fieldOpen('category')}
             onToggle={() => toggleField('category')}
             // A stack owns its members' category, so there's nothing to pick
@@ -7367,7 +7363,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
             label="Tags"
             icon="pricetag-outline"
             summary={tags.length > 0 ? tags.join(', ') : undefined}
-            hint="Free-form labels. A task can carry several, and you can filter or search by them."
+            hint="Free-form labels. A task can have several."
             expanded={fieldOpen('tags')}
             onToggle={() => toggleField('tags')}
           >
@@ -7854,7 +7850,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
             <EditorRow
               icon="location-outline"
               label="Location"
-              hint="Where this task happens, like an appointment’s address or a venue."
+              hint="Adds a directions button to the task."
               value={location ?? undefined}
               expanded={showLocationField}
               onPress={() => {
@@ -8164,11 +8160,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                 label="Ask on completion"
                 icon="help-circle-outline"
                 summary={deliverableKind ? deliverableMeta(deliverableKind).label : undefined}
-                hint={
-                  deliverableKind
-                    ? deliverableMeta(deliverableKind).hint
-                    : 'Asks for an answer when you complete the task and keeps it in the Logbook.'
-                }
+                hint="Asks for an answer when you complete the task and keeps it in the Logbook."
                 expanded={fieldOpen('deliverable')}
                 onToggle={() => toggleField('deliverable')}
               >
@@ -8563,7 +8555,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                       ? `Logs ${chosenMeal.name}${logMealSlotByTime ? ' by time of day' : ''} when completed`
                       : logMealSlot ? `Offers to log ${MEAL_SLOT_LABELS[logMealSlot].toLowerCase()} when completed` : undefined
                   }
-                  hint="Adds a food log entry each time you complete this task, under the meal below. Pick a saved meal to log it right away, or leave it on Ask each time to choose the food then. Unchecking the task removes what it logged."
+                  hint="Adds a food log entry each time you complete this task, under the meal below. Unchecking the task removes what it logged."
                   expanded={fieldOpen('logMealSlot')}
                   onToggle={() => toggleField('logMealSlot')}
                   right={logMealSlot !== null ? (

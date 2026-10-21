@@ -290,7 +290,7 @@ export function CalendarSettings() {
         label="Read my calendar"
         hint={calendarReadEnabled
           ? readingHint ?? 'The calendars it was reading are no longer on this device'
-          : 'Nothing is read from your calendar'}
+          : undefined}
         toggle={calendarReadEnabled}
         onPress={onToggle}
         accessibilityLabel="Read my calendar"
@@ -348,7 +348,6 @@ export function CalendarSettings() {
             icon="list-outline"
             iconColor={colors.accent}
             label="Calendars"
-            hint={summary ? undefined : 'Which calendars to read'}
             value={summary}
             expanded={pickerOpen}
             onPress={togglePicker}
@@ -462,7 +461,6 @@ export function CalendarSettings() {
             icon="refresh-outline"
             iconColor={colors.accent}
             label="Sync now"
-            hint="Re-read events from the calendars above"
             busy={syncingNow}
             onPress={() => void syncNow()}
             disabled={syncingNow}
@@ -478,9 +476,6 @@ export function CalendarSettings() {
             icon="calendar-outline"
             iconColor={calendarEventCategory ? colors.accent : undefined}
             label="Show events on Today"
-            hint={calendarEventCategory
-              ? "Today’s events show as rows in the list"
-              : "Events don’t show on Today"}
             toggle={!!calendarEventCategory}
             onPress={() => {
               // Off is the cleared category (see ensureCalendarEventCategory);
@@ -497,7 +492,6 @@ export function CalendarSettings() {
                 entryId="calendarEventCategory"
                 icon="pricetag-outline"
                 label="Show events under"
-                hint="Today’s events show as rows in this category"
                 value={categoryLabel(calendarEventCategory, categories)}
                 tight
               />
@@ -546,7 +540,7 @@ export function CalendarSettings() {
             label="Match events to people"
             hint={calendarPeopleHistory
               ? "A person’s screen lists past events with their name in the title"
-              : 'Past events are never matched to the people you track'}
+              : undefined}
             toggle={calendarPeopleHistory}
             onPress={() => setCalendarPeopleHistory(!calendarPeopleHistory)}
             accessibilityLabel="Match events to people"
@@ -561,16 +555,12 @@ export function CalendarSettings() {
         saved events work on events written from the app. A section of its own
         so the rows that read the calendar and the rows that add to it aren't
         one run of eighteen. */}
-    <SettingsSection
-      label="Adding events and directions"
-      footer="Used when you add an event or tap directions on an event or task."
-    >
+    <SettingsSection label="Adding events and directions">
       <SettingsRow
         entryId="mapsApp"
         icon="navigate-outline"
         iconColor={colors.accent}
         label="Directions"
-        hint="Which app opens when you tap directions on an event or task."
         tight
       />
       <SettingsSegments

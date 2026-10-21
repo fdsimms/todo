@@ -647,7 +647,7 @@ export function CookModeSheet({
                         onPress={() => { haptics.tap(); setFillingBlanks(true); }}
                         accessibilityRole="button"
                         accessibilityLabel={[blank.label, describeBlankRule(blank.max), detail].filter(Boolean).join(', ')}
-                        accessibilityHint="Double tap to pick the wild cards"
+                        accessibilityHint="Picks the wild cards"
                       >
                         <View style={styles.miseRowText}>
                           <Text style={styles.miseName}>{blank.label}</Text>
@@ -946,7 +946,7 @@ export function CookModeSheet({
                 accessibilityRole="button"
                 accessibilityState={{ expanded: ingredientsOpen }}
                 accessibilityLabel={`Ingredients, ${ingredients.length}`}
-                accessibilityHint="Double tap for the amounts this cook needs"
+                accessibilityHint="Shows the amounts this cook needs"
               >
                 <Ionicons name="basket-outline" size={16} color={colors.accent} />
                 <Text style={styles.panelHeaderText}>
@@ -1064,7 +1064,7 @@ export function CookModeSheet({
                 accessibilityRole="button"
                 accessibilityState={{ expanded: notesOpen }}
                 accessibilityLabel="Recipe notes"
-                accessibilityHint="Double tap to show or hide the notes"
+                accessibilityHint="Shows or hides the notes"
               >
                 <Ionicons name="document-text-outline" size={16} color={colors.accent} />
                 <Text style={styles.panelHeaderText} numberOfLines={1}>

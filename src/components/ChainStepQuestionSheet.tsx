@@ -3,7 +3,6 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { CardSheet, useCardSheet } from './CardSheet';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { ChainItem, DeliverableKind } from '../types';
-import { deliverableMeta } from '../utils/deliverables';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -104,11 +103,11 @@ export function ChainStepQuestionSheet({ visible, step, nextStepTitle, onSave, o
             }}
             exclude={['choice']}
           />
-          <Text style={styles.hint}>
-            {kind
-              ? deliverableMeta(kind).hint
-              : 'Nothing is asked when you complete this step. Pick another option to be asked a question.'}
-          </Text>
+          {!kind && (
+            <Text style={styles.hint}>
+              Nothing is asked when you complete this step. Pick another option to be asked a question.
+            </Text>
+          )}
         </View>
 
         {canDateNextStep && (

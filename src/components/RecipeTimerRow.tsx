@@ -112,7 +112,7 @@ export function RecipeTimerRow({
           accessibilityRole={hasDetails ? 'button' : 'text'}
           accessibilityState={hasDetails ? { expanded: showDetails } : undefined}
           accessibilityLabel={`${verb} timer, ${spoken}`}
-          accessibilityHint={hasDetails ? 'Double tap for the time it usually takes, and to log one by hand' : undefined}
+          accessibilityHint={hasDetails ? 'Shows the time it usually takes, and logs one by hand' : undefined}
         >
           <Ionicons
             name="timer-outline"
