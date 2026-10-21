@@ -636,6 +636,27 @@ describe('a purged task record', () => {
     expect(days[0]).toMatchObject({ mood: 2, symptomKeys: ['headache'] });
   });
 
+  it('reports null for a day tagged Vacation, and keeps its mood and tags', () => {
+    const days = buildMoodDays(
+      [log('2026-08-17', 4, { contextTags: ['Vacation'] })],
+      [task('2026-08-17T10:00:00', { category: 'Work' })],
+      '00:00',
+    );
+    expect(days[0]).toMatchObject({
+      mood: 4, completed: null, categories: [], taskKeys: [], contextTagKeys: ['vacation'],
+    });
+    expect(taskPairedDays(days)).toEqual([]);
+  });
+
+  it('counts a day tagged Vacation on another entry that day', () => {
+    const days = buildMoodDays(
+      [log('2026-08-17', 4), { ...log('2026-08-17', 3), id: 'b', contextTags: ['vacation'] }],
+      [task('2026-08-17T10:00:00')],
+      '00:00',
+    );
+    expect(days[0].completed).toBeNull();
+  });
+
   it('leaves every day alone when retention is off', () => {
     const days = buildMoodDays(logs, tasks, '00:00', [], null);
     expect(days.every(d => d.completed !== null)).toBe(true);
