@@ -1641,7 +1641,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
           notes: planned.notes.trim(),
           effort: null,
           healthWorkoutId: null,
-          healthWritePending: false,
+          healthWritePending: planned.healthWritePending === true,
           measuredOnWatch: false,
           timesEdited: false,
         });

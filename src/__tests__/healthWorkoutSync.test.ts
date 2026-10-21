@@ -28,6 +28,7 @@ jest.mock('../store/useWatchHealthStore', () => ({ useWatchHealthStore: { getSta
 import {
   PENDING_WORKOUT_WRITE_MAX_AGE_DAYS,
   askWatchAboutSyncedDeletes,
+  describedWorkoutHealthOffer,
   WATCH_WORKOUT_WAIT_MINUTES,
   WORKOUT_HEALTH_ACTIVITY,
   logWorkoutToHealth,
@@ -73,6 +74,32 @@ describe('workoutSpanWritable', () => {
 
   it('allows the bridge\'s five minutes of clock skew', () => {
     expect(workoutSpanWritable(session({ endedAt: new Date(2026, 9, 18, 12, 4).toISOString() }), NOW)).toBe(true);
+  });
+});
+
+describe('describedWorkoutHealthOffer', () => {
+  const span = (endedMinutesAgo: number, lengthMinutes: number) => {
+    const end = new Date(NOW.getTime() - endedMinutesAgo * 60_000);
+    return { startedAt: new Date(end.getTime() - lengthMinutes * 60_000).toISOString(), endedAt: end.toISOString() };
+  };
+
+  it('offers a workout with a length that ended within the week', () => {
+    expect(describedWorkoutHealthOffer(span(60, 45), NOW)).toBe('offer');
+  });
+
+  it('says there is no length when start and end are one instant', () => {
+    expect(describedWorkoutHealthOffer(span(60, 0), NOW)).toBe('noLength');
+  });
+
+  it('says it is too old past the week, whatever its length', () => {
+    expect(describedWorkoutHealthOffer(span(PENDING_WORKOUT_WRITE_MAX_AGE_DAYS * 1440 + 5, 45), NOW)).toBe('tooOld');
+    expect(describedWorkoutHealthOffer(span(PENDING_WORKOUT_WRITE_MAX_AGE_DAYS * 1440 + 5, 0), NOW)).toBe('tooOld');
+  });
+
+  it('agrees with the pass that picks the flagged session up: whatever it offers, that pass writes', () => {
+    const s = span(60, 45);
+    expect(describedWorkoutHealthOffer(s, NOW)).toBe('offer');
+    expect(pendingWorkoutWriteAction(session(s), NOW)).toBe('write');
   });
 });
 

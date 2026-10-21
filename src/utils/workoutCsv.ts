@@ -840,6 +840,12 @@ export interface PlannedImportSession {
   endedAt: string;
   notes: string;
   sets: PlannedImportSet[];
+  /**
+   * Flagged for the pending-write pass to add to Apple Health
+   * (`WorkoutSession.healthWritePending`). Only a workout the person described
+   * and said yes for sets it: a file's workouts stay out of Health.
+   */
+  healthWritePending?: boolean;
 }
 
 export interface ImportPlan {

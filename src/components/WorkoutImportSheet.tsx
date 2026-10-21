@@ -7,12 +7,14 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { SegmentedControl } from './SegmentedControl';
 import { InlineAction } from './InlineAction';
 import { PressableScale } from './PressableScale';
+import { Toggle } from './Toggle';
 import { ExercisePickerSheet } from './ExercisePickerSheet';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { PENDING_WORKOUT_WRITE_MAX_AGE_DAYS, describedWorkoutHealthOffer } from '../utils/healthWorkoutSync';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { catalogExercise } from '../utils/exerciseCatalog';
 import { cleanWorkoutName } from '../utils/workoutData';
@@ -98,6 +100,8 @@ export function WorkoutImportSheet({ visible, onClose, fileText = '', described 
   const [unitTouched, setUnitTouched] = useState(false);
   const [choices, setChoices] = useState<Record<string, NameResolution>>({});
   const [picking, setPicking] = useState<string | null>(null);
+  // Only a described workout asks; on by default because the person turned on logging workouts to Health.
+  const [toHealth, setToHealth] = useState(true);
 
   useEffect(() => {
     if (visible) {
@@ -105,6 +109,7 @@ export function WorkoutImportSheet({ visible, onClose, fileText = '', described 
       setUnitTouched(false);
       setChoices({});
       setPicking(null);
+      setToHealth(true);
     }
     // Reset when the sheet opens on a file, not when the setting changes under it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -231,7 +236,14 @@ export function WorkoutImportSheet({ visible, onClose, fileText = '', described 
         primaryMuscles: [],
       };
     }
-    const result = importSessions(plan.sessions, creates);
+    const sendToHealth = healthOffer === 'offer' && toHealth;
+    const result = importSessions(
+      sendToHealth ? plan.sessions.map(s => ({ ...s, healthWritePending: true })) : plan.sessions,
+      creates,
+    );
+    // The flag is what the pending pass writes from, and it runs when the app
+    // next comes to the front; starting it here puts the workout in Health now.
+    if (sendToHealth && result.sessions > 0) void useWorkoutStore.getState().writePendingHealthSessions();
     haptics.success();
     onClose();
     const parts = [described
@@ -241,6 +253,8 @@ export function WorkoutImportSheet({ visible, onClose, fileText = '', described 
     Alert.alert(described ? 'Workout logged' : 'Import finished', parts.join(' '));
   };
 
+  // What Health can be asked, from the same limits the pending pass applies.
+  const healthOffer = described && writesToHealth ? describedWorkoutHealthOffer(described) : null;
   const summary = ok ? importSummary(ok.sessions) : { sessions: 0, sets: 0, from: null, to: null };
   const sourceLabel = ok?.source === 'text' ? 'Described workout' : ok?.source === 'hevy' ? 'Hevy export' : 'Strong export';
   const range = described
@@ -299,11 +313,29 @@ export function WorkoutImportSheet({ visible, onClose, fileText = '', described 
               import to see before confirming it, so a plain Text: Hide help
               text must not remove it. Styled as workout mode's own line about
               Health on its summary. */}
-          {writesToHealth ? (
+          {healthOffer === 'offer' ? (
+            <TouchableOpacity
+              style={styles.healthRow}
+              onPress={() => { haptics.tap(); setToHealth(v => !v); }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: toHealth }}
+              accessibilityLabel="Add to Apple Health"
+            >
+              <Text style={styles.healthLabel}>Add to Apple Health</Text>
+              <Toggle value={toHealth} />
+            </TouchableOpacity>
+          ) : healthOffer === 'noLength' ? (
             <Text style={styles.quietBelow}>
-              {described
-                ? 'A workout logged this way isn’t written to Apple Health.'
-                : 'Imported workouts aren’t written to Apple Health. The app they came from may have saved them there already.'}
+              It isn’t added to Apple Health. To add it, include how long it took in your description.
+            </Text>
+          ) : healthOffer === 'tooOld' ? (
+            <Text style={styles.quietBelow}>
+              {`It isn’t added to Apple Health because it was more than ${PENDING_WORKOUT_WRITE_MAX_AGE_DAYS} days ago.`}
+            </Text>
+          ) : writesToHealth && !described ? (
+            <Text style={styles.quietBelow}>
+              Imported workouts aren’t written to Apple Health. The app they came from may have saved them there already.
             </Text>
           ) : null}
 
@@ -476,6 +508,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   name: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
   detail: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs },
   quiet: { color: colors.textSecondary, fontSize: font.sm },
+  healthRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md,
+    backgroundColor: colors.bgSecondary, borderRadius: radius.lg, minHeight: 48,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.smd, marginTop: spacing.sm,
+  },
+  healthLabel: { flex: 1, color: colors.text, fontSize: font.md },
   quietBelow: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xsm, marginHorizontal: spacing.xs },
   warn: { color: colors.warningText, fontSize: font.sm },
   chosen: { color: colors.accentText, fontSize: font.sm },
