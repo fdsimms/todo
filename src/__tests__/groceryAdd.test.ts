@@ -224,6 +224,13 @@ describe('planGroceryAdd', () => {
       expect(planGroceryAdd('milk', context({ items: [listed] }), undefined, source).item.sourceRecipeId)
         .toBeNull();
     });
+
+    it('drops a stale credit when an off-list row is re-added with no recipe', () => {
+      const stale = { ...milk, sourceRecipeId: 'r1', sourceRecipeTitle: 'Pancakes' };
+      const plan = planGroceryAdd('milk', context({ items: [stale] }));
+      expect(plan.item.sourceRecipeId).toBeNull();
+      expect(plan.item.sourceRecipeTitle).toBeNull();
+    });
   });
 
   describe('the membership', () => {
