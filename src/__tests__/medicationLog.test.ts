@@ -8,6 +8,7 @@ import {
   isCountedUnit,
   canCarryMedication,
   doseCountInWindow,
+  doseStripScale,
   dosesOnDay,
   formatDose,
   frequencyTrend,
@@ -569,5 +570,31 @@ describe('strength', () => {
     expect(amountInUnit(c, 'capsule')).toBe(2);
     expect(amountInUnit(capsule(2), 'mcg')).toBeNull();
     expect(amountInUnit({ amount: 400, unit: 'mg' }, 'mg')).toBe(400);
+  });
+});
+
+describe('doseStripScale', () => {
+  it('draws a line for every count up to three doses a day', () => {
+    expect(doseStripScale(1)).toEqual({ top: 1, levels: [0, 1] });
+    expect(doseStripScale(3)).toEqual({ top: 3, levels: [0, 1, 2, 3] });
+  });
+
+  it('treats an empty window as one dose so there is still a scale', () => {
+    expect(doseStripScale(0)).toEqual({ top: 1, levels: [0, 1] });
+  });
+
+  it('steps by a third of the busiest day, rounded up, past three', () => {
+    expect(doseStripScale(4)).toEqual({ top: 4, levels: [0, 2, 4] });
+    expect(doseStripScale(5)).toEqual({ top: 6, levels: [0, 2, 4, 6] });
+    expect(doseStripScale(9)).toEqual({ top: 9, levels: [0, 3, 6, 9] });
+  });
+
+  it('never draws more than four lines and always reaches the busiest day', () => {
+    for (let busiest = 1; busiest <= 60; busiest++) {
+      const { top, levels } = doseStripScale(busiest);
+      expect(levels.length).toBeLessThanOrEqual(4);
+      expect(top).toBeGreaterThanOrEqual(busiest);
+      expect(levels[levels.length - 1]).toBe(top);
+    }
   });
 });

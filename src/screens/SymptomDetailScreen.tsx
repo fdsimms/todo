@@ -51,7 +51,7 @@ const BAR_HEIGHT = 60;
  * `BAR_GUIDE_GAP` short of its line rather than ending on it.
  */
 const GUIDE_LEVELS = [3, 2, 1, 0] as const;
-const BAR_GUIDE_GAP = 3;
+const BAR_GUIDE_GAP = 2;
 /** Width of the label column at the default text size; scaled with the text. */
 const GUIDE_LABEL_WIDTH = 54;
 
