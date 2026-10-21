@@ -5479,6 +5479,8 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       ...item,
       quantity: item.quantityFromRecipe ? null : item.quantity,
       quantityFromRecipe: false,
+      sourceRecipeId: null,
+      sourceRecipeTitle: null,
     };
     dbUpdateGroceryItem(updatedItem);
 

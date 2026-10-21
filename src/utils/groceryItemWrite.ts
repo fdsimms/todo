@@ -410,7 +410,7 @@ export function chosenOptionRows(
   const removed = new Set(remove.map(e => e.itemId));
   const parked = items
     .filter(i => removed.has(i.id))
-    .map(i => ({ ...i, quantity: i.quantityFromRecipe ? null : i.quantity, quantityFromRecipe: false }));
+    .map(i => ({ ...i, quantity: i.quantityFromRecipe ? null : i.quantity, quantityFromRecipe: false, sourceRecipeId: null, sourceRecipeTitle: null }));
   return { winner: { ...entry, choiceGroup: null }, remove, parked };
 }
 

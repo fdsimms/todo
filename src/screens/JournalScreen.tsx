@@ -273,9 +273,12 @@ function JournalLogContent({ kind }: { kind: JournalKind }) {
     }
   };
 
+  // Each figure's words are joined with no-break spaces so a narrow header wraps between figures
+  // ("7 days ·" / "7 this month") rather than inside one ("7 this" / "month").
+  const NBSP = ' ';
   const subtitle = stats.dayCount === 0 ? undefined
-    : `${stats.dayCount} ${stats.dayCount === 1 ? 'day' : 'days'} · ${stats.dayCountInMonth} this month`
-      + (wordGoal === null ? '' : ` · ${goalDays} reached ${wordGoal.toLocaleString('en-US')} words`);
+    : `${stats.dayCount}${NBSP}${stats.dayCount === 1 ? 'day' : 'days'} · ${stats.dayCountInMonth}${NBSP}this${NBSP}month`
+      + (wordGoal === null ? '' : ` · ${goalDays}${NBSP}reached${NBSP}${wordGoal.toLocaleString('en-US')}${NBSP}words`);
 
   /** A day's heading: its words, set against the goal when there is one. */
   const dayWordsLabel = (dayKey: string): string => {
@@ -572,7 +575,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   activeFilterText: { color: colors.onAccent, fontSize: font.sm, fontWeight: fontWeight.semibold },
   container: { flex: 1, backgroundColor: colors.bg },
-  search: { marginHorizontal: spacing.md, marginBottom: spacing.sm },
+  search: { marginHorizontal: spacing.md, marginTop: spacing.sm, marginBottom: spacing.sm },
   list: { flex: 1 },
   listContent: { paddingHorizontal: spacing.md },
   dayLabel: {

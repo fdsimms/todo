@@ -6497,7 +6497,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         for (const e of group) {
           if (e.itemId === itemId) { db.dbSetGroceryListEntry({ ...e, choiceGroup: null }); continue; }
           const loser = byId.get(e.itemId);
-          if (loser) db.dbUpdateGroceryItem({ ...loser, quantity: loser.quantityFromRecipe ? null : loser.quantity, quantityFromRecipe: false });
+          if (loser) db.dbUpdateGroceryItem({ ...loser, quantity: loser.quantityFromRecipe ? null : loser.quantity, quantityFromRecipe: false, sourceRecipeId: null, sourceRecipeTitle: null });
           db.dbDeleteGroceryListEntry(e.itemId, listId);
         }
       });
@@ -6526,7 +6526,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           db.dbUpdateGroceryItem({ ...sub, quantity: q ?? sub.quantity, quantityFromRecipe: q ? item.quantityFromRecipe : sub.quantityFromRecipe, lastAddedAt: now });
           db.dbSetGroceryListEntry({ ...entry, itemId: subItemId, checked: false, addedAt: now });
         }
-        db.dbUpdateGroceryItem({ ...item, quantity: item.quantityFromRecipe ? null : item.quantity, quantityFromRecipe: false });
+        db.dbUpdateGroceryItem({ ...item, quantity: item.quantityFromRecipe ? null : item.quantity, quantityFromRecipe: false, sourceRecipeId: null, sourceRecipeTitle: null });
         db.dbDeleteGroceryListEntry(itemId, listId);
       });
       refresh();
