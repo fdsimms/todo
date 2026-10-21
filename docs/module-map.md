@@ -603,6 +603,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/workoutCell.ts` — setFieldMax, parseRepsTarget, parseSetCell
 - `src/utils/workoutCsv.ts` — ImportSource, ImportedSet, ImportedSession, CsvParseResult, SkippedRows, describeSkipped, ParseOptions, parseCsv, readCsv, parseImportDate, +34 more
 - `src/utils/workoutData.ts` — EXERCISE_KINDS, FREE_EQUIPMENT, ACCESSORY_EQUIPMENT, STRENGTH_MACHINES, CARDIO_MACHINES, EXERCISE_EQUIPMENT, machineParent, EquipmentGroup, equipmentGroup, MUSCLE_GROUPS, +36 more
+- `src/utils/workoutDraft.ts` — DescribeMode, DESCRIBE_MAX_LENGTH, MAX_DRAFT_EXERCISES, DraftSet, DraftExercise, WorkoutDraft, readWorkoutDraft, draftNames, newExerciseFor, RoutineDraft, +4 more
 - `src/utils/workoutHistory.ts` — HEALTH_HISTORY_MAX_DAYS, WorkoutHistoryRow, healthHistoryWindow, SAME_WORKOUT_START_MS, overlapsSession, interleaveHistory, healthWorkoutSource, healthWorkoutTitle, healthWorkoutLine
 - `src/utils/workoutLink.ts` — WORKOUT_LINK_VERBS, WorkoutLinkVerb, WorkoutLink, WORKOUT_OPEN_URL, workoutLinkUrl, WorkoutLinkPlan, planWorkoutLink
 - `src/utils/workoutLinkActions.ts` — applyWorkoutLink, skipRestFromLink
@@ -787,7 +788,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 
 ## `src/services`
 
-- `src/services/aiSuggestions.ts` — describeAIError, TemplateItemSuggestion, suggestTemplateItems, ProjectTaskSuggestion, suggestProjectTasks, SubtaskSuggestion, suggestSubtasks, suggestBackfillValues, MAX_RECIPE_CHARS, suggestGroceryAisles, +24 more
+- `src/services/aiSuggestions.ts` — describeAIError, TemplateItemSuggestion, suggestTemplateItems, ProjectTaskSuggestion, suggestProjectTasks, SubtaskSuggestion, suggestSubtasks, suggestBackfillValues, MAX_RECIPE_CHARS, suggestGroceryAisles, +26 more
 - `src/services/foodSearch.ts` — FoodSearchHit, searchFoods, fetchFoodPortions, describeFoodSearchError, foodSearchErrorSettingsEntryId
 - `src/services/geocode.ts` — GeocodedPlace, geocodePlace
 - `src/services/onDeviceModel.ts` — isOnDeviceReady, onDeviceAvailability, describeOnDeviceAvailability, isOnDeviceErrorMessage, describeOnDeviceError, runOnDevice

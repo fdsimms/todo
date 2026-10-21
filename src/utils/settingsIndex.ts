@@ -298,6 +298,9 @@ const AI_FEATURE_KEYWORDS: Record<AiFeatureId, string[]> = {
   recipeNutritionEstimate: [
     'claude', 'model', 'calories', 'ingredients', 'guess',
   ],
+  workoutDraft: [
+    'claude', 'model', 'routine', 'exercise', 'gym', 'sets', 'reps', 'lifting', 'type', 'prose',
+  ],
 };
 
 /** One entry per row `PrivacyAiSettings` actually renders, in the same order. */

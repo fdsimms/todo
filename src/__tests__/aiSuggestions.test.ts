@@ -23,6 +23,7 @@ import {
   estimateRecipeNutrition,
   recipeNutritionEstimateAvailable,
   estimateMealNutrition,
+  draftWorkoutFromText,
 } from '../services/aiSuggestions';
 import { logError } from '../utils/errorLog';
 import { MAX_MEAL_IDEAS } from '../utils/mealIdeas';
@@ -45,6 +46,7 @@ const TEST_AI_FEATURE_CONFIG = {
   recipeNutritionEstimate: { enabled: true, model: 'claude-sonnet-5' },
   nutritionEstimate: { enabled: true, model: 'claude-sonnet-5' } as { enabled: boolean; model: string; webSearch?: boolean },
   taskBreakdown: { enabled: true, model: 'claude-haiku-4-5-20251001' },
+  workoutDraft: { enabled: true, model: 'claude-haiku-4-5-20251001' },
 };
 
 /**
@@ -2568,5 +2570,50 @@ describe('estimateMealNutrition web search', () => {
     spy.mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve(reply(ESTIMATE)) } as Response);
     await expect(estimateMealNutrition('Big Mac')).resolves.toBeDefined();
     expect(spy).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ============================================================================
+// draftWorkoutFromText
+// ============================================================================
+
+describe('draftWorkoutFromText', () => {
+  const options = { exerciseNames: ['Bench press', 'Cable fly', 'Bench press'], unit: 'lb' as const, today: '2026-10-21' };
+  const reply = { title: 'Push', exercises: [{ name: 'Bench press', sets: [{ kind: 'working', reps: 5, weight: 185 }] }] };
+
+  it('reads the reply into a draft, asking for the one tool and sending the library by name', async () => {
+    const fetchSpy = mockFetchOnce(toolUseResponse('draft_workout', reply));
+
+    const draft = await draftWorkoutFromText('  bench 3x5 at 185  ', 'routine', options);
+
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.tool_choice).toEqual({ type: 'tool', name: 'draft_workout' });
+    expect(body.messages[0].content).toContain('bench 3x5 at 185');
+    expect(body.messages[0].content).toContain('Bench press; Cable fly');
+    expect(body.system).toContain('in lb');
+    expect(draft.exercises[0]).toMatchObject({ name: 'Bench press' });
+    expect(draft.exercises[0].sets[0]).toMatchObject({ reps: 5, weight: 185 });
+  });
+
+  it('tells the model the logical day only when recording a workout that happened', async () => {
+    const log = mockFetchOnce(toolUseResponse('draft_workout', reply));
+    await draftWorkoutFromText('squats yesterday', 'log', options);
+    expect(JSON.parse((log.mock.calls[0][1] as RequestInit).body as string).system).toContain('Today is 2026-10-21');
+
+    const plan = mockFetchOnce(toolUseResponse('draft_workout', reply));
+    await draftWorkoutFromText('push day', 'routine', options);
+    // The same spy answers both calls, so this one is the latest, not the first.
+    expect(JSON.parse((plan.mock.calls[plan.mock.calls.length - 1][1] as RequestInit).body as string).system).not.toContain('Today is');
+  });
+
+  it('says nothing came back for a reply with no exercises, without a request for a blank description', async () => {
+    mockFetchOnce(toolUseResponse('draft_workout', { exercises: [] }));
+    await expect(draftWorkoutFromText('hmm', 'routine', options)).rejects.toThrow('No answer returned');
+    await expect(draftWorkoutFromText('   ', 'routine', options)).rejects.toThrow('No answer returned');
+  });
+
+  it('throws when the feature is switched off', async () => {
+    mockSettings.aiFeatureConfig.workoutDraft.enabled = false;
+    await expect(draftWorkoutFromText('push day', 'routine', options)).rejects.toThrow('AI feature disabled');
   });
 });

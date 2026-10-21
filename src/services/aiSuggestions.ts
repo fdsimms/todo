@@ -50,6 +50,7 @@ import { logError } from '../utils/errorLog';
 import { getLogicalToday, dayKeyOf } from '../utils/dateUtils';
 import type { AiFeatureId, AiModelId } from '../utils/aiFeatures';
 import { routeForFeature, type AiRoute } from '../utils/aiRouting';
+import { DESCRIBE_MAX_LENGTH, readWorkoutDraft, type WorkoutDraft } from '../utils/workoutDraft';
 import { canReadTextOnDevice } from '../utils/receiptOcr';
 import {
   isOnDeviceReady, runOnDevice, describeOnDeviceError, isOnDeviceErrorMessage,
@@ -2881,4 +2882,118 @@ export async function readLabelPhotoWithAi(image: RecipeImage): Promise<LabelRea
   const servingGrams = Number.isFinite(servingGramsRaw) && servingGramsRaw > 0 ? servingGramsRaw : null;
 
   return { servingText, servingGrams, columns };
+}
+
+export interface DraftWorkoutOptions {
+  /** The names in the person's exercise library, so a lift they named is answered with the library's own spelling. */
+  exerciseNames: readonly string[];
+  /** The unit a weight with none stated is in, said to the model so it doesn't guess from the numbers. */
+  unit: 'kg' | 'lb';
+  /** The logical day, for "yesterday" and "last Tuesday". Never the calendar date: the day starts at `dayResetTime`. */
+  today: string;
+}
+
+const MAX_DRAFT_EXERCISE_NAMES = 1500;
+
+/**
+ * Reads a description of a routine, or of a workout the person did, into a
+ * `WorkoutDraft` (`src/utils/workoutDraft.ts`), which the sheet shows for
+ * confirming before anything is saved.
+ *
+ * No `ON_DEVICE_ENGINE` entry, so `routeForFeature` answers `'claude'` or
+ * `'unavailable'` and the Describe button isn't rendered for the second. The
+ * library's names are context and the reply is structured, which is more than
+ * Apple's shared ~4k window holds.
+ *
+ * The model answers with names, never ids: an id it invented would point at
+ * nothing or at the wrong exercise, so `matchExerciseName` settles every name
+ * afterward, in code. It is asked not to supply a number the description
+ * didn't state, and the reader keeps nothing it can't range-check.
+ */
+export async function draftWorkoutFromText(
+  description: string,
+  mode: 'routine' | 'log',
+  options: DraftWorkoutOptions,
+): Promise<WorkoutDraft> {
+  const { apiKey, model } = requireFeature('workoutDraft');
+  const asked = description.trim().slice(0, DESCRIBE_MAX_LENGTH);
+  if (!asked) throw new Error('No answer returned');
+
+  const names = [...new Set(options.exerciseNames)].sort().slice(0, MAX_DRAFT_EXERCISE_NAMES);
+
+  const setSchema = {
+    type: 'object',
+    properties: {
+      kind: { type: 'string', enum: ['warmup', 'working', 'drop', 'amrap'], description: 'warmup: a lighter set before the work. working: the usual set. drop: a lighter set straight after a heavy one. amrap: as many reps as possible, to failure.' },
+      reps: { type: 'integer', description: 'Reps, or the bottom of a rep range. Leave out when the description gave none.' },
+      repsMax: { type: 'integer', description: 'The top of a rep range, only when the description gave one ("8-12"). Leave out for a single number.' },
+      weight: { type: 'number', description: 'The load, in the unit given in weightUnit. Leave out when none was stated or the exercise is bodyweight.' },
+      weightUnit: { type: 'string', enum: ['kg', 'lb'], description: 'The unit the description used for this weight. Leave out when it named none.' },
+      durationSeconds: { type: 'integer', description: 'For a held or timed set, in seconds.' },
+      distanceM: { type: 'number', description: 'For a distance set, in meters. Convert kilometers and miles.' },
+      rpe: { type: 'number', description: 'Only when the description gave an RPE or reps in reserve ("RPE 8"; 2 in reserve is RPE 8).' },
+    },
+  };
+
+  const data = await callAnthropic({
+    max_tokens: 3000,
+    system: [
+      mode === 'routine'
+        ? 'You turn a description of a workout routine into a structured plan. It is a plan for later, so ignore any date.'
+        : 'You turn a description of a workout somebody already did into a structured record of it.',
+      'Write one entry in sets for every set, so "3x5" is three entries, and a warm-up the description names is its own entry with kind warmup.',
+      'Never supply a number the description did not state. Leave a weight, rep count, rest or RPE out rather than estimating it. The description gives the weights in ' + options.unit + ' unless it names the other.',
+      'Name each exercise with the spelling in the library list when one clearly is that exercise ("DB incline press" is "Incline dumbbell press"). When none is, use the description\'s own words. Never make an exercise up, and never guess at a different lift to fit the list.',
+      'Put anything in the description that is not a lift into notes, in the person\'s own words ("finish with abs", "felt strong"). Do not drop it and do not turn it into an exercise unless it names a lift with sets.',
+      ...(mode === 'routine' ? [
+        'restSeconds is the rest after each set of that exercise, only when the description gave one ("rest 2 min on the big lifts" applies to the big lifts it names). Set supersetWithPrevious when the description pairs an exercise with the one before it ("supersetted with"). Set warmupRamp only when it asks for a ramp or "work up to" without naming the warm-up sets. Set progression only when the description names a scheme: double progression is a rep range to top out then add weight, linear is adding weight every workout, percent is a percent of a max, rpe is going by how hard it felt.',
+      ] : [
+        `Today is ${options.today}. Give date as YYYY-MM-DD only when the description says when ("yesterday", "last Tuesday", "March 3"). Leave it out for today. Give time as HH:MM in 24-hour time only when stated. durationMinutes only when stated.`,
+        'This is a record of what happened, so leave out progression, warmupRamp and restSeconds, and use reps for the reps done.',
+      ]),
+      'Always finish by calling draft_workout.',
+    ].join('\n'),
+    tools: [{
+      name: 'draft_workout',
+      description: 'Return the structured workout',
+      input_schema: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'A short name for it ("Push day"), from the description. Leave out when it has none.' },
+          notes: { type: 'string', description: 'Anything that was not a lift, in the person\'s words.' },
+          date: { type: 'string', description: 'YYYY-MM-DD. Only for a workout already done, and only when the description said when.' },
+          time: { type: 'string', description: 'HH:MM, 24-hour. Only when the description gave a time.' },
+          durationMinutes: { type: 'integer' },
+          exercises: {
+            type: 'array',
+            description: 'In the order given.',
+            items: {
+              type: 'object',
+              properties: {
+                name: { type: 'string' },
+                sets: { type: 'array', items: setSchema },
+                restSeconds: { type: 'integer' },
+                supersetWithPrevious: { type: 'boolean' },
+                progression: { type: 'string', enum: ['double', 'linear', 'percent', 'rpe'] },
+                warmupRamp: { type: 'boolean' },
+              },
+              required: ['name', 'sets'],
+            },
+          },
+        },
+        required: ['exercises'],
+      },
+    }],
+    tool_choice: { type: 'tool', name: 'draft_workout' },
+    messages: [{
+      role: 'user',
+      content: [
+        `Description:\n${asked}`,
+        names.length > 0 ? `The person's exercise library:\n${names.join('; ')}` : '',
+      ].filter(Boolean).join('\n\n'),
+    }],
+  }, apiKey, model);
+
+  const toolUse = data.content?.find(c => c.type === 'tool_use');
+  return readWorkoutDraft(toolUse?.input);
 }

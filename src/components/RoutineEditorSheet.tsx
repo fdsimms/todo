@@ -38,8 +38,10 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { confirmDelete } from '../utils/confirmDelete';
 import { generateId } from '../utils/id';
-import { catalogExercise } from '../utils/exerciseCatalog';
-import { REST_SECONDS_MAX, WORKOUT_NAME_MAX_LENGTH, formatRestSeconds } from '../utils/workoutData';
+import { buildCatalog, catalogExercise } from '../utils/exerciseCatalog';
+import { REST_SECONDS_MAX, WORKOUT_NAME_MAX_LENGTH, exerciseNameKey, formatRestSeconds } from '../utils/workoutData';
+import { NEW_EXERCISE_PREFIX } from '../utils/workoutCsv';
+import type { RoutineDraft } from '../utils/workoutDraft';
 import {
   PROGRESSION_HINTS, PROGRESSION_LABELS, describeRoutineItem, itemShape, joinPrevious,
   droppedIntoSuperset, leaveSuperset, newRoutineItem, normalizeSupersets, settleOpenSlots, supersetRoles,
@@ -60,6 +62,12 @@ interface Props {
   /** The routine as saved, before `onClose`: for a caller that links a new one to what it was made for. */
   onSaved?: (routine: WorkoutRoutine) => void;
   onClose: () => void;
+  /**
+   * A routine to start from, described in words (`routineFromDraft`), for a new
+   * routine. Nothing in it is saved until Save: its `new:` exercises are made
+   * then, so backing out leaves the library as it was. Ignored when editing.
+   */
+  draft?: RoutineDraft | null;
 }
 
 /**
@@ -107,7 +115,7 @@ const viewsOf = (rows: readonly Row[]): SupersetRowView[] =>
  * asks before throwing edits away (`confirmDiscard`); a full-screen sheet has
  * no swipe to guard, only the button.
  */
-export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSaved, onClose }: Props) {
+export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSaved, onClose, draft = null }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const routines = useWorkoutStore(s => s.routines);
@@ -116,6 +124,8 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
   const defaultRest = useSettingsStore(s => s.defaultRestSeconds);
   const plateInventory = useSettingsStore(s => s.plateInventory);
   const routine = routineId ? routines.find(r => r.id === routineId) ?? null : null;
+  // A draft only seeds a routine that doesn't exist yet.
+  const seed = routine ? null : draft;
 
   // ==== staged state, loaded each time the sheet opens ====
   const [name, setName] = useState('');
@@ -129,24 +139,31 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
 
   useEffect(() => {
     if (!visible) return;
-    const n = routine?.name ?? '';
-    const t = routine?.notes ?? '';
-    const r = toRows(routine?.items ?? []);
+    const n = routine?.name ?? seed?.name ?? '';
+    const t = routine?.notes ?? seed?.notes ?? '';
+    const r = toRows(routine?.items ?? seed?.items ?? []);
     setName(n);
     setNotes(t);
     setRows(r);
     setOpenRowId(null);
     setPicking(null);
     setRefusal(null);
-    baseline.current = snapshotOf(n, t, r);
+    // A draft is measured against an empty routine: nothing of it is saved
+    // yet, so leaving it untouched still has something to lose.
+    baseline.current = seed ? snapshotOf('', '', []) : snapshotOf(n, t, r);
     // Loaded on open only: a sync landing mid-edit must not overwrite what is
     // being typed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, routineId]);
+  }, [visible, routineId, draft]);
 
   const roles = useMemo(() => supersetRoles(rows.map(r => r.item)), [rows]);
-  const kindOf = (exerciseId: string): ExerciseKind => catalogExercise(exercises, exerciseId)?.kind ?? 'weight_reps';
-  const nameOf = (exerciseId: string) => catalogExercise(exercises, exerciseId)?.name ?? 'Unknown exercise';
+  // An exercise the draft will create is named by its `new:` id until Save.
+  const pending = (exerciseId: string) =>
+    exerciseId.startsWith(NEW_EXERCISE_PREFIX) ? draft?.newExercises[exerciseId.slice(NEW_EXERCISE_PREFIX.length)] ?? null : null;
+  const kindOf = (exerciseId: string): ExerciseKind =>
+    pending(exerciseId)?.kind ?? catalogExercise(exercises, exerciseId)?.kind ?? 'weight_reps';
+  const nameOf = (exerciseId: string) =>
+    pending(exerciseId)?.name ?? catalogExercise(exercises, exerciseId)?.name ?? 'Unknown exercise';
   /**
    * "32.5, 50 and 65 kg": the ramp an item's target weight would lay out,
    * worked out the way workout mode will (`rampSteps`), so the table's ramp
@@ -241,9 +258,35 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
     });
   };
 
+  /**
+   * The items with each `new:` exercise made and its real id put in. A name
+   * that was taken since the draft was read (made on another device, or by an
+   * earlier try at this same Save) is that exercise, not a second one.
+   */
+  const withCreatedExercises = (items: WorkoutRoutineItem[]): WorkoutRoutineItem[] | null => {
+    if (!seed) return items;
+    const store = useWorkoutStore.getState();
+    const made = new Map<string, string>();
+    for (const item of items) {
+      if (!item.exerciseId.startsWith(NEW_EXERCISE_PREFIX) || made.has(item.exerciseId)) continue;
+      const input = seed.newExercises[item.exerciseId.slice(NEW_EXERCISE_PREFIX.length)];
+      if (!input) return null;
+      const row = store.addExercise(input);
+      if (typeof row !== 'string') { made.set(item.exerciseId, row.id); continue; }
+      const holder = buildCatalog(useWorkoutStore.getState().exercises)
+        .find(e => exerciseNameKey(e.name) === exerciseNameKey(input.name));
+      if (!holder) return null;
+      made.set(item.exerciseId, holder.id);
+    }
+    return items.map(i => (made.has(i.exerciseId) ? { ...i, exerciseId: made.get(i.exerciseId)! } : i));
+  };
+
   const save = () => {
     const store = useWorkoutStore.getState();
-    const items = savedItems(rows);
+    // Before anything is created: a refusal for the name shouldn't leave exercises behind.
+    if (!routine && !name.trim()) { haptics.warning(); setRefusal(NAME_REFUSED.blank); return; }
+    const items = withCreatedExercises(savedItems(rows));
+    if (!items) { haptics.warning(); setRefusal('This routine could not be saved.'); return; }
     const result = routine
       ? store.updateRoutine(routine.id, { name, notes, items })
       : (() => {
@@ -306,6 +349,15 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
         />
       }
     >
+      {seed ? (
+        <View style={styles.banner}>
+          <Ionicons name="sparkles-outline" size={iconSize.sm} color={colors.accentText} />
+          <Text style={styles.bannerText}>
+            <Text style={styles.bannerLead}>Drafted from your description. </Text>
+            {`Check the sets, then save.${seed.notes.trim() ? ' What wasn’t a lift went into Notes.' : ''} Weights and rest you didn’t mention are left empty.`}
+          </Text>
+        </View>
+      ) : null}
       <View style={styles.nameCard}>
         <TextField
           style={styles.nameInput}
@@ -314,7 +366,7 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
           placeholder="Routine name"
           placeholderTextColor={colors.textTertiary}
           maxLength={WORKOUT_NAME_MAX_LENGTH}
-          autoFocus={!routine}
+          autoFocus={!routine && !seed?.name}
           accessibilityLabel="Routine name"
         />
         <View style={styles.cardSep} />
@@ -620,6 +672,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: spacing.md, paddingBottom: spacing.xl * 2 },
+  banner: {
+    flexDirection: 'row', gap: spacing.smd, alignItems: 'flex-start',
+    backgroundColor: colors.accentSubtle, borderRadius: radius.md,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.smd, marginTop: spacing.xs, marginBottom: spacing.smd,
+  },
+  bannerText: { flex: 1, color: colors.text, fontSize: font.sm },
+  bannerLead: { color: colors.accentText, fontWeight: fontWeight.semibold },
   nameCard: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden', marginTop: spacing.xs },
   nameInput: {
     color: colors.text, fontSize: font.lg, fontWeight: fontWeight.semibold,
