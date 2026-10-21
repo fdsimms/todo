@@ -611,6 +611,30 @@ describe('watch workout taps', () => {
     const plan = (taps: QuietTap[], workouts: QuietTapWorkouts | null, tasks: Task[] = []) =>
       planQuietTaps(taps, tasks, [], true, isCurrentDay, workouts);
 
+    it('puts a pair total the watch sent back to one dumbbell, and compares in that space', () => {
+      const pair = (id: string, kg: number): QuietTap => ({ ...setTap(id), values: { weightKg: kg, reps: 8 } });
+      const twice = (_exerciseId: string) => 2;
+      const run = (taps: QuietTap[]) => planQuietTaps(taps, [], [], true, isCurrentDay, live(['a']), twice);
+      // 60 kg stored is 120 shown: sending 120 back is no change, sending 100 is 50 a dumbbell.
+      expect(run([pair('a', 120)])).toEqual([{ type: 'tickWorkoutSet', sessionId: 'w1', setId: 'a', at: AT, values: { reps: 8 } }]);
+      expect(run([pair('a', 100)])).toEqual([{ type: 'tickWorkoutSet', sessionId: 'w1', setId: 'a', at: AT, values: { weightKg: 50, reps: 8 } }]);
+    });
+
+    it('stores a workout the watch ran alone one dumbbell at a time', () => {
+      const workout = parseWatchSession({
+        id: 'ws1', startedAt: '2026-10-01T10:00:00Z', endedAt: '2026-10-01T10:30:00Z', unit: 'kg',
+        sets: [
+          { id: 's1', exerciseId: 'curl', completedAt: '2026-10-01T10:05:00Z', weight: 25, reps: 10 },
+          { id: 's2', exerciseId: 'goblet', completedAt: '2026-10-01T10:10:00Z', weight: 20, reps: 10 },
+        ],
+      })!;
+      const actions = planQuietTaps(
+        [{ ...tap('watchSession', 'ws1'), workout }], [], [], true, isCurrentDay, null, id => (id === 'curl' ? 2 : 1),
+      );
+      const stored = actions.find(a => a.type === 'addWatchSession');
+      expect(stored && 'workout' in stored ? stored.workout.sets.map(s => s.weightKg) : null).toEqual([12.5, 20]);
+    });
+
     it('ticks a set of the workout in progress with its numbers, once', () => {
       expect(plan([setTap('a'), setTap('a')], live(['a', 'b']))).toEqual([
         { type: 'tickWorkoutSet', sessionId: 'w1', setId: 'a', at: AT, values: { reps: 8 } },

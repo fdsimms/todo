@@ -60,6 +60,11 @@ export function storedKgFromTyped(value: number, unit: WeightUnit, scale: number
   return Math.round((weightFromDisplay(value, unit) / scale) * 1000) / 1000;
 }
 
+/** A weight already in kilograms as the person sees it (a pair total), as stored: halved for a pair. */
+export function storedKgFromShown(shownKgValue: number, scale: number): number {
+  return scale === 1 ? shownKgValue : Math.round((shownKgValue / scale) * 1000) / 1000;
+}
+
 /** "12.5", or "25" for the same stored weight read as a pair. */
 export function formatScaledWeight(kg: number, unit: WeightUnit, scale: number): string {
   return formatWeightNumber(shownKg(kg, scale), unit);
