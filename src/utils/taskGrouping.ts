@@ -829,11 +829,14 @@ export function applyCategoryCollapse(
  * A stack's visible children count as the section's ids. The tray collapses on
  * those same ids (see CompletionCollapse in TodayScreen), so header and tray go
  * in the same frame; leaving them out kept a section's header on screen after
- * its last stack member was ticked off. The header-less loose run at the top
+ * its last stack member was ticked off. A section that also holds a context row
+ * (a calendar event, a meal, Health) is absent: that row can't be ticked off, so
+ * it stays, and its header has to stay with it. The header-less loose run at the top
  * has no header to take away, so its rows belong to no section.
  */
 export function sectionTaskIds(items: TodayListItem[]): Map<string, string[]> {
   const sections = new Map<string, string[]>();
+  const hasContextRow = new Set<string>();
   let label: string | null = null;
   for (const item of items) {
     if (item.type === 'header') {
@@ -842,6 +845,10 @@ export function sectionTaskIds(items: TodayListItem[]): Map<string, string[]> {
       continue;
     }
     if (label === null) continue;
+    if (item.type === 'context') {
+      hasContextRow.add(label);
+      continue;
+    }
     if (item.type === 'task') {
       sections.get(label)!.push(item.task.id);
       continue;
@@ -854,7 +861,7 @@ export function sectionTaskIds(items: TodayListItem[]): Map<string, string[]> {
   // filtering (a collapsed category drops its rows) can leave one — and a header
   // with nothing under it must not read as "everything under me is going".
   for (const [key, ids] of sections) {
-    if (ids.length === 0) sections.delete(key);
+    if (ids.length === 0 || hasContextRow.has(key)) sections.delete(key);
   }
   return sections;
 }

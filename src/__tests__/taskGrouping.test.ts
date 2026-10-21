@@ -1202,6 +1202,19 @@ describe('sectionTaskIds', () => {
     expect(ids.get('home')).toEqual(['h1']);
   });
 
+  // An event can't be ticked off, so it outlives the batch and needs its header.
+  it('drops a section that also holds a context row', () => {
+    const ids = sectionTaskIds([
+      { type: 'header', label: 'work' },
+      { type: 'task', task: makeTask({ id: 'w1' }) },
+      { type: 'context', row: { id: 'event-1' } as never },
+      { type: 'header', label: 'home' },
+      { type: 'task', task: makeTask({ id: 'h1' }) },
+    ]);
+    expect(ids.has('work')).toBe(false);
+    expect(ids.get('home')).toEqual(['h1']);
+  });
+
   it('covers a section that is nothing but a stack', () => {
     const ids = sectionTaskIds([
       { type: 'header', label: 'evening' },
