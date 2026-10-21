@@ -17,7 +17,7 @@ interface Props {
 }
 
 /**
- * A workout's four figures in a row of tiles: how long, how many exercises,
+ * A workout's four figures in a two-by-two grid of tiles (four across leaves a six-digit volume no room): how long, how many exercises,
  * how many sets, and the volume lifted (0 when nothing weighted was done). Workout mode's finish summary and the workout page both draw
  * it, so the figures read the same on both; each caller says what it counts.
  */
@@ -43,8 +43,8 @@ export function WorkoutStatTiles({ minutes, exercises, sets, volumeKg, unit, sty
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
-  row: { flexDirection: 'row', gap: spacing.sm },
-  tile: { flex: 1, backgroundColor: colors.bgSecondary, borderRadius: radius.md, paddingHorizontal: spacing.smd, paddingVertical: spacing.smd },
+  row: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  tile: { flexGrow: 1, flexBasis: '45%', backgroundColor: colors.bgSecondary, borderRadius: radius.md, paddingHorizontal: spacing.smd, paddingVertical: spacing.smd },
   value: { color: colors.text, fontSize: font.xl, fontWeight: fontWeight.bold, fontVariant: ['tabular-nums'] },
   label: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs },
 });
