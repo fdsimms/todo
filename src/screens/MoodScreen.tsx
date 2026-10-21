@@ -20,7 +20,9 @@ import { useHealthStore, HEALTH_HISTORY_DAYS } from '../store/useHealthStore';
 import { useFoodLogStore, FOOD_INSIGHT_DAYS } from '../store/useFoodLogStore';
 import { useColors } from '../theme/ThemeContext';
 import { ChartGuides, BAR_GUIDE_GAP, useGuideGutter } from '../components/ChartGuides';
-import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, iconSize, interaction, animation, type Colors } from '../theme';
+import { useTextScale } from '../hooks/useTextScale';
+import { AnimatedBarFill } from '../components/AnimatedBarFill';
 import { haptics } from '../utils/haptics';
 import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
 import { openEntries } from '../utils/journal';
@@ -48,6 +50,7 @@ import {
   metricAverage,
   milestoneMoodContrast,
   moodBarFraction,
+  contrastBarPercent,
   moodByTimeOfDay,
   moodCompletionInsight,
   moodSummary,
@@ -106,7 +109,8 @@ export function MoodScreen() {
   const colors = useColors();
   // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
   const screenSettings = useScreenSettings('Mood', 'Mood settings');
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const textScaleFactor = useTextScale();
+  const styles = useMemo(() => makeStyles(colors, textScaleFactor), [colors, textScaleFactor]);
   const guideGutter = useGuideGutter(GUIDE_LABEL_WIDTH);
   const insets = useSafeAreaInsets();
   const scrollTop = useListScrollToTop();
@@ -916,19 +920,28 @@ export function MoodScreen() {
             <>
               <Text style={styles.sectionTitle}>MOOD BY TIME OF DAY</Text>
               <View style={styles.card}>
-                {timeRows.map(row => (
+                {timeRows.map((row, i) => (
                   <View
                     key={row.segment}
-                    style={styles.contrastRow}
+                    style={[styles.timeRow, i > 0 && styles.timeRowGap]}
                     accessible
                     accessibilityLabel={`${row.segment}, average mood ${row.mood.toFixed(1)} across ${row.entryCount} ${row.entryCount === 1 ? 'entry' : 'entries'}`}
                   >
-                    <Text style={styles.contrastLabel}>
-                      {capitalize(row.segment)}
-                    </Text>
-                    <Text style={styles.contrastValue}>
-                      {row.mood.toFixed(1)} · {row.entryCount} {row.entryCount === 1 ? 'entry' : 'entries'}
-                    </Text>
+                    <View style={styles.timeLabel}>
+                      <Text style={styles.contrastLabel}>{capitalize(row.segment)}</Text>
+                      <Text style={styles.timeCount}>
+                        {row.entryCount} {row.entryCount === 1 ? 'entry' : 'entries'}
+                      </Text>
+                    </View>
+                    {/* Decoration: the row's label already carries the figures. */}
+                    <View style={styles.timeTrack} accessible={false} importantForAccessibility="no">
+                      <AnimatedBarFill
+                        percent={contrastBarPercent(moodBarFraction(row.mood))}
+                        delayMs={i * animation.duration.fast}
+                        style={styles.timeFill}
+                      />
+                    </View>
+                    <Text style={styles.timeValue}>{row.mood.toFixed(1)}</Text>
                   </View>
                 ))}
               </View>
@@ -1103,7 +1116,7 @@ function Stat({ styles, value, label, accessibilityLabel }: {
   );
 }
 
-const makeStyles = (colors: Colors) => StyleSheet.create({
+const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: spacing.md },
@@ -1165,6 +1178,22 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: spacing.xs,
     gap: spacing.sm,
+  },
+  // Mood by time of day: label and entry count, one bar on the shared 1-5
+  // scale, and the average in a fixed column so the figures line up.
+  timeRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd },
+  timeRowGap: { marginTop: spacing.smd },
+  timeLabel: { width: Math.round(84 * textScaleFactor) },
+  timeCount: { fontSize: font.xxs, color: colors.textTertiary },
+  timeTrack: { flex: 1, height: 7, borderRadius: radius.full, backgroundColor: colors.separator, overflow: 'hidden' },
+  timeFill: { height: 7, borderRadius: radius.full, backgroundColor: colors.accent },
+  timeValue: {
+    width: Math.round(28 * textScaleFactor),
+    textAlign: 'right',
+    fontSize: font.sm,
+    fontWeight: fontWeight.semibold,
+    color: colors.text,
+    fontVariant: ['tabular-nums'],
   },
   contrastLabel: { flex: 1, fontSize: font.sm, color: colors.text },
   contrastValue: { fontSize: font.sm, color: colors.textSecondary, fontWeight: fontWeight.medium },
