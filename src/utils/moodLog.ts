@@ -25,12 +25,12 @@ import type { LoggedSymptom, MoodLevel, MoodLog, SymptomSeverity } from '../type
  */
 
 /** The scale, low to high. Storage values — reword the labels, never renumber. */
-export const MOOD_LEVELS: readonly { value: MoodLevel; label: string; emoji: string }[] = [
-  { value: 1, label: 'Very low', emoji: '😞' },
-  { value: 2, label: 'Low', emoji: '🙁' },
-  { value: 3, label: 'OK', emoji: '😐' },
-  { value: 4, label: 'Good', emoji: '🙂' },
-  { value: 5, label: 'Very good', emoji: '😄' },
+export const MOOD_LEVELS: readonly { value: MoodLevel; label: string }[] = [
+  { value: 1, label: 'Very low' },
+  { value: 2, label: 'Low' },
+  { value: 3, label: 'OK' },
+  { value: 4, label: 'Good' },
+  { value: 5, label: 'Very good' },
 ];
 
 /**
@@ -65,10 +65,6 @@ export const SYMPTOM_SEVERITIES: readonly { value: SymptomSeverity; label: strin
 
 export function moodLabel(mood: MoodLevel): string {
   return MOOD_LEVELS.find(m => m.value === mood)?.label ?? 'OK';
-}
-
-export function moodEmoji(mood: MoodLevel): string {
-  return MOOD_LEVELS.find(m => m.value === mood)?.emoji ?? '😐';
 }
 
 export function severityLabel(severity: SymptomSeverity): string {
@@ -323,7 +319,7 @@ export function hasLoggedSince(logs: readonly Pick<MoodLog, 'loggedAt'>[], since
  */
 export function moodLogSummary(log: MoodLog): string {
   const parts: string[] = [];
-  if (log.mood !== null) parts.push(`${moodEmoji(log.mood)} ${moodLabel(log.mood)}`);
+  if (log.mood !== null) parts.push(moodLabel(log.mood));
   if (log.symptoms.length > 0) parts.push(log.symptoms.map(s => s.name).join(', '));
   if (log.contextTags.length > 0) parts.push(log.contextTags.join(', '));
   if (parts.length === 0 && log.note) return log.note;
