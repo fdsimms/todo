@@ -22,6 +22,7 @@ import { EmptyState } from './EmptyState';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { useFilterField } from '../hooks/useFilterField';
+import { FieldClearButton } from './FieldClearButton';
 import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
@@ -122,9 +123,9 @@ export function RecipeComponentPicker({ visible, recipe, onClose, onSelect }: Pr
                 autoCorrect={false}
                 spellCheck={false}
                 returnKeyType="search"
-                clearButtonMode="while-editing"
                 accessibilityLabel="Search recipes"
               />
+              <FieldClearButton query={query} onClear={clearQuery} />
             </View>
 
             {candidates.length === 0 ? (

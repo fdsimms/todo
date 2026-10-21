@@ -108,6 +108,7 @@ import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessor
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { useFilterField } from '../hooks/useFilterField';
+import { FieldClearButton } from './FieldClearButton';
 import { TextField } from './TextField';
 import { OTHER_UNIT_KEY, UnitMenuChip } from './UnitMenuChip';
 import { BUTTON_LABEL } from '../copy/shared';
@@ -2319,6 +2320,11 @@ export function FoodLogEntrySheet({
                 // estimate opens on something already filled in, not a blank
                 // search.
                 autoFocus={!editing && !reviewing}
+              />
+              <FieldClearButton
+                query={searchFilter.query}
+                onClear={searchFilter.clear}
+                style={{ marginTop: spacing.xsm }}
               />
               {/* In the field rather than in a row of its own: a packet in hand
                   is most often reached for after a search has come up empty,

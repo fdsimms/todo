@@ -15,6 +15,7 @@ import { EmptyState } from './EmptyState';
 import { haptics } from '../utils/haptics';
 import type { Recipe } from '../types';
 import { useFilterField } from '../hooks/useFilterField';
+import { FieldClearButton } from './FieldClearButton';
 import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
@@ -104,6 +105,7 @@ export function RecipeSourceSheet({ visible, allowAIImport, onPickSaved, onImpor
               returnKeyType="search"
               accessibilityLabel="Search your recipes"
             />
+            <FieldClearButton query={query} onClear={clearQuery} />
           </View>
         )}
 

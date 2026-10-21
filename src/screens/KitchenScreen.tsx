@@ -77,6 +77,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { resolveActiveTrip } from '../utils/activeTrip';
 import { resetToGroceries } from '../navigation/navigationRef';
 import { useFilterField } from '../hooks/useFilterField';
+import { FieldClearButton } from '../components/FieldClearButton';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { isPortionBox } from '../types';
 import { LazySheet } from '../components/LazySheet';
@@ -889,6 +890,7 @@ export function KitchenScreen() {
           onSubmitEditing={canAdd ? handleAdd : undefined}
           accessibilityLabel="Find something in the pantry, or type a name to add it"
         />
+        <FieldClearButton query={query} onClear={clearQuery} />
       </View>
 
       {canAdd && (
