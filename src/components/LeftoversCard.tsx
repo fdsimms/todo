@@ -108,8 +108,8 @@ interface Props {
  * the purge takes the last one, so it can't become permanent for someone who
  * has moved on — and the moment the fridge empties is exactly when "did we eat
  * it or bin it" gets asked, which is precisely when the old rule hid the
- * answer. With nothing live it shrinks to a single line — the status and the
- * two icon actions beside it — not to a full empty state.
+ * answer. With nothing live it shrinks to a single card row — the status and
+ * the two icon actions beside it — not to a full empty state.
  */
 export function LeftoversCard({ leftovers, onPress, onPlan, onAdd, onHistory, drag }: Props) {
   const colors = useColors();
@@ -141,7 +141,7 @@ export function LeftoversCard({ leftovers, onPress, onPlan, onAdd, onHistory, dr
 
   return (
     <View style={styles.wrap}>
-      <View style={styles.header}>
+      <View style={[styles.header, live.length === 0 && styles.headerEmpty]}>
         <View style={styles.headerLeft}>
           <Ionicons name="snow-outline" size={iconSize.sm} color={colors.textTertiary} />
           {/* A section header labels the card under it; with the fridge empty
@@ -384,6 +384,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingBottom: spacing.xxs,
+  },
+  // The empty fridge's one line. Bare, the status sat on the page with a
+  // button floating at the far edge, reading as three loose pieces; in the
+  // card's own surface and row padding it is a row like the ones it stands in
+  // for, so the status and its two actions belong to each other.
+  headerEmpty: {
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
   },
   headerLeft: {
     flexDirection: 'row',
