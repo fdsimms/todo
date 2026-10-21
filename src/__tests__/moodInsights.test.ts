@@ -563,7 +563,7 @@ describe('describing a health insight', () => {
 
   it('says so when there is no clear pattern, rather than staying quiet', () => {
     expect(describeHealthInsight(insight({ strength: 'none' })))
-      .toBe('No clear pattern between your steps and what you finish.');
+      .toBe('No clear pattern between your steps and the tasks you finish.');
     expect(describeHealthInsight(insight({ strength: 'none', against: 'mood' })))
       .toBe('No clear pattern between your steps and your mood.');
   });
@@ -888,7 +888,7 @@ describe('what a food finding is allowed to say', () => {
     expect(describeNutrientInsight(insight({ strength: 'none' })))
       .toBe('No clear pattern between how much you eat and your mood.');
     expect(describeNutrientInsight(insight({ strength: 'none', against: 'completed', metric: 'sugarG' })))
-      .toBe('No clear pattern between your sugar and what you finish.');
+      .toBe('No clear pattern between your sugar and the tasks you finish.');
   });
 
   it('has nothing to say about a nutrient outside the vocabulary', () => {
@@ -1018,7 +1018,7 @@ describe('the lines the eating card says', () => {
     });
     const sugar = nutrientFindings(days).filter(r => r.key.startsWith('sugarG'));
     expect(sugar).toHaveLength(1);
-    expect(sugar[0].text).toBe('No clear pattern between your sugar and your mood or what you finish.');
+    expect(sugar[0].text).toBe('No clear pattern between your sugar and your mood or the tasks you finish.');
   });
 
   it('still says it found nothing, rather than showing only what landed', () => {
