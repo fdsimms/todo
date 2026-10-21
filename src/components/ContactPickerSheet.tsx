@@ -32,6 +32,7 @@ import {
 import { usePersonStore } from '../store/usePersonStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useFilterField } from '../hooks/useFilterField';
+import { FieldClearButton } from './FieldClearButton';
 import { BUTTON_LABEL } from '../copy/shared';
 
 /** How long the field sits still before a search runs. */
@@ -222,6 +223,7 @@ export function ContactPickerSheet({ visible, onPick, onClose, fillingPersonId }
               returnKeyType="search"
               accessibilityLabel={scope === 'limited' ? 'Search or browse the contacts you shared' : 'Search your contacts'}
             />
+            <FieldClearButton query={query} onClear={clearQuery} style={styles.searchClear} />
           </View>
 
           {/* A full grant shows nothing under the field until somebody types
@@ -328,12 +330,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   scroll: { flex: 1 },
   scrollContent: { padding: spacing.md, paddingBottom: 120 },
   searchWrap: { justifyContent: 'center', marginBottom: spacing.md },
+  searchClear: { position: 'absolute', right: spacing.sm + 2 },
   searchIcon: { position: 'absolute', left: spacing.sm + 2, zIndex: 1 },
   field: {
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.md,
     paddingLeft: spacing.sm + 2 + iconSize.sm + spacing.sm,
-    paddingRight: spacing.sm + 2,
+    paddingRight: spacing.sm + 2 + iconSize.sm + spacing.sm,
     fontSize: font.md,
     color: colors.text,
     // A height rather than a lineHeight: RN maps lineHeight straight onto the

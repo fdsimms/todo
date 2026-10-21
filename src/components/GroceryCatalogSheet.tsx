@@ -47,6 +47,7 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import type { GroceryItem } from '../types';
 import { useFilterField } from '../hooks/useFilterField';
+import { FieldClearButton } from './FieldClearButton';
 import { BUTTON_LABEL } from '../copy/shared';
 
 const CHECKBOX_SIZE = 22;
@@ -362,6 +363,7 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
             returnKeyType="search"
             accessibilityLabel="Search your grocery catalog"
           />
+          <FieldClearButton query={query} onClear={clearQuery} />
         </View>
 
         {/* The everyday "what do I get at Costco" read, and the reason it lives

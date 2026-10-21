@@ -33,6 +33,7 @@ import { categoryLabel } from '../utils/categoryLabel';
 import type { Task } from '../types';
 import { useSheetMotion } from '../hooks/useSheetMotion';
 import { useFilterField } from '../hooks/useFilterField';
+import { FieldClearButton } from './FieldClearButton';
 import { BUTTON_LABEL } from '../copy/shared';
 
 /**
@@ -303,6 +304,7 @@ export function TaskRelationPickerSheet({ visible, onClose, relation, taskId, co
               spellCheck={false}
               returnKeyType="search"
             />
+            <FieldClearButton query={query} onClear={clearQuery} />
           </View>
 
           {candidates.length === 0 ? (

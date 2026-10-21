@@ -108,7 +108,7 @@ export function MoodHistoryScreen() {
       label: 'Mood',
       options: MOOD_LEVELS.map(level => ({
         key: String(level.value),
-        label: `${level.emoji} ${level.label}`,
+        label: level.label,
       })),
       selected: filter.moods.map(String),
       onToggle: key => setFilter(f => ({

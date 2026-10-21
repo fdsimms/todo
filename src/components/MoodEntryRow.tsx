@@ -6,7 +6,8 @@ import { useColors } from '../theme/ThemeContext';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { useTextScale } from '../hooks/useTextScale';
-import { moodEmoji, moodLabel, severityLabel } from '../utils/moodLog';
+import { MoodFace } from './MoodFace';
+import { moodLabel, severityLabel } from '../utils/moodLog';
 import { symptomOnLog } from '../utils/moodHistory';
 
 /** Enough for a few sentences; the sheet still holds the whole note. */
@@ -73,7 +74,9 @@ export function MoodEntryRow({ log, onPress, highlightSymptomKey, showDate = tru
           <Ionicons name="document-text-outline" size={iconSize.lg} color={colors.textTertiary} />
         </View>
       ) : (
-        <Text style={styles.emoji}>{moodEmoji(log.mood)}</Text>
+        <View style={styles.face} accessible={false}>
+          <MoodFace level={log.mood} size={iconSize.lg} />
+        </View>
       )}
       <View style={styles.body}>
         <Text style={styles.title} numberOfLines={1}>
@@ -109,8 +112,8 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     marginBottom: spacing.sm,
     gap: spacing.sm,
   },
-  emoji: { fontSize: font.lg, width: Math.round(28 * textScaleFactor), textAlign: 'center' },
-  // Same column as the emoji, so a rated and an unrated entry line up.
+  face: { width: Math.round(28 * textScaleFactor), alignItems: 'center', justifyContent: 'center' },
+  // Same column as the face, so a rated and an unrated entry line up.
   noMood: { width: Math.round(28 * textScaleFactor), alignItems: 'center', justifyContent: 'center' },
   body: { flex: 1 },
   title: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },

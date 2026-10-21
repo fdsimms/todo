@@ -3,12 +3,13 @@ import { Alert, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-n
 import { CardSheet, useCardSheet } from './CardSheet';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { TextField } from './TextField';
+import { FieldClearButton } from './FieldClearButton';
 import { CountStepper } from './CountStepper';
 import { SegmentedControl } from './SegmentedControl';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { usePlaceSuggestions } from '../hooks/usePlaceSuggestions';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { alertPermissionOff } from '../utils/permissionAlert';
 import { requestLocationPermission } from '../utils/weatherLocation';
@@ -50,15 +51,22 @@ export function PlaceAddressField({ text, onChangeText, onPickPlace, picked, pla
 
   return (
     <>
-      <TextField
-        style={styles.input}
-        value={text}
-        onChangeText={next => { onChangeText(next); onPickPlace(null); }}
-        placeholder={placeholder}
-        placeholderTextColor={colors.textTertiary}
-        returnKeyType="done"
-        accessibilityLabel={accessibilityLabel}
-      />
+      <View style={styles.addressWrap}>
+        <TextField
+          style={[styles.input, styles.addressInput]}
+          value={text}
+          onChangeText={next => { onChangeText(next); onPickPlace(null); }}
+          placeholder={placeholder}
+          placeholderTextColor={colors.textTertiary}
+          returnKeyType="done"
+          accessibilityLabel={accessibilityLabel}
+        />
+        <FieldClearButton
+          query={text}
+          onClear={() => { onChangeText(''); onPickPlace(null); }}
+          style={styles.addressClear}
+        />
+      </View>
       {results.length > 0 && (
         <View style={styles.placeList}>
           {results.map((place, index) => {
@@ -369,6 +377,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text,
     fontSize: font.md,
   },
+  addressWrap: { justifyContent: 'center' },
+  addressInput: { paddingRight: spacing.md + iconSize.sm + spacing.sm },
+  addressClear: { position: 'absolute', right: spacing.md },
   hint: {
     color: colors.textTertiary,
     fontSize: font.xs,

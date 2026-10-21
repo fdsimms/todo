@@ -1,9 +1,20 @@
-import React, { useMemo } from 'react';
-import { View, Text, Animated } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, Text, Animated, TouchableOpacity, type GestureResponderEvent } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../../theme/ThemeContext';
+import { iconSize, interaction } from '../../theme';
+import { haptics } from '../../utils/haptics';
+import { CardSheet, type CardAnchor } from '../../components/CardSheet';
+import { LazySheet } from '../../components/LazySheet';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { makeSettingsStyles } from './settingsStyles';
 import { useSettingsFocusFlash } from './SettingsFocus';
+
+/** The long half of a section's explanation, shown in a popover from the header's help button. */
+export interface SectionExplanation {
+  title: string;
+  paragraphs: string[];
+}
 
 interface Props {
   /**
@@ -32,18 +43,51 @@ interface Props {
    * than eighteen, which is the room they needed.
    */
   footer?: React.ReactNode;
+  /**
+   * Explanation too long for the footer, opened from a help button at the end
+   * of the header. Keep the one sentence the section can't be used without in
+   * `footer` and move the rest here: a four-sentence footer under a card is
+   * easy to skim past. Needs a `label`, since the button sits in that row.
+   * It does not follow Settings › Hide help text, because the person asked
+   * for it by tapping.
+   */
+  explain?: SectionExplanation;
   children: React.ReactNode;
 }
 
-export function SettingsSection({ label, entryId, footer, children }: Props) {
+export function SettingsSection({ label, entryId, footer, explain, children }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
   const hideHelpText = useSettingsStore(s => s.hideHelpText);
   const { focused, setFocusRef, highlight } = useSettingsFocusFlash(entryId);
+  const [explainOpen, setExplainOpen] = useState(false);
+  const [explainAnchor, setExplainAnchor] = useState<CardAnchor | null>(null);
+  const hasExplain = explain != null && label != null;
+
+  const openExplain = (e: GestureResponderEvent) => {
+    haptics.tap();
+    setExplainAnchor({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
+    setExplainOpen(true);
+  };
 
   return (
     <View style={styles.section}>
-      {label != null && <Text style={styles.sectionLabel}>{label}</Text>}
+      {label != null && (hasExplain ? (
+        <View style={styles.sectionLabelRow}>
+          <Text style={styles.sectionLabelInRow}>{label}</Text>
+          <TouchableOpacity
+            onPress={openExplain}
+            activeOpacity={interaction.activeOpacity}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel={`About ${label}`}
+          >
+            <Ionicons name="help-circle-outline" size={iconSize.md} color={colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <Text style={styles.sectionLabel}>{label}</Text>
+      ))}
       {/* The card rather than the whole section: the highlight is meant to say
           "the control is in here", and tinting the footer paragraph too makes
           it read as a warning about the text. */}
@@ -54,6 +98,24 @@ export function SettingsSection({ label, entryId, footer, children }: Props) {
         {children}
       </Animated.View>
       {footer != null && !hideHelpText && <Text style={styles.sectionFooter}>{footer}</Text>}
+      {hasExplain && (
+        <LazySheet open={explainOpen}>
+          <CardSheet
+            visible={explainOpen}
+            onClose={() => setExplainOpen(false)}
+            anchor={explainAnchor}
+            popoverWidth={320}
+            name="SectionExplanation"
+          >
+            <View style={styles.explainCard}>
+              <Text style={styles.explainTitle}>{explain.title}</Text>
+              {explain.paragraphs.map((p, i) => (
+                <Text key={i} style={[styles.explainBody, i > 0 && styles.explainBodyNext]}>{p}</Text>
+              ))}
+            </View>
+          </CardSheet>
+        </LazySheet>
+      )}
     </View>
   );
 }

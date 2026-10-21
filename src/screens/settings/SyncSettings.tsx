@@ -89,7 +89,15 @@ export function SyncSettings() {
   return (
     <SettingsSection
       label="Sync"
-      footer="Changes sync when you open the app on each device. iCloud stores them in your private iCloud database and doesn’t receive your mood, medication or food logs, workouts, journal, dreams or milestones. A sync server holds a full copy of everything else except recipe photos, plus your health logs if you include them, on the machine you point it at. Set one up only if you want that copy."
+      footer="Changes sync when you open the app on each device."
+      explain={{
+        title: 'How sync works',
+        paragraphs: [
+          'Changes sync when you open the app on each device.',
+          'iCloud stores them in your private iCloud database and doesn’t receive your mood, medication or food logs, workouts, journal, dreams or milestones.',
+          'A sync server holds a full copy of everything else except recipe photos, plus your health logs if you include them, on the machine you point it at. Set one up only if you want that copy.',
+        ],
+      }}
     >
       {supported && (
         <SettingsRow
