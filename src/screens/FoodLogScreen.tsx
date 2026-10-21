@@ -1141,14 +1141,17 @@ export function FoodLogScreen() {
   ) : (
     <View style={styles.totalsCard}>
       {shownKeys.map(key => (
-        <View key={key} style={styles.totalBlock}>
+        // The whole block is the button (label row, bar and the notes under
+        // it), so a tap anywhere on the nutrient opens its contributors.
         <TouchableOpacity
-          style={styles.totalRow}
+          key={key}
+          style={styles.totalBlock}
           activeOpacity={interaction.activeOpacity}
           onPress={() => { haptics.tap(); setContributorsKey(key); }}
           accessibilityRole="button"
           accessibilityLabel={`See which entries contributed to ${NUTRIENT_LABEL[key].label.toLowerCase()}`}
         >
+        <View style={styles.totalRow}>
           <View style={styles.totalLabelCol}>
             <Text style={styles.totalLabel}>{NUTRIENT_LABEL[key].label}</Text>
           </View>
@@ -1166,7 +1169,7 @@ export function FoodLogScreen() {
                 formats on one line. */}
             <Text style={styles.totalValue}>{totalText(key)}</Text>
           </View>
-        </TouchableOpacity>
+        </View>
         {/* Colored by distance from the target, never by direction:
             whether being over a target is good or bad is not knowable
             (somebody tracking protein wants to reach it, somebody
@@ -1211,7 +1214,7 @@ export function FoodLogScreen() {
             Apple Health
           </Text>
         )}
-        </View>
+        </TouchableOpacity>
       ))}
       {/* Withheld when expanding would add nothing. The list is
           filtered to nutrients the day actually stated or has a target
