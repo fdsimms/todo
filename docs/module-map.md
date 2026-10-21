@@ -434,6 +434,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/rhythmsSettings.ts` — rhythmOptionsFromSettings
 - `src/utils/rotation.ts` — RotationMember, RotationCarrier, MAX_ROTATION_PER_WEEK, rotationPerWeek, withPerWeek, withWorkout, rotationMemberForWorkout, RotationMemberInput, rotationMemberTitle, rotationItemFromInput, +29 more
 - `src/utils/routineGroups.ts` — RoutineGroup, RoutineSections, groupNames, resolveGroupName, routineSections, renamedRegistry, FlatRoutineRow, placementsFromList
+- `src/utils/routineProgress.ts` — RoutineWorkoutPoint, RoutineExerciseProgress, RoutineProgress, routineSessions, RoutineProgressInput, routineProgress, volumeForChart
 - `src/utils/routineUpdate.ts` — RoutineChange, RepRange, RoutineDiffInput, routineChanges, applyRoutineChanges, describeRoutineChange
 - `src/utils/rsvp.ts` — parseGuestNames
 - `src/utils/ruleCategory.ts` — parseRuleCategory, ruleCategoryFor, renameInRuleCategories, withRuleCategory
@@ -611,7 +612,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/workoutProgression.ts` — LINEAR_DELOAD_AFTER, DELOAD_FRACTION, DEFAULT_TARGET_RPE, RPE_LOAD_PER_POINT, DEFAULT_WAVE_PERCENTS, WAVE_STEP_POINTS, WAVE_DELOAD_POINTS, TRAINING_MAX_FRACTION, defaultIncrementKg, incrementFor, +26 more
 - `src/utils/workoutProposal.ts` — ExerciseProposalInput, ExerciseProposal, exerciseProposal, proposalRamp, proposalWrites
 - `src/utils/workoutProposalApply.ts` — liveProposal, ApplyProposalOptions, applyProposal
-- `src/utils/workoutRecordText.ts` — withThousands, recordLabel, formatVolume, formatRecordFigure, formatRecordValue, formatRecordChange, metricLabel, metricNote, metricCaption, formatBestPoint, +3 more
+- `src/utils/workoutRecordText.ts` — withThousands, recordLabel, formatVolume, formatRecordFigure, formatRecordValue, formatRecordChange, metricLabel, metricNote, metricCaption, formatBestPoint, +5 more
 - `src/utils/workoutRecords.ts` — E1RM_MAX_REPS, REP_RECORD_MAX, SECONDARY_MUSCLE_WEIGHT, NEW_RECORD_DAYS, RECENT_RECORD_DAYS, countsForRecords, estimatedOneRepMax, setVolume, liftVolumeKg, VolumeUnit, +32 more
 - `src/utils/workoutRoutine.ts` — RoutineItemShape, itemShape, MAX_ROUTINE_SETS, MAX_WARMUP_SETS, defaultTargets, newRoutineItem, withWarmups, WarmupMode, warmupMode, DEFAULT_WARMUP_SETS, +33 more
 - `src/utils/workoutSession.ts` — SessionExercise, sessionExercises, supersetGroup, roundRobin, walkOrder, movedExerciseOrder, joinedSuperset, leftSuperset, nextSet, currentSetOf, +27 more
