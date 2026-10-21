@@ -446,6 +446,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/routineGroups.ts` — RoutineGroup, RoutineSections, groupNames, resolveGroupName, routineSections, renamedRegistry, FlatRoutineRow, placementsFromList
 - `src/utils/routineProgress.ts` — RoutineWorkoutPoint, RoutineExerciseProgress, RoutineProgress, routineSessions, RoutineProgressInput, routineProgress, volumeForChart
 - `src/utils/routineUpdate.ts` — RoutineChange, RepRange, RoutineDiffInput, routineChanges, applyRoutineChanges, describeRoutineChange
+- `src/utils/routineVersions.ts` — initialRoutineVersionId, initialProgramVersionId, implicitRoutineVersion, routineVersionsOf, currentRoutineVersion, versionNumber, versionAt, sessionVersionId, routineSessionsByVersion, routineVersionTrained, +34 more
 - `src/utils/rsvp.ts` — parseGuestNames
 - `src/utils/ruleCategory.ts` — parseRuleCategory, ruleCategoryFor, renameInRuleCategories, withRuleCategory
 - `src/utils/ruleEstimate.ts` — GeneratorEstimate, GeneratorEstimates, holdsKindEstimate, parseRuleEstimate, ruleEstimateDraft, withRuleEstimate, parseGeneratorEstimates, withGeneratorEstimate
@@ -613,7 +614,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/widgetSync.ts` — drainWatchQueues, writeWidgetSnapshotNow, useWidgetSync
 - `src/utils/workoutCell.ts` — setFieldMax, parseRepsTarget, parseSetCell
 - `src/utils/workoutCsv.ts` — ImportSource, ImportedSet, ImportedSession, CsvParseResult, SkippedRows, describeSkipped, ParseOptions, parseCsv, readCsv, parseImportDate, +34 more
-- `src/utils/workoutData.ts` — EXERCISE_KINDS, FREE_EQUIPMENT, ACCESSORY_EQUIPMENT, STRENGTH_MACHINES, CARDIO_MACHINES, EXERCISE_EQUIPMENT, machineParent, EquipmentGroup, equipmentGroup, MUSCLE_GROUPS, +41 more
+- `src/utils/workoutData.ts` — EXERCISE_KINDS, FREE_EQUIPMENT, ACCESSORY_EQUIPMENT, STRENGTH_MACHINES, CARDIO_MACHINES, EXERCISE_EQUIPMENT, machineParent, EquipmentGroup, equipmentGroup, MUSCLE_GROUPS, +43 more
 - `src/utils/workoutDraft.ts` — DescribeMode, DESCRIBE_MAX_LENGTH, MAX_DRAFT_EXERCISES, DraftSet, DraftExercise, WorkoutDraft, readWorkoutDraft, draftNames, newExerciseFor, RoutineDraft, +4 more
 - `src/utils/workoutHistory.ts` — HEALTH_HISTORY_MAX_DAYS, WorkoutHistoryRow, healthHistoryWindow, SAME_WORKOUT_START_MS, overlapsSession, interleaveHistory, healthWorkoutSource, healthWorkoutTitle, healthWorkoutLine
 - `src/utils/workoutLink.ts` — WORKOUT_LINK_VERBS, WorkoutLinkVerb, WorkoutLink, WORKOUT_OPEN_URL, workoutLinkUrl, WorkoutLinkPlan, planWorkoutLink
@@ -702,7 +703,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useWeatherStore.ts` — useWeatherStore, useWeatherSync
 - `src/store/useWidgetCompletionStore.ts` — TAP_CLAIM_WINDOW_MS, useWidgetCompletionStore
 - `src/store/useWorkoutModeStore.ts` — useWorkoutModeStore
-- `src/store/useWorkoutStore.ts` — ExerciseInput, ExercisePatch, RoutinePatch, ProgramInput, ProgramPatch, StartSessionInput, SessionPatch, FinishOptions, FinishedSessionInput, PlannedRoutineSet, +7 more
+- `src/store/useWorkoutStore.ts` — ExerciseInput, ExercisePatch, RoutinePatch, ProgramInput, ProgramPatch, VersionMode, RoutineSaveOptions, RoutineAddOptions, StartSessionInput, SessionPatch, +10 more
 
 ## `src/hooks`
 
@@ -797,7 +798,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 
 ## `src/db`
 
-- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, ensureDatabaseReady, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, +301 more
+- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, ensureDatabaseReady, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, +307 more
 - `src/db/syncTracking.ts` — SyncTable, KEY_SEPARATOR, SYNC_TRACKED_TABLES, SYNC_DEVICE_LOCAL_COLUMNS, isDeviceLocalColumn, withoutDeviceLocalColumns, SYNC_EXCLUDED_TABLES, SYNCED_SETTING_KEYS, isSyncedSettingKey, HEALTH_SYNC_TABLES, +16 more
 
 ## `src/services`

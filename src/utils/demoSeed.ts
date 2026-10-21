@@ -3319,7 +3319,9 @@ function seedWorkouts(today: Date): void {
   // From the library, as a person would add it, then the first two routines
   // edited into the person's own: the landmine row for the barbell row, a
   // superset, and target weights.
-  const added = workouts.addLibraryProgram('upper-lower');
+  // Dated before the first workout below, so Upper A's History reads as a
+  // routine kept for weeks rather than one made today.
+  const added = workouts.addLibraryProgram('upper-lower', { at: subDays(today, 45) });
   const programId = typeof added === 'string' ? null : added.program.id;
   const libraryRoutine = (name: string) => (typeof added === 'string' ? undefined : added.routines.find(r => r.name === name));
   const ownRoutine = (name: string, items: WorkoutRoutineItem[]) => {
@@ -3345,7 +3347,7 @@ function seedWorkouts(today: Date): void {
   if (homeId) gyms.setGymExercise(homeId, 'lib:back-squat', { notes: 'Safety bars at hole 4.', barKg: 15 });
   // A stack that steps by 5 kg here, where the usual step is 2.5.
   if (bigId) gyms.setGymExercise(bigId, 'lib:triceps-pushdown', { incrementKg: 5 });
-  const upper = ownRoutine('Upper A', [
+  const upperItems: WorkoutRoutineItem[] = [
     { exerciseId: 'lib:barbell-bench-press', restSeconds: 150, progression: { scheme: 'double', incrementKg: 2.5 },
       targets: [working(6, 8, 60), working(6, 8, 60), working(6, 8, 60)] },
     { exerciseId: rowId, restSeconds: 120, progression: { scheme: 'double', incrementKg: 2.5 },
@@ -3355,7 +3357,15 @@ function seedWorkouts(today: Date): void {
     // A drop set to finish, so the set table shows a row that isn't numbered.
     { exerciseId: 'lib:triceps-pushdown', supersetKey: 'a', restSeconds: 60, progression: null,
       targets: [working(10, 12, 25), working(10, 12, 25), { kind: 'drop', repsMin: 10, repsMax: 12, weightKg: 15 }] },
-  ]);
+  ];
+  // Upper A's first version: a shorter bench rest and no drop set. The plan
+  // above becomes its second version three weeks in, partway through the
+  // workouts below, so History has two versions with workouts on each.
+  const upper = ownRoutine('Upper A', upperItems.map(item => (
+    item.exerciseId === 'lib:barbell-bench-press' ? { ...item, restSeconds: 120 }
+      : item.exerciseId === 'lib:triceps-pushdown' ? { ...item, targets: item.targets.filter(t => t.kind !== 'drop') }
+        : item
+  )));
   const lower = ownRoutine('Lower A', [
     { exerciseId: 'lib:back-squat', restSeconds: 180, progression: { scheme: 'double', incrementKg: 5 }, warmupRamp: true,
       targets: [working(5, 6, 80), working(5, 6, 80), working(5, 6, 80)] },
@@ -3380,7 +3390,9 @@ function seedWorkouts(today: Date): void {
   ]);
   if (typeof hotel !== 'string') useWorkoutStore.getState().updateRoutine(hotel.id, { groupName: 'Travel', archived: true });
   if (programId) {
-    useWorkoutStore.getState().updateProgram(programId, { weeks: 8, startedAt: subDays(today, 6).toISOString() });
+    // Six weeks at first; made eight three weeks in (below), so the program's
+    // History has two versions to compare.
+    useWorkoutStore.getState().updateProgram(programId, { weeks: 6, startedAt: subDays(today, 6).toISOString() });
   }
 
   const lowerId = typeof lower === 'string' ? null : lower.id;
@@ -3422,6 +3434,13 @@ function seedWorkouts(today: Date): void {
   session(31, lower, lowerDay(72.5, [6, 6, 5], 62.5), 7);
   session(27, upper, upperDay(55, 37.5, 22.5), 7);
   session(24, lower, lowerDay(75, [6, 5, 5], 65), 8);
+  if (typeof upper !== 'string') {
+    const next = useWorkoutStore.getState().updateRoutine(upper.id, { items: upperItems }, { version: 'new', at: subDays(today, 22) });
+    if (typeof next !== 'string' && next.currentVersionId) {
+      useWorkoutStore.getState().labelRoutineVersion(next.currentVersionId, 'With a drop set');
+    }
+  }
+  if (programId) useWorkoutStore.getState().updateProgram(programId, { weeks: 8 }, { version: 'new', at: subDays(today, 22) });
   session(20, upper, upperDay(55, 37.5, 22.5), 6);
   session(17, lower, lowerDay(77.5, [5, 5, 5], 65), 8);
   session(13, upper, upperDay(57.5, 40, 25), 7);

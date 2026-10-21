@@ -8,7 +8,8 @@ import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
 import { withAgentLedger, type AgentLedgerEntry } from '../agentLedger';
 import {
-  deleteGym, deleteProgram, deleteRoutine, deleteWorkout, listWorkouts, saveGym, logWorkout, nextWorkout, routineItemsFrom, saveProgram, saveRoutine,
+  copyRoutineVersionOut, deleteGym, deleteProgram, deleteRoutine, deleteWorkout, listWorkouts, mergeRoutinesOut, programHistoryOut, saveGym,
+  logWorkout, nextWorkout, restoreProgramVersionOut, restoreRoutineVersionOut, routineHistoryOut, routineItemsFrom, saveProgram, saveRoutine,
   updateWorkout,
 } from '../workoutTools';
 import { createTask, getTask, updateTask } from '../tools';
@@ -35,7 +36,7 @@ describe('the workout write tools', () => {
   });
 
   beforeEach(() => {
-    for (const t of ['workout_routines', 'workout_programs', 'workout_sessions', 'workout_sets', 'exercises', 'gyms', 'gym_exercises']) mockRaw.runSync(`DELETE FROM ${t}`);
+    for (const t of ['workout_routines', 'workout_programs', 'workout_routine_versions', 'workout_program_versions', 'workout_sessions', 'workout_sets', 'exercises', 'gyms', 'gym_exercises']) mockRaw.runSync(`DELETE FROM ${t}`);
     replica.refresh();
     entries = [];
     ledgered = withAgentLedger(replica, e => { entries.push(...e); });
@@ -117,6 +118,76 @@ describe('the workout write tools', () => {
       expect(note).toMatch(/nothing applies one unasked/);
       expect(listWorkouts(replica).routines.map(r => r.name)).toEqual(['Push A']);
       expect(entries).toEqual([expect.objectContaining({ action: 'created', subject: 'routine', title: 'Push A' })]);
+    });
+
+    it('keeps the agent\'s plan as a version: amending it until a workout is done on it, a new one after', () => {
+      const { routine } = saveRoutine(ledgered, { name: 'Legs', exercises: [{ exerciseId: 'lib:back-squat', sets: [{ repsMin: 5 }] }] });
+      const versions = () => replica.routineVersions().filter(v => v.routineId === routine.id);
+      expect(versions().map(v => v.source)).toEqual(['agent']);
+      saveRoutine(ledgered, { id: routine.id, exercises: [{ exerciseId: 'lib:back-squat', sets: [{ repsMin: 5 }, { repsMin: 5 }] }] });
+      expect(versions()).toHaveLength(1);
+      logWorkout(replica, {
+        routineId: routine.id, startedAt: new Date(Date.now() - 3600_000).toISOString(),
+        exercises: [{ exerciseId: 'lib:back-squat', sets: [{ weightKg: 100, reps: 5 }] }],
+      });
+      saveRoutine(ledgered, { id: routine.id, exercises: [{ exerciseId: 'lib:back-squat', sets: [{ repsMin: 3 }] }] });
+      expect(versions().map(v => [v.source, v.items[0].targets.length])).toEqual([['agent', 2], ['agent', 1]]);
+      expect(listWorkouts(replica).routines.find(r => r.id === routine.id)?.version).toBe(2);
+    });
+
+    it('restores, copies and merges by version number, recording each in Activity', () => {
+      const trainOn = (routineId: string) => logWorkout(replica, {
+        routineId, startedAt: new Date(Date.now() - 3600_000).toISOString(),
+        exercises: [{ exerciseId: 'lib:back-squat', sets: [{ weightKg: 100, reps: 5 }] }],
+      });
+      const { routine } = saveRoutine(replica, { name: 'Day One', exercises: [{ exerciseId: 'lib:back-squat', sets: [{ repsMin: 5 }] }] });
+      trainOn(routine.id);
+      saveRoutine(replica, { id: routine.id, exercises: [{ exerciseId: BENCH, sets: [{ repsMin: 8 }] }] });
+
+      const restored = restoreRoutineVersionOut(ledgered, { routineId: routine.id, version: 1 });
+      expect(restored.routine).toMatchObject({ version: 3 });
+      expect(restored.routine.exercises.map(e => e.exerciseId)).toEqual(['lib:back-squat']);
+      expect(routineHistoryOut(replica, { routineId: routine.id }).versions.map(v => [v.version, v.source])).toEqual([
+        [3, 'restore'], [2, 'agent'], [1, 'agent'],
+      ]);
+      expect(() => restoreRoutineVersionOut(ledgered, { routineId: routine.id, version: 3 })).toThrow(/already the current one/);
+      expect(() => restoreRoutineVersionOut(ledgered, { routineId: routine.id, version: 9 })).toThrow(/no version 9.*routine_history/);
+
+      const copy = copyRoutineVersionOut(ledgered, { routineId: routine.id, version: 2 });
+      expect(copy.routine).toMatchObject({ name: 'Day One (version 2)', version: 1 });
+      expect(copy.routine.exercises.map(e => e.exerciseId)).toEqual([BENCH]);
+
+      const linked = createTask(replica, { title: 'Lift', category: 'Gym', newCategory: true, workoutRoutineId: copy.routine.id }).task;
+      const merged = mergeRoutinesOut(ledgered, { fromId: copy.routine.id, intoId: routine.id });
+      // The open task moves to the routine that was kept, through the replica's own task write.
+      expect(mockRaw.getFirstSync<{ workout_routine_id: string }>('SELECT workout_routine_id FROM tasks WHERE id = ?', [linked.id])?.workout_routine_id)
+        .toBe(routine.id);
+      expect(merged.removed).toEqual({ id: copy.routine.id, name: 'Day One (version 2)' });
+      expect(listWorkouts(replica).routines.map(r => r.name)).toEqual(['Day One']);
+      expect(routineHistoryOut(replica, { routineId: routine.id }).versions).toHaveLength(4);
+      expect(() => mergeRoutinesOut(ledgered, { fromId: routine.id, intoId: routine.id })).toThrow(/into itself/);
+      expect(entries.map(e => [e.action, e.subject])).toEqual([
+        ['edited', 'routine'], ['created', 'routine'], ['edited', 'routine'],
+      ]);
+      expect(entries[2].note).toMatch(/cannot be undone/);
+    });
+
+    it('reads and restores a program\'s versions', () => {
+      const a = saveRoutine(replica, { name: 'A', exercises: [{ exerciseId: 'lib:back-squat', sets: [{ repsMin: 5 }] }] }).routine;
+      const b = saveRoutine(replica, { name: 'B', exercises: [{ exerciseId: BENCH, sets: [{ repsMin: 5 }] }] }).routine;
+      const { program } = saveProgram(replica, { name: 'HW', routineIds: [a.id, b.id], weeks: 8 });
+      logWorkout(replica, {
+        routineId: a.id, startedAt: new Date(Date.now() - 3600_000).toISOString(),
+        exercises: [{ exerciseId: 'lib:back-squat', sets: [{ weightKg: 100, reps: 5 }] }],
+      });
+      saveProgram(replica, { id: program.id, routineIds: [a.id], weeks: 4 });
+      const history = programHistoryOut(replica, { programId: program.id });
+      expect(history.versions.map(v => [v.version, v.weeks, v.rotation.map(r => r.name)])).toEqual([[2, 4, ['A']], [1, 8, ['A', 'B']]]);
+      expect(history.versions[0].changes).toBe('Removed B; 8 weeks → 4 weeks');
+      const restored = restoreProgramVersionOut(ledgered, { programId: program.id, version: 1 });
+      expect(restored.program).toMatchObject({ weeks: 8, rotation: ['A', 'B'] });
+      expect(programHistoryOut(replica, { programId: program.id }).versions).toHaveLength(3);
+      expect(entries).toEqual([expect.objectContaining({ action: 'edited', subject: 'program', title: 'HW' })]);
     });
 
     it('changes only what it names, and refuses an unknown exercise, a nameless new one and a set-less exercise', () => {

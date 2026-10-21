@@ -112,7 +112,8 @@ import { listCopyFlags, resolveCopyFlag } from './copyFlagTools';
 import { deleteMeterReading, listMeterReadings, logMeterReading } from './meterTools';
 import {
   DEFAULT_EXERCISE_LIMIT, MAX_EXERCISE_LIMIT, deleteGym, deleteProgram, deleteRoutine, deleteRoutineGroup, deleteWorkout, exerciseHistory, listExercises,
-  listWorkouts, logWorkout, nextWorkout, saveGym, saveProgram, saveRoutine, saveRoutineGroup, updateWorkout,
+  listWorkouts, logWorkout, nextWorkout, routineHistoryOut, restoreRoutineVersionOut, copyRoutineVersionOut, mergeRoutinesOut,
+  programHistoryOut, restoreProgramVersionOut, saveGym, saveProgram, saveRoutine, saveRoutineGroup, updateWorkout,
 } from './workoutTools';
 import { EXERCISE_EQUIPMENT, MUSCLE_GROUPS } from '../../src/utils/workoutData';
 import { deleteJournalEntry, listJournalEntries, logJournalEntry, searchJournalEntries, updateJournalEntry } from './journalTools';
@@ -596,6 +597,19 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
   );
 
   server.tool(
+    'routine_history',
+    'One routine\'s versions, newest first: the plan each held (its exercises and planned sets, weights in kg), when it was in use, how many finished workouts were done on it, and what it changed from the one before, in the phone\'s words. A version is what was trained on: a change saved before any workout on the current version amends it, and one saved after starts a new one. list_workouts gives each routine\'s current version and each workout the version it was done on. Read-only: restore_routine_version goes back to one, copy_routine_version makes a routine of one, and merge_routines folds a hand-made copy into one history. Workout counts arrive only with Include health logs on, so a version with none is not evidence that nobody trained on it. Report the figures side by side; never call one version better than another.',
+    { routineId: z.string().min(1).describe('A routine from list_workouts.') },
+    async input => {
+      try {
+        return json(await withFresh(() => routineHistoryOut(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not read the routine history.' });
+      }
+    }
+  );
+
+  server.tool(
     'exercise_history',
     'One exercise\'s history: its personal records, the trend of its estimated 1RM, and the sets of the last session that did it. Take the id from list_exercises. The estimated 1RM is a calculation (Epley, from each session\'s best set of 10 reps or fewer), not a lift the person did: always call it estimated, and never present it as a number they lifted. Records are the heaviest weight, the best set at each rep count, and the most volume in a session; a first session sets no records, and warm-ups never count. Weights are kg, whatever unit the phone shows; a bodyweight exercise\'s volume is its reps and is never multiplied by a body weight. Never work anything out relative to body weight. Workout history is part of the health record: it is empty unless the person has turned on Include health logs for the sync server, so an empty history is not evidence that they did not train.',
     { exerciseId: z.string().min(1).describe('From list_exercises.') },
@@ -704,6 +718,76 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
         return json(await withWrite(() => deleteRoutine(replica, id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not delete the routine.' });
+      }
+    }
+  );
+
+  const versionArg = z.number().int().positive().describe('The version number routine_history or program_history gives.');
+
+  server.tool(
+    'restore_routine_version',
+    'Make an older version of a routine current again. Its plan is saved as the newest version, so nothing in History is rewritten and the version that was current stays there. Take the number from routine_history. Refused for the version that is already current. What the phone\'s Restore then Save does; confirm with the person first, since the plan they train next changes.',
+    { routineId: z.string().min(1).describe('A routine from list_workouts.'), version: versionArg },
+    async input => {
+      try {
+        return json(await withWrite(() => restoreRoutineVersionOut(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not restore the version.' });
+      }
+    }
+  );
+
+  server.tool(
+    'copy_routine_version',
+    'Make a routine of its own from one version of a routine, named "{routine} (version N)". The routine it came from is unchanged. Take the number from routine_history.',
+    { routineId: z.string().min(1).describe('A routine from list_workouts.'), version: versionArg },
+    async input => {
+      try {
+        return json(await withWrite(() => copyRoutineVersionOut(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not copy the version.' });
+      }
+    }
+  );
+
+  server.tool(
+    'merge_routines',
+    'Fold one routine (fromId) into another (intoId) as its earlier history, for a copy the person made by hand to start a new version ("Day One" and "Day One v2"). fromId\'s versions and workouts move to intoId, each workout keeping the version it was done on; its place in any program and its open tasks move too; then fromId is deleted. intoId\'s plan is unchanged. Refused while a workout from fromId is in progress. It cannot be undone from here, so confirm with the person which routine is kept first.',
+    {
+      fromId: z.string().min(1).describe('The routine that becomes earlier history and is deleted.'),
+      intoId: z.string().min(1).describe('The routine that is kept.'),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => mergeRoutinesOut(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not merge the routines.' });
+      }
+    }
+  );
+
+  server.tool(
+    'program_history',
+    'One program\'s versions, newest first: each block\'s rotation (with the version each routine started and ended the block on), length, progression scheme, how many finished workouts were done in it, and what it changed from the one before. A change to the rotation, length or scheme saved after a workout in the current version starts a new one; training maxes are not versioned. Workout counts need Include health logs. Report figures side by side; never call one block better than another.',
+    { programId: z.string().min(1).describe('A program from list_workouts.') },
+    async input => {
+      try {
+        return json(await withFresh(() => programHistoryOut(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not read the program history.' });
+      }
+    }
+  );
+
+  server.tool(
+    'restore_program_version',
+    'Make an older version of a program current again: its rotation, length and progression are saved as the newest version, so nothing in History is rewritten. A routine deleted since is left out of the rotation, and training maxes are unchanged. Take the number from program_history. Refused for the version that is already current. Confirm with the person first.',
+    { programId: z.string().min(1).describe('A program from list_workouts.'), version: versionArg },
+    async input => {
+      try {
+        return json(await withWrite(() => restoreProgramVersionOut(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not restore the version.' });
       }
     }
   );

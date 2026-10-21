@@ -64,6 +64,12 @@ import {
   dbSaveWorkoutRoutine,
   dbGetAllWorkoutPrograms,
   dbSaveWorkoutProgram,
+  dbGetAllRoutineVersions,
+  dbSaveRoutineVersion,
+  dbDeleteRoutineVersion,
+  dbGetAllProgramVersions,
+  dbSaveProgramVersion,
+  dbDeleteProgramVersion,
   dbGetAllWorkoutSessions,
   dbSaveWorkoutSession,
   dbDeleteWorkoutSession,
@@ -6476,6 +6482,7 @@ describe('workouts', () => {
   const session = {
     id: 's1', routineId: 'r1', programId: null, taskId: null, gymId: 'g1', title: 'Upper A', startedAt: '2026-10-10T22:00:00.000Z',
     endedAt: '2026-10-10T23:00:00.000Z', notes: '', effort: 7, healthWorkoutId: null, healthWritePending: false, measuredOnWatch: false, timesEdited: false,
+    routineVersionId: 'v1',
   };
   const set = (id: string, extra: Partial<Parameters<typeof dbSaveWorkoutSet>[0]> = {}) => ({
     id, sessionId: 's1', exerciseId: 'lib:back-squat', position: 0, setIndex: 0, kind: 'working' as const,
@@ -6517,12 +6524,14 @@ describe('workouts', () => {
   it('round-trips a routine and a program, JSON and all', () => {
     const routine = {
       id: 'r1', name: 'Upper A', notes: '', programId: 'p1', sortOrder: 0, createdAt: '2026-10-01T10:00:00.000Z', groupName: null, archived: false,
+      currentVersionId: 'v1',
       items: [{ exerciseId: 'c1', supersetKey: 'a', restSeconds: 90, progression: { scheme: 'double' as const, incrementKg: 2.5 },
         targets: [{ kind: 'working' as const, repsMin: 8, repsMax: 10, weightKg: 40 }] }],
     };
     const program = {
       id: 'p1', name: 'Upper and lower', weeks: 8, rotation: ['r1', 'r2'], scheme: 'double' as const,
       trainingMaxes: [{ exerciseId: 'lib:back-squat', kg: 120 }], startedAt: null, archived: false, createdAt: '2026-10-01T10:00:00.000Z',
+      currentVersionId: null,
     };
     dbSaveWorkoutRoutine(routine);
     dbSaveWorkoutProgram(program);
@@ -6531,6 +6540,31 @@ describe('workouts', () => {
     expect(dbGetAllWorkoutRoutines()).toEqual([{ ...routine, groupName: 'Gym', archived: true }]);
     dbSaveWorkoutRoutine(routine);
     expect(dbGetAllWorkoutPrograms()).toEqual([program]);
+  });
+
+  it('round-trips routine and program versions, oldest first, and reads an unknown source as an edit', () => {
+    const item = { exerciseId: 'c1', supersetKey: null, restSeconds: null, progression: null, targets: [{ kind: 'working' as const, repsMin: 5, repsMax: 5 }] };
+    const later = {
+      id: 'v2', routineId: 'r1', createdAt: '2026-10-05T10:00:00.000Z', name: 'Upper A', notes: 'Seat 4', items: [item],
+      source: 'workout' as const, label: 'Heavy',
+    };
+    const earlier = { ...later, id: 'v1', createdAt: '2026-10-01T10:00:00.000Z', notes: '', source: 'created' as const, label: null };
+    dbSaveRoutineVersion(later);
+    dbSaveRoutineVersion(earlier);
+    expect(dbGetAllRoutineVersions()).toEqual([earlier, later]);
+    mockRawDb.prepare('UPDATE workout_routine_versions SET source = ? WHERE id = ?').run('from-the-future', 'v1');
+    expect(dbGetAllRoutineVersions()[0].source).toBe('edit');
+    dbDeleteRoutineVersion('v1');
+    expect(dbGetAllRoutineVersions().map(v => v.id)).toEqual(['v2']);
+
+    const pv = {
+      id: 'pv1', programId: 'p1', createdAt: '2026-10-01T10:00:00.000Z', name: 'Upper and lower', weeks: null, rotation: ['r1', 'r1'],
+      scheme: null, routineVersionIds: { r1: 'v2' }, label: null,
+    };
+    dbSaveProgramVersion(pv);
+    expect(dbGetAllProgramVersions()).toEqual([pv]);
+    dbDeleteProgramVersion('pv1');
+    expect(dbGetAllProgramVersions()).toEqual([]);
   });
 
   it('round-trips sessions and sets, in the order they are done', () => {
@@ -6621,7 +6655,10 @@ describe('workouts', () => {
     dbSaveWorkoutSession(session);
     dbSaveWorkoutSet(set('a'));
     const tables = dbExportTables();
-    for (const t of ['exercises', 'workout_routines', 'workout_programs', 'workout_sessions', 'workout_sets']) {
+    for (const t of [
+      'exercises', 'workout_routines', 'workout_programs', 'workout_routine_versions', 'workout_program_versions',
+      'workout_sessions', 'workout_sets',
+    ]) {
       expect(Object.keys(tables)).toContain(t);
     }
     expect(tables.workout_sets).toHaveLength(1);

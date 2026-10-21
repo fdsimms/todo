@@ -10,6 +10,8 @@ import type { WorkoutSet } from '../types';
 
 export interface StartWorkoutInput {
   routineId?: string | null;
+  /** An older version of the routine to do instead of its current one (History's "Start a workout from it"). */
+  routineVersionId?: string | null;
   /**
    * A program to start the next routine of (`programProgress`), in place of a
    * routine. One with nothing in its rotation starts nothing.
@@ -87,6 +89,7 @@ export function startWorkout(input: StartWorkoutInput = {}): StartWorkoutResult 
     ? store.startSession({ title: input.repeat.title, planned: repeatedSets(input.repeat.sets), gymId: defaultGymId() })
     : store.startSession({
       routineId, programId: program?.id ?? null, taskId: input.taskId ?? null, gymId: defaultGymId(),
+      ...(input.routineVersionId ? { routineVersionId: input.routineVersionId } : {}),
     });
   if (typeof started === 'string') return 'nothing';
   // The workout opens at once at the gym last used; where the phone is follows

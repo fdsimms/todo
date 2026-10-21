@@ -148,7 +148,9 @@ describe('the health record', () => {
       'food_logs', 'medication_logs', 'milestones', 'mood_logs', 'workout_sessions', 'workout_sets',
     ]);
     // Workout plans travel like any other data; only the record is withheld.
-    for (const plan of ['exercises', 'workout_routines', 'workout_programs', 'saved_meals']) {
+    for (const plan of [
+      'exercises', 'workout_routines', 'workout_programs', 'workout_routine_versions', 'workout_program_versions', 'saved_meals',
+    ]) {
       expect(HEALTH_SYNC_TABLES).not.toContain(plan);
     }
   });

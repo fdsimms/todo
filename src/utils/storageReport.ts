@@ -70,6 +70,8 @@ const TABLE_LABELS: Record<string, string> = {
   exercises: 'Workouts',
   workout_routines: 'Workouts',
   workout_programs: 'Workouts',
+  workout_routine_versions: 'Workouts',
+  workout_program_versions: 'Workouts',
   gyms: 'Workouts',
   gym_exercises: 'Workouts',
   workout_sessions: 'Workouts',

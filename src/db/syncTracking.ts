@@ -93,6 +93,10 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   { name: 'exercises', key: ['id'] },
   { name: 'workout_routines', key: ['id'] },
   { name: 'workout_programs', key: ['id'] },
+  // Their history: append-mostly plans, so two devices each adding a version
+  // keep both rather than one overwriting the other.
+  { name: 'workout_routine_versions', key: ['id'] },
+  { name: 'workout_program_versions', key: ['id'] },
   // Gyms and what differs about an exercise at one: plans, so they travel like routines.
   { name: 'gyms', key: ['id'] },
   { name: 'gym_exercises', key: ['id'] },

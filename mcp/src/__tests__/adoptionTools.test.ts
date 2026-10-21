@@ -248,3 +248,19 @@ describe('ADOPTION_CHECKS', () => {
     for (const a of ids) for (const b of ids) if (a !== b) expect(b.includes(a)).toBe(false);
   });
 });
+
+describe('routine_history', () => {
+  it('suggests History when a routine looks like a copy of another, with Workouts on', () => {
+    const ids = (on: boolean, names: string[]) => unusedFeatures({
+      ...fakeReplica(),
+      settings: () => ({ simpleMode: false, kitchenEnabled: true, completedRetentionDays: null, rewardsEnabled: false, workoutsEnabled: on }),
+      workoutRoutines: () => names.map((name, i) => ({ id: `r${i}`, name })),
+      workoutPrograms: () => [{}],
+      gyms: () => [],
+      workoutSessions: () => [],
+    } as unknown as Replica, { since: '2026-09-01', limit: 30 }).suggestions.map(s => s.id);
+    expect(ids(true, ['HW Day One', 'HW Day One v2'])).toContain('routine_history');
+    expect(ids(true, ['Push', 'Pull'])).not.toContain('routine_history');
+    expect(ids(false, ['HW Day One', 'HW Day One v2'])).not.toContain('routine_history');
+  });
+});

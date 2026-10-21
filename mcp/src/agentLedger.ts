@@ -1441,6 +1441,30 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return routine;
     },
 
+    restoreRoutineVersion(routineId, version) {
+      const routine = replica.restoreRoutineVersion(routineId, version);
+      log({ action: 'edited', subject: 'routine', title: routine.name, taskId: null, recordId: routine.id, note: `Make version ${version} of the routine "${routine.name}" current again, as its newest version` });
+      return routine;
+    },
+
+    copyRoutineVersion(routineId, version) {
+      const routine = replica.copyRoutineVersion(routineId, version);
+      log({ action: 'created', subject: 'routine', title: routine.name, taskId: null, recordId: routine.id, note: `Copy version ${version} into a new routine, "${routine.name}"` });
+      return routine;
+    },
+
+    mergeRoutines(fromId, intoId) {
+      const result = replica.mergeRoutines(fromId, intoId);
+      log({ action: 'edited', subject: 'routine', title: result.into.name, taskId: null, recordId: result.into.id, note: `Merge the routine "${result.from.name}" into "${result.into.name}" as its earlier history. "${result.from.name}" is deleted. It cannot be undone from here.` });
+      return result;
+    },
+
+    restoreProgramVersion(programId, version) {
+      const program = replica.restoreProgramVersion(programId, version);
+      log({ action: 'edited', subject: 'program', title: program.name, taskId: null, recordId: program.id, note: `Make version ${version} of the program "${program.name}" current again, as its newest version` });
+      return program;
+    },
+
     saveRoutineGroup(name, renameTo) {
       const result = replica.saveRoutineGroup(name, renameTo);
       log(renameTo === undefined

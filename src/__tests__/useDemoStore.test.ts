@@ -113,6 +113,7 @@ import { linkFor } from '../constants/linkApps';
 import { buildMoodDays, contextTagMoodContrasts, describeNutrientInsight, lowMoodRun, foodMoodContrasts, foodPairedDays, symptomFoodContrasts, milestoneMoodContrast, moodCompletionInsight, nutrientInsight, symptomMoodContrasts, taskContrastTitles, taskMoodContrasts, trainingDayMoodContrast, MIN_PAIRED_DAYS } from '../utils/moodInsights';
 import { analyzeExercise, recordSessions, trainingDays } from '../utils/workoutRecords';
 import { programProgress } from '../utils/workoutProgram';
+import { programHistory, routineHistory } from '../utils/routineVersions';
 import { loadContextFor, proposeNext, schemeFor } from '../utils/workoutProgression';
 import { daysBetween } from '../utils/exerciseChart';
 import { contextTagVocabulary, symptomVocabulary } from '../utils/moodLog';
@@ -2300,6 +2301,24 @@ describe('demo seed — people', () => {
     // And one rated trivial, which earns nothing.
     const chore = useTaskStore.getState().tasks.find(t => t.title === 'Water the desk plant');
     expect(chore?.difficulty).toBe('trivial');
+  });
+
+  // Versions are invisible until a routine has been changed after a workout,
+  // so the seed changes one partway through its history.
+  it('seeds a routine with two versions, workouts on each, and a named version', () => {
+    const { routines, routineVersions, sessions } = useWorkoutStore.getState();
+    const upper = routines.find(r => r.name === 'Upper A')!;
+    const history = routineHistory(upper, routineVersions, sessions);
+    expect(history.map(e => e.number)).toEqual([2, 1]);
+    expect(history[0]).toMatchObject({ current: true, version: { label: 'With a drop set' } });
+    expect(history.every(e => e.sessions.length > 0)).toBe(true);
+    // Dated before the workouts, not on the day the demo was opened.
+    expect(history[1].from < history[1].sessions[0].startedAt).toBe(true);
+    // And the program around it has two versions, a block each.
+    const { programs, programVersions } = useWorkoutStore.getState();
+    const blocks = programHistory(programs[0], programVersions, routines, routineVersions, sessions);
+    expect(blocks.map(b => [b.number, b.version.weeks])).toEqual([[2, 8], [1, 6]]);
+    expect(blocks.every(b => b.workouts > 0)).toBe(true);
   });
 
   it('seeds a program of workouts switched on, with sets, a custom exercise and notes on a built-in', () => {

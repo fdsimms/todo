@@ -358,6 +358,7 @@ export const REFERENCES: Reference[] = [
   // and the training max a program keeps for it.
   idColumn('exercises', 'workout_sets', 'exercise_id'),
   jsonArrayField('exercises', 'workout_routines', 'items', 'exerciseId'),
+  jsonArrayField('exercises', 'workout_routine_versions', 'items', 'exerciseId'),
   jsonArrayField('exercises', 'workout_programs', 'training_maxes', 'exerciseId'),
 ];
 

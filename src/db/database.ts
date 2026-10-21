@@ -21,6 +21,8 @@ import type {
   Gym,
   GymExerciseSetting,
   WorkoutRoutine,
+  WorkoutRoutineVersion,
+  WorkoutProgramVersion,
   WorkoutProgram,
   WorkoutSession,
   WorkoutSet,
@@ -110,7 +112,7 @@ import { isDeviceLocalSetting, projectRow, type BackupRow } from '../utils/backu
 import { foldRows, foldWinner, NATURAL_KEYS, REFERENCES, SETTING_REFERENCES } from '../utils/naturalKeyFold';
 import {
   NO_SCHEME, exerciseNameKey, readEquipment, readEquipmentList, readExerciseKind, readIdList, readMuscles, readOtherNames, readRoutineItems, readProgramScheme,
-  readSetKind, readTrainingMaxes,
+  readSetKind, readTrainingMaxes, readIdMap, readRoutineVersionSource,
 } from '../utils/workoutData';
 import {
   SYNC_DELETIONS_TABLE,
@@ -597,6 +599,35 @@ function runInitDatabase(): void {
       sort_order REAL NOT NULL DEFAULT 0,
       items TEXT NOT NULL DEFAULT '[]',
       created_at TEXT NOT NULL
+    );
+
+    -- A routine's history: one row per version, the plan as it stood
+    -- (docs/arch/workouts.md, "Routine and program history"). items is JSON,
+    -- as on workout_routines. Numbered by created_at, never by a column.
+    CREATE TABLE IF NOT EXISTS workout_routine_versions (
+      id TEXT PRIMARY KEY NOT NULL,
+      routine_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      name TEXT NOT NULL,
+      notes TEXT NOT NULL DEFAULT '',
+      items TEXT NOT NULL DEFAULT '[]',
+      source TEXT NOT NULL DEFAULT 'edit',
+      label TEXT
+    );
+
+    -- A program's history: its structure as it stood, with the routine
+    -- versions current then (routine_versions, a JSON map routine id ->
+    -- version id). Training maxes are not versioned.
+    CREATE TABLE IF NOT EXISTS workout_program_versions (
+      id TEXT PRIMARY KEY NOT NULL,
+      program_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      name TEXT NOT NULL,
+      weeks INTEGER,
+      rotation TEXT NOT NULL DEFAULT '[]',
+      scheme TEXT NOT NULL,
+      routine_versions TEXT NOT NULL DEFAULT '{}',
+      label TEXT
     );
 
     -- Places the person trains (docs/arch/workouts.md, "Gyms"). equipment is a
@@ -2396,6 +2427,15 @@ function runInitDatabase(): void {
     // Off on every existing template, so none starts making lists. See
     // TaskTemplate.list.
     'ALTER TABLE templates ADD COLUMN is_list INTEGER NOT NULL DEFAULT 0',
+    // Routine and program history. NULL on every existing routine, program and
+    // session: a routine with no version yet reads as one implicit first
+    // version, and a workout with none is counted against the version in
+    // effect when it started (routineVersions.ts).
+    'ALTER TABLE workout_routines ADD COLUMN current_version_id TEXT',
+    'ALTER TABLE workout_programs ADD COLUMN current_version_id TEXT',
+    'ALTER TABLE workout_sessions ADD COLUMN routine_version_id TEXT',
+    'CREATE INDEX IF NOT EXISTS idx_workout_routine_versions_routine ON workout_routine_versions(routine_id)',
+    'CREATE INDEX IF NOT EXISTS idx_workout_program_versions_program ON workout_program_versions(program_id)',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -2817,6 +2857,8 @@ export const BACKUP_TABLES = [
   'exercises',
   'workout_programs',
   'workout_routines',
+  'workout_routine_versions',
+  'workout_program_versions',
   'gyms',
   'gym_exercises',
   'workout_sessions',
@@ -7801,6 +7843,7 @@ function rowToWorkoutRoutine(row: Record<string, unknown>): WorkoutRoutine {
     createdAt: String(row.created_at),
     groupName: strOrNull(row.group_name),
     archived: row.archived === 1,
+    currentVersionId: strOrNull(row.current_version_id),
   };
 }
 
@@ -7812,14 +7855,87 @@ export function dbGetAllWorkoutRoutines(): WorkoutRoutine[] {
 
 export function dbSaveWorkoutRoutine(r: WorkoutRoutine): void {
   db.runSync(
-    `INSERT OR REPLACE INTO workout_routines (id, name, notes, program_id, sort_order, items, created_at, group_name, archived)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [r.id, r.name, r.notes, r.programId, r.sortOrder, JSON.stringify(r.items), r.createdAt, r.groupName, r.archived ? 1 : 0]
+    `INSERT OR REPLACE INTO workout_routines
+      (id, name, notes, program_id, sort_order, items, created_at, group_name, archived, current_version_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      r.id, r.name, r.notes, r.programId, r.sortOrder, JSON.stringify(r.items), r.createdAt, r.groupName, r.archived ? 1 : 0,
+      r.currentVersionId ?? null,
+    ]
   );
 }
 
 export function dbDeleteWorkoutRoutine(id: string): void {
   db.runSync('DELETE FROM workout_routines WHERE id = ?', [id]);
+}
+
+function rowToRoutineVersion(row: Record<string, unknown>): WorkoutRoutineVersion {
+  return {
+    id: String(row.id),
+    routineId: String(row.routine_id),
+    createdAt: String(row.created_at),
+    name: String(row.name),
+    notes: String(row.notes ?? ''),
+    items: readRoutineItems(row.items),
+    source: readRoutineVersionSource(row.source),
+    label: strOrNull(row.label),
+  };
+}
+
+/** Every routine version, oldest first. */
+export function dbGetAllRoutineVersions(): WorkoutRoutineVersion[] {
+  return db
+    .getAllSync<Record<string, unknown>>('SELECT * FROM workout_routine_versions ORDER BY created_at ASC, id ASC')
+    .map(rowToRoutineVersion);
+}
+
+export function dbSaveRoutineVersion(v: WorkoutRoutineVersion): void {
+  db.runSync(
+    `INSERT OR REPLACE INTO workout_routine_versions (id, routine_id, created_at, name, notes, items, source, label)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [v.id, v.routineId, v.createdAt, v.name, v.notes, JSON.stringify(v.items), v.source, v.label]
+  );
+}
+
+export function dbDeleteRoutineVersion(id: string): void {
+  db.runSync('DELETE FROM workout_routine_versions WHERE id = ?', [id]);
+}
+
+function rowToProgramVersion(row: Record<string, unknown>): WorkoutProgramVersion {
+  return {
+    id: String(row.id),
+    programId: String(row.program_id),
+    createdAt: String(row.created_at),
+    name: String(row.name),
+    weeks: numOrNull(row.weeks),
+    rotation: readIdList(row.rotation),
+    scheme: readProgramScheme(row.scheme),
+    routineVersionIds: readIdMap(row.routine_versions),
+    label: strOrNull(row.label),
+  };
+}
+
+/** Every program version, oldest first. */
+export function dbGetAllProgramVersions(): WorkoutProgramVersion[] {
+  return db
+    .getAllSync<Record<string, unknown>>('SELECT * FROM workout_program_versions ORDER BY created_at ASC, id ASC')
+    .map(rowToProgramVersion);
+}
+
+export function dbSaveProgramVersion(v: WorkoutProgramVersion): void {
+  db.runSync(
+    `INSERT OR REPLACE INTO workout_program_versions
+      (id, program_id, created_at, name, weeks, rotation, scheme, routine_versions, label)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      v.id, v.programId, v.createdAt, v.name, v.weeks, JSON.stringify(v.rotation), v.scheme ?? NO_SCHEME,
+      JSON.stringify(v.routineVersionIds), v.label,
+    ]
+  );
+}
+
+export function dbDeleteProgramVersion(id: string): void {
+  db.runSync('DELETE FROM workout_program_versions WHERE id = ?', [id]);
 }
 
 function rowToGym(row: Record<string, unknown>): Gym {
@@ -7900,6 +8016,7 @@ function rowToWorkoutProgram(row: Record<string, unknown>): WorkoutProgram {
     startedAt: strOrNull(row.started_at),
     archived: Number(row.archived) === 1,
     createdAt: String(row.created_at),
+    currentVersionId: strOrNull(row.current_version_id),
   };
 }
 
@@ -7911,11 +8028,12 @@ export function dbGetAllWorkoutPrograms(): WorkoutProgram[] {
 
 export function dbSaveWorkoutProgram(p: WorkoutProgram): void {
   db.runSync(
-    `INSERT OR REPLACE INTO workout_programs (id, name, weeks, rotation, scheme, training_maxes, started_at, archived, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT OR REPLACE INTO workout_programs
+      (id, name, weeks, rotation, scheme, training_maxes, started_at, archived, created_at, current_version_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       p.id, p.name, p.weeks, JSON.stringify(p.rotation), p.scheme ?? NO_SCHEME, JSON.stringify(p.trainingMaxes),
-      p.startedAt, p.archived ? 1 : 0, p.createdAt,
+      p.startedAt, p.archived ? 1 : 0, p.createdAt, p.currentVersionId ?? null,
     ]
   );
 }
@@ -7931,6 +8049,7 @@ function rowToWorkoutSession(row: Record<string, unknown>): WorkoutSession {
     programId: strOrNull(row.program_id),
     taskId: strOrNull(row.task_id),
     gymId: strOrNull(row.gym_id),
+    routineVersionId: strOrNull(row.routine_version_id),
     title: String(row.title),
     startedAt: String(row.started_at),
     endedAt: strOrNull(row.ended_at),
@@ -7980,11 +8099,12 @@ export function dbSaveWorkoutSession(s: WorkoutSession): void {
   db.runSync(
     `INSERT OR REPLACE INTO workout_sessions
       (id, routine_id, program_id, task_id, title, started_at, ended_at, notes, effort, health_workout_id, health_write_pending,
-       measured_on_watch, times_edited, gym_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       measured_on_watch, times_edited, gym_id, routine_version_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       s.id, s.routineId, s.programId, s.taskId, s.title, s.startedAt, s.endedAt, s.notes, s.effort,
       s.healthWorkoutId, s.healthWritePending ? 1 : 0, s.measuredOnWatch ? 1 : 0, s.timesEdited ? 1 : 0, s.gymId ?? null,
+      s.routineVersionId ?? null,
     ]
   );
 }
