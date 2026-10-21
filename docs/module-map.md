@@ -273,7 +273,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/measuredHeight.ts` — HEIGHT_EPSILON, nextMeasuredHeight
 - `src/utils/medicationExport.ts` — MEDICATION_EXPORT_COLUMNS, medicationExportCsv, medicationExportFileName, medicationExportSummary
 - `src/utils/medicationIndex.ts` — MedicationIndexEntry, MAX_MEDICATION_INDEX_ENTRIES, buildMedicationIndex, QueuedDose, parseQueuedDoses, resolveQueuedDoseName
-- `src/utils/medicationLog.ts` — DOSE_UNITS, MIN_TREND_DOSES, MedicationDose, MedicationSource, medicationFor, canCarryMedication, medicationKey, medicationVocabulary, ARCHIVED_MEDICATIONS_SETTING_KEY, parseArchivedMedications, +25 more
+- `src/utils/medicationLog.ts` — DOSE_UNITS, MIN_TREND_DOSES, MedicationDose, MedicationSource, medicationFor, canCarryMedication, medicationKey, medicationVocabulary, ARCHIVED_MEDICATIONS_SETTING_KEY, parseArchivedMedications, +24 more
 - `src/utils/medicationRename.ts` — DoseFill, renamedLogs, renamedSettings, renamedKeys, renamedChain, renamedTask, renamedTemplateItem, splitStrength
 - `src/utils/medicationRenameApply.ts` — renameMedicationEverywhere
 - `src/utils/medicationSettings.ts` — MEDICATION_SETTINGS_KEY, AmountCap, MedicationLimit, MedicationSupply, SupplementPanel, UsualDose, MedicationPrefs, MedicationSettingsMap, SUPPLY_UNITS, MAX_USUAL_DOSES, +19 more
@@ -503,6 +503,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/streakLeaderboard.ts` — LEADERBOARD_SIZE, streakScore, rankStreaks
 - `src/utils/streakRecord.ts` — nextStreakRecord, bestStreakOf, isStreakAtRecord, streakHint
 - `src/utils/streakUnits.ts` — countsUnits
+- `src/utils/stripScale.ts` — countStripScale
 - `src/utils/substituteSuggestions.ts` — MAX_SUGGESTED_SUBSTITUTES, SuggestedSubstitute, RawSuggestedSubstitute, dedupeSuggestedSubstitutes
 - `src/utils/sunTimes.ts` — SunEvent, SunAnchor, SunLocation, SUN_OFFSET_LIMIT, SUN_OFFSET_STEP, parseSunAnchor, formatSunAnchor, clampSunOffset, describeSunAnchor, shortSunAnchor, +12 more
 - `src/utils/supplementDose.ts` — DOSE_SOURCE_PREFIX, doseSourceId, supplementDoseIdOf, isSupplementEntry, supplementServings, SupplementHelping, supplementHelping, entryForDose, SupplementForm, emptySupplementForm, +8 more

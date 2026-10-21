@@ -19,6 +19,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useHealthStore, HEALTH_HISTORY_DAYS } from '../store/useHealthStore';
 import { useFoodLogStore, FOOD_INSIGHT_DAYS } from '../store/useFoodLogStore';
 import { useColors } from '../theme/ThemeContext';
+import { ChartGuides, BAR_GUIDE_GAP, useGuideGutter } from '../components/ChartGuides';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
@@ -82,6 +83,9 @@ const CHART_DAYS = 14;
 
 const BAR_HEIGHT = 90;
 
+/** Width of the mood chart's label column at the default text size. */
+const GUIDE_LABEL_WIDTH = 60;
+
 /**
  * The mood and symptom log, and what it looks like against your tasks.
  *
@@ -103,6 +107,7 @@ export function MoodScreen() {
   // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
   const screenSettings = useScreenSettings('Mood', 'Mood settings');
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const guideGutter = useGuideGutter(GUIDE_LABEL_WIDTH);
   const insets = useSafeAreaInsets();
   const scrollTop = useListScrollToTop();
   const tabBarHeight = useBottomTabBarHeight();
@@ -579,28 +584,43 @@ export function MoodScreen() {
 
           <Text style={styles.sectionTitle}>THE LAST TWO WEEKS</Text>
           <View style={styles.card}>
-            <View style={styles.chartInner}>
-              {chart.map(({ key, label, a11y, mood, today }) => (
-                <View key={key} style={styles.chartCol} accessible accessibilityLabel={a11y}>
-                  <View style={styles.barTrack}>
-                    <View
-                      style={[
-                        styles.bar,
-                        {
-                          // A day with no entry draws a flat baseline rather
-                          // than a zero-height bar: zero is a mood on this
-                          // scale's floor, and "didn't log" is not a bad day.
-                          height: mood === null ? 2 : `${Math.max(6, (mood / 5) * 100)}%`,
-                          backgroundColor: mood === null
-                            ? colors.bgQuaternary
-                            : today ? colors.accent : colors.bgQuaternary,
-                        },
-                      ]}
-                    />
+            <View>
+              {/* A line for each mood, labelled at the ends and the middle so five
+                  labels don't crowd the 90pt track. Drawn before the bars, which
+                  sit on top of them. */}
+              <ChartGuides
+                height={BAR_HEIGHT}
+                gutter={guideGutter}
+                guides={MOOD_LEVELS.map(level => ({
+                  fraction: level.value / MOOD_LEVELS.length,
+                  label: level.value === 1 || level.value === 3 || level.value === MOOD_LEVELS.length ? level.label : '',
+                }))}
+              />
+              <View style={[styles.chartInner, { paddingLeft: guideGutter }]}>
+                {chart.map(({ key, label, a11y, mood, today }) => (
+                  <View key={key} style={styles.chartCol} accessible accessibilityLabel={a11y}>
+                    <View style={styles.barTrack}>
+                      <View
+                        style={[
+                          styles.bar,
+                          {
+                            // A day with no entry draws a flat baseline rather
+                            // than a zero-height bar: zero is a mood on this
+                            // scale's floor, and "didn't log" is not a bad day.
+                            height: mood === null
+                              ? 2
+                              : Math.max(BAR_HEIGHT * 0.06, (mood / MOOD_LEVELS.length) * BAR_HEIGHT - BAR_GUIDE_GAP),
+                            backgroundColor: mood === null
+                              ? colors.bgQuaternary
+                              : today ? colors.accent : colors.bgQuaternary,
+                          },
+                        ]}
+                      />
+                    </View>
+                    <Text style={[styles.barLabel, today && styles.barLabelToday]}>{label}</Text>
                   </View>
-                  <Text style={[styles.barLabel, today && styles.barLabelToday]}>{label}</Text>
-                </View>
-              ))}
+                ))}
+              </View>
             </View>
             <Text style={styles.chartCaption}>
               A flat line is a day with nothing logged.
