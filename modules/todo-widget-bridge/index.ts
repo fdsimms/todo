@@ -35,6 +35,7 @@ interface TodoWidgetBridgeNativeModule {
   // Meals described by LogFoodIntent ("log food"). A JSON string of
   // `{ text, at }` records, read-and-clear — see src/utils/foodQueue.ts.
   drainPendingFoods(): Promise<string>;
+  drainPendingShortcutActions(): Promise<string>;
   // Key codes queued by ToggleKeyLockIntent (the Shortcuts action a tag
   // automation runs). A JSON string of `{ code, at }` records, read-and-clear
   // — see src/utils/keyScanQueue.ts.
@@ -132,6 +133,10 @@ export const drainPendingDreams = hasNative('drainPendingDreams')
 
 export const drainPendingFoods = hasNative('drainPendingFoods')
   ? (): Promise<string> => TodoWidgetBridge.drainPendingFoods()
+  : undefined;
+
+export const drainPendingShortcutActions = hasNative('drainPendingShortcutActions')
+  ? (): Promise<string> => TodoWidgetBridge.drainPendingShortcutActions()
   : undefined;
 
 export const drainPendingKeyScans =hasNative('drainPendingKeyScans')

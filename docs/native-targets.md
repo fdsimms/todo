@@ -203,6 +203,17 @@ the two runs compare exactly, which is how to prove a refactor left a target unc
   to `pending_workout_starts.json` and open the app, which starts the newest one
   (`processPendingWorkoutStarts`). Main app only: no widget names them. Written without a
   compiler, copying `LogMedicationIntent.swift` line for line.
+- **`ShortcutActionIntents.swift` holds four intents and one queue**: Log Water (optional glass
+  count), Log Mood (an optional `AppEnum` level; none opens the mood log), Add to Grocery List
+  (free text, `AddTaskIntent`'s follow-up question) and Open Screen (an `AppEnum` of routes). Each
+  appends `{ kind, value, count, at }` to `pending_shortcut_actions.json` and opens the app, which
+  applies them in order (`processPendingShortcutActions`, `src/utils/shortcutQueue.ts`); Open Screen
+  goes through `openScreenByName`, so a switched-off screen stays shut. Main app only. Written
+  without a compiler, copying `LogFoodIntent.swift` and `MarkDisposedIntent.swift`'s `AppEnum`.
+- **An app may have at most 10 App Shortcuts, and the build fails past it** ("each app may have at
+  most 10 App Shortcuts"; Apple's DTS confirms there is no way round it). `DundundunShortcuts` is at
+  ten, so a new Siri phrase has to replace one. An intent left out of the provider still shows as an
+  action in the Shortcuts app, which is where Log Mood and Open Screen live.
 - **A phrase with an entity in it learns the names it can say from the query's
   `suggestedEntities()`, and `updateAppShortcutParameters()` is how the app asks for them to be read
   again.** `writeWorkoutRoutineIndex` calls `DundundunShortcuts.updateAppShortcutParameters()`

@@ -118,7 +118,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/dayTimeline.ts` — MINUTES_IN_DAY, DEFAULT_FIRST_HOUR, DEFAULT_LAST_HOUR, TimelineEntry, DayTimeline, DayTimelineInput, clockToDayMinutes, instantToDayMinutes, buildDayTimeline, SLOT_STEP_MINUTES, +1 more
 - `src/utils/deadlineCalendarSync.ts` — syncDeadlineEvent, deadlineEventLink, deleteDeadlineEvent, TaskEventSyncPlan, taskEventsAfterSync
 - `src/utils/decisionReview.ts` — ReviewAfter, REVIEW_AFTER_OPTIONS, isReviewAfter, reviewDueDay, canReviewDecision, reviewTaskDraft, DecisionOutcome, decisionOutcomes, pendingReviewOf
-- `src/utils/deepLinks.ts` — AddTaskLink, parseAddTaskUrl, handleIncomingUrl, isQuickAddUrl, isAddEventUrl, isOpenAppUrl, isGroceriesUrl, groceriesUrlFinish, groceriesLinkUrl, groceriesUrlShop, +51 more
+- `src/utils/deepLinks.ts` — AddTaskLink, parseAddTaskUrl, handleIncomingUrl, isQuickAddUrl, isAddEventUrl, isOpenAppUrl, isGroceriesUrl, groceriesUrlFinish, groceriesLinkUrl, groceriesUrlShop, +54 more
 - `src/utils/deliverables.ts` — DELIVERABLE_TEXT_MAX_LENGTH, DeliverableReasoning, DELIVERABLE_REASONING_MAX_LENGTH, cleanDeliverableReasoning, reasoningOf, DELIVERABLE_META, YES_NO_OPTIONS, DELIVERABLE_OPTIONS_MAX, isTentativeAnswer, RSVP_OPTIONS, +12 more
 - `src/utils/deloadPlan.ts` — DeloadDestination, DeloadProposal, DeloadPlan, buildDeloadPlan
 - `src/utils/demoHold.ts` — runOrHoldForDemo, replayHeldForDemo
@@ -371,7 +371,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/proteinPerWeight.ts` — ProteinPerWeight, PROTEIN_PER_WEIGHT_RANGE, parseProteinPerWeight, serializeProteinPerWeight, switchProteinUnit, proteinTargetFromWeight
 - `src/utils/purchaseInterval.ts` — MIN_PURCHASE_GAP_DAYS, nextPurchaseIntervalDays
 - `src/utils/quantity.ts` — Rational, rational, multiplyRational, rationalToNumber, rationalFromNumber, formatRational, formatQuantityAmount, unitKey, inflectUnit, SIZE_UNITS, +7 more
-- `src/utils/quickActions.ts` — quickActionsFor, handleQuickActionId, useHomeScreenQuickActions, publishQuickActions
+- `src/utils/quickActions.ts` — STATIC_ACTIONS, QuickActionScreen, quickActionsFor, handleQuickActionId, useHomeScreenQuickActions, publishQuickActions
 - `src/utils/quickAddPhrases.ts` — QuickAddPhrase, QuickAddPhraseSection, QUICK_ADD_PHRASES
 - `src/utils/quickDose.ts` — readDoseWords, parseQuickDose
 - `src/utils/quickEvent.ts` — QuickEventDraft, EventRecurrence, eventRecurrenceFor, describeEventRepeat, EVENT_REPEAT_PRESETS, eventRepeatPresetKey, describeEventRepeatShort, parseAlertClause, alertRelativeOffset, DEFAULT_EVENT_MINUTES, +11 more
@@ -445,6 +445,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/scanPortion.ts` — PackageChoice, servingsPerPackage, packageChoices, packageFractions, servingDescription, packageHelping
 - `src/utils/scanResolve.ts` — ScannedItem, ScannedGtinLink, shopperNameFor, newItemBox, nameFromScanFor, sourceLabelFor, sourceLineFor, variantFor, ScanBoxSource, scanBoxChoice, +11 more
 - `src/utils/scheduleMovePrompt.ts` — confirmScheduleMove, confirmSegmentScope, confirmBulkSetWhen
+- `src/utils/screenLinks.ts` — screenKey, resolveScreen, quickActionScreens, quickActionScreenList, screenSymbol
 - `src/utils/screenSettings.ts` — SCREEN_SETTINGS, screenSettingsEntries
 - `src/utils/screenTimeBridge.ts` — ScreenTimeBridge, screenTimeBridge, isScreenTimeSupported
 - `src/utils/screenTimeRules.ts` — SCREEN_TIME_RULE_TITLE_MAX_LENGTH, SCREEN_TIME_THRESHOLD_MIN, SCREEN_TIME_THRESHOLD_MAX, SCREEN_TIME_THRESHOLD_DEFAULT, clampThresholdMinutes, defaultScreenTimeRules, parseScreenTimeRules, serializeScreenTimeRules, screenTimeSourceId, parseScreenTimeSourceId, +3 more
@@ -452,7 +453,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/scrollFade.ts` — SCROLL_FADE_HEIGHT, SCROLL_FADE_TOLERANCE, ScrollEdgeMetrics, hiddenBelow, hiddenAbove, edgeFadeOpacity
 - `src/utils/scrollNudge.ts` — SCROLL_NUDGE_DEFAULT_SECONDS, SCROLL_NUDGE_MIN_SECONDS, SCROLL_NUDGE_MAX_SECONDS, SCROLL_NUDGE_STEP_SECONDS, SCROLL_IDLE_GAP_MS, SCROLL_NUDGE_DEFAULT_COOLDOWN_MINUTES, SCROLL_NUDGE_MIN_COOLDOWN_MINUTES, SCROLL_NUDGE_MAX_COOLDOWN_MINUTES, SCROLL_NUDGE_COOLDOWN_STEP_MINUTES, SCROLL_NUDGE_DEFAULT_DAILY_CAP, +17 more
 - `src/utils/sealedNoteTasks.ts` — addSealedNoteReminder, dropSealedNoteReminder
-- `src/utils/searchActionRun.ts` — SearchActionReceipt, waterTodayMl, waterTargetTodayMl, openMoodLogFor, runSearchAction
+- `src/utils/searchActionRun.ts` — SearchActionReceipt, addWaterAt, waterTodayMl, waterTargetTodayMl, openMoodLogFor, runSearchAction
 - `src/utils/searchActions.ts` — QUICK_ACTION_LIMIT, MAX_GLASSES, MAX_DOSE_STEPS, DoseAction, WaterAction, MoodAction, SymptomAction, GroceryAction, PantryAnswer, PantryAction, +12 more
 - `src/utils/searchCollapse.ts` — SearchOccurrence, CollapsedOccurrence, occurrenceFamilyKey, collapseOccurrences, formatOccurrenceCount
 - `src/utils/searchElsewhere.ts` — ElsewhereKind, ElsewhereResult, ElsewhereSources, ElsewhereSections, QUICK_ELSEWHERE_LIMIT, nameTier, termRanges, searchPeople, searchElsewhere, ElsewhereDescription, +6 more
@@ -476,6 +477,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/shieldRelease.ts` — SHIELD_RELEASES_SETTING, SHIELD_RELEASE_LOG_SETTING, MAX_RELEASE_LOG, MIN_RELEASE_REASON_LENGTH, MAX_RELEASE_REASON_LENGTH, ShieldReleases, NO_RELEASES, parseShieldReleases, withReleased, isGateReleased, +10 more
 - `src/utils/shoppingTrip.ts` — MAX_TRIP_STOPS, ShopCoverage, TripPlan, TripSummary, planTrip, summarizeTrip, describeShopCoverage, joinNames
 - `src/utils/shortNight.ts` — SHORT_NIGHT_MINUTES_MIN, SHORT_NIGHT_MINUTES_MAX, SHORT_NIGHT_MINUTES_STEP, SHORT_NIGHT_MINUTES_DEFAULT, clampShortNightMinutes, parseShortNightMinutes
+- `src/utils/shortcutQueue.ts` — QueuedShortcutAction, QUEUED_WATER_MAX_GLASSES, QUEUED_ITEM_MAX_LENGTH, parseShortcutActions
 - `src/utils/simpleMode.ts` — SimpleArea, SimpleFeatureId, SimpleFeature, SIMPLE_AREA_LABELS, SIMPLE_AREAS, SIMPLE_FEATURES, simpleFeaturesIn, featureHidden, featureShown, SIMPLE_HIDDEN_SCREENS, +11 more
 - `src/utils/simpleTaskForm.ts` — SIMPLE_QUICK_ADD_CHIPS, isSimpleChip
 - `src/utils/sleepLog.ts` — SleepEpisode, SleepStages, SLEEP_STAGE_ORDER, SLEEP_STAGE_LABEL, parseSleepEpisodes, SleepNight, sleepNights, sleepReadings, nightsInWindow, MIN_CLOCK_CONCENTRATION, +15 more
@@ -719,7 +721,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useMealPlanNudgeProgress.ts` — useMealPlanNudgeProgress
 - `src/hooks/useMeasuredTextWidth.ts` — useMeasuredTextWidth
 - `src/hooks/useMeterHoldSync.ts` — useMeterHoldSync
-- `src/hooks/useNavMenuOptions.ts` — useNavMenuOptions
+- `src/hooks/useNavMenuOptions.ts` — useNavMenuOptions, navMenuOptionsNow
 - `src/hooks/useNotificationPermission.ts` — useNotificationPermission
 - `src/hooks/useNowTick.ts` — useNowTick
 - `src/hooks/useOnDeviceAi.ts` — useOnDeviceAvailability, useAiRoute

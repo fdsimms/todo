@@ -8,7 +8,7 @@ import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
-import { resetToKitchen, resetToToday, resetToWorkouts } from '../navigation/navigationRef';
+import { resetToKitchen, resetToMood, resetToToday, resetToWorkouts } from '../navigation/navigationRef';
 import { buildWidgetSnapshot, WATCH_CAPS, type SnapshotInput, type WidgetSnapshot } from './widgetSnapshot';
 import { completedOnDay } from './allClear';
 import { getDayStart, getLogicalDayKey } from './dateUtils';
@@ -34,6 +34,11 @@ import { recordDose } from './doseRecording';
 import { haptics } from './haptics';
 import { parseQueuedDreams } from './dreamQueue';
 import { parseQueuedFoods } from './foodQueue';
+import { parseShortcutActions } from './shortcutQueue';
+import { useMoodStore } from '../store/useMoodStore';
+import { addWaterAt } from './searchActionRun';
+import { glassMl } from './searchActions';
+import { openScreenByName } from '../navigation/openScreen';
 import { usePendingEstimateStore } from '../store/usePendingEstimateStore';
 import { keyCodeToken, parseQueuedKeyScans } from './keyScanQueue';
 import { alertKeyScanResult } from './keyScanAlert';
@@ -270,6 +275,61 @@ async function processPendingFoods(): Promise<void> {
     void usePendingEstimateStore.getState().drain();
   } catch {
     // A build predating drainPendingFoods — no-op.
+  }
+}
+
+// Log Water, Log Mood, Add to Grocery List and Open Screen, from the Shortcuts
+// app or Siri (ShortcutActionIntents.swift). Each writes through the path its
+// own screen uses: water onto the day's one row (the stepper's), a mood
+// through the store's addLog, an item through addByName. Water and a mood file
+// under the moment they were asked. A mood with no level opens the mood log to
+// pick one, and Open Screen goes to the last screen asked for, through the same
+// reachability check a link gets.
+async function processPendingShortcutActions(): Promise<void> {
+  const bridge = widgetBridge();
+  // Optional on the bridge: a binary built before the intents has no drain.
+  if (!bridge?.drainPendingShortcutActions) return;
+  try {
+    const queued = parseShortcutActions(await bridge.drainPendingShortcutActions());
+    if (queued.length === 0) return;
+    let wrote = false;
+    let openMoodLog = false;
+    let screen: string | null = null;
+    for (const action of queued) {
+      switch (action.kind) {
+        case 'water': {
+          const foodLog = useFoodLogStore.getState();
+          if (!foodLog.initialized) foodLog.initialize();
+          addWaterAt(action.glasses * glassMl(useSettingsStore.getState().waterUnit), action.at ?? new Date());
+          wrote = true;
+          break;
+        }
+        case 'mood': {
+          if (action.mood === null) { openMoodLog = true; break; }
+          const mood = useMoodStore.getState();
+          if (!mood.initialized) mood.initialize();
+          if (useMoodStore.getState().addLog(action.mood, [], null, action.at ?? undefined)) wrote = true;
+          break;
+        }
+        case 'grocery': {
+          // Named rather than left to the default, per the rule for a caller
+          // that isn't a person on the grocery screen: the list the screen has
+          // open, which a trip switches to its away list.
+          const grocery = useGroceryStore.getState();
+          grocery.addByName(action.item, undefined, undefined, { registerUndo: false, listId: grocery.activeListId });
+          wrote = true;
+          break;
+        }
+        case 'open':
+          screen = action.screen;
+          break;
+      }
+    }
+    if (wrote) haptics.success();
+    if (openMoodLog) resetToMood(true);
+    else if (screen) openScreenByName(screen);
+  } catch {
+    // A build predating drainPendingShortcutActions — no-op.
   }
 }
 
@@ -1050,6 +1110,7 @@ export function useWidgetSync(): void {
       processPendingDoses(),
       processPendingDreams(),
       processPendingFoods(),
+      processPendingShortcutActions(),
       processPendingKeyScans(),
       processPendingWorkoutStarts(),
       processQuietWidgetTaps(),
@@ -1077,6 +1138,7 @@ export function useWidgetSync(): void {
           processPendingDoses(),
           processPendingDreams(),
           processPendingFoods(),
+          processPendingShortcutActions(),
           processPendingKeyScans(),
           processPendingWorkoutStarts(),
           processQuietWidgetTaps(),

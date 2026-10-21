@@ -41,6 +41,10 @@ private let pendingDreamsFileName = "pending_dreams.json"
 // Matching LogFoodIntent.swift. Meals described to Siri, drained by
 // processPendingFoods in src/utils/widgetSync.ts.
 private let pendingFoodsFileName = "pending_foods.json"
+// Matching ShortcutActionIntents.swift. Log Water, Log Mood, Add to Grocery
+// List and Open Screen, drained by processPendingShortcutActions in
+// src/utils/widgetSync.ts.
+private let pendingShortcutActionsFileName = "pending_shortcut_actions.json"
 // Matching ToggleKeyLockIntent.swift. The key lock's own queue, drained by
 // processPendingKeyScans in src/utils/widgetSync.ts.
 private let pendingKeyScansFileName = "pending_key_scans.json"
@@ -81,6 +85,15 @@ private struct PendingDreamPayload: Codable {
 // widgetSync.ts expects back. `at` is the ISO 8601 moment Siri was asked.
 private struct PendingFoodPayload: Codable {
   let text: String
+  let at: String
+}
+
+// Mirrors what ShortcutActionIntents.swift queues and what
+// parseShortcutActions in src/utils/shortcutQueue.ts expects back.
+private struct PendingShortcutActionPayload: Codable {
+  let kind: String
+  let value: String?
+  let count: Int?
   let at: String
 }
 
@@ -600,6 +613,33 @@ public class TodoWidgetBridgeModule: Module {
         guard let data = try? Data(contentsOf: fileURL) else { return }
         defer { try? FileManager.default.removeItem(at: fileURL) }
         guard let decoded = try? JSONDecoder().decode([PendingFoodPayload].self, from: data) else {
+          return
+        }
+        guard let reencoded = try? JSONEncoder().encode(decoded) else { return }
+        json = String(data: reencoded, encoding: .utf8) ?? "[]"
+      }
+      return json
+    }
+
+    // Reads and clears the queue the four Shortcuts actions in
+    // ShortcutActionIntents.swift write. The same read-and-delete shape as
+    // drainPendingFoods.
+    AsyncFunction("drainPendingShortcutActions") { () -> String in
+      var json = "[]"
+      TodoWidgetExceptionCatcher.runCatchingExceptions {
+        guard let containerURL = FileManager.default.containerURL(
+          forSecurityApplicationGroupIdentifier: appGroupID
+        ) else {
+          return
+        }
+
+        let fileURL = containerURL
+          .appendingPathComponent("Library/Application Support", isDirectory: true)
+          .appendingPathComponent(pendingShortcutActionsFileName)
+
+        guard let data = try? Data(contentsOf: fileURL) else { return }
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+        guard let decoded = try? JSONDecoder().decode([PendingShortcutActionPayload].self, from: data) else {
           return
         }
         guard let reencoded = try? JSONEncoder().encode(decoded) else { return }
