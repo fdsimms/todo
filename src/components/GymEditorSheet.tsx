@@ -7,6 +7,7 @@ import { PillGroup } from './PillGroup';
 import { CountStepper } from './CountStepper';
 import { HelpText } from './HelpText';
 import { InlineAction } from './InlineAction';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { TextField } from './TextField';
 import { PlaceAddressField } from './SavedEntrySheets';
 import { ExercisePickerSheet } from './ExercisePickerSheet';
@@ -14,7 +15,7 @@ import { useGymStore } from '../store/useGymStore';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useColors } from '../theme/ThemeContext';
-import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
+import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import type { ExerciseEquipment } from '../types';
 import { haptics } from '../utils/haptics';
 import { confirmDiscard } from '../utils/confirmDiscard';
@@ -130,7 +131,7 @@ export function GymEditorSheet({ visible, subject, onClose }: Props) {
         Alert.alert('Couldn’t find your location', 'Try again in a moment, or search for the address instead.');
         return;
       }
-      patch({ pin: { latitude: fix.latitude, longitude: fix.longitude } });
+      patch({ pin: { latitude: fix.latitude, longitude: fix.longitude }, placeText: '' });
     } finally {
       setLocating(false);
     }
@@ -204,51 +205,63 @@ export function GymEditorSheet({ visible, subject, onClose }: Props) {
           />
           {refusal && <Text style={styles.refusal}>{refusal}</Text>}
 
-          <Text style={styles.label}>Where it is</Text>
-          <View style={styles.card}>
-            <View style={styles.row}>
-              <Text style={styles.rowLabel}>Location</Text>
-              <View style={styles.rowEnd}>
-                <Text style={styles.rowValue}>{v.pin ? 'Saved' : 'Not set'}</Text>
-                {v.pin && (
-                  <InlineAction
-                    label="Clear"
-                    variant="neutral"
-                    onPress={() => { haptics.tap(); patch({ pin: null }); }}
+          <Text style={styles.label}>Location</Text>
+          {v.pin ? (
+            <>
+              <View style={styles.card}>
+                <View style={styles.row}>
+                  <Ionicons name="location" size={iconSize.md} color={colors.accentText} />
+                  <Text style={[styles.rowLabel, styles.grow]} numberOfLines={2}>{v.placeText.trim() || 'Current location'}</Text>
+                  <TouchableOpacity
+                    onPress={() => { haptics.tap(); patch({ pin: null, placeText: '' }); }}
+                    hitSlop={8}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
                     accessibilityLabel="Clear the location"
+                  >
+                    <Ionicons name="close-circle" size={iconSize.md} color={colors.textTertiary} />
+                  </TouchableOpacity>
+                </View>
+                <View style={[styles.row, styles.ruled]}>
+                  <Text style={styles.rowLabel}>Within</Text>
+                  <CountStepper
+                    value={v.radiusM}
+                    onChange={n => patch({ radiusM: n ?? GYM_DEFAULT_RADIUS_M })}
+                    min={GYM_MIN_RADIUS_M}
+                    max={GYM_MAX_RADIUS_M}
+                    step={GYM_RADIUS_STEP_M}
+                    format={n => `${n} m`}
+                    label="Distance from the location"
+                    describeValue={n => `${n ?? GYM_DEFAULT_RADIUS_M} meters`}
                   />
-                )}
+                </View>
               </View>
-            </View>
-            <View style={[styles.row, styles.ruled]}>
-              <Text style={styles.rowLabel}>Use my current location</Text>
-              <InlineAction label={locating ? 'Finding…' : 'Use'} onPress={() => { void useHere(); }} disabled={locating} accessibilityLabel="Use my current location for this gym" />
-            </View>
-            <View style={[styles.row, styles.ruled]}>
-              <Text style={styles.rowLabel}>Within</Text>
-              <CountStepper
-                value={v.radiusM}
-                onChange={n => patch({ radiusM: n ?? GYM_DEFAULT_RADIUS_M })}
-                min={GYM_MIN_RADIUS_M}
-                max={GYM_MAX_RADIUS_M}
-                step={GYM_RADIUS_STEP_M}
-                format={n => `${n} m`}
-                label="Distance from the location"
-                describeValue={n => `${n ?? GYM_DEFAULT_RADIUS_M} meters`}
+              <HelpText style={styles.hint}>Starting a workout inside this distance picks this gym.</HelpText>
+            </>
+          ) : (
+            <>
+              <PlaceAddressField
+                text={v.placeText}
+                onChangeText={t => patch({ placeText: t })}
+                onPickPlace={pin => { if (pin) patch({ pin }); }}
+                picked={false}
+                placeholder="Search for an address or place"
+                accessibilityLabel="Gym address"
               />
-            </View>
-          </View>
-          <HelpText style={styles.hint}>Used to pick this gym when you start a workout.</HelpText>
-
-          <Text style={styles.label}>Or find it by address</Text>
-          <PlaceAddressField
-            text={v.placeText}
-            onChangeText={t => patch({ placeText: t })}
-            onPickPlace={pin => { if (pin) patch({ pin }); }}
-            picked={v.pin !== null}
-            placeholder="e.g. 12 Main St, or the gym's name"
-            accessibilityLabel="Gym address"
-          />
+              <TouchableOpacity
+                style={[styles.card, styles.row, styles.actionRow]}
+                onPress={() => { void useHere(); }}
+                disabled={locating}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel="Use my current location for this gym"
+              >
+                <Ionicons name="navigate" size={iconSize.md} color={colors.accentText} />
+                <Text style={styles.actionText}>{locating ? 'Finding…' : 'Use my current location'}</Text>
+              </TouchableOpacity>
+              <HelpText style={styles.hint}>Used to pick this gym when you start a workout.</HelpText>
+            </>
+          )}
 
           <Text style={styles.label}>Equipment here</Text>
           <PillGroup
@@ -343,13 +356,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // Every row of the card is the same height, whatever its control, so the
   // lines sit at an even interval.
   row: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.smd,
     paddingHorizontal: spacing.md, minHeight: 52,
   },
   ruled: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator },
   rowLabel: { color: colors.text, fontSize: font.md, flexShrink: 1 },
-  rowEnd: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd },
-  rowValue: { color: colors.textSecondary, fontSize: font.md },
+  grow: { flex: 1 },
+  actionRow: { justifyContent: 'flex-start', marginTop: spacing.sm },
+  actionText: { color: colors.accentText, fontSize: font.md, fontWeight: fontWeight.semibold },
   noteRow: { paddingHorizontal: spacing.md, paddingVertical: spacing.smd },
   noteName: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
   noteInput: { color: colors.textSecondary, fontSize: font.md, marginTop: spacing.xs, minHeight: 28, padding: 0 },
