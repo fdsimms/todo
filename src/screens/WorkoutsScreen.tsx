@@ -865,9 +865,6 @@ export function WorkoutsScreen() {
           actions={[
             { key: 'logPast', label: 'Log a past workout', icon: 'time-outline', onPress: () => setLogPastOpen(true) },
             { key: 'gyms', label: 'Gyms', icon: 'location-outline', onPress: () => setGymsOpen(true) },
-            ...(canDescribe
-              ? [{ key: 'describe', label: 'Describe a workout', icon: 'sparkles-outline' as const, onPress: () => setDescribeOpen(true) }]
-              : []),
             { key: 'import', label: 'Import from Strong or Hevy', icon: 'download-outline', onPress: () => { void startImport(); } },
             ...(sessions.some(s => s.endedAt !== null)
               ? [{ key: 'export', label: 'Export as CSV', icon: 'share-outline' as const, onPress: () => setExportOpen(true) }]
