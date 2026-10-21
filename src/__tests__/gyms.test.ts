@@ -89,6 +89,19 @@ describe('gymSwapCandidates', () => {
     expect(ranked.indexOf(last)).toBeLessThanOrEqual(base.indexOf(last));
     expect(sharedOf(ranked[0])).toBeGreaterThan(0);
   });
+  it('offers a bodyweight exercise for a weighted one and the reverse, when the gym allows it', () => {
+    const home = gym({ equipment: ['dumbbell'] });
+    const named = (name: string) => EXERCISE_LIBRARY.find(e => e.name === name)!.id;
+    const goblet = named('Goblet squat');
+    const bodyweight = named('Bodyweight squat');
+    expect(gymSwapCandidates(none, goblet, home)).toContain(bodyweight);
+    expect(gymSwapCandidates(none, bodyweight, home)).toContain(goblet);
+    expect(gymSwapCandidates(none, bodyweight, gym({ equipment: ['cable'] }))).not.toContain(goblet);
+  });
+  it('never crosses to a timed or distance exercise', () => {
+    const kinds = gymSwapCandidates(none, EXERCISE_LIBRARY.find(e => e.name === 'Goblet squat')!.id, gym()).map(id => EXERCISE_LIBRARY.find(e => e.id === id)!.kind);
+    expect(kinds.every(k => k === 'weight_reps' || k === 'bodyweight_reps')).toBe(true);
+  });
   it('skips what the workout already has', () => {
     const base = gymSwapCandidates(none, bench, gym());
     expect(gymSwapCandidates(none, bench, gym(), [base[0]])).not.toContain(base[0]);

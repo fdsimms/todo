@@ -1,6 +1,7 @@
 import type { Exercise, ExerciseEquipment, Gym, GymExerciseSetting, WorkoutRoutine, WorkoutSet } from '../types';
 import { buildCatalog } from './exerciseCatalog';
 import { distanceMeters, PLACE_MAX_FIX_ERROR_M, type PlaceFix } from './moodPlaces';
+import { swapKindsMatch } from './exerciseSwap';
 import { EQUIPMENT_LABELS, formatWeightWithUnit, machineParent } from './workoutData';
 import type { WeightUnit } from './weightLog';
 
@@ -110,11 +111,12 @@ export function gymSwapCandidates(
   if (!from) return [];
   const skip = new Set([exerciseId, ...exceptIds]);
   return catalog
-    .filter(e => !e.archived && !skip.has(e.id) && e.kind === from.kind && equipmentAvailable(gym, e.equipment))
+    .filter(e => !e.archived && !skip.has(e.id) && swapKindsMatch(e.kind, from.kind) && equipmentAvailable(gym, e.equipment))
     .map(e => ({ e, shared: e.primaryMuscles.filter(m => from.primaryMuscles.includes(m)).length }))
     .filter(x => x.shared > 0)
     .sort((a, b) =>
       b.shared - a.shared
+      || Number(b.e.kind === from.kind) - Number(a.e.kind === from.kind)
       || Number(doneHere.has(b.e.id)) - Number(doneHere.has(a.e.id))
       || a.e.name.localeCompare(b.e.name))
     .map(x => x.e.id);

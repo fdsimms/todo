@@ -82,7 +82,7 @@ export function GymUnavailableBanner({ gymName, candidateName, candidateDetail, 
       )}
       <View style={styles.actions}>
         {candidateName && <InlineAction label="Swap" onPress={onSwap} accessibilityLabel={`Swap for ${candidateName}`} />}
-        <InlineAction label="Other…" variant="neutral" onPress={onOther} accessibilityLabel="Choose another exercise" />
+        <InlineAction label="Select new exercise" variant="neutral" onPress={onOther} accessibilityLabel="Select new exercise" />
         <InlineAction label="Keep" variant="neutral" onPress={onKeep} accessibilityLabel="Keep this exercise and dismiss the notice" />
       </View>
     </View>
