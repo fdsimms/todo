@@ -262,6 +262,55 @@ export function buildRecipeShareText(
   return lines.join('\n');
 }
 
+/** "Serves 12" at the scale the screen shows, or null when the recipe states no servings. */
+export function servingsLineFor(recipe: Recipe, scale: number): string | null {
+  const scaled = scaleServings(recipe.servings || null, recipe.servingsMax, scale);
+  const servings = formatServingsRange(scaled.servings, scaled.servingsMax);
+  return servings ? `Serves ${servings}` : null;
+}
+
+/** One heading's worth of a printed ingredient list. */
+export interface IngredientPrintSection {
+  /** The recipe's own section label or a component's name; null for lines under none. */
+  heading: string | null;
+  /** Each slot as the share text words it, scaled and converted: "4 tbsp butter, softened". */
+  lines: string[];
+  /** Every ingredient name in the section, either/or options included, with no amounts. */
+  names: string[];
+}
+
+/**
+ * The ingredients grouped under their headings, for a page a person prints
+ * (`ingredientPrintout.ts`). The same slots, scale and unit conversion as the
+ * share text, so a printed sheet matches what the screen was showing; a
+ * component's name or the recipe's own section opens each group.
+ */
+export function buildIngredientSections(
+  recipe: Recipe,
+  recipesById: ReadonlyMap<string, Recipe>,
+  options: { scale?: number; unitSystem?: UnitSystem; weights?: WeightLookups | null } = {},
+): IngredientPrintSection[] {
+  const scale = options.scale ?? 1;
+  const unitSystem = options.unitSystem ?? 'asWritten';
+  const weights = options.weights ?? null;
+  const rows = shareIngredientRows(recipe, recipesById);
+  const headings = ingredientHeadings(rows.map(row => row.line));
+  const sections: IngredientPrintSection[] = [];
+  rows.forEach((row, index) => {
+    const h = headings[index];
+    const opens = h.section != null || h.dish || h.resume || index === 0;
+    const dishName = h.dish || h.resume ? row.line.recipe.name : null;
+    const heading = dishName && h.section ? `${dishName}: ${h.section}` : (h.section ?? dishName);
+    if (opens || sections.length === 0) {
+      sections.push({ heading: opens ? heading : null, lines: [], names: [] });
+    }
+    const current = sections[sections.length - 1];
+    current.lines.push(formatShareIngredientRow(row, scale, unitSystem, weights));
+    current.names.push(...row.options.map(o => o.name.trim()).filter(Boolean), ...row.componentAlternatives);
+  });
+  return sections;
+}
+
 /**
  * Just the ingredients, one per line, and nothing else — the format another
  * recipe or shopping app's "paste your ingredients here" box expects.

@@ -98,7 +98,8 @@ import {
   splitIngredientAnd,
   totalMinutes,
 } from '../utils/recipeUtils';
-import { buildIngredientsText, buildRecipeShareText } from '../utils/shareText';
+import { buildIngredientSections, buildIngredientsText, buildRecipeShareText, servingsLineFor } from '../utils/shareText';
+import { PrintIngredientsSheet } from '../components/PrintIngredientsSheet';
 import { allSectionsOf, sectionsFromMergedOrder, type SectionListEntry } from '../utils/recipeSections';
 import { PillGroup } from '../components/PillGroup';
 import { describeUnscaled, formatScale, normalizeScale, scaleQuantity } from '../utils/recipeScale';
@@ -691,6 +692,22 @@ export function RecipeDetailScreen() {
 
   const { copy: copyIngredients } = useCopyToClipboard();
 
+  // The ingredients as the printable page's sections, through the same scale
+  // and units the screen shows. Mounted on first use: an unopened sheet would
+  // otherwise re-render with every change to this screen.
+  const [printVisible, setPrintVisible] = useState(false);
+  const [printMounted, setPrintMounted] = useState(false);
+  const printRecipe = useMemo(
+    () => (printMounted && recipe
+      ? {
+          name: recipe.name,
+          servingsLine: servingsLineFor(recipe, scale),
+          sections: buildIngredientSections(recipe, recipesById, { scale, unitSystem, weights: weightLookups }),
+        }
+      : null),
+    [printMounted, recipe, recipesById, scale, unitSystem, weightLookups]
+  );
+
   // The ingredients list, plus one marker per heading it has — populated ones
   // where a row's section first differs from the row before it, and every
   // declared-but-empty one (Recipe.emptySections) trailing at the end. This is
@@ -1007,9 +1024,8 @@ export function RecipeDetailScreen() {
   };
 
   // ==== actions: add to list, share, plan, edit an ingredient ====
-  // Cooked weight commits immediately, the way the step timer/note fields
-  // below do — there's no Save button on this screen to hold it for, unlike
-  // RecipeEditor's own copy of this field. setCookedWeight does the clamping
+  // Cooked weight commits as it's typed (on blur), the way the step timer/note
+  // fields below do; the Save button just commits and closes the row. setCookedWeight does the clamping
   // (see clampCookedWeight), so a stray non-numeric draft just clears it.
   const openCookedWeight = () => {
     haptics.tap();
@@ -1033,6 +1049,11 @@ export function RecipeDetailScreen() {
     }
     setCookedWeight(recipe.id, trimmed ? Number(trimmed.replace(',', '.')) : null);
   };
+
+  // Save is the same commit as leaving the row. It is off only for a scale
+  // reading lighter than the cookware picked, whose reason is showing instead.
+  const weightNet = weighIn.picked.length > 0 && cookedWeightDraft.trim() ? weighIn.convert(cookedWeightDraft.trim()) : null;
+  const weightSaveable = weighIn.picked.length === 0 || (weightNet !== null && weightNet.ok);
 
   const closeCookedWeight = () => {
     commitCookedWeight();
@@ -1122,6 +1143,7 @@ export function RecipeDetailScreen() {
           ? [
               { key: 'copy', label: 'Copy ingredients', icon: 'copy-outline', onPress: () => copyIngredients(ingredientsText) } as const,
               { key: 'shareIngredients', label: 'Share ingredients only', icon: 'share-outline', onPress: handleShareIngredients } as const,
+              { key: 'printIngredients', label: 'Print ingredients', icon: 'print-outline', onPress: () => { setPrintMounted(true); setPrintVisible(true); } } as const,
             ]
           : []),
         ...(recipe.sourceUrl
@@ -2528,6 +2550,7 @@ export function RecipeDetailScreen() {
           </TouchableOpacity>
         )}
         {cookedWeightOpen && (
+          <View style={styles.weightCard}>
           <View style={styles.weightEditRow}>
             {/* Invisible twin of the input below, measured so the input can be
                 sized to hug what's typed rather than stretching the row and
@@ -2556,18 +2579,27 @@ export function RecipeDetailScreen() {
               accessibilityLabel={weighIn.picked.length > 0 ? 'Weight on the scale in grams' : 'Cooked weight in grams'}
             />
             <Text style={styles.weightEditUnit}>g</Text>
+            <View style={styles.weightEditSpacer} />
+            <TouchableOpacity
+              style={[styles.weightSave, !weightSaveable && styles.weightSaveOff]}
+              activeOpacity={interaction.activeOpacity}
+              disabled={!weightSaveable}
+              onPress={() => { haptics.success(); closeCookedWeight(); }}
+              accessibilityRole="button"
+              accessibilityLabel="Save cooked weight"
+              accessibilityState={{ disabled: !weightSaveable }}
+            >
+              <Text style={styles.weightSaveText}>{BUTTON_LABEL.save}</Text>
+            </TouchableOpacity>
           </View>
-        )}
-        {cookedWeightOpen && (
           <View style={styles.weighInWrap}>
-            <CookwareWeighIn weighIn={weighIn} scaleText={cookedWeightDraft} surface="page" />
+            <CookwareWeighIn weighIn={weighIn} scaleText={cookedWeightDraft} surface="card" />
           </View>
-        )}
-        {cookedWeightOpen && (
-          <Text style={styles.inputHint}>
+          <HelpText style={styles.weightHint}>
             The weight of the whole dish, as entered. A plate of it is logged from
             what your plate weighs, not from servings.
-          </Text>
+          </HelpText>
+          </View>
         )}
         {/* The one summary here that opens onto something. Its coverage clause
             names how many ingredients were left out, which was a number with
@@ -3192,6 +3224,14 @@ export function RecipeDetailScreen() {
           are shared both ways: cook mode is where most of them actually get
           made, and a pick made there has to still be the pick back here.
           Neither is written to the recipe. */}
+      {printRecipe && (
+        <PrintIngredientsSheet
+          visible={printVisible}
+          recipe={printRecipe}
+          onClose={() => setPrintVisible(false)}
+        />
+      )}
+
       <CookModeSheet
         visible={cookModeVisible}
         recipe={recipe}
@@ -3792,14 +3832,29 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   },
   // The cooked-weight row's own inline field, open only while cookedWeightOpen
   // is true — same shape CookRecapSheet's weight row uses.
-  weighInWrap: { paddingHorizontal: spacing.xs, paddingVertical: spacing.sm },
+  weightCard: {
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  weighInWrap: { marginTop: spacing.smd },
+  weightHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.smd },
   weightEditRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    paddingHorizontal: spacing.xs,
-    paddingVertical: spacing.xs,
   },
+  weightEditSpacer: { flex: 1 },
+  weightSave: {
+    backgroundColor: colors.accentFill,
+    borderRadius: radius.full,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  weightSaveOff: { opacity: 0.4 },
+  weightSaveText: { color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold },
   weightEditInput: {
     color: colors.text,
     fontSize: font.md,
