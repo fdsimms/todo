@@ -99,6 +99,10 @@ describe('measuredMaintenanceKcal', () => {
     expect(total - (1750 + 600)).toBeCloseTo(total * DIGESTION_SHARE);
   });
 
+  it('leaves digestion out when asked, giving resting plus movement alone', () => {
+    expect(measuredMaintenanceKcal(profile(), 80, TODAY, 600, false)).toBeCloseTo(1750 + 600);
+  });
+
   it('has no answer without an activity figure, rather than falling back to the multiplier', () => {
     expect(measuredMaintenanceKcal(profile(), 80, TODAY, null)).toBeNull();
   });
