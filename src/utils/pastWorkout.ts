@@ -97,6 +97,29 @@ export function leavePastSuperset(exercises: readonly PastExerciseDraft[], exerc
   }));
 }
 
+/**
+ * The list with an exercise moved a place up or down, as `movedExerciseOrder`
+ * does for a live workout: an exercise in a superset moves with its partners, as
+ * one block past the neighbouring block, so a pair is never split. Null when it
+ * can't move that way.
+ */
+export function movedPastExercise(
+  exercises: readonly PastExerciseDraft[],
+  exerciseId: string,
+  direction: 'up' | 'down',
+): PastExerciseDraft[] | null {
+  const blocks: PastExerciseDraft[][] = [];
+  for (const e of exercises) {
+    if (blocks.some(b => b.includes(e))) continue;
+    blocks.push(supersetGroup(exercises, e.exerciseId));
+  }
+  const at = blocks.findIndex(b => b.some(e => e.exerciseId === exerciseId));
+  const to = direction === 'up' ? at - 1 : at + 1;
+  if (at < 0 || to < 0 || to >= blocks.length) return null;
+  [blocks[at], blocks[to]] = [blocks[to], blocks[at]];
+  return blocks.flat();
+}
+
 /** Whether anything has been entered, for the discard guard. */
 export function pastWorkoutTouched(title: string, exercises: readonly PastExerciseDraft[]): boolean {
   return title.trim() !== '' || exercises.length > 0;

@@ -1,5 +1,5 @@
 import {
-  buildPastWorkout, joinPastSuperset, leavePastSuperset, nextSetText, pastWorkoutTouched, withoutPastExercise,
+  buildPastWorkout, joinPastSuperset, leavePastSuperset, movedPastExercise, nextSetText, pastWorkoutTouched, withoutPastExercise,
   type PastExerciseDraft,
 } from '../utils/pastWorkout';
 
@@ -117,5 +117,14 @@ describe('supersets in a past workout', () => {
     const alone = build([ex('a', 'ss1'), { ...ex('b', 'ss1'), sets: [{}] }]);
     if (!('input' in alone)) throw new Error('refused');
     expect(alone.input.sets.map(s => s.supersetKey)).toEqual([undefined]);
+  });
+
+  it('moves an exercise a place, and a pair as one block', () => {
+    const list = [ex('a'), ex('b', 'ss1'), ex('c', 'ss1'), ex('d')];
+    expect(keys(movedPastExercise(list, 'a', 'down'))).toEqual(['b:ss1', 'c:ss1', 'a:-', 'd:-']);
+    expect(keys(movedPastExercise(list, 'c', 'up'))).toEqual(['b:ss1', 'c:ss1', 'a:-', 'd:-']);
+    expect(keys(movedPastExercise(list, 'd', 'up'))).toEqual(['a:-', 'd:-', 'b:ss1', 'c:ss1']);
+    expect(movedPastExercise(list, 'a', 'up')).toBeNull();
+    expect(movedPastExercise(list, 'd', 'down')).toBeNull();
   });
 });
