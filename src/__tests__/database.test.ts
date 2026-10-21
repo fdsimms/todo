@@ -1975,6 +1975,13 @@ describe('Templates', () => {
     ]);
   });
 
+  it('round-trips list, reading a row without it as off', () => {
+    dbInsertTemplate(makeTemplate({ list: true }));
+    expect(dbGetAllTemplates()[0].list).toBe(true);
+    dbUpdateTemplate(makeTemplate({ list: false }));
+    expect(dbGetAllTemplates()[0].list).toBe(false);
+  });
+
   it('insert → getAll round-trips a schedule and its last-fired key', () => {
     const schedule = {
       frequency: 'monthly' as const,
@@ -2184,6 +2191,17 @@ describe('Projects', () => {
     expect(dbGetAllProjects().find(row => row.id === 'p-unset')?.groupOnToday).toBe(false);
   });
 
+  it('round-trips list on insert and update, reading a row without it as off', () => {
+    dbInsertProject(makeProject({ id: 'p-list', list: true }));
+    expect(dbGetAllProjects().find(row => row.id === 'p-list')?.list).toBe(true);
+
+    dbUpdateProject(makeProject({ id: 'p-list', list: false }));
+    expect(dbGetAllProjects().find(row => row.id === 'p-list')?.list).toBe(false);
+
+    dbInsertProject(makeProject({ id: 'p-not-list' }));
+    expect(dbGetAllProjects().find(row => row.id === 'p-not-list')?.list).toBe(false);
+  });
+
   it('orders by sort_order', () => {
     dbInsertProject(makeProject({ id: 'b', title: 'B', sortOrder: 2 }));
     dbInsertProject(makeProject({ id: 'a', title: 'A', sortOrder: 1 }));
@@ -2288,6 +2306,15 @@ describe('Task groups', () => {
 
     // The describe below asserts on the whole task_groups table, so put this
     // row back the way it found it.
+    dbDeleteTaskGroup('g-round-trip');
+  });
+  it('round-trips the list flags through insert and update', () => {
+    dbInsertTaskGroup(stack({ projectId: 'p1', keepsTasks: true }));
+    expect(dbGetAllTaskGroups()[0]).toMatchObject({ checklist: false, keepsTasks: true });
+
+    dbUpdateTaskGroup(stack({ projectId: 'p1', checklist: true, keepsTasks: false }));
+    expect(dbGetAllTaskGroups()[0]).toMatchObject({ checklist: true, keepsTasks: false });
+
     dbDeleteTaskGroup('g-round-trip');
   });
 });

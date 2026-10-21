@@ -6,24 +6,27 @@
 //
 // The rules (what each edit changes, warm-ups first, the last set that isn't a
 // warm-up never going) live in src/utils/workoutRoutine.ts; this file draws them.
-import React, { useMemo, useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View, type GestureResponderEvent } from 'react-native';
+import React, { useId, useMemo, useState } from 'react';
+import { Platform, StyleSheet, Text, TouchableOpacity, View, type GestureResponderEvent } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { CardSheet, type CardAnchor } from './CardSheet';
 import { InlineAction } from './InlineAction';
 import { TextField } from './TextField';
+import { ApplyToAllAccessory, APPLY_TO_ALL_ACCESSORY_ID } from './ApplyToAllAccessory';
 import type { ExerciseKind, RoutineSetTarget, WorkoutRoutineItem, WorkoutSetKind } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { useTextScale } from '../hooks/useTextScale';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
+import { applyTargets, applyToAllLabel, type ApplyScope } from '../utils/applyToAll';
+import { clearApplyOffer, setApplyOffer } from '../utils/applyToAllOffer';
 import { formatRestSeconds, formatWeightNumber } from '../utils/workoutData';
 import { parseRepsTarget, parseSetCell } from '../utils/workoutCell';
 import { columnLabel, fieldLabel, setBadge, setFieldsFor, setName, type SetField } from '../utils/workoutSession';
 import {
   MAX_ROUTINE_SETS, MAX_WARMUP_SETS, SET_KIND_LABELS, addSet, addWarmup, canDuplicateSet, canRemoveSet,
-  describeTargetReps, duplicateSet, kindsFor, removeSet, routineSetLabels, withSetDuration, withSetKind,
+  describeTargetReps, duplicateSet, kindsFor, removeSet, routineSetLabels, sameKindIndices, withSetDuration, withSetKind,
   withSetReps, withSetWeight,
 } from '../utils/workoutRoutine';
 import type { WeightUnit } from '../utils/weightLog';
@@ -57,7 +60,7 @@ export function RoutineSetTable({ item, kind, unit, scale, weightSuffix, rampLoa
   const textScale = useTextScale();
   const styles = useMemo(() => makeStyles(colors, textScale), [colors, textScale]);
   const [editing, setEditing] = useState<Editing | null>(null);
-
+  const tableId = useId();
   const fields = setFieldsFor(kind).filter(f => EDITABLE.includes(f));
   const labels = routineSetLabels(item.targets);
   const warmups = item.targets.filter(t => t.kind === 'warmup').length;
@@ -80,16 +83,50 @@ export function RoutineSetTable({ item, kind, unit, scale, weightSuffix, rampLoa
     return null;
   };
 
-  const commitCell = (index: number, field: SetField, text: string) => {
+  /** What typing `text` into a cell of this column writes to one set, or null when it isn't a value. */
+  const writerFor = (field: SetField, text: string): ((i: WorkoutRoutineItem, index: number) => WorkoutRoutineItem) | null => {
     if (field === 'reps') {
       const reps = parseRepsTarget(text);
-      if (reps) onChange(i => withSetReps(i, index, reps.min, reps.max));
-      return;
+      return reps ? (i, index) => withSetReps(i, index, reps.min, reps.max) : null;
     }
     const patch = parseSetCell(field, text, unit, scale);
-    if (!patch) return;
-    if (field === 'weight') onChange(i => withSetWeight(i, index, patch.weightKg ?? null));
-    else if (field === 'duration') onChange(i => withSetDuration(i, index, patch.durationSeconds ?? null));
+    if (!patch) return null;
+    if (field === 'weight') return (i, index) => withSetWeight(i, index, patch.weightKg ?? null);
+    if (field === 'duration') return (i, index) => withSetDuration(i, index, patch.durationSeconds ?? null);
+    return null;
+  };
+
+  const commitCell = (index: number, field: SetField, text: string) => {
+    const write = writerFor(field, text);
+    if (write) onChange(i => write(i, index));
+  };
+
+  // The keyboard bar's "Apply 95 to all sets" for the focused cell: its own
+  // kind of set only (a ramp's warm-ups keep their weights), and not a set
+  // planned as a percentage of a training max, which has no weight cell.
+  const cellKey = (index: number, field: SetField) => `${tableId}:${index}:${field}`;
+  const publishOffer = (index: number, field: SetField, text: string) => {
+    const key = cellKey(index, field);
+    const write = writerFor(field, text);
+    const scope = sameKindIndices(item, index).filter(i => {
+      const t = item.targets[i];
+      return !(field === 'weight' && t.weightKg == null && t.pctOfTm != null);
+    });
+    const targets = write
+      ? applyTargets(item.targets.map(t => cellText(t, field) ?? ''), scope, index, text)
+      : [];
+    if (!write || targets.length === 0) { clearApplyOffer(key); return; }
+    const warm = item.targets[index].kind === 'warmup';
+    const scopeName: ApplyScope = warm ? 'warm-ups' : warmups > 0 ? 'working sets' : 'sets';
+    setApplyOffer({
+      key,
+      label: applyToAllLabel(text, scopeName),
+      apply: () => {
+        haptics.tap();
+        onChange(i => targets.reduce((acc, at) => write(acc, at), i));
+        clearApplyOffer(key);
+      },
+    });
   };
 
   const placeholderFor = (t: RoutineSetTarget, field: SetField): string => {
@@ -102,6 +139,7 @@ export function RoutineSetTable({ item, kind, unit, scale, weightSuffix, rampLoa
 
   return (
     <View>
+      <ApplyToAllAccessory />
       <View style={styles.head} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
         <Text style={[styles.headCell, styles.colBadge, styles.headSet]}>Set</Text>
         {fields.map(f => (
@@ -156,6 +194,8 @@ export function RoutineSetTable({ item, kind, unit, scale, weightSuffix, rampLoa
                     field={f}
                     placeholder={placeholderFor(t, f)}
                     onCommit={v => commitCell(index, f, v)}
+                    onDraft={v => publishOffer(index, f, v)}
+                    onLeave={() => clearApplyOffer(cellKey(index, f))}
                     styles={styles}
                     placeholderColor={colors.textTertiary}
                     accessibilityLabel={`${name} ${fieldLabel(f, kind).toLowerCase()}`}
@@ -260,11 +300,14 @@ export function RoutineSetTable({ item, kind, unit, scale, weightSuffix, rampLoa
  * "10." into "10" under the person's finger (workout mode's `SetInput` does the
  * same). A blank cell is "from last time", which the placeholder says.
  */
-function CellInput({ value, field, placeholder, onCommit, styles, placeholderColor, accessibilityLabel }: {
+function CellInput({ value, field, placeholder, onCommit, onDraft, onLeave, styles, placeholderColor, accessibilityLabel }: {
   value: string;
   field: SetField;
   placeholder: string;
   onCommit: (text: string) => void;
+  /** The text the cell holds now, on focus and on each keystroke. */
+  onDraft: (text: string) => void;
+  onLeave: () => void;
   styles: ReturnType<typeof makeStyles>;
   placeholderColor: string;
   accessibilityLabel: string;
@@ -276,13 +319,18 @@ function CellInput({ value, field, placeholder, onCommit, styles, placeholderCol
     setDraft(null);
     if (text.trim() !== value) onCommit(text);
   };
+  const leave = () => {
+    commit();
+    onLeave();
+  };
   return (
     <TextField
       style={styles.cellInput}
       value={draft ?? value}
-      onChangeText={setDraft}
-      onFocus={() => setDraft(value)}
-      onBlur={commit}
+      onChangeText={t => { setDraft(t); onDraft(t); }}
+      onFocus={() => { setDraft(value); onDraft(value); }}
+      onBlur={leave}
+      inputAccessoryViewID={Platform.OS === 'ios' ? APPLY_TO_ALL_ACCESSORY_ID : undefined}
       onSubmitEditing={commit}
       placeholder={placeholder}
       placeholderTextColor={placeholderColor}

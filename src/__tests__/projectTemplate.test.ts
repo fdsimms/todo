@@ -51,6 +51,19 @@ describe('templateFromProject', () => {
     expect(draft.items[0]).toEqual(expect.objectContaining({ title: 'Send invites', anchor: 'end', dueOffsetDays: -14 }));
   });
 
+  it('carries a list project: the template makes a list, and every section that is one saves as one', () => {
+    const tasks = [
+      task({ id: 'a', title: 'Headphones' }),
+      task({ id: 'b', title: 'Witcher in Polish', groupId: 'books' }),
+      task({ id: 'c', title: 'Fix the bike', groupId: 'chores' }),
+    ];
+    const groups = [group('books', 'Books', 2), { ...group('chores', 'Chores', 3), keepsTasks: true }];
+    const draft = templateFromProject(project({ list: true }), tasks, groups);
+    expect(draft.list).toBe(true);
+    expect(draft.itemGroups.map(g => [g.title, !!g.checklist])).toEqual([['Books', true], ['Chores', false]]);
+    expect(templateFromProject(project({}), tasks, []).list).toBe(false);
+  });
+
   it('counts from the event date ahead of the deadline, so tasks after the event keep their place', () => {
     const tasks = [
       task({ id: 'a', title: 'Get the license', dueDate: new Date(2026, 4, 1, 12).toISOString() }),

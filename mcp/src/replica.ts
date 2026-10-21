@@ -107,6 +107,7 @@ import type {
 } from '../../src/types';
 import type { FinishedSessionInput, ProgramInput, SessionPatch, SetInput } from '../../src/store/useWorkoutStore';
 import { parseTaskFieldDefaults } from '../../src/utils/taskFieldDefaults';
+import { sectionListPatch } from '../../src/utils/listMode';
 import { rotationItemFromInput, rotationMemberTitle, rotationMembers } from '../../src/utils/rotation';
 import { sunAnchorHHMM } from '../../src/utils/sunTimes';
 import type { AwaySpan } from '../../src/utils/awayDates';
@@ -138,7 +139,8 @@ export interface StackPatch {
   tags?: string[];
   category?: string | null;
   projectId?: string | null;
-  checklist?: boolean;
+  /** The section is a list (src/utils/listMode.ts), written the way the section editor's List switch writes it. */
+  list?: boolean;
   hideNextStep?: boolean;
 }
 
@@ -318,6 +320,7 @@ export interface ReplicaLib {
   generatedTasks: typeof import('../../src/utils/generatedTasks');
   generatedTaskSettings: typeof import('../../src/utils/generatedTaskSettings');
   taskFieldDefaults: typeof import('../../src/utils/taskFieldDefaults');
+  listMode: typeof import('../../src/utils/listMode');
   deliverables: typeof import('../../src/utils/deliverables');
   titleRules: typeof import('../../src/utils/titleRules');
   weatherTasks: typeof import('../../src/utils/weatherTasks');
@@ -919,6 +922,8 @@ export interface ProjectPlan {
   defaultTaskCategory?: string | null;
   /** No finish line and never nudged: a running collection like a wish list. */
   ongoing?: boolean;
+  /** A list (Project.list): items to check off rather than tasks to schedule. */
+  list?: boolean;
   /** Start in Planning: its tasks are held off every list until it is marked ready. */
   planning?: boolean;
   steps: ProjectPlanStep[];
@@ -968,6 +973,8 @@ export interface ProjectPatch {
   inOrder?: boolean;
   /** Never finished on its own: the last task being done doesn't offer to complete it. */
   ongoing?: boolean;
+  /** A list (Project.list): its rows are items to check off. Rewrites nothing else. */
+  list?: boolean;
   /** People the project is with or for (list_people ids). Checked here. */
   personIds?: string[];
   /** Links kept with the project, in order. Replaces the list. */
@@ -4232,6 +4239,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       /* eslint-disable @typescript-eslint/no-require-imports */
       return (libCache ??= {
         rhythms: require('../../src/utils/rhythms'),
+        listMode: require('../../src/utils/listMode'),
         calibration: require('../../src/utils/estimateCalibration'),
         moodInsights: require('../../src/utils/moodInsights'),
         moodLog: require('../../src/utils/moodLog'),
@@ -5722,6 +5730,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         // suppressed for the current period.
         scheduleLastFiredKey: null,
         anchorsAreAway: plan.anchorsAreAway ?? false,
+        list: plan.list ?? false,
       };
 
       registerTemplateCategory(template.category);
@@ -5788,6 +5797,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         category: patch.category === undefined ? before.category : patch.category,
         applyContainer: patch.container ?? before.applyContainer,
         anchorsAreAway: patch.anchorsAreAway ?? before.anchorsAreAway,
+        list: patch.list ?? before.list ?? false,
         schedule,
         scheduleLastFiredKey: scheduleChanged ? null : before.scheduleLastFiredKey,
         ...parts,
@@ -7525,6 +7535,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
             eventDate,
             category: plan.category ?? null,
             ongoing: plan.ongoing === true,
+            list: plan.list === true,
             planning: plan.planning === true,
           });
           ensureCategory(defaultTaskCategory);
@@ -7695,11 +7706,16 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const errors: string[] = [];
       const category = typeof patch.category === 'string' ? categoryNamed(patch.category, false, errors) : patch.category;
       if (errors.length > 0) throw new Error(errors.join(' '));
-      const { title, category: _c, tags, ...rest } = patch;
+      const { title, category: _c, tags, list, ...rest } = patch;
+      // The section editor's switch: which override it takes depends on the
+      // project the section sits on (sectionListPatch).
+      const homeId = patch.projectId !== undefined ? patch.projectId : group.projectId;
+      const listFlags = list === undefined ? {} : sectionListPatch(list, projects().find(p => p.id === homeId));
       const moved: { before: Task; after: Task }[] = [];
       db.dbTransaction(() => {
         useTaskGroupStore.getState().updateGroup(id, {
           ...rest,
+          ...listFlags,
           ...(title !== undefined ? { title: title.trim() } : {}),
           ...(tags !== undefined ? { tags: [...new Set(tags.map(t => t.trim().toLowerCase()).filter(Boolean))] } : {}),
           ...(category !== undefined ? { category } : {}),
@@ -7960,7 +7976,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const projectTemplate = require('../../src/utils/projectTemplate') as typeof import('../../src/utils/projectTemplate'); // eslint-disable-line @typescript-eslint/no-require-imports
       const groupsNow = useTaskGroupStore.getState().groups;
       const blueprint = projectTemplate.projectBlueprint(id, tasks(), groupsNow);
-      const checklistSections = new Set(groupsNow.filter(g => g.checklist).map(g => g.id));
+      const sectionFlags = new Map(groupsNow.map(g => [g.id, { checklist: !!g.checklist, keepsTasks: !!g.keepsTasks }]));
       const made: Task[] = [];
       let created: Project | undefined;
       db.dbTransaction(() => {
@@ -7973,12 +7989,13 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           ongoing: source.ongoing, nudgeOptIn: source.nudgeOptIn, nudgeCadenceDays: source.nudgeCadenceDays,
           autoSchedule: source.autoSchedule, weekendSource: source.weekendSource, destination: source.destination,
           personIds: source.personIds, links: source.links, inOrder: source.inOrder, hideNextStep: source.hideNextStep,
-          groupOnToday: source.groupOnToday,
+          groupOnToday: source.groupOnToday, list: source.list ?? false,
         });
         const sectionFor = new Map<string, string>();
         for (const section of blueprint.sections) {
           const copy = useTaskGroupStore.getState().createGroup(section.title, null, created.id);
-          if (checklistSections.has(section.id)) useTaskGroupStore.getState().updateGroup(copy.id, { checklist: true });
+          const flags = sectionFlags.get(section.id);
+          if (flags && (flags.checklist || flags.keepsTasks)) useTaskGroupStore.getState().updateGroup(copy.id, flags);
           sectionFor.set(section.id, copy.id);
         }
         const copyOf = new Map<string, string>();
@@ -8053,6 +8070,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         schedule: null,
         scheduleLastFiredKey: null,
         anchorsAreAway: draft.anchorsAreAway,
+        list: draft.list ?? false,
       };
       db.dbInsertTemplate(template);
       return template;

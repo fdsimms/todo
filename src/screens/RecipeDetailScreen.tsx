@@ -873,7 +873,13 @@ export function RecipeDetailScreen() {
     asGroupable.forEach((row, i) => {
       if (together.has(row.id) && asGroupable[i - 1]?.choiceGroup === row.choiceGroup) orBefore.add(row.id);
     });
-    return { together, orBefore };
+    // The last option of a together group: the bar stops there, so the row after
+    // it needs air of its own rather than starting flush against the bar's end.
+    const endsRun = new Set<string>();
+    asGroupable.forEach((row, i) => {
+      if (together.has(row.id) && asGroupable[i + 1]?.choiceGroup !== row.choiceGroup) endsRun.add(row.id);
+    });
+    return { together, orBefore, endsRun };
   }, [mergedIngredientRows]);
   const alternativeNotesById = useMemo(() => {
     if (!recipe) return new Map<string, string>();
@@ -1496,7 +1502,7 @@ export function RecipeDetailScreen() {
       ? catalogMatch
       : null;
     return (
-      <View>
+      <View style={choiceRuns.endsRun.has(ingredient.id) ? styles.choiceRunEnd : undefined}>
         {/* Its own treatment, deliberately not the section heading's. The two
             said entirely different things — "these belong to the frosting"
             versus "buy exactly one of these" — in identical uppercase grey,
@@ -1836,7 +1842,10 @@ export function RecipeDetailScreen() {
     const isDefault = componentGroups.defaults.has(resolved.component.id);
     const alternativeNote = alternativeNotesById.get(resolved.component.id);
     return (
-      <View key={resolved.component.id}>
+      <View
+        key={resolved.component.id}
+        style={choiceRuns.endsRun.has(resolved.component.id) ? styles.choiceRunEnd : undefined}
+      >
         {choiceRuns.orBefore.has(resolved.component.id) && (
           <View style={styles.choiceOr} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
             <View style={styles.choiceOrLine} />
@@ -3681,7 +3690,8 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    paddingHorizontal: spacing.md,
+    paddingLeft: spacing.md - 2,
+    paddingRight: spacing.md,
     paddingTop: spacing.sm,
     paddingBottom: spacing.xs,
     // Same rule down the same edge as ingredientChoice below: the header
@@ -3697,7 +3707,8 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingLeft: spacing.md - 2,
+    paddingRight: spacing.md,
     borderLeftWidth: 2,
     borderLeftColor: colors.accent,
   },
@@ -3724,7 +3735,11 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   ingredientChoice: {
     borderLeftWidth: 2,
     borderLeftColor: colors.accent,
+    // The bar's own width comes out of the padding, so a grouped line's text
+    // lines up with the ungrouped lines above and below it.
+    paddingLeft: spacing.md - 2,
   },
+  choiceRunEnd: { marginBottom: spacing.sm },
   // Tinted pill rather than a line of accent text, because it is a control and
   // controls in this app get a shape (see the InlineAction note in CLAUDE.md).
   // alignSelf keeps it the width of its label — stretched to the row it would

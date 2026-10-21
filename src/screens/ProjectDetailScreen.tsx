@@ -120,6 +120,7 @@ import { useLogicalDayKey } from '../hooks/useLogicalDayKey';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { TextField } from '../components/TextField';
 import { BUTTON_LABEL } from '../copy/shared';
+import { isOpenEnded, listItemFinder, sectionIsList } from '../utils/listMode';
 
 type RootStackParamList = {
   ProjectDetail: { projectId: string; returnTo?: string };
@@ -221,6 +222,7 @@ function NewLineField({
   placeholderColor,
   placeholder = 'New line',
   inTray = false,
+  plain = false,
 }: {
   onAdd: (text: string, pending: LinePending) => void;
   onAddMany: (lines: string[]) => void;
@@ -230,6 +232,12 @@ function NewLineField({
   placeholder?: string;
   /** Inside a stack's tray, which already insets its rows: the field drops its own side margins to match them. */
   inTray?: boolean;
+  /**
+   * A list item's field: just the words. No marker bar and no date or
+   * priority phrase to confirm, so typing reads as writing a list rather than
+   * filling in a task.
+   */
+  plain?: boolean;
 }) {
   const colors = useColors();
   const [text, setText] = useState('');
@@ -244,8 +252,8 @@ function NewLineField({
   const caret = useTitleSelection(text);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const suggestion = useMemo(
-    () => (text.trim() ? lineSuggestion(text, getLogicalNow(dayResetTime), new Date(), dayResetTime) : null),
-    [text, dayResetTime],
+    () => (!plain && text.trim() ? lineSuggestion(text, getLogicalNow(dayResetTime), new Date(), dayResetTime) : null),
+    [plain, text, dayResetTime],
   );
   const setPendingBoth = (next: LinePending) => { pendingRef.current = next; setPending(next); };
   // Taken by whichever add happens, so a line's date doesn't carry to the next.
@@ -298,7 +306,7 @@ function NewLineField({
         onChangeText={change}
         selection={caret.selection}
         onSelectionChange={caret.onSelectionChange}
-        inputAccessoryViewID={Platform.OS === 'ios' ? accessoryId : undefined}
+        inputAccessoryViewID={Platform.OS === 'ios' && !plain ? accessoryId : undefined}
         autoFocus
         placeholder={placeholder}
         placeholderTextColor={placeholderColor}
@@ -347,12 +355,14 @@ function NewLineField({
           </TouchableOpacity>
         </View>
       )}
-      <TitleTokenAccessory
-        nativeID={accessoryId}
-        onInsert={token => change(caret.insertToken(token))}
-        onConfirm={confirm}
-        confirmVisible={suggestion !== null}
-      />
+      {!plain && (
+        <TitleTokenAccessory
+          nativeID={accessoryId}
+          onInsert={token => change(caret.insertToken(token))}
+          onConfirm={confirm}
+          confirmVisible={suggestion !== null}
+        />
+      )}
     </View>
   );
 }
@@ -475,6 +485,10 @@ function ProjectDetailContent() {
   // Null when closed; a number otherwise, bumped on every add so the field
   // remounts empty and focused for the next one.
   const [taskLineOpen, setTaskLineOpen] = useState<number | null>(null);
+  // A plain field right under a section, for an item dropped between a list
+  // page's sections (openLineForDrop). It hands over to `insertAfterId` once
+  // the first item is in, so the rest go under it the way Return's do.
+  const [lineAfterGroupId, setLineAfterGroupId] = useState<string | null>(null);
   const [templatePickerVisible, setTemplatePickerVisible] = useState(false);
   const [guestsOpen, setGuestsOpen] = useState(false);
   const [suggestionsVisible, setSuggestionsVisible] = useState(false);
@@ -542,6 +556,10 @@ function ProjectDetailContent() {
   const spotlightProgress = useSpotlightProgress(expandedTaskId !== null && !selectionMode);
 
   const project = projects.find(p => p.id === projectId) ?? null;
+  // Which rows here are list items rather than tasks (src/utils/listMode.ts):
+  // a list section's, and in a list project the loose rows too.
+  const pageIsList = !!project?.list;
+  const isListItem = useMemo(() => listItemFinder(taskGroups, projects), [taskGroups, projects]);
   // Below `project` on purpose: the selector runs during render, so above the
   // declaration it read `project` before it existed.
   // Who the project is with, as the people store has them now: an archived or
@@ -613,7 +631,7 @@ function ProjectDetailContent() {
     () => (project ? projectProgress(project.id, allTasks) : { done: 0, total: 0 }),
     [project?.id, allTasks],
   );
-  const allDone = progress.total > 0 && progress.done === progress.total && !project?.completed && !project?.ongoing;
+  const allDone = progress.total > 0 && progress.done === progress.total && !project?.completed && !(project && isOpenEnded(project));
 
   const handleMarkComplete = () => {
     if (!project) return;
@@ -719,7 +737,9 @@ function ProjectDetailContent() {
   // packing list), so enough of those brings the field, narrowing the whole
   // page.
   const checklistLineCount = projectListItems.reduce(
-    (n, item) => n + (item.type === 'group' && item.group.checklist ? item.children.length : 0), 0,
+    (n, item) => n + (item.type === 'group'
+      ? (sectionIsList(item.group, project) ? item.children.length : 0)
+      : (pageIsList ? 1 : 0)), 0,
   );
   const lineFilterShown = checklistLineCount >= LIST_FILTER_MIN_LINES;
   const filteringLines = lineFilterShown && lineFilter.query.trim().length > 0;
@@ -941,8 +961,10 @@ function ProjectDetailContent() {
 
   // Template goes in simplified mode, same as it does from Today's add button.
   const addMenuItems = useMemo(
-    () => ADD_MENU_ITEMS.filter(item => addMenuItemShown(item.key, simpleMode)),
-    [simpleMode],
+    () => ADD_MENU_ITEMS
+      .filter(item => addMenuItemShown(item.key, simpleMode))
+      .map(item => (item.key === 'new' && pageIsList ? { ...item, label: 'New item' } : item)),
+    [simpleMode, pageIsList],
   );
 
   const handleAddMenuSelect = (key: string) => {
@@ -1085,7 +1107,7 @@ function ProjectDetailContent() {
     };
     const item = projectListItems.find(i => i.type === 'group' && i.group.id === groupId);
     const lines = item && item.type === 'group' ? item.children : [];
-    if (!group.checklist || filteringLines || lines.length < 3) {
+    if (!sectionIsList(group, project) || filteringLines || lines.length < 3) {
       edit();
       return;
     }
@@ -1108,18 +1130,24 @@ function ProjectDetailContent() {
    * typed, plus only what its own markers say. A task (`asTask`, a task
    * section's field) keeps both, the way quick add and the project's own
    * suggestions do.
+   *
+   * A list item (`plain`) is only the words and a link: its field has no
+   * marker bar, so a `#` or an `@` in it is part of the title ("Book #2")
+   * rather than a tag nobody asked for.
    */
-  const createLine = (text: string, placement: Partial<NewTaskDraft>, pending: LinePending = NO_LINE_PENDING, asTask = false): Task => {
+  const createLine = (text: string, placement: Partial<NewTaskDraft>, pending: LinePending = NO_LINE_PENDING, asTask = false, plain = false): Task => {
     const context: LineParseContext = {
       categories: useCategoryStore.getState().categories.map(c => c.name),
       tags: useTaskStore.getState().allTags(),
       people: usePersonStore.getState().people.filter(p => !p.archived),
       groups: groupMentionTokens(),
     };
-    const marked = lineMarkerFields(text, context);
+    const marked = plain
+      ? { title: text.trim(), category: null, tags: [] as string[], personIds: [] as string[] }
+      : lineMarkerFields(text, context);
     const link = parseLabelledLink(marked.title);
     const title = link ? (link.label || linkHost(link.url)) : marked.title;
-    const { draft, seriesDates } = linePendingFields(pending);
+    const { draft, seriesDates } = linePendingFields(plain ? NO_LINE_PENDING : pending);
     const task = addTask(
       {
         title: title.slice(0, TITLE_MAX_LENGTH),
@@ -1145,7 +1173,7 @@ function ProjectDetailContent() {
     animateLayout();
     let last: Task | null = null;
     for (const line of lines) {
-      last = createLine(line, { projectId: project.id }, lines.length === 1 ? pending : undefined, true);
+      last = createLine(line, { projectId: project.id }, lines.length === 1 ? pending : undefined, !pageIsList, pageIsList);
     }
     if (last) {
       if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
@@ -1159,7 +1187,8 @@ function ProjectDetailContent() {
   };
 
   const addLineToSection = (group: TaskGroup, text: string, pending?: LinePending) => {
-    const task = createLine(text, { projectId, groupId: group.id }, pending, !group.checklist);
+    const list = sectionIsList(group, project);
+    const task = createLine(text, { projectId, groupId: group.id }, pending, !list, list);
     const siblings = useTaskStore.getState().tasks
       .filter(t => t.groupId === group.id && t.projectId === projectId && !t.parentId && !t.completed && !t.archived && t.id !== task.id)
       .sort((a, b) => a.sortOrder - b.sortOrder);
@@ -1168,12 +1197,68 @@ function ProjectDetailContent() {
     lineFilter.clear();
   };
 
+  /**
+   * A list is added to by typing, so dropping the add button on one opens the
+   * plain field where it landed rather than the quick add sheet: a list
+   * section's own field, or under the row just above the drop point. Answers
+   * false when the drop isn't on a list, which still gets the sheet.
+   */
+  const openLineForDrop = (intent: FabDropIntent): boolean => {
+    if (intent.kind === 'joinGroup') {
+      const group = useTaskGroupStore.getState().getGroupById(intent.groupId);
+      if (!group || !sectionIsList(group, project)) return false;
+      openAddToSection(group);
+      return true;
+    }
+    if (!pageIsList || (intent.kind !== 'insert' && intent.kind !== 'plain')) return false;
+    const at = intent.kind === 'insert' ? projectListItems.findIndex(item => projectListItemKey(item) === intent.anchorKey) : -1;
+    const above = at < 0 || intent.kind !== 'insert' ? undefined : projectListItems[intent.before ? at - 1 : at];
+    setExpandedTaskId(null);
+    setSectionLine(null);
+    if (above?.type === 'task') {
+      setTaskLineOpen(null);
+      setLineAfterGroupId(null);
+      setInsertAfterId(above.task.id);
+    } else if (above?.type === 'group') {
+      setTaskLineOpen(null);
+      setInsertAfterId(null);
+      setLineAfterGroupId(above.group.id);
+    } else {
+      // Nothing above it (dropped at the very top) or a plain drop: the
+      // field at the foot of the page, where a tap on the button opens it.
+      setLineAfterGroupId(null);
+      openTaskLine();
+    }
+    return true;
+  };
+
+  /**
+   * Items typed (or pasted) under a section on a list page, placed straight
+   * after it in one reorder: the page's list is this render's, so placing
+   * them one at a time would place each against a list missing the last.
+   * Answers the last one's id, for the field to move under.
+   */
+  const addLinesAfterGroup = (group: TaskGroup, lines: string[]): string | null => {
+    const made = cleanPastedLines(lines).map(line => createLine(line, { projectId }, undefined, false, true).id);
+    if (made.length === 0) return null;
+    const ids = projectListItems.map(item => (item.type === 'group' ? item.group.id : item.task.id));
+    const at = ids.indexOf(group.id);
+    reorderProjectItems(projectId, at < 0 ? [...ids, ...made] : [...ids.slice(0, at + 1), ...made, ...ids.slice(at + 1)]);
+    haptics.tap();
+    lineFilter.clear();
+    return made[made.length - 1];
+  };
+
   const openQuickAddForDrop = (intent: FabDropIntent) => {
     // Dropped back on the button: the drag is the whole of what happened, so
     // no sheet, and nothing left armed for the next tap.
     if (intent.kind === 'cancel') {
       pendingDropRef.current = null;
       haptics.tap();
+      return;
+    }
+    if (openLineForDrop(intent)) {
+      pendingDropRef.current = null;
       return;
     }
     pendingDropRef.current = intent;
@@ -1222,10 +1307,6 @@ function ProjectDetailContent() {
   const onQuickAddCreated = useStableCallback(handleTaskCreated);
   const onQuickAddResumed = useStableCallback(attachToProject);
 
-  const checklistSectionIds = useMemo(
-    () => new Set(taskGroups.filter(g => g.checklist).map(g => g.id)),
-    [taskGroups],
-  );
 
   // A completed row, in the block at the bottom. Not draggable.
   const renderCheckedRow = (task: Task) => {
@@ -1246,7 +1327,7 @@ function ProjectDetailContent() {
         selected={selectedIds.has(task.id)}
         onSelect={toggleSelection}
         onSwipeSelect={handleRowSwipeSelect}
-        showCategory
+        showCategory={!isListItem(task)}
         onOpenCategory={handleOpenCategory}
         showDate
         showGroup
@@ -1265,6 +1346,7 @@ function ProjectDetailContent() {
     opts: { drag?: () => void; isActive?: boolean; indented?: boolean } = {},
   ) => {
     const subs = subtasksOf(task.id);
+    const listItem = isListItem(task);
     const row = (
       <TaskItem
         task={task}
@@ -1283,15 +1365,18 @@ function ProjectDetailContent() {
         onSelect={toggleSelection}
         onSwipeSelect={handleRowSwipeSelect}
         indented={opts.indented}
-        showCategory
+        // A list item is filed by the list it's on. Its category, often one
+        // the project stamped on every row, would repeat down the whole list.
+        showCategory={!listItem}
         onOpenCategory={handleOpenCategory}
         showGroup={!opts.indented}
-        // A checklist section's lines are checked off, not dated.
-        showDate={!checklistSectionIds.has(task.groupId ?? '')}
+        // Undated is the norm for an item, so the chip only shows on one that
+        // was given a date, which is the item that is on Today.
+        showDate
         showPin={false}
         highlighted={task.id === flashTaskId}
-        listRow={checklistSectionIds.has(task.groupId ?? '')}
-        onSubmitLine={checklistSectionIds.has(task.groupId ?? '') ? handleSubmitLine : undefined}
+        listRow={listItem}
+        onSubmitLine={listItem ? handleSubmitLine : undefined}
       />
     );
     if (insertAfterId !== task.id) return row;
@@ -1305,7 +1390,8 @@ function ProjectDetailContent() {
           onDone={() => setInsertAfterId(null)}
           styles={styles}
           placeholderColor={colors.textTertiary}
-          placeholder="New line"
+          placeholder="New item"
+          plain
           inTray={!!opts.indented}
         />
       </>
@@ -1319,7 +1405,7 @@ function ProjectDetailContent() {
    * the field can move under it for the next.
    */
   const addLineAfter = (after: Task, text: string, pending?: LinePending): string => {
-    const task = createLine(text, { projectId, groupId: after.groupId ?? null }, pending);
+    const task = createLine(text, { projectId, groupId: after.groupId ?? null }, pending, false, true);
     const order = orderWithInserted(projectListItems, after.id, task.id);
     if (order?.groupId) reorderGroupChildren(order.groupId, order.ids);
     else if (order) reorderProjectItems(projectId, order.ids);
@@ -1963,17 +2049,18 @@ function ProjectDetailContent() {
                           onDone={() => setSectionLine(null)}
                           styles={styles}
                           placeholderColor={colors.textTertiary}
-                          placeholder={group.checklist ? 'New line' : 'New task'}
+                          placeholder={sectionIsList(group, project) ? 'New item' : 'New task'}
+                          plain={sectionIsList(group, project)}
                           inTray
                         />
                       ) : empty ? (
                         <View style={styles.emptyStackRow}>
-                          <Text style={styles.emptyStackText}>{group.checklist ? 'No lines in this section yet' : 'No tasks in this section yet'}</Text>
+                          <Text style={styles.emptyStackText}>{sectionIsList(group, project) ? 'No items in this section yet' : 'No tasks in this section yet'}</Text>
                           <InlineAction
-                            label={group.checklist ? 'Add a line' : 'Add a task'}
+                            label={sectionIsList(group, project) ? 'Add an item' : 'Add a task'}
                             icon="add"
                             onPress={() => openAddToSection(group)}
-                            accessibilityLabel={group.title.trim() ? `Add ${group.checklist ? 'a line' : 'a task'} to the ${group.title.trim()} section` : `Add ${group.checklist ? 'a line' : 'a task'} to this section`}
+                            accessibilityLabel={group.title.trim() ? `Add ${sectionIsList(group, project) ? 'an item' : 'a task'} to the ${group.title.trim()} section` : `Add ${sectionIsList(group, project) ? 'an item' : 'a task'} to this section`}
                           />
                         </View>
                       ) : (
@@ -2017,19 +2104,20 @@ function ProjectDetailContent() {
                             onDone={() => setSectionLine(null)}
                             styles={styles}
                             placeholderColor={colors.textTertiary}
-                            placeholder={group.checklist ? 'New line' : 'New task'}
+                            placeholder={sectionIsList(group, project) ? 'New item' : 'New task'}
+                            plain={sectionIsList(group, project)}
                             inTray
                           />
                         )}
                         {!selectionMode && sectionLine?.groupId !== group.id && (
                           <View style={styles.sectionAddRow}>
                             <InlineAction
-                              label={group.checklist ? 'Add a line' : 'Add a task'}
+                              label={sectionIsList(group, project) ? 'Add an item' : 'Add a task'}
                               icon="add"
                               variant="neutral"
                               surface="tray"
                               onPress={() => openAddToSection(group)}
-                              accessibilityLabel={group.title.trim() ? `Add ${group.checklist ? 'a line' : 'a task'} to the ${group.title.trim()} section` : `Add ${group.checklist ? 'a line' : 'a task'} to this section`}
+                              accessibilityLabel={group.title.trim() ? `Add ${sectionIsList(group, project) ? 'an item' : 'a task'} to the ${group.title.trim()} section` : `Add ${sectionIsList(group, project) ? 'an item' : 'a task'} to this section`}
                             />
                           </View>
                         )}
@@ -2038,6 +2126,18 @@ function ProjectDetailContent() {
                     </TaskGroupBody>
                   </TaskGroupTray>
                   </GroupDropTargetRow>
+                  {!selectionMode && lineAfterGroupId === group.id && (
+                    <NewLineField
+                      key={`after-${group.id}`}
+                      onAdd={text => { setLineAfterGroupId(null); setInsertAfterId(addLinesAfterGroup(group, [text])); }}
+                      onAddMany={lines => { setLineAfterGroupId(null); setInsertAfterId(addLinesAfterGroup(group, lines)); }}
+                      onDone={() => setLineAfterGroupId(null)}
+                      styles={styles}
+                      placeholderColor={colors.textTertiary}
+                      placeholder="New item"
+                      plain
+                    />
+                  )}
                   </FabDropZone>
                 );
               }
@@ -2087,7 +2187,8 @@ function ProjectDetailContent() {
                     onDone={() => setTaskLineOpen(null)}
                     styles={styles}
                     placeholderColor={colors.textTertiary}
-                    placeholder="New task"
+                    placeholder={pageIsList ? 'New item' : 'New task'}
+                    plain={pageIsList}
                   />
                 ) : null}
                 {completedProjectTasks.length > 0 && (
@@ -2097,11 +2198,11 @@ function ProjectDetailContent() {
                       onPress={() => { animateLayout(); setShowCompleted(v => !v); }}
                       activeOpacity={interaction.activeOpacity}
                       accessibilityRole="button"
-                      accessibilityLabel={`${showCompleted ? 'Hide' : 'Show'} ${completedProjectTasks.length} completed tasks`}
+                      accessibilityLabel={`${showCompleted ? 'Hide' : 'Show'} ${completedProjectTasks.length} ${pageIsList ? 'checked items' : 'completed tasks'}`}
                     >
                       <Ionicons name="checkmark-circle-outline" size={13} color={colors.textTertiary} />
                       <Text style={styles.completedToggleText}>
-                        {showCompleted ? 'Hide' : 'Show'} {completedProjectTasks.length} completed
+                        {showCompleted ? 'Hide' : 'Show'} {completedProjectTasks.length} {pageIsList ? 'checked' : 'completed'}
                       </Text>
                       <Ionicons name={showCompleted ? 'chevron-up' : 'chevron-down'} size={13} color={colors.textTertiary} />
                     </TouchableOpacity>

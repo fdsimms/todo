@@ -93,7 +93,7 @@ export interface TemplateRunSink {
   createStack(title: string, category: string | null): { id: string };
   /** A section of a run: its members are filed under it with the category they carry. */
   groupTasks(taskIds: string[], title: string, category: string | null): { id: string };
-  createProject(title: string, options: Partial<Pick<Project, 'awayStart' | 'awayEnd' | 'deadline'>> & { planning?: boolean }): { id: string };
+  createProject(title: string, options: Partial<Pick<Project, 'awayStart' | 'awayEnd' | 'deadline' | 'list'>> & { planning?: boolean }): { id: string };
   getProject(id: string): Pick<Project, 'awayStart' | 'deadline'> | undefined;
   updateProject(id: string, patch: Partial<Pick<Project, 'awayStart' | 'awayEnd' | 'deadline'>>): void;
   /** A section that lands in a project is homed on its page, and a checklist if it was saved as one. */
@@ -173,6 +173,7 @@ export function applyTemplateRun(
               : {})
           : { deadline: anchors.end?.toISOString() ?? null }),
         ...(options?.planning ? { planning: true } : {}),
+        ...(template.list ? { list: true } : {}),
       })
     : null;
   const projectId = options?.targetProjectId ?? runProject?.id ?? null;

@@ -245,6 +245,17 @@ export function withSetWeight(item: WorkoutRoutineItem, index: number, kg: numbe
 }
 
 /**
+ * The positions "apply to all" may copy a cell onto from the set at `index`:
+ * its own kind of set, so a warm-up ramp keeps its own weights when the working
+ * sets are set to one. Empty for a position the item doesn't have.
+ */
+export function sameKindIndices(item: Pick<WorkoutRoutineItem, 'targets'>, index: number): number[] {
+  const t = item.targets[index];
+  if (!t) return [];
+  return item.targets.flatMap((x, i) => (isWarmup(x) === isWarmup(t) ? [i] : []));
+}
+
+/**
  * The item with this rep range on the set at `index`. A range given backwards
  * is the same range, one end alone is a fixed count, and both ends empty is
  * none (workout mode then starts the set from last time's reps).

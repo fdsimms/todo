@@ -35,6 +35,7 @@ import { TemplateQuestionSheet } from './TemplateQuestionSheet';
 import { TextField } from './TextField';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { Toggle } from './Toggle';
+import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
@@ -56,6 +57,7 @@ export function TemplateEditor({ visible, template: liveTemplate, onClose }: Pro
   const setTemplateCategory = useTemplateStore(s => s.setTemplateCategory);
   const setTemplateContainer = useTemplateStore(s => s.setTemplateContainer);
   const setTemplateAnchorsAreAway = useTemplateStore(s => s.setTemplateAnchorsAreAway);
+  const setTemplateList = useTemplateStore(s => s.setTemplateList);
   const setSchedule = useTemplateStore(s => s.setSchedule);
   const deleteTemplate = useTaskStore(s => s.deleteTemplate);
   const templates = useTemplateStore(useShallow(s => s.templates));
@@ -72,6 +74,7 @@ export function TemplateEditor({ visible, template: liveTemplate, onClose }: Pro
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [containerOpen, setContainerOpen] = useState(false);
   const [anchorsAreAway, setAnchorsAreAway] = useState(false);
+  const [makesList, setMakesList] = useState(false);
   const [schedule, setScheduleDraft] = useState<TemplateSchedule | null>(null);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [timePickerOpen, setTimePickerOpen] = useState(false);
@@ -88,6 +91,7 @@ export function TemplateEditor({ visible, template: liveTemplate, onClose }: Pro
     setCategory(template.category);
     setContainer(template.applyContainer);
     setAnchorsAreAway(template.anchorsAreAway);
+    setMakesList(!!template.list);
     setScheduleDraft(template.schedule);
     setCategoryOpen(false);
     setContainerOpen(false);
@@ -118,6 +122,7 @@ export function TemplateEditor({ visible, template: liveTemplate, onClose }: Pro
     setTemplateCategory(template.id, resolveCategory());
     setTemplateContainer(template.id, container);
     setTemplateAnchorsAreAway(template.id, anchorsAreAway);
+    setTemplateList(template.id, makesList);
     setSchedule(template.id, schedule);
     onClose();
   };
@@ -307,6 +312,32 @@ export function TemplateEditor({ visible, template: liveTemplate, onClose }: Pro
           <Toggle value={anchorsAreAway} />
         </TouchableOpacity>
       </View>
+
+      {/* TaskTemplate.list. Only where a run makes its own project: applied
+          into an existing project, that project's setting stands. */}
+      {container === 'project' && (
+        <View style={styles.sectionCard}>
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => { haptics.tap(); setMakesList(v => !v); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="switch"
+            accessibilityLabel="Makes a list"
+            accessibilityState={{ checked: makesList }}
+          >
+            <Ionicons name="list-outline" size={18} color={makesList ? colors.accent : colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Makes a list</Text>
+              <HelpText style={styles.optionHint}>
+                {makesList
+                  ? 'The project a run makes is a list: items to check off rather than tasks to schedule.'
+                  : 'The project a run makes is an ordinary project.'}
+              </HelpText>
+            </View>
+            <Toggle value={makesList} />
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Applies itself (#1781). Under "When applied" on purpose: that field
           says where a run lands, this one says whether a run can start without

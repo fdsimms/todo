@@ -149,7 +149,8 @@ import { SearchField } from './SearchField';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorRow } from './EditorRow';
-import { EditorGroup } from './EditorGroup';
+import { EditorGroup, EditorRowFilterContext } from './EditorGroup';
+import { listItemFinder, listItemRowShown } from '../utils/listMode';
 import { editorSearchTerms, matchesEditorQuery } from '../utils/editorSearch';
 import { CountStepper } from './CountStepper';
 import { MAX_ROTATION_PER_WEEK, rotationItemsFrom, rotationPerWeek, rotationTargetTotal, withPerWeek, withWorkout } from '../utils/rotation';
@@ -554,6 +555,21 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   const addExistingToGroup = useTaskStore(s => s.addExistingToGroup);
   const allGroups = useTaskGroupStore(useShallow(s => s.groups));
   const projects = useProjectStore(useShallow(s => s.projects.filter(p => !p.archived)));
+  // A list item (src/utils/listMode.ts) opens with only the rows an item uses,
+  // plus any row that already holds a value. Decided from what the sheet
+  // opened on rather than from the draft, so filing the item somewhere else
+  // mid-edit doesn't fold the form up under the finger. "Show all fields"
+  // lifts it for this edit only.
+  const opensAsListItem = useMemo(() => {
+    const subject = task ?? initialDraft;
+    if (!subject) return false;
+    return listItemFinder(allGroups, projects)({
+      groupId: subject.groupId ?? null,
+      projectId: subject.projectId ?? null,
+      parentId: task?.parentId ?? null,
+    });
+  }, [task, initialDraft, allGroups, projects]);
+  const [showAllFields, setShowAllFields] = useState(false);
   // For the "Stocked from" picker only, and read here rather than at the render
   // site so the sheet's other ~40 store bindings all sit together. `addToPantry`
   // is the create path: a supply is a thing kept in a cupboard, not a thing
@@ -1156,6 +1172,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   if (draftLoadedFor.visible !== visible || (visible && draftLoadedFor.task !== task)) {
     setDraftLoadedFor({ visible, task });
     if (visible) loadDraft();
+    setShowAllFields(false);
   }
   // The one part that touches a native view, so it waits for the commit.
   useEffect(() => {
@@ -3852,7 +3869,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       header={
         <SheetHeader
           bare
-          title={task ? 'Edit task' : 'New task'}
+          title={opensAsListItem ? (task ? 'Edit item' : 'New item') : (task ? 'Edit task' : 'New task')}
           left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} />}
           right={
             <View style={styles.headerRight}>
@@ -4188,6 +4205,9 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
         </>
       }
     >
+      {/* Searching reaches every field, so a list item's hidden ones can be
+          found by name the way anything else in the form can. */}
+      <EditorRowFilterContext.Provider value={opensAsListItem && !showAllFields && !searchOpen ? listItemRowShown : null}>
       {/* The field search bar. Its own row rather than in the header: the
           header already holds Cancel, the title and Save, and a field squeezed
           between them would be a third of the width — and Save has to stay
@@ -8723,6 +8743,18 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
         ]}
       />
 
+      {opensAsListItem && !showAllFields && !searchOpen && (
+        <View style={styles.showAllFields}>
+          <InlineAction
+            label="Show all fields"
+            icon="chevron-down"
+            variant="neutral"
+            onPress={() => { animateLayout(); setShowAllFields(true); }}
+            accessibilityLabel="Show all fields, including the ones for tasks"
+          />
+        </View>
+      )}
+
       {/* The two ways a task leaves the list, together and last. Archive was
           previously gated on the task repeating — collateral from sharing a
           row with the streak editor, which genuinely is recurrence-only. Any
@@ -8782,12 +8814,15 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
           </TouchableOpacity>
         </View>
       )}
+      </EditorRowFilterContext.Provider>
     </EditorSheet>
   );
 }
 
 
 const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
+  // A list item's way to the rest of the form, centered under the last card.
+  showAllFields: { alignItems: 'center', marginTop: spacing.lg },
   root: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
