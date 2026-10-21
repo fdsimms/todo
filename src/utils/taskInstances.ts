@@ -85,3 +85,20 @@ export function getRepeatedInstances(tasks: Task[], minCount = 2): InstanceGroup
     .filter(g => g.count >= minCount)
     .sort((a, b) => (b.count - a.count) || (a.lastCompletedAt < b.lastCompletedAt ? 1 : -1));
 }
+
+/**
+ * The task a title-keyed group on Stats stands for, to open from its row: the
+ * open one carrying that title if there is one (the habit's live occurrence),
+ * else the most recently finished. Top-level and unarchived only, and keyed
+ * by `normalizeTitle`, the way the groups themselves are. Null when nothing
+ * by that title is left (purged by retention, or renamed since).
+ */
+export function taskForTitleKey(tasks: readonly Task[], key: string): Task | null {
+  let latestDone: Task | null = null;
+  for (const t of tasks) {
+    if (t.parentId || t.archived || normalizeTitle(t.title) !== key) continue;
+    if (!t.completed) return t;
+    if (!latestDone || (t.completedAt ?? '') > (latestDone.completedAt ?? '')) latestDone = t;
+  }
+  return latestDone;
+}
