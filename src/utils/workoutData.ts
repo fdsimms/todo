@@ -33,6 +33,14 @@ export const FREE_EQUIPMENT: readonly ExerciseEquipment[] = [
   'barbell', 'dumbbell', 'kettlebell', 'cable', 'smith_machine', 'ez_bar', 'trap_bar', 'band',
 ];
 
+/**
+ * Gear a body-weight or throwing movement needs that a gym may not have. Filed
+ * apart from `other` because `other` is read as available everywhere (not
+ * knowing is never "can't"), which put a medicine ball slam and a weighted dip
+ * in the swap suggestions for a gym that was only bands.
+ */
+export const BODYWEIGHT_GEAR: readonly ExerciseEquipment[] = ['pull_up_bar', 'dip_bars', 'medicine_ball'];
+
 /** The strength machines with a value of their own. `machine` stands in for any other. */
 export const STRENGTH_MACHINES: readonly ExerciseEquipment[] = [
   'leg_press', 'hack_squat', 'leg_extension', 'leg_curl', 'calf_raise_machine',
@@ -47,6 +55,7 @@ export const CARDIO_MACHINES: readonly ExerciseEquipment[] = [
 
 export const EXERCISE_EQUIPMENT: readonly ExerciseEquipment[] = [
   ...FREE_EQUIPMENT,
+  ...BODYWEIGHT_GEAR,
   ...STRENGTH_MACHINES, 'machine',
   ...CARDIO_MACHINES, 'cardio_machine',
   'bodyweight', 'other',
@@ -89,6 +98,9 @@ export const EQUIPMENT_LABELS: Record<ExerciseEquipment, string> = {
   band: 'Band',
   bodyweight: 'Bodyweight',
   other: 'Other',
+  pull_up_bar: 'Pull-up bar',
+  dip_bars: 'Dip bars',
+  medicine_ball: 'Medicine ball',
   machine: 'Other machine',
   leg_press: 'Leg press',
   hack_squat: 'Hack squat',

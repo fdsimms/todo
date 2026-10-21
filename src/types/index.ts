@@ -2047,6 +2047,7 @@ export type ExerciseKind =
 export type ExerciseEquipment =
   | 'barbell' | 'dumbbell' | 'kettlebell' | 'cable' | 'smith_machine'
   | 'ez_bar' | 'trap_bar' | 'band' | 'bodyweight' | 'other'
+  | 'pull_up_bar' | 'dip_bars' | 'medicine_ball'
   | 'machine'
   | 'leg_press' | 'hack_squat' | 'leg_extension' | 'leg_curl' | 'calf_raise_machine'
   | 'hip_abduction_machine' | 'hip_adduction_machine'
