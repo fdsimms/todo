@@ -1,7 +1,7 @@
 import React from 'react';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { useColors } from '../theme/ThemeContext';
-import { flattenOverlay, type Colors } from '../theme';
+import type { Colors } from '../theme';
 import type { MoodLevel } from '../types';
 
 interface Props {
@@ -31,17 +31,19 @@ const MOUTH: Record<MoodLevel, string> = {
 };
 
 /**
- * Red, orange, grey, then two greens: the one place a mood colour is chosen.
- * Built from the status hues and the grey of an empty control, so it follows
- * the theme and no new colour token exists for it.
+ * Red, orange, grey, green, then blue: the one place a mood colour is chosen.
+ * Built from existing theme colours, so it follows the theme and no new colour
+ * token exists for it.
  */
 export function moodFaceFill(level: MoodLevel, colors: Colors): string {
   switch (level) {
     case 1: return colors.red;
     case 2: return colors.orange;
     case 3: return colors.controlBorder;
-    case 4: return flattenOverlay(colors.green + 'B3', colors.controlBorder);
-    case 5: return colors.green;
+    case 4: return colors.green;
+    // The theme has no status blue, so this borrows the afternoon hue: the
+    // top of the scale needs a colour no other level shares.
+    case 5: return colors.timeAfternoon;
   }
 }
 
