@@ -992,7 +992,7 @@ export function describeHealthInsight(insight: HealthInsight): string | null {
   if (insight.strength === 'none') {
     return insight.against === 'mood'
       ? `No clear pattern between your ${subject} and your mood.`
-      : `No clear pattern between your ${subject} and what you finish.`;
+      : `No clear pattern between your ${subject} and the tasks you finish.`;
   }
   if (insight.against === 'mood') {
     return insight.direction === 'more'
@@ -1029,7 +1029,7 @@ export function healthFindings(
   if (pairs.length > 1 && pairs.every(flat)) {
     return [{
       key: 'all-none',
-      text: 'No clear pattern between your steps or sleep and your mood or what you finish.',
+      text: 'No clear pattern between your steps or sleep and your mood or the tasks you finish.',
     }];
   }
 
@@ -1039,7 +1039,7 @@ export function healthFindings(
       const subject = p.metric === 'steps' ? 'steps' : 'sleep';
       rows.push({
         key: `${p.metric}-none`,
-        text: `No clear pattern between your ${subject} and your mood or what you finish.`,
+        text: `No clear pattern between your ${subject} and your mood or the tasks you finish.`,
       });
       continue;
     }
@@ -1099,7 +1099,7 @@ export function describeNutrientInsight(insight: NutrientInsight): string | null
   if (insight.strength === 'none') {
     return insight.against === 'mood'
       ? `No clear pattern between ${phrase.subject} and your mood.`
-      : `No clear pattern between ${phrase.subject} and what you finish.`;
+      : `No clear pattern between ${phrase.subject} and the tasks you finish.`;
   }
   if (insight.against === 'mood') {
     return insight.direction === 'more'
@@ -1144,7 +1144,7 @@ export function nutrientFindings(days: readonly MoodDay[]): { key: string; text:
     if (phrase && done.strength === 'none' && mood.strength === 'none') {
       rows.push({
         key: `${nutrient}-none`,
-        text: `No clear pattern between ${phrase.subject} and your mood or what you finish.`,
+        text: `No clear pattern between ${phrase.subject} and your mood or the tasks you finish.`,
       });
       continue;
     }

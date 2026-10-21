@@ -13,6 +13,7 @@ import { WorkoutTimesSheet, type TimeEnd } from './WorkoutTimesSheet';
 import { WorkoutRecordsCard } from './WorkoutRecordsCard';
 import { WorkoutStatTiles } from './WorkoutStatTiles';
 import { WorkoutHeartRateCard } from './WorkoutHeartRateCard';
+import { ExerciseDetailSheet } from './ExerciseDetailSheet';
 import type { WorkoutSet } from '../types';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -24,7 +25,7 @@ import { useWorkoutHeartRate } from '../hooks/useWorkoutHeartRate';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { useTextScale } from '../hooks/useTextScale';
 import { useColors } from '../theme/ThemeContext';
-import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
+import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { disclosureValue } from '../theme/textStyles';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
@@ -164,6 +165,9 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose }: Props) {
   const [notes, setNotes] = useState('');
   // Which time the picker is choosing; declared here so the open effect below can put it away.
   const [picking, setPicking] = useState<TimeEnd | null>(null);
+  // The exercise page a row opened; put away with the picker below.
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
   // The saved text the field last took in. A close writes the field back only
   // when it differs from this, so a page left untouched never writes the text
   // it opened with over notes an agent or another device changed meanwhile.
@@ -177,6 +181,7 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose }: Props) {
       setNotes(notesBaseline.current);
     }
     setPicking(null);
+    setDetailOpen(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, sessionId]);
   // Notes changed elsewhere while the page is open reach an untouched field.
@@ -459,7 +464,21 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose }: Props) {
                     const labels = setLabels(e.sets);
                     return (
                       <View key={e.exerciseId} style={[styles.exercise, i > 0 && styles.rowSep]}>
-                        <Text style={styles.exerciseName}>{info?.name ?? 'Unknown exercise'}</Text>
+                        {info ? (
+                          <TouchableOpacity
+                            style={styles.exerciseHeader}
+                            onPress={() => { haptics.tap(); setDetailId(e.exerciseId); setDetailOpen(true); }}
+                            activeOpacity={interaction.activeOpacity}
+                            accessibilityRole="button"
+                            accessibilityLabel={info.name}
+                            accessibilityHint="Opens this exercise's page"
+                          >
+                            <Text style={styles.exerciseName}>{info.name}</Text>
+                            <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
+                          </TouchableOpacity>
+                        ) : (
+                          <Text style={styles.exerciseName}>Unknown exercise</Text>
+                        )}
                         <View style={styles.sets}>
                           {e.sets.map(set => {
                             const label = labels.get(set.id) ?? '';
@@ -562,6 +581,7 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose }: Props) {
         onConfirm={confirmTimes}
         onClose={() => setPicking(null)}
       />
+      <ExerciseDetailSheet visible={visible && detailOpen} exerciseId={detailId} onClose={() => setDetailOpen(false)} />
     </SheetModal>
   );
 }
@@ -596,7 +616,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   value: { ...disclosureValue(colors), flexShrink: 1, fontVariant: ['tabular-nums'] },
   hint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.sm, marginHorizontal: spacing.xs },
   exercise: { paddingHorizontal: spacing.md, paddingVertical: spacing.smd },
-  exerciseName: { color: colors.text, fontSize: font.md },
+  exerciseHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
+  exerciseName: { color: colors.text, fontSize: font.md, flexShrink: 1 },
   sets: { marginTop: spacing.xs, gap: spacing.xxs },
   setLine: { flexDirection: 'row', alignItems: 'baseline' },
   setLabel: { color: colors.textSecondary, fontSize: font.sm, fontVariant: ['tabular-nums'] },

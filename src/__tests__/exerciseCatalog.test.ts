@@ -4,7 +4,7 @@ import {
   muscleFilterOptions, searchExercises,
 } from '../utils/exerciseCatalog';
 import { EXERCISE_LIBRARY } from '../utils/exerciseLibrary';
-import { equipmentGroup } from '../utils/workoutData';
+import { EQUIPMENT_LABELS, MUSCLE_LABELS, equipmentGroup } from '../utils/workoutData';
 
 const row = (overrides: Partial<Exercise>): Exercise => ({
   id: 'c1',
@@ -215,6 +215,13 @@ describe('filter options and descriptions', () => {
     expect(muscleFilterOptions([])).toContain('chest');
     expect(equipmentFilterOptions([])).toContain('barbell');
     expect(equipmentFilterOptions([]).length).toBeGreaterThan(5);
+  });
+
+  it('lists the options A to Z by label', () => {
+    const muscles = muscleFilterOptions([]).map(m => MUSCLE_LABELS[m]);
+    const equipment = equipmentFilterOptions([]).map(q => EQUIPMENT_LABELS[q]);
+    expect(muscles).toEqual([...muscles].sort((a, b) => a.localeCompare(b)));
+    expect(equipment).toEqual([...equipment].sort((a, b) => a.localeCompare(b)));
   });
 
   it('says what an exercise trains and with what', () => {

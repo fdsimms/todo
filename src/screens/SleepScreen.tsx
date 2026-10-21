@@ -89,6 +89,8 @@ export function SleepScreen() {
 
   const [goalOpen, setGoalOpen] = useState(false);
   const [rangeDays, setRangeDays] = useState<SleepRangeDays>(DEFAULT_RANGE_DAYS);
+  // The page scroll is off while a finger is scrubbing a chart.
+  const [scrubbing, setScrubbing] = useState(false);
   const activeRange = SLEEP_RANGES.find(r => r.days === rangeDays) ?? SLEEP_RANGES[1];
 
   // On every visit, for `WeightScreen`'s reason: the screen stays mounted for
@@ -216,6 +218,7 @@ export function SleepScreen() {
         {...scrollTop.listProps}
         refreshControl={pullSearch.refreshControl}
         style={styles.scroll}
+        scrollEnabled={!scrubbing}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(tabBarHeight + spacing.xl, scrollTop.clearance) }]}
       >
         {latest && (
@@ -298,18 +301,18 @@ export function SleepScreen() {
           </View>
         ) : (
           <>
-            <Text style={styles.sectionTitle}>WHEN YOU SLEPT</Text>
+            <Text style={styles.sectionTitle}>SLEEP TIMES BY DAY</Text>
             <View style={styles.card}>
-              <SleepTimesChart dayKeys={dayKeys} nights={visible} use24Hour={use24Hour} />
+              <SleepTimesChart dayKeys={dayKeys} nights={visible} use24Hour={use24Hour} onScrubChange={setScrubbing} />
               <Text style={styles.chartCaption}>
                 Each bar is a day’s main stretch of sleep, from falling asleep (top) to waking (bottom).
-                Blank days have nothing recorded.
+                Blank days have nothing recorded. Touch and drag over the chart to see a day’s times.
               </Text>
             </View>
 
             {stageAverage !== null && (
               <>
-                <Text style={styles.sectionTitle}>STAGES</Text>
+                <Text style={styles.sectionTitle}>AVERAGE STAGES</Text>
                 <View style={styles.card}>
                   <SleepStagesBar stages={stageAverage.stages} label="Average" />
                   <Text style={styles.chartCaption}>
@@ -321,9 +324,9 @@ export function SleepScreen() {
               </>
             )}
 
-            <Text style={styles.sectionTitle}>HOURS ASLEEP</Text>
+            <Text style={styles.sectionTitle}>HOURS ASLEEP BY DAY</Text>
             <View style={styles.card}>
-              <SleepHoursChart dayKeys={dayKeys} nights={visible} goalMinutes={goal} />
+              <SleepHoursChart dayKeys={dayKeys} nights={visible} goalMinutes={goal} onScrubChange={setScrubbing} />
               <Text style={styles.chartCaption}>
                 Time asleep recorded against each day, naps included.
                 {goal !== null && ' The dashed line is your goal.'}
@@ -342,7 +345,7 @@ export function SleepScreen() {
           </>
         )}
 
-        <Text style={styles.sectionTitle}>WITH YOUR DAYS</Text>
+        <Text style={styles.sectionTitle}>SLEEP, MOOD AND TASKS</Text>
         <View style={styles.card}>
           {findings.length > 0 ? (
             findings.map(f => <Text key={f.key} style={styles.finding}>{f.text}</Text>)
@@ -352,8 +355,8 @@ export function SleepScreen() {
             </Text>
           )}
           <Text style={styles.chartCaption}>
-            Over the last {SLEEP_HISTORY_DAYS} days. Each day’s sleep is the sleep that ended that day.
-            A pattern here doesn’t show cause.
+            Looks at the last {SLEEP_HISTORY_DAYS} days. A night of sleep counts toward the day you woke up.
+            A pattern here doesn’t mean one caused the other.
           </Text>
         </View>
 
