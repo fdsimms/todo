@@ -83,6 +83,8 @@ export function recipeFromPageOffline(
     // carries too: the sheet files it under `estimatedMinutes` for that reason.
     prepMinutes: page.totalMinutes !== null && page.totalMinutes > 0 ? page.totalMinutes : null,
     leftoverKeepDays: null,
+    ovenTemp: null,
+    ovenTempUnit: 'F',
     ingredients,
     // The page's own attribution is read by `sourceFieldsFor` off the page
     // itself, so there is nothing for these to add.

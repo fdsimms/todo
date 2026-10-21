@@ -59,7 +59,7 @@ function makeRecipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     servingsMax: null,
     recipeYield: null,
     cookedWeightG: null,
-    leftoverKeepDays: null,
+    leftoverKeepDays: null, ovenTemp: null, ovenTempUnit: 'F',
     imagePath: null,
     mealType: null,
     tags: [],
@@ -399,6 +399,33 @@ describe('field setters', () => {
 
     useRecipeStore.getState().setLeftoverKeepDays(r.id, -4);
     expect(useRecipeStore.getState().recipeById(r.id)!.leftoverKeepDays).toBe(0);
+  });
+
+  it('sets an oven temperature in either unit and clears it with null', () => {
+    const r = makeRecipe('Banana bread');
+    seed([r]);
+
+    useRecipeStore.getState().setOvenTemp(r.id, 350);
+    expect(useRecipeStore.getState().recipeById(r.id)).toMatchObject({ ovenTemp: 350, ovenTempUnit: 'F' });
+
+    // The unit rides along, and a later call without one keeps it.
+    useRecipeStore.getState().setOvenTemp(r.id, 180, 'C');
+    useRecipeStore.getState().setOvenTemp(r.id, 190);
+    expect(useRecipeStore.getState().recipeById(r.id)).toMatchObject({ ovenTemp: 190, ovenTempUnit: 'C' });
+
+    useRecipeStore.getState().setOvenTemp(r.id, null);
+    expect(useRecipeStore.getState().recipeById(r.id)!.ovenTemp).toBeNull();
+  });
+
+  it('refuses an oven temperature no oven does rather than storing it', () => {
+    const r = makeRecipe('Banana bread');
+    seed([r]);
+
+    useRecipeStore.getState().setOvenTemp(r.id, 3500);
+    expect(useRecipeStore.getState().recipeById(r.id)!.ovenTemp).toBeNull();
+    // 350 is a fine Fahrenheit setting and an impossible Celsius one.
+    useRecipeStore.getState().setOvenTemp(r.id, 350, 'C');
+    expect(useRecipeStore.getState().recipeById(r.id)!.ovenTemp).toBeNull();
   });
 
   it('sets and clears the meal type', () => {

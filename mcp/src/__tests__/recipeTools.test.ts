@@ -75,6 +75,18 @@ describe('update_recipe', () => {
     expect(saveRecipe(replica, { name: 'Dressing', cookedWeightG: 480 }).cookedWeightG).toBe(480);
   });
 
+  it('sets the oven temperature as written, shows it on get_recipe, and refuses one no oven does', () => {
+    const r = saveRecipe(replica, { name: 'Banana bread' });
+    expect(updateRecipe(replica, r.id, { ovenTemp: 350 })).toMatchObject({ ovenTemp: 350, ovenTempUnit: 'F' });
+    expect(() => updateRecipe(replica, r.id, { ovenTemp: 3500 })).toThrow(/ovenTemp must be a whole number from 150 to 600/);
+    // Celsius has its own range, so 350 is refused once the unit says C.
+    expect(() => updateRecipe(replica, r.id, { ovenTemp: 350, ovenTempUnit: 'C' })).toThrow(/70 to 320/);
+    expect(updateRecipe(replica, r.id, { ovenTemp: 180, ovenTempUnit: 'C' })).toMatchObject({ ovenTemp: 180, ovenTempUnit: 'C' });
+    expect(stored(r.id)).toMatchObject({ ovenTemp: 180, ovenTempUnit: 'C' });
+    expect(updateRecipe(replica, r.id, { ovenTemp: null }).ovenTemp).toBeUndefined();
+    expect(saveRecipe(replica, { name: 'Focaccia', ovenTemp: 220, ovenTempUnit: 'C' }).ovenTemp).toBe(220);
+  });
+
   it('keeps a step whose text is unchanged, with its timer and note', () => {
     const r = saveRecipe(replica, { name: 'Rice', steps: [{ text: 'Rinse.' }, { text: 'Simmer.' }] });
     updateRecipe(replica, r.id, { steps: [{ text: 'Rinse.' }, { text: 'Simmer until the water is gone.', timerSeconds: 900 }] });

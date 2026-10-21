@@ -1641,6 +1641,8 @@ function registerWriteTools(
     upNext: z.boolean().optional().describe('On the Up next shelf.'),
     leftoverKeepDays: z.number().int().nullable().optional().describe('Days its leftovers keep, 0 to 365; null for the app default.'),
     cookedWeightG: z.number().int().nullable().optional().describe('What the whole finished dish weighs in grams, as written (1 to 50000; null clears). Counts a used recipe\'s ingredients in whole, so a composed recipe\'s weight includes its parts. Logging a plate divides by it.'),
+    ovenTemp: z.number().int().nullable().optional().describe('The oven temperature it is cooked at, exactly as the recipe writes it (150 to 600 in F, 70 to 320 in C; null clears). Cook mode lists it as "Preheat oven" on the mise en place screen, converted to the reader\'s units. One figure for the whole dish; a recipe that changes the heat keeps that in its steps.'),
+    ovenTempUnit: z.enum(['F', 'C']).optional().describe('The unit ovenTemp is written in. Omit to keep the recipe\'s current unit (F for a new one).'),
     components: z.array(z.object({
       recipeId: z.string().min(1),
       choiceGroup: z.string().nullable().optional(),

@@ -38,7 +38,7 @@ function recipe(name: string, ingredients: RecipeIngredient[]): Recipe {
   return {
     backfillDismissedFields: [], id: `r-${++seq}`, name, nameKey: name.toLowerCase(), notes: '',
     sourceUrl: null, sourceName: null, author: null, source: null, servings: null, servingsMax: null,
-    recipeYield: null, cookedWeightG: null, leftoverKeepDays: null, imagePath: null, mealType: null,
+    recipeYield: null, cookedWeightG: null, leftoverKeepDays: null, ovenTemp: null, ovenTempUnit: 'F', imagePath: null, mealType: null,
     tags: [], ingredients, emptySections: [], emptyStepSections: [], components: [], blanks: [], prepTasks: [],
     steps: [], sortOrder: seq, createdAt: '2026-01-01T00:00:00.000Z', cookCount: 0, lastCookedAt: null,
     vote: null, upNext: false, upNextOrder: 0, estimatedMinutes: null, timerStartedAt: null,

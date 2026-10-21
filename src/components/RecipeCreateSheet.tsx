@@ -57,6 +57,7 @@ import {
   parseServingsRange, recipeInBook, recipeNameKey,
 } from '../utils/recipeUtils';
 import { describeKeepDays } from '../utils/leftovers';
+import { formatOvenTemp, parseOvenTemp } from '../utils/ovenTemp';
 import { sourceFieldsFor, sourcePlanFor } from '../utils/recipeProvenance';
 import { aisleForName } from '../utils/groceryAisles';
 import { sectionsOf } from '../utils/recipeSections';
@@ -179,6 +180,7 @@ export function RecipeCreateSheet({
   const setRecipeYield = useRecipeStore(s => s.setRecipeYield);
   const setEstimatedMinutes = useRecipeStore(s => s.setEstimatedMinutes);
   const setLeftoverKeepDays = useRecipeStore(s => s.setLeftoverKeepDays);
+  const setOvenTemp = useRecipeStore(s => s.setOvenTemp);
   const setSourceUrl = useRecipeStore(s => s.setSourceUrl);
   const setSource = useRecipeStore(s => s.setSource);
   const setAuthor = useRecipeStore(s => s.setAuthor);
@@ -235,6 +237,8 @@ export function RecipeCreateSheet({
   const [minutesText, setMinutesText] = useState('');
   const [yieldText, setYieldText] = useState('');
   const [leftoverKeepDaysText, setLeftoverKeepDaysText] = useState('');
+  // One field in the unit it was written in ("350°F"), so the row needs no unit control.
+  const [ovenTempText, setOvenTempText] = useState('');
   const [siteName, setSiteName] = useState('');
   const [sourceAuthor, setSourceAuthor] = useState('');
   const [sourcePageText, setSourcePageText] = useState('');
@@ -328,6 +332,7 @@ export function RecipeCreateSheet({
     setMinutesText('');
     setYieldText('');
     setLeftoverKeepDaysText('');
+    setOvenTempText('');
     setSiteName('');
     setSourceAuthor('');
     setSourceUrlText('');
@@ -409,7 +414,7 @@ export function RecipeCreateSheet({
       setAccepted(new Set(rows.map((_, i) => i)));
       setApplyDetails(
         result.servings !== null || result.prepMinutes !== null || result.recipeYield !== null
-          || result.leftoverKeepDays !== null,
+          || result.leftoverKeepDays !== null || result.ovenTemp !== null,
       );
       const methodStepsFound = (resolved.page?.steps.length ?? 0) > 0
         ? resolved.page!.steps
@@ -422,6 +427,7 @@ export function RecipeCreateSheet({
       setMinutesText(result.prepMinutes !== null ? String(result.prepMinutes) : '');
       setYieldText(result.recipeYield ?? '');
       setLeftoverKeepDaysText(result.leftoverKeepDays !== null ? String(result.leftoverKeepDays) : '');
+      setOvenTempText(result.ovenTemp !== null ? formatOvenTemp(result.ovenTemp, result.ovenTempUnit) : '');
       const { page } = resolved;
       // Ticked whatever the source: there's nothing of the user's own here for
       // it to land on top of, whether the fields below arrive pre-filled from
@@ -661,6 +667,8 @@ export function RecipeCreateSheet({
         const keepDays = parseInt(keepDaysRaw, 10);
         if (!Number.isNaN(keepDays)) setLeftoverKeepDays(recipe.id, keepDays);
       }
+      const oven = parseOvenTemp(pendingText('details:ovenTemp', ovenTempText));
+      if (oven) setOvenTemp(recipe.id, oven.degrees, oven.unit);
     }
     if (plan) {
       if (plan.url) setSourceUrl(recipe.id, plan.url);
@@ -728,6 +736,8 @@ export function RecipeCreateSheet({
     if (leftoverKeepDaysText && !Number.isNaN(keepDaysNum)) {
       parts.push(`leftovers keep ${describeKeepDays(keepDaysNum).toLowerCase()}`);
     }
+    const oven = parseOvenTemp(ovenTempText);
+    if (oven) parts.push(`oven ${formatOvenTemp(oven.degrees, oven.unit)}`);
     if (parts.length === 0) return '';
     const [first, ...rest] = parts;
     return [capitalize(first), ...rest].join(', ');
@@ -738,7 +748,7 @@ export function RecipeCreateSheet({
   // mid-edit — there'd be no way to type a value back in.
   const foundDetails = !!extracted
     && (extracted.servings !== null || extracted.prepMinutes !== null || extracted.recipeYield !== null
-      || extracted.leftoverKeepDays !== null);
+      || extracted.leftoverKeepDays !== null || extracted.ovenTemp !== null);
 
   // Nothing to append after: this recipe doesn't exist yet.
   const methodMeta = methodRowMeta(acceptedSteps.size, steps.length, false);
@@ -1003,6 +1013,21 @@ export function RecipeCreateSheet({
                 numberOfLines={1}
               />
               <Text style={styles.detailSep}>days</Text>
+            </View>
+            <View style={styles.detailFields}>
+              <Text style={styles.detailSep}>Oven</Text>
+              <InlineEditableText
+                edits={edits}
+                editKey="details:ovenTemp"
+                value={ovenTempText}
+                onCommit={setOvenTempText}
+                allowEmpty
+                textStyle={styles.detailValue}
+                placeholder="e.g. 350°F"
+                accessibilityLabel="oven temperature"
+                maxLength={8}
+                numberOfLines={1}
+              />
             </View>
           </ImportApplyRow>
         )}

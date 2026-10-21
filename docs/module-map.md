@@ -316,6 +316,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/nutritionTargets.ts` — NUTRITION_TARGET_RANGES, NO_DAILY_VALUE, NutritionTargets, parseNutritionTargets, serializeNutritionTargets, targetedNutrients, describeAgainstTarget, targetProgress, TargetStatus, TARGET_MET_TOLERANCE, +26 more
 - `src/utils/openTasks.ts` — openTasksOf
 - `src/utils/ordinal.ts` — ordinal
+- `src/utils/ovenTemp.ts` — OvenTempUnit, OVEN_TEMP_UNITS, OVEN_TEMP_RANGE, cleanOvenTemp, formatOvenTemp, parseOvenTemp, ovenTempFor, describeOvenTemp, OvenSetup, ovenSetupsFor
 - `src/utils/paintSelect.ts` — PaintRowRect, PAINT_GUTTER_WIDTH, ROW_HIT_SLOP, isInPaintGutter, rowIdAtY, rowIdsBetween
 - `src/utils/panOil.ts` — PAN_OIL_SHARE, DEEP_FRY_SHARE, isCookingFat, CookMethod, stepsCookMethod, FatCooking, fatCooking, panOilShare
 - `src/utils/pantryCheckTasks.ts` — MAX_PANTRY_CHECK_TASKS, PANTRY_CHECK_GRACE_DAYS, pantryCheckTitle, pantryCheckItemId, pantryCheckLinkUrl, pantryCheckLapse, pantryCheckAnswers, PantryCheckWant, wantedPantryChecks, stalePantryCheckTasks, +1 more

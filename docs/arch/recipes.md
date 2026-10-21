@@ -1187,6 +1187,18 @@ ingredient panel's fold die with the modal.
   verbs sit behind one labelled "Made it" control rather than two glyphs; it is a menu even when
   only one of them applies, because `lastCookedAt` steers suggestions for weeks and a stray tap on
   a header icon shouldn't move it.
+- **The oven temperature is a line on mise en place, not a step.** `Recipe.ovenTemp` + `ovenTempUnit`
+  (`src/utils/ovenTemp.ts`) is one number for the whole dish, drawn by `CookModeSheet` as a
+  "Preheat oven" row in its own card above the ingredients, tickable like them (the same
+  `checkedLines`, keyed `oven:<recipeId>`). `ovenSetupsFor` walks `cookedDishes`, so a component with
+  its own temperature gets a row named for its dish and one on the road not taken gets none. A recipe
+  whose only mise en place is a temperature still opens it. **Stored as written, converted only on
+  display** like an amount: `ovenTempFor` follows `unitSystem` and rounds a conversion to the dial's
+  own steps (25°F, 10°C), since a cook sets 350 or 180, never 176 or 356. A temperature outside what an
+  oven does (`cleanOvenTemp`) is refused, not clamped, and the editor says so while it's typed. A
+  recipe that changes the heat mid-bake keeps that in its steps; this exists so the preheat is said
+  before step one. Imports fill it (`ovenTemp` on `ExtractedRecipe`, the unit never converted by the
+  model) and the page's own schema.org data has no such field, so the offline reader leaves it null.
 - **Ingredient lines can be checked off, as screen state only.** Both the mise en place list and the
   tray's panel carry a checkbox per line (`checkedLines` in `CookModeSheet`, keyed by node and line id
   so a pick that reshuffles the list can't move a check). It writes nothing to the recipe, pantry or

@@ -41,6 +41,7 @@ import { componentPlacement, makeComponent, reanchorComponents, recipeMap, would
 import { sectionsOf } from '../utils/recipeSections';
 import { makeBlank, normalizeBlank } from '../utils/recipeBlanks';
 import { pageAfterCookbookLink } from '../utils/cookbookRecipes';
+import { cleanOvenTemp, type OvenTempUnit } from '../utils/ovenTemp';
 
 /**
  * The recipe library.
@@ -201,6 +202,12 @@ interface RecipeStore {
    * applied to containers whose day was decided when they went in.
    */
   setLeftoverKeepDays: (id: string, days: number | null) => void;
+  /**
+   * Null clears it. A figure that isn't a plausible oven setting for the unit
+   * (`cleanOvenTemp`) clears it too, rather than storing a number cook mode
+   * would then read out as "Preheat oven to 3500°F".
+   */
+  setOvenTemp: (id: string, degrees: number | null, unit?: OvenTempUnit) => void;
   /**
    * Sets or clears a recipe's attached photo — `uri` is a file already saved
    * by `pickRecipeImage` (src/utils/recipePhoto.ts); this call just records
@@ -608,6 +615,8 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       recipeYield: null,
       cookedWeightG: null,
       leftoverKeepDays: null,
+      ovenTemp: null,
+      ovenTempUnit: 'F',
       imagePath: null,
       mealType: null,
       tags: [],
@@ -843,6 +852,14 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     const recipe = get().recipes.find(r => r.id === id);
     if (!recipe) return;
     save(set, { ...recipe, leftoverKeepDays: days === null ? null : clampKeepDays(days) });
+  },
+
+  setOvenTemp(id, degrees, unit) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe) return;
+    const nextUnit = unit ?? recipe.ovenTempUnit;
+    const ovenTemp = degrees === null ? null : cleanOvenTemp(degrees, nextUnit);
+    save(set, { ...recipe, ovenTemp, ovenTempUnit: nextUnit });
   },
 
   setImage(id, uri) {

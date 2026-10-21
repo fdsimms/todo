@@ -36,6 +36,7 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { formatDuration } from '../utils/effort';
 import { describeKeepDays } from '../utils/leftovers';
+import { OVEN_TEMP_RANGE, cleanOvenTemp, formatOvenTemp, type OvenTempUnit } from '../utils/ovenTemp';
 import { CollapsibleField } from './CollapsibleField';
 import { CountStepper } from './CountStepper';
 import { SegmentedControl } from './SegmentedControl';
@@ -104,6 +105,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
   const setRecipeYield = useRecipeStore(s => s.setRecipeYield);
   const setCookedWeight = useRecipeStore(s => s.setCookedWeight);
   const setLeftoverKeepDays = useRecipeStore(s => s.setLeftoverKeepDays);
+  const setOvenTemp = useRecipeStore(s => s.setOvenTemp);
   const setEstimatedMinutes = useRecipeStore(s => s.setEstimatedMinutes);
   const setPrepMinutes = useRecipeStore(s => s.setPrepMinutes);
   const setMealType = useRecipeStore(s => s.setMealType);
@@ -135,6 +137,9 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
   const [cookedWeightOpen, setCookedWeightOpen] = useState(false);
   const weighIn = useWeighIn();
   const [leftoverKeepOpen, setLeftoverKeepOpen] = useState(false);
+  const [ovenTemp, setOvenTempDraft] = useState('');
+  const [ovenUnit, setOvenUnitDraft] = useState<OvenTempUnit>('F');
+  const [ovenOpen, setOvenOpen] = useState(false);
   const [estimatedMinutes, setEstimatedMinutesDraft] = useState<number | null>(null);
   const [prepMinutes, setPrepMinutesDraft] = useState<number | null>(null);
   const [durationOpen, setDurationOpen] = useState(false);
@@ -200,6 +205,9 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
   // With a pot picked the draft is what the scale read, so turn it into the
   // food's weight before it is shown or saved. A reading lighter than the pot
   // stays in the field with the reason showing under the pots.
+  const ovenTempValue = ovenTemp.trim() ? Number(ovenTemp.trim()) : null;
+  const ovenTempRefused = ovenTempValue !== null && cleanOvenTemp(ovenTempValue, ovenUnit) === null;
+
   const settleCookedWeight = () => {
     if (weighIn.picked.length === 0) return;
     const net = cookedWeight.trim() ? weighIn.convert(cookedWeight) : null;
@@ -253,6 +261,9 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
     setCookedWeightOpen(false);
     weighIn.clear();
     setLeftoverKeepOpen(false);
+    setOvenTempDraft(recipe.ovenTemp === null ? '' : String(recipe.ovenTemp));
+    setOvenUnitDraft(recipe.ovenTempUnit);
+    setOvenOpen(false);
     setEstimatedMinutesDraft(recipe.estimatedMinutes);
     setPrepMinutesDraft(recipe.prepMinutes);
     setDurationOpen(false);
@@ -333,6 +344,9 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
         : cookedWeight.trim() ? Number(cookedWeight.trim().replace(',', '.')) : null,
     );
     setLeftoverKeepDays(recipe.id, leftoverKeepDays);
+    // A figure no oven does keeps what the recipe already had; the row says so
+    // while it's being typed, so a refused number is never a silent one.
+    if (!ovenTempRefused) setOvenTemp(recipe.id, ovenTempValue, ovenUnit);
     setEstimatedMinutes(recipe.id, estimatedMinutes);
     setPrepMinutes(recipe.id, prepMinutes);
     setMealType(recipe.id, mealType);
@@ -523,6 +537,51 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
           <View style={styles.weighInWrap}>
             <CookwareWeighIn weighIn={weighIn} scaleText={cookedWeight} surface="page" />
           </View>
+        )}
+        <EditorRow
+          icon="flame-outline"
+          label="Oven temperature"
+          value={ovenOpen
+            ? undefined
+            : (ovenTemp.trim() && !ovenTempRefused ? formatOvenTemp(Number(ovenTemp.trim()), ovenUnit) : undefined)}
+          hint="Shown as a Preheat oven line on the Mise en place screen in cook mode."
+          expanded={ovenOpen}
+          onPress={() => { animateLayout(); setOvenOpen(v => !v); }}
+          onClear={ovenTemp.trim() ? () => { setOvenTempDraft(''); setOvenOpen(false); } : undefined}
+        />
+        {ovenOpen && (
+          <>
+            <TextField
+              style={styles.urlInput}
+              value={ovenTemp}
+              onChangeText={text => setOvenTempDraft(text.replace(/[^0-9]/g, ''))}
+              onSubmitEditing={() => confirmField(setOvenOpen)}
+              keyboardType="number-pad"
+              inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
+              placeholder="e.g. 350"
+              placeholderTextColor={colors.textTertiary}
+              maxLength={3}
+              returnKeyType="done"
+              accessibilityLabel={`Oven temperature in degrees ${ovenUnit === 'F' ? 'Fahrenheit' : 'Celsius'}`}
+            />
+            <View style={styles.ovenUnitRow}>
+              <SegmentedControl<OvenTempUnit>
+                options={[
+                  { value: 'F', label: '°F' },
+                  { value: 'C', label: '°C' },
+                ]}
+                value={ovenUnit}
+                onChange={setOvenUnitDraft}
+                label="Oven temperature unit"
+                surface="page"
+              />
+            </View>
+            {ovenTempRefused && (
+              <Text style={styles.ovenRefused}>
+                {`Oven temperatures run from ${OVEN_TEMP_RANGE[ovenUnit].min} to ${OVEN_TEMP_RANGE[ovenUnit].max}°${ovenUnit}. This one won't be saved.`}
+              </Text>
+            )}
+          </>
         )}
         <EditorRow
           icon="snow-outline"
@@ -942,6 +1001,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     letterSpacing: 0.8,
     textTransform: 'uppercase',
     paddingTop: spacing.sm,
+  },
+  ovenUnitRow: {
+    paddingVertical: spacing.sm,
+  },
+  ovenRefused: {
+    color: colors.redText,
+    fontSize: font.sm,
+    paddingLeft: ROW_CONTENT_INDENT,
+    paddingRight: spacing.md,
+    paddingVertical: spacing.sm,
   },
   stepperRow: {
     flexDirection: 'row',

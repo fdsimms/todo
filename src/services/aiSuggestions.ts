@@ -44,6 +44,7 @@ import {
 import { amountFromPrintedText, type LabelColumn, type LabelReading } from '../utils/labelOcr';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { clampKeepDays } from '../utils/leftovers';
+import { cleanOvenTemp, type OvenTempUnit } from '../utils/ovenTemp';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { isDemoModeActive } from '../utils/demoState';
 import { logError } from '../utils/errorLog';
@@ -1136,6 +1137,14 @@ export interface ExtractedRecipe {
    * recipe says nothing about storage, which is most recipes; never a guess.
    */
   leftoverKeepDays: number | null;
+  /**
+   * The oven setting the recipe names — "bake at 350°F", "preheat the oven to
+   * 180°C" — in the unit it was written in. When the method sets the oven more
+   * than once, the first (the preheat). Null when the recipe doesn't use an
+   * oven or names no temperature; never a guess, and never converted.
+   */
+  ovenTemp: number | null;
+  ovenTempUnit: OvenTempUnit;
   ingredients: RecipeGroceryItem[];
   /**
    * Where the source says it's from — the four fields that map onto `Recipe`'s
@@ -1181,6 +1190,7 @@ function sharedRecipeInstructions(availableAisles: string[], includeChoices = fa
     ] : []),
     'Set "optional" to true only when the recipe itself says so — "(optional)", "if desired", "if you have it", a garnish explicitly called not required. Leave it false otherwise, even for an item you\'d personally guess is skippable, like a garnish with nothing next to it saying so.',
     'If the recipe says how long its own leftovers keep — "store in an airtight container for up to 4 days", "keeps 3-4 days in the fridge", "will keep for a week", "store up to 6 months" — put that number of days in "leftoverKeepDays", the low end when a range is given. Convert weeks and longer to days (a week is 7, a month 30, a year 365), so "up to 6 months" is 180. A storage time counts whatever it is stored in (fridge, freezer, pantry); when the recipe gives more than one, use the refrigerator figure. This is about the cooked dish afterward, not a raw ingredient\'s shelf life, a "best served immediately" note, or how long the dish takes to make. 0 when the recipe says nothing about storage, which is most recipes — never estimate one yourself.',
+    'If the recipe sets an oven temperature — "preheat the oven to 350°F", "bake at 180°C", "roast at 425 degrees" — put the number in "ovenTemp" and the unit it was written in ("F" or "C") in "ovenTempUnit". Copy the figure exactly; never convert between Fahrenheit and Celsius. When the method sets the oven more than once, use the first, which is the preheat. Gas marks and "a hot oven" are not figures: use 0. 0 when the recipe names no oven temperature, which includes stovetop, grill-only and no-cook recipes; never estimate one yourself.',
   ];
 }
 
@@ -1276,7 +1286,7 @@ export async function extractRecipe(
 
   const empty: ExtractedRecipe = {
     name: '', servings: null, servingsMax: null, prepMinutes: null, recipeYield: null,
-    leftoverKeepDays: null, ingredients: [],
+    leftoverKeepDays: null, ovenTemp: null, ovenTempUnit: 'F', ingredients: [],
     sourceTitle: null, sourceAuthor: null, sourcePage: null, sourceType: null,
     references: [], steps: [], prepTasks: [],
   };
@@ -1366,6 +1376,15 @@ export async function extractRecipe(
             type: 'integer',
             description: 'How many days the recipe says its own leftovers keep, if it states this explicitly — the low end when a range is given ("keeps 3-4 days" -> 3). Convert weeks, months and years to days ("up to 6 months" -> 180). When the recipe gives several storage times, use the refrigerator one. 0 if the recipe says nothing about storing leftovers, which is most recipes; never guess a number it doesn\'t give.',
           },
+          ovenTemp: {
+            type: 'integer',
+            description: 'The oven temperature the recipe states, exactly as written ("preheat to 350°F" -> 350, "180°C" -> 180). The first one when the method sets the oven more than once. 0 if the recipe names no oven temperature or only a gas mark; never convert or guess.',
+          },
+          ovenTempUnit: {
+            type: 'string',
+            enum: ['F', 'C'],
+            description: 'The unit "ovenTemp" was written in. "F" when ovenTemp is 0.',
+          },
           items: groceryItemsSchema(
             availableAisles,
             'The things a shopper needs to buy for this recipe.',
@@ -1449,7 +1468,7 @@ export async function extractRecipe(
   const toolUse = data.content?.find(c => c.type === 'tool_use');
   const input = toolUse?.input as {
     name?: unknown; servings?: unknown; servingsMax?: unknown; prepMinutes?: unknown; recipeYield?: unknown; items?: unknown;
-    leftoverKeepDays?: unknown;
+    leftoverKeepDays?: unknown; ovenTemp?: unknown; ovenTempUnit?: unknown;
     sourceTitle?: unknown; sourceAuthor?: unknown; sourcePage?: unknown; sourceKind?: unknown;
     referencedRecipes?: unknown; steps?: unknown; prepTasks?: unknown;
   } | undefined;
@@ -1474,6 +1493,10 @@ export async function extractRecipe(
   const leftoverKeepDays = typeof input.leftoverKeepDays === 'number' && input.leftoverKeepDays > 0
     ? clampKeepDays(Math.round(input.leftoverKeepDays))
     : null;
+  // The unit is read first, since what counts as a plausible setting depends on
+  // it, and a figure outside that range is dropped rather than clamped.
+  const ovenTempUnit: OvenTempUnit = input.ovenTempUnit === 'C' ? 'C' : 'F';
+  const ovenTemp = cleanOvenTemp(input.ovenTemp, ovenTempUnit);
 
   const sourceTitle = includeSource ? parseExtractedSourceTitle(input.sourceTitle, name) : null;
   const sourceAuthor = includeSource ? sourceField(input.sourceAuthor) : null;
@@ -1483,7 +1506,7 @@ export async function extractRecipe(
     : null;
 
   return {
-    name, servings, servingsMax, prepMinutes, recipeYield, leftoverKeepDays,
+    name, servings, servingsMax, prepMinutes, recipeYield, leftoverKeepDays, ovenTemp, ovenTempUnit,
     sourceTitle, sourceAuthor, sourcePage, sourceType,
     ingredients: parseExtractedItems(input.items, availableAisles),
     references: includeReferences ? parseExtractedReferences(input.referencedRecipes) : [],

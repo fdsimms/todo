@@ -927,7 +927,7 @@ describe('extractRecipe', () => {
       servingsMax: null,
       prepMinutes: 45,
       recipeYield: null,
-      leftoverKeepDays: null,
+      leftoverKeepDays: null, ovenTemp: null, ovenTempUnit: 'F',
       ingredients: [{ name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', section: null, prep: null }],
       sourceTitle: null,
       sourceAuthor: null,
@@ -1000,6 +1000,24 @@ describe('extractRecipe', () => {
     );
     const result = await extractRecipe('some recipe', AISLES);
     expect(result.leftoverKeepDays).toBe(4);
+  });
+
+  it('reads the oven temperature in the unit the recipe wrote it in', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', { name: 'Banana Bread', ovenTemp: 180, ovenTempUnit: 'C', items: [] })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.ovenTemp).toBe(180);
+    expect(result.ovenTempUnit).toBe('C');
+  });
+
+  it('reads a zero ovenTemp (none stated) as null, and drops one outside what an oven does', async () => {
+    mockFetchOnce(toolUseResponse('extract_recipe', { name: 'Soup', ovenTemp: 0, ovenTempUnit: 'F', items: [] }));
+    expect((await extractRecipe('some recipe', AISLES)).ovenTemp).toBeNull();
+
+    // 350 in Celsius is a Fahrenheit figure the model mislabelled, so it is not kept.
+    mockFetchOnce(toolUseResponse('extract_recipe', { name: 'Soup', ovenTemp: 350, ovenTempUnit: 'C', items: [] }));
+    expect((await extractRecipe('some recipe', AISLES)).ovenTemp).toBeNull();
   });
 
   it('reads a zero leftoverKeepDays (nothing stated) as null', async () => {
@@ -1310,7 +1328,7 @@ describe('extractRecipe', () => {
     const spy = jest.spyOn(global, 'fetch');
     await expect(extractRecipe('   ', AISLES)).resolves.toEqual({
       name: '', servings: null, servingsMax: null, prepMinutes: null, recipeYield: null,
-      leftoverKeepDays: null, ingredients: [],
+      leftoverKeepDays: null, ovenTemp: null, ovenTempUnit: 'F', ingredients: [],
       sourceTitle: null, sourceAuthor: null, sourcePage: null, sourceType: null,
       references: [], steps: [], prepTasks: [],
     });
@@ -1527,7 +1545,7 @@ describe('extractRecipe', () => {
         servingsMax: null,
         prepMinutes: 45,
         recipeYield: null,
-        leftoverKeepDays: null,
+        leftoverKeepDays: null, ovenTemp: null, ovenTempUnit: 'F',
         ingredients: [{ name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', section: null, prep: null }],
         sourceTitle: null,
         sourceAuthor: null,
@@ -1559,7 +1577,7 @@ describe('extractRecipe', () => {
       const spy = jest.spyOn(global, 'fetch');
       await expect(extractRecipe({ base64: '', mediaType: 'image/jpeg' }, AISLES)).resolves.toEqual({
         name: '', servings: null, servingsMax: null, prepMinutes: null, recipeYield: null,
-        leftoverKeepDays: null, ingredients: [],
+        leftoverKeepDays: null, ovenTemp: null, ovenTempUnit: 'F', ingredients: [],
         sourceTitle: null, sourceAuthor: null, sourcePage: null, sourceType: null,
         references: [], steps: [], prepTasks: [],
       });
@@ -1685,7 +1703,7 @@ describe('extractRecipe', () => {
         { base64: '', mediaType: 'image/jpeg' },
       ], AISLES)).resolves.toEqual({
         name: '', servings: null, servingsMax: null, prepMinutes: null, recipeYield: null,
-        leftoverKeepDays: null, ingredients: [],
+        leftoverKeepDays: null, ovenTemp: null, ovenTempUnit: 'F', ingredients: [],
         sourceTitle: null, sourceAuthor: null, sourcePage: null, sourceType: null,
         references: [], steps: [], prepTasks: [],
       });

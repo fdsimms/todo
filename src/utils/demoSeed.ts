@@ -4071,6 +4071,7 @@ function seedRecipes(): DemoRecipes {
     setEstimatedMinutes,
     setPrepMinutes,
     setLeftoverKeepDays,
+    setOvenTemp,
     setCookedWeight,
     markCooked,
     addStep,
@@ -4128,6 +4129,9 @@ function seedRecipes(): DemoRecipes {
   setMealType(roasties.id, 'side');
   setServings(roasties.id, 4);
   setEstimatedMinutes(roasties.id, 45);
+  // One recipe written in each unit, so cook mode's Preheat oven line shows both
+  // the plain case and a converted one. See Recipe.ovenTemp.
+  setOvenTemp(roasties.id, 425, 'F');
 
   const salad = newRecipe('Simple green salad');
   addIngredientsFromText(
@@ -4279,6 +4283,7 @@ function seedRecipes(): DemoRecipes {
   setServings(cake.id, 12);
   setEstimatedMinutes(cake.id, 45);
   setPrepMinutes(cake.id, 30);
+  setOvenTemp(cake.id, 180, 'C');
   // The cookbook attribution shape — the only one a page number means anything
   // for. It's a real Cookbook row rather than two strings, which is invisible
   // on one recipe and the whole point on two: the shortbread below is the same

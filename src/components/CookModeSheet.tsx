@@ -70,6 +70,7 @@ import { describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
 import { onHandNameKeys } from '../utils/grocerySuggest';
 import { formatScale, isUnscaled, scaleQuantity } from '../utils/recipeScale';
 import { convertScaledQuantity, showContainerCount } from '../utils/unitConvert';
+import { ovenSetupsFor } from '../utils/ovenTemp';
 import { ingredientWeightText, weightLookups as buildWeightLookups } from '../utils/lineWeight';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
@@ -271,7 +272,14 @@ export function CookModeSheet({
   // be blanks. A filled one is already in `ingredients` as the lines picked for
   // it; this is where it gets filled, or filled differently.
   const blanks = useMemo(() => recipeBlanksIn(recipe, recipesById), [recipe, recipesById]);
-  const hasIngredients = ingredients.length > 0 || blanks.length > 0;
+  // The oven settings of every dish being cooked: a "Preheat oven" line to tick
+  // off with the rest of the gathering. A recipe that only has a temperature
+  // still has a mise en place worth opening.
+  const ovenSetups = useMemo(
+    () => ovenSetupsFor(recipe, recipesById, unitSystem, resolution),
+    [recipe, recipesById, unitSystem, resolution]
+  );
+  const hasIngredients = ingredients.length > 0 || blanks.length > 0 || ovenSetups.length > 0;
   const [fillingBlanks, setFillingBlanks] = useState(false);
   const [scaleOpen, setScaleOpen] = useState(false);
   // Cook mode has no planned meal, so the picker is handed a stand-in for this
@@ -662,6 +670,46 @@ export function CookModeSheet({
                     );
                   })}
                 </View>
+              </View>
+            )}
+            {ovenSetups.length > 0 && (
+              <View style={[styles.miseCard, styles.miseOven]}>
+                {ovenSetups.map((oven, position) => {
+                  const lineKey = `oven:${oven.recipeId}`;
+                  const lineChecked = checkedLines.has(lineKey);
+                  // A component's temperature is named for its dish, and a
+                  // converted one says what the recipe wrote.
+                  const detail = [
+                    oven.whole ? null : oven.recipeName,
+                    oven.converted ? `Written as ${oven.written}` : null,
+                  ].filter(Boolean).join(' · ');
+                  return (
+                    <TouchableOpacity
+                      key={lineKey}
+                      style={[styles.miseRow, position === ovenSetups.length - 1 && styles.miseRowLast]}
+                      activeOpacity={interaction.activeOpacity}
+                      onPress={() => toggleLine(lineKey)}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: lineChecked }}
+                      accessibilityLabel={`Preheat oven to ${oven.text}${oven.whole ? '' : `, for ${oven.recipeName}`}`}
+                    >
+                      <CheckPop
+                        checked={lineChecked}
+                        style={styles.lineBox}
+                        checkedStyle={styles.lineBoxChecked}
+                      >
+                        <Ionicons name="checkmark" size={iconSize.sm} color={colors.onDone} />
+                      </CheckPop>
+                      <View style={[styles.miseRowText, lineChecked && styles.lineChecked]}>
+                        <Text style={[styles.miseName, lineChecked && styles.lineNameChecked]}>Preheat oven</Text>
+                        {!!detail && <Text style={styles.misePrep}>{detail}</Text>}
+                      </View>
+                      <View style={[styles.miseQtyPill, lineChecked && styles.lineChecked]}>
+                        <Text style={styles.miseQtyText} numberOfLines={1}>{oven.text}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             )}
             <View style={styles.miseCard}>
@@ -1564,6 +1612,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
+  },
+  // Its own card above the ingredient list, so it clears the same gap a choice
+  // block does.
+  miseOven: {
+    marginBottom: spacing.md,
   },
   miseHeading: {
     color: colors.textSecondary,

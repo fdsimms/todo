@@ -43,7 +43,7 @@ function recipe(name: string, ingredients: RecipeIngredient[], over: Partial<Rec
     servingsMax: null,
     recipeYield: null,
     cookedWeightG: null,
-    leftoverKeepDays: null,
+    leftoverKeepDays: null, ovenTemp: null, ovenTempUnit: 'F',
     imagePath: null,
     mealType: null,
     tags: [],

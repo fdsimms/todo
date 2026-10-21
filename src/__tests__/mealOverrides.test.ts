@@ -33,7 +33,7 @@ function recipe(id: string, name: string, overrides: Partial<Recipe> = {}): Reci
     sourceUrl: null, sourceName: null, author: null, source: null, servings: null, mealType: null,
     tags: [], ingredients: [], emptySections: [], emptyStepSections: [], components: [], blanks: [], prepTasks: [],
     steps: [], sortOrder: ++seq, createdAt: '2026-01-01T00:00:00.000Z', servingsMax: null,
-    recipeYield: null, cookedWeightG: null, leftoverKeepDays: null, imagePath: null,
+    recipeYield: null, cookedWeightG: null, leftoverKeepDays: null, ovenTemp: null, ovenTempUnit: 'F', imagePath: null,
     estimatedMinutes: null, timerStartedAt: null, timerElapsedSeconds: 0, lastCookMinutes: null,
     cookTimeCount: 0, totalCookMinutes: 0, sourceType: null, sourcePage: null, cookbookId: null,
     prepMinutes: null, prepTimerStartedAt: null, prepTimerElapsedSeconds: 0, lastPrepMinutes: null,

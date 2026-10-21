@@ -415,6 +415,13 @@ export interface RecipeInput {
    * recipe's weight includes its parts. 1 to 50000, null to clear.
    */
   cookedWeightG?: number | null;
+  /**
+   * The oven temperature it is cooked at, as written, and its unit (default: the
+   * unit the recipe already has, F for a new one). null clears. The phone converts
+   * it for the reader and lists it as "Preheat oven" in cook mode.
+   */
+  ovenTemp?: number | null;
+  ovenTempUnit?: 'F' | 'C';
   /** Other recipes used inside this one, replacing the list. Sharing a choiceGroup makes them alternatives. */
   components?: { recipeId: string; choiceGroup?: string | null; amountUsed?: string | null }[];
   /** Tasks written ahead of a planned meal of it ("soak the beans"), replacing the list. */
@@ -2587,6 +2594,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       recipeUtils: require('../../src/utils/recipeUtils') as typeof import('../../src/utils/recipeUtils'),
       components: require('../../src/utils/recipeComponents') as typeof import('../../src/utils/recipeComponents'),
       types: require('../../src/types') as typeof import('../../src/types'),
+      ovenTemp: require('../../src/utils/ovenTemp') as typeof import('../../src/utils/ovenTemp'),
     };
     /* eslint-enable @typescript-eslint/no-require-imports */
     const whole = (name: string, v: number | null | undefined, lo: number, hi: number) => {
@@ -2600,6 +2608,11 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     }
     whole('leftoverKeepDays', f.leftoverKeepDays, lib.types.LEFTOVER_KEEP_DAYS_MIN, lib.types.LEFTOVER_KEEP_DAYS_MAX);
     whole('cookedWeightG', f.cookedWeightG, 1, 50000);
+    if (f.ovenTemp != null) {
+      const unit = f.ovenTempUnit ?? recipe?.ovenTempUnit ?? 'F';
+      const { min, max } = lib.ovenTemp.OVEN_TEMP_RANGE[unit];
+      whole('ovenTemp', f.ovenTemp, min, max);
+    }
     if (f.sourcePage != null && f.sourcePage.trim().length > lib.types.RECIPE_PAGE_MAX_LENGTH) {
       throw new Error(`A page is at most ${lib.types.RECIPE_PAGE_MAX_LENGTH} characters, as printed ("142", "112-115").`);
     }
@@ -2701,6 +2714,11 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     if (f.upNext !== undefined) store().setUpNext(id, f.upNext);
     if (f.leftoverKeepDays !== undefined) store().setLeftoverKeepDays(id, f.leftoverKeepDays);
     if (f.cookedWeightG !== undefined) store().setCookedWeight(id, f.cookedWeightG);
+    // A unit alone re-labels a temperature already there; the store keeps the
+    // figure as written and only converts on display.
+    if (f.ovenTemp !== undefined || f.ovenTempUnit !== undefined) {
+      store().setOvenTemp(id, f.ovenTemp !== undefined ? f.ovenTemp : current().ovenTemp, f.ovenTempUnit);
+    }
     if (f.ingredients !== undefined) {
       // `optional` is written only when true (RecipeIngredient.optional), so a
       // false takes the key off rather than storing it.

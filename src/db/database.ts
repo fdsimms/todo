@@ -1547,6 +1547,10 @@ function runInitDatabase(): void {
     // backfilled and no leftover already in the fridge moves. See
     // Recipe.leftoverKeepDays.
     'ALTER TABLE recipes ADD COLUMN leftover_keep_days INTEGER',
+    // NULL for every existing recipe: no oven temperature was ever recorded, and
+    // the unit only means something once one is. See Recipe.ovenTemp.
+    'ALTER TABLE recipes ADD COLUMN oven_temp INTEGER',
+    "ALTER TABLE recipes ADD COLUMN oven_temp_unit TEXT NOT NULL DEFAULT 'F'",
     // The change-tracking column every synced table carries. Generated from
     // SYNC_TRACKED_TABLES rather than written out thirteen times, so a table
     // added to that list can't be left without one. See db/syncTracking.ts.
@@ -7093,6 +7097,8 @@ function rowToRecipe(row: Record<string, unknown>): Recipe {
     recipeYield: (row.recipe_yield as string) ?? null,
     cookedWeightG: (row.cooked_weight_g as number) ?? null,
     leftoverKeepDays: (row.leftover_keep_days as number) ?? null,
+    ovenTemp: (row.oven_temp as number) ?? null,
+    ovenTempUnit: row.oven_temp_unit === 'C' ? 'C' : 'F',
     imagePath: (row.image_path as string) ?? null,
     // Unrecognised reads as null (untagged), not a guessed value — unlike
     // MealSlot's dinner fallback below, an unset meal type is itself a valid,
@@ -7144,8 +7150,8 @@ export function dbInsertRecipe(recipe: Recipe): void {
       (id, name, name_key, notes, source_url, source_name, author, source, source_type, source_page, cookbook_id, servings, servings_max, recipe_yield, cooked_weight_g, leftover_keep_days, image_path, meal_type, tags, ingredients, empty_sections, components, prep_tasks, steps, empty_step_sections, sort_order, created_at, cook_count, last_cooked_at, vote, up_next, up_next_order,
        estimated_minutes, timer_started_at, timer_elapsed_seconds, last_cook_minutes, cook_time_count, total_cook_minutes,
        prep_minutes, prep_timer_started_at, prep_timer_elapsed_seconds, last_prep_minutes, prep_time_count, total_prep_minutes,
-       backfill_dismissed_fields, blanks)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       backfill_dismissed_fields, blanks, oven_temp, oven_temp_unit)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       recipe.id, recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
       recipe.sourceName ?? null, recipe.author ?? null, recipe.source ?? null,
@@ -7167,6 +7173,7 @@ export function dbInsertRecipe(recipe: Recipe): void {
       recipe.lastPrepMinutes ?? null, recipe.prepTimeCount, recipe.totalPrepMinutes,
       JSON.stringify(recipe.backfillDismissedFields),
       JSON.stringify(recipe.blanks ?? []),
+      recipe.ovenTemp ?? null, recipe.ovenTempUnit ?? 'F',
     ]
   );
 }
@@ -7178,7 +7185,7 @@ export function dbUpdateRecipe(recipe: Recipe): void {
        sort_order=?, cook_count=?, last_cooked_at=?, vote=?, up_next=?, up_next_order=?,
        estimated_minutes=?, timer_started_at=?, timer_elapsed_seconds=?, last_cook_minutes=?, cook_time_count=?, total_cook_minutes=?,
        prep_minutes=?, prep_timer_started_at=?, prep_timer_elapsed_seconds=?, last_prep_minutes=?, prep_time_count=?, total_prep_minutes=?,
-       backfill_dismissed_fields=?, blanks=?
+       backfill_dismissed_fields=?, blanks=?, oven_temp=?, oven_temp_unit=?
      WHERE id=?`,
     [
       recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
@@ -7201,6 +7208,7 @@ export function dbUpdateRecipe(recipe: Recipe): void {
       recipe.lastPrepMinutes ?? null, recipe.prepTimeCount, recipe.totalPrepMinutes,
       JSON.stringify(recipe.backfillDismissedFields),
       JSON.stringify(recipe.blanks ?? []),
+      recipe.ovenTemp ?? null, recipe.ovenTempUnit ?? 'F',
       recipe.id,
     ]
   );

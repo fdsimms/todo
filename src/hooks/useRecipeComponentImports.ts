@@ -359,6 +359,9 @@ export function useRecipeComponentImports(
         if (extracted.prepMinutes !== null) {
           store.setEstimatedMinutes(target.id, extracted.prepMinutes);
         }
+        if (extracted.ovenTemp !== null) {
+          store.setOvenTemp(target.id, extracted.ovenTemp, extracted.ovenTempUnit);
+        }
         // addRecipe linked the book when there was one; a page number with no
         // book still says it came out of one.
         if (!book && candidate.page) store.setSourceType(target.id, 'cookbook');
