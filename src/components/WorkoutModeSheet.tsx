@@ -213,7 +213,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const [sessionNotes, setSessionNotes] = useState('');
   // What the exercise picker is for: adding one, or swapping the shown one out.
   const [picking, setPicking] = useState<'add' | 'swap' | null>(null);
-  // Exercises described in words (`DescribeWorkoutSheet` with `live`). Claude only, so no key or a switched-off feature means no button.
+  // Exercises described in words (`DescribeWorkoutSheet` with `into`). Claude only, so no key or a switched-off feature means no button.
   const [describing, setDescribing] = useState(false);
   const canDescribe = useAiRoute('workoutDraft') !== 'unavailable';
   // The notes editor, open on one exercise at a time across all cards, with both
@@ -1394,7 +1394,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
       <DescribeWorkoutSheet
         visible={visible && describing}
         onClose={() => setDescribing(false)}
-        live={{ onAdd: addDescribed }}
+        into={{ target: 'workout', onAdd: addDescribed }}
       />
       <GymsSheet
         visible={visible && gymPickerOpen}
