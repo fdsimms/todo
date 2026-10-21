@@ -8316,6 +8316,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         },
       );
       db.dbInsertMealPlanEntry(entry);
+      // As the app's planMeal does: a planned recipe is no longer one to plan.
+      if (recipe?.upNext) db.dbUpdateRecipe({ ...recipe, upNext: false });
       return entry;
     },
 

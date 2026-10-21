@@ -4130,7 +4130,7 @@ function registerWriteTools(
 
   server.tool(
     'plan_meal',
-    'Put a meal on the plan: a recipe (recipeId), a leftover in the fridge (leftoverId, from list_pantry\'s leftovers), or just a title ("Takeout"). The app scales a recipe to the household size it is set to. Planning a leftover does not mark it finished.',
+    'Put a meal on the plan: a recipe (recipeId), a leftover in the fridge (leftoverId, from list_pantry\'s leftovers), or just a title ("Takeout"). The app scales a recipe to the household size it is set to. Planning a recipe takes it off Up next, as the app does. Planning a leftover does not mark it finished.',
     {
       date: dayKey,
       slot: z.enum(KITCHEN_MEAL_SLOTS as unknown as [MealSlot, ...MealSlot[]]),

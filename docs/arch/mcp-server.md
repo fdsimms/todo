@@ -1296,7 +1296,7 @@ the per-meal answers for its shopping task, thaw task and log offer. A swap is t
 here, since the replace also reconciles its container's use-up task. Whether a meal gets a cook task
 stays on the phone: the app writes or removes that task as the answer changes, which is task-store
 work. `plan_meal` takes a `leftoverId` for a leftover night, titled by its container as the fridge
-drag titles one. `remove_meal` takes a meal off. These write only the entry row: the slot's task and
+drag titles one, and takes a planned recipe off Up next as the app's `planMeal` does. `remove_meal` takes a meal off. These write only the entry row: the slot's task and
 the calendar event are device work that catches up on the phone. A meal already marked cooked is not
 removable here, since it is history behind the cooking stats.
 
