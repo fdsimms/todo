@@ -744,11 +744,9 @@ export function WorkoutsScreen() {
           refreshControl={pullSearch.refreshControl}
           contentContainerStyle={[styles.list, listBottom]}
           ListHeaderComponent={livePrograms.length === 0 ? (
-            <View style={styles.row}>
-              <EmptyNote icon="calendar-outline">
-                No programs yet. Add one from the library, or make your own from your routines.
-              </EmptyNote>
-            </View>
+            <EmptyNote icon="calendar-outline">
+              No programs yet. Add one from the library, or make your own from your routines.
+            </EmptyNote>
           ) : null}
           ListFooterComponent={programActions}
           showsVerticalScrollIndicator={false}
