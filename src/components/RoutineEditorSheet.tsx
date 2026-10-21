@@ -12,7 +12,7 @@
 // file draws them. Mocks: docs/arch/workouts-mocks/routine-editor.png, and
 // routine-sets.png for the set table and the spacing.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { EditorSheet } from './EditorSheet';
 import { SheetHeader } from './SheetHeader';
@@ -33,7 +33,7 @@ import { DescribeWorkoutSheet } from './DescribeWorkoutSheet';
 import { withCreatedExercises } from '../utils/describedExercises';
 import { RoutineProgressView } from './RoutineProgressView';
 import type { ExerciseKind, ProgressionScheme, WorkoutRoutine, WorkoutRoutineItem } from '../types';
-import { useWorkoutStore } from '../store/useWorkoutStore';
+import { useWorkoutStore, type ExerciseInput } from '../store/useWorkoutStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { weightHeadingSuffix, weightScale } from '../utils/dumbbellLoad';
@@ -135,6 +135,8 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
   // its `new:` exercises are made then, so backing out leaves the library as it was.
   const [described, setDescribed] = useState<RoutineDraft | null>(null);
   const [describing, setDescribing] = useState(false);
+  // `new:` exercises named by what was described into a routine that already had content. Made on Save, with a draft's own.
+  const [describedNew, setDescribedNew] = useState<Record<string, ExerciseInput>>({});
   // A draft only seeds a routine that doesn't exist yet.
   const seed = routine ? null : described;
   // Claude only (`workoutDraft` has no on-device engine), so no key or a switched-off feature means no row.
@@ -167,6 +169,7 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
     setOpenRowId(null);
     setPicking(null);
     setDescribed(null);
+    setDescribedNew({});
     setDescribing(false);
     setTab('edit');
     setScrubbing(false);
@@ -183,7 +186,9 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
   const roles = useMemo(() => supersetRoles(rows.map(r => r.item)), [rows]);
   // An exercise the draft will create is named by its `new:` id until Save.
   const pending = (exerciseId: string) =>
-    exerciseId.startsWith(NEW_EXERCISE_PREFIX) ? seed?.newExercises[exerciseId.slice(NEW_EXERCISE_PREFIX.length)] ?? null : null;
+    exerciseId.startsWith(NEW_EXERCISE_PREFIX)
+      ? { ...seed?.newExercises, ...describedNew }[exerciseId.slice(NEW_EXERCISE_PREFIX.length)] ?? null
+      : null;
   const kindOf = (exerciseId: string): ExerciseKind =>
     pending(exerciseId)?.kind ?? catalogExercise(exercises, exerciseId)?.kind ?? 'weight_reps';
   const nameOf = (exerciseId: string) =>
@@ -287,6 +292,30 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
     setRefusal(null);
     setDescribing(false);
   };
+  /**
+   * Described exercises go on the end of a routine that already has content. One
+   * already in the routine is left out and named, the way the picker marks it
+   * "In routine".
+   */
+  const appendDescribed = (d: RoutineDraft) => {
+    const have = new Set(rows.filter(r => !r.open).map(r => r.item.exerciseId));
+    const fresh = d.items.filter(i => !have.has(i.exerciseId));
+    const left = d.items.filter(i => have.has(i.exerciseId));
+    if (fresh.length > 0) {
+      animateLayout();
+      setDescribedNew(prev => ({ ...prev, ...d.newExercises }));
+      setRows(prev => settled([...prev, ...fresh.map(item => ({ id: generateId(), item }))]));
+    }
+    haptics.success();
+    setDescribing(false);
+    if (left.length > 0) {
+      const names = left.map(i => nameOf(i.exerciseId));
+      Alert.alert(
+        fresh.length > 0 ? 'Some exercises were left out' : 'Nothing was added',
+        `${names.join(', ')} ${names.length === 1 ? 'is' : 'are'} already in this routine.`,
+      );
+    }
+  };
   const canOfferDescribe = canDescribe && !routine && !seed && rows.length === 0 && !name.trim() && !notes.trim();
 
   // ==== saving, cancelling, deleting ====
@@ -304,7 +333,7 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
     const store = useWorkoutStore.getState();
     // Before anything is created: a refusal for the name shouldn't leave exercises behind.
     if (!routine && !name.trim()) { haptics.warning(); setRefusal(NAME_REFUSED.blank); return; }
-    const items = withCreatedExercises(savedItems(rows), seed?.newExercises ?? {});
+    const items = withCreatedExercises(savedItems(rows), { ...seed?.newExercises, ...describedNew });
     if (!items) { haptics.warning(); setRefusal('This routine could not be saved.'); return; }
     const result = routine
       ? store.updateRoutine(routine.id, { name, notes, items })
@@ -372,8 +401,9 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
             visible={visible && describing}
             mode="routine"
             onClose={() => setDescribing(false)}
-            onRoutine={applyDescribed}
-            onWorkout={() => setDescribing(false)}
+            {...(canOfferDescribe
+              ? { onRoutine: applyDescribed }
+              : { into: { target: 'routine' as const, onAdd: appendDescribed } })}
           />
         </>
       }
@@ -540,6 +570,9 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
         )}
         <View style={styles.adds}>
           <InlineAction icon="add" label="Add exercise" onPress={() => { haptics.tap(); setPicking('add'); }} />
+          {canDescribe && !canOfferDescribe && (
+            <InlineAction icon="sparkles-outline" label="Describe" variant="neutral" onPress={() => { haptics.tap(); setDescribing(true); }} />
+          )}
           <InlineAction
             label="Superset"
             variant="neutral"

@@ -1395,7 +1395,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
         visible={visible && describing}
         onClose={() => setDescribing(false)}
         mode="routine"
-        into={{ onAdd: addDescribed }}
+        into={{ target: 'workout', onAdd: addDescribed }}
       />
       <GymsSheet
         visible={visible && gymPickerOpen}

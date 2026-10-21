@@ -14,8 +14,9 @@
 // It hands the result to its caller rather than saving: a routine goes to the
 // routine editor (`RoutineDraft`), a past workout to the import review
 // (`ImportedSession`), and both of those write only on their own Save. It is
-// With `into` it describes into the running workout instead (workout mode's
-// "Describe"), and the result goes to `into.onAdd`. It is opened from inside the editor it fills (`RoutineEditorSheet`, mode `routine`)
+// With `into` it describes into something that already has content instead
+// (workout mode's "Describe", or a routine being edited that isn't empty), and
+// the result goes to `into.onAdd`. It is opened from inside the editor it fills (`RoutineEditorSheet`, mode `routine`)
 // and from the past-workout sheet (`LogPastWorkoutSheet`, mode `log`), so the
 // person never has to say in advance that they will describe. Mock:
 // docs/arch/workouts-mocks/describe-routine.png.
@@ -66,17 +67,26 @@ interface Props {
   /** A past workout was described. The caller opens the import review on it and closes this sheet. */
   onWorkout?: (session: ImportedSession) => void;
   /**
-   * Describing into the workout that is running (workout mode, with `mode`
-   * `routine`): the settled exercises come back as a `RoutineDraft` for the
-   * caller to add to the session as sets to do, and to close this sheet.
+   * Describing into something that already has content (with `mode`
+   * `routine`): the running workout from workout mode, or a routine that is
+   * being edited and isn't empty. The settled exercises come back as a
+   * `RoutineDraft` for the caller to add (to the session as sets to do, or to
+   * the end of the editor's list) and to close this sheet.
    */
-  into?: { onAdd: (draft: RoutineDraft) => void };
+  into?: { target: 'workout' | 'routine'; onAdd: (draft: RoutineDraft) => void };
 }
 
 const INTO_COPY = {
-  placeholder: 'e.g. Bench press 3x5 at 185, then rows 3x8-12 supersetted with curls',
-  hint: 'These are added to this workout after what is already here, as sets still to do. Check them off as you go.',
-  button: 'Add to workout',
+  workout: {
+    placeholder: 'e.g. Bench press 3x5 at 185, then rows 3x8-12 supersetted with curls',
+    hint: 'These are added to this workout after what is already here, as sets still to do. Check them off as you go.',
+    button: 'Add to workout',
+  },
+  routine: {
+    placeholder: 'e.g. Bench press 3x5 at 185, then rows 3x8-12 supersetted with curls',
+    hint: 'These are added to this routine after what is already here. Weights, rest and supersets are optional.',
+    button: 'Add to routine',
+  },
 };
 
 const COPY: Record<DescribeMode, { placeholder: string; hint: string; button: string }> = {
@@ -245,7 +255,7 @@ export function DescribeWorkoutSheet({ visible, mode, onClose, onRoutine, onWork
   const matchedNames = draft ? draftNames(draft).filter(n => auto[n.key]) : [];
 
   // ==== render ====
-  const copy = into ? INTO_COPY : COPY[mode];
+  const copy = into ? INTO_COPY[into.target] : COPY[mode];
   const writing = step === 'write';
   return (
     <SheetModal
