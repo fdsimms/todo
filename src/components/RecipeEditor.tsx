@@ -561,7 +561,6 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
         <CollapsibleField
           label="Meal type"
           summary={mealType ? RECIPE_MEAL_TYPE_LABELS[mealType] : undefined}
-          hint="What kind of meal this is, so recipes can be browsed by it."
           expanded={mealTypeOpen}
           onToggle={() => setMealTypeOpen(v => !v)}
         >
@@ -610,7 +609,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
         <CollapsibleField
           label="Tags"
           summary={tags.length > 0 ? tags.join(', ') : undefined}
-          hint="Your own labels, like “weeknight”, “vegetarian”, “thai”. Filter the recipe box by them, and combine two to narrow it."
+          hint="Your own labels, like “weeknight”, “vegetarian”, “thai”."
           expanded={tagsOpen}
           onToggle={() => setTagsOpen(v => !v)}
         >
@@ -728,7 +727,6 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
           icon="person-outline"
           label="Author"
           value={authorOpen ? undefined : (author.trim() || undefined)}
-          hint="The person this recipe is from."
           expanded={authorOpen}
           onPress={() => { animateLayout(); setAuthorOpen(v => !v); }}
           onClear={author.trim() ? () => { setAuthorDraft(''); setAuthorOpen(false); } : undefined}
@@ -767,7 +765,6 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
           label="Source"
           value={sourceOpen ? undefined : (sourceValue || undefined)}
           caption={sourceDetail || undefined}
-          hint="Where it’s from: a site, a magazine, a cookbook."
           expanded={sourceOpen}
           onPress={() => { animateLayout(); setSourceOpen(v => !v); }}
           // Clears all three, since all three are what the row now reads as —

@@ -97,7 +97,7 @@ export function SyncSettings() {
           icon="cloud-outline"
           iconColor={enabled ? colors.accent : undefined}
           label="Sync with iCloud"
-          hint="Syncs your data across devices signed in to this Apple ID. Your mood, medication and food logs, workouts, journal, dreams and milestones aren’t sent to iCloud and stay on the device you added them on."
+          hint="Syncs your data across devices signed in to this Apple ID."
           toggle={enabled}
           value={enabled ? 'On' : 'Off'}
           onPress={onToggle}

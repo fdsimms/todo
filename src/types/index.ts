@@ -2037,10 +2037,22 @@ export interface MeterReading {
 export type ExerciseKind =
   'weight_reps' | 'bodyweight_reps' | 'assisted_reps' | 'duration' | 'distance' | 'weight_distance';
 
-/** What an exercise is done with. A closed set so a filter can offer every value. */
+/**
+ * What an exercise is done with. A closed set so a filter can offer every value.
+ * `machine` and `cardio_machine` are the catch-alls: an exercise on a machine
+ * with no value of its own is filed under one, and a gym that ticked one before
+ * the specific machines existed is read as having all of them
+ * (`equipmentAvailable`, src/utils/gyms.ts).
+ */
 export type ExerciseEquipment =
-  | 'barbell' | 'dumbbell' | 'kettlebell' | 'machine' | 'cable' | 'smith_machine'
-  | 'ez_bar' | 'trap_bar' | 'band' | 'bodyweight' | 'cardio_machine' | 'other';
+  | 'barbell' | 'dumbbell' | 'kettlebell' | 'cable' | 'smith_machine'
+  | 'ez_bar' | 'trap_bar' | 'band' | 'bodyweight' | 'other'
+  | 'machine'
+  | 'leg_press' | 'hack_squat' | 'leg_extension' | 'leg_curl' | 'calf_raise_machine'
+  | 'hip_abduction_machine' | 'hip_adduction_machine'
+  | 'chest_press_machine' | 'pec_deck' | 'shoulder_press_machine' | 'row_machine' | 'assisted_machine'
+  | 'cardio_machine'
+  | 'treadmill' | 'stationary_bike' | 'air_bike' | 'rowing_machine' | 'elliptical' | 'stair_climber' | 'ski_erg';
 
 /** The muscles an exercise is filed under. A closed set, for the same reason. */
 export type MuscleGroup =

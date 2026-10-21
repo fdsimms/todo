@@ -512,7 +512,7 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
                 accessibilityLabel={count > 0 ? `${aisle}, ${count} on the list` : aisle}
-                accessibilityHint="Double tap to rename. Long press to reorder."
+                accessibilityHint="Renames it. Long press to reorder."
               >
                 <Ionicons name="reorder-three-outline" size={iconSize.md} color={colors.textTertiary} />
 
@@ -716,7 +716,7 @@ function StoresTab({
               activeOpacity={interaction.activeOpacity}
               accessibilityRole="button"
               accessibilityLabel={count > 0 ? `${shop.name}, ${count} items` : shop.name}
-              accessibilityHint="Double tap to rename. Long press to reorder."
+              accessibilityHint="Renames it. Long press to reorder."
             >
               <Ionicons name="reorder-three-outline" size={iconSize.md} color={colors.textTertiary} />
 

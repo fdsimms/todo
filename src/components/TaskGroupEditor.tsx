@@ -698,7 +698,6 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
         <CollapsibleField
           label="Tags"
           summary={tags.length > 0 ? tags.join(', ') : undefined}
-          hint="Free-form labels you can filter and search by."
           expanded={fieldOpen('tags')}
           onToggle={() => toggleField('tags')}
         >

@@ -22,7 +22,7 @@ export function SleepGoalSheet({ visible, onClose }: Props) {
       onClose={onClose}
       name="SleepGoalSheet"
       heading="Sleep goal"
-      hint="Hours asleep you want each day to reach. The Sleep screen draws it as a line and counts the days that reach it."
+      hint="The Sleep screen draws it as a line and counts the days that reach it."
       saved={saved}
       onSave={setSleepGoalMinutes}
       range={SLEEP_GOAL_RANGE}

@@ -1715,7 +1715,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
             hint={
               s.limitsTodayCategory !== null
                 ? 'Shows how much of each Stay under limit is used so far today.'
-                : 'Shows nothing on Today for Stay under limits.'
+                : undefined
             }
             toggle={s.limitsTodayCategory !== null}
             onPress={toggleLimitsOnToday}
@@ -1727,7 +1727,6 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
                 entryId="limitsTodayCategory"
                 icon="pricetag-outline"
                 label="Show them under"
-                hint="The category these rows sit in on Today."
                 value={categoryOptions.find(o => o.value === s.limitsTodayCategory)?.label ?? s.limitsTodayCategory}
                 tight
               />
@@ -1787,7 +1786,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
                 hint={
                   s.goalsTodayCategory !== null
                     ? 'Shows how much of each nutrient goal is reached so far today.'
-                    : 'Shows nothing on Today for nutrient goals.'
+                    : undefined
                 }
                 toggle={s.goalsTodayCategory !== null}
                 onPress={toggleGoalsOnToday}
@@ -1799,7 +1798,6 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
                     entryId="goalsTodayCategory"
                     icon="pricetag-outline"
                     label="Show goals under"
-                    hint="The category these rows sit in on Today."
                     value={categoryOptions.find(o => o.value === s.goalsTodayCategory)?.label ?? s.goalsTodayCategory}
                     tight
                   />
@@ -1818,7 +1816,6 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
                     entryId="goalsTodayNutrients"
                     icon="list-outline"
                     label="Goals shown"
-                    hint="Turn off a nutrient to leave its row off Today."
                     tight
                   />
                   <View style={styles.pillGroupRow}>

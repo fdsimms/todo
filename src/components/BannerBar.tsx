@@ -93,7 +93,10 @@ export function BannerBar({
   onLeftRef.current = onLeft;
   const wasLeaving = useRef(false);
   useEffect(() => {
-    if (leaving === wasLeaving.current) return;
+    // A leaving banner always (re)runs its exit, even when `leaving` hasn't
+    // changed: a hidden tab's effects are torn down and run again on reveal,
+    // and skipping here left an exit that began before the hide unfinished.
+    if (!leaving && leaving === wasLeaving.current) return;
     wasLeaving.current = leaving;
     rise.stopAnimation();
     fade.stopAnimation();
@@ -104,7 +107,12 @@ export function BannerBar({
       ]).start(({ finished }) => {
         if (finished) onLeftRef.current?.();
       });
-      return;
+      // The tab this banner sits on is hidden while another is focused, which
+      // tears its effects down and can cancel an exit in flight; a cancelled
+      // animation never reports `finished`, so the banner stayed up until it
+      // was swiped away. This is the backstop that lets it go regardless.
+      const backstop = setTimeout(() => onLeftRef.current?.(), animation.duration.sheetBackdropOut + 150);
+      return () => clearTimeout(backstop);
     }
     // New content arrived while it was on its way out: come back up.
     Animated.parallel([

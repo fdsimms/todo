@@ -217,7 +217,6 @@ export function QuickAddNameSheet({
           visible={emojiPickerOpen}
           value={emoji || null}
           title="Emoji"
-          hint="Optional. It stands in for this everywhere it’s shown."
           onSelect={picked => setEmoji(picked ?? '')}
           onClose={() => { setEmojiPickerOpen(false); inputRef.current?.focus(); }}
         />

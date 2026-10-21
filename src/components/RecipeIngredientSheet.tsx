@@ -846,7 +846,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
             onPress={() => { haptics.tap(); setEditingItemId(catalogItem.id); }}
             accessibilityRole="button"
             accessibilityLabel={`${catalogItem.name}${catalogSummary ? `, ${catalogSummary}` : ''}`}
-            accessibilityHint="Double tap to edit the grocery item: its brand, stores, pantry and substitutes"
+            accessibilityHint="Edits the grocery item: its brand, stores, pantry and substitutes"
           >
             <Ionicons name="cart-outline" size={iconSize.md} color={colors.accent} />
             <View style={styles.catalogBody}>
@@ -1033,7 +1033,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
               }}
               accessibilityRole="button"
               accessibilityLabel={`Group name, ${groupLabel}`}
-              accessibilityHint="Double tap to rename it for every ingredient in the group"
+              accessibilityHint="Renames it for every ingredient in the group"
             >
               <Text style={styles.groupNameLabel}>Group name</Text>
               <View style={styles.groupNameValueRow}>
