@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Animated } from 'react-native';
 import { animation } from '../theme';
 import { useReduceMotion } from '../utils/useReduceMotion';
+import { useBulkBarPresenceStore } from '../store/useBulkBarPresenceStore';
 
 /**
  * Rise-and-fade entrance shared by every floating bulk-action bar
@@ -17,6 +18,14 @@ import { useReduceMotion } from '../utils/useReduceMotion';
 export function useBulkBarEntrance() {
   const reduceMotion = useReduceMotion();
   const entrance = useRef(new Animated.Value(reduceMotion ? 1 : 0)).current;
+
+  // Mounted exactly while selecting, so this is also how app-wide floating bars
+  // (CookingBar) learn to get out of the way.
+  useEffect(() => {
+    const { enter, leave } = useBulkBarPresenceStore.getState();
+    enter();
+    return leave;
+  }, []);
 
   useEffect(() => {
     if (reduceMotion) return;

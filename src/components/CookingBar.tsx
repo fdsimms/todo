@@ -5,6 +5,7 @@ import { useShallow } from 'zustand/react/shallow';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useBulkBarPresenceStore } from '../store/useBulkBarPresenceStore';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, iconSize, interaction, type Colors } from '../theme';
 import { useBottomBarHeight } from '../hooks/useBottomBarHeight';
@@ -47,7 +48,10 @@ export function CookingBar() {
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const cooking = useRecipeStore(useShallow(s => s.recipes.filter(isCookTimerRunning)));
   const recipe = cooking[0];
-  const shown = kitchenEnabled && !!recipe;
+  // Its offset above the tab bar is where a bulk bar's count and close button
+  // land, so it steps aside while one is up rather than covering them.
+  const bulkSelecting = useBulkBarPresenceStore(s => s.count > 0);
+  const shown = kitchenEnabled && !!recipe && !bulkSelecting;
 
   // Same once-a-second-while-visible clock useRecipeTimer keeps, kept
   // separately here rather than through that hook: this has no single
