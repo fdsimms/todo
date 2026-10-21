@@ -517,7 +517,16 @@ export function RecipeDetailScreen() {
   // PrepTaskSheet: a step is a single field, so a whole extra component would
   // outweigh what it's editing. editingStepId null means the field is
   // building a new step; set, it's replacing that step's text on submit.
-  const [stepDraft, setStepDraft] = useState('');
+  const [stepDraft, setStepDraftState] = useState('');
+  // The newest text, written the moment the field reports it. A tap on Add reads
+  // this rather than `stepDraft`, because this screen is big enough that the
+  // render carrying a paste can land after the tap, and a button disabled (or a
+  // handler closed over) the old, empty draft does nothing.
+  const stepDraftRef = useRef('');
+  const setStepDraft = (text: string) => {
+    stepDraftRef.current = text;
+    setStepDraftState(text);
+  };
   // Same picker-over-existing-headings convention as sectionDraft above, for
   // RecipeStep.section instead of RecipeIngredient.section.
   const [stepSectionDraft, setStepSectionDraft] = useState('');
@@ -1237,10 +1246,11 @@ export function RecipeDetailScreen() {
   };
 
   const submitStepDraft = () => {
-    if (!stepDraft.trim()) return;
+    const draft = stepDraftRef.current;
+    if (!draft.trim()) { haptics.warning(); return; }
     animateLayout();
     if (editingStepId) {
-      updateStep(recipe.id, editingStepId, stepDraft);
+      updateStep(recipe.id, editingStepId, draft);
       // Before the id goes: Save closes the editor, and a note typed but not
       // yet blurred is part of what was being saved.
       commitStepNote();
@@ -1255,10 +1265,10 @@ export function RecipeDetailScreen() {
       // lines win, and no line break means one step) hold here too. Editing
       // an existing step never splits: that is a correction to one step.
       const section = stepSectionDraft.trim() || null;
-      const parts = stepsFromNotes(stepDraft);
+      const parts = stepsFromNotes(draft);
       const added = parts.length > 1
         ? parts.filter(part => addStep(recipe.id, part, section)).length
-        : (addStep(recipe.id, stepDraft, section) ? 1 : 0);
+        : (addStep(recipe.id, draft, section) ? 1 : 0);
       if (added > 0) haptics.tap();
       else haptics.warning();
     }
@@ -2753,14 +2763,16 @@ export function RecipeDetailScreen() {
                 label={editingStepId ? BUTTON_LABEL.save : 'Add'}
                 icon={editingStepId ? 'checkmark' : 'add'}
                 onPress={submitStepDraft}
-                disabled={!stepDraft.trim()}
+                // Dimmed, not disabled: a disabled button ignores the tap that
+                // arrives before the render carrying a paste has landed.
+                style={!stepDraft.trim() ? styles.actionDim : undefined}
               />
             </>
           )}
         >
           <TextField
             ref={stepInputRef}
-            style={styles.composerInput}
+            style={[styles.composerInput, styles.stepComposerInput]}
             value={stepDraft}
             onChangeText={setStepDraft}
             onSubmitEditing={submitStepDraft}
@@ -3825,6 +3837,14 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     fontSize: font.md,
     minHeight: 44,
     maxHeight: 140,
+  },
+  actionDim: { opacity: 0.4 },
+  // A step is a sentence or a paragraph, not a one-line ingredient, so its
+  // field opens at about three lines and grows further before it scrolls.
+  stepComposerInput: {
+    minHeight: 88,
+    maxHeight: 220,
+    textAlignVertical: 'top',
   },
   addInput: {
     flex: 1,
