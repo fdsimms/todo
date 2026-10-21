@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { isSameYear } from 'date-fns/isSameYear';
@@ -11,6 +11,7 @@ import { CalendarPicker } from './CalendarPicker';
 import { ExercisePickerSheet } from './ExercisePickerSheet';
 import { InlineAction } from './InlineAction';
 import { TextField } from './TextField';
+import { ApplyToAllAccessory, APPLY_TO_ALL_ACCESSORY_ID } from './ApplyToAllAccessory';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
@@ -19,6 +20,8 @@ import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
 import { disclosureValue } from '../theme/textStyles';
 import { haptics } from '../utils/haptics';
+import { applyTargets, applyToAllLabel } from '../utils/applyToAll';
+import { clearApplyOffer, setApplyOffer } from '../utils/applyToAllOffer';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { catalogExercise } from '../utils/exerciseCatalog';
 import { formatTimeOfDay } from '../utils/dateUtils';
@@ -108,6 +111,29 @@ export function LogPastWorkoutSheet({ visible, onClose }: Props) {
   };
   const nameOf = (exerciseId: string) => catalogExercise(exerciseRows, exerciseId)?.name ?? 'Unknown exercise';
 
+  // The keyboard bar's "Apply 95 to all sets", offered while a weight or reps
+  // cell holds a value its sibling sets don't. `text` is what the cell holds
+  // now, which is the new keystroke before state has caught up.
+  const offerKey = (exerciseId: string, index: number, f: SetField) => `${exerciseId}:${index}:${f}`;
+  const publishOffer = (exerciseId: string, index: number, f: SetField, text: string) => {
+    const ex = exercises.find(e => e.exerciseId === exerciseId);
+    const key = offerKey(exerciseId, index, f);
+    if (!ex) { clearApplyOffer(key); return; }
+    const cells = ex.sets.map(s => s[f] ?? '');
+    const targets = applyTargets(cells, cells.map((_, i) => i), index, text);
+    if (targets.length === 0) { clearApplyOffer(key); return; }
+    setApplyOffer({
+      key,
+      label: applyToAllLabel(text, 'sets'),
+      apply: () => {
+        haptics.tap();
+        changeSets(exerciseId, sets => sets.map((s, i) => (targets.includes(i) ? { ...s, [f]: text.trim() } : s)));
+        // Every set now matches, so there is nothing left to offer.
+        clearApplyOffer(key);
+      },
+    });
+  };
+
   // ==== saving, cancelling ====
   const handleCancel = () => {
     if (!pastWorkoutTouched(title, exercises)) { onClose(); return; }
@@ -147,6 +173,7 @@ export function LogPastWorkoutSheet({ visible, onClose }: Props) {
   return (
     <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel} name="LogPastWorkoutSheet">
       <View style={styles.root}>
+        <ApplyToAllAccessory />
         <SheetHeader
           title="Log a workout"
           left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={64} />}
@@ -252,7 +279,13 @@ export function LogPastWorkoutSheet({ visible, onClose }: Props) {
                         <TextField
                           style={styles.cell}
                           value={text[f] ?? ''}
-                          onChangeText={t => changeSets(ex.exerciseId, sets => sets.map((s, i) => (i === index ? { ...s, [f]: t } : s)))}
+                          onChangeText={t => {
+                            changeSets(ex.exerciseId, sets => sets.map((s, i) => (i === index ? { ...s, [f]: t } : s)));
+                            publishOffer(ex.exerciseId, index, f, t);
+                          }}
+                          onFocus={() => publishOffer(ex.exerciseId, index, f, text[f] ?? '')}
+                          onBlur={() => clearApplyOffer(offerKey(ex.exerciseId, index, f))}
+                          inputAccessoryViewID={Platform.OS === 'ios' ? APPLY_TO_ALL_ACCESSORY_ID : undefined}
                           placeholder="–"
                           placeholderTextColor={colors.textTertiary}
                           keyboardType={f === 'weight' ? 'decimal-pad' : 'numbers-and-punctuation'}
