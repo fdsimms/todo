@@ -1537,7 +1537,7 @@ Four areas had no MCP read or write, and the shape of each answer follows from w
   and a progression is the person's choice of how loads move on, which only ever becomes a proposal.
   `save_gym` and `delete_gym` write a gym through `useGymStore` (`addGym`/`updateGym`, which refuse a
   blank or taken name): its equipment, address text and, per exercise, a note (an empty string
-  clearing it), a bar and a load step in kg (null clearing either). A gym's pin is deliberately not writable here, since it comes from the phone's
+  clearing it), a bar and a load step in kg (null clearing either). `isDefault` sets or clears the default gym (the `defaultGymId` setting, which a workout starts at before the phone's position says otherwise), and `list_workouts` marks it. A gym's pin is deliberately not writable here, since it comes from the phone's
   position; `list_workouts` reports only `hasLocation`. The Activity entry is a record only.
   `save_program` and `delete_program` write the plan above routines: a rotation of routine ids
   (refused by name when one is unknown), a scheme, a cycle length and training maxes in kg, through

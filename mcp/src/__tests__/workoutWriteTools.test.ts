@@ -72,6 +72,19 @@ describe('the workout write tools', () => {
       expect(cleared.exerciseNotes).toEqual([{ exerciseId: BENCH, name: expect.any(String), notes: 'Rack 2' }]);
     });
 
+    it('makes one gym the default, moves it, and clears it only from the gym that has it', () => {
+      const a = saveGym(ledgered, { name: 'Home', isDefault: true }).gym;
+      expect(a.isDefault).toBe(true);
+      const b = saveGym(ledgered, { name: 'Work' }).gym;
+      expect(listWorkouts(replica).gyms.map(g => [g.name, g.isDefault])).toEqual([['Home', true], ['Work', undefined]]);
+      saveGym(ledgered, { id: b.id, isDefault: true });
+      expect(replica.defaultGymId()).toBe(b.id);
+      saveGym(ledgered, { id: a.id, isDefault: false });
+      expect(replica.defaultGymId()).toBe(b.id);
+      saveGym(ledgered, { id: b.id, isDefault: false });
+      expect(replica.defaultGymId()).toBeNull();
+    });
+
     it('deletes a gym and its notes, and says what that leaves', () => {
       const { gym } = saveGym(ledgered, { name: 'Hotel', exerciseNotes: [{ exerciseId: BENCH, notes: 'x' }] });
       expect(deleteGym(ledgered, gym.id)).toMatchObject({ removed: { name: 'Hotel' }, note: expect.stringMatching(/keep their history/) });

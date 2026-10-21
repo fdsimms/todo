@@ -1,7 +1,7 @@
 import type { Exercise, Gym, GymExerciseSetting, WorkoutRoutine } from '../types';
 import {
   describeRoutineFit, equipmentAvailable, exerciseIdsDoneAt, gymAt, gymExerciseId, gymSettingFor, gymSwapCandidates,
-  describeGymSetting, describeLastLoad, gymIncrementKg, gymsUsedBy, isEmptyGymSetting, setsAtGym, lastUsedGymId, routineFit, unavailableExerciseIds, withGymBar,
+  describeGymSetting, describeLastLoad, gymIncrementKg, gymsUsedBy, isEmptyGymSetting, setsAtGym, lastUsedGymId, startingGymId, routineFit, unavailableExerciseIds, withGymBar,
 } from '../utils/gyms';
 import { EXERCISE_LIBRARY } from '../utils/exerciseLibrary';
 
@@ -152,6 +152,19 @@ describe('lastUsedGymId', () => {
   it('skips an archived or deleted gym, and is null when nobody used one', () => {
     expect(lastUsedGymId(gyms, [{ gymId: 'c', startedAt: '2026-03-01' }, { gymId: 'gone', startedAt: '2026-04-01' }])).toBeNull();
     expect(lastUsedGymId(gyms, [{ startedAt: '2026-03-01' }])).toBeNull();
+  });
+});
+
+describe('startingGymId', () => {
+  const gyms = [gym({ id: 'a' }), gym({ id: 'b' }), gym({ id: 'c', archived: true })];
+  const sessions = [{ gymId: 'a', startedAt: '2026-01-01' }];
+  it('is the default gym over the one last used', () => {
+    expect(startingGymId('b', gyms, sessions)).toBe('b');
+  });
+  it('falls back to the last used gym with no default, or one archived or deleted', () => {
+    expect(startingGymId(null, gyms, sessions)).toBe('a');
+    expect(startingGymId('c', gyms, sessions)).toBe('a');
+    expect(startingGymId('gone', gyms, sessions)).toBe('a');
   });
 });
 

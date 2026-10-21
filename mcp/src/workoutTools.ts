@@ -233,12 +233,14 @@ export interface GymRow {
   placeText?: string;
   /** Set once the person pinned the gym's place; workouts pick the gym by it. */
   hasLocation?: true;
+  /** The gym a workout starts at before the phone's location says otherwise. At most one gym has it. */
+  isDefault?: true;
   archived?: true;
   /** What is noted for an exercise at this gym. */
   exerciseNotes?: { exerciseId: string; name: string; notes?: string; barKg?: number; incrementKg?: number }[];
 }
 
-function gymRow(g: Gym, settings: readonly GymExerciseSetting[], rows: readonly Exercise[]): GymRow {
+function gymRow(g: Gym, settings: readonly GymExerciseSetting[], rows: readonly Exercise[], defaultGymId: string | null): GymRow {
   const notes = settings.filter(s => s.gymId === g.id);
   return {
     id: g.id,
@@ -246,6 +248,7 @@ function gymRow(g: Gym, settings: readonly GymExerciseSetting[], rows: readonly 
     equipment: g.equipment,
     ...(g.placeText ? { placeText: g.placeText } : {}),
     ...(g.latitude !== null && g.longitude !== null ? { hasLocation: true as const } : {}),
+    ...(!g.archived && g.id === defaultGymId ? { isDefault: true as const } : {}),
     ...(g.archived ? { archived: true as const } : {}),
     ...(notes.length ? { exerciseNotes: notes.map(s => ({
       exerciseId: s.exerciseId,
@@ -330,7 +333,7 @@ export function listWorkouts(
     routineGroups: replica.routineGroups(),
     programs: programs.filter(p => !p.archived)
       .map(p => programRow(p, programProgress(p, allSessions(replica), routines), rows, routineName)),
-    gyms: gyms.map(g => gymRow(g, replica.gymExercises(), rows)),
+    gyms: gyms.map(g => gymRow(g, replica.gymExercises(), rows, replica.defaultGymId())),
     ...(workouts.length === 0 ? { note: WITHHELD_NOTE } : {}),
   };
 }
@@ -571,6 +574,7 @@ export interface SaveGymInput {
   name?: string;
   equipment?: ExerciseEquipment[];
   placeText?: string;
+  isDefault?: boolean;
   exerciseNotes?: { exerciseId: string; notes?: string; barKg?: number | null; incrementKg?: number | null }[];
 }
 
@@ -582,8 +586,8 @@ export function saveGym(replica: Replica, input: SaveGymInput): { gym: GymRow; n
   }
   const gym = replica.saveGym(input);
   return {
-    gym: gymRow(gym, replica.gymExercises(), replica.exercises()),
-    note: 'A gym is where the person trains and what it has. Starting a workout picks the gym by the phone\'s location, and an exercise the gym can\'t do is flagged with a replacement proposed, never swapped unasked. Where a gym is can only be set on the phone.',
+    gym: gymRow(gym, replica.gymExercises(), replica.exercises(), replica.defaultGymId()),
+    note: 'A gym is where the person trains and what it has. Starting a workout picks the gym by the phone\'s location, else the default gym (isDefault), else the gym last used. An exercise the gym can\'t do is flagged with a replacement proposed, never swapped unasked. Where a gym is can only be set on the phone.',
   };
 }
 

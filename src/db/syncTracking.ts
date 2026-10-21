@@ -619,6 +619,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'workoutsEnabled',
   'workoutUnit',
   'plateInventory',
+  'defaultGymId',
   'defaultRestSeconds',
   // The group names made on the Routines tab, so a group can be empty.
   'workoutRoutineGroups',
