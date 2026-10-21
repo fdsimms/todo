@@ -61,7 +61,7 @@ export function MoodFace({ level, size, dimmed = false }: Props) {
       width={size}
       height={size}
       viewBox="0 0 24 24"
-      style={dimmed ? { opacity: 0.55 } : undefined}
+      style={dimmed ? { opacity: 0.75 } : undefined}
     >
       <Circle cx={12} cy={12} r={10} fill={fill} />
       <Circle cx={8.6} cy={9.6} r={1.1} fill={feature} />
