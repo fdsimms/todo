@@ -181,8 +181,9 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
   // turning it on there doesn't mean visiting every section.
   const projectHidesNext = useProjectStore(s => !!group.projectId && !!s.projects.find(p => p.id === group.projectId)?.hideNextStep);
   const hideNext = !!group.hideNextStep || projectHidesNext;
-  const summary = totalToday === 0 || filtered ? null
-    : `${doneToday} of ${totalToday} done${tallyScope === 'today' ? ' today' : ''}${nextUp && !hideNext ? ` · Next: ${nextUp.title}` : ''}`;
+  // The count is the badge's job; spelling it out here again was redundant.
+  const summary = totalToday === 0 || filtered || !nextUp || hideNext ? null
+    : `Next: ${nextUp.title}`;
   const showTally = totalToday > 0 && !filtered;
 
   const completeAll = () => {
