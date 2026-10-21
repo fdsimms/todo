@@ -385,7 +385,8 @@ have noticed: the numbers stay plausible, they just quietly stop being true.
 null when retention is off) and nulls `completed`, `categories` and `taskKeys`
 for every day before it. Three consequences worth not re-deriving:
 
-- **`MoodDay.completed` is `number | null`**, and the null is only ever this.
+- **`MoodDay.completed` is `number | null`**, and the null means the task record
+  can't be compared for that day: purged, or a Vacation day (below).
   Zero stays a real zero: a day is in the set at all because something was
   logged or finished on it, so "none finished" is something that happened.
 - **`taskPairedDays` is separate from `pairedDays`**, and only the reads about
@@ -400,6 +401,18 @@ The Mood screen says how many logged days this drops, under the card it affects.
 A correlation drawn over half a record is a different claim from one drawn over
 all of it, and the person who set the window is the only one who can decide
 whether that matters.
+
+**A day tagged Vacation is cleared the same way.** Vacation mode hides the tasks
+that pause on it and stops most generated ones, so a low count on that day is
+the list being away, not the mood, and left in it pulled the "what you finish"
+cards toward "fewer tasks on better days". `buildMoodDays` nulls `completed`,
+`categories` and `taskKeys` for a day whose `contextTagKeys` hold `vacation`,
+after the count and after the retention clearing. Symptoms, tags and the mood
+average keep the day, so the Vacation contrast on the tag card is unchanged.
+Only a tagged day is caught: the app keeps no history of when vacation mode was
+on, and the tag is seeded only onto today's entries. A trip's away span is not
+used, since the Travel tag already covers logged days inside one and the spans
+would have to reach every `buildMoodDays` caller.
 
 ## Mood against one repeating task — the medication question, answered for everything on a schedule
 
