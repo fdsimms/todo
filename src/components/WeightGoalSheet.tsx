@@ -611,7 +611,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                   <View
                     style={[styles.tile, styles.tileNew, styles.tileWide]}
                     accessible
-                    accessibilityLabel={`Your calorie target, ${budget.proposedKcal.toLocaleString()} calories a day. Matches this goal.`}
+                    accessibilityLabel={`Your calorie target, ${budget.proposedKcal.toLocaleString()} calories a day. Matches your goal.`}
                   >
                     <Text style={[styles.tileKey, styles.tileKeyNew]}>YOUR CALORIE TARGET</Text>
                     <Text style={styles.tileValue} numberOfLines={1} adjustsFontSizeToFit>
@@ -659,7 +659,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                 {alreadyApplied ? (
                   <View style={styles.matchRow}>
                     <Ionicons name="checkmark" size={iconSize.sm} color={colors.greenText} />
-                    <Text style={styles.matchText}>Matches this goal</Text>
+                    <Text style={styles.matchText}>Matches your goal</Text>
                   </View>
                 ) : (
                   <Text style={styles.status}>
