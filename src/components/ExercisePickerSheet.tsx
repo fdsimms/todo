@@ -285,7 +285,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   flex: { flex: 1 },
   headerSpacer: { minWidth: 64 },
-  search: { marginHorizontal: spacing.md, marginBottom: spacing.sm },
+  search: { marginHorizontal: spacing.md, marginTop: spacing.sm, marginBottom: spacing.sm },
   list: { paddingHorizontal: spacing.md, paddingBottom: spacing.xl },
   emptyList: { paddingHorizontal: spacing.md, paddingTop: spacing.md },
   row: {
