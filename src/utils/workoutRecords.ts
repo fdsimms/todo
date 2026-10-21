@@ -101,6 +101,27 @@ export function setVolume(set: Pick<WorkoutSet, 'weightKg' | 'reps' | 'durationS
   }
 }
 
+/**
+ * A workout's lifted volume in kilograms: weight times reps over the sets of
+ * its weighted lifts that count for records. Bodyweight, hold and distance
+ * work has volume in other units that don't add to kilograms, so it is left out
+ * rather than summed into a figure that means nothing. Null when nothing
+ * qualifies, so a row can leave the figure off instead of showing a zero.
+ * `dbWorkoutLiftVolumes` is the same sum for a history list.
+ */
+export function liftVolumeKg(
+  sets: Pick<WorkoutSet, 'exerciseId' | 'weightKg' | 'reps' | 'durationSeconds' | 'distanceM' | 'completedAt' | 'kind'>[],
+  kindOf: (exerciseId: string) => ExerciseKind,
+): number | null {
+  let total: number | null = null;
+  for (const set of sets) {
+    if (!countsForRecords(set) || kindOf(set.exerciseId) !== 'weight_reps') continue;
+    const v = setVolume(set, 'weight_reps');
+    if (v !== null) total = (total ?? 0) + v;
+  }
+  return total;
+}
+
 export type VolumeUnit = 'kg' | 'reps' | 'seconds' | 'm';
 
 /** The unit a kind's volume is in. `kg` means kilograms, shown in the person's unit. */

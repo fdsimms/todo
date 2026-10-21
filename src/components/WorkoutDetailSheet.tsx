@@ -30,7 +30,7 @@ import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { formatTimeOfDay } from '../utils/dateUtils';
 import { catalogExercise } from '../utils/exerciseCatalog';
-import { sessionRecordSummary } from '../utils/workoutRecords';
+import { liftVolumeKg, sessionRecordSummary } from '../utils/workoutRecords';
 import { routineItemsFromSets } from '../utils/workoutRoutine';
 import { startWorkout } from '../utils/startWorkout';
 import { formatSetLine, sessionExercises, sessionMinutes, setBadge, setLabels, setName } from '../utils/workoutSession';
@@ -446,7 +446,13 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose }: Props) {
             {...keyboardScroll.props}
             ref={keyboardScroll.ref}
           >
-            <WorkoutStatTiles minutes={minutes} exercises={exercises.length} sets={setCount} />
+            <WorkoutStatTiles
+              minutes={minutes}
+              exercises={exercises.length}
+              sets={setCount}
+              volumeKg={liftVolumeKg(sets, id => catalogExercise(exerciseRows, id)?.kind ?? 'weight_reps')}
+              unit={unit}
+            />
 
             {heartRate && (
               <>
