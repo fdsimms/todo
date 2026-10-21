@@ -326,7 +326,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/pantryWrite.ts` — onHandRow, markedOutRow, disposalRow, thawedPortionsOf, frozenRow, openedRow, reviewedRow, runningLowRow, productOnHandRow, productsOutPlan, +16 more
 - `src/utils/parseNaturalDate.ts` — WEEKDAYS, MONTHS, ClockTime, strip, extractTime, extractDayPart, clockBesideDayPart, dayPartBesideClock, DatePart, NUMBER_WORDS, +5 more
 - `src/utils/parseTaskInput.ts` — withTrailingSpace, ParsedSchedule, ParsedTaskInput, segmentForHour, dueAt, parseFromCompletionSuffix, parseTaskInput, ParsedLink, parseLinkInput, ParsedPhone, +60 more
-- `src/utils/pastWorkout.ts` — PastSetText, PastExerciseDraft, PAST_WORKOUT_DEFAULT_MINUTES, PAST_WORKOUT_MIN_MINUTES, PAST_WORKOUT_MAX_MINUTES, PastWorkoutProblem, nextSetText, pastWorkoutTouched, buildPastWorkout
+- `src/utils/pastWorkout.ts` — PastSetText, PastExerciseDraft, PAST_WORKOUT_DEFAULT_MINUTES, PAST_WORKOUT_MIN_MINUTES, PAST_WORKOUT_MAX_MINUTES, PastWorkoutProblem, nextSetText, newSupersetKey, withoutPastExercise, joinPastSuperset, +4 more
 - `src/utils/pastedLines.ts` — cleanPastedLines
 - `src/utils/patchNotes.ts` — PatchNote
 - `src/utils/penaltyShield.ts` — penaltyCutoffAt, PenaltyCharge, penaltyChargeFor, slipPenaltyUntil, extendShieldUntil, penaltyCreditFor, uncreditShieldUntil, creditShieldUntil, penaltyShieldWanted

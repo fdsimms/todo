@@ -11,6 +11,8 @@ import { CalendarPicker } from './CalendarPicker';
 import { ExercisePickerSheet } from './ExercisePickerSheet';
 import { DescribeWorkoutSheet } from './DescribeWorkoutSheet';
 import { InlineAction } from './InlineAction';
+import { ActionMenu } from './ActionMenu';
+import type { CardAnchor } from './CardSheet';
 import { TextField } from './TextField';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -28,11 +30,12 @@ import { formatTimeOfDay } from '../utils/dateUtils';
 import { workoutHealthWriteOn, workoutSpanWritable } from '../utils/healthWorkoutSync';
 import { WORKOUT_NAME_MAX_LENGTH } from '../utils/workoutData';
 import {
-  columnLabel, formatSetLine, matchPreviousByPosition, previousBadge, setFieldsFor, type SetField,
+  columnLabel, formatSetLine, matchPreviousByPosition, previousBadge, setFieldsFor, supersetGroup, type SetField,
 } from '../utils/workoutSession';
 import {
   PAST_WORKOUT_DEFAULT_MINUTES, PAST_WORKOUT_MAX_MINUTES, PAST_WORKOUT_MIN_MINUTES,
-  buildPastWorkout, nextSetText, pastWorkoutTouched, type PastExerciseDraft, type PastSetText,
+  buildPastWorkout, joinPastSuperset, leavePastSuperset, movedPastExercise, nextSetText, pastWorkoutTouched, withoutPastExercise,
+  type PastExerciseDraft, type PastSetText,
 } from '../utils/pastWorkout';
 import type { ImportedSession } from '../utils/workoutCsv';
 import { BUTTON_LABEL } from '../copy/shared';
@@ -92,12 +95,14 @@ export function LogPastWorkoutSheet({ visible, onClose, onDescribed }: Props) {
   const [exercises, setExercises] = useState<PastExerciseDraft[]>([]);
   const [pickingWhen, setPickingWhen] = useState(false);
   const [pickingExercise, setPickingExercise] = useState(false);
+  const [exerciseMenu, setExerciseMenu] = useState<{ exerciseId: string; anchor: CardAnchor } | null>(null);
   const [describing, setDescribing] = useState(false);
   // Claude only (`workoutDraft` has no on-device engine), so no key or a switched-off feature means no row.
   const canDescribe = useAiRoute('workoutDraft') !== 'unavailable';
 
   useEffect(() => {
     if (!visible) return;
+    setExerciseMenu(null);
     setTitle('');
     setStart(defaultStart());
     setMinutes(PAST_WORKOUT_DEFAULT_MINUTES);
@@ -116,7 +121,16 @@ export function LogPastWorkoutSheet({ visible, onClose, onDescribed }: Props) {
   };
   const removeExercise = (exerciseId: string) => {
     haptics.tap();
-    setExercises(prev => prev.filter(e => e.exerciseId !== exerciseId));
+    setExercises(prev => withoutPastExercise(prev, exerciseId));
+  };
+  const joinSuperset = (exerciseId: string, partnerId: string) => {
+    setExercises(prev => joinPastSuperset(prev, exerciseId, partnerId) ?? prev);
+  };
+  const moveExercise = (exerciseId: string, direction: 'up' | 'down') => {
+    setExercises(prev => movedPastExercise(prev, exerciseId, direction) ?? prev);
+  };
+  const leaveSuperset = (exerciseId: string) => {
+    setExercises(prev => leavePastSuperset(prev, exerciseId) ?? prev);
   };
   const changeSets = (exerciseId: string, change: (sets: PastSetText[]) => PastSetText[]) => {
     setExercises(prev => prev.map(e => (e.exerciseId === exerciseId ? { ...e, sets: change(e.sets) } : e)));
@@ -259,15 +273,31 @@ export function LogPastWorkoutSheet({ visible, onClose, onDescribed }: Props) {
           <Text style={styles.groupLabel}>Exercises</Text>
           {exercises.map(ex => {
             const fields = setFieldsFor(ex.kind);
+            const inSuperset = !!ex.supersetKey && supersetGroup(exercises, ex.exerciseId).length > 1;
             // Every row here is an ordinary set, so each pairs with the nth of last time's.
             const previousBySet = matchPreviousByPosition(
               ex.sets.map((_, i) => ({ id: String(i), kind: 'working' as const })),
               lastTime.get(ex.exerciseId) ?? [],
             );
             return (
-              <View key={ex.exerciseId} style={[styles.card, styles.exercise]}>
+              <View key={ex.exerciseId} style={[styles.card, styles.exercise, inSuperset && styles.superset]}>
+                {inSuperset && <Text style={styles.supersetTag}>Superset</Text>}
                 <View style={styles.exerciseHead}>
                   <Text style={styles.exerciseName} numberOfLines={2}>{nameOf(ex.exerciseId)}</Text>
+                  {exercises.length > 1 && (
+                    <TouchableOpacity
+                      onPress={e => {
+                        haptics.tap();
+                        setExerciseMenu({ exerciseId: ex.exerciseId, anchor: { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY } });
+                      }}
+                      hitSlop={8}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="button"
+                      accessibilityLabel={`More options for ${nameOf(ex.exerciseId)}`}
+                    >
+                      <Ionicons name="ellipsis-horizontal" size={20} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                  )}
                   <TouchableOpacity
                     onPress={() => removeExercise(ex.exerciseId)}
                     hitSlop={8}
@@ -355,6 +385,42 @@ export function LogPastWorkoutSheet({ visible, onClose, onDescribed }: Props) {
           </View>
         </ScrollView>
 
+        {(() => {
+          const menuId = exerciseMenu?.exerciseId ?? null;
+          const menuExercise = menuId ? exercises.find(e => e.exerciseId === menuId) ?? null : null;
+          const group = menuId ? supersetGroup(exercises, menuId) : [];
+          const partners = exercises.filter(e => !group.includes(e));
+          return (
+            <ActionMenu
+              visible={visible && exerciseMenu !== null}
+              title={menuId ? nameOf(menuId) : ''}
+              anchor={exerciseMenu?.anchor ?? null}
+              onClose={() => setExerciseMenu(null)}
+              actions={menuId && menuExercise ? [
+                ...(['up', 'down'] as const)
+                  .filter(direction => movedPastExercise(exercises, menuId, direction) !== null)
+                  .map(direction => ({
+                    key: `move-${direction}`,
+                    label: direction === 'up' ? 'Move up' : 'Move down',
+                    icon: (direction === 'up' ? 'arrow-up-outline' : 'arrow-down-outline') as 'arrow-up-outline',
+                    onPress: () => moveExercise(menuId, direction),
+                  })),
+                ...(partners.length > 0 ? [{
+                  key: 'superset',
+                  label: 'Superset with…',
+                  icon: 'link-outline' as const,
+                  choices: partners.map(p => ({ key: p.exerciseId, label: nameOf(p.exerciseId), onPress: () => joinSuperset(menuId, p.exerciseId) })),
+                }] : []),
+                ...(menuExercise.supersetKey && group.length > 1 ? [{
+                  key: 'leave',
+                  label: 'Leave superset',
+                  icon: 'unlink-outline' as const,
+                  onPress: () => leaveSuperset(menuId),
+                }] : []),
+              ] : []}
+            />
+          );
+        })()}
         <CalendarPicker
           visible={visible && pickingWhen}
           mode="datetime"
@@ -402,6 +468,11 @@ const makeStyles = (colors: Colors, textScale: number) => StyleSheet.create({
   value: { ...disclosureValue(colors), flexShrink: 1, fontVariant: ['tabular-nums'] },
   hint: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.sm, marginHorizontal: spacing.xs },
   exercise: { marginBottom: spacing.smd },
+  superset: { borderLeftWidth: 3, borderLeftColor: colors.accent },
+  supersetTag: {
+    color: colors.accentText, fontSize: font.xs, fontWeight: fontWeight.semibold,
+    marginTop: spacing.smd, marginHorizontal: spacing.md, marginBottom: -spacing.xs,
+  },
   exerciseHead: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.smd,
     paddingHorizontal: spacing.md, paddingVertical: spacing.smd,
