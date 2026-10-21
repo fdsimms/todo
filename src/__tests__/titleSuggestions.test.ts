@@ -317,3 +317,11 @@ describe('suggestTitles', () => {
     });
   });
 });
+
+describe('the task a suggestion fills in from', () => {
+  it('is the most recent completion of that title', () => {
+    const older = makeTask({ id: 'old', title: 'Water plants', completed: true, completedAt: '2025-04-01T00:00:00.000Z' });
+    const newer = makeTask({ id: 'new', title: 'water plants', completed: true, completedAt: '2025-05-01T00:00:00.000Z' });
+    expect(suggestTitles([older, newer], 'wat').map(s => s.taskId)).toEqual(['new']);
+  });
+});

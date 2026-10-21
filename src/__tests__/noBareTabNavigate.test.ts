@@ -10,6 +10,9 @@
  * check has to be mechanical. `navigateToTab` (navigationRef.ts) explains the
  * shape that works.
  *
+ * The reverse is checked too: `navigateToTab` only reaches tabs, so a card
+ * route named in it opens nothing.
+ *
  * Two places are checked: the navigation ref, which deep links, widgets,
  * quick actions and notification taps all go through and which can fire with
  * anything on screen, and the card screens themselves. A hook or component a
@@ -89,6 +92,18 @@ describe('navigating to a tab route', () => {
     const offenders = files
       .filter(f => f.rel !== NAV_REF && /navigate\(\s*(?:\{\s*name:\s*)?['"]MainTabs['"]/.test(f.src))
       .map(f => f.rel);
+    expect(offenders).toEqual([]);
+  });
+
+  // The other direction: navigateToTab switches MainTabs' tab, so a card
+  // route handed to it names a tab that doesn't exist and nothing opens.
+  // resetToProject did this with ProjectDetail. A card is pushed with
+  // navigationRef.navigate, after navigateToTab to the tab it sits over.
+  it('names only a tab route in navigateToTab', () => {
+    const offenders = files.flatMap(f => [...f.src.matchAll(/navigateToTab\(\s*['"](\w+)['"]/g)]
+      .map(m => m[1])
+      .filter(route => !TAB_ROUTES.includes(route))
+      .map(route => `${f.rel}: ${route}`));
     expect(offenders).toEqual([]);
   });
 

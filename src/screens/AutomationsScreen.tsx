@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo } from 'react';
-import { View, ScrollView, StyleSheet } from 'react-native';
+import { View, ScrollView, StyleSheet, Text } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,7 +8,11 @@ import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, type Colors } from '../theme';
+import { font, spacing, type Colors } from '../theme';
+import { PressableScale } from '../components/PressableScale';
+import { navigateToTab } from '../navigation/navigationRef';
+import { menuLabelFor } from '../utils/navHubs';
+import { haptics } from '../utils/haptics';
 import {
   describeGeneratedCounts,
   generatedTaskCounts,
@@ -26,6 +31,11 @@ type AutomationsParams = {
     entryId?: string;
     /** Makes a second search for the same row a new request, since this tab stays mounted. */
     focusStamp?: number;
+    /**
+     * The screen whose gear sheet sent you here. A tab has no back button, so
+     * this draws one, which takes you back there.
+     */
+    returnTo?: string;
   } | undefined;
 };
 
@@ -51,6 +61,7 @@ export function AutomationsScreen() {
   const route = useRoute<RouteProp<AutomationsParams, 'Automations'>>();
   const entryId = route.params?.entryId;
   const focusStamp = route.params?.focusStamp;
+  const returnTo = route.params?.returnTo;
   const searchFilter = useFilterField();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -69,15 +80,28 @@ export function AutomationsScreen() {
   // A tab keeps its params, so a row found by search would otherwise count as
   // "the one you searched for" on every later visit from the menu. Cleared on
   // the way out rather than on a timer: the highlight fades by itself.
+  // The hand-back goes the same way: it belongs to the one visit it was for.
   useFocusEffect(useCallback(() => () => {
-    if (entryId !== undefined) {
+    if (entryId !== undefined || returnTo !== undefined) {
       (navigation as never as { setParams: (p: object) => void })
-        .setParams({ entryId: undefined, focusStamp: undefined });
+        .setParams({ entryId: undefined, focusStamp: undefined, returnTo: undefined });
     }
-  }, [entryId, navigation]));
+  }, [entryId, returnTo, navigation]));
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
+      {returnTo && (
+        <PressableScale
+          style={styles.back}
+          onPress={() => { haptics.tap(); navigateToTab(returnTo); }}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={`Back to ${menuLabelFor(returnTo)}`}
+        >
+          <Ionicons name="chevron-back" size={22} color={colors.accent} />
+          <Text style={styles.backLabel}>{menuLabelFor(returnTo)}</Text>
+        </PressableScale>
+      )}
       <ScreenHeader
         title="Automations"
         subtitle={describeGeneratedCounts(counts)}
@@ -117,4 +141,15 @@ export function AutomationsScreen() {
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   search: { marginHorizontal: spacing.md, marginTop: spacing.sm, marginBottom: spacing.sm },
+  // The iOS back button's shape: a chevron and the name of where it goes, in
+  // the accent, above the large title.
+  back: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    minHeight: 44,
+    paddingLeft: spacing.sm,
+    paddingRight: spacing.md,
+  },
+  backLabel: { color: colors.accentText, fontSize: font.md },
 });

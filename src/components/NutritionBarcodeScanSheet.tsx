@@ -42,7 +42,8 @@ interface Props {
   visible: boolean;
   onClose: () => void;
   /** Called with the found panel and the source's own name for it; the sheet closes itself right after. */
-  onFound: (nutrition: FoodNutrition, sourceName: string) => void;
+  /** `packSize` is the source's own string ("227 g"), null when it gave none. */
+  onFound: (nutrition: FoodNutrition, sourceName: string, packSize: string | null) => void;
 }
 
 export function NutritionBarcodeScanSheet({ visible, onClose, onFound }: Props) {
@@ -86,7 +87,7 @@ export function NutritionBarcodeScanSheet({ visible, onClose, onFound }: Props) 
       if (!stillHere()) return;
       if (record?.nutrition) {
         haptics.success();
-        onFound(record.nutrition, record.name);
+        onFound(record.nutrition, record.name, record.quantity);
         onClose();
         return;
       }

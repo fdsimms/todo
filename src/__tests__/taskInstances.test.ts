@@ -1,4 +1,4 @@
-import { getRepeatedInstances, normalizeTitle } from '../utils/taskInstances';
+import { getRepeatedInstances, normalizeTitle, taskForTitleKey } from '../utils/taskInstances';
 import type { Task } from '../types';
 
 const makeTask = (overrides: Partial<Task> = {}): Task => ({
@@ -284,5 +284,20 @@ describe('getRepeatedInstances', () => {
       makeTask({ id: 'b', title: '   ', completedAt: '2025-01-02T00:00:00.000Z' }),
     ];
     expect(getRepeatedInstances(tasks)).toEqual([]);
+  });
+});
+
+describe('taskForTitleKey', () => {
+  const t = (over: Partial<Task>) => ({ id: 'x', title: 'Stretch', parentId: null, archived: false, completed: false, completedAt: null, ...over }) as Task;
+
+  it('prefers the open task, else the latest finished one', () => {
+    const old = t({ id: 'old', completed: true, completedAt: '2026-01-01T00:00:00.000Z' });
+    const newer = t({ id: 'newer', title: ' stretch ', completed: true, completedAt: '2026-02-01T00:00:00.000Z' });
+    expect(taskForTitleKey([old, newer], 'stretch')?.id).toBe('newer');
+    expect(taskForTitleKey([old, t({ id: 'live' }), newer], 'stretch')?.id).toBe('live');
+  });
+
+  it('skips subtasks and archived rows, and answers null when none is left', () => {
+    expect(taskForTitleKey([t({ parentId: 'p' }), t({ archived: true })], 'stretch')).toBeNull();
   });
 });

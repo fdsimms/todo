@@ -185,6 +185,7 @@ export const WRITE_TOOLS: Record<string, { title: string; destructive: boolean; 
   skip_occurrence: { title: 'Skip an occurrence', destructive: false, idempotent: false },
   set_task_dates: { title: 'Set a task\'s dates', destructive: true, idempotent: true },
   duplicate_task: { title: 'Copy a task', destructive: false, idempotent: false },
+  rename_tag: { title: 'Rename a tag', destructive: true, idempotent: false },
   delete_tag: { title: 'Delete a tag', destructive: true, idempotent: true },
   set_completion_date: { title: 'Change when a task was done', destructive: true, idempotent: true },
   add_project_steps: { title: 'Add steps to a project', destructive: false, idempotent: false },

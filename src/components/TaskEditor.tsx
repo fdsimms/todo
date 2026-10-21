@@ -52,6 +52,7 @@ import { StepLink } from './StepLink';
 import { ChainStepLinkSheet } from './ChainStepLinkSheet';
 import { disclosureValue } from '../theme/textStyles';
 import { RotationWorkoutSheet } from './RotationWorkoutSheet';
+import { RoutineEditorSheet } from './RoutineEditorSheet';
 import { format } from 'date-fns/format';
 import { addMonths } from 'date-fns/addMonths';
 import { addDays } from 'date-fns/addDays';
@@ -68,10 +69,9 @@ import { haptics } from '../utils/haptics';
 import { BOUNTY_WITHDRAWN, DIFFICULTY_HINT, DIFFICULTY_PICKER_SEGMENTS, DIFFICULTY_SEGMENTS, bountyCoinsFor, canPostBounty, describeBounty, formatCoins, isBountyLive, liveBountyCount } from '../utils/rewards';
 import { medicationVocabulary, medicationKey } from '../utils/medicationLog';
 import { useTitleSelection } from '../hooks/useTitleSelection';
-import { confirmDelete } from '../utils/confirmDelete';
-import { confirmDeleteGenerated } from '../utils/confirmDeleteGenerated';
+import { confirmDeleteTask } from '../utils/confirmDeleteTask';
+import { defaultReminderAt } from '../utils/reminderDefault';
 import { offerGeneratedCategoryWriteBack } from '../utils/generatedCategoryPrompt';
-import { stoppableGenerator } from '../utils/generatedTasks';
 import { animateLayout } from '../utils/layoutAnimation';
 import { formatPhoneInput } from '../utils/phone';
 import {
@@ -125,6 +125,7 @@ import { CollapsibleField } from './CollapsibleField';
 import { canSlotIn, isSlotWaiting, slotInFromCategory } from '../utils/slotIn';
 import { PillGroup } from './PillGroup';
 import { EmptyNote } from './EmptyNote';
+import { RemindersOffNote } from './RemindersOffNote';
 import { HelpText } from './HelpText';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { pinnedPlaces } from '../utils/placeGate';
@@ -164,7 +165,7 @@ import { blockerFields, blockerIdsOf, describeBlocks, resolverFor, canBeBlockerO
 import { pickTitleSuggestion, suggestionMatch, describeTitleSuggestion } from '../utils/titleSuggestion';
 import { rainUnitFor } from '../utils/rainSkip';
 import { clampSupplyCount } from '../utils/supply';
-import { displayTitleFor, isMissableMealPlanTask, getVisibleAt, onLogicalDay, isQuotaTask, sunLocationOn } from '../utils/visibilityUtils';
+import { displayTitleFor, getVisibleAt, onLogicalDay, isQuotaTask, sunLocationOn } from '../utils/visibilityUtils';
 import { firstWeekAnchor, proratedFrom, proratedWeeklyTarget, quotaProrationPatch, weekDaysLeft } from '../utils/quotaSchedule';
 import { nextChainStepTitle } from '../utils/chain';
 import { RecurrencePicker } from './RecurrencePicker';
@@ -280,6 +281,11 @@ export interface TaskDraft {
   recurrenceCount: number | null;
   /** Carried over when the draft already names a specific time — an imported event's appointment time, for instance. */
   reminderTime?: Date | null;
+  /** The rest of a reminder quick add's picker set, so More details keeps it. See Task.reminderKind and its neighbours. */
+  reminderKind?: ReminderKind;
+  reminderOffsetDays?: number | null;
+  reminderTimeAnchor?: 'wallClock' | 'fixed';
+  reminderTracksVisibility?: boolean;
   /** What failing this costs in blocked-app minutes, and the time it's judged at. */
   penaltyMinutes?: number | null;
   penaltyCutoffTime?: string | null;
@@ -505,14 +511,19 @@ const WINDOW_KIND_OPTIONS: SegmentOption<'time' | SunEvent>[] = [
 
 const NO_TASKS: Task[] = [];
 
-function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false }: Props) {
+function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inline = false }: Props) {
+  // ==== the task on screen ====
+  // Duplicate swaps the open sheet onto the copy it made, so the copy can be
+  // changed at once; the host's own task is what it shows again next time.
+  // Held only while the sheet is open on the task it was made from.
+  const [duplicated, setDuplicated] = useState<{ from: Task; copy: Task } | null>(null);
+  if (duplicated && (!visible || duplicated.from !== taskProp)) setDuplicated(null);
+  const task = duplicated && visible && duplicated.from === taskProp ? duplicated.copy : taskProp;
   // ==== store bindings ====
   const addTask = useTaskStore(s => s.addTask);
   const addTaskSeries = useTaskStore(s => s.addTaskSeries);
   const applyTaskDates = useTaskStore(s => s.applyTaskDates);
   const updateTask = useTaskStore(s => s.updateTask);
-  const deleteTask = useTaskStore(s => s.deleteTask);
-  const markMissed = useTaskStore(s => s.markMissed);
   const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
   const bountyLimit = useSettingsStore(s => s.bountyLimit);
   const setLastAction = useTaskStore(s => s.setLastAction);
@@ -532,7 +543,6 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
   const seriesRowsOf = useTaskStore(s => s.seriesRowsOf);
   const blockedTasksOf = useTaskStore(s => s.blockedTasksOf);
   const setBlockedTasks = useTaskStore(s => s.setBlockedTasks);
-  const deleteSeries = useTaskStore(s => s.deleteSeries);
   const archiveTask = useTaskStore(s => s.archiveTask);
   const unarchiveTask = useTaskStore(s => s.unarchiveTask);
   const allTagsStore = useTaskStore(useShallow(s => s.allTags()));
@@ -1003,6 +1013,9 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
   const [newRotationItemTitle, setNewRotationItemTitle] = useState('');
   // The member whose workout the sheet is choosing (`RotationItem.workoutRoutineId`).
   const [workoutMemberId, setWorkoutMemberId] = useState<string | null>(null);
+  // A routine being made from here, and what it is for: the task's own
+  // Workout row, or one rotation member. What it saves is linked to that.
+  const [newRoutineFor, setNewRoutineFor] = useState<'task' | { memberId: string } | null>(null);
   const [addingRotationItem, setAddingRotationItem] = useState(false);
   const [editingChainItemId, setEditingChainItemId] = useState<string | null>(null);
   const [chainItemTitleEdit, setChainItemTitleEdit] = useState('');
@@ -1297,7 +1310,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
       // because the one before it was. A new field goes in both branches.
       setTitle(initialDraft?.title ?? ''); titleCaret.resetCaret(initialDraft?.title ?? ''); setNotes(initialDraft?.notes ?? ''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
-      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setDeadlineTime(null); setDeadlineTimePickerOpen(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setWindowStartSun(initialDraft?.windowStartSun ?? null); setWindowEndSun(initialDraft?.windowEndSun ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setGateGroupId(initialDraft?.gateGroupId ?? null); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day');  setStreakCountsUnits(false); setQuotaRampStep(null); setQuotaRampEvery(1); setQuotaRampGoal(null); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setCoinsPerTap(initialDraft?.coinsPerTap ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaPlaceIds(initialDraft?.quotaPlaceIds ?? []); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setQuotaRestAfterLog(initialDraft?.quotaRestAfterLog ?? false); setProrateFirstWeek(true); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setMeterInput(meterInputFromDraft(initialDraft)); setMeterOpen(false); setMeterReadingText(''); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
+      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setDeadlineTime(null); setDeadlineTimePickerOpen(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setWindowStartSun(initialDraft?.windowStartSun ?? null); setWindowEndSun(initialDraft?.windowEndSun ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setGateGroupId(initialDraft?.gateGroupId ?? null); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day');  setStreakCountsUnits(false); setQuotaRampStep(null); setQuotaRampEvery(1); setQuotaRampGoal(null); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setCoinsPerTap(initialDraft?.coinsPerTap ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaPlaceIds(initialDraft?.quotaPlaceIds ?? []); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setQuotaRestAfterLog(initialDraft?.quotaRestAfterLog ?? false); setProrateFirstWeek(true); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setMeterInput(meterInputFromDraft(initialDraft)); setMeterOpen(false); setMeterReadingText(''); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind(initialDraft?.reminderKind ?? 'notification'); setReminderTimeAnchor(initialDraft?.reminderTimeAnchor ?? 'wallClock'); setReminderOffsetDays(initialDraft?.reminderOffsetDays ?? null); setReminderTracksVisibility(initialDraft?.reminderTracksVisibility ?? false); setReminderTouched(false);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
@@ -1370,7 +1383,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
     setShowBlockerPicker(false);
     setShowBlocks(false); setShowBlocksPicker(false);
     setShowLinkPicker(false); setCustomLinkText('');
-    setShowWorkoutPicker(false);
+    setShowWorkoutPicker(false); setNewRoutineFor(null);
     setShowPhoneField(false); setPhoneText(task?.phoneNumber ?? initialDraft?.phoneNumber ?? '');
     setShowEmailField(false); setEmailText(task?.emailAddress ?? initialDraft?.emailAddress ?? '');
     setShowLocationField(false); setLocationText(task?.location ?? initialDraft?.location ?? '');
@@ -2809,12 +2822,17 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
 
   const openPicker = (mode: PickerMode) => {
     if (mode === 'reminder') {
-      // Copied rather than used directly: setHours below mutates, and mutating
-      // `dueDate` here would move the task's own date to 09:00 as a side effect
-      // of opening the reminder picker. The logical day when there is no date,
-      // for the reason every other default in this file gives.
-      const defaultDate = new Date(dueDate ?? getLogicalToday());
-      defaultDate.setHours(9, 0, 0, 0);
+      // Copied rather than used directly, so working out the default can't
+      // move the task's own date. The logical day when there is no date, for
+      // the reason every other default in this file gives.
+      // Starts when the task's time of day begins, or 9:00 with none.
+      const { morningStart, afternoonStart, eveningStart, nightStart } = useSettingsStore.getState();
+      const defaultDate = defaultReminderAt(
+        new Date(dueDate ?? getLogicalToday()),
+        timeSegments,
+        { morning: morningStart, afternoon: afternoonStart, evening: eveningStart, night: nightStart },
+        dayResetTime,
+      );
       setPickerDate(reminderTime ?? defaultDate);
     }
     setPickerMode(mode);
@@ -3135,8 +3153,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
     if (recurrenceCount === null) setRecurrenceCount(5);
   };
 
-  const handleCancel = () => {
-    const current = JSON.stringify({
+  // Whether the form differs from what it opened with.
+  const hasUnsavedChanges = (): boolean => JSON.stringify({
       title, notes, category, projectId: project, tags, personIds,
       dueDate: dueDate?.toISOString() ?? null,
       deadline: deadline?.toISOString() ?? null,
@@ -3227,131 +3245,45 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
       followUpTaskDraft,
       followUpTaskOneAtATime,
       followUpTaskAtEnd,
-    });
-    if (current !== initialStateRef.current) {
+    }) !== initialStateRef.current;
+
+  const handleCancel = () => {
+    if (hasUnsavedChanges()) {
       confirmDiscard(onClose);
     } else {
       onClose();
     }
   };
 
+  // A copy of the task as saved, which the sheet then shows (see `duplicated`
+  // above). Edits not yet saved aren't in it, so it says so before it makes one.
+  const handleDuplicate = () => {
+    if (!task || !taskProp) return;
+    const from = taskProp;
+    const original = task;
+    const run = () => {
+      const copy = useTaskStore.getState().duplicateTask(original.id);
+      if (!copy) return;
+      haptics.success();
+      setDuplicated({ from, copy });
+    };
+    if (!hasUnsavedChanges()) { run(); return; }
+    Alert.alert(
+      'Duplicate the saved version?',
+      'Your changes here haven’t been saved, so the copy won’t have them.',
+      [
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
+        { text: 'Duplicate', onPress: run },
+      ],
+    );
+  };
+
+  // The questions a delete asks (missed instead, this date or all of them,
+  // turn the generator off) live in `confirmDeleteTask`, shared with the
+  // trash on a row's panel.
   const handleDelete = () => {
     if (!task) return;
-    if (task.recurrenceType !== 'none') {
-      Alert.alert(
-        'Delete recurring task',
-        'This task repeats. Mark this one missed, or delete it and stop it repeating?',
-        [
-          { text: BUTTON_LABEL.cancel, style: 'cancel' },
-          {
-            text: 'Mark missed',
-            onPress: () => {
-              markMissed(task.id);
-              onClose();
-            },
-          },
-          {
-            text: 'Delete and stop repeating',
-            style: 'destructive',
-            onPress: () => {
-              haptics.success();
-              deleteTask(task.id);
-              onClose();
-            },
-          },
-        ],
-      );
-      return;
-    }
-    // A meal-plan task has the same choice a recurring one does, just no
-    // series to stop — tomorrow's row already exists on its own, so there's
-    // nothing "and stop" would mean here.
-    if (isMissableMealPlanTask(task)) {
-      Alert.alert(
-        'Delete meal task',
-        'This came from your meal plan. Mark it missed to keep a record, or delete it?',
-        [
-          { text: BUTTON_LABEL.cancel, style: 'cancel' },
-          {
-            text: 'Mark missed',
-            onPress: () => {
-              // Later steps of a meal-plan chain depend on this one.
-              markMissed(task.id, { wholeChain: true });
-              onClose();
-            },
-          },
-          {
-            text: BUTTON_LABEL.delete,
-            style: 'destructive',
-            onPress: () => {
-              haptics.success();
-              deleteTask(task.id);
-              onClose();
-            },
-          },
-          ...(stoppableGenerator(task, useSettingsStore.getState()) ? [{
-            text: 'Delete and turn off',
-            style: 'destructive' as const,
-            onPress: () => {
-              haptics.success();
-              deleteTask(task.id, { stopGenerator: true });
-              onClose();
-            },
-          }] : []),
-        ],
-      );
-      return;
-    }
-    // A dated series has real rows for its other dates, so deleting is
-    // ambiguous the same way it is for a recurrence — this date, or the lot.
-    // Either way the set's completed dates stay in the Logbook.
-    const seriesId = task.seriesId;
-    const remaining = seriesId
-      ? seriesRowsOf(seriesId).filter(t => !t.completed).length
-      : 0;
-    if (seriesId && remaining > 1) {
-      Alert.alert(
-        'Delete task on several dates',
-        `This task has ${remaining} dates left. Delete this date only, or all of them?`,
-        [
-          { text: BUTTON_LABEL.cancel, style: 'cancel' },
-          {
-            text: 'Just this date',
-            onPress: () => {
-              haptics.success();
-              deleteTask(task.id);
-              onClose();
-            },
-          },
-          {
-            text: 'All dates',
-            style: 'destructive',
-            onPress: () => {
-              haptics.success();
-              deleteSeries(seriesId);
-              onClose();
-            },
-          },
-        ],
-      );
-      return;
-    }
-    if (task.generatedKind) {
-      confirmDeleteGenerated(task, () => {
-        haptics.success();
-        onClose();
-      });
-      return;
-    }
-    confirmDelete({
-      title: 'Delete task?',
-      message: `Delete “${task.title}”?`,
-      onConfirm: () => {
-        haptics.success();
-        deleteTask(task.id);
-        onClose();
-      },
-    });
+    confirmDeleteTask(task, onClose);
   };
 
 
@@ -4149,7 +4081,22 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
               onSave={link => setRotationItems(prev => prev.map(
                 r => (r.id === workoutMemberId ? withWorkout(r, link) : r),
               ))}
+              onNewRoutine={() => { if (workoutMemberId) setNewRoutineFor({ memberId: workoutMemberId }); }}
               onClose={() => setWorkoutMemberId(null)}
+            />
+          </LazySheet>
+          <LazySheet open={newRoutineFor !== null}>
+            <RoutineEditorSheet
+              visible={visible && newRoutineFor !== null}
+              routineId={null}
+              onSaved={routine => {
+                if (newRoutineFor === 'task') pickWorkout({ routineId: routine.id });
+                else if (newRoutineFor) {
+                  const { memberId } = newRoutineFor;
+                  setRotationItems(prev => prev.map(r => (r.id === memberId ? withWorkout(r, { routineId: routine.id }) : r)));
+                }
+              }}
+              onClose={() => setNewRoutineFor(null)}
             />
           </LazySheet>
           <LazySheet open={showFollowUpTaskSheet}>
@@ -6011,6 +5958,11 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
                 : undefined}
               onPress={() => openPicker('reminder')}
               onClear={reminderTime ? () => { setReminderTime(null); setReminderKind('notification'); setReminderOffsetDays(null); setReminderTracksVisibility(false); setReminderTimeAnchor('wallClock'); setReminderTouched(true); } : undefined}
+            />
+            {/* An alarm rings through AlarmKit, which has its own permission. */}
+            <RemindersOffNote
+              enabled={visible && !!reminderTime && reminderKind !== 'alarm'}
+              style={styles.reminderOffNote}
             />
               </>
             ),
@@ -7977,7 +7929,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
               return (
               <View style={styles.workoutPicker}>
                 {workoutRoutines.length === 0 ? (
-                  <EmptyNote icon="barbell-outline">No routines yet. Make one on the Workouts screen, then link it here.</EmptyNote>
+                  <EmptyNote icon="barbell-outline">No routines yet. Make one here, and it’s linked to this task.</EmptyNote>
                 ) : (
                   <>
                     {programs.length > 0 && (
@@ -8013,6 +7965,13 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
                     />
                   </>
                 )}
+                <View style={styles.workoutNewRow}>
+                  <InlineAction
+                    label="New routine"
+                    variant={workoutRoutines.length === 0 ? 'accent' : 'neutral'}
+                    onPress={() => { haptics.tap(); setNewRoutineFor('task'); }}
+                  />
+                </View>
               </View>
               );
             })()}
@@ -8756,6 +8715,20 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose, inline = false 
                   {task.archived && <Toggle value onColor={colors.orange} />}
                 </TouchableOpacity>
           <View style={styles.sep} />
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={handleDuplicate}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel="Duplicate task"
+          >
+            <Ionicons name="duplicate-outline" size={18} color={colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Duplicate</Text>
+              <Text style={styles.optionHint}>Make a copy, with its subtasks, and open it here</Text>
+            </View>
+          </TouchableOpacity>
+          <View style={styles.sep} />
           <TouchableOpacity style={styles.optionRow} onPress={handleDelete} activeOpacity={interaction.activeOpacity}>
             <Ionicons name="trash-outline" size={18} color={colors.red} />
             <View style={styles.optionContent}>
@@ -9084,6 +9057,7 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     color: colors.textSecondary, fontSize: font.xs, fontWeight: '700',
     textTransform: 'uppercase', letterSpacing: 0.8, marginTop: spacing.xs, marginBottom: spacing.sm,
   },
+  workoutNewRow: { flexDirection: 'row', marginTop: spacing.smd },
   workoutPickerHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xs, marginBottom: spacing.smd },
   linkPickerRow: {
     flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs,
@@ -9131,6 +9105,7 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     flexDirection: 'row', gap: spacing.xs,
     paddingHorizontal: spacing.md, paddingBottom: spacing.md,
   },
+  reminderOffNote: { marginHorizontal: spacing.md, marginBottom: spacing.md },
   schedulePill: {
     paddingHorizontal: spacing.smd, paddingVertical: 5,
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,

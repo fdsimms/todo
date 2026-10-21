@@ -32,6 +32,7 @@ import { formatTimeOfDay } from '../utils/dateUtils';
 import { catalogExercise } from '../utils/exerciseCatalog';
 import { sessionRecordSummary } from '../utils/workoutRecords';
 import { routineItemsFromSets } from '../utils/workoutRoutine';
+import { startWorkout } from '../utils/startWorkout';
 import { formatSetLine, sessionExercises, sessionMinutes, setBadge, setLabels, setName } from '../utils/workoutSession';
 import { WORKOUT_EFFORT } from '../utils/workoutData';
 import { workoutSpanWritable } from '../utils/healthWorkoutSync';
@@ -298,6 +299,25 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose }: Props) {
     );
   };
 
+  // ==== doing it again ====
+  // Its routine when it still has one, so the numbers come from the routine
+  // and last time the way any start does; otherwise the sets it did, laid out
+  // again. Not offered while another workout is going, which a start would
+  // only refuse.
+  const routineLive = useWorkoutStore(s => !!session?.routineId && s.routines.some(r => r.id === session.routineId));
+  const anotherLive = useWorkoutStore(s => s.sessions.some(x => x.endedAt === null));
+  const canRepeat = !anotherLive && session?.endedAt != null && (routineLive || sets.some(s => s.completedAt !== null));
+
+  const doAgain = () => {
+    if (!current) return;
+    const input = routineLive && current.routineId
+      ? { routineId: current.routineId }
+      : { repeat: { title: current.title, sets } };
+    // Closed in the same commit the workout opens, which SheetModal orders.
+    onClose();
+    startWorkout(input);
+  };
+
   // ==== deleting ====
   const remove = () => {
     if (!current) return;
@@ -486,9 +506,21 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose }: Props) {
               />
             </View>
 
-            {routineItems.length > 0 && (
+            {canRepeat && (
               <TouchableOpacity
                 style={styles.actionRow}
+                onPress={doAgain}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityHint={routineLive ? 'Starts this routine again' : 'Starts a new workout with these exercises and sets'}
+              >
+                <Text style={styles.actionText}>Do this again</Text>
+              </TouchableOpacity>
+            )}
+
+            {routineItems.length > 0 && (
+              <TouchableOpacity
+                style={[styles.actionRow, canRepeat && styles.actionRowNext]}
                 onPress={saveAsRoutine}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
@@ -566,6 +598,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', minHeight: 48, marginTop: spacing.lg,
     paddingVertical: spacing.smd, backgroundColor: colors.bgSecondary, borderRadius: radius.md,
   },
+  // A second action under the first sits with it rather than a section away.
+  actionRowNext: { marginTop: spacing.sm },
   actionText: { color: colors.accentText, fontSize: font.md, fontWeight: fontWeight.semibold },
   deleteRow: {
     alignItems: 'center', justifyContent: 'center', minHeight: 48, marginTop: spacing.md,

@@ -29,6 +29,7 @@ import { SegmentedControl } from './SegmentedControl';
 import { SheetScrim } from './SheetScrim';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { TextField } from './TextField';
+import { cleanPastedLines } from '../utils/pastedLines';
 
 /** Same short labels the main quick add uses, so the two priority rows read alike. */
 const PRIORITY_LABELS_SHORT = ['None', 'Low', 'Med', 'High', 'Urgent'] as const;
@@ -93,6 +94,10 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
   const [dueOffsetDays, setDueOffsetDays] = useState<number | null>(null);
   const [optional, setOptional] = useState(false);
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
+  // How many items this open of the sheet has added. The sheet stays open
+  // after each one, since a template is a list and is usually built several
+  // items at a time; the count says each Return landed.
+  const [addedCount, setAddedCount] = useState(0);
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -114,6 +119,7 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
   useEffect(() => {
     if (!visible) return;
     setTitle('');
+    setAddedCount(0);
     setPriority(0);
     setCategory(null);
     setAnchor('start');
@@ -168,25 +174,49 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
 
   const trimmedTitle = title.trim();
 
-  const createItem = () => {
-    if (!trimmedTitle) return;
-    const created = addItem(templateId, draft());
-    // Dismissing regardless is how an add that never happened came to look
-    // exactly like one that did. Nothing was stored, so the sheet stays put
-    // with the title intact rather than closing on a row that will never
-    // appear (see addItem in useTemplateStore).
-    if (!created) {
-      haptics.error();
-      Alert.alert(
-        'Couldn’t add that item',
-        'Couldn’t find this template, so nothing was saved. Reopen it from Templates and try again.',
-      );
-      return;
+  // Adds one item per title, each with the attributes chosen in the toolbar,
+  // and keeps the sheet open for the next. Stops at the first refusal, which
+  // leaves the titles it couldn't add in the field.
+  const addTitles = (titles: string[]): boolean => {
+    for (let i = 0; i < titles.length; i++) {
+      const created = addItem(templateId, { ...draft(), title: titles[i] });
+      // Dismissing regardless is how an add that never happened came to look
+      // exactly like one that did. Nothing was stored, so the sheet stays put
+      // with the title intact rather than closing on a row that will never
+      // appear (see addItem in useTemplateStore).
+      if (!created) {
+        haptics.error();
+        setTitle(titles.slice(i).join(' '));
+        Alert.alert(
+          'Couldn’t add that item',
+          'Couldn’t find this template, so nothing was saved. Reopen it from Templates and try again.',
+        );
+        return false;
+      }
+      animateLayout();
+      onCreated?.(created);
+      setAddedCount(n => n + 1);
     }
     haptics.success();
-    animateLayout();
-    onCreated?.(created);
-    dismiss();
+    return true;
+  };
+
+  const createItem = () => {
+    if (!trimmedTitle) return;
+    if (addTitles([trimmedTitle])) {
+      setTitle('');
+      inputRef.current?.focus();
+    }
+  };
+
+  // A pasted list becomes an item per line, the way a project's line field
+  // takes one.
+  const changeTitle = (next: string) => {
+    if (!/[\r\n]/.test(next)) { setTitle(next); return; }
+    const lines = cleanPastedLines(next.split(/\r?\n/));
+    if (lines.length <= 1) { setTitle(lines[0] ?? ''); return; }
+    setTitle('');
+    addTitles(lines);
   };
 
   const handleOpenFull = () => {
@@ -224,6 +254,11 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
               <Ionicons name="copy" size={13} color={colors.accent} />
               <Text style={styles.seedChipText} numberOfLines={1}>{templateName}</Text>
             </View>
+            {addedCount > 0 && (
+              <Text style={styles.addedText} accessibilityLiveRegion="polite">
+                {addedCount === 1 ? '1 item added' : `${addedCount} items added`}
+              </Text>
+            )}
           </View>
 
           {/* Title input row */}
@@ -232,7 +267,7 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
               ref={inputRef}
               style={styles.input}
               value={title}
-              onChangeText={setTitle}
+              onChangeText={changeTitle}
               placeholder="New item…"
               placeholderTextColor={colors.textTertiary}
               maxLength={TITLE_MAX_LENGTH}
@@ -463,8 +498,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   seedRow: {
     flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
     marginBottom: spacing.sm,
   },
+  addedText: { color: colors.textSecondary, fontSize: font.xs },
   seedChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -474,6 +512,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.full,
     backgroundColor: colors.accentSubtle,
     maxWidth: '100%',
+    flexShrink: 1,
   },
   seedChipText: {
     color: colors.accent,

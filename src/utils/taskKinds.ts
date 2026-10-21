@@ -118,7 +118,7 @@ export function taskKindOf(v: {
 
 /** Every attribute chip the quick-add toolbar can offer. */
 export type QuickAddChip =
-  | 'date' | 'repeat' | 'segment' | 'priority' | 'effort' | 'difficulty' | 'tags' | 'category' | 'project' | 'link' | 'phone' | 'email'
+  | 'date' | 'repeat' | 'segment' | 'reminder' | 'priority' | 'effort' | 'difficulty' | 'tags' | 'category' | 'project' | 'link' | 'phone' | 'email'
   | 'supply';
 
 /**
@@ -137,6 +137,7 @@ export const QUICK_ADD_CHIP_LABELS: Record<QuickAddChip, string> = {
   date: 'Date',
   repeat: 'Repeat',
   segment: 'Time of day',
+  reminder: 'Reminder',
   priority: 'Priority',
   effort: 'Effort',
   difficulty: 'Difficulty',

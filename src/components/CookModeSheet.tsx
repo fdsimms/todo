@@ -397,9 +397,9 @@ export function CookModeSheet({
   const annotated = useMemo(
     () => annotateSteps(
       steps.map(s => ({ id: s.id, text: s.text, recipeId: s.recipe.id })),
-      stepIngredientLines(ingredients, scale, unitSystem),
+      stepIngredientLines(ingredients, scale, unitSystem, weightLookups),
     ),
-    [steps, ingredients, scale, unitSystem]
+    [steps, ingredients, scale, unitSystem, weightLookups]
   );
 
   // Which engine would answer, so the entry point can't exist for a call that

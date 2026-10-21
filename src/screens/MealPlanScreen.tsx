@@ -76,6 +76,8 @@ import {
   mealTitleForLeftover,
   suggestableLeftovers,
 } from '../utils/leftovers';
+import { usePantryCatalog } from '../hooks/usePantryCatalog';
+import { mealPickerShelves } from '../utils/mealPicker';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
@@ -348,6 +350,7 @@ const COPY_LOOKBACK_WEEKS = 4;
 const DRAG_LIFT_SCALE = 1.03;
 
 const NO_FOOD_LOG: FoodLogEntry[] = [];
+const NO_RECIPES: Recipe[] = [];
 
 export function MealPlanScreen() {
   const pullSearch = usePullToSearch();
@@ -387,6 +390,10 @@ export function MealPlanScreen() {
   const [anchor, setAnchor] = useState(() => getLogicalToday());
 
   const days = useMemo(() => buildWeekDays(anchor, weekStartsOn), [anchor, weekStartsOn]);
+  const pickerWeekDays = useMemo(
+    () => days.map(d => ({ key: dayKeyOf(d), label: format(d, 'EEEE'), short: format(d, 'EEE') })),
+    [days],
+  );
   const range = useMemo(() => dayKeyRange(days), [days]);
 
   const entries = useMealPlanStore(useShallow(s => s.entries));
@@ -470,7 +477,10 @@ export function MealPlanScreen() {
   // shelf. `planRecipe` is unused here: this screen plans free text and
   // leftovers too, so it calls planMeal directly and only shares the offer.
   const { offerPrepTasks, offerPrepTasksForEach, earliestUnplannedSlotToday } = usePlanMeal();
-  const groceryItems = useGroceryStore(useShallow(s => s.items));
+  // Kept the same array through a tick at the shop (usePantryCatalog): nothing
+  // here reads `checked`, and every memo below (suggestions, costs, nutrition,
+  // each day's lines) used to rerun on every check-off.
+  const groceryItems = useGroceryStore(usePantryCatalog());
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
   // A specific box's panel outranks its catalog row's, which is the whole
   // point of `nutritionFor` — reading the week without these would quote a
@@ -676,6 +686,7 @@ export function MealPlanScreen() {
     useState<{
       recipes: Recipe[];
       cookAgainRecipes: Recipe[];
+      leadingGroups: { title: string; recipes: Recipe[] }[];
       leftovers: Leftover[];
       days: Date[];
     } | null>(null);
@@ -1817,9 +1828,28 @@ export function MealPlanScreen() {
   // accepted the sheet's own first suggestion, which emptied the list they were
   // reading out from under them mid-flow. The week decides whether the shelf is
   // *offered* (canSuggestMeals), never what is on it.
+  //
+  // Only worked out while there's a night to fill: it ranks every recipe
+  // against the catalog, and with no open night the shelf isn't offered.
+  const hasOpenNight = openDinnerDays.length > 0;
+  // What leads the sheet: the recipes bookmarked Up Next and loved ones gone
+  // quiet, the picker's own first two shelves (mealPickerShelves). The other
+  // two lists leave these out, so no recipe shows twice.
+  const leadingGroups = useMemo(() => {
+    if (!hasOpenNight) return [];
+    const { upNext, lovedResting } = mealPickerShelves(recipes, new Date(), 0);
+    return [
+      { title: 'Up next', recipes: upNext },
+      { title: 'Loved, not cooked lately', recipes: lovedResting },
+    ].filter(g => g.recipes.length > 0);
+  }, [hasOpenNight, recipes]);
+  const leadingIds = useMemo(() => new Set(leadingGroups.flatMap(g => g.recipes.map(r => r.id))), [leadingGroups]);
   const mealSuggestions = useMemo(
-    () => suggestRecipesForEmptyNight(recipes, groceryItems, new Date(), itemProducts, 5, itemSubs),
-    [recipes, groceryItems, itemProducts, itemSubs]
+    () => (hasOpenNight
+      ? suggestRecipesForEmptyNight(recipes, groceryItems, new Date(), itemProducts, 5 + leadingIds.size, itemSubs)
+        .filter(r => !leadingIds.has(r.id)).slice(0, 5)
+      : NO_RECIPES),
+    [hasOpenNight, recipes, groceryItems, itemProducts, itemSubs, leadingIds]
   );
 
   // Recipes made often and made recently — the comfort-food half of the
@@ -1830,21 +1860,24 @@ export function MealPlanScreen() {
   // exactly what this sheet is already for. Deduped against `mealSuggestions`
   // so a recipe that qualifies for both doesn't show up as two rows.
   const cookAgainSuggestions = useMemo(() => {
-    const alreadyRanked = new Set(mealSuggestions.map(r => r.id));
+    const alreadyRanked = new Set([...mealSuggestions.map(r => r.id), ...leadingIds]);
     return rankRecipeSuggestions(recipes, new Date()).filter(r => !alreadyRanked.has(r.id));
-  }, [recipes, mealSuggestions]);
+  }, [recipes, mealSuggestions, leadingIds]);
 
   // The visible half of #1103's pantry signal — computed only for the
   // recipes actually on the suggestions shelf, same "just the visible list"
   // scoping RecipesScreen's pantryCounts uses, not the whole library.
+  // Worked out once the sheet is open, for the recipes it was opened with: the
+  // sheet is the only reader.
   const suggestionPantryCoverage = useMemo(() => {
-    const byId = recipeMap(recipes);
     const map = new Map<string, PantryCoverage>();
-    for (const recipe of mealSuggestions) {
+    if (!suggesting) return map;
+    const byId = recipeMap(recipes);
+    for (const recipe of suggesting.recipes) {
       map.set(recipe.id, pantryCoverageForRecipe(recipe, groceryItems, new Date(), itemProducts, byId, itemSubs));
     }
     return map;
-  }, [mealSuggestions, recipes, groceryItems, itemProducts, itemSubs]);
+  }, [suggesting, recipes, groceryItems, itemProducts, itemSubs]);
 
   // What the fridge can fill a night with, for the same sheet. Live containers
   // minus the ones this week already points at — the rule and its reasons live
@@ -1867,7 +1900,7 @@ export function MealPlanScreen() {
   // with every dinner spoken for still offers nothing, since there is nowhere
   // for an acceptance to land.
   const canSuggestMeals = openDinnerDays.length > 0
-    && (mealSuggestions.length > 0 || cookAgainSuggestions.length > 0
+    && (mealSuggestions.length > 0 || cookAgainSuggestions.length > 0 || leadingGroups.length > 0
       || fridgeSuggestions.length > 0 || mealIdeasRoute !== 'unavailable');
 
   // Context for the AI half of that sheet (#1063), so an invented idea isn't
@@ -2302,6 +2335,7 @@ export function MealPlanScreen() {
                           setSuggesting({
                             recipes: mealSuggestions,
                             cookAgainRecipes: cookAgainSuggestions,
+                            leadingGroups,
                             leftovers: fridgeSuggestions,
                             days: openDinnerDays,
                           });
@@ -2495,6 +2529,9 @@ export function MealPlanScreen() {
           onPlan={planFromPicker}
           onPlanned={offerPrepTasksForEach}
           onUnplan={removeEntry}
+          // The week on screen, so the next night is a chip away (not for a
+          // meal task's own slot, which is about one day).
+          weekDays={planningSlot ? undefined : pickerWeekDays}
           onClose={() => {
             setPlanningDay(null);
             setPlanningSlot(null);
@@ -2698,6 +2735,7 @@ export function MealPlanScreen() {
           visible={suggesting !== null}
           recipes={suggesting?.recipes ?? []}
           cookAgainRecipes={suggesting?.cookAgainRecipes ?? []}
+          leadingGroups={suggesting?.leadingGroups}
           leftovers={suggesting?.leftovers ?? []}
           pantryByRecipeId={suggestionPantryCoverage}
           openDays={suggesting?.days ?? []}

@@ -71,6 +71,12 @@ export interface TemplateRunOptions {
    * back until it's marked ready. Only a run that creates a project reads it.
    */
   planning?: boolean;
+  /**
+   * Make a named run a project whatever the template's own container, for a
+   * run started where a project is being made (the new project sheet), so
+   * what was asked for is what comes out. `targetProjectId` still wins.
+   */
+  asProject?: boolean;
 }
 
 export type RunDraft = ReturnType<typeof buildDraftsFromTemplateTree>[number];
@@ -140,6 +146,7 @@ export function applyTemplateRun(
   let container = runName
     ? resolveApplyContainer(template.applyContainer, expanded, templatesById)
     : 'none';
+  if (options?.asProject && runName) container = 'project';
   if (options?.targetProjectId && container === 'project') container = 'stack';
 
   // The run stack's (and run task's) category is majorityCategory's read of its

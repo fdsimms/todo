@@ -174,6 +174,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     setTaskDates: () => { throw new Error('not stubbed'); },
     duplicateTask: () => { throw new Error('not stubbed'); },
     deleteTag: () => { throw new Error('not stubbed'); },
+    renameTag: () => { throw new Error('not stubbed'); },
     setCompletedAt: () => { throw new Error('not stubbed'); },
     tagList: () => [],
     updateStack: () => { throw new Error('not stubbed'); },

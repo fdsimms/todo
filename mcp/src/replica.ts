@@ -1801,6 +1801,14 @@ export interface Replica {
   duplicateTask(id: string): Task;
   /** Take a tag off every task and out of the tag list. Returns each task it changed, before and after. */
   deleteTag(tag: string): { before: Task; after: Task }[];
+  /**
+   * Rename a tag everywhere the app's rename reaches (`renameTag` in the task
+   * store): every task, finished ones included, the tag list, stacks, template
+   * items, saved views, title rules, reminder captures and generator extras.
+   * Onto a tag that already exists it merges the two. Returns each task it
+   * changed, before and after.
+   */
+  renameTag(tag: string, newName: string): { from: string; to: string; merged: boolean; changed: { before: Task; after: Task }[] };
   /** Correct when a completed task was done, as the Logbook's date edit does. */
   setCompletedAt(id: string, at: Date): Task;
   /** The tag list as the app keeps it: every tag in use and every one registered. */
@@ -6222,6 +6230,59 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return affected.map(before => ({ before, after: tasks().find(t => t.id === before.id)! }));
     },
 
+    renameTag(tag: string, newName: string) {
+      const rename = require('../../src/utils/tagRename') as typeof import('../../src/utils/tagRename'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const known = replica.tagList();
+      const from = known.find(t => t === rename.normalizeTagName(tag));
+      if (!from) throw new Error(`No tag "${tag}". The tags are: ${known.join(', ') || 'none yet'}.`);
+      const to = rename.normalizeTagName(newName);
+      if (!to) throw new Error('A tag needs a name.');
+      if (to === from) throw new Error('That is already its name.');
+      const merged = known.includes(to);
+      const affected = tasks().filter(t => t.tags.includes(from));
+      db.dbTransaction(() => {
+        for (const t of db.dbGetAllTasks()) {
+          const tags = rename.renameInTagList(t.tags, from, to);
+          const seriesDefaults = rename.renameTagInSeriesDefaults(t.seriesDefaults, from, to);
+          const followUpTaskDraft = rename.renameTagInFollowUpDraft(t.followUpTaskDraft, from, to);
+          if (tags !== t.tags || seriesDefaults !== t.seriesDefaults || followUpTaskDraft !== t.followUpTaskDraft) {
+            db.dbUpdateTask({ ...t, tags, seriesDefaults, followUpTaskDraft });
+          }
+        }
+        const registry = db.dbGetTagRegistry();
+        if (registry.includes(from)) {
+          db.dbRemoveFromTagRegistry(from);
+          if (!registry.includes(to)) db.dbAddToTagRegistry(to);
+        }
+        const groups = useTaskGroupStore.getState();
+        for (const g of groups.groups) {
+          const groupTags = rename.renameInTagList(g.tags, from, to);
+          if (groupTags !== g.tags) groups.updateGroup(g.id, { tags: groupTags });
+        }
+        for (const template of db.dbGetAllTemplates()) {
+          if (!template.items.some(i => i.tags.includes(from))) continue;
+          db.dbUpdateTemplate({ ...template, items: template.items.map(i => ({ ...i, tags: rename.renameInTagList(i.tags, from, to) })) });
+        }
+        const { useSavedViewStore } = require('../../src/store/useSavedViewStore') as typeof import('../../src/store/useSavedViewStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+        const views = useSavedViewStore.getState();
+        views.initialize();
+        for (const v of views.views) {
+          const clauses = rename.renameTagInViewClauses(v.clauses, from, to);
+          if (clauses !== v.clauses) views.updateView(v.id, { clauses });
+        }
+        const settings = useSettingsStore.getState();
+        const titleRules = rename.renameTagInTitleRules(settings.titleRules, from, to);
+        if (titleRules !== settings.titleRules) settings.setTitleRules(titleRules);
+        const captures = rename.renameTagInReminderCaptures(settings.reminderCaptures, from, to);
+        if (captures !== settings.reminderCaptures) settings.setReminderCaptures(captures);
+        for (const [kind, extras] of Object.entries(rename.renameTagInGeneratedExtras(settings.generatedTaskExtras, from, to))) {
+          settings.setGeneratedTaskExtras(kind as GeneratedKind, extras);
+        }
+      });
+      refresh();
+      return { from, to, merged, changed: affected.map(before => ({ before, after: tasks().find(t => t.id === before.id)! })) };
+    },
+
     setCompletedAt(id: string, at: Date): Task {
       const task = tasks().find(t => t.id === id);
       if (!task) throw new Error(`No task with id ${id}.`);
@@ -8262,6 +8323,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         },
       );
       db.dbInsertMealPlanEntry(entry);
+      // As the app's planMeal does: a planned recipe is no longer one to plan.
+      if (recipe?.upNext) db.dbUpdateRecipe({ ...recipe, upNext: false });
       return entry;
     },
 

@@ -1,5 +1,5 @@
 import type { FoodNutrition } from '../types';
-import { packageChoices, packageFractions, packageHelping, servingDescription, servingsPerPackage } from '../utils/scanPortion';
+import { packageChoices, packageFractions, packageHelping, packSizeGrams, servingDescription, servingsPerPackage } from '../utils/scanPortion';
 
 function panel(over: Partial<FoodNutrition> = {}): FoodNutrition {
   return {
@@ -15,6 +15,22 @@ function panel(over: Partial<FoodNutrition> = {}): FoodNutrition {
   };
 }
 
+describe('packSizeGrams', () => {
+  it('reads a plain mass as grams', () => {
+    expect(packSizeGrams('227 g')).toBe(227);
+    expect(packSizeGrams('8 oz')).toBe(226.8);
+    expect(packSizeGrams('1 lb')).toBe(453.59);
+  });
+
+  it('leaves a volume, a count or nothing for the person', () => {
+    expect(packSizeGrams('500 ml')).toBeNull();
+    expect(packSizeGrams('6 bars')).toBeNull();
+    expect(packSizeGrams('family size')).toBeNull();
+    expect(packSizeGrams(null)).toBeNull();
+    expect(packSizeGrams('  ')).toBeNull();
+  });
+});
+
 describe('servingsPerPackage', () => {
   it('divides a stated pack size by the stated serving', () => {
     expect(servingsPerPackage(panel(), '500 g')).toBe(11.1);
@@ -25,6 +41,24 @@ describe('servingsPerPackage', () => {
     // one, which is the whole thing this must not do.
     expect(servingsPerPackage(panel(), null)).toBeNull();
     expect(servingsPerPackage(panel(), '   ')).toBeNull();
+  });
+
+  it('uses a package weight typed onto the panel when the source stated no pack size', () => {
+    expect(servingsPerPackage(panel({ packageGrams: 227 }), null)).toBe(5.0);
+  });
+
+  it('prefers the typed weight to the source string', () => {
+    expect(servingsPerPackage(panel({ packageGrams: 450 }), '500 g')).toBe(10);
+  });
+
+  it('still needs a serving weight, and refuses a typed weight on a per-100ml panel', () => {
+    expect(servingsPerPackage(panel({ packageGrams: 227, servingGrams: null }), null)).toBeNull();
+    expect(servingsPerPackage(panel({ packageGrams: 227, basis: 'per100ml' }), null)).toBeNull();
+  });
+
+  it('offers the whole package from a typed weight', () => {
+    const choices = packageChoices(panel({ packageGrams: 450 }), null);
+    expect(choices.find(c => c.key === 'package')?.servings).toBe(10);
   });
 
   it('refuses a panel with no serving weight to divide by', () => {

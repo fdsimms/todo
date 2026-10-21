@@ -20,7 +20,7 @@ export const navigationRef = createNavigationContainerRef<any>();
 const pendingUntilReady: Array<() => void> = [];
 
 /** Runs `action` now, or queues it for once the navigator becomes ready. */
-function runWhenReady(action: () => void): void {
+export function runWhenReady(action: () => void): void {
   if (navigationRef.isReady()) action();
   else pendingUntilReady.push(action);
 }
@@ -126,12 +126,11 @@ export function resetToRecipes(): void {
   runWhenReady(() => navigateToTab('Recipes'));
 }
 
-// Where `dundundun://foodlog` lands — the Today widget's food log shortcut.
-// Bare like resetToRecipes: there's no logging sheet to stamp open on
-// arrival the way resetToMood's `log=1` does, since nothing writes this link
-// with a request to log something specific — it's a plain "open the diary".
-export function resetToFoodLog(): void {
-  runWhenReady(() => navigateToTab('FoodLog'));
+// Where `dundundun://foodlog[?add=1]` lands: the Today widget's food log
+// shortcut. `add=1` opens the add sheet on arrival, the way resetToMood's
+// `log=1` opens the mood sheet, with the screen's own stamped `openAdd`.
+export function resetToFoodLog(openAdd = false): void {
+  runWhenReady(() => navigateToTab('FoodLog', openAdd ? { openAdd: Date.now() } : undefined));
 }
 
 // Where `dundundun://medications` lands: the Medications widget's own tap.
@@ -538,7 +537,12 @@ export function resetToGroceryItem(itemId: string, handBack = false): void {
 /** One project's own page (`dundundun://project?id=…`). */
 export function resetToProject(projectId: string, handBack = false): void {
   runWhenReady(() => {
-    navigateToTab('ProjectDetail', { projectId, returnTo: returnTabFor(handBack, 'ProjectDetail') });
+    // ProjectDetail is a card on the root stack, not a tab, so it is pushed
+    // over Projects the way resetToRecipeDetail pushes over Recipes. Handed to
+    // navigateToTab it named a tab that doesn't exist and went nowhere.
+    const returnTo = returnTabFor(handBack, 'ProjectDetail');
+    navigateToTab('Projects');
+    navigationRef.navigate({ name: 'ProjectDetail', params: { projectId, returnTo } });
   });
 }
 

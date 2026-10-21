@@ -22,6 +22,8 @@ interface Props {
   onClose: () => void;
   onNavigate: (tabName: string) => void;
   onOpenSettings: () => void;
+  onOpenSettingsEntry?: (entryId: string) => void;
+  onSearchEverything?: (query: string) => void;
   activeTab: string;
 }
 
@@ -48,7 +50,7 @@ interface Props {
  *   Typing filters to real destinations and a tap goes straight there, past
  *   the hub. Same call `settingsIndex.ts` makes for the same reason.
  */
-export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, activeTab }: Props) {
+export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, onOpenSettingsEntry, onSearchEverything, activeTab }: Props) {
   const colors = useColors();
   const { isDark, shadows } = useTheme();
   const { width: windowWidth } = useWindowDimensions();
@@ -166,6 +168,19 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
     onClose();
   };
 
+  // Same order as Settings: the drawer is gone before the row's screen opens.
+  const handleSettingsEntry = (entryId: string) => {
+    haptics.tap();
+    fastCloseRef.current = true;
+    pendingActionRef.current = () => onOpenSettingsEntry?.(entryId);
+    onClose();
+  };
+  const handleSearchEverything = (query: string) => {
+    haptics.tap();
+    onClose();
+    onSearchEverything?.(query);
+  };
+
   if (!isRendered) return null;
 
   return (
@@ -217,6 +232,8 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
             activeTab={activeTab}
             onNavigate={handleNavigate}
             onOpenSettings={handleSettings}
+            onOpenSettingsEntry={onOpenSettingsEntry ? handleSettingsEntry : undefined}
+            onSearchEverything={onSearchEverything ? handleSearchEverything : undefined}
           />
         </Animated.View>
       </View>

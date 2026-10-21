@@ -4,6 +4,7 @@ import { appUrlFromUniversalLink, UNIVERSAL_LINK_HOSTS } from '../../../src/util
 jest.mock('react-native', () => ({ Linking: {} }));
 jest.mock('../../../src/utils/demoHold', () => ({ runOrHoldForDemo: (fn: () => void) => fn() }));
 jest.mock('../../../src/navigation/navigationRef', () => ({}));
+jest.mock('../../../src/navigation/openScreen', () => ({}));
 jest.mock('../../../src/store/useTaskStore', () => ({ useTaskStore: {} }));
 jest.mock('../../../src/store/useRecipeStore', () => ({ useRecipeStore: {} }));
 jest.mock('../../../src/store/useMealPlanStore', () => ({ useMealPlanStore: {} }));

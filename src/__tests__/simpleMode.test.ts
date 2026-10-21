@@ -346,3 +346,11 @@ describe('hiddenResultsNote', () => {
     expect(both).toContain('Groceries & meals');
   });
 });
+
+describe('Saved views in simplified mode', () => {
+  it('shows the screen only while there is a view to show', () => {
+    expect(screenShown('SavedViews', true, { stacks: 0, templates: 0 })).toBe(false);
+    expect(screenShown('SavedViews', true, { stacks: 0, templates: 0, savedViews: 1 })).toBe(true);
+    expect(screenShown('SavedViews', false, { stacks: 0, templates: 0 })).toBe(true);
+  });
+});

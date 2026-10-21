@@ -5575,6 +5575,20 @@ export interface FoodNutrition {
    */
   novaGroup?: NovaGroup | null;
   /**
+   * What the whole package weighs in grams, when the person typed it from the
+   * label ("Net wt 8 oz (227 g)"). A fact about the packet, not a figure, so
+   * nothing scales it and a logged helping never carries it
+   * (`scalePanelToAmount` builds its panel field by field).
+   *
+   * **A mass only.** A pack sold by volume has none, for the reason
+   * `servingGrams` gives: turning millilitres into grams needs a density.
+   * Absent is the ordinary case, and a barcode source states its pack size as a
+   * string on the scan rather than here, so this is set only by a person.
+   * `servingsPerPackage` (`scanPortion.ts`) prefers it to that string, since
+   * the person typed it against the packet in their hand.
+   */
+  packageGrams?: number | null;
+  /**
    * What an estimated meal's total was made of, one line per thing the
    * description named ("birch beer", "soft pretzel"), kept so the split the
    * person saw before logging is still there on the row afterwards.

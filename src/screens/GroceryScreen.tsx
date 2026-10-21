@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
+import { SegmentedControl } from '../components/SegmentedControl';
 import { HubPills } from '../components/HubPills';
 import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings } from '../hooks/useScreenSettings';
@@ -235,6 +236,7 @@ export function GroceryScreen() {
   const away = isAwayList(activeListId);
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const groupBy = useGroceryStore(s => s.groceryGroupBy);
+  const setGroceryGroupBy = useGroceryStore(s => s.setGroceryGroupBy);
   const cartHoldIds = useGroceryStore(useShallow(s => s.cartHoldIds));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
@@ -1769,6 +1771,32 @@ export function GroceryScreen() {
       />
       <HubPills hub="kitchen" active="Groceries" />
       <TipHost screen="groceries" />
+      {/* How the list is grouped, on the list itself: it was a tab inside the
+          Aisles sheet, three taps from the list it changes. A lens switch
+          under the header (SegmentedControl's `surface="page"`). An away list
+          stays by aisle (see `lens`), so there Store is shown off rather than
+          picked and ignored. Gone while selecting and on an empty list, where
+          there is nothing to group. */}
+      {!selectionMode && listCount > 0 && (
+        <View style={styles.groupBy}>
+          <SegmentedControl
+            label="Group by"
+            surface="page"
+            value={lens}
+            onChange={value => { if (value !== lens) setGroceryGroupBy(value); }}
+            options={[
+              { value: 'aisle', label: 'Aisle' },
+              { value: 'recipe', label: 'Recipe' },
+              {
+                value: 'store',
+                label: 'Store',
+                disabled: away,
+                accessibilityLabel: away ? 'Store, not on an away list' : 'Store',
+              },
+            ]}
+          />
+        </View>
+      )}
       {/* A sibling of the list, not its header: the one thing on screen saying
           why rows have started naming other stores has to still be there when
           you're looking at such a row, and a way out of a mode shouldn't have
@@ -1922,6 +1950,9 @@ export function GroceryScreen() {
           channel={fabIntentChannel}
           items={addMenuItems}
           onSelect={handleAddMenuSelect}
+          // A tap adds the way the bottom entry does, the one nearly every
+          // press is for; the recipe and the scanner are a hold away.
+          tapKey={shopping ? 'cart' : 'item'}
           accessibilityLabel="Add groceries"
           drag={fabDrag}
           dragHint="Drop on the list to add an item there. Drop on the button to cancel."
@@ -2102,6 +2133,7 @@ export function GroceryScreen() {
 
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
+    groupBy: { paddingHorizontal: spacing.md, marginTop: spacing.xs, marginBottom: spacing.sm },
     container: {
       flex: 1,
       backgroundColor: colors.bg,

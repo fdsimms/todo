@@ -164,6 +164,7 @@ const mockRecipeState = {
   markCooked: jest.fn(),
   restoreCookStats: jest.fn(),
   stopCookTimer: jest.fn(),
+  setUpNext: jest.fn(),
   // A name-only recipe, refused on a taken name the way the real store is, so
   // saveEntryAsRecipe's two branches are both reachable.
   addRecipe: jest.fn((name: string): Recipe | null => {
@@ -688,6 +689,15 @@ describe('planMeal', () => {
     expect(planned.recipeId).toBe('r1');
     expect(dbInsertMealPlanEntry).toHaveBeenCalledWith(planned);
     expect(getEntries()).toEqual([planned]);
+  });
+
+  it('takes a planned recipe off Up Next, and the undo puts it back in its place', () => {
+    loadWeek();
+    mockRecipeState.recipes = [{ id: 'r1', name: 'Ragù', upNext: true, upNextOrder: 3 } as unknown as Recipe];
+    useMealPlanStore.getState().planMeal({ date: '2026-08-05', slot: 'dinner', recipeId: 'r1', title: 'Ragù' });
+    expect(mockRecipeState.setUpNext).toHaveBeenCalledWith('r1', false);
+    useMealPlanStore.getState().undoLastAction();
+    expect(mockRecipeState.setUpNext).toHaveBeenLastCalledWith('r1', true, 3);
   });
 
   it('carries a tracked leftover, and touches nothing about the leftover itself', () => {

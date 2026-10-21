@@ -67,6 +67,7 @@ import { annotateSteps, stepIngredientLines } from '../utils/stepIngredients';
 import { coveringVariety, varietyIndex } from '../utils/itemVarieties';
 import { normalizeGtin } from '../utils/gtin';
 import { nutritionFor } from '../utils/foodNutrition';
+import { servingsPerPackage } from '../utils/scanPortion';
 import { classifyPlanned, plannedIngredientsForRecipe } from '../utils/mealPlanGroceries';
 import { activeComponents, activeIngredients, entryResolution, flattenRecipeIngredients, recipeMap } from '../utils/recipeComponents';
 import { catalogMatchSummary, matchIngredientsToCatalog } from '../utils/ingredientCatalogMatch';
@@ -2740,6 +2741,13 @@ describe('demo seed — people', () => {
     const last = foodLastAmounts(useFoodLogStore.getState().windowEntries).get(`i:${item!.id}`);
     expect(last).toBeTruthy();
     expect(recallAmount(last, { kind: 'food', panel: panel!, name: item!.name })).not.toBeNull();
+  });
+
+  it('seeds a package weight on a boxed food, so a scan can offer the whole package', () => {
+    const { itemProducts } = useGroceryStore.getState();
+    const box = itemProducts.find(p => p.variant === 'seeded sourdough');
+    expect(box?.nutrition?.packageGrams).toBe(680);
+    expect(servingsPerPackage(box!.nutrition!, null)).toBe(13.6);
   });
 
   it('seeds the three minerals, fully on one food and partly on another', () => {

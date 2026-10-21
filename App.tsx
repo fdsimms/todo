@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { enableScreens } from 'react-native-screens';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -25,6 +25,8 @@ import { useKeyShortcuts } from './src/hooks/useKeyShortcuts';
 import { useMacMirroringDefault } from './src/hooks/useMacMirroringDefault';
 import { useTaskDeepLinks } from './src/utils/deepLinks';
 import { useHomeScreenQuickActions } from './src/utils/quickActions';
+import { quickActionScreenList } from './src/utils/screenLinks';
+import { useNavMenuOptions } from './src/hooks/useNavMenuOptions';
 import { useWidgetSync } from './src/utils/widgetSync';
 import { useSharedRecipeLinks } from './src/hooks/useSharedRecipeLinks';
 import { useReachOutPrompt } from './src/hooks/useReachOutPrompt';
@@ -175,7 +177,6 @@ function AppGate() {
 }
 
 function AppRoot() {
-  const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const backgroundRefreshEnabled = useSettingsStore(s => s.backgroundRefreshEnabled);
   const wanikaniTasks = useSettingsStore(s => s.wanikaniTasks);
   const initSecrets = useSettingsStore(s => s.initializeSecrets);
@@ -291,7 +292,15 @@ function AppRoot() {
   // above: after the navigator has had a chance to mount. The setting is read
   // here rather than inside the hook so quickActions.ts stays free of the
   // store, and so the Groceries action is republished when it changes.
-  useHomeScreenQuickActions(kitchenEnabled);
+  // The Home Screen icon's dynamic actions follow where you go and your tabs.
+  const navMenuOptions = useNavMenuOptions();
+  const recentScreens = useSettingsStore(s => s.recentScreens);
+  const tabRoutes = useSettingsStore(s => s.tabRoutes);
+  const quickActionScreens = useMemo(
+    () => quickActionScreenList(navMenuOptions, recentScreens, tabRoutes),
+    [navMenuOptions, recentScreens, tabRoutes],
+  );
+  useHomeScreenQuickActions(quickActionScreens);
 
   // Pulls anything waiting in the chosen Apple Reminders list into the Inbox
   // ("Hey Siri, remind me to…"). Same ordering requirement as the deep links

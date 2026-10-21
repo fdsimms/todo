@@ -14,7 +14,8 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { TIPS, TIP_AREAS, filterTips, tipsFor, type Tip } from '../utils/tips';
+import { TIPS, TIP_AREAS, filterTips, suggestedTips, tipsFor, type Tip } from '../utils/tips';
+import { useTipSignals } from '../hooks/useTipSignals';
 import { useFilterField } from '../hooks/useFilterField';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
@@ -70,8 +71,21 @@ export function TipsScreen() {
     [visible, seenSet]
   );
 
+  // Unread tips whose trigger holds and that have no banner of their own, at
+  // the top while nothing is typed. They stay in their area below as well,
+  // so the sections still list everything.
+  const signals = useTipSignals();
+  const suggested = useMemo(
+    () => (query.trim() ? [] : suggestedTips(signals, seenTips, visible)),
+    [query, signals, seenTips, visible],
+  );
+
   const rows = useMemo<Row[]>(() => {
     const out: Row[] = [];
+    if (suggested.length > 0) {
+      out.push({ type: 'header', key: 'header-suggested', title: 'Suggested for you', unread: 0 });
+      for (const tip of suggested) out.push({ type: 'tip', key: `suggested-${tip.id}`, tip, seen: false });
+    }
     for (const area of TIP_AREAS) {
       const tips = matches.filter(tip => tip.area === area.id);
       // A section with no match under the current query drops out entirely,
@@ -89,7 +103,7 @@ export function TipsScreen() {
       }
     }
     return out;
-  }, [matches, seenSet]);
+  }, [matches, seenSet, suggested]);
 
   // Marks what's on screen, not what exists. A tip hidden by simplified mode
   // hasn't been read, so it stays unread and comes back with its feature.

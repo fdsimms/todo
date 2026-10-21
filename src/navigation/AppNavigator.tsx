@@ -2,6 +2,7 @@ import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } 
 import { PanResponder, StyleSheet, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { navigationRef, navigateToTab, flushPendingNavigation, currentTabName } from './navigationRef';
+import { navigateToSettingsEntry } from './openSettings';
 import { BottomTabBarHeightCallbackContext, createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -100,6 +101,7 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { usePersonStore } from '../store/usePersonStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useMeterReadingStore } from '../store/useMeterReadingStore';
+import { useSavedViewStore } from '../store/useSavedViewStore';
 import { useMoodStore } from '../store/useMoodStore';
 
 const Tab = createBottomTabNavigator();
@@ -154,6 +156,7 @@ const TAB_SCREENS: Record<string, React.ComponentType<any>> = {
   Calendar: freezeWhenBlurred(CalendarScreen),
   Categories: freezeWhenBlurred(CategoriesScreen),
   Tags: freezeWhenBlurred(TagsScreen),
+  SavedViews: freezeWhenBlurred(SavedViewsScreen),
   Meters: freezeWhenBlurred(MetersScreen),
   People: freezeWhenBlurred(PeopleScreen),
   Stacks: freezeWhenBlurred(StacksScreen),
@@ -218,7 +221,7 @@ const PUSHED_ROUTES = new Set([
   // Saved views has no menu row (see NAV_EXTRA_DESTINATIONS): it is opened
   // from Today's filter sheet, and from the drawer's find field, which is why
   // handleDrawerNavigate below has to leave the tab highlight alone for these.
-  'SavedViews', 'SavedViewDetail',
+  'SavedViewDetail',
   'RecipeDetail', 'PersonDetail', 'CookbookDetail',
   // Reached from the Mood screen rather than from the menu. Both are the mood
   // log read at a narrower grain — every entry there is, and one symptom —
@@ -456,6 +459,7 @@ function initialScreenFromSettings(): string {
     foodLog: useFoodLogStore.getState().totalCount,
     meters: useMeterReadingStore.getState().readings.length,
     workouts: workoutContentCount(useWorkoutStore.getState()),
+    savedViews: useSavedViewStore.getState().views.length,
   })) return 'Today';
   // Restored but unproven until it has stayed up (a restore to Today needs no guard).
   if (lastVisitedScreen !== 'Today') markScreenUnproven(lastVisitedScreen);
@@ -483,6 +487,14 @@ export default function AppNavigator() {
   const closeMenu = useCallback(() => setMenuOpen(false), []);
   const openSettings = useCallback(() => {
     navRef.current?.navigate('Settings' as never);
+  }, []);
+  // From the menu's find field: one settings row, opened where it lives, and
+  // the whole query handed to Search.
+  const openSettingsEntry = useCallback((entryId: string) => {
+    navigateToSettingsEntry(navRef.current, entryId);
+  }, []);
+  const searchEverything = useCallback((query: string) => {
+    navigateToTab('Search', { query, at: Date.now() });
   }, []);
 
   // Light selection tick on every tab switch, matching native tab bars.
@@ -634,6 +646,8 @@ export default function AppNavigator() {
           activeTab={activeTab}
           onNavigate={handleSidebarNavigate}
           onOpenSettings={openSettings}
+          onOpenSettingsEntry={openSettingsEntry}
+          onSearchEverything={searchEverything}
         />
       )}
       <AppFrame followRoute>
@@ -704,11 +718,6 @@ export default function AppNavigator() {
             options={{ presentation: 'card' }}
           />
           <RootStack.Screen
-            name="SavedViews"
-            component={SavedViewsScreen}
-            options={{ presentation: 'card' }}
-          />
-          <RootStack.Screen
             name="SavedViewDetail"
             component={SavedViewDetailScreen}
             options={{ presentation: 'card' }}
@@ -767,6 +776,8 @@ export default function AppNavigator() {
         onClose={closeMenu}
         onNavigate={handleDrawerNavigate}
         onOpenSettings={openSettings}
+        onOpenSettingsEntry={openSettingsEntry}
+        onSearchEverything={searchEverything}
         activeTab={activeTab}
       />
       {!menuOpen && !sidebarShown && (

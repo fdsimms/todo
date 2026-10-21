@@ -1,5 +1,5 @@
 import {
-  nameTier, termRanges, searchPeople, searchElsewhere, quickElsewhere, describeElsewhere, sectionPreview,
+  nameTier, termRanges, searchPeople, searchElsewhere, quickElsewhere, leadingElsewhere, describeElsewhere, sectionPreview,
   QUICK_ELSEWHERE_LIMIT, type ElsewhereSources,
 } from '../utils/searchElsewhere';
 import { menuDestinations, type NavMenuOptions } from '../utils/navHubs';
@@ -185,6 +185,17 @@ describe('quickElsewhere', () => {
     // "Weekly review" settings and the like match "toma" nowhere in their titles.
     const [first] = quickElsewhere(searchElsewhere(src, 'toma'));
     expect(first.key).toBe('recipe:r');
+  });
+});
+
+describe('leadingElsewhere', () => {
+  it('leads with a screen whose name matches, and never with a list row', () => {
+    const src = sources({ recipes: [recipe('r', 'Sleepytime tea')] });
+    const lead = leadingElsewhere(searchElsewhere(src, 'sleep'));
+    expect(lead.length).toBeGreaterThan(0);
+    expect(lead.every(r => r.kind === 'screen' || r.kind === 'setting')).toBe(true);
+    expect(lead[0].kind === 'screen' && lead[0].destination.route).toBe('Sleep');
+    expect(leadingElsewhere(searchElsewhere(src, 'sleep'), 0)).toEqual([]);
   });
 });
 

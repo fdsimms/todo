@@ -50,7 +50,10 @@ import { categoryLabel } from '../utils/categoryLabel';
 import { CategoryPickerSheet } from './CategoryPicker';
 import { ProjectPickerSheet } from './ProjectPickerSheet';
 import { useShallow } from 'zustand/react/shallow';
-import type { Priority, Effort, Difficulty, TimeOfDay, RecurrenceType, Task, ChainItem, QuotaPeriod, Polarity, WeatherCondition, TaskFieldDefaults, TaskTemplate } from '../types';
+import type { Priority, Effort, Difficulty, TimeOfDay, RecurrenceType, Task, ChainItem, QuotaPeriod, Polarity, WeatherCondition, TaskFieldDefaults, TaskTemplate, ReminderKind } from '../types';
+import { RemindMePicker } from './RemindMePicker';
+import { QuickAddPhrasesSheet } from './QuickAddPhrasesSheet';
+import { defaultReminderAt } from '../utils/reminderDefault';
 import { PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { generateId } from '../utils/id';
 import {
@@ -86,7 +89,8 @@ import { TitleTokenAccessory, QUICK_ADD_TITLE_TOKENS } from './TitleTokenAccesso
 import { tokenChipsFor, applyTokenChip, type TokenChip } from '../utils/titleTokenChips';
 import { chipUseKey, suggestExistingTags } from '../utils/chipUses';
 import { HighlightedText } from './HighlightedText';
-import { suggestTitles } from '../utils/titleSuggestions';
+import { suggestTitles, type TitleSuggestion } from '../utils/titleSuggestions';
+import { againFields, describeAgainFields } from '../utils/taskAgain';
 import { findArchivedMatch } from '../utils/archiveMatch';
 import { parseTaskInputAheadOfRainSkip, scheduleClockInstant, describeSchedule, scheduleHint, stripRemindPrefix, parseCategoryAndTagsInput, matchPersonMentions, contactForMention, findAmbiguousMention, getMentionSuggestions, getPhraseMentionSuggestion, unconfirmedPhraseMentions, phraseOverrideKey, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type ParsedTaskInput, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
 import { formatMeterAmount, knownMeterNames, latestReading, meterFieldsFromInput } from '../utils/meters';
@@ -167,6 +171,8 @@ interface Props {
   seed?: {
     category?: string | null;
     groupId?: string;
+    /** Tags the new task starts with (a tag's own page). Put in the Tags field, so they can be removed like any other. */
+    tags?: string[];
     pinned?: boolean;
     dueDate?: string | null;
     timeSegments?: TimeOfDay[];
@@ -269,6 +275,15 @@ const RECURRENCE_UNITS: Record<Exclude<RecurrenceType, 'none'>, [string, string]
 const NO_TASKS: Task[] = [];
 const NO_TAGS: string[] = [];
 
+/** A reminder's settings beyond its instant; see `reminderSettings` in the component. */
+interface QuickReminderSettings {
+  kind: ReminderKind;
+  offsetDays: number | null;
+  anchor: 'wallClock' | 'fixed';
+  tracksVisibility: boolean;
+}
+const PLAIN_REMINDER: QuickReminderSettings = { kind: 'notification', offsetDays: null, anchor: 'wallClock', tracksVisibility: false };
+
 export const QuickAddModal = React.memo(function QuickAddModal({
   visible, onClose, onOpenFull, context, onCreated, onResumed, seed, seedLabel,
   initialType = 'task', initialTitle, intoProjectId = null,
@@ -298,6 +313,10 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     (intoProjectId ? projects.find(p => p.id === intoProjectId)?.taskDefaults : null) ?? null;
   const tasks = useTaskStore(s => (visible ? s.tasks : NO_TASKS));
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  // Where a new reminder starts out: the start of the task's time of day.
+  const segmentStarts = useSettingsStore(useShallow(s => ({
+    morning: s.morningStart, afternoon: s.afternoonStart, evening: s.eveningStart, night: s.nightStart,
+  })));
   const mirroringMode = useSettingsStore(s => s.mirroringMode);
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
   const newTaskDefaults = useSettingsStore(s => s.newTaskDefaults);
@@ -458,6 +477,13 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // A pending suggestion, live only until the offer row is tapped or
   // dismissed — see applyParse, which is the only thing that sets it.
   const [reminderOffer, setReminderOffer] = useState<Date | null>(null);
+  // What the reminder picker chose beyond the instant (an alarm, days before
+  // the date, a fixed time zone, when it shows), written with the task so the
+  // chip's picker drops nothing it offered.
+  const [reminderSettings, setReminderSettings] = useState<QuickReminderSettings>(PLAIN_REMINDER);
+  const [reminderPickerVisible, setReminderPickerVisible] = useState(false);
+  // "What can I type?", from the "?" on the keyboard bar.
+  const [phrasesVisible, setPhrasesVisible] = useState(false);
   // The template the typed title resembles, and the one being run from it.
   // Dismissals are per template for the rest of this add, so a "no" isn't
   // re-asked on the next keystroke.
@@ -639,6 +665,9 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     setDeadline(null);
     setReminderTime(null);
     setReminderOffer(null);
+    setReminderSettings(PLAIN_REMINDER);
+    setReminderPickerVisible(false);
+    setPhrasesVisible(false);
     setType(initialType);
     setTimedMinutes(initialType === 'timed' ? DEFAULT_TIMED_MINUTES : null);
     setCustomTimedText('');
@@ -706,6 +735,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
         if (seeded.windowStart) setWindowStart(seeded.windowStart);
         if (seeded.windowEnd) setWindowEnd(seeded.windowEnd);
         if (seeded.category != null) setCategory(seeded.category);
+        if (seeded.tags?.length) setTags(seeded.tags);
         setSeedActive(true);
       }
       setBurstAdded([]);
@@ -1190,12 +1220,35 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     () => (activeMatch ? [] : suggestTitles(tasks, suggestQuery)),
     [tasks, suggestQuery, activeMatch]
   );
+  // Each suggestion's line of what it brings, keyed by the task it comes from.
+  const suggestionMeta = useMemo(() => {
+    const out = new Map<string, string | null>();
+    for (const s of suggestions) {
+      const source = tasks.find(t => t.id === s.taskId);
+      out.set(s.taskId, source ? describeAgainFields(againFields(source)) : null);
+    }
+    return out;
+  }, [suggestions, tasks]);
 
-  const applySuggestion = (suggestion: string) => {
+  // Picking a past title brings the rest of that task with it (its category,
+  // tags, priority, estimate and link; see taskAgain.ts), each only into a
+  // field nothing else has filled since the sheet opened: a value the
+  // person or a title rule put there stays.
+  const applySuggestion = (suggestion: TitleSuggestion) => {
     haptics.tap();
-    setTitle(suggestion);
-    titleCaret.moveCaret(suggestion);
+    setTitle(suggestion.title);
+    titleCaret.moveCaret(suggestion.title);
     inputRef.current?.focus();
+    const source = tasks.find(t => t.id === suggestion.taskId);
+    if (!source) return;
+    const fill = againFields(source);
+    const base = appliedRuleRef.current;
+    if (fill.category) setCategory(cur => (cur === (base?.category ?? null) ? fill.category : cur));
+    if (fill.priority) setPriority(cur => (cur === (base?.priority ?? 0) ? fill.priority : cur));
+    if (fill.effort) setEffort(cur => (cur === (base?.effort ?? 0) ? fill.effort : cur));
+    if (fill.estimatedMinutes !== null) setEstimatedMinutes(cur => cur ?? fill.estimatedMinutes);
+    if (fill.linkUrl) setLinkUrl(cur => cur ?? fill.linkUrl);
+    if (fill.tags.length > 0) setTags(cur => [...cur, ...fill.tags.filter(t => !cur.includes(t))]);
   };
 
   // Splices a token in at the current cursor position, same as a normal
@@ -1284,7 +1337,10 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     const clockAt = scheduleClockInstant(parsed.schedule, dayResetTime);
     if (clockAt && remindTitle) {
       setReminderTime(clockAt);
+      setReminderSettings(PLAIN_REMINDER);
       setReminderOffer(null);
+      // The editor asks here too: "remind me to" is the person asking for one.
+      void askForReminderPermissionIfNeeded();
     } else if (clockAt && !reminderTime) {
       setReminderOffer(clockAt);
     } else {
@@ -1296,6 +1352,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     if (!reminderOffer) return;
     haptics.success();
     setReminderTime(reminderOffer);
+    setReminderSettings(PLAIN_REMINDER);
     setReminderOffer(null);
     // Accepting the offer is the person asking for a reminder: ask for the
     // permission now if it has never been asked.
@@ -1821,7 +1878,8 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // One seed is the exception: a section and nothing else. Filling a section
   // is the case for adding several in a row, and every task it makes belongs
   // in the same section, so the seed is kept for each rather than spent.
-  const sectionOnlySeed = !!seed?.groupId && seed.dueDate === undefined && !seed.timeSegments
+  // A tag's page seeds the same way: every task added there carries the tag.
+  const sectionOnlySeed = (!!seed?.groupId || !!seed?.tags?.length) && seed.dueDate === undefined && !seed.timeSegments
     && !seed.windowStart && !seed.pinned && seed.category == null;
   const keepOpen = newTaskDefaults.keepOpenAfterQuickAdd && (!seedActive || sectionOnlySeed);
 
@@ -1848,6 +1906,12 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       deadline: deadline?.toISOString() ?? null,
       timeSegments,
       reminderTime: reminderTime?.toISOString() ?? null,
+      ...(reminderTime ? {
+        reminderKind: reminderSettings.kind,
+        reminderOffsetDays: reminderSettings.offsetDays,
+        reminderTimeAnchor: reminderSettings.anchor,
+        reminderTracksVisibility: reminderSettings.tracksVisibility,
+      } : {}),
       tags: resolveTags(),
       personIds,
       category: resolveCategory(),
@@ -1938,6 +2002,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       setBurstAdded(prev => [...prev, finalTitle]);
       resetDraft('', { keepProject: true });
       if (keepSeed) setSeedActive(true);
+      if (keepSeed && seed?.tags?.length) setTags(seed.tags);
       inputRef.current?.focus();
       return;
     }
@@ -2156,6 +2221,12 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       windowEndSun: titleWindowEnd ? titleWindowEndSun : null,
       polarity: avoidsHere ? 'negative' : 'positive',
       reminderTime,
+      ...(reminderTime ? {
+        reminderKind: reminderSettings.kind,
+        reminderOffsetDays: reminderSettings.offsetDays,
+        reminderTimeAnchor: reminderSettings.anchor,
+        reminderTracksVisibility: reminderSettings.tracksVisibility,
+      } : {}),
       tags: resolveTags(),
       personIds,
       category: resolveCategory(),
@@ -2368,6 +2439,16 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       }[timeSegments[0]] : undefined,
     },
     {
+      key: 'reminder',
+      icon: reminderTime ? 'notifications' : 'notifications-outline',
+      value: reminderTime
+        ? (reminderSettings.tracksVisibility ? 'When it shows' : formatTimeOfDay(reminderTime))
+        : null,
+      // Keyboard dismissed first, as the date chip does: the picker takes no
+      // focus when it opens.
+      onPress: () => { Keyboard.dismiss(); setReminderPickerVisible(true); },
+    },
+    {
       key: 'priority', panel: 'priority',
       value: priority > 0 ? PRIORITY_LABELS_SHORT[priority] : null,
       // Priority has no glyph anywhere in the app — it's a coloured dot, and
@@ -2530,6 +2611,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                       setDueDate(defaultDueDate());
                     }
                     if (seed?.timeSegments && timeSegments === seed.timeSegments) setTimeSegments([]);
+                    if (seed?.tags?.length) setTags(cur => cur.filter(t => !seed.tags!.includes(t)));
                     setSeedActive(false);
                   }}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -2626,19 +2708,25 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                 <TouchableOpacity
                   key={s.title}
                   style={[styles.suggestionItem, i > 0 && styles.suggestionItemDivider]}
-                  onPress={() => applySuggestion(s.title)}
+                  onPress={() => applySuggestion(s)}
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
-                  accessibilityLabel={`Use previous task: ${s.title}`}
+                  accessibilityLabel={`Use previous task: ${s.title}${suggestionMeta.get(s.taskId) ? `, with ${suggestionMeta.get(s.taskId)}` : ''}`}
                 >
                   <Ionicons name="time-outline" size={15} color={colors.textSecondary} />
-                  <HighlightedText
-                    text={s.title}
-                    ranges={s.ranges}
-                    style={styles.suggestionTitle}
-                    highlightStyle={styles.suggestionTitleHighlight}
-                    numberOfLines={1}
-                  />
+                  <View style={styles.suggestionBody}>
+                    <HighlightedText
+                      text={s.title}
+                      ranges={s.ranges}
+                      style={styles.suggestionTitle}
+                      highlightStyle={styles.suggestionTitleHighlight}
+                      numberOfLines={1}
+                    />
+                    {/* What picking it fills in, said before it's picked. */}
+                    {!!suggestionMeta.get(s.taskId) && (
+                      <Text style={styles.suggestionMeta} numberOfLines={1}>{suggestionMeta.get(s.taskId)}</Text>
+                    )}
+                  </View>
                 </TouchableOpacity>
               ))}
             </View>
@@ -2788,22 +2876,6 @@ parsed
             </View>
           )}
 
-          {!reminderOffer && !!reminderTime && (
-            <View style={styles.reminderRow}>
-              <Ionicons name="notifications" size={13} color={colors.accent} />
-              <Text style={styles.reminderText} numberOfLines={1}>
-                Reminder set for {formatTimeOfDay(reminderTime)}
-              </Text>
-              <TouchableOpacity
-                onPress={() => { haptics.tap(); setReminderTime(null); }}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Remove reminder"
-              >
-                <Ionicons name="close-circle" size={15} color={colors.textTertiary} />
-              </TouchableOpacity>
-            </View>
-          )}
 
           {/* What a title tooltip set that has no chip of its own to show it.
               Same row as the reminder above, and the same way out. */}
@@ -3700,6 +3772,34 @@ parsed
         }}
         onCancel={() => setWhenPickerVisible(false)}
       />
+      <LazySheet open={reminderPickerVisible}>
+        <RemindMePicker
+          visible={visible && reminderPickerVisible}
+          value={reminderTime ?? defaultReminderAt(
+            dueDate ?? getLogicalToday(),
+            timeSegments,
+            segmentStarts,
+            dayResetTime,
+          )}
+          kind={reminderSettings.kind}
+          dueDate={dueDate}
+          offsetDays={reminderSettings.offsetDays}
+          anchor={reminderSettings.anchor}
+          onConfirm={(date, kind, offsetDays, anchor) => {
+            setReminderTime(date);
+            setReminderSettings({ kind, offsetDays, anchor, tracksVisibility: false });
+            setReminderOffer(null);
+            setReminderPickerVisible(false);
+            void askForReminderPermissionIfNeeded();
+          }}
+          onClear={reminderTime ? () => {
+            setReminderTime(null);
+            setReminderSettings(PLAIN_REMINDER);
+            setReminderPickerVisible(false);
+          } : undefined}
+          onCancel={() => setReminderPickerVisible(false)}
+        />
+      </LazySheet>
       {/* Inside this sheet's own Modal, same as the date picker above — see
           TaskRelationPickerSheet, which the task editor opens the same way. */}
       <CategoryPickerSheet
@@ -3743,7 +3843,16 @@ parsed
         onInsert={insertTitleToken}
         onConfirm={applyActiveParse}
         confirmVisible={confirmVisible}
+        onHelp={() => { Keyboard.dismiss(); setPhrasesVisible(true); }}
       />
+      <LazySheet open={phrasesVisible}>
+        <QuickAddPhrasesSheet
+          visible={visible && phrasesVisible}
+          onClose={() => setPhrasesVisible(false)}
+          // The keyboard went with the bar the "?" was on; this brings both back.
+          onDismiss={() => { if (visible) inputRef.current?.focus(); }}
+        />
+      </LazySheet>
     </SheetModal>
     {/* newTaskDefaults.openEditorAfterQuickAdd hand-off — see createTask. A
         sibling of the sheet above rather than something rendered inside it,
@@ -3862,11 +3971,12 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number, textScaleFactor = 1)
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.separator,
   },
+  suggestionBody: { flex: 1 },
   suggestionTitle: {
-    flex: 1,
     fontSize: font.sm,
     color: colors.textSecondary,
   },
+  suggestionMeta: { fontSize: font.xs, color: colors.textTertiary, marginTop: spacing.xxs },
   suggestionTitleHighlight: {
     color: colors.text,
     fontWeight: fontWeight.semibold,

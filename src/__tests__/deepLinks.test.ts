@@ -13,6 +13,8 @@ const mockResetToKitchen = jest.fn();
 const mockResetToPeople = jest.fn();
 const mockResetToJournal = jest.fn();
 const mockResetToFoodLog = jest.fn();
+const mockOpenScreenByName = jest.fn((_name: string) => true);
+const mockOpenSettingsEntryById = jest.fn((_id: string) => true);
 const mockResetToMedications = jest.fn();
 const mockResetToProjectPull = jest.fn();
 const mockResetToDeload = jest.fn();
@@ -106,6 +108,11 @@ jest.mock('../navigation/navigationRef', () => ({
   openQuickAddEventFromShortcut: (...args: unknown[]) => mockOpenQuickAddEvent(...args),
 }));
 
+jest.mock('../navigation/openScreen', () => ({
+  openScreenByName: (name: string) => mockOpenScreenByName(name),
+  openSettingsEntryById: (id: string) => mockOpenSettingsEntryById(id),
+}));
+
 let mockDemoActive = false;
 jest.mock('../utils/demoState', () => ({
   isDemoModeActive: () => mockDemoActive,
@@ -130,6 +137,9 @@ import {
   isPeopleUrl,
   peopleUrlPersonId,
   isFoodLogUrl,
+  foodLogUrlWantsAdd,
+  openUrlScreen,
+  settingsUrlEntry,
   isMedicationsUrl,
   journalUrlKind,
   journalUrlWantsLog,
@@ -909,12 +919,38 @@ describe('openInAppUrl', () => {
     expect(isFoodLogUrl('dundundun:///foodlog')).toBe(true);
     expect(isFoodLogUrl('dundundun://foodlog/')).toBe(true);
     expect(isFoodLogUrl('DUNDUNDUN://FoodLog')).toBe(true);
-    expect(isFoodLogUrl('dundundun://foodlog?date=2026-08-22')).toBe(false);
     expect(isFoodLogUrl('dundundun://groceries')).toBe(false);
 
     expect(openInAppUrl('dundundun://foodlog')).toBe(true);
-    expect(mockResetToFoodLog).toHaveBeenCalledTimes(1);
+    expect(mockResetToFoodLog).toHaveBeenCalledWith(false);
     expect(mockResetToToday).not.toHaveBeenCalled();
+  });
+
+  // The widget's food log button, which lands on the add sheet.
+  it('opens the add sheet for add=1', () => {
+    expect(foodLogUrlWantsAdd('dundundun://foodlog?add=1')).toBe(true);
+    expect(foodLogUrlWantsAdd('dundundun://foodlog?add=true')).toBe(true);
+    expect(foodLogUrlWantsAdd('dundundun://foodlog')).toBe(false);
+    expect(openInAppUrl('dundundun://foodlog?add=1')).toBe(true);
+    expect(mockResetToFoodLog).toHaveBeenCalledWith(true);
+  });
+
+  it('opens any screen by name, leaving which ones are reachable to openScreenByName', () => {
+    expect(openUrlScreen('dundundun://open?screen=FoodLog')).toBe('FoodLog');
+    expect(openUrlScreen('dundundun://open?screen=food%20log')).toBe('food log');
+    expect(openUrlScreen('dundundun://open')).toBeNull();
+    expect(openUrlScreen('dundundun://mood')).toBeNull();
+    expect(openInAppUrl('dundundun://open?screen=Stats')).toBe(true);
+    expect(mockOpenScreenByName).toHaveBeenCalledWith('Stats');
+  });
+
+  it('opens one Settings row by id', () => {
+    expect(settingsUrlEntry('dundundun://settings?entry=darkMode')).toBe('darkMode');
+    expect(settingsUrlEntry('dundundun://settings')).toBeNull();
+    expect(openInAppUrl('dundundun://settings?entry=darkMode')).toBe(true);
+    expect(mockOpenSettingsEntryById).toHaveBeenCalledWith('darkMode');
+    mockOpenSettingsEntryById.mockReturnValueOnce(false);
+    expect(openInAppUrl('dundundun://settings?entry=nope')).toBe(false);
   });
 
   // A meal-slot cook task's own link once the slot holds a recipe (see

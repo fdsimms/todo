@@ -350,6 +350,11 @@ let mealPlanURL = URL(string: "dundundun://mealplan")!
 let kitchenURL = URL(string: "dundundun://kitchen")!
 let moodURL = URL(string: "dundundun://mood")!
 let foodLogURL = URL(string: "dundundun://foodlog")!
+// The Today widget's Mood and Food log buttons, which open the sheet that
+// logs one (`log=1`, `add=1` in src/utils/deepLinks.ts) rather than the
+// screen's history: a button on a widget is there to record something.
+let logMoodURL = URL(string: "dundundun://mood?log=1")!
+let addFoodURL = URL(string: "dundundun://foodlog?add=1")!
 let medicationsURL = URL(string: "dundundun://medications")!
 
 // ==== Formatting ====

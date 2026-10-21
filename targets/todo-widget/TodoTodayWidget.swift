@@ -323,8 +323,9 @@ struct TodoTodayWidgetEntryView: View {
     /// these ride in the header alongside the add button, not a second nav
     /// menu, and every URL here is one an existing task link, widget or Live
     /// Activity already uses for the same trip — `groceriesURL`/`mealPlanURL`
-    /// by the Grocery and Kitchen widgets, `moodURL`/`foodLogURL` by the
-    /// mood check-in task and the deep link `isFoodLogUrl` handles.
+    /// by the Grocery and Kitchen widgets, `logMoodURL`/`addFoodURL` by the
+    /// mood check-in task and the deep link `isFoodLogUrl` handles, each
+    /// opening the sheet that logs one.
     private var shortcuts: [WidgetHeaderShortcut] {
         guard showsShortcuts else { return [] }
         let config = entry.configuration
@@ -336,10 +337,10 @@ struct TodoTodayWidgetEntryView: View {
             links.append(WidgetHeaderShortcut(symbolName: "fork.knife", label: "Meal plan", destination: mealPlanURL))
         }
         if config.showMoodShortcut {
-            links.append(WidgetHeaderShortcut(symbolName: "face.smiling", label: "Mood", destination: moodURL))
+            links.append(WidgetHeaderShortcut(symbolName: "face.smiling", label: "Mood", destination: logMoodURL))
         }
         if config.showFoodLogShortcut {
-            links.append(WidgetHeaderShortcut(symbolName: "fork.knife.circle", label: "Food log", destination: foodLogURL))
+            links.append(WidgetHeaderShortcut(symbolName: "fork.knife.circle", label: "Food log", destination: addFoodURL))
         }
         if config.showAddEventShortcut {
             // Opens QuickEventSheet — a separate glyph from the "+" add

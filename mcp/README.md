@@ -192,6 +192,7 @@ only the fallback until the first sync.
 | `reorder` | **Write.** Puts a list in order, the ones named first and the rest after in their old order. `kind` picks the list: `tasks` (a project's open steps, a task's checklist, a stack, or the Pinned block), `templates`, `projects` (and their categories), `categories` (Today's sections), `people`, `aisles`, `stores_and_lists` and `up_next`. |
 | `set_task_dates` | **Write.** Puts one task on several dates (one row per date), changes the set, or takes it back to one; optionally monthly. |
 | `duplicate_task` | **Write.** Copies a task and its checklist, with its progress started over. |
+| `rename_tag` | **Write.** Renames a tag on every task, finished ones included, and wherever else the app names it; onto an existing tag it merges the two. |
 | `delete_tag` | **Write.** Takes a tag off every task and out of the tag list. |
 | `set_completion_date` | **Write.** Corrects when a completed task was done, as the Logbook's date edit does. |
 | `reopen_task` | **Write.** Reopens a completed or missed task and takes back what its completion did. Needs `MCP_WRITE_TOKEN`. |
@@ -241,7 +242,7 @@ only the fallback until the first sync.
 | `set_shopping_trip` | **Write.** Starts a trip at a store with an optional budget, changes the budget, or ends it. |
 | `mark_unavailable` | **Write.** A store doesn't carry an item, or its preferred brand; or does again. |
 | `set_nutrition_panels` | **Write.** Many items' panels in one call (one preview, one approval): the same panels as `set_nutrition_panel`, all or none, with `create: true` on an entry to add a catalog item that is not there yet (on no list, not in the pantry). |
-| `set_nutrition_panel` | **Write.** An item's or a brand's nutrition panel, with optional `portions` (what a tablespoon, cup or clove weighs) merged into its table by label. A recipe counts a volume or count line only when the item has a portion weighing it. |
+| `set_nutrition_panel` | **Write.** An item's or a brand's nutrition panel, with optional `portions` (what a tablespoon, cup or clove weighs) merged into its table by label, and optional `packageGrams` (what the whole package weighs). A recipe counts a volume or count line only when the item has a portion weighing it. |
 | `merge_grocery_items` | **Write.** Merges one item into another, with everything recorded on it. Not undoable from Activity. |
 | `delete_grocery_item` | **Write.** Deletes an item with everything attached. Restorable from Activity. |
 | `list_brands` / `rename_brand` | `list_brands` is read-only: every brand once with its variant count, items and the spellings in use. **`rename_brand` writes:** one spelling onto every variant of a brand, or a `renames` list of up to 50 under one confirmation. |

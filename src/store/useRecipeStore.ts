@@ -222,7 +222,8 @@ interface RecipeStore {
    * Task.pinnedOrder follows — and leaves it untouched on the way out, since
    * a recipe removed and re-added later has no reason to remember its old slot.
    */
-  setUpNext: (id: string, upNext: boolean) => void;
+  /** `order` puts a bookmark back where it was (an undo) rather than at the end. */
+  setUpNext: (id: string, upNext: boolean, order?: number) => void;
   /**
    * Hand-order the Up Next shelf. `orderedIds` is the shelf exactly as the
    * user just dragged it — renumbers from 1 so no row is left on the 0 that
@@ -864,10 +865,10 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     save(set, { ...recipe, vote });
   },
 
-  setUpNext(id, upNext) {
+  setUpNext(id, upNext, order) {
     const recipe = get().recipes.find(r => r.id === id);
     if (!recipe || recipe.upNext === upNext) return;
-    const upNextOrder = upNext ? nextUpNextOrder(get().recipes) : recipe.upNextOrder;
+    const upNextOrder = upNext ? order ?? nextUpNextOrder(get().recipes) : recipe.upNextOrder;
     save(set, { ...recipe, upNext, upNextOrder });
   },
 

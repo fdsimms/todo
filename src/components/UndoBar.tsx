@@ -37,12 +37,18 @@ const VISIBLE_MS = 6000;
  * discoverable half: a transient bar naming the action and offering to
  * reverse it, for the short list of actions that genuinely warrant one.
  *
- * **Destructive actions only, per `UndoableAction.destructive`.** Every
- * store keeps registering the other kind (an add, a reschedule, a complete)
- * exactly as before — those stay shake-only, on purpose. A bar after every
- * one of them is chrome nobody asked for; a bar after a delete or a clear is
- * the rescue the issue is about. See the flag's own doc comment in each
- * store for the reasoning, and for which ones are marked.
+ * **Destructive actions, plus the few that announce themselves**
+ * (`UndoableAction.destructive` / `announce`). Every store keeps registering
+ * the other kind (an add, a complete) exactly as before — those stay
+ * shake-only, on purpose. A bar after every one of them is chrome nobody
+ * asked for; a bar after a delete or a clear is the rescue the issue is about.
+ * See the flag's own doc comment in each store for the reasoning, and for
+ * which ones are marked.
+ *
+ * A reschedule a person makes is one that announces (the row's date picker,
+ * a defer, the bulk bar's When): the task usually leaves the list it was on,
+ * so unlike a tick there is no row left on screen to put it back from, and a
+ * day picked by mistake was otherwise found only by shaking the phone.
  *
  * One completion marks itself destructive and so does reach this bar: the one
  * that ends a recurrence ("Last one, this won't repeat again", in

@@ -229,6 +229,7 @@ export function RecipeDetailScreen() {
   const removePrepTask = useRecipeStore(s => s.removePrepTask);
   const addStep = useRecipeStore(s => s.addStep);
   const updateStep = useRecipeStore(s => s.updateStep);
+  const setRecipeNotes = useRecipeStore(s => s.setNotes);
   const removeStep = useRecipeStore(s => s.removeStep);
   const reorderSteps = useRecipeStore(s => s.reorderSteps);
   const addEmptyStepSection = useRecipeStore(s => s.addEmptyStepSection);
@@ -297,6 +298,8 @@ export function RecipeDetailScreen() {
   // Which tab of the page is showing. Session-only: a recipe always opens on
   // its ingredients, the thing most visits are for.
   const [tab, setTab] = useState<RecipeTab>('ingredients');
+  // The recipe's notes sit above the list on the two tabs that are the method.
+  const showsNotes = tab === 'steps' || tab === 'ingredients';
 
   // Which alternative the cost and nutrition estimates below are for, when the
   // recipe poses an either/or — "sourdough" and "baguette" don't share a
@@ -402,10 +405,11 @@ export function RecipeDetailScreen() {
           flattenRecipeIngredients(recipe, recipesById, choiceResolution, standingSwaps),
           scale,
           unitSystem,
+          weightLookups,
         ),
       )
       : new Map<string, StepSegment[]>()),
-    [recipe, recipesById, choiceResolution, standingSwaps, scale, unitSystem]
+    [recipe, recipesById, choiceResolution, standingSwaps, scale, unitSystem, weightLookups]
   );
 
   // Only lines that *have* a quantity can fail to scale; a line with none was
@@ -517,7 +521,16 @@ export function RecipeDetailScreen() {
   // PrepTaskSheet: a step is a single field, so a whole extra component would
   // outweigh what it's editing. editingStepId null means the field is
   // building a new step; set, it's replacing that step's text on submit.
-  const [stepDraft, setStepDraft] = useState('');
+  const [stepDraft, setStepDraftState] = useState('');
+  // The newest text, written the moment the field reports it. A tap on Add reads
+  // this rather than `stepDraft`, because this screen is big enough that the
+  // render carrying a paste can land after the tap, and a button disabled (or a
+  // handler closed over) the old, empty draft does nothing.
+  const stepDraftRef = useRef('');
+  const setStepDraft = (text: string) => {
+    stepDraftRef.current = text;
+    setStepDraftState(text);
+  };
   // Same picker-over-existing-headings convention as sectionDraft above, for
   // RecipeStep.section instead of RecipeIngredient.section.
   const [stepSectionDraft, setStepSectionDraft] = useState('');
@@ -526,6 +539,9 @@ export function RecipeDetailScreen() {
   // every keystroke: the length stepper beside it writes straight through
   // because a press is one discrete value, and typed prose is not.
   const [noteDraft, setNoteDraft] = useState('');
+  // The recipe's own notes, edited in place on the Steps tab. A separate draft
+  // from `noteDraft` above, which belongs to one step.
+  const [recipeNotesDraft, setRecipeNotesDraft] = useState<string | null>(null);
   const stepInputRef = useRef<TextInput>(null);
   const [editorVisible, setEditorVisible] = useState(false);
   /**
@@ -1237,10 +1253,11 @@ export function RecipeDetailScreen() {
   };
 
   const submitStepDraft = () => {
-    if (!stepDraft.trim()) return;
+    const draft = stepDraftRef.current;
+    if (!draft.trim()) { haptics.warning(); return; }
     animateLayout();
     if (editingStepId) {
-      updateStep(recipe.id, editingStepId, stepDraft);
+      updateStep(recipe.id, editingStepId, draft);
       // Before the id goes: Save closes the editor, and a note typed but not
       // yet blurred is part of what was being saved.
       commitStepNote();
@@ -1255,10 +1272,10 @@ export function RecipeDetailScreen() {
       // lines win, and no line break means one step) hold here too. Editing
       // an existing step never splits: that is a correction to one step.
       const section = stepSectionDraft.trim() || null;
-      const parts = stepsFromNotes(stepDraft);
+      const parts = stepsFromNotes(draft);
       const added = parts.length > 1
         ? parts.filter(part => addStep(recipe.id, part, section)).length
-        : (addStep(recipe.id, stepDraft, section) ? 1 : 0);
+        : (addStep(recipe.id, draft, section) ? 1 : 0);
       if (added > 0) haptics.tap();
       else haptics.warning();
     }
@@ -1460,7 +1477,7 @@ export function RecipeDetailScreen() {
       ? catalogMatch
       : null;
     return (
-      <View>
+      <View style={choiceRuns.together.has(ingredient.id) && !choiceRuns.orBefore.has(ingredient.id) && styles.choiceRunStart}>
         {/* Its own treatment, deliberately not the section heading's. The two
             said entirely different things — "these belong to the frosting"
             versus "buy exactly one of these" — in identical uppercase grey,
@@ -1800,7 +1817,10 @@ export function RecipeDetailScreen() {
     const isDefault = componentGroups.defaults.has(resolved.component.id);
     const alternativeNote = alternativeNotesById.get(resolved.component.id);
     return (
-      <View key={resolved.component.id}>
+      <View
+        key={resolved.component.id}
+        style={choiceRuns.together.has(resolved.component.id) && !choiceRuns.orBefore.has(resolved.component.id) && styles.choiceRunStart}
+      >
         {choiceRuns.orBefore.has(resolved.component.id) && (
           <View style={styles.choiceOr} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
             <View style={styles.choiceOrLine} />
@@ -2330,7 +2350,55 @@ export function RecipeDetailScreen() {
             method, and with steps they are the cook's own tips ("double the
             garlic"), which cook mode shows in its Notes panel too. They are
             not the method once steps exist, so nothing here repeats them. */}
-        {tab === 'steps' && !!recipe.notes.trim() && <Text style={styles.notes} selectable>{recipe.notes}</Text>}
+        {showsNotes && recipeNotesDraft === null && !!recipe.notes.trim() && (
+          <Text style={styles.notes} selectable>{recipe.notes}</Text>
+        )}
+        {/* The same field Recipe details edits, reachable from the page that shows
+            it. Saved on Save, not per keystroke: unlike a step's note this is
+            free prose, and Cancel has to be able to put it back. */}
+        {showsNotes && recipeNotesDraft === null && (
+          <View style={styles.notesActionRow}>
+            <InlineAction
+              label={recipe.notes.trim() ? 'Edit note' : 'Add a note'}
+              icon={recipe.notes.trim() ? 'create-outline' : 'add'}
+              variant={recipe.notes.trim() ? 'neutral' : 'accent'}
+              surface="page"
+              onPress={() => setRecipeNotesDraft(recipe.notes)}
+            />
+          </View>
+        )}
+        {showsNotes && recipeNotesDraft !== null && (
+          <View>
+            <View style={styles.notesEditCard}>
+              <TextField
+                style={styles.notesEditInput}
+                value={recipeNotesDraft}
+                onChangeText={setRecipeNotesDraft}
+                placeholder="e.g. double the garlic, or rest the dough longer in summer"
+                placeholderTextColor={colors.textTertiary}
+                multiline
+                autoFocus
+                textAlignVertical="top"
+                accessibilityLabel="Recipe notes"
+              />
+            </View>
+            <View style={styles.notesActionRow}>
+              <InlineAction
+                label={BUTTON_LABEL.cancel}
+                variant="neutral"
+                surface="page"
+                onPress={() => setRecipeNotesDraft(null)}
+              />
+              <InlineAction
+                label={BUTTON_LABEL.save}
+                onPress={() => {
+                  setRecipeNotes(recipe.id, recipeNotesDraft);
+                  setRecipeNotesDraft(null);
+                }}
+              />
+            </View>
+          </View>
+        )}
 
         {tab === 'timers' && (
         <>
@@ -2759,14 +2827,16 @@ export function RecipeDetailScreen() {
                 label={editingStepId ? BUTTON_LABEL.save : 'Add'}
                 icon={editingStepId ? 'checkmark' : 'add'}
                 onPress={submitStepDraft}
-                disabled={!stepDraft.trim()}
+                // Dimmed, not disabled: a disabled button ignores the tap that
+                // arrives before the render carrying a paste has landed.
+                style={!stepDraft.trim() ? styles.actionDim : undefined}
               />
             </>
           )}
         >
           <TextField
             ref={stepInputRef}
-            style={styles.composerInput}
+            style={[styles.composerInput, styles.stepComposerInput]}
             value={stepDraft}
             onChangeText={setStepDraft}
             onSubmitEditing={submitStepDraft}
@@ -3298,6 +3368,26 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     fontSize: font.md,
     lineHeight: font.md * 1.4,
   },
+  notesActionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  notesEditCard: {
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.controlBorder,
+    paddingHorizontal: spacing.smd,
+  },
+  notesEditInput: {
+    color: colors.text,
+    fontSize: font.md,
+    paddingVertical: spacing.smd,
+    minHeight: 96,
+  },
   totalTimeSummary: {
     color: colors.textSecondary,
     fontSize: font.sm,
@@ -3576,6 +3666,10 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     borderLeftWidth: 2,
     borderLeftColor: colors.accent,
   },
+  // The first option of a group drawn together has no header to open it, so
+  // the bar would start flush against the row above. This is the gap a header
+  // gets from its own paddingTop.
+  choiceRunStart: { marginTop: spacing.md },
   // The "or" between two options of a group drawn together. The same bar as the
   // rows either side, so it reads as part of the one block; the rules and the
   // word are tertiary because it is a joint, not a row.
@@ -3831,6 +3925,14 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     fontSize: font.md,
     minHeight: 44,
     maxHeight: 140,
+  },
+  actionDim: { opacity: 0.4 },
+  // A step is a sentence or a paragraph, not a one-line ingredient, so its
+  // field opens at about three lines and grows further before it scrolls.
+  stepComposerInput: {
+    minHeight: 88,
+    maxHeight: 220,
+    textAlignVertical: 'top',
   },
   addInput: {
     flex: 1,

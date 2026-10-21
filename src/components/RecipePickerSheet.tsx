@@ -22,9 +22,10 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, animation, interaction, sheetBottomInset, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { SegmentedControl } from './SegmentedControl';
+import { mealPickerShelves } from '../utils/mealPicker';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
-import { rankRecipes, describeRecipe, cleanRecipeName, sharedRecipeNameKeys, sortRecipesForDisplay } from '../utils/recipeUtils';
+import { rankRecipes, describeRecipe, cleanRecipeName, sharedRecipeNameKeys } from '../utils/recipeUtils';
 import { recipeMap } from '../utils/recipeComponents';
 import { slotLabel } from '../utils/mealPlan';
 import { describeLeftover, liveFreshnessOf, liveLeftovers, mealTitleForLeftover } from '../utils/leftovers';
@@ -98,6 +99,12 @@ interface Props {
   /** Undoes a pick made this session — tapping a row a second time. */
   onUnplan: (id: string) => void;
   onClose: () => void;
+  /**
+   * The week around `dayKey`, offered as chips so the next night can be
+   * planned without closing: Wednesday's dinner, then Thursday's. Omit for a
+   * picker about one day only (a meal task's "Choose dinner").
+   */
+  weekDays?: { key: string; label: string; short: string }[];
 }
 
 /** Enough to scan without virtualizing; the search field reaches the rest. */
@@ -147,7 +154,7 @@ const TOP_INSET = 72;
  * calling back at all: planning can raise the "Add prep tasks?" alert, and
  * that can't be presented while this Modal is still up.
  */
-export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forceSlot = null, onPlan, onPlanned, onUnplan, onClose }: Props) {
+export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forceSlot = null, onPlan, onPlanned, onUnplan, onClose, weekDays }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -160,6 +167,9 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
   const leftovers = useLeftoverStore(useShallow(s => s.leftovers));
   const { query, clear: clearQuery, props: filterField, inputRef: searchInputRef } = useFilterField();
   const [slot, setSlot] = useState<MealSlot>(defaultSlot);
+  // The day being planned now, which the week's chips move; opens on `dayKey`.
+  const [day, setDay] = useState(dayKey);
+  const shownDayLabel = weekDays?.find(d => d.key === day)?.label ?? dayLabel;
   /** Every entry picked so far this session, in the order they landed. */
   const [planned, setPlanned] = useState<MealPlanEntry[]>([]);
 
@@ -174,12 +184,12 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
   const pickedThisSlot = useMemo(() => {
     const keys = new Map<string, string>();
     for (const entry of planned) {
-      if (entry.slot !== slot) continue;
+      if (entry.slot !== slot || entry.date !== day) continue;
       const key = entry.recipeId ? `r:${entry.recipeId}` : entry.leftoverId ? `l:${entry.leftoverId}` : `t:${entry.title.toLowerCase()}`;
       keys.set(key, entry.id);
     }
     return keys;
-  }, [planned, slot]);
+  }, [planned, slot, day]);
 
   // Matched on a plain substring rather than through rankRecipes: the fridge
   // holds a handful of rows the user put there this week, so there is nothing
@@ -190,13 +200,29 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
     const q = query.trim().toLowerCase();
     return q ? live.filter(l => l.title.toLowerCase().includes(q)) : live;
   }, [leftovers, query]);
+  // With nothing typed, the box is shelved: Up Next, then loved recipes gone
+  // quiet, then the rest (mealPickerShelves). A search is one ranked list.
+  const shelves = useMemo(
+    () => (query.trim() ? null : mealPickerShelves(recipes, new Date(), MAX_ROWS)),
+    [query, recipes],
+  );
   const matches = useMemo(() => {
     const trimmed = query.trim();
-    const ranked = trimmed
-      ? rankRecipes(trimmed, recipes)
-      : sortRecipesForDisplay(recipes);
-    return ranked.slice(0, MAX_ROWS);
-  }, [query, recipes]);
+    if (!trimmed && shelves) return [...shelves.upNext, ...shelves.lovedResting, ...shelves.rest];
+    return rankRecipes(trimmed, recipes).slice(0, MAX_ROWS);
+  }, [query, recipes, shelves]);
+  // Where each shelf starts in `matches`, for its caption.
+  const shelfCaptions = useMemo(() => {
+    const captions = new Map<number, string>();
+    if (!shelves) return captions;
+    const { upNext, lovedResting, rest } = shelves;
+    if (upNext.length > 0) captions.set(0, 'Up next');
+    if (lovedResting.length > 0) captions.set(upNext.length, 'Loved, not cooked lately');
+    if (rest.length > 0 && (upNext.length > 0 || lovedResting.length > 0)) {
+      captions.set(upNext.length + lovedResting.length, 'All recipes');
+    }
+    return captions;
+  }, [shelves]);
 
   // The typed line only earns a row when it isn't just the name of a recipe
   // already offered above it — two rows planning the same dinner, one of them
@@ -217,6 +243,8 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
   // every entry picked before the last one from the batch `onPlanned` fires.
   const defaultSlotRef = useRef(defaultSlot);
   defaultSlotRef.current = defaultSlot;
+  const dayKeyRef = useRef(dayKey);
+  dayKeyRef.current = dayKey;
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -241,6 +269,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
     if (!visible) return;
     clearQuery();
     setSlot(forceSlot ?? lastPickedSlot ?? defaultSlotRef.current);
+    setDay(dayKeyRef.current);
     setPlanned([]);
     keyboardOffset.setValue(0);
     setKeyboardHeight(0);
@@ -291,7 +320,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
   const pick = (recipeId: string | null, title: string) => {
     haptics.success();
     lastPickedSlot = slot;
-    const entry = onPlan({ date: dayKey, slot, recipeId, leftoverId: null, title });
+    const entry = onPlan({ date: day, slot, recipeId, leftoverId: null, title });
     if (!entry) return;
     setPlanned(prev => [...prev, entry]);
     clearQuery();
@@ -333,7 +362,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
     lastPickedSlot = slot;
     // Writes in place and joins `planned`, same as `pick` above.
     const entry = onPlan({
-      date: dayKey,
+      date: day,
       slot,
       recipeId: null,
       leftoverId: leftover.id,
@@ -372,7 +401,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
               (#1378); a picked dish is a different, unambiguous thing to
               confirm. */}
           <View style={styles.sheetHeaderRow}>
-            <Text style={styles.sheetTitle}>Plan {dayLabel}</Text>
+            <Text style={styles.sheetTitle}>Plan {shownDayLabel}</Text>
           </View>
           <Text style={styles.sheetHint}>
             {planned.length > 0
@@ -380,6 +409,15 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
               : 'Pick a recipe or type what you’re having. “Leftovers” works too.'}
           </Text>
 
+          {!!weekDays && weekDays.length > 1 && (
+            <View style={styles.segment}>
+              <SegmentedControl
+                options={weekDays.map(d => ({ value: d.key, label: d.short, accessibilityLabel: d.label }))}
+                value={day}
+                onChange={setDay}
+              />
+            </View>
+          )}
           <View style={styles.segment}>
             <SegmentedControl
               options={MEAL_SLOTS.map(s => ({ value: s, label: slotLabel(s) }))}
@@ -464,7 +502,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
                     </React.Fragment>
                   );
                 })}
-                {matches.length > 0 && <Text style={styles.listSection}>Recipes</Text>}
+                {matches.length > 0 && !shelfCaptions.has(0) && <Text style={styles.listSection}>Recipes</Text>}
               </>
             )}
 
@@ -481,12 +519,14 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
             ) : (
               matches.map((recipe, idx) => {
                 const pickedId = pickedThisSlot.get(`r:${recipe.id}`);
+                const caption = shelfCaptions.get(idx);
                 return (
                   <React.Fragment key={recipe.id}>
+                    {caption && <Text style={styles.listSection}>{caption}</Text>}
                     {/* The "Recipes" caption already separates this run from the
                         fridge above it, so the first row only takes a rule when
                         it's butting straight up against the free-text one. */}
-                    {(idx > 0 || (showFreeText && fridge.length === 0)) && <View style={styles.inlineSep} />}
+                    {!caption && (idx > 0 || (showFreeText && fridge.length === 0)) && <View style={styles.inlineSep} />}
                     <TouchableOpacity
                       style={[styles.row, pickedId && styles.rowPicked]}
                       onPress={() => (pickedId ? unpick(pickedId) : pick(recipe.id, recipe.name))}
@@ -510,6 +550,13 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
                   </React.Fragment>
                 );
               })
+            )}
+            {/* The browse list is capped, so it says so rather than reading as
+                the whole box. */}
+            {!!shelves && shelves.total > matches.length && (
+              <Text style={styles.moreNote}>
+                {matches.length} of {shelves.total} recipes · search for more
+              </Text>
             )}
           </ScrollView>
         </View>
@@ -617,6 +664,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     height: border.hairline,
     backgroundColor: colors.separator,
     marginLeft: spacing.md + 32 + spacing.md,
+  },
+  moreNote: {
+    fontSize: font.xs,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    paddingVertical: spacing.smd,
   },
   listSection: {
     color: colors.textSecondary,

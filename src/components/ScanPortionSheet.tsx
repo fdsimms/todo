@@ -22,6 +22,7 @@ import {
   amountHint,
   composeFoodAmount,
   foodUnitOptionsFor,
+  recallAmount,
   scalePanelToAmount,
 } from '../utils/foodLog';
 import { addCustomPortion } from '../utils/foodNutrition';
@@ -41,6 +42,9 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { TextField } from './TextField';
 import { OTHER_UNIT_KEY, UnitMenuChip } from './UnitMenuChip';
 import { BUTTON_LABEL } from '../copy/shared';
+import { subDays } from 'date-fns/subDays';
+import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
+import { foodLastAmounts } from '../utils/foodLogRecents';
 
 /** "1.5" not "1.5000000000000002", and "2" not "2.0". */
 function formatServings(n: number): string {
@@ -137,6 +141,11 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const addEntry = useFoodLogStore(s => s.addEntry);
+  const recentEntries = useFoodLogStore(s => s.recentEntries);
+  // What each food was last logged as, read once per opening the way the add
+  // sheet reads its own (90 days): the 150 g of yogurt someone has every day
+  // starts at 150 g rather than one serving to retype.
+  const [lastAmounts, setLastAmounts] = useState(() => foodLastAmounts([]));
   const setItemNutrition = useGroceryStore(s => s.setItemNutrition);
   const setProductNutrition = useGroceryStore(s => s.setProductNutrition);
   const answerPantryReview = useGroceryStore(s => s.answerPantryReview);
@@ -182,6 +191,9 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
     setPantryAnswers({});
     setPantryAddToList({});
     setChosenSlot(slot);
+    const today = getCurrentDayStart();
+    setLastAmounts(foodLastAmounts(recentEntries(dayKeyOf(subDays(today, 90)), dayKeyOf(today))));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, slot]);
 
   /** The panel a card actually reads from — its own weighing, if it's saved one. */
@@ -194,14 +206,29 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
    * clear it) has an `answers` entry and never falls back to this.
    */
   const defaultAmountFor = (food: ScannedFood): { number: string; answer: string } | null => {
+    const recalled = recalledFor(food);
+    if (recalled) return { number: recalled.number, answer: recalled.amount };
     const serving = foodUnitOptionsFor(panelFor(food)).find(o => o.key === 'serving');
     return serving ? { number: '1', answer: composeFoodAmount('1', serving) } : null;
   };
 
-  /** The unit a card is on: the one picked, else serving, else the first the panel offers. */
+  /**
+   * The amount this food was last logged as, re-measured against this panel
+   * (`recallAmount`), or null. Keyed on the row the scan names (its product,
+   * else its item), never on the item behind a box. An amount that no longer
+   * measures falls back to one serving.
+   */
+  const recalledFor = (food: ScannedFood) => {
+    const key = food.productId ? `p:${food.productId}` : food.itemId ? `i:${food.itemId}` : null;
+    if (!key) return null;
+    return recallAmount(lastAmounts.get(key), { kind: 'food', panel: panelFor(food), name: food.label });
+  };
+
+  /** The unit a card is on: the one picked, else the last amount's, else serving, else the panel's first. */
   const unitKeyFor = (food: ScannedFood): string | null => {
     const options = foodUnitOptionsFor(panelFor(food));
     return amountUnits[food.key]
+      ?? recalledFor(food)?.unitKey
       ?? (options.some(o => o.key === 'serving') ? 'serving' : options.length > 0 ? options[0].key : null);
   };
 

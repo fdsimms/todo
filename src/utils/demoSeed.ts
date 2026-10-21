@@ -4955,6 +4955,9 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
       basis: 'perServing',
       servingGrams: 50,
       servingText: '1 slice (50g)',
+      // The loaf's printed net weight, which is what lets a scan of it offer
+      // "the whole package" (`servingsPerPackage`).
+      packageGrams: 680,
       amounts: { calorieKcal: 130, proteinG: 5, carbsG: 25, fatG: 1.5, fiberG: 2, sodiumMg: 260 },
       portions: [],
       source: 'manual',

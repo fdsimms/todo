@@ -1,6 +1,6 @@
 # The path the app is used for most: add a task from Today, then check it off.
 # Selectors are accessibility labels and visible text (the app sets no testIDs):
-# the FAB is "Add task" (AddTaskFab), its menu item "Task", quick add's field
+# the FAB is "Add task" (AddTaskFab), whose tap opens quick add, quick add's field
 # "New task…", and a row's checkbox "Complete <title>" (TaskItem).
 appId: com.fdsimms.dundundun
 ---
@@ -21,7 +21,6 @@ appId: com.fdsimms.dundundun
     timeout: 30000
 - tapOn: "Skip"
 - tapOn: "Add task"
-- tapOn: "Task"
 # Quick add opens with the field focused, and Return adds the task. Opened from
 # Today, a title-only task is due today, so it lands on this list.
 - inputText: "Water the plants"

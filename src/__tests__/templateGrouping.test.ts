@@ -1,4 +1,4 @@
-import { groupTemplatesByCategory, resolveTemplateDrop, type TemplateListItem } from '../utils/templateGrouping';
+import { groupTemplatesByCategory, resolveTemplateDrop, templateMatchesQuery, type TemplateListItem } from '../utils/templateGrouping';
 import type { TaskTemplate } from '../types';
 
 const makeTemplate = (overrides: Partial<TaskTemplate> = {}): TaskTemplate => ({
@@ -63,5 +63,23 @@ describe('resolveTemplateDrop', () => {
 
     const { categoryUpdates } = reorder(moved);
     expect(categoryUpdates).toEqual([{ id: 'a', category: null }]);
+  });
+});
+
+describe('templateMatchesQuery', () => {
+  const packing = makeTemplate({
+    name: 'Trip packing',
+    category: 'Travel',
+    items: [{ title: 'Pack passport' }, { title: 'Charger' }] as TaskTemplate['items'],
+  });
+
+  it('matches every word somewhere in the name, category or an item title', () => {
+    expect(templateMatchesQuery(packing, 'passport')).toBe(true);
+    expect(templateMatchesQuery(packing, 'travel CHARGER')).toBe(true);
+    expect(templateMatchesQuery(packing, 'packing sunscreen')).toBe(false);
+  });
+
+  it('matches everything on an empty query', () => {
+    expect(templateMatchesQuery(packing, '   ')).toBe(true);
   });
 });

@@ -32,6 +32,10 @@ import { SpotlightProvider, useSpotlightProgress } from '../components/Spotlight
 import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
 import { TaskGroupEditor } from '../components/TaskGroupEditor';
 import { EmptyState } from '../components/EmptyState';
+import { Fab } from '../components/Fab';
+import { QuickAddModal } from '../components/QuickAddModal';
+import { useStableCallback } from '../hooks/useStableCallback';
+import { haptics } from '../utils/haptics';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { DetailHeader } from '../components/DetailHeader';
 import { useColors } from '../theme/ThemeContext';
@@ -80,6 +84,7 @@ export function StackDetailScreen() {
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editorInitialDraft, setEditorInitialDraft] = useState<Partial<TaskDraft> | null>(null);
+  const [quickAddVisible, setQuickAddVisible] = useState(false);
   // The stack's own editor: its title, and adding new or existing tasks to it.
   const [groupEditorOpen, setGroupEditorOpen] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
@@ -174,6 +179,20 @@ export function StackDetailScreen() {
     setEditingTask(task);
     setEditorVisible(true);
   }, []);
+
+  // A task added here joins the stack. Seeded with the stack alone, so quick
+  // add's "add another" keeps adding to it (`sectionOnlySeed`), and "More
+  // details" carries the same seed into the full editor.
+  const handleQuickAddOpenFull = (draft: TaskDraft) => {
+    setQuickAddVisible(false);
+    setEditingTask(null);
+    setEditorInitialDraft({ ...draft, groupId });
+    setEditorVisible(true);
+  };
+  // Stable, because QuickAddModal is memoized and stays mounted while hidden.
+  const onQuickAddClose = useStableCallback(() => setQuickAddVisible(false));
+  const onQuickAddOpenFull = useStableCallback(handleQuickAddOpenFull);
+  const quickAddSeed = useMemo(() => ({ groupId }), [groupId]);
 
   const handleOpenProject = useCallback((projectId: string) => {
     navigation.navigate({ name: 'ProjectDetail', params: { projectId } } as never);
@@ -294,14 +313,21 @@ export function StackDetailScreen() {
               <EmptyState
                 icon="layers-outline"
                 title="No tasks in this stack"
-                subtitle="Add tasks from the stack’s editor, or drag them onto it on Today."
-                actionLabel={group ? 'Add tasks' : undefined}
+                subtitle="Tap + to add a new one, or add tasks you already have from the stack’s editor."
+                actionLabel={group ? 'Add existing tasks' : undefined}
                 onAction={group ? () => setGroupEditorOpen(true) : undefined}
               />
             }
           />
         </PaintSelectionProvider>
         </View>
+
+        {!selectionMode && group && (
+          <Fab
+            onPress={() => setQuickAddVisible(true)}
+            accessibilityLabel="Add task to this stack"
+          />
+        )}
 
         {selectionMode && (
           <BulkActionBar
@@ -340,6 +366,14 @@ export function StackDetailScreen() {
             setExpandedTaskId(null);
             setEditorInitialDraft(null);
           }}
+        />
+
+        <QuickAddModal
+          visible={quickAddVisible}
+          onClose={onQuickAddClose}
+          onOpenFull={onQuickAddOpenFull}
+          seed={quickAddSeed}
+          seedLabel={group?.title}
         />
 
         <TaskGroupEditor

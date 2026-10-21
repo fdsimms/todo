@@ -71,6 +71,13 @@ interface Props {
   surface?: Surface;
   /** Overrides "Find or add a {noun}…" when the noun doesn't take "a". */
   filterPlaceholder?: string;
+  /**
+   * Extra content between the filter field and the pills, given what is typed.
+   * For results from a larger set than the pills hold (a grocery catalog beside
+   * a recipe's own lines), so one field answers both instead of a second search
+   * sitting under it. Only shown while the field is on screen and has text.
+   */
+  belowField?: (query: string) => React.ReactNode;
 }
 
 /**
@@ -101,6 +108,7 @@ export function PillGroup({
   limit = DEFAULT_PILL_LIMIT,
   surface = 'card',
   filterPlaceholder,
+  belowField,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors, surface), [colors, surface]);
@@ -212,6 +220,8 @@ export function PillGroup({
           )}
         </View>
       )}
+
+      {filterable && !!trimmed && belowField?.(trimmed)}
 
       {/* The field carries its own bottom gap, so the grid only adds a top one
           when there's no field above it to sit under. */}

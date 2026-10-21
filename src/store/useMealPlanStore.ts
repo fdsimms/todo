@@ -982,9 +982,15 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     patchInRange(set, get, entry);
     reconcileMealSlot(get, entry);
     reconcileMealEvent(entry);
+    // Planning a recipe answers its Up Next bookmark: it's on the week now, and
+    // left bookmarked it sat at the top of Recipes as something still to plan.
+    // The undo puts the bookmark back where it was.
+    const unbookmarked = recipe?.upNext ? recipe : null;
+    if (unbookmarked) useRecipeStore.getState().setUpNext(unbookmarked.id, false);
     get().setLastAction({
       label: `Planned “${entry.title}”`,
       undo: () => {
+        if (unbookmarked) useRecipeStore.getState().setUpNext(unbookmarked.id, true, unbookmarked.upNextOrder);
         dropCookTask(entry.id);
         dropMealEvent(entry.id);
         dbDeleteMealPlanEntry(entry.id);

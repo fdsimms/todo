@@ -28,7 +28,7 @@ import { TextField } from './TextField';
 import { RotatingChevron } from './RotatingChevron';
 import { EmptyNote } from './EmptyNote';
 import { ExercisePickerSheet } from './ExercisePickerSheet';
-import type { ExerciseKind, ProgressionScheme, WorkoutRoutineItem } from '../types';
+import type { ExerciseKind, ProgressionScheme, WorkoutRoutine, WorkoutRoutineItem } from '../types';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
@@ -57,6 +57,8 @@ interface Props {
   routineId: string | null;
   /** The group a new routine is filed under when saved (an empty group's "Add new routine"). Ignored when editing. */
   newInGroup?: string | null;
+  /** The routine as saved, before `onClose`: for a caller that links a new one to what it was made for. */
+  onSaved?: (routine: WorkoutRoutine) => void;
   onClose: () => void;
 }
 
@@ -105,7 +107,7 @@ const viewsOf = (rows: readonly Row[]): SupersetRowView[] =>
  * asks before throwing edits away (`confirmDiscard`); a full-screen sheet has
  * no swipe to guard, only the button.
  */
-export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onClose }: Props) {
+export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSaved, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const routines = useWorkoutStore(s => s.routines);
@@ -257,6 +259,7 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onCl
       return;
     }
     haptics.success();
+    onSaved?.(result);
     onClose();
   };
 

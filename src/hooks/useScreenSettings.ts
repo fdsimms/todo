@@ -56,7 +56,7 @@ export function useScreenSettings(route: string, title: string): {
     action,
     open,
     hasSettings: entries.length > 0,
-    sheet: { visible, onClose, anchor, title, entries },
+    sheet: { visible, onClose, anchor, title, route, entries },
     link: entries.length === 0 ? null : {
       entryId: entries[0].id,
       hint: entries.filter(e => e.groupId === entries[0].groupId).map(e => e.label).join(', '),

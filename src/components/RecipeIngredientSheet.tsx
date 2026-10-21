@@ -42,6 +42,7 @@ import { PillGroup } from './PillGroup';
 import { GroceryItemSheet } from './GroceryItemSheet';
 import { navigateToFoodSearchSettings } from './NutritionSearchSheet';
 import { CatalogLinkPicker } from './CatalogLinkPicker';
+import { rankGrocerySuggestions } from '../utils/grocerySuggest';
 import { InlineAction } from './InlineAction';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { TextField } from './TextField';
@@ -172,7 +173,6 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
   // The same, for the Alternatives card's own catalog picker. Two flags rather
   // than one shared "a picker is open": they sit in different cards and either
   // can be the one you want open.
-  const [altLinkOpen, setAltLinkOpen] = useState(false);
 
   // Keyed on `visible` too: the held subject above means reopening the same
   // line is the same object, and seeding on `ingredient` alone left the last
@@ -195,7 +195,6 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
     setExcludeFromShoppingList(!!ingredient.excludeFromShoppingList);
     setEditingItemId(null);
     setLinkOpen(false);
-    setAltLinkOpen(false);
   }, [ingredient, visible]);
 
   // The catalog row this line resolves to. Above the early return, like every
@@ -920,6 +919,29 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
           filterPlaceholder="Find or add an ingredient…"
           createMaxLength={GROCERY_NAME_MAX_LENGTH}
           onCreate={createAlternative}
+          // The catalog half of the same question, answered by the same field
+          // rather than a second search: an alternative names something you can
+          // put in a cart, so what is typed also ranks the catalog (the ranking
+          // the grocery add field uses). The pills stay the recipe's own lines,
+          // a small closed set, rather than the whole catalog beside them.
+          belowField={query =>
+            rankGrocerySuggestions(query, alternativeCandidates, new Date(), 5).map(({ item }) => (
+              <TouchableOpacity
+                key={item.id}
+                style={styles.altRow}
+                activeOpacity={interaction.activeOpacity}
+                onPress={() => {
+                  haptics.tap();
+                  if (createAlternative(item.name)) haptics.error();
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={`Add ${item.name} as an alternative, ${item.aisle}`}
+              >
+                <Text style={styles.altRowName} numberOfLines={1}>{item.name}</Text>
+                <Text style={styles.altRowAisle} numberOfLines={1}>{item.aisle}</Text>
+              </TouchableOpacity>
+            ))
+          }
           options={[
             {
               key: '__none__',
@@ -984,35 +1006,6 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
             }),
           ]}
         />
-        {/* The catalog half of the same question, and deliberately the same
-            component the name field above uses rather than a second search of
-            its own: an alternative names something you can put in a trolley, so
-            "which of my groceries" is answered by the picker that already ranks
-            them (frequency × recency, plural-tolerant — see
-            rankGrocerySuggestions). The pills above stay the recipe's own
-            lines, which is a small closed set; dumping the whole catalog in
-            beside them made a grid with no ceiling out of a grid that had one,
-            and buried the siblings behind an "N more" counting hundreds. */}
-        <InlineAction
-          label="Find in your catalog"
-          icon="basket-outline"
-          variant="neutral"
-          style={styles.linkAction}
-          onPress={() => { haptics.tap(); animateLayout(); setAltLinkOpen(v => !v); }}
-          accessibilityLabel="Find an alternative in your grocery catalog"
-        />
-        {altLinkOpen && (
-          <CatalogLinkPicker
-            items={alternativeCandidates}
-            initialQuery=""
-            onPick={item => {
-              const rejection = createAlternative(item.name);
-              if (rejection) { haptics.error(); return; }
-              animateLayout();
-              setAltLinkOpen(false);
-            }}
-          />
-        )}
         {!!groupLabel && (
           editingGroupName ? (
             <View style={styles.groupNameEditRow}>
@@ -1261,6 +1254,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginTop: spacing.sm,
     alignSelf: 'flex-start',
   },
+  altRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+  },
+  altRowName: { flex: 1, color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
+  altRowAisle: { color: colors.textTertiary, fontSize: font.xs },
   suggestionDetail: {
     color: colors.textSecondary,
     fontSize: font.xs,

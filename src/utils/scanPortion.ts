@@ -38,7 +38,8 @@ export interface PackageChoice {
  * Both halves are required and neither is guessable: the pack size as the
  * source printed it ("500 g", "1 L"), and what one serving weighs. A per-100g
  * panel with no serving weight has no serving to count, and a pack size in
- * pieces ("6 bars") is not a mass this can divide.
+ * pieces ("6 bars") is not a mass this can divide. The pack size is the
+ * panel's own `packageGrams` when the person typed one, else the source's string.
  *
  * Refuses a package that works out to less than one serving as well. That is
  * either a pack size the source got wrong or a unit mismatch, and either way
@@ -48,10 +49,18 @@ export function servingsPerPackage(
   nutrition: FoodNutrition,
   packSize: string | null,
 ): number | null {
-  if (!packSize?.trim()) return null;
   const grams = nutrition.servingGrams;
   if (grams === null || !(grams > 0)) return null;
 
+  // A weight the person typed onto the panel outranks the source's string: they
+  // read it off the packet in their hand, and it is stored as a mass, so it
+  // needs no unit check beyond the panel's own basis.
+  const typed = nutrition.packageGrams;
+  if (typed && typed > 0) {
+    return nutrition.basis === 'per100ml' ? null : servingsIn(typed, grams);
+  }
+
+  if (!packSize?.trim()) return null;
   const measured = measureParsedQuantity(parseQuantity(packSize));
   // A volume is accepted against a per-100ml panel only, for the reason
   // `panelMultiplier` gives: turning millilitres into grams needs a density
@@ -60,7 +69,30 @@ export function servingsPerPackage(
   if (measured.dimension === 'mass' && nutrition.basis === 'per100ml') return null;
   if (measured.dimension === 'volume' && nutrition.basis !== 'per100ml') return null;
 
-  const servings = measured.base / grams;
+  return servingsIn(measured.base, grams);
+}
+
+/**
+ * A source's pack size ("227 g", "8 oz") as grams, or null when it is not a
+ * plain mass ("500 ml", "6 bars", nothing). The panel sheet uses it to fill
+ * Package weight from a scanned barcode, so a volume or a count is left for the
+ * person rather than guessed at.
+ */
+export function packSizeGrams(packSize: string | null): number | null {
+  if (!packSize?.trim()) return null;
+  const measured = measureParsedQuantity(parseQuantity(packSize));
+  if (!measured || measured.dimension !== 'mass') return null;
+  return Number.isFinite(measured.base) && measured.base > 0 ? Math.round(measured.base * 100) / 100 : null;
+}
+
+/**
+ * How many servings a package weighing `packageGrams` holds, to a tenth, or
+ * null when it works out to less than one. The sheet that types the package
+ * weight calls this too, so the line it shows is the number the scan offers.
+ */
+export function servingsIn(packageGrams: number, servingGrams: number): number | null {
+  if (!(packageGrams > 0) || !(servingGrams > 0)) return null;
+  const servings = packageGrams / servingGrams;
   if (!Number.isFinite(servings) || servings < 1) return null;
   return Math.round(servings * 10) / 10;
 }

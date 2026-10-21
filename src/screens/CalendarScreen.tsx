@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useWithoutLockedTasks } from '../hooks/useWithoutLockedTasks';
 import { useStableCallback } from '../hooks/useStableCallback';
 import { Animated, View, Text, ScrollView, StyleSheet, useWindowDimensions, TouchableOpacity, PanResponder, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
@@ -78,6 +78,15 @@ import {
   type DayExtras,
 } from '../utils/calendarExtras';
 import { LazySheet } from '../components/LazySheet';
+import { useTaskSelection } from '../hooks/useTaskSelection';
+import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
+import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
+import { PaintSelectionProvider } from '../components/PaintSelection';
+import { BulkActionBar } from '../components/BulkActionBar';
+import { bulkSetCategoryOffering } from '../utils/generatedCategoryPrompt';
+import { bulkAddTagsAsking, bulkSetPriorityAsking, bulkSetDifficultyAsking } from '../utils/bulkScopePrompt';
+import { projectMoveTargets } from '../utils/projectList';
+import { animateLayout } from '../utils/layoutAnimation';
 import { reuseUnchangedLists } from '../utils/stableLists';
 
 // A cell is a seventh of the column, read from the window as it is now: a Mac
@@ -230,6 +239,50 @@ export function CalendarScreen() {
   // Collapse an expanded row on the way out, so it isn't still open on return.
   useFocusEffect(useCallback(() => () => setExpandedTaskId(null), []));
 
+  // ==== bulk selection ====
+  // Entered by swiping a row, as on every other task list. It covers the
+  // rows listed for the day or week on screen, and ends when the day or the
+  // view changes, since what was picked is no longer what's listed.
+  const {
+    selectionMode,
+    selectedIds,
+    enterSelectionMode,
+    toggleSelection,
+    exitSelection,
+    selectAll,
+    deselectAll,
+    handleBulkDelete,
+    completableCount,
+    painting,
+    paintProps,
+  } = useTaskSelection(allTasks);
+  const allTags = useTaskStore(useShallow(s => s.allTags()));
+  const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
+  const bulkMarkMissed = useTaskStore(s => s.bulkMarkMissed);
+  const bulkMoveToProject = useTaskStore(s => s.bulkMoveToProject);
+  const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
+  const [bulkBarHeight, setBulkBarHeight] = useState(0);
+  // Clears the floating bar while selecting, as the other bulk-selecting tab
+  // screens do, and the button otherwise.
+  const listBottomPadding = selectionMode ? tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm : tabBarHeight + spacing.xl;
+  // Bulk completion asks before it drops an answer (useAnswerFirstCompletion),
+  // and Cancel leaves the selection as it was.
+  const { requestComplete, queueProps } = useAnswerFirstCompletion();
+  const handleBulkComplete = () => {
+    const ids = Array.from(selectedIds);
+    requestComplete({
+      ids,
+      complete: skipIds => {
+        bulkCompleteTasks(ids.filter(id => !skipIds.includes(id)));
+        exitSelection();
+      },
+    });
+  };
+  const handleRowSwipeSelect = useCallback((id: string) => {
+    setExpandedTaskId(null);
+    enterSelectionMode(id);
+  }, [enterSelectionMode]);
+
   const use24Hour = useSettingsStore(s => s.use24HourTime);
   // Subscribed only so a meal edited in the loaded window redraws; the grid's
   // own meals come through entriesInRangeLive.
@@ -238,6 +291,7 @@ export function CalendarScreen() {
 
 
   const projects = useProjectStore(useShallow(s => s.projects));
+  const moveTargets = useMemo(() => projectMoveTargets(projects), [projects]);
   // ==== the month: grid, buckets and the selected day's detail ====
   const days = useMemo(() => buildCalendarGrid(displayMonth, weekStartsOn), [displayMonth, weekStartsOn]);
   /**
@@ -399,6 +453,15 @@ export function CalendarScreen() {
   // Keyed on the week rather than the selected day, so marking another day of
   // the same week (a tap, or scrolling the list) doesn't rebuild the seven.
   const weekStartKey = dayKeyOf(buildWeekDays(dayKeyToDate(selectedKey), weekStartsOn)[0]);
+  // What the list below is showing: the week as a whole in week view, where
+  // scrolling moves the selected day, and the one day otherwise. A selection
+  // ends when it changes.
+  const listedPeriodKey = viewMode === 'week' ? `week:${weekStartKey}` : `${viewMode}:${selectedKey}`;
+  const selectionRef = useRef({ selectionMode, exitSelection });
+  selectionRef.current = { selectionMode, exitSelection };
+  useEffect(() => {
+    if (selectionRef.current.selectionMode) selectionRef.current.exitSelection();
+  }, [listedPeriodKey]);
   const weekDays = useMemo(
     () => buildWeekDays(dayKeyToDate(weekStartKey), weekStartsOn),
     [weekStartKey, weekStartsOn],
@@ -728,6 +791,11 @@ export function CalendarScreen() {
     setSlotMenuOpen(true);
   }, [selectedDayStart]);
 
+  // The tasks rendered as rows on this pass, so a task listed twice on one
+  // day (due and a deadline) marks its second row as the copy and keeps it
+  // out of the paint-select registry, which is keyed by task id.
+  const listedIds = new Set<string>();
+
   /** `dragFrom`: the day these rows are listed under, when they can be dragged off it. */
   const renderRows = (label: string, tasks: Task[], dragFrom?: string) => {
     if (tasks.length === 0) return null;
@@ -742,14 +810,21 @@ export function CalendarScreen() {
           // painted after it. See useElevatedCellRenderer for the FlatList
           // equivalent this screen doesn't need.
           const elevated = expandedTaskId === task.id;
+          const duplicate = listedIds.has(task.id);
+          listedIds.add(task.id);
           return (
             <View key={task.id} style={elevated && styles.rowElevated}>
               <TaskItem
                 task={task}
+                duplicateRow={duplicate}
                 onPress={handleRowPress}
                 expanded={elevated}
                 onEdit={handleRowEdit}
-                drag={dragFrom && !task.completed ? dragHandlerFor(task.id, dragFrom) : undefined}
+                drag={dragFrom && !task.completed && !selectionMode ? dragHandlerFor(task.id, dragFrom) : undefined}
+                selectionMode={selectionMode}
+                selected={selectedIds.has(task.id)}
+                onSelect={toggleSelection}
+                onSwipeSelect={handleRowSwipeSelect}
                 isActive={draggingTask?.id === task.id}
                 subtaskCount={subs.length}
                 subtaskDoneCount={subs.filter(t => t.completed).length}
@@ -982,6 +1057,7 @@ export function CalendarScreen() {
         const elevated = expandedTaskId === rowKey;
         const duplicate = shown.has(task.id);
         shown.add(task.id);
+        listedIds.add(task.id);
         return (
           <View key={rowKey} style={elevated && styles.rowElevated}>
             <TaskItem
@@ -991,9 +1067,13 @@ export function CalendarScreen() {
               onPress={handleRowPress}
               expanded={elevated}
               onEdit={handleRowEdit}
-              drag={!task.completed && (dayInfo.due.includes(task) || dayInfo.defer.includes(task))
+              drag={!task.completed && !selectionMode && (dayInfo.due.includes(task) || dayInfo.defer.includes(task))
                 ? dragHandlerFor(task.id, key)
                 : undefined}
+              selectionMode={selectionMode}
+              selected={selectedIds.has(task.id)}
+              onSelect={toggleSelection}
+              onSwipeSelect={handleRowSwipeSelect}
               isActive={draggingTask?.id === task.id}
               subtaskCount={subs.length}
               subtaskDoneCount={subs.filter(t => t.completed).length}
@@ -1276,11 +1356,12 @@ export function CalendarScreen() {
       </View>
       )}
 
+      <PaintSelectionProvider {...paintProps}>
       <ScrollView
         refreshControl={pullSearch.refreshControl}
         ref={detailScrollRef}
         style={[styles.detail, viewMode === 'week' && styles.weekList]}
-        scrollEnabled={!draggingSubtask && draggingTask === null}
+        scrollEnabled={!draggingSubtask && draggingTask === null && !painting}
         onScroll={viewMode === 'week' ? onWeekScroll : undefined}
         scrollEventThrottle={viewMode === 'week' ? 32 : undefined}
         onScrollBeginDrag={() => { weekSpyLive.current = true; }}
@@ -1288,8 +1369,8 @@ export function CalendarScreen() {
         onContentSizeChange={(_, h) => { weekContentHeight.current = h; }}
         contentContainerStyle={
           viewMode !== 'week' && (viewMode === 'day' ? dayEmpty : monthEmpty)
-            ? { flexGrow: 1, paddingBottom: tabBarHeight + spacing.xl }
-            : { paddingBottom: tabBarHeight + spacing.xl }
+            ? { flexGrow: 1, paddingBottom: listBottomPadding }
+            : { paddingBottom: listBottomPadding }
         }
         showsVerticalScrollIndicator={false}
       >
@@ -1334,11 +1415,42 @@ export function CalendarScreen() {
           </>
         )}
       </ScrollView>
+      </PaintSelectionProvider>
 
-      <Fab
-        onPress={() => setQuickAddVisible(true)}
-        accessibilityLabel="Add task"
-      />
+      {!selectionMode && (
+        <Fab
+          onPress={() => setQuickAddVisible(true)}
+          accessibilityLabel="Add task"
+        />
+      )}
+
+      {selectionMode && (
+        <BulkActionBar
+          selectedCount={selectedIds.size}
+          totalCount={listedIds.size}
+          existingTags={allTags}
+          onComplete={handleBulkComplete}
+          completableCount={completableCount}
+          onDelete={handleBulkDelete}
+          onSetWhen={(date, segs) => confirmBulkSetWhen(Array.from(selectedIds), date, segs, exitSelection)}
+          onSetCategory={cat => bulkSetCategoryOffering(Array.from(selectedIds), cat, exitSelection)}
+          onAddTags={tags => bulkAddTagsAsking(Array.from(selectedIds), tags, exitSelection)}
+          onSetPriority={p => bulkSetPriorityAsking(Array.from(selectedIds), p, exitSelection)}
+          onSetDifficulty={rewardsEnabled ? d => bulkSetDifficultyAsking(Array.from(selectedIds), d, exitSelection) : undefined}
+          onMarkMissed={() => { bulkMarkMissed(Array.from(selectedIds)); exitSelection(); }}
+          moveToProject={{
+            projects: moveTargets,
+            onMove: projectId => { animateLayout(); bulkMoveToProject(Array.from(selectedIds), projectId); exitSelection(); },
+          }}
+          onSelectAll={() => selectAll([...listedIds])}
+          onDeselectAll={deselectAll}
+          onCancel={exitSelection}
+          bottomInset={tabBarHeight}
+          onHeightChange={setBulkBarHeight}
+        />
+      )}
+
+      <DeliverablePromptQueue {...queueProps} />
 
       {draggingTask && (
         <Animated.View

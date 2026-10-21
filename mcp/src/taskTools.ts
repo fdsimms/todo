@@ -123,6 +123,15 @@ export function deleteTag(replica: Replica, tag: string): { tag: string; removed
   return { tag, removedFrom: changed.length, tags: replica.tagList() };
 }
 
+export function renameTag(
+  replica: Replica,
+  tag: string,
+  to: string,
+): { from: string; to: string; merged: boolean; renamedOn: number; tags: string[] } {
+  const result = replica.renameTag(tag, to);
+  return { from: result.from, to: result.to, merged: result.merged, renamedOn: result.changed.length, tags: replica.tagList() };
+}
+
 export function setCompletionDate(replica: Replica, id: string, date: string): SerializedTask {
   const at = new Date(localDateInput(date));
   return serializeTasks(replica, [replica.setCompletedAt(id, at)])[0];

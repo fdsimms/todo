@@ -106,6 +106,7 @@ import { spacing, font, fontWeight, radius, interaction, iconSize, type Colors }
 import { haptics } from '../utils/haptics';
 import { useActionMenu } from '../hooks/useActionMenu';
 import { animateLayout } from '../utils/layoutAnimation';
+import { cleanPastedLines } from '../utils/pastedLines';
 import type { Task, Project, TaskDraft as NewTaskDraft, TaskGroup, TaskTemplate } from '../types';
 import { PRIORITY_LABELS, TITLE_MAX_LENGTH } from '../types';
 import { SheetHeaderButton } from '../components/SheetHeaderButton';
@@ -198,11 +199,6 @@ function GroupDropTargetRow({
   );
   const dragAimed = useDropTargetAimed(dragTarget, groupId);
   return <GroupDropTarget active={dragAimed || aimed}>{children}</GroupDropTarget>;
-}
-
-/** A pasted list's lines, without the bullets it often carries. */
-function cleanPastedLines(raw: string[]): string[] {
-  return raw.map(l => l.replace(/^\s*(?:[-*•◦▪]|\d+[.)]|\[[ xX]?\])\s+/, '').trim()).filter(Boolean);
 }
 
 /**

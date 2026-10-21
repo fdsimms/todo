@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { CardSheet, useCardSheet } from './CardSheet';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -33,10 +33,10 @@ interface Props {
 }
 
 /**
- * The three questions a new install is asked once (`src/utils/firstRun.ts`),
+ * The questions a new install is asked once (`src/utils/firstRun.ts`),
  * and the same sheet when Settings > Feature areas runs setup again.
  *
- * Two of the answers are settings and the third is a permission, which is asked
+ * Reminders is a permission rather than a setting, and is asked
  * for here, on the tap that says "yes", rather than in a Settings group nobody
  * has a reason to open yet. The sheet opens on the current settings, so Done
  * without touching anything changes nothing, and Skip never writes a setting.
@@ -50,6 +50,10 @@ export function FirstRunSheet({ visible, onClose, rerun = false }: Props) {
   const simpleMode = useSettingsStore(s => s.simpleMode);
   const setKitchenEnabled = useSettingsStore(s => s.setKitchenEnabled);
   const setSimpleMode = useSettingsStore(s => s.setSimpleMode);
+  const workoutsEnabled = useSettingsStore(s => s.workoutsEnabled);
+  const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
+  const setWorkoutsEnabled = useSettingsStore(s => s.setWorkoutsEnabled);
+  const setRewardsEnabled = useSettingsStore(s => s.setRewardsEnabled);
   const setFirstRunDone = useSettingsStore(s => s.setFirstRunDone);
 
   const [answers, setAnswers] = useState<FirstRunAnswers>(FIRST_RUN_DEFAULTS);
@@ -59,6 +63,8 @@ export function FirstRunSheet({ visible, onClose, rerun = false }: Props) {
       groceriesAndMeals: kitchenEnabled,
       keepItSimple: simpleMode,
       reminders: FIRST_RUN_DEFAULTS.reminders,
+      workouts: workoutsEnabled,
+      coins: rewardsEnabled,
     });
     // Read when the sheet opens, not on every change underneath it.
   }, [visible]);
@@ -84,6 +90,8 @@ export function FirstRunSheet({ visible, onClose, rerun = false }: Props) {
       const next = firstRunSettings(answers);
       if (next.kitchenEnabled !== kitchenEnabled) setKitchenEnabled(next.kitchenEnabled);
       if (next.simpleMode !== simpleMode) setSimpleMode(next.simpleMode);
+      if (next.workoutsEnabled !== workoutsEnabled) setWorkoutsEnabled(next.workoutsEnabled);
+      if (next.rewardsEnabled !== rewardsEnabled) setRewardsEnabled(next.rewardsEnabled);
       setFirstRunDone(true);
       if (answers.reminders) void askForReminders();
     });
@@ -108,9 +116,10 @@ export function FirstRunSheet({ visible, onClose, rerun = false }: Props) {
           <Text style={styles.heading}>Quick setup</Text>
           <SheetHeaderButton label={BUTTON_LABEL.done} onPress={finish} minWidth={56} style={styles.headerRight} />
         </View>
-        <View style={styles.body}>
+        {/* Five questions can outgrow the card on a small phone, which caps it. */}
+        <ScrollView style={styles.scroll} contentContainerStyle={styles.body}>
           <Text style={styles.hint}>
-            Three setup questions. You can change any answer later in Settings.
+            A few setup questions. You can change any answer later in Settings.
           </Text>
 
           <View style={styles.question}>
@@ -147,7 +156,29 @@ export function FirstRunSheet({ visible, onClose, rerun = false }: Props) {
               onChange={v => setAnswers(a => ({ ...a, reminders: v }))}
             />
           </View>
-        </View>
+
+          <View style={styles.question}>
+            <Text style={styles.label}>Workouts</Text>
+            <Text style={styles.help}>Logs strength training: routines, sets and a rest timer.</Text>
+            <SegmentedControl
+              label="Workouts"
+              options={YES_NO}
+              value={answers.workouts}
+              onChange={v => setAnswers(a => ({ ...a, workouts: v }))}
+            />
+          </View>
+
+          <View style={styles.question}>
+            <Text style={styles.label}>Coins and rewards</Text>
+            <Text style={styles.help}>Finishing a task earns coins, which you spend on rewards you set yourself.</Text>
+            <SegmentedControl
+              label="Coins and rewards"
+              options={YES_NO}
+              value={answers.coins}
+              onChange={v => setAnswers(a => ({ ...a, coins: v }))}
+            />
+          </View>
+        </ScrollView>
       </View>
     </CardSheet>
   );
@@ -183,7 +214,8 @@ export function FirstRunHost() {
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
-  card: { paddingBottom: spacing.md },
+  card: { flexShrink: 1, paddingBottom: spacing.md },
+  scroll: { flexGrow: 0 },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -5,6 +5,7 @@ import {
   Text,
   FlatList,
   TouchableOpacity,
+  Alert,
   Keyboard,
   StyleSheet,
   type GestureResponderEvent,
@@ -29,7 +30,11 @@ import { useShallow } from 'zustand/react/shallow';
 import { projectMoveTargets } from '../utils/projectList';
 import { useProjectStore } from '../store/useProjectStore';
 import { TaskItem } from '../components/TaskItem';
-import { TaskEditor } from '../components/TaskEditor';
+import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
+import { QuickAddModal } from '../components/QuickAddModal';
+import { LazySheet } from '../components/LazySheet';
+import { normalizeTagName } from '../utils/tagRename';
+import { BUTTON_LABEL } from '../copy/shared';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
@@ -87,6 +92,17 @@ export function TagsScreen() {
   // stop scrolling for the duration (see TaskItem.onSubtaskDragStateChange).
   const [draggingSubtask, setDraggingSubtask] = useState(false);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
+  // A new task started from a tag's own page, already carrying the tag.
+  const [taskQuickAddVisible, setTaskQuickAddVisible] = useState(false);
+  const [editorDraft, setEditorDraft] = useState<Partial<TaskDraft> | null>(null);
+  const tagSeed = useMemo(() => (selectedTag ? { tags: [selectedTag] } : undefined), [selectedTag]);
+  const onTaskQuickAddClose = useCallback(() => setTaskQuickAddVisible(false), []);
+  const onTaskQuickAddOpenFull = useCallback((draft: TaskDraft) => {
+    setTaskQuickAddVisible(false);
+    setEditingTask(null);
+    setEditorDraft(draft);
+    setEditorVisible(true);
+  }, []);
   const allTasks = useWithoutLockedTasks(useTaskStore(s => s.tasks));
   const {
     selectionMode,
@@ -203,6 +219,7 @@ export function TagsScreen() {
    */
   const closeTagDetail = useCallback(() => {
     setEditorVisible(false);
+    setTaskQuickAddVisible(false);
     setSelectedTag(null);
     if (selectionMode) exitSelection();
   }, [selectionMode, exitSelection]);
@@ -230,6 +247,44 @@ export function TagsScreen() {
   const handleAddTag = (name: string) => {
     animateLayout();
     addTag(name.toLowerCase());
+  };
+
+  // Renaming reaches every task with the tag, finished ones too, and every
+  // rule, view and template that names it (renameTag). Onto a tag that
+  // already exists it is a merge, which can't be split again, so that asks.
+  const handleRenameTag = (tag: string) => {
+    haptics.tap();
+    Alert.prompt(
+      'Rename tag',
+      'Every task with this tag gets the new name, finished ones included.',
+      [
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
+        {
+          text: 'Rename',
+          onPress: (text?: string) => {
+            const to = normalizeTagName(text ?? '');
+            if (!to || to === tag) return;
+            const rename = () => {
+              if (!useTaskStore.getState().renameTag(tag, to)) return;
+              haptics.success();
+              animateLayout();
+              setSelectedTag(cur => (cur === tag ? to : cur));
+            };
+            if (!useTaskStore.getState().allTags().includes(to)) { rename(); return; }
+            Alert.alert(
+              `Merge into “${to}”?`,
+              `There’s already a tag called “${to}”. Every task tagged “${tag}” will be tagged “${to}” instead, and the two can’t be separated again.`,
+              [
+                { text: BUTTON_LABEL.cancel, style: 'cancel' },
+                { text: 'Merge', style: 'destructive', onPress: rename },
+              ],
+            );
+          },
+        },
+      ],
+      'plain-text',
+      tag,
+    );
   };
 
   const handleDeleteTag = (tag: string) => {
@@ -345,6 +400,26 @@ export function TagsScreen() {
                   <Ionicons name="pricetag" size={14} color={tagColor(selectedTag)} />
                 </View>
               ) : undefined}
+              actions={selectedTag && !selectionMode ? (
+                <View style={styles.detailActions}>
+                  <TouchableOpacity
+                    onPress={() => handleRenameTag(selectedTag)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Rename ${selectedTag}`}
+                  >
+                    <Ionicons name="create-outline" size={22} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => { haptics.tap(); Keyboard.dismiss(); setTaskQuickAddVisible(true); }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Add a task tagged ${selectedTag}`}
+                  >
+                    <Ionicons name="add" size={24} color={colors.accent} />
+                  </TouchableOpacity>
+                </View>
+              ) : undefined}
             />
 
             <SpotlightOverlay
@@ -401,7 +476,13 @@ export function TagsScreen() {
                 }
                 ListFooterComponentStyle={tagTasks.length === 0 ? undefined : styles.listFooterCell}
                 ListEmptyComponent={
-                  <EmptyState icon="pricetag-outline" title="No active tasks" subtitle="Tasks with this tag show up here. Completed ones are in the Logbook." />
+                  <EmptyState
+                    icon="pricetag-outline"
+                    title="No active tasks"
+                    subtitle="Tasks with this tag show up here. Completed ones are in the Logbook."
+                    actionLabel="Add a task"
+                    onAction={() => { haptics.tap(); setTaskQuickAddVisible(true); }}
+                  />
                 }
               />
             </PaintSelectionProvider>
@@ -450,11 +531,23 @@ export function TagsScreen() {
           <TaskEditor
             visible={editorVisible}
             task={editingTask}
+            initialDraft={editorDraft ?? undefined}
             onClose={() => {
               setEditorVisible(false);
               setExpandedTaskId(null);
+              setEditorDraft(null);
             }}
           />
+
+          <LazySheet open={taskQuickAddVisible}>
+            <QuickAddModal
+              visible={selectedTag !== null && taskQuickAddVisible}
+              onClose={onTaskQuickAddClose}
+              onOpenFull={onTaskQuickAddOpenFull}
+              seed={tagSeed}
+              seedLabel={selectedTag ? `#${selectedTag}` : null}
+            />
+          </LazySheet>
         </SheetModal>
         <ScrollToTopButton {...scrollTop.buttonProps} />
       {pullSearch.sheet}
@@ -516,6 +609,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bg,
   },
+  detailActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   tagIconSm: {
     width: 28,
     height: 28,

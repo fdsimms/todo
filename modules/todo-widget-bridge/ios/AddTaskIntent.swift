@@ -192,5 +192,31 @@ struct DundundunShortcuts: AppShortcutsProvider {
             shortTitle: "Start a Routine",
             systemImageName: "dumbbell"
         )
+        // Nothing to fill in: one glass, the size set in the app
+        // (ShortcutActionIntents.swift).
+        AppShortcut(
+            intent: LogWaterIntent(),
+            phrases: [
+                "Log water in \(.applicationName)",
+                "Log a glass of water in \(.applicationName)",
+            ],
+            shortTitle: "Log Water",
+            systemImageName: "drop"
+        )
+        // Free text again: Siri asks what to add (ShortcutActionIntents.swift).
+        //
+        // That makes ten, which is as many App Shortcuts as an app may have
+        // (the build fails past it). Log Mood and Open Screen are Shortcuts
+        // app actions with no phrase for that reason; a new phrase here has
+        // to replace one.
+        AppShortcut(
+            intent: AddGroceryItemIntent(),
+            phrases: [
+                "Add to my grocery list in \(.applicationName)",
+                "Add groceries in \(.applicationName)",
+            ],
+            shortTitle: "Add to Grocery List",
+            systemImageName: "cart.badge.plus"
+        )
     }
 }
