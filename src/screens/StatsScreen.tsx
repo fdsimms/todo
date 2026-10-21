@@ -30,6 +30,8 @@ import { rankStreaks } from '../utils/streakLeaderboard';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, animation, interaction, type Colors } from '../theme';
 import { useTextScale } from '../hooks/useTextScale';
+import { ChartGuides, BAR_GUIDE_GAP, useGuideGutter } from '../components/ChartGuides';
+import { countStripScale } from '../utils/stripScale';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { getRepeatedInstances, normalizeTitle, taskForTitleKey } from '../utils/taskInstances';
@@ -120,6 +122,8 @@ const FOCUS_DAYS = 30;
 // Shallower than the 7-day chart: 24 bars is a wide, low shape, and a tall one
 // would push the headline under it off the first screen.
 const HOUR_BAR_HEIGHT = 64;
+// Width of the count column beside the hour chart, at the default text size.
+const HOUR_GUIDE_LABEL_WIDTH = 22;
 // Every sixth hour is marked on the hour chart's axis — 24 labels would not fit.
 const HOUR_LABEL_EVERY = 6;
 const HABIT_DAYS = 30;
@@ -300,7 +304,8 @@ export function StatsScreen() {
     [tasks, rhythmOptions],
   );
 
-  const rhythmMax = useMemo(() => Math.max(1, ...rhythm.byHour), [rhythm]);
+  const hourScale = useMemo(() => countStripScale(Math.max(0, ...rhythm.byHour)), [rhythm]);
+  const hourGutter = useGuideGutter(HOUR_GUIDE_LABEL_WIDTH);
 
   const hourBars = useMemo(
     () => rhythm.byHour.map((count, hour) => ({
@@ -666,29 +671,43 @@ export function StatsScreen() {
           {rhythm.sampleCount > 0 && (
             <StaggerIn index={2}>
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>WHEN YOU GET THINGS DONE</Text>
+              <Text style={styles.sectionTitle}>TASKS COMPLETED BY HOUR</Text>
               <View style={styles.card}>
-                <View style={styles.hourChartInner}>
-                  {hourBars.map(({ hour, count, segment }) => (
-                    <View key={hour} style={styles.hourCol}>
-                      <View style={styles.hourTrack}>
-                        <Animated.View
-                          style={[
-                            styles.hourBar,
-                            {
-                              height: chartProgress.interpolate({
-                                inputRange: [0, 1],
-                                outputRange: ['0%', `${Math.max(2, Math.round((count / rhythmMax) * 100))}%`],
-                              }),
-                              backgroundColor: count > 0 ? segmentColors[segment] : colors.bgQuaternary,
-                            },
-                          ]}
-                        />
+                <View style={styles.hourPlot}>
+                  {/* One line per count, drawn before the bars so they sit on top. */}
+                  <ChartGuides
+                    height={HOUR_BAR_HEIGHT}
+                    gutter={hourGutter}
+                    guides={hourScale.levels.map(level => ({
+                      fraction: level / hourScale.top,
+                      label: String(level),
+                    }))}
+                  />
+                  <View style={[styles.hourChartInner, { paddingLeft: hourGutter }]}>
+                    {hourBars.map(({ hour, count, segment }) => (
+                      <View key={hour} style={styles.hourCol}>
+                        <View style={styles.hourTrack}>
+                          <Animated.View
+                            style={[
+                              styles.hourBar,
+                              {
+                                height: chartProgress.interpolate({
+                                  inputRange: [0, 1],
+                                  outputRange: [
+                                    0,
+                                    Math.max(2, (count / hourScale.top) * HOUR_BAR_HEIGHT - (count > 0 ? BAR_GUIDE_GAP : 0)),
+                                  ],
+                                }),
+                                backgroundColor: count > 0 ? segmentColors[segment] : colors.bgQuaternary,
+                              },
+                            ]}
+                          />
+                        </View>
                       </View>
-                    </View>
-                  ))}
+                    ))}
+                  </View>
                 </View>
-                <View style={styles.hourLabelRow}>
+                <View style={[styles.hourLabelRow, { paddingLeft: spacing.sm + hourGutter }]}>
                   {hourBars
                     .filter(({ hour }) => hour % HOUR_LABEL_EVERY === 0)
                     .map(({ hour }) => (
@@ -1491,10 +1510,14 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) =>
     },
     // 24 columns rather than 7, so the bars are thin and the labels can't sit
     // under every one — every sixth hour is marked instead.
-    hourChartInner: {
-      flexDirection: 'row',
+    // The plot's padding sits outside the relative box the guides are placed in,
+    // since an absolute child measures from the box's edge and not its padding.
+    hourPlot: {
       paddingHorizontal: spacing.sm,
       paddingTop: spacing.md,
+    },
+    hourChartInner: {
+      flexDirection: 'row',
     },
     hourCol: {
       flex: 1,
