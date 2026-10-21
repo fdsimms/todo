@@ -87,7 +87,7 @@ import {
   type SetField,
   supersetGroup,
 } from '../utils/workoutSession';
-import { tickSet } from '../utils/workoutTick';
+import { tickSet, type TickValues } from '../utils/workoutTick';
 import type { SessionExercise } from '../utils/workoutSession';
 
 // The four kinds of set, in the order the tray offers them. `amrap` is "Failure"
@@ -271,7 +271,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     useWorkoutStore.getState().editSet(session.id, setId, patch);
   }, [session]);
 
-  const toggleSet = (set: WorkoutSet) => {
+  const toggleSet = (set: WorkoutSet, exercise: SessionExercise) => {
     if (!session) return;
     if (set.completedAt !== null) {
       haptics.tap();
@@ -281,7 +281,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     haptics.impactMedium();
     // The write, the rest it starts and where the card goes are `tickSet`'s,
     // shared with the Lock Screen's "Done set".
-    const next = tickSet(session.id, set.id);
+    // A field left empty is done at the dimmed number the row showed in it.
+    const next = tickSet(session.id, set.id, new Date(), ghostFill(set, exercise));
     if (!next) return;
     if (next.showExerciseId !== viewedId) animateLayout();
     setViewedId(next.showExerciseId);
@@ -324,13 +325,6 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     haptics.tap();
     animateLayout();
     edit(set.id, { kind: next });
-  };
-
-  const sameAsLast = (set: WorkoutSet, exercise: SessionExercise) => {
-    const values = valuesFromLastDone(exercise.sets, set.id);
-    if (!values) return;
-    haptics.tap();
-    edit(set.id, values);
   };
 
   // "Use 82.5 kg": the proposal written onto the planned working sets, and a
@@ -1087,6 +1081,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                             field={f}
                             unit={unit}
                             done={done}
+                            ghost={ghostText(set, viewed, f, unit)}
                             onEdit={patch => edit(set.id, patch)}
                             styles={styles}
                             placeholderColor={colors.textTertiary}
@@ -1095,7 +1090,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                         ))}
                         <TouchableOpacity
                           style={styles.colCheck}
-                          onPress={() => toggleSet(set)}
+                          onPress={() => toggleSet(set, viewed)}
                           hitSlop={{ top: 10, bottom: 10, left: 12, right: 12 }}
                           accessibilityRole="checkbox"
                           accessibilityState={{ checked: done }}
@@ -1115,11 +1110,6 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                             onChange={next => changeKind(set, next)}
                           />
                           {!!plate && <PlateLine load={plate} unit={unit} />}
-                          {!!valuesFromLastDone(viewed.sets, set.id) && (
-                            <View style={styles.editActions}>
-                              <InlineAction label="Same as last set" variant="neutral" onPress={() => sameAsLast(set, viewed)} />
-                            </View>
-                          )}
                         </View>
                       )}
                     </DeletableSet>
@@ -1249,6 +1239,29 @@ function valueText(set: WorkoutSet, field: SetField, unit: WeightUnit): string |
   return set.distanceM !== null ? formatDistance(set.distanceM) : null;
 }
 
+/**
+ * What an empty cell of a not-yet-done set shows dimmed: the number from the
+ * done set nearest above (`valuesFromLastDone`). Null for a done set, a cell
+ * that has its own value, or when nothing above is done.
+ */
+function ghostText(set: WorkoutSet, exercise: SessionExercise, field: SetField, unit: WeightUnit): string | null {
+  if (set.completedAt !== null) return null;
+  const values = valuesFromLastDone(exercise.sets, set.id);
+  return values ? valueText({ ...set, ...values }, field, unit) : null;
+}
+
+/** The numbers ticking `set` writes for its empty cells: the ones `ghostText` showed. */
+function ghostFill(set: WorkoutSet, exercise: SessionExercise): TickValues {
+  const values = valuesFromLastDone(exercise.sets, set.id);
+  if (!values) return {};
+  const out: TickValues = {};
+  if (set.weightKg === null && values.weightKg !== null) out.weightKg = values.weightKg;
+  if (set.reps === null && values.reps !== null) out.reps = values.reps;
+  if (set.durationSeconds === null && values.durationSeconds !== null) out.durationSeconds = values.durationSeconds;
+  if (set.distanceM === null && values.distanceM !== null) out.distanceM = values.distanceM;
+  return out;
+}
+
 /** "82.5 kg × 8": the heaviest set, with its unit, for the summary. */
 function heaviestLine(set: WorkoutSet, kind: ExerciseKind, unit: WeightUnit): string | null {
   if (set.weightKg === null) return null;
@@ -1265,11 +1278,13 @@ function heaviestLine(set: WorkoutSet, kind: ExerciseKind, unit: WeightUnit): st
  * value reads dim and a done one reads full, as the cells did before they
  * became fields.
  */
-function SetInput({ set, field, unit, done, onEdit, styles, placeholderColor, accessibilityLabel }: {
+function SetInput({ set, field, unit, done, ghost, onEdit, styles, placeholderColor, accessibilityLabel }: {
   set: WorkoutSet;
   field: SetField;
   unit: WeightUnit;
   done: boolean;
+  /** The last done set's number, shown dimmed in an empty cell. */
+  ghost: string | null;
   onEdit: (patch: Partial<WorkoutSet>) => void;
   styles: ReturnType<typeof makeStyles>;
   placeholderColor: string;
@@ -1294,7 +1309,7 @@ function SetInput({ set, field, unit, done, onEdit, styles, placeholderColor, ac
         onBlur={commit}
         onSubmitEditing={commit}
         onFocus={() => setDraft(stored)}
-        placeholder="–"
+        placeholder={ghost ?? '–'}
         placeholderTextColor={placeholderColor}
         keyboardType={field === 'weight' || field === 'distance' ? 'decimal-pad' : field === 'duration' ? 'numbers-and-punctuation' : 'number-pad'}
         selectTextOnFocus
@@ -1539,7 +1554,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   tray: { paddingHorizontal: spacing.md, paddingBottom: spacing.smd, gap: spacing.smd },
   deletePanel: { width: 88, alignSelf: 'stretch', backgroundColor: colors.redFill, alignItems: 'center', justifyContent: 'center', gap: spacing.xxs },
   deleteText: { color: colors.onFill, fontSize: font.sm, fontWeight: fontWeight.semibold },
-  editActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   adds: {
     flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, padding: spacing.md,
     borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator,
