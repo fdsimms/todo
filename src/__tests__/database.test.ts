@@ -5742,7 +5742,7 @@ describe('recipe rows', () => {
     servingsMax: null,
     recipeYield: null,
     cookedWeightG: null,
-    leftoverKeepDays: null,
+    leftoverKeepDays: null, ovenTemp: null, ovenTempUnit: 'F', ovenTempStepId: null,
     imagePath: null,
     mealType: null,
     tags: [],
@@ -5790,6 +5790,16 @@ describe('recipe rows', () => {
     dbInsertRecipe(recipe);
 
     expect(dbGetAllRecipes()).toEqual([recipe]);
+  });
+
+  it('round-trips an oven temperature and its unit through insert and update', () => {
+    const recipe = makeRecipe({ id: 'r1', name: 'Banana Bread', ovenTemp: 180, ovenTempUnit: 'C', ovenTempStepId: 'step-4' });
+    dbInsertRecipe(recipe);
+    expect(dbGetAllRecipes()).toEqual([recipe]);
+
+    const hotter = { ...recipe, ovenTemp: 425, ovenTempUnit: 'F' as const, ovenTempStepId: null };
+    dbUpdateRecipe(hotter);
+    expect(dbGetAllRecipes()).toEqual([hotter]);
   });
 
   it('round-trips a recipe’s blanks through insert and update', () => {

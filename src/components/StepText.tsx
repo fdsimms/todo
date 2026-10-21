@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Text, type StyleProp, type TextStyle } from 'react-native';
 import type { StepSegment } from '../utils/stepIngredients';
+import { splitStepAtDurations, type StepDuration } from '../utils/stepTimers';
 import { useColors } from '../theme/ThemeContext';
 
 interface Props {
@@ -16,6 +17,13 @@ interface Props {
   /** The step's own type. The annotation inherits its size and takes the accent colour. */
   style?: StyleProp<TextStyle>;
   numberOfLines?: number;
+  /**
+   * The durations the step names (`stepDurationOffers`). With `onDurationPress`
+   * each one becomes a tap target in the sentence, so the phrase "7 to 9
+   * minutes" starts its own timer. Omit both and the text is plain.
+   */
+  durations?: StepDuration[];
+  onDurationPress?: (duration: StepDuration) => void;
 }
 
 /**
@@ -32,9 +40,46 @@ interface Props {
  * The rule for what it says is `stepIngredients.ts`'s; this only draws it. Both
  * halves render inside one `Text`, so the annotation wraps and reflows with the
  * words it belongs to instead of being a pill that can end up on its own line.
+ * A tappable duration is the same: an underlined run of the sentence, not a
+ * button, so the sentence keeps its line breaks.
  */
-export function StepText({ text, segments, style, numberOfLines }: Props) {
+export function StepText({ text, segments, style, numberOfLines, durations, onDurationPress }: Props) {
   const colors = useColors();
+  const tappable = !!onDurationPress && !!durations && durations.length > 0;
+  const pieces = useMemo(
+    () => (tappable ? splitStepAtDurations(text, segments, durations) : null),
+    [tappable, text, segments, durations]
+  );
+
+  if (pieces) {
+    return (
+      <Text style={style} numberOfLines={numberOfLines}>
+        {pieces.map((piece, at) => {
+          if (piece.kind === 'text') return <Text key={at}>{piece.text}</Text>;
+          if (piece.kind === 'duration') {
+            return (
+              <Text
+                key={at}
+                onPress={() => onDurationPress?.(piece.offer)}
+                accessibilityRole="button"
+                accessibilityLabel={`Set a timer for ${piece.text}`}
+                style={{ color: colors.accentText, textDecorationLine: 'underline' }}
+              >
+                {piece.text}
+              </Text>
+            );
+          }
+          return (
+            <Text key={at}>
+              {piece.text}
+              <Text style={{ color: colors.accent }}> ({piece.note})</Text>
+            </Text>
+          );
+        })}
+      </Text>
+    );
+  }
+
   if (!segments || segments.length === 0) {
     return <Text style={style} numberOfLines={numberOfLines}>{text}</Text>;
   }

@@ -56,7 +56,7 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { clearCookPosition, restingCookPosition, saveCookPosition } from '../utils/cookPosition';
 import { clampStepIndex, cookNotesPanel, cookSteps, describeStepPosition } from '../utils/cookMode';
-import { formatStepDuration, stepDurationOffers, stepTimerExcerpt } from '../utils/stepTimers';
+import { formatStepDuration, stepDurationOffers, stepTimerExcerpt, type StepDuration } from '../utils/stepTimers';
 import { recipeTimerResetPrompt, showsPrepRow, startCookingPlan } from '../utils/recipeTimer';
 import {
   applyChoice, choiceGroupKey, flattenRecipeIngredients, recipeChoiceGroups, type ChoiceGroup,
@@ -70,6 +70,7 @@ import { describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
 import { onHandNameKeys } from '../utils/grocerySuggest';
 import { formatScale, isUnscaled, scaleQuantity } from '../utils/recipeScale';
 import { convertScaledQuantity, showContainerCount } from '../utils/unitConvert';
+import { ovenSetupsFor } from '../utils/ovenTemp';
 import { ingredientWeightText, weightLookups as buildWeightLookups } from '../utils/lineWeight';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
@@ -271,7 +272,14 @@ export function CookModeSheet({
   // be blanks. A filled one is already in `ingredients` as the lines picked for
   // it; this is where it gets filled, or filled differently.
   const blanks = useMemo(() => recipeBlanksIn(recipe, recipesById), [recipe, recipesById]);
-  const hasIngredients = ingredients.length > 0 || blanks.length > 0;
+  // The oven settings of every dish being cooked: a "Preheat oven" line to tick
+  // off with the rest of the gathering. A recipe that only has a temperature
+  // still has a mise en place worth opening.
+  const ovenSetups = useMemo(
+    () => ovenSetupsFor(recipe, recipesById, unitSystem, steps, resolution),
+    [recipe, recipesById, unitSystem, steps, resolution]
+  );
+  const hasIngredients = ingredients.length > 0 || blanks.length > 0 || ovenSetups.length > 0;
   const [fillingBlanks, setFillingBlanks] = useState(false);
   const [scaleOpen, setScaleOpen] = useState(false);
   // Cook mode has no planned meal, so the picker is handed a stand-in for this
@@ -401,6 +409,21 @@ export function CookModeSheet({
   // up front would cost every open of the sheet a pass over text nobody is
   // looking at, and the offer is only ever made about the step on screen.
   const offers = useMemo(() => (step === null ? [] : stepDurationOffers(step)), [step]);
+
+  // One start for the chip under the sentence and the phrase inside it.
+  const startOffer = useCallback((offer: StepDuration) => {
+    if (step === null) return;
+    stepTimers.start({
+      recipeId: recipe.id,
+      recipeName: recipe.name,
+      stepId: step.id,
+      stepLabel: describeStepPosition(index, steps.length),
+      // The words the row is known by in the footer, since "Step 2 of 12"
+      // beside "Step 5 of 12" doesn't say which one is the rice.
+      stepExcerpt: stepTimerExcerpt(step.text, offer.start),
+      durationSeconds: offer.seconds,
+    });
+  }, [step, stepTimers, recipe.id, recipe.name, index, steps.length]);
 
   // The whole method at once, unlike the durations above: what a line's amount
   // *means* depends on whether the method spends it in one step or several, so
@@ -677,6 +700,71 @@ export function CookModeSheet({
                 </View>
               </View>
             )}
+            {ovenSetups.length > 0 && (
+              <View style={[styles.miseCard, styles.miseOven]}>
+                {ovenSetups.map((oven, position) => {
+                  const lineKey = `oven:${oven.recipeId}`;
+                  const lineOut = gatheredLines.has(lineKey);
+                  // A component's temperature is named for its dish, and a
+                  // converted one says what the recipe wrote.
+                  const detail = [
+                    oven.whole ? null : oven.recipeName,
+                    oven.stepNumber !== null ? `At step ${oven.stepNumber}` : null,
+                    oven.converted ? `Written as ${oven.written}` : null,
+                  ].filter(Boolean).join(' · ');
+                  // An oven that comes on partway through is information here,
+                  // not something to do while gathering: a clock in place of the
+                  // checkbox, and the step itself carries the reminder.
+                  if (oven.stepNumber !== null) {
+                    return (
+                      <View
+                        key={lineKey}
+                        style={[styles.miseRow, position === ovenSetups.length - 1 && styles.miseRowLast]}
+                        accessible
+                        accessibilityLabel={`Preheat oven to ${oven.text} at step ${oven.stepNumber}`}
+                      >
+                        <View style={styles.ovenLaterIcon}>
+                          <Ionicons name="time-outline" size={iconSize.md} color={colors.textSecondary} />
+                        </View>
+                        <View style={styles.miseRowText}>
+                          <Text style={styles.miseName}>Preheat oven</Text>
+                          {!!detail && <Text style={styles.misePrep}>{detail}</Text>}
+                        </View>
+                        <View style={styles.miseQtyPill}>
+                          <Text style={styles.miseQtyText} numberOfLines={1}>{oven.text}</Text>
+                        </View>
+                      </View>
+                    );
+                  }
+                  return (
+                    <TouchableOpacity
+                      key={lineKey}
+                      style={[styles.miseRow, position === ovenSetups.length - 1 && styles.miseRowLast]}
+                      activeOpacity={interaction.activeOpacity}
+                      onPress={() => toggleGathered(lineKey)}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: lineOut }}
+                      accessibilityLabel={`Preheat oven to ${oven.text}${oven.whole ? '' : `, for ${oven.recipeName}`}`}
+                    >
+                      <CheckPop
+                        checked={lineOut}
+                        style={styles.lineBox}
+                        checkedStyle={styles.lineBoxOut}
+                      >
+                        <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />
+                      </CheckPop>
+                      <View style={styles.miseRowText}>
+                        <Text style={styles.miseName}>Preheat oven</Text>
+                        {!!detail && <Text style={styles.misePrep}>{detail}</Text>}
+                      </View>
+                      <View style={styles.miseQtyPill}>
+                        <Text style={styles.miseQtyText} numberOfLines={1}>{oven.text}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
             <View style={styles.miseCard}>
               {ingredients.map((flat, position) => {
                 // Same scale-then-convert pipeline the panel below runs, and
@@ -814,7 +902,13 @@ export function CookModeSheet({
                   and any standing swap named where the ingredient is. The
                   ingredient panel below holds the same two facts, and folded
                   away it holds them where nobody mid-step is looking. */}
-              <StepText text={step.text} segments={annotated.get(step.id)} style={styles.stepText} />
+              <StepText
+                text={step.text}
+                segments={annotated.get(step.id)}
+                style={styles.stepText}
+                durations={offers}
+                onDurationPress={startOffer}
+              />
               {/* Said out loud, because the split is the app's and not the
                   cook's: a recipe whose method lives in notes gets read as
                   steps here, and that has to be legible as a fallback rather
@@ -822,6 +916,12 @@ export function CookModeSheet({
               {step.fromNotes && (
                 <Text style={styles.fromNotes}>From this recipe’s notes</Text>
               )}
+              {ovenSetups.filter(oven => oven.stepId === step.id).map(oven => (
+                <View key={oven.recipeId} style={styles.ovenChip} accessible accessibilityLabel={`Preheat oven to ${oven.text}`}>
+                  <Ionicons name="flame-outline" size={iconSize.sm} color={colors.accent} />
+                  <Text style={styles.ovenChipText}>Preheat oven to {oven.text}</Text>
+                </View>
+              ))}
 
               {/* The offer, under the sentence it was read out of rather than
                   down in the footer: the number belongs to this step, and
@@ -836,17 +936,7 @@ export function CookModeSheet({
                       icon="timer-outline"
                       label={`Set a ${formatStepDuration(offer.seconds)} timer`}
                       accessibilityLabel={`Set a ${formatStepDuration(offer.seconds)} timer for ${describeStepPosition(index, steps.length)}`}
-                      onPress={() => stepTimers.start({
-                        recipeId: recipe.id,
-                        recipeName: recipe.name,
-                        stepId: step.id,
-                        stepLabel: describeStepPosition(index, steps.length),
-                        // The words the row is known by in the footer, since
-                        // "Step 2 of 12" beside "Step 5 of 12" doesn't say
-                        // which one is the rice.
-                        stepExcerpt: stepTimerExcerpt(step.text, offer.start),
-                        durationSeconds: offer.seconds,
-                      })}
+                      onPress={() => startOffer(offer)}
                     />
                   ))}
                 </View>
@@ -1580,6 +1670,36 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
+  },
+  // Its own card above the ingredient list, so it clears the same gap a choice
+  // block does.
+  miseOven: {
+    marginBottom: spacing.md,
+  },
+  ovenLaterIcon: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // The reminder on the step an oven comes on at. Accent text like the
+  // attribution line above the step, on a tertiary chip so it reads as a thing
+  // to do rather than a caption.
+  ovenChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: spacing.xsm,
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.smd,
+    paddingVertical: spacing.xsm,
+    marginTop: spacing.md,
+  },
+  ovenChipText: {
+    color: colors.accent,
+    fontSize: font.md,
+    fontWeight: fontWeight.semibold,
   },
   miseHeading: {
     color: colors.textSecondary,

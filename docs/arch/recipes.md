@@ -1187,6 +1187,24 @@ ingredient panel's fold die with the modal.
   verbs sit behind one labelled "Made it" control rather than two glyphs; it is a menu even when
   only one of them applies, because `lastCookedAt` steers suggestions for weeks and a stray tap on
   a header icon shouldn't move it.
+- **The oven temperature is a line on mise en place, not a step.** `Recipe.ovenTemp` + `ovenTempUnit`
+  (`src/utils/ovenTemp.ts`) is one number for the whole dish, drawn by `CookModeSheet` as a
+  "Preheat oven" row in its own card above the ingredients, tickable like them (the same
+  `gatheredLines` mark, keyed `oven:<recipeId>`). `ovenSetupsFor` walks `cookedDishes`, so a component with
+  its own temperature gets a row named for its dish and one on the road not taken gets none. A recipe
+  whose only mise en place is a temperature still opens it. **Stored as written, converted only on
+  display** like an amount: `ovenTempFor` follows `unitSystem` and rounds a conversion to the dial's
+  own steps (25°F, 10°C), since a cook sets 350 or 180, never 176 or 356. A temperature outside what an
+  oven does (`cleanOvenTemp`) is refused, not clamped, and the editor says so while it's typed. A
+  recipe that changes the heat mid-bake keeps that in its steps; this exists so the preheat is said
+  before step one. **A recipe that preheats late says which step** (`Recipe.ovenTempStepId`, a step
+  id so reordering keeps it, cleared by `removeStep`): the mise en place row becomes an "At step N"
+  information row with a clock in place of the checkbox, and that step carries a "Preheat oven to
+  350°F" chip. `ovenSetupsFor` resolves it against the `cookSteps` being read, so a pointer to a
+  deleted or pick-hidden step reads as the start, never as an oven that is never turned on. The
+  extractor returns `ovenTempStep` (1-based, only a later step, only against its own `steps`, so it is
+  dropped when a page's separately-read steps are in use). Imports fill it (`ovenTemp` on `ExtractedRecipe`, the unit never converted by the
+  model) and the page's own schema.org data has no such field, so the offline reader leaves it null.
 - **Ingredient lines carry two separate marks, as screen state only.** Mise en place's check means
   "out on the counter" (`gatheredLines`, accent, the line stays at full strength) and the tray's means
   "used" (`checkedLines`, gold, struck through, counted in "N left"). Setting something out is not

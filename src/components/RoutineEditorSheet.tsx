@@ -32,12 +32,13 @@ import { EmptyNote } from './EmptyNote';
 import { ExercisePickerSheet } from './ExercisePickerSheet';
 import { ExerciseDetailSheet } from './ExerciseDetailSheet';
 import { DescribeWorkoutSheet } from './DescribeWorkoutSheet';
+import { withCreatedExercises } from '../utils/describedExercises';
 import { RoutineProgressView } from './RoutineProgressView';
 import { RoutineHistoryView } from './RoutineHistoryView';
 import { RoutineVersionSheet } from './RoutineVersionSheet';
 import { MergeRoutineSheet } from './MergeRoutineSheet';
 import type { ExerciseKind, ProgressionScheme, WorkoutRoutine, WorkoutRoutineItem, WorkoutRoutineVersion } from '../types';
-import { useWorkoutStore, type VersionMode } from '../store/useWorkoutStore';
+import { useWorkoutStore, type ExerciseInput, type VersionMode } from '../store/useWorkoutStore';
 import { startWorkout } from '../utils/startWorkout';
 import {
   currentRoutineVersion, routineContentChanged, routineSessionsByVersion, routineVersionsOf, versionNumber, workoutCountText,
@@ -150,6 +151,8 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
   // its `new:` exercises are made then, so backing out leaves the library as it was.
   const [described, setDescribed] = useState<RoutineDraft | null>(null);
   const [describing, setDescribing] = useState(false);
+  // `new:` exercises named by what was described into a routine that already had content. Made on Save, with a draft's own.
+  const [describedNew, setDescribedNew] = useState<Record<string, ExerciseInput>>({});
   // A draft only seeds a routine that doesn't exist yet.
   const seed = routine ? null : described;
   // Claude only (`workoutDraft` has no on-device engine), so no key or a switched-off feature means no row.
@@ -190,6 +193,7 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
     setOpenRowId(null);
     setPicking(null);
     setDescribed(null);
+    setDescribedNew({});
     setDescribing(false);
     setTab('edit');
     setScrubbing(false);
@@ -209,7 +213,9 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
   const roles = useMemo(() => supersetRoles(rows.map(r => r.item)), [rows]);
   // An exercise the draft will create is named by its `new:` id until Save.
   const pending = (exerciseId: string) =>
-    exerciseId.startsWith(NEW_EXERCISE_PREFIX) ? seed?.newExercises[exerciseId.slice(NEW_EXERCISE_PREFIX.length)] ?? null : null;
+    exerciseId.startsWith(NEW_EXERCISE_PREFIX)
+      ? { ...seed?.newExercises, ...describedNew }[exerciseId.slice(NEW_EXERCISE_PREFIX.length)] ?? null
+      : null;
   const kindOf = (exerciseId: string): ExerciseKind =>
     pending(exerciseId)?.kind ?? catalogExercise(exercises, exerciseId)?.kind ?? 'weight_reps';
   const nameOf = (exerciseId: string) =>
@@ -313,6 +319,30 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
     setRefusal(null);
     setDescribing(false);
   };
+  /**
+   * Described exercises go on the end of a routine that already has content. One
+   * already in the routine is left out and named, the way the picker marks it
+   * "In routine".
+   */
+  const appendDescribed = (d: RoutineDraft) => {
+    const have = new Set(rows.filter(r => !r.open).map(r => r.item.exerciseId));
+    const fresh = d.items.filter(i => !have.has(i.exerciseId));
+    const left = d.items.filter(i => have.has(i.exerciseId));
+    if (fresh.length > 0) {
+      animateLayout();
+      setDescribedNew(prev => ({ ...prev, ...d.newExercises }));
+      setRows(prev => settled([...prev, ...fresh.map(item => ({ id: generateId(), item }))]));
+    }
+    haptics.success();
+    setDescribing(false);
+    if (left.length > 0) {
+      const names = left.map(i => nameOf(i.exerciseId));
+      Alert.alert(
+        fresh.length > 0 ? 'Some exercises were left out' : 'Nothing was added',
+        `${names.join(', ')} ${names.length === 1 ? 'is' : 'are'} already in this routine.`,
+      );
+    }
+  };
   const canOfferDescribe = canDescribe && !routine && !seed && rows.length === 0 && !name.trim() && !notes.trim();
 
   // ==== saving, cancelling, deleting ====
@@ -327,43 +357,21 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
   };
 
   /**
-   * The items with each `new:` exercise made and its real id put in. A name
-   * that was taken since the draft was read (made on another device, or by an
-   * earlier try at this same Save) is that exercise, not a second one.
-   */
-  const withCreatedExercises = (items: WorkoutRoutineItem[]): WorkoutRoutineItem[] | null => {
-    if (!seed) return items;
-    const store = useWorkoutStore.getState();
-    const made = new Map<string, string>();
-    for (const item of items) {
-      if (!item.exerciseId.startsWith(NEW_EXERCISE_PREFIX) || made.has(item.exerciseId)) continue;
-      const input = seed.newExercises[item.exerciseId.slice(NEW_EXERCISE_PREFIX.length)];
-      if (!input) return null;
-      const row = store.addExercise(input);
-      if (typeof row !== 'string') { made.set(item.exerciseId, row.id); continue; }
-      const holder = buildCatalog(useWorkoutStore.getState().exercises)
-        .find(e => exerciseNameKey(e.name) === exerciseNameKey(input.name));
-      if (!holder) return null;
-      made.set(item.exerciseId, holder.id);
-    }
-    return items.map(i => (made.has(i.exerciseId) ? { ...i, exerciseId: made.get(i.exerciseId)! } : i));
-  };
-
-  /**
    * Saving a changed plan once a workout has been done on the current version
    * asks which it is: a new version, keeping the one those workouts were done
    * on, or a change to it. Before any workout there is nothing to keep, and a
-   * rename or a change that isn't to the plan doesn't ask.
+   * rename or a change that isn't to the plan doesn't ask. It asks before a
+   * described exercise is made, so Cancel leaves the library as it was.
    */
   const save = () => {
     const store = useWorkoutStore.getState();
     // Before anything is created: a refusal for the name shouldn't leave exercises behind.
     if (!routine && !name.trim()) { haptics.warning(); setRefusal(NAME_REFUSED.blank); return; }
-    const items = withCreatedExercises(savedItems(rows));
-    if (!items) { haptics.warning(); setRefusal('This routine could not be saved.'); return; }
     // Compared the way the store will read them, or a field the editor leaves
     // undefined (a superset key) would read as a change and ask on a rename.
-    if (routine && routineContentChanged(routine, { notes, items: readRoutineItems(items) }) && store.routineVersionTrained(routine.id)) {
+    // An exercise still to be made has a `new:` id, which is a change anyway.
+    const planned = savedItems(rows);
+    if (routine && routineContentChanged(routine, { notes, items: readRoutineItems(planned) }) && store.routineVersionTrained(routine.id)) {
       const list = routineVersionsOf(routine, store.routineVersions);
       const current = currentRoutineVersion(routine, list);
       const n = versionNumber(list, current.id);
@@ -372,18 +380,20 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
         `Save as version ${n + 1}?`,
         `You’ve done ${workoutCountText(done).toLowerCase()} on version ${n}. A new version keeps version ${n} as it was. Updating it changes the plan those workouts were done on.`,
         [
-          { text: 'New version', onPress: () => commit(items, 'new') },
-          { text: `Update version ${n}`, onPress: () => commit(items, 'amend') },
+          { text: 'New version', onPress: () => commit(planned, 'new') },
+          { text: `Update version ${n}`, onPress: () => commit(planned, 'amend') },
           { text: BUTTON_LABEL.cancel, style: 'cancel' },
         ],
       );
       return;
     }
-    commit(items, 'auto');
+    commit(planned, 'auto');
   };
 
-  const commit = (items: WorkoutRoutineItem[], version: VersionMode) => {
+  const commit = (planned: WorkoutRoutineItem[], version: VersionMode) => {
     const store = useWorkoutStore.getState();
+    const items = withCreatedExercises(planned, { ...seed?.newExercises, ...describedNew });
+    if (!items) { haptics.warning(); setRefusal('This routine could not be saved.'); return; }
     const result = routine
       ? store.updateRoutine(routine.id, { name, notes, items }, { version, source: restoredFrom ? 'restore' : 'edit' })
       : (() => {
@@ -493,8 +503,9 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
             visible={visible && describing}
             mode="routine"
             onClose={() => setDescribing(false)}
-            onRoutine={applyDescribed}
-            onWorkout={() => setDescribing(false)}
+            {...(canOfferDescribe
+              ? { onRoutine: applyDescribed }
+              : { into: { target: 'routine' as const, onAdd: appendDescribed } })}
           />
         </>
       }
@@ -667,6 +678,9 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
         )}
         <View style={styles.adds}>
           <InlineAction icon="add" label="Add exercise" onPress={() => { haptics.tap(); setPicking('add'); }} />
+          {canDescribe && !canOfferDescribe && (
+            <InlineAction icon="sparkles-outline" label="Describe" variant="neutral" onPress={() => { haptics.tap(); setDescribing(true); }} />
+          )}
           <InlineAction
             label="Superset"
             variant="neutral"

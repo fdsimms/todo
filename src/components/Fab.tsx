@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { NavigationContext } from '@react-navigation/native';
 import { Animated, PanResponder, StyleSheet, Text, View } from 'react-native';
 import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -11,6 +12,7 @@ import { spacing, radius, font, fontWeight, animation, border, interaction, type
 import { haptics } from '../utils/haptics';
 import { fabHomeState, type FabHomeState } from '../utils/fabDrop';
 import { useSettingsStore, type FabHand } from '../store/useSettingsStore';
+import { useFabPresenceStore } from '../store/useFabPresenceStore';
 
 /** Diameter of the standard list-screen FAB — also the room a list must leave below its last row. */
 export const FAB_SIZE = 56;
@@ -108,6 +110,30 @@ function useFabHand(): FabHand {
   return useSettingsStore(s => s.fabHand);
 }
 
+/**
+ * Tells `useFabPresenceStore` this button is on the focused screen. Tab screens
+ * stay mounted while blurred, so mount alone isn't enough: it follows the
+ * screen's own focus. `NavigationContext` is read directly because, unlike
+ * `useIsFocused`, it doesn't throw where there is no navigator.
+ */
+function useReportFabPresence() {
+  const navigation = useContext(NavigationContext);
+  const [focused, setFocused] = useState(() => navigation?.isFocused() ?? true);
+  useEffect(() => {
+    if (!navigation) return;
+    setFocused(navigation.isFocused());
+    const offFocus = navigation.addListener('focus', () => setFocused(true));
+    const offBlur = navigation.addListener('blur', () => setFocused(false));
+    return () => { offFocus(); offBlur(); };
+  }, [navigation]);
+  useEffect(() => {
+    if (!focused) return;
+    const { enter, leave } = useFabPresenceStore.getState();
+    enter();
+    return leave;
+  }, [focused]);
+}
+
 interface FabButtonProps {
   onPress: () => void;
   accessibilityLabel: string;
@@ -137,6 +163,7 @@ function FabButton({
   onPress, accessibilityLabel, icon, size, disabled, dimWhenDisabled, opacity,
   drag, dragHint, dragLabel, onLongPress, longPressLabel,
 }: FabButtonProps) {
+  useReportFabPresence();
   const bottom = useFabBottom();
   const colors = useColors();
   const { shadows } = useTheme();

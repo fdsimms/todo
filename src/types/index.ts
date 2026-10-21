@@ -7913,6 +7913,29 @@ export interface Recipe {
    * the recipe itself. See leftoverKeepDaysFor.
    */
   leftoverKeepDays: number | null;
+  /**
+   * The oven temperature the recipe is cooked at, in the unit it was written
+   * in (`ovenTempUnit`), or null when it doesn't use an oven or nobody said.
+   * One number for the whole dish: a recipe that steps the heat down mid-bake
+   * keeps that in its method, since this exists so mise en place can say
+   * "Preheat oven" before the first step.
+   *
+   * **Stored as written and converted only on display**, the same posture as
+   * ingredient amounts (`unitConvert.ts`): 180°C read by someone on US units
+   * shows as 350°F without the recipe changing. See `ovenTemp.ts`.
+   */
+  ovenTemp: number | null;
+  /** Meaningless while `ovenTemp` is null; 'F' is the default a new one opens on. */
+  ovenTempUnit: 'F' | 'C';
+  /**
+   * The step the oven comes on at, for a recipe that preheats partway through
+   * ("step 10"), or null for the usual case of preheating before cooking starts.
+   * A `RecipeStep.id`, so reordering steps keeps it pointing at the same one.
+   * Resolve-or-shrug like every cross-row pointer here: a step that is deleted
+   * (`removeStep` clears it), or hidden by an either/or pick, reads as null.
+   * Meaningless while `ovenTemp` is null.
+   */
+  ovenTempStepId: string | null;
   // The user-attached photo — a file:// URI under the document directory
   // (src/utils/recipePhoto.ts `pickRecipeImage`), null until one's attached.
   // Deliberately not base64-in-the-row: a recipe photo is a picture the card

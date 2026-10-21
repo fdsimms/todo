@@ -20,7 +20,7 @@ import { useWorkoutStore, workoutContentCount, type WatchSessionInput } from '..
 import { useWatchClashStore } from '../store/useWatchClashStore';
 import { catalogExercise, searchExercises } from '../utils/exerciseCatalog';
 import { newTaskFromDraft } from '../utils/taskDraft';
-import type { Task, TaskDraft } from '../types';
+import type { Task, TaskDraft, WorkoutRoutineItem } from '../types';
 import {
   buildImportPlan,
   distinctExerciseNames,
@@ -760,6 +760,30 @@ describe('a session from a routine', () => {
     expect(added.map(x => [x.position, x.setIndex, x.kind, x.completedAt])).toEqual([[0, 0, 'working', null]]);
     expect(state().addSessionExercise(s.id, 'lib:back-squat')).toBe('taken');
     expect(state().addSessionExercise(s.id, 'nobody')).toBe('notFound');
+  });
+
+  describe('adding described exercises', () => {
+    const item = (exerciseId: string, targets: WorkoutRoutineItem['targets'], supersetKey: string | null = null): WorkoutRoutineItem =>
+      ({ exerciseId, supersetKey, restSeconds: null, progression: null, targets });
+    const bench = 'lib:barbell-bench-press';
+    const squat = 'lib:back-squat';
+    const target = (repsMin: number, weightKg: number | null) => ({ kind: 'working' as const, repsMin, repsMax: repsMin, weightKg });
+
+    it('appends after what is there, planned, and names an exercise already in the workout', () => {
+      const s = ok(state().startSession());
+      ok(state().addSessionExercise(s.id, squat));
+      const r = ok(state().addRoutineItems(s.id, [item(bench, [target(5, 80), target(5, 80)]), item(squat, [target(5, 100)])]));
+      expect(r).toEqual({ added: [bench], skipped: [squat] });
+      const sets = state().loadSets(s.id).filter(x => x.exerciseId === bench);
+      expect(sets.map(x => [x.position, x.setIndex, x.weightKg, x.reps, x.completedAt])).toEqual([[1, 0, 80, 5, null], [1, 1, 80, 5, null]]);
+    });
+
+    it('drops a superset key whose partner was left out', () => {
+      const s = ok(state().startSession());
+      ok(state().addSessionExercise(s.id, squat));
+      ok(state().addRoutineItems(s.id, [item(bench, [target(5, 80)], 'k'), item(squat, [target(5, 100)], 'k')]));
+      expect(state().loadSets(s.id).filter(x => x.exerciseId === bench)[0].supersetKey).toBeNull();
+    });
   });
 
   describe('swapping an exercise', () => {

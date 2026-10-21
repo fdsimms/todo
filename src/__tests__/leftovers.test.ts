@@ -87,7 +87,7 @@ function makeRecipe(id: string, name: string, overrides: Partial<Recipe> = {}): 
     servingsMax: null,
     recipeYield: null,
     cookedWeightG: null,
-    leftoverKeepDays: null,
+    leftoverKeepDays: null, ovenTemp: null, ovenTempUnit: 'F', ovenTempStepId: null,
     mealType: null,
     tags: [],
     ingredients: [],

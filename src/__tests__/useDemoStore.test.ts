@@ -4380,6 +4380,9 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(recipes.some(r => (r.leftoverKeepDays ?? 0) > LEFTOVER_KEEP_DAYS_DEFAULT)).toBe(true);
     expect(recipes.some(r => r.leftoverKeepDays !== null && r.leftoverKeepDays < LEFTOVER_KEEP_DAYS_DEFAULT)).toBe(true);
     expect(recipes.some(r => r.leftoverKeepDays === null)).toBe(true);
+    // An oven temperature in each unit, for cook mode's Preheat oven line.
+    expect(recipes.some(r => r.ovenTemp !== null && r.ovenTempUnit === 'F')).toBe(true);
+    expect(recipes.some(r => r.ovenTemp !== null && r.ovenTempUnit === 'C')).toBe(true);
     expect(recipes.some(r => r.prepTasks.some(p => p.reminderOffsetMinutes !== null))).toBe(true);
     expect(recipes.some(r => r.cookCount > 1 && r.lastCookedAt)).toBe(true);
     // Two sides of the vote — a loved dish and a cooked-twice one decided
