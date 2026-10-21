@@ -1338,6 +1338,7 @@ const BLANK_SYNTAX = ' Text can hold {blanks} that a run fills in: {name} is a q
 const containerSchema = z.enum(CONTAINERS as unknown as [string, ...string[]]).optional()
   .describe('What a run puts the tasks in: none, a stack, a project, or one task with subtasks.');
 const anchorsAreAwaySchema = z.boolean().optional().describe('Whether the anchor dates mean a period away from home.');
+const templateListSchema = z.boolean().optional().describe('With container project: the project a run makes is a list (items to check off, never nudged or offered as complete).');
 const groupsSchema = z.array(z.object({
   key: z.string().min(1).describe('Your own handle for this group, used by an item groupKey. To keep an existing group when updating, use its id.'),
   title: z.string().min(1),
@@ -2566,6 +2567,7 @@ function registerWriteTools(
       category: z.string().nullable().optional(),
       container: containerSchema,
       anchorsAreAway: anchorsAreAwaySchema,
+      list: templateListSchema,
       groups: groupsSchema,
       questions: questionsSchema,
       schedule: scheduleSchema,
@@ -2585,13 +2587,14 @@ function registerWriteTools(
 
   server.tool(
     'update_template',
-    'Edit a template. Only what you name changes: name, category (null clears), container, anchorsAreAway, schedule (null removes it). groups, questions and items each replace their whole list when given, because items point at the other two, so send the full list. Keep an existing item by passing its id from get_template: { id } alone leaves it exactly as it is, and other fields written with the id change just those. An item with no id is new, and one left out is removed. A group is kept by using its id as its key; a question by keeping its name (or, for one with no name, its key). Checked in full first: an invalid edit changes nothing and reports every problem at once, and nesting a template inside itself is refused. Pass expectedVersion from get_template so an edit made against an old read is refused instead of undoing changes made since. The result lists the changes, which the preview shows the person, and any warnings.' + BLANK_SYNTAX,
+    'Edit a template. Only what you name changes: name, category (null clears), container, anchorsAreAway, list, schedule (null removes it). groups, questions and items each replace their whole list when given, because items point at the other two, so send the full list. Keep an existing item by passing its id from get_template: { id } alone leaves it exactly as it is, and other fields written with the id change just those. An item with no id is new, and one left out is removed. A group is kept by using its id as its key; a question by keeping its name (or, for one with no name, its key). Checked in full first: an invalid edit changes nothing and reports every problem at once, and nesting a template inside itself is refused. Pass expectedVersion from get_template so an edit made against an old read is refused instead of undoing changes made since. The result lists the changes, which the preview shows the person, and any warnings.' + BLANK_SYNTAX,
     {
       template: z.string().describe('A template id, or its exact name when that names only one (list_templates).'),
       name: z.string().min(1).optional(),
       category: z.string().nullable().optional(),
       container: containerSchema,
       anchorsAreAway: anchorsAreAwaySchema,
+      list: templateListSchema,
       groups: groupsSchema,
       questions: questionsSchema,
       schedule: scheduleSchema,

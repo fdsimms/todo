@@ -2387,6 +2387,9 @@ function runInitDatabase(): void {
     // a decision made about this feature. See Project.list / TaskGroup.keepsTasks.
     'ALTER TABLE projects ADD COLUMN is_list INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE task_groups ADD COLUMN keeps_tasks INTEGER NOT NULL DEFAULT 0',
+    // Off on every existing template, so none starts making lists. See
+    // TaskTemplate.list.
+    'ALTER TABLE templates ADD COLUMN is_list INTEGER NOT NULL DEFAULT 0',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -9471,6 +9474,7 @@ function rowToTemplate(row: Record<string, unknown>): TaskTemplate {
     schedule: parseTemplateSchedule(row.schedule),
     scheduleLastFiredKey: (row.schedule_last_fired_key as string) ?? null,
     anchorsAreAway: Boolean(row.anchors_are_away),
+    list: row.is_list === 1,
   };
 }
 
@@ -9529,15 +9533,15 @@ export function dbGetAllTemplates(): TaskTemplate[] {
 
 export function dbInsertTemplate(template: TaskTemplate): void {
   db.runSync(
-    'INSERT INTO templates (id, name, items, item_groups, questions, created_at, sort_order, category, apply_container, schedule, schedule_last_fired_key, anchors_are_away) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
-    [template.id, template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), JSON.stringify(template.questions), template.createdAt, template.sortOrder, template.category, template.applyContainer, template.schedule ? JSON.stringify(template.schedule) : null, template.scheduleLastFiredKey, template.anchorsAreAway ? 1 : 0]
+    'INSERT INTO templates (id, name, items, item_groups, questions, created_at, sort_order, category, apply_container, schedule, schedule_last_fired_key, anchors_are_away, is_list) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    [template.id, template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), JSON.stringify(template.questions), template.createdAt, template.sortOrder, template.category, template.applyContainer, template.schedule ? JSON.stringify(template.schedule) : null, template.scheduleLastFiredKey, template.anchorsAreAway ? 1 : 0, template.list ? 1 : 0]
   );
 }
 
 export function dbUpdateTemplate(template: TaskTemplate): void {
   db.runSync(
-    'UPDATE templates SET name = ?, items = ?, item_groups = ?, questions = ?, sort_order = ?, category = ?, apply_container = ?, schedule = ?, schedule_last_fired_key = ?, anchors_are_away = ? WHERE id = ?',
-    [template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), JSON.stringify(template.questions), template.sortOrder, template.category, template.applyContainer, template.schedule ? JSON.stringify(template.schedule) : null, template.scheduleLastFiredKey, template.anchorsAreAway ? 1 : 0, template.id]
+    'UPDATE templates SET name = ?, items = ?, item_groups = ?, questions = ?, sort_order = ?, category = ?, apply_container = ?, schedule = ?, schedule_last_fired_key = ?, anchors_are_away = ?, is_list = ? WHERE id = ?',
+    [template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), JSON.stringify(template.questions), template.sortOrder, template.category, template.applyContainer, template.schedule ? JSON.stringify(template.schedule) : null, template.scheduleLastFiredKey, template.anchorsAreAway ? 1 : 0, template.list ? 1 : 0, template.id]
   );
 }
 

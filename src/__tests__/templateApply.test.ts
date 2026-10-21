@@ -175,6 +175,17 @@ describe('applyTemplateRun', () => {
       expect(calls.createProject).toEqual([{ title: 'Lisbon', options: {} }]);
     });
 
+    it('makes the run project a list when the template says so, and nothing else', () => {
+      const tpl = makeTemplate({ items: [item('a', 'Headphones')], applyContainer: 'project', list: true });
+      const { sink, calls } = makeSink();
+      applyTemplateRun(tpl, byId(tpl), select('a'), NO_ANCHORS, { runName: 'Wish list' }, sink);
+      expect(calls.createProject).toEqual([{ title: 'Wish list', options: { deadline: null, list: true } }]);
+      // Applied into an existing project, that project's own setting stands.
+      const into = makeSink({ 'p-existing': { awayStart: null, deadline: null } });
+      applyTemplateRun(tpl, byId(tpl), select('a'), NO_ANCHORS, { targetProjectId: 'p-existing' }, into.sink);
+      expect(into.calls.createProject).toEqual([]);
+    });
+
     it('creates the run project in Planning when asked, and ignores the ask with no project to create', () => {
       const tpl = makeTemplate({ items: [item('a', 'Invite')], applyContainer: 'project' });
       const { sink, calls } = makeSink();

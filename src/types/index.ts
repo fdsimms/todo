@@ -5111,6 +5111,14 @@ export interface TaskTemplate {
    * deliberately kept apart. See `docs/arch/away-dates.md`.
    */
   anchorsAreAway: boolean;
+  /**
+   * A run that makes a project makes a list (`Project.list`). Set when the
+   * template is saved from a list project, and on the editor's List row.
+   * Only read where a run creates its own project: a run applied into an
+   * existing project leaves that project's own setting alone. Optional for
+   * rows built before it existed.
+   */
+  list?: boolean;
 }
 
 // One row of the grocery catalog — which is also the shopping list. A row is

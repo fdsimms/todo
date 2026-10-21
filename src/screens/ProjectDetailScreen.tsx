@@ -485,6 +485,10 @@ function ProjectDetailContent() {
   // Null when closed; a number otherwise, bumped on every add so the field
   // remounts empty and focused for the next one.
   const [taskLineOpen, setTaskLineOpen] = useState<number | null>(null);
+  // A plain field right under a section, for an item dropped between a list
+  // page's sections (openLineForDrop). It hands over to `insertAfterId` once
+  // the first item is in, so the rest go under it the way Return's do.
+  const [lineAfterGroupId, setLineAfterGroupId] = useState<string | null>(null);
   const [templatePickerVisible, setTemplatePickerVisible] = useState(false);
   const [guestsOpen, setGuestsOpen] = useState(false);
   const [suggestionsVisible, setSuggestionsVisible] = useState(false);
@@ -1193,12 +1197,68 @@ function ProjectDetailContent() {
     lineFilter.clear();
   };
 
+  /**
+   * A list is added to by typing, so dropping the add button on one opens the
+   * plain field where it landed rather than the quick add sheet: a list
+   * section's own field, or under the row just above the drop point. Answers
+   * false when the drop isn't on a list, which still gets the sheet.
+   */
+  const openLineForDrop = (intent: FabDropIntent): boolean => {
+    if (intent.kind === 'joinGroup') {
+      const group = useTaskGroupStore.getState().getGroupById(intent.groupId);
+      if (!group || !sectionIsList(group, project)) return false;
+      openAddToSection(group);
+      return true;
+    }
+    if (!pageIsList || (intent.kind !== 'insert' && intent.kind !== 'plain')) return false;
+    const at = intent.kind === 'insert' ? projectListItems.findIndex(item => projectListItemKey(item) === intent.anchorKey) : -1;
+    const above = at < 0 || intent.kind !== 'insert' ? undefined : projectListItems[intent.before ? at - 1 : at];
+    setExpandedTaskId(null);
+    setSectionLine(null);
+    if (above?.type === 'task') {
+      setTaskLineOpen(null);
+      setLineAfterGroupId(null);
+      setInsertAfterId(above.task.id);
+    } else if (above?.type === 'group') {
+      setTaskLineOpen(null);
+      setInsertAfterId(null);
+      setLineAfterGroupId(above.group.id);
+    } else {
+      // Nothing above it (dropped at the very top) or a plain drop: the
+      // field at the foot of the page, where a tap on the button opens it.
+      setLineAfterGroupId(null);
+      openTaskLine();
+    }
+    return true;
+  };
+
+  /**
+   * Items typed (or pasted) under a section on a list page, placed straight
+   * after it in one reorder: the page's list is this render's, so placing
+   * them one at a time would place each against a list missing the last.
+   * Answers the last one's id, for the field to move under.
+   */
+  const addLinesAfterGroup = (group: TaskGroup, lines: string[]): string | null => {
+    const made = cleanPastedLines(lines).map(line => createLine(line, { projectId }, undefined, false, true).id);
+    if (made.length === 0) return null;
+    const ids = projectListItems.map(item => (item.type === 'group' ? item.group.id : item.task.id));
+    const at = ids.indexOf(group.id);
+    reorderProjectItems(projectId, at < 0 ? [...ids, ...made] : [...ids.slice(0, at + 1), ...made, ...ids.slice(at + 1)]);
+    haptics.tap();
+    lineFilter.clear();
+    return made[made.length - 1];
+  };
+
   const openQuickAddForDrop = (intent: FabDropIntent) => {
     // Dropped back on the button: the drag is the whole of what happened, so
     // no sheet, and nothing left armed for the next tap.
     if (intent.kind === 'cancel') {
       pendingDropRef.current = null;
       haptics.tap();
+      return;
+    }
+    if (openLineForDrop(intent)) {
+      pendingDropRef.current = null;
       return;
     }
     pendingDropRef.current = intent;
@@ -2066,6 +2126,18 @@ function ProjectDetailContent() {
                     </TaskGroupBody>
                   </TaskGroupTray>
                   </GroupDropTargetRow>
+                  {!selectionMode && lineAfterGroupId === group.id && (
+                    <NewLineField
+                      key={`after-${group.id}`}
+                      onAdd={text => { setLineAfterGroupId(null); setInsertAfterId(addLinesAfterGroup(group, [text])); }}
+                      onAddMany={lines => { setLineAfterGroupId(null); setInsertAfterId(addLinesAfterGroup(group, lines)); }}
+                      onDone={() => setLineAfterGroupId(null)}
+                      styles={styles}
+                      placeholderColor={colors.textTertiary}
+                      placeholder="New item"
+                      plain
+                    />
+                  )}
                   </FabDropZone>
                 );
               }

@@ -5730,6 +5730,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         // suppressed for the current period.
         scheduleLastFiredKey: null,
         anchorsAreAway: plan.anchorsAreAway ?? false,
+        list: plan.list ?? false,
       };
 
       registerTemplateCategory(template.category);
@@ -5796,6 +5797,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         category: patch.category === undefined ? before.category : patch.category,
         applyContainer: patch.container ?? before.applyContainer,
         anchorsAreAway: patch.anchorsAreAway ?? before.anchorsAreAway,
+        list: patch.list ?? before.list ?? false,
         schedule,
         scheduleLastFiredKey: scheduleChanged ? null : before.scheduleLastFiredKey,
         ...parts,
@@ -8069,6 +8071,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         schedule: null,
         scheduleLastFiredKey: null,
         anchorsAreAway: draft.anchorsAreAway,
+        list: draft.list ?? false,
       };
       db.dbInsertTemplate(template);
       return template;

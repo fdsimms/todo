@@ -109,7 +109,7 @@ export function projectBlueprint(
 }
 
 /** What a template made from a project holds, short of its id and place in the list. */
-export type ProjectTemplateDraft = Pick<TaskTemplate, 'name' | 'items' | 'itemGroups' | 'applyContainer' | 'anchorsAreAway' | 'category'>;
+export type ProjectTemplateDraft = Pick<TaskTemplate, 'name' | 'items' | 'itemGroups' | 'applyContainer' | 'anchorsAreAway' | 'list' | 'category'>;
 
 /**
  * A task as "Start fresh" copies it into the new project: what the person
@@ -265,6 +265,10 @@ export function templateFromProject(
     itemGroups,
     applyContainer: 'project',
     anchorsAreAway,
+    // The run makes a list too, loose items included: the sections already
+    // carry their own list flag (projectBlueprint), but a loose row has
+    // nowhere else to keep it.
+    list: !!project.list,
     category: null,
   };
 }

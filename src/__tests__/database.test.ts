@@ -1975,6 +1975,13 @@ describe('Templates', () => {
     ]);
   });
 
+  it('round-trips list, reading a row without it as off', () => {
+    dbInsertTemplate(makeTemplate({ list: true }));
+    expect(dbGetAllTemplates()[0].list).toBe(true);
+    dbUpdateTemplate(makeTemplate({ list: false }));
+    expect(dbGetAllTemplates()[0].list).toBe(false);
+  });
+
   it('insert → getAll round-trips a schedule and its last-fired key', () => {
     const schedule = {
       frequency: 'monthly' as const,
