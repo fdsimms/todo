@@ -9,7 +9,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { CountStepper } from './CountStepper';
 import { TextField } from './TextField';
 import { HelpText } from './HelpText';
-import { CalendarPicker } from './CalendarPicker';
+import { WorkoutTimesSheet, type TimeEnd } from './WorkoutTimesSheet';
 import { WorkoutRecordsCard } from './WorkoutRecordsCard';
 import { WorkoutStatTiles } from './WorkoutStatTiles';
 import { WorkoutHeartRateCard } from './WorkoutHeartRateCard';
@@ -34,6 +34,7 @@ import { liftVolumeKg, sessionRecordSummary } from '../utils/workoutRecords';
 import { routineItemsFromSets } from '../utils/workoutRoutine';
 import { startWorkout } from '../utils/startWorkout';
 import { formatSetLine, sessionExercises, sessionMinutes, setBadge, setLabels, setName } from '../utils/workoutSession';
+import { sameMinute } from '../utils/workoutTimes';
 import { WORKOUT_EFFORT } from '../utils/workoutData';
 import { workoutSpanWritable } from '../utils/healthWorkoutSync';
 import { resolveMaxHeartRate } from '../utils/heartRateZones';
@@ -45,9 +46,6 @@ interface Props {
   sessionId: string;
   onClose: () => void;
 }
-
-/** Which of the two times the picker is changing. */
-type TimeEnd = 'start' | 'end';
 
 const NO_SETS: WorkoutSet[] = [];
 
@@ -236,65 +234,28 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose }: Props) {
   };
 
   // ==== the times ====
-  // Held through the picker's close, so its title doesn't change as it fades.
-  const pickingShown = useSheetSubject(picking);
-
-  const orderMessage = (which: TimeEnd, start: Date, end: Date, picked: Date) => (which === 'end'
-    ? `A workout has to finish after it starts. Pick a time after ${timeLabel(start, picked)}.`
-    : `A workout has to start before it finishes. Pick a time before ${timeLabel(end, picked)}.`);
-
-  const refuseTime = (message: string) => {
-    haptics.warning();
-    Alert.alert('Couldn’t change the time', message);
-  };
-
   /**
-   * A time from the picker. A refusal leaves the picker open behind its alert,
-   * so the time can be fixed rather than picked again from the start.
+   * Both times from the card, written in one patch. The card withholds Done
+   * while the pair can't be saved (`workoutTimesProblem`), so what arrives is
+   * valid; the store's own order check stays the backstop.
    */
-  const confirmTime = (picked: Date) => {
-    const which = picking;
-    if (!current || !which || current.endedAt === null) { setPicking(null); return; }
-    const start = new Date(current.startedAt);
-    const end = new Date(current.endedAt);
-    const was = which === 'start' ? start : end;
-    // The picker works in whole minutes, so the minute already there, picked
+  const confirmTimes = (nextStart: Date, nextEnd: Date) => {
+    if (!current || current.endedAt === null) return;
+    // The picker works in whole minutes, so a minute already there, picked
     // again, is no change: writing it would drop the seconds, move the
     // workout and rewrite it in Health for nothing.
-    if (Math.floor(picked.getTime() / 60000) === Math.floor(was.getTime() / 60000)) { setPicking(null); return; }
-    const nextStart = which === 'start' ? picked : start;
-    const nextEnd = which === 'end' ? picked : end;
-    // A finish at the start is refused along with one before it: it is no
-    // workout, and Health takes none of zero length, so one there would be
-    // retracted and not written again.
-    if (nextEnd.getTime() <= nextStart.getTime()) {
-      refuseTime(orderMessage(which, start, end, picked));
-      return;
-    }
-    if (which === 'end' && picked.getTime() > Date.now()) {
-      refuseTime('A workout can’t finish in the future. Pick a time before now.');
-      return;
-    }
-    // Health takes a workout of at most a day. Moving one that's there past
-    // that would retract it and fail to write it again, taking it out of
-    // Health with nothing said, so it is refused here instead.
-    if (timesReachHealth && nextEnd.getTime() - nextStart.getTime() > 24 * 3_600_000) {
-      refuseTime(which === 'end'
-        ? 'Apple Health takes a workout up to a day long, and this would make it longer. Pick a time closer to when it started.'
-        : 'Apple Health takes a workout up to a day long, and this would make it longer. Pick a time closer to when it finished.');
-      return;
-    }
-    const result = useWorkoutStore.getState().updateSession(
-      current.id,
-      which === 'start' ? { startedAt: picked.toISOString() } : { endedAt: picked.toISOString() },
-    );
+    const patch: { startedAt?: string; endedAt?: string } = {};
+    if (!sameMinute(nextStart, new Date(current.startedAt))) patch.startedAt = nextStart.toISOString();
+    if (!sameMinute(nextEnd, new Date(current.endedAt))) patch.endedAt = nextEnd.toISOString();
+    if (!patch.startedAt && !patch.endedAt) return;
+    const result = useWorkoutStore.getState().updateSession(current.id, patch);
     if (result === 'order') {
-      refuseTime(orderMessage(which, start, end, picked));
+      haptics.warning();
+      Alert.alert('Couldn’t change the times', 'A workout has to finish after it starts.');
       return;
     }
     // Otherwise saved, or 'notFound' (the only other refusal for a patch with
     // no title): the workout has gone, and the effect above closes the page.
-    setPicking(null);
     if (typeof result !== 'string') haptics.success();
   };
 
@@ -592,13 +553,14 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose }: Props) {
       </View>
       {/* Inside this Modal, not beside it: a second sheet presented from the
           same view controller as this one never appears. */}
-      <CalendarPicker
-        visible={visible && picking !== null}
-        mode="datetime"
-        title={pickingShown === 'end' ? 'Finished' : 'Started'}
-        value={session ? new Date(pickingShown === 'end' && session.endedAt ? session.endedAt : session.startedAt) : null}
-        onConfirm={confirmTime}
-        onCancel={() => setPicking(null)}
+      <WorkoutTimesSheet
+        visible={visible && picking !== null && !!startedAt && !!endedAt}
+        start={startedAt ?? new Date(0)}
+        end={endedAt ?? new Date(0)}
+        initial={picking ?? 'start'}
+        healthLimited={timesReachHealth}
+        onConfirm={confirmTimes}
+        onClose={() => setPicking(null)}
       />
     </SheetModal>
   );
