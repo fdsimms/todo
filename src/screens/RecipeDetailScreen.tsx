@@ -297,6 +297,8 @@ export function RecipeDetailScreen() {
   // Which tab of the page is showing. Session-only: a recipe always opens on
   // its ingredients, the thing most visits are for.
   const [tab, setTab] = useState<RecipeTab>('ingredients');
+  // The recipe's notes sit above the list on the two tabs that are the method.
+  const showsNotes = tab === 'steps' || tab === 'ingredients';
 
   // Which alternative the cost and nutrition estimates below are for, when the
   // recipe poses an either/or — "sourdough" and "baguette" don't share a
@@ -2327,13 +2329,13 @@ export function RecipeDetailScreen() {
             method, and with steps they are the cook's own tips ("double the
             garlic"), which cook mode shows in its Notes panel too. They are
             not the method once steps exist, so nothing here repeats them. */}
-        {tab === 'steps' && recipeNotesDraft === null && !!recipe.notes.trim() && (
+        {showsNotes && recipeNotesDraft === null && !!recipe.notes.trim() && (
           <Text style={styles.notes} selectable>{recipe.notes}</Text>
         )}
         {/* The same field Recipe details edits, reachable from the page that shows
             it. Saved on Save, not per keystroke: unlike a step's note this is
             free prose, and Cancel has to be able to put it back. */}
-        {tab === 'steps' && recipeNotesDraft === null && (
+        {showsNotes && recipeNotesDraft === null && (
           <View style={styles.notesActionRow}>
             <InlineAction
               label={recipe.notes.trim() ? 'Edit note' : 'Add a note'}
@@ -2344,7 +2346,7 @@ export function RecipeDetailScreen() {
             />
           </View>
         )}
-        {tab === 'steps' && recipeNotesDraft !== null && (
+        {showsNotes && recipeNotesDraft !== null && (
           <View>
             <View style={styles.notesEditCard}>
               <TextField
