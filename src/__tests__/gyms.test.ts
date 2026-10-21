@@ -98,6 +98,22 @@ describe('gymSwapCandidates', () => {
     expect(gymSwapCandidates(none, bodyweight, home)).toContain(goblet);
     expect(gymSwapCandidates(none, bodyweight, gym({ equipment: ['cable'] }))).not.toContain(goblet);
   });
+  it('does not offer gear a bands-only gym was never told it has', () => {
+    const bands = gym({ equipment: ['band'] });
+    const named = (name: string) => EXERCISE_LIBRARY.find(e => e.name === name)!.id;
+    const ids = gymSwapCandidates(none, named('Barbell bench press'), bands);
+    expect(ids).not.toContain(named('Weighted dip'));
+    expect(ids).not.toContain(named('Chest dip'));
+    expect(gymSwapCandidates(none, named('Lat pulldown'), bands)).not.toContain(named('Medicine ball slam'));
+    expect(gymSwapCandidates(none, named('Barbell row'), bands)).not.toContain(named('Pull-up'));
+    const home = gym({ equipment: ['band'] });
+    for (const name of ['Sled push', 'Battle ropes', 'Jump rope', 'Ab wheel rollout']) {
+      expect(equipmentAvailable(home, EXERCISE_LIBRARY.find(e => e.name === name)!.equipment)).toBe(false);
+    }
+    // Ticking the gear brings them back, and a gym that was never asked still allows them.
+    expect(gymSwapCandidates(none, named('Barbell bench press'), gym({ equipment: ['band', 'dip_bars'] }))).toContain(named('Chest dip'));
+    expect(gymSwapCandidates(none, named('Barbell bench press'), gym({ equipment: [] }))).toContain(named('Chest dip'));
+  });
   it('never crosses to a timed or distance exercise', () => {
     const kinds = gymSwapCandidates(none, EXERCISE_LIBRARY.find(e => e.name === 'Goblet squat')!.id, gym()).map(id => EXERCISE_LIBRARY.find(e => e.id === id)!.kind);
     expect(kinds.every(k => k === 'weight_reps' || k === 'bodyweight_reps')).toBe(true);
