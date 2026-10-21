@@ -1,4 +1,4 @@
 {
-  "message": "The \"Anything else?\" amount field when logging a dish no longer suggests \"2 slices\" for every ingredient. It now shows a weight, or a cup for liquids",
+  "message": "When you log a dish, the ingredients with no set amount in the recipe now take a number and a unit you pick from a menu, instead of free text. The section is now called \"Also had\" and says the amount is added to the meal's totals",
   "date": "2026-10-21"
 }
