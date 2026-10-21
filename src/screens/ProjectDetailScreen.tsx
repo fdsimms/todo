@@ -2569,8 +2569,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // in past the rows it stands in for.
   emptyStackRow: {
     alignItems: 'flex-start',
-    gap: spacing.sm,
-    paddingVertical: spacing.xs,
+    gap: spacing.smd,
+    // None of its own: the body already pads 4 above and 8 below, and the
+    // header's own bottom padding sits above that, so this block's extra 4
+    // each side read as a wide gap under the title and a loose one under
+    // the button.
+    paddingVertical: 0,
   },
   // textTertiary because the dimness is the signal here, the same way
   // CollapsibleField's summaryEmpty says a field has no value yet.
