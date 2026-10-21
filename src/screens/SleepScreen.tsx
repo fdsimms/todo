@@ -345,7 +345,7 @@ export function SleepScreen() {
           </>
         )}
 
-        <Text style={styles.sectionTitle}>WITH YOUR DAYS</Text>
+        <Text style={styles.sectionTitle}>SLEEP, MOOD AND TASKS</Text>
         <View style={styles.card}>
           {findings.length > 0 ? (
             findings.map(f => <Text key={f.key} style={styles.finding}>{f.text}</Text>)
@@ -355,8 +355,8 @@ export function SleepScreen() {
             </Text>
           )}
           <Text style={styles.chartCaption}>
-            Over the last {SLEEP_HISTORY_DAYS} days. Each day’s sleep is the sleep that ended that day.
-            A pattern here doesn’t show cause.
+            Looks at the last {SLEEP_HISTORY_DAYS} days. A night of sleep counts toward the day you woke up.
+            A pattern here doesn’t mean one caused the other.
           </Text>
         </View>
 
