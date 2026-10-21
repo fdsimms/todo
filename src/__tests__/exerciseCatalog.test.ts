@@ -4,6 +4,7 @@ import {
   muscleFilterOptions, searchExercises,
 } from '../utils/exerciseCatalog';
 import { EXERCISE_LIBRARY } from '../utils/exerciseLibrary';
+import { equipmentGroup } from '../utils/workoutData';
 
 const row = (overrides: Partial<Exercise>): Exercise => ({
   id: 'c1',
@@ -29,6 +30,17 @@ describe('buildCatalog', () => {
     expect(catalog.every(e => e.builtIn && !e.overridden && e.cue)).toBe(true);
     const sorted = [...names(catalog)].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
     expect(names(catalog)).toEqual(sorted);
+  });
+
+  it('takes the other names from an override, and has none without one', () => {
+    const rows = [row({ id: 'lib:back-squat', name: 'Back squat', otherNames: ['High bar squat'], isCustom: false })];
+    const catalog = buildCatalog(rows);
+    expect(catalog.find(e => e.id === 'lib:back-squat')!.otherNames).toEqual(['High bar squat']);
+    expect(catalog.find(e => e.id === 'lib:barbell-bench-press')!.otherNames).toEqual([]);
+  });
+
+  it('reads a row from before the column as having no other names', () => {
+    expect(buildCatalog([row({})]).find(e => e.id === 'c1')!.otherNames).toEqual([]);
   });
 
   it('adds a custom exercise whole, with no cue of its own', () => {
@@ -82,6 +94,31 @@ describe('activeExercises and catalogExercise', () => {
   it('names an exercise nobody can resolve rather than throwing', () => {
     expect(catalogExercise([], 'gone')).toBeNull();
     expect(exerciseName([], 'gone')).toBe('Unknown exercise');
+  });
+});
+
+describe('searchExercises filters', () => {
+  const ids = (f: Parameters<typeof searchExercises>[2]) => searchExercises([], '', f).map(r => r.exercise);
+
+  it('narrows by equipment group', () => {
+    const machines = ids({ group: 'machine' });
+    expect(machines.map(e => e.id)).toContain('lib:leg-press');
+    expect(machines.every(e => equipmentGroup(e.equipment) === 'machine')).toBe(true);
+    expect(ids({ group: 'bodyweight' }).every(e => e.equipment === 'bodyweight')).toBe(true);
+    expect(ids({ group: 'free' }).map(e => e.equipment)).not.toContain('bodyweight');
+  });
+
+  it('takes any of several muscles and equipment, and combines with a group', () => {
+    const both = ids({ muscles: ['chest', 'biceps'] });
+    expect(both.every(e => e.primaryMuscles.some(m => m === 'chest' || m === 'biceps'))).toBe(true);
+    expect(both.length).toBeGreaterThan(ids({ muscles: ['chest'] }).length);
+    const dbOrBb = ids({ equipments: ['dumbbell', 'barbell'] });
+    expect(dbOrBb.every(e => e.equipment === 'dumbbell' || e.equipment === 'barbell')).toBe(true);
+    expect(ids({ group: 'machine', muscles: ['quads'] }).every(e => equipmentGroup(e.equipment) === 'machine')).toBe(true);
+  });
+
+  it('treats empty lists as no narrowing', () => {
+    expect(ids({ muscles: [], equipments: [] })).toHaveLength(ids({}).length);
   });
 });
 
@@ -148,6 +185,26 @@ describe('searchExercises', () => {
     const rows = [row({}), row({ id: 'lib:barbell-bench-press', name: 'Flat bench', isCustom: false })];
     expect(names(searchExercises(rows, 'landmine row').map(r => r.exercise))).toContain('Landmine row');
     expect(names(searchExercises(rows, 'flat bench').map(r => r.exercise))).toEqual(['Flat bench']);
+  });
+
+  it('finds a built-in by another name the person gave it, and says it did', () => {
+    const rows = [row({ id: 'lib:barbell-row', name: 'Barbell row', otherNames: ['Hinged barbell pull'], isCustom: false })];
+    const found = searchExercises(rows, 'hinged pull');
+    expect(found.map(r => r.exercise.id)).toEqual(['lib:barbell-row']);
+    expect(found[0].viaOtherName).toBe('Hinged barbell pull');
+    expect(found[0].nameMatches).toEqual([]);
+    expect(describeExercise(found[0].exercise, found[0].viaOtherName)).toMatch(/^Also called Hinged barbell pull · /);
+  });
+
+  it('does not say "also called" when the name itself matched', () => {
+    const rows = [row({ otherNames: ['Sled row'] })];
+    expect(searchExercises(rows, 'landmine')[0].viaOtherName).toBeUndefined();
+  });
+
+  it('needs every word to land, across the name and the other names', () => {
+    const rows = [row({ otherNames: ['Sled row'] })];
+    expect(names(searchExercises(rows, 'landmine sled').map(r => r.exercise))).toEqual(['Landmine row']);
+    expect(searchExercises(rows, 'landmine zebra')).toEqual([]);
   });
 });
 

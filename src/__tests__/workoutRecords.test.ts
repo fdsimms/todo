@@ -9,6 +9,7 @@ import {
   isNewRecord,
   isNewRecordRow,
   liftVolumeKg,
+  liveSetRecords,
   metricsFor,
   muscleWeeks,
   recentRecords,
@@ -419,6 +420,38 @@ describe('sessionRecordSummary', () => {
     // at the same reps is no record at all.
     const asBodyweight = sessionRecordSummary('s2', [BENCH], () => 'bodyweight_reps', historyOf, sessions, '00:00');
     expect(asBodyweight).toEqual([]);
+  });
+});
+
+describe('liveSetRecords', () => {
+  const sessions = [
+    { id: 's1', startedAt: new Date(2026, 8, 1, 18).toISOString() },
+    { id: 's2', startedAt: new Date(2026, 8, 8, 18).toISOString() },
+  ];
+  const live = (history: WorkoutSet[]) => liveSetRecords('s2', BENCH, 'weight_reps', history, sessions, '00:00');
+
+  it('marks the set that beat the earlier sessions, most notable record first', () => {
+    const old = set('s1', { weightKg: 80, reps: 8 });
+    const best = set('s2', { weightKg: 90, reps: 8 });
+    const warm = set('s2', { weightKg: 40, reps: 8 });
+    const marks = live([old, warm, best]);
+    expect([...marks.keys()]).toEqual([best.id]);
+    expect(marks.get(best.id)![0].type).toBe('e1rm');
+  });
+
+  it('moves the mark to a later set that beats the first', () => {
+    const old = set('s1', { weightKg: 80, reps: 8 });
+    const first = set('s2', { weightKg: 85, reps: 8 });
+    const second = set('s2', { weightKg: 90, reps: 8 });
+    expect([...live([old, first, second]).keys()]).toEqual([second.id]);
+  });
+
+  it('marks nothing for a first time, an unticked set, or a session volume', () => {
+    expect(live([set('s2', { weightKg: 90, reps: 8 })]).size).toBe(0);
+    const old = set('s1', { weightKg: 80, reps: 8 });
+    expect(live([old, set('s2', { weightKg: 100, reps: 8, completedAt: null })]).size).toBe(0);
+    // Same weight and reps over more sets raises the volume only.
+    expect(live([old, set('s2', { weightKg: 80, reps: 8 }), set('s2', { weightKg: 80, reps: 8 })]).size).toBe(0);
   });
 });
 

@@ -3,6 +3,7 @@ import {
   clampRestSeconds, cleanWorkoutName, exerciseNameKey, freeWorkoutName, normalizePlateInventory, parsePlateInventory, parseRestSeconds,
   readEquipment, readExerciseKind, readIdList, readMuscles, readRoutineItems, readProgramScheme, readScheme, readSetKind, readTrainingMaxes,
   EQUIPMENT_LABELS, EXERCISE_EQUIPMENT, machineParent,
+  EXERCISE_OTHER_NAMES_MAX, cleanOtherNames, formatOtherNames, parseOtherNames, readOtherNames,
   WEIGHT_STEP, formatRestSeconds, formatWeightNumber, formatWeightWithUnit, weightFromDisplay, weightToDisplay,
 } from '../utils/workoutData';
 
@@ -197,5 +198,25 @@ describe('weights on screen', () => {
     expect(formatRestSeconds(150)).toBe('2:30');
     expect(formatRestSeconds(45)).toBe('0:45');
     expect(formatRestSeconds(-3)).toBe('0:00');
+  });
+});
+
+describe('other names', () => {
+  it('cleans each like a name, drops blanks, repeats and the exercise\'s own name, and caps the list', () => {
+    expect(cleanOtherNames(['  Two  arm row ', '', 'two arm ROW', 'Bent over row', 'DB row'], 'Bent Over Row')).toEqual(['Two arm row', 'DB row']);
+    expect(cleanOtherNames(Array.from({ length: 12 }, (_, i) => `Name ${i}`), 'x')).toHaveLength(EXERCISE_OTHER_NAMES_MAX);
+  });
+
+  it('is typed with commas, and read back as the list it was', () => {
+    expect(cleanOtherNames(parseOtherNames('Two arm row, DB row;\nCable row'), 'x')).toEqual(['Two arm row', 'DB row', 'Cable row']);
+    expect(formatOtherNames(['Two arm row', 'DB row'])).toBe('Two arm row, DB row');
+  });
+
+  it('reads the column as none when it is empty, damaged or not a list of text', () => {
+    expect(readOtherNames('["A","B"]')).toEqual(['A', 'B']);
+    expect(readOtherNames(null)).toEqual([]);
+    expect(readOtherNames('not json')).toEqual([]);
+    expect(readOtherNames('{"a":1}')).toEqual([]);
+    expect(readOtherNames('["A", 3, " "]')).toEqual(['A']);
   });
 });

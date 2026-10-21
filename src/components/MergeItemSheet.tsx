@@ -16,6 +16,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import type { GroceryItem } from '../types';
 import { useFilterField } from '../hooks/useFilterField';
+import { FieldClearButton } from './FieldClearButton';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { BUTTON_LABEL } from '../copy/shared';
 
@@ -198,6 +199,7 @@ export function MergeItemSheet({ visible, itemId, initialPickedId, onClose, onMe
                 autoCapitalize="none"
                 accessibilityLabel="Find the item to merge with"
               />
+              <FieldClearButton query={query} onClear={clearQuery} />
             </View>
 
             <FlatList

@@ -283,7 +283,13 @@ export function DataResetSettings() {
     <>
       <SettingsSection
         label="Backup"
-        footer="Your data lives only on this device, so a backup is the only copy if you lose the phone. A backup includes your tasks, projects, groceries, recipes, meal plan, food and mood logs, people and settings, but not your API key."
+        footer="Your data lives only on this device, so a backup is the only copy if you lose the phone."
+      explain={{
+        title: 'What a backup holds',
+        paragraphs: [
+          'A backup includes your tasks, projects, groceries, recipes, meal plan, food and mood logs, people and settings, but not your API key.',
+        ],
+      }}
       >
         <SettingsRow
           entryId="exportBackup"
@@ -318,7 +324,14 @@ export function DataResetSettings() {
           makes choosing a window here safe. */}
       <SettingsSection
         label="History"
-        footer="Every completed copy of a repeating task is kept forever by default. Choosing a time limit permanently deletes older copies, along with their Logbook entries, their Stats history and older finished focus sessions, so export first. Streaks and archived tasks aren’t affected."
+        footer="Choosing a time limit permanently deletes older completed copies of repeating tasks, so export first."
+      explain={{
+        title: 'What a history limit deletes',
+        paragraphs: [
+          'Every completed copy of a repeating task is kept forever by default. Choosing a time limit permanently deletes older copies, along with their Logbook entries, their Stats history and older finished focus sessions, so export first.',
+          'Streaks and archived tasks aren’t affected.',
+        ],
+      }}
       >
         <SettingsRow
           entryId="retention"

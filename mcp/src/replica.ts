@@ -2368,6 +2368,7 @@ const GYM_REFUSALS: Record<string, string> = {
 const WORKOUT_REFUSALS: Record<string, string> = {
   blank: 'A name or title cannot be blank.',
   taken: 'That name is already taken.',
+  otherNameTaken: 'Another exercise already goes by that name.',
   notFound: 'An exercise id is not one list_exercises knows, or the row is gone.',
   hasHistory: 'It has sets logged against it, so it is archived rather than deleted, and what a set records cannot change.',
   rampKind: 'A warm-up ramp is only for exercises that record weight and reps.',

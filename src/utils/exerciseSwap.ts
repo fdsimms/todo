@@ -17,6 +17,17 @@ export function swappableSets(sets: readonly WorkoutSet[], exerciseId: string): 
 }
 
 /**
+ * Whether a lift can stand in for another. Weighted and bodyweight reps are the
+ * same kind of movement for this (a goblet squat and a bodyweight squat), since a
+ * swap resets the carried sets to the new exercise's own last load; every other
+ * kind (time, distance, assisted) only matches itself.
+ */
+export function swapKindsMatch(a: Exercise['kind'], b: Exercise['kind']): boolean {
+  if (a === b) return true;
+  return (a === 'weight_reps' || a === 'bodyweight_reps') && (b === 'weight_reps' || b === 'bodyweight_reps');
+}
+
+/**
  * Exercises worth offering in place of `exerciseId`, best first: the same kind
  * of movement, sharing a primary muscle, on different equipment (the reason
  * to swap is usually that the equipment is taken). Ties go to the most shared
@@ -33,9 +44,11 @@ export function swapCandidates(
   if (!from) return [];
   const skip = new Set([exerciseId, ...exceptIds]);
   return catalog
-    .filter(e => !e.archived && !skip.has(e.id) && e.kind === from.kind && e.equipment !== from.equipment)
+    .filter(e => !e.archived && !skip.has(e.id) && swapKindsMatch(e.kind, from.kind) && e.equipment !== from.equipment)
     .map(e => ({ e, shared: e.primaryMuscles.filter(m => from.primaryMuscles.includes(m)).length }))
     .filter(x => x.shared > 0)
-    .sort((a, b) => b.shared - a.shared || a.e.name.localeCompare(b.e.name))
+    .sort((a, b) => b.shared - a.shared
+      || Number(b.e.kind === from.kind) - Number(a.e.kind === from.kind)
+      || a.e.name.localeCompare(b.e.name))
     .map(x => x.e.id);
 }

@@ -9,7 +9,10 @@ import {
   formatDistance,
   formatSetLine,
   matchPrevious,
+  matchPreviousByPosition,
+  previousBadge,
   movedExerciseOrder,
+  exerciseBlocks,
   nextSet,
   plannedSetsFor,
   plannedSetsFromHistory,
@@ -263,6 +266,51 @@ describe('last time', () => {
   });
 });
 
+describe('matchPreviousByPosition', () => {
+  const last = [
+    set('bench', 0, 0, { kind: 'warmup', weightKg: 40 }),
+    set('bench', 0, 1, { weightKg: 80, reps: 10 }),
+    set('bench', 0, 2, { weightKg: 80, reps: 10 }),
+    set('bench', 0, 3, { kind: 'amrap', weightKg: 80, reps: 14 }),
+  ];
+  const repsFor = (current: ReturnType<typeof set>[]) => {
+    const m = matchPreviousByPosition(current, last);
+    return current.map(s => m.get(s.id)?.reps ?? null);
+  };
+
+  it('pairs a third ordinary set with last time\'s set to failure', () => {
+    const current = [set('bench', 0, 0, { kind: 'warmup' }), set('bench', 0, 1), set('bench', 0, 2), set('bench', 0, 3)];
+    expect(repsFor(current)).toEqual([8, 10, 10, 14]);
+  });
+
+  it('gives a row the same previous whichever kind it is labelled', () => {
+    const asWorking = [set('bench', 0, 0), set('bench', 0, 1), set('bench', 0, 2)];
+    const asFailure = [set('bench', 0, 0), set('bench', 0, 1), set('bench', 0, 2, { kind: 'amrap' })];
+    expect(repsFor(asWorking)).toEqual(repsFor(asFailure));
+  });
+
+  it('keeps warm-ups to their own pool', () => {
+    const current = [set('bench', 0, 0), set('bench', 0, 1, { kind: 'warmup' })];
+    const m = matchPreviousByPosition(current, last);
+    expect(m.get(current[0].id)?.reps).toBe(10);
+    expect(m.get(current[1].id)?.weightKg).toBe(40);
+  });
+
+  it('is null when there is nothing left to pair', () => {
+    const current = [1, 2, 3, 4, 5].map(i => set('bench', 0, i));
+    expect(repsFor(current)).toEqual([10, 10, 14, null, null]);
+  });
+});
+
+describe('previousBadge', () => {
+  it('marks a set to failure or a drop set, and nothing else', () => {
+    expect(previousBadge({ kind: 'amrap' })).toBe('F');
+    expect(previousBadge({ kind: 'drop' })).toBe('D');
+    expect(previousBadge({ kind: 'working' })).toBeNull();
+    expect(previousBadge({ kind: 'warmup' })).toBeNull();
+  });
+});
+
 describe('repeatedSets', () => {
   it('lays out the done sets again, warm-ups included, in their order from position zero', () => {
     const done = [
@@ -425,5 +473,15 @@ describe('finishing', () => {
     expect(sessionMinutes({ startedAt: '2026-10-07T18:00:00.000Z', endedAt: '2026-10-07T18:52:59.000Z' })).toBe(52);
     expect(sessionMinutes({ startedAt: '2026-10-07T18:00:00.000Z', endedAt: null }, new Date('2026-10-07T18:10:30.000Z'))).toBe(10);
     expect(sessionMinutes({ startedAt: '2026-10-07T18:00:00.000Z', endedAt: '2026-10-07T17:59:00.000Z' })).toBe(0);
+  });
+});
+
+describe('exerciseBlocks', () => {
+  it('makes a superset one block and every other exercise its own', () => {
+    expect(exerciseBlocks(session()).map(b => b.map(e => e.exerciseId))).toEqual([['bench'], ['incline', 'fly'], ['triceps']]);
+  });
+
+  it('is empty for no sets', () => {
+    expect(exerciseBlocks([])).toEqual([]);
   });
 });

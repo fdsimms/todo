@@ -574,6 +574,35 @@ export function sessionRecordSummary(
 }
 
 /**
+ * The records one exercise's sets hold in a workout that is still running, by
+ * the set that holds each: what a row can mark as it is ticked. The same walk
+ * as `sessionRecordSummary`, so the row and the finish summary agree.
+ *
+ * A session volume belongs to no one set and keeps rising with every tick, so
+ * it is left to the summary. Because a session is judged as a whole, the mark
+ * sits on the set holding the session's best so far and moves to a later set
+ * that beats it. Each set's records are most notable first.
+ */
+export function liveSetRecords(
+  sessionId: string,
+  exerciseId: string,
+  kind: ExerciseKind,
+  history: readonly WorkoutSet[],
+  sessions: readonly Pick<WorkoutSession, 'id' | 'startedAt'>[],
+  dayResetTime: string,
+): Map<string, RecordEvent[]> {
+  const out = new Map<string, RecordEvent[]>();
+  const analysis = analyzeExercise(exerciseId, kind, history, recordSessions(sessions, dayResetTime));
+  for (const e of analysis.events) {
+    if (e.sessionId !== sessionId || e.set === null) continue;
+    const list = out.get(e.set.id);
+    if (list) list.push(e); else out.set(e.set.id, [e]);
+  }
+  for (const list of out.values()) list.sort(byNotability);
+  return out;
+}
+
+/**
  * The newest records for Stats: for each exercise and session, only the most
  * notable one, newest first, within `RECENT_RECORD_DAYS` of `todayKey`, at
  * most `limit`. A year-old PR is not recent however few have come since.

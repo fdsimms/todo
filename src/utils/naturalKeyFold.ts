@@ -191,7 +191,8 @@ const FOLD_RULES: Record<string, FoldRule> = {
   cookbooks: { earliest: ['created_at'] },
   // Archived only if both copies say so: hiding an exercise somebody is still
   // using on the other phone would be the surprise, not keeping it.
-  exercises: { earliest: ['created_at'], and: ['archived'] },
+  // Other names are words somebody typed, so two copies' lists are both kept.
+  exercises: { earliest: ['created_at'], and: ['archived'], union: ['other_names'] },
 };
 
 /**

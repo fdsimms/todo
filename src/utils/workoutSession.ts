@@ -113,20 +113,30 @@ export function movedExerciseOrder(
   exerciseId: string,
   direction: 'up' | 'down',
 ): string[] | null {
-  const exercises = sessionExercises(sets);
-  const blocks: string[][] = [];
-  const seen = new Set<string>();
-  for (const ex of exercises) {
-    if (seen.has(ex.exerciseId)) continue;
-    const group = supersetGroup(exercises, ex.exerciseId).map(e => e.exerciseId);
-    group.forEach(id => seen.add(id));
-    blocks.push(group);
-  }
-  const at = blocks.findIndex(b => b.includes(exerciseId));
+  const blocks = exerciseBlocks(sets);
+  const at = blocks.findIndex(b => b.some(e => e.exerciseId === exerciseId));
   const to = direction === 'up' ? at - 1 : at + 1;
   if (at < 0 || to < 0 || to >= blocks.length) return null;
   [blocks[at], blocks[to]] = [blocks[to], blocks[at]];
-  return blocks.flat();
+  return blocks.flat().map(e => e.exerciseId);
+}
+
+/**
+ * The session's exercises as the blocks a reorder moves: a superset is one
+ * block (its run of partners), any other exercise a block of its own. The
+ * reorder list drags these, so a pair is never split by a drop.
+ */
+export function exerciseBlocks(sets: readonly WorkoutSet[]): SessionExercise[][] {
+  const exercises = sessionExercises(sets);
+  const blocks: SessionExercise[][] = [];
+  const seen = new Set<string>();
+  for (const ex of exercises) {
+    if (seen.has(ex.exerciseId)) continue;
+    const group = supersetGroup(exercises, ex.exerciseId);
+    group.forEach(e => seen.add(e.exerciseId));
+    blocks.push(group);
+  }
+  return blocks;
 }
 
 /** The sets with each exercise's position and superset key rewritten from an exercise order and a key per exercise. */
@@ -309,6 +319,40 @@ export function matchPrevious(
     out.set(s.id, pools.get(s.kind)?.[n] ?? null);
   }
   return out;
+}
+
+/**
+ * What the PREVIOUS column shows: each set's counterpart from last time by
+ * position. Warm-ups pair with warm-ups; every other set (working, drop, to
+ * failure) shares one pool, so the nth of those today pairs with the nth of
+ * those last time whatever either was labelled. Relabelling a set therefore
+ * never moves its PREVIOUS, and a set with no counterpart of its own kind
+ * (a third working set after two and a failure set) still has something to
+ * compare against. The kind of the matched set is shown beside it
+ * (`previousBadge`), so a set that went to failure reads as one.
+ *
+ * Display only: `plannedSetsFor` and a swap keep `matchPrevious`, which pairs
+ * by kind, because they copy the matched reps into a set and a failure set's
+ * reps are not a target for an ordinary one.
+ */
+export function matchPreviousByPosition(
+  current: readonly Pick<WorkoutSet, 'id' | 'kind'>[],
+  previous: readonly WorkoutSet[],
+): Map<string, WorkoutSet | null> {
+  const pools = { warmup: [] as WorkoutSet[], rest: [] as WorkoutSet[] };
+  for (const s of previous) pools[s.kind === 'warmup' ? 'warmup' : 'rest'].push(s);
+  const used = { warmup: 0, rest: 0 };
+  const out = new Map<string, WorkoutSet | null>();
+  for (const s of current) {
+    const pool = s.kind === 'warmup' ? 'warmup' : 'rest';
+    out.set(s.id, pools[pool][used[pool]++] ?? null);
+  }
+  return out;
+}
+
+/** The letter shown beside a PREVIOUS figure: F or D when that set wasn't an ordinary one, else null. */
+export function previousBadge(prev: Pick<WorkoutSet, 'kind'>): string | null {
+  return prev.kind === 'amrap' || prev.kind === 'drop' ? setBadge(prev.kind) : null;
 }
 
 // ==== what a set records ====

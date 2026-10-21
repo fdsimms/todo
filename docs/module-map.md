@@ -153,7 +153,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/exerciseDayNote.ts` — exerciseDayNote, exerciseDayNotePatches
 - `src/utils/exerciseImages.ts` — EXERCISE_IMAGE_BASE_URL, ExercisePhotos, PHOTOGRAPHED_SLUGS, exercisePhotos
 - `src/utils/exerciseLibrary.ts` — LibraryExercise, LIBRARY_ID_PREFIX, EXERCISE_LIBRARY, libraryExercise, isLibraryId
-- `src/utils/exerciseSwap.ts` — swappableSets, swapCandidates
+- `src/utils/exerciseSwap.ts` — swappableSets, swapKindsMatch, swapCandidates
 - `src/utils/expiredTaskGrace.ts` — ExpiredTaskGraceDays, EXPIRED_TASK_GRACE_OPTIONS, expiredTaskGraceLabel, parseExpiredTaskGrace, serializeExpiredTaskGrace
 - `src/utils/fabDrop.ts` — ScheduleInfo, DropZone, ZoneRect, FabDropIntent, zoneKey, ZONE_HIT_SLOP, TAIL_HIT_SLOP, zoneAtY, DEFAULT_DROP_SLOT, slotAtX, +13 more
 - `src/utils/fieldBackfill.ts` — BackfillFieldId, BackfillFieldDef, BACKFILL_FIELDS, backfillFieldsFor, BackfillCandidatesOptions, isFieldMissing, isBackfillDismissed, backfillCandidates, backfillSeriesPeers, backfillFieldCounts, +3 more
@@ -273,7 +273,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/measuredHeight.ts` — HEIGHT_EPSILON, nextMeasuredHeight
 - `src/utils/medicationExport.ts` — MEDICATION_EXPORT_COLUMNS, medicationExportCsv, medicationExportFileName, medicationExportSummary
 - `src/utils/medicationIndex.ts` — MedicationIndexEntry, MAX_MEDICATION_INDEX_ENTRIES, buildMedicationIndex, QueuedDose, parseQueuedDoses, resolveQueuedDoseName
-- `src/utils/medicationLog.ts` — DOSE_UNITS, MIN_TREND_DOSES, MedicationDose, MedicationSource, medicationFor, canCarryMedication, medicationKey, medicationVocabulary, ARCHIVED_MEDICATIONS_SETTING_KEY, parseArchivedMedications, +25 more
+- `src/utils/medicationLog.ts` — DOSE_UNITS, MIN_TREND_DOSES, MedicationDose, MedicationSource, medicationFor, canCarryMedication, medicationKey, medicationVocabulary, ARCHIVED_MEDICATIONS_SETTING_KEY, parseArchivedMedications, +24 more
 - `src/utils/medicationRename.ts` — DoseFill, renamedLogs, renamedSettings, renamedKeys, renamedChain, renamedTask, renamedTemplateItem, splitStrength
 - `src/utils/medicationRenameApply.ts` — renameMedicationEverywhere
 - `src/utils/medicationSettings.ts` — MEDICATION_SETTINGS_KEY, AmountCap, MedicationLimit, MedicationSupply, SupplementPanel, UsualDose, MedicationPrefs, MedicationSettingsMap, SUPPLY_UNITS, MAX_USUAL_DOSES, +19 more
@@ -288,7 +288,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/moodExport.ts` — MOOD_EXPORT_COLUMNS, csvCell, moodExportCsv, moodExportFileName, moodExportSummary
 - `src/utils/moodHistory.ts` — MoodFilter, EMPTY_MOOD_FILTER, isMoodFilterActive, hasWrittenNote, toggleFilterValue, filterMoodLogs, searchMoodLogs, textMatchesQuery, adjacentLogDays, MoodLogDay, +10 more
 - `src/utils/moodInsights.ts` — MIN_PAIRED_DAYS, MIN_CONTRAST_DAYS, MoodDay, taskIdentityKey, HealthDayInput, FoodDayInput, NUTRIENT_INSIGHT_KEYS, InsightNutrient, completionDayKey, buildMoodDays, +45 more
-- `src/utils/moodLog.ts` — MOOD_LEVELS, LOW_MOOD_AT_OR_BELOW, DEFAULT_CONTEXT_TAGS, SYMPTOM_SEVERITIES, moodLabel, moodEmoji, severityLabel, symptomKey, withSymptom, withoutSymptom, +14 more
+- `src/utils/moodLog.ts` — MOOD_LEVELS, LOW_MOOD_AT_OR_BELOW, DEFAULT_CONTEXT_TAGS, SYMPTOM_SEVERITIES, moodLabel, severityLabel, symptomKey, withSymptom, withoutSymptom, contextTagKey, +13 more
 - `src/utils/moodPlaceNow.ts` — moodPlaceTagNow
 - `src/utils/moodPlaces.ts` — PLACE_MATCH_RADIUS_M, PLACE_MAX_FIX_ERROR_M, PlaceFix, distanceMeters, moodPlacesOf, placeTagName, placeAt, placeTagAt
 - `src/utils/moodTasks.ts` — MOOD_LOG_LINK_URL, MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, DEFAULT_MOOD_NUDGE_AFTER_DAYS, MOOD_NUDGE_AFTER_DAYS_MIN, MOOD_NUDGE_AFTER_DAYS_MAX, MOOD_NUDGE_COOLDOWN_DAYS, moodLogDayKey, moodLogSegmentOf, moodLogSourceId, +5 more
@@ -435,6 +435,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/rhythmsSettings.ts` — rhythmOptionsFromSettings
 - `src/utils/rotation.ts` — RotationMember, RotationCarrier, MAX_ROTATION_PER_WEEK, rotationPerWeek, withPerWeek, withWorkout, rotationMemberForWorkout, RotationMemberInput, rotationMemberTitle, rotationItemFromInput, +29 more
 - `src/utils/routineGroups.ts` — RoutineGroup, RoutineSections, groupNames, resolveGroupName, routineSections, renamedRegistry, FlatRoutineRow, placementsFromList
+- `src/utils/routineProgress.ts` — RoutineWorkoutPoint, RoutineExerciseProgress, RoutineProgress, routineSessions, RoutineProgressInput, routineProgress, volumeForChart
 - `src/utils/routineUpdate.ts` — RoutineChange, RepRange, RoutineDiffInput, routineChanges, applyRoutineChanges, describeRoutineChange
 - `src/utils/rsvp.ts` — parseGuestNames
 - `src/utils/ruleCategory.ts` — parseRuleCategory, ruleCategoryFor, renameInRuleCategories, withRuleCategory
@@ -504,6 +505,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/streakLeaderboard.ts` — LEADERBOARD_SIZE, streakScore, rankStreaks
 - `src/utils/streakRecord.ts` — nextStreakRecord, bestStreakOf, isStreakAtRecord, streakHint
 - `src/utils/streakUnits.ts` — countsUnits
+- `src/utils/stripScale.ts` — countStripScale
 - `src/utils/substituteSuggestions.ts` — MAX_SUGGESTED_SUBSTITUTES, SuggestedSubstitute, RawSuggestedSubstitute, dedupeSuggestedSubstitutes
 - `src/utils/sunTimes.ts` — SunEvent, SunAnchor, SunLocation, SUN_OFFSET_LIMIT, SUN_OFFSET_STEP, parseSunAnchor, formatSunAnchor, clampSunOffset, describeSunAnchor, shortSunAnchor, +12 more
 - `src/utils/supplementDose.ts` — DOSE_SOURCE_PREFIX, doseSourceId, supplementDoseIdOf, isSupplementEntry, supplementServings, SupplementHelping, supplementHelping, entryForDose, SupplementForm, emptySupplementForm, +8 more
@@ -602,7 +604,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/widgetSync.ts` — drainWatchQueues, writeWidgetSnapshotNow, useWidgetSync
 - `src/utils/workoutCell.ts` — setFieldMax, parseRepsTarget, parseSetCell
 - `src/utils/workoutCsv.ts` — ImportSource, ImportedSet, ImportedSession, CsvParseResult, SkippedRows, describeSkipped, ParseOptions, parseCsv, readCsv, parseImportDate, +34 more
-- `src/utils/workoutData.ts` — EXERCISE_KINDS, FREE_EQUIPMENT, STRENGTH_MACHINES, CARDIO_MACHINES, EXERCISE_EQUIPMENT, machineParent, MUSCLE_GROUPS, WORKOUT_SET_KINDS, PROGRESSION_SCHEMES, EQUIPMENT_LABELS, +33 more
+- `src/utils/workoutData.ts` — EXERCISE_KINDS, FREE_EQUIPMENT, ACCESSORY_EQUIPMENT, STRENGTH_MACHINES, CARDIO_MACHINES, EXERCISE_EQUIPMENT, machineParent, EquipmentGroup, equipmentGroup, MUSCLE_GROUPS, +41 more
 - `src/utils/workoutHistory.ts` — HEALTH_HISTORY_MAX_DAYS, WorkoutHistoryRow, healthHistoryWindow, SAME_WORKOUT_START_MS, overlapsSession, interleaveHistory, healthWorkoutSource, healthWorkoutTitle, healthWorkoutLine
 - `src/utils/workoutLink.ts` — WORKOUT_LINK_VERBS, WorkoutLinkVerb, WorkoutLink, WORKOUT_OPEN_URL, workoutLinkUrl, WorkoutLinkPlan, planWorkoutLink
 - `src/utils/workoutLinkActions.ts` — applyWorkoutLink, skipRestFromLink
@@ -612,10 +614,10 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/workoutProgression.ts` — LINEAR_DELOAD_AFTER, DELOAD_FRACTION, DEFAULT_TARGET_RPE, RPE_LOAD_PER_POINT, DEFAULT_WAVE_PERCENTS, WAVE_STEP_POINTS, WAVE_DELOAD_POINTS, TRAINING_MAX_FRACTION, defaultIncrementKg, incrementFor, +26 more
 - `src/utils/workoutProposal.ts` — ExerciseProposalInput, ExerciseProposal, exerciseProposal, proposalRamp, proposalWrites
 - `src/utils/workoutProposalApply.ts` — liveProposal, ApplyProposalOptions, applyProposal
-- `src/utils/workoutRecordText.ts` — withThousands, recordLabel, formatVolume, formatRecordFigure, formatRecordValue, formatRecordChange, metricLabel, metricNote, metricCaption, formatBestPoint, +3 more
-- `src/utils/workoutRecords.ts` — E1RM_MAX_REPS, REP_RECORD_MAX, SECONDARY_MUSCLE_WEIGHT, NEW_RECORD_DAYS, RECENT_RECORD_DAYS, countsForRecords, estimatedOneRepMax, setVolume, liftVolumeKg, VolumeUnit, +32 more
+- `src/utils/workoutRecordText.ts` — withThousands, recordLabel, recordShortLabel, formatVolume, formatRecordFigure, formatRecordValue, formatRecordChange, metricLabel, metricNote, metricCaption, +6 more
+- `src/utils/workoutRecords.ts` — E1RM_MAX_REPS, REP_RECORD_MAX, SECONDARY_MUSCLE_WEIGHT, NEW_RECORD_DAYS, RECENT_RECORD_DAYS, countsForRecords, estimatedOneRepMax, setVolume, liftVolumeKg, VolumeUnit, +33 more
 - `src/utils/workoutRoutine.ts` — RoutineItemShape, itemShape, MAX_ROUTINE_SETS, MAX_WARMUP_SETS, defaultTargets, newRoutineItem, withWarmups, WarmupMode, warmupMode, DEFAULT_WARMUP_SETS, +33 more
-- `src/utils/workoutSession.ts` — SessionExercise, sessionExercises, supersetGroup, roundRobin, walkOrder, movedExerciseOrder, joinedSuperset, leftSuperset, nextSet, currentSetOf, +27 more
+- `src/utils/workoutSession.ts` — SessionExercise, sessionExercises, supersetGroup, roundRobin, walkOrder, movedExerciseOrder, exerciseBlocks, joinedSuperset, leftSuperset, nextSet, +30 more
 - `src/utils/workoutSiri.ts` — WorkoutRoutineIndexEntry, MAX_ROUTINE_INDEX_ENTRIES, buildRoutineIndex, QueuedWorkoutStart, parseQueuedWorkoutStarts, newestWorkoutStart, WorkoutStartPlan, QUEUED_START_MAX_AGE_MS, resolveQueuedWorkoutStart, myWorkoutStart
 - `src/utils/workoutTask.ts` — WorkoutTaskEffect, rotationPickFor, workoutTaskEffect, linkedTaskLine
 - `src/utils/workoutTick.ts` — TickRest, TickOutcome, restLabelFor, tickOutcome, TickValues, tickSet

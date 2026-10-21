@@ -28,6 +28,8 @@ import { TextField } from './TextField';
 import { RotatingChevron } from './RotatingChevron';
 import { EmptyNote } from './EmptyNote';
 import { ExercisePickerSheet } from './ExercisePickerSheet';
+import { ExerciseDetailSheet } from './ExerciseDetailSheet';
+import { RoutineProgressView } from './RoutineProgressView';
 import type { ExerciseKind, ProgressionScheme, WorkoutRoutine, WorkoutRoutineItem } from '../types';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -88,6 +90,12 @@ const PROGRESSION_GLOSSARY = [
   ['RPE', 'After a set, rate how hard it felt from 1 (very easy) to 10 (couldn’t do another rep), and the suggested weight follows.'],
 ] as const;
 
+type EditorTab = 'edit' | 'progress';
+const TAB_OPTIONS: SegmentOption<EditorTab>[] = [
+  { value: 'edit', label: 'Edit' },
+  { value: 'progress', label: 'Progress' },
+];
+
 const NAME_REFUSED: Record<string, string> = {
   blank: 'Give the routine a name.',
   notFound: 'This routine was deleted on another device.',
@@ -124,6 +132,12 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
   const [openRowId, setOpenRowId] = useState<string | null>(null);
   const [picking, setPicking] = useState<'add' | { slotId: string } | null>(null);
   const [dragging, setDragging] = useState(false);
+  // The Progress tab reads the routine as saved. Only a saved routine has one: a new routine has no workouts.
+  const [tab, setTab] = useState<EditorTab>('edit');
+  const [scrubbing, setScrubbing] = useState(false);
+  // The exercise page opened from a progress row. The id is kept through the close, so the sheet doesn't retitle while it slides away.
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
   const baseline = useRef('');
 
@@ -137,6 +151,9 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
     setRows(r);
     setOpenRowId(null);
     setPicking(null);
+    setTab('edit');
+    setScrubbing(false);
+    setDetailOpen(false);
     setRefusal(null);
     baseline.current = snapshotOf(n, t, r);
     // Loaded on open only: a sync landing mid-edit must not overwrite what is
@@ -285,7 +302,7 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
       headerStyle={styles.header}
       scrollStyle={styles.scroll}
       scrollContentStyle={styles.scrollContent}
-      scrollEnabled={!dragging}
+      scrollEnabled={!dragging && !scrubbing}
       header={
         <SheetHeader
           bare
@@ -297,15 +314,32 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
       footer={
         // Inside this sheet's own Modal, not beside it: a sheet presented as a
         // sibling of an open one never appears (see "Two sibling Modals").
-        <ExercisePickerSheet
-          visible={visible && picking !== null}
-          onClose={() => setPicking(null)}
-          onPick={addExercise}
-          addedIds={rows.filter(r => !r.open).map(r => r.item.exerciseId)}
-          addedLabel="In routine"
-        />
+        <>
+          <ExercisePickerSheet
+            visible={visible && picking !== null}
+            onClose={() => setPicking(null)}
+            onPick={addExercise}
+            addedIds={rows.filter(r => !r.open).map(r => r.item.exerciseId)}
+            addedLabel="In routine"
+          />
+          <ExerciseDetailSheet visible={visible && detailOpen} exerciseId={detailId} onClose={() => setDetailOpen(false)} />
+        </>
       }
     >
+      {routine && (
+        <View style={styles.tabs}>
+          <SegmentedControl options={TAB_OPTIONS} value={tab} onChange={setTab} surface="page" label="Routine view" />
+        </View>
+      )}
+      {routine && tab === 'progress' ? (
+        <RoutineProgressView
+          routineId={routine.id}
+          exerciseIds={routine.items.map(i => i.exerciseId)}
+          onScrubChange={setScrubbing}
+          onOpenExercise={id => { haptics.tap(); setDetailId(id); setDetailOpen(true); }}
+        />
+      ) : (
+      <>
       <View style={styles.nameCard}>
         <TextField
           style={styles.nameInput}
@@ -455,6 +489,8 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
           <Ionicons name="trash-outline" size={iconSize.sm} color={colors.redText} />
           <Text style={styles.deleteText}>Delete routine</Text>
         </TouchableOpacity>
+      )}
+      </>
       )}
     </EditorSheet>
   );
@@ -618,6 +654,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: spacing.md, paddingVertical: spacing.smd,
   },
+  tabs: { marginBottom: spacing.md },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: spacing.md, paddingBottom: spacing.xl * 2 },
   nameCard: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden', marginTop: spacing.xs },
