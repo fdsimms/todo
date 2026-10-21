@@ -1,9 +1,10 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, type LayoutChangeEvent } from 'react-native';
+import React, { useMemo, useRef, useState } from 'react';
+import { View, Text, StyleSheet, PanResponder, type GestureResponderEvent, type LayoutChangeEvent } from 'react-native';
 import Svg, { Line, Rect } from 'react-native-svg';
 import { format } from 'date-fns/format';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, type Colors } from '../theme';
+import { haptics } from '../utils/haptics';
 import { dayKeyToDate } from '../utils/dateUtils';
 import { formatHour } from '../utils/rhythms';
 import {
@@ -35,9 +36,83 @@ import {
  *
  * Each chart is one accessibility element with a spoken summary, for the
  * reason `WeightChart` gives: ninety bars are a wall to swipe through.
+ *
+ * **Touch-and-drag reads out a day**, the way `NutrientDayChart` does: a finger
+ * over the plot snaps to the nearest day that has a bar and says that night's
+ * figures. It adds nothing the chart doesn't already hold (no goal verdict, no
+ * "good" or "short"). The scrub is a `PanResponder` on a childless overlay
+ * exactly over the plot, so it adds no accessibility element.
  */
 
 const CHART_HEIGHT = 150;
+/** Fixed rather than measured, so the tooltip doesn't reflow as it appears. */
+const TOOLTIP_WIDTH = 150;
+const TOOLTIP_LINE_HEIGHT = 16;
+
+/**
+ * Which day a finger is over, snapped to the nearest day that has a bar. The
+ * host turns its scroll view off through `onScrubChange`: a native scroll view
+ * yields only to a responder that is its ancestor, and this one is a descendant.
+ */
+function useDayScrub(
+  hasBar: readonly boolean[],
+  slot: number,
+  onScrubChange: ((scrubbing: boolean) => void) | undefined,
+) {
+  const [index, setIndex] = useState<number | null>(null);
+  const indexRef = useRef<number | null>(null);
+  const onScrubChangeRef = useRef(onScrubChange);
+  onScrubChangeRef.current = onScrubChange;
+
+  const panHandlers = useMemo(() => {
+    const scrubTo = (event: GestureResponderEvent) => {
+      if (slot === 0) return;
+      const x = event.nativeEvent.locationX;
+      let nearest: number | null = null;
+      let nearestDistance = Infinity;
+      for (let i = 0; i < hasBar.length; i++) {
+        if (!hasBar[i]) continue;
+        const distance = Math.abs((i + 0.5) * slot - x);
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearest = i;
+        }
+      }
+      if (nearest !== indexRef.current) haptics.dragTick();
+      indexRef.current = nearest;
+      setIndex(nearest);
+    };
+    const endScrub = () => {
+      indexRef.current = null;
+      setIndex(null);
+      onScrubChangeRef.current?.(false);
+    };
+    return PanResponder.create({
+      // Claimed on touch-down so a plain tap shows a day, the trade
+      // `WeightChart` documents: a scroll that starts on the plot becomes a scrub.
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: event => {
+        onScrubChangeRef.current?.(true);
+        scrubTo(event);
+      },
+      onPanResponderMove: scrubTo,
+      onPanResponderRelease: endScrub,
+      onPanResponderTerminate: endScrub,
+      onPanResponderTerminationRequest: () => false,
+    }).panHandlers;
+  }, [hasBar, slot]);
+
+  return { index, panHandlers };
+}
+
+/** Where the tooltip's left edge goes so it stays over the plot. */
+function tooltipLeftFor(index: number, slot: number, plotWidth: number): number {
+  return AXIS_WIDTH + Math.min(
+    Math.max((index + 0.5) * slot - TOOLTIP_WIDTH / 2, 0),
+    Math.max(plotWidth - TOOLTIP_WIDTH, 0),
+  );
+}
 /** Room on the left for the axis labels. */
 const AXIS_WIDTH = 44;
 /** How much of each day's slot a bar fills. */
@@ -50,17 +125,24 @@ interface TimesProps {
   dayKeys: readonly string[];
   nights: readonly SleepNight[];
   use24Hour: boolean;
+  /** Fires true while a finger is on the plot, so the host can turn its scroll off. */
+  onScrubChange?: (scrubbing: boolean) => void;
 }
 
-export function SleepTimesChart({ dayKeys, nights, use24Hour }: TimesProps) {
+export function SleepTimesChart({ dayKeys, nights, use24Hour, onScrubChange }: TimesProps) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [width, setWidth] = useState(0);
   const plot = useMemo(() => sleepPlot(nights), [nights]);
-  if (!plot) return null;
-
   const plotWidth = Math.max(0, width - AXIS_WIDTH);
   const slot = dayKeys.length > 0 ? plotWidth / dayKeys.length : 0;
+  const hasBar = useMemo(() => {
+    const recorded = new Set(nights.map(n => n.dayKey));
+    return dayKeys.map(k => recorded.has(k));
+  }, [dayKeys, nights]);
+  const scrub = useDayScrub(hasBar, slot, onScrubChange);
+  if (!plot) return null;
+
   const barWidth = Math.max(MIN_BAR_WIDTH, slot * BAR_FILL);
   const span = plot.domainEnd - plot.domainStart;
   const y = (axis: number) => ((axis - plot.domainStart) / span) * CHART_HEIGHT;
@@ -77,6 +159,13 @@ export function SleepTimesChart({ dayKeys, nights, use24Hour }: TimesProps) {
   const summary = `Sleep times for ${nights.length} of the last ${dayKeys.length} days, falling asleep between ${
     formatClockMinutes(axisToClockMinutes(plot.domainStart), use24Hour)} and waking by ${
     formatClockMinutes(axisToClockMinutes(plot.domainEnd), use24Hour)}.`;
+
+  const scrubbedNight = scrub.index !== null
+    ? nights.find(n => n.dayKey === dayKeys[scrub.index as number]) ?? null
+    : null;
+  const scrubbedBar = scrubbedNight ? plot.bars.find(b => b.dayKey === scrubbedNight.dayKey) ?? null : null;
+  const napMinutes = scrubbedNight ? scrubbedNight.minutes - scrubbedNight.mainMinutes : 0;
+  const hasNap = Math.round(napMinutes) >= 1;
 
   return (
     <View accessible accessibilityLabel={summary} onLayout={(e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width)}>
@@ -107,33 +196,84 @@ export function SleepTimesChart({ dayKeys, nights, use24Hour }: TimesProps) {
                 />
               );
             })}
+            {scrub.index !== null && scrubbedNight && (
+              <Line
+                x1={(scrub.index + 0.5) * slot}
+                x2={(scrub.index + 0.5) * slot}
+                y1={0}
+                y2={CHART_HEIGHT}
+                stroke={colors.textTertiary}
+                strokeWidth={1}
+              />
+            )}
           </Svg>
         )}
+        <View style={styles.touch} {...scrub.panHandlers} />
+        {scrub.index !== null && scrubbedNight && scrubbedBar && (() => {
+          const lines = hasNap ? 3 : 2;
+          const height = lines * TOOLTIP_LINE_HEIGHT + spacing.xs * 2;
+          const barTop = y(scrubbedBar.from);
+          const barBottom = y(scrubbedBar.to);
+          // Beside the bar's own ends rather than over it: above it when
+          // there's room, otherwise below, otherwise pinned to the top.
+          const top = barTop - height - spacing.xs >= 0
+            ? barTop - height - spacing.xs
+            : barBottom + spacing.xs + height <= CHART_HEIGHT
+              ? barBottom + spacing.xs
+              : 0;
+          return (
+            <View
+              style={[styles.tooltip, { left: tooltipLeftFor(scrub.index, slot, plotWidth), top, height }]}
+              pointerEvents="none"
+            >
+              <Text style={styles.tooltipText}>
+                {format(dayKeyToDate(scrubbedNight.dayKey), 'MMM d')} · {formatSleepDuration(scrubbedNight.mainMinutes)}
+              </Text>
+              <Text style={styles.tooltipDetail}>
+                {formatClockMinutes(clockOf(scrubbedNight.asleepAt), use24Hour)} to {formatClockMinutes(clockOf(scrubbedNight.wokeAt), use24Hour)}
+              </Text>
+              {hasNap && (
+                <Text style={styles.tooltipDetail}>{formatSleepDuration(scrubbedNight.minutes)} with naps</Text>
+              )}
+            </View>
+          );
+        })()}
       </View>
       <DayAxis dayKeys={dayKeys} styles={styles} />
     </View>
   );
 }
 
+/** A moment's clock time as minutes after midnight, in the device's zone. */
+function clockOf(date: Date): number {
+  return date.getHours() * 60 + date.getMinutes();
+}
+
 interface HoursProps {
   dayKeys: readonly string[];
   nights: readonly SleepNight[];
   goalMinutes: number | null;
+  onScrubChange?: (scrubbing: boolean) => void;
 }
 
 /** The hours chart's top never sits below this, so one short night isn't drawn full height. */
 const MIN_HOURS_DOMAIN = 8 * 60;
 
-export function SleepHoursChart({ dayKeys, nights, goalMinutes }: HoursProps) {
+export function SleepHoursChart({ dayKeys, nights, goalMinutes, onScrubChange }: HoursProps) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [width, setWidth] = useState(0);
+  const plotWidth = Math.max(0, width - AXIS_WIDTH);
+  const slot = dayKeys.length > 0 ? plotWidth / dayKeys.length : 0;
+  const hasBar = useMemo(() => {
+    const recorded = new Set(nights.map(n => n.dayKey));
+    return dayKeys.map(k => recorded.has(k));
+  }, [dayKeys, nights]);
+  const scrub = useDayScrub(hasBar, slot, onScrubChange);
   if (nights.length === 0) return null;
 
   const most = Math.max(...nights.map(n => n.minutes), goalMinutes ?? 0, MIN_HOURS_DOMAIN);
   const top = Math.ceil(most / 120) * 120;
-  const plotWidth = Math.max(0, width - AXIS_WIDTH);
-  const slot = dayKeys.length > 0 ? plotWidth / dayKeys.length : 0;
   const barWidth = Math.max(MIN_BAR_WIDTH, slot * BAR_FILL);
   const y = (minutes: number) => CHART_HEIGHT - (minutes / top) * CHART_HEIGHT;
   const byDay = new Map(nights.map(n => [n.dayKey, n]));
@@ -181,8 +321,38 @@ export function SleepHoursChart({ dayKeys, nights, goalMinutes }: HoursProps) {
                 strokeDasharray={GOAL_DASH}
               />
             )}
+            {scrub.index !== null && (
+              <Line
+                x1={(scrub.index + 0.5) * slot}
+                x2={(scrub.index + 0.5) * slot}
+                y1={0}
+                y2={CHART_HEIGHT}
+                stroke={colors.textTertiary}
+                strokeWidth={1}
+              />
+            )}
           </Svg>
         )}
+        <View style={styles.touch} {...scrub.panHandlers} />
+        {scrub.index !== null && (() => {
+          const night = byDay.get(dayKeys[scrub.index]);
+          if (!night) return null;
+          const height = TOOLTIP_LINE_HEIGHT + spacing.xs * 2;
+          const barTop = y(night.minutes);
+          return (
+            <View
+              style={[
+                styles.tooltip,
+                { left: tooltipLeftFor(scrub.index, slot, plotWidth), top: Math.max(0, barTop - height - spacing.xs), height },
+              ]}
+              pointerEvents="none"
+            >
+              <Text style={styles.tooltipText}>
+                {format(dayKeyToDate(night.dayKey), 'MMM d')} · {formatSleepDuration(night.minutes)}
+              </Text>
+            </View>
+          );
+        })()}
       </View>
       <DayAxis dayKeys={dayKeys} styles={styles} />
     </View>
@@ -255,6 +425,28 @@ function DayAxis({ dayKeys, styles }: { dayKeys: readonly string[]; styles: Retu
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   svg: { position: 'absolute', left: AXIS_WIDTH, top: 0 },
+  touch: { position: 'absolute', left: AXIS_WIDTH, right: 0, top: 0, bottom: 0 },
+  tooltip: {
+    position: 'absolute',
+    width: TOOLTIP_WIDTH,
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.xs,
+    justifyContent: 'center',
+  },
+  tooltipText: {
+    fontSize: font.xs,
+    lineHeight: TOOLTIP_LINE_HEIGHT,
+    fontWeight: fontWeight.semibold,
+    color: colors.text,
+    textAlign: 'center',
+  },
+  tooltipDetail: {
+    fontSize: font.xs,
+    lineHeight: TOOLTIP_LINE_HEIGHT,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
   axisLabel: {
     position: 'absolute',
     left: 0,

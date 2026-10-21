@@ -89,6 +89,8 @@ export function SleepScreen() {
 
   const [goalOpen, setGoalOpen] = useState(false);
   const [rangeDays, setRangeDays] = useState<SleepRangeDays>(DEFAULT_RANGE_DAYS);
+  // The page scroll is off while a finger is scrubbing a chart.
+  const [scrubbing, setScrubbing] = useState(false);
   const activeRange = SLEEP_RANGES.find(r => r.days === rangeDays) ?? SLEEP_RANGES[1];
 
   // On every visit, for `WeightScreen`'s reason: the screen stays mounted for
@@ -216,6 +218,7 @@ export function SleepScreen() {
         {...scrollTop.listProps}
         refreshControl={pullSearch.refreshControl}
         style={styles.scroll}
+        scrollEnabled={!scrubbing}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(tabBarHeight + spacing.xl, scrollTop.clearance) }]}
       >
         {latest && (
@@ -300,10 +303,10 @@ export function SleepScreen() {
           <>
             <Text style={styles.sectionTitle}>WHEN YOU SLEPT</Text>
             <View style={styles.card}>
-              <SleepTimesChart dayKeys={dayKeys} nights={visible} use24Hour={use24Hour} />
+              <SleepTimesChart dayKeys={dayKeys} nights={visible} use24Hour={use24Hour} onScrubChange={setScrubbing} />
               <Text style={styles.chartCaption}>
                 Each bar is a day’s main stretch of sleep, from falling asleep (top) to waking (bottom).
-                Blank days have nothing recorded.
+                Blank days have nothing recorded. Touch and drag over the chart to see a day’s times.
               </Text>
             </View>
 
@@ -323,7 +326,7 @@ export function SleepScreen() {
 
             <Text style={styles.sectionTitle}>HOURS ASLEEP</Text>
             <View style={styles.card}>
-              <SleepHoursChart dayKeys={dayKeys} nights={visible} goalMinutes={goal} />
+              <SleepHoursChart dayKeys={dayKeys} nights={visible} goalMinutes={goal} onScrubChange={setScrubbing} />
               <Text style={styles.chartCaption}>
                 Time asleep recorded against each day, naps included.
                 {goal !== null && ' The dashed line is your goal.'}
