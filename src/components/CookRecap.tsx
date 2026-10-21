@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -40,7 +40,7 @@ import { LeftoverSheet } from './LeftoverSheet';
  * there restating what was already said.
  *
  * **It declines to open when there is nothing to ask.** A cooking with no
- * pantry lines to name, nothing to buy, a rating already given and a meal that
+ * pantry lines to name, nothing to buy, a dish already weighed and a meal that
  * can't leave leftovers (it *is* leftovers) has no sheet — the recap is cleared
  * instead, which is the "hidden rather than hedged" call the banners made by
  * rendering null at 0.
@@ -54,7 +54,6 @@ export function CookRecap() {
   const shownRecap = useSheetSubject(recap);
   const clearCookRecap = useMealPlanStore(s => s.clearCookRecap);
   const recipes = useRecipeStore(useShallow(s => s.recipes));
-  const setVote = useRecipeStore(s => s.setVote);
   const setCookedWeight = useRecipeStore(s => s.setCookedWeight);
   const items = useGroceryStore(useShallow(s => s.items));
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
@@ -117,25 +116,6 @@ export function CookRecap() {
     [classified, restockOfferEnabled]
   );
 
-  /**
-   * Whether to put the rating question, decided once per cooking rather than
-   * read live.
-   *
-   * Live, answering it would take the section away mid-sheet — the control you
-   * just used vanishing under your finger, with no way back if you picked the
-   * wrong one. Latched to the cooking, the track stays and shows what you chose.
-   *
-   * A ref rather than state on purpose: state would settle a render *after* the
-   * recap arrives, and the "nothing to ask" check below would have already run
-   * against `false` — a cooking whose only question is the rating would clear
-   * itself before the answer landed.
-   */
-  const askVoteRef = useRef<{ entryId: string; ask: boolean } | null>(null);
-  if (shownRecap && askVoteRef.current?.entryId !== shownRecap.entryId) {
-    askVoteRef.current = { entryId: shownRecap.entryId, ask: !!recipe && recipe.vote === null };
-  }
-  const askVote = !!shownRecap && !!askVoteRef.current?.ask;
-
   const seed = useMemo(() => {
     if (!shownRecap) return null;
     return {
@@ -154,7 +134,7 @@ export function CookRecap() {
 
   const askLeftovers = !!shownRecap?.canLogLeftovers;
   const hasSomethingToAsk =
-    askVote || askLeftovers || askCookedWeight || rows.length > 0 || restockList.length > 0;
+    askLeftovers || askCookedWeight || rows.length > 0 || restockList.length > 0;
 
   /**
    * Held back while the one other thing a tick can raise is up.
@@ -203,11 +183,6 @@ export function CookRecap() {
       key={shownRecap.entryId}
       visible={open}
       title={shownRecap.title}
-      vote={
-        askVote && recipe
-          ? { value: recipe.vote, onChange: next => setVote(recipe.id, next) }
-          : undefined
-      }
       onLogLeftovers={askLeftovers ? () => setLeftoverVisible(true) : undefined}
       cookedWeight={
         askCookedWeight && recipe
