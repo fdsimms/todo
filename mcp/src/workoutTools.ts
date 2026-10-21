@@ -43,6 +43,8 @@ export interface ExerciseRow {
   secondaryMuscles?: MuscleGroup[];
   /** How it's done, from the library. */
   cue?: string;
+  /** Other names the person knows it by. list_exercises's query finds an exercise by them. */
+  otherNames?: string[];
   /** The person's own notes. */
   notes?: string;
   /** One the person made, rather than a built-in. */
@@ -63,6 +65,7 @@ function exerciseRow(e: CatalogExercise): ExerciseRow {
     primaryMuscles: e.primaryMuscles,
     ...(e.secondaryMuscles.length ? { secondaryMuscles: e.secondaryMuscles } : {}),
     ...(e.cue ? { cue: e.cue } : {}),
+    ...(e.otherNames.length ? { otherNames: e.otherNames } : {}),
     ...(e.notes ? { notes: e.notes } : {}),
     ...(!e.builtIn ? { custom: true as const } : {}),
     ...(e.overridden ? { changedByYou: true as const } : {}),
