@@ -1,7 +1,7 @@
 import { format } from 'date-fns/format';
 import type { Exercise, ExerciseEquipment, WorkoutSession, WorkoutSet, WorkoutSetKind } from '../types';
 import { buildCatalog, catalogExercise, type CatalogExercise } from './exerciseCatalog';
-import { cleanWorkoutName, exerciseNameKey, weightToDisplay } from './workoutData';
+import { cleanWorkoutName, exerciseNameKey, machineParent, weightToDisplay } from './workoutData';
 import { csvCell } from './moodExport';
 import { unitToKg, type WeightUnit } from './weightLog';
 import { MIN_SIMILAR_LENGTH, withinOneEdit } from './textSimilar';
@@ -745,11 +745,12 @@ export function matchExerciseName(name: string, catalog: readonly CatalogExercis
   let onOtherEquipment: CatalogExercise | undefined;
   if (split) {
     const sameMovement = live.filter(e => {
-      const drop = EQUIPMENT_WORDS[e.equipment] ?? [];
+      const drop = EQUIPMENT_WORDS[e.equipment] ?? EQUIPMENT_WORDS[machineParent(e.equipment) ?? e.equipment] ?? [];
       const w = sortedWords(e.name).filter(x => !drop.includes(x));
       return w.length === split.base.length && w.every((x, i) => x === split.base[i]);
     });
-    const agreeing = sameMovement.filter(e => e.equipment === split.equipment);
+    // A file's "(Machine)" is every strength machine here, since the library files each under its own.
+    const agreeing = sameMovement.filter(e => e.equipment === split.equipment || machineParent(e.equipment) === split.equipment);
     if (agreeing.length === 1) return { kind: 'words', exerciseId: agreeing[0].id, exerciseName: agreeing[0].name };
     // Only offered when nothing closer turns up below ("Squat (Barbell)" has a better candidate than the bodyweight squat).
     onOtherEquipment = agreeing[0] ?? sameMovement[0];

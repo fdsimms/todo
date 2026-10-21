@@ -1,6 +1,6 @@
 import type { Exercise, ExerciseEquipment, MuscleGroup } from '../types';
 import { EXERCISE_LIBRARY, libraryExercise, type LibraryExercise } from './exerciseLibrary';
-import { EQUIPMENT_LABELS, EXERCISE_EQUIPMENT, MUSCLE_GROUPS, MUSCLE_LABELS } from './workoutData';
+import { EQUIPMENT_LABELS, EXERCISE_EQUIPMENT, MUSCLE_GROUPS, MUSCLE_LABELS, machineParent } from './workoutData';
 import { scoreSubstring } from './ranges';
 
 /**
@@ -160,9 +160,12 @@ export function searchExercises(
 
   const results: ExerciseSearchResult[] = [];
   for (const exercise of pool) {
+    // A specific machine is still found by "machine" (or "cardio"), as it was when they shared one value.
+    const parent = machineParent(exercise.equipment);
     const labels = [
       ...exercise.primaryMuscles.map(m => MUSCLE_LABELS[m]),
       EQUIPMENT_LABELS[exercise.equipment],
+      ...(parent ? [parent === 'machine' ? 'Machine' : 'Cardio machine'] : []),
     ];
     let total = 0;
     let nameMatches: [number, number][] = [];

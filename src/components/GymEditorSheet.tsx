@@ -21,7 +21,9 @@ import { confirmDiscard } from '../utils/confirmDiscard';
 import { alertPermissionOff } from '../utils/permissionAlert';
 import { getCurrentLocation, requestLocationPermission } from '../utils/weatherLocation';
 import { exerciseName } from '../utils/exerciseCatalog';
-import { EQUIPMENT_LABELS, EXERCISE_EQUIPMENT, WORKOUT_NAME_MAX_LENGTH } from '../utils/workoutData';
+import {
+  CARDIO_MACHINES, EQUIPMENT_LABELS, FREE_EQUIPMENT, STRENGTH_MACHINES, WORKOUT_NAME_MAX_LENGTH,
+} from '../utils/workoutData';
 import { GYM_DEFAULT_RADIUS_M, GYM_MAX_RADIUS_M, GYM_MIN_RADIUS_M, GYM_RADIUS_STEP_M } from '../utils/gyms';
 import { BUTTON_LABEL } from '../copy/shared';
 
@@ -32,8 +34,16 @@ interface Props {
   onClose: () => void;
 }
 
-/** Bodyweight and Other need nothing from a gym, so they aren't offered. */
-const GYM_EQUIPMENT = EXERCISE_EQUIPMENT.filter(e => e !== 'bodyweight' && e !== 'other');
+/**
+ * What a gym can have, in three groups so the machines don't bury the free
+ * weights. Bodyweight and Other need nothing from a gym, so they aren't offered.
+ * The catch-all ends each machine group, for a machine with no chip of its own.
+ */
+const GYM_EQUIPMENT_GROUPS: { title: string; items: readonly ExerciseEquipment[] }[] = [
+  { title: 'Free weights', items: FREE_EQUIPMENT },
+  { title: 'Strength machines', items: [...STRENGTH_MACHINES, 'machine'] },
+  { title: 'Cardio', items: [...CARDIO_MACHINES, 'cardio_machine'] },
+];
 
 const REFUSED: Record<string, string> = {
   blank: 'Give the gym a name.',
@@ -254,18 +264,23 @@ export function GymEditorSheet({ visible, subject, onClose }: Props) {
           />
 
           <Text style={styles.label}>Equipment here</Text>
-          <PillGroup
-            noun="piece of equipment"
-            pluralNoun="pieces of equipment"
-            surface="page"
-            limit={GYM_EQUIPMENT.length}
-            options={GYM_EQUIPMENT.map(e => ({
-              key: e,
-              label: EQUIPMENT_LABELS[e],
-              selected: v.equipment.includes(e),
-              onPress: () => toggle(e),
-            }))}
-          />
+          {GYM_EQUIPMENT_GROUPS.map(group => (
+            <View key={group.title}>
+              <Text style={styles.subLabel}>{group.title}</Text>
+              <PillGroup
+                noun="piece of equipment"
+                pluralNoun="pieces of equipment"
+                surface="page"
+                limit={group.items.length}
+                options={group.items.map(e => ({
+                  key: e,
+                  label: EQUIPMENT_LABELS[e],
+                  selected: v.equipment.includes(e),
+                  onPress: () => toggle(e),
+                }))}
+              />
+            </View>
+          ))}
           <HelpText style={styles.hint}>
             Exercises that need something this gym doesn’t have are flagged during a workout. Leave all of it off if you’d rather not say.
           </HelpText>
@@ -340,6 +355,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   label: {
     color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold, textTransform: 'uppercase',
     letterSpacing: 0.8, marginTop: spacing.lg, marginBottom: spacing.sm, marginHorizontal: spacing.xs,
+  },
+  subLabel: {
+    color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.semibold,
+    marginTop: spacing.md, marginBottom: spacing.sm, marginHorizontal: spacing.xs,
   },
   hint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.sm, marginHorizontal: spacing.xs },
   card: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden' },
