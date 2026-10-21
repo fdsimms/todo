@@ -898,7 +898,7 @@ export function WorkoutsScreen() {
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   segments: { paddingHorizontal: spacing.md, marginTop: spacing.sm, marginBottom: spacing.sm },
-  search: { marginHorizontal: spacing.md, marginBottom: spacing.sm },
+  search: { marginHorizontal: spacing.md, marginTop: spacing.sm, marginBottom: spacing.sm },
   list: { paddingHorizontal: spacing.md, paddingTop: spacing.xs, gap: spacing.sm },
   flex: { flex: 1 },
   // Flush: RoutineSwipeRow's clip rounds the card and its panels as one shape. A radius here opens a

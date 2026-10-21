@@ -572,7 +572,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   activeFilterText: { color: colors.onAccent, fontSize: font.sm, fontWeight: fontWeight.semibold },
   container: { flex: 1, backgroundColor: colors.bg },
-  search: { marginHorizontal: spacing.md, marginBottom: spacing.sm },
+  search: { marginHorizontal: spacing.md, marginTop: spacing.sm, marginBottom: spacing.sm },
   list: { flex: 1 },
   listContent: { paddingHorizontal: spacing.md },
   dayLabel: {

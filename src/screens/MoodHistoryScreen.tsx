@@ -284,7 +284,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginTop: spacing.md,
     marginBottom: spacing.sm,
   },
-  search: { marginHorizontal: spacing.md, marginBottom: spacing.sm },
+  search: { marginHorizontal: spacing.md, marginTop: spacing.sm, marginBottom: spacing.sm },
   pillRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
