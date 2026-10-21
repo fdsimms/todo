@@ -422,9 +422,7 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
       <Text style={styles.groupLabel}>Exercises</Text>
       <View>
         {rows.length === 0 ? (
-          <View style={[styles.card, styles.emptyWrap]}>
-            <EmptyNote icon="barbell-outline">No exercises yet. Add the first one below.</EmptyNote>
-          </View>
+          <EmptyNote icon="barbell-outline">No exercises yet. Add the first one below.</EmptyNote>
         ) : (
           <SortableList
             data={rows}
@@ -738,7 +736,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     textTransform: 'uppercase', letterSpacing: 0.8, marginTop: spacing.lg, marginBottom: spacing.sm, marginHorizontal: spacing.xs,
   },
   card: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden' },
-  emptyWrap: { padding: spacing.md },
   itemGap: { paddingBottom: spacing.smd },
   itemCard: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden' },
   itemSep: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator },

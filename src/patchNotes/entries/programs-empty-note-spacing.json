@@ -1,1 +1,1 @@
-{ "message": "The empty Programs tab in Workouts no longer shows its message inside an extra, oversized card.", "date": "2026-10-21" }
+{ "message": "Empty messages in Workouts (Programs, a routine with no exercises, a routine with no progress yet) no longer sit inside an extra, oversized card.", "date": "2026-10-21" }
