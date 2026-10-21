@@ -82,6 +82,7 @@ import type {
   WorkoutProgram,
   WorkoutRoutine,
   WorkoutRoutineVersion,
+  WorkoutProgramVersion,
   Gym,
   GymExerciseSetting,
   ExerciseEquipment,
@@ -110,6 +111,7 @@ import type { FinishedSessionInput, ProgramInput, SessionPatch, SetInput } from 
 import { parseTaskFieldDefaults } from '../../src/utils/taskFieldDefaults';
 import { sectionListPatch } from '../../src/utils/listMode';
 import { rotationItemFromInput, rotationMemberTitle, rotationMembers } from '../../src/utils/rotation';
+import { programVersionsOf, routineVersionsOf } from '../../src/utils/routineVersions';
 import { sunAnchorHHMM } from '../../src/utils/sunTimes';
 import type { AwaySpan } from '../../src/utils/awayDates';
 import type { WaterUnit } from '../../src/utils/waterLog';
@@ -1303,6 +1305,21 @@ export interface Replica {
     archived?: boolean;
   }): WorkoutRoutine;
   deleteRoutine(id: string): WorkoutRoutine;
+  /**
+   * Routine and program history, by the app's own actions. A version is named
+   * by its number (`routine_history`, `program_history`); each throws in
+   * words for one that doesn't exist or is already current.
+   * `restoreRoutineVersion` makes an older plan the newest version, so History
+   * keeps everything; `copyRoutineVersion` makes a routine of its own from one;
+   * `mergeRoutines` folds `fromId` into `intoId` as its earlier history and
+   * deletes `fromId`.
+   */
+  restoreRoutineVersion(routineId: string, version: number): WorkoutRoutine;
+  copyRoutineVersion(routineId: string, version: number): WorkoutRoutine;
+  mergeRoutines(fromId: string, intoId: string): { into: WorkoutRoutine; from: WorkoutRoutine };
+  /** Every stored program version, oldest first. Plans, like programs. */
+  programVersions(): WorkoutProgramVersion[];
+  restoreProgramVersion(programId: string, version: number): WorkoutProgram;
   /** The group names the person made, in the Routines tab's order, empty groups included. A plan, like the routines. */
   routineGroups(): string[];
   /** Makes an empty group, or with `renameTo` renames one (on its routines too). Returns the name it now has. */
@@ -2377,6 +2394,17 @@ const GYM_REFUSALS: Record<string, string> = {
 };
 
 /** What each of the store's refusals means, in words an agent can act on. */
+/** A routine's version by its number in `routine_history`, or a refusal in words. */
+function routineVersionByNumber(
+  store: ReturnType<typeof import('../../src/store/useWorkoutStore').useWorkoutStore.getState>, routineId: string, version: number,
+): WorkoutRoutineVersion {
+  const routine = store.routines.find(r => r.id === routineId);
+  if (!routine) throw new Error(`No routine with id ${routineId}. list_workouts lists the routines.`);
+  const target = routineVersionsOf(routine, store.routineVersions)[version - 1];
+  if (!target) throw new Error(`"${routine.name}" has no version ${version}. routine_history lists them.`);
+  return target;
+}
+
 const WORKOUT_REFUSALS: Record<string, string> = {
   blank: 'A name or title cannot be blank.',
   taken: 'That name is already taken.',
@@ -4475,6 +4503,51 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (!routine) throw new Error(`No routine with id ${id}. list_workouts lists the routines.`);
       store.deleteRoutine(id);
       return routine;
+    },
+    restoreRoutineVersion(routineId, version) {
+      const store = workoutStore();
+      const target = routineVersionByNumber(store, routineId, version);
+      const result = store.restoreRoutineVersion(target.id);
+      if (result === 'same') throw new Error(`Version ${version} is already the current one.`);
+      if (typeof result === 'string') throw new Error(WORKOUT_REFUSALS[result]);
+      return result;
+    },
+    copyRoutineVersion(routineId, version) {
+      const store = workoutStore();
+      const result = store.copyRoutineVersion(routineVersionByNumber(store, routineId, version).id);
+      if (typeof result === 'string') throw new Error(WORKOUT_REFUSALS[result]);
+      return result;
+    },
+    mergeRoutines(fromId, intoId) {
+      const store = workoutStore();
+      const from = store.routines.find(r => r.id === fromId);
+      if (!from) throw new Error(`No routine with id ${fromId}. list_workouts lists the routines.`);
+      const result = store.mergeRoutines(fromId, intoId, {
+        // The same rule as the phone's: a task still to do starts the kept
+        // routine, and a finished one keeps naming the old one as provenance.
+        moveTasks: (oldId, newId) => {
+          for (const t of db.dbGetAllTasks().filter(t => t.workoutRoutineId === oldId && !t.completed)) {
+            replica.updateTask(t.id, { workoutRoutineId: newId });
+          }
+        },
+      });
+      if (result === 'same') throw new Error('A routine cannot be merged into itself.');
+      if (result === 'live') throw new Error(`A workout from "${from.name}" is in progress on the phone. It has to be finished or ended first.`);
+      if (result === 'notFound') throw new Error(`No routine with id ${intoId}. list_workouts lists the routines.`);
+      if (typeof result === 'string') throw new Error(WORKOUT_REFUSALS[result]);
+      return { into: result, from };
+    },
+    programVersions: () => db.dbGetAllProgramVersions(),
+    restoreProgramVersion(programId, version) {
+      const store = workoutStore();
+      const program = store.programs.find(p => p.id === programId);
+      if (!program) throw new Error(`No program with id ${programId}. list_workouts lists the programs.`);
+      const target = programVersionsOf(program, store.programVersions)[version - 1];
+      if (!target) throw new Error(`The program has no version ${version}. program_history lists them.`);
+      const result = store.restoreProgramVersion(target.id);
+      if (result === 'same') throw new Error(`Version ${version} is already the current one.`);
+      if (typeof result === 'string') throw new Error(WORKOUT_REFUSALS[result]);
+      return result;
     },
     saveProgram(input) {
       const store = workoutStore();

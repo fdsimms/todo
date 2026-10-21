@@ -1999,6 +1999,37 @@ describe('routine and program history', () => {
     expect(state().programVersions).toEqual([]);
   });
 
+  it('restores an older version as the newest, never rewriting it, and refuses the current one', () => {
+    const r = ok(state().addRoutine('Day One', [work(squat)]));
+    ok(state().updateRoutine(r.id, { notes: 'v1 notes' }));
+    const v1 = versionsOf(r.id)[0].id;
+    train(r.id);
+    ok(state().updateRoutine(r.id, { items: [work(bench)], notes: '' }));
+    const restored = ok(state().restoreRoutineVersion(v1));
+    expect(restored.items.map(i => i.exerciseId)).toEqual([squat]);
+    expect(restored.notes).toBe('v1 notes');
+    expect(versionsOf(r.id).map(v => v.source)).toEqual(['created', 'edit', 'restore']);
+    expect(versionsOf(r.id)[0].id).toBe(v1);
+    expect(state().restoreRoutineVersion(restored.currentVersionId!)).toBe('same');
+    expect(state().restoreRoutineVersion('nope')).toBe('notFound');
+  });
+
+  it('names and restores a program version, leaving a deleted routine out of the rotation', () => {
+    const a = ok(state().addRoutine('A', [work(squat)]));
+    const b = ok(state().addRoutine('B', [work(bench)]));
+    const p = ok(state().addProgram({ name: 'HW', rotation: [a.id, b.id], weeks: 8 }));
+    const first = p.currentVersionId!;
+    expect(ok(state().labelProgramVersion(first, ' Block one ')).label).toBe('Block one');
+    const s = ok(state().startSession({ routineId: a.id, programId: p.id }));
+    ok(state().finishSession(s.id));
+    ok(state().updateProgram(p.id, { rotation: [a.id], weeks: 4 }));
+    state().deleteRoutine(b.id);
+    const restored = ok(state().restoreProgramVersion(first));
+    expect(restored).toMatchObject({ rotation: [a.id], weeks: 8 });
+    expect(state().programVersions.filter(v => v.programId === p.id)).toHaveLength(3);
+    expect(state().restoreProgramVersion(restored.currentVersionId!)).toBe('same');
+  });
+
   it('writes versions for a library program and its routines', () => {
     const made = ok(state().addLibraryProgram('push-pull-legs'));
     expect(made.routines.every(r => versionsOf(r.id).length === 1)).toBe(true);

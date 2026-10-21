@@ -510,14 +510,85 @@ export function programStructureChanged(a: ProgramStructure, b: ProgramStructure
   return a.weeks !== b.weeks || a.scheme !== b.scheme || a.rotation.join('|') !== b.rotation.join('|');
 }
 
+/** What changed in a program's structure from one version to another. */
+export interface ProgramDiff {
+  /** Routines the newer rotation holds more times than the older (once each per extra slot). */
+  added: string[];
+  removed: string[];
+  /** The routines both hold come round in a different order. */
+  orderChanged: boolean;
+  weeks: { from: number | null; to: number | null } | null;
+  scheme: { from: ProgressionScheme | null; to: ProgressionScheme | null } | null;
+}
+
+/** Counts each routine's slots, so a routine done twice a cycle compares as two. */
+function slotCounts(rotation: readonly string[]): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const id of rotation) out.set(id, (out.get(id) ?? 0) + 1);
+  return out;
+}
+
+export function diffPrograms(
+  from: Pick<WorkoutProgramVersion, 'rotation' | 'weeks' | 'scheme'>,
+  to: Pick<WorkoutProgramVersion, 'rotation' | 'weeks' | 'scheme'>,
+): ProgramDiff {
+  const a = slotCounts(from.rotation);
+  const b = slotCounts(to.rotation);
+  const added: string[] = [];
+  const removed: string[] = [];
+  for (const id of new Set(to.rotation)) for (let i = a.get(id) ?? 0; i < b.get(id)!; i++) added.push(id);
+  for (const id of new Set(from.rotation)) for (let i = b.get(id) ?? 0; i < a.get(id)!; i++) removed.push(id);
+  const common = (list: readonly string[], other: Map<string, number>) => list.filter(id => other.has(id));
+  return {
+    added,
+    removed,
+    orderChanged: common(from.rotation, b).join('|') !== common(to.rotation, a).join('|') && added.length === 0 && removed.length === 0,
+    weeks: from.weeks !== to.weeks ? { from: from.weeks, to: to.weeks } : null,
+    scheme: from.scheme !== to.scheme ? { from: from.scheme, to: to.scheme } : null,
+  };
+}
+
+export function programDiffIsEmpty(d: ProgramDiff): boolean {
+  return d.added.length === 0 && d.removed.length === 0 && !d.orderChanged && !d.weeks && !d.scheme;
+}
+
+/** "8 weeks", or "No end" for an open-ended program. */
+export function programWeeksText(weeks: number | null): string {
+  return weeks ? `${weeks} ${weeks === 1 ? 'week' : 'weeks'}` : 'No end';
+}
+
+/** A progression scheme's name, or "None" for a program that proposes nothing. */
+export function programSchemeText(scheme: ProgressionScheme | null): string {
+  return scheme ? PROGRESSION_LABELS[scheme] : 'None';
+}
+
+/** A program diff as one line, the way `summarizeDiff` words a routine's. Null when nothing changed. */
+export function summarizeProgramDiff(d: ProgramDiff, nameOf: (routineId: string) => string): string | null {
+  const parts = [
+    ...d.added.map(id => `added ${nameOf(id)}`),
+    ...d.removed.map(id => `removed ${nameOf(id)}`),
+    ...(d.orderChanged ? ['new order'] : []),
+    ...(d.weeks ? [`${programWeeksText(d.weeks.from)} → ${programWeeksText(d.weeks.to)}`.replace(/^No end/, 'no end').replace(/→ No end$/, '→ no end')] : []),
+    ...(d.scheme ? [`progression ${programSchemeText(d.scheme.from)} → ${programSchemeText(d.scheme.to)}`] : []),
+  ];
+  if (parts.length === 0) return null;
+  const line = parts.join('; ');
+  return line.charAt(0).toUpperCase() + line.slice(1);
+}
+
 /** Whether a workout was finished in the program since its current version took over. */
 export function programVersionTrained(
   program: WorkoutProgram,
   allVersions: readonly WorkoutProgramVersion[],
   sessions: readonly WorkoutSession[],
 ): boolean {
-  const current = currentProgramVersion(program, programVersionsOf(program, allVersions));
-  return sessions.some(s => s.programId === program.id && s.endedAt !== null && s.startedAt >= current.createdAt);
+  const versions = programVersionsOf(program, allVersions);
+  const current = currentProgramVersion(program, versions);
+  // A workout from before the first version counts toward the first, as a
+  // routine's does (`sessionVersionId`): one logged after the fact for a day
+  // before the program was saved was still done in it.
+  const from = current.id === versions[0].id ? '' : current.createdAt;
+  return sessions.some(s => s.programId === program.id && s.endedAt !== null && s.startedAt >= from);
 }
 
 export interface ProgramRoutineSpan {
@@ -578,7 +649,8 @@ export function programHistory(
         from: version.createdAt,
         until,
         workouts: sessions.filter(s =>
-          s.programId === program.id && s.endedAt !== null && s.startedAt >= version.createdAt && (until === null || s.startedAt < until)
+          s.programId === program.id && s.endedAt !== null && (i === 0 || s.startedAt >= version.createdAt)
+          && (until === null || s.startedAt < until)
         ).length,
         routines: spans,
       };

@@ -45,6 +45,7 @@ function fakeReplica(over: Partial<Replica> = {}): Replica {
     workoutRoutines: () => [routine],
     routineVersions: () => [],
     defaultRestSeconds: () => 90,
+    programVersions: () => [],
     routineGroups: () => ['Gym', 'Travel'],
     workoutPrograms: () => [program],
     gyms: () => [],

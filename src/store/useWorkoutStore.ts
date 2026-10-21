@@ -73,11 +73,13 @@ import { libraryProgram } from '../utils/workoutProgramLibrary';
 import { groupNames, renamedRegistry, resolveGroupName } from '../utils/routineGroups';
 import { slotUpdates } from '../utils/projectOrder';
 import {
+  currentProgramVersion,
   currentRoutineVersion,
   implicitProgramVersion,
   implicitRoutineVersion,
   programStructureChanged,
   programVersionTrained,
+  programVersionsOf,
   routineContentChanged,
   routineVersionTrained,
   routineVersionsOf,
@@ -427,9 +429,18 @@ interface WorkoutStore {
    * deleted. Refuses while a workout from it is in progress (`live`), and a
    * routine merged into itself (`same`).
    */
-  mergeRoutines: (fromId: string, intoId: string) => WorkoutRoutine | WorkoutRefusal;
+  mergeRoutines: (
+    fromId: string, intoId: string, options?: { moveTasks?: (fromId: string, intoId: string) => void },
+  ) => WorkoutRoutine | WorkoutRefusal;
   /** Names a version ("Shoulder-friendly"); blank clears it. */
   labelRoutineVersion: (versionId: string, label: string) => WorkoutRoutineVersion | WorkoutRefusal;
+  /**
+   * Makes an older version's plan current again, as the newest version
+   * (`source: 'restore'`), so nothing in History is rewritten. What the
+   * phone's Restore then Save does, in one step, for an agent. Refuses the
+   * version that is already current (`same`).
+   */
+  restoreRoutineVersion: (versionId: string) => WorkoutRoutine | WorkoutRefusal;
   /** Makes an empty group. Refuses a blank name, and a name a group already has (ignoring case). */
   addRoutineGroup: (name: string) => string | WorkoutRefusal;
   /** Renames a group on its routines too. A name another group already has joins the two. */
@@ -456,9 +467,19 @@ interface WorkoutStore {
    * kept as `options.version` says, the routine rule; the version records the
    * version each routine in the rotation is on.
    */
-  updateProgram: (id: string, patch: ProgramPatch, options?: { version?: VersionMode }) => WorkoutProgram | WorkoutRefusal;
+  updateProgram: (
+    id: string, patch: ProgramPatch, options?: { version?: VersionMode; at?: Date },
+  ) => WorkoutProgram | WorkoutRefusal;
   /** Whether a workout was finished in the program since its current version took over. */
   programVersionTrained: (programId: string) => boolean;
+  /** Names a program version; blank clears it. */
+  labelProgramVersion: (versionId: string, label: string) => WorkoutProgramVersion | WorkoutRefusal;
+  /**
+   * An older version's rotation, length and scheme made current again as the
+   * newest version. A routine since deleted is left out of the rotation.
+   * Refuses the version that is already current (`same`).
+   */
+  restoreProgramVersion: (versionId: string) => WorkoutProgram | WorkoutRefusal;
   /** Its routines stay, as routines on their own. Its versions go. */
   deleteProgram: (id: string) => void;
   /**
@@ -1156,6 +1177,11 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
     label: null,
   });
 
+  /** A stored program version, or the implicit first one of a program that has none stored. */
+  const findProgramVersion = (versionId: string): WorkoutProgramVersion | undefined =>
+    get().programVersions.find(v => v.id === versionId)
+    ?? get().programs.map(p => programVersionsOf(p, get().programVersions)).flat().find(v => v.id === versionId);
+
   /** A stored version, or the implicit first one of a routine that has none stored. */
   const findRoutineVersion = (versionId: string): WorkoutRoutineVersion | undefined =>
     get().routineVersions.find(v => v.id === versionId)
@@ -1412,7 +1438,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       return get().updateRoutine(made.id, { notes: version.notes, groupName: source?.groupName ?? null }, { version: 'amend' });
     },
 
-    mergeRoutines(fromId, intoId) {
+    mergeRoutines(fromId, intoId, options = {}) {
       if (fromId === intoId) return 'same';
       const from = get().routines.find(r => r.id === fromId);
       const into = get().routines.find(r => r.id === intoId);
@@ -1450,11 +1476,25 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       });
       // A task still to do starts the merged routine now. A finished one keeps
       // naming the old routine, as a session does: it is a record of what ran.
-      const tasks = taskStore();
-      for (const t of tasks.tasks) {
-        if (t.workoutRoutineId === fromId && !t.completed) tasks.updateTask(t.id, { workoutRoutineId: intoId });
+      // The MCP replica passes `moveTasks` to do this through its own task
+      // writes, since it never loads the task store (see `taskStore`).
+      if (options.moveTasks) {
+        options.moveTasks(fromId, intoId);
+      } else {
+        const tasks = taskStore();
+        for (const t of tasks.tasks) {
+          if (t.workoutRoutineId === fromId && !t.completed) tasks.updateTask(t.id, { workoutRoutineId: intoId });
+        }
       }
       return intoRow;
+    },
+
+    restoreRoutineVersion(versionId) {
+      const version = findRoutineVersion(versionId);
+      const routine = version && get().routines.find(r => r.id === version.routineId);
+      if (!version || !routine) return 'notFound';
+      if (currentRoutineVersion(routine, routineVersionsOf(routine, get().routineVersions)).id === versionId) return 'same';
+      return get().updateRoutine(routine.id, { items: version.items, notes: version.notes }, { version: 'new', source: 'restore' });
     },
 
     labelRoutineVersion(versionId, label) {
@@ -1651,7 +1691,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
           const fresh = !current || mode === 'new'
             || (mode === 'auto' && programVersionTrained(ensured.program, known, get().sessions));
           if (fresh) {
-            const v = newProgramVersion(row, known.filter(x => x.programId === id));
+            const v = newProgramVersion(row, known.filter(x => x.programId === id), undefined, options.at);
             versions.push(v);
             row = { ...row, currentVersionId: v.id };
           } else {
@@ -1681,6 +1721,36 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
     programVersionTrained(programId) {
       const program = get().programs.find(p => p.id === programId);
       return program ? programVersionTrained(program, get().programVersions, get().sessions) : false;
+    },
+
+    labelProgramVersion(versionId, label) {
+      const version = findProgramVersion(versionId);
+      const program = version && get().programs.find(p => p.id === version.programId);
+      if (!version || !program) return 'notFound';
+      const ensured = withProgramVersion(program);
+      const row: WorkoutProgramVersion = { ...version, label: cleanWorkoutName(label) || null };
+      dbTransaction(() => {
+        if (ensured.rows.length > 0) dbSaveWorkoutProgram(ensured.program);
+        for (const v of [...ensured.rows, row]) dbSaveProgramVersion(v);
+      });
+      set({
+        programs: ensured.rows.length > 0 ? get().programs.map(p => (p.id === program.id ? ensured.program : p)) : get().programs,
+        programVersions: mergedById(get().programVersions, [...ensured.rows, row]),
+      });
+      return row;
+    },
+
+    restoreProgramVersion(versionId) {
+      const version = findProgramVersion(versionId);
+      const program = version && get().programs.find(p => p.id === version.programId);
+      if (!version || !program) return 'notFound';
+      if (currentProgramVersion(program, programVersionsOf(program, get().programVersions)).id === versionId) return 'same';
+      const live = new Set(get().routines.map(r => r.id));
+      return get().updateProgram(
+        program.id,
+        { rotation: version.rotation.filter(id => live.has(id)), weeks: version.weeks, scheme: version.scheme },
+        { version: 'new' },
+      );
     },
 
     deleteProgram(id) {

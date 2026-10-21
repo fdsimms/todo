@@ -24,7 +24,8 @@ import { resolveRange, type DayRange, type LogRangeInput } from './tools';
 import { atFrom } from './logTools';
 import { joinPrevious } from '../../src/utils/workoutRoutine';
 import {
-  currentRoutineVersion, diffRoutines, routineHistory, routineVersionsOf, sessionVersionId, summarizeDiff, versionNumber,
+  currentRoutineVersion, diffPrograms, diffRoutines, programHistory, routineHistory, routineVersionsOf, sessionVersionId,
+  summarizeDiff, summarizeProgramDiff, versionNumber,
 } from '../../src/utils/routineVersions';
 import type { SetInput } from '../../src/store/useWorkoutStore';
 import { catalogExercise, exerciseName, searchExercises, type CatalogExercise } from '../../src/utils/exerciseCatalog';
@@ -396,8 +397,8 @@ export interface RoutineVersionRow {
 
 /**
  * A routine's versions, newest first: each one's plan, when it was in use,
- * how many workouts were done on it and what it changed. Read-only: going
- * back to a version is done on the phone, where Save asks how to keep it.
+ * how many workouts were done on it and what it changed. Read-only:
+ * `restoreRoutineVersionOut` goes back to one.
  */
 export function routineHistoryOut(
   replica: Replica,
@@ -427,6 +428,112 @@ export function routineHistoryOut(
   });
   const anyWorkouts = entries.some(e => e.sessions.length > 0);
   return { routine: routine.name, versions, ...(anyWorkouts ? {} : { note: WITHHELD_NOTE }) };
+}
+
+/** The newest version number a routine is on, for a write's reply. */
+function routineVersionOf(replica: Replica, routine: WorkoutRoutine): number {
+  const list = routineVersionsOf(routine, replica.routineVersions());
+  return versionNumber(list, currentRoutineVersion(routine, list).id);
+}
+
+export function restoreRoutineVersionOut(
+  replica: Replica, input: { routineId: string; version: number },
+): { routine: RoutineRow; note: string } {
+  const routine = replica.restoreRoutineVersion(input.routineId, input.version);
+  const now = routineVersionOf(replica, routine);
+  return {
+    routine: routineRow(routine, replica.exercises(), new Map(replica.workoutPrograms().map(p => [p.id, p.name])), now),
+    note: `Version ${input.version}'s plan is now version ${now}, the newest. Every earlier version stays in History.`,
+  };
+}
+
+export function copyRoutineVersionOut(
+  replica: Replica, input: { routineId: string; version: number },
+): { routine: RoutineRow; note: string } {
+  const routine = replica.copyRoutineVersion(input.routineId, input.version);
+  return {
+    routine: routineRow(routine, replica.exercises(), new Map(), 1),
+    note: `A new routine with version ${input.version}'s plan. The routine it came from is unchanged.`,
+  };
+}
+
+export function mergeRoutinesOut(
+  replica: Replica, input: { fromId: string; intoId: string },
+): { routine: RoutineRow; removed: { id: string; name: string }; note: string } {
+  const { into, from } = replica.mergeRoutines(input.fromId, input.intoId);
+  return {
+    routine: routineRow(into, replica.exercises(), new Map(replica.workoutPrograms().map(p => [p.id, p.name])), routineVersionOf(replica, into)),
+    removed: { id: from.id, name: from.name },
+    note: `"${from.name}" is now the earlier history of "${into.name}": its versions and workouts moved over, each workout keeping the version it was done on, and its place in any program and its open tasks moved too. "${from.name}" is deleted.`,
+  };
+}
+
+export interface ProgramVersionRow {
+  version: number;
+  current?: true;
+  label?: string;
+  from: string;
+  until?: string;
+  workouts: number;
+  weeks?: number;
+  scheme?: ProgressionScheme;
+  /** Each routine in the rotation, in order, with the version it started this block on and the one it ended on. */
+  rotation: { routineId: string; name: string; startVersion?: number; endVersion?: number }[];
+  /** What it changed from the version before; absent on the first. */
+  changes?: string;
+}
+
+/** A program's versions, newest first. Read-only; restore_program_version goes back to one. */
+export function programHistoryOut(replica: Replica, input: { programId: string }): { program: string; versions: ProgramVersionRow[]; note?: string } {
+  const program = replica.workoutPrograms().find(p => p.id === input.programId);
+  if (!program) throw new Error(`No program with id ${input.programId}. list_workouts lists the programs.`);
+  const routines = replica.workoutRoutines();
+  const nameOf = (id: string) => routines.find(r => r.id === id)?.name ?? 'A deleted routine';
+  const entries = programHistory(program, replica.programVersions(), routines, replica.routineVersions(), allSessions(replica));
+  const byNumber = new Map(entries.map(e => [e.number, e]));
+  const versions = entries.map((e): ProgramVersionRow => {
+    const previous = byNumber.get(e.number - 1);
+    const changes = previous ? summarizeProgramDiff(diffPrograms(previous.version, e.version), nameOf) ?? 'No changes to the structure' : null;
+    const spans = new Map(e.routines.map(r => [r.routineId, r]));
+    return {
+      version: e.number,
+      ...(e.current ? { current: true as const } : {}),
+      ...(e.version.label ? { label: e.version.label } : {}),
+      from: replica.logicalDayKeyOf(e.from),
+      ...(e.until ? { until: replica.logicalDayKeyOf(e.until) } : {}),
+      workouts: e.workouts,
+      ...(e.version.weeks ? { weeks: e.version.weeks } : {}),
+      ...(e.version.scheme ? { scheme: e.version.scheme } : {}),
+      rotation: e.version.rotation.map(routineId => {
+        const span = spans.get(routineId);
+        return {
+          routineId,
+          name: nameOf(routineId),
+          ...(span?.startNumber ? { startVersion: span.startNumber } : {}),
+          ...(span?.endNumber ? { endVersion: span.endNumber } : {}),
+        };
+      }),
+      ...(changes ? { changes } : {}),
+    };
+  });
+  return { program: program.name, versions, ...(entries.some(e => e.workouts > 0) ? {} : { note: WITHHELD_NOTE }) };
+}
+
+export function restoreProgramVersionOut(
+  replica: Replica, input: { programId: string; version: number },
+): { program: { id: string; name: string; weeks?: number; scheme?: ProgressionScheme; rotation: string[] }; note: string } {
+  const program = replica.restoreProgramVersion(input.programId, input.version);
+  const names = new Map(replica.workoutRoutines().map(r => [r.id, r.name]));
+  return {
+    program: {
+      id: program.id,
+      name: program.name,
+      ...(program.weeks ? { weeks: program.weeks } : {}),
+      ...(program.scheme ? { scheme: program.scheme } : {}),
+      rotation: program.rotation.map(id => names.get(id) ?? 'A deleted routine'),
+    },
+    note: `Version ${input.version}'s rotation, length and progression are current again, as the newest version. A routine deleted since is left out. Training maxes are not part of a version and are unchanged.`,
+  };
 }
 
 // ---------------------------------------------------------------------------

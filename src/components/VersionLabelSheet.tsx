@@ -5,7 +5,6 @@ import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { HelpText } from './HelpText';
 import { TextField } from './TextField';
-import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useColors } from '../theme/ThemeContext';
 import { font, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -14,14 +13,15 @@ import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
-  versionId: string | null;
   /** What it is called now, or null for no name yet. */
   current: string | null;
+  /** Writes the name; blank takes it off. */
+  onSave: (label: string) => void;
   onClose: () => void;
 }
 
-/** A name for one version of a routine ("Shoulder-friendly"). Saving it blank takes the name off. */
-export function VersionLabelSheet({ visible, versionId, current, onClose }: Props) {
+/** A name for one version of a routine or program ("Shoulder-friendly"). Saving it blank takes the name off. */
+export function VersionLabelSheet({ visible, current, onSave, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const card = useCardSheet();
@@ -33,7 +33,7 @@ export function VersionLabelSheet({ visible, versionId, current, onClose }: Prop
   }, [visible, current]);
 
   const save = () => {
-    if (versionId) useWorkoutStore.getState().labelRoutineVersion(versionId, label);
+    onSave(label);
     haptics.success();
     dismiss();
   };

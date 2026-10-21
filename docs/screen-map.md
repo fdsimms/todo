@@ -305,6 +305,7 @@ Where each component can appear.
 - `src/components/ProductSheet.tsx` — on GroceryScreen, KitchenScreen, RecipeDetailScreen, RecipesScreen
 - `src/components/ProgramEditorSheet.tsx` — on WorkoutsScreen
 - `src/components/ProgramLibrarySheet.tsx` — on WorkoutsScreen
+- `src/components/ProgramVersionSheet.tsx` — on WorkoutsScreen
 - `src/components/ProgressBar.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, KitchenScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, +13 more
 - `src/components/ProjectCategoriesSheet.tsx` — on ProjectsScreen
 - `src/components/ProjectDecisions.tsx` — on ProjectDetailScreen, ProjectsScreen

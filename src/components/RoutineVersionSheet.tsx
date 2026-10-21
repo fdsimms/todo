@@ -251,8 +251,8 @@ export function RoutineVersionSheet({ visible, routineId, versionId, onClose, on
       </View>
       <VersionLabelSheet
         visible={visible && naming}
-        versionId={entry?.version.id ?? null}
         current={entry?.version.label ?? null}
+        onSave={label => { if (entry) useWorkoutStore.getState().labelRoutineVersion(entry.version.id, label); }}
         onClose={() => setNaming(false)}
       />
     </SheetModal>

@@ -3390,7 +3390,9 @@ function seedWorkouts(today: Date): void {
   ]);
   if (typeof hotel !== 'string') useWorkoutStore.getState().updateRoutine(hotel.id, { groupName: 'Travel', archived: true });
   if (programId) {
-    useWorkoutStore.getState().updateProgram(programId, { weeks: 8, startedAt: subDays(today, 6).toISOString() });
+    // Six weeks at first; made eight three weeks in (below), so the program's
+    // History has two versions to compare.
+    useWorkoutStore.getState().updateProgram(programId, { weeks: 6, startedAt: subDays(today, 6).toISOString() });
   }
 
   const lowerId = typeof lower === 'string' ? null : lower.id;
@@ -3438,6 +3440,7 @@ function seedWorkouts(today: Date): void {
       useWorkoutStore.getState().labelRoutineVersion(next.currentVersionId, 'With a drop set');
     }
   }
+  if (programId) useWorkoutStore.getState().updateProgram(programId, { weeks: 8 }, { version: 'new', at: subDays(today, 22) });
   session(20, upper, upperDay(55, 37.5, 22.5), 6);
   session(17, lower, lowerDay(77.5, [5, 5, 5], 65), 8);
   session(13, upper, upperDay(57.5, 40, 25), 7);

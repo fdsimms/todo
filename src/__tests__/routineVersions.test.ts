@@ -10,19 +10,24 @@ import {
   changeParts,
   currentRoutineVersion,
   diffIsEmpty,
+  diffPrograms,
   diffRoutines,
   finishVersionText,
   initialRoutineVersionId,
   likelyRoutineCopies,
+  programDiffIsEmpty,
   programHistory,
+  programSchemeText,
   programStructureChanged,
   programVersionTrained,
+  programWeeksText,
   routineContentChanged,
   routineHistory,
   routineVersionTrained,
   routineVersionsOf,
   sessionVersionId,
   summarizeDiff,
+  summarizeProgramDiff,
   versionCopyName,
   versionNumber,
   versionSpanText,
@@ -348,5 +353,41 @@ describe('likelyRoutineCopies', () => {
 
   it('leaves names that only share a start', () => {
     expect(likelyRoutineCopies([r('a', 'Push'), r('b', 'Push A'), r('c', 'Pushups'), r('d', 'Day One'), r('e', 'Day Two')])).toEqual([]);
+  });
+});
+
+describe('diffPrograms', () => {
+  const pv = (rotation: string[], weeks: number | null = 8, scheme: 'double' | 'linear' | null = 'double') => ({ rotation, weeks, scheme });
+  const nameOf = (id: string) => ({ a: 'Day One', b: 'Day Two', c: 'Day Three' }[id] ?? id);
+
+  it('finds routines added and removed by slot, so one done twice compares as two', () => {
+    const d = diffPrograms(pv(['a', 'b']), pv(['a', 'b', 'a', 'c']));
+    expect(d).toMatchObject({ added: ['a', 'c'], removed: [], orderChanged: false, weeks: null, scheme: null });
+    expect(diffPrograms(pv(['a', 'b', 'c']), pv(['a'])).removed).toEqual(['b', 'c']);
+  });
+
+  it('notices a new order only when the same routines come round differently', () => {
+    expect(diffPrograms(pv(['a', 'b']), pv(['b', 'a'])).orderChanged).toBe(true);
+    expect(programDiffIsEmpty(diffPrograms(pv(['a', 'b']), pv(['a', 'b'])))).toBe(true);
+  });
+
+  it('words the length and the progression', () => {
+    const d = diffPrograms(pv(['a']), pv(['a', 'c'], null, 'linear'));
+    expect(summarizeProgramDiff(d, nameOf)).toBe('Added Day Three; 8 weeks → no end; progression Rep range → Linear');
+    expect(summarizeProgramDiff(diffPrograms(pv(['a']), pv(['a'])), nameOf)).toBeNull();
+    expect([programWeeksText(1), programWeeksText(null), programSchemeText(null)]).toEqual(['1 week', 'No end', 'None']);
+  });
+});
+
+describe('a program workout from before its first version', () => {
+  const program: WorkoutProgram = {
+    id: 'p1', name: 'HW', weeks: 8, rotation: ['r1'], scheme: 'double', trainingMaxes: [], startedAt: null,
+    archived: false, createdAt: at(10), currentVersionId: null,
+  };
+
+  it('counts toward the first version, as a routine\'s does', () => {
+    const early = session('s', 3, { programId: 'p1' });
+    expect(programVersionTrained(program, [], [early])).toBe(true);
+    expect(programHistory(program, [], [], [], [early])[0].workouts).toBe(1);
   });
 });
