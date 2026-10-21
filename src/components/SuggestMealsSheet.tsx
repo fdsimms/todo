@@ -70,6 +70,12 @@ interface Props {
    */
   cookAgainRecipes?: Recipe[];
   /**
+   * Groups shown above Cook again, each under its own title: the recipes
+   * bookmarked Up Next, and loved ones not cooked lately (`mealPickerShelves`).
+   * The caller dedupes them against the other two lists.
+   */
+  leadingGroups?: { title: string; recipes: Recipe[] }[];
+  /**
    * The containers in the fridge this sheet may put on a night — already
    * narrowed and ordered by `suggestableLeftovers`, so this sheet no more
    * re-sorts them than it re-sorts `recipes`.
@@ -126,6 +132,8 @@ interface Props {
   onPlanLeftover?: (leftover: Leftover, dateKey: string) => void;
   onClose: () => void;
 }
+
+const NO_GROUPS: { title: string; recipes: Recipe[] }[] = [];
 
 /**
  * "What can I make from what I've got" for the nights still free — offline,
@@ -197,7 +205,7 @@ interface Props {
  * is retried the next time Save is pressed.
  */
 export function SuggestMealsSheet({
-  visible, recipes, cookAgainRecipes = [], leftovers = [], pantryByRecipeId, openDays,
+  visible, recipes, cookAgainRecipes = [], leadingGroups = NO_GROUPS, leftovers = [], pantryByRecipeId, openDays,
   aiIdeasEnabled = false, plannedTitles, recentTitles, expiringItemHints = [], slotsToFill,
   onPlan, onPlanLeftover, onClose,
 }: Props) {
@@ -278,13 +286,20 @@ export function SuggestMealsSheet({
 
   const availableMealTypes = useMemo(
     () => RECIPE_MEAL_TYPES.filter(type =>
-      recipes.some(r => r.mealType === type) || cookAgainRecipes.some(r => r.mealType === type)),
-    [recipes, cookAgainRecipes],
+      recipes.some(r => r.mealType === type) || cookAgainRecipes.some(r => r.mealType === type)
+      || leadingGroups.some(g => g.recipes.some(r => r.mealType === type))),
+    [recipes, cookAgainRecipes, leadingGroups],
   );
 
   const filteredRecipes = useMemo(
     () => (filter === 'all' ? recipes : recipes.filter(r => r.mealType === filter)),
     [recipes, filter],
+  );
+  const filteredLeading = useMemo(
+    () => leadingGroups
+      .map(g => ({ ...g, recipes: filter === 'all' ? g.recipes : g.recipes.filter(r => r.mealType === filter) }))
+      .filter(g => g.recipes.length > 0),
+    [leadingGroups, filter],
   );
   const filteredCookAgain = useMemo(
     () => (filter === 'all' ? cookAgainRecipes : cookAgainRecipes.filter(r => r.mealType === filter)),
@@ -315,10 +330,11 @@ export function SuggestMealsSheet({
   const allSuggestions = useMemo<PickableSuggestion[]>(
     () => [
       ...fridge.map(leftover => ({ kind: 'leftover' as const, key: `leftover:${leftover.id}`, leftover })),
+      ...leadingGroups.flatMap(g => g.recipes.map(recipe => ({ kind: 'recipe' as const, key: `recipe:${recipe.id}`, recipe }))),
       ...cookAgainRecipes.map(recipe => ({ kind: 'recipe' as const, key: `recipe:${recipe.id}`, recipe })),
       ...mergeMealSuggestions(recipes, ideas),
     ],
-    [fridge, cookAgainRecipes, recipes, ideas],
+    [fridge, leadingGroups, cookAgainRecipes, recipes, ideas],
   );
 
   const noOpenNights = openDays.length === 0;
@@ -890,6 +906,7 @@ export function SuggestMealsSheet({
   // ==== render ====
 
   const nothingAtAll = filter === 'all' && recipes.length === 0 && cookAgainRecipes.length === 0
+    && leadingGroups.every(g => g.recipes.length === 0)
     && fridge.length === 0 && ideas.length === 0 && !aiIdeasEnabled;
   // The fridge isn't counted here: a category filter hides it (see
   // filteredLeftovers), so a fridge full of containers is no reason to tell
@@ -990,6 +1007,14 @@ export function SuggestMealsSheet({
                 ))}
               </View>
             )}
+            {filteredLeading.map(group => (
+              <View key={group.title} style={styles.cookAgainSection}>
+                <Text style={[styles.sectionHeader, styles.cookAgainHeader]}>{group.title.toUpperCase()}</Text>
+                {group.recipes.map(recipe => (
+                  <React.Fragment key={`lead:${recipe.id}`}>{renderRecipeRow(recipe)}</React.Fragment>
+                ))}
+              </View>
+            ))}
             {/* Recipes made often and made recently — kept separate from the
                 pantry ranking below rather than merged into it, since the two
                 rank by opposite signals (see cookAgainRecipes' own doc). */}
