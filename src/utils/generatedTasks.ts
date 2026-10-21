@@ -1295,6 +1295,33 @@ export type GeneratedEnabledFlags =
 export const CALENDAR_READ_KINDS: readonly GeneratedKind[] = ['calendarReview', 'eventTask', 'travel'];
 
 /**
+ * What a generator needs turned on before its own switch can mean anything,
+ * or null for the rest, which need nothing: the read `generatorSwitchedOn`
+ * refuses to show it on without. `entryId` is that setting's own row.
+ * Settings' Automations rows and a screen's gear sheet both ask, so the two
+ * name the same prerequisite.
+ */
+export function generatorBlockedBy(
+  kind: GeneratedKind,
+  flags: GeneratedEnabledFlags,
+): { setting: string; entryId: string } | null {
+  if (kind === 'health' && !flags.healthReadEnabled) {
+    return { setting: 'Read Apple Health', entryId: 'healthRead' };
+  }
+  if (CALENDAR_READ_KINDS.includes(kind) && !flags.calendarReadEnabled) {
+    return { setting: 'Read my calendar', entryId: 'calendarRead' };
+  }
+  // The weigh-in needs both Health switches — see generatorSwitchedOn.
+  if (kind === 'weighIn' && !flags.healthReadEnabled) {
+    return { setting: 'Read Apple Health', entryId: 'healthRead' };
+  }
+  if (kind === 'weighIn' && !flags.healthWriteEnabled) {
+    return { setting: 'Log to Health', entryId: 'healthWrite' };
+  }
+  return null;
+}
+
+/**
  * Whether this generator is switched on, counting the read it depends on.
  *
  * Five of them need the app to be allowed into a source before their own key

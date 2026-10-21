@@ -765,3 +765,20 @@ export function switchedOffMatches(options: NavMenuOptions, terms: readonly stri
   }
   return areas;
 }
+
+/**
+ * The name the menu gives a route (a row's label, or a hub member's), for a
+ * back row that says where it goes. The route itself when the menu doesn't
+ * name it, and "Today" for the first tab, which has no row.
+ */
+export function menuLabelFor(route: string): string {
+  if (route === 'Today') return 'Today';
+  for (const row of NAV_MENU_ROWS) {
+    if (row.kind === 'screen' && row.destination.route === route) return row.destination.label;
+    if (row.kind === 'hub') {
+      const member = row.hub.members.find(m => m.route === route);
+      if (member) return member.label;
+    }
+  }
+  return NAV_EXTRA_DESTINATIONS.find(d => d.route === route)?.label ?? route;
+}

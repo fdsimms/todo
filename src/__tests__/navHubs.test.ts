@@ -5,7 +5,7 @@ import {
   RECENT_SCREEN_LIMIT, DEFAULT_TAB_ROUTES, MENU_ROUTES, normalizeTabRoutes, parseTabRoutes, setTabSlot, clearTabSlot,
   visibleTabRoutes, tabPickerGroups,
   arrangeMenuRows, menuRowKey, toggleMenuPin, toggleMenuHidden, parseMenuArrangement, EMPTY_MENU_ARRANGEMENT,
-  switchedOffMatches,
+  switchedOffMatches, menuLabelFor,
 } from '../utils/navHubs';
 import { SIMPLE_HIDDEN_SCREENS } from '../utils/simpleMode';
 
@@ -467,5 +467,14 @@ describe('switchedOffMatches', () => {
     expect(switchedOffMatches(FULL, ['gym'])).toEqual([]);
     expect(switchedOffMatches({ ...FULL, workoutsEnabled: false }, ['logbook'])).toEqual([]);
     expect(switchedOffMatches({ ...FULL, workoutsEnabled: false }, [])).toEqual([]);
+  });
+});
+
+describe('menuLabelFor', () => {
+  it('names a row, a hub member and Today the way the menu does', () => {
+    expect(menuLabelFor('Workouts')).toBe('Workouts');
+    expect(menuLabelFor('FoodLog')).toBe('Food log');
+    expect(menuLabelFor('Today')).toBe('Today');
+    expect(menuLabelFor('Nowhere')).toBe('Nowhere');
   });
 });

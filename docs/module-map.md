@@ -181,7 +181,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/fuzzySearch.ts` — SearchResult, fuzzySearch, ranksAsActive, ProjectSearchResult, searchProjects, GroupSearchResult, searchGroups
 - `src/utils/generatedCategoryPrompt.ts` — offerGeneratedCategoryWriteBack, bulkSetCategoryOffering
 - `src/utils/generatedTaskSettings.ts` — NO_GENERATED_TASK_EXTRAS, hasGeneratedTaskExtras, parseGeneratedTaskExtrasValue, parseGeneratedTaskExtras, generatedExtrasFill, OwnedTaskField, TaskSettingsContext, LockableField, TaskSettingsSpec, appearsPhrase, +5 more
-- `src/utils/generatedTasks.ts` — GENERATED_KINDS, GeneratedEnabledKey, GeneratedKindSpec, GENERATED_KIND_SPECS, GENERATED_KIND_LIST, listedGeneratedKinds, generatedTaskCounts, matchesAutomationQuery, describeGeneratedCounts, GeneratedEnabledFlags, +17 more
+- `src/utils/generatedTasks.ts` — GENERATED_KINDS, GeneratedEnabledKey, GeneratedKindSpec, GENERATED_KIND_SPECS, GENERATED_KIND_LIST, listedGeneratedKinds, generatedTaskCounts, matchesAutomationQuery, describeGeneratedCounts, GeneratedEnabledFlags, +18 more
 - `src/utils/goalTargetTasks.ts` — GoalReading, GOAL_TARGET_LINK, GOAL_TARGET_NOTES, goalReadings, goalTargetSourceId, goalTargetKeyOf, goalTargetDayOf, goalTargetTitle, goalTargetNotes
 - `src/utils/groceryAdd.ts` — nextSortOrder, ensureProductFor, newItemRow, GroceryAddOverride, GroceryAddContext, GroceryAddPlan, planGroceryAdd, reAddNotice
 - `src/utils/groceryAisles.ts` — DEFAULT_AISLES, OTHER_AISLE, isNonFoodAisle, AISLE_LEXICON, aisleForName, rememberAisles, remapRememberedAisle, forgetRememberedAisle, renameRememberedAisle, normalizeAisleOrder, +2 more
@@ -294,7 +294,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/moodTasks.ts` — MOOD_LOG_LINK_URL, MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, DEFAULT_MOOD_NUDGE_AFTER_DAYS, MOOD_NUDGE_AFTER_DAYS_MIN, MOOD_NUDGE_AFTER_DAYS_MAX, MOOD_NUDGE_COOLDOWN_DAYS, moodLogDayKey, moodLogSegmentOf, moodLogSourceId, +5 more
 - `src/utils/morningCheckIn.ts` — isMorningCheckInCandidate, morningCheckInTasks
 - `src/utils/naturalKeyFold.ts` — NaturalKey, NATURAL_KEYS, foldRows, Reference, REFERENCES, SettingReference, SETTING_REFERENCES, foldWinner
-- `src/utils/navHubs.ts` — NavContentCounts, NavHubId, NavDestination, NavHub, NavMenuRow, NAV_HUBS, NAV_MENU_ROWS, hubForRoute, visibleHubMembers, NavMenuOptions, +34 more
+- `src/utils/navHubs.ts` — NavContentCounts, NavHubId, NavDestination, NavHub, NavMenuRow, NAV_HUBS, NAV_MENU_ROWS, hubForRoute, visibleHubMembers, NavMenuOptions, +35 more
 - `src/utils/negativeHabits.ts` — NegativeHabitFields, isNegativeTask, slipsToday, slipAllowanceOf, nextSlipIsFree, lastSlipWasFree, isCleanToday, isFailedToday, slipPatch, undoSlipPatch, +9 more
 - `src/utils/negativeHold.ts` — negativeHoldNow, negativeHoldOffered
 - `src/utils/nfcBridge.ts` — NfcBridge, nfcBridge, isNfcSupported, NfcScanResult, parseScanAnswer, scanKeyTag
@@ -446,6 +446,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/scanResolve.ts` — ScannedItem, ScannedGtinLink, shopperNameFor, newItemBox, nameFromScanFor, sourceLabelFor, sourceLineFor, variantFor, ScanBoxSource, scanBoxChoice, +11 more
 - `src/utils/scheduleMovePrompt.ts` — confirmScheduleMove, confirmSegmentScope, confirmBulkSetWhen
 - `src/utils/screenLinks.ts` — screenKey, resolveScreen, quickActionScreens, quickActionScreenList, screenSymbol
+- `src/utils/screenSettingControls.ts` — ScreenSettingRead, ScreenSettingState, SCREEN_SETTING_TOGGLE_IDS, generatorKindOf, aiFeatureOf, screenSettingRead
 - `src/utils/screenSettings.ts` — SCREEN_SETTINGS, screenSettingsEntries
 - `src/utils/screenTimeBridge.ts` — ScreenTimeBridge, screenTimeBridge, isScreenTimeSupported
 - `src/utils/screenTimeRules.ts` — SCREEN_TIME_RULE_TITLE_MAX_LENGTH, SCREEN_TIME_THRESHOLD_MIN, SCREEN_TIME_THRESHOLD_MAX, SCREEN_TIME_THRESHOLD_DEFAULT, clampThresholdMinutes, defaultScreenTimeRules, parseScreenTimeRules, serializeScreenTimeRules, screenTimeSourceId, parseScreenTimeSourceId, +3 more
@@ -741,6 +742,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useReminderMeetingResync.ts` — useReminderMeetingResync
 - `src/hooks/useRestTimer.ts` — useRestTimer, useRestChime
 - `src/hooks/useRowSelection.ts` — useRowSelection
+- `src/hooks/useScreenSettingControls.ts` — ScreenSettingControl, useScreenSettingControls
 - `src/hooks/useScreenSettings.ts` — useScreenSettings, withScreenSettings
 - `src/hooks/useScrollEdgeFade.ts` — ScrollEdgeFadeScrollProps, ScrollEdgeFadeBinding, useScrollEdgeFade
 - `src/hooks/useScrollNudge.ts` — useScrollNudge

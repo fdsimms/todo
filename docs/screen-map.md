@@ -23,7 +23,7 @@ the sections SettingsGroupScreen composes, so those are listed as
 components below.
 
 - `src/screens/ArchivedScreen.tsx` — EmptyState, HubPills, PaintSelection, ScreenHeader, ScrollToTopButton, SearchField, SelectionDot, SimpleBulkBar, TaskEditor
-- `src/screens/AutomationsScreen.tsx` — GeneratedTasksSection, ScreenHeader, SearchField, SettingsFocus
+- `src/screens/AutomationsScreen.tsx` — GeneratedTasksSection, PressableScale, ScreenHeader, SearchField, SettingsFocus
 - `src/screens/BackfillScreen.tsx` — BirthdayPicker, CategoryPicker, CoinIcon, CountStepper, DetailHeader, EmptyState, InlineAction, LazySheet, NumberPadAccessory, NutritionPanelSheet, NutritionSearchSheet, PillGroup, +7 more
 - `src/screens/CalendarScreen.tsx` — BulkActionBar, DayTimeline, DeliverablePromptQueue, EmptyState, Fab, LazySheet, PaintSelection, PeriodNav, QuickAddModal, QuickEventSheet, ScreenHeader, ScreenSettingsSheet, +4 more
 - `src/screens/CategoriesScreen.tsx` — CategoryEditor, EmptyState, Fab, HubPills, QuickAddNameSheet, ReorderableList, ScreenHeader, ScreenSettingsSheet
@@ -433,7 +433,7 @@ Where each component can appear.
 - `src/components/TitleTokenAccessory.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SavedViewDetailScreen, +6 more
 - `src/components/TodayEventsSheet.tsx` — on CalendarScreen, TodayScreen
 - `src/components/TodayOptionsMenu.tsx` — on TodayScreen
-- `src/components/Toggle.tsx` — on ArchivedScreen, AutomationsScreen, BackfillScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, PeopleScreen, PersonDetailScreen, +15 more
+- `src/components/Toggle.tsx` — on ArchivedScreen, AutomationsScreen, BackfillScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, JournalScreen, KitchenScreen, LogbookScreen, MealPlanScreen, +26 more
 - `src/components/TripBudgetPrompt.tsx` — on GroceryScreen, KitchenScreen, MealPlanScreen, RecipesScreen
 - `src/components/TripDatePrompt.tsx` — on app shell
 - `src/components/TripPlannerSheet.tsx` — on PeopleScreen
