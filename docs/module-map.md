@@ -487,7 +487,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/shortcutQueue.ts` — QueuedShortcutAction, QUEUED_WATER_MAX_GLASSES, QUEUED_ITEM_MAX_LENGTH, parseShortcutActions
 - `src/utils/simpleMode.ts` — SimpleArea, SimpleFeatureId, SimpleFeature, SIMPLE_AREA_LABELS, SIMPLE_AREAS, SIMPLE_FEATURES, simpleFeaturesIn, featureHidden, featureShown, SIMPLE_HIDDEN_SCREENS, +11 more
 - `src/utils/simpleTaskForm.ts` — SIMPLE_QUICK_ADD_CHIPS, isSimpleChip
-- `src/utils/sleepLog.ts` — SleepEpisode, SleepStages, SLEEP_STAGE_ORDER, SLEEP_STAGE_LABEL, parseSleepEpisodes, SleepNight, sleepNights, sleepReadings, nightsInWindow, MIN_CLOCK_CONCENTRATION, +15 more
+- `src/utils/sleepLog.ts` — SleepEpisode, SleepSegment, SleepStages, SLEEP_STAGE_ORDER, SLEEP_STAGE_LABEL, parseSleepEpisodes, SleepNight, sleepNights, sleepReadings, nightsInWindow, +19 more
 - `src/utils/slipConfirm.ts` — SlipGuard, confirmSlip
 - `src/utils/slotIn.ts` — SLOT_IN_LIGHT_DAY_MAX, canSlotIn, effectiveSlotIn, slotInInUse, slotInFromCategory, isSlotHold, isSlotWaiting, slotWaitingSinceKey, isSlotInCandidate, SlotInDay, +7 more
 - `src/utils/snackNudgeTasks.ts` — DEFAULT_SNACK_NUDGE_FROM_HOUR, SNACK_NUDGE_FROM_HOUR_MIN, SNACK_NUDGE_FROM_HOUR_MAX, DEFAULT_SNACK_NUDGE_SHARE_PERCENT, SNACK_NUDGE_SHARE_PERCENT_MIN, SNACK_NUDGE_SHARE_PERCENT_MAX, SNACK_NUDGE_SHARE_PERCENT_STEP, clampSnackNudgeFromHour, clampSnackNudgeSharePercent, describeSnackNudgeHour, +4 more

@@ -501,6 +501,10 @@ public class TodoHealthBridgeModule: Module {
     let deep: Double
     let rem: Double
     let awake: Double
+    /// Each staged stretch in order, as raw `HKCategoryValueSleepAnalysis`
+    /// values with their start and end. Only the four stages; an unspecified
+    /// "asleep" sample counts toward `minutes` but is not drawn.
+    let segments: [(value: Int, start: Date, end: Date)]
   }
 
   /// `HKCategoryValueSleepAnalysis` raw values, for `asleepValues`' reason.
@@ -537,6 +541,8 @@ public class TodoHealthBridgeModule: Module {
       var deep: Double = 0
       var rem: Double = 0
       var awake: Double = 0
+      var segments: [(value: Int, start: Date, end: Date)] = []
+      var pendingSegments: [(value: Int, start: Date, end: Date)] = []
       // Awake time seen since the last asleep sample. It only joins the
       // episode once another asleep sample does, which is what makes it time
       // awake *during* the night rather than before or after it.
@@ -545,7 +551,7 @@ public class TodoHealthBridgeModule: Module {
         if let start = episodeStart, let end = episodeEnd, episodeMinutes > 0 {
           episodes.append(SleepEpisode(
             source: source, start: start, end: end, minutes: episodeMinutes,
-            core: core, deep: deep, rem: rem, awake: awake
+            core: core, deep: deep, rem: rem, awake: awake, segments: segments
           ))
         }
         episodeStart = nil
@@ -556,13 +562,18 @@ public class TodoHealthBridgeModule: Module {
         rem = 0
         awake = 0
         pendingAwake = 0
+        segments = []
+        pendingSegments = []
       }
       for sample in sourceSamples.sorted(by: { $0.startDate < $1.startDate }) {
         let sampleMinutes = sample.endDate.timeIntervalSince(sample.startDate) / 60
         if sample.value == Self.awakeValue {
           // Awake never starts or extends an episode, so the gap rule below
           // still measures from the last time somebody was asleep.
-          if episodeStart != nil { pendingAwake += sampleMinutes }
+          if episodeStart != nil {
+            pendingAwake += sampleMinutes
+            pendingSegments.append((sample.value, sample.startDate, sample.endDate))
+          }
           continue
         }
         if let prevEnd = episodeEnd,
@@ -572,6 +583,11 @@ public class TodoHealthBridgeModule: Module {
         if episodeStart == nil { episodeStart = sample.startDate }
         awake += pendingAwake
         pendingAwake = 0
+        segments.append(contentsOf: pendingSegments)
+        pendingSegments = []
+        if sample.value == Self.coreValue || sample.value == Self.deepValue || sample.value == Self.remValue {
+          segments.append((sample.value, sample.startDate, sample.endDate))
+        }
         episodeMinutes += sampleMinutes
         if sample.value == Self.coreValue { core += sampleMinutes }
         if sample.value == Self.deepValue { deep += sampleMinutes }
@@ -1788,6 +1804,14 @@ public class TodoHealthBridgeModule: Module {
               index = sourceIndex.count
               sourceIndex[episode.source] = index
             }
+            // [stage, seconds from the episode's start, seconds long], kept
+            // apart from the line below so the compiler can type-check it.
+            let segmentList: [String] = episode.segments.map { seg in
+              let offset = Int(seg.start.timeIntervalSince(episode.start).rounded())
+              let length = Int(seg.end.timeIntervalSince(seg.start).rounded())
+              return "[\(seg.value),\(offset),\(length)]"
+            }
+            let segmentJSON = segmentList.joined(separator: ",")
             return "{\"start\":\"\(Self.formatISO(episode.start))\","
               + "\"end\":\"\(Self.formatISO(episode.end))\","
               + "\"minutes\":\(Int(episode.minutes.rounded())),"
@@ -1795,6 +1819,7 @@ public class TodoHealthBridgeModule: Module {
               + "\"deep\":\(Int(episode.deep.rounded())),"
               + "\"rem\":\(Int(episode.rem.rounded())),"
               + "\"awake\":\(Int(episode.awake.rounded())),"
+              + "\"seg\":[\(segmentJSON)],"
               + "\"source\":\(index)}"
           }
           promise.resolve("[" + entries.joined(separator: ",") + "]")
