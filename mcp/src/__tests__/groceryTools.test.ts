@@ -517,6 +517,18 @@ describe('the catalog tools', () => {
       expect(getGroceryItem(replica, { name: 'tahini' }).stores[0]?.unavailable).toBeUndefined();
     });
 
+    it('reports what a panel write replaces and the portions the item ends up with', () => {
+      addGroceryItem(replica, 'brown sugar');
+      setNutritionPanel(replica, { item: 'brown sugar', panel: { basis: 'per100g', amounts: { calorieKcal: 399 }, portions: [{ label: 'cup', grams: 202 }] } });
+      const out = setNutritionPanel(replica, {
+        item: 'brown sugar',
+        panel: { basis: 'per100g', estimated: true, amounts: { calorieKcal: 380 }, portions: [{ label: 'cup, packed', grams: 220 }] },
+      });
+      expect(out.replaced).toBe('399 cal per 100g, 1 nutrient (manual)');
+      // The old cup survives beside the new one, which is the thing to see.
+      expect(out.portionsAfter).toEqual(['cup: 202 g', 'cup, packed: 220 g']);
+    });
+
     it('sets several panels at once, creating a missing item on request without putting it on a list or in the pantry', () => {
       addGroceryItem(replica, 'oats');
       const base = { basis: 'per100g' as const, estimated: true, amounts: { calorieKcal: 100 } };
