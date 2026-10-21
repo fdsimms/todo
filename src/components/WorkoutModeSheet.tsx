@@ -27,6 +27,7 @@ import type { CardAnchor } from './CardSheet';
 import { CountStepper } from './CountStepper';
 import { CheckPop } from './CheckPop';
 import { InlineAction } from './InlineAction';
+import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { ProgressBar } from './ProgressBar';
 import { EmptyNote } from './EmptyNote';
 import { TextField } from './TextField';
@@ -38,7 +39,7 @@ import { PlateLine } from './PlateLine';
 import { SelectionDot } from './SelectionDot';
 import { WorkoutRecordsCard } from './WorkoutRecordsCard';
 import { WorkoutStatTiles } from './WorkoutStatTiles';
-import type { ExerciseKind, WorkoutSet } from '../types';
+import type { ExerciseKind, WorkoutSet, WorkoutSetKind } from '../types';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useDemoStore } from '../store/useDemoStore';
@@ -88,6 +89,15 @@ import {
 } from '../utils/workoutSession';
 import { tickSet } from '../utils/workoutTick';
 import type { SessionExercise } from '../utils/workoutSession';
+
+// The four kinds of set, in the order the tray offers them. `amrap` is "Failure"
+// to match the F badge and `setName`'s "To failure".
+const SET_KIND_OPTIONS: SegmentOption<WorkoutSetKind>[] = [
+  { value: 'working', label: 'Working' },
+  { value: 'warmup', label: 'Warm-up' },
+  { value: 'drop', label: 'Drop' },
+  { value: 'amrap', label: 'Failure' },
+];
 import type { WeightUnit } from '../utils/weightLog';
 import { workoutSpanWritable } from '../utils/healthWorkoutSync';
 import { BUTTON_LABEL } from '../copy/shared';
@@ -307,6 +317,13 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     if (!prev) return;
     haptics.tap();
     edit(set.id, { weightKg: prev.weightKg, reps: prev.reps, durationSeconds: prev.durationSeconds, distanceM: prev.distanceM });
+  };
+
+  const changeKind = (set: WorkoutSet, next: WorkoutSetKind) => {
+    if (next === set.kind) return;
+    haptics.tap();
+    animateLayout();
+    edit(set.id, { kind: next });
   };
 
   const sameAsLast = (set: WorkoutSet, exercise: SessionExercise) => {
@@ -1091,6 +1108,12 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                       </View>
                       {isTray && (
                         <View style={styles.tray}>
+                          <SegmentedControl
+                            label="Set type"
+                            options={SET_KIND_OPTIONS}
+                            value={set.kind}
+                            onChange={next => changeKind(set, next)}
+                          />
                           {!!plate && <PlateLine load={plate} unit={unit} />}
                           {!!valuesFromLastDone(viewed.sets, set.id) && (
                             <View style={styles.editActions}>
