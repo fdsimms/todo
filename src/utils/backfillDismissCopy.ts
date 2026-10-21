@@ -39,9 +39,9 @@ export const TASK_DISMISS_LABELS: Record<BackfillFieldId, string> = {
   streak: "Don’t show streak chip",
   vacation: 'Keep visible on vacation',
   holidays: 'Leave as usual',
-  // Null follows the category (or the global default), which neither answer on
-  // the card says; "Leave as usual" didn't read as that.
-  slotIn: 'Use the default',
+  // The answer left is "follow the category", which neither option on the card
+  // says and which a label can't spell out per task, so say only that nothing changes.
+  slotIn: KEEP_AS_IS_LABEL,
   reminder: 'No reminder',
   suggestions: 'Keep in suggestions',
 };
