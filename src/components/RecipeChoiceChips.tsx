@@ -38,7 +38,7 @@ export function RecipeChoiceChips({
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
-    <View style={styles.group}>
+    <View style={[styles.group, surface === 'page' && styles.groupCard]}>
       {onRename ? (
         <TouchableOpacity
           style={styles.labelRow}
@@ -54,6 +54,7 @@ export function RecipeChoiceChips({
       ) : (
         <Text style={styles.sectionLabel}>{group.label}</Text>
       )}
+      <Text style={styles.prompt}>Pick one</Text>
       <View style={styles.chips}>
         {group.options.map(option => {
           const on = option.id === activeOptionId;
@@ -64,10 +65,15 @@ export function RecipeChoiceChips({
               style={[styles.chip, surface === 'card' && styles.chipOnCard, on && styles.chipOn]}
               activeOpacity={interaction.activeOpacity}
               onPress={() => { haptics.tap(); onPick(option.id); }}
-              accessibilityRole="button"
+              accessibilityRole="radio"
               accessibilityState={{ selected: on }}
               accessibilityLabel={`${group.label}: ${name}`}
             >
+              <Ionicons
+                name={on ? 'radio-button-on' : 'radio-button-off'}
+                size={iconSize.xs}
+                color={on ? colors.onAccent : colors.controlBorder}
+              />
               <Text style={[styles.chipText, on && styles.chipTextOn]}>{name}</Text>
             </TouchableOpacity>
           );
@@ -82,6 +88,15 @@ export function RecipeChoiceChips({
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
     group: { gap: spacing.xs },
+    // On the page the group is its own card, so the question and its answers
+    // read as one thing; inside cook mode's panel the panel is already the card.
+    groupCard: {
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.md,
+      padding: spacing.smd,
+      gap: spacing.xsm,
+    },
+    prompt: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
     sectionLabel: {
       color: colors.textSecondary,
       fontSize: font.xs,
@@ -93,7 +108,10 @@ function makeStyles(colors: Colors) {
     labelText: { flexShrink: 1 },
     chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
     chip: {
-      backgroundColor: colors.bgSecondary,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      backgroundColor: colors.bg,
       borderRadius: radius.full,
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
