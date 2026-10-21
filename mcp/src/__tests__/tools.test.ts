@@ -335,6 +335,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     saveGym: () => { throw new Error('not stubbed'); },
     deleteGym: () => { throw new Error('not stubbed'); },
     workoutLoads: () => ({ unit: 'kg', plateInventory: { barsKg: [20], plates: [] } }),
+    defaultGymId: () => null,
     logWorkout: () => { throw new Error('not stubbed'); },
     updateWorkout: () => { throw new Error('not stubbed'); },
     deleteWorkout: () => { throw new Error('not stubbed'); },

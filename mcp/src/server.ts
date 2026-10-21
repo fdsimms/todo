@@ -710,12 +710,13 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'save_gym',
-    'Create a gym (no id) or change one (id from list_workouts). A gym is a place the person trains and the equipment it has (barbell, dumbbell, kettlebell, machine, cable, smith_machine, ez_bar, trap_bar, band, cardio_machine; bodyweight and other need nothing). During a workout the phone flags an exercise the gym can\'t do and proposes a replacement from what the gym has; nothing is swapped unasked. exerciseNotes sets, per exercise, the note shown at this gym (seat positions, which rack; an empty string clears it), the bar weight and the load step in kg. Only write equipment the person told you the gym has: an empty list means nothing is known, which the phone treats as everything being available. Where a gym is can only be set on the phone. Fields left out stay; equipment replaces the whole list when given.',
+    'Create a gym (no id) or change one (id from list_workouts). A gym is a place the person trains and the equipment it has (barbell, dumbbell, kettlebell, machine, cable, smith_machine, ez_bar, trap_bar, band, cardio_machine; bodyweight and other need nothing). During a workout the phone flags an exercise the gym can\'t do and proposes a replacement from what the gym has; nothing is swapped unasked. exerciseNotes sets, per exercise, the note shown at this gym (seat positions, which rack; an empty string clears it), the bar weight and the load step in kg. Only write equipment the person told you the gym has: an empty list means nothing is known, which the phone treats as everything being available. The default gym (isDefault in list_workouts) is where a workout starts when the phone\'s location doesn\'t name a gym; with none, it is the gym last used. Where a gym is can only be set on the phone. Fields left out stay; equipment replaces the whole list when given.',
     {
       id: z.string().min(1).optional().describe('A gym id from list_workouts, to change it. Leave out to create one.'),
       name: z.string().min(1).max(80).optional().describe('Required to create one.'),
       equipment: z.array(z.enum(['barbell', 'dumbbell', 'kettlebell', 'machine', 'cable', 'smith_machine', 'ez_bar', 'trap_bar', 'band', 'cardio_machine'])).max(10).optional().describe('Replaces the whole list when given.'),
       placeText: z.string().max(200).optional().describe('An address or place name, shown under the gym. It does not set where the gym is.'),
+      isDefault: z.boolean().optional().describe('true makes this the default gym, which replaces any other; false clears it if this gym is the default. Leave out to keep it.'),
       exerciseNotes: z.array(z.object({
         exerciseId: z.string().min(1).describe('From list_exercises.'),
         notes: z.string().max(500).optional().describe('The note shown under the exercise at this gym. Empty clears it; leave out to keep it.'),
