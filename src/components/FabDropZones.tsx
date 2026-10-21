@@ -478,6 +478,9 @@ export const FabDropZoneProvider = forwardRef<FabDropZonesHandle, Props>(
           lastHomeRef.current = home;
           const intent = resolve();
           clear();
+          // The release lands with a knock wherever it lands, a plain drop
+          // included. A cancel has its own tap at the call site.
+          if (intent.kind !== 'cancel') haptics.impactLight();
           return intent;
         },
         cancel: clear,

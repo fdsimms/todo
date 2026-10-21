@@ -1185,9 +1185,6 @@ function ProjectDetailContent() {
       haptics.tap();
       return;
     }
-    // The drop itself lands with a knock, the same one a dragged row's drop
-    // gives; the cancel above has its own lighter tap.
-    haptics.impactLight();
     pendingDropRef.current = intent;
     if (intent.kind === 'joinGroup') {
       setQuickAddSeed({ groupId: intent.groupId });
