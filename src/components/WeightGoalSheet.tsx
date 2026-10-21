@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Platform, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
-import { font, fontWeight, radius, spacing, type Colors } from '../theme';
+import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { dayKeyOf, getCurrentDayStart, getLogicalToday } from '../utils/dateUtils';
 import {
@@ -56,6 +56,7 @@ import { InlineAction } from './InlineAction';
 import { TextField } from './TextField';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { HelpText } from './HelpText';
+import { Toggle } from './Toggle';
 import { BUTTON_LABEL } from '../copy/shared';
 
 // The feet stepper's bounds, derived from the same cm bounds the kg stepper
@@ -160,6 +161,12 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
    */
   const [measuredBasis, setMeasuredBasis] = useState(false);
   /**
+   * Whether the Apple Health figure adds the energy spent digesting food. On by
+   * default, since that is how it has always read; off gives the measured burn
+   * alone. Reset on each open with the basis it belongs to.
+   */
+  const [countDigestion, setCountDigestion] = useState(true);
+  /**
    * A typical recent day's active energy, or null once looked up and not
    * answerable. Read while the sheet is open and kept nowhere, exactly as
    * `NutritionTargetsSheet` reads the same figure for the same reason.
@@ -220,6 +227,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
     // sitting, not a setting, so a sheet reopened later opens on the
     // multiplier again rather than on whatever was picked last time.
     setMeasuredBasis(false);
+    setCountDigestion(true);
 
     if (storedGoal) {
       setDirection(goalDirection(storedGoal));
@@ -290,7 +298,9 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
     budgetWeightKg === null
       ? null
       : budgetFromMaintenance(
-        measuredMaintenanceKcal(profile, budgetWeightKg, getLogicalToday(), typicalActiveKcal),
+        measuredMaintenanceKcal(
+          profile, budgetWeightKg, getLogicalToday(), typicalActiveKcal, countDigestion,
+        ),
         sex,
         signedRateKg,
       );
@@ -610,9 +620,22 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                     />
                     <Text style={styles.help}>
                       {measuredBasis
-                        ? `Your resting rate plus ${(typicalActiveKcal ?? 0).toLocaleString()} cal of activity on a typical recent day, plus about ${Math.round(budget.maintenanceKcal * DIGESTION_SHARE).toLocaleString()} cal for digesting food (about a tenth of what you eat). To raise the target on days you move more than usual, turn on Add active calories under Daily targets.`
+                        ? `Your resting rate plus ${(typicalActiveKcal ?? 0).toLocaleString()} cal of activity on a typical recent day${countDigestion ? `, plus about ${Math.round(budget.maintenanceKcal * DIGESTION_SHARE).toLocaleString()} cal for digesting food (about a tenth of what you eat)` : ''}. To raise the target on days you move more than usual, turn on Add active calories under Daily targets.`
                         : `The activity level you picked above, as a multiplier on your resting rate.`}
                     </Text>
+                    {measuredBasis && (
+                      <TouchableOpacity
+                        style={styles.toggleRow}
+                        activeOpacity={interaction.activeOpacity}
+                        onPress={() => setCountDigestion(on => !on)}
+                        accessibilityRole="switch"
+                        accessibilityState={{ checked: countDigestion }}
+                        accessibilityLabel="Count digestion calories"
+                      >
+                        <Text style={styles.toggleLabel}>Count digestion calories</Text>
+                        <Toggle value={countDigestion} />
+                      </TouchableOpacity>
+                    )}
                   </View>
                 )}
                 <View style={styles.workingRow}>
@@ -642,7 +665,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
 
                 <Text style={styles.help}>
                   {measuredBasis
-                    ? 'Still an estimate: the resting rate comes from a population formula (Mifflin-St Jeor), digestion is a rule of thumb, and only the activity is measured. Adjust it based on what the scale shows.'
+                    ? `Still an estimate: the resting rate comes from a population formula (Mifflin-St Jeor), ${countDigestion ? 'digestion is a rule of thumb, and ' : ''}only the activity is measured. Adjust it based on what the scale shows.`
                     : 'An estimate from a population formula (Mifflin-St Jeor). Adjust it based on what the scale shows.'}
                 </Text>
 
@@ -874,6 +897,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: spacing.xxs,
   },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    minHeight: 44,
+  },
+  toggleLabel: { flex: 1, fontSize: font.sm, color: colors.text },
   workingLabel: { flex: 1, fontSize: font.sm, color: colors.textSecondary },
   workingValue: { fontSize: font.sm, fontWeight: fontWeight.semibold, color: colors.text },
   appliedNote: {
