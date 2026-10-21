@@ -236,6 +236,7 @@ export function GymEditorSheet({ visible, subject, onClose }: Props) {
                 <View style={[styles.row, styles.ruled]}>
                   <Text style={styles.rowLabel}>Within</Text>
                   <CountStepper
+                    style={styles.stepper}
                     value={v.radiusM}
                     onChange={n => patch({ radiusM: n ?? GYM_DEFAULT_RADIUS_M })}
                     min={GYM_MIN_RADIUS_M}
@@ -382,6 +383,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   ruled: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator },
   rowLabel: { color: colors.text, fontSize: font.md, flexShrink: 1 },
   grow: { flex: 1 },
+  // CountStepper pins itself to the top of a row (`alignSelf: 'flex-start'`),
+  // which beats the row's `alignItems: 'center'` and leaves it against the rule.
+  stepper: { alignSelf: 'center' },
   actionRow: { justifyContent: 'flex-start', marginTop: spacing.sm },
   actionText: { color: colors.accentText, fontSize: font.md, fontWeight: fontWeight.semibold },
   noteRow: { paddingHorizontal: spacing.md, paddingVertical: spacing.smd },

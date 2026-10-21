@@ -40,10 +40,14 @@ interface Props {
 export function ChartGuides({ height, gutter, guides }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const rowHeight = Math.ceil(font.xxs * 1.5 * useTextScale());
   return (
     <View style={[styles.guides, { height }]} pointerEvents="none">
       {guides.map(guide => (
-        <View key={guide.fraction} style={[styles.guide, { top: height - guide.fraction * height }]}>
+        <View
+          key={guide.fraction}
+          style={[styles.guide, { height: rowHeight, top: height - guide.fraction * height - rowHeight / 2 }]}
+        >
           <Text style={[styles.label, { width: gutter }]} numberOfLines={1}>{guide.label}</Text>
           <View style={styles.line} />
         </View>
@@ -54,8 +58,9 @@ export function ChartGuides({ height, gutter, guides }: Props) {
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   guides: { position: 'absolute', top: 0, left: 0, right: 0 },
-  // Zero height, so the label and line centre on the level's own y.
-  guide: { position: 'absolute', left: 0, right: 0, height: 0, flexDirection: 'row', alignItems: 'center' },
+  // One text line tall and centred on the level's own y. It was zero height so
+  // the centring was free, but a label inside a zero-height row never drew.
+  guide: { position: 'absolute', left: 0, right: 0, flexDirection: 'row', alignItems: 'center' },
   label: { color: colors.textTertiary, fontSize: font.xxs },
   line: { flex: 1, height: 1, backgroundColor: colors.separator, opacity: 0.6 },
 });

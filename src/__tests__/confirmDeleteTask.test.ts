@@ -8,6 +8,7 @@ const mockDeleteSeries = jest.fn();
 const mockMarkMissed = jest.fn();
 let mockSeriesRows: Partial<Task>[] = [];
 let mockMealPlan = false;
+let mockOneOff = false;
 let mockStoppable = false;
 
 jest.mock('react-native', () => ({ Alert: { alert: (...args: unknown[]) => mockAlert(...args) } }));
@@ -17,6 +18,7 @@ jest.mock('../utils/confirmDelete', () => ({ confirmDelete: (...args: unknown[])
 jest.mock('../utils/confirmDeleteGenerated', () => ({
   confirmDeleteGenerated: (...args: unknown[]) => mockConfirmDeleteGenerated(...args),
 }));
+jest.mock('../utils/bulkDelete', () => ({ isMissableOneOff: () => mockOneOff }));
 jest.mock('../utils/visibilityUtils', () => ({ isMissableMealPlanTask: () => mockMealPlan }));
 jest.mock('../utils/generatedTasks', () => ({ stoppableGenerator: () => (mockStoppable ? { label: 'Meals' } : null) }));
 jest.mock('../store/useSettingsStore', () => ({ useSettingsStore: { getState: () => ({}) } }));
@@ -48,6 +50,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockSeriesRows = [];
   mockMealPlan = false;
+  mockOneOff = false;
   mockStoppable = false;
 });
 
@@ -61,6 +64,20 @@ describe('confirmDeleteTask', () => {
     onConfirm();
     expect(mockDeleteTask).toHaveBeenCalledWith('t1');
     expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers an open one-off task missed to keep a record, or deleted', () => {
+    mockOneOff = true;
+    const onDone = jest.fn();
+    confirmDeleteTask(task(), onDone);
+    expect(mockConfirmDelete).not.toHaveBeenCalled();
+    const b = buttons();
+    b['Mark missed'].onPress!();
+    expect(mockMarkMissed).toHaveBeenCalledWith('t1');
+    expect(mockDeleteTask).not.toHaveBeenCalled();
+    b['Delete'].onPress!();
+    expect(mockDeleteTask).toHaveBeenCalledWith('t1');
+    expect(onDone).toHaveBeenCalledTimes(2);
   });
 
   it('offers a repeating task missed instead of deleted', () => {

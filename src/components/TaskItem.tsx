@@ -1823,6 +1823,9 @@ const TaskItemRow = React.memo(function TaskItem({
     !selectionMode && !isNegative && !completing && !showQuotaMeter && !isRotation &&
     !completionLocked && !recordLog;
   const completionMenuRepeats = task.recurrenceType !== 'none';
+  // Missed is open to a one-off task too: it closes with no successor. A
+  // meal-plan task is the exception until its own day has come.
+  const canMiss = !isNegative && (task.generatedKind !== 'mealSlot' || isMissableMealPlanTask(task));
   const openCompletionMenu = (e: { nativeEvent: { pageX: number; pageY: number } }) => {
     haptics.impactMedium();
     setCompletionMenuAnchor({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
@@ -4969,7 +4972,7 @@ const TaskItemRow = React.memo(function TaskItem({
                       schedule to show ahead of time in Later (tomorrow's row
                       already exists independently), so there's no "not yet
                       due" state to show the button for. */}
-                  {(task.recurrenceType !== 'none' || isMissableMealPlanTask(task)) && (
+                  {canMiss && (
                     <PressableScale
                       style={styles.iconActionBtn}
                       onPress={async () => {
@@ -5321,7 +5324,7 @@ const TaskItemRow = React.memo(function TaskItem({
           anchor={completionMenuAnchor}
           onClose={() => setShowCompletionMenu(false)}
           onSkip={completionMenuRepeats ? () => { skipNextRecurrence(task.id); afterCompletionMenuChoice(); } : undefined}
-          onMiss={completionMenuRepeats ? () => handleMiss() : undefined}
+          onMiss={canMiss ? () => handleMiss() : undefined}
           onSomeoneElse={handleSomeoneElse}
         />
       )}

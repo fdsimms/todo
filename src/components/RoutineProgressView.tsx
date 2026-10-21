@@ -91,9 +91,7 @@ export function RoutineProgressView({ routineId, exerciseIds, onOpenExercise, on
 
   if (progress.workouts === 0) {
     return (
-      <View style={[styles.card, styles.emptyWrap]}>
-        <EmptyNote icon="trending-up-outline">No workouts from this routine yet. Its progress appears here after the first one.</EmptyNote>
-      </View>
+      <EmptyNote icon="trending-up-outline">No workouts from this routine yet. Its progress appears here after the first one.</EmptyNote>
     );
   }
 
@@ -197,7 +195,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     letterSpacing: 0.8, marginTop: spacing.lg, marginBottom: spacing.sm, marginHorizontal: spacing.xs,
   },
   card: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden' },
-  emptyWrap: { paddingVertical: spacing.md },
   chart: { paddingHorizontal: spacing.md, paddingTop: spacing.smd, paddingBottom: spacing.xs },
   rowSep: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator },
   exRow: { paddingHorizontal: spacing.md, paddingVertical: spacing.smd },

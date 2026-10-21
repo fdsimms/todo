@@ -9,13 +9,18 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { CountStepper } from './CountStepper';
 import { CalendarPicker } from './CalendarPicker';
 import { ExercisePickerSheet } from './ExercisePickerSheet';
+import { DescribeWorkoutSheet } from './DescribeWorkoutSheet';
 import { InlineAction } from './InlineAction';
+import { ActionMenu } from './ActionMenu';
+import type { CardAnchor } from './CardSheet';
 import { TextField } from './TextField';
 import { ApplyToAllAccessory, APPLY_TO_ALL_ACCESSORY_ID } from './ApplyToAllAccessory';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useTextScale } from '../hooks/useTextScale';
+import type { WorkoutSet } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
 import { disclosureValue } from '../theme/textStyles';
@@ -27,16 +32,25 @@ import { catalogExercise } from '../utils/exerciseCatalog';
 import { formatTimeOfDay } from '../utils/dateUtils';
 import { workoutHealthWriteOn, workoutSpanWritable } from '../utils/healthWorkoutSync';
 import { WORKOUT_NAME_MAX_LENGTH } from '../utils/workoutData';
-import { columnLabel, setFieldsFor, type SetField } from '../utils/workoutSession';
+import {
+  columnLabel, formatSetLine, matchPreviousByPosition, previousBadge, setFieldsFor, supersetGroup, type SetField,
+} from '../utils/workoutSession';
 import {
   PAST_WORKOUT_DEFAULT_MINUTES, PAST_WORKOUT_MAX_MINUTES, PAST_WORKOUT_MIN_MINUTES,
-  buildPastWorkout, nextSetText, pastWorkoutTouched, type PastExerciseDraft, type PastSetText,
+  buildPastWorkout, joinPastSuperset, leavePastSuperset, movedPastExercise, nextSetText, pastWorkoutTouched, withoutPastExercise,
+  type PastExerciseDraft, type PastSetText,
 } from '../utils/pastWorkout';
+import type { ImportedSession } from '../utils/workoutCsv';
 import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
   visible: boolean;
   onClose: () => void;
+  /**
+   * A workout described in words, ready for the import review. The caller opens
+   * that review and closes this sheet; with no handler the row isn't offered.
+   */
+  onDescribed?: (session: ImportedSession) => void;
 }
 
 /** "Tue, Oct 20", with the year once it isn't this one. */
@@ -69,7 +83,7 @@ const COLUMN_UNIT: Partial<Record<SetField, string>> = { distance: 'm' };
  * - The exercise picker is rendered inside this sheet's Modal: a sibling sheet
  *   would never appear.
  */
-export function LogPastWorkoutSheet({ visible, onClose }: Props) {
+export function LogPastWorkoutSheet({ visible, onClose, onDescribed }: Props) {
   const colors = useColors();
   const textScale = useTextScale();
   const styles = useMemo(() => makeStyles(colors, textScale), [colors, textScale]);
@@ -84,15 +98,21 @@ export function LogPastWorkoutSheet({ visible, onClose }: Props) {
   const [exercises, setExercises] = useState<PastExerciseDraft[]>([]);
   const [pickingWhen, setPickingWhen] = useState(false);
   const [pickingExercise, setPickingExercise] = useState(false);
+  const [exerciseMenu, setExerciseMenu] = useState<{ exerciseId: string; anchor: CardAnchor } | null>(null);
+  const [describing, setDescribing] = useState(false);
+  // Claude only (`workoutDraft` has no on-device engine), so no key or a switched-off feature means no row.
+  const canDescribe = useAiRoute('workoutDraft') !== 'unavailable';
 
   useEffect(() => {
     if (!visible) return;
+    setExerciseMenu(null);
     setTitle('');
     setStart(defaultStart());
     setMinutes(PAST_WORKOUT_DEFAULT_MINUTES);
     setExercises([]);
     setPickingWhen(false);
     setPickingExercise(false);
+    setDescribing(false);
   }, [visible]);
 
   // ==== editing the list ====
@@ -104,11 +124,30 @@ export function LogPastWorkoutSheet({ visible, onClose }: Props) {
   };
   const removeExercise = (exerciseId: string) => {
     haptics.tap();
-    setExercises(prev => prev.filter(e => e.exerciseId !== exerciseId));
+    setExercises(prev => withoutPastExercise(prev, exerciseId));
+  };
+  const joinSuperset = (exerciseId: string, partnerId: string) => {
+    setExercises(prev => joinPastSuperset(prev, exerciseId, partnerId) ?? prev);
+  };
+  const moveExercise = (exerciseId: string, direction: 'up' | 'down') => {
+    setExercises(prev => movedPastExercise(prev, exerciseId, direction) ?? prev);
+  };
+  const leaveSuperset = (exerciseId: string) => {
+    setExercises(prev => leavePastSuperset(prev, exerciseId) ?? prev);
   };
   const changeSets = (exerciseId: string, change: (sets: PastSetText[]) => PastSetText[]) => {
     setExercises(prev => prev.map(e => (e.exerciseId === exerciseId ? { ...e, sets: change(e.sets) } : e)));
   };
+  // Last time each added exercise was done, for the Previous column. Read once per
+  // exercise added rather than on every keystroke.
+  const exerciseIdsKey = exercises.map(e => e.exerciseId).join(',');
+  const lastTime = useMemo(() => {
+    const out = new Map<string, WorkoutSet[]>();
+    for (const id of exerciseIdsKey ? exerciseIdsKey.split(',') : []) {
+      out.set(id, useWorkoutStore.getState().lastTimeFor(id, null));
+    }
+    return out;
+  }, [exerciseIdsKey]);
   const nameOf = (exerciseId: string) => catalogExercise(exerciseRows, exerciseId)?.name ?? 'Unknown exercise';
 
   // The keyboard bar's "Apply 95 to all sets", offered while a weight or reps
@@ -200,6 +239,19 @@ export function LogPastWorkoutSheet({ visible, onClose }: Props) {
             />
           </View>
 
+          {onDescribed && canDescribe && !pastWorkoutTouched(title, exercises) && (
+            <View style={styles.describeRow}>
+              <InlineAction
+                icon="sparkles-outline"
+                label="Describe it instead"
+                variant="neutral"
+                surface="page"
+                onPress={() => { haptics.tap(); setDescribing(true); }}
+                accessibilityLabel="Describe this workout in words"
+              />
+            </View>
+          )}
+
           <Text style={styles.groupLabel}>When</Text>
           <View style={styles.card}>
             <TouchableOpacity
@@ -248,10 +300,31 @@ export function LogPastWorkoutSheet({ visible, onClose }: Props) {
           <Text style={styles.groupLabel}>Exercises</Text>
           {exercises.map(ex => {
             const fields = setFieldsFor(ex.kind);
+            const inSuperset = !!ex.supersetKey && supersetGroup(exercises, ex.exerciseId).length > 1;
+            // Every row here is an ordinary set, so each pairs with the nth of last time's.
+            const previousBySet = matchPreviousByPosition(
+              ex.sets.map((_, i) => ({ id: String(i), kind: 'working' as const })),
+              lastTime.get(ex.exerciseId) ?? [],
+            );
             return (
-              <View key={ex.exerciseId} style={[styles.card, styles.exercise]}>
+              <View key={ex.exerciseId} style={[styles.card, styles.exercise, inSuperset && styles.superset]}>
+                {inSuperset && <Text style={styles.supersetTag}>Superset</Text>}
                 <View style={styles.exerciseHead}>
                   <Text style={styles.exerciseName} numberOfLines={2}>{nameOf(ex.exerciseId)}</Text>
+                  {exercises.length > 1 && (
+                    <TouchableOpacity
+                      onPress={e => {
+                        haptics.tap();
+                        setExerciseMenu({ exerciseId: ex.exerciseId, anchor: { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY } });
+                      }}
+                      hitSlop={8}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="button"
+                      accessibilityLabel={`More options for ${nameOf(ex.exerciseId)}`}
+                    >
+                      <Ionicons name="ellipsis-horizontal" size={20} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                  )}
                   <TouchableOpacity
                     onPress={() => removeExercise(ex.exerciseId)}
                     hitSlop={8}
@@ -264,6 +337,7 @@ export function LogPastWorkoutSheet({ visible, onClose }: Props) {
                 </View>
                 <View style={styles.tableHead}>
                   <View style={styles.colSet} />
+                  <Text style={[styles.headCell, styles.colValue]}>Previous</Text>
                   {fields.map(f => (
                     <Text key={f} style={[styles.headCell, styles.colValue]}>
                       {columnLabel(f, ex.kind, unit)}{COLUMN_UNIT[f] ? ` (${COLUMN_UNIT[f]})` : ''}
@@ -271,9 +345,21 @@ export function LogPastWorkoutSheet({ visible, onClose }: Props) {
                   ))}
                   <View style={styles.colRemove} />
                 </View>
-                {ex.sets.map((text, index) => (
+                {ex.sets.map((text, index) => {
+                  const prev = previousBySet.get(String(index));
+                  const prevLine = prev ? formatSetLine(prev, ex.kind, unit) : null;
+                  const prevMark = prev ? previousBadge(prev) : null;
+                  return (
                   <View key={index} style={styles.setRow}>
                     <View style={styles.colSet}><Text style={styles.setNumber}>{index + 1}</Text></View>
+                    <Text
+                      style={[styles.colValue, styles.prevText]}
+                      numberOfLines={1}
+                      accessibilityLabel={prevLine ? `Last time ${prevLine}` : 'No previous set'}
+                    >
+                      {prevLine ?? '–'}
+                      {prevLine && prevMark ? <Text style={styles.prevMark}>{`  ${prevMark}`}</Text> : null}
+                    </Text>
                     {fields.map(f => (
                       <View key={f} style={styles.colValue}>
                         <TextField
@@ -288,7 +374,7 @@ export function LogPastWorkoutSheet({ visible, onClose }: Props) {
                           inputAccessoryViewID={Platform.OS === 'ios' ? APPLY_TO_ALL_ACCESSORY_ID : undefined}
                           placeholder="–"
                           placeholderTextColor={colors.textTertiary}
-                          keyboardType={f === 'weight' ? 'decimal-pad' : 'numbers-and-punctuation'}
+                          keyboardType={f === 'weight' || f === 'distance' ? 'decimal-pad' : f === 'duration' ? 'numbers-and-punctuation' : 'number-pad'}
                           selectTextOnFocus
                           returnKeyType="done"
                           accessibilityLabel={`${nameOf(ex.exerciseId)} set ${index + 1} ${columnLabel(f, ex.kind, unit)}`}
@@ -309,7 +395,8 @@ export function LogPastWorkoutSheet({ visible, onClose }: Props) {
                       )}
                     </View>
                   </View>
-                ))}
+                  );
+                })}
                 <View style={styles.adds}>
                   <InlineAction
                     icon="add"
@@ -331,6 +418,42 @@ export function LogPastWorkoutSheet({ visible, onClose }: Props) {
           </View>
         </ScrollView>
 
+        {(() => {
+          const menuId = exerciseMenu?.exerciseId ?? null;
+          const menuExercise = menuId ? exercises.find(e => e.exerciseId === menuId) ?? null : null;
+          const group = menuId ? supersetGroup(exercises, menuId) : [];
+          const partners = exercises.filter(e => !group.includes(e));
+          return (
+            <ActionMenu
+              visible={visible && exerciseMenu !== null}
+              title={menuId ? nameOf(menuId) : ''}
+              anchor={exerciseMenu?.anchor ?? null}
+              onClose={() => setExerciseMenu(null)}
+              actions={menuId && menuExercise ? [
+                ...(['up', 'down'] as const)
+                  .filter(direction => movedPastExercise(exercises, menuId, direction) !== null)
+                  .map(direction => ({
+                    key: `move-${direction}`,
+                    label: direction === 'up' ? 'Move up' : 'Move down',
+                    icon: (direction === 'up' ? 'arrow-up-outline' : 'arrow-down-outline') as 'arrow-up-outline',
+                    onPress: () => moveExercise(menuId, direction),
+                  })),
+                ...(partners.length > 0 ? [{
+                  key: 'superset',
+                  label: 'Superset with…',
+                  icon: 'link-outline' as const,
+                  choices: partners.map(p => ({ key: p.exerciseId, label: nameOf(p.exerciseId), onPress: () => joinSuperset(menuId, p.exerciseId) })),
+                }] : []),
+                ...(menuExercise.supersetKey && group.length > 1 ? [{
+                  key: 'leave',
+                  label: 'Leave superset',
+                  icon: 'unlink-outline' as const,
+                  onPress: () => leaveSuperset(menuId),
+                }] : []),
+              ] : []}
+            />
+          );
+        })()}
         <CalendarPicker
           visible={visible && pickingWhen}
           mode="datetime"
@@ -345,6 +468,13 @@ export function LogPastWorkoutSheet({ visible, onClose }: Props) {
           onPick={addExercise}
           addedIds={exercises.map(e => e.exerciseId)}
           addedLabel="In workout"
+        />
+        <DescribeWorkoutSheet
+          visible={visible && describing}
+          mode="log"
+          onClose={() => setDescribing(false)}
+          onRoutine={() => setDescribing(false)}
+          onWorkout={session => { setDescribing(false); onDescribed?.(session); }}
         />
       </View>
     </SheetModal>
@@ -371,6 +501,11 @@ const makeStyles = (colors: Colors, textScale: number) => StyleSheet.create({
   value: { ...disclosureValue(colors), flexShrink: 1, fontVariant: ['tabular-nums'] },
   hint: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.sm, marginHorizontal: spacing.xs },
   exercise: { marginBottom: spacing.smd },
+  superset: { borderLeftWidth: 3, borderLeftColor: colors.accent },
+  supersetTag: {
+    color: colors.accentText, fontSize: font.xs, fontWeight: fontWeight.semibold,
+    marginTop: spacing.smd, marginHorizontal: spacing.md, marginBottom: -spacing.xs,
+  },
   exerciseHead: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.smd,
     paddingHorizontal: spacing.md, paddingVertical: spacing.smd,
@@ -391,6 +526,8 @@ const makeStyles = (colors: Colors, textScale: number) => StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator,
   },
   setNumber: { color: colors.textSecondary, fontSize: font.md, fontWeight: fontWeight.semibold, fontVariant: ['tabular-nums'] },
+  prevText: { color: colors.textTertiary, fontSize: font.md, textAlign: 'center', fontVariant: ['tabular-nums'] },
+  prevMark: { color: colors.orangeText, fontSize: font.sm, fontWeight: fontWeight.bold },
   cell: {
     minHeight: 36, paddingHorizontal: spacing.smd, borderRadius: radius.sm, backgroundColor: colors.bgTertiary,
     color: colors.text, fontSize: font.lg, textAlign: 'center', fontVariant: ['tabular-nums'],
@@ -400,4 +537,5 @@ const makeStyles = (colors: Colors, textScale: number) => StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator,
   },
   addExercise: { flexDirection: 'row', marginTop: spacing.xs },
+  describeRow: { flexDirection: 'row', marginTop: spacing.smd },
 });

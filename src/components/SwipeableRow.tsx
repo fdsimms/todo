@@ -41,6 +41,7 @@ interface Props {
   /**
    * Swipe left. Always "enter bulk editing with this row selected" — omit it
    * on a list that has no bulk mode rather than revealing a panel that no-ops.
+   * Replaced by `undoAction` if a caller passes both.
    */
   selectAction?: SelectAction;
   /**
@@ -50,12 +51,12 @@ interface Props {
    */
   whenAction?: WhenAction;
   /**
-   * Swipe right, in place of `whenAction`: a labelled "Undo" panel for a row
+   * Swipe left, in place of `selectAction`: a labelled "Undo" panel for a row
    * that records something already done, where a tap would be the wrong place
-   * to take it back (a finished record has no reason to react to a tap). Like
-   * it is an exception to "nothing destructive on a swipe", and only for a row
-   * whose result the person can redo in one tap. Wins over `whenAction` if a
-   * caller passes both.
+   * to take it back (a finished record has no reason to react to a tap). It is
+   * an exception to "nothing destructive on a swipe", and only for a row whose
+   * result the person can redo in one tap. It takes the select slot, so use it
+   * only on a list with no bulk mode (the medication log's Today card).
    */
   undoAction?: UndoAction;
   /** Turns the gesture off without unmounting it — see the note below. */
@@ -69,8 +70,9 @@ interface Props {
  * The one swipe treatment every list row in the app uses.
  *
  * The contract it exists to enforce, since it used to be re-derived per screen
- * and drifted every time: **swipe left enters bulk editing, swipe right is the
- * row's "when" action, and nothing destructive lives on a swipe at all.**
+ * and drifted every time: **swipe left enters bulk editing (or, on a list with no
+ * bulk mode, undoes a record), swipe right is the row's "when" action, and
+ * nothing destructive lives on a swipe at all.**
  * Deleting belongs in an editor or the bulk bar, where it can be confirmed and
  * undone in context — a full-swipe commit is far too easy to trigger by
  * accident for an action that can't be taken back.
@@ -139,8 +141,8 @@ export function SwipeableRow({ selectAction, whenAction, undoAction, enabled = t
   const latestDrag = useRef(0);
   const pending = useRef(false);
   const listener = useRef<{ id: string; value: Animated.Value } | null>(null);
-  const hasLeft = !!(undoAction || whenAction);
-  const hasRight = !!selectAction;
+  const hasLeft = !!whenAction;
+  const hasRight = !!(undoAction || selectAction);
   const sides = useRef({ left: hasLeft, right: hasRight });
   sides.current = { left: hasLeft, right: hasRight };
 
@@ -184,7 +186,19 @@ export function SwipeableRow({ selectAction, whenAction, undoAction, enabled = t
   };
 
   // Right-hand panel, revealed by swiping left.
-  const renderRightActions = selectAction
+  const renderRightActions = undoAction
+    ? () => (
+        <TouchableOpacity
+          style={styles.undoAction}
+          onPress={() => fire(undoAction.onUndo)}
+          accessibilityRole="button"
+          accessibilityLabel={undoAction.accessibilityLabel}
+        >
+          <Ionicons name="arrow-undo" size={iconSize.md} color={colors.onAccent} />
+          <Text style={styles.undoLabel}>Undo</Text>
+        </TouchableOpacity>
+      )
+    : selectAction
     ? () => (
         <TouchableOpacity
           style={styles.selectAction}
@@ -198,19 +212,7 @@ export function SwipeableRow({ selectAction, whenAction, undoAction, enabled = t
     : undefined;
 
   // Left-hand panel, revealed by swiping right.
-  const renderLeftActions = undoAction
-    ? () => (
-        <TouchableOpacity
-          style={styles.undoAction}
-          onPress={() => fire(undoAction.onUndo)}
-          accessibilityRole="button"
-          accessibilityLabel={undoAction.accessibilityLabel}
-        >
-          <Ionicons name="arrow-undo" size={iconSize.md} color={colors.onAccent} />
-          <Text style={styles.undoLabel}>Undo</Text>
-        </TouchableOpacity>
-      )
-    : whenAction
+  const renderLeftActions = whenAction
     ? () => (
         <TouchableOpacity
           style={[styles.whenAction, whenAction.tint ? { backgroundColor: whenAction.tint } : null]}
@@ -270,10 +272,15 @@ export function SwipeableRow({ selectAction, whenAction, undoAction, enabled = t
         onSwipeableWillOpen={direction => {
           const wasArmed = armed.current;
           stopWatching();
-          if (direction === 'right') { if (selectAction) commit(selectAction.onSelect); return; }
+          if (direction === 'right') {
+            if (undoAction) {
+              if (!wasArmed) haptics.impactLight();
+              commit(undoAction.onUndo);
+            } else if (selectAction) commit(selectAction.onSelect);
+            return;
+          }
           if (!wasArmed) haptics.impactLight();
-          if (undoAction) commit(undoAction.onUndo);
-          else if (whenAction) commit(whenAction.onAction);
+          if (whenAction) commit(whenAction.onAction);
         }}
         onSwipeableOpen={() => ref.current?.close()}
       >
