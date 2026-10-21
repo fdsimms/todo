@@ -124,12 +124,14 @@ export interface ExerciseInput {
   primaryMuscles: MuscleGroup[];
   secondaryMuscles?: MuscleGroup[];
   barKg?: number | null;
+  dumbbells?: 1 | 2 | null;
+  loadEntry?: 'each' | 'pair' | null;
   notes?: string;
   /** Other names it is known by. Cleaned (`cleanOtherNames`), and refused if another exercise already goes by one. */
   otherNames?: string[];
 }
 
-/** What an edit may change. On a built-in exercise only `name`, `otherNames`, `notes`, `barKg` and `archived` take effect. */
+/** What an edit may change. On a built-in exercise only `name`, `otherNames`, `notes`, `barKg`, `dumbbells`, `loadEntry` and `archived` take effect. */
 export type ExercisePatch = Partial<Omit<ExerciseInput, 'secondaryMuscles'>> & {
   secondaryMuscles?: MuscleGroup[];
   archived?: boolean;
@@ -594,6 +596,16 @@ interface WorkoutStore {
 const nowIso = () => new Date().toISOString();
 
 /** A finite number at or above zero, or null. */
+/** The dumbbell count and weight entry a row keeps: nothing for equipment that isn't a dumbbell. */
+function dumbbellFields(
+  equipment: ExerciseEquipment,
+  dumbbells: 1 | 2 | null | undefined,
+  loadEntry: 'each' | 'pair' | null | undefined,
+): Pick<Exercise, 'dumbbells' | 'loadEntry'> {
+  if (equipment !== 'dumbbell') return { dumbbells: null, loadEntry: null };
+  return { dumbbells: dumbbells === 1 || dumbbells === 2 ? dumbbells : null, loadEntry: loadEntry ?? null };
+}
+
 const amount = (v: number | null | undefined): number | null =>
   typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null;
 
@@ -1018,6 +1030,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         secondaryMuscles: readMuscles(input.secondaryMuscles ?? []),
         equipment: input.equipment,
         barKg: amount(input.barKg) || null,
+        ...dumbbellFields(input.equipment, input.dumbbells, input.loadEntry),
         notes: input.notes?.trim() ?? '',
         archived: false,
         isCustom: true,
@@ -1050,6 +1063,8 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         secondaryMuscles: [...lib!.secondaryMuscles],
         equipment: lib!.equipment,
         barKg: null,
+        dumbbells: null,
+        loadEntry: null,
         notes: '',
         archived: false,
         isCustom: false,
@@ -1079,6 +1094,11 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
           secondaryMuscles: patch.secondaryMuscles ? readMuscles(patch.secondaryMuscles) : base.secondaryMuscles,
         } : {}),
       };
+      Object.assign(row, dumbbellFields(
+        row.equipment,
+        patch.dumbbells !== undefined ? patch.dumbbells : base.dumbbells,
+        patch.loadEntry !== undefined ? patch.loadEntry : base.loadEntry,
+      ));
       putExercise(row);
       return row;
     },
@@ -1626,6 +1646,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
           secondaryMuscles: readMuscles(input.secondaryMuscles ?? []),
           equipment: input.equipment,
           barKg: null,
+          ...dumbbellFields(input.equipment, input.dumbbells, input.loadEntry),
           notes: input.notes?.trim() ?? '',
           archived: false,
           isCustom: true,

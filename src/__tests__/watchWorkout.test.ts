@@ -121,6 +121,18 @@ const finished = live({ id: 'old', routineId: 'r1', startedAt: '2026-10-15T09:00
 const lastTime = [0, 1, 2].map(i => set(BENCH, 0, i, { sessionId: 'old', weightKg: 80, reps: 8, completedAt: `2026-10-15T09:0${i}:00.000Z` }));
 const PROPOSED = { weight: 82.5, use: 'Use 82.5', reason: 'All sets hit 8 last time', sets: [0, 1, 2].map(() => ({ weight: 82.5, reps: 6 })) };
 
+describe('watchSetRows for a pair total', () => {
+  it('sends a two-dumbbell exercise\'s weight doubled and leaves a one-dumbbell exercise alone', () => {
+    const rows = watchSetRows(
+      [set('lib:dumbbell-curl', 0, 0, { weightKg: 12.5 }), set('lib:goblet-squat', 1, 0, { weightKg: 20 })],
+      { exercises: [], unit: 'kg', routine: null, defaultRestSeconds: 90, dumbbellEntry: 'pair' },
+    );
+    expect(rows.map(r => r.weight)).toEqual([25, 20]);
+    const each = watchSetRows([set('lib:dumbbell-curl', 0, 0, { weightKg: 12.5 })], { exercises: [], unit: 'kg', routine: null, defaultRestSeconds: 90 });
+    expect(each[0].weight).toBe(12.5);
+  });
+});
+
 describe('watchSetRows', () => {
   const ctx = { exercises: [], unit: 'kg' as const, routine: null, defaultRestSeconds: 90 };
 

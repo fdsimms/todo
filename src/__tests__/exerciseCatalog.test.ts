@@ -14,6 +14,8 @@ const row = (overrides: Partial<Exercise>): Exercise => ({
   secondaryMuscles: ['biceps'],
   equipment: 'barbell',
   barKg: null,
+  dumbbells: null,
+  loadEntry: null,
   notes: '',
   archived: false,
   isCustom: true,

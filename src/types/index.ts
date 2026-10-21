@@ -2091,6 +2091,18 @@ export interface Exercise {
   equipment: ExerciseEquipment;
   /** The bar's own weight where it isn't the default for the equipment. Null for the default. */
   barKg: number | null;
+  /**
+   * How many dumbbells a dumbbell exercise is held in, where the library's
+   * answer (two, except for a closed list of one-dumbbell movements) is wrong
+   * for the person. Null for the default, and for any other equipment.
+   */
+  dumbbells: 1 | 2 | null;
+  /**
+   * Whether this two-dumbbell exercise takes each dumbbell's weight or the
+   * pair's total, overriding Settings. Null follows the setting. A set stores
+   * one dumbbell either way (`src/utils/dumbbellLoad.ts`).
+   */
+  loadEntry: 'each' | 'pair' | null;
   notes: string;
   /** Hidden from the library and pickers; its history stays. */
   archived: boolean;

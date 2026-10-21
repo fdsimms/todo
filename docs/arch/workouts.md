@@ -491,3 +491,32 @@ Files: `src/utils/routineProgress.ts`, `RoutineProgressView.tsx`, and the Edit /
 - **Rows are the routine's exercises as it stands now**, in its order. An exercise taken out drops off; one added later starts at its first workout with it.
 - **Volume is `liftVolumeKg`**, so only weighted lifts add to it and a bodyweight routine shows no volume tiles or chart. The percent is first workout to latest, and is withheld with fewer than two workouts.
 - **It judges nothing.** A lighter latest top set is a plain negative change in the neutral text color; only a gain is green, and gold is reserved for the latest record, as on the exercise chart.
+
+## Dumbbell weights, as built
+
+A weight is one dumbbell's, always. A set stores `weightKg` of a single dumbbell whether the person logs each
+dumbbell or the pair, so records, volume, a progression proposal, a CSV row and the MCP server all read one
+comparable number, and changing the choice rewrites nothing (`src/utils/dumbbellLoad.ts`).
+
+- **Two facts, one preference.** *How many dumbbells* is a fact about the movement: `Exercise.dumbbells` (1 or 2),
+  defaulting to the library's answer (`ONE_DUMBBELL_IDS`: goblet squat, one-arm row and the like are one, every other
+  dumbbell exercise is two; a custom one is two). *How the weight is typed* is a preference: Settings › Workouts ›
+  Dumbbell weights (`dumbbellEntry`, each or pair) and, per exercise, `Exercise.loadEntry` overriding it. Both ride
+  an override row for a built-in, like `barKg`. The library's own count is stored as null so a correction in a later
+  build still reaches a person who changed something else.
+- **One dumbbell has no pair.** `entryFor` is `each` for a one-dumbbell exercise whatever is set, so the preference can
+  never relabel a goblet squat. `dumbbells` and `loadEntry` are kept only on dumbbell equipment.
+- **The scale lives at the edge.** A pair total is halved on the way in (`parseSetCell`'s `scale`, via
+  `storedKgFromTyped`) and doubled on the way out (`weightScale` → `formatSetLine`, `valueText`, the record and chart
+  text in `workoutRecordText.ts`, the routine Progress tab through `routineProgress`'s `scaleOf` (its volume sums each exercise at its own scale), and the proposal's words through `LoadContext.scale`). The column heading says
+  "kg each" or "kg pair" where two dumbbells are in play. A proposal's *loads* are never scaled, only its text.
+- **The Apple Watch is sent the shown weights and sends them back.** `watchSetRows`, `watchSuggestion` and
+  `watchRecentExercises` scale outward (`WatchWorkoutInput.dumbbellEntry`). Inbound, `tickValuesFromWatch` and
+  `parseWatchSession` convert to kilograms before the exercise is known, so `planQuietTaps` takes a
+  `weightScaleFor(exerciseId)` and puts each weight back to one dumbbell's (`storedKgFromShown`) in `tick` and for
+  `addWatchSession`, comparing the Crown's no-change guard in that space. Changing the setting, or an exercise's entry,
+  re-sends the snapshot. A weight the watch sent for a snapshot made before the change is read at the new scale, a
+  one-tap window nobody can close without versioning the snapshot.
+- **Where it is not applied, on purpose.** CSV import and export and the MCP server stay per dumbbell. The MCP says so (`dumbbells` on `list_exercises`, and the rule in `instructions.ts`), so Claude halves a pair total before writing.
+  A new surface that shows a dumbbell exercise's weight takes a `scale` from `weightScale` rather than reading
+  `weightKg` bare.

@@ -3310,6 +3310,8 @@ function seedWorkouts(today: Date): void {
     notes: 'Straddle the bar and row the end to your chest with a V handle.',
   });
   workouts.updateExercise('lib:barbell-bench-press', { notes: 'Pause each rep on the chest.', otherNames: ['Flat bench'] });
+  // A two-dumbbell exercise typed as a pair total, so the choice shows without a setting being changed.
+  workouts.updateExercise('lib:dumbbell-curl', { loadEntry: 'pair' });
   const rowId = typeof landmineRow === 'string' ? 'lib:barbell-row' : landmineRow.id;
 
   const working = (repsMin: number, repsMax: number, weightKg: number) =>

@@ -579,6 +579,8 @@ function runInitDatabase(): void {
       secondary_muscles TEXT NOT NULL DEFAULT '[]',
       equipment TEXT NOT NULL,
       bar_kg REAL,
+      dumbbells INTEGER,
+      load_entry TEXT,
       notes TEXT NOT NULL DEFAULT '',
       archived INTEGER NOT NULL DEFAULT 0,
       is_custom INTEGER NOT NULL DEFAULT 1,
@@ -2377,6 +2379,8 @@ function runInitDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN slot_decided_on TEXT',
     'ALTER TABLE tasks ADD COLUMN slot_waiting_since TEXT',
     'ALTER TABLE categories ADD COLUMN slot_in INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE exercises ADD COLUMN dumbbells INTEGER',
+    'ALTER TABLE exercises ADD COLUMN load_entry TEXT',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -7713,6 +7717,8 @@ function rowToExercise(row: Record<string, unknown>): Exercise {
     secondaryMuscles: readMuscles(row.secondary_muscles),
     equipment: readEquipment(row.equipment),
     barKg: numOrNull(row.bar_kg),
+    dumbbells: Number(row.dumbbells) === 1 ? 1 : Number(row.dumbbells) === 2 ? 2 : null,
+    loadEntry: row.load_entry === 'each' || row.load_entry === 'pair' ? row.load_entry : null,
     notes: String(row.notes ?? ''),
     otherNames: readOtherNames(row.other_names),
     archived: Number(row.archived) === 1,
@@ -7741,16 +7747,17 @@ export function dbGetAllExercises(): Exercise[] {
 export function dbSaveExercise(e: Exercise): void {
   db.runSync(
     `INSERT INTO exercises
-      (id, name, name_key, kind, primary_muscles, secondary_muscles, equipment, bar_kg, notes, archived, is_custom, created_at, other_names)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, name, name_key, kind, primary_muscles, secondary_muscles, equipment, bar_kg, dumbbells, load_entry, notes, archived, is_custom, created_at, other_names)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name, name_key = excluded.name_key, kind = excluded.kind,
         primary_muscles = excluded.primary_muscles, secondary_muscles = excluded.secondary_muscles,
-        equipment = excluded.equipment, bar_kg = excluded.bar_kg, notes = excluded.notes,
+        equipment = excluded.equipment, bar_kg = excluded.bar_kg,
+        dumbbells = excluded.dumbbells, load_entry = excluded.load_entry, notes = excluded.notes,
         archived = excluded.archived, is_custom = excluded.is_custom, other_names = excluded.other_names`,
     [
       e.id, e.name, e.isCustom ? exerciseNameKey(e.name) : null, e.kind,
-      JSON.stringify(e.primaryMuscles), JSON.stringify(e.secondaryMuscles), e.equipment, e.barKg,
+      JSON.stringify(e.primaryMuscles), JSON.stringify(e.secondaryMuscles), e.equipment, e.barKg, e.dumbbells, e.loadEntry,
       e.notes, e.archived ? 1 : 0, e.isCustom ? 1 : 0, e.createdAt, JSON.stringify(e.otherNames ?? []),
     ]
   );

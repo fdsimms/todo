@@ -224,6 +224,20 @@ describe('changes to a built-in exercise', () => {
     expect(catalogExercise([], 'lib:back-squat')?.notes).toBe('');
   });
 
+  it('keeps the dumbbell count and weight entry on a built-in dumbbell exercise, through a reload', () => {
+    ok(state().updateExercise('lib:goblet-squat', { dumbbells: 2, loadEntry: 'pair' }));
+    reload();
+    expect(catalogExercise(state().exercises, 'lib:goblet-squat')).toMatchObject({ dumbbells: 2, loadEntry: 'pair' });
+    // Taking it back to nothing follows the library and the setting again.
+    ok(state().updateExercise('lib:goblet-squat', { dumbbells: null, loadEntry: null }));
+    expect(catalogExercise(state().exercises, 'lib:goblet-squat')).toMatchObject({ dumbbells: null, loadEntry: null });
+  });
+
+  it('keeps nothing of either for equipment that is not a dumbbell', () => {
+    ok(state().updateExercise('lib:back-squat', { dumbbells: 1, loadEntry: 'pair', notes: 'x' }));
+    expect(catalogExercise(state().exercises, 'lib:back-squat')).toMatchObject({ dumbbells: null, loadEntry: null });
+  });
+
   it('does not count as content the person made', () => {
     ok(state().updateExercise('lib:back-squat', { notes: 'High bar' }));
     expect(workoutContentCount(state())).toBe(0);

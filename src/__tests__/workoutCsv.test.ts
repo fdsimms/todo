@@ -575,7 +575,7 @@ describe('names', () => {
 describe('matchExerciseName', () => {
   const custom: Exercise = {
     id: 'c1', name: 'Sled drag', kind: 'weight_reps', primaryMuscles: [], secondaryMuscles: [], equipment: 'other',
-    barKg: null, notes: '', archived: false, isCustom: true, createdAt: '2026-01-01T00:00:00.000Z',
+    barKg: null, dumbbells: null, loadEntry: null, notes: '', archived: false, isCustom: true, createdAt: '2026-01-01T00:00:00.000Z',
   };
   const archived: Exercise = { ...custom, id: 'c2', name: 'Cossack squat', archived: true };
   const catalog = buildCatalog([custom, archived]);
@@ -828,7 +828,7 @@ describe('importSummary', () => {
 describe('export', () => {
   const exercises: Exercise[] = [{
     id: 'c1', name: 'Cable "fly", low', kind: 'weight_reps', primaryMuscles: [], secondaryMuscles: [], equipment: 'cable',
-    barKg: null, notes: '', archived: false, isCustom: true, createdAt: '2026-01-01T00:00:00.000Z',
+    barKg: null, dumbbells: null, loadEntry: null, notes: '', archived: false, isCustom: true, createdAt: '2026-01-01T00:00:00.000Z',
   }];
   const session = (over: Partial<WorkoutSession> = {}): WorkoutSession => ({
     id: 's1', routineId: null, programId: null, taskId: null, title: 'Push, heavy',

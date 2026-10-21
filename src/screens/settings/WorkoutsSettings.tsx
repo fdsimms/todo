@@ -5,6 +5,7 @@ import { useColors } from '../../theme/ThemeContext';
 import { CountStepper } from '../../components/CountStepper';
 import { MaxHeartRateSheet } from '../../components/MaxHeartRateSheet';
 import type { WeightUnit } from '../../utils/weightLog';
+import { DUMBBELL_ENTRY_LABELS, type DumbbellEntry } from '../../utils/dumbbellLoad';
 import { REST_SECONDS_MAX, REST_SECONDS_MIN, formatRestSeconds } from '../../utils/workoutData';
 import { describeMaxHeartRate, resolveMaxHeartRate } from '../../utils/heartRateZones';
 import { SettingsSection } from './SettingsSection';
@@ -32,6 +33,8 @@ import { haptics } from '../../utils/haptics';
 export function WorkoutsSettings() {
   const workoutUnit = useSettingsStore(s => s.workoutUnit);
   const setWorkoutUnit = useSettingsStore(s => s.setWorkoutUnit);
+  const dumbbellEntry = useSettingsStore(s => s.dumbbellEntry);
+  const setDumbbellEntry = useSettingsStore(s => s.setDumbbellEntry);
   const defaultRestSeconds = useSettingsStore(s => s.defaultRestSeconds);
   const setDefaultRestSeconds = useSettingsStore(s => s.setDefaultRestSeconds);
   const workoutLiveActivity = useSettingsStore(s => s.workoutLiveActivity);
@@ -70,6 +73,22 @@ export function WorkoutsSettings() {
           selected={workoutUnit}
           onSelect={unit => setWorkoutUnit(unit)}
           accessibilityLabelFor={o => (o.value === 'kg' ? 'Kilograms' : 'Pounds')}
+        />
+        <View style={styles.sep} />
+        <SettingsRow
+          entryId="dumbbellEntry"
+          icon="fitness-outline"
+          label="Dumbbell weights"
+          hint="For exercises held in two dumbbells: type the weight of each one, or of both added together. A single exercise can change this on its own page. Either way the app keeps the weight of one dumbbell."
+          value={DUMBBELL_ENTRY_LABELS[dumbbellEntry]}
+          tight
+        />
+        <SettingsSegments
+          attached
+          label="Dumbbell weights"
+          options={(['each', 'pair'] as DumbbellEntry[]).map(value => ({ value, label: DUMBBELL_ENTRY_LABELS[value] }))}
+          selected={dumbbellEntry}
+          onSelect={entry => setDumbbellEntry(entry)}
         />
         <View style={styles.sep} />
         <SettingsRow

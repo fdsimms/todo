@@ -136,3 +136,29 @@ describe('progress wording', () => {
     expect(formatTopSetLine(best(40), best(40), 1, 'weight_reps', 'kg')).toBe('Top set 40 kg × 10');
   });
 });
+
+describe('routineProgress for a pair total', () => {
+  it('reads a two-dumbbell exercise doubled, in its plot, top-set line and volume, and leaves the rest alone', () => {
+    const sessions = [session('a', 9, 10), session('b', 9, 20)];
+    const sets = [
+      set('a', CURL, 10, 10), set('b', CURL, 12.5, 10),
+      set('a', SQUAT, 100, 5), set('b', SQUAT, 100, 5),
+    ];
+    const progress = routineProgress({
+      exerciseIds: [CURL, SQUAT],
+      sessions,
+      setsBySession: new Map(sessions.map(s => [s.id, sets.filter(x => x.sessionId === s.id)])),
+      kindOf,
+      unit: 'kg',
+      dayResetTime: '00:00',
+      scaleOf: id => (id === CURL ? 2 : 1),
+    });
+    const curl = progress.exercises.find(e => e.exerciseId === CURL)!;
+    expect(curl.plot.map(p => p.value)).toEqual([20, 25]);
+    expect(curl.change).toBe(5);
+    expect(formatTopSetLine(curl.first!, curl.latest!, curl.workouts, 'weight_reps', 'kg', 2)).toBe('Top set 20 → 25 kg');
+    expect(progress.exercises.find(e => e.exerciseId === SQUAT)!.plot.map(p => p.value)).toEqual([100, 100]);
+    // 10 × 10 doubled is 200, plus 100 × 5; the second workout is 12.5 × 10 doubled plus the same.
+    expect(progress.volume.map(v => v.volumeKg)).toEqual([700, 750]);
+  });
+});

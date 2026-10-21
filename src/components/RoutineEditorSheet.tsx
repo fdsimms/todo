@@ -33,6 +33,7 @@ import { RoutineProgressView } from './RoutineProgressView';
 import type { ExerciseKind, ProgressionScheme, WorkoutRoutine, WorkoutRoutineItem } from '../types';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { weightHeadingSuffix, weightScale } from '../utils/dumbbellLoad';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -123,6 +124,7 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
   const unit = useSettingsStore(s => s.workoutUnit);
   const defaultRest = useSettingsStore(s => s.defaultRestSeconds);
   const plateInventory = useSettingsStore(s => s.plateInventory);
+  const dumbbellEntry = useSettingsStore(s => s.dumbbellEntry);
   const routine = routineId ? routines.find(r => r.id === routineId) ?? null : null;
 
   // ==== staged state, loaded each time the sheet opens ====
@@ -173,9 +175,10 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
     const info = catalogExercise(exercises, item.exerciseId);
     const kg = itemShape(item).weightKg;
     if (!info || kg === null) return null;
-    const steps = rampSteps(kg, loadContextFor(info, plateInventory, unit, item));
+    const scale = weightScale(info, dumbbellEntry);
+    const steps = rampSteps(kg, loadContextFor(info, plateInventory, unit, item, scale));
     if (steps.length === 0) return null;
-    return `${joinAnd(steps.map(st => formatWeightNumber(st.kg, unit)))} ${unit}`;
+    return `${joinAnd(steps.map(st => formatWeightNumber(st.kg * scale, unit)))} ${unit}`;
   };
 
   // ==== editing the list ====
@@ -448,6 +451,8 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
                         kind={kind}
                         role={itemRole}
                         unit={unit}
+                        scale={weightScale(catalogExercise(exercises, row.item.exerciseId), dumbbellEntry)}
+                        weightSuffix={weightHeadingSuffix(catalogExercise(exercises, row.item.exerciseId), dumbbellEntry)}
                         defaultRest={defaultRest}
                         canJoin={index > 0}
                         rampLoads={kind === 'weight_reps' ? rampLoads(row.item) : null}
@@ -528,6 +533,10 @@ interface ItemControlsProps {
   kind: ExerciseKind;
   role: SupersetRole;
   unit: WeightUnit;
+  /** Reads a stored one-dumbbell weight as a pair total where it is 2 (`dumbbellLoad.ts`). */
+  scale: number;
+  /** " each" or " pair" after the unit in the weight heading, or nothing. */
+  weightSuffix: string;
   defaultRest: number;
   canJoin: boolean;
   /** What the ramp lays out from the target weight, for the table's ramp row. */
@@ -546,7 +555,7 @@ interface ItemControlsProps {
  * each label beside or above its one control so no row has to hold two.
  */
 function ItemControls({
-  item, kind, role, unit, defaultRest, canJoin, rampLoads, colors, styles, onChange, onJoin, onLeave, onRemove,
+  item, kind, role, unit, scale, weightSuffix, defaultRest, canJoin, rampLoads, colors, styles, onChange, onJoin, onLeave, onRemove,
 }: ItemControlsProps) {
   const scheme = item.progression?.scheme ?? null;
   const [explainOpen, setExplainOpen] = useState(false);
@@ -554,7 +563,7 @@ function ItemControls({
   const ramp = item.warmupRamp === true;
   return (
     <View style={styles.controls}>
-      <RoutineSetTable item={item} kind={kind} unit={unit} rampLoads={rampLoads} onChange={onChange} />
+      <RoutineSetTable item={item} kind={kind} unit={unit} scale={scale} weightSuffix={weightSuffix} rampLoads={rampLoads} onChange={onChange} />
 
       <View style={styles.section}>
         {kind === 'weight_reps' && (

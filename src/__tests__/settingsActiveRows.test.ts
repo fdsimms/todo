@@ -96,9 +96,9 @@ describe('searchableSettingsEntries', () => {
       searchableSettingsEntries(os, settings(o), noSync).filter(e => e.groupId === 'workouts').map(e => e.id);
     expect(ids('ios', {})).toEqual([]);
     expect(ids('ios', { workoutsEnabled: true })).toEqual(
-      ['workoutUnit', 'defaultRestSeconds', 'exerciseImagesEnabled', 'workoutLiveActivity', 'maxHeartRate']);
+      ['workoutUnit', 'dumbbellEntry', 'defaultRestSeconds', 'exerciseImagesEnabled', 'workoutLiveActivity', 'maxHeartRate']);
     // Apple Health is iOS-only; this group isn't, and its iOS-only rows say so themselves.
-    expect(ids('android', { workoutsEnabled: true })).toEqual(['workoutUnit', 'defaultRestSeconds', 'exerciseImagesEnabled']);
+    expect(ids('android', { workoutsEnabled: true })).toEqual(['workoutUnit', 'dumbbellEntry', 'defaultRestSeconds', 'exerciseImagesEnabled']);
   });
 
   it('takes the kitchen rows away with the kitchen', () => {

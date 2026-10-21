@@ -75,15 +75,21 @@ export interface RoutineProgressInput {
   kindOf: (exerciseId: string) => ExerciseKind;
   unit: WeightUnit;
   dayResetTime: string;
+  /**
+   * What an exercise's stored one-dumbbell weights are multiplied by to be read, 2 for a pair
+   * total (`dumbbellLoad.ts`). Every weight here, volume included, is in those terms, so a
+   * routine mixing exercises logged each way still adds like with like.
+   */
+  scaleOf?: (exerciseId: string) => number;
 }
 
-export function routineProgress({ exerciseIds, sessions, setsBySession, kindOf, unit, dayResetTime }: RoutineProgressInput): RoutineProgress {
+export function routineProgress({ exerciseIds, sessions, setsBySession, kindOf, unit, dayResetTime, scaleOf = () => 1 }: RoutineProgressInput): RoutineProgress {
   const recSessions = recordSessions(sessions, dayResetTime);
   const dayOf = new Map(recSessions.map(s => [s.id, s.dayKey]));
 
   const volume: RoutineWorkoutPoint[] = [];
   for (const s of recSessions) {
-    const kg = liftVolumeKg([...(setsBySession.get(s.id) ?? [])], kindOf);
+    const kg = liftVolumeKg((setsBySession.get(s.id) ?? []).map(x => (x.weightKg === null ? x : { ...x, weightKg: x.weightKg * scaleOf(x.exerciseId) })), kindOf);
     if (kg !== null && kg > 0) volume.push({ sessionId: s.id, dayKey: s.dayKey, volumeKg: kg });
   }
   const volumeChangePercent = volume.length >= 2 && volume[0].volumeKg > 0
@@ -103,7 +109,7 @@ export function routineProgress({ exerciseIds, sessions, setsBySession, kindOf, 
     const points = analysis.points.filter(p => p.best !== null && dayOf.has(p.sessionId));
     const plot: RoutineExerciseProgress['plot'] = [];
     for (const p of points) {
-      const value = metricNumber(p, 'best', kind, unit);
+      const value = metricNumber(p, 'best', kind, unit, scaleOf(exerciseId));
       if (value !== null) plot.push({ dayKey: p.dayKey, value });
     }
     const first = points.length > 0 ? points[0].best : null;

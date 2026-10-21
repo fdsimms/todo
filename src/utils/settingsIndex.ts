@@ -1060,6 +1060,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // Workouts. No `requires`: the group is `workoutsOnly`, which drops them all.
   { id: 'workoutUnit', groupId: 'workouts', label: 'Workout weights', section: 'Workouts',
     keywords: ['kg', 'kilograms', 'lb', 'pounds', 'gym', 'lifting', 'barbell', 'plates', 'metric', 'imperial'] },
+  { id: 'dumbbellEntry', groupId: 'workouts', label: 'Dumbbell weights', section: 'Workouts',
+    keywords: ['dumbbells', 'each', 'pair', 'total', 'both', 'per hand', 'per arm', 'gym', 'lifting'] },
   { id: 'defaultRestSeconds', groupId: 'workouts', label: 'Rest between sets', section: 'Workouts',
     keywords: ['rest timer', 'break', 'seconds', 'gym', 'lifting', 'countdown'] },
   { id: 'exerciseImagesEnabled', groupId: 'workouts', label: 'Exercise photos', section: 'Workouts',

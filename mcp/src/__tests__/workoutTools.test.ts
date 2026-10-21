@@ -4,7 +4,7 @@ import { DEFAULT_EXERCISE_LIMIT, TREND_POINTS, deleteRoutineGroup, exerciseHisto
 
 const custom: Exercise = {
   id: 'c1', name: 'Landmine row', kind: 'weight_reps', primaryMuscles: ['upper_back'], secondaryMuscles: [],
-  equipment: 'barbell', barKg: null, notes: 'V handle', archived: false, isCustom: true, createdAt: '2026-10-01T10:00:00.000Z',
+  equipment: 'barbell', barKg: null, dumbbells: null, loadEntry: null, notes: 'V handle', archived: false, isCustom: true, createdAt: '2026-10-01T10:00:00.000Z',
 };
 const session = (id: string, startedAt: string, extra: Partial<WorkoutSession> = {}): WorkoutSession => ({
   id, routineId: 'r1', programId: 'p1', taskId: null, title: 'Upper A', startedAt, endedAt: startedAt, notes: '',

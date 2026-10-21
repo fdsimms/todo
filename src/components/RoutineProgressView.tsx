@@ -1,3 +1,4 @@
+import { weightScale } from '../utils/dumbbellLoad';
 import React, { useMemo } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Svg, { Circle, Polyline } from 'react-native-svg';
@@ -69,6 +70,9 @@ export function RoutineProgressView({ routineId, exerciseIds, onOpenExercise, on
   const exercises = useWorkoutStore(s => s.exercises);
   const unit = useSettingsStore(s => s.workoutUnit);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  const dumbbellEntry = useSettingsStore(s => s.dumbbellEntry);
+  // A pair total reads each stored one-dumbbell weight doubled (`dumbbellLoad.ts`).
+  const scaleOf = (id: string) => weightScale(catalogExercise(exercises, id), dumbbellEntry);
 
   const progress = useMemo(() => {
     const mine = routineSessions(routineId, sessions);
@@ -81,8 +85,9 @@ export function RoutineProgressView({ routineId, exerciseIds, onOpenExercise, on
       kindOf: id => catalogExercise(exercises, id)?.kind ?? 'weight_reps',
       unit,
       dayResetTime,
+      scaleOf: id => weightScale(catalogExercise(exercises, id), dumbbellEntry),
     });
-  }, [routineId, exerciseIds, sessions, exercises, unit, dayResetTime]);
+  }, [routineId, exerciseIds, sessions, exercises, unit, dayResetTime, dumbbellEntry]);
 
   if (progress.workouts === 0) {
     return (
@@ -108,7 +113,7 @@ export function RoutineProgressView({ routineId, exerciseIds, onOpenExercise, on
 
   const rowSummary = (e: RoutineExerciseProgress, name: string) => {
     if (!e.first || !e.latest) return `${name}, no workouts yet`;
-    return `${name}, ${formatTopSetLine(e.first, e.latest, e.workouts, e.kind, unit)}${e.change !== null ? `, ${formatProgressChange(e.change, e.kind, unit)}` : ''}`;
+    return `${name}, ${formatTopSetLine(e.first, e.latest, e.workouts, e.kind, unit, scaleOf(e.exerciseId))}${e.change !== null ? `, ${formatProgressChange(e.change, e.kind, unit)}` : ''}`;
   };
 
   return (
@@ -158,7 +163,7 @@ export function RoutineProgressView({ routineId, exerciseIds, onOpenExercise, on
               <Text style={styles.exName}>{name}</Text>
               {e.first && e.latest ? (
                 <View style={styles.exFigures}>
-                  <Text style={styles.exTop}>{formatTopSetLine(e.first, e.latest, e.workouts, e.kind, unit)}</Text>
+                  <Text style={styles.exTop}>{formatTopSetLine(e.first, e.latest, e.workouts, e.kind, unit, scaleOf(e.exerciseId))}</Text>
                   {e.plot.length >= 2 && <Sparkline values={e.plot.map(p => p.value)} latestIsRecord={e.latestIsRecord} colors={colors} />}
                   {e.change !== null && (
                     <View style={styles.exChangeWrap}>
