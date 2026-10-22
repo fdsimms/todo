@@ -759,7 +759,32 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
  * - Anything ending `_done` — the migration flags above.
  */
 export function isSyncedSettingKey(key: string): boolean {
-  return SYNCED_SETTING_KEYS.includes(key);
+  return SYNCED_SETTING_KEYS.includes(key) || key.startsWith(SERVER_SHARING_KEY_PREFIX);
+}
+
+/**
+ * One row per device saying which of its two private switches
+ * (`syncServerHealthLogs`, `syncServerJournal`) are on, keyed by the device's
+ * own id so two phones never write over each other's.
+ *
+ * The switches themselves stay device-local (above): synced, one phone could
+ * start sending another's journal to a server. This is only a report of them,
+ * so the MCP server can say "journal sync is off" rather than leave an agent
+ * to read a short history as the whole of one. It says that a journal or a
+ * health log exists and nothing else, which is why it goes to the server only:
+ * iCloud withholds the prefix (`configuredTransports` in useSyncStore), since
+ * nothing on another phone reads it.
+ */
+export const SERVER_SHARING_KEY_PREFIX = 'syncServerSharing:';
+
+export function serverSharingKey(deviceId: string): string {
+  return `${SERVER_SHARING_KEY_PREFIX}${deviceId}`;
+}
+
+/** What a device's sharing row holds. */
+export interface ServerSharing {
+  healthLogs: boolean;
+  journal: boolean;
 }
 
 /**

@@ -88,6 +88,8 @@ export interface SyncImageStore {
 export interface SyncWithholding {
   tables: readonly string[];
   settingKeys: readonly string[];
+  /** Keys of the `settings` table held back by prefix, for a key minted per device. */
+  settingKeyPrefixes?: readonly string[];
 }
 
 /**
@@ -102,8 +104,10 @@ export function withholdChanges(changes: SyncChangeSet, withholding: SyncWithhol
   if (!withholding) return changes;
   const tables = new Set(withholding.tables);
   const keys = new Set(withholding.settingKeys);
+  const prefixes = withholding.settingKeyPrefixes ?? [];
   const held = (table: string, key: unknown) =>
-    tables.has(table) || (table === 'settings' && typeof key === 'string' && keys.has(key));
+    tables.has(table)
+    || (table === 'settings' && typeof key === 'string' && (keys.has(key) || prefixes.some(p => key.startsWith(p))));
 
   const kept: SyncChangeSet['tables'] = {};
   for (const [name, rows] of Object.entries(changes.tables)) {

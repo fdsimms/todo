@@ -1491,6 +1491,15 @@ describe('the replica', () => {
     expect(coins()).toEqual([{ task_id: task.id, amount: 5 }]);
   });
 
+  it('reads each device\'s report of its sync switches, and skips one it cannot parse', () => {
+    expect(replica.serverSharingReports()).toEqual([]);
+    mockRaw.runSync(`INSERT OR REPLACE INTO settings (key, value) VALUES ('syncServerSharing:p1', '{"healthLogs":true,"journal":false}')`);
+    mockRaw.runSync("INSERT OR REPLACE INTO settings (key, value) VALUES ('syncServerSharing:p2', 'not json')");
+    // The switch itself never travels, so a stray copy of it says nothing.
+    mockRaw.runSync("INSERT OR REPLACE INTO settings (key, value) VALUES ('syncServerJournal', '1')");
+    expect(replica.serverSharingReports()).toEqual([{ healthLogs: true, journal: false }]);
+  });
+
   describe('rewards', () => {
     const balance = () => replica.lib().rewards.coinBalance(replica.rewardState().entries);
     const earn = (minutes: number) => {
