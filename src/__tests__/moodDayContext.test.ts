@@ -1,9 +1,12 @@
-import { moodDayOffers, type MoodDayInputs } from '../utils/moodDayContext';
+import { moodDayOffers, rainForDay, type MoodDayInputs } from '../utils/moodDayContext';
 import {
   EXERCISED_MINUTES,
   OUTSIDE_MINUTES,
+  RAIN_TAG_MM,
   NO_MOOD_CONTEXT_SOURCES,
   parseMoodContextSources,
+  parseMoodEventTags,
+  type MoodEventTag,
   type MoodContextSources,
 } from '../utils/moodContextSources';
 import { indexEventPeople } from '../utils/eventPeople';
@@ -14,7 +17,7 @@ jest.mock('../store/useSettingsStore', () => ({
 }));
 
 const on = (over: Partial<MoodContextSources> = {}): MoodContextSources => ({
-  dayOff: true, social: true, exercise: true, outside: true, ...over,
+  dayOff: true, social: true, exercise: true, workout: true, shortNight: true, outside: true, rain: true, ...over,
 });
 
 const event = (over: Partial<BusyEvent> = {}): BusyEvent => ({
@@ -36,6 +39,11 @@ const base = (over: Partial<MoodDayInputs> = {}): MoodDayInputs => ({
   eventPeople: indexEventPeople([], {}),
   exerciseMinutesToday: null,
   daylightMinutesToday: null,
+  eventTags: [],
+  trainingDays: new Set(),
+  sleepMinutes: null,
+  shortNightMinutes: 360,
+  rain: null,
   ...over,
 });
 
@@ -76,11 +84,11 @@ describe('moodDayOffers', () => {
       .not.toContain('Social event');
   });
 
-  it('offers Exercised from the threshold, today only, and never from missing data', () => {
-    expect(moodDayOffers(on(), base({ exerciseMinutesToday: EXERCISED_MINUTES }))).toContain('Exercised');
-    expect(moodDayOffers(on(), base({ exerciseMinutesToday: EXERCISED_MINUTES - 1 }))).not.toContain('Exercised');
-    expect(moodDayOffers(on(), base({ exerciseMinutesToday: null }))).not.toContain('Exercised');
-    expect(moodDayOffers(on(), base({ isToday: false, exerciseMinutesToday: 90 }))).not.toContain('Exercised');
+  it('offers Worked out from the threshold, today only, and never from missing data', () => {
+    expect(moodDayOffers(on(), base({ exerciseMinutesToday: EXERCISED_MINUTES }))).toContain('Worked out');
+    expect(moodDayOffers(on(), base({ exerciseMinutesToday: EXERCISED_MINUTES - 1 }))).not.toContain('Worked out');
+    expect(moodDayOffers(on(), base({ exerciseMinutesToday: null }))).not.toContain('Worked out');
+    expect(moodDayOffers(on(), base({ isToday: false, exerciseMinutesToday: 90 }))).not.toContain('Worked out');
   });
 
   it('offers Went outside from the daylight threshold, today only, and never from missing data', () => {
@@ -91,15 +99,108 @@ describe('moodDayOffers', () => {
     expect(moodDayOffers(on({ outside: false }), base({ daylightMinutesToday: 90 }))).not.toContain('Went outside');
   });
 
+  it('offers Worked out for a day a workout was finished, any day, and only once with Health too', () => {
+    const trainingDays = new Set(['2026-07-03']);
+    expect(moodDayOffers(on(), base({ isToday: false, dayKey: '2026-07-03', trainingDays }))).toContain('Worked out');
+    expect(moodDayOffers(on(), base({ trainingDays }))).not.toContain('Worked out');
+    expect(moodDayOffers(on({ workout: false }), base({ dayKey: '2026-07-03', trainingDays }))).not.toContain('Worked out');
+    const both = moodDayOffers(on(), base({
+      trainingDays: new Set(['2026-07-04']), exerciseMinutesToday: EXERCISED_MINUTES,
+    }));
+    expect(both.filter(t => t === 'Worked out')).toHaveLength(1);
+  });
+
+  it('offers Short night under the threshold the person set, and never from no reading', () => {
+    expect(moodDayOffers(on(), base({ sleepMinutes: 300, shortNightMinutes: 360 }))).toContain('Short night');
+    expect(moodDayOffers(on(), base({ sleepMinutes: 360, shortNightMinutes: 360 }))).not.toContain('Short night');
+    expect(moodDayOffers(on(), base({ sleepMinutes: 400, shortNightMinutes: 420 }))).toContain('Short night');
+    expect(moodDayOffers(on(), base({ sleepMinutes: null }))).not.toContain('Short night');
+    expect(moodDayOffers(on(), base({ sleepMinutes: 0 }))).not.toContain('Short night');
+    expect(moodDayOffers(on({ shortNight: false }), base({ sleepMinutes: 200 }))).not.toContain('Short night');
+  });
+
+  it('offers Rain only for rain that was seen to fall, over the floor', () => {
+    expect(moodDayOffers(on(), base({ rain: { mm: RAIN_TAG_MM, observed: true } }))).toContain('Rain');
+    expect(moodDayOffers(on(), base({ rain: { mm: RAIN_TAG_MM - 0.5, observed: true } }))).not.toContain('Rain');
+    expect(moodDayOffers(on(), base({ rain: { mm: 12, observed: false } }))).not.toContain('Rain');
+    expect(moodDayOffers(on(), base({ rain: { mm: null, observed: true } }))).not.toContain('Rain');
+    expect(moodDayOffers(on(), base({ rain: null }))).not.toContain('Rain');
+    expect(moodDayOffers(on({ rain: false }), base({ rain: { mm: 12, observed: true } }))).not.toContain('Rain');
+  });
+
+  it('offers a keyword rule\'s tag for a matching event that day, whole words only', () => {
+    const rule: MoodEventTag = { id: 'r', title: 'Therapy', enabled: true, matches: ['therapy'] };
+    const sources = { ...NO_MOOD_CONTEXT_SOURCES };
+    expect(moodDayOffers(sources, base({ eventTags: [rule], events: [event({ title: 'Therapy w/ Dr K' })] })))
+      .toEqual(['Therapy']);
+    expect(moodDayOffers(sources, base({ eventTags: [rule], events: [event({ title: 'Physiotherapy' })] })))
+      .toEqual([]);
+    expect(moodDayOffers(sources, base({ eventTags: [{ ...rule, enabled: false }], events: [event({ title: 'Therapy' })] })))
+      .toEqual([]);
+    expect(moodDayOffers(sources, base({ eventTags: [rule], events: [event({ title: 'Therapy', status: 'canceled' })] })))
+      .toEqual([]);
+    expect(moodDayOffers(sources, base({
+      eventTags: [rule],
+      events: [event({ title: 'Therapy', start: new Date(2026, 6, 5, 10).toISOString() })],
+    }))).toEqual([]);
+    expect(moodDayOffers(sources, base({ eventTags: [rule], events: null }))).toEqual([]);
+  });
+
+  it('does not offer the same tag twice when two rules name it', () => {
+    const rules: MoodEventTag[] = [
+      { id: 'a', title: 'In office', enabled: true, matches: ['office'] },
+      { id: 'b', title: 'in office', enabled: true, matches: ['standup'] },
+    ];
+    const events = [event({ title: 'Office day' }), event({ id: 'e2', title: 'Standup' })];
+    expect(moodDayOffers(NO_MOOD_CONTEXT_SOURCES, base({ eventTags: rules, events }))).toEqual(['In office']);
+  });
+
   it('keeps each switch independent', () => {
     expect(moodDayOffers(on({ dayOff: false }), base())).not.toContain('Holiday');
+  });
+});
+
+describe('rainForDay', () => {
+  const hour = (h: number, weatherCode: number) => ({ hour: h, weatherCode, tempF: 60 });
+  const snapshot = {
+    yesterdayPrecipitationMm: 8,
+    todayPrecipitationMm: 6,
+    todayHours: [hour(8, 3), hour(14, 61)],
+  };
+
+  it('counts today only once rain has fallen in an hour already gone', () => {
+    expect(rainForDay('2026-07-04', snapshot, '2026-07-04', 10)).toEqual({ mm: 6, observed: false });
+    expect(rainForDay('2026-07-04', snapshot, '2026-07-04', 15)).toEqual({ mm: 6, observed: true });
+  });
+
+  it('reads yesterday as a record, and knows nothing of any other day', () => {
+    expect(rainForDay('2026-07-03', snapshot, '2026-07-04', 0)).toEqual({ mm: 8, observed: true });
+    expect(rainForDay('2026-07-02', snapshot, '2026-07-04', 0)).toBeNull();
+    expect(rainForDay('2026-07-04', null, null, 12)).toBeNull();
+  });
+});
+
+describe('parseMoodEventTags', () => {
+  it('keeps a rule with a tag and a keyword, and drops one missing either', () => {
+    const raw = JSON.stringify([
+      { id: 'a', title: ' Therapy ', enabled: true, matches: ['therapy', 'Therapy', ' '] },
+      { id: 'b', title: '', enabled: true, matches: ['office'] },
+      { id: 'c', title: 'Gym', enabled: false, matches: [] },
+      { id: 'd', title: 'In office', enabled: false, matches: ['office'] },
+    ]);
+    expect(parseMoodEventTags(raw)).toEqual([
+      { id: 'a', title: 'Therapy', enabled: true, matches: ['therapy'] },
+      { id: 'd', title: 'In office', enabled: false, matches: ['office'] },
+    ]);
+    expect(parseMoodEventTags('nope')).toEqual([]);
+    expect(parseMoodEventTags(null)).toEqual([]);
   });
 });
 
 describe('parseMoodContextSources', () => {
   it('reads what was stored and treats anything unreadable as off', () => {
     expect(parseMoodContextSources(JSON.stringify({ dayOff: true, social: 'yes' }))).toEqual({
-      dayOff: true, social: false, exercise: false, outside: false,
+      dayOff: true, social: false, exercise: false, workout: false, shortNight: false, outside: false, rain: false,
     });
     expect(parseMoodContextSources('not json')).toEqual(NO_MOOD_CONTEXT_SOURCES);
     expect(parseMoodContextSources(null)).toEqual(NO_MOOD_CONTEXT_SOURCES);

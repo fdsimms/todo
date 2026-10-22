@@ -616,6 +616,8 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // Which day facts the mood log may offer as tags (moodDayContext.ts). A
   // preference about how the person keeps the log, not about this phone.
   'moodContextSources',
+  // Calendar keyword -> mood tag rules, the same kind of preference.
+  'moodEventTags',
   // The limit tasks deleted for good, and the slips the app logged on them.
   'limitWarningDeclined',
   'limitWarningAutoSlips',
