@@ -209,7 +209,7 @@ function normalizeCue(cue: string): string {
  * this returns a list to be counted rather than a boolean, and why an empty
  * result reads as "nothing to say yet" everywhere it is consulted.
  */
-function ruleCues(rule: EventTaskRule): string[] {
+function ruleCues(rule: Pick<EventTaskRule, 'matches'>): string[] {
   return rule.matches
     .map(normalizeCue)
     .filter(cue => cue.length >= EVENT_MATCH_MIN_LENGTH);
@@ -264,7 +264,7 @@ function cueInHaystack(cue: string, haystack: string): boolean {
  * it did not have. It applies per keyword, so it composes with the OR above
  * rather than interacting with it.
  */
-export function ruleMatchesTitle(rule: EventTaskRule, title: string): boolean {
+export function ruleMatchesTitle(rule: Pick<EventTaskRule, 'matches'>, title: string): boolean {
   const haystack = normalizeCue(title);
   if (!haystack) return false;
   return ruleCues(rule).some(cue => cueInHaystack(cue, haystack));

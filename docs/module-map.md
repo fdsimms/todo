@@ -297,12 +297,13 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/metricKit.ts` — DeviceMetricSummary, DEVICE_METRIC_LIMIT, Bucket, histogramBuckets, bucketTotal, bucketMedianMs, parseMetricPayload, parseSummaries, mergeSummaries, collectSummaries, +1 more
 - `src/utils/mirroringDefault.ts` — shouldDefaultMirroringOn
 - `src/utils/missed.ts` — isMissed, isRealCompletion, isDoneByOther, isResolvedAsDone, MostMissedGroup, mostMissed
-- `src/utils/moodContextSources.ts` — MoodContextSources, NO_MOOD_CONTEXT_SOURCES, MOOD_CONTEXT_SOURCE_KEYS, EXERCISED_MINUTES, OUTSIDE_MINUTES, parseMoodContextSources
-- `src/utils/moodDayContext.ts` — MoodDayInputs, moodDayOffers
+- `src/utils/moodContextSources.ts` — MoodContextSources, NO_MOOD_CONTEXT_SOURCES, MOOD_CONTEXT_SOURCE_KEYS, EXERCISED_MINUTES, OUTSIDE_MINUTES, RAIN_TAG_MM, parseMoodContextSources, MoodEventTag, MOOD_EVENT_TAG_MAX_LENGTH, parseMoodEventTags
+- `src/utils/moodDayContext.ts` — MoodDayInputs, DayRain, rainForDay, moodDayOffers
 - `src/utils/moodDayOffers.ts` — moodDayOffersFor
+- `src/utils/moodEventTagOffers.ts` — MOOD_TAG_OFFER_DAYS, MoodEventTagOffer, clipAtWord, moodEventTagOffers, filterMoodEventTagOffers, describeMoodEventTagOffer, ruleFromOffer, moodTagOfferWindow
 - `src/utils/moodExport.ts` — MOOD_EXPORT_COLUMNS, csvCell, moodExportCsv, moodExportFileName, moodExportSummary
 - `src/utils/moodHistory.ts` — MoodFilter, EMPTY_MOOD_FILTER, isMoodFilterActive, hasWrittenNote, toggleFilterValue, filterMoodLogs, searchMoodLogs, textMatchesQuery, adjacentLogDays, MoodLogDay, +10 more
-- `src/utils/moodInsights.ts` — MIN_PAIRED_DAYS, MIN_CONTRAST_DAYS, MoodDay, taskIdentityKey, HealthDayInput, FoodDayInput, NUTRIENT_INSIGHT_KEYS, InsightNutrient, completionDayKey, buildMoodDays, +48 more
+- `src/utils/moodInsights.ts` — MIN_PAIRED_DAYS, MIN_CONTRAST_DAYS, MoodDay, taskIdentityKey, HealthDayInput, FoodDayInput, NUTRIENT_INSIGHT_KEYS, InsightNutrient, completionDayKey, buildMoodDays, +49 more
 - `src/utils/moodLog.ts` — MOOD_LEVELS, FACTOR_LEVELS, DEFAULT_FACTORS, LOW_MOOD_AT_OR_BELOW, DEFAULT_CONTEXT_TAGS, SYMPTOM_SEVERITIES, moodLabel, factorLabel, severityLabel, symptomKey, +23 more
 - `src/utils/moodPlaceNow.ts` — moodPlaceTagNow
 - `src/utils/moodPlaces.ts` — PLACE_MATCH_RADIUS_M, PLACE_MAX_FIX_ERROR_M, PlaceFix, distanceMeters, moodPlacesOf, placeTagName, placeAt, placeTagAt

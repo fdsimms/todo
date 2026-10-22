@@ -1,4 +1,4 @@
-import { NO_MOOD_CONTEXT_SOURCES, parseMoodContextSources, type MoodContextSources } from '../utils/moodContextSources';
+import { NO_MOOD_CONTEXT_SOURCES, parseMoodContextSources, parseMoodEventTags, type MoodContextSources, type MoodEventTag } from '../utils/moodContextSources';
 import { parseTaskTypeFilters, type TaskTypeFilter } from '../utils/taskTypeFilter';
 import { create } from 'zustand';
 import { dbGetAllSettings, dbGetDeviceId, dbGetSetting, dbSetSetting } from '../db/database';
@@ -1265,6 +1265,12 @@ interface SettingsStore {
    * (`moodDayContext.ts`). Every one is off until turned on.
    */
   moodContextSources: MoodContextSources;
+  /**
+   * Calendar keyword -> mood tag rules ("therapy" picks Therapy). Kept out of
+   * DEFAULT_SETTINGS for the reason eventRules is: String() can't round-trip
+   * an array.
+   */
+  moodEventTags: MoodEventTag[];
 
   /**
    * A weight to reach, the rate to reach it at, and the weight it was set
@@ -2262,6 +2268,7 @@ interface SettingsStore {
   setWorkoutLiveActivity: (on: boolean) => void;
   setExerciseImagesEnabled: (on: boolean) => void;
   setMoodContextSource: (key: keyof MoodContextSources, on: boolean) => void;
+  setMoodEventTags: (rules: MoodEventTag[]) => void;
   /** Sets the weight goal, or clears it with null. */
   setWeightGoal: (goal: WeightGoal | null) => void;
   /** Sets the sleep goal in minutes, or clears it with null. */
@@ -3169,6 +3176,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   eventTasks: false,
   eventTaskCategory: null,
   eventRules: [],
+  moodEventTags: [],
   generatorEstimates: {},
   eventTaskHandled: {},
   travelTasks: false,
@@ -3561,6 +3569,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const defaultGymId = dbGetSetting('defaultGymId') || null;
     const defaultRestSeconds = parseRestSeconds(dbGetSetting('defaultRestSeconds'));
     const moodContextSources = parseMoodContextSources(dbGetSetting('moodContextSources'));
+    const moodEventTags = parseMoodEventTags(dbGetSetting('moodEventTags'));
     // Both parsers salvage rather than throw: an unreadable goal reads back as
     // no goal, and an unreadable profile as an empty one, so a blob written by
     // a future build can never stop the settings loading.
@@ -4102,6 +4111,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       menuArrangement,
       mirroringMode,
       moodContextSources,
+      moodEventTags,
       moodLogLastDayKey,
       moodLogTaskCategory,
       moodLogTasks,
@@ -5919,6 +5929,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setExerciseImagesEnabled(on: boolean) {
     dbSetSetting('exerciseImagesEnabled', on ? 'true' : 'false');
     set({ exerciseImagesEnabled: on });
+  },
+
+  // Written whole, like setEventRules.
+  setMoodEventTags(rules: MoodEventTag[]) {
+    dbSetSetting('moodEventTags', JSON.stringify(rules));
+    set({ moodEventTags: rules });
   },
 
   setMoodContextSource(key: keyof MoodContextSources, on: boolean) {

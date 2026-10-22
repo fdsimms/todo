@@ -103,6 +103,13 @@ interface Props<T extends EditableRule> {
   renderEditor: (rule: T, update: (patch: Partial<T>) => void) => ReactNode;
   titlePlaceholder: string;
   titleMaxLength: number;
+  /** The label over the title field. Defaults to "Add this task", for the task rules. */
+  titleLabel?: string;
+  /**
+   * A rule the caller just added from its `header` (an offer it listed), to
+   * open the way the sheet's own add button opens one. Read when it changes.
+   */
+  openRuleId?: string | null;
   emptyIcon: IoniconName;
   emptyTitle: string;
   emptySubtitle: string;
@@ -143,6 +150,8 @@ export function RuleListSheet<T extends EditableRule>({
   renderEditor,
   titlePlaceholder,
   titleMaxLength,
+  titleLabel = 'Add this task',
+  openRuleId,
   emptyIcon,
   emptyTitle,
   emptySubtitle,
@@ -175,6 +184,9 @@ export function RuleListSheet<T extends EditableRule>({
     setExpandedId(null);
     onClose();
   };
+  useEffect(() => {
+    if (openRuleId) setExpandedId(openRuleId);
+  }, [openRuleId]);
   useEffect(() => {
     if (!visible) {
       setExpandedId(null);
@@ -330,7 +342,7 @@ export function RuleListSheet<T extends EditableRule>({
                           </Text>
                         )}
                         {renderEditor(rule, patch => update(rule.id, patch))}
-                        <Text style={[styles.editorLabel, styles.editorLabelSpaced]}>Add this task</Text>
+                        <Text style={[styles.editorLabel, styles.editorLabelSpaced]}>{titleLabel}</Text>
                         <TextField
                           style={styles.titleInput}
                           value={rule.title}

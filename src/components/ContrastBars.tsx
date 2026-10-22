@@ -44,6 +44,8 @@ import { contrastBarPercent } from '../utils/moodInsights';
 export interface ContrastBarsProps {
   /** The thing being compared: a food, a category, a repeating task, a symptom. */
   label: string;
+  /** A line under the label that wraps, for what the label alone can't say. */
+  detail?: string;
   /** What each side is called. Kept short; the column is a fixed width. */
   withLabel: string;
   withoutLabel: string;
@@ -68,6 +70,7 @@ export interface ContrastBarsProps {
 
 export function ContrastBars({
   label,
+  detail,
   withLabel,
   withoutLabel,
   withFraction,
@@ -94,6 +97,7 @@ export function ContrastBars({
         <Text style={styles.label} numberOfLines={1}>{label}</Text>
         {onPress && <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />}
       </View>
+      {detail && <Text style={styles.detail}>{detail}</Text>}
       {sides.map(side => (
         <View key={side.key} style={styles.line}>
           <Text style={[styles.key, side.muted && styles.muted]} numberOfLines={1}>
@@ -146,6 +150,9 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   rowGap: { marginTop: spacing.md },
   head: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: 3 },
   label: { flex: 1, fontSize: font.sm, color: colors.text },
+  // Pulled up into the head's own bottom margin, so the name and its detail
+  // read as one heading above the pair of bars.
+  detail: { fontSize: font.xs, color: colors.textSecondary, marginTop: -3, marginBottom: 3 },
   line: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   // Fixed widths on both ends so every track starts and finishes on the same x.
   // That alignment is what lets one row's bars be compared against another's,

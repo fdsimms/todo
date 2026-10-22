@@ -791,6 +791,25 @@ describe('mood against one repeating task', () => {
     expect(taskMoodContrasts(days).map(r => r.label)).toEqual(['occ-0']);
   });
 
+  it('folds tasks finished on exactly the same days into one row', () => {
+    const moods = [5, 5, 5, 5, 5, 2, 2, 2, 2, 2];
+    const logs = moods.map((mood, i) => log(`2026-08-${String(i + 1).padStart(2, '0')}`, mood));
+    const chain = (name: string, on: number[]) => on.map((d, i) => task(
+      `2026-08-${String(d + 1).padStart(2, '0')}T10:00:00`,
+      { id: `${name}-${i}`, title: name, previousOccurrenceId: i === 0 ? null : `${name}-${i - 1}` } as Partial<Task>,
+    ));
+    const days = buildMoodDays(logs, [
+      ...chain('desk', [0, 1, 2]),
+      ...chain('dresser', [0, 1, 2]),
+      ...chain('walk', [0, 1, 5]),
+    ], '00:00');
+    const rows = taskMoodContrasts(days);
+    expect(rows.map(r => [r.label, r.sameDays])).toEqual(
+      expect.arrayContaining([['desk-0', ['dresser-0']], ['walk-0', []]]),
+    );
+    expect(rows).toHaveLength(2);
+  });
+
   it('says nothing about a one-off, which cannot clear the both-sides gate', () => {
     const days = build([5, 5, 5, 5, 5, 2, 2, 2, 2, 2], [0]);
     expect(taskMoodContrasts(days)).toEqual([]);

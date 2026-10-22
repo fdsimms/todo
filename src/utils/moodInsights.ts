@@ -575,6 +575,15 @@ export interface GroupContrast {
   delta: number;
 }
 
+/** A repeating task's contrast, with any other tasks finished on exactly the same days. */
+export interface TaskContrast extends GroupContrast {
+  /**
+   * Identity keys of the other tasks done on exactly the days `label` was, so
+   * their figures are this row's figures. Empty for a task with its own days.
+   */
+  sameDays: string[];
+}
+
 /**
  * For each category of work: how your mood ran on the days you finished some,
  * against the days you didn't.
@@ -698,12 +707,35 @@ export function factorMoodContrasts(days: readonly MoodDay[]): GroupContrast[] {
  * back to a title through `taskContrastTitles` — the same key-to-display step
  * the symptom rows already make.
  */
-export function taskMoodContrasts(days: readonly MoodDay[]): GroupContrast[] {
+export function taskMoodContrasts(days: readonly MoodDay[]): TaskContrast[] {
   const paired = taskPairedDays(days);
   if (paired.length < MIN_PAIRED_DAYS) return [];
-  const labels = new Set<string>();
-  for (const day of paired) for (const key of day.taskKeys) labels.add(key);
-  return contrastsFor(paired, [...labels], (day, label) => day.taskKeys.includes(label));
+  // Tasks finished on exactly the same days give identical rows, so they are
+  // one row: a weekly routine of four tasks would otherwise fill the card four
+  // times over and push every other task off it. Grouped by the set of paired
+  // days each was done on, since those are the only days a contrast reads.
+  const daysByKey = new Map<string, string[]>();
+  for (const day of paired) {
+    for (const key of day.taskKeys) {
+      let list = daysByKey.get(key);
+      if (!list) daysByKey.set(key, (list = []));
+      list.push(day.dayKey);
+    }
+  }
+  const groups = new Map<string, string[]>();
+  for (const [key, dayKeys] of daysByKey) {
+    const signature = dayKeys.join(',');
+    const group = groups.get(signature);
+    if (group) group.push(key);
+    else groups.set(signature, [key]);
+  }
+  const sameDays = new Map<string, string[]>();
+  for (const group of groups.values()) {
+    const [first, ...rest] = [...group].sort();
+    sameDays.set(first, rest);
+  }
+  return contrastsFor(paired, [...sameDays.keys()], (day, label) => day.taskKeys.includes(label))
+    .map(row => ({ ...row, sameDays: sameDays.get(row.label) ?? [] }));
 }
 
 /**
