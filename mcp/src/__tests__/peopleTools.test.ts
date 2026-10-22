@@ -90,8 +90,24 @@ describe('upcomingBirthdays', () => {
       nextBirthday: (p: Person) => ({ a: new Date(2026, 9, 20, 12), b: new Date(2026, 9, 6, 12), c: new Date(2027, 0, 1, 12) } as Record<string, Date>)[p.id],
     });
     expect(upcomingBirthdays(r, 30)).toEqual([
-      { id: 'b', name: 'B', date: '2026-10-06' },
-      { id: 'a', name: 'Al', date: '2026-10-20' },
+      { id: 'b', name: 'B', date: '2026-10-06', occasion: 'Birthday' },
+      { id: 'a', name: 'Al', date: '2026-10-20', occasion: 'Birthday' },
+    ]);
+  });
+
+  it("lists a person's other dates beside the birthdays, under their own names", () => {
+    const r = stub([
+      person({
+        id: 'a', name: 'Al',
+        dates: [
+          { id: 'd1', label: 'Anniversary', month: 10, day: 12, year: 2015, yearly: true, remind: false },
+          { id: 'd2', label: 'Moved in', month: 3, day: 1, year: null, yearly: true, remind: true },
+        ],
+      }),
+    ], { nextBirthday: () => new Date(2026, 9, 20, 12), todayKey: () => '2026-10-05' });
+    expect(upcomingBirthdays(r, 30)).toEqual([
+      { id: 'a', name: 'Al', date: '2026-10-12', occasion: 'Anniversary' },
+      { id: 'a', name: 'Al', date: '2026-10-20', occasion: 'Birthday' },
     ]);
   });
 });

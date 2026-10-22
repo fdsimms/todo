@@ -13,6 +13,7 @@
  * though never a cadence, nudge, group, archive or order.
  */
 import { primaryNickname } from '../../src/utils/nicknames';
+import { nextPersonDate } from '../../src/utils/personDateTasks';
 import type { Person } from '../../src/types';
 import type { PersonFields, Replica } from './replica';
 import { localDateInput } from './timeZone';
@@ -143,16 +144,30 @@ export function getPerson(replica: Replica, id: string): PersonDetail | null {
  * Birthdays coming up within `days`, soonest first. Ordered by the date, which
  * is a fact about the calendar, not a measure of the person.
  */
-export function upcomingBirthdays(replica: Replica, days = DEFAULT_BIRTHDAY_DAYS): { name: string; id: string; date: string }[] {
+export function upcomingBirthdays(
+  replica: Replica,
+  days = DEFAULT_BIRTHDAY_DAYS,
+): { name: string; id: string; date: string; occasion: string }[] {
   const span = Math.min(Math.max(days, 1), MAX_BIRTHDAY_DAYS);
   const limit = replica.shiftDayKey(replica.todayKey(), span - 1);
-  return replica
-    .people()
-    .filter(p => !p.archived)
-    .map(p => ({ p, next: replica.nextBirthday(p) }))
-    .filter((x): x is { p: Person; next: Date } => x.next !== null && dayKey(x.next) <= limit)
+  const [y, m, d] = replica.todayKey().split('-').map(Number);
+  const today = new Date(y, m - 1, d, 12);
+  const rows: { p: Person; next: Date; occasion: string }[] = [];
+  for (const p of replica.people()) {
+    if (p.archived) continue;
+    const birthday = replica.nextBirthday(p);
+    if (birthday) rows.push({ p, next: birthday, occasion: 'Birthday' });
+    // A person's other dates (Person.dates), whether or not they remind:
+    // this is what's coming, not what the phone will nudge about.
+    for (const date of p.dates ?? []) {
+      const next = nextPersonDate(date, today);
+      if (next) rows.push({ p, next, occasion: date.label });
+    }
+  }
+  return rows
+    .filter(x => dayKey(x.next) <= limit)
     .sort((a, b) => +a.next - +b.next)
-    .map(({ p, next }) => ({ id: p.id, name: primaryNickname(p.nickname) || p.name, date: dayKey(next) }));
+    .map(({ p, next, occasion }) => ({ id: p.id, name: primaryNickname(p.nickname) || p.name, date: dayKey(next), occasion }));
 }
 
 /**

@@ -487,6 +487,7 @@ export function PeopleScreen() {
               birthdayDay: draft.birthdayDay,
               birthYear: draft.birthYear,
               address: draft.address,
+              ...(draft.dates?.length ? { dates: draft.dates } : {}),
             });
           }}
           onClose={() => setContactPickerVisible(false)}

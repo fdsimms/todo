@@ -447,6 +447,11 @@ that differ are these:
   off (`writeGeneratedOptOut`), and the undo turns it back on.
 - **The title is "Sam: Anniversary"**, not the birthday's possessive, because a
   label is whatever was typed and most don't read after "Sam's".
+- **Contacts fills them in like the birthday** (`contactDates` in
+  `contactsImport.ts`): a card's dated labels come over with their month moved
+  off the native 0-11, a lunar or other non-Gregorian date is left out rather
+  than read as Gregorian, and filling an existing person adds only names they
+  don't already have, so a typed anniversary is never replaced by the card's.
 
 The same rules as the birthday hold everywhere it shows: the person's page
 prints the date, never a countdown, and nothing orders anybody by it.

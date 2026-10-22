@@ -143,7 +143,7 @@ only the fallback until the first sync.
 | `list_recipes` / `get_recipe` | Recipes by name, tag or ingredient; one recipe's ingredients, steps and source. |
 | `list_meal_plan` | Planned meals over a range of days, the coming week by default. |
 | `list_people` / `get_person` | People in the user's own order; one person's details, gift ideas, other notes and shared history, each with its id. |
-| `upcoming_birthdays` | Birthdays in the next N days, soonest first. |
+| `upcoming_birthdays` | Birthdays and people's other dates (an anniversary) in the next N days, soonest first, each naming its occasion. |
 | `list_grocery_items` | The home grocery list, or the whole catalog with `onListOnly: false`. `query` finds items by name across the whole catalog (`onListOnly: true` limits it to the list). A separate list (a trip's, say) is not included. |
 | `grocery_setup` | The aisles (and which are non-food), the stores (with receipt style, their own aisles and order), the lists (home and separate) with item counts, and the trip in progress. |
 | `get_grocery_item` | One item's whole catalog record: aisle, quantity, note, last price, brands, stores, substitutes, lists, receipt names, and its nutrition panel (with its source) when it has one, so a `set_nutrition_panel` write can be checked against what it would replace. |

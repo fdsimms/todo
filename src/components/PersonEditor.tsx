@@ -286,7 +286,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
             // saved by Done and can be undone by editing it back.
             onPick={draft => {
               const patch = fillFromContactPatch(
-                { phoneNumber: phoneNumber.trim() || null, email: email.trim() || null, birthdayMonth, birthdayDay, birthYear, address: address.trim() || null },
+                { phoneNumber: phoneNumber.trim() || null, email: email.trim() || null, birthdayMonth, birthdayDay, birthYear, address: address.trim() || null, dates },
                 draft
               );
               if (patch.phoneNumber) setPhoneNumber(formatPhoneInput(patch.phoneNumber));
@@ -297,6 +297,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
                 setBirthdayDay(patch.birthdayDay);
                 setBirthYear(patch.birthYear ?? null);
               }
+              if (patch.dates) setDates(patch.dates);
             }}
             onClose={() => setShowContactPicker(false)}
           />

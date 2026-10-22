@@ -1070,7 +1070,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'upcoming_birthdays',
-    `Birthdays in the next N days (default ${DEFAULT_BIRTHDAY_DAYS}), soonest first.`,
+    `Birthdays and the other dates saved on people (an anniversary, the day they met) in the next N days (default ${DEFAULT_BIRTHDAY_DAYS}), soonest first. occasion says which: "Birthday" or the date's own name.`,
     { days: z.number().int().positive().max(MAX_BIRTHDAY_DAYS).optional() },
     async ({ days }) => json(await withFresh(() => upcomingBirthdays(replica, days)))
   );

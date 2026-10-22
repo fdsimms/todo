@@ -4,6 +4,7 @@ import { isDemoModeActive } from './demoState';
 import {
   contactAddress,
   contactBirthday,
+  contactDates,
   MAX_CONTACT_RESULTS,
   canSearchContacts,
   type ContactCandidate,
@@ -115,6 +116,7 @@ export function toCandidate(contact: ExistingContact): ContactCandidate | null {
     email,
     address: contactAddress(contact.addresses),
     ...contactBirthday(contact.birthday),
+    dates: contactDates(contact.dates),
   };
 }
 
@@ -145,7 +147,7 @@ export async function searchContacts(query: string): Promise<ContactCandidate[]>
     const result = await contacts().getContactsAsync({
       // Narrowed in the query, not after it — see the note at the top.
       name: query.trim(),
-      fields: [Fields.Name, Fields.PhoneNumbers, Fields.Emails, Fields.Birthday, Fields.Addresses],
+      fields: [Fields.Name, Fields.PhoneNumbers, Fields.Emails, Fields.Birthday, Fields.Dates, Fields.Addresses],
       // A ceiling on what is fetched as well as on what is shown, so a query
       // like "a" that slipped past the length floor still can't pull a book
       // into memory.
@@ -187,7 +189,7 @@ export async function fetchLimitedContacts(): Promise<ContactCandidate[]> {
     if (!permission.granted || permission.accessPrivileges !== 'limited') return [];
     const { Fields } = contacts();
     const result = await contacts().getContactsAsync({
-      fields: [Fields.Name, Fields.PhoneNumbers, Fields.Emails, Fields.Birthday, Fields.Addresses],
+      fields: [Fields.Name, Fields.PhoneNumbers, Fields.Emails, Fields.Birthday, Fields.Dates, Fields.Addresses],
       pageSize: MAX_LIMITED_CONTACTS,
       pageOffset: 0,
     });
