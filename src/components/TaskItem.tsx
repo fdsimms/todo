@@ -1821,11 +1821,12 @@ const TaskItemRow = React.memo(function TaskItem({
   // where every tap on the row means "pick this one".
   const meterInteractive = showQuotaMeter && !completing && !pacingOut && !selectionMode;
   // The long-press menu is for a task that can be closed out right now. A
-  // meter, a rotation and a negative habit keep their own long press; one that
-  // isn't due yet has nothing to close (completionLocked). Skip and Mark Missed
-  // are offered only when there is a next date to move to.
+  // negative habit keeps its own long press; one that isn't due yet has nothing
+  // to close (completionLocked). A target's menu also carries "Take one off",
+  // which used to be the whole of its long press. Skip and Mark Missed are
+  // offered only when there is a next date to move to.
   const completionMenuOffered =
-    !selectionMode && !isNegative && !completing && !showQuotaMeter && !isRotation &&
+    !selectionMode && !isNegative && !completing && (!showQuotaMeter || meterInteractive) &&
     !completionLocked && !recordLog;
   const completionMenuRepeats = task.recurrenceType !== 'none';
   // Missed is open to a one-off task too: it closes with no successor. A
@@ -2158,7 +2159,9 @@ const TaskItemRow = React.memo(function TaskItem({
     // along — but it still ends on the same checkmark every other completion
     // does; see the delayed checkScale spring below. Any completion of a row
     // that's currently showing a meter takes this path, the widget's included.
-    const viaMeter = isQuota;
+    // Not for a missed or someone-else's one: the meter topping out to the brim
+    // would say the target was met, which is the opposite of both.
+    const viaMeter = isQuota && !outcome;
     // Set when this completion will spawn its successor immediately and the
     // row can preview it in place, rather than collapsing and waiting for a
     // separate row to slide in below — see chainStepAdvancesInPlace. Mutually
@@ -2837,33 +2840,18 @@ const TaskItemRow = React.memo(function TaskItem({
     if (quotaHeldRef.current) useTaskStore.getState().releaseQuotaHold(task.id);
   }, [task.id]);
 
-  // Long-press takes one back off, for the mis-tap — the shake-to-undo path
-  // covers it too, but the meter is tapped often enough to want a local undo.
-  const handleQuotaUndo = async () => {
+  // "Take one off" in the long-press menu, for the mis-tap — the shake-to-undo
+  // path covers it too, but the meter is tapped often enough to want a local
+  // undo. The menu is the confirmation: a long press is easy to do by accident,
+  // but choosing a row in the card is not.
+  const handleQuotaUndo = () => {
     if (task.progressCount === 0) return;
-    haptics.impactMedium();
-    // A long press is easy to do by accident while scrolling or reordering, and
-    // taking a unit off changes the count with nothing on screen to say so, so
-    // it asks first.
-    Alert.alert(
-      'Take one off?',
-      `Reduce “${displayTitleFor(task)}” from ${task.progressCount} to ${task.progressCount - 1}?`,
-      [
-        { text: BUTTON_LABEL.cancel, style: 'cancel' },
-        {
-          text: 'Take one off',
-          style: 'destructive',
-          onPress: () => {
-            // A rotation's count and its ledger have to move together — decrementing
-            // through the quota path would leave the ledger holding a pick the count
-            // no longer knows about, and "the count is how many distinct members the
-            // ledger holds" is the invariant everything downstream reads.
-            if (isRotation) unlogRotationUnit(task.id);
-            else unlogQuotaUnit(task.id);
-          },
-        },
-      ],
-    );
+    // A rotation's count and its ledger have to move together — decrementing
+    // through the quota path would leave the ledger holding a pick the count
+    // no longer knows about, and "the count is how many distinct members the
+    // ledger holds" is the invariant everything downstream reads.
+    if (isRotation) unlogRotationUnit(task.id);
+    else unlogQuotaUnit(task.id);
   };
 
   // Widget checkbox taps queue a completion and open the app (see
@@ -3087,7 +3075,6 @@ const TaskItemRow = React.memo(function TaskItem({
         }
         onLongPress={
           isNegative ? (negativeHoldAvailable ? handleNegativeHold : undefined)
-          : meterInteractive ? handleQuotaUndo
           : completionMenuOffered ? openCompletionMenu
           : undefined
         }
@@ -3156,7 +3143,6 @@ const TaskItemRow = React.memo(function TaskItem({
         accessibilityHint={
           isNegative
             ? (negativeHoldAvailable ? 'Double tap and hold for more options' : undefined)
-            : meterInteractive && task.progressCount > 0 ? 'Double tap and hold to take one back'
             // The completion menu (Skip, Mark missed, Done by someone else)
             // has no visible sign it's there, so say so to VoiceOver at least.
             : completionMenuOffered ? 'Double tap and hold for other ways to finish' : undefined
@@ -5344,6 +5330,8 @@ const TaskItemRow = React.memo(function TaskItem({
           onSkip={completionMenuRepeats ? () => { skipNextRecurrence(task.id); afterCompletionMenuChoice(); } : undefined}
           onMiss={canMiss ? () => handleMiss() : undefined}
           onSomeoneElse={handleSomeoneElse}
+          takeOffCount={meterInteractive && task.progressCount > 0 ? task.progressCount : undefined}
+          onTakeOff={handleQuotaUndo}
         />
       )}
       {mountNegativeMenu && (

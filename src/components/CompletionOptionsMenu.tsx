@@ -16,6 +16,10 @@ interface Props {
   onMiss?: () => void;
   /** Completes the occurrence with no coins and no streak change. */
   onSomeoneElse: () => void;
+  /** A target's current count, when it has one to take a unit off of. Omit it (or pass 0) and the row is hidden. */
+  takeOffCount?: number;
+  /** Takes the last logged unit off a target. */
+  onTakeOff?: () => void;
   onClose: () => void;
 }
 
@@ -27,7 +31,7 @@ interface Props {
  * that doesn't repeat has no next date to skip to, so it gets Mark missed
  * (which closes it) and the third.
  */
-export function CompletionOptionsMenu({ visible, anchor, onSkip, onMiss, onSomeoneElse, onClose }: Props) {
+export function CompletionOptionsMenu({ visible, anchor, onSkip, onMiss, onSomeoneElse, takeOffCount, onTakeOff, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const card = useCardSheet();
@@ -49,6 +53,24 @@ export function CompletionOptionsMenu({ visible, anchor, onSkip, onMiss, onSomeo
       popoverWidth={300}
       scrimLabel="Close menu"
     >
+      {onTakeOff && takeOffCount ? (
+        <>
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => choose(haptics.impactMedium, onTakeOff)}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel={`Take one off. Goes from ${takeOffCount} to ${takeOffCount - 1}.`}
+          >
+            <Ionicons name="remove-circle-outline" size={iconSize.md} color={colors.accent} style={styles.icon} />
+            <View style={styles.text}>
+              <Text style={styles.label}>Take one off</Text>
+              <Text style={styles.detail}>{`Goes from ${takeOffCount} to ${takeOffCount - 1}.`}</Text>
+            </View>
+          </TouchableOpacity>
+          <View style={styles.sep} />
+        </>
+      ) : null}
       {onSkip && (
         <>
           <TouchableOpacity
