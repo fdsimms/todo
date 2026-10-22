@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Alert,
 } from 'react-native';
+import { DESTINATION_MAX_LENGTH } from '../utils/tripEvents';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Project, ProjectLink, TaskFieldDefaults } from '../types';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
@@ -820,7 +821,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
               onChangeText={setDestination}
               placeholder="e.g. Lisbon"
               placeholderTextColor={colors.textTertiary}
-              maxLength={80}
+              maxLength={DESTINATION_MAX_LENGTH}
               accessibilityLabel="Where you’re going"
             />
           </View>
