@@ -108,6 +108,53 @@ function requireFeature(id: AiFeatureId): { apiKey: string; model: AiModelId } {
   return { apiKey, model };
 }
 
+/** A `tool_choice` that makes the model call a tool, which some models refuse. */
+function forcesTool(body: Record<string, unknown>): boolean {
+  const type = (body.tool_choice as { type?: string } | undefined)?.type;
+  return type === 'tool' || type === 'any';
+}
+
+/**
+ * Models that answered 400 to a forced `tool_choice` this session, so only the
+ * first request to one pays for the refusal. Not persisted: a model that learns
+ * to accept it again is picked up on the next launch.
+ */
+const refusesForcedToolChoice = new Set<string>();
+
+/** Forgets what `refusesForcedToolChoice` learned. For tests, which share the module. */
+export function forgetToolChoiceRefusals(): void {
+  refusesForcedToolChoice.clear();
+}
+
+/**
+ * The same request with the model left to choose, and the prompt asking for the
+ * tool in the forced one's place. Every forced call here offers a single tool,
+ * so naming it is what the forcing was for.
+ */
+function withoutForcedTool(body: Record<string, unknown>): Record<string, unknown> {
+  const name = (body.tool_choice as { name?: string } | undefined)?.name;
+  const hint = name ? `Respond by calling the ${name} tool.` : 'Respond by calling a tool.';
+  const system = typeof body.system === 'string' ? `${body.system}\n${hint}`
+    : Array.isArray(body.system) ? [...body.system, { type: 'text', text: hint }]
+    : hint;
+  return { ...body, tool_choice: { type: 'auto' }, system };
+}
+
+/** Anthropic's own sentence from an error body, trimmed to fit a line of copy. */
+function refusalReason(detail: string): string {
+  try {
+    const message = (JSON.parse(detail) as { error?: { message?: unknown } }).error?.message;
+    return typeof message === 'string' ? message.trim().replace(/\.$/, '').slice(0, 160) : '';
+  } catch {
+    return '';
+  }
+}
+
+/** A 401 and a 429 say everything the status does; a 5xx is Anthropic's, not the request's. */
+function isRefusal(status: number): boolean {
+  return status !== 401 && status !== 429 && status < 500;
+}
+
 /** POSTs to the Messages API with a timeout and flags a max_tokens truncation as an error. */
 async function callAnthropic(
   body: Record<string, unknown>,
@@ -121,40 +168,57 @@ async function callAnthropic(
   // request billed to it, and so did anything the person holding the phone
   // tried. Throwing here is the same failure every caller already handles.
   if (isDemoModeActive()) throw new Error('AI features are off in demo mode.');
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  let response: Response;
-  try {
-    response = await fetch(API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      // No `temperature` override — Opus 5/Sonnet 5 reject a non-default
-      // value, and the tool-forced extraction below doesn't need one.
-      body: JSON.stringify({ model, ...body }),
-      // Cast for the reason httpSyncTransport.ts gives: mcp/ typechecks this file
-      // against Node's AbortSignal, which disagrees with React Native's.
-      signal: controller.signal as unknown as RequestInit['signal'],
-    });
-  } catch (e) {
-    if (e instanceof Error && e.name === 'AbortError') throw new Error('Request timed out');
-    throw e;
-  } finally {
-    clearTimeout(timeout);
+
+  const post = async (payload: Record<string, unknown>): Promise<Response> => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        // No `temperature` override — Opus 5/Sonnet 5 reject a non-default
+        // value, and the tool-forced extraction below doesn't need one.
+        body: JSON.stringify({ model, ...payload }),
+        // Cast for the reason httpSyncTransport.ts gives: mcp/ typechecks this file
+        // against Node's AbortSignal, which disagrees with React Native's.
+        signal: controller.signal as unknown as RequestInit['signal'],
+      });
+    } catch (e) {
+      if (e instanceof Error && e.name === 'AbortError') throw new Error('Request timed out');
+      throw e;
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+
+  const skipForcing = forcesTool(body) && refusesForcedToolChoice.has(model);
+  let sent = skipForcing ? withoutForcedTool(body) : body;
+  let response = await post(sent);
+  // Its reason is only in the body, which `describeAIError` can't show and the
+  // thrown message must keep stable, so it rides on the error and in the log.
+  let detail = !response.ok && isRefusal(response.status)
+    ? await response.text().catch(() => '') : '';
+
+  // Some models answer a forced tool with a 400 naming `tool_choice` (Sonnet 5.5
+  // did, which turned every Sonnet-backed feature into "rejected the request").
+  // The forcing only guarantees the shape, so ask again without it.
+  if (!response.ok && response.status === 400 && forcesTool(sent) && /tool_choice/i.test(detail)) {
+    refusesForcedToolChoice.add(model);
+    sent = withoutForcedTool(body);
+    response = await post(sent);
+    detail = !response.ok && isRefusal(response.status)
+      ? await response.text().catch(() => '') : '';
   }
 
   if (!response.ok) {
-    // A 401 and a 429 say everything the status does. Any other 4xx is Anthropic
-    // refusing the request itself, and its reason is only in the body, which
-    // `describeAIError` can't show and the thrown message must keep stable.
-    if (response.status !== 401 && response.status !== 429 && response.status < 500) {
-      const detail = await response.text().catch(() => '');
+    if (isRefusal(response.status)) {
       logError('ai', new Error(`API error ${response.status} (${model}): ${detail.slice(0, 500)}`));
     }
-    throw new Error(`API error ${response.status}`);
+    throw Object.assign(new Error(`API error ${response.status}`), { reason: refusalReason(detail) });
   }
 
   const data = await response.json() as AnthropicResponse;
@@ -179,7 +243,10 @@ export function describeAIError(error: unknown, source: string = 'ai'): string {
   if (message === 'API error 429') return 'Rate limited by Anthropic. Try again in a moment.';
   if (message.startsWith('API error 5')) return 'Anthropic is having issues. Try again shortly.';
   // Any other 4xx is not the key (a bad key is a 401): the request itself was refused.
-  if (message.startsWith('API error')) return 'Anthropic rejected the request. Try another model for this feature in Settings.';
+  if (message.startsWith('API error')) {
+    const reason = (error as { reason?: string }).reason;
+    return `Anthropic rejected the request${reason ? ` (${reason})` : ''}. Try another model for this feature in Settings.`;
+  }
   if (message === 'Response was truncated') return 'The response was cut off. Try again.';
   if (message === 'No estimate returned') {
     return 'That description could not be read into figures. Try naming the dish and the place.';

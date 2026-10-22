@@ -11,6 +11,7 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, animation, type Colors } from '../theme';
 import { SpotlightScrim } from './SpotlightOverlay';
 import { AnimatedCollapsible } from './AnimatedCollapsible';
+import { useRestKey } from '../hooks/useRestKey';
 
 /** Inner padding of the tray, and so the inset of everything inside it. */
 export const TRAY_PAD = spacing.sm;
@@ -33,6 +34,12 @@ export const STACK_EDGE_DEPTH = spacing.smd;
 const TrayFoldContext = createContext<SharedValue<number> | null>(null);
 
 /**
+ * Bumped each time the fold comes to rest: the key for every view the fold
+ * animates, since its resting value differs open and folded (useRestKey).
+ */
+const TrayRestKeyContext = createContext(0);
+
+/**
  * Whether the enclosing tray is drawn raised (one step lighter than the page).
  * Rows and the header read it to step up a shade, or they would vanish into a
  * tray of their own colour.
@@ -47,6 +54,11 @@ export function useTrayRaised(): boolean {
 /** The tray's fold progress, or null outside a tray. */
 export function useTrayFold(): SharedValue<number> | null {
   return useContext(TrayFoldContext);
+}
+
+/** The key for a view the fold animates; 0 outside a tray, where it never moves. */
+export function useTrayRestKey(): number {
+  return useContext(TrayRestKeyContext);
 }
 
 interface Props {
@@ -106,18 +118,20 @@ export function TaskGroupTray({ collapsed = false, raised: raisedProp, children 
   const raised = raisedProp ?? isDark;
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const fold = useSharedValue(collapsed ? 1 : 0);
+  const { restKey, onRest } = useRestKey();
 
   useEffect(() => {
     fold.value = withTiming(collapsed ? 1 : 0, {
       duration: animation.duration.normal,
       easing: Easing.inOut(Easing.cubic),
-    });
+    }, onRest);
   }, [collapsed, fold]);
 
   const surfaceStyle = useAnimatedStyle(() => ({ opacity: 1 - fold.value }));
 
   return (
     <TrayFoldContext.Provider value={fold}>
+    <TrayRestKeyContext.Provider value={restKey}>
     <TrayRaisedContext.Provider value={raised}>
     <View style={styles.tray}>
       {/* Drawn *under* the children, so it dims only the tray surface they
@@ -134,7 +148,7 @@ export function TaskGroupTray({ collapsed = false, raised: raisedProp, children 
           carries the tray's colour and rounds the scrim's corners to match,
           and fades out with both when the stack folds, since the page under
           a folded stack is dimmed already. */}
-      <Reanimated.View style={[styles.surface, raised && styles.surfaceRaised, surfaceStyle]} pointerEvents="none">
+      <Reanimated.View key={restKey} style={[styles.surface, raised && styles.surfaceRaised, surfaceStyle]} pointerEvents="none">
         <SpotlightScrim />
       </Reanimated.View>
       {children}
@@ -143,6 +157,7 @@ export function TaskGroupTray({ collapsed = false, raised: raisedProp, children 
       </AnimatedCollapsible>
     </View>
     </TrayRaisedContext.Provider>
+    </TrayRestKeyContext.Provider>
     </TrayFoldContext.Provider>
   );
 }

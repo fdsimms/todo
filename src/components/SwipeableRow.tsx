@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, StyleSheet, Text, TouchableOpacity, View, type StyleProp, type ViewStyle } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Swipeable } from 'react-native-gesture-handler';
@@ -6,6 +6,14 @@ import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { nextSwipeArm, swipeArmDistance } from '../utils/swipeArm';
+import { runningOnMac } from '../utils/runningOnMac';
+
+/**
+ * Whether the pointer is over the row, for `SwipeActionButtons`, which shows
+ * its buttons only then. Null where nothing tracks a pointer (anywhere but a
+ * Mac, iPhone Mirroring included), which reads as "always show".
+ */
+export const RowHoverContext = createContext<boolean | null>(null);
 
 /** Every revealed panel is this wide, on every screen. */
 const ACTION_WIDTH = 80;
@@ -110,6 +118,15 @@ export function SwipeableRow({ selectAction, whenAction, undoAction, enabled = t
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const ref = useRef<Swipeable>(null);
+  // ==== hover ====
+  // On a Mac the row's action buttons (SwipeActionButtons, for mirroring
+  // mode) wait for the pointer. Tracked here because every row offering those
+  // buttons is one of these, and handed down through context so only the
+  // buttons re-render: `children` is the caller's element, unchanged.
+  const tracksHover = runningOnMac();
+  const [hovered, setHovered] = useState(false);
+  const onPointerEnter = useCallback(() => setHovered(true), []);
+  const onPointerLeave = useCallback(() => setHovered(false), []);
   // Whether this gesture has already run its action — see the note on
   // onSwipeableWillOpen below. Cleared at the start of every new drag rather
   // than on close, so an interrupted close animation can't leave the row's
@@ -226,7 +243,12 @@ export function SwipeableRow({ selectAction, whenAction, undoAction, enabled = t
     : undefined;
 
   return (
-    <View style={[styles.clip, style]}>
+    <View
+      style={[styles.clip, style]}
+      onPointerEnter={tracksHover ? onPointerEnter : undefined}
+      onPointerLeave={tracksHover ? onPointerLeave : undefined}
+    >
+      <RowHoverContext.Provider value={tracksHover ? hovered : null}>
       <Swipeable
         ref={ref}
         renderRightActions={renderRightActions}
@@ -286,6 +308,7 @@ export function SwipeableRow({ selectAction, whenAction, undoAction, enabled = t
       >
         {children}
       </Swipeable>
+      </RowHoverContext.Provider>
     </View>
   );
 }

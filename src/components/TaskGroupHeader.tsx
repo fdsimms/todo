@@ -13,12 +13,14 @@ import { SpotlightScrim } from './SpotlightOverlay';
 import { SwipeableRow } from './SwipeableRow';
 import { SwipeActionButtons } from './SwipeActionButtons';
 import { AnimatedCollapsible } from './AnimatedCollapsible';
-import { useTrayFold, useTrayRaised, TRAY_PAD, STACK_EDGE_DEPTH } from './TaskGroupTray';
+import { useTrayFold, useTrayRaised, useTrayRestKey, TRAY_PAD, STACK_EDGE_DEPTH } from './TaskGroupTray';
 import { PinIcon } from './PinIcon';
 import { useSheetMount } from '../hooks/useSheetMount';
 import { useProjectStore } from '../store/useProjectStore';
 import { AnimatedNumber } from './AnimatedNumber';
 import { RotatingChevron } from './RotatingChevron';
+import { PointerView, pointerMenuItem, type PointerMenuItem } from './PointerView';
+import { runningOnMac } from '../utils/runningOnMac';
 import { listCountNote, sectionIsList } from '../utils/listMode';
 
 interface Props {
@@ -147,6 +149,8 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
   const trayFold = useTrayFold();
   const noFold = useSharedValue(0);
   const fold = trayFold ?? noFold;
+  // The key for the three layers the fold fades (see useRestKey).
+  const foldKey = useTrayRestKey();
   const deckStyle = useAnimatedStyle(() => ({ opacity: fold.value }));
   // Only the opacity is animated. The two surfaces are plain styles stacked
   // under it, because a colour read inside a worklet reached the UI thread a
@@ -215,6 +219,33 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
     accessibilityLabel: `Reschedule all of ${group.title}`,
   };
 
+  // What the header already offers, for a right-click on a Mac: a tap on the
+  // title, the tile's long press, the swipes and its buttons, each under the
+  // condition that shows it. None while selecting, when the rows are the
+  // selection targets.
+  const contextMenuItems: PointerMenuItem[] | undefined = !runningOnMac() || selectionMode ? undefined : [
+    isExpanded ? pointerMenuItem('collapse', 'Collapse', 'chevron.up') : pointerMenuItem('collapse', 'Expand', 'chevron.down'),
+    ...(!allDone ? [pointerMenuItem('complete', 'Complete All', 'checkmark.circle')] : []),
+    pointerMenuItem('when', 'Reschedule All…', 'calendar'),
+    ...(onPressPin && !pinDisabled
+      ? [pinned ? pointerMenuItem('pin', 'Unpin All', 'pin.slash') : pointerMenuItem('pin', 'Pin All', 'pin')]
+      : []),
+    ...(onPressOpen ? [pointerMenuItem('open', 'Open Full Screen', 'arrow.up.left.and.arrow.down.right')] : []),
+    pointerMenuItem('edit', group.projectId ? 'Edit Section…' : 'Edit Stack…', 'pencil'),
+    ...(swipeSelect ? [pointerMenuItem('select', 'Select All', 'checklist')] : []),
+  ];
+  const handleContextMenu = (id: string) => {
+    switch (id) {
+      case 'collapse': toggleCollapse(); return;
+      case 'complete': completeAll(); return;
+      case 'when': swipeWhen.onAction(); return;
+      case 'pin': onPressPin?.(group.id); return;
+      case 'open': onPressOpen?.(group.id); return;
+      case 'edit': onPressEdit(group.id); return;
+      case 'select': swipeSelect?.onSelect(); return;
+    }
+  };
+
   return (
     <>
       <View style={styles.band}>
@@ -224,7 +255,7 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
             this view into the room the tray makes for them, and the stack's
             rows (later siblings) draw over them while they fold away. */}
         {trayFold && (
-          <Reanimated.View style={[styles.deck, deckStyle]} pointerEvents="none">
+          <Reanimated.View key={foldKey} style={[styles.deck, deckStyle]} pointerEvents="none">
             <View style={[styles.edgeFar, shadows.card]}>
               <View style={styles.layerClip}><SpotlightScrim /></View>
             </View>
@@ -246,8 +277,9 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
             selectAction={swipeSelect}
             whenAction={swipeWhen}
           >
+            <PointerView menuItems={contextMenuItems} onMenuSelect={handleContextMenu}>
             <Reanimated.View style={styles.row}>
-              <Reanimated.View style={[styles.rowCard, foldStyle]} pointerEvents="none" />
+              <Reanimated.View key={foldKey} style={[styles.rowCard, foldStyle]} pointerEvents="none" />
               {/* A filled tile, deliberately not the outlined box a task row
                   uses: this control cascades across the whole roster, and for
                   a while it wore the exact shape, size, position and colour of
@@ -280,7 +312,7 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
                 importantForAccessibility="no-hide-descendants"
               >
                 <View style={styles.glyph}>
-                  <Reanimated.View style={[styles.glyphFolded, foldStyle]} pointerEvents="none" />
+                  <Reanimated.View key={foldKey} style={[styles.glyphFolded, foldStyle]} pointerEvents="none" />
                   <Ionicons name="layers" size={iconSize.sm} color={colors.textSecondary} />
                 </View>
               </TouchableOpacity>
@@ -402,6 +434,7 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
               </TouchableOpacity>
               <SwipeActionButtons enabled={!selectionMode} whenAction={swipeWhen} selectAction={swipeSelect} />
             </Reanimated.View>
+            </PointerView>
           </SwipeableRow>
           <SpotlightScrim />
         </View>

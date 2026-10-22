@@ -5,6 +5,7 @@ import { useColors } from '../theme/ThemeContext';
 import { useBrandFace } from '../theme/AppFont';
 import { spacing, font, fontWeight, lineHeight, iconSize, interaction, radius, textScale, type Colors } from '../theme';
 import { PressableScale } from './PressableScale';
+import { PointerView } from './PointerView';
 import { TargetIcon, TARGET_ICON } from './TargetIcon';
 import { AnimatedNumber } from './AnimatedNumber';
 
@@ -159,9 +160,12 @@ export function ScreenHeader({ title, subtitle, overline, actions, right, onTitl
             ? colors.textTertiary
             : !action.active ? colors.textSecondary
             : action.tint === 'orange' ? colors.onFill : colors.onAccent;
+          const label = action.accessibilityLabel ?? labelFromIcon(action.icon);
           return (
+            // A tooltip on a Mac, where an icon with no words is otherwise a
+            // guess: the same words VoiceOver reads. A plain View elsewhere.
+            <PointerView key={`${action.icon}-${i}`} toolTip={label}>
             <PressableScale
-              key={`${action.icon}-${i}`}
               style={[styles.iconBtn, action.active && { backgroundColor: tintColor }]}
               onPress={action.onPress}
               disabled={action.disabled}
@@ -169,7 +173,7 @@ export function ScreenHeader({ title, subtitle, overline, actions, right, onTitl
               hitSlop={4}
               accessibilityRole="button"
               accessibilityState={{ selected: action.active, disabled: action.disabled, busy: action.loading }}
-              accessibilityLabel={action.accessibilityLabel ?? labelFromIcon(action.icon)}
+              accessibilityLabel={label}
             >
               {action.loading ? (
                 <ActivityIndicator size="small" color={iconColor} />
@@ -193,6 +197,7 @@ export function ScreenHeader({ title, subtitle, overline, actions, right, onTitl
                 )
               )}
             </PressableScale>
+            </PointerView>
           );
         })}
         {right}

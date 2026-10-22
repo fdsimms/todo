@@ -251,7 +251,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/journalTasks.ts` — JOURNAL_LOG_TITLE, JOURNAL_SNIPPET_TITLE, DREAM_LOG_TITLE, journalLogTitle, JOURNAL_TASK_KIND, journalMicUrl, journalLogUrl, journalTaskSourceId, journalTaskDayKey
 - `src/utils/keyScanAlert.ts` — alertKeyScanResult
 - `src/utils/keyScanQueue.ts` — QueuedKeyScan, QUEUED_KEY_CODE_MAX_LENGTH, parseQueuedKeyScans, keyCodeToken
-- `src/utils/keyShortcuts.ts` — KeyModifier, ShortcutAction, KeyShortcut, KEY_SHORTCUTS, shortcutById, shortcutKeys, describeShortcuts
+- `src/utils/keyShortcuts.ts` — KeyModifier, ShortcutAction, KeyShortcut, KEY_SHORTCUTS, MENU_SHORTCUTS, shortcutById, chordKey, shortcutKeys, describeShortcuts
 - `src/utils/kitchenHistory.ts` — KitchenEventKind, KitchenEvent, KitchenHistoryDay, kitchenEvents, kitchenHistoryDays, filterKitchenEvents
 - `src/utils/kitchenInventory.ts` — KitchenKind, kitchenEntryId, parseKitchenEntryId, KITCHEN_LINK_URL, kitchenLinkUrl, FRIDGE_SECTION, FREEZER_SECTION, PORTION_LABEL, KitchenEntry, KitchenSection, +5 more
 - `src/utils/kitchenReorder.ts` — KitchenRow, kitchenRowKey, KitchenDestination, KitchenMove, buildKitchenRows, resolveKitchenDrop, kitchenDragRange
@@ -270,6 +270,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/livePickerConfirm.ts` — confirmLivePicker
 - `src/utils/lookAhead.ts` — LookAheadWindow, LookAheadDay, AwayEntry, TightDeadline, LookAheadTotals, LookAhead, BuildLookAheadOptions, buildLookAhead, carriedOverTasks, awayEntries, +8 more
 - `src/utils/looseNameMatch.ts` — LOOSE_NAME_WEIGHT, looseNameWeight
+- `src/utils/macMenu.ts` — MenuPlacement, MenuItemSpec, MenuCommandTarget, menuTitleCase, buildMenuItems, menuCommandTarget, sinkShortcuts, shortcutsWithMenuBar, APP_WINDOW_TITLE, MIN_WINDOW_SIZE, +1 more
 - `src/utils/maintenancePasses.ts` — MaintenanceStep, expiryPasses, catchUpPasses, launchCatchUpPasses, retentionPasses, rebuildNotificationQueue
 - `src/utils/manualBlock.ts` — MANUAL_BLOCK_SETTING, MIN_MANUAL_MINUTES, MAX_MANUAL_MINUTES, MANUAL_BLOCK_PRESETS, ManualBlock, manualMinutesProblem, parseManualBlock, newManualBlock, serializeManualBlock, isTimedBlock, +4 more
 - `src/utils/maps.ts` — DirectionsApp, DirectionsCoordinate, directionsUrl, isMappable
@@ -449,6 +450,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/remindersImportSync.ts` — RemindersPermission, ImportOutcome, lastImportOutcome, getRemindersPermission, requestRemindersPermission, listReminderLists, countImportableReminders, groceryMirrorSignature, importReminders, useRemindersImportSync
 - `src/utils/removedBeforeEating.ts` — isUsuallyRemovedBeforeEating
 - `src/utils/reorder.ts` — moveItem, dropIndexFromTranslation, cumulativeOffsets, rowDragOffset, rowIndexAtContentY, dragRange, dragTranslation, clampCardToSlots, reorderSubset
+- `src/utils/rescheduleLabel.ts` — movedDayLabel, describeReschedule
 - `src/utils/resumeDate.ts` — ResumeDate, hasStaleDate, resumeDueDateFor
 - `src/utils/resumePrompt.ts` — confirmResume, resumeTasks
 - `src/utils/retention.ts` — RetentionDays, RETENTION_OPTIONS, retentionLabel, parseRetentionDays, retentionCutoff, selectPurgeableTaskIds, selectPurgeableFocusSessionIds, LEDGER_MAX_DAYS, ledgerCutoff, selectPurgeableUnattendedIds, +1 more
@@ -465,6 +467,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/ruleCategory.ts` — parseRuleCategory, ruleCategoryFor, renameInRuleCategories, withRuleCategory
 - `src/utils/ruleEstimate.ts` — GeneratorEstimate, GeneratorEstimates, holdsKindEstimate, parseRuleEstimate, ruleEstimateDraft, withRuleEstimate, parseGeneratorEstimates, withGeneratorEstimate
 - `src/utils/ruleLog.ts` — RULE_MEDICATION_NAME_MAX_LENGTH, parseRuleLog, ruleLogDraft, ruleLogOfTask, taskLogChanged, withRuleLog, renamedRuleLogs, describeRuleLog
+- `src/utils/runningOnMac.ts` — runningOnMac
 - `src/utils/savedDefaults.ts` — SavedDefaultRow, savedDefaultRows
 - `src/utils/savedEventTasks.ts` — BOOK_LEAD_DAYS, bookSourceId, bookEventSourceOf, bookDueDay, wantsBookTask, bookTaskTitle, bookTaskNotes
 - `src/utils/savedEvents.ts` — SAVED_EVENTS_KEY, BOOK_EVERY_MONTHS_MAX, SavedEvent, SavedEventFields, parseSavedEvents, readSavedEvents, writeSavedEvents, findSavedEvent, sortedSavedEvents, saveEventAs, +10 more
@@ -594,7 +597,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/tripEvents.ts` — spansDays, tripSpanOf, awayFieldsFromEvent, DESTINATION_MAX_LENGTH, destinationFromEvent, projectForTripEvent
 - `src/utils/tripForecast.ts` — TripForecast, summarizeTripForecast, describeTripForecast, describeForecastGap
 - `src/utils/tripLiveActivity.ts` — TripRun, buildTripRun, useTripLiveActivitySync
-- `src/utils/twoPane.ts` — TWO_PANE_MIN_WINDOW_WIDTH, TWO_PANE_LIST_WIDTH, TWO_PANE_ROUTES, twoPaneFor, columnUncappedFor
+- `src/utils/twoPane.ts` — TWO_PANE_MIN_WINDOW_WIDTH, TWO_PANE_LIST_WIDTH, TWO_PANE_LIST_MAX_WIDTH, twoPaneListWidthFor, TWO_PANE_ROUTES, twoPaneFor, columnUncappedFor
 - `src/utils/unattendedLedger.ts` — UnattendedActionSpec, UNATTENDED_ACTION_SPECS, AGENT_SOURCE, unattendedIcon, unattendedSource, describeUnattendedEntry, UnattendedDay, unattendedDays, unattendedDayLabel, unattendedSummary, +5 more
 - `src/utils/undoHistory.ts` — UndoableAction, UndoHistory, UNDO_STACK_LIMIT, topOf, pushEntry, popEntry, freshest, redoIsCurrent, offersOnUndoBar, latestUndoHistory, +9 more
 - `src/utils/unitConvert.ts` — UnitSystem, UNIT_SYSTEMS, Dimension, ML_PER_TBSP, ConvertedQuantity, MeasuredQuantity, measureQuantity, measureParsedQuantity, shelfUnit, unitBase, +6 more
@@ -748,7 +751,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useGroupSelectionCounts.ts` — useGroupSelectionCounts
 - `src/hooks/useHealthWorkoutHistory.ts` — useHealthWorkoutHistory
 - `src/hooks/useJournalAccess.ts` — useJournalAccess
-- `src/hooks/useKeyShortcuts.ts` — useKeyShortcuts
+- `src/hooks/useKeyShortcuts.ts` — hiddenActions, runShortcut, useKeyShortcuts
 - `src/hooks/useKeyboardHeight.ts` — useKeyboardHeight
 - `src/hooks/useKeyboardInsetScroll.ts` — ScrollHandle, KeyboardScrollIntoViewContext, useScrollFieldIntoView, useKeyboardInsetScroll
 - `src/hooks/useKeyboardLift.ts` — useKeyboardLift
@@ -757,8 +760,10 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useListScrollToTop.ts` — useListScrollToTop
 - `src/hooks/useLogicalDayKey.ts` — useLogicalDayKey
 - `src/hooks/useMacMirroringDefault.ts` — useMacMirroringDefault
+- `src/hooks/useMacWindow.ts` — useMacWindow
 - `src/hooks/useMealPlanNudgeProgress.ts` — useMealPlanNudgeProgress
 - `src/hooks/useMeasuredTextWidth.ts` — useMeasuredTextWidth
+- `src/hooks/useMenuBar.ts` — useMenuBar
 - `src/hooks/useNavMenuOptions.ts` — useNavMenuOptions, navMenuOptionsNow
 - `src/hooks/useNotificationPermission.ts` — useNotificationPermission
 - `src/hooks/useNowTick.ts` — useNowTick
@@ -777,6 +782,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useRecipeTimer.ts` — RecipeTimerBinding, useRecipeTimer
 - `src/hooks/useRecordTaskReady.ts` — useRecordTaskReady
 - `src/hooks/useReminderMeetingResync.ts` — useReminderMeetingResync
+- `src/hooks/useRestKey.ts` — useRestKey
 - `src/hooks/useRestTimer.ts` — useRestTimer, useRestChime
 - `src/hooks/useRowSelection.ts` — useRowSelection
 - `src/hooks/useScreenSettingControls.ts` — ScreenSettingControl, useScreenSettingControls
@@ -819,7 +825,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 
 ## `src/services`
 
-- `src/services/aiSuggestions.ts` — describeAIError, TemplateItemSuggestion, suggestTemplateItems, ProjectTaskSuggestion, suggestProjectTasks, SubtaskSuggestion, suggestSubtasks, suggestBackfillValues, MAX_RECIPE_CHARS, suggestGroceryAisles, +26 more
+- `src/services/aiSuggestions.ts` — forgetToolChoiceRefusals, describeAIError, TemplateItemSuggestion, suggestTemplateItems, ProjectTaskSuggestion, suggestProjectTasks, SubtaskSuggestion, suggestSubtasks, suggestBackfillValues, MAX_RECIPE_CHARS, +27 more
 - `src/services/foodSearch.ts` — FoodSearchHit, searchFoods, fetchFoodPortions, describeFoodSearchError, foodSearchErrorSettingsEntryId
 - `src/services/geocode.ts` — GeocodedPlace, geocodePlace
 - `src/services/onDeviceModel.ts` — isOnDeviceReady, onDeviceAvailability, describeOnDeviceAvailability, isOnDeviceErrorMessage, describeOnDeviceError, runOnDevice

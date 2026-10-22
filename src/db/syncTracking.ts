@@ -374,6 +374,8 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'appFont',
   'appFontRandomize',
   'appFontPool',
+  'use24HourTime',
+  'hideHelpText',
 
   // The shape of a day. These decide what counts as due, so two devices
   // disagreeing about them show genuinely different task lists.
@@ -484,12 +486,46 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'sortOption',
   'hideCategories',
   'collapsedCategories',
+  // The Projects screen's and the recipe box's orders, and the recipe box's
+  // and grocery list's folded groups: the same kind of preference about the
+  // shape of a list as the two above. The grocery keys name aisles and recipe
+  // ids, both synced, so they mean the same group on every device.
+  'projectSortOption',
+  'recipeSortOption',
+  'recipeLovedOnly',
+  'collapsedRecipeSections',
+  'collapsedGroceryGroups',
   'mealsOnToday',
   'calendarEventCategory',
   'kitchenEnabled',
   'unitSystem',
   'householdServings',
   'currencySymbol',
+  // What the kitchen does after a cook and when something runs low.
+  'cookRecapEnabled',
+  'restockOfferEnabled',
+  'runningLowAddsToList',
+
+  // Focus sessions. The finished sessions sync (focus_session_log); these are
+  // how a session is planned, so the same queue gets the same breaks on any
+  // device. The session in flight stays local (focus_sessions).
+  'focusBreaksEnabled',
+  'focusDefaultWorkMinutes',
+  'focusWorkCapMinutes',
+  'focusRestMinutes',
+  'focusRestAfterMinutes',
+  'focusRestAfterTasks',
+  'focusLongRestEvery',
+  'focusLongRestMinutes',
+  'focusHideTimers',
+
+  // The estimate a generated task is written with, for the generators with no
+  // rule to carry one (ruleEstimate.ts) and for each meal-slot chain step.
+  // Learned rather than chosen, but synced for the reason a rule's own
+  // estimate is: the task they stamp syncs, and two devices generating it
+  // should write the same figure.
+  'generatorEstimates',
+  'mealSlotStepEstimates',
 
   // Automatic tasks. Per-generator, matching the settings keys themselves
   // (see the note on GeneratedTasksSection — these were never merged).
@@ -571,6 +607,12 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'travelArriveEarlyMinutes',
   'travelMode',
   'travelWalkUnderMinutes',
+  // Which saved place the trip is estimated from (an id in the synced
+  // `savedPlaces`), and the subway lines whose alerts a travel task reports.
+  // The feed's own switch (`transitAlerts`) stays per device: it is a request
+  // nobody tapped for.
+  'travelOriginPlaceId',
+  'transitLines',
   'useUpTaskCap',
   'waitingFollowUpTaskCategory',
   // The WaniKani task's options. The token is the keychain's and never syncs,
@@ -609,6 +651,9 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // The journal's daily word goal. A typed-in preference, and a count of words
   // rather than anything written, so it needs no switch of its own.
   'journalWordGoal',
+  // The person's own writing prompts. Questions to write to, not anything
+  // written, so they travel like the word goal rather than with the entries.
+  'journalCustomPrompts',
   // Which day facts the mood log may offer as tags (moodDayContext.ts). A
   // preference about how the person keeps the log, not about this phone.
   'moodContextSources',
@@ -620,6 +665,14 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // The goals whose Aim for task was deleted or switched off.
   'goalTargetDeclined',
   'waterUnit',
+  // The weight screen's unit, and the food log's own layout: which nutrients
+  // it pins and whether a logged food closes the sheet.
+  'weightUnit',
+  'foodLogPinnedNutrients',
+  'keepOpenAfterFoodLog',
+  // Whether "Lighten today" mentions a short night, and how short that is.
+  'shortNightNoteEnabled',
+  'shortNightMinutes',
   // Workouts: the area's switch, the unit weights are shown in (stored in kg
   // either way), the bars and plates owned, and the rest a set gets when its
   // routine doesn't say. Preferences about the person's training, not the phone.
@@ -643,6 +696,13 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // come out the same on every device. A figure about a body, so it travels
   // with the health record too (HEALTH_SYNC_SETTING_KEYS).
   'bodyProfile',
+  // A weight goal, protein set per unit of body weight, and the extra calories
+  // and water a day of exercise adds. Figures about a body, so they travel
+  // with the health record too (HEALTH_SYNC_SETTING_KEYS).
+  'weightGoal',
+  'proteinPerWeight',
+  'activeEnergyBoost',
+  'waterExerciseBoost',
 
   // Vocabularies the user builds. These are data as much as preference — a
   // tag that exists but is unused, and the walk round the shop — and a device
@@ -703,6 +763,12 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
  *   ergonomics of one device. A Mac has no haptics and no thumb reach, and
  *   which maps apps are installed differs from phone to phone. Whether a phone
  *   is driven through iPhone Mirroring is a fact about that phone.
+ * - `confirmBeforeDeleting`, `tipsEnabled` — how much the app interrupts on
+ *   this device, alongside `shakeToUndoEnabled`. Someone who wants a confirm
+ *   on the phone in their pocket may not on the iPad on their desk.
+ * - `tabRoutes`, `menuArrangement` — how this device's screen is laid out. An
+ *   iPad's sidebar and a phone's tab bar are different shapes of the same
+ *   menu, so each keeps its own.
  * - `appLockEnabled`, `appLockGraceSeconds`, `journalLockEnabled`, `lockedProjectIds` — syncing these would let a
  *   device turn the lock off on another one. Security settings are per-device
  *   by design.
@@ -843,6 +909,8 @@ export const HEALTH_SYNC_SETTING_KEYS: readonly string[] = [
   'maxHeartRate',
   // Height, year of birth and sex, typed into the calorie budget.
   'bodyProfile',
+  // A weight goal, protein per body weight, and exercise's calorie and water boosts.
+  'weightGoal', 'proteinPerWeight', 'activeEnergyBoost', 'waterExerciseBoost',
 ];
 
 /**

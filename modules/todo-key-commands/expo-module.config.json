@@ -1,6 +1,7 @@
 {
   "platforms": ["ios"],
   "ios": {
-    "modules": ["TodoKeyCommandsModule"]
+    "modules": ["TodoKeyCommandsModule"],
+    "appDelegateSubscribers": ["TodoMenuBarAppDelegate"]
   }
 }

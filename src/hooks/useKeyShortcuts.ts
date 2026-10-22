@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Alert } from 'react-native';
-import { addKeyCommandListener, setKeyCommands } from 'todo-key-commands';
+import { addKeyCommandListener, isMenuBarAvailable, setKeyCommands } from 'todo-key-commands';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -10,13 +10,15 @@ import { usePersonStore } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { isAppLocked } from '../store/useAppLockStore';
-import { KEY_SHORTCUTS, describeShortcuts, shortcutById, type ShortcutAction } from '../utils/keyShortcuts';
+import { KEY_SHORTCUTS, describeShortcuts, shortcutById, type KeyShortcut, type ShortcutAction } from '../utils/keyShortcuts';
+import { buildMenuItems, shortcutsWithMenuBar, sinkShortcuts } from '../utils/macMenu';
 import { latestRedoHistory, latestUndoHistory } from '../utils/undoHistory';
 import { anySheetOpen, closeTopmostSheet } from '../utils/sheetModal';
 import { featureHidden } from '../utils/simpleMode';
 import {
   openQuickAddFromKeyboard,
   openQuickSearchFromKeyboard,
+  openSettingsFromKeyboard,
   showTodayViewModeFromKeyboard,
 } from '../navigation/navigationRef';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -34,13 +36,17 @@ function undoHistories() {
   ];
 }
 
-function hiddenActions(): ShortcutAction[] {
+export function hiddenActions(): ShortcutAction[] {
   return featureHidden('unscheduledLens', useSettingsStore.getState().simpleMode) ? ['viewUnscheduled'] : [];
 }
 
-function runShortcut(id: string): void {
+function runShortcutId(id: string): void {
   const shortcut = shortcutById(id);
-  if (!shortcut) return;
+  if (shortcut) runShortcut(shortcut);
+}
+
+/** Does what a shortcut means, from a key press or the menu bar alike. */
+export function runShortcut(shortcut: KeyShortcut): void {
   // The lock screen is up: nothing behind it may be driven, the same rule
   // shake-to-undo follows.
   if (isAppLocked()) return;
@@ -60,7 +66,13 @@ function runShortcut(id: string): void {
     case 'viewLater': showTodayViewModeFromKeyboard('later'); return;
     case 'viewUnscheduled': showTodayViewModeFromKeyboard('unscheduled'); return;
     case 'viewInbox': showTodayViewModeFromKeyboard('inbox'); return;
-    case 'showShortcuts': Alert.alert('Keyboard shortcuts', describeShortcuts(hiddenActions())); return;
+    case 'openSettings': openSettingsFromKeyboard(); return;
+    case 'showShortcuts': {
+      // With a menu bar the menu's own chords (⌘, and ⌘1 to ⌘4) work too.
+      const listed = isMenuBarAvailable() ? shortcutsWithMenuBar() : KEY_SHORTCUTS;
+      Alert.alert('Keyboard shortcuts', describeShortcuts(hiddenActions(), listed));
+      return;
+    }
   }
 }
 
@@ -76,8 +88,12 @@ export function useKeyShortcuts(): void {
 
   useEffect(() => {
     if (!mirroringMode) return;
-    setKeyCommands(KEY_SHORTCUTS.map(({ id, input, modifiers }) => ({ id, input, modifiers })));
-    const unsubscribe = addKeyCommandListener(runShortcut);
+    // With a menu bar, its items carry their own chords (⌘N, ⌘F, ⌘/), and a
+    // chord with two handlers is one press run twice, so the sink leaves them
+    // to the menu. The chords are fixed, so the list is too.
+    const shortcuts = isMenuBarAvailable() ? sinkShortcuts(buildMenuItems([])) : KEY_SHORTCUTS;
+    setKeyCommands(shortcuts.map(({ id, input, modifiers }) => ({ id, input, modifiers })));
+    const unsubscribe = addKeyCommandListener(runShortcutId);
     return () => {
       unsubscribe();
       setKeyCommands([]);

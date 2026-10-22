@@ -33,6 +33,9 @@ import { recipeLedgerFor } from '../utils/recipeSources';
 import { haptics } from '../utils/haptics';
 import { TextField } from './TextField';
 import { CheckPop } from './CheckPop';
+import { PointerView, pointerMenuItem, type PointerMenuItem } from './PointerView';
+import { runningOnMac } from '../utils/runningOnMac';
+import { menuTitleCase } from '../utils/macMenu';
 
 // Matches GroceryItemSheet's own price field — "10000.00" is the longest a
 // price this app allows (GROCERY_PRICE_MINOR_MAX) ever renders as.
@@ -413,12 +416,41 @@ export const GroceryRow = React.memo(function GroceryRow({
     accessibilityLabel: `Select ${item.name}`,
   } : undefined;
 
+  // ==== the right-click menu (Mac) ====
+  // What the row already offers, under the condition that shows it: the
+  // checkbox, a tap on the name, the trip's price and skip, the substitutes
+  // and ellipsis buttons, and the select swipe. None while selecting.
+  const contextMenuItems: PointerMenuItem[] | undefined = !runningOnMac() || selectionMode ? undefined : [
+    item.checked
+      ? pointerMenuItem('toggle', 'Uncheck', 'circle')
+      : pointerMenuItem('toggle', 'Check Off', 'checkmark.circle'),
+    pointerMenuItem('rename', 'Rename', 'character.cursor.ibeam'),
+    pointerMenuItem('edit', 'Edit…', 'pencil'),
+    ...(onOpenSubstitutes ? [pointerMenuItem('substitutes', 'What Can I Use Instead?', 'arrow.left.arrow.right')] : []),
+    ...(tripPriceShown ? [pointerMenuItem('price', priceRecorded ? 'Change Price' : 'Add a Price', 'tag')] : []),
+    ...(tripActionLabel && onTripAction ? [pointerMenuItem('trip', menuTitleCase(tripActionLabel), '')] : []),
+    ...(swipeSelect ? [pointerMenuItem('select', 'Select', 'checklist')] : []),
+  ];
+  const handleContextMenu = (id: string) => {
+    switch (id) {
+      case 'toggle': onToggle(item.id); return;
+      case 'rename': startRename(); return;
+      case 'edit': onEdit(item.id); return;
+      case 'substitutes': onOpenSubstitutes?.(item.id); return;
+      case 'price': startPricing(); return;
+      case 'trip': onTripAction?.(item.id); return;
+      case 'select': swipeSelect?.onSelect(); return;
+    }
+  };
+
   const rowBody = (
-    <View
+    <PointerView
       style={[
         styles.row,
         selectionMode && selected && styles.rowSelected,
       ]}
+      menuItems={contextMenuItems}
+      onMenuSelect={handleContextMenu}
     >
       <TouchableOpacity
         onPress={() => (selectionMode ? onSelect?.(item.id) : onToggle(item.id))}
@@ -793,7 +825,7 @@ export const GroceryRow = React.memo(function GroceryRow({
       {selectionMode && (
         <SelectionDot selected={selected} onPress={() => onSelect?.(item.id)} />
       )}
-    </View>
+    </PointerView>
   );
 
   return (
