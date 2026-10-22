@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, type GestureResponderEvent } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, iconSize, radius, type Colors } from '../theme';
@@ -30,6 +30,13 @@ interface Props {
    * rather than a control. Default false so Calendar's layout is unchanged.
    */
   grouped?: boolean;
+  /**
+   * With `grouped`: a "…" button beside the card, for what you do to the
+   * period rather than which one you're on. Omit it and nothing is drawn.
+   * The press event is handed over so a menu can open from the button.
+   */
+  onMore?: (e: GestureResponderEvent) => void;
+  moreAccessibilityLabel?: string;
 }
 
 /**
@@ -55,6 +62,8 @@ export function PeriodNav({
   nextAccessibilityLabel,
   sublabel,
   grouped = false,
+  onMore,
+  moreAccessibilityLabel,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -84,6 +93,15 @@ export function PeriodNav({
     return (
       <View style={styles.navGrouped}>
         <View style={styles.pill}>{arrows}</View>
+        {onMore && (
+          <PressableScale
+            style={styles.more}
+            onPress={onMore}
+            accessibilityLabel={moreAccessibilityLabel}
+          >
+            <Ionicons name="ellipsis-horizontal" size={iconSize.md} color={colors.textSecondary} />
+          </PressableScale>
+        )}
       </View>
     );
   }
@@ -125,18 +143,31 @@ const makeStyles = (colors: Colors) =>
       fontSize: font.xxs,
       fontWeight: fontWeight.medium,
     },
+    // A full-width card on the same edges as the cards around it (the meal
+    // plan's fridge, its day cards), with the arrows at its ends. A shrink-
+    // wrapped centered pill sat on neither edge of a left-aligned column.
     navGrouped: {
-      alignItems: 'center',
-      paddingHorizontal: spacing.md,
-      paddingTop: spacing.xs,
-      paddingBottom: spacing.xs,
-    },
-    pill: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.xs,
+      gap: spacing.sm,
+      paddingHorizontal: spacing.md,
+    },
+    more: {
+      width: 52,
+      height: 52,
+      borderRadius: radius.md,
       backgroundColor: colors.bgSecondary,
-      borderRadius: radius.full,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    pill: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      minHeight: 52,
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.md,
       paddingHorizontal: spacing.sm,
     },
   });
