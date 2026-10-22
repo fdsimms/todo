@@ -65,6 +65,7 @@ import { useGroceryStore } from './useGroceryStore';
 import { useEventReminderStore } from './useEventReminderStore';
 import { useHiddenEventsStore } from './useHiddenEventsStore';
 import { useEventPeopleStore } from './useEventPeopleStore';
+import { useAgentSuggestionStore } from './useAgentSuggestionStore';
 import { useEventTaskLinkStore } from './useEventTaskLinkStore';
 import { useRecipeStore } from './useRecipeStore';
 import { useMealPlanStore } from './useMealPlanStore';
@@ -3397,6 +3398,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Same again: who an event is with names demo people in a demo database.
     useEventPeopleStore.getState().initialize();
     useEventTaskLinkStore.getState().initialize();
+    // What an agent asked for and the person hasn't answered: arrives by sync,
+    // which reloads through this, and names demo requests in a demo database.
+    useAgentSuggestionStore.getState().initialize();
     const tasks = dbGetAllTasks();
     backfillRecurrenceAnchors(tasks);
     const tagRegistry = dbGetTagRegistry();

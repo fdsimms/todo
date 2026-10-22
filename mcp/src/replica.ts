@@ -282,6 +282,14 @@ export interface ReplicaSettings {
   weatherTasks: boolean;
 }
 
+/** A task suggestion for the Inbox. `alarmAt` is an ISO instant, already checked to be ahead. */
+export interface TaskActionProposalInput {
+  kind: 'task_deadline' | 'task_alarm';
+  taskId: string;
+  alarmAt?: string;
+  ringKind?: 'alarm' | 'persistent';
+}
+
 /** An event to ask the phone to write. Already parsed: instants, and an exclusive end. */
 export interface CalendarRequestInput {
   title: string;
@@ -1617,7 +1625,15 @@ export interface Replica {
    * calendar itself: this is a synced row the phone answers.
    */
   requestCalendarEvent(input: CalendarRequestInput): CalendarRequest;
-  /** Take back a request that is still pending. One already answered is the phone's to keep. */
+  /**
+   * Suggest a device-side change to a task (`CalendarRequest.kind`): its
+   * deadline on the calendar, or an alarm at a time. Always a proposal the
+   * person taps in the Inbox, since the effect is the phone's and applying it
+   * is that tap. Refused for a task that is gone, done, or has nothing to put
+   * on a calendar.
+   */
+  proposeTaskAction(input: TaskActionProposalInput): CalendarRequest;
+  /** Take back a request that is still pending, or a proposal not yet answered. One already answered is the phone's to keep. */
   cancelCalendarRequest(id: string): CalendarRequest;
   /**
    * Ask the phone to change, or delete, an event an earlier request of this
@@ -3391,6 +3407,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const notesModule = () => require('../../src/utils/agentNotes') as typeof import('../../src/utils/agentNotes');
 
   const tasks = (): Task[] => (taskCache ??= db.dbGetAllTasks());
+  /** Whether the person asked to approve calendar requests first (`calendarRequestAsksFirst`, synced). */
+  const asksFirst = (): boolean => db.dbGetSetting('calendarRequestAsksFirst') === 'true';
   const people = (): Person[] => (personCache ??= db.dbGetAllPeople());
   const projects = (): Project[] => (projectCache ??= db.dbGetAllProjects());
 
@@ -5531,7 +5549,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         allDay: input.allDay,
         location: input.location,
         notes: input.notes,
-        status: 'pending',
+        status: asksFirst() ? 'proposed' : 'pending',
         failureReason: null,
         eventExternalId: null,
         resolvedAt: null,
@@ -5547,7 +5565,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       }
       const target = db.dbGetCalendarRequest(targetId);
       if (!target || (target.action ?? 'create') !== 'create') throw new Error(`No request for a new event with id ${targetId}. list_calendar_requests lists them.`);
-      if (target.status === 'pending') throw new Error('That event has not been added yet. Cancel the request with cancel_calendar_request and ask again with what it should be.');
+      if (target.status === 'pending' || target.status === 'proposed') throw new Error('That event has not been added yet. Cancel the request with cancel_calendar_request and ask again with what it should be.');
       if (target.status !== 'written') throw new Error(`That request was ${target.status}, so there is no event to change.`);
       if (!target.eventExternalId) throw new Error('The phone could not read that event\'s calendar id when it added it, so it cannot find it again. Change it in the calendar app.');
       const epoch = new Date(0).toISOString();
@@ -5561,7 +5579,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         allDay: target.allDay,
         location: null,
         notes: null,
-        status: 'pending',
+        status: asksFirst() ? 'proposed' : 'pending',
         failureReason: null,
         eventExternalId: null,
         resolvedAt: null,
@@ -5574,10 +5592,45 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return request;
     },
 
+    proposeTaskAction(input: TaskActionProposalInput): CalendarRequest {
+      const task = tasks().find(t => t.id === input.taskId);
+      if (!task) throw new Error(`No task with id ${input.taskId}.`);
+      if (task.completed || task.archived) throw new Error('That task is already done or archived, so there is nothing to set up on it.');
+      if (input.kind === 'task_deadline') {
+        if (!task.deadline) throw new Error('That task has no deadline, so there is nothing to put on the calendar. Set one with update_task first.');
+        if (task.deadlineOnCalendar) throw new Error('That task\'s deadline is already on the calendar.');
+      }
+      const open = db.dbGetAllCalendarRequests().find(r =>
+        r.status === 'proposed' && r.kind === input.kind && r.taskId === input.taskId);
+      if (open) throw new Error(`That is already suggested and waiting for the person (request ${open.id}). cancel_calendar_request takes it back if it should change.`);
+      // Already over, for the reason CalendarRequest.action gives: a build from
+      // before the kinds existed expires the row instead of writing an event.
+      const epoch = new Date(0).toISOString();
+      const request: CalendarRequest = {
+        id: generateId(),
+        title: task.title,
+        startAt: epoch,
+        endAt: epoch,
+        allDay: false,
+        location: null,
+        notes: null,
+        status: 'proposed',
+        failureReason: null,
+        eventExternalId: null,
+        resolvedAt: null,
+        createdAt: new Date().toISOString(),
+        kind: input.kind,
+        taskId: task.id,
+        payload: input.kind === 'task_alarm' ? { alarmAt: input.alarmAt, ringKind: input.ringKind ?? 'alarm' } : null,
+      };
+      db.dbInsertCalendarRequest(request);
+      return request;
+    },
+
     cancelCalendarRequest(id: string): CalendarRequest {
       const existing = db.dbGetCalendarRequest(id);
       if (!existing) throw new Error(`No calendar request with id ${id}.`);
-      if (existing.status !== 'pending') {
+      if (existing.status !== 'pending' && existing.status !== 'proposed') {
         throw new Error(
           existing.status === 'written'
             ? 'That event is already on the calendar. change_calendar_event with delete: true asks the phone to remove it.'

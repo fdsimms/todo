@@ -8827,8 +8827,32 @@ export const MEAL_PLAN_RETENTION_DAYS = 180;
  * device named by `calendarRequestDeviceId` picks it up; that device moves it
  * to `written` or `failed`. `cancelled` is the requester taking it back while
  * it was still pending.
+ *
+ * `proposed` is a request waiting for the person's own tap in the Inbox
+ * (`src/utils/agentSuggestions.ts`). Nothing writes it: the drain acts only on
+ * `pending`, so approving is just moving it there, and skipping it is
+ * `cancelled`. A build from before this status existed reads it as cancelled
+ * (`CALENDAR_REQUEST_STATUSES` in database.ts), which is the safe direction.
  */
-export type CalendarRequestStatus = 'pending' | 'written' | 'failed' | 'cancelled';
+export type CalendarRequestStatus = 'proposed' | 'pending' | 'written' | 'failed' | 'cancelled';
+
+/**
+ * What a `CalendarRequest` row asks for. `event` is a standalone calendar event
+ * (the original use). The two `task_` kinds are changes to a task's own
+ * device-side fields (`Task.deadlineOnCalendar`, `Task.reminderKind`), which an
+ * agent cannot write over MCP because the effect is the phone's (a calendar
+ * event, an AlarmKit alarm). They are always `proposed` and are applied by the
+ * device the person taps on, through `updateTask`, never by the drain.
+ */
+export type CalendarRequestKind = 'event' | 'task_deadline' | 'task_alarm';
+
+/** The numbers a `task_alarm` request carries; absent keys mean the task's own. */
+export interface CalendarRequestPayload {
+  /** ISO instant the alarm rings at. */
+  alarmAt?: string;
+  /** `alarm` rings once, `persistent` repeats until the task is done. */
+  ringKind?: 'alarm' | 'persistent';
+}
 
 /**
  * An event an agent asked to have put on the calendar (`request_calendar_event`
@@ -8876,6 +8900,16 @@ export interface CalendarRequest {
   action?: 'create' | 'update' | 'delete';
   targetRequestId?: string | null;
   changes?: CalendarRequestChanges | null;
+  /**
+   * `event` (or absent) is a calendar event. A `task_` kind names a task
+   * (`taskId`) and carries its numbers in `payload`; it has no event of its
+   * own, so its start and end sit at the epoch, already over, for the reason
+   * `action` gives: a build from before the kinds existed expires it instead
+   * of writing an event from it.
+   */
+  kind?: CalendarRequestKind;
+  taskId?: string | null;
+  payload?: CalendarRequestPayload | null;
 }
 
 /** What an `update` request changes on the event; absent keys stay as they are. */

@@ -25,6 +25,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/agentPantryRevert.ts` — PANTRY_ITEM_REVERT_FIELDS, LEFTOVER_REVERT_FIELDS, PantryItemSnapshot, LeftoverSnapshot, pantrySnapshot, leftoverSnapshot, pantryRevertOf, PantryRecordState, PantryRecordPlan, pantryRecordPlan
 - `src/utils/agentRecordRevert.ts` — PROJECT_REVERT_FIELDS, RecordLogSubject, RuleListName, RULE_LIST_NAMES, RecordState, DeletedProjectSnapshot, DeletedStackSnapshot, DeletedPersonSnapshot, deletedPersonRevert, deletedProjectRevert, +4 more
 - `src/utils/agentRevert.ts` — DeletedTaskSnapshot, deletedTaskRevert, AgentRevertPlan, agentRevertPlan, agentRevertLabel
+- `src/utils/agentSuggestionActions.ts` — ApplyOutcome, skipSuggestion, approveEventSuggestion, applyTaskSuggestion
+- `src/utils/agentSuggestions.ts` — liveSuggestions, SuggestionCardModel, SuggestionContext, eventWhen, describeSuggestion, TaskSuggestionContext, TaskSuggestionPlan, SUGGESTION_TASK_GONE_REASON, SUGGESTION_TASK_DONE_REASON, SUGGESTION_NO_DEADLINE_REASON, +2 more
 - `src/utils/agentUndo.ts` — AgentUndo, AgentUndoAction, AgentUndoReaders, agentUndoPlan, agentUndoLabel, BatchRevertResult, revertableInBatch, revertBatch
 - `src/utils/agentUndoRun.ts` — agentUndoReaders, applyAgentUndo
 - `src/utils/aiFeatures.ts` — AiFeatureId, AI_FEATURE_IDS, AiModelId, DEFAULT_AI_MODEL, AI_MODEL_OPTIONS, isAiModelId, currentAiModelId, AiFeatureMeta, AI_FEATURES, aiFeaturesFor, +3 more
@@ -79,7 +81,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/calendarMonth.ts` — DayMarkKind, MARK_KINDS, DayMark, DotState, DayDot, DayBucket, MAX_PROJECTION_STEPS, canProject, projectOccurrences, nthOccurrence, +9 more
 - `src/utils/calendarReadSummary.ts` — CalendarLineInput, calendarStatusLine, failedCalendarsLabel, todayFallback
 - `src/utils/calendarRequestDrain.ts` — drainCalendarRequests
-- `src/utils/calendarRequests.ts` — CALENDAR_REQUEST_RETENTION_DAYS, CALENDAR_REQUEST_PAST_REASON, CALENDAR_REQUEST_REFUSED_REASON, isCalendarRequestWriter, CalendarRequestDrainPlan, planCalendarRequestDrain, eventFieldsForRequest, CALENDAR_CHANGE_NO_EVENT_REASON, changeRequestProblem, eventFieldsForChange
+- `src/utils/calendarRequests.ts` — CALENDAR_REQUEST_RETENTION_DAYS, CALENDAR_REQUEST_PAST_REASON, CALENDAR_SUGGESTION_STALE_REASON, CALENDAR_REQUEST_REFUSED_REASON, isCalendarRequestWriter, CalendarRequestDrainPlan, planCalendarRequestDrain, suggestionIsStale, eventFieldsForRequest, CALENDAR_CHANGE_NO_EVENT_REASON, +2 more
 - `src/utils/calendarReviewTasks.ts` — CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview, calendarReviewEventsFor
 - `src/utils/calendarSync.ts` — CalendarPermission, getCalendarPermission, requestCalendarPermission, listEventCalendars, validCalendarIds, CalendarReadStatus, CalendarInfo, FetchEventsResult, fetchEvents, listWritableCalendars, +23 more
 - `src/utils/capitalize.ts` — capitalize
@@ -646,6 +648,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/generatedCategoryWriteBack.ts` — GeneratedCategoryOffer, generatedCategoryOffer, writeCategoryToSource
 - `src/store/generatedTaskSync.ts` — deleteGeneratedTaskQuietly, markGeneratedReady, settleReadyMarks, ReconcileGeneratedOptions, reconcileGeneratedTask, dropGeneratedTask, forfeitUseUpCoins, restoreUseUpCoins
 - `src/store/generatorSwitch.ts` — setGeneratorEnabled
+- `src/store/useAgentSuggestionStore.ts` — useAgentSuggestionStore
 - `src/store/useAppGroupStore.ts` — NewSchedule, ScheduleResult, useAppGroupStore, resolvedAssignments, allowGroupsNow, resolveGroupNow, expandGroupNow
 - `src/store/useAppLockStore.ts` — useAppLockStore, isAppLocked
 - `src/store/useBlockTimerStore.ts` — useBlockTimerStore

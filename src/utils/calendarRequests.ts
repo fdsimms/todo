@@ -19,6 +19,9 @@ export const CALENDAR_REQUEST_RETENTION_DAYS = 30;
 /** What a request that was already over by the time it arrived says. */
 export const CALENDAR_REQUEST_PAST_REASON = 'It was already over when it reached the phone.';
 
+/** What a suggestion nobody answered in time says. */
+export const CALENDAR_SUGGESTION_STALE_REASON = 'It was not answered in time.';
+
 /** What a request the calendar refused says. */
 export const CALENDAR_REQUEST_REFUSED_REASON = 'The calendar did not accept it.';
 
@@ -47,12 +50,29 @@ export interface CalendarRequestDrainPlan {
 export function planCalendarRequestDrain(requests: readonly CalendarRequest[], now: Date): CalendarRequestDrainPlan {
   const plan: CalendarRequestDrainPlan = { write: [], change: [], expire: [], purge: [] };
   const purgeBefore = now.getTime() - CALENDAR_REQUEST_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+  const pushIfOld = (r: CalendarRequest) => {
+    const resolved = new Date(r.resolvedAt ?? r.createdAt).getTime();
+    if (!Number.isNaN(resolved) && resolved < purgeBefore) plan.purge.push(r.id);
+  };
   for (const r of requests) {
+    // A task kind is applied by the device the person taps on (see
+    // `agentSuggestions.ts`), never by this pass, so it is neither written nor
+    // changed here even if one were pending.
+    if ((r.kind ?? 'event') !== 'event') {
+      if (r.status === 'proposed' && suggestionIsStale(r, now)) plan.expire.push(r);
+      else if (r.status !== 'pending' && r.status !== 'proposed') pushIfOld(r);
+      continue;
+    }
     // Before the expiry check: an update or delete carries an epoch start and
     // end on purpose (see CalendarRequest.action), so an older build expires it
     // rather than creating an event from it.
     if (r.status === 'pending' && (r.action === 'update' || r.action === 'delete')) {
       plan.change.push(r);
+      continue;
+    }
+    // Waiting for a tap: left alone, unless the moment it was for has gone.
+    if (r.status === 'proposed') {
+      if (suggestionIsStale(r, now)) plan.expire.push(r);
       continue;
     }
     if (r.status === 'pending') {
@@ -61,10 +81,29 @@ export function planCalendarRequestDrain(requests: readonly CalendarRequest[], n
       else plan.write.push(r);
       continue;
     }
-    const resolved = new Date(r.resolvedAt ?? r.createdAt).getTime();
-    if (!Number.isNaN(resolved) && resolved < purgeBefore) plan.purge.push(r.id);
+    pushIfOld(r);
   }
   return plan;
+}
+
+/**
+ * Whether a proposal waiting for a tap is for a moment that has gone: an event
+ * that is already over, an alarm time in the past, or one left unanswered for
+ * a month. A change to an event
+ * carries epoch times on purpose and is never stale by them.
+ */
+export function suggestionIsStale(r: CalendarRequest, now: Date): boolean {
+  // Nobody answered it for as long as an answered request is kept.
+  const created = new Date(r.createdAt).getTime();
+  if (!Number.isNaN(created) && created < now.getTime() - CALENDAR_REQUEST_RETENTION_DAYS * 24 * 60 * 60 * 1000) return true;
+  if (r.kind === 'task_alarm') {
+    const at = r.payload?.alarmAt ? new Date(r.payload.alarmAt).getTime() : NaN;
+    return Number.isNaN(at) || at <= now.getTime();
+  }
+  if (r.kind === 'task_deadline') return false;
+  if (r.action === 'update' || r.action === 'delete') return false;
+  const end = new Date(r.endAt).getTime();
+  return Number.isNaN(end) || end <= now.getTime();
 }
 
 /** The fields `saveEventDirect` writes for a request. Busy, with no alert: only what was asked for. */

@@ -84,8 +84,18 @@ describe('agentRecordPlan', () => {
 
   it('cancels a calendar request only while it is still waiting for the phone', () => {
     const e = entry({ taskId: null, subject: 'event', action: 'created', title: 'Dentist', recordId: 'c1', revert: null });
-    const at = (status: 'pending' | 'written' | 'failed' | 'cancelled') => state({ calendarRequest: () => ({ status }) });
-    expect(agentRecordPlan(e, at('pending'))).toEqual({ kind: 'cancelCalendarRequest', id: 'c1' });
+    const at = (status: 'proposed' | 'pending' | 'written' | 'failed' | 'cancelled') => state({ calendarRequest: () => ({ status }) });
+    expect(agentRecordPlan(e, at('pending'))).toEqual({ kind: 'cancelCalendarRequest', id: 'c1', what: 'event', proposed: false });
+    // A suggestion nobody has tapped is taken back the same way.
+    expect(agentRecordPlan(e, at('proposed'))).toEqual({ kind: 'cancelCalendarRequest', id: 'c1', what: 'event', proposed: true });
+    expect(agentUndoLabel(agentRecordPlan(e, at('proposed')))).toBe('Skip');
+    // A task suggestion says which kind it is, so the confirmation can name it.
+    const kindAt = (kind: 'task_alarm' | 'task_deadline', status: 'proposed' | 'written' | 'failed') =>
+      state({ calendarRequest: () => ({ status, kind }) });
+    expect(agentRecordPlan(e, kindAt('task_alarm', 'proposed'))).toMatchObject({ what: 'alarm', proposed: true });
+    expect(agentRecordPlan(e, kindAt('task_deadline', 'proposed'))).toMatchObject({ what: 'deadline', proposed: true });
+    expect(agentRecordPlan(e, kindAt('task_alarm', 'written'))).toEqual({ kind: 'none', reason: 'Alarm set' });
+    expect(agentRecordPlan(e, kindAt('task_alarm', 'failed'))).toEqual({ kind: 'none', reason: 'Not set' });
     expect(agentUndoLabel(agentRecordPlan(e, at('pending')))).toBe('Don’t add');
     expect(agentRecordPlan(e, at('written'))).toEqual({ kind: 'none', reason: 'On your calendar' });
     expect(agentRecordPlan(e, at('failed'))).toEqual({ kind: 'none', reason: 'Not added' });

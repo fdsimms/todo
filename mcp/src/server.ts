@@ -101,7 +101,7 @@ import { forget, remember } from './memoryTools';
 import { deleteRule, listAutomations, saveRule, setAutomation, RULE_TYPES } from './automationTools';
 import { createCategory, deleteCategory, updateCategory } from './categoryTools';
 import { REORDER_KINDS, reorder } from './reorderTools';
-import { cancelCalendarRequest, changeCalendarEvent, listCalendarRequests, requestCalendarEvent } from './calendarTools';
+import { cancelCalendarRequest, changeCalendarEvent, listCalendarRequests, proposeTaskDeviceAction, requestCalendarEvent } from './calendarTools';
 import { ESTIMATE_KEY_LIST, NUTRIENT_KEY_LIST, atFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logSavedMeal, moveFoodEntry, saveMealFromEntries, setNutritionTargets, renameMedication, renameMoodTag, setMedicationArchived, addMedication, removeMedication, setMedicationProfile, setMedicationLimit, setMedicationSupply, logFood, logMedication, setSupplementNutrients, logMood, logWater, updateRecipe, patchRecipe, deleteRecipe, updateFoodEntry, refreshDishEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
 import { listErrors, MAX_ERRORS } from './errorTools';
 import { storageReport } from './storageTools';
@@ -502,8 +502,8 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_calendar_requests',
-    'Events you asked the phone to add with request_calendar_event, newest first, and what happened to each: pending (waiting for the phone to sync), written (on the calendar), failed (with the reason), or cancelled. Also whether any device is set to add them. Answered requests are kept for 30 days. This is not their calendar: the server still cannot see it.',
-    { status: z.enum(['pending', 'written', 'failed', 'cancelled']).optional() },
+    'Events you asked the phone to add with request_calendar_event, and task suggestions from propose_task_device_action, newest first, and what happened to each: proposed (a card in their Inbox waiting for their tap), pending (approved or sent straight through, waiting for the phone to sync), written (done), failed (with the reason), or cancelled (skipped, or taken back). Also whether any device is set to add events. Answered requests are kept for 30 days. This is not their calendar: the server still cannot see it.',
+    { status: z.enum(['proposed', 'pending', 'written', 'failed', 'cancelled']).optional() },
     async input => json(await withFresh(() => listCalendarRequests(replica, input)))
   );
 
@@ -2064,7 +2064,7 @@ function registerWriteTools(
 
   server.tool(
     'request_calendar_event',
-    'Ask the person\'s phone to add an event to their calendar. The server cannot reach the calendar, so this queues the event and the one device they chose in Settings adds it the next time it syncs; until then it is not on the calendar, so say it is queued, not added. Refused when no device is set to add them (get_overview features.calendarRequests). Give start as YYYY-MM-DD for an all-day event (end is then the last day, default the same day), or YYYY-MM-DDTHH:MM in their time zone for a timed one (end defaults to an hour later). Nothing here can change or delete an event once it is added.',
+    'Ask the person\'s phone to add an event to their calendar. The server cannot reach the calendar, so this queues the event and the one device they chose in Settings adds it the next time it syncs; until then it is not on the calendar, so say it is queued, not added. If they have turned on Ask before adding, the event waits as a card in their Inbox for their tap instead (the result says so). Refused when no device is set to add them (get_overview features.calendarRequests). Give start as YYYY-MM-DD for an all-day event (end is then the last day, default the same day), or YYYY-MM-DDTHH:MM in their time zone for a timed one (end defaults to an hour later). Nothing here can change or delete an event once it is added.',
     {
       title: z.string().min(1),
       start: z.string().min(1).describe('YYYY-MM-DD for all day, or YYYY-MM-DDTHH:MM in their time zone.'),
@@ -2082,8 +2082,26 @@ function registerWriteTools(
   );
 
   server.tool(
+    'propose_task_device_action',
+    'Suggest, never set, something only their phone can do for a task: put its deadline on their calendar, or ring an alarm for it. update_task cannot do either. This puts a card in their Inbox; nothing changes until they tap it, so say it is suggested, not done. A deadline suggestion needs a task that has a deadline (set one with update_task first). An alarm needs at, YYYY-MM-DDTHH:MM in their time zone and ahead of now; ring \'persistent\' repeats every 5 minutes until the task is done. An alarm rings as a system alarm only on phones that support it, and otherwise becomes a plain reminder, which the card says. Ask before suggesting one the person did not mention.',
+    {
+      taskId: z.string().min(1),
+      action: z.enum(['deadline_on_calendar', 'alarm']),
+      at: z.string().optional().describe('Alarm only: YYYY-MM-DDTHH:MM in their time zone.'),
+      ring: z.enum(['alarm', 'persistent']).optional().describe('Alarm only. Default alarm: rings once.'),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => proposeTaskDeviceAction(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not suggest that.' });
+      }
+    }
+  );
+
+  server.tool(
     'cancel_calendar_request',
-    'Take back a calendar request that is still pending, so the phone never adds it. One already on the calendar can only be removed by the person, in their calendar app.',
+    'Take back a calendar request that is still pending, or a suggestion still waiting in their Inbox, so the phone never adds it. One already on the calendar can only be removed by the person, in their calendar app.',
     { id: z.string().min(1).describe('The id from list_calendar_requests or request_calendar_event.') },
     async input => {
       try {

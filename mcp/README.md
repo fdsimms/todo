@@ -187,9 +187,10 @@ only the fallback until the first sync.
 | `delete_food_entry` | **Write.** Deletes a food log entry not yet written to Apple Health. |
 | `update_mood_log` | **Write.** Corrects a mood check-in. |
 | `delete_mood_log` | **Write.** Deletes a mood check-in. |
-| `request_calendar_event` / `cancel_calendar_request` | **Write.** Asks the phone set to add them to put an event on the calendar the next time it syncs, or takes back one still waiting. The server never touches the calendar itself. |
+| `request_calendar_event` / `cancel_calendar_request` | **Write.** Asks the phone set to add them to put an event on the calendar the next time it syncs, or takes back one still waiting. With Ask before adding on, the event is a card in the Inbox until the person taps it. The server never touches the calendar itself. |
+| `propose_task_device_action` | **Write.** Suggests, as an Inbox card, putting a task's deadline on the calendar or ringing an alarm for it. Nothing changes until the person taps; neither is writable through `update_task`. |
 | `change_calendar_event` | **Write.** Asks the phone to move, edit or delete an event an earlier `request_calendar_event` wrote. Events the person made are out of reach. |
-| `list_calendar_requests` | Those requests and what became of each: pending, written, failed (with why) or cancelled. |
+| `list_calendar_requests` | Those requests and suggestions and what became of each: proposed, pending, written, failed (with why) or cancelled. |
 | `update_medication_log` | **Write.** Corrects a recorded dose. |
 | `delete_medication_log` | **Write.** Deletes a recorded dose. |
 | `delete_task` | **Write.** Deletes tasks with their checklists, or single checklist items (up to 100 a call). Refuses a task the app generated. Each can be restored from Activity. |
