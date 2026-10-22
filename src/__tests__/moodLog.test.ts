@@ -4,6 +4,14 @@ import {
   contextTagKey,
   contextTagVocabulary,
   dayContextTags,
+  dayFactorAverages,
+  factorKey,
+  factorLabel,
+  factorOnLog,
+  factorVocabulary,
+  factorsSummary,
+  withFactor,
+  withoutFactor,
   dayMoodAverage,
   daySymptoms,
   hasLogOnDay,
@@ -29,6 +37,7 @@ function log(over: Partial<MoodLog> = {}): MoodLog {
     loggedAt: over.loggedAt ?? '2026-08-17T09:00:00.000Z',
     dayKey: over.dayKey ?? '2026-08-17',
     mood: over.mood === undefined ? 3 : over.mood,
+    factors: over.factors ?? [],
     symptoms: over.symptoms ?? [],
     contextTags: over.contextTags ?? [],
     note: over.note ?? null,
@@ -277,5 +286,47 @@ describe('an entry summary', () => {
 
   it('falls back to the note for an entry that is only a note', () => {
     expect(moodLogSummary(log({ mood: null, note: 'Slept badly' }))).toBe('Slept badly');
+  });
+});
+
+describe('rated factors', () => {
+  const rated = (factors: MoodLog['factors'], over: Partial<MoodLog> = {}) => log({ factors, ...over });
+
+  it('sets one rating per factor, replacing a re-rating under another spelling', () => {
+    const once = withFactor([], 'Stress', 4);
+    expect(withFactor(once, ' stress ', 2)).toEqual([{ name: 'Stress', value: 2 }]);
+    expect(withFactor(once, '  ', 3)).toEqual(once);
+    expect(withoutFactor(once, 'STRESS')).toEqual([]);
+  });
+
+  it('matches names the way symptoms do and labels the scale without a good end', () => {
+    expect(factorKey(' Stress ')).toBe('stress');
+    expect(factorLabel(1)).toBe('Very low');
+    expect(factorLabel(5)).toBe('Very high');
+  });
+
+  it('derives the vocabulary from the entries, most used first', () => {
+    const logs = [
+      rated([{ name: 'Energy', value: 2 }]),
+      rated([{ name: 'Stress', value: 4 }, { name: 'energy', value: 3 }]),
+    ];
+    expect(factorVocabulary(logs)).toEqual(['Energy', 'Stress']);
+  });
+
+  it('averages a day\'s ratings over the entries that gave one', () => {
+    const logs = [
+      rated([{ name: 'Stress', value: 2 }]),
+      rated([{ name: 'stress', value: 5 }, { name: 'Energy', value: 1 }]),
+      rated([{ name: 'Stress', value: 1 }], { dayKey: '2026-08-18' }),
+    ];
+    expect(dayFactorAverages(logs, '2026-08-17')).toEqual({ stress: 3.5, energy: 1 });
+    expect(dayFactorAverages(logs, '2026-08-19')).toEqual({});
+  });
+
+  it('reads one entry\'s rating, null when it was not rated', () => {
+    const entry = rated([{ name: 'Stress', value: 4 }]);
+    expect(factorOnLog(entry, 'stress')).toBe(4);
+    expect(factorOnLog(entry, 'Energy')).toBeNull();
+    expect(factorsSummary(entry.factors)).toBe('Stress 4/5');
   });
 });

@@ -31,7 +31,8 @@ import {
   type ReviewLine,
 } from '../utils/savedMealReview';
 import { confirmDiscard } from '../utils/confirmDiscard';
-import { composeFoodAmount, foodUnitOptionsFor, parseFoodAmount } from '../utils/foodLog';
+import { composeFoodAmount, convertAmountNumber, foodUnitOptionsFor, largeAmountWarning, parseFoodAmount } from '../utils/foodLog';
+import { confirmLargeAmount } from '../utils/confirmLargeAmount';
 import type { FoodNutrition, MealSlot, SavedMeal, SavedMealItem } from '../types';
 import { BUTTON_LABEL } from '../copy/shared';
 
@@ -165,13 +166,31 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
   const hasPending = Object.keys(drafts).length > 0;
   const changed = reviewChanged(meal, lines) || hasPending;
 
+  /**
+   * The first amount the person changed in this sheet that reads like a weight
+   * in the wrong unit. A meal's own saved amounts aren't asked about again on
+   * every log: only a line edited here, or added here, can be a slip.
+   */
+  const firstLargeAmount = (settled: ReviewLine[]) => {
+    for (const line of settled) {
+      if (line.removed) continue;
+      const original = line.fromMeal ? meal.items[Number(line.key.slice('item-'.length))] : undefined;
+      if (original && original.quantity === line.item.quantity) continue;
+      const panel = panelFor(line.item);
+      const warning = panel ? largeAmountWarning(panel, line.item.quantity, line.item.label) : null;
+      if (warning) return warning;
+    }
+    return null;
+  };
+
   const handleLog = () => {
     const settled = settleDrafts();
     if (!settled) return;
     const items = reviewedItems(settled);
     if (items.length === 0) return;
-    haptics.success();
-    onLog(items);
+    const log = () => { haptics.success(); onLog(items); };
+    const large = firstLargeAmount(settled);
+    if (large) confirmLargeAmount(large, log); else log();
   };
 
   const handleSaveChanges = () => {
@@ -179,10 +198,14 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
     if (!settled) return;
     const items = reviewedItems(settled);
     if (items.length === 0) return;
-    if (onSaveChanges(items)) {
-      haptics.success();
-      setLines(reviewLinesFor({ ...meal, items }));
-    }
+    const save = () => {
+      if (onSaveChanges(items)) {
+        haptics.success();
+        setLines(reviewLinesFor({ ...meal, items }));
+      }
+    };
+    const large = firstLargeAmount(settled);
+    if (large) confirmLargeAmount(large, save); else save();
   };
 
   const handleCancel = () => {
@@ -293,7 +316,11 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
                                 setUnits(prev => ({ ...prev, [line.key]: key }));
                                 if (key === OTHER_UNIT_KEY) return;
                                 const option = unitOptions.find(o => o.key === key);
-                                const number = numbers[line.key] ?? parsed?.number ?? '';
+                                const typedNumber = numbers[line.key] ?? parsed?.number ?? '';
+                                // Keeps the amount the same amount (57 g is 1.8
+                                // servings), and keeps the typed number where the
+                                // two units can't be weighed against each other.
+                                const number = (panel && convertAmountNumber(panel, typedNumber, unit, option)) ?? typedNumber;
                                 setNumbers(prev => ({ ...prev, [line.key]: number }));
                                 const composed = composeFoodAmount(number, option);
                                 if (!composed) return;

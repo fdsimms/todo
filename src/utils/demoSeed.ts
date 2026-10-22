@@ -18,6 +18,7 @@ import { useSavedMealsStore } from '../store/useSavedMealsStore';
 import { usePendingEstimateStore } from '../store/usePendingEstimateStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { useMilestoneStore } from '../store/useMilestoneStore';
+import { useAgentSuggestionStore } from '../store/useAgentSuggestionStore';
 import { useCookwareStore } from '../store/useCookwareStore';
 import { useMeterReadingStore } from '../store/useMeterReadingStore';
 import { useWorkoutStore } from '../store/useWorkoutStore';
@@ -35,6 +36,7 @@ import { stepDurationOffers, stepTimerExcerpt } from './stepTimers';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore, type WeekStart } from '../store/useSettingsStore';
+import { useTransitStore } from '../store/useTransitStore';
 import { useNfcKeyStore } from '../store/useNfcKeyStore';
 import { useAppGroupStore } from '../store/useAppGroupStore';
 import { sunAnchorHHMM } from './sunTimes';
@@ -43,7 +45,7 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { useSharedLinkStore } from '../store/useSharedLinkStore';
 import { useUnattendedStore } from '../store/useUnattendedStore';
-import type { DeliverableKind, FocusSession, GroceryItem, MealSlot, MoodLevel, NovaGroup, Recipe, RecipeOverride, Shop, SymptomSeverity, TemplateItem, WorkoutRoutineItem } from '../types';
+import type { DeliverableKind, FactorLevel, FocusSession, GroceryItem, MealSlot, MoodLevel, NovaGroup, Recipe, RecipeOverride, Shop, SymptomSeverity, TemplateItem, WorkoutRoutineItem } from '../types';
 import { dbGetFocusSessionLog, dbInsertFocusSessionRecord, dbSetGtinLookup } from '../db/database';
 import { advanceFocusSession, buildFocusPlan, closeFocusSession } from './focusPlan';
 import { buildWeekDays } from './calendarGrid';
@@ -1953,13 +1955,33 @@ export function seedDemoData(): void {
   addCategory('Leave By');
   setCategoryEmoji('Leave By', '🚶');
   useSettingsStore.getState().setTravelTaskCategory('Leave By');
+  useSettingsStore.getState().setTransitAlerts(true);
   useSettingsStore.getState().setTransitLines(['L']);
+  // Planned work on the L across the day, held as the snapshot the row reads its
+  // note from. `useDemoStore` clears the store on entering and leaving demo mode.
+  const demoDayStart = new Date(today);
+  demoDayStart.setHours(0, 0, 0, 0);
+  const demoAlertHeadline = 'Some Manhattan-bound L trains are running local.';
+  useTransitStore.setState({
+    snapshot: {
+      fetchedAt: new Date().toISOString(),
+      alerts: [{
+        id: 'demo-l-local',
+        routeIds: ['L'],
+        effect: 'local',
+        planned: true,
+        periods: [{ start: demoDayStart.getTime(), end: demoDayStart.getTime() + 24 * 60 * 60 * 1000 }],
+        headline: demoAlertHeadline,
+      }],
+    },
+  });
   const demoDentistStart = new Date(today);
   demoDentistStart.setHours(15, 0, 0, 0);
   const demoDentist = { id: 'demo-dentist', start: demoDentistStart.toISOString() };
   const demoLeaveAt = new Date(demoDentistStart.getTime() - TRAVEL_LEAD_MINUTES_DEFAULT * 60 * 1000);
   addTask({
-    title: travelTaskTitle('Dentist', 'L running local'),
+    title: travelTaskTitle('Dentist'),
+    notes: demoAlertHeadline,
     dueDate: today.toISOString(),
     reminderTime: demoLeaveAt.toISOString(),
     windowEnd: dateToHHMM(demoDentistStart),
@@ -2388,6 +2410,7 @@ export function seedDemoData(): void {
   // the pass would show the feature only to somebody who had already found it.
   seedMoodTasks(today);
   seedMilestone(today);
+  seedSuggestions(today);
   seedCookware();
   seedMeterTask(today);
   seedWorkouts(today);
@@ -3142,24 +3165,26 @@ function seedMoodLog(today: Date): void {
     symptoms?: [string, SymptomSeverity][];
     contextTags?: string[];
     note?: string;
+    stress: FactorLevel;
+    energy?: FactorLevel;
   }[] = [
-    { back: 17, mood: 4 },
-    { back: 16, mood: 4, note: 'Good week so far' },
-    { back: 15, mood: 5, contextTags: ['Vacation'] },
-    { back: 14, mood: 3, symptoms: [['Poor sleep', 2]] },
-    { back: 13, mood: 4 },
-    { back: 12, mood: 3 },
-    { back: 11, mood: 2, symptoms: [['Headache', 2], ['Poor sleep', 2]], contextTags: ['Big deadline'] },
-    { back: 10, mood: 2, symptoms: [['Headache', 3]], note: 'Long day, skipped lunch', contextTags: ['Big deadline'] },
-    { back: 9, mood: 1, symptoms: [['Headache', 3], ['Poor sleep', 3]], contextTags: ['Big deadline'] },
-    { back: 8, mood: 2, symptoms: [['Headache', 1]] },
-    { back: 7, mood: 3 },
-    { back: 6, mood: 3, symptoms: [['Poor sleep', 1]] },
-    { back: 5, mood: 4, note: 'Back to it' },
-    { back: 4, mood: 4 },
-    { back: 3, mood: 5 },
-    { back: 2, mood: 4, symptoms: [['Poor sleep', 1]] },
-    { back: 1, mood: 4 },
+    { back: 17, mood: 4, stress: 2 },
+    { back: 16, mood: 4, note: 'Good week so far', stress: 2 },
+    { back: 15, mood: 5, contextTags: ['Vacation'], stress: 1 },
+    { back: 14, mood: 3, symptoms: [['Poor sleep', 2]], stress: 3, energy: 2 },
+    { back: 13, mood: 4, stress: 2 },
+    { back: 12, mood: 3, stress: 3 },
+    { back: 11, mood: 2, symptoms: [['Headache', 2], ['Poor sleep', 2]], contextTags: ['Big deadline'], stress: 4, energy: 2 },
+    { back: 10, mood: 2, symptoms: [['Headache', 3]], note: 'Long day, skipped lunch', contextTags: ['Big deadline'], stress: 5, energy: 2 },
+    { back: 9, mood: 1, symptoms: [['Headache', 3], ['Poor sleep', 3]], contextTags: ['Big deadline'], stress: 5, energy: 1 },
+    { back: 8, mood: 2, symptoms: [['Headache', 1]], stress: 4 },
+    { back: 7, mood: 3, stress: 3 },
+    { back: 6, mood: 3, symptoms: [['Poor sleep', 1]], stress: 3, energy: 2 },
+    { back: 5, mood: 4, note: 'Back to it', stress: 2 },
+    { back: 4, mood: 4, stress: 2 },
+    { back: 3, mood: 5, stress: 1, energy: 5 },
+    { back: 2, mood: 4, symptoms: [['Poor sleep', 1]], stress: 3 },
+    { back: 1, mood: 4, stress: 2, energy: 4 },
   ];
 
   for (const day of history) {
@@ -3173,6 +3198,10 @@ function seedMoodLog(today: Date): void {
       day.note ?? null,
       at,
       day.contextTags ?? [],
+      [
+        { name: 'Stress', value: day.stress },
+        ...(day.energy ? [{ name: 'Energy', value: day.energy }] : []),
+      ],
     );
   }
 
@@ -3563,6 +3592,35 @@ function seedCookware(): void {
     ['Sake Akishika glass', 157],
   ];
   for (const [name, grams] of pieces) addCookware(name, grams);
+}
+
+/**
+ * The Inbox's "Suggested by Claude" cards: an event, a deadline for a task that
+ * has one, and an alarm for another. Through the store's insert, so a seeded
+ * row has the shape an agent's request has once it syncs in. The two task
+ * kinds carry the epoch start and end an agent's rows do.
+ */
+function seedSuggestions(today: Date): void {
+  const { insert } = useAgentSuggestionStore.getState();
+  const epoch = new Date(0).toISOString();
+  const createdAt = new Date().toISOString();
+  const base = { allDay: false, location: null, notes: null, status: 'proposed' as const, failureReason: null, eventExternalId: null, resolvedAt: null, createdAt };
+
+  const start = addDays(today, 3);
+  start.setHours(15, 0, 0, 0);
+  const end = new Date(start.getTime() + 60 * 60 * 1000);
+  insert({ ...base, id: 'demo-suggestion-event', title: 'Dentist cleaning', startAt: start.toISOString(), endAt: end.toISOString(), location: 'Brightside Dental' });
+
+  const roadmap = useTaskStore.getState().tasks.find(t => t.title === 'Send the Q3 roadmap to Priya');
+  if (roadmap) {
+    insert({ ...base, id: 'demo-suggestion-deadline', title: roadmap.title, startAt: epoch, endAt: epoch, kind: 'task_deadline', taskId: roadmap.id, payload: null });
+  }
+  const bill = useTaskStore.getState().tasks.find(t => t.title === 'Pay the electric bill');
+  if (bill) {
+    const at = addDays(today, 1);
+    at.setHours(8, 0, 0, 0);
+    insert({ ...base, id: 'demo-suggestion-alarm', title: bill.title, startAt: epoch, endAt: epoch, kind: 'task_alarm', taskId: bill.id, payload: { alarmAt: at.toISOString(), ringKind: 'alarm' } });
+  }
 }
 
 function seedMilestone(today: Date): void {

@@ -1123,6 +1123,11 @@ interface SettingsStore {
   // The calendar those events go into on this device. Device-local, like the
   // three above. Only read while `calendarRequestDeviceId` names this device.
   calendarRequestCalendarId: string | null;
+  // Whether the events an agent asks for wait for a tap in the Inbox before
+  // anything is written. Synced (see `SYNCED_SETTING_KEYS`). Off for anyone who
+  // had a writer device before this existed, so nothing changes under them;
+  // turned on the first time a device is chosen to write them.
+  calendarRequestAsksFirst: boolean;
 
   // Whether this app may read Apple Health.
   //
@@ -2314,6 +2319,7 @@ interface SettingsStore {
    * when it is this device, so turning it off here can't switch off another.
    */
   setCalendarRequestCalendar: (calendarId: string | null) => void;
+  setCalendarRequestAsksFirst: (on: boolean) => void;
   setProjectReviewTasks: (on: boolean) => void;
   setProjectReviewTaskCategory: (category: string | null) => void;
   setBirthdayTasks: (on: boolean) => void;
@@ -3101,6 +3107,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   mealCalendarId: null,
   calendarRequestDeviceId: null,
   calendarRequestCalendarId: null,
+  calendarRequestAsksFirst: false,
   healthReadEnabled: false,
   healthWriteEnabled: false,
   healthFoodWriteRefusalSeen: false,
@@ -3535,6 +3542,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const mealCalendarId = dbGetSetting('mealCalendarId') || null;
     const calendarRequestDeviceId = dbGetSetting('calendarRequestDeviceId') || null;
     const calendarRequestCalendarId = dbGetSetting('calendarRequestCalendarId') || null;
+    const calendarRequestAsksFirst = dbGetSetting('calendarRequestAsksFirst') === 'true';
     const healthReadEnabled = dbGetSetting('healthReadEnabled') === 'true';
     const healthWriteEnabled = dbGetSetting('healthWriteEnabled') === 'true';
     const healthFoodWriteRefusalSeen = dbGetSetting('healthFoodWriteRefusalSeen') === 'true';
@@ -3956,6 +3964,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       calendarIds,
       calendarPeopleHistory,
       calendarReadEnabled,
+      calendarRequestAsksFirst,
       calendarRequestCalendarId,
       calendarRequestDeviceId,
       calendarReviewLastDayKey,
@@ -6121,12 +6130,26 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ deadlineCalendarId: id });
   },
 
+  setCalendarRequestAsksFirst(on: boolean) {
+    dbSetSetting('calendarRequestAsksFirst', on ? 'true' : 'false');
+    set({ calendarRequestAsksFirst: on });
+  },
+
   setCalendarRequestCalendar(calendarId: string | null) {
     const self = dbGetDeviceId();
     if (calendarId) {
+      // The first device chosen to write them also turns on asking first, but
+      // only if the person never answered: a writer set up before the switch
+      // existed keeps its old behaviour, and an answer is never overwritten.
+      const firstWriter = !get().calendarRequestDeviceId && !dbGetSetting('calendarRequestAsksFirst');
       dbSetSetting('calendarRequestCalendarId', calendarId);
       dbSetSetting('calendarRequestDeviceId', self);
-      set({ calendarRequestCalendarId: calendarId, calendarRequestDeviceId: self });
+      if (firstWriter) dbSetSetting('calendarRequestAsksFirst', 'true');
+      set({
+        calendarRequestCalendarId: calendarId,
+        calendarRequestDeviceId: self,
+        ...(firstWriter ? { calendarRequestAsksFirst: true } : {}),
+      });
       return;
     }
     dbSetSetting('calendarRequestCalendarId', '');
@@ -6356,6 +6379,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       mealCalendarId: null,
       calendarRequestCalendarId: null,
       calendarRequestDeviceId: requestWriter,
+      // Synced, so a reset here doesn't reach the answer other devices hold.
+      calendarRequestAsksFirst: get().calendarRequestAsksFirst,
       reminderCaptures: clearedCaptures,
     });
   },

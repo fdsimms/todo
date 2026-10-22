@@ -24,6 +24,7 @@ function log(over: Partial<MoodLog> = {}): MoodLog {
     loggedAt: over.loggedAt ?? '2026-08-17T09:00:00.000Z',
     dayKey: over.dayKey ?? '2026-08-17',
     mood: over.mood === undefined ? 3 : over.mood,
+    factors: over.factors ?? [],
     symptoms: over.symptoms ?? [],
     contextTags: over.contextTags ?? [],
     note: over.note ?? null,

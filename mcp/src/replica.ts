@@ -282,6 +282,14 @@ export interface ReplicaSettings {
   weatherTasks: boolean;
 }
 
+/** A task suggestion for the Inbox. `alarmAt` is an ISO instant, already checked to be ahead. */
+export interface TaskActionProposalInput {
+  kind: 'task_deadline' | 'task_alarm';
+  taskId: string;
+  alarmAt?: string;
+  ringKind?: 'alarm' | 'persistent';
+}
+
 /** An event to ask the phone to write. Already parsed: instants, and an exclusive end. */
 export interface CalendarRequestInput {
   title: string;
@@ -606,6 +614,8 @@ export interface MoodInput {
   mood?: number | null;
   symptoms?: { name: string; severity?: number }[];
   contextTags?: string[];
+  /** Rated factors, each 1 to 5. */
+  factors?: { name: string; value: number }[];
   note?: string | null;
   at?: Date;
 }
@@ -695,7 +705,7 @@ export interface FoodAmount {
   quantity?: string;
 }
 
-export type MoodPatch = Partial<Pick<MoodInput, 'mood' | 'symptoms' | 'contextTags' | 'note'>>;
+export type MoodPatch = Partial<Pick<MoodInput, 'mood' | 'symptoms' | 'contextTags' | 'factors' | 'note'>>;
 
 export type DosePatch = Partial<Omit<DoseInput, 'at'>>;
 
@@ -1617,7 +1627,15 @@ export interface Replica {
    * calendar itself: this is a synced row the phone answers.
    */
   requestCalendarEvent(input: CalendarRequestInput): CalendarRequest;
-  /** Take back a request that is still pending. One already answered is the phone's to keep. */
+  /**
+   * Suggest a device-side change to a task (`CalendarRequest.kind`): its
+   * deadline on the calendar, or an alarm at a time. Always a proposal the
+   * person taps in the Inbox, since the effect is the phone's and applying it
+   * is that tap. Refused for a task that is gone, done, or has nothing to put
+   * on a calendar.
+   */
+  proposeTaskAction(input: TaskActionProposalInput): CalendarRequest;
+  /** Take back a request that is still pending, or a proposal not yet answered. One already answered is the phone's to keep. */
   cancelCalendarRequest(id: string): CalendarRequest;
   /**
    * Ask the phone to change, or delete, an event an earlier request of this
@@ -3008,7 +3026,15 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
    * on the existing "Headache" rather than starting a second symptom the
    * insights would count apart. Shared by logging and editing a check-in.
    */
-  function moodSpelling(): { symptom: (n: string) => string; tag: (n: string) => string } {
+  /** A rating is a whole number from 1 to 5; anything else is refused rather than clamped. */
+  function factorValue(value: number): 1 | 2 | 3 | 4 | 5 {
+    if (!Number.isInteger(value) || value < 1 || value > 5) {
+      throw new Error('A rating is a whole number from 1 to 5.');
+    }
+    return value as 1 | 2 | 3 | 4 | 5;
+  }
+
+  function moodSpelling(): { symptom: (n: string) => string; tag: (n: string) => string; factor: (n: string) => string } {
     const moodLog = require('../../src/utils/moodLog') as typeof import('../../src/utils/moodLog'); // eslint-disable-line @typescript-eslint/no-require-imports
     const logs = db.dbGetAllMoodLogs();
     const spelled = (vocab: string[], key: (s: string) => string) => {
@@ -3018,6 +3044,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     return {
       symptom: spelled(moodLog.symptomVocabulary(logs), moodLog.symptomKey),
       tag: spelled(moodLog.contextTagVocabulary(logs), moodLog.contextTagKey),
+      factor: spelled(moodLog.factorVocabulary(logs), moodLog.factorKey),
     };
   }
 
@@ -3391,6 +3418,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const notesModule = () => require('../../src/utils/agentNotes') as typeof import('../../src/utils/agentNotes');
 
   const tasks = (): Task[] => (taskCache ??= db.dbGetAllTasks());
+  /** Whether the person asked to approve calendar requests first (`calendarRequestAsksFirst`, synced). */
+  const asksFirst = (): boolean => db.dbGetSetting('calendarRequestAsksFirst') === 'true';
   const people = (): Person[] => (personCache ??= db.dbGetAllPeople());
   const projects = (): Project[] => (projectCache ??= db.dbGetAllProjects());
 
@@ -5238,7 +5267,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (input.mood != null && (!Number.isInteger(input.mood) || input.mood < 1 || input.mood > 5)) {
         throw new Error('mood is a whole number from 1 (low) to 5 (great), or left out.');
       }
-      const { symptom, tag } = moodSpelling();
+      const { symptom, tag, factor } = moodSpelling();
+      const factors = (input.factors ?? []).map(f => ({ name: factor(f.name), value: factorValue(f.value) }));
       const symptoms = (input.symptoms ?? []).map(s => ({
         name: symptom(s.name),
         severity: (s.severity === 1 || s.severity === 3 ? s.severity : 2) as 1 | 2 | 3,
@@ -5249,8 +5279,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         input.note ?? null,
         input.at,
         (input.contextTags ?? []).map(tag),
+        factors,
       );
-      if (!log) throw new Error('A check-in needs a mood, a symptom, a tag or a note.');
+      if (!log) throw new Error('A check-in needs a mood, a rating, a symptom, a tag or a note.');
       return log;
     },
 
@@ -5502,11 +5533,12 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (patch.mood !== undefined) next.mood = patch.mood as MoodLog['mood'];
       if (patch.symptoms !== undefined) next.symptoms = patch.symptoms.map(s => ({ name: spelling.symptom(s.name), severity: (s.severity === 1 || s.severity === 3 ? s.severity : 2) as 1 | 2 | 3 }));
       if (patch.contextTags !== undefined) next.contextTags = patch.contextTags.map(spelling.tag);
+      if (patch.factors !== undefined) next.factors = patch.factors.map(f => ({ name: spelling.factor(f.name), value: factorValue(f.value) }));
       if (patch.note !== undefined) next.note = patch.note;
       // An edit may not empty the entry: a check-in recording nothing is a day
       // marked as logged with nothing on it. Delete it instead.
       const after = { ...existing, ...next };
-      if (after.mood == null && after.symptoms.length === 0 && after.contextTags.length === 0 && !after.note?.trim()) {
+      if (after.mood == null && after.factors.length === 0 && after.symptoms.length === 0 && after.contextTags.length === 0 && !after.note?.trim()) {
         throw new Error('That would leave the check-in empty. Delete it instead.');
       }
       useMoodStore.getState().updateLog(id, next);
@@ -5531,7 +5563,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         allDay: input.allDay,
         location: input.location,
         notes: input.notes,
-        status: 'pending',
+        status: asksFirst() ? 'proposed' : 'pending',
         failureReason: null,
         eventExternalId: null,
         resolvedAt: null,
@@ -5547,7 +5579,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       }
       const target = db.dbGetCalendarRequest(targetId);
       if (!target || (target.action ?? 'create') !== 'create') throw new Error(`No request for a new event with id ${targetId}. list_calendar_requests lists them.`);
-      if (target.status === 'pending') throw new Error('That event has not been added yet. Cancel the request with cancel_calendar_request and ask again with what it should be.');
+      if (target.status === 'pending' || target.status === 'proposed') throw new Error('That event has not been added yet. Cancel the request with cancel_calendar_request and ask again with what it should be.');
       if (target.status !== 'written') throw new Error(`That request was ${target.status}, so there is no event to change.`);
       if (!target.eventExternalId) throw new Error('The phone could not read that event\'s calendar id when it added it, so it cannot find it again. Change it in the calendar app.');
       const epoch = new Date(0).toISOString();
@@ -5561,7 +5593,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         allDay: target.allDay,
         location: null,
         notes: null,
-        status: 'pending',
+        status: asksFirst() ? 'proposed' : 'pending',
         failureReason: null,
         eventExternalId: null,
         resolvedAt: null,
@@ -5574,10 +5606,45 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return request;
     },
 
+    proposeTaskAction(input: TaskActionProposalInput): CalendarRequest {
+      const task = tasks().find(t => t.id === input.taskId);
+      if (!task) throw new Error(`No task with id ${input.taskId}.`);
+      if (task.completed || task.archived) throw new Error('That task is already done or archived, so there is nothing to set up on it.');
+      if (input.kind === 'task_deadline') {
+        if (!task.deadline) throw new Error('That task has no deadline, so there is nothing to put on the calendar. Set one with update_task first.');
+        if (task.deadlineOnCalendar) throw new Error('That task\'s deadline is already on the calendar.');
+      }
+      const open = db.dbGetAllCalendarRequests().find(r =>
+        r.status === 'proposed' && r.kind === input.kind && r.taskId === input.taskId);
+      if (open) throw new Error(`That is already suggested and waiting for the person (request ${open.id}). cancel_calendar_request takes it back if it should change.`);
+      // Already over, for the reason CalendarRequest.action gives: a build from
+      // before the kinds existed expires the row instead of writing an event.
+      const epoch = new Date(0).toISOString();
+      const request: CalendarRequest = {
+        id: generateId(),
+        title: task.title,
+        startAt: epoch,
+        endAt: epoch,
+        allDay: false,
+        location: null,
+        notes: null,
+        status: 'proposed',
+        failureReason: null,
+        eventExternalId: null,
+        resolvedAt: null,
+        createdAt: new Date().toISOString(),
+        kind: input.kind,
+        taskId: task.id,
+        payload: input.kind === 'task_alarm' ? { alarmAt: input.alarmAt, ringKind: input.ringKind ?? 'alarm' } : null,
+      };
+      db.dbInsertCalendarRequest(request);
+      return request;
+    },
+
     cancelCalendarRequest(id: string): CalendarRequest {
       const existing = db.dbGetCalendarRequest(id);
       if (!existing) throw new Error(`No calendar request with id ${id}.`);
-      if (existing.status !== 'pending') {
+      if (existing.status !== 'pending' && existing.status !== 'proposed') {
         throw new Error(
           existing.status === 'written'
             ? 'That event is already on the calendar. change_calendar_event with delete: true asks the phone to remove it.'

@@ -150,7 +150,8 @@ export function applyAgentUndo(plan: AgentUndoAction): void {
     // the cancel writes it directly too. Re-checked here because the writing
     // device may have answered it since the plan was made.
     case 'cancelCalendarRequest': {
-      if (dbGetCalendarRequest(plan.id)?.status !== 'pending') return;
+      const status = dbGetCalendarRequest(plan.id)?.status;
+      if (status !== 'pending' && status !== 'proposed') return;
       dbResolveCalendarRequest(plan.id, {
         status: 'cancelled', failureReason: null, eventExternalId: null, resolvedAt: new Date().toISOString(),
       });

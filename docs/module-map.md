@@ -25,6 +25,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/agentPantryRevert.ts` — PANTRY_ITEM_REVERT_FIELDS, LEFTOVER_REVERT_FIELDS, PantryItemSnapshot, LeftoverSnapshot, pantrySnapshot, leftoverSnapshot, pantryRevertOf, PantryRecordState, PantryRecordPlan, pantryRecordPlan
 - `src/utils/agentRecordRevert.ts` — PROJECT_REVERT_FIELDS, RecordLogSubject, RuleListName, RULE_LIST_NAMES, RecordState, DeletedProjectSnapshot, DeletedStackSnapshot, DeletedPersonSnapshot, deletedPersonRevert, deletedProjectRevert, +4 more
 - `src/utils/agentRevert.ts` — DeletedTaskSnapshot, deletedTaskRevert, AgentRevertPlan, agentRevertPlan, agentRevertLabel
+- `src/utils/agentSuggestionActions.ts` — ApplyOutcome, skipSuggestion, approveEventSuggestion, applyTaskSuggestion
+- `src/utils/agentSuggestions.ts` — liveSuggestions, SuggestionCardModel, SuggestionContext, eventWhen, describeSuggestion, TaskSuggestionContext, TaskSuggestionPlan, SUGGESTION_TASK_GONE_REASON, SUGGESTION_TASK_DONE_REASON, SUGGESTION_NO_DEADLINE_REASON, +2 more
 - `src/utils/agentUndo.ts` — AgentUndo, AgentUndoAction, AgentUndoReaders, agentUndoPlan, agentUndoLabel, BatchRevertResult, revertableInBatch, revertBatch
 - `src/utils/agentUndoRun.ts` — agentUndoReaders, applyAgentUndo
 - `src/utils/aiFeatures.ts` — AiFeatureId, AI_FEATURE_IDS, AiModelId, DEFAULT_AI_MODEL, AI_MODEL_OPTIONS, isAiModelId, currentAiModelId, AiFeatureMeta, AI_FEATURES, aiFeaturesFor, +3 more
@@ -79,7 +81,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/calendarMonth.ts` — DayMarkKind, MARK_KINDS, DayMark, DotState, DayDot, DayBucket, MAX_PROJECTION_STEPS, canProject, projectOccurrences, nthOccurrence, +9 more
 - `src/utils/calendarReadSummary.ts` — CalendarLineInput, calendarStatusLine, failedCalendarsLabel, todayFallback
 - `src/utils/calendarRequestDrain.ts` — drainCalendarRequests
-- `src/utils/calendarRequests.ts` — CALENDAR_REQUEST_RETENTION_DAYS, CALENDAR_REQUEST_PAST_REASON, CALENDAR_REQUEST_REFUSED_REASON, isCalendarRequestWriter, CalendarRequestDrainPlan, planCalendarRequestDrain, eventFieldsForRequest, CALENDAR_CHANGE_NO_EVENT_REASON, changeRequestProblem, eventFieldsForChange
+- `src/utils/calendarRequests.ts` — CALENDAR_REQUEST_RETENTION_DAYS, CALENDAR_REQUEST_PAST_REASON, CALENDAR_SUGGESTION_STALE_REASON, CALENDAR_REQUEST_REFUSED_REASON, isCalendarRequestWriter, CalendarRequestDrainPlan, planCalendarRequestDrain, suggestionIsStale, eventFieldsForRequest, CALENDAR_CHANGE_NO_EVENT_REASON, +2 more
 - `src/utils/calendarReviewTasks.ts` — CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview, calendarReviewEventsFor
 - `src/utils/calendarSync.ts` — CalendarPermission, getCalendarPermission, requestCalendarPermission, listEventCalendars, validCalendarIds, CalendarReadStatus, CalendarInfo, FetchEventsResult, fetchEvents, listWritableCalendars, +23 more
 - `src/utils/capitalize.ts` — capitalize
@@ -101,6 +103,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/confirmDeleteGenerated.ts` — confirmDeleteGenerated
 - `src/utils/confirmDeleteTask.ts` — confirmDeleteTask
 - `src/utils/confirmDiscard.ts` — confirmDiscard
+- `src/utils/confirmLargeAmount.ts` — confirmLargeAmount
 - `src/utils/contactsAccess.ts` — ContactsPermission, getContactsPermission, ContactsAccessScope, getContactsAccessScope, requestContactsPermission, toCandidate, searchContacts, fetchLimitedContacts
 - `src/utils/contactsImport.ts` — MIN_CONTACT_QUERY_LENGTH, MAX_CONTACT_RESULTS, ContactCandidate, ContactPersonDraft, contactAddress, contactBirthday, normalizePhone, alreadyAdded, canSearchContacts, rankContacts, +5 more
 - `src/utils/contextCards.ts` — CardPosition, isCardRow, contextCardPositions, contextSectionSummaries
@@ -175,7 +178,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/focusWindow.ts` — FOCUS_CALENDAR_HORIZON_MINUTES, CalendarWindow, calendarWindow, FOCUS_MEETING_LEAD_MINUTES, FOCUS_MEETING_HORIZON_MINUTES, FocusMeetingHeadsUp, focusMeetingHeadsUp
 - `src/utils/followUpTask.ts` — MIN_FOLLOW_UP_TASK_EVERY_N, MAX_FOLLOW_UP_TASK_EVERY_N, canHoldFollowUpTask, FollowUpTaskRule, followUpTaskRule, FollowUpTaskEndRule, repeatHasEnd, followUpTaskEndRule, advanceFollowUpTaskTally, FollowUpTaskSuppression, +13 more
 - `src/utils/foodKinds.ts` — FOOD_KINDS, FOOD_KIND_LABELS, guessFoodKinds, foodKindsOf, isFoodKind, parseFoodKinds, normalizeFoodKinds, serializeFoodKinds, describeFoodKinds
-- `src/utils/foodLog.ts` — FoodLogTotals, FoodLogSection, isBeverageName, scalePanelToAmount, portionExamples, amountHint, amountExample, FoodUnitOption, VOLUME_UNIT_OPTIONS, foodUnitOptionsFor, +50 more
+- `src/utils/foodLog.ts` — FoodLogTotals, FoodLogSection, isBeverageName, scalePanelToAmount, portionExamples, amountHint, amountExample, FoodUnitOption, VOLUME_UNIT_OPTIONS, foodUnitOptionsFor, +54 more
 - `src/utils/foodLogEntry.ts` — buildFoodLogEntry
 - `src/utils/foodLogExport.ts` — FOOD_LOG_EXPORT_COLUMNS, foodLogExportCsv, foodLogExportFileName, foodLogExportSummary
 - `src/utils/foodLogRecents.ts` — FoodRecency, creditedKeys, foodLogRecency, foodLastAmounts, rankByRecency, USUAL_FOR_SLOT_LIMIT, USUAL_FOR_SLOT_DAYS, usualForSlot, sameMealYesterday, entriesCalories, +7 more
@@ -299,8 +302,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/moodDayOffers.ts` — moodDayOffersFor
 - `src/utils/moodExport.ts` — MOOD_EXPORT_COLUMNS, csvCell, moodExportCsv, moodExportFileName, moodExportSummary
 - `src/utils/moodHistory.ts` — MoodFilter, EMPTY_MOOD_FILTER, isMoodFilterActive, hasWrittenNote, toggleFilterValue, filterMoodLogs, searchMoodLogs, textMatchesQuery, adjacentLogDays, MoodLogDay, +10 more
-- `src/utils/moodInsights.ts` — MIN_PAIRED_DAYS, MIN_CONTRAST_DAYS, MoodDay, taskIdentityKey, HealthDayInput, FoodDayInput, NUTRIENT_INSIGHT_KEYS, InsightNutrient, completionDayKey, buildMoodDays, +45 more
-- `src/utils/moodLog.ts` — MOOD_LEVELS, LOW_MOOD_AT_OR_BELOW, DEFAULT_CONTEXT_TAGS, SYMPTOM_SEVERITIES, moodLabel, severityLabel, symptomKey, withSymptom, withoutSymptom, contextTagKey, +13 more
+- `src/utils/moodInsights.ts` — MIN_PAIRED_DAYS, MIN_CONTRAST_DAYS, MoodDay, taskIdentityKey, HealthDayInput, FoodDayInput, NUTRIENT_INSIGHT_KEYS, InsightNutrient, completionDayKey, buildMoodDays, +48 more
+- `src/utils/moodLog.ts` — MOOD_LEVELS, FACTOR_LEVELS, DEFAULT_FACTORS, LOW_MOOD_AT_OR_BELOW, DEFAULT_CONTEXT_TAGS, SYMPTOM_SEVERITIES, moodLabel, factorLabel, severityLabel, symptomKey, +23 more
 - `src/utils/moodPlaceNow.ts` — moodPlaceTagNow
 - `src/utils/moodPlaces.ts` — PLACE_MATCH_RADIUS_M, PLACE_MAX_FIX_ERROR_M, PlaceFix, distanceMeters, moodPlacesOf, placeTagName, placeAt, placeTagAt
 - `src/utils/moodTasks.ts` — MOOD_LOG_LINK_URL, MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, DEFAULT_MOOD_NUDGE_AFTER_DAYS, MOOD_NUDGE_AFTER_DAYS_MIN, MOOD_NUDGE_AFTER_DAYS_MAX, MOOD_NUDGE_COOLDOWN_DAYS, moodLogDayKey, moodLogSegmentOf, moodLogSourceId, +5 more
@@ -579,7 +582,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/todayProjectBands.ts` — TodayProjectBand, TodayProjectBands, buildTodayProjectBands
 - `src/utils/tooltipAim.ts` — TOOLTIP_CARET_W, aimTooltip
 - `src/utils/transitAlerts.ts` — TransitEffect, TransitAlert, TransitSnapshot, TRANSIT_LINES, parseTransitLines, effectOfAlertType, parseSubwayAlerts, alertOverlaps, LIVE_ALERT_MAX_AGE_MS, PLANNED_ALERT_MAX_AGE_MS, +5 more
-- `src/utils/travelTasks.ts` — TRAVEL_LEAD_MINUTES_DEFAULT, TRAVEL_LEAD_MINUTES_MIN, TRAVEL_LEAD_MINUTES_MAX, TRAVEL_LEAD_MINUTES_STEP, LEAVE_WINDOW_MINUTES_DEFAULT, LEAVE_WINDOW_MINUTES_MIN, LEAVE_WINDOW_MINUTES_MAX, LEAVE_WINDOW_MINUTES_STEP, describeLeaveWindow, clampLeaveWindowMinutes, +53 more
+- `src/utils/travelTasks.ts` — TRAVEL_LEAD_MINUTES_DEFAULT, TRAVEL_LEAD_MINUTES_MIN, TRAVEL_LEAD_MINUTES_MAX, TRAVEL_LEAD_MINUTES_STEP, LEAVE_WINDOW_MINUTES_DEFAULT, LEAVE_WINDOW_MINUTES_MIN, LEAVE_WINDOW_MINUTES_MAX, LEAVE_WINDOW_MINUTES_STEP, describeLeaveWindow, clampLeaveWindowMinutes, +54 more
 - `src/utils/tripEvents.ts` — spansDays, tripSpanOf, awayFieldsFromEvent, DESTINATION_MAX_LENGTH, destinationFromEvent, projectForTripEvent
 - `src/utils/tripForecast.ts` — TripForecast, summarizeTripForecast, describeTripForecast, describeForecastGap
 - `src/utils/tripLiveActivity.ts` — TripRun, buildTripRun, useTripLiveActivitySync
@@ -646,6 +649,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/generatedCategoryWriteBack.ts` — GeneratedCategoryOffer, generatedCategoryOffer, writeCategoryToSource
 - `src/store/generatedTaskSync.ts` — deleteGeneratedTaskQuietly, markGeneratedReady, settleReadyMarks, ReconcileGeneratedOptions, reconcileGeneratedTask, dropGeneratedTask, forfeitUseUpCoins, restoreUseUpCoins
 - `src/store/generatorSwitch.ts` — setGeneratorEnabled
+- `src/store/useAgentSuggestionStore.ts` — useAgentSuggestionStore
 - `src/store/useAppGroupStore.ts` — NewSchedule, ScheduleResult, useAppGroupStore, resolvedAssignments, allowGroupsNow, resolveGroupNow, expandGroupNow
 - `src/store/useAppLockStore.ts` — useAppLockStore, isAppLocked
 - `src/store/useBlockTimerStore.ts` — useBlockTimerStore

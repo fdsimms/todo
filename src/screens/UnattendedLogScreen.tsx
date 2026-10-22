@@ -344,7 +344,14 @@ function undoCopy(entry: UnattendedEntry, plan: Exclude<AgentUndo, { kind: 'none
     case 'restoreDeletedItem': return { title: 'Restore this item?', message: `Claude deleted ${t} from your grocery catalog. This puts it back with its aisle, brands, prices, stores, substitutes and receipt names.`, destructive: false };
     case 'restoreLeftover': return { title: 'Undo this change?', message: `Puts the leftover ${t} back the way it was before Claude changed it.`, destructive: false };
     case 'removeLeftover': return { title: 'Remove this leftover?', message: `Claude logged ${t}. Removing it deletes it, including anything you changed on it since.`, destructive: true };
-    case 'cancelCalendarRequest': return { title: 'Don’t add this event?', message: `Claude asked to add ${t} to your calendar, and it hasn’t been added yet. This stops it from being added.`, destructive: false };
+    case 'cancelCalendarRequest': {
+      if (!plan.proposed) return { title: 'Don’t add this event?', message: `Claude asked to add ${t} to your calendar, and it hasn’t been added yet. This stops it from being added.`, destructive: false };
+      // A suggestion still waiting in the Inbox: skipping it is the same as tapping Skip there.
+      const suggested = plan.what === 'alarm' ? `an alarm for ${t}`
+        : plan.what === 'deadline' ? `putting the deadline for ${t} on your calendar`
+          : `adding ${t} to your calendar`;
+      return { title: 'Skip this suggestion?', message: `Claude suggested ${suggested}. This takes it off your Inbox without doing it.`, destructive: false };
+    }
   }
 }
 

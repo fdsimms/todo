@@ -126,7 +126,7 @@ only the fallback until the first sync.
 | `log_cook_time` | **Write.** Records how long cooking a recipe took. |
 | `log_food` | **Write.** Something eaten, with estimated nutrition, and optionally a `breakdown` of the parts it named (kept on the entry, and refused if it does not add up to the total; `update_food_entry` takes one too when it restates amounts). Previews unless `apply: true`; marked estimated; written to Apple Health by the phone on its next foreground, not by the server. Refuses water, which is `log_water`'s. |
 | `log_water` | **Write.** A glass of water, in ml or fl oz, added onto the day's single water entry the way the app's stepper does. Reports the day's total in the person's own unit. Written to Apple Health by the phone on its next foreground, not by the server. |
-| `log_mood` / `log_medication` | **Write.** A mood check-in, or a dose taken, in the spellings already in the log. |
+| `log_mood` / `log_medication` | **Write.** A mood check-in (with optional 1 to 5 ratings of things like stress or energy), or a dose taken, in the spellings already in the log. |
 | `archive_medication` / `rename_medication` / `rename_mood_tag` | **Write.** Archive or restore a medicine in the medicines list; rename a medicine on every dose and in its limit, supply and tasks (naming an existing medicine combines the two); rename a mood context tag on every check-in that has it. |
 | `add_medication` / `remove_medication` / `set_medication_profile` | **Write.** Add a medicine to the list by name before any dose (an archived one is brought back); remove one that has no doses; set whether it is taken as needed, on a schedule, or read off the doses, and the amounts usually taken (a list, the first being the default), what one capsule or tablet contains (`strength`, stamped on doses recorded after it), and the days it is taken (`schedule`: every N days or certain weekdays; no task or reminder is made). `list_medication_logs` reports all of them (with where the schedule stands today), and medicines with no dose yet. |
 | `set_medication_limit` / `set_medication_supply` | **Write.** The limit the person gave for a medicine (hours apart, doses in 24 hours, a total amount in 24 hours; clear or change one cap at a time) and how many they have (counted from now; it then goes down with each dose). Only from figures the person gave; the notify switch stays on the phone. |
@@ -187,9 +187,10 @@ only the fallback until the first sync.
 | `delete_food_entry` | **Write.** Deletes a food log entry not yet written to Apple Health. |
 | `update_mood_log` | **Write.** Corrects a mood check-in. |
 | `delete_mood_log` | **Write.** Deletes a mood check-in. |
-| `request_calendar_event` / `cancel_calendar_request` | **Write.** Asks the phone set to add them to put an event on the calendar the next time it syncs, or takes back one still waiting. The server never touches the calendar itself. |
+| `request_calendar_event` / `cancel_calendar_request` | **Write.** Asks the phone set to add them to put an event on the calendar the next time it syncs, or takes back one still waiting. With Ask before adding on, the event is a card in the Inbox until the person taps it. The server never touches the calendar itself. |
+| `propose_task_device_action` | **Write.** Suggests, as an Inbox card, putting a task's deadline on the calendar or ringing an alarm for it. Nothing changes until the person taps; neither is writable through `update_task`. |
 | `change_calendar_event` | **Write.** Asks the phone to move, edit or delete an event an earlier `request_calendar_event` wrote. Events the person made are out of reach. |
-| `list_calendar_requests` | Those requests and what became of each: pending, written, failed (with why) or cancelled. |
+| `list_calendar_requests` | Those requests and suggestions and what became of each: proposed, pending, written, failed (with why) or cancelled. |
 | `update_medication_log` | **Write.** Corrects a recorded dose. |
 | `delete_medication_log` | **Write.** Deletes a recorded dose. |
 | `delete_task` | **Write.** Deletes tasks with their checklists, or single checklist items (up to 100 a call). Refuses a task the app generated. Each can be restored from Activity. |

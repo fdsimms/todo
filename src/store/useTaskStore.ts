@@ -65,6 +65,7 @@ import { useGroceryStore } from './useGroceryStore';
 import { useEventReminderStore } from './useEventReminderStore';
 import { useHiddenEventsStore } from './useHiddenEventsStore';
 import { useEventPeopleStore } from './useEventPeopleStore';
+import { useAgentSuggestionStore } from './useAgentSuggestionStore';
 import { useEventTaskLinkStore } from './useEventTaskLinkStore';
 import { useRecipeStore } from './useRecipeStore';
 import { useMealPlanStore } from './useMealPlanStore';
@@ -646,6 +647,12 @@ function backfillRecurrenceAnchors(tasks: Task[]): void {
     dbUpdateTask(task);
   }
 }
+
+/**
+ * The disruption note each travel row's reminder was last scheduled with this
+ * launch, keyed by task id. Memory only: see `checkTravelTasks`.
+ */
+const travelReminderNotes = new Map<string, string>();
 
 /**
  * How a reconcile writes the calendar link it ends with.
@@ -1359,6 +1366,11 @@ let quotaHoldTimer: ReturnType<typeof setTimeout> | null = null;
 // completion hold above expires — keeps a pinned row from vanishing out of
 // the Pinned section instantly on tap, same grace period as everywhere else.
 let pendingUnpinIds: string[] = [];
+
+// Pin rank of each task the hold above unpinned, so unticking it later (the
+// Logbook, or an undo after the hold) can put it back in the Pinned block where
+// it was. Session-only: the pin is gone from the row once the hold fires.
+const unpinnedOnCompletion = new Map<string, number>();
 
 // pinnedTasks() ignores visibility on purpose (see CLAUDE.md), which is right
 // for a task that just isn't due today — but a daily target that reaches its
@@ -3392,6 +3404,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Same again: who an event is with names demo people in a demo database.
     useEventPeopleStore.getState().initialize();
     useEventTaskLinkStore.getState().initialize();
+    // What an agent asked for and the person hasn't answered: arrives by sync,
+    // which reloads through this, and names demo requests in a demo database.
+    useAgentSuggestionStore.getState().initialize();
     const tasks = dbGetAllTasks();
     backfillRecurrenceAnchors(tasks);
     const tagRegistry = dbGetTagRegistry();
@@ -4705,9 +4720,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // trusting the ids blindly — if the completion was undone in the
       // meantime (uncompleteTask), the task is no longer completed and its
       // pin was never actually touched, so it must stay untouched here too.
-      const stillPinnedIds = get().tasks
-        .filter(t => unpinIds.includes(t.id) && t.completed && t.pinned)
-        .map(t => t.id);
+      const stillPinned = get().tasks.filter(t => unpinIds.includes(t.id) && t.completed && t.pinned);
+      const stillPinnedIds = stillPinned.map(t => t.id);
+      stillPinned.forEach(t => unpinnedOnCompletion.set(t.id, t.pinnedOrder));
       if (stillPinnedIds.length > 0) dbBulkSetPinned(stillPinnedIds, false);
       // No animateLayout() here: this commit unmounts the completed row's
       // Swipeable (react-native-gesture-handler). Firing a LayoutAnimation in
@@ -4794,7 +4809,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!task || !task.completed) return;
     const original = task;
     // A catch-up task is in a person's history only while answered and done.
-    const updated = reachOutSourceId(task) ? { ...reopenedTask(task), personIds: [] } : reopenedTask(task);
+    const reopened = reachOutSourceId(task) ? { ...reopenedTask(task), personIds: [] } : reopenedTask(task);
+    // Completing it lifted its pin; taking the completion back puts the pin back.
+    const repinOrder = unpinnedOnCompletion.get(id);
+    unpinnedOnCompletion.delete(id);
+    const updated = repinOrder !== undefined && !task.pinned ? { ...reopened, pinned: true, pinnedOrder: repinOrder } : reopened;
     uncreditPenaltyShield(task, new Date());
     // Whatever this completion or miss did to the coin balance goes with it.
     // Unlike the penalty credit above, nothing here can be bought back by a
@@ -8146,8 +8165,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // Live incidents only count for a trip leaving today (see journeyDisruptions).
       const disruptions = journeyDisruptions(
         transit, settings.transitLines, leaveMs, startMs, nowMs, +addDays(getCurrentDayStart(), 1));
-      const note = describeDisruptions(disruptions);
-      const title = travelTaskTitle(match.event.title, note);
+      const note = describeDisruptions(disruptions) ?? '';
+      const title = travelTaskTitle(match.event.title);
       // The MTA's own wording, which is where the stops are named. The notes
       // of a "Leave for" row are this and nothing else (it is a notice).
       const notes = disruptionHeadlines(disruptions) ?? '';
@@ -8164,6 +8183,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           if (existing.title !== title) patch.title = title;
           if ((existing.notes ?? '') !== notes) patch.notes = notes;
           if (existing.reminderTime !== match.leaveAt) patch.reminderTime = match.leaveAt;
+          // The reminder's body leads with the note, which no field holds, so a
+          // change to it alone (the same headline under a new effect) would
+          // leave the scheduled one stale. A patch reschedules through
+          // updateTask; this covers the case where there is none. The first
+          // sight of a row this launch only records, since the launch
+          // reminder pass has just scheduled it.
+          const seenNote = travelReminderNotes.get(existing.id);
+          travelReminderNotes.set(existing.id, note);
+          if (Object.keys(patch).length === 0 && seenNote !== undefined && seenNote !== note) {
+            scheduleTaskReminder(existing);
+          }
           return Object.keys(patch).length > 0 ? patch : null;
         },
         draft: () => ({

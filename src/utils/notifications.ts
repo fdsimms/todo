@@ -18,12 +18,15 @@ import { agendaBirthdays, agendaCounts, agendaBody, agendaDinners, agendaMeeting
 import { calendarCovers } from './eventConflicts';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCalendarStore } from '../store/useCalendarStore';
+import { useTransitStore } from '../store/useTransitStore';
+import { travelDisruptionNote } from './travelTasks';
 import { nudgeReminderPastMeeting } from './reminderNudge';
 import { isAlarmKitAvailable, requestAlarmAuthorization, scheduleNativeAlarm, cancelNativeAlarm } from 'todo-alarmkit-bridge';
 import { ALARM_MAX_RINGS, alarmChainIds, alarmChainTimes, stepTimerAlarmUuid, taskAlarmUuid } from './alarmChain';
 import { isDemoModeActive } from './demoState';
 import { quotaRunSpan, quotaDueTimesAfter } from './quotaSchedule';
-import { dayKeyOf, formatTimeOfDay, getDayStart } from './dateUtils';
+import { addDays } from 'date-fns/addDays';
+import { dayKeyOf, formatTimeOfDay, getCurrentDayStart, getDayStart } from './dateUtils';
 import { focusMeetingHeadsUp } from './focusWindow';
 import { resolveActiveTrip } from './activeTrip';
 import type { Shop } from '../types';
@@ -212,6 +215,24 @@ function reminderTitleFor(task: Task): string {
   return displayTitleFor(task) || 'Task reminder';
 }
 
+/**
+ * A reminder's body: the task's notes, or a plain line when there are none. A
+ * "Leave for X" row leads with the disruption note ("G skipping stops; F
+ * delayed"), which moved out of its title so the title is only the event.
+ */
+function reminderBodyFor(task: Task): string {
+  if (isProjectLockedAtAll(task.projectId)) return 'You have a task coming up';
+  const settings = useSettingsStore.getState();
+  const note = task.generatedKind === 'travel' && settings.transitAlerts
+    ? travelDisruptionNote(
+        task, useTransitStore.getState().snapshot, settings.transitLines, Date.now(),
+        +addDays(getCurrentDayStart(), 1))
+    : null;
+  const notes = task.notes || '';
+  if (note) return notes ? `${note}\n${notes}` : note;
+  return notes || 'You have a task coming up';
+}
+
 export async function scheduleTaskReminder(task: Task): Promise<void> {
   // Demo tasks are seeded through this same store action, but a real native
   // notification or AlarmKit alarm is a side effect on the device, not on the
@@ -278,7 +299,7 @@ export async function scheduleTaskReminder(task: Task): Promise<void> {
     identifier: task.id,
     content: {
       title: reminderTitleFor(task),
-      body: isProjectLockedAtAll(task.projectId) ? 'You have a task coming up' : task.notes || 'You have a task coming up',
+      body: reminderBodyFor(task),
       data: { taskId: task.id },
       sound: true,
       categoryIdentifier: TASK_REMINDER_CATEGORY,

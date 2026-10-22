@@ -2311,3 +2311,33 @@ describe('generatedTaskExtras', () => {
     expect(useSettingsStore.getState().generatedTaskExtras).toEqual({ birthday: extras });
   });
 });
+
+describe('calendarRequestAsksFirst', () => {
+  it('turns on when the first device is chosen to write Claude\'s events', () => {
+    useSettingsStore.getState().setCalendarRequestCalendar('cal-1');
+    expect(useSettingsStore.getState().calendarRequestAsksFirst).toBe(true);
+    expect(dbSetSetting).toHaveBeenCalledWith('calendarRequestAsksFirst', 'true');
+  });
+
+  it('is left alone by a writer that existed before the switch did', () => {
+    useSettingsStore.setState({ calendarRequestDeviceId: 'device-self' });
+    useSettingsStore.getState().setCalendarRequestCalendar('cal-2');
+    expect(useSettingsStore.getState().calendarRequestAsksFirst).toBe(false);
+    expect(dbSetSetting).not.toHaveBeenCalledWith('calendarRequestAsksFirst', expect.anything());
+  });
+
+  it('never overwrites an answer the person already gave', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) => (key === 'calendarRequestAsksFirst' ? 'false' : null));
+    useSettingsStore.getState().setCalendarRequestCalendar('cal-1');
+    expect(useSettingsStore.getState().calendarRequestAsksFirst).toBe(false);
+  });
+
+  it('is set by the toggle and read back on initialize', () => {
+    useSettingsStore.getState().setCalendarRequestAsksFirst(true);
+    expect(dbSetSetting).toHaveBeenCalledWith('calendarRequestAsksFirst', 'true');
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) => (key === 'calendarRequestAsksFirst' ? 'true' : null));
+    useSettingsStore.setState({ calendarRequestAsksFirst: false });
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().calendarRequestAsksFirst).toBe(true);
+  });
+});

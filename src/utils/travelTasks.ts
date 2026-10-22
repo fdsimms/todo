@@ -3,6 +3,7 @@ import type { Task } from '../types';
 import { eventIsRuleEligible, eventOccurrenceKey, eventOccurrenceKeys, type HandledEventTasks } from './eventTasks';
 import { generatedSourceOf } from './generatedTasks';
 import type { SavedPlace } from './savedPlaces';
+import { describeDisruptions, journeyDisruptions, type TransitSnapshot } from './transitAlerts';
 
 /**
  * Travel tasks — "Leave for Dentist", for a calendar event somewhere else.
@@ -617,20 +618,41 @@ export function isTravelTaskStale(
 }
 
 /**
- * The task's title: "Leave for <event>", with the MTA note in brackets when
- * there is one. The event's own words follow the verb unaltered apart from
- * length, and the note is the app's footnote to them, the order
- * `weatherTaskTitle` puts the user's words and the forecast in. The travel
- * estimate is not in the title: the row shows it on its own line
+ * The task's title: "Leave for <event>". The event's own words follow the verb
+ * unaltered apart from length. The MTA note is not in the title (it made a long
+ * event name wrap to three lines): the row shows it on its own line and the
+ * reminder carries it in its body, both through `travelDisruptionNote`. The
+ * travel estimate is not in the title either: the row shows it on its own line
  * (`travelRowNote`), kept current, so the title doesn't repeat it.
  */
-export function travelTaskTitle(eventTitle: string, note: string | null): string {
+export function travelTaskTitle(eventTitle: string): string {
   const trimmed = eventTitle.trim().replace(/\s+/g, ' ');
   const name = trimmed.length > TRAVEL_EVENT_TITLE_MAX_LENGTH
     ? `${trimmed.slice(0, TRAVEL_EVENT_TITLE_MAX_LENGTH - 1).trimEnd()}…`
     : trimmed;
-  const base = name ? `Leave for ${name}` : 'Leave for your next event';
-  return note ? `${base} (${note})` : base;
+  return name ? `Leave for ${name}` : 'Leave for your next event';
+}
+
+/**
+ * The disruptions on a "Leave for X" row's trip in a few words ("G skipping
+ * stops; F delayed"), or null for none or for any other task. Worked out from
+ * the task's own leave time and its source id's event start, the same
+ * journey `checkTravelTasks` judges, so the row and the reminder read it at
+ * the time they are drawn or scheduled rather than from a stored copy.
+ */
+export function travelDisruptionNote(
+  task: Pick<Task, 'generatedKind' | 'generatedSourceId' | 'reminderTime'>,
+  snapshot: TransitSnapshot | null,
+  lineKeys: readonly string[],
+  nowMs: number,
+  liveUntilMs: number,
+): string | null {
+  const sourceId = travelSourceOf(task);
+  if (!sourceId || !task.reminderTime) return null;
+  const startMs = travelSourceStart(sourceId);
+  const leaveMs = Date.parse(task.reminderTime);
+  if (startMs === null || !Number.isFinite(leaveMs)) return null;
+  return describeDisruptions(journeyDisruptions(snapshot, lineKeys, leaveMs, startMs, nowMs, liveUntilMs));
 }
 
 /**

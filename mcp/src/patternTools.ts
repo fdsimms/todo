@@ -211,6 +211,7 @@ export interface MoodInsights {
   byCategory: Contrast[];
   byRepeatingTask: Contrast[];
   bySymptom: Contrast[];
+  byRating: Contrast[];
   byContextTag: Contrast[];
   /**
    * Mood on the days a workout was finished in the app against the other days
@@ -252,6 +253,7 @@ export function moodInsights(replica: Replica): MoodInsights {
     return out;
   };
   const symptomNames = names(lib.moodLog.symptomVocabulary(logs), lib.moodLog.symptomKey);
+  const factorNames = names(lib.moodLog.factorVocabulary(logs), lib.moodLog.factorKey);
   const tagNames = names(lib.moodLog.contextTagVocabulary(logs), lib.moodLog.contextTagKey);
   const taskTitles = mi.taskContrastTitles(tasks);
   const foodNames = lib.nutritionStats.foodKeyNames(food, {
@@ -282,6 +284,7 @@ export function moodInsights(replica: Replica): MoodInsights {
       `Associations, never causes. Say "on days you…", not "because".`,
       `Nothing is compared below ${mi.MIN_PAIRED_DAYS} days with both a mood and a record, and each side of a contrast needs ${mi.MIN_CONTRAST_DAYS} days.`,
       'A day nobody logged is unknown, not a zero.',
+      'byRating compares mood on days a rating the person named (stress, energy) averaged 4 or 5 (daysWith) against days it averaged 1 or 2 (daysWithout). A high rating is more of it, never better: do not call a rating good or bad, and never say it caused the mood.',
       'Training days are the days a workout was finished in the app; a run or class that only Apple Health holds is not counted. Every other day with a mood since the first logged workout is a rest day. Like the rest, this is an association: people tend to train on days they already feel well.',
       'There is deliberately no medication-against-symptom comparison: you take a painkiller because something hurts, so the comparison would point backwards.',
     ],
@@ -309,6 +312,7 @@ export function moodInsights(replica: Replica): MoodInsights {
     byCategory: contrasts(mi.categoryMoodContrasts(days), k => k),
     byRepeatingTask: contrasts(mi.taskMoodContrasts(days), k => taskTitles.get(k) ?? k),
     bySymptom: contrasts(mi.symptomMoodContrasts(days), k => symptomNames.get(k) ?? k),
+    byRating: contrasts(mi.factorMoodContrasts(days), k => factorNames.get(k) ?? k),
     byContextTag: contrasts(mi.contextTagMoodContrasts(days), k => tagNames.get(k) ?? k),
     byTrainingDay: trainingRow ? contrasts([trainingRow], () => 'Days you finished a workout') : [],
     byFood: settings.kitchenEnabled ? contrasts(mi.foodMoodContrasts(days), k => foodNames.get(k) ?? k) : [],

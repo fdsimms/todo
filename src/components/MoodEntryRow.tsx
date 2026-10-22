@@ -7,7 +7,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { useTextScale } from '../hooks/useTextScale';
 import { MoodFace } from './MoodFace';
-import { moodLabel, severityLabel } from '../utils/moodLog';
+import { factorsSummary, moodLabel, severityLabel } from '../utils/moodLog';
 import { symptomOnLog } from '../utils/moodHistory';
 
 /** Enough for a few sentences; the sheet still holds the whole note. */
@@ -54,6 +54,7 @@ export function MoodEntryRow({ log, onPress, highlightSymptomKey, showDate = tru
     format(new Date(log.loggedAt), 'h:mm a'),
     log.mood === null ? 'no mood recorded' : moodLabel(log.mood),
     highlighted ? `${highlighted.name}, ${severityLabel(highlighted.severity)}` : null,
+    log.factors.length > 0 ? factorsSummary(log.factors) : null,
     log.symptoms.length > 0 ? log.symptoms.map(s => s.name).join(', ') : null,
     log.contextTags.length > 0 ? log.contextTags.join(', ') : null,
     log.note || null,
@@ -88,6 +89,9 @@ export function MoodEntryRow({ log, onPress, highlightSymptomKey, showDate = tru
           <Text style={styles.highlight} numberOfLines={1}>
             {highlighted.name}: {severityLabel(highlighted.severity).toLowerCase()}
           </Text>
+        )}
+        {log.factors.length > 0 && (
+          <Text style={styles.symptoms} numberOfLines={2}>{factorsSummary(log.factors)}</Text>
         )}
         {log.symptoms.length > 0 && (
           <Text style={styles.symptoms} numberOfLines={2}>

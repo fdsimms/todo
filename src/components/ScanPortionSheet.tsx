@@ -21,7 +21,9 @@ import {
   amountExample,
   amountHint,
   composeFoodAmount,
+  convertAmountNumber,
   foodUnitOptionsFor,
+  largeAmountWarning,
   recallAmount,
   scalePanelToAmount,
 } from '../utils/foodLog';
@@ -33,6 +35,7 @@ import { CookwareWeighIn } from './CookwareWeighIn';
 import { haptics } from '../utils/haptics';
 import type { PantryReviewAnswer } from '../utils/pantryReview';
 import { confirmDiscard } from '../utils/confirmDiscard';
+import { confirmLargeAmount } from '../utils/confirmLargeAmount';
 import { PantryAnswerField } from './PantryAnswerField';
 import { InlineAction } from './InlineAction';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
@@ -335,7 +338,33 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
     confirmDiscard(() => { Keyboard.dismiss(); onClose(); });
   };
 
+  /**
+   * The first card whose answer reads like a weight in the wrong unit. Only an
+   * answer the person gave is asked about: a recalled amount nobody touched is
+   * what they logged last time, and the whole-package tap is a deliberate
+   * count the pack size produced.
+   */
+  const firstLargeAmount = () => {
+    for (const food of loggable) {
+      const answer = answers[food.key];
+      if (answer === undefined) continue;
+      const panel = panelFor(food);
+      const whole = packageChoices(panel, food.packSize).find(c => c.key === 'package');
+      const serving = foodUnitOptionsFor(panel).find(o => o.key === 'serving');
+      if (whole && answer.trim() === composeFoodAmount(formatServings(whole.servings), serving)) continue;
+      const warning = largeAmountWarning(panel, answer, food.label);
+      if (warning) return warning;
+    }
+    return null;
+  };
+
   const handleLog = () => {
+    const large = firstLargeAmount();
+    if (large) { confirmLargeAmount(large, logAll); return; }
+    logAll();
+  };
+
+  const logAll = () => {
     const logged: string[] = [];
     for (const food of loggable) {
       const answer = resolved.get(food.key);
@@ -477,8 +506,15 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                           return;
                         }
                         const option = unitOptions.find(o => o.key === key);
+                        // The number on screen, which may be a recalled one nobody
+                        // typed. A different unit keeps the amount the same amount
+                        // (57 g is 1.8 servings) where the two can be weighed
+                        // against each other, and the typed number where not.
+                        const shown = amountNumbers[food.key]
+                          ?? (answers[food.key] === undefined ? defaultAmount?.number : undefined)
+                          ?? '';
+                        const typed = convertAmountNumber(panel, shown, selectedUnit, option) ?? shown;
                         // Picking "serving" with nothing typed means one serving.
-                        const typed = amountNumbers[food.key] ?? '';
                         const number = key === 'serving' && !typed.trim() ? '1' : typed;
                         setAmountUnits(u => ({ ...u, [food.key]: key }));
                         setAmountNumbers(n => ({ ...n, [food.key]: number }));

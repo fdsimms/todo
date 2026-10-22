@@ -101,7 +101,7 @@ import { forget, remember } from './memoryTools';
 import { deleteRule, listAutomations, saveRule, setAutomation, RULE_TYPES } from './automationTools';
 import { createCategory, deleteCategory, updateCategory } from './categoryTools';
 import { REORDER_KINDS, reorder } from './reorderTools';
-import { cancelCalendarRequest, changeCalendarEvent, listCalendarRequests, requestCalendarEvent } from './calendarTools';
+import { cancelCalendarRequest, changeCalendarEvent, listCalendarRequests, proposeTaskDeviceAction, requestCalendarEvent } from './calendarTools';
 import { ESTIMATE_KEY_LIST, NUTRIENT_KEY_LIST, atFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logSavedMeal, moveFoodEntry, saveMealFromEntries, setNutritionTargets, renameMedication, renameMoodTag, setMedicationArchived, addMedication, removeMedication, setMedicationProfile, setMedicationLimit, setMedicationSupply, logFood, logMedication, setSupplementNutrients, logMood, logWater, updateRecipe, patchRecipe, deleteRecipe, updateFoodEntry, refreshDishEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
 import { listErrors, MAX_ERRORS } from './errorTools';
 import { storageReport } from './storageTools';
@@ -502,8 +502,8 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_calendar_requests',
-    'Events you asked the phone to add with request_calendar_event, newest first, and what happened to each: pending (waiting for the phone to sync), written (on the calendar), failed (with the reason), or cancelled. Also whether any device is set to add them. Answered requests are kept for 30 days. This is not their calendar: the server still cannot see it.',
-    { status: z.enum(['pending', 'written', 'failed', 'cancelled']).optional() },
+    'Events you asked the phone to add with request_calendar_event, and task suggestions from propose_task_device_action, newest first, and what happened to each: proposed (a card in their Inbox waiting for their tap), pending (approved or sent straight through, waiting for the phone to sync), written (done), failed (with the reason), or cancelled (skipped, or taken back). Also whether any device is set to add events. Answered requests are kept for 30 days. This is not their calendar: the server still cannot see it.',
+    { status: z.enum(['proposed', 'pending', 'written', 'failed', 'cancelled']).optional() },
     async input => json(await withFresh(() => listCalendarRequests(replica, input)))
   );
 
@@ -1164,7 +1164,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'mood_insights',
-    "The Mood screen's findings: mood against what got done, by category, by repeating task, by symptom, by context tag, by food, on days they finished a workout (when Workouts is on and workout history reaches this server; otherwise absent), by time of day, and before and after each milestone the person marked. Every comparison is held to the app's minimum number of days and reports both sides' day counts. They are associations, never causes; read the rules field and stay inside it when explaining. Empty unless health logs reach this server.",
+    "The Mood screen's findings: mood against what got done, by category, by repeating task, by symptom, by rating (their own 1 to 5 factors, high days against low days), by context tag, by food, on days they finished a workout (when Workouts is on and workout history reaches this server; otherwise absent), by time of day, and before and after each milestone the person marked. Every comparison is held to the app's minimum number of days and reports both sides' day counts. They are associations, never causes; read the rules field and stay inside it when explaining. Empty unless health logs reach this server.",
     {},
     async () => json(await withFresh(() => moodInsights(replica)))
   );
@@ -2025,11 +2025,12 @@ function registerWriteTools(
 
   server.tool(
     'log_mood',
-    'Record a mood check-in: a rating from 1 (low) to 5 (great), and/or symptoms with a severity of 1 (mild) to 3 (severe), context tags ("work", "poor sleep"), and a short note. Dreams and longer writing go in the journal (log_journal_entry). Leave the rating out when the person gave none; an unrated check-in is not a 3. Symptoms and tags are matched to the spellings already in their log. Log only what they told you, never an inference about how they seem.',
+    'Record a mood check-in: a rating from 1 (low) to 5 (great), factors they rated 1 to 5 (stress, energy), and/or symptoms with a severity of 1 (mild) to 3 (severe), context tags ("work", "poor sleep"), and a short note. Dreams and longer writing go in the journal (log_journal_entry). Leave the rating out when the person gave none; an unrated check-in is not a 3. Symptoms and tags are matched to the spellings already in their log. Log only what they told you, never an inference about how they seem.',
     {
       mood: z.number().int().min(1).max(5).nullable().optional(),
       symptoms: z.array(z.object({ name: z.string().min(1), severity: z.number().int().min(1).max(3).optional() })).optional(),
       contextTags: z.array(z.string().min(1)).optional(),
+      factors: z.array(z.object({ name: z.string().min(1), value: z.number().int().min(1).max(5) })).optional().describe('Things they rated, such as Stress or Energy, each 1 to 5. High means more of it, never better. Matched to the names already in their log.'),
       note: z.string().nullable().optional(),
       at: z.string().optional().describe('An ISO date-time, or YYYY-MM-DD for a day gone by. Default now.'),
     },
@@ -2064,7 +2065,7 @@ function registerWriteTools(
 
   server.tool(
     'request_calendar_event',
-    'Ask the person\'s phone to add an event to their calendar. The server cannot reach the calendar, so this queues the event and the one device they chose in Settings adds it the next time it syncs; until then it is not on the calendar, so say it is queued, not added. Refused when no device is set to add them (get_overview features.calendarRequests). Give start as YYYY-MM-DD for an all-day event (end is then the last day, default the same day), or YYYY-MM-DDTHH:MM in their time zone for a timed one (end defaults to an hour later). Nothing here can change or delete an event once it is added.',
+    'Ask the person\'s phone to add an event to their calendar. The server cannot reach the calendar, so this queues the event and the one device they chose in Settings adds it the next time it syncs; until then it is not on the calendar, so say it is queued, not added. If they have turned on Ask before adding, the event waits as a card in their Inbox for their tap instead (the result says so). Refused when no device is set to add them (get_overview features.calendarRequests). Give start as YYYY-MM-DD for an all-day event (end is then the last day, default the same day), or YYYY-MM-DDTHH:MM in their time zone for a timed one (end defaults to an hour later). Nothing here can change or delete an event once it is added.',
     {
       title: z.string().min(1),
       start: z.string().min(1).describe('YYYY-MM-DD for all day, or YYYY-MM-DDTHH:MM in their time zone.'),
@@ -2082,8 +2083,26 @@ function registerWriteTools(
   );
 
   server.tool(
+    'propose_task_device_action',
+    'Suggest, never set, something only their phone can do for a task: put its deadline on their calendar, or ring an alarm for it. update_task cannot do either. This puts a card in their Inbox; nothing changes until they tap it, so say it is suggested, not done. A deadline suggestion needs a task that has a deadline (set one with update_task first). An alarm needs at, YYYY-MM-DDTHH:MM in their time zone and ahead of now; ring \'persistent\' repeats every 5 minutes until the task is done. An alarm rings as a system alarm only on phones that support it, and otherwise becomes a plain reminder, which the card says. Ask before suggesting one the person did not mention.',
+    {
+      taskId: z.string().min(1),
+      action: z.enum(['deadline_on_calendar', 'alarm']),
+      at: z.string().optional().describe('Alarm only: YYYY-MM-DDTHH:MM in their time zone.'),
+      ring: z.enum(['alarm', 'persistent']).optional().describe('Alarm only. Default alarm: rings once.'),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => proposeTaskDeviceAction(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not suggest that.' });
+      }
+    }
+  );
+
+  server.tool(
     'cancel_calendar_request',
-    'Take back a calendar request that is still pending, so the phone never adds it. One already on the calendar can only be removed by the person, in their calendar app.',
+    'Take back a calendar request that is still pending, or a suggestion still waiting in their Inbox, so the phone never adds it. One already on the calendar can only be removed by the person, in their calendar app.',
     { id: z.string().min(1).describe('The id from list_calendar_requests or request_calendar_event.') },
     async input => {
       try {
@@ -2146,12 +2165,13 @@ function registerWriteTools(
 
   server.tool(
     'update_mood_log',
-    'Correct a mood check-in. Only what you name changes; symptoms and contextTags replace the whole list, and null clears the rating or the note. A check-in cannot be left empty: delete it instead.' + dayNote,
+    'Correct a mood check-in. Only what you name changes; symptoms, factors and contextTags replace the whole list, and null clears the rating or the note. A check-in cannot be left empty: delete it instead.' + dayNote,
     {
       id: entryId,
       mood: z.number().int().min(1).max(5).nullable().optional(),
       symptoms: z.array(z.object({ name: z.string().min(1), severity: z.number().int().min(1).max(3).optional() })).optional(),
       contextTags: z.array(z.string().min(1)).optional(),
+      factors: z.array(z.object({ name: z.string().min(1), value: z.number().int().min(1).max(5) })).optional().describe('Things they rated, such as Stress or Energy, each 1 to 5. High means more of it, never better. Matched to the names already in their log.'),
       note: z.string().nullable().optional(),
     },
     async ({ id, ...patch }) => {

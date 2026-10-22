@@ -559,6 +559,80 @@ export function parseFoodAmount(raw: string, options: FoodUnitOption[]): { numbe
   return null;
 }
 
+/** Grams in one of a unit, read the way a typed amount is; null where the panel can't weigh it. */
+function gramsPerUnit(panel: FoodNutrition, unit: FoodUnitOption): number | null {
+  if (isNutrientUnitOption(unit)) return null;
+  // "g cooked" over a raw panel is a weight in the other state, not plain grams.
+  if (takesStateAmount(panel) && panel.cooking && unit.key === stateUnitLabel(panel.cooking)) return null;
+  const grams = scalePanelToAmount(panel, composeFoodAmount('1', unit), null)?.grams;
+  return grams !== null && grams !== undefined && grams > 0 ? grams : null;
+}
+
+/**
+ * The number to show after the unit pill changes, so the amount stays the same
+ * amount: 57 g becomes 1.8 servings, rather than 57 servings. Null when either
+ * unit can't be weighed against this panel (a nutrient amount, a volume with no
+ * density), or the field holds no number yet; the caller then keeps what was
+ * typed, as it did before this existed.
+ */
+export function convertAmountNumber(
+  panel: FoodNutrition,
+  numberText: string,
+  from: FoodUnitOption | undefined,
+  to: FoodUnitOption | undefined,
+): string | null {
+  if (!from || !to || from.key === to.key) return null;
+  const typed = Number(numberText.trim().replace(',', '.'));
+  if (!numberText.trim() || !Number.isFinite(typed) || typed <= 0) return null;
+  const fromGrams = gramsPerUnit(panel, from);
+  const toGrams = gramsPerUnit(panel, to);
+  if (fromGrams === null || toGrams === null) return null;
+  const converted = (typed * fromGrams) / toGrams;
+  const places = converted >= 100 ? 0 : converted >= 10 ? 1 : 2;
+  const rounded = Number(converted.toFixed(places));
+  return rounded > 0 ? String(rounded) : null;
+}
+
+/** A count of this many or more, in a unit that counts helpings rather than weighs them, gets asked about. */
+export const LARGE_COUNT_AMOUNT = 10;
+
+/** Units that measure a weight, a volume or a nutrient: a big number in these is a big meal, not a missed unit. */
+const MEASURED_UNIT_KEYS = new Set(['g', 'oz', 'lb', 'ml', 'fl oz', 'tsp', 'tbsp', 'cup']);
+
+export interface LargeAmountWarning {
+  title: string;
+  message: string;
+}
+
+/**
+ * A warning for an amount that reads like a weight left in the wrong unit, or
+ * null when it doesn't. Only a count (servings, or one of the food's own
+ * portions) at `LARGE_COUNT_AMOUNT` or more: 57 servings of protein powder is
+ * 57 g with the unit switched, and no one eats it. Weights and volumes are
+ * never questioned, since 570 g of rice is a plausible plate and the app has
+ * no way to say what is too much of anything. Reads the amount text each sheet
+ * already holds, so all three amount sheets ask the same question.
+ */
+export function largeAmountWarning(panel: FoodNutrition, amountText: string, label: string): LargeAmountWarning | null {
+  const options = foodUnitOptionsFor(panel);
+  const parsed = parseFoodAmount(amountText, options);
+  if (!parsed) return null;
+  const unit = options.find(o => o.key === parsed.unitKey);
+  if (!unit || isNutrientUnitOption(unit) || MEASURED_UNIT_KEYS.has(unit.key)) return null;
+  if (takesStateAmount(panel) && panel.cooking && unit.key === stateUnitLabel(panel.cooking)) return null;
+  const count = Number(parsed.number);
+  if (!Number.isFinite(count) || count < LARGE_COUNT_AMOUNT) return null;
+  const noun = unit.key === 'serving' ? 'servings' : unit.label;
+  const grams = scalePanelToAmount(panel, amountText, null)?.grams ?? null;
+  const advice = 'If you meant a weight, change the unit first.';
+  return {
+    title: `Log ${parsed.number} ${noun}?`,
+    message: grams !== null && grams > 0
+      ? `That comes to about ${Math.round(grams).toLocaleString('en-US')} g of ${label}. ${advice}`
+      : advice,
+  };
+}
+
 /** What the entry sheet's amount fields open on when a food was logged before. */
 export interface RecalledAmount {
   /** The amount text Save would read, exactly as if it had been typed. */

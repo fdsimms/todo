@@ -161,6 +161,7 @@ export const WRITE_TOOLS: Record<string, { title: string; destructive: boolean; 
   update_saved_view: { title: 'Change a saved view', destructive: true, idempotent: true },
   set_vacation_mode: { title: 'Turn vacation mode on or off', destructive: false, idempotent: true },
   log_mood: { title: 'Log a mood check-in', destructive: false, idempotent: false },
+  propose_task_device_action: { title: 'Suggest an alarm or calendar deadline for a task', destructive: false, idempotent: false },
   request_calendar_event: { title: 'Ask the phone to add a calendar event', destructive: false, idempotent: false },
   cancel_calendar_request: { title: 'Cancel a calendar request', destructive: false, idempotent: true },
   change_calendar_event: { title: 'Change or remove a calendar event Claude added', destructive: true, idempotent: false },

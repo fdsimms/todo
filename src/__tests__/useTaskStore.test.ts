@@ -148,6 +148,10 @@ jest.mock('../db/database', () => ({
   dbGetAllEventPeopleLinks: jest.fn().mockReturnValue([]),
   dbUpsertEventPeopleLink: jest.fn(),
   dbDeleteEventPeopleLinks: jest.fn(),
+  // What an agent suggested rides the fan-out too (useAgentSuggestionStore).
+  dbGetAllCalendarRequests: jest.fn().mockReturnValue([]),
+  dbInsertCalendarRequest: jest.fn(),
+  dbResolveCalendarRequest: jest.fn(),
   // ...and its one-time migration off the old setting deletes that setting.
   dbDeleteSetting: jest.fn(),
   // The medication log rides the same fan-out, and completing a task carrying
@@ -2201,6 +2205,19 @@ describe('completeTask', () => {
 
     jest.advanceTimersByTime(1200);
     expect(useTaskStore.getState().tasks.find(t => t.id === 't1')?.pinned).toBe(true);
+  });
+
+  it('re-pins at its old rank when a completion is undone after the hold has unpinned it', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', pinned: true, pinnedOrder: 3 })] });
+    useTaskStore.getState().completeTask('t1');
+    jest.advanceTimersByTime(1200);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 't1')?.pinned).toBe(false);
+
+    useTaskStore.getState().uncompleteTask('t1');
+    const t = useTaskStore.getState().tasks.find(x => x.id === 't1');
+    expect(t?.completed).toBe(false);
+    expect(t?.pinned).toBe(true);
+    expect(t?.pinnedOrder).toBe(3);
   });
 
   it('cancels the reminder when completed', () => {
@@ -6194,45 +6211,46 @@ describe('checkTravelTasks', () => {
     const withTransit = (overrides: Record<string, unknown> = {}) =>
       settings({ transitAlerts: true, transitLines: ['L'], ...overrides });
 
-    it('adds planned work on a picked line to the title', () => {
+    it('keeps the disruption note out of the title', () => {
       useSettingsStore.getState.mockReturnValue(withTransit());
       useTransitStore.getState.mockReturnValue(snapshot(true));
       useTaskStore.getState().checkTravelTasks();
-      expect(travelTasks()[0].title).toBe('Leave for Dentist (L running local)');
+      expect(travelTasks()[0].title).toBe('Leave for Dentist');
     });
 
-    it('adds the note to a task already written, and takes it off again', () => {
-      useTaskStore.getState().checkTravelTasks();
-      expect(travelTasks()[0].title).toBe('Leave for Dentist');
-
+    it('reschedules the reminder when only the note changes, since its body leads with it', () => {
       const handled = { [sourceId]: dentist().end };
-      useSettingsStore.getState.mockReturnValue(withTransit({ travelTaskHandled: handled }));
-      useTransitStore.getState.mockReturnValue(snapshot(true));
-      useTaskStore.getState().checkTravelTasks();
-      expect(travelTasks()[0].title).toBe('Leave for Dentist (L running local)');
-
-      useTransitStore.getState.mockReturnValue({ snapshot: { fetchedAt: NOW.toISOString(), alerts: [] } });
-      useTaskStore.getState().checkTravelTasks();
-      expect(travelTasks()[0].title).toBe('Leave for Dentist');
-    });
-
-    it('says nothing about a line the user does not ride', () => {
-      useSettingsStore.getState.mockReturnValue(withTransit({ transitLines: ['G'] }));
-      useTransitStore.getState.mockReturnValue(snapshot(true));
-      useTaskStore.getState().checkTravelTasks();
-      expect(travelTasks()[0].title).toBe('Leave for Dentist');
-    });
-
-    it('says nothing with its switch off, even holding a snapshot', () => {
-      useSettingsStore.getState.mockReturnValue(withTransit({ transitAlerts: false }));
-      useTransitStore.getState.mockReturnValue(snapshot(true));
-      useTaskStore.getState().checkTravelTasks();
-      expect(travelTasks()[0].title).toBe('Leave for Dentist');
-    });
-
-    it('drops a live delay once the read is too old to trust', () => {
       useSettingsStore.getState.mockReturnValue(withTransit());
-      useTransitStore.getState.mockReturnValue(snapshot(false, new Date(2026, 9, 5, 8, 0)));
+      useTransitStore.getState.mockReturnValue(snapshot(true));
+      useTaskStore.getState().checkTravelTasks();
+      // Second pass on the same row: records what it was scheduled with.
+      useSettingsStore.getState.mockReturnValue(withTransit({ travelTaskHandled: handled }));
+      useTaskStore.getState().checkTravelTasks();
+      (scheduleTaskReminder as jest.Mock).mockClear();
+
+      // Same title, same (empty) notes, so no field changes: only the note does.
+      const changed = snapshot(true);
+      changed.snapshot.alerts[0].effect = 'reduced';
+      useTransitStore.getState.mockReturnValue(changed);
+      useTaskStore.getState().checkTravelTasks();
+      expect(scheduleTaskReminder).toHaveBeenCalledTimes(1);
+
+      // Unchanged again: nothing to reschedule.
+      (scheduleTaskReminder as jest.Mock).mockClear();
+      useTaskStore.getState().checkTravelTasks();
+      expect(scheduleTaskReminder).not.toHaveBeenCalled();
+    });
+
+    it('rewrites a task written with a note in its title back to the plain title', () => {
+      useTaskStore.getState().checkTravelTasks();
+      const [task] = travelTasks();
+      useTaskStore.setState({
+        tasks: useTaskStore.getState().tasks.map(t => (
+          t.id === task.id ? { ...t, title: 'Leave for Dentist (L running local)' } : t)),
+      });
+
+      useSettingsStore.getState.mockReturnValue(withTransit({ travelTaskHandled: { [sourceId]: dentist().end } }));
+      useTransitStore.getState.mockReturnValue(snapshot(true));
       useTaskStore.getState().checkTravelTasks();
       expect(travelTasks()[0].title).toBe('Leave for Dentist');
     });
@@ -7404,6 +7422,7 @@ describe('checkMoodTasks', () => {
     mood,
     symptoms: [],
     contextTags: [],
+    factors: [],
     note: null,
   });
 
