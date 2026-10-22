@@ -44,7 +44,7 @@ export function SheetUndoBar({
     <BannerBar
       bottom={bottom}
       label={label}
-      labelLines={1}
+      labelLines={3}
       surface="sunken"
       onDismiss={onDismiss}
       leaving={leaving}
