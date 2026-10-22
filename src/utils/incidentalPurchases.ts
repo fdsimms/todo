@@ -36,7 +36,7 @@ export function incidentalIds(
 }
 
 /** Why a row is offered as what came home instead of a missing item. */
-export type SubstituteReason = 'usual' | 'incidental' | 'sameAisle';
+export type SubstituteReason = 'usual' | 'incidental';
 
 export interface SubstituteCandidate {
   id: string;
@@ -52,23 +52,22 @@ export interface SubstituteCandidate {
  * - **incidental**: bought this trip without being on the list. The answer to
  *   "what did you get instead" is nearly always something the list never had,
  *   which is why the old pick-from-everything-bought grid was mostly noise.
- * - **sameAisle**: something else already in the trolley from the same aisle,
- *   for the case where the replacement was on the list as its own row.
  *
- * Everything else in the trolley is left out on purpose. Paper towels are
- * never the answer for skyr, and offering them is what made the prompt read as
- * broken. A name outside this set is still one typed field away.
+ * Everything else in the trolley is left out on purpose, including rows that
+ * were on the list from the start and happen to share an aisle. A planned item
+ * is not a replacement for another planned item, and offering one reads as the
+ * app suggesting oat milk for tofu. A name outside this set is still one typed
+ * field away.
  */
 export function substituteCandidates(input: {
-  missing: Pick<GroceryItem, 'id' | 'aisle'> | null;
+  missing: Pick<GroceryItem, 'id'> | null;
   /** The item's own substitute links, in the order they were written. */
   usual: ReadonlyArray<{ id: string; name: string }>;
   incidental: ReadonlySet<string>;
   /** What is in the trolley, in list order. */
   purchased: ReadonlyArray<{ id: string; name: string }>;
-  aisleById: ReadonlyMap<string, string>;
 }): SubstituteCandidate[] {
-  const { missing, usual, incidental, purchased, aisleById } = input;
+  const { missing, usual, incidental, purchased } = input;
   const out: SubstituteCandidate[] = [];
   const seen = new Set<string>(missing ? [missing.id] : []);
   const push = (row: { id: string; name: string }, reason: SubstituteReason) => {
@@ -78,11 +77,6 @@ export function substituteCandidates(input: {
   };
   for (const row of usual) push(row, 'usual');
   for (const row of purchased) if (incidental.has(row.id)) push(row, 'incidental');
-  if (missing) {
-    for (const row of purchased) {
-      if (aisleById.get(row.id) === missing.aisle) push(row, 'sameAisle');
-    }
-  }
   return out;
 }
 
