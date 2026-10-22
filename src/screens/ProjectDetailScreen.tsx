@@ -66,7 +66,7 @@ import { ProjectEditor } from '../components/ProjectEditor';
 import { ProjectPageMenu } from '../components/ProjectPageMenu';
 import { ProjectBoard } from '../components/ProjectBoard';
 import { completionTapFor } from '../utils/completionTap';
-import type { BoardMove } from '../utils/projectBoard';
+import { LOOSE_COLUMN_KEY, type BoardMove } from '../utils/projectBoard';
 import { LazySheet } from '../components/LazySheet';
 import type { CardAnchor } from '../components/CardSheet';
 import { BulkActionBar } from '../components/BulkActionBar';
@@ -1369,6 +1369,25 @@ function ProjectDetailContent() {
     if (move.projectOrder) reorderProjectItems(projectId, move.projectOrder);
   };
 
+  // Each column's completed rows. A section with nothing open left has no
+  // column, so its finished tasks are counted under No section rather than
+  // vanishing from the board.
+  const boardCompleted = useMemo(() => {
+    const columnKeys = new Set(projectListItems.flatMap(item => (item.type === 'group' ? [item.group.id] : [])));
+    const map = new Map<string, Task[]>();
+    for (const task of completedProjectTasks) {
+      const key = task.groupId && columnKeys.has(task.groupId) ? task.groupId : LOOSE_COLUMN_KEY;
+      const list = map.get(key);
+      if (list) list.push(task); else map.set(key, [task]);
+    }
+    return map;
+  }, [projectListItems, completedProjectTasks]);
+
+  const uncheckBoardCard = (task: Task) => {
+    animateLayout();
+    useTaskStore.getState().uncompleteTask(task.id);
+  };
+
   const addBoardLine = (group: TaskGroup | null, text: string, pending?: LinePending) => {
     if (group) { addLineToSection(group, text, pending); return; }
     createLine(text, { projectId }, pending, !pageIsList, pageIsList);
@@ -1940,6 +1959,8 @@ function ProjectDetailContent() {
             <ScrollView style={styles.boardHeader} showsVerticalScrollIndicator={false}>{pageHeader}</ScrollView>
             <ProjectBoard
               items={projectListItems}
+              completed={boardCompleted}
+              onUncheck={uncheckBoardCard}
               columnIsList={group => (group ? sectionIsList(group, project) : pageIsList)}
               onOpenTask={openEditor}
               onCheck={checkBoardCard}

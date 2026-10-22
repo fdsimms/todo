@@ -28,8 +28,11 @@ interface Props {
   items: ProjectListItem[];
   /** Whether new rows are list items (`sectionIsList`), for the placeholder. */
   columnIsList: (group: TaskGroup | null) => boolean;
+  /** Each column's completed tasks, by column key, one row per member (projectCompletedRows). */
+  completed: ReadonlyMap<string, Task[]>;
   onOpenTask: (task: Task) => void;
   onCheck: (task: Task) => void;
+  onUncheck: (task: Task) => void;
   onOpenSection: (group: TaskGroup) => void;
   /** Runs a drop's writes. See `boardMove` for what each field asks. */
   onMove: (move: Extract<BoardMove, { kind: 'move' }>) => void;
@@ -62,11 +65,16 @@ interface Props {
  * column and card measured once when a card lifts. Where it is aimed is never
  * state (the rule in CLAUDE.md under Drag and drop): the floating card and the
  * drop line are Animated values set from the gesture, so nothing re-renders
- * while the finger moves. Columns hold still during a drag; the board scrolls
- * sideways when the card is held near either edge.
+ * while the finger moves. Columns hold still under the finger; held near the
+ * board's side edges the card scrolls the board sideways, and near a column's
+ * top or bottom it scrolls that column, with the measured card positions moved
+ * by however far it went.
+ *
+ * Each column ends on a count of its completed tasks, which opens to show them
+ * checked off, so a board isn't the one place a finished task can't be found.
  */
 export function ProjectBoard({
-  items, columnIsList, onOpenTask, onCheck, onOpenSection, onMove, renderNewLine,
+  items, completed, columnIsList, onOpenTask, onCheck, onUncheck, onOpenSection, onMove, renderNewLine,
   onAddSection, openLineSignal, namingSection, onStartNaming, onNamingDone, bottomPadding,
 }: Props) {
   const colors = useColors();
@@ -75,6 +83,16 @@ export function ProjectBoard({
   const columns = useMemo(() => boardColumns(items), [items]);
   const [lineColumn, setLineColumn] = useState<string | null>(null);
   const [lineKey, setLineKey] = useState(0);
+  // Which columns are showing their completed tasks. Session-only, like the
+  // list's own completed toggle.
+  const [doneShown, setDoneShown] = useState<ReadonlySet<string>>(new Set());
+  const toggleDone = useCallback((key: string) => {
+    setDoneShown(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     if (openLineSignal === null) return;
@@ -91,6 +109,7 @@ export function ProjectBoard({
   const boardScroll = useRef<ScrollView>(null);
   const columnViews = useRef(new Map<string, View>());
   const cardViews = useRef(new Map<string, View>());
+  const columnScrolls = useRef(new Map<string, ColumnScroll>());
   const scrollX = useRef(0);
   const viewportWidth = useRef(0);
   const contentWidth = useRef(0);
@@ -98,7 +117,12 @@ export function ProjectBoard({
   // measured at, so a sideways autoscroll mid-drag only has to subtract.
   const measured = useRef<{
     rootX: number; rootY: number; scrollX: number;
-    columns: Array<{ key: string; x: number; width: number; top: number; bottom: number; cards: Array<{ id: string; top: number; height: number }> }>;
+    columns: Array<{
+      key: string; x: number; width: number; top: number; bottom: number;
+      /** The column's own scroll offset when its cards were measured. */
+      scrollY: number;
+      cards: Array<{ id: string; top: number; height: number }>;
+    }>;
   } | null>(null);
 
   // ==== the floating card and the drop line ====
@@ -109,6 +133,7 @@ export function ProjectBoard({
   const liftOrigin = useRef({ x: 0, y: 0 });
   const lastPage = useRef<{ x: number; y: number } | null>(null);
   const edgeVelocity = useRef(0);
+  const columnVelocity = useRef(0);
   const edgeFrame = useRef<number | null>(null);
   const aim = useRef<{ key: string; index: number } | null>(null);
   const draggedIdRef = useRef<string | null>(null);
@@ -131,7 +156,11 @@ export function ProjectBoard({
         const view = columnViews.current.get(column.key);
         if (!view) continue;
         pending++;
-        const entry = { key: column.key, x: 0, width: 0, top: 0, bottom: 0, cards: [] as Array<{ id: string; top: number; height: number }> };
+        const entry = {
+          key: column.key, x: 0, width: 0, top: 0, bottom: 0,
+          scrollY: columnScrolls.current.get(column.key)?.y() ?? 0,
+          cards: [] as Array<{ id: string; top: number; height: number }>,
+        };
         result.push(entry);
         view.measureInWindow((x, y, width, height) => {
           entry.x = x; entry.width = width; entry.top = y; entry.bottom = y + height;
@@ -162,7 +191,10 @@ export function ProjectBoard({
     const at = columnIndexAt(frames, page.x);
     if (at === null) return;
     const column = m.columns[at];
-    const cards = column.cards.filter(c => c.id !== draggedId);
+    const scrolled = (columnScrolls.current.get(column.key)?.y() ?? column.scrollY) - column.scrollY;
+    const cards = column.cards
+      .filter(c => c.id !== draggedId)
+      .map(c => ({ ...c, top: c.top - scrolled }));
     const index = insertIndexAt(cards, page.y);
     const before = aim.current;
     aim.current = { key: column.key, index };
@@ -173,23 +205,38 @@ export function ProjectBoard({
       : index < cards.length
         ? cards[index].top - spacing.xs
         : cards[cards.length - 1].top + cards[cards.length - 1].height + spacing.xs;
-    linePos.setValue({ x: frames[at].x - m.rootX + spacing.sm, y: y - m.rootY - 1 });
+    // Kept inside the column, for a slot scrolled out of its view.
+    const shown = Math.max(column.top + spacing.lg, Math.min(column.bottom - spacing.xs, y));
+    linePos.setValue({ x: frames[at].x - m.rootX + spacing.sm, y: shown - m.rootY - 1 });
     lineOpacity.setValue(1);
   };
 
   const stopEdgeScroll = () => {
     edgeVelocity.current = 0;
+    columnVelocity.current = 0;
     if (edgeFrame.current !== null) cancelAnimationFrame(edgeFrame.current);
     edgeFrame.current = null;
   };
 
   const edgeTick = useCallback(() => {
+    let moved = false;
     const v = edgeVelocity.current;
-    const max = Math.max(0, contentWidth.current - viewportWidth.current);
-    const next = Math.max(0, Math.min(max, scrollX.current + v));
-    if (v === 0 || next === scrollX.current) { edgeFrame.current = null; return; }
-    scrollX.current = next;
-    boardScroll.current?.scrollTo({ x: next, animated: false });
+    if (v !== 0) {
+      const max = Math.max(0, contentWidth.current - viewportWidth.current);
+      const next = Math.max(0, Math.min(max, scrollX.current + v));
+      if (next !== scrollX.current) {
+        scrollX.current = next;
+        boardScroll.current?.scrollTo({ x: next, animated: false });
+        moved = true;
+      }
+    }
+    const vy = columnVelocity.current;
+    const column = aim.current ? columnScrolls.current.get(aim.current.key) : undefined;
+    if (vy !== 0 && column) {
+      const next = Math.max(0, Math.min(column.maxY(), column.y() + vy));
+      if (next !== column.y()) { column.scrollTo(next); moved = true; }
+    }
+    if (!moved) { edgeFrame.current = null; return; }
     const page = lastPage.current;
     const id = draggedIdRef.current;
     if (page && id) updateAim(page, id);
@@ -222,7 +269,14 @@ export function ProjectBoard({
       const left = page.x - m.rootX;
       const velocity = left < EDGE_ZONE ? -EDGE_SPEED : left > viewportWidth.current - EDGE_ZONE ? EDGE_SPEED : 0;
       edgeVelocity.current = velocity;
-      if (velocity !== 0 && edgeFrame.current === null) edgeFrame.current = requestAnimationFrame(edgeTick);
+      // Near the top or bottom of the column it's over, that column scrolls.
+      const over = aim.current ? m.columns.find(c => c.key === aim.current!.key) : undefined;
+      columnVelocity.current = !over ? 0
+        : page.y < over.top + EDGE_ZONE ? -EDGE_SPEED
+          : page.y > over.bottom - EDGE_ZONE ? EDGE_SPEED : 0;
+      if ((velocity !== 0 || columnVelocity.current !== 0) && edgeFrame.current === null) {
+        edgeFrame.current = requestAnimationFrame(edgeTick);
+      }
     },
     onEnd: () => {
       const id = draggedIdRef.current;
@@ -275,6 +329,19 @@ export function ProjectBoard({
     return ref;
   };
 
+  const scrollRefs = useRef(new Map<string, (handle: ColumnScroll | null) => void>());
+  const scrollRef = (key: string) => {
+    let ref = scrollRefs.current.get(key);
+    if (!ref) {
+      ref = (handle: ColumnScroll | null) => {
+        if (handle) columnScrolls.current.set(key, handle);
+        else columnScrolls.current.delete(key);
+      };
+      scrollRefs.current.set(key, ref);
+    }
+    return ref;
+  };
+
   const dragging = drag.draggingId !== null;
 
   return (
@@ -302,6 +369,11 @@ export function ProjectBoard({
             column={column}
             styles={styles}
             columnRef={columnRef(column.key)}
+            registerScroll={scrollRef(column.key)}
+            completed={completed.get(column.key) ?? NO_TASKS}
+            doneShown={doneShown.has(column.key)}
+            onToggleDone={toggleDone}
+            onUncheck={onUncheck}
             cardRef={cardRef}
             draggingId={drag.draggingId}
             scrollEnabled={!dragging}
@@ -356,10 +428,24 @@ export function ProjectBoard({
 
 type Styles = ReturnType<typeof makeStyles>;
 
+const NO_TASKS: Task[] = [];
+
+/** What the board needs of a column's own scroll view to scroll it mid-drag. */
+interface ColumnScroll {
+  y: () => number;
+  maxY: () => number;
+  scrollTo: (y: number) => void;
+}
+
 interface ColumnProps {
   column: BoardColumn;
   styles: Styles;
   columnRef: (view: View | null) => void;
+  registerScroll: (handle: ColumnScroll | null) => void;
+  completed: Task[];
+  doneShown: boolean;
+  onToggleDone: (key: string) => void;
+  onUncheck: (task: Task) => void;
   cardRef: (id: string) => (view: View | null) => void;
   draggingId: string | null;
   scrollEnabled: boolean;
@@ -373,13 +459,27 @@ interface ColumnProps {
 }
 
 function BoardColumnView({
-  column, styles, columnRef, cardRef, draggingId, scrollEnabled, isList,
+  column, styles, columnRef, registerScroll, completed, doneShown, onToggleDone, onUncheck, cardRef, draggingId, scrollEnabled, isList,
   onOpenTask, onCheck, onOpenSection, onLift, newLine, onOpenLine,
 }: ColumnProps) {
   // Its own, since each column scrolls on its own and its add field sits at
   // the foot of what it scrolls.
   const colors = useColors();
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const scrollY = useRef(0);
+  const contentHeight = useRef(0);
+  const viewHeight = useRef(0);
+  useEffect(() => {
+    registerScroll({
+      y: () => scrollY.current,
+      maxY: () => Math.max(0, contentHeight.current - viewHeight.current),
+      scrollTo: y => {
+        scrollY.current = y;
+        keyboardScroll.ref.current?.scrollTo({ y, animated: false });
+      },
+    });
+    return () => registerScroll(null);
+  }, [registerScroll, keyboardScroll.ref]);
   const title = column.group ? (column.group.title.trim() || 'Untitled section') : 'No section';
   const header = (
     <>
@@ -409,6 +509,10 @@ function BoardColumnView({
         scrollEnabled={scrollEnabled}
         nestedScrollEnabled
         showsVerticalScrollIndicator={false}
+        scrollEventThrottle={16}
+        onScroll={e => { keyboardScroll.noteScroll(e); scrollY.current = e.nativeEvent.contentOffset.y; }}
+        onLayout={e => { viewHeight.current = e.nativeEvent.layout.height; }}
+        onContentSizeChange={(_w, h) => { contentHeight.current = h; }}
       >
         {column.tasks.map(task => (
           <View
@@ -453,6 +557,43 @@ function BoardColumnView({
             {column.group ? 'Nothing here yet.' : 'Drop a card here to take it out of its section.'}
           </Text>
         )}
+        {completed.length > 0 && (
+          <TouchableOpacity
+            style={styles.doneToggle}
+            onPress={() => { haptics.tap(); onToggleDone(column.key); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: doneShown }}
+            accessibilityLabel={`${doneShown ? 'Hide' : 'Show'} ${completed.length} completed`}
+          >
+            <Ionicons name="checkmark-circle-outline" size={13} color={colors.textSecondary} />
+            <Text style={styles.doneToggleText}>{completed.length} completed</Text>
+            <Ionicons name={doneShown ? 'chevron-up' : 'chevron-down'} size={13} color={colors.textSecondary} />
+          </TouchableOpacity>
+        )}
+        {doneShown && completed.map(task => (
+          <TouchableOpacity
+            key={task.id}
+            style={[styles.card, styles.cardWrap, styles.doneCard]}
+            onPress={() => { haptics.tap(); onOpenTask(task); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel={`${task.title}, completed`}
+          >
+            <TouchableOpacity
+              style={[styles.check, styles.checkDone]}
+              onPress={() => { haptics.tap(); onUncheck(task); }}
+              hitSlop={8}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: true }}
+              accessibilityLabel={`Mark ${task.title} not done`}
+            >
+              <Ionicons name="checkmark" size={14} color={colors.onDone} />
+            </TouchableOpacity>
+            <Text style={[styles.cardTitle, styles.doneTitle]} numberOfLines={2}>{task.title}</Text>
+          </TouchableOpacity>
+        ))}
       </ScrollView>
     </View>
   );
@@ -525,6 +666,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   meta: { fontSize: font.xxs, color: colors.textSecondary },
   metaWaiting: { flexDirection: 'row', alignItems: 'center', gap: spacing.xxs },
   addAction: { alignSelf: 'flex-start' },
+  doneToggle: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xs, alignSelf: 'flex-start',
+    marginTop: spacing.smd, paddingHorizontal: spacing.xs, minHeight: 32,
+  },
+  doneToggleText: { fontSize: font.sm, color: colors.textSecondary },
+  doneCard: { backgroundColor: colors.bgTertiary },
+  checkDone: { backgroundColor: colors.done, borderColor: colors.done, alignItems: 'center', justifyContent: 'center' },
+  doneTitle: { flex: 1, color: colors.textSecondary },
   emptyNote: { fontSize: font.sm, color: colors.textSecondary, marginTop: spacing.sm, paddingHorizontal: spacing.xs },
   dropLine: {
     position: 'absolute', left: 0, top: 0,
