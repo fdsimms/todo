@@ -66,7 +66,7 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { useGymStore } from '../store/useGymStore';
 import { describeRoutineFit, routineFit, startingGymId } from '../utils/gyms';
-import { describeProgress, programProgress } from '../utils/workoutProgram';
+import { currentProgram, describeProgress, isRunnableProgram, programProgress } from '../utils/workoutProgram';
 import { trainingMaxRaises } from '../utils/workoutProgression';
 import { formatWeightNumber } from '../utils/workoutData';
 import { withThousands } from '../utils/workoutRecordText';
@@ -551,7 +551,15 @@ export function WorkoutsScreen() {
   }, []);
 
   const routineName = useCallback((id: string) => routines.find(r => r.id === id)?.name ?? null, [routines]);
-  const livePrograms = useMemo(() => programs.filter(p => !p.archived), [programs]);
+  const currentProgramId = useSettingsStore(s => s.currentProgramId);
+  const current = useMemo(() => currentProgram(programs, currentProgramId), [programs, currentProgramId]);
+  // The current program leads the list. "Current" only means something with
+  // more than one to choose between, so a lone program shows no badge.
+  const livePrograms = useMemo(() => {
+    const live = programs.filter(p => !p.archived);
+    return current ? [current, ...live.filter(p => p.id !== current.id)] : live;
+  }, [programs, current]);
+  const choosesProgram = useMemo(() => programs.filter(isRunnableProgram).length > 1, [programs]);
 
   // A program with a routine due next: the start button asks which to run
   // rather than assuming an empty workout. With none, it starts one at once.
@@ -578,6 +586,7 @@ export function WorkoutsScreen() {
       });
       haptics.success();
     };
+    const canMakeCurrent = choosesProgram && current?.id !== item.id && isRunnableProgram(item);
     return (
       <TouchableOpacity
         style={styles.row}
@@ -586,6 +595,7 @@ export function WorkoutsScreen() {
         accessibilityRole="button"
         accessibilityLabel={`Edit ${item.name}`}
       >
+        {choosesProgram && current?.id === item.id && <Text style={styles.currentTag}>Current</Text>}
         <Text style={styles.title}>{item.name}</Text>
         <Text style={styles.detail}>{describeProgress(item, progress, routineName)}</Text>
         {raises.length > 0 && (
@@ -601,7 +611,7 @@ export function WorkoutsScreen() {
             ))}
           </View>
         )}
-        {(next || raises.length > 0) && (
+        {(next || raises.length > 0 || canMakeCurrent) && (
           <View style={[styles.actions, styles.programActions]}>
             {raises.length > 0 && <InlineAction label="Start again" onPress={startNextCycle} />}
             {next && (
@@ -613,11 +623,19 @@ export function WorkoutsScreen() {
                 accessibilityLabel={`Start ${next}, the next workout of ${item.name}`}
               />
             )}
+            {canMakeCurrent && (
+              <InlineAction
+                label="Make current"
+                variant="neutral"
+                onPress={() => { haptics.tap(); useSettingsStore.getState().setCurrentProgramId(item.id); }}
+                accessibilityLabel={`Make ${item.name} the current program`}
+              />
+            )}
           </View>
         )}
       </TouchableOpacity>
     );
-  }, [styles, sessions, routines, routineName, exercises, workoutUnit, openProgram, startWorkout]);
+  }, [styles, sessions, routines, routineName, exercises, workoutUnit, openProgram, startWorkout, choosesProgram, current]);
 
   const programActions = (
     <View>
@@ -1027,6 +1045,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   statUnit: { color: colors.textSecondary, fontSize: font.sm },
   statValue: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold, fontVariant: ['tabular-nums'] },
   fitDetail: { color: colors.orangeText, fontSize: font.sm, marginTop: spacing.xxs },
+  currentTag: {
+    color: colors.accentText, fontSize: font.xxs, fontWeight: fontWeight.semibold,
+    letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: spacing.xxs,
+  },
   healthTagRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.xxs },
   healthTag: {
     flexShrink: 1, color: colors.textSecondary, fontSize: font.xxs, fontWeight: fontWeight.semibold,

@@ -392,6 +392,7 @@ async function processPendingWorkoutStarts(): Promise<void> {
       live: workouts.liveSession(),
       routines: workouts.routines,
       programs: workouts.programs,
+      currentProgramId: useSettingsStore.getState().currentProgramId,
       sessions: workouts.sessions,
       todayTasks: useTaskStore.getState().visibleTasks(),
       now: new Date(),
@@ -938,6 +939,7 @@ function watchWorkoutSection(): WatchWorkoutSnapshot | null {
       : todaysWatchWorkout({
           routines: workouts.routines,
           programs: workouts.programs,
+          currentProgramId: settings.currentProgramId,
           sessions: workouts.sessions,
           todayTasks: useTaskStore.getState().visibleTasks(),
         }),

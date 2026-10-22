@@ -1224,6 +1224,14 @@ interface SettingsStore {
    */
   defaultGymId: string | null;
   /**
+   * The program "my workout" and the Workouts screen's Start default to, when
+   * several are in use (`currentProgram`, utils/workoutProgram.ts). Null means
+   * none picked, which is also right with one program. A pointer that is read,
+   * never trusted: an archived or deleted program is passed over. Kept out of
+   * DEFAULT_SETTINGS for `defaultGymId`'s reason.
+   */
+  currentProgramId: string | null;
+  /**
    * The bars and plates the person has, in kg, for working a load out as
    * plates. Kept out of DEFAULT_SETTINGS/resetToDefaults for the mechanical
    * reason (an object can't round-trip through String()).
@@ -2240,6 +2248,7 @@ interface SettingsStore {
   setWorkoutUnit: (unit: WeightUnit) => void;
   setDumbbellEntry: (entry: DumbbellEntry) => void;
   setDefaultGymId: (id: string | null) => void;
+  setCurrentProgramId: (id: string | null) => void;
   setPlateInventory: (inventory: PlateInventory) => void;
   setDefaultRestSeconds: (seconds: number) => void;
   setWorkoutLiveActivity: (on: boolean) => void;
@@ -3095,6 +3104,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   workoutUnit: 'kg',
   dumbbellEntry: 'each',
   defaultGymId: null,
+  currentProgramId: null,
   plateInventory: DEFAULT_PLATE_INVENTORY,
   defaultRestSeconds: DEFAULT_REST_SECONDS,
   moodContextSources: NO_MOOD_CONTEXT_SOURCES,
@@ -3532,6 +3542,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const dumbbellEntry: DumbbellEntry = dbGetSetting('dumbbellEntry') === 'pair' ? 'pair' : 'each';
     const plateInventory = parsePlateInventory(dbGetSetting('plateInventory'));
     const defaultGymId = dbGetSetting('defaultGymId') || null;
+    const currentProgramId = dbGetSetting('currentProgramId') || null;
     const defaultRestSeconds = parseRestSeconds(dbGetSetting('defaultRestSeconds'));
     const moodContextSources = parseMoodContextSources(dbGetSetting('moodContextSources'));
     const moodEventTags = parseMoodEventTags(dbGetSetting('moodEventTags'));
@@ -3954,6 +3965,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       confirmBeforeDeleting,
       cookRecapEnabled,
       currencySymbol,
+      currentProgramId,
       customHolidays,
       dailyAgendaEnabled,
       dailyAgendaSpoken,
@@ -5845,6 +5857,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setDefaultGymId(id: string | null) {
     dbSetSetting('defaultGymId', id ?? '');
     set({ defaultGymId: id });
+  },
+
+  setCurrentProgramId(id: string | null) {
+    dbSetSetting('currentProgramId', id ?? '');
+    set({ currentProgramId: id });
   },
 
   setPlateInventory(inventory: PlateInventory) {

@@ -95,6 +95,32 @@ export function programProgress(
   return { sessionsDone: counted.length, passes, nextIndex, nextRoutineId: rotation[nextIndex], week, weeks, cycleDone };
 }
 
+/** A program that can be the current one: not archived, and with something in its rotation. */
+export function isRunnableProgram(program: Pick<WorkoutProgram, 'archived' | 'rotation'>): boolean {
+  return !program.archived && program.rotation.length > 0;
+}
+
+/**
+ * The program "my workout", `next_workout` and the Workouts screen's Start
+ * default to. `currentId` is the person's pick (`currentProgramId` setting);
+ * it is only a pointer, so it is **read, never trusted**: one that was
+ * archived, emptied or deleted since is passed over rather than cleaned up,
+ * which is what keeps it free of a migration or a sweep.
+ *
+ * With no usable pick, exactly one runnable program is the current one by
+ * itself (nobody with a single program has to set anything), and several
+ * with no pick have none, so a caller asks rather than guesses.
+ */
+export function currentProgram<P extends Pick<WorkoutProgram, 'id' | 'archived' | 'rotation'>>(
+  programs: readonly P[],
+  currentId: string | null | undefined,
+): P | null {
+  const runnable = programs.filter(isRunnableProgram);
+  const picked = currentId ? runnable.find(p => p.id === currentId) : undefined;
+  if (picked) return picked;
+  return runnable.length === 1 ? runnable[0] : null;
+}
+
 /** "Week 2 of 8", "Week 3": where the program is, as its row reads. */
 export function weekLabel(progress: Pick<ProgramProgress, 'week' | 'weeks'>): string {
   return progress.weeks !== null ? `Week ${progress.week} of ${progress.weeks}` : `Week ${progress.week}`;

@@ -1,6 +1,6 @@
 import type { Task, WorkoutProgram, WorkoutRoutine, WorkoutSession } from '../types';
 import { exerciseNameKey } from './workoutData';
-import { programProgress } from './workoutProgram';
+import { currentProgram, programProgress } from './workoutProgram';
 import type { StartWorkoutInput } from './startWorkout';
 
 /**
@@ -149,7 +149,8 @@ function firstWorkoutTask(
  * 1. the workout already going;
  * 2. the first workout task on Today (its routine, or its program's next
  *    routine), started for that task so finishing completes it;
- * 3. with exactly one program in use, its next routine;
+ * 3. the current program's next routine (`currentProgram`: the one the person
+ *    picked, or the only one in use);
  * 4. otherwise nothing is started, and the Workouts screen opens.
  *
  * A routine asked for while another workout is going is left to `startWorkout`,
@@ -164,6 +165,8 @@ export function resolveQueuedWorkoutStart(
     live: Pick<WorkoutSession, 'id' | 'routineId'> | null;
     routines: readonly Pick<WorkoutRoutine, 'id' | 'name'>[];
     programs: readonly ProgramRow[];
+    /** The `currentProgramId` setting. */
+    currentProgramId?: string | null;
     sessions: readonly SessionRow[];
     /** What Today shows, in its order (`visibleTasks()`). */
     todayTasks: readonly Task[];
@@ -196,14 +199,15 @@ export function resolveQueuedWorkoutStart(
 
 /**
  * Today's workout, in the order "my workout" picks it (steps 2 and 3 above):
- * the first workout task on Today, else the next routine of the one program in
- * use. Null when neither has anything to start. Shared with the Apple Watch's
+ * the first workout task on Today, else the next routine of the current
+ * program. Null when neither has anything to start. Shared with the Apple Watch's
  * start list (`watchWorkout.ts`), whose "From Today" row is this answer, so the
  * watch and Siri can't come to disagree about what today's workout is.
  */
 export function myWorkoutStart(ctx: {
   routines: readonly Pick<WorkoutRoutine, 'id'>[];
   programs: readonly ProgramRow[];
+  currentProgramId?: string | null;
   sessions: readonly SessionRow[];
   todayTasks: readonly Task[];
 }): StartWorkoutInput | null {
@@ -213,9 +217,9 @@ export function myWorkoutStart(ctx: {
       ? { programId: task.workoutProgramId, taskId: task.id }
       : { routineId: task.workoutRoutineId, taskId: task.id };
   }
-  const inUse = ctx.programs.filter(p => !p.archived);
-  if (inUse.length === 1 && programProgress(inUse[0], ctx.sessions, ctx.routines).nextRoutineId) {
-    return { programId: inUse[0].id };
+  const current = currentProgram(ctx.programs, ctx.currentProgramId);
+  if (current && programProgress(current, ctx.sessions, ctx.routines).nextRoutineId) {
+    return { programId: current.id };
   }
   return null;
 }

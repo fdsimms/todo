@@ -3355,6 +3355,10 @@ function seedWorkouts(today: Date): void {
   // routine kept for weeks rather than one made today.
   const added = workouts.addLibraryProgram('upper-lower', { at: subDays(today, 45) });
   const programId = typeof added === 'string' ? null : added.program.id;
+  // A second program, so "Current" has something to choose between: the
+  // Workouts screen marks Upper / Lower and offers "Make current" on this one.
+  workouts.addLibraryProgram('five-by-five', { at: subDays(today, 30) });
+  if (programId) useSettingsStore.getState().setCurrentProgramId(programId);
   const libraryRoutine = (name: string) => (typeof added === 'string' ? undefined : added.routines.find(r => r.name === name));
   const ownRoutine = (name: string, items: WorkoutRoutineItem[]) => {
     const existing = libraryRoutine(name);

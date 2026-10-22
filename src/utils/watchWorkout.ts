@@ -238,6 +238,7 @@ export interface WatchTodaysWorkout {
 export function todaysWatchWorkout(ctx: {
   routines: readonly WorkoutRoutine[];
   programs: readonly WorkoutProgram[];
+  currentProgramId?: string | null;
   sessions: readonly WorkoutSession[];
   todayTasks: readonly Task[];
 }): WatchTodaysWorkout | null {

@@ -407,6 +407,30 @@ describe('the workout write tools', () => {
       expect(() => nextWorkout(replica)).toThrow(/Several programs/);
       expect(() => nextWorkout(replica, { programId: 'gone' })).toThrow(/No program with id gone/);
     });
+
+    it('defaults to the current program once one is picked, and marks it in list_workouts', () => {
+      const a = saveRoutine(replica, { name: 'A' }).routine;
+      const b = saveRoutine(replica, { name: 'B' }).routine;
+      const one = saveProgram(replica, { name: 'One', routineIds: [a.id] }).program;
+      const two = saveProgram(replica, { name: 'Two', routineIds: [b.id] }).program;
+      expect(() => nextWorkout(replica)).toThrow(/none is current/);
+      expect(saveProgram(replica, { id: two.id, isCurrent: true }).program.isCurrent).toBe(true);
+      expect(nextWorkout(replica).program?.id).toBe(two.id);
+      const listed = listWorkouts(replica).programs;
+      expect(listed.find(p => p.id === two.id)?.isCurrent).toBe(true);
+      expect(listed.find(p => p.id === one.id)?.isCurrent).toBeUndefined();
+      // Clearing it goes back to asking; clearing another program's pick does nothing.
+      saveProgram(replica, { id: one.id, isCurrent: false });
+      expect(nextWorkout(replica).program?.id).toBe(two.id);
+      saveProgram(replica, { id: two.id, isCurrent: false });
+      expect(() => nextWorkout(replica)).toThrow(/none is current/);
+    });
+
+    it('saves a program with no routines but says it is not current', () => {
+      const empty = saveProgram(replica, { name: 'Empty', isCurrent: true });
+      expect(empty.note).toMatch(/not made current/);
+      expect(empty.program.isCurrent).toBeUndefined();
+    });
   });
 
   describe('log_workout', () => {

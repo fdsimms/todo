@@ -112,7 +112,7 @@ import { catalogExercise } from '../utils/exerciseCatalog';
 import { linkFor } from '../constants/linkApps';
 import { buildMoodDays, contextTagMoodContrasts, factorMoodContrasts, describeNutrientInsight, lowMoodRun, foodMoodContrasts, foodPairedDays, symptomFoodContrasts, milestoneMoodContrast, moodCompletionInsight, nutrientInsight, symptomMoodContrasts, taskContrastTitles, taskMoodContrasts, trainingDayMoodContrast, MIN_PAIRED_DAYS } from '../utils/moodInsights';
 import { analyzeExercise, recordSessions, trainingDays } from '../utils/workoutRecords';
-import { programProgress } from '../utils/workoutProgram';
+import { currentProgram, programProgress } from '../utils/workoutProgram';
 import { programHistory, routineHistory } from '../utils/routineVersions';
 import { loadContextFor, proposeNext, schemeFor } from '../utils/workoutProgression';
 import { daysBetween } from '../utils/exerciseChart';
@@ -2350,8 +2350,8 @@ describe('demo seed — people', () => {
     expect(sessions.length).toBe(13);
     expect(sessions.every(s => s.endedAt !== null && s.routineId !== null)).toBe(true);
     expect(sessions.every(s => (setCounts[s.id] ?? 0) > 0)).toBe(true);
-    const program = programs[0];
-    const inProgram = routines.filter(r => r.programId !== null);
+    const program = programs.find(p => p.name === 'Upper / Lower')!;
+    const inProgram = routines.filter(r => r.programId === program.id);
     expect(program.rotation).toEqual(inProgram.map(r => r.id));
     expect(inProgram.every(r => r.programId === program.id && r.items.length > 0)).toBe(true);
     // A group, and a routine put away, so the Routines tab shows both.
@@ -2441,8 +2441,10 @@ describe('demo seed — people', () => {
 
   it('seeds a program from the library whose next workout shows a suggestion today', () => {
     const { routines, programs, sessions, exercises } = useWorkoutStore.getState();
-    const program = programs[0];
-    expect(program.name).toBe('Upper / Lower');
+    const program = programs.find(p => p.name === 'Upper / Lower')!;
+    // Two programs are in use, and the one the person follows is the current one.
+    expect(programs.filter(p => !p.archived).length).toBe(2);
+    expect(currentProgram(programs, useSettingsStore.getState().currentProgramId)).toBe(program);
     expect(program.rotation.map(id => routines.find(r => r.id === id)?.name)).toEqual(['Upper A', 'Lower A', 'Upper B', 'Lower B']);
     // Where it is comes from its sessions: the last one was an upper day.
     const progress = programProgress(program, sessions, routines);
