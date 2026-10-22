@@ -529,6 +529,18 @@ describe('the catalog tools', () => {
       expect(out.portionsAfter).toEqual(['cup: 202 g', 'cup, packed: 220 g']);
     });
 
+    it('stores a raw/cooked ratio, keeps it across a later write, clears it on null and refuses a bad one', () => {
+      addGroceryItem(replica, 'rice');
+      const base = { basis: 'per100g' as const, amounts: { calorieKcal: 365 } };
+      setNutritionPanel(replica, { item: 'rice', panel: { ...base, cooking: { panelState: 'raw', cookedPerRaw: 2.8 } } });
+      expect(getGroceryItem(replica, { name: 'rice' }).nutrition?.cooking).toEqual({ panelState: 'raw', cookedPerRaw: 2.8 });
+      setNutritionPanel(replica, { item: 'rice', panel: { ...base, amounts: { calorieKcal: 360 } } });
+      expect(getGroceryItem(replica, { name: 'rice' }).nutrition?.cooking).toEqual({ panelState: 'raw', cookedPerRaw: 2.8 });
+      expect(() => setNutritionPanel(replica, { item: 'rice', panel: { ...base, cooking: { panelState: 'raw', cookedPerRaw: 0 } } })).toThrow(/cookedPerRaw/);
+      setNutritionPanel(replica, { item: 'rice', panel: { ...base, cooking: null } });
+      expect(getGroceryItem(replica, { name: 'rice' }).nutrition?.cooking).toBeUndefined();
+    });
+
     it('sets several panels at once, creating a missing item on request without putting it on a list or in the pantry', () => {
       addGroceryItem(replica, 'oats');
       const base = { basis: 'per100g' as const, estimated: true, amounts: { calorieKcal: 100 } };

@@ -2,6 +2,7 @@ import type { FoodNutrition, NovaGroup, NutrientKey } from '../types';
 import type { LabelColumn, LabelReading } from './labelOcr';
 import { NUTRIENT_KEYS } from '../types';
 import { unitFactor } from './unitConvert';
+import { readCooking } from './cookedState';
 
 /**
  * Turning a printed label into a stored panel, and back into a form to edit.
@@ -42,6 +43,10 @@ export interface PanelForm {
    * and means unclassified, never group 1.
    */
   novaGroup: NovaGroupText;
+  /** Which state the figures describe, when a ratio is set. Meaningless while `cookedPerRaw` is blank. */
+  cookedState: 'raw' | 'cooked';
+  /** Cooked grams per raw gram, as typed. Blank is ordinary and means the food has no ratio. */
+  cookedPerRaw: string;
 }
 
 export type NovaGroupText = '' | '1' | '2' | '3' | '4';
@@ -57,7 +62,7 @@ export function novaGroupToText(group: NovaGroup | null | undefined): NovaGroupT
 }
 
 /** Which field a read failed on — the nutrient's own key, or the serving weight. */
-export type PanelFieldKey = NutrientKey | 'servingGrams' | 'packageGrams';
+export type PanelFieldKey = NutrientKey | 'servingGrams' | 'packageGrams' | 'cookedPerRaw';
 
 /**
  * Every text field, blank. Used for a food with no record and as the reset.
@@ -67,7 +72,7 @@ export type PanelFieldKey = NutrientKey | 'servingGrams' | 'packageGrams';
 export function emptyPanelForm(): PanelForm {
   const amounts = {} as Record<NutrientKey, string>;
   for (const key of NUTRIENT_KEYS) amounts[key] = '';
-  return { basis: 'perServing', servingText: '', servingGrams: '', packageGrams: '', amounts, novaGroup: '' };
+  return { basis: 'perServing', servingText: '', servingGrams: '', packageGrams: '', amounts, novaGroup: '', cookedState: 'raw', cookedPerRaw: '' };
 }
 
 /**
@@ -85,6 +90,10 @@ export function panelFormFrom(nutrition: FoodNutrition | null): PanelForm {
   form.servingGrams = nutrition.servingGrams === null ? '' : String(nutrition.servingGrams);
   form.packageGrams = nutrition.packageGrams ? String(nutrition.packageGrams) : '';
   form.novaGroup = novaGroupToText(nutrition.novaGroup);
+  if (nutrition.cooking) {
+    form.cookedState = nutrition.cooking.panelState;
+    form.cookedPerRaw = String(nutrition.cooking.cookedPerRaw);
+  }
   for (const key of NUTRIENT_KEYS) {
     const amount = nutrition.amounts[key];
     if (amount !== undefined) form.amounts[key] = String(amount);
@@ -125,6 +134,11 @@ export function invalidPanelFields(form: PanelForm): PanelFieldKey[] {
   if (pack === 'invalid' || pack === 0) bad.push('packageGrams');
   for (const key of NUTRIENT_KEYS) {
     if (readPanelNumber(form.amounts[key]) === 'invalid') bad.push(key);
+  }
+  // A ratio outside what a food can do is a slipped decimal, not a statement.
+  const ratio = readPanelNumber(form.cookedPerRaw);
+  if (ratio === 'invalid' || (typeof ratio === 'number' && !readCooking({ panelState: 'raw', cookedPerRaw: ratio }))) {
+    bad.push('cookedPerRaw');
   }
   return bad;
 }
@@ -169,6 +183,8 @@ export function panelFormDirty(form: PanelForm, baseline: PanelForm): boolean {
   if (form.servingGrams.trim() !== baseline.servingGrams.trim()) return true;
   if (form.packageGrams.trim() !== baseline.packageGrams.trim()) return true;
   if (form.novaGroup !== baseline.novaGroup) return true;
+  if (form.cookedPerRaw.trim() !== baseline.cookedPerRaw.trim()) return true;
+  if (form.cookedPerRaw.trim() !== '' && form.cookedState !== baseline.cookedState) return true;
   return NUTRIENT_KEYS.some(k => form.amounts[k].trim() !== baseline.amounts[k].trim());
 }
 
@@ -211,6 +227,10 @@ export function buildPanelNutrition(
   const grams = readPanelNumber(form.servingGrams);
   const servingText = form.servingText.trim();
   const pack = readPanelNumber(form.packageGrams);
+  const ratio = readPanelNumber(form.cookedPerRaw);
+  const cooking = typeof ratio === 'number' && form.basis !== 'per100ml'
+    ? readCooking({ panelState: form.cookedState, cookedPerRaw: ratio })
+    : null;
   return {
     basis: form.basis,
     servingGrams: typeof grams === 'number' && grams > 0 ? grams : null,
@@ -226,6 +246,8 @@ export function buildPanelNutrition(
     // Only when typed, so clearing it clears it. Neither a photo nor a barcode
     // states one, so it is always the person's own.
     ...(typeof pack === 'number' && pack > 0 ? { packageGrams: pack } : {}),
+    // Only when a ratio is typed, so clearing the field clears the whole record.
+    ...(cooking ? { cooking } : {}),
   };
 }
 
@@ -283,6 +305,9 @@ export function applyLabelReading(
     amounts,
     // A printed panel states no processing group.
     novaGroup: form.novaGroup,
+    // Nor does it state a cooking ratio.
+    cookedState: form.cookedState,
+    cookedPerRaw: form.cookedPerRaw,
   };
 }
 
@@ -321,6 +346,9 @@ export function applyFoodNutrition(form: PanelForm, nutrition: FoodNutrition): P
     amounts,
     // A scan that states a group sets it; one that doesn't leaves what was typed.
     novaGroup: nutrition.novaGroup ? novaGroupToText(nutrition.novaGroup) : form.novaGroup,
+    // A fetched panel states no ratio, so what was typed stands.
+    cookedState: form.cookedState,
+    cookedPerRaw: form.cookedPerRaw,
   };
 }
 

@@ -9,6 +9,7 @@ import type {
   NutrientKey,
 } from '../types';
 import { NUTRIENT_KEYS } from '../types';
+import { readCookingField } from './cookedState';
 
 /**
  * Reading and writing a food's nutrient figures, and answering which of the two
@@ -192,6 +193,7 @@ export function parseFoodNutrition(raw: string | null | undefined): FoodNutritio
       ...readNovaField(parsed.novaGroup),
       ...readPackageGramsField(parsed.packageGrams),
       ...readBreakdownField(parsed.breakdown),
+      ...readCookingField(parsed.cooking),
     };
   } catch {
     return null;

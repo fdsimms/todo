@@ -2221,3 +2221,29 @@ changes until they open the row. The threshold only moves where the line starts
 appearing: it still never changes what the sheet pre-checks, and a null reading
 is silent at every threshold. The switch is for the note and nothing else; the
 `health` generator's sleep rule keeps its own threshold on its own sheet.
+
+## Raw and cooked weights (`FoodNutrition.cooking`, `cookedState.ts`)
+
+Rice triples in weight when it is cooked and chicken loses a quarter, so a panel written for one
+state is wrong by that factor when a weight in the other state is typed against it. A food has one
+panel, in whichever state its source stated, and `cooking` holds the two facts that relate the
+states: `panelState` (which one the figures describe) and `cookedPerRaw` (cooked grams per raw gram).
+
+- **The ratio is typed or measured by the person, never looked up.** There is no table of cooking
+  yields, for the reason `FoodPortion` gives against a global density table: a yield differs by
+  variety, method and how long it sat in the water. The panel editor offers a weighed batch (raw
+  grams in, cooked grams out) that writes the ratio, the same shape as weighing a dish for
+  `Recipe.cookedWeightG`. The MCP takes it as `cooking` on `set_nutrition_panel` and is told never
+  to guess one.
+- **A raw or cooked amount against a food with no ratio is refused, never read as plain grams.**
+  "100 g cooked" parses as 100 g with a trailing word, so without `panelGramsFor`'s refusal the
+  wrong state would be logged with nothing on screen to say so. `scalePanelToAmount` is the one
+  caller and returns null.
+- **The logged entry keeps the weight of the state the panel describes**, and its `servingText` keeps
+  what was typed ("100 g raw"). A logged helping does not carry `cooking`, like it carries no
+  portions: it is already scaled.
+- **Weights only.** A `per100ml` panel takes no ratio (the editor hides the section), and a
+  `perServing` panel needs `servingGrams`, the same refusal `takesStateAmount` makes for both. A cup
+  of cooked rice is not converted: that is a portion's job (`FoodPortion`), in whichever state it was weighed.
+- Recipes do not read it. A recipe line is measured against the food's panel by `panelMultiplier`
+  as written, and a dish weighed after cooking is `cookedWeightG`'s job (`docs/arch/recipes.md`).
