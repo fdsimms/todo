@@ -2274,7 +2274,7 @@ interface TaskStore extends UndoHistoryActions {
    * stamping a miss they never made would put a fabricated entry in their
    * Logbook.
    */
-  skipNextRecurrence: (id: string) => void;
+  skipNextRecurrence: (id: string, opts?: { registerUndo?: boolean }) => void;
   togglePin: (id: string) => void;
   /**
    * Post a bounty on a task (see "Bounties" in utils/rewards.ts). Refused with
@@ -3440,7 +3440,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // of those promises resolve. It is the db writes that are batched, not the
     // notification work. The per-row set() stays, because collapsing that would
     // mean reimplementing skipNextRecurrence's own rules out here.
-    dbTransaction(() => rolled.forEach(t => get().skipNextRecurrence(t.id)));
+    // registerUndo: false, as the delete below: nobody tapped Skip.
+    dbTransaction(() => rolled.forEach(t => get().skipNextRecurrence(t.id, { registerUndo: false })));
     // skipGeneratedOptOut: this runs unattended at startup — a window closing
     // on its own is the app tidying up, not the user declining the source.
     // registerUndo: false for the same reason, so the first shake of the
@@ -9081,11 +9082,21 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }
   },
 
-  skipNextRecurrence(id) {
+  skipNextRecurrence(id, opts) {
     const task = get().tasks.find(t => t.id === id);
     if (!task) return;
     const patch = skipPatch(task, useSettingsStore.getState().dayResetTime);
-    if (patch) get().updateTask(id, patch, SKIP_POSTPONE);
+    if (!patch) return;
+    const snapshot = { ...task };
+    get().updateTask(id, patch, SKIP_POSTPONE);
+    // A skip rewrites the date, count, reminder and chain position in one go,
+    // so the undo puts the whole row back rather than inverting each field.
+    if (opts?.registerUndo === false) return;
+    get().setLastAction({
+      label: 'Task skipped',
+      undo: () => get().updateTask(id, snapshot),
+      redo: redoRestoringRows([id]),
+    });
   },
 
   postBounty(id) {
