@@ -286,6 +286,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/medicationLog.ts` — DOSE_UNITS, MIN_TREND_DOSES, MedicationDose, MedicationSource, medicationFor, canCarryMedication, medicationKey, medicationVocabulary, ARCHIVED_MEDICATIONS_SETTING_KEY, parseArchivedMedications, +24 more
 - `src/utils/medicationRename.ts` — DoseFill, renamedLogs, renamedSettings, renamedKeys, renamedChain, renamedTask, renamedTemplateItem, splitStrength
 - `src/utils/medicationRenameApply.ts` — renameMedicationEverywhere
+- `src/utils/medicationSchedule.ts` — MedicationSchedule, MAX_SCHEDULE_INTERVAL, parseSchedule, describeSchedule, ScheduleState, ScheduleStatus, scheduleStatus, describeScheduleStatus
 - `src/utils/medicationSettings.ts` — MEDICATION_SETTINGS_KEY, AmountCap, MedicationLimit, MedicationSupply, SupplementPanel, PanelIngredient, INGREDIENT_UNITS, MAX_PANEL_INGREDIENTS, UsualDose, MedicationPrefs, +22 more
 - `src/utils/medicationSummary.ts` — SummaryPreset, SummaryRange, summaryRange, rangeDays, describeRange, SummaryCandidate, summaryCandidates, missedCountsByMedication, DoseAmount, DoseRun, +15 more
 - `src/utils/meters.ts` — METER_CHECK_IN_DAYS, METER_RATE_MIN_DAYS, METER_RATE_WINDOW_DAYS, METER_NAME_MAX_LENGTH, meterKey, canFollowMeter, hasMeter, NO_METER, readingsFor, latestReading, +23 more

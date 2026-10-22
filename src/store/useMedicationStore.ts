@@ -42,6 +42,7 @@ import {
   MAX_USUAL_DOSES,
   type UsualDose,
 } from '../utils/medicationSettings';
+import { parseSchedule, type MedicationSchedule } from '../utils/medicationSchedule';
 
 /** When a summary for a visit was last shared (synced, health-scoped). */
 export const SUMMARY_LAST_SETTING_KEY = 'medication_summary_last';
@@ -182,6 +183,8 @@ interface MedicationStore {
   setSupplementPanel: (name: string, panel: SupplementPanel | null) => void;
   /** Say whether it is taken as needed or on a schedule; null goes back to reading it off the doses. */
   setAsNeeded: (name: string, asNeeded: boolean | null) => void;
+  /** Set the days it is taken on, or null to clear them. */
+  setSchedule: (name: string, schedule: MedicationSchedule | null) => void;
   /**
    * Replace the amounts you usually take. The first is the default, the rest are
    * quick picks. Anything not a positive amount with a unit is dropped, repeats
@@ -316,6 +319,14 @@ export const useMedicationStore = create<MedicationStore>((set, get) => ({
     if (!medicationKey(name)) return;
     const current = prefsFor(get().settings, name);
     writeSettings(set, withPrefs(get().settings, name, { ...current, asNeeded }));
+  },
+
+  setSchedule(name, schedule) {
+    if (!medicationKey(name)) return;
+    const current = prefsFor(get().settings, name);
+    const { schedule: _dropped, ...rest } = current;
+    const clean = parseSchedule(schedule);
+    writeSettings(set, withPrefs(get().settings, name, clean ? { ...rest, schedule: clean } : rest));
   },
 
   setUsualDoses(name, doses) {

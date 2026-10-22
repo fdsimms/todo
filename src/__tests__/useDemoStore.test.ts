@@ -2557,6 +2557,7 @@ describe('demo seed — people', () => {
     const panel = prefsFor(settings, 'Multivitamin').nutrition;
     expect(panel).toMatchObject({ servingAmount: 1, servingUnit: 'tablet' });
     expect(panel!.amounts.magnesiumMg).toBe(50);
+    expect(prefsFor(settings, 'Multivitamin').schedule).toEqual({ kind: 'interval', everyDays: 1 });
     const doses = logs.filter(l => l.name === 'Multivitamin');
     expect(doses.length).toBeGreaterThanOrEqual(3);
 

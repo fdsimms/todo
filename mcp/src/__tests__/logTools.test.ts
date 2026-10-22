@@ -591,6 +591,36 @@ describe('add_medication and set_medication_profile', () => {
     expect(replica.medicationSettings().find(m => m.name === 'Magnesium')?.takenAsNeeded).toBeUndefined();
   });
 
+  it('sets the days a medicine is taken and reports where it stands', () => {
+    addMedication(replica, 'Vitamin C');
+    expect(setMedicationProfile(replica, { name: 'vitamin c', schedule: { everyDays: 2 } }))
+      .toEqual({ medicine: 'Vitamin C', schedule: 'Every other day' });
+    // No dose yet, so it is due now; a dose today moves it two days on.
+    expect(replica.medicationSettings().find(m => m.name === 'Vitamin C'))
+      .toMatchObject({ schedule: 'Every other day', scheduleStatus: 'Due today' });
+    logMedication(replica, { name: 'Vitamin C' });
+    expect(replica.medicationSettings().find(m => m.name === 'Vitamin C')?.scheduleStatus).toMatch(/^Taken today\. Next on /);
+
+    expect(setMedicationProfile(replica, { name: 'Vitamin C', schedule: { weekdays: [5, 1, 3] } }).schedule).toBe('Mon, Wed, Fri');
+    // An as-needed medicine keeps its days but has no status to report.
+    setMedicationProfile(replica, { name: 'Vitamin C', asNeeded: true });
+    expect(replica.medicationSettings().find(m => m.name === 'Vitamin C')).toMatchObject({ schedule: 'Mon, Wed, Fri' });
+    expect(replica.medicationSettings().find(m => m.name === 'Vitamin C')?.scheduleStatus).toBeUndefined();
+
+    expect(setMedicationProfile(replica, { name: 'Vitamin C', schedule: null })).toEqual({ medicine: 'Vitamin C', schedule: null });
+    expect(replica.medicationSettings().find(m => m.name === 'Vitamin C')?.schedule).toBeUndefined();
+  });
+
+  it('refuses a schedule that is neither or both kinds, or out of range', () => {
+    addMedication(replica, 'Zinc picolinate');
+    const name = 'Zinc picolinate';
+    expect(() => setMedicationProfile(replica, { name, schedule: {} as never })).toThrow(/either/);
+    expect(() => setMedicationProfile(replica, { name, schedule: { everyDays: 2, weekdays: [1] } as never })).toThrow(/either/);
+    expect(() => setMedicationProfile(replica, { name, schedule: { everyDays: 0 } })).toThrow(/whole number/);
+    expect(() => setMedicationProfile(replica, { name, schedule: { everyDays: 2.5 } })).toThrow(/whole number/);
+    expect(() => setMedicationProfile(replica, { name, schedule: { weekdays: [7] } })).toThrow(/0 to 6/);
+  });
+
   it('refuses an unlisted medicine and an incomplete or unknown dose', () => {
     expect(() => setMedicationProfile(replica, { name: 'Nothing', asNeeded: true })).toThrow(/No medicine called/);
     addMedication(replica, 'Iron');

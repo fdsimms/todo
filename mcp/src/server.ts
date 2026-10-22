@@ -2960,10 +2960,15 @@ function registerWriteTools(
 
   server.tool(
     'set_medication_profile',
-    'Set how a listed medicine is taken and the amounts usually taken, as its page does. asNeeded: true for taken as needed (the Medications screen then offers a button that records another dose), false for on a schedule, null to go back to reading it off the recorded doses. usualAmounts is the whole list (e.g. [{amount: 400, unit: "mg"}, {amount: 200, unit: "mg"}], at most 6): the first is what a new dose starts from and what the round button records before any dose exists, and all of them are quick picks when recording a dose; [] clears them. strength is what one capsule, tablet, puff or drop contains (a dose of "1 capsule" then reads as 125 mcg and counts toward a limit in mcg). A field left out is unchanged. Only from what the person told you.',
+    'Set how a listed medicine is taken and the amounts usually taken, as its page does. asNeeded: true for taken as needed (the Medications screen then offers a button that records another dose), false for on a schedule, null to go back to reading it off the recorded doses. usualAmounts is the whole list (e.g. [{amount: 400, unit: "mg"}, {amount: 200, unit: "mg"}], at most 6): the first is what a new dose starts from and what the round button records before any dose exists, and all of them are quick picks when recording a dose; [] clears them. strength is what one capsule, tablet, puff or drop contains (a dose of "1 capsule" then reads as 125 mcg and counts toward a limit in mcg). schedule sets the days a regular medicine is taken: { everyDays: 2 } is every other day (counted from the last dose, so a late dose moves the next one), { weekdays: [1, 3, 5] } is Monday, Wednesday and Friday (0 is Sunday); null clears it. The app shows where it stands (due today, taken today, next day) and list_medication_logs reports it as schedule and scheduleStatus. It does not create a task or a reminder. A field left out is unchanged. Only from what the person told you.',
     {
       name: z.string().min(1),
       asNeeded: z.boolean().nullable().optional(),
+      schedule: z.union([
+        z.object({ everyDays: z.number().int().min(1).max(30) }),
+        z.object({ weekdays: z.array(z.number().int().min(0).max(6)).min(1).max(7) }),
+        z.null(),
+      ]).optional(),
       usualAmounts: z.array(z.object({ amount: z.number().positive(), unit: z.string() })).max(6).optional(),
       strength: z.object({ amount: z.number().positive(), unit: z.string() }).nullable().optional()
         .describe('What one capsule, tablet, puff or drop contains, e.g. {amount: 125, unit: "mcg"}; null clears it. Doses recorded in a counted unit after this carry it, so "1 capsule" reads as 125 mcg; earlier doses keep what they were stamped with.'),

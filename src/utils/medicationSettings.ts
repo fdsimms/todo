@@ -1,6 +1,7 @@
 import type { MedicationLog, NutrientKey } from '../types';
 import { NUTRIENT_KEYS } from '../types';
 import { DOSE_UNITS, STRENGTH_UNITS, amountInUnit, medicationKey } from './medicationLog';
+import { parseSchedule, type MedicationSchedule } from './medicationSchedule';
 
 /**
  * What you have told the app about one medication: a limit on how often you
@@ -156,6 +157,12 @@ export interface MedicationPrefs {
    */
   asNeeded?: boolean | null;
   /**
+   * The days it is taken on, or absent when none were set (`medicationSchedule.ts`).
+   * Only meaningful for a medicine taken on a schedule: an as-needed one has no
+   * days, and keeps whatever was set so switching back finds it.
+   */
+  schedule?: MedicationSchedule | null;
+  /**
    * The amounts you usually take, at most `MAX_USUAL_DOSES`. The first is the
    * default; the rest are quick picks in the dose sheet. Absent or empty when
    * none were entered.
@@ -247,7 +254,7 @@ export function defaultUsualDose(prefs: Pick<MedicationPrefs, 'usualDoses'> | un
 
 /** Whether an entry says anything; an entry that doesn't is dropped rather than stored empty. */
 function hasPrefs(p: MedicationPrefs): boolean {
-  return !!(p.limit || p.supply || p.nutrition || p.strength || p.usualDoses?.length || typeof p.asNeeded === 'boolean');
+  return !!(p.limit || p.supply || p.nutrition || p.strength || p.schedule || p.usualDoses?.length || typeof p.asNeeded === 'boolean');
 }
 
 function parseSupply(raw: unknown): MedicationSupply | null {
@@ -332,6 +339,7 @@ export function parseMedicationSettings(raw: string | null): MedicationSettingsM
     // the field existed.
     const usualDoses = parseUsualDoses(v.usualDoses, v.usualDose);
     const strength = parseStrength(v.strength);
+    const schedule = parseSchedule(v.schedule);
     const prefs: MedicationPrefs = {
       limit: parseLimit(v.limit),
       supply: parseSupply(v.supply),
@@ -339,6 +347,7 @@ export function parseMedicationSettings(raw: string | null): MedicationSettingsM
       ...(typeof v.asNeeded === 'boolean' ? { asNeeded: v.asNeeded } : {}),
       ...(usualDoses.length > 0 ? { usualDoses } : {}),
       ...(strength ? { strength } : {}),
+      ...(schedule ? { schedule } : {}),
     };
     if (hasPrefs(prefs)) out[key] = prefs;
   }

@@ -25,6 +25,7 @@ import { getRecipe, type RecipeDetail } from './kitchenTools';
 import { describeWater, waterToMl, type WaterUnit } from '../../src/utils/waterLog';
 import { INGREDIENT_UNITS, MAX_PANEL_INGREDIENTS, MAX_USUAL_DOSES, PANEL_UNITS, SUPPLY_UNITS } from '../../src/utils/medicationSettings';
 import type { PanelIngredient } from '../../src/utils/medicationSettings';
+import { MAX_SCHEDULE_INTERVAL, describeSchedule, parseSchedule, type MedicationSchedule } from '../../src/utils/medicationSchedule';
 import { DOSE_UNITS, STRENGTH_UNITS } from '../../src/utils/medicationLog';
 import { describeSupplementPanel } from '../../src/utils/supplementDose';
 
@@ -470,13 +471,33 @@ export function removeMedication(replica: Replica, name: string): { removed: str
   return { removed: replica.removeMedication(name) };
 }
 
-/** How a medicine is taken and the amounts usually taken. See `Replica.setMedicationProfile`. */
+/** How a medicine is taken, on which days, and the amounts usually taken. See `Replica.setMedicationProfile`. */
 export function setMedicationProfile(
   replica: Replica,
-  input: { name: string; asNeeded?: boolean | null; usualAmounts?: { amount: number; unit: string }[]; strength?: { amount: number; unit: string } | null },
-): { medicine: string; asNeeded?: boolean | null; usualAmounts?: string[]; strength?: string | null } {
-  if (input.asNeeded === undefined && input.usualAmounts === undefined && input.strength === undefined) {
-    throw new Error('Give asNeeded, usualAmounts, strength, or any of them.');
+  input: {
+    name: string;
+    asNeeded?: boolean | null;
+    usualAmounts?: { amount: number; unit: string }[];
+    strength?: { amount: number; unit: string } | null;
+    schedule?: { everyDays: number } | { weekdays: number[] } | null;
+  },
+): { medicine: string; asNeeded?: boolean | null; usualAmounts?: string[]; strength?: string | null; schedule?: string | null } {
+  if (input.asNeeded === undefined && input.usualAmounts === undefined && input.strength === undefined && input.schedule === undefined) {
+    throw new Error('Give asNeeded, usualAmounts, strength, schedule, or any of them.');
+  }
+  let schedule: MedicationSchedule | null | undefined;
+  if (input.schedule === null) schedule = null;
+  else if (input.schedule !== undefined) {
+    const given = input.schedule as { everyDays?: number; weekdays?: number[] };
+    if ((given.everyDays === undefined) === (given.weekdays === undefined)) {
+      throw new Error('schedule is either { everyDays } or { weekdays }, not both and not neither. null clears it.');
+    }
+    schedule = parseSchedule(given.everyDays !== undefined
+      ? { kind: 'interval', everyDays: given.everyDays }
+      : { kind: 'weekdays', days: given.weekdays });
+    if (!schedule) {
+      throw new Error(`everyDays is a whole number from 1 to ${MAX_SCHEDULE_INTERVAL} (2 is every other day). weekdays are numbers 0 to 6, 0 being Sunday, with at least one.`);
+    }
   }
   if (input.strength) {
     const unit = input.strength.unit?.trim();
@@ -500,12 +521,14 @@ export function setMedicationProfile(
     ...(input.asNeeded !== undefined ? { asNeeded: input.asNeeded } : {}),
     ...(usualDoses !== undefined ? { usualDoses } : {}),
     ...(input.strength !== undefined ? { strength: input.strength } : {}),
+    ...(schedule !== undefined ? { schedule } : {}),
   });
   return {
     medicine,
     ...(input.strength !== undefined ? { strength: input.strength ? `${input.strength.amount} ${input.strength.unit}` : null } : {}),
     ...(input.asNeeded !== undefined ? { asNeeded: input.asNeeded } : {}),
     ...(usualDoses !== undefined ? { usualAmounts: usualDoses.map(d => `${d.amount} ${d.unit}`) } : {}),
+    ...(schedule !== undefined ? { schedule: schedule ? describeSchedule(schedule) : null } : {}),
   };
 }
 

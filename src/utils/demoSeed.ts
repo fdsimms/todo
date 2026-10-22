@@ -3752,6 +3752,8 @@ function seedAsNeededDoses(today: Date): void {
       vitaminB12Mcg: 2.4, calciumMg: 200, magnesiumMg: 50, zincMg: 11, seleniumMcg: 55,
     },
   });
+  // Taken every day, so its page shows the days and whether today's is done.
+  meds.setSchedule('Multivitamin', { kind: 'interval', everyDays: 1 });
   for (const back of [4, 3, 2, 1]) {
     addLog({
       name: 'Multivitamin',

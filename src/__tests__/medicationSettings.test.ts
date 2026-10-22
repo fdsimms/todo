@@ -85,6 +85,13 @@ describe('parseMedicationSettings', () => {
     expect(parseMedicationSettings(none)).toEqual({});
   });
 
+  it('reads a schedule back, and keeps a medicine that has nothing else', () => {
+    const map = { vitaminc: { limit: null, supply: null, schedule: { kind: 'interval', everyDays: 2 } } };
+    expect(parseMedicationSettings(JSON.stringify(map))).toEqual(map);
+    const bad = JSON.stringify({ x: { schedule: { kind: 'interval', everyDays: 99 } } });
+    expect(parseMedicationSettings(bad)).toEqual({});
+  });
+
   it('tolerates junk', () => {
     expect(parseMedicationSettings(null)).toEqual({});
     expect(parseMedicationSettings('nope')).toEqual({});

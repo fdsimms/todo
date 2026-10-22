@@ -1057,6 +1057,10 @@ export interface MedicationSettingsView {
   takenAsNeeded?: boolean;
   /** ["50 mg", "25 mg"], the amounts the person usually takes; the first is the default. */
   usualAmounts?: string[];
+  /** "Every other day" or "Mon, Wed, Fri": the days the person set for taking it. */
+  schedule?: string;
+  /** "Due today", "Taken today. Next tomorrow": where that schedule stands now. Absent for a medicine taken as needed. */
+  scheduleStatus?: string;
   /** Listed by name with no dose recorded yet. */
   noDosesYet?: true;
 }
@@ -1581,7 +1585,12 @@ export interface Replica {
    */
   setMedicationProfile(
     name: string,
-    profile: { asNeeded?: boolean | null; usualDoses?: { amount: number; unit: string }[]; strength?: { amount: number; unit: string } | null },
+    profile: {
+      asNeeded?: boolean | null;
+      usualDoses?: { amount: number; unit: string }[];
+      strength?: { amount: number; unit: string } | null;
+      schedule?: import('../../src/utils/medicationSchedule').MedicationSchedule | null;
+    },
   ): string;
   /**
    * Set (or, with null, clear) what one serving of a medicine contains. Doses
@@ -2471,6 +2480,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   };
   const medicationSettings = require('../../src/utils/medicationSettings') as MedicationSettingsModule;
   const supplementDose = require('../../src/utils/supplementDose') as typeof import('../../src/utils/supplementDose'); // eslint-disable-line @typescript-eslint/no-require-imports
+  const medicationSchedule = require('../../src/utils/medicationSchedule') as typeof import('../../src/utils/medicationSchedule'); // eslint-disable-line @typescript-eslint/no-require-imports
   const rewards = require('../../src/utils/rewards') as RewardsModule;
   const negativeHabits = require('../../src/utils/negativeHabits') as NegativeHabitsModule;
   const rewardGuard = require('../../src/utils/rewardGuard') as RewardGuardModule;
@@ -4203,6 +4213,18 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
             const d = supplementDose.describeSupplementPanel(prefs.nutrition);
             return { nutrients: d.heading, nutrientsDetail: d.detail };
           })() : {}),
+          ...(prefs.schedule ? (() => {
+            const today = dates.getLogicalDayKey(now, useSettingsStore.getState().dayResetTime);
+            const status = medicationSchedule.scheduleStatus(
+              prefs.schedule,
+              logs.filter(l => medication.medicationKey(l.name) === key).map(l => l.dayKey),
+              today,
+            );
+            return {
+              schedule: medicationSchedule.describeSchedule(prefs.schedule),
+              ...(prefs.asNeeded === true ? {} : { scheduleStatus: medicationSchedule.describeScheduleStatus(status, today) }),
+            };
+          })() : {}),
           ...(typeof prefs.asNeeded === 'boolean' ? { takenAsNeeded: prefs.asNeeded } : {}),
           ...(prefs.usualDoses?.length ? { usualAmounts: prefs.usualDoses.map(d => medication.formatDose(d) ?? '') } : {}),
           ...(prefs.strength ? { eachCountedUnitContains: medicationSettings.formatCapAmount(prefs.strength) } : {}),
@@ -5670,6 +5692,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (profile.asNeeded !== undefined) meds.getState().setAsNeeded(spelled, profile.asNeeded);
       if (profile.usualDoses !== undefined) meds.getState().setUsualDoses(spelled, profile.usualDoses);
       if (profile.strength !== undefined) meds.getState().setStrength(spelled, profile.strength);
+      if (profile.schedule !== undefined) meds.getState().setSchedule(spelled, profile.schedule);
       return spelled;
     },
 
