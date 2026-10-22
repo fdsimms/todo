@@ -271,6 +271,11 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
  */
 export const SYNC_DEVICE_LOCAL_COLUMNS: Readonly<Record<string, readonly string[]>> = {
   meal_plan_entries: ['calendar_event_id', 'calendar_event_external_id'],
+  // A journal entry's photos are files that never leave this device (the
+  // journal stays off iCloud, and the sync server carries no files), so a
+  // peer's copy would name pictures that aren't there. A peer's delete leaves
+  // the files behind, and the launch sweep (sweepJournalPhotos) takes them.
+  journal_entries: ['photos'],
   tasks: [
     'calendar_event_id', 'calendar_event_external_id',
     'completion_calendar_event_id', 'completion_calendar_event_external_id',

@@ -2088,6 +2088,14 @@ export interface JournalEntry {
    * not a ranking. Optional so an older row reads as about nobody.
    */
   personIds?: string[];
+  /**
+   * Photos on the entry: file names in the `journal-photos` folder
+   * (`src/utils/journalPhotos.ts`). Device-local like the files themselves,
+   * which stay on this device and travel only in a backup, as the journal
+   * stays off iCloud. Optional so a row written before photos existed reads
+   * as having none.
+   */
+  photos?: string[];
 }
 
 /**

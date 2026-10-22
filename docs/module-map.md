@@ -248,6 +248,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/journalExport.ts` — JOURNAL_EXPORT_COLUMNS, PersonNamer, journalExportCsv, journalExportMarkdown, JournalExportFormat, journalExportFileName, journalExportSummary
 - `src/utils/journalHistory.ts` — JournalHistoryKind, JOURNAL_HISTORY_OPTIONS, canOfferJournalHistory, journalHistoryTitle, journalHistoryAt
 - `src/utils/journalMarkdown.ts` — InlineSpan, JournalBlock, parseInline, parseJournalMarkdown, SPOILER_PLAIN_TEXT, journalPlainText, EditSelection, FormatEdit, toggleWrap, continueListOnEnter, +2 more
+- `src/utils/journalPhotos.ts` — JOURNAL_PHOTO_FOLDER, MAX_JOURNAL_PHOTOS, journalPhotoNamesInUse, droppedPhotos, unreferencedPhotos, journalPhotosOnDevice, deleteJournalPhotos, sweepJournalPhotos
 - `src/utils/journalTasks.ts` — JOURNAL_LOG_TITLE, JOURNAL_SNIPPET_TITLE, DREAM_LOG_TITLE, journalLogTitle, JOURNAL_TASK_KIND, journalMicUrl, journalLogUrl, journalTaskSourceId, journalTaskDayKey
 - `src/utils/keyScanAlert.ts` — alertKeyScanResult
 - `src/utils/keyScanQueue.ts` — QueuedKeyScan, QUEUED_KEY_CODE_MAX_LENGTH, parseQueuedKeyScans, keyCodeToken
@@ -423,7 +424,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/recipeNutrition.ts` — RecipeNutrition, NutritionLineState, recipeNutrition, componentShares, RecipeNutritionReading, readRecipeNutrition, NutritionLine, recipeNutritionLines, ExcludedNutritionLine, excludedNutritionLines, +10 more
 - `src/utils/recipeNutritionEstimate.ts` — RecipeEstimateConfidence, RecipeNutritionEstimate, RawRecipeNutritionEstimate, readRecipeNutritionEstimate, describeRecipeNutritionEstimate
 - `src/utils/recipePageOffline.ts` — OfflineRecipeItem, servingsFromYield, recipeFromPageOffline
-- `src/utils/recipePhoto.ts` — MAX_PHOTO_EDGE, MAX_RECIPE_PHOTOS, RecipePhotoSource, RecipePhoto, RecipePhotoResult, photoTargetSize, CameraPermission, PhotoLibraryPermission, getCameraPermission, requestCameraPermission, +15 more
+- `src/utils/recipePhoto.ts` — MAX_PHOTO_EDGE, MAX_RECIPE_PHOTOS, RecipePhotoSource, RecipePhoto, RecipePhotoResult, photoTargetSize, CameraPermission, PhotoLibraryPermission, getCameraPermission, requestCameraPermission, +26 more
 - `src/utils/recipePlanned.ts` — PLANNED_MEAL_LIMIT, upcomingRecipeMeals, plannedMealLabel
 - `src/utils/recipeProduce.ts` — recipeProduceGrams, helpingsOf, dishShare, recipeProduceResolver
 - `src/utils/recipeProvenance.ts` — ExtractedSource, FetchedSourcePage, SourceFields, sourceFieldsFor, CookbookEditIntent, cookbookEditIntent, SHELF_SUGGESTION_LIMIT, shelfSuggestions, SourcePlan, sourcePlanFor
@@ -525,6 +526,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/stepper.ts` — StepRange, clampCount, parseStepperInput, stepCount, canStep, holdRepeatDelay
 - `src/utils/storageReport.ts` — StorageTable, StorageStats, formatBytes, MIN_RECLAIMABLE_BYTES, worthOptimizing, optimizeBlockedReason, topAreas, describeAreas
 - `src/utils/storeAliases.ts` — aliasKeyFor, gtinAliasText, aliasItemIdFor, AliasDraft, aliasDraftsFrom
+- `src/utils/storedFileBackup.ts` — storedFileNamesIn, collectStoredFiles, restoreStoredFiles
 - `src/utils/streakLeaderboard.ts` — LEADERBOARD_SIZE, streakScore, rankStreaks
 - `src/utils/streakRecord.ts` — nextStreakRecord, bestStreakOf, isStreakAtRecord, streakHint
 - `src/utils/streakUnits.ts` — countsUnits

@@ -48,6 +48,8 @@ import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useEventReminderStore } from '../store/useEventReminderStore';
 import { useUnattendedStore } from '../store/useUnattendedStore';
+import { sweepJournalPhotos } from './journalPhotos';
+import { useJournalStore } from '../store/useJournalStore';
 import { dbReclaimFreePages } from '../db/database';
 import { rescheduleAllReminders } from './notifications';
 import { recordDeviceTimeZone } from './deviceTimeZone';
@@ -348,6 +350,11 @@ export function retentionPasses(): MaintenanceStep[] {
     // the ledger is the one table in the app with no "keep forever" answer
     // available to it (see ledgerCutoff).
     ['purge unattended ledger', () => useUnattendedStore.getState().purgeOldEntries()],
+    // Journal photo files no entry names any more: an entry deleted on another
+    // device, whose files never travelled and so were never deleted here.
+    // Launch-only because a sheet open later could hold a photo it just took
+    // and hasn't saved yet. Skips itself in demo mode (sweepJournalPhotos).
+    ['sweep unused journal photos', () => { sweepJournalPhotos(useJournalStore.getState().entries); }],
     // Then give the pages all of the above freed back to the device. Last on
     // purpose: it can only release what the deletes before it have already
     // freed. It deletes no rows and does nothing until the person has run

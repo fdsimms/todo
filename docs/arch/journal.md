@@ -307,3 +307,29 @@ heading, and `journalWordGoal` (a setting, journal only) turns both into "312 of
   `list_journal_entries`.
 - **`GoalStepperSheet` is the one goal sheet.** `JournalWordGoalSheet` and
   `SleepGoalSheet` only supply their setting, range and wording.
+
+## Photos
+
+An entry can carry photos (`JournalEntry.photos`, `src/utils/journalPhotos.ts`),
+added from the camera or the library in the entry sheet and shown under the
+entry in the list. A page that is only a photo is still a page: the store takes
+an entry with a photo and no words.
+
+- **The files stay on this device and in backups, never anywhere else.** The
+  journal is withheld from iCloud, and the sync server carries no files, so the
+  `photos` column is device-local too (`SYNC_DEVICE_LOCAL_COLUMNS`): another
+  device's copy of the entry has no photos rather than names pointing at
+  nothing. A backup carries the bytes (`Backup.storedFiles`).
+- **The entry holds file names, never paths**, in the `journal-photos` folder,
+  resolved against this launch's container like a recipe photo's.
+- **A file is deleted when nothing can name it again**: an edit that drops it
+  (on Save), a photo added and then removed or cancelled in the same sitting,
+  and the entry's delete. The launch sweep (`sweepJournalPhotos`) takes what is
+  left over, such as an entry deleted on another device, and skips itself in
+  demo mode, since the folder is shared with the real database.
+- **Photos show where the journal is read behind its lock**: the entry sheet and
+  the journal list, which already shows only open entries. Nowhere else draws
+  them.
+- **Not in a draft.** A draft keeps the words; a photo added to a page that is
+  then left unsaved goes with it.
+

@@ -19,6 +19,8 @@ import {
 import {
   recipeImageBasename, readRecipeImageBase64, writeRecipeImageFile,
 } from '../../utils/recipePhoto';
+import { readStoredFileBase64, writeStoredFile } from '../../utils/recipePhoto';
+import { collectStoredFiles, restoreStoredFiles } from '../../utils/storedFileBackup';
 import {
   RETENTION_OPTIONS, retentionCutoff, retentionDeletionSummary, retentionLabel,
   selectPurgeableFocusSessionIds, selectPurgeableTaskIds, type RetentionDays,
@@ -83,7 +85,11 @@ function applyBackup(backup: Backup): number {
   // pre-restore rows back over the restored ones.
   dbReplaceAllData(backup.tables);
   try {
-    return restoreRecipeImages(backup);
+    // The recipe photos repoint their rows; the other stored files (journal
+    // photos, task attachments) are named by bare file name, so writing them
+    // back into their folders is all a restore owes them.
+    return restoreRecipeImages(backup)
+      + restoreStoredFiles(backup.storedFiles, (folder, name, base64) => { writeStoredFile(folder, name, base64); });
   } finally {
     useTaskStore.getState().initialize();
     useSettingsStore.getState().initialize();
@@ -144,6 +150,7 @@ export function DataResetSettings() {
         appVersion: Constants.expoConfig?.version || '1.0.0',
         exportedAt: now,
         images,
+        storedFiles: collectStoredFiles(tables, readStoredFileBase64),
       });
       uri = writeExportFile(serializeBackup(backup), backupFileName(now));
       if (!(await canShare())) {

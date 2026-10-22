@@ -9,6 +9,7 @@ import {
 import { generateId } from '../utils/id';
 import { dayKeyOf, getCurrentDayStart, getDayStart } from '../utils/dateUtils';
 import { cleanJournalTags, cleanPersonIds } from '../utils/journal';
+import { MAX_JOURNAL_PHOTOS, deleteJournalPhotos, droppedPhotos } from '../utils/journalPhotos';
 
 /**
  * The journal and the dream log — see `docs/arch/journal.md`.
@@ -24,6 +25,8 @@ import { cleanJournalTags, cleanPersonIds } from '../utils/journal';
 export interface JournalEntryMeta {
   tags?: readonly string[];
   personIds?: readonly string[];
+  /** File names in the journal photo folder (`src/utils/journalPhotos.ts`). */
+  photos?: readonly string[];
 }
 
 interface JournalStore {
@@ -33,7 +36,8 @@ interface JournalStore {
   /**
    * Write something down. `at` backdates it (noon of an earlier day, as the
    * mood sheet does); the day key is stamped from it under `dayResetTime`, so
-   * a 1am entry with a 02:00 reset files under yesterday. Refuses blank text.
+   * a 1am entry with a 02:00 reset files under yesterday. Refuses an entry
+   * with neither words nor a photo.
    */
   addEntry: (
     kind: JournalKind,
@@ -42,9 +46,15 @@ interface JournalStore {
     openOn?: string | null,
     meta?: JournalEntryMeta,
   ) => JournalEntry | null;
-  /** Change the words. The day is fixed once written, as a mood entry's is. */
+  /**
+   * Change the words. The day is fixed once written, as a mood entry's is.
+   * The words can be cleared only on an entry that has a photo.
+   */
   updateEntry: (id: string, text: string) => void;
-  /** Replace an entry's tags and people. Either left out stays as it was. */
+  /**
+   * Replace an entry's tags, people or photos. Anything left out stays as it
+   * was. A photo the new list drops is deleted from the device.
+   */
   setEntryMeta: (id: string, meta: JournalEntryMeta) => void;
   /** Opens a sealed note early: clears `openOn`, so it reads like any other entry. */
   openNow: (id: string) => void;
@@ -61,7 +71,8 @@ export const useJournalStore = create<JournalStore>((set, get) => ({
 
   addEntry(kind, text, at, openOn, meta) {
     const trimmed = text.trim();
-    if (!trimmed) return null;
+    const photos = (meta?.photos ?? []).slice(0, MAX_JOURNAL_PHOTOS);
+    if (!trimmed && photos.length === 0) return null;
     const when = at ?? new Date();
     const entry: JournalEntry = {
       id: generateId(),
@@ -73,6 +84,7 @@ export const useJournalStore = create<JournalStore>((set, get) => ({
       openOn: openOn && openOn > dayKeyOf(getCurrentDayStart()) ? openOn : null,
       tags: cleanJournalTags(meta?.tags ?? []),
       personIds: cleanPersonIds(meta?.personIds ?? []),
+      photos,
     };
     dbInsertJournalEntry(entry);
     // Kept in the order dbGetAllJournalEntries hands back, so nothing reorders
@@ -86,7 +98,9 @@ export const useJournalStore = create<JournalStore>((set, get) => ({
     const trimmed = text.trim();
     // Clearing the words is a delete, which the sheet offers as its own
     // action; an empty entry would be a day marked written with nothing on it.
-    if (!existing || !trimmed || trimmed === existing.text) return;
+    // An entry that holds a photo is not empty, so its words can go.
+    if (!existing || trimmed === existing.text) return;
+    if (!trimmed && (existing.photos ?? []).length === 0) return;
     const next: JournalEntry = { ...existing, text: trimmed };
     dbUpdateJournalEntry(next);
     set({ entries: get().entries.map(e => (e.id === id ? next : e)) });
@@ -99,8 +113,10 @@ export const useJournalStore = create<JournalStore>((set, get) => ({
       ...existing,
       tags: meta.tags ? cleanJournalTags(meta.tags) : existing.tags ?? [],
       personIds: meta.personIds ? cleanPersonIds(meta.personIds) : existing.personIds ?? [],
+      photos: meta.photos ? meta.photos.slice(0, MAX_JOURNAL_PHOTOS) : existing.photos ?? [],
     };
     dbUpdateJournalEntry(next);
+    if (meta.photos) deleteJournalPhotos(droppedPhotos(existing.photos, next.photos));
     set({ entries: get().entries.map(e => (e.id === id ? next : e)) });
   },
 
@@ -113,7 +129,11 @@ export const useJournalStore = create<JournalStore>((set, get) => ({
   },
 
   removeEntry(id) {
+    // Its photos go with it: nothing else names them, and the delete is
+    // confirmed first, with no undo to bring them back for.
+    const photos = get().entries.find(e => e.id === id)?.photos ?? [];
     dbDeleteJournalEntry(id);
+    deleteJournalPhotos(photos);
     set({ entries: get().entries.filter(e => e.id !== id) });
   },
 }));

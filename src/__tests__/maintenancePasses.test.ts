@@ -93,6 +93,7 @@ describe('the three maintenance groups', () => {
       'purge old meal plan entries',
       'purge old leftovers',
       'purge unattended ledger',
+      'sweep unused journal photos',
       'reclaim freed storage',
     ]);
   });
