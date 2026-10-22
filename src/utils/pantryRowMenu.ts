@@ -56,6 +56,19 @@ export const PANTRY_CHIP_LABEL: Record<PantryRowChip, string> = {
   low: 'Low',
 };
 
+export type PantryRowMark = 'opened' | 'frozen';
+
+/**
+ * The tags a row wears under its name. Frozen replaces opened, the way the
+ * row's caption already does (`kitchenInventory` drops the opened clause for a
+ * frozen row): a packet in the freezer is read as frozen, not as a jar that was
+ * once opened.
+ */
+export function pantryRowMarks(facts: PantryRowFacts): PantryRowMark[] {
+  if (facts.frozen) return ['frozen'];
+  return facts.opened ? ['opened'] : [];
+}
+
 export function pantryRowMenu(facts: PantryRowFacts): PantryRowMenuEntry[] {
   // A portion is nothing but the packet: it has no clock to open or freeze,
   // and being out of it deletes it.

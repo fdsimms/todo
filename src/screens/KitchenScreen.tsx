@@ -87,6 +87,7 @@ import { defaultOnHandUntil, isRunningLow } from '../utils/grocerySuggest';
 import {
   PANTRY_CHIP_LABEL,
   pantryRowChip,
+  pantryRowMarks,
   pantryRowMenu,
   type PantryRowAction,
   type PantryRowFacts,
@@ -820,6 +821,7 @@ export function KitchenScreen() {
     const isPortion = entry.kind === 'product' && portionIds.has(entry.sourceId);
     const facts = rowFacts(entry);
     const chipKind = facts ? pantryRowChip(facts) : 'have';
+    const marks = facts ? pantryRowMarks(facts) : [];
     return (
       <TouchableOpacity
         style={[styles.row, isActive && styles.rowActive]}
@@ -870,6 +872,22 @@ export function KitchenScreen() {
               <Text style={{ color: tint }}>{` · ${entry.useByCaption}`}</Text>
             )}
           </Text>
+          {/* What was done to the packet, as tags rather than more caption: the
+              caption keeps the dates and these keep it scannable. */}
+          {marks.length > 0 && (
+            <View style={styles.marks}>
+              {marks.map(mark => (
+                <View key={mark} style={styles.mark}>
+                  <Ionicons
+                    name={mark === 'frozen' ? 'snow-outline' : 'open-outline'}
+                    size={iconSize.xs}
+                    color={colors.textSecondary}
+                  />
+                  <Text style={styles.markText}>{mark === 'frozen' ? 'Frozen' : 'Opened'}</Text>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
         {/* The state the row is in, which also opens everything that can be
             said about it. The chip replaces a bare ✕ that only said "out",
@@ -1257,6 +1275,17 @@ function makeStyles(colors: Colors) {
     name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
     meta: { fontSize: font.xs, color: colors.textTertiary, marginTop: spacing.xxs },
     metaBox: { color: colors.textSecondary, fontWeight: fontWeight.medium },
+    marks: { flexDirection: 'row', gap: spacing.xsm, marginTop: spacing.xsm },
+    mark: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      paddingVertical: spacing.xxs,
+      paddingHorizontal: spacing.sm,
+      borderRadius: radius.full,
+      backgroundColor: colors.bgTertiary,
+    },
+    markText: { fontSize: font.xxs, fontWeight: fontWeight.semibold, color: colors.textSecondary },
     chip: {
       flexDirection: 'row',
       alignItems: 'center',

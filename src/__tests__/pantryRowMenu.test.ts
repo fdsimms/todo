@@ -1,4 +1,4 @@
-import { pantryRowChip, pantryRowMenu, type PantryRowFacts } from '../utils/pantryRowMenu';
+import { pantryRowChip, pantryRowMarks, pantryRowMenu, type PantryRowFacts } from '../utils/pantryRowMenu';
 
 const item = (over: Partial<PantryRowFacts> = {}): PantryRowFacts => ({
   kind: 'grocery', portion: false, low: false, opened: false, frozen: false, ...over,
@@ -38,5 +38,20 @@ describe('pantryRowMenu', () => {
     expect(pantryRowMenu(item({ kind: 'product', portion: true }))).toEqual([
       { key: 'out', label: 'Used up' },
     ]);
+  });
+});
+
+describe('pantryRowMarks', () => {
+  it('has none for a plain row', () => {
+    expect(pantryRowMarks(item())).toEqual([]);
+  });
+
+  it('marks an opened row and a frozen one', () => {
+    expect(pantryRowMarks(item({ opened: true }))).toEqual(['opened']);
+    expect(pantryRowMarks(item({ frozen: true }))).toEqual(['frozen']);
+  });
+
+  it('reads a frozen row as frozen even if it was opened first', () => {
+    expect(pantryRowMarks(item({ opened: true, frozen: true }))).toEqual(['frozen']);
   });
 });
