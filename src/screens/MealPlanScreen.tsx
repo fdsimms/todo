@@ -8,7 +8,7 @@
 // Leftovers and the fridge are planned from here too; the rules live in
 // src/utils/leftovers.ts and src/utils/mealPlan.ts.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, View, Text, FlatList, StyleSheet, Alert, TouchableOpacity, Share } from 'react-native';
+import { Animated, View, Text, FlatList, StyleSheet, Alert, TouchableOpacity, Share, type GestureResponderEvent } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,7 +26,8 @@ import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSetting
 import { HubPills } from '../components/HubPills';
 import { TipHost } from '../components/TipHost';
 import { ActiveTripBanner } from '../components/ActiveTripBanner';
-import { InlineAction } from '../components/InlineAction';
+import { ActionMenu, type ActionMenuAction } from '../components/ActionMenu';
+import type { CardAnchor } from '../components/CardSheet';
 import { PeriodNav } from '../components/PeriodNav';
 import { MealDragCard, MealSlotRow } from '../components/MealSlotRow';
 import { describeSlotLog, mealDayCoverage, type SlotCoverage } from '../utils/mealLogCoverage';
@@ -2114,6 +2115,63 @@ export function MealPlanScreen() {
     else Alert.alert('Nothing copied', 'Meals on days that have already passed, and leftover nights, are left out of a copy.');
   };
 
+  // The things done to a *week* rather than to a meal, behind one "…" beside
+  // the week nav. "Add week to list" used to live in the header's `right` slot
+  // (#1373), then as pills under the nav; the whole-week copy reads as the
+  // answer to the empty-week hint and drops out once the week has anything
+  // (copySourceKey), and the per-slot copies never appear with it
+  // (slotCopyOffers). Rarely used, so none of it takes a row of its own.
+  const [weekMenuOpen, setWeekMenuOpen] = useState(false);
+  const [weekMenuAnchor, setWeekMenuAnchor] = useState<CardAnchor | null>(null);
+  const openWeekMenu = (e: GestureResponderEvent) => {
+    haptics.tap();
+    setWeekMenuAnchor({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
+    setWeekMenuOpen(true);
+  };
+  const weekMenuActions: ActionMenuAction[] = [];
+  if (copySourceKey) {
+    weekMenuActions.push({
+      key: 'copy-week',
+      label: `Copy meals from ${copySourceLabel}`,
+      icon: 'copy-outline',
+      onPress: handleCopyWeek,
+    });
+  }
+  for (const slot of slotCopyOffers) {
+    weekMenuActions.push({
+      key: `copy-${slot}`,
+      label: `Copy ${slotPlural(slot)} from ${copySourceLabel}`,
+      icon: 'copy-outline',
+      onPress: () => handleCopySlot(slot),
+    });
+  }
+  if (hasPlannableEntries) {
+    weekMenuActions.push({
+      key: 'add-to-list',
+      label: 'Add week to list',
+      icon: 'cart-outline',
+      onPress: () => range && openAddToList({
+        range,
+        title: 'Add week to list',
+        stampWeekKey: range.startKey,
+      }),
+    });
+  }
+  if (canSuggestMeals) {
+    weekMenuActions.push({
+      key: 'suggest',
+      label: 'Suggest meals',
+      icon: 'restaurant-outline',
+      onPress: () => setSuggesting({
+        recipes: mealSuggestions,
+        cookAgainRecipes: cookAgainSuggestions,
+        leadingGroups,
+        leftovers: fridgeSuggestions,
+        days: openDinnerDays,
+      }),
+    });
+  }
+
   const addedStamp = range ? addedToListAt[range.startKey] : undefined;
   // Null while too little of the week is priced to say (see recipeCost.ts's
   // coverage floor) — the common case for a library that's only lightly
@@ -2254,17 +2312,10 @@ export function MealPlanScreen() {
                     prevAccessibilityLabel="Previous week"
                     nextAccessibilityLabel="Next week"
                     grouped
+                    onMore={weekMenuActions.length > 0 ? openWeekMenu : undefined}
+                    moreAccessibilityLabel="Week actions"
                   />
                 </View>
-                {/*
-                  The two things you do to a *week* rather than to a meal, in
-                  one row above it. "Add week to list" used to live in the
-                  header's `right` slot — the only use of it in the app — beside
-                  four icon buttons and the longest subtitle in the app, which
-                  is what made that header the most crowded one here (#1373).
-                  It belongs next to "Suggest meals" anyway: same object, same
-                  weight, and neither is a per-meal action.
-                */}
                 {/*
                   Said once for the week rather than once per day. A brand-new
                   user's first sight of this screen is otherwise seven bare day
@@ -2273,73 +2324,9 @@ export function MealPlanScreen() {
                 {entries.length === 0 && (
                   <Text style={styles.emptyWeekHint}>
                     {copySourceKey
-                      ? 'Nothing planned this week. Copy the week below, or tap + on any day.'
+                      ? 'Nothing planned this week. Copy a week from the … button above, or tap + on any day.'
                       : 'Nothing planned this week. Tap + on any day to plan a meal.'}
                   </Text>
-                )}
-                {/* One row for everything done to the week, wrapping as a
-                    group. Each offer used to be its own row with a block of
-                    margin under it, so three pills read as three unrelated
-                    strips. The whole-week copy reads as the answer to the hint
-                    above it and disappears the moment the week has anything
-                    (see copySourceKey); the per-slot copies are never on screen
-                    with it (see slotCopyOffers) and are quieter: in a week
-                    already being planned they're a shortcut rather than the
-                    obvious next step. One pill per slot, so taking the lunches
-                    never takes the breakfasts too. */}
-                {(!!copySourceKey || slotCopyOffers.length > 0 || hasPlannableEntries || canSuggestMeals) && (
-                  <View style={styles.weekActions}>
-                    {!!copySourceKey && (
-                      <InlineAction
-                        label={`Copy ${copySourceLabel}`}
-                        icon="copy-outline"
-                        onPress={handleCopyWeek}
-                        accessibilityLabel={`Copy the meals from ${copySourceLabel} onto this week`}
-                      />
-                    )}
-                    {slotCopyOffers.map(slot => (
-                      <InlineAction
-                        key={slot}
-                        label={`Copy ${slotPlural(slot)} from ${copySourceLabel}`}
-                        icon="copy-outline"
-                        variant="neutral"
-                        surface="page"
-                        onPress={() => handleCopySlot(slot)}
-                        accessibilityLabel={`Copy the ${slotPlural(slot)} from ${copySourceLabel} onto this week`}
-                      />
-                    ))}
-                    {hasPlannableEntries && (
-                      <InlineAction
-                        label="Add week to list"
-                        icon="cart-outline"
-                        onPress={() => range && openAddToList({
-                          range,
-                          title: 'Add week to list',
-                          stampWeekKey: range.startKey,
-                        })}
-                        accessibilityLabel="Add this week’s ingredients to the grocery list"
-                      />
-                    )}
-                    {canSuggestMeals && (
-                      <InlineAction
-                        label="Suggest meals"
-                        icon="restaurant-outline"
-                        variant="neutral"
-                        surface="page"
-                        onPress={() => {
-                          haptics.tap();
-                          setSuggesting({
-                            recipes: mealSuggestions,
-                            cookAgainRecipes: cookAgainSuggestions,
-                            leadingGroups,
-                            leftovers: fridgeSuggestions,
-                            days: openDinnerDays,
-                          });
-                        }}
-                        accessibilityLabel="Suggest meals from your recipe box and grocery catalog"
-                      />
-                    )}
-                  </View>
                 )}
               </>
             )
@@ -2726,6 +2713,14 @@ export function MealPlanScreen() {
         />
       )}
 
+      <ActionMenu
+        visible={weekMenuOpen}
+        title="This week"
+        actions={weekMenuActions}
+        anchor={weekMenuAnchor}
+        onClose={() => setWeekMenuOpen(false)}
+      />
+
       <LazySheet open={suggesting !== null}>
         <SuggestMealsSheet
           visible={suggesting !== null}
@@ -2970,22 +2965,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     left: spacing.md,
     right: spacing.md,
   },
-  weekActions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginHorizontal: spacing.md,
-    // A block's worth of gap under it, not half of one: the first day header
-    // has no top margin of its own, so spacing.sm left the week jammed up
-    // against a row of buttons that isn't part of it.
+  // The nav card has no vertical padding of its own; this is the gap to the
+  // hint or first day under it, which carry no top margin of their own.
+  weekNav: {
     marginBottom: spacing.md,
   },
-  // The nav card has no vertical padding of its own; this is the gap to the
-  // hint or action row under it, which (like weekActions above) carry no top
-  // margin of their own. Smaller than weekActions' bottom margin so the
-  // actions read as belonging to the week they sit under.
-  weekNav: {
-    marginBottom: spacing.sm,
-  },
+
 });

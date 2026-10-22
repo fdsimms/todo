@@ -35,7 +35,7 @@ components below.
 - `src/screens/JournalScreen.tsx` — EmptyState, HubPills, JournalDaySheet, JournalEntrySheet, JournalMonthSheet, JournalText, JournalWordGoalSheet, ScreenHeader, ScreenSettingsSheet, ScrollToTopButton, SearchField
 - `src/screens/KitchenScreen.tsx` — ActiveTripBanner, BarcodeScanSheet, EmptyState, FieldClearButton, GroceryItemSheet, HubPills, InlineAction, ItemDisposalOffer, LazySheet, LeftoverSheet, PantryReviewSheet, PressableScale, +6 more
 - `src/screens/LogbookScreen.tsx` — ActiveFilterPill, CardSheet, DeliverablePromptSheet, EmptyState, HighlightedText, HubPills, LazySheet, LogbookEntryMenu, LogbookFilterSheet, PaintSelection, RotationWeekSheet, ScreenHeader, +9 more
-- `src/screens/MealPlanScreen.tsx` — ActiveTripBanner, AddMealsToListSheet, BlankPickerSheet, FabDropZones, FridgeHistorySheet, HubPills, InlineAction, LazySheet, LeftoverSheet, LeftoversCard, ListBulkBar, MealEntrySheet, +15 more
+- `src/screens/MealPlanScreen.tsx` — ActionMenu, ActiveTripBanner, AddMealsToListSheet, BlankPickerSheet, CardSheet, FabDropZones, FridgeHistorySheet, HubPills, LazySheet, LeftoverSheet, LeftoversCard, ListBulkBar, +16 more
 - `src/screens/MedicationDetailScreen.tsx` — ChartGuides, CountStepper, DetailHeader, DoseAmountField, EmptyState, HelpText, InlineAction, MedicationLogSheet, MedicationRenameSheet, ScrollToTopButton, SegmentedControl, SheetUndoBar, +2 more
 - `src/screens/MedicationScreen.tsx` — DeliverablePromptQueue, EmptyState, HubPills, InlineAction, MedicationAddSheet, MedicationLogSheet, MedicationSummarySheet, PressableScale, ScreenHeader, ScrollToTopButton, SheetUndoBar, SwipeActionButtons, +1 more
 - `src/screens/MetersScreen.tsx` — EmptyState, HubPills, InlineAction, MeterReadingSheet, ScreenHeader, TaskEditor
@@ -75,7 +75,7 @@ components below.
 
 Where each component can appear.
 
-- `src/components/ActionMenu.tsx` — on FoodLogScreen, WorkoutsScreen, app shell
+- `src/components/ActionMenu.tsx` — on FoodLogScreen, MealPlanScreen, WorkoutsScreen, app shell
 - `src/components/ActionRow.tsx` — on FoodLogScreen, GroceryScreen, KitchenScreen, app shell
 - `src/components/ActiveFilterPill.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, MetersScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RecipesScreen, RemindersScreen, +9 more
 - `src/components/ActiveTripBanner.tsx` — on GroceryScreen, KitchenScreen, MealPlanScreen, RecipesScreen
