@@ -134,11 +134,12 @@ import { taskYearRange, timeTogetherInRange } from '../utils/peopleStats';
 import { PERSON_NOTE_KINDS } from '../types';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useTransitStore } from '../store/useTransitStore';
 import { shouldNudgePostpone, DEFAULT_POSTPONE_THRESHOLD, driftingTasks } from '../utils/postpone';
 import { initDatabase, isUsingDemoDatabase } from '../db/database';
 import { dayKeyOf, dayKeyToDate, getCurrentDayStart, getDeadlineFromOffset, getLogicalToday } from '../utils/dateUtils';
 import { eventTaskRuleIdOf } from '../utils/eventTasks';
-import { TRAVEL_LEAD_MINUTES_DEFAULT, travelSourceOf, travelSourceStart } from '../utils/travelTasks';
+import { TRAVEL_LEAD_MINUTES_DEFAULT, travelDisruptionNote, travelSourceOf, travelSourceStart } from '../utils/travelTasks';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { countPlannedSlots, MEAL_PLAN_NUDGE_SLOT_COUNT } from '../utils/mealPlanNudge';
 import { RECIPE_MEAL_TYPES, LEFTOVER_KEEP_DAYS_DEFAULT } from '../types';
@@ -417,6 +418,15 @@ describe('demo mode', () => {
     if (useDemoStore.getState().active) useDemoStore.getState().exitDemoMode();
     mockDbs.clear();
     useTaskStore.getState().initialize();
+  });
+
+  it('holds a transit snapshot only for the demo, clearing it on both edges', () => {
+    useTransitStore.setState({ snapshot: { fetchedAt: new Date().toISOString(), alerts: [] } });
+    useDemoStore.getState().enterDemoMode();
+    // The real read is gone and the demo's own is in its place.
+    expect(useTransitStore.getState().snapshot?.alerts.map(a => a.id)).toEqual(['demo-l-local']);
+    useDemoStore.getState().exitDemoMode();
+    expect(useTransitStore.getState().snapshot).toBeNull();
   });
 
   it('replaces the real task list and restores it on exit', () => {
@@ -5105,10 +5115,17 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
 
     const task = tasks.find(t => t.generatedKind === 'travel');
     expect(task).toBeDefined();
-    expect(task!.title).toBe('Leave for Dentist (L running local)');
+    expect(task!.title).toBe('Leave for Dentist');
     expect(task!.category).toBe('Leave By');
     expect(settings.travelTaskCategory).toBe('Leave By');
     expect(settings.transitLines).toEqual(['L']);
+    expect(settings.transitAlerts).toBe(true);
+
+    // The row's note line is derived from a held snapshot, which exists only in
+    // memory: it is seeded for the demo and cleared again on the way out.
+    const note = travelDisruptionNote(
+      task!, useTransitStore.getState().snapshot, settings.transitLines, Date.now(), Number.POSITIVE_INFINITY);
+    expect(note).toBe('L running local');
 
     // The reminder is the event's start less the default lead, and the row
     // expires at the start: the two fields the sweep writes, reached without

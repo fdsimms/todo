@@ -5,6 +5,7 @@ import { seedDemoData } from '../utils/demoSeed';
 import { setDemoModeActive } from '../utils/demoState';
 import { useTaskStore } from './useTaskStore';
 import { useSettingsStore } from './useSettingsStore';
+import { useTransitStore } from './useTransitStore';
 import { useSharedLinkStore } from './useSharedLinkStore';
 import { useStepTimerStore } from './useStepTimerStore';
 import { useWatchClashStore } from './useWatchClashStore';
@@ -104,6 +105,10 @@ export const useDemoStore = create<DemoStore>((set, get) => ({
     // What the phone asks of the watch's Health session lives in the settings
     // table too, and names real workouts in Health.
     useWatchHealthStore.getState().reload();
+    // A transit read is held in memory like these, so the demo's invented
+    // delay is cleared on both edges: the real one must not show in the demo,
+    // and the demo's must not be read against real trips afterwards.
+    useTransitStore.getState().clear();
     seedDemoData();
     // After the seed, not before: the seed builds its rows through the normal
     // store actions, so it registers undo entries of its own on the way past.
@@ -124,6 +129,7 @@ export const useDemoStore = create<DemoStore>((set, get) => ({
     // the scratch file.
     useTaskStore.getState().initialize();
     useSettingsStore.getState().initialize();
+    useTransitStore.getState().clear();
     // And back to the real queue, so the demo's invented shared link leaves
     // with the rest of the scratch database.
     useSharedLinkStore.getState().reload();

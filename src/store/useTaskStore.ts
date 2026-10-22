@@ -649,6 +649,12 @@ function backfillRecurrenceAnchors(tasks: Task[]): void {
 }
 
 /**
+ * The disruption note each travel row's reminder was last scheduled with this
+ * launch, keyed by task id. Memory only: see `checkTravelTasks`.
+ */
+const travelReminderNotes = new Map<string, string>();
+
+/**
  * How a reconcile writes the calendar link it ends with.
  *
  * The link columns are device-local and never leave this device, so writing
@@ -8159,8 +8165,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // Live incidents only count for a trip leaving today (see journeyDisruptions).
       const disruptions = journeyDisruptions(
         transit, settings.transitLines, leaveMs, startMs, nowMs, +addDays(getCurrentDayStart(), 1));
-      const note = describeDisruptions(disruptions);
-      const title = travelTaskTitle(match.event.title, note);
+      const note = describeDisruptions(disruptions) ?? '';
+      const title = travelTaskTitle(match.event.title);
       // The MTA's own wording, which is where the stops are named. The notes
       // of a "Leave for" row are this and nothing else (it is a notice).
       const notes = disruptionHeadlines(disruptions) ?? '';
@@ -8177,6 +8183,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           if (existing.title !== title) patch.title = title;
           if ((existing.notes ?? '') !== notes) patch.notes = notes;
           if (existing.reminderTime !== match.leaveAt) patch.reminderTime = match.leaveAt;
+          // The reminder's body leads with the note, which no field holds, so a
+          // change to it alone (the same headline under a new effect) would
+          // leave the scheduled one stale. A patch reschedules through
+          // updateTask; this covers the case where there is none. The first
+          // sight of a row this launch only records, since the launch
+          // reminder pass has just scheduled it.
+          const seenNote = travelReminderNotes.get(existing.id);
+          travelReminderNotes.set(existing.id, note);
+          if (Object.keys(patch).length === 0 && seenNote !== undefined && seenNote !== note) {
+            scheduleTaskReminder(existing);
+          }
           return Object.keys(patch).length > 0 ? patch : null;
         },
         draft: () => ({

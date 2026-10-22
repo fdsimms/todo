@@ -1307,7 +1307,9 @@ events at once, where every other rule generator asks one question a day.**
 An upcoming event with a location becomes "Leave for Dentist", with a reminder at the event's start
 less `travelLeadMinutes`. `src/utils/travelTasks.ts` holds the rules and `checkTravelTasks` the
 sweep. If the user turns on Subway alerts and picks lines, an MTA disruption on one of them during
-the trip is appended in brackets: "Leave for Dentist (L running local)". `src/utils/transitAlerts.ts`
+the trip is shown on the row's own line ("L running local") and leads the reminder's body; the
+title stays "Leave for Dentist". `travelDisruptionNote` (`travelTasks.ts`) works it out from the held
+snapshot at draw and schedule time, so no copy is stored. `src/utils/transitAlerts.ts`
 reads the feed, `src/services/transitLookup.ts` fetches it, and `useTransitStore` holds it.
 
 It is two features, and the first is useful without the second. The decisions below were each
@@ -1433,8 +1435,9 @@ argued out before it was built; read them before reopening one.
   express-to-local and reduced service. Extra service, station notices, boarding changes, adjusted
   schedules and any `alert_type` this doesn't know are dropped, since a note on a "Leave for" row
   is a claim the trip may take longer.
-- **The MTA's own wording goes in the row's notes, never the title.** The title carries the line and
-  the effect ("G skipping stops"); `disruptionHeadlines` puts the alert's English `header_text`
+- **The MTA's own wording goes in the row's notes, never the title.** The short note carries the line
+  and the effect ("G skipping stops") and used to sit in the title, where a long event name made it
+  wrap to three lines; it now has its own warning-colored line on the row. `disruptionHeadlines` puts the alert's English `header_text`
   ("Southbound G trains are skipping Bedford-Nostrand Avs") in `notes`, which the sweep rewrites with
   the title. The feed names stops in that prose only on a live alert: planned work also lists
   `stop_id`s in `informed_entity`, a live delay lists none. Matching them against the trip's own stops
