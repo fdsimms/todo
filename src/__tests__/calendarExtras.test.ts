@@ -84,8 +84,8 @@ describe('buildDayExtras', () => {
         person({ id: 'c', name: 'Gone', archived: true, birthdayMonth: 12, birthdayDay: 31 }),
       ],
     });
-    expect(extras.get('2027-01-02')?.birthdays).toEqual([{ personId: 'a', title: "Tessa's birthday" }]);
-    expect(extras.get('2026-12-30')?.birthdays).toEqual([{ personId: 'b', title: "Bobby's birthday" }]);
+    expect(extras.get('2027-01-02')?.birthdays).toEqual([{ personId: 'a', title: 'Tessa’s birthday' }]);
+    expect(extras.get('2026-12-30')?.birthdays).toEqual([{ personId: 'b', title: 'Bobby’s birthday' }]);
     expect(extras.get('2026-12-31')).toBeUndefined();
   });
 
