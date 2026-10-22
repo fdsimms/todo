@@ -611,14 +611,18 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   // A live phrase wins over an earlier pick; with none, the pick holds.
   const rawStart = phrase ? (freeSlot ?? draft.start) : (startOverride ?? freeSlot ?? draft.start);
   const effectiveStart = allDay ? startOfDay(rawStart) : rawStart;
+  // A new event has no start until the line names one or the chip's picker
+  // sets one (or the opener seeded a day or time). `rawStart` still resolves
+  // to a default so the pickers have somewhere to open, but it never saves.
+  const startChosen = isEditing || phrase !== null || startOverride !== null;
   // All-day events are exclusive on the end date in EventKit: one full day
   // is [date, date + 1), same convention as createAllDayEvent.
   const effectiveEnd = allDay ? addDays(effectiveStart, 1) : addMinutes(effectiveStart, effectiveDuration);
   const conflicts = useMemo(
-    () => (allDay || !calendarCovers(calendarWindowStart, calendarWindowEnd, effectiveStart, effectiveEnd)
+    () => (allDay || !startChosen || !calendarCovers(calendarWindowStart, calendarWindowEnd, effectiveStart, effectiveEnd)
       ? []
       : overlappingEvents(effectiveStart, effectiveEnd, calendarEvents)),
-    [allDay, effectiveStart.getTime(), effectiveEnd.getTime(), calendarEvents, calendarWindowStart, calendarWindowEnd],
+    [allDay, startChosen, effectiveStart.getTime(),effectiveEnd.getTime(), calendarEvents, calendarWindowStart, calendarWindowEnd],
   );
   const dayLabel = (d: Date) => d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
   const describeStart = (d: Date) => (allDay ? dayLabel(d) : `${dayLabel(d)}, ${formatTimeOfDay(d, use24Hour)}`);
@@ -675,7 +679,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   const isBusy = effectiveAvailability === 'busy';
   const alertSet = effectiveAlert !== null;
   const showNotes = notesOpen || effectiveNotes.trim() !== '';
-  const canAdd = draft.title.trim().length > 0 && !busy && (!isEditing || original !== null);
+  const canAdd = draft.title.trim().length > 0 && startChosen && !busy && (!isEditing || original !== null);
 
   // ==== place suggestions ====
   // Debounced, and checked against the query once the answer is back: a slow
@@ -908,6 +912,13 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
 
   // ==== the exit: write the event ====
   const next = async () => {
+    // Return on a titled event with no start asks for the start rather than doing nothing.
+    if (!startChosen && !isEditing && draft.title.trim().length > 0 && !busy) {
+      haptics.tap();
+      Keyboard.dismiss();
+      setPickerVisible(true);
+      return;
+    }
     if (!canAdd) return;
     haptics.tap();
     if (editing && original) {
@@ -1442,20 +1453,40 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                 accessibilityLabel={allDay ? `Date: ${dayLabel(effectiveStart)}` : `Starts: ${describeStart(effectiveStart)}`}
               >
                 <Text style={styles.whenLabel}>{allDay ? 'Date' : 'Starts'}</Text>
-                <Text style={styles.whenValue} numberOfLines={1}>{dayLabel(effectiveStart)}</Text>
-                <Text style={styles.whenSub} numberOfLines={1}>{allDay ? 'All day' : formatTimeOfDay(effectiveStart, use24Hour)}</Text>
+                {startChosen ? (
+                  <>
+                    <Text style={styles.whenValue} numberOfLines={1}>{dayLabel(effectiveStart)}</Text>
+                    <Text style={styles.whenSub} numberOfLines={1}>{allDay ? 'All day' : formatTimeOfDay(effectiveStart, use24Hour)}</Text>
+                  </>
+                ) : (
+                  <>
+                    <Text style={[styles.whenValue, { color: colors.textTertiary }]} numberOfLines={1}>Add date</Text>
+                    <Text style={[styles.whenSub, { color: colors.textTertiary }]} numberOfLines={1}>{allDay ? 'All day' : 'Add time'}</Text>
+                  </>
+                )}
               </TouchableOpacity>
               {!allDay && (
                 <TouchableOpacity
                   style={styles.whenBlock}
-                  onPress={() => { haptics.tap(); Keyboard.dismiss(); setEndPickerVisible(true); }}
+                  // With no start yet there is nothing to measure an end from, so
+                  // the end chip asks for the start first (then goes on to the end).
+                  onPress={() => { haptics.tap(); Keyboard.dismiss(); if (startChosen) setEndPickerVisible(true); else setPickerVisible(true); }}
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
-                  accessibilityLabel={`Ends: ${describeStart(effectiveEnd)}`}
+                  accessibilityLabel={startChosen ? `Ends: ${describeStart(effectiveEnd)}` : 'Ends: not set'}
                 >
                   <Text style={styles.whenLabel}>Ends</Text>
-                  <Text style={styles.whenValue} numberOfLines={1}>{dayLabel(effectiveEnd)}</Text>
-                  <Text style={styles.whenSub} numberOfLines={1}>{formatTimeOfDay(effectiveEnd, use24Hour)}</Text>
+                  {startChosen ? (
+                    <>
+                      <Text style={styles.whenValue} numberOfLines={1}>{dayLabel(effectiveEnd)}</Text>
+                      <Text style={styles.whenSub} numberOfLines={1}>{formatTimeOfDay(effectiveEnd, use24Hour)}</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={[styles.whenValue, { color: colors.textTertiary }]} numberOfLines={1}>Add date</Text>
+                      <Text style={[styles.whenSub, { color: colors.textTertiary }]} numberOfLines={1}>Add time</Text>
+                    </>
+                  )}
                 </TouchableOpacity>
               )}
             </View>
