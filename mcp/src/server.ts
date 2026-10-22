@@ -2858,12 +2858,17 @@ function registerWriteTools(
 
   server.tool(
     'set_supplement_nutrients',
-    'Set what one serving of a supplement contains, from its label, or clear it with clear: true. Every dose of that medicine recorded afterwards (here or on the phone) adds those vitamins and minerals to the day\'s food log, and the phone writes them to Apple Health if that is on; earlier doses keep what they added. servingAmount and servingUnit are the serving the label\'s figures are for (serving size 2 tablets: 2 and "tablet"); a dose recorded in that unit counts that many servings and any other dose counts one. amounts are keyed by nutrient name, each in the unit its name states (vitaminDMcg is micrograms, magnesiumMg milligrams). Leave out any nutrient the label does not list: a blank is unknown, and a 0 says the label stated none. Only from a label the person gave you, never estimated.',
+    'Set what one serving of a supplement contains, from its label, or clear it with clear: true. Every dose of that medicine recorded afterwards (here or on the phone) adds those vitamins and minerals to the day\'s food log, and the phone writes them to Apple Health if that is on; earlier doses keep what they added. servingAmount and servingUnit are the serving the label\'s figures are for (serving size 2 tablets: 2 and "tablet"); a dose recorded in that unit counts that many servings and any other dose counts one. amounts are keyed by nutrient name, each in the unit its name states (vitaminDMcg is micrograms, magnesiumMg milligrams). Leave out any nutrient the label does not list: a blank is unknown, and a 0 says the label stated none. otherIngredients is for what the label lists that is not one of those nutrients (ashwagandha, L-theanine, saffron, EPA/DHA): each is a name, an amount and a unit (mg, mcg, g or IU) per serving. They show with each dose in the app and are never added to the food log or Apple Health. A supplement with only such ingredients is fine. Only from a label the person gave you, never estimated.',
     {
       name: z.string().min(1),
       servingAmount: z.number().positive().optional(),
       servingUnit: z.string().optional().describe('tablet, capsule, drop, spray, ml or g.'),
-      amounts: z.record(z.number()).optional().describe(`Nutrient names to amounts. Names: ${NUTRIENT_KEY_LIST.join(', ')}.`),
+      amounts: z.record(z.number()).optional().describe(`Nutrient names to amounts. Names: ${NUTRIENT_KEY_LIST.join(', ')}. May be left out when otherIngredients is given.`),
+      otherIngredients: z.array(z.object({
+        name: z.string().min(1).describe('As the label names it, e.g. "Ashwagandha root/leaf extract".'),
+        amount: z.number().positive(),
+        unit: z.enum(['mg', 'mcg', 'g', 'IU']),
+      })).max(12).optional(),
       clear: z.literal(true).optional(),
     },
     async input => {

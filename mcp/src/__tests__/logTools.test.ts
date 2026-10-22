@@ -520,6 +520,31 @@ describe('set_supplement_nutrients', () => {
     expect(() => setSupplementNutrients(replica, { name: 'Multivitamin', servingAmount: 1, servingUnit: 'tablet', amounts: {} })).toThrow(/at least one/);
   });
 
+  it('keeps other ingredients beside the nutrients, or on their own', () => {
+    const both = setSupplementNutrients(replica, {
+      name: 'Multivitamin', servingAmount: 1, servingUnit: 'capsule', amounts: { zincMg: 11 },
+      otherIngredients: [{ name: 'L-theanine', amount: 200, unit: 'mg' }],
+    });
+    expect(both).toMatchObject({ nutrients: 'Per 1 capsule: 1 nutrient, 1 other ingredient' });
+    expect(both).toMatchObject({ detail: expect.stringContaining('L-theanine 200 mg') });
+    // Only the nutrients reach the food log: an herb has nowhere to go there.
+    logMedication(replica, { name: 'Multivitamin', amount: 1, unit: 'capsule' });
+    expect(entries()[0].nutrition.amounts).toEqual({ zincMg: 11 });
+
+    setSupplementNutrients(replica, {
+      name: 'Multivitamin', servingAmount: 1, servingUnit: 'capsule',
+      otherIngredients: [{ name: 'Ashwagandha', amount: 80, unit: 'mg' }],
+    });
+    expect(replica.medicationSettings().find(m => m.name === 'Multivitamin')).toMatchObject({ nutrients: 'Per 1 capsule: 1 other ingredient' });
+  });
+
+  it('refuses an ingredient the app\'s sheet would', () => {
+    const base = { name: 'Multivitamin', servingAmount: 1, servingUnit: 'capsule' };
+    expect(() => setSupplementNutrients(replica, { ...base, otherIngredients: [{ name: ' ', amount: 5, unit: 'mg' }] })).toThrow(/otherIngredients/);
+    expect(() => setSupplementNutrients(replica, { ...base, otherIngredients: [{ name: 'X', amount: 0, unit: 'mg' }] })).toThrow(/otherIngredients/);
+    expect(() => setSupplementNutrients(replica, { ...base, otherIngredients: [{ name: 'X', amount: 5, unit: 'oz' }] })).toThrow(/otherIngredients/);
+  });
+
   it('clears a panel without touching another medicine\'s', () => {
     setSupplementNutrients(replica, { name: 'Multivitamin', servingAmount: 1, servingUnit: 'tablet', amounts: { zincMg: 11 } });
     setSupplementNutrients(replica, { name: 'Fish oil', servingAmount: 1, servingUnit: 'capsule', amounts: { vitaminEMg: 2 } });

@@ -44,7 +44,7 @@ import { SheetUndoBar } from '../components/SheetUndoBar';
 import { useDeletedDoseUndo } from '../hooks/useDeletedDoseUndo';
 import { MedicationRenameSheet } from '../components/MedicationRenameSheet';
 import { SupplementPanelSheet } from '../components/SupplementPanelSheet';
-import { describeSupplementPanel } from '../utils/supplementDose';
+import { describeIngredients, describeSupplementPanel, doseIngredients } from '../utils/supplementDose';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { useLingering } from '../hooks/useLingering';
@@ -664,11 +664,11 @@ export function MedicationDetailScreen() {
             </>
           ) : (
             <Text style={styles.fieldHint}>
-              No nutrients entered. Enter what one serving contains from the label, such as a multivitamin’s vitamins and minerals.
+              No nutrients entered. Enter what one serving contains from the label, such as a multivitamin’s vitamins and minerals, or herbs like ashwagandha.
             </Text>
           )}
           <Text style={styles.fieldNote}>
-            Each dose you record adds these to the day’s nutrient totals in the food log, and to Apple Health if you write nutrients there. Past doses keep what they added.
+            Each dose you record adds the nutrients to the day’s totals in the food log, and to Apple Health if you write nutrients there. Past doses keep what they added. Other ingredients show with each dose and aren’t logged.
           </Text>
           <View style={styles.panelActions}>
             <InlineAction
@@ -696,6 +696,9 @@ export function MedicationDetailScreen() {
               <Text style={styles.doseMeta} numberOfLines={1}>
                 {[formatDose(log), log.asNeeded ? 'as needed' : 'on schedule', log.note].filter(Boolean).join(' · ')}
               </Text>
+              {doseIngredients(supplementPanel, log).length > 0 && (
+                <Text style={styles.doseMeta}>{describeIngredients(doseIngredients(supplementPanel, log))}</Text>
+              )}
             </TouchableOpacity>
           ))}
         </View>

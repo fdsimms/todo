@@ -3762,6 +3762,28 @@ function seedAsNeededDoses(today: Date): void {
     });
   }
 
+  // A supplement whose label lists only herbs and an amino acid: no nutrient
+  // for the food log, so its doses show the ingredients on the page instead.
+  meds.setSupplementPanel('Stress Relief', {
+    servingAmount: 1,
+    servingUnit: 'capsule',
+    amounts: {},
+    others: [
+      { name: 'Saffron extract', amount: 28, unit: 'mg' },
+      { name: 'Ashwagandha extract', amount: 80, unit: 'mg' },
+      { name: 'L-theanine', amount: 200, unit: 'mg' },
+    ],
+  });
+  for (const back of [2, 1]) {
+    addLog({
+      name: 'Stress Relief',
+      amount: 1,
+      unit: 'capsule',
+      asNeeded: false,
+      at: setHours(subDays(today, back), 8),
+    });
+  }
+
   // Something started a few days ago with no milestone for it, so the
   // Medications screen shows its "mark the day you started" offer.
   for (const back of [5, 3, 1]) {

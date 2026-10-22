@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Keyboard, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Keyboard, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { SheetModal } from './SheetModal';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -9,12 +10,13 @@ import { TextField } from './TextField';
 import { NutrientFieldsCard } from './NutrientFieldsCard';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { useColors } from '../theme/ThemeContext';
-import { border, font, fontWeight, radius, spacing, type Colors } from '../theme';
+import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import type { NutrientKey } from '../types';
-import { PANEL_UNITS, type SupplementPanel } from '../utils/medicationSettings';
+import { INGREDIENT_UNITS, MAX_PANEL_INGREDIENTS, PANEL_UNITS, type SupplementPanel } from '../utils/medicationSettings';
 import {
   applyLabelToSupplementForm,
   buildSupplementPanel,
+  emptyIngredientForm,
   invalidSupplementFields,
   servingFromLabelText,
   supplementFormDirty,
@@ -61,6 +63,7 @@ interface Props {
 }
 
 const UNIT_OPTIONS = PANEL_UNITS.map(unit => ({ value: unit, label: unit }));
+const INGREDIENT_UNIT_OPTIONS = INGREDIENT_UNITS.map(unit => ({ value: unit, label: unit }));
 
 export function SupplementPanelSheet({ visible, name, panel, onClose, onSave }: Props) {
   const actionMenu = useActionMenu();
@@ -175,6 +178,24 @@ export function SupplementPanelSheet({ visible, name, panel, onClose, onSave }: 
     setEmpty(false);
   };
 
+  const setOther = (index: number, patch: Partial<SupplementForm['others'][number]>) => {
+    setForm(f => ({ ...f, others: f.others.map((row, i) => (i === index ? { ...row, ...patch } : row)) }));
+    setBad(b => (b.includes(`other${index}`) ? b.filter(k => k !== `other${index}`) : b));
+    setEmpty(false);
+  };
+
+  const addOther = () => {
+    haptics.tap();
+    setForm(f => (f.others.length >= MAX_PANEL_INGREDIENTS ? f : { ...f, others: [...f.others, emptyIngredientForm()] }));
+  };
+
+  const removeOther = (index: number) => {
+    haptics.tap();
+    setForm(f => ({ ...f, others: f.others.filter((_, i) => i !== index) }));
+    // The rows after it shift up, so a mark on any of them would land on the wrong row.
+    setBad(b => b.filter(k => !k.startsWith('other')));
+  };
+
   const handleSave = () => {
     const invalid = invalidSupplementFields(form);
     if (invalid.length > 0) {
@@ -284,16 +305,79 @@ export function SupplementPanelSheet({ visible, name, panel, onClose, onSave }: 
             <Text style={styles.groupLabel}>NUTRIENTS</Text>
             <NutrientFieldsCard amounts={form.amounts} bad={bad} onChange={setAmount} primary="micro" />
 
+            <Text style={styles.groupLabel}>OTHER INGREDIENTS</Text>
+            <View style={styles.card}>
+              {form.others.map((row, i) => (
+                <View key={i} style={[styles.ingredient, i > 0 && styles.ingredientDivider]}>
+                  <View style={styles.numberRow}>
+                    <TextField
+                      style={[styles.numberInput, bad.includes(`other${i}`) && styles.inputBad]}
+                      value={row.name}
+                      onChangeText={t => setOther(i, { name: t })}
+                      placeholder="e.g. Saffron extract"
+                      placeholderTextColor={colors.textTertiary}
+                      autoCapitalize="sentences"
+                      accessibilityLabel={`Ingredient ${i + 1} name`}
+                    />
+                    <TouchableOpacity
+                      onPress={() => removeOther(i)}
+                      activeOpacity={interaction.activeOpacity}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remove ${row.name.trim() || `ingredient ${i + 1}`}`}
+                    >
+                      <Ionicons name="close" size={iconSize.md} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+                  <View style={styles.numberRow}>
+                    <TextField
+                      style={[styles.numberInput, styles.amountInput, bad.includes(`other${i}`) && styles.inputBad]}
+                      value={row.amount}
+                      onChangeText={t => setOther(i, { amount: t })}
+                      placeholder="Amount"
+                      placeholderTextColor={colors.textTertiary}
+                      keyboardType="decimal-pad"
+                      inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
+                      accessibilityLabel={`Ingredient ${i + 1} amount`}
+                    />
+                    <View style={styles.flex}>
+                      <SegmentedControl
+                        label={`Ingredient ${i + 1} unit`}
+                        options={INGREDIENT_UNIT_OPTIONS}
+                        value={row.unit}
+                        onChange={unit => setOther(i, { unit })}
+                        surface="card"
+                      />
+                    </View>
+                  </View>
+                </View>
+              ))}
+              {form.others.length < MAX_PANEL_INGREDIENTS && (
+                <View style={styles.removeRow}>
+                  <InlineAction label="Add ingredient" icon="add" variant="neutral" onPress={addOther} />
+                </View>
+              )}
+              <HelpText style={styles.hint}>
+                For anything the label lists that the nutrients above don’t cover, such as an herb
+                or an amino acid. It shows with each dose you record. It isn’t added to the food log.
+              </HelpText>
+            </View>
+
             {empty && (
               <Text style={styles.error}>
-                Enter at least one figure from the label, or cancel to leave this as it was.
+                Enter at least one nutrient or ingredient from the label, or cancel to leave this as it was.
               </Text>
             )}
-            {bad.length > 0 && (
+            {bad.some(k => !k.startsWith('other')) && (
               <Text style={styles.error}>
                 {bad.length === 1 ? 'One field' : `${bad.length} fields`} couldn’t be read as a
                 number. Fix or clear {bad.length === 1 ? 'it' : 'them'}, so nothing is stored
                 that the label didn’t say.
+              </Text>
+            )}
+            {bad.some(k => k.startsWith('other')) && (
+              <Text style={styles.error}>
+                Each ingredient needs a name and an amount above 0. Fill it in or remove it.
               </Text>
             )}
             <HelpText style={styles.hint}>
@@ -347,6 +431,9 @@ function makeStyles(colors: Colors) {
       borderColor: colors.separator,
     },
     inputBad: { borderColor: colors.red },
+    ingredient: { gap: spacing.sm },
+    ingredientDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator, paddingTop: spacing.md },
+    amountInput: { flex: 0, minWidth: 96, maxWidth: 120 },
     hint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16 },
     error: { color: colors.redText, fontSize: font.sm, lineHeight: 18, marginTop: spacing.md },
     removeRow: { marginTop: spacing.md, alignItems: 'flex-start' },

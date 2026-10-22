@@ -2569,6 +2569,16 @@ describe('demo seed — people', () => {
     expect(entries[0].nutrition.amounts.vitaminDMcg).toBe(25);
   });
 
+  it('seeds a supplement of herbs only, which shows on its doses and adds nothing to the food log', () => {
+    const { logs, settings } = useMedicationStore.getState();
+    const panel = prefsFor(settings, 'Stress Relief').nutrition;
+    expect(panel?.others?.map(o => o.name)).toContain('L-theanine');
+    expect(logs.filter(l => l.name === 'Stress Relief').length).toBeGreaterThanOrEqual(2);
+    const entries = useFoodLogStore.getState().recentEntries('0000-01-01', '9999-12-31')
+      .filter(e => e.label === 'Stress Relief');
+    expect(entries).toHaveLength(0);
+  });
+
   it('seeds a medication started recently enough to offer a milestone', () => {
     const logs = useMedicationStore.getState().logs;
     const labels = useMilestoneStore.getState().milestones.map(m => m.label);

@@ -62,6 +62,29 @@ describe('parseMedicationSettings', () => {
     expect(parseMedicationSettings(JSON.stringify(map))).toEqual(map);
   });
 
+  it('reads a panel that lists ingredients only, and drops a malformed ingredient', () => {
+    const raw = JSON.stringify({
+      stress: {
+        nutrition: {
+          servingAmount: 1,
+          servingUnit: 'capsule',
+          amounts: {},
+          others: [
+            { name: ' Ashwagandha ', amount: 80, unit: 'mg' },
+            { name: '', amount: 5, unit: 'mg' },
+            { name: 'Bad unit', amount: 5, unit: 'oz' },
+            { name: 'Zero', amount: 0, unit: 'mg' },
+          ],
+        },
+      },
+    });
+    expect(parseMedicationSettings(raw).stress.nutrition).toEqual({
+      servingAmount: 1, servingUnit: 'capsule', amounts: {}, others: [{ name: 'Ashwagandha', amount: 80, unit: 'mg' }],
+    });
+    const none = JSON.stringify({ x: { nutrition: { servingAmount: 1, servingUnit: 'capsule', amounts: {}, others: [{ name: 'Zero', amount: 0, unit: 'mg' }] } } });
+    expect(parseMedicationSettings(none)).toEqual({});
+  });
+
   it('tolerates junk', () => {
     expect(parseMedicationSettings(null)).toEqual({});
     expect(parseMedicationSettings('nope')).toEqual({});

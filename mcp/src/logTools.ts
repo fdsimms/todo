@@ -23,7 +23,8 @@ import { getRecipe, type RecipeDetail } from './kitchenTools';
 // safe to import for its value here; the replica loads the same module for the
 // write.
 import { describeWater, waterToMl, type WaterUnit } from '../../src/utils/waterLog';
-import { MAX_USUAL_DOSES, PANEL_UNITS, SUPPLY_UNITS } from '../../src/utils/medicationSettings';
+import { INGREDIENT_UNITS, MAX_PANEL_INGREDIENTS, MAX_USUAL_DOSES, PANEL_UNITS, SUPPLY_UNITS } from '../../src/utils/medicationSettings';
+import type { PanelIngredient } from '../../src/utils/medicationSettings';
 import { DOSE_UNITS, STRENGTH_UNITS } from '../../src/utils/medicationLog';
 import { describeSupplementPanel } from '../../src/utils/supplementDose';
 
@@ -387,7 +388,14 @@ export function deleteRecipe(replica: Replica, id: string) {
  */
 export function setSupplementNutrients(
   replica: Replica,
-  input: { name: string; servingAmount?: number; servingUnit?: string; amounts?: Record<string, number>; clear?: boolean },
+  input: {
+    name: string;
+    servingAmount?: number;
+    servingUnit?: string;
+    amounts?: Record<string, number>;
+    otherIngredients?: Array<{ name: string; amount: number; unit: string }>;
+    clear?: boolean;
+  },
 ) {
   if (input.clear) {
     const medicine = replica.setSupplementPanel(input.name, null);
@@ -412,10 +420,21 @@ export function setSupplementNutrients(
     }
     amounts[key] = value;
   }
-  if (Object.keys(amounts).length === 0) {
-    throw new Error(`Give at least one nutrient in amounts, keyed by name: ${NUTRIENT_KEYS.join(', ')}.`);
+  const others: PanelIngredient[] = [];
+  for (const item of input.otherIngredients ?? []) {
+    const name = typeof item.name === 'string' ? item.name.trim() : '';
+    if (!name || typeof item.amount !== 'number' || !Number.isFinite(item.amount) || item.amount <= 0 || !INGREDIENT_UNITS.includes(item.unit)) {
+      throw new Error(`Each otherIngredients entry needs a name, an amount above 0 and a unit (${INGREDIENT_UNITS.join(', ')}), exactly as the label prints it.`);
+    }
+    others.push({ name, amount: item.amount, unit: item.unit });
   }
-  const panel = { servingAmount: amount, servingUnit: input.servingUnit as string, amounts };
+  if (others.length > MAX_PANEL_INGREDIENTS) {
+    throw new Error(`otherIngredients holds at most ${MAX_PANEL_INGREDIENTS} entries.`);
+  }
+  if (Object.keys(amounts).length === 0 && others.length === 0) {
+    throw new Error(`Give at least one nutrient in amounts, keyed by name (${NUTRIENT_KEYS.join(', ')}), or one entry in otherIngredients.`);
+  }
+  const panel = { servingAmount: amount, servingUnit: input.servingUnit as string, amounts, ...(others.length > 0 ? { others } : {}) };
   const medicine = replica.setSupplementPanel(input.name, panel);
   const described = describeSupplementPanel(panel);
   return {
@@ -423,7 +442,9 @@ export function setSupplementNutrients(
     nutrients: described.heading,
     detail: described.detail,
     ...(ignored.length > 0 ? { ignored } : {}),
-    note: 'Doses recorded from now on add these to the day\'s food log, and the phone writes them to Apple Health if that is on. Earlier doses are unchanged.',
+    note: others.length > 0
+      ? 'Doses recorded from now on add the nutrients to the day\'s food log, and the phone writes them to Apple Health if that is on. The other ingredients show with each dose and are never logged. Earlier doses keep what they added.'
+      : 'Doses recorded from now on add these to the day\'s food log, and the phone writes them to Apple Health if that is on. Earlier doses are unchanged.',
   };
 }
 

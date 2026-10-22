@@ -2,8 +2,8 @@ import type { FoodLogEntry, FoodNutrition, MedicationLog, NutrientKey } from '..
 import { NUTRIENT_KEYS } from '../types';
 import { formatDose } from './medicationLog';
 import { NUTRIENT_LABEL } from './foodNutrition';
-import type { SupplementPanel } from './medicationSettings';
-import { PANEL_UNITS } from './medicationSettings';
+import type { PanelIngredient, SupplementPanel } from './medicationSettings';
+import { INGREDIENT_UNITS, MAX_PANEL_INGREDIENTS, PANEL_UNITS } from './medicationSettings';
 import { readPanelNumber } from './nutritionPanelForm';
 import type { LabelReading } from './labelOcr';
 
@@ -34,6 +34,13 @@ import type { LabelReading } from './labelOcr';
  * recorded in the panel's unit counts that many servings of it, and any other
  * dose (no amount, or a different unit) counts one. The edit screen says so
  * beside the field.
+ *
+ * **Ingredients outside the nutrient list (`SupplementPanel.others`) are shown,
+ * never logged.** An herb or an amino acid has no `NutrientKey`, and adding one
+ * would mean a target, a unit and an Apple Health type for each, so they ride
+ * the dose as a line of text instead (`doseIngredients`). They are worked out
+ * from the panel as it stands when the dose is read, not snapshotted the way a
+ * dose's food log entry is, so correcting a label changes how past doses read.
  */
 
 /** Prefix of the `sourceId` that ties an entry to the dose that wrote it. */
@@ -140,12 +147,24 @@ export interface SupplementForm {
   servingAmount: string;
   servingUnit: string;
   amounts: Record<NutrientKey, string>;
+  others: IngredientForm[];
+}
+
+/** One ingredient row of the form, as typed. A row with nothing typed is ignored. */
+export interface IngredientForm {
+  name: string;
+  amount: string;
+  unit: string;
+}
+
+export function emptyIngredientForm(): IngredientForm {
+  return { name: '', amount: '', unit: INGREDIENT_UNITS[0] };
 }
 
 export function emptySupplementForm(): SupplementForm {
   const amounts = {} as Record<NutrientKey, string>;
   for (const key of NUTRIENT_KEYS) amounts[key] = '';
-  return { servingAmount: '1', servingUnit: 'tablet', amounts };
+  return { servingAmount: '1', servingUnit: 'tablet', amounts, others: [] };
 }
 
 export function supplementFormFrom(panel: SupplementPanel | null | undefined): SupplementForm {
@@ -157,17 +176,36 @@ export function supplementFormFrom(panel: SupplementPanel | null | undefined): S
     const amount = panel.amounts[key];
     if (amount !== undefined) form.amounts[key] = String(amount);
   }
+  form.others = (panel.others ?? []).map(o => ({ name: o.name, amount: String(o.amount), unit: o.unit }));
   return form;
 }
 
+/** The form's field for ingredient row `index`, so the sheet can mark it. */
+export type OtherFieldKey = `other${number}`;
+
+/** Whether a row has nothing typed in its name or amount, so it is left out rather than refused. */
+function ingredientRowBlank(row: IngredientForm): boolean {
+  return row.name.trim() === '' && row.amount.trim() === '';
+}
+
 /** Fields that can't be read, in order, so the sheet can mark them. */
-export function invalidSupplementFields(form: SupplementForm): Array<NutrientKey | 'servingAmount'> {
-  const bad: Array<NutrientKey | 'servingAmount'> = [];
+export function invalidSupplementFields(form: SupplementForm): Array<NutrientKey | 'servingAmount' | OtherFieldKey> {
+  const bad: Array<NutrientKey | 'servingAmount' | OtherFieldKey> = [];
   const serving = readPanelNumber(form.servingAmount);
   if (serving === 'invalid' || serving === null || serving === 0) bad.push('servingAmount');
   for (const key of NUTRIENT_KEYS) {
     if (readPanelNumber(form.amounts[key]) === 'invalid') bad.push(key);
   }
+  form.others.forEach((row, i) => {
+    if (ingredientRowBlank(row)) return;
+    const amount = readPanelNumber(row.amount);
+    // A named ingredient with no amount, or an amount with no name, says
+    // nothing a dose could show, and a 0 on a label that lists it is not a
+    // thing to record.
+    if (row.name.trim() === '' || typeof amount !== 'number' || amount <= 0 || !INGREDIENT_UNITS.includes(row.unit)) {
+      bad.push(`other${i}`);
+    }
+  });
   return bad;
 }
 
@@ -184,22 +222,39 @@ export function buildSupplementPanel(form: SupplementForm): SupplementPanel | nu
     const value = readPanelNumber(form.amounts[key]);
     if (typeof value === 'number') amounts[key] = value;
   }
-  if (Object.keys(amounts).length === 0) return null;
-  return { servingAmount, servingUnit: form.servingUnit, amounts };
+  const others: PanelIngredient[] = [];
+  for (const row of form.others) {
+    if (ingredientRowBlank(row)) continue;
+    const amount = readPanelNumber(row.amount);
+    if (typeof amount === 'number') others.push({ name: row.name.trim(), amount, unit: row.unit });
+  }
+  if (Object.keys(amounts).length === 0 && others.length === 0) return null;
+  return {
+    servingAmount,
+    servingUnit: form.servingUnit,
+    amounts,
+    ...(others.length > 0 ? { others: others.slice(0, MAX_PANEL_INGREDIENTS) } : {}),
+  };
 }
 
 /** Whether the form differs from the panel it opened with, for the discard guard. */
 export function supplementFormDirty(form: SupplementForm, original: SupplementPanel | null | undefined): boolean {
   const base = supplementFormFrom(original);
   if (form.servingAmount.trim() !== base.servingAmount.trim() || form.servingUnit !== base.servingUnit) return true;
-  return NUTRIENT_KEYS.some(key => form.amounts[key].trim() !== base.amounts[key].trim());
+  if (NUTRIENT_KEYS.some(key => form.amounts[key].trim() !== base.amounts[key].trim())) return true;
+  // Rows with nothing typed don't count: adding one and not filling it in is not an edit.
+  const typed = (rows: IngredientForm[]) => rows.filter(r => !ingredientRowBlank(r));
+  const now = typed(form.others);
+  const was = typed(base.others);
+  return now.length !== was.length
+    || now.some((r, i) => r.name.trim() !== was[i].name.trim() || r.amount.trim() !== was[i].amount.trim() || r.unit !== was[i].unit);
 }
 
 // ==== Describing a panel ====
 
 /** How many figures a panel states. */
 export function supplementFieldCount(panel: SupplementPanel): number {
-  return NUTRIENT_KEYS.filter(key => panel.amounts[key] !== undefined).length;
+  return NUTRIENT_KEYS.filter(key => panel.amounts[key] !== undefined).length + (panel.others?.length ?? 0);
 }
 
 /**
@@ -211,16 +266,41 @@ export function describeSupplementPanel(panel: SupplementPanel): { heading: stri
   const plural = panel.servingAmount !== 1 && panel.servingUnit !== 'ml' && panel.servingUnit !== 'g';
   const unit = plural ? `${panel.servingUnit}s` : panel.servingUnit;
   const stated = NUTRIENT_KEYS.filter(key => panel.amounts[key] !== undefined);
+  const others = panel.others ?? [];
   const SHOWN = 4;
   const shown = stated.slice(0, SHOWN).map(key => {
     const { label, unit: u } = NUTRIENT_LABEL[key];
     return `${label} ${panel.amounts[key]} ${u}`;
   });
   const more = stated.length - shown.length;
+  const counts = [
+    stated.length > 0 ? `${stated.length} ${stated.length === 1 ? 'nutrient' : 'nutrients'}` : null,
+    others.length > 0 ? `${others.length} other ${others.length === 1 ? 'ingredient' : 'ingredients'}` : null,
+  ].filter(Boolean).join(', ');
+  const nutrientLine = more > 0 ? `${shown.join(', ')}, and ${more} more` : shown.join(', ');
   return {
-    heading: `Per ${panel.servingAmount} ${unit}: ${stated.length} ${stated.length === 1 ? 'nutrient' : 'nutrients'}`,
-    detail: more > 0 ? `${shown.join(', ')}, and ${more} more` : shown.join(', '),
+    heading: `Per ${panel.servingAmount} ${unit}: ${counts}`,
+    detail: [nutrientLine, others.length > 0 ? describeIngredients(others) : ''].filter(Boolean).join('. '),
   };
+}
+
+/** "Saffron extract 28 mg, Ashwagandha 80 mg", the ingredients in the order the label lists them. */
+export function describeIngredients(list: readonly PanelIngredient[]): string {
+  return list.map(o => `${o.name} ${round3(o.amount)} ${o.unit}`).join(', ');
+}
+
+/**
+ * The ingredients outside the nutrient list one dose took, scaled by the same
+ * serving rule as the nutrients (`supplementServings`), or an empty list when
+ * the panel names none.
+ */
+export function doseIngredients(
+  panel: SupplementPanel | null | undefined,
+  dose: Pick<MedicationLog, 'amount' | 'unit'>,
+): PanelIngredient[] {
+  if (!panel?.others?.length) return [];
+  const servings = supplementServings(panel, dose);
+  return panel.others.map(o => ({ ...o, amount: round3(o.amount * servings) }));
 }
 
 // ==== A photographed label ====
@@ -270,5 +350,6 @@ export function applyLabelToSupplementForm(form: SupplementForm, reading: LabelR
     servingAmount: serving ? String(serving.amount) : form.servingAmount,
     servingUnit: serving ? serving.unit : form.servingUnit,
     amounts,
+    others: form.others,
   };
 }
