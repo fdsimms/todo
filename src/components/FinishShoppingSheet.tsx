@@ -643,6 +643,47 @@ export function FinishShoppingSheet({
     setNewItemText('');
   };
 
+  // What is typed into each row's "Replaced by" field, by the row it replaces.
+  const [substituteText, setSubstituteText] = useState<Record<string, string>>({});
+  const submitSubstitute = (itemId: string) => {
+    const name = (substituteText[itemId] ?? '').trim();
+    if (!name) return;
+    handleCreateSubstitute(itemId, name);
+    setSubstituteText(prev => ({ ...prev, [itemId]: '' }));
+  };
+
+  // The typed half of both "anything else" and "Replaced by", one shape so the
+  // two can't drift: a field with its Add button inside, never a pill in a grid
+  // of suggestions, where it would read as something bought before.
+  const renderNewItemField = (
+    value: string,
+    onChange: (text: string) => void,
+    onSubmit: () => void,
+    placeholder: string,
+    accessibilityLabel: string,
+  ) => (
+    <View style={styles.newItemField}>
+      <TextField
+        style={styles.newItemInput}
+        value={value}
+        onChangeText={onChange}
+        onSubmitEditing={onSubmit}
+        returnKeyType="done"
+        placeholder={placeholder}
+        placeholderTextColor={colors.textTertiary}
+        maxLength={GROCERY_NAME_MAX_LENGTH}
+        autoCorrect={false}
+        accessibilityLabel={accessibilityLabel}
+      />
+      <InlineAction
+        label="Add"
+        onPress={onSubmit}
+        disabled={!value.trim()}
+        accessibilityLabel="Add to the cart"
+      />
+    </View>
+  );
+
   const removeIncidental = (itemId: string) => {
     haptics.tap();
     removeFromListMany([itemId]);
@@ -878,12 +919,17 @@ export function FinishShoppingSheet({
                       {ticked && (
                         <View style={styles.substituteWrap}>
                           <Text style={styles.substituteLabel}>Replaced by</Text>
+                          {renderNewItemField(
+                            substituteText[row.id] ?? '',
+                            text => setSubstituteText(prev => ({ ...prev, [row.id]: text })),
+                            () => submitSubstitute(row.id),
+                            'e.g. Oat milk',
+                            `What replaced ${row.name}`,
+                          )}
                           <PillGroup
                             noun="item"
                             surface="card"
                             limit={6}
-                            createMaxLength={GROCERY_NAME_MAX_LENGTH}
-                            onCreate={name => handleCreateSubstitute(row.id, name)}
                             options={[
                               // A recorded substitute is pinned so a longer list
                               // can't push it behind "N more": a link the user
@@ -968,26 +1014,13 @@ export function FinishShoppingSheet({
                   a new item isn't something bought before, so it mustn't read as
                   one. Above them so it is found without scrolling past a long
                   list of picks. */}
-              <View style={styles.newItemField}>
-                <TextField
-                  style={styles.newItemInput}
-                  value={newItemText}
-                  onChangeText={setNewItemText}
-                  onSubmitEditing={submitNewItem}
-                  returnKeyType="done"
-                  placeholder="e.g. Paper towels"
-                  placeholderTextColor={colors.textTertiary}
-                  maxLength={GROCERY_NAME_MAX_LENGTH}
-                  autoCorrect={false}
-                  accessibilityLabel="Add an item you bought"
-                />
-                <InlineAction
-                  label="Add"
-                  onPress={submitNewItem}
-                  disabled={!newItemText.trim()}
-                  accessibilityLabel="Add to the cart"
-                />
-              </View>
+              {renderNewItemField(
+                newItemText,
+                setNewItemText,
+                submitNewItem,
+                'e.g. Paper towels',
+                'Add an item you bought',
+              )}
               {picks.length > 0 && (
                 <>
                   <Text style={styles.substituteLabel}>Bought before</Text>
@@ -1165,7 +1198,7 @@ function makeStyles(colors: Colors) {
     substituteWrap: {
       paddingHorizontal: spacing.md,
       paddingBottom: spacing.md,
-      gap: spacing.sm,
+      gap: spacing.smd,
     },
     substituteLabel: { fontSize: font.sm, color: colors.textTertiary },
     // The leading tile on an incidental row, in place of the checkbox: nothing
