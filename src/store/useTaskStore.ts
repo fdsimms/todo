@@ -483,6 +483,7 @@ import {
   undoHistoryActions,
 } from '../utils/undoHistory';
 import { isOpenEnded } from '../utils/listMode';
+import { describeReschedule } from '../utils/rescheduleLabel';
 
 
 /**
@@ -10973,7 +10974,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
     if (snapshots.length > 0) {
       get().setLastAction({
-        label: snapshots.length === 1 ? 'Task rescheduled' : `${snapshots.length} tasks rescheduled`,
+        label: describeReschedule(snapshots, date, timeSegments, dayResetTime),
         announce: true,
         redo: () => get().bulkSetWhen(ids, date, timeSegments, options),
         undo: () => snapshots.forEach(snapshot => get().updateTask(snapshot.id, snapshot)),
