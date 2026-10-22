@@ -3355,9 +3355,36 @@ const ERASED_DEVICE_TABLES = ['focus_sessions', 'pending_estimates', 'pending_re
  * under the old id. Without it, a row only this device ever wrote would never
  * come back. Cursors go so that pull starts from the beginning, for every
  * transport.
+ *
+ * Returns the calendar events the erased rows held, for the caller to delete
+ * through `reconcileSyncedEvents`, as a synced deletion does.
  */
-export function dbEraseForSyncJoin(): void {
+export function dbEraseForSyncJoin(): Pick<ApplyReport, 'removedMealEvents' | 'removedTaskEvents'> {
+  const removed: Pick<ApplyReport, 'removedMealEvents' | 'removedTaskEvents'> = {
+    removedMealEvents: [],
+    removedTaskEvents: [],
+  };
   withTransaction(() => {
+    // The calendar events this device wrote for the rows about to go, read
+    // first because the event ids are device-local columns and nothing else
+    // holds them (the same read a synced deletion makes, `dbApplySyncChanges`).
+    // The same two kinds a deletion removes: a meal's event and a task's
+    // deadline event, never a time block or a completion event.
+    for (const meal of db.getAllSync<{ calendar_event_id: string; calendar_event_external_id: string | null; date: string }>(
+      'SELECT calendar_event_id, calendar_event_external_id, date FROM meal_plan_entries WHERE calendar_event_id IS NOT NULL'
+    )) {
+      removed.removedMealEvents.push({
+        eventId: meal.calendar_event_id,
+        externalId: meal.calendar_event_external_id ?? null,
+        date: meal.date,
+      });
+    }
+    for (const task of db.getAllSync<{ calendar_event_id: string; calendar_event_external_id: string | null }>(
+      'SELECT calendar_event_id, calendar_event_external_id FROM tasks WHERE calendar_event_id IS NOT NULL'
+    )) {
+      removed.removedTaskEvents.push({ eventId: task.calendar_event_id, externalId: task.calendar_event_external_id ?? null });
+    }
+
     for (const table of SYNC_TRACKED_TABLES) {
       if (table.name !== 'settings') db.runSync(`DELETE FROM "${table.name}"`);
     }
@@ -3371,6 +3398,7 @@ export function dbEraseForSyncJoin(): void {
     db.runSync(`DELETE FROM ${SYNC_RECEIVED_TABLE}`);
     db.runSync(`DELETE FROM ${SYNC_ALIASES_TABLE}`);
   });
+  return removed;
 }
 
 /** The tracked-table definition for a name off the wire, or null if unknown. */

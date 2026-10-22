@@ -33,6 +33,7 @@ import {
   SYNC_TOKEN_SECURE_KEY,
 } from '../utils/secureApiKey';
 import { databaseSyncLocal } from '../utils/syncLocal';
+import { deleteUnreferencedImages, recipeImagePaths } from '../utils/recipeImageSync';
 import {
   joinAfterErasing,
   pushCursorKey,
@@ -117,24 +118,45 @@ export function settleHealthLogResend(resendKey: string = SERVER_HEALTH_RESEND_K
 
 export type SyncPhase = 'idle' | 'syncing';
 
+/** Where a device joins sync: iCloud, or a sync server the person runs. */
+export type SyncDestination = 'icloud' | 'server';
+
 /** How `eraseAndJoin` ended. Only `joined` erased anything. */
 export type EraseAndJoinOutcome =
   | { status: 'joined' }
-  /** No other device has synced to iCloud yet. */
+  /** The destination holds nothing yet. */
   | { status: 'nothing-to-join' }
   | { status: 'failed'; reason: string };
 
 /**
- * Whether turning iCloud sync on should first ask what happens to this
- * device's data: it has never synced there, and it holds something a person
- * entered. A device that has synced before is already a peer, and an empty
- * one has nothing to send, so neither is asked.
+ * Set once this device has chosen what happens to its data on joining sync
+ * (`keepAndJoin` or `eraseAndJoin`), so it is asked once, not once per
+ * destination. Device-local: never synced, never in a backup.
  */
-export function joinChoiceNeeded(): boolean {
-  return dbGetSyncCursor(pushCursorKey(CLOUDKIT_SOURCE)) === null
-    && dbGetSyncCursor(`${CLOUDKIT_SOURCE}:pull`) === null
+export const JOIN_DECIDED_KEY = 'syncJoinDecided';
+
+function sourceOf(destination: SyncDestination): string {
+  return destination === 'icloud' ? CLOUDKIT_SOURCE : HTTP_SYNC_SOURCE;
+}
+
+/**
+ * Whether joining `destination` has to ask first what happens to this
+ * device's data: it has never synced there, has not answered already, and
+ * holds something a person entered. Sync is two-way with no device in
+ * charge, so a device joining with data of its own sends it to every other
+ * device, and this is the one moment it can choose not to. A device that has
+ * synced is already a peer, and an empty one has nothing to send.
+ */
+export function joinChoiceNeeded(destination: SyncDestination): boolean {
+  const source = sourceOf(destination);
+  return dbGetSetting(JOIN_DECIDED_KEY) !== '1'
+    && dbGetSyncCursor(pushCursorKey(source)) === null
+    && dbGetSyncCursor(`${source}:pull`) === null
     && dbHasOwnSyncData();
 }
+
+/** What `eraseAndJoin`'s caller is handed: the calendar events the erased rows held. */
+export type ErasedEvents = Pick<ApplyReport, 'removedMealEvents' | 'removedTaskEvents'>;
 
 interface SyncState {
   initialized: boolean;
@@ -176,16 +198,28 @@ interface SyncState {
    * (see JOURNAL_SYNC_TABLES); iCloud never gets them either way.
    */
   serverJournal: boolean;
+  /**
+   * A sync server is set up, but this device hasn't chosen what happens to
+   * its own data yet (`joinChoiceNeeded`), so nothing is sent to it until it
+   * does. The Settings row that asks reads this.
+   */
+  serverHeld: boolean;
 
   initialize: () => void;
   setEnabled: (enabled: boolean) => Promise<void>;
   /**
-   * Turns iCloud sync on by erasing this device and taking what the other
-   * devices have synced, so nothing that was only here is sent to them.
-   * `afterErase` runs straight after the erase, before anything is awaited,
-   * and is where the caller reloads the stores and drops every undo history.
+   * Joins `destination` keeping this device's data, which is merged with the
+   * other devices' and sent to them, and records the choice.
    */
-  eraseAndJoin: (afterErase: () => void) => Promise<EraseAndJoinOutcome>;
+  keepAndJoin: (destination: SyncDestination) => Promise<void>;
+  /**
+   * Erases this device and joins `destination` holding only what is there,
+   * so nothing that was only here is sent anywhere. Also how a device already
+   * syncing replaces its data. `afterErase` runs straight after the erase,
+   * before anything is awaited, and is where the caller reloads the stores,
+   * drops every undo history and deletes the calendar events it is handed.
+   */
+  eraseAndJoin: (destination: SyncDestination, afterErase: (erased: ErasedEvents) => void) => Promise<EraseAndJoinOutcome>;
   setServerUrl: (url: string) => void;
   setServerToken: (token: string) => Promise<boolean>;
   setServerHealthLogs: (on: boolean) => void;
@@ -208,20 +242,27 @@ function iCloudTransport(): SyncTransport {
   return { ...cloudKitTransport(), withhold: withholdingFor({ healthLogs: false, journal: false }) };
 }
 
+/**
+ * The sync server's transport, holding back what this device hasn't switched
+ * on for it. No recipe photos: nothing on the server reads one, and a store
+ * full of them is what a replica and every other device then has to page
+ * through. iCloud still carries them between Apple devices.
+ */
+function serverTransport(config: { url: string; token: string }, state: SyncConfig): SyncTransport {
+  const server = { ...httpSyncTransport(config), sendsImages: false };
+  const withhold = withholdingFor({ healthLogs: state.serverHealthLogs, journal: state.serverJournal });
+  return withhold ? { ...server, withhold } : server;
+}
+
 async function configuredTransports(state: SyncConfig): Promise<SyncTransport[]> {
   const transports: SyncTransport[] = [];
   if (state.enabled && isCloudKitSyncAvailable()) transports.push(iCloudTransport());
 
   const token = await loadSecureKey(SYNC_TOKEN_SECURE_KEY);
   const config = { url: state.serverUrl, token };
-  if (isHttpSyncConfigured(config)) {
-    // No recipe photos: nothing on the server reads one, and a store full of
-    // them is what a replica and every other device then has to page through.
-    // iCloud still carries them between Apple devices.
-    const server = { ...httpSyncTransport(config), sendsImages: false };
-    const withhold = withholdingFor({ healthLogs: state.serverHealthLogs, journal: state.serverJournal });
-    transports.push(withhold ? { ...server, withhold } : server);
-  }
+  // Held until this device has said what happens to its data (serverHeld).
+  // iCloud needs no such check: its switch only turns on once that's asked.
+  if (isHttpSyncConfigured(config) && !joinChoiceNeeded('server')) transports.push(serverTransport(config, state));
 
   return transports;
 }
@@ -282,6 +323,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   hasServerToken: false,
   serverHealthLogs: false,
   serverJournal: false,
+  serverHeld: false,
 
   initialize: () => {
     set({
@@ -298,6 +340,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     // sync reads the token itself rather than trusting this.
     void loadSecureKey(SYNC_TOKEN_SECURE_KEY).then(token => {
       set({ hasServerToken: !!token });
+      refreshServerHeld();
       // A token saved before setServerToken made it readable while locked is
       // re-saved once, so the background sync can read it on the charger.
       // Only once it's done is it marked: a launch on a locked phone reads
@@ -314,6 +357,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     const trimmed = url.trim();
     dbSetSetting(SERVER_URL_KEY, trimmed);
     set({ serverUrl: trimmed, problem: null });
+    refreshServerHeld();
   },
 
   setServerToken: async (token: string) => {
@@ -321,6 +365,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     const saved = await saveSecureKey(SYNC_TOKEN_SECURE_KEY, token.trim(), { readableWhileLocked: true });
     if (saved && token.trim()) dbSetSetting(SYNC_TOKEN_READABLE_LOCKED_SETTING, '1');
     if (saved) set({ hasServerToken: !!token.trim(), problem: null });
+    refreshServerHeld();
     return saved;
   },
 
@@ -367,7 +412,14 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     await get().syncNow();
   },
 
-  eraseAndJoin: async (afterErase: () => void) => {
+  keepAndJoin: async (destination: SyncDestination) => {
+    dbSetSetting(JOIN_DECIDED_KEY, '1');
+    refreshServerHeld();
+    if (destination === 'icloud') await get().setEnabled(true);
+    else await get().syncNow();
+  },
+
+  eraseAndJoin: async (destination: SyncDestination, afterErase: (erased: ErasedEvents) => void) => {
     // The same claim syncNow makes, for the same reason: a sync running
     // beside the erase would push from the rows it is deleting.
     if (get().phase === 'syncing' || syncInFlight) {
@@ -375,26 +427,24 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     }
     syncInFlight = true;
     set({ phase: 'syncing', problem: null });
+    // The photo files the erased recipes used, deleted once the join has
+    // brought back whichever ones the other devices still point at.
+    const photosBefore = recipeImagePaths();
     const run = (async (): Promise<EraseAndJoinOutcome> => {
-      let reason: string | null;
-      try {
-        reason = await cloudKitUnavailableReason();
-      } catch {
-        reason = 'Couldn’t check your iCloud account.';
-      }
-      if (reason) return { status: 'failed', reason };
+      const transport = await joinTransport(destination, get());
+      if ('reason' in transport) return { status: 'failed', reason: transport.reason };
 
       // Whether a failure below can still say nothing was erased.
       let erased = false;
       let problem: string | null = null;
       try {
         const result = await joinAfterErasing(
-          iCloudTransport(),
+          transport,
           databaseSyncLocal(),
           () => {
-            dbEraseForSyncJoin();
+            const events = dbEraseForSyncJoin();
             erased = true;
-            afterErase();
+            afterErase(events);
           },
           reloadAfterSync
         );
@@ -406,11 +456,15 @@ export const useSyncStore = create<SyncState>((set, get) => ({
         problem = message;
       }
 
-      // On from here whatever the run did: the device is already erased, and
-      // a run that failed partway is finished by the next sync, which starts
-      // from the beginning again because no cursor moved.
-      dbSetSetting(ENABLED_KEY, '1');
-      set({ enabled: true, problem });
+      // Joined from here whatever the run did: the device is already erased,
+      // and a run that failed partway is finished by the next sync, which
+      // starts from the beginning again because no cursor moved.
+      dbSetSetting(JOIN_DECIDED_KEY, '1');
+      if (destination === 'icloud') {
+        dbSetSetting(ENABLED_KEY, '1');
+        set({ enabled: true });
+      }
+      set({ problem });
       return { status: 'joined' };
     })();
     currentRun = run.then(() => null);
@@ -422,12 +476,16 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       syncAgain = false;
       currentRun = null;
       set({ phase: 'idle' });
+      refreshServerHeld();
     }
-    // The ordinary run after it stamps the time and syncs a server too, which
-    // reads everything again since its cursors went with the erase.
-    // A throw here can't say nothing was erased, and the run it belongs to
-    // already reported; whatever it was, the next sync tries again.
-    if (outcome.status === 'joined') await get().syncNow().catch(() => null);
+    if (outcome.status === 'joined') {
+      // The ordinary run after it stamps the time and syncs the other
+      // destination too, which reads everything again since its cursors went
+      // with the erase. A throw here can't say nothing was erased, and the
+      // next sync tries again whatever it was.
+      await get().syncNow().catch(() => null);
+      deleteUnreferencedImages(photosBefore);
+    }
     return outcome;
   },
 
@@ -462,6 +520,27 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     }
   },
 }));
+
+/** Recomputes `serverHeld` from what is stored now. */
+function refreshServerHeld(): void {
+  const { serverUrl, hasServerToken } = useSyncStore.getState();
+  useSyncStore.setState({ serverHeld: !!serverUrl && hasServerToken && joinChoiceNeeded('server') });
+}
+
+/** The transport `eraseAndJoin` downloads from, or why there isn't one. */
+async function joinTransport(destination: SyncDestination, state: SyncConfig): Promise<SyncTransport | { reason: string }> {
+  if (destination === 'icloud') {
+    try {
+      const reason = await cloudKitUnavailableReason();
+      return reason ? { reason } : iCloudTransport();
+    } catch {
+      return { reason: 'Couldn’t check your iCloud account.' };
+    }
+  }
+  const config = { url: state.serverUrl, token: await loadSecureKey(SYNC_TOKEN_SECURE_KEY) };
+  if (!isHttpSyncConfigured(config)) return { reason: 'Add the sync server’s address and token first.' };
+  return serverTransport(config, state);
+}
 
 async function syncOnce(state: SyncConfig): Promise<SyncSummary | null> {
   const set = useSyncStore.setState;

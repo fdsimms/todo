@@ -540,15 +540,26 @@ describe('joinAfterErasing', () => {
     expect(erase).not.toHaveBeenCalled();
   });
 
-  it('does not count this device\'s own payloads, or ones with no rows, as another device', async () => {
+  it('does not count a store holding only payloads with no rows', async () => {
     const device = new FakeDevice('mac');
     const cloud = new FakeCloud();
-    cloud.entries.push(serializePayload(payloadOf({ deviceId: 'mac', tables: { tasks: [{ id: 'm1', title: 'x', updated_at: '2026-01-01T00:00:00.000Z' }] } })));
     cloud.entries.push(serializePayload(payloadOf({ deviceId: 'phone' })));
     const erase = jest.fn();
 
     expect((await joinAfterErasing(cloud, device, erase)).status).toBe('nothing-to-join');
     expect(erase).not.toHaveBeenCalled();
+  });
+
+  it('gets its own data back from a store only it ever wrote to', async () => {
+    const device = new FakeDevice('mac');
+    device.write('m1', 'Mac task', '2026-01-01T00:00:00.000Z');
+    const cloud = new FakeCloud();
+    await runSync(cloud, device);
+
+    const result = await joinAfterErasing(cloud, device, () => eraseDevice(device, 'mac-2'));
+
+    expect(result.status).toBe('joined');
+    expect(device.titleOf('m1')).toBe('Mac task');
   });
 
   it('erases, then holds only what the other device synced, and sends the store nothing', async () => {

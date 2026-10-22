@@ -386,6 +386,18 @@ describe('a device erased to join, so the phone stays the source', () => {
     expect(tasks(mac)).toEqual(tasks(phone));
   });
 
+  it('hands back the deadline events the erased tasks held, so they can be deleted', () => {
+    const mac = newDevice('mac');
+    addTask(mac, 'm', 'Mac task', { calendar_event_id: 'ev-1', calendar_event_external_id: 'ext-1' });
+    addTask(mac, 'n', 'No event');
+
+    const erased = mac.db.dbEraseForSyncJoin();
+
+    expect(erased.removedTaskEvents).toEqual([{ eventId: 'ev-1', externalId: 'ext-1' }]);
+    expect(erased.removedMealEvents).toEqual([]);
+    expect(titles(mac)).toEqual([]);
+  });
+
   it('erases nothing when the phone has not synced yet', async () => {
     const cloud = fakeICloud();
     const mac = newDevice('mac');

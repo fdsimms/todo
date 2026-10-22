@@ -1,4 +1,5 @@
 import {
+  JOIN_DECIDED_KEY,
   joinChoiceNeeded,
   registerSyncReload,
   whenSyncIdle,
@@ -14,6 +15,7 @@ import { dbEraseForSyncJoin, dbGetSetting, dbGetSyncCursor, dbHasOwnSyncData, db
 import { HEALTH_SYNC_TABLES, JOURNAL_SYNC_TABLES } from '../db/syncTracking';
 import { cloudKitTransport, cloudKitUnavailableReason, isCloudKitSyncAvailable } from '../utils/cloudKitTransport';
 import { databaseSyncLocal } from '../utils/syncLocal';
+import { deleteUnreferencedImages, recipeImagePaths } from '../utils/recipeImageSync';
 import { joinAfterErasing, runSyncAll } from '../utils/syncEngine';
 import { loadSecureKey, makeSecureKeyReadableWhileLocked, saveSecureKey } from '../utils/secureApiKey';
 import { emptyApplyReport } from '../utils/syncMerge';
@@ -32,6 +34,11 @@ jest.mock('../utils/cloudKitTransport', () => ({
   cloudKitTransport: jest.fn().mockReturnValue({}),
   cloudKitUnavailableReason: jest.fn().mockResolvedValue(null),
   isCloudKitSyncAvailable: jest.fn().mockReturnValue(true),
+}));
+
+jest.mock('../utils/recipeImageSync', () => ({
+  recipeImagePaths: jest.fn().mockReturnValue([]),
+  deleteUnreferencedImages: jest.fn(),
 }));
 
 jest.mock('../utils/syncLocal', () => ({
@@ -98,7 +105,11 @@ beforeEach(() => {
     hasServerToken: false,
     serverHealthLogs: false,
     serverJournal: false,
+    serverHeld: false,
   });
+  // A device with nothing of its own, so a server set up below syncs at once;
+  // the cases about the question turn this on.
+  (dbHasOwnSyncData as jest.Mock).mockReturnValue(false);
   (dbGetSyncCursor as jest.Mock).mockReturnValue(null);
   (loadSecureKey as jest.Mock).mockResolvedValue('');
   (saveSecureKey as jest.Mock).mockResolvedValue(true);
@@ -183,18 +194,57 @@ describe('setEnabled', () => {
 });
 
 describe('joinChoiceNeeded', () => {
-  it('asks a device with data of its own that has never synced to iCloud', () => {
-    (dbHasOwnSyncData as jest.Mock).mockReturnValue(true);
-    expect(joinChoiceNeeded()).toBe(true);
+  beforeEach(() => (dbHasOwnSyncData as jest.Mock).mockReturnValue(true));
+
+  it('asks a device with data of its own that has never synced there', () => {
+    expect(joinChoiceNeeded('icloud')).toBe(true);
+    expect(joinChoiceNeeded('server')).toBe(true);
   });
 
-  it('does not ask a device that has synced before, or one with nothing to send', () => {
+  it('asks only about the destination this device has never synced with', () => {
     (dbGetSyncCursor as jest.Mock).mockImplementation((key: string) => (key === 'cloudkit:pull' ? '7' : null));
-    expect(joinChoiceNeeded()).toBe(false);
+    expect(joinChoiceNeeded('icloud')).toBe(false);
+    expect(joinChoiceNeeded('server')).toBe(true);
+  });
 
-    (dbGetSyncCursor as jest.Mock).mockReturnValue(null);
+  it('does not ask once the device has chosen, or when it has nothing to send', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) => (key === JOIN_DECIDED_KEY ? '1' : null));
+    expect(joinChoiceNeeded('server')).toBe(false);
+
+    (dbGetSetting as jest.Mock).mockReturnValue(null);
     (dbHasOwnSyncData as jest.Mock).mockReturnValue(false);
-    expect(joinChoiceNeeded()).toBe(false);
+    expect(joinChoiceNeeded('icloud')).toBe(false);
+  });
+});
+
+describe('a sync server on a device with data of its own', () => {
+  beforeEach(() => (dbHasOwnSyncData as jest.Mock).mockReturnValue(true));
+
+  it('is held, and sent nothing, until the device chooses', async () => {
+    withServer();
+    useSyncStore.getState().setServerUrl('https://sync.example.com');
+    useSyncStore.setState({ hasServerToken: true });
+    useSyncStore.getState().setServerUrl('https://sync.example.com');
+    expect(useSyncStore.getState().serverHeld).toBe(true);
+
+    await useSyncStore.getState().syncNow();
+    expect(runSyncAll).not.toHaveBeenCalled();
+  });
+
+  it('keeping the data records the choice and syncs the server', async () => {
+    withServer();
+    useSyncStore.setState({ hasServerToken: true, serverHeld: true });
+    (dbSetSetting as jest.Mock).mockImplementation((key: string, value: string) => {
+      if (key === JOIN_DECIDED_KEY) (dbGetSetting as jest.Mock).mockImplementation((k: string) => (k === JOIN_DECIDED_KEY ? value : null));
+    });
+    (runSyncAll as jest.Mock).mockResolvedValue(runs(okResult()));
+
+    await useSyncStore.getState().keepAndJoin('server');
+
+    expect(dbSetSetting).toHaveBeenCalledWith(JOIN_DECIDED_KEY, '1');
+    expect(useSyncStore.getState().serverHeld).toBe(false);
+    expect((runSyncAll as jest.Mock).mock.calls[0][0]).toHaveLength(1);
+    (dbSetSetting as jest.Mock).mockReset();
   });
 });
 
@@ -208,40 +258,59 @@ describe('eraseAndJoin', () => {
 
   it('stops at the account check without erasing anything', async () => {
     (cloudKitUnavailableReason as jest.Mock).mockResolvedValue('Sign in to iCloud on this device to sync.');
-    const outcome = await useSyncStore.getState().eraseAndJoin(jest.fn());
+    const outcome = await useSyncStore.getState().eraseAndJoin('icloud', jest.fn());
     expect(outcome).toEqual({ status: 'failed', reason: 'Sign in to iCloud on this device to sync.' });
     expect(joinAfterErasing).not.toHaveBeenCalled();
     expect(useSyncStore.getState().enabled).toBe(false);
   });
 
-  it('leaves sync off when no other device has synced', async () => {
+  it('refuses a server with no token without erasing anything', async () => {
+    useSyncStore.setState({ serverUrl: 'https://sync.example.com' });
+    const outcome = await useSyncStore.getState().eraseAndJoin('server', jest.fn());
+    expect(outcome.status).toBe('failed');
+    expect(joinAfterErasing).not.toHaveBeenCalled();
+  });
+
+  it('leaves sync off when the destination holds nothing', async () => {
     (joinAfterErasing as jest.Mock).mockResolvedValue({ status: 'nothing-to-join' });
-    const outcome = await useSyncStore.getState().eraseAndJoin(jest.fn());
+    const outcome = await useSyncStore.getState().eraseAndJoin('icloud', jest.fn());
     expect(outcome.status).toBe('nothing-to-join');
     expect(dbSetSetting).not.toHaveBeenCalledWith('syncEnabled', '1');
+    expect(dbSetSetting).not.toHaveBeenCalledWith(JOIN_DECIDED_KEY, '1');
     expect(useSyncStore.getState().phase).toBe('idle');
   });
 
-  it('erases, reloads, turns sync on and runs an ordinary sync after', async () => {
+  it('erases, hands over the erased events, turns sync on and runs an ordinary sync after', async () => {
     joinWith(okResult());
     (runSyncAll as jest.Mock).mockResolvedValue(runs(okResult()));
+    const events = { removedMealEvents: [], removedTaskEvents: [{ eventId: 'e1', externalId: null }] };
     const order: string[] = [];
-    (dbEraseForSyncJoin as jest.Mock).mockImplementation(() => order.push('erase'));
+    (dbEraseForSyncJoin as jest.Mock).mockImplementation(() => { order.push('erase'); return events; });
+    const afterErase = jest.fn(() => order.push('reload'));
 
-    const outcome = await useSyncStore.getState().eraseAndJoin(() => order.push('reload'));
+    const outcome = await useSyncStore.getState().eraseAndJoin('icloud', afterErase);
 
     expect(outcome).toEqual({ status: 'joined' });
     expect(order).toEqual(['erase', 'reload']);
+    expect(afterErase).toHaveBeenCalledWith(events);
     expect(dbSetSetting).toHaveBeenCalledWith('syncEnabled', '1');
+    expect(dbSetSetting).toHaveBeenCalledWith(JOIN_DECIDED_KEY, '1');
     expect(useSyncStore.getState().enabled).toBe(true);
     expect(runSyncAll).toHaveBeenCalled();
   });
 
+  it('deletes the photo files the erased recipes used once the join is done', async () => {
+    (recipeImagePaths as jest.Mock).mockReturnValue(['/photos/a.jpg']);
+    joinWith(okResult());
+    (runSyncAll as jest.Mock).mockResolvedValue(runs(okResult()));
+    await useSyncStore.getState().eraseAndJoin('icloud', jest.fn());
+    expect(deleteUnreferencedImages).toHaveBeenCalledWith(['/photos/a.jpg']);
+  });
+
   it('keeps sync on and says why when the run after the erase failed', async () => {
     joinWith({ ...okResult(), status: 'failed', reason: 'Couldn’t reach iCloud.' });
-    // The ordinary sync after it fails the same way, which must not clear the problem.
     (runSyncAll as jest.Mock).mockResolvedValue(runs({ ...okResult(), status: 'failed', reason: 'Couldn’t reach iCloud.' }));
-    const outcome = await useSyncStore.getState().eraseAndJoin(jest.fn());
+    const outcome = await useSyncStore.getState().eraseAndJoin('icloud', jest.fn());
     expect(outcome.status).toBe('joined');
     expect(useSyncStore.getState().enabled).toBe(true);
     expect(useSyncStore.getState().problem).toContain('Couldn’t reach iCloud.');
@@ -253,14 +322,15 @@ describe('eraseAndJoin', () => {
       erase();
       return { status: 'joined', run: okResult() };
     });
-    const outcome = await useSyncStore.getState().eraseAndJoin(jest.fn());
+    const outcome = await useSyncStore.getState().eraseAndJoin('icloud', jest.fn());
     expect(outcome).toEqual({ status: 'failed', reason: 'disk full' });
     expect(useSyncStore.getState().enabled).toBe(false);
+    expect(deleteUnreferencedImages).not.toHaveBeenCalled();
   });
 
   it('refuses while a sync is running', async () => {
     useSyncStore.setState({ phase: 'syncing' });
-    const outcome = await useSyncStore.getState().eraseAndJoin(jest.fn());
+    const outcome = await useSyncStore.getState().eraseAndJoin('icloud', jest.fn());
     expect(outcome.status).toBe('failed');
     expect(joinAfterErasing).not.toHaveBeenCalled();
   });

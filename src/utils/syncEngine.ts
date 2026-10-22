@@ -662,7 +662,7 @@ function messageOf(e: unknown, fallback: string): string {
 /** How `joinAfterErasing` ended. Only `joined` erased anything. */
 export type JoinAfterErasingResult =
   | { status: 'joined'; run: SyncRunResult }
-  /** The store holds nothing from another device. */
+  /** The store holds no rows at all. */
   | { status: 'nothing-to-join' }
   /** The download failed, or this is the demo database. */
   | { status: 'failed'; reason: string };
@@ -674,9 +674,12 @@ export type JoinAfterErasingResult =
  * **The download comes first, and the erase waits for it.** A device erased
  * and then left offline, or erased to join a store nothing has synced to yet,
  * is a device emptied for nothing. So the whole store is pulled before
- * `erase` runs, and nothing is erased unless that worked and it holds rows
- * from some other device. That is also the only guard against choosing this
- * on the device that was meant to be kept, when it syncs first.
+ * `erase` runs, and nothing is erased unless that worked and it holds rows.
+ * That is also the only guard against choosing this on the device that was
+ * meant to be kept, when it syncs first. This device's own earlier payloads
+ * count: they come back under the new id, so a device erased against a store
+ * only it ever wrote to gets its own data back, and one whose history it
+ * compacted into a snapshot of its own is not refused.
  *
  * The rows that pull brought are then applied by an ordinary `runSync`, handed
  * the same result rather than downloading it twice. Its push finds nothing to
@@ -703,14 +706,11 @@ export async function joinAfterErasing(
     return { status: 'failed', reason: messageOf(e, 'Couldn’t receive changes.') };
   }
 
-  const before = local.deviceId();
-  const fromAnotherDevice = pulled.payloads.some(raw => {
+  const holdsRows = pulled.payloads.some(raw => {
     const parsed = parsePayload(raw);
-    return parsed.ok
-      && parsed.payload.deviceId !== before
-      && Object.values(parsed.payload.tables).some(rows => rows.length > 0);
+    return parsed.ok && Object.values(parsed.payload.tables).some(rows => rows.length > 0);
   });
-  if (!fromAnotherDevice) return { status: 'nothing-to-join' };
+  if (!holdsRows) return { status: 'nothing-to-join' };
 
   erase();
 

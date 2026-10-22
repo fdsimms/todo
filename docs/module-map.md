@@ -414,7 +414,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/recipeComponents.ts` — parseRecipeComponents, normalizeComponent, componentPlacement, LayoutItem, ingredientLayout, reanchorComponents, parseRecipeChoices, parseRecipeOverrides, makeComponent, ChoiceResolution, +34 more
 - `src/utils/recipeCost.ts` — CostEstimate, estimateRecipeCost, estimateWeekCost, describeRecipeCost, describeWeekCost
 - `src/utils/recipeEstimateQueue.ts` — PendingRecipeEstimateStatus, PendingRecipeEstimate, liveFor, awaitingRecipeEstimate
-- `src/utils/recipeImageSync.ts` — recipeImageNames, readRecipeImageForSync, hasRecipeImageForSync, writeRecipeImageFromSync, recipeIdsIn, unreferencedImageNames, applyWithRecipeImages
+- `src/utils/recipeImageSync.ts` — recipeImageNames, readRecipeImageForSync, hasRecipeImageForSync, writeRecipeImageFromSync, recipeIdsIn, unreferencedImageNames, recipeImagePaths, deleteUnreferencedImages, applyWithRecipeImages
 - `src/utils/recipeImportComponents.ts` — ReferenceCandidate, referencePageNumber, importableReferences, coveredIngredients, ComponentImportState, seededComponentKeys, nextComponentPhotos, coveringComponentKeys, ComponentCommit, componentCommitFor, +6 more
 - `src/utils/recipeImportPreview.ts` — ImportPreviewLine, methodRowMeta, prepTasksRowMeta, methodPreviewLines, prepTaskPreviewLines, previewToggleLabel
 - `src/utils/recipeNutrition.ts` — RecipeNutrition, NutritionLineState, recipeNutrition, componentShares, RecipeNutritionReading, readRecipeNutrition, NutritionLine, recipeNutritionLines, ExcludedNutritionLine, excludedNutritionLines, +10 more
@@ -699,7 +699,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useSharedLinkStore.ts` — useSharedLinkStore
 - `src/store/useShieldReleaseStore.ts` — useShieldReleaseStore
 - `src/store/useStepTimerStore.ts` — useStepTimerStore
-- `src/store/useSyncStore.ts` — SERVER_HEALTH_LOGS_KEY, SERVER_HEALTH_RESEND_KEY, NOTHING_OWED, SERVER_JOURNAL_KEY, SERVER_JOURNAL_RESEND_KEY, SYNC_EPOCH, withholdingFor, markHealthLogsWithheld, settleHealthLogResend, SyncPhase, +7 more
+- `src/store/useSyncStore.ts` — SERVER_HEALTH_LOGS_KEY, SERVER_HEALTH_RESEND_KEY, NOTHING_OWED, SERVER_JOURNAL_KEY, SERVER_JOURNAL_RESEND_KEY, SYNC_EPOCH, withholdingFor, markHealthLogsWithheld, settleHealthLogResend, SyncPhase, +10 more
 - `src/store/useTabHubMenuStore.ts` — TabHubMenu, useTabHubMenuStore
 - `src/store/useTaskGroupStore.ts` — useTaskGroupStore
 - `src/store/useTaskStore.ts` — offerMealLog, TimeBlockPlan, writeEditToFollowUpSource, hasEstimateSource, redoRestoringRows, captureFollowUpDrafts, useTaskStore
