@@ -59,7 +59,6 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   { name: 'settings', key: ['key'] },
   { name: 'tasks', key: ['id'] },
   { name: 'task_groups', key: ['id'] },
-  { name: 'saved_views', key: ['id'] },
   { name: 'projects', key: ['id'] },
   { name: 'people', key: ['id'] },
   { name: 'person_notes', key: ['id'] },
@@ -78,11 +77,6 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   // Copy flags (CopyFlag): temporary dev tooling. They have to travel so the
   // MCP server can read what the phone flagged and resolve it.
   { name: 'copy_flags', key: ['id'] },
-  // Meter readings (MeterReading): an odometer entry has to travel, or a task
-  // due at 45,000 miles surfaces on one phone and not the other. Rows are
-  // inserted or deleted, never edited, so two devices logging at once both
-  // keep theirs.
-  { name: 'meter_readings', key: ['id'] },
   // Workouts (docs/arch/workouts.md). Custom exercises, routines and programs
   // are plans, and travel like any other synced data; a custom exercise's name
   // is a natural key (NATURAL_KEYS), so the same one made on two phones folds
@@ -479,10 +473,6 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'completedRetentionDays',
   'postponeCheckEnabled',
   'postponeCheckThreshold',
-  'scrollNudgeEnabled',
-  'scrollNudgeSeconds',
-  'scrollNudgeCooldownMinutes',
-  'scrollNudgeDailyCap',
   'simpleTaskForm',
   'simpleMode',
   'sortOption',

@@ -52,12 +52,8 @@ export interface NavContentCounts {
   foodLog?: number;
   journal?: number;
   dreams?: number;
-  /** Meter readings: the Meters screen's content. */
-  meters?: number;
   /** Workouts, custom exercises, routines and programs: the Workouts screen's content. */
   workouts?: number;
-  /** Saved views: the Saved views screen's content. */
-  savedViews?: number;
 }
 
 export type NavHubId = 'kitchen' | 'organize' | 'history' | 'health';
@@ -149,15 +145,8 @@ const ORGANIZE_HUB: NavHub = {
     { route: 'Categories', label: 'Categories', icon: 'folder-outline', keywords: ['areas', 'lists', 'groups'] },
     { route: 'Tags', label: 'Tags', icon: 'pricetag-outline', keywords: ['labels'] },
     { route: 'People', label: 'People', icon: 'people-outline', keywords: ['contacts', 'birthdays', 'friends', 'family'] },
-    // Something tasks belong to, as a tag or a person is: the odometer an oil
-    // change is due by. See docs/arch/meters.md.
-    { route: 'Meters', label: 'Meters', icon: 'speedometer-outline', keywords: ['odometer', 'mileage', 'miles', 'usage', 'readings', 'hours', 'counter', 'oil change'] },
     { route: 'Stacks', label: 'Stacks', icon: 'layers-outline', keywords: ['groups', 'routines', 'bundles'] },
     { route: 'Templates', label: 'Templates', icon: 'copy-outline', keywords: ['presets', 'checklists', 'reusable'] },
-    // A funnel, because that is the idea and that is where views are made:
-    // Today's filter sheet. A member rather than a row of its own, since a
-    // view is a way of organizing tasks the way a tag is.
-    { route: 'SavedViews', label: 'Saved views', icon: 'funnel-outline', keywords: ['filter', 'filters', 'lens', 'preset', 'smart list', 'saved search'] },
   ],
 };
 
@@ -430,10 +419,7 @@ export interface NavSearchResult extends NavDestination {
  * The menu is fourteen rows because that is about what fits on a phone, and the hubs
  * exist to keep it there — so a surface that doesn't earn a row still needs
  * *some* way to be found by name, or it is reachable only from whichever
- * screen happens to link to it. Saved views is the first of these: it is
- * opened from Today's filter sheet, where filtering already happens, and
- * would otherwise be invisible to somebody who knows it exists and is looking
- * for it.
+ * screen happens to link to it.
  *
  * Cookbooks is a tab route with no row, so opening it highlights nothing.
  */

@@ -1742,17 +1742,6 @@ describe('the replica', () => {
     expect(result.completed.deliverableValue).toBe('Green');
   });
 
-  it('adds a look-back when asked, and reads its answer as the decision\'s outcome', () => {
-    const task = replica.createTask({ title: 'Which contractor?', deliverableKind: 'text' });
-    const done = completeTaskTool(replica, task.id, { deliverableValue: 'Bob', lookBackAfter: '1m' });
-    expect(done.spawned.join(' ')).toMatch(/look-back task "How did it turn out\? Which contractor\?"/);
-    const review = replica.tasks().find(t => t.reviewOfTaskId === task.id)!;
-    expect(getTaskTool(replica, review.id)?.task).toMatchObject({ lookBackOf: task.id, asksOnCompletion: 'text' });
-
-    completeTaskTool(replica, review.id, { deliverableValue: 'On time and under budget' });
-    expect(getTaskTool(replica, task.id)?.task).toMatchObject({ answer: 'Bob', outcome: { text: 'On time and under budget' } });
-  });
-
   // A fixed set of answers takes one of them, in the option's own spelling,
   // or the project's tally counts it as no answer.
   it('takes one of a Pick one question\'s options, and refuses anything else', () => {

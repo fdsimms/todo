@@ -5,7 +5,7 @@ import type { Category, GeneratedKind, Task } from '../types';
 
 /**
  * "If the day is full, wait": a task whose date is a target rather than a
- * promise. Store-free, like `meters.ts` and `weatherWait.ts`: this module is
+ * promise. Store-free, like `weatherWait.ts`: this module is
  * the decision, and `applySlotIns` in `useTaskStore.ts` is what writes it.
  * See `docs/arch/slot-in.md`.
  *
@@ -38,8 +38,8 @@ export const SLOT_IN_LIGHT_DAY_MAX = 2;
  */
 const SLOT_IN_GENERATED_KINDS: ReadonlySet<GeneratedKind> = new Set<GeneratedKind>(['reachOut']);
 
-// The two day-key helpers from dateUtils, restated for the reason meters.ts
-// gives: that module reads the settings store. Same keys, local not UTC.
+// The two day-key helpers from dateUtils, restated because that module reads
+// the settings store. Same keys, local not UTC.
 const dayKeyOf = (date: Date) => format(date, 'yyyy-MM-dd');
 const dayKeyToDate = (key: string) => new Date(`${key}T00:00:00`);
 const nextDayKey = (key: string) => dayKeyOf(addDays(dayKeyToDate(key), 1));
@@ -49,7 +49,7 @@ type SlotInSource = Pick<
   Task,
   | 'parentId' | 'completed' | 'archived' | 'dueDate' | 'targetCount' | 'recurrenceType'
   | 'recurrenceInterval' | 'polarity' | 'reminderTime' | 'generatedKind'
-> & Partial<Pick<Task, 'meterName' | 'weatherWait'>>;
+> & Partial<Pick<Task, 'weatherWait'>>;
 
 /**
  * Whether a task can wait for a lighter day at all, whatever its setting says.
@@ -57,7 +57,7 @@ type SlotInSource = Pick<
  * It needs a date, since a task with none has no day to be full. The rest are
  * tasks for which waiting means something else already: a daily target or a
  * daily repeat (tomorrow has its own, so waiting is a skipped day), an
- * every-N-hours task, a meter or weather wait (each owns `deferUntil` itself),
+ * every-N-hours task, a weather wait (which owns `deferUntil` itself),
  * an avoid-habit (nothing to do), and a reminder set for a moment, which
  * would fire on a day the task is no longer on.
  */
@@ -66,7 +66,7 @@ export function canSlotIn(task: SlotInSource): boolean {
   if (task.targetCount !== null) return false;
   if (task.recurrenceType === 'hours') return false;
   if (task.recurrenceType === 'daily' && task.recurrenceInterval <= 1) return false;
-  if (task.meterName || task.weatherWait) return false;
+  if (task.weatherWait) return false;
   if (task.polarity === 'negative') return false;
   if (task.reminderTime) return false;
   if (task.generatedKind !== null && !SLOT_IN_GENERATED_KINDS.has(task.generatedKind)) return false;

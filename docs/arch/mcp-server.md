@@ -338,7 +338,7 @@ does not know `preview_change`.
 A write-scoped connection sends every tool's description and input schema in front of the first message, so their size is a cost on every conversation: the server was about 490 KB (around 120k tokens) at 213 tools. Two rules keep it from growing back.
 
 - **Say the confirm flow once.** The full explanation is in the server instructions and `preview_change`. A write tool's description ends with the one-line `CONFIRM_NOTE`, and its `apply` / `confirmToken` / `willDo` parameters have one-line descriptions. They sit on 158 tools, so a sentence added to either is paid 158 times.
-- **A task nested inside another tool takes `coreTaskFieldsShape`, not `taskFieldsShape`.** A project step and a batch `update` hold a task, and the whole-object fields (repeat, target, meter, chain, rotation, follow-up, supply, health target, timed, reminder and deadline rules, medication, onlyIfAnswer) are about 30 KB of schema that each tool would repeat. Those are set with `update_task`. The nested objects are `.strict()`, so naming one is an error that says so rather than a field quietly dropped. Only `create_task` and `update_task` take the full shape.
+- **A task nested inside another tool takes `coreTaskFieldsShape`, not `taskFieldsShape`.** A project step and a batch `update` hold a task, and the whole-object fields (repeat, target, chain, rotation, follow-up, supply, health target, timed, reminder and deadline rules, medication, onlyIfAnswer) are about 30 KB of schema that each tool would repeat. Those are set with `update_task`. The nested objects are `.strict()`, so naming one is an error that says so rather than a field quietly dropped. Only `create_task` and `update_task` take the full shape.
 
 To measure a change, run the server with `MCP_AUTH_TOKEN`, `MCP_WRITE_TOKEN` and `TODO_DB_PATH` set and POST `tools/list` to `/mcp` with the write token.
 
@@ -970,13 +970,13 @@ way to make one was a throwaway task created with `newCategory`.
 suggestions, the default time of day); `reorder` with kind `categories` orders Today's sections. A rename goes
 through `useCategoryStore.renameCategory` (which renames the column on tasks, stacks and project
 defaults in SQL) and then reaches everything else the app's `renameCategory` reaches: series defaults
-and follow-up drafts, saved views, template items, the generators' "File them under", the calendar
+and follow-up drafts, template items, the generators' "File them under", the calendar
 and Health sections, new-task defaults, every kind of rule and reminder capture. A name another
 category already has is refused with a pointer to `delete_category`'s `moveTo`, since that is a merge.
 
 `rename_tag` is the tag counterpart, and the app's `renameTag` shape: every task carrying the tag
 (finished and archived ones too), its series defaults and follow-up drafts, the tag list, stacks,
-template items, saved views, title rules, reminder captures and generator extras, through the shared
+template items, title rules, reminder captures and generator extras, through the shared
 helpers in `src/utils/tagRename.ts`. Unlike a category, renaming onto a tag that already exists is
 allowed and merges the two, so the tool's description asks Claude to check first and the result says
 `merged`. Each task it touched gets its own Activity entry with a revert.
@@ -1504,21 +1504,9 @@ The flag is an ordinary synced row (`copy_flags`), so `list_copy_flags` reads it
 
 **Remove before real users.** Delete `copy_flags` (`database.ts`, `syncTracking.ts`, `BACKUP_TABLES`), `CopyFlag`, `useCopyFlagStore` (and its line in `useTaskStore`'s fan-out), `copyFlagMode.ts`, `FlagCopyHost` (and its mount in `App.tsx`), the `withCopyFlagging` hook in `AppFont.tsx`, the About row and its `settingsIndex` entry, `copyFlagTools.ts` and the two tools with their annotations and replica methods, and this section.
 
-### Meters
+### Focus sessions, milestones and the vacation switch
 
-A task due at a reading (`meter` on a task write, `src/utils/meters.ts`) is written like any other
-field, refused on anything but a plain one-off for the reason `weatherWait` is: both are held by a
-pass that owns `deferUntil`, and that pass runs on the phone. So this server records the want and
-the readings and never moves a meter task itself; `meterHeldUntil`, the pass's mark on its own
-hold, is cleared when a meter is taken off and otherwise left alone. Readings go through
-`useMeterReadingStore`'s own action (`meterTools.ts`), are only ever added or deleted, and belong
-to the meter rather than a task, so `log_meter_reading` moves every task on that meter once the
-phone syncs. A completion here passes the readings into `buildCompletion`, so the next occurrence
-counts on from the same baseline the phone would use.
-
-### Focus sessions, milestones, saved views and the vacation switch
-
-Four areas had no MCP read or write, and the shape of each answer follows from what syncs:
+Three areas had no MCP read or write, and the shape of each answer follows from what syncs:
 
 - **Focus sessions are history only, and that is the sync model working.** `focus_history` reads
   `focus_session_log`, the finished sessions Stats reads (`focusStats.ts`: the summary, how
@@ -1606,13 +1594,6 @@ Four areas had no MCP read or write, and the shape of each answer follows from w
   is labelled estimated in the field names and a note, in kilograms, because it is a calculation and
   never a lift; nothing it returns is relative to a body weight. Like `list_workouts` it reads sets,
   so it is empty without Include health logs and says that an empty history is not evidence.
-- **Saved views are read through the app's own matcher** (`filterTasksForView`, with the app's
-  held-back rule and logical day), so a view's count here is the count the Saved Views screen shows.
-  `create_saved_view` runs its clauses through `parseSavedViewClauses`, the tolerant parser the app
-  uses, and then compares what survived with what was asked: a clause the parser would drop, a
-  second clause of one kind, a category nobody has or a project id that is not theirs is refused
-  by name rather than stored as a view that means less than it was told to. `update_saved_view`
-  runs an edit through the same checks, and moves a view in the list.
 - **The vacation switch is the settings store's own setter**, so what `set_vacation_mode` does is
   what the Settings toggle does. The rule every off-path shares, that the protected streaks are
   forgiven first or a paused daily habit reads as broken the moment the pause lifts, was lifted out

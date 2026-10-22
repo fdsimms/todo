@@ -1,10 +1,9 @@
-import type { FollowUpTaskDraft, ReminderCapture, SavedViewClause, TitleRule } from '../types';
+import type { FollowUpTaskDraft, ReminderCapture, TitleRule } from '../types';
 import {
   renameInFollowUpDraft,
   renameInReminderCaptures,
   renameInSeriesDefaults,
   renameInTitleRules,
-  renameInViewClauses,
 } from '../utils/categoryRename';
 
 describe('renameInSeriesDefaults / renameInFollowUpDraft', () => {
@@ -20,29 +19,6 @@ describe('renameInSeriesDefaults / renameInFollowUpDraft', () => {
     expect(renameInSeriesDefaults(defaults, 'Work', 'Job')).toBe(defaults);
     expect(renameInSeriesDefaults(null, 'Work', 'Job')).toBeNull();
     expect(renameInFollowUpDraft(null, 'Work', 'Job')).toBeNull();
-  });
-});
-
-describe('renameInViewClauses', () => {
-  it('renames inside a category clause only', () => {
-    const clauses: SavedViewClause[] = [
-      { kind: 'category', values: ['Work', 'Home'] },
-      { kind: 'tag', values: ['Work'] },
-    ];
-    expect(renameInViewClauses(clauses, 'Work', 'Job')).toEqual([
-      { kind: 'category', values: ['Job', 'Home'] },
-      { kind: 'tag', values: ['Work'] },
-    ]);
-  });
-
-  it('does not list the new name twice when the view already had it', () => {
-    const clauses: SavedViewClause[] = [{ kind: 'category', values: ['Work', 'Job'] }];
-    expect(renameInViewClauses(clauses, 'Work', 'Job')).toEqual([{ kind: 'category', values: ['Job'] }]);
-  });
-
-  it('returns the same array when no clause names the category', () => {
-    const clauses: SavedViewClause[] = [{ kind: 'category', values: ['Home'] }];
-    expect(renameInViewClauses(clauses, 'Work', 'Job')).toBe(clauses);
   });
 });
 

@@ -20,7 +20,6 @@
 import { format } from 'date-fns/format';
 import type { FoodLogEntry, GroceryItem, GroceryListEntry, MedicationLog, MoodLog, Project, Task, TaskTemplate } from '../../src/types';
 import type { AnswerEdit, MedicationSettingsView, Replica } from './replica';
-import type { ReviewAfter } from '../../src/utils/decisionReview';
 import { describeTemplateChanges, resolveRef, templateToPlan, templateVersion, templateWarnings, type TemplatePatch, type TemplatePlan } from './templatePlan';
 import { isRotationTask } from '../../src/utils/rotation';
 import { liveFollowUpSource } from '../../src/utils/followUpTask';
@@ -1109,9 +1108,9 @@ export interface CompleteTaskResult {
 export function completeTask(
   replica: Replica,
   id: string,
-  options?: { deliverableValue?: string | null; completedAt?: string; why?: string; revisitIf?: string; lookBackAfter?: ReviewAfter },
+  options?: { deliverableValue?: string | null; completedAt?: string; why?: string; revisitIf?: string },
 ): CompleteTaskResult {
-  const { why, revisitIf, lookBackAfter, ...rest } = options ?? {};
+  const { why, revisitIf, ...rest } = options ?? {};
   // Reasoning only means something next to an answer; `in` keeps the
   // "was an answer sent at all" test the refusal makes intact.
   const result = replica.completeTask(id, options === undefined ? undefined : {
@@ -1119,7 +1118,6 @@ export function completeTask(
     ...(why !== undefined || revisitIf !== undefined
       ? { deliverableReasoning: { why: why ?? null, revisitIf: revisitIf ?? null } }
       : {}),
-    ...(lookBackAfter ? { reviewAfter: lookBackAfter } : {}),
   });
   const spawned: string[] = [];
   if (result.nextTask) {
@@ -1130,9 +1128,6 @@ export function completeTask(
   }
   if (result.followUpTask) {
     spawned.push(`This completion earned the follow-up task "${result.followUpTask.title}".`);
-  }
-  if (result.reviewTask) {
-    spawned.push(`A look-back task "${result.reviewTask.title}" was created, due ${replica.dayKeyOf(result.reviewTask.dueDate!)}. Its answer is shown as this decision's outcome.`);
   }
   if (result.rolledOver.length > 0) {
     spawned.push(`The last date of the series was completed, so the next set of ${result.rolledOver.length} was created.`);

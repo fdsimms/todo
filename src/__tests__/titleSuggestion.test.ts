@@ -20,8 +20,6 @@ const base: TitleSuggestionContext = {
   weatherWait: null,
   polarity: 'positive',
   windowEnd: null,
-  hasMeter: false,
-  knownMeters: ['Car'],
   hasRainSkip: false,
   rainUnit: 'mm',
   sunClock: () => '19:30',
@@ -89,16 +87,6 @@ describe('pickTitleSuggestion', () => {
     expect(s?.kind).toBe('sun');
     if (s?.kind === 'sun') expect(s.hit.clock).toBe('19:30');
     expect(kindOf('porch lights after sunset', { sunClock: () => null })).toBeNull();
-  });
-
-  it('files a meter under the name already read', () => {
-    const s = pickTitleSuggestion('change the oil every 5,000 miles on the car', base);
-    expect(s?.kind).toBe('meter');
-    if (s?.kind === 'meter') {
-      expect(s.hit.meterName).toBe('Car');
-      expect(s.hit.read).toBe(true);
-    }
-    expect(kindOf('change the oil every 5,000 miles on the car', { hasMeter: true })).toBeNull();
   });
 
   it('skips for rain only on a repeat with the weather switch on', () => {

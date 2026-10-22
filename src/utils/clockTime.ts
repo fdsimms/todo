@@ -91,9 +91,8 @@ export function carryClockTime(onto: Date, original: Date, dayResetTime: string)
  * The math lives here rather than beside its first caller so a store-free
  * module can share it rather than fork it — the same split getTaskDayStart
  * makes with taskDayStart above. `overdueDays` in pinSuggest.ts is this with a
- * Task in front of it, and savedViews.ts reads it directly because importing
- * pinSuggest would pull the settings and category stores, and so expo-sqlite,
- * into a module that exists to stay inside Jest's node environment.
+ * Task in front of it; importing pinSuggest instead would pull the settings and
+ * category stores, and so expo-sqlite, into any store-free caller.
  *
  * All local-time arithmetic. Comparing the date halves of two ISO strings is
  * off by a day everywhere east of UTC+12, since dueDate is stored at local
