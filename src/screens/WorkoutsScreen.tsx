@@ -602,7 +602,7 @@ export function WorkoutsScreen() {
           </View>
         )}
         {(next || raises.length > 0) && (
-          <View style={styles.actions}>
+          <View style={[styles.actions, styles.programActions]}>
             {raises.length > 0 && <InlineAction label="Start again" onPress={startNextCycle} />}
             {next && (
               <InlineAction
@@ -1008,6 +1008,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: spacing.xxs,
   },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.xs },
+  programActions: { marginTop: spacing.md },
   row: {
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.lg,
