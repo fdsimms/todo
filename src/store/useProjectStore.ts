@@ -340,7 +340,7 @@ interface ProjectStore {
   initialized: boolean;
   initialize: () => void;
   createProject: (title: string, options?: CreateProjectOptions) => Project;
-  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'deadline' | 'eventDate' | 'category' | 'defaultTaskCategory' | 'taskDefaults' | 'nudgeCadenceDays' | 'autoSchedule' | 'nudgeOptIn' | 'weekendSource' | 'reviewDeclinedAt' | 'reviewedAt' | 'backfillDismissedFields' | 'ongoing' | 'awayStart' | 'awayEnd' | 'awayPauses' | 'awayPauseDeclinedFor' | 'destination' | 'awayListId' | 'awayListDeclinedFor' | 'pausedUntil' | 'personIds' | 'links' | 'inOrder' | 'hideNextStep' | 'groupOnToday' | 'list' | 'destinationLatitude' | 'destinationLongitude'>>) => void;
+  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'deadline' | 'eventDate' | 'category' | 'defaultTaskCategory' | 'taskDefaults' | 'nudgeCadenceDays' | 'autoSchedule' | 'nudgeOptIn' | 'weekendSource' | 'reviewDeclinedAt' | 'reviewedAt' | 'backfillDismissedFields' | 'ongoing' | 'awayStart' | 'awayEnd' | 'awayPauses' | 'awayPauseDeclinedFor' | 'destination' | 'awayListId' | 'awayListDeclinedFor' | 'pausedUntil' | 'personIds' | 'links' | 'inOrder' | 'hideNextStep' | 'groupOnToday' | 'list' | 'boardView' | 'destinationLatitude' | 'destinationLongitude'>>) => void;
   /** Filing several projects at once from the Projects screen's bulk bar. */
   bulkSetProjectCategory: (ids: string[], category: string | null) => void;
   getProjectById: (id: string) => Project | null;
@@ -500,6 +500,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       hideNextStep: false,
       groupOnToday: false,
       list: options.list ?? false,
+      boardView: false,
     };
     dbInsertProject(project);
     set(s => ({ projects: [...s.projects, project] }));

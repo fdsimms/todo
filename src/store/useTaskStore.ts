@@ -10459,6 +10459,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       hideNextStep: source.hideNextStep,
       groupOnToday: source.groupOnToday,
       list: source.list ?? false,
+      boardView: source.boardView ?? false,
     });
 
     const sectionFor = new Map<string, string>();

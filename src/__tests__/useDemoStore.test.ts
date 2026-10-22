@@ -1691,6 +1691,15 @@ describe('demo mode', () => {
   // The only stack in the seed with no members at all. Every other screen
   // finds a stack through its children, so without one homed on a project
   // there's nothing in demo mode that shows a stack can be empty.
+  it('seeds a project drawn as a board, with sections for its columns', () => {
+    useDemoStore.getState().enterDemoMode();
+
+    const camping = useProjectStore.getState().projects.find(p => p.title === 'Camping kit');
+    expect(camping?.boardView).toBe(true);
+    const sections = useTaskGroupStore.getState().groups.filter(g => g.projectId === camping!.id);
+    expect(sections.length).toBeGreaterThanOrEqual(2);
+  });
+
   it('seeds a project grouped on Today, with a stack in its band', () => {
     useDemoStore.getState().enterDemoMode();
 

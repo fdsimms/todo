@@ -2379,6 +2379,8 @@ function runInitDatabase(): void {
     // Off on every existing project: Today keeps its category sections until
     // a project asks for a band of its own. See Project.groupOnToday.
     'ALTER TABLE projects ADD COLUMN group_on_today INTEGER NOT NULL DEFAULT 0',
+    // Off on every existing project: the page stays a list. See Project.boardView.
+    'ALTER TABLE projects ADD COLUMN board_view INTEGER NOT NULL DEFAULT 0',
     // Null on every existing reward: none guards a habit. See Reward.guardsTaskId.
     'ALTER TABLE rewards ADD COLUMN guards_task_id TEXT',
     // Null on every existing reward: none is limited. See Reward.claimEveryDays.
@@ -9497,6 +9499,7 @@ function rowToProject(row: Record<string, unknown>): Project {
     hideNextStep: row.hide_next_step === 1,
     groupOnToday: row.group_on_today === 1,
     list: row.is_list === 1,
+    boardView: row.board_view === 1,
     eventDate: (row.event_date as string) ?? null,
     taskDefaults: parseTaskFieldDefaults(row.task_defaults),
   };
@@ -9509,7 +9512,7 @@ export function dbGetAllProjects(): Project[] {
 
 export function dbInsertProject(project: Project): void {
   db.runSync(
-    'INSERT INTO projects (id, title, notes, target_end_date, category, default_task_category, sort_order, archived, archived_at, completed, completed_at, ongoing, created_at, nudge_cadence_days, auto_schedule, nudge_opt_in, weekend_source, review_declined_at, reviewed_at, backfill_dismissed_fields, away_start, away_end, away_pauses, away_pause_declined_for, destination, away_list_id, away_list_declined_for, paused_until, person_ids, links, in_order, hide_next_step, event_date, task_defaults, destination_latitude, destination_longitude, group_on_today, is_list) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO projects (id, title, notes, target_end_date, category, default_task_category, sort_order, archived, archived_at, completed, completed_at, ongoing, created_at, nudge_cadence_days, auto_schedule, nudge_opt_in, weekend_source, review_declined_at, reviewed_at, backfill_dismissed_fields, away_start, away_end, away_pauses, away_pause_declined_for, destination, away_list_id, away_list_declined_for, paused_until, person_ids, links, in_order, hide_next_step, event_date, task_defaults, destination_latitude, destination_longitude, group_on_today, is_list, board_view) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     [
       project.id, project.title, project.notes, project.deadline,
       project.category, project.defaultTaskCategory, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
@@ -9526,13 +9529,14 @@ export function dbInsertProject(project: Project): void {
       project.destinationLatitude ?? null, project.destinationLongitude ?? null,
       project.groupOnToday ? 1 : 0,
       project.list ? 1 : 0,
+      project.boardView ? 1 : 0,
     ]
   );
 }
 
 export function dbUpdateProject(project: Project): void {
   db.runSync(
-    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, default_task_category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, ongoing=?, nudge_cadence_days=?, auto_schedule=?, nudge_opt_in=?, weekend_source=?, review_declined_at=?, reviewed_at=?, backfill_dismissed_fields=?, away_start=?, away_end=?, away_pauses=?, away_pause_declined_for=?, destination=?, away_list_id=?, away_list_declined_for=?, paused_until=?, person_ids=?, links=?, in_order=?, hide_next_step=?, event_date=?, task_defaults=?, destination_latitude=?, destination_longitude=?, group_on_today=?, is_list=? WHERE id=?',
+    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, default_task_category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, ongoing=?, nudge_cadence_days=?, auto_schedule=?, nudge_opt_in=?, weekend_source=?, review_declined_at=?, reviewed_at=?, backfill_dismissed_fields=?, away_start=?, away_end=?, away_pauses=?, away_pause_declined_for=?, destination=?, away_list_id=?, away_list_declined_for=?, paused_until=?, person_ids=?, links=?, in_order=?, hide_next_step=?, event_date=?, task_defaults=?, destination_latitude=?, destination_longitude=?, group_on_today=?, is_list=?, board_view=? WHERE id=?',
     [
       project.title, project.notes, project.deadline,
       project.category, project.defaultTaskCategory, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
@@ -9549,6 +9553,7 @@ export function dbUpdateProject(project: Project): void {
       project.destinationLatitude ?? null, project.destinationLongitude ?? null,
       project.groupOnToday ? 1 : 0,
       project.list ? 1 : 0,
+      project.boardView ? 1 : 0,
       project.id,
     ]
   );

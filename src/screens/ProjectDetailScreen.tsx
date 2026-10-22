@@ -44,7 +44,7 @@ import { LinkedText } from '../components/LinkedText';
 import { format } from 'date-fns/format';
 import { groupRoster, isHeldBack, isTaskNotNeeded } from '../utils/visibilityUtils';
 import { reuseUnchangedLists } from '../utils/stableLists';
-import { Alert, InteractionManager, Linking, Share } from 'react-native';
+import { Alert, InteractionManager, Linking, ScrollView, Share } from 'react-native';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { linkHost, parseLabelledLink } from '../utils/textLinks';
 import { OfferBanner } from '../components/OfferBanner';
@@ -65,6 +65,9 @@ import { confirmBulkSetWhen } from '../utils/scheduleMovePrompt';
 import { buildProjectListItems, filterProjectListItems, filterTasksByTitle, orderWithInserted, projectCopyText, type ProjectListItem } from '../utils/projectStacks';
 import { ProjectEditor } from '../components/ProjectEditor';
 import { ProjectPageMenu } from '../components/ProjectPageMenu';
+import { ProjectBoard } from '../components/ProjectBoard';
+import { completionTapFor } from '../utils/completionTap';
+import type { BoardMove } from '../utils/projectBoard';
 import { LazySheet } from '../components/LazySheet';
 import type { CardAnchor } from '../components/CardSheet';
 import { BulkActionBar } from '../components/BulkActionBar';
@@ -549,7 +552,7 @@ function ProjectDetailContent() {
   // happens: `complete` runs on every path out of the confirm except Cancel,
   // so backing out leaves the selection exactly as it was rather than making
   // the user rebuild it.
-  const { requestComplete, queueProps } = useAnswerFirstCompletion();
+  const { requestComplete, enqueue, queueProps } = useAnswerFirstCompletion();
   const handleBulkComplete = () => {
     const ids = Array.from(selectedIds);
     requestComplete({
@@ -573,6 +576,16 @@ function ProjectDetailContent() {
   // Which rows here are list items rather than tasks (src/utils/listMode.ts):
   // a list section's, and in a list project the loose rows too.
   const pageIsList = !!project?.list;
+  // Drawn as columns (ProjectBoard) rather than one list. See Project.boardView.
+  const boardView = !!project?.boardView;
+  // Bumped by the add button's New task on a board, which opens the field in
+  // the no-section column rather than at the foot of a list that isn't there.
+  const [boardLineSignal, setBoardLineSignal] = useState<number | null>(null);
+  // A board has no selection dots, so switching to one ends a selection rather
+  // than leaving the bulk bar up over rows that can't be picked.
+  useEffect(() => {
+    if (boardView && selectionMode) exitSelection();
+  }, [boardView, selectionMode, exitSelection]);
   const isListItem = useMemo(() => listItemFinder(taskGroups, projects), [taskGroups, projects]);
   // Below `project` on purpose: the selector runs during render, so above the
   // declaration it read `project` before it existed.
@@ -755,7 +768,8 @@ function ProjectDetailContent() {
       ? (sectionIsList(item.group, project) ? item.children.length : 0)
       : (pageIsList ? 1 : 0)), 0,
   );
-  const lineFilterShown = checklistLineCount >= LIST_FILTER_MIN_LINES;
+  // Not on a board, whose columns it doesn't narrow.
+  const lineFilterShown = checklistLineCount >= LIST_FILTER_MIN_LINES && !boardView;
   const filteringLines = lineFilterShown && lineFilter.query.trim().length > 0;
   const shownListItems = useMemo(
     () => (filteringLines ? filterProjectListItems(projectListItems, lineFilter.query) : projectListItems),
@@ -1015,6 +1029,7 @@ function ProjectDetailContent() {
    * add cost a sheet per task. Dropping the add button still opens the sheet.
    */
   const openTaskLine = () => {
+    if (boardView) { setBoardLineSignal(n => (n ?? 0) + 1); return; }
     setExpandedTaskId(null);
     setInsertAfterId(null);
     setSectionLine(null);
@@ -1326,6 +1341,42 @@ function ProjectDetailContent() {
   const onQuickAddResumed = useStableCallback(attachToProject);
 
 
+  // ==== the board (Project.boardView) ====
+  /**
+   * A card's box: the plain tick, or the question first for a task that asks
+   * one (useAnswerFirstCompletion). Every other kind of tap (a target logged a
+   * unit at a time, a meal to pick, a record to open) opens the task, where
+   * its own control does the right thing; a card is too small to hold them.
+   */
+  const checkBoardCard = (task: Task) => {
+    const tap = completionTapFor(task);
+    if (tap === 'complete') {
+      haptics.success();
+      animateLayout();
+      useTaskStore.getState().completeTask(task.id);
+    } else if (tap === 'ask') {
+      haptics.tap();
+      enqueue([task.id]);
+    } else if (tap !== 'locked') {
+      openEditor(task);
+    }
+  };
+
+  /** A drop on the board, written through the same actions a drag in the list uses. */
+  const moveBoardCard = (move: Extract<BoardMove, { kind: 'move' }>) => {
+    animateLayout();
+    if (move.joinGroupId) addExistingToGroup(move.taskId, move.joinGroupId);
+    else if (move.leaveGroupId) removeFromGroup(move.taskId);
+    if (move.groupId && move.groupOrder) reorderGroupChildren(move.groupId, move.groupOrder);
+    if (move.projectOrder) reorderProjectItems(projectId, move.projectOrder);
+  };
+
+  const addBoardLine = (group: TaskGroup | null, text: string, pending?: LinePending) => {
+    if (group) { addLineToSection(group, text, pending); return; }
+    createLine(text, { projectId }, pending, !pageIsList, pageIsList);
+    haptics.tap();
+  };
+
   // ==== row renderers ====
   // A completed row, in the block at the bottom. Not draggable.
   const renderCheckedRow = (task: Task) => {
@@ -1604,6 +1655,193 @@ function ProjectDetailContent() {
       );
     }
   };
+  // Above the rows in the list, and above the columns on a board (see ProjectBoard).
+  const pageHeader = (
+    <>
+      {showSummary && (
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryText}>
+            {summaryProgress}
+            {summaryProgress && summaryCaption ? ' · ' : ''}
+            {summaryCaption && (
+              <Text
+                style={summaryCaption.overdue && pastWindow
+                  ? styles.summaryOverdue
+                  : summaryCaption.soon ? styles.summarySoon : undefined}
+              >
+                {summaryCaption.text}
+              </Text>
+            )}
+          </Text>
+          {summaryProgress !== null && !projectProgressNote(project!, progress) && (
+            <ProgressBar progress={progress.done / progress.total} accessibilityLabel="Project progress" />
+          )}
+          {tripLine && <Text style={styles.summaryText}>{tripLine}</Text>}
+          {/* Each count is a button naming who it counts: "3 Maybe"
+              is a question about which three. Keyed by place, since
+              two sets can read the same ("1 Yes"). */}
+          {answerTallies.map((parts, row) => (
+            <Text key={`tally-${row}`} style={styles.summaryText}>
+              {parts.map((part, i) => (
+                <React.Fragment key={part.label}>
+                  {i > 0 && ', '}
+                  <Text
+                    style={styles.tallyCount}
+                    onPress={() => { haptics.tap(); Alert.alert(part.label, part.names.join('\n')); }}
+                    accessibilityRole="button"
+                    accessibilityHint="Lists who this counts"
+                  >
+                    {part.label}
+                  </Text>
+                </React.Fragment>
+              ))}
+            </Text>
+          ))}
+          {activityLine && (
+            <Text style={styles.summaryText}>{activityLine}</Text>
+          )}
+          {/* A pill on its own row rather than a tertiary-grey
+              suffix on the line above, which read as part of the
+              sentence and gave the tap a thin, wrapping target. */}
+          {activityLine && !selectionMode && (
+            <View style={styles.summaryActions}>
+              <InlineAction
+                icon="time-outline"
+                label="History"
+                variant="neutral"
+                onPress={() => {
+                  haptics.tap();
+                  navigateToTab('Logbook', { projectId, openProjectHistory: Date.now() });
+                }}
+                accessibilityLabel="Open this project’s history"
+              />
+            </View>
+          )}
+          {!selectionMode && routinesToCatchUp.length > 0 && (
+            <>
+              <Text style={styles.summaryText}>
+                {routinesToCatchUp.length === 1
+                  ? '1 repeating task came due while paused.'
+                  : `${routinesToCatchUp.length} repeating tasks came due while paused.`}
+              </Text>
+              <View style={styles.summaryActions}>
+                <InlineAction
+                  icon="arrow-forward-outline"
+                  label="Move"
+                  variant="neutral"
+                  onPress={() => { haptics.tap(); endPause(); }}
+                  accessibilityLabel={`${routinesToCatchUp.length} repeating ${routinesToCatchUp.length === 1 ? 'task' : 'tasks'} came due while paused. Choose whether to move them`}
+                />
+              </View>
+            </>
+          )}
+          {!selectionMode && (tripAhead || paused) && (
+            <View style={styles.summaryActions}>
+              {paused && (
+                <InlineAction
+                  icon={planning ? 'checkmark-circle-outline' : 'play-outline'}
+                  label={planning ? 'Mark ready' : 'Resume now'}
+                  variant="neutral"
+                  onPress={() => { haptics.tap(); endPause(); }}
+                  accessibilityLabel={planning
+                    ? 'Mark this project ready, so its tasks show up in your lists'
+                    : 'Resume this project now'}
+                />
+              )}
+              {tripAhead && (
+                <InlineAction
+                  icon="calendar-outline"
+                  label="What’s due before you leave"
+                  variant="neutral"
+                  onPress={() => { haptics.tap(); setLookAheadOpen(true); }}
+                />
+              )}
+            </View>
+          )}
+          {/* Its own row, under the text, so the line above never
+              gives up width to a button. */}
+          {!selectionMode && (project!.archived || project!.completed) && (
+            <View style={styles.summaryActions}>
+              <InlineAction
+                icon={project!.archived ? 'arrow-undo' : 'refresh'}
+                label={project!.archived ? 'Unarchive' : 'Reopen'}
+                variant="neutral"
+                onPress={() => {
+                  haptics.tap();
+                  if (project!.archived) unarchiveProject(project!.id);
+                  else uncompleteProject(project!.id);
+                }}
+                accessibilityLabel={project!.archived ? 'Unarchive this project' : 'Reopen this project'}
+              />
+            </View>
+          )}
+        </View>
+      )}
+      {(projectPeople.length > 0 || (project?.links.length ?? 0) > 0) && (
+        <View style={styles.infoCard}>
+          {projectPeople.length > 0 && (
+            <View style={styles.peopleRow}>
+              {projectPeople.map(person => (
+                <TouchableOpacity
+                  key={person.id}
+                  style={styles.personChip}
+                  onPress={() => { haptics.tap(); (navigation as any).navigate('PersonDetail', { personId: person.id }); }}
+                  disabled={selectionMode}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${displayNameOf(person)}. Opens their page`}
+                >
+                  <Ionicons name="person-circle-outline" size={16} color={colors.textSecondary} />
+                  <Text style={styles.personChipText} numberOfLines={1}>{displayNameOf(person)}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+          {project!.links.map(link => (
+            <TouchableOpacity
+              key={link.id}
+              style={styles.infoLinkRow}
+              onPress={() => { haptics.tap(); Linking.openURL(link.url).catch(() => {}); }}
+              onLongPress={() => { haptics.impactMedium(); Share.share({ url: link.url, message: link.url }); }}
+              disabled={selectionMode}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="link"
+              accessibilityLabel={`${link.label || linkHost(link.url)}. Opens the link`}
+            >
+              <Ionicons name="link-outline" size={16} color={colors.accent} />
+              <Text style={styles.infoLinkText} numberOfLines={1}>{link.label || linkHost(link.url)}</Text>
+              {!!link.label && <Text style={styles.infoLinkHost} numberOfLines={1}>{linkHost(link.url)}</Text>}
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+      {forecastLine && (
+        <View style={styles.forecastRow}>
+          <Ionicons name="partly-sunny-outline" size={16} color={colors.textSecondary} />
+          <View style={styles.forecastContent}>
+            <Text style={styles.forecastLine}>{forecastLine}</Text>
+            {forecastGap && <Text style={styles.forecastGap}>{forecastGap}</Text>}
+          </View>
+        </View>
+      )}
+      {/* Stays while selecting: the selection is taken from what it
+          leaves showing, so it has to be visible that it's on. */}
+      {lineFilterShown && (
+        <SearchField
+          style={styles.lineFilter}
+          field={lineFilter}
+          placeholder="Find a task or line"
+          accessibilityLabel="Find a task or line in this project"
+        />
+      )}
+      <ProjectDecisions
+        label="Decisions"
+        decisions={decisions}
+        outcomes={decisionOutcomeMap}
+        onPress={selectionMode ? undefined : task => setAnswerTaskId(task.id)}
+      />
+    </>
+  );
   return (
     <SpotlightProvider progress={spotlightProgress}>
       <View style={[styles.detailRoot, { paddingTop: insets.top + spacing.md }]}>
@@ -1699,6 +1937,41 @@ function ProjectDetailContent() {
           </TouchableOpacity>
         )}
 
+        {boardView ? (
+          <>
+            {/* Capped, so a long header can't squeeze the columns off the screen. */}
+            <ScrollView style={styles.boardHeader} showsVerticalScrollIndicator={false}>{pageHeader}</ScrollView>
+            <ProjectBoard
+              items={projectListItems}
+              columnIsList={group => (group ? sectionIsList(group, project) : pageIsList)}
+              onOpenTask={openEditor}
+              onCheck={checkBoardCard}
+              onOpenSection={group => { setEditingGroup(group); setGroupEditorVisible(true); }}
+              onMove={moveBoardCard}
+              renderNewLine={(group, close, next) => (
+                <NewLineField
+                  onAdd={(text, pending) => { addBoardLine(group, text, pending); next(); }}
+                  onAddMany={lines => {
+                    for (const line of cleanPastedLines(lines)) addBoardLine(group, line);
+                    next();
+                  }}
+                  onDone={close}
+                  styles={styles}
+                  placeholderColor={colors.textTertiary}
+                  placeholder={(group ? sectionIsList(group, project) : pageIsList) ? 'New item' : 'New task'}
+                  plain={group ? sectionIsList(group, project) : pageIsList}
+                  inTray
+                />
+              )}
+              onAddSection={createNamedSection}
+              openLineSignal={boardLineSignal}
+              namingSection={namingSection}
+              onStartNaming={() => setNamingSection(true)}
+              onNamingDone={() => setNamingSection(false)}
+              bottomPadding={fabBottom + FAB_SIZE + spacing.md}
+            />
+          </>
+        ) : (
         <View
           style={{ flex: 1 }}
           onTouchStart={expandedTaskId !== null ? handleListTouchStart : undefined}
@@ -1811,192 +2084,7 @@ function ProjectDetailContent() {
             // you're working through the tasks. Not tappable while selecting —
             // these rows aren't selectable, and a tap that opened a sheet
             // mid-selection would be the odd one out.
-            ListHeaderComponent={
-              <>
-                {showSummary && (
-                  <View style={styles.summaryCard}>
-                    <Text style={styles.summaryText}>
-                      {summaryProgress}
-                      {summaryProgress && summaryCaption ? ' · ' : ''}
-                      {summaryCaption && (
-                        <Text
-                          style={summaryCaption.overdue && pastWindow
-                            ? styles.summaryOverdue
-                            : summaryCaption.soon ? styles.summarySoon : undefined}
-                        >
-                          {summaryCaption.text}
-                        </Text>
-                      )}
-                    </Text>
-                    {summaryProgress !== null && !projectProgressNote(project!, progress) && (
-                      <ProgressBar progress={progress.done / progress.total} accessibilityLabel="Project progress" />
-                    )}
-                    {tripLine && <Text style={styles.summaryText}>{tripLine}</Text>}
-                    {/* Each count is a button naming who it counts: "3 Maybe"
-                        is a question about which three. Keyed by place, since
-                        two sets can read the same ("1 Yes"). */}
-                    {answerTallies.map((parts, row) => (
-                      <Text key={`tally-${row}`} style={styles.summaryText}>
-                        {parts.map((part, i) => (
-                          <React.Fragment key={part.label}>
-                            {i > 0 && ', '}
-                            <Text
-                              style={styles.tallyCount}
-                              onPress={() => { haptics.tap(); Alert.alert(part.label, part.names.join('\n')); }}
-                              accessibilityRole="button"
-                              accessibilityHint="Lists who this counts"
-                            >
-                              {part.label}
-                            </Text>
-                          </React.Fragment>
-                        ))}
-                      </Text>
-                    ))}
-                    {activityLine && (
-                      <Text style={styles.summaryText}>{activityLine}</Text>
-                    )}
-                    {/* A pill on its own row rather than a tertiary-grey
-                        suffix on the line above, which read as part of the
-                        sentence and gave the tap a thin, wrapping target. */}
-                    {activityLine && !selectionMode && (
-                      <View style={styles.summaryActions}>
-                        <InlineAction
-                          icon="time-outline"
-                          label="History"
-                          variant="neutral"
-                          onPress={() => {
-                            haptics.tap();
-                            navigateToTab('Logbook', { projectId, openProjectHistory: Date.now() });
-                          }}
-                          accessibilityLabel="Open this project’s history"
-                        />
-                      </View>
-                    )}
-                    {!selectionMode && routinesToCatchUp.length > 0 && (
-                      <>
-                        <Text style={styles.summaryText}>
-                          {routinesToCatchUp.length === 1
-                            ? '1 repeating task came due while paused.'
-                            : `${routinesToCatchUp.length} repeating tasks came due while paused.`}
-                        </Text>
-                        <View style={styles.summaryActions}>
-                          <InlineAction
-                            icon="arrow-forward-outline"
-                            label="Move"
-                            variant="neutral"
-                            onPress={() => { haptics.tap(); endPause(); }}
-                            accessibilityLabel={`${routinesToCatchUp.length} repeating ${routinesToCatchUp.length === 1 ? 'task' : 'tasks'} came due while paused. Choose whether to move them`}
-                          />
-                        </View>
-                      </>
-                    )}
-                    {!selectionMode && (tripAhead || paused) && (
-                      <View style={styles.summaryActions}>
-                        {paused && (
-                          <InlineAction
-                            icon={planning ? 'checkmark-circle-outline' : 'play-outline'}
-                            label={planning ? 'Mark ready' : 'Resume now'}
-                            variant="neutral"
-                            onPress={() => { haptics.tap(); endPause(); }}
-                            accessibilityLabel={planning
-                              ? 'Mark this project ready, so its tasks show up in your lists'
-                              : 'Resume this project now'}
-                          />
-                        )}
-                        {tripAhead && (
-                          <InlineAction
-                            icon="calendar-outline"
-                            label="What’s due before you leave"
-                            variant="neutral"
-                            onPress={() => { haptics.tap(); setLookAheadOpen(true); }}
-                          />
-                        )}
-                      </View>
-                    )}
-                    {/* Its own row, under the text, so the line above never
-                        gives up width to a button. */}
-                    {!selectionMode && (project!.archived || project!.completed) && (
-                      <View style={styles.summaryActions}>
-                        <InlineAction
-                          icon={project!.archived ? 'arrow-undo' : 'refresh'}
-                          label={project!.archived ? 'Unarchive' : 'Reopen'}
-                          variant="neutral"
-                          onPress={() => {
-                            haptics.tap();
-                            if (project!.archived) unarchiveProject(project!.id);
-                            else uncompleteProject(project!.id);
-                          }}
-                          accessibilityLabel={project!.archived ? 'Unarchive this project' : 'Reopen this project'}
-                        />
-                      </View>
-                    )}
-                  </View>
-                )}
-                {(projectPeople.length > 0 || (project?.links.length ?? 0) > 0) && (
-                  <View style={styles.infoCard}>
-                    {projectPeople.length > 0 && (
-                      <View style={styles.peopleRow}>
-                        {projectPeople.map(person => (
-                          <TouchableOpacity
-                            key={person.id}
-                            style={styles.personChip}
-                            onPress={() => { haptics.tap(); (navigation as any).navigate('PersonDetail', { personId: person.id }); }}
-                            disabled={selectionMode}
-                            activeOpacity={interaction.activeOpacity}
-                            accessibilityRole="button"
-                            accessibilityLabel={`${displayNameOf(person)}. Opens their page`}
-                          >
-                            <Ionicons name="person-circle-outline" size={16} color={colors.textSecondary} />
-                            <Text style={styles.personChipText} numberOfLines={1}>{displayNameOf(person)}</Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    )}
-                    {project!.links.map(link => (
-                      <TouchableOpacity
-                        key={link.id}
-                        style={styles.infoLinkRow}
-                        onPress={() => { haptics.tap(); Linking.openURL(link.url).catch(() => {}); }}
-                        onLongPress={() => { haptics.impactMedium(); Share.share({ url: link.url, message: link.url }); }}
-                        disabled={selectionMode}
-                        activeOpacity={interaction.activeOpacity}
-                        accessibilityRole="link"
-                        accessibilityLabel={`${link.label || linkHost(link.url)}. Opens the link`}
-                      >
-                        <Ionicons name="link-outline" size={16} color={colors.accent} />
-                        <Text style={styles.infoLinkText} numberOfLines={1}>{link.label || linkHost(link.url)}</Text>
-                        {!!link.label && <Text style={styles.infoLinkHost} numberOfLines={1}>{linkHost(link.url)}</Text>}
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
-                {forecastLine && (
-                  <View style={styles.forecastRow}>
-                    <Ionicons name="partly-sunny-outline" size={16} color={colors.textSecondary} />
-                    <View style={styles.forecastContent}>
-                      <Text style={styles.forecastLine}>{forecastLine}</Text>
-                      {forecastGap && <Text style={styles.forecastGap}>{forecastGap}</Text>}
-                    </View>
-                  </View>
-                )}
-                {/* Stays while selecting: the selection is taken from what it
-                    leaves showing, so it has to be visible that it's on. */}
-                {lineFilterShown && (
-                  <SearchField
-                    style={styles.lineFilter}
-                    field={lineFilter}
-                    placeholder="Find a task or line"
-                    accessibilityLabel="Find a task or line in this project"
-                  />
-                )}
-                <ProjectDecisions
-                  label="Decisions"
-                  decisions={decisions}
-                  outcomes={decisionOutcomeMap}
-                  onPress={selectionMode ? undefined : task => setAnswerTaskId(task.id)}
-                />
-              </>
-            }
+            ListHeaderComponent={pageHeader}
             // Every row doubles as a target for the add button being dragged
             // in. The wrapper only measures — it adds no styling and claims
             // no touches — so a row behaves exactly as it did without one,
@@ -2237,6 +2325,7 @@ function ProjectDetailContent() {
         </FabDropZoneProvider>
         </PaintSelectionProvider>
         </View>
+        )}
 
         {selectionMode && (
           <BulkActionBar
@@ -2387,8 +2476,9 @@ function ProjectDetailContent() {
             items={addMenuItems}
             onSelect={handleAddMenuSelect}
             accessibilityLabel="Add task to project"
-            drag={fabDrag}
-            dragHint="Drop on the list to add a task at that spot. Drop on a section to add it there. Drop on the button to cancel."
+            // A board has no list to drop onto: the button is tap-only there.
+            drag={boardView ? undefined : fabDrag}
+            dragHint={boardView ? undefined : 'Drop on the list to add a task at that spot. Drop on a section to add it there. Drop on the button to cancel.'}
           />
         )}
 
@@ -2580,6 +2670,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.lg,
   },
+  boardHeader: { flexGrow: 0, maxHeight: '40%' },
   newLineRow: {
     marginHorizontal: spacing.md,
     marginVertical: spacing.xxs,

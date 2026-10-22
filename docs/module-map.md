@@ -382,6 +382,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/productCase.ts` — readableProductCase
 - `src/utils/productCategory.ts` — CATEGORY_AISLES, aisleForProductCategory
 - `src/utils/projectBackfill.ts` — ProjectBackfillFieldId, ProjectBackfillFieldDef, PROJECT_BACKFILL_FIELDS, isProjectFieldMissing, isProjectBackfillDismissed, projectBackfillCandidates, projectBackfillFieldCounts, dismissProjectBackfillField
+- `src/utils/projectBoard.ts` — BoardColumn, LOOSE_COLUMN_KEY, boardColumns, columnIndexAt, insertIndexAt, BoardMove, boardMove
 - `src/utils/projectDateShortcuts.ts` — ProjectDateAnchor, ProjectDateShortcut, projectDateAnchor, projectDateShortcuts
 - `src/utils/projectGrouping.ts` — ProjectListItem, groupProjectsByCategory, ProjectDropResolution, resolveProjectDrop
 - `src/utils/projectList.ts` — ProjectListFilter, ProjectProgress, ProjectCardCaption, DUE_SOON_DAYS, describeProjectDeadline, describeProjectEvent, projectCardCaption, projectProgressNote, projectNextStepTitle, overdueRoutines, +8 more

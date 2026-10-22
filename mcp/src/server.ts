@@ -3870,7 +3870,7 @@ function registerWriteTools(
 
   server.tool(
     'update_project',
-    'Change a project: rename it, edit its notes, deadline or event date, set or clear its away dates and destination, re-file it, pause it until a day, set who it is with, its links, whether its steps go in order and how it nudges, mark it complete, or archive it. Its tasks are not touched unless moveTasks asks for them to follow a new event date; add steps with add_project_steps and edit them with update_task. The away dates are what the app\'s scheduled vacation mode and away grocery list run on, where the person has turned those on for the project (get_project shows pausesTasksWhileAway), so setting them is what schedules those.',
+    'Change a project: rename it, edit its notes, deadline or event date, set or clear its away dates and destination, re-file it, pause it until a day, set who it is with, its links, whether its steps go in order, whether its page is a board, and how it nudges, mark it complete, or archive it. Its tasks are not touched unless moveTasks asks for them to follow a new event date; add steps with add_project_steps and edit them with update_task. The away dates are what the app\'s scheduled vacation mode and away grocery list run on, where the person has turned those on for the project (get_project shows pausesTasksWhileAway), so setting them is what schedules those.',
     {
       id: z.string().min(1),
       title: z.string().optional(),
@@ -3910,6 +3910,7 @@ function registerWriteTools(
       weekendSource: z.boolean().optional().describe('Somewhere the weekend nudge looks for something to do when a weekend is bare.'),
       hideNextStep: z.boolean().optional().describe('Leave the "Next:" line off its card on the Projects screen.'),
       groupOnToday: z.boolean().optional().describe('Today shows its tasks and stacks for the day together under its name, at the top below the pinned tasks, instead of in their categories. A trip with a packing list is the usual case. Display only: it changes nothing about what is due.'),
+      boardView: z.boolean().optional().describe('The project page shows a column for the tasks in no section and one per section, with tasks dragged between them, instead of one list. Display only: sections and order are the same either way.'),
     },
     async ({ id, moveTasks, moveTasksFrom, archiveRemaining, ...patch }) => {
       try {

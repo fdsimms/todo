@@ -1576,7 +1576,9 @@ export function seedDemoData(): void {
 
   // A packing list in sections, checked off and used again.
   const camping = createProject('Camping kit', { ongoing: true });
-  updateProject(camping.id, { category: 'Ideas' });
+  // Drawn as a board (Project.boardView), a column per section, since its two
+  // sections are what a board is for.
+  updateProject(camping.id, { category: 'Ideas', boardView: true });
   ([['Sleeping', ['Tent', 'Sleeping bags', 'Headlamps']], ['Kitchen', ['Camp stove', 'Lighter', 'Coffee']]] as const)
     .forEach(([section, items], s) => {
       const group = createGroup(section, null, camping.id);

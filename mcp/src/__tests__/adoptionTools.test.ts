@@ -36,6 +36,7 @@ function fakeReplica(opts: {
   rewards?: boolean;
   recipeRows?: unknown[];
   categories?: { name: string; slotIn: boolean }[];
+  stacks?: unknown[];
 } = {}): Replica {
   return {
     tasks: () => opts.tasks ?? [],
@@ -54,6 +55,7 @@ function fakeReplica(opts: {
     tagRegistry: () => opts.tags ?? [],
     templates: () => opts.templates ?? [],
     projects: () => opts.projects ?? [],
+    stacks: () => opts.stacks ?? [],
     projectProgress: () => ({ done: 0, total: 0 }),
     ruleLists: () => ({ title: [], weather: [], event: [], health: [], screenTime: [], blockOffer: [] }),
     isVisible: () => false,
@@ -64,6 +66,17 @@ function fakeReplica(opts: {
 const manyOpen = (n: number, over: Record<string, unknown> = {}) => Array.from({ length: n }, () => task(over));
 
 describe('unusedFeatures', () => {
+  it('suggests a board for a project with three or more sections, until one is a board', () => {
+    const ids = (r: Replica) => unusedFeatures(r).suggestions.map(x => x.id);
+    const stacks = ['a', 'b', 'c'].map(id => ({ id, projectId: 'p1' }));
+    expect(ids(fakeReplica({ projects: [{ id: 'p1', title: 'Move', archived: false, completed: false }], stacks }))).toContain('projectBoard');
+    expect(ids(fakeReplica({ projects: [{ id: 'p1', title: 'Move', archived: false, completed: false }], stacks: stacks.slice(0, 2) }))).not.toContain('projectBoard');
+    expect(ids(fakeReplica({
+      projects: [{ id: 'p1', title: 'Move', archived: false, completed: false }, { id: 'p2', title: 'Trip', archived: false, completed: false, boardView: true }],
+      stacks,
+    }))).not.toContain('projectBoard');
+  });
+
   it('says nothing for a small list, since there is no pattern to point at', () => {
     expect(unusedFeatures(fakeReplica({ tasks: manyOpen(5) })).suggestions).toEqual([]);
   });

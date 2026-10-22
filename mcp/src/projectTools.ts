@@ -71,6 +71,8 @@ export interface SerializedProjectDetail {
   hideNextStep?: true;
   /** Today gathers its tasks for the day under its name, above the categories. */
   groupOnToday?: true;
+  /** Its page is drawn as a board, a column per section. */
+  boardView?: true;
   /** Members finished and in total, by the app's own reckoning (see list_projects). */
   done: number;
   total: number;
@@ -142,6 +144,7 @@ function serializeProject(replica: Replica, p: Project): SerializedProjectDetail
     nudge: { cadenceDays: p.nudgeCadenceDays, autoSchedule: p.autoSchedule, optIn: p.nudgeOptIn, weekendSource: p.weekendSource },
     ...(p.hideNextStep ? { hideNextStep: true as const } : {}),
     ...(p.groupOnToday ? { groupOnToday: true as const } : {}),
+    ...(p.boardView ? { boardView: true as const } : {}),
     done,
     total,
   };

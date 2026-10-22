@@ -1552,6 +1552,14 @@ export interface Project {
    */
   groupOnToday?: boolean;
   /**
+   * The project page draws its open tasks as a board: a column for the tasks in
+   * no section and one per section, with cards dragged between them
+   * (`src/utils/projectBoard.ts`). Presentation only: a card moved on the
+   * board is written through the same store actions as a drag in the list, so
+   * the two drawings never disagree. Optional for rows built before it existed.
+   */
+  boardView?: boolean;
+  /**
    * The project is a list (a wish list, gift ideas, a bucket list): its
    * sections and loose rows are items to check off rather than tasks to
    * schedule, unless a section says otherwise (`TaskGroup.keepsTasks`). What
