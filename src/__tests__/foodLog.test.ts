@@ -3,6 +3,8 @@ import {
   amountHint,
   combineFoodNutrition,
   composeFoodAmount,
+  convertAmountNumber,
+  largeAmountWarning,
   describeFoodLogEntry,
   ESTIMATE_AMOUNTS,
   MAX_ESTIMATE_MULTIPLE,
@@ -1224,6 +1226,57 @@ describe('amountHint / amountExample', () => {
     expect(amountHint(bare({ servingGrams: 25, portions: [] }))).toBe(
       'A weight, like 100g, or a number of servings.',
     );
+  });
+});
+
+describe('convertAmountNumber', () => {
+  const powder = panel({ servingGrams: 31, portions: [{ amount: 1, label: 'scoop', grams: 31 }] });
+  const options = foodUnitOptionsFor(powder);
+  const unit = (key: string) => options.find(o => o.key === key);
+
+  it('keeps the amount the same when grams become servings, and back', () => {
+    expect(convertAmountNumber(powder, '57', unit('g'), unit('serving'))).toBe('1.84');
+    expect(convertAmountNumber(powder, '62', unit('g'), unit('serving'))).toBe('2');
+    expect(convertAmountNumber(powder, '2', unit('serving'), unit('g'))).toBe('62');
+  });
+
+  it('converts between weights', () => {
+    expect(convertAmountNumber(powder, '100', unit('g'), unit('oz'))).toBe('3.53');
+  });
+
+  it('keeps what was typed when there is no number or no way to weigh a side', () => {
+    expect(convertAmountNumber(powder, '', unit('g'), unit('serving'))).toBeNull();
+    expect(convertAmountNumber(powder, 'abc', unit('g'), unit('serving'))).toBeNull();
+    const perServing = bare({ basis: 'perServing', servingGrams: null, portions: [] });
+    const serving = foodUnitOptionsFor(perServing)[0];
+    expect(convertAmountNumber(perServing, '2', serving, unit('g'))).toBeNull();
+    expect(convertAmountNumber(powder, '5', unit('g'), unit('g'))).toBeNull();
+  });
+});
+
+describe('largeAmountWarning', () => {
+  const powder = panel({ servingGrams: 31, portions: [{ amount: 1, label: 'scoop', grams: 31 }] });
+
+  it('asks about 57 servings, and says what it comes to in grams', () => {
+    const warning = largeAmountWarning(powder, '57 serving', 'Whey');
+    expect(warning?.title).toBe('Log 57 servings?');
+    expect(warning?.message).toContain('about 1,767 g of Whey');
+  });
+
+  it('asks about a large count of the food\'s own portions', () => {
+    expect(largeAmountWarning(powder, '12 scoop', 'Whey')).not.toBeNull();
+  });
+
+  it('leaves ordinary counts alone', () => {
+    expect(largeAmountWarning(powder, '2 serving', 'Whey')).toBeNull();
+    expect(largeAmountWarning(powder, '9 scoop', 'Whey')).toBeNull();
+  });
+
+  it('never questions a weight, a volume or an amount it cannot read', () => {
+    expect(largeAmountWarning(powder, '570g', 'Whey')).toBeNull();
+    expect(largeAmountWarning(powder, '1500 oz', 'Whey')).toBeNull();
+    expect(largeAmountWarning(powder, '1/2 serving', 'Whey')).toBeNull();
+    expect(largeAmountWarning(powder, 'a handful', 'Whey')).toBeNull();
   });
 });
 
