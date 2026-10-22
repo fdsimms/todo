@@ -48,7 +48,8 @@ interface Props {
  */
 export function TaskGroupBody({ expanded, hasChildren, dragging = false, children }: Props) {
   return (
-    <AnimatedCollapsible expanded={expanded} clip={!dragging}>
+    // Lazy: a collapsed stack builds none of its rows until it is first opened.
+    <AnimatedCollapsible expanded={expanded} clip={!dragging} lazy>
       <View style={styles.content}>{hasChildren && children}</View>
     </AnimatedCollapsible>
   );

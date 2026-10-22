@@ -29,9 +29,10 @@ interface Props {
   clip?: boolean;
   /**
    * Build `children` the first time the section opens rather than on mount,
-   * and keep them from then on. For a list whose every row carries a closed
-   * section (the food log's nutrient panels): mounting them all up front was
-   * most of what the list cost to draw, for panels that are rarely opened.
+   * and keep them from then on. For a section that is closed more often than
+   * not and costly to build: the food log's per-row nutrient panels, where
+   * mounting them all up front was most of what the list cost to draw, and a
+   * collapsed stack's task rows (TaskGroupBody).
    *
    * The first open waits for the new children's first layout before it
    * animates, since an unmeasured section would otherwise grow toward the
