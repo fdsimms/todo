@@ -1,5 +1,5 @@
 import {
-  activeSchedules, currentWindowEnd, describeDays, describeWindow, formatMinutes, isAllDay, isScheduleActive,
+  activeSchedules, armedActivityCount, currentWindowEnd, MAX_ARMED_ACTIVITIES, windowCovering, describeDays, describeWindow, formatMinutes, isAllDay, isScheduleActive,
   nativeScheduleWindows, nextScheduleBoundary, parseBlockSchedules, pauseActiveSchedules, scheduleProblem,
   serializeBlockSchedules,
   windowLengthMinutes, type BlockSchedule,
@@ -289,5 +289,116 @@ describe('an all-day window', () => {
   it('is handed to the native side as 0 to 0', () => {
     const [w] = nativeScheduleWindows([allDay], id => id);
     expect([w.startMinutes, w.endMinutes]).toEqual([0, 0]);
+  });
+});
+
+describe('an allow window', () => {
+  const MON = (h: number, m = 0) => new Date(2026, 7, 10, h, m);
+  const TUE = (h: number, m = 0) => new Date(2026, 7, 11, h, m);
+  const FRI = (h: number, m = 0) => new Date(2026, 7, 14, h, m);
+  const allow = (over: Partial<BlockSchedule> = {}) =>
+    make({ allowWindow: true, days: [0, 1, 2, 3, 4, 5, 6], startMinutes: 19 * 60, endMinutes: 21 * 60, ...over });
+
+  it('blocks everything outside the window and nothing inside it', () => {
+    const s = allow();
+    expect(isScheduleActive(s, WED(18, 59))).toBe(true);
+    expect(isScheduleActive(s, WED(19, 0))).toBe(false);
+    expect(isScheduleActive(s, WED(20, 59))).toBe(false);
+    expect(isScheduleActive(s, WED(21, 0))).toBe(true);
+    expect(isScheduleActive(s, THU(3, 0))).toBe(true);
+  });
+
+  it('blocks the whole of a day that was not picked', () => {
+    const s = allow({ days: [1, 2, 3, 4, 5] });
+    expect(isScheduleActive(s, SAT(20, 0))).toBe(true);
+    expect(isScheduleActive(s, SUN(12, 0))).toBe(true);
+    expect(isScheduleActive(s, MON(2, 0))).toBe(true);
+    expect(isScheduleActive(s, MON(20, 0))).toBe(false);
+    expect(isScheduleActive(s, FRI(20, 0))).toBe(false);
+  });
+
+  it('is blocked through Friday night to Monday evening when only weekdays are allowed', () => {
+    const s = allow({ days: [1, 2, 3, 4, 5] });
+    expect(isScheduleActive(s, FRI(21, 30))).toBe(true);
+    expect(isScheduleActive(s, MON(18, 59))).toBe(true);
+    expect(currentWindowEnd(s, FRI(21, 30))).toEqual(new Date(2026, 7, 17, 19, 0));
+    expect(currentWindowEnd(s, SAT(11, 0))).toEqual(new Date(2026, 7, 17, 19, 0));
+  });
+
+  it('lifts a block until the allowed time returns, not until midnight', () => {
+    const s = allow({ days: [1, 2, 3, 4, 5] });
+    const { schedules, paused } = pauseActiveSchedules([s], FRI(22, 0));
+    expect(paused).toBe(1);
+    expect(schedules[0].pausedUntil).toBe(new Date(2026, 7, 17, 19, 0).toISOString());
+    expect(isScheduleActive(schedules[0], SAT(10, 0))).toBe(false);
+    expect(isScheduleActive(schedules[0], new Date(2026, 7, 17, 19, 30))).toBe(false);
+    expect(isScheduleActive(schedules[0], new Date(2026, 7, 17, 21, 0))).toBe(true);
+  });
+
+  it('lets an allowed all-day window block only the other days', () => {
+    const s = allow({ days: [0, 6], startMinutes: 0, endMinutes: 0 });
+    expect(isScheduleActive(s, SAT(15, 0))).toBe(false);
+    expect(isScheduleActive(s, SUN(23, 59))).toBe(false);
+    expect(isScheduleActive(s, MON(0, 0))).toBe(true);
+    expect(isScheduleActive(s, FRI(23, 59))).toBe(true);
+  });
+
+  it('finds the next start or end of a block', () => {
+    const s = allow({ days: [1, 2, 3, 4, 5] });
+    expect(nextScheduleBoundary([s], WED(18, 0))).toEqual(WED(19, 0));
+    expect(nextScheduleBoundary([s], WED(20, 0))).toEqual(WED(21, 0));
+    expect(nextScheduleBoundary([s], FRI(22, 0))).toEqual(new Date(2026, 7, 17, 19, 0));
+  });
+
+  it('is one overnight window when the same time is allowed every day', () => {
+    const windows = nativeScheduleWindows([allow()], id => id);
+    expect(windows).toHaveLength(1);
+    expect(windows[0]).toMatchObject({ days: [0, 1, 2, 3, 4, 5, 6], startMinutes: 21 * 60, endMinutes: 19 * 60 });
+  });
+
+  it('hands the native side windows that cover exactly the minutes the arcs do', () => {
+    const s = allow({ days: [1, 2, 3, 4, 5] });
+    const windows = nativeScheduleWindows([s], id => id);
+    const covers = (at: Date) => windows.some(w => windowCovering(w, at) !== null);
+    for (const day of [10, 11, 12, 13, 14, 15, 16]) {
+      for (let minute = 0; minute < 24 * 60; minute += 15) {
+        const at = new Date(2026, 7, day, Math.floor(minute / 60), minute % 60);
+        expect(covers(at)).toBe(isScheduleActive(s, at));
+      }
+    }
+  });
+
+  it('gives each native window an id of its own, all carrying the one pause', () => {
+    const s = allow({ days: [1, 2, 3, 4, 5], pausedUntil: '2026-08-17T19:00:00.000Z' });
+    const windows = nativeScheduleWindows([s], id => id);
+    expect(windows.length).toBeGreaterThan(1);
+    expect(new Set(windows.map(w => w.id)).size).toBe(windows.length);
+    expect(windows.every(w => w.pausedUntilIso === '2026-08-17T19:00:00.000Z')).toBe(true);
+  });
+
+  it('is refused when it would block nothing, or leave a gap under a quarter hour', () => {
+    expect(scheduleProblem(allow({ startMinutes: 0, endMinutes: 0 }))).toMatch(/nothing would be blocked/);
+    expect(scheduleProblem(allow({ startMinutes: 0, endMinutes: 23 * 60 + 55 }))).toMatch(/less than 15 minutes/);
+    expect(scheduleProblem(allow({ startMinutes: 19 * 60, endMinutes: 19 * 60 + 10 }))).toMatch(/allowed window/);
+    expect(scheduleProblem(allow())).toBeNull();
+  });
+
+  it('is described as allowed', () => {
+    expect(describeWindow(allow(), false)).toBe('Allowed 7:00 PM to 9:00 PM');
+    expect(describeWindow(allow({ startMinutes: 0, endMinutes: 0 }), false)).toBe('Allowed all day');
+  });
+
+  it('survives being stored and read back, and a plain schedule stays free of the flag', () => {
+    const [back] = parseBlockSchedules(serializeBlockSchedules([allow()]));
+    expect(back.allowWindow).toBe(true);
+    const [plain] = parseBlockSchedules(serializeBlockSchedules([make()]));
+    expect('allowWindow' in plain).toBe(false);
+  });
+
+  it('counts the activities it arms', () => {
+    expect(armedActivityCount([make()])).toBe(1);
+    expect(armedActivityCount([make({ startMinutes: 22 * 60, endMinutes: 6 * 60 })])).toBe(2);
+    expect(armedActivityCount([allow()])).toBe(2);
+    expect(armedActivityCount([allow({ days: [1, 3, 5] })])).toBeLessThanOrEqual(MAX_ARMED_ACTIVITIES);
   });
 });

@@ -9,7 +9,7 @@ import {
   type GroupAssignments, type GroupedReason, type GroupModeResult, type GroupsMeta,
 } from '../utils/appGroups';
 import {
-  BLOCK_SCHEDULES_SETTING, MAX_BLOCK_SCHEDULES, cleanScheduleName, parseBlockSchedules,
+  ARMED_ACTIVITIES_MESSAGE, BLOCK_SCHEDULES_SETTING, MAX_ARMED_ACTIVITIES, MAX_BLOCK_SCHEDULES, armedActivityCount, cleanScheduleName, parseBlockSchedules,
   pauseActiveSchedules, readGroupIds, scheduleProblem, serializeBlockSchedules, type BlockSchedule,
 } from '../utils/blockSchedule';
 
@@ -191,6 +191,7 @@ export const useAppGroupStore = create<AppGroupStore>((set, get) => ({
       pausedUntil: null,
     };
     const schedules = [...get().schedules, schedule];
+    if (armedActivityCount(schedules) > MAX_ARMED_ACTIVITIES) return { ok: false, reason: 'invalid', message: ARMED_ACTIVITIES_MESSAGE };
     persistSchedules(schedules);
     set({ schedules });
     return { ok: true, schedule };
@@ -212,6 +213,7 @@ export const useAppGroupStore = create<AppGroupStore>((set, get) => ({
       pausedUntil: null,
     };
     const schedules = get().schedules.map(s => (s.id === id ? schedule : s));
+    if (armedActivityCount(schedules) > MAX_ARMED_ACTIVITIES) return { ok: false, reason: 'invalid', message: ARMED_ACTIVITIES_MESSAGE };
     persistSchedules(schedules);
     set({ schedules });
     return { ok: true, schedule };

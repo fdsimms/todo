@@ -62,7 +62,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/blockEditLock.ts` — liveGroupIds, groupEditLocked, supergroupEditLocked, reasonGroupLocked, reasonSwitchLocked, appRemovalSwitchLocked, defaultGroupLocked, scheduleEditLocked, groupBlockHint, BLOCK_PICKER_NOTE_TITLE, +4 more
 - `src/utils/blockOfferAccept.ts` — offerBlockStart
 - `src/utils/blockOfferTasks.ts` — BLOCK_OFFER_TITLE_MAX_LENGTH, BLOCK_OFFER_COINS_MIN, BLOCK_OFFER_COINS_MAX, BLOCK_OFFER_COINS_DEFAULT, BLOCK_OFFER_MINUTES_DEFAULT, BLOCK_OFFER_MINUTE_CHOICES, clampBlockOfferMinutes, clampBlockOfferCoins, blockOfferTitle, describeOfferCoins, +16 more
-- `src/utils/blockSchedule.ts` — BLOCK_SCHEDULES_SETTING, MAX_BLOCK_SCHEDULES, MIN_WINDOW_MINUTES, MAX_SCHEDULE_NAME_LENGTH, readGroupIds, BlockSchedule, ALL_DAYS, WEEKDAYS, cleanScheduleName, windowLengthMinutes, +18 more
+- `src/utils/blockSchedule.ts` — BLOCK_SCHEDULES_SETTING, MAX_BLOCK_SCHEDULES, MIN_WINDOW_MINUTES, MAX_SCHEDULE_NAME_LENGTH, readGroupIds, BlockSchedule, ALL_DAYS, WEEKDAYS, cleanScheduleName, windowLengthMinutes, +23 more
 - `src/utils/blockTimer.ts` — BLOCK_SINCE_SETTING, BlockStamp, parseBlockStamp, reasonsEndBy, nextBlockStamp, blockedForMs, formatBlockedFor, spokenBlockedFor
 - `src/utils/blockerRegistry.ts` — registerTaskSource, resolveBlocker, waitingCountFor
 - `src/utils/blockerStatus.ts` — BlockerWait, describeBlockerWait

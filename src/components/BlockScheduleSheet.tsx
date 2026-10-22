@@ -22,6 +22,7 @@ import { BLOCK_EDIT_LOCKED_MESSAGE, BLOCK_EDIT_LOCKED_TITLE, scheduleEditLocked 
 import {
   WEEKDAYS, formatMinutes, isAllDay, scheduleProblem, type BlockSchedule,
 } from '../utils/blockSchedule';
+import { SettingsSegments } from '../screens/settings/SettingsSegments';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { BUTTON_LABEL } from '../copy/shared';
 
@@ -47,6 +48,8 @@ interface Draft {
   allDay: boolean;
   startMinutes: number;
   endMinutes: number;
+  /** The times are when the apps are allowed, and they are blocked the rest of the time. */
+  allowWindow: boolean;
 }
 
 const NEW_DRAFT: Draft = {
@@ -56,9 +59,10 @@ const NEW_DRAFT: Draft = {
   allDay: false,
   startMinutes: 9 * 60,
   endMinutes: 17 * 60,
+  allowWindow: false,
 };
 
-const draftKey = (d: Draft) => JSON.stringify([d.name.trim(), [...d.groupIds].sort(), [...d.days].sort(), d.allDay, d.allDay ? 0 : d.startMinutes, d.allDay ? 0 : d.endMinutes]);
+const draftKey = (d: Draft) => JSON.stringify([d.name.trim(), [...d.groupIds].sort(), [...d.days].sort(), d.allDay, d.allDay ? 0 : d.startMinutes, d.allDay ? 0 : d.endMinutes, d.allowWindow]);
 
 function minutesToDate(minutes: number): Date {
   const d = new Date();
@@ -99,6 +103,7 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
         allDay: isAllDay(existing),
         startMinutes: isAllDay(existing) ? NEW_DRAFT.startMinutes : existing.startMinutes,
         endMinutes: isAllDay(existing) ? NEW_DRAFT.endMinutes : existing.endMinutes,
+        allowWindow: existing.allowWindow === true,
       }
       : NEW_DRAFT;
     setDraft(seed);
@@ -138,9 +143,10 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
   const handleSave = () => {
     if (problem) return;
     if (refuseWhileBlocked()) return;
-    const { allDay: _allDay, ...times } = stored;
+    const { allDay: _allDay, allowWindow, ...times } = stored;
     const fields: Omit<BlockSchedule, 'id' | 'pausedUntil'> = {
       ...times,
+      allowWindow: allowWindow || undefined,
       name: draft.name,
       enabled: existing?.enabled ?? true,
     };
@@ -199,6 +205,9 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
     });
   };
 
+  const blockedSpan = draft.allDay
+    ? 'The days you didn’t pick are blocked all day.'
+    : `Blocked ${formatMinutes(draft.endMinutes, use24HourTime)} to ${formatMinutes(draft.startMinutes, use24HourTime)}.`;
   const overnight = !draft.allDay && draft.endMinutes <= draft.startMinutes && draft.startMinutes !== draft.endMinutes;
 
   return (
@@ -254,7 +263,22 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
           </SettingsSection>
           {problemIn === 'days' && <Text style={styles.problem}>{problem}</Text>}
 
-          <SettingsSection label="Time" footer={draft.allDay ? 'Blocks from midnight to midnight on each day you picked.' : undefined}>
+          <SettingsSection
+            label="Time"
+            footer={draft.allowWindow
+              ? `The apps stay blocked the rest of the time, including on days you didn’t pick. ${problem ? '' : blockedSpan}`.trim()
+              : draft.allDay ? 'Blocks from midnight to midnight on each day you picked.' : undefined}
+          >
+            <SettingsSegments
+              label="Whether the times are blocked or allowed"
+              options={[
+                { value: false, label: 'Blocked during' },
+                { value: true, label: 'Allowed during' },
+              ]}
+              selected={draft.allowWindow}
+              onSelect={allowWindow => setDraft(d => ({ ...d, allowWindow }))}
+            />
+            <View style={settingsStyles.sep} />
             <SettingsRow
               icon="sunny-outline"
               label="All day"
@@ -290,7 +314,7 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
           </SettingsSection>
           {problemIn === 'time' && <Text style={styles.problem}>{problem}</Text>}
 
-          <SettingsSection label="Apps to block" footer={draft.groupIds.some(id => isAllowGroup(customGroups, id, groupsMeta)) ? "A group that blocks everything except its apps leaves only those apps open while this runs." : undefined}>
+          <SettingsSection label={draft.allowWindow ? 'Apps to limit' : 'Apps to block'} footer={draft.groupIds.some(id => isAllowGroup(customGroups, id, groupsMeta)) ? "A group that blocks everything except its apps leaves only those apps open while this runs." : undefined}>
             <AppGroupChecklist
               groups={allGroups(customGroups, groupsMeta)}
               selectedIds={draft.groupIds}

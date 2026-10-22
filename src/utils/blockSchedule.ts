@@ -23,6 +23,11 @@
  * whether a schedule is all day (`isAllDay`). Only the arming differs
  * (`setBlockSchedules`), since iOS wants the interval to end at 23:59:59.
  *
+ * **An allow window is the same rule read the other way round** (`allowWindow`):
+ * the times are when the apps are free and everything else is blocked. It is
+ * expanded here into blocking windows (`blockingWindows`) before the native
+ * side sees it, so `windowCovers` in Swift needs no case of its own.
+ *
  * **Ending a block pauses one window, not the schedule.** `pausedUntil` is the
  * end of the window instance that was lifted (by a key tag or the emergency
  * button, `releaseBlocks.ts`), so the next one starts on time without anything
@@ -76,6 +81,12 @@ export interface BlockSchedule {
   enabled: boolean;
   /** ISO end of the window instance a tag lifted; null when none is. */
   pausedUntil: string | null;
+  /**
+   * Reads the window as when the apps are *allowed*: they are blocked at every
+   * other time, including the whole of a day that isn't in `days`. See
+   * `blockedArcs`. Absent means a plain blocking window.
+   */
+  allowWindow?: boolean;
 }
 
 export const ALL_DAYS: readonly number[] = [0, 1, 2, 3, 4, 5, 6];
@@ -100,13 +111,19 @@ export function isAllDay(s: Pick<BlockSchedule, 'startMinutes' | 'endMinutes'>):
 }
 
 /** Why a schedule can't be saved as it stands, or null when it can. */
-export function scheduleProblem(s: Pick<BlockSchedule, 'days' | 'startMinutes' | 'endMinutes'> & { groupIds?: readonly string[] }): string | null {
+export function scheduleProblem(s: Pick<BlockSchedule, 'days' | 'startMinutes' | 'endMinutes' | 'allowWindow'> & { groupIds?: readonly string[] }): string | null {
   if (s.groupIds !== undefined && s.groupIds.length === 0) return 'Pick at least one group of apps.';
   if (s.days.length === 0) return 'Pick at least one day.';
-  if (isAllDay(s)) return null;
-  if (s.startMinutes === s.endMinutes) return 'The start and end times can’t be the same.';
-  if (windowLengthMinutes(s.startMinutes, s.endMinutes) < MIN_WINDOW_MINUTES) {
-    return 'A block has to last at least 15 minutes.';
+  if (!isAllDay(s)) {
+    if (s.startMinutes === s.endMinutes) return 'The start and end times can’t be the same.';
+    if (windowLengthMinutes(s.startMinutes, s.endMinutes) < MIN_WINDOW_MINUTES) {
+      return s.allowWindow ? 'An allowed window has to last at least 15 minutes.' : 'A block has to last at least 15 minutes.';
+    }
+  }
+  if (s.allowWindow) {
+    const arcs = blockedArcs(s);
+    if (arcs.length === 0) return 'This allows every hour of every day, so nothing would be blocked.';
+    if (arcs.some(a => a.length < MIN_WINDOW_MINUTES)) return 'The apps would be blocked for less than 15 minutes at a time.';
   }
   return null;
 }
@@ -143,6 +160,7 @@ export function parseBlockSchedules(raw: string | null | undefined): BlockSchedu
       endMinutes: o.endMinutes,
       enabled: o.enabled !== false,
       pausedUntil: typeof o.pausedUntil === 'string' ? o.pausedUntil : null,
+      ...(o.allowWindow === true ? { allowWindow: true } : {}),
     };
     if (scheduleProblem(schedule)) continue;
     seen.add(o.id);
@@ -164,11 +182,143 @@ function dayOffset(base: Date, offset: number): Date {
   return new Date(base.getFullYear(), base.getMonth(), base.getDate() + offset);
 }
 
+const WEEK_MINUTES = 7 * MINUTES_PER_DAY;
+
+/** A minute of the week (0 = Sunday 00:00, may fall outside 0..WEEK_MINUTES) as a date, counted from `weekStart`. */
+function atWeekMinute(weekStart: Date, weekMinute: number): Date {
+  const dayShift = Math.floor(weekMinute / MINUTES_PER_DAY);
+  const minutes = weekMinute - dayShift * MINUTES_PER_DAY;
+  return new Date(
+    weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + dayShift,
+    Math.floor(minutes / 60), minutes % 60, 0, 0,
+  );
+}
+
+/**
+ * The stretches an allow window blocks: every run of the week outside its
+ * allowed times, as a start minute of the week and a length, circular (a run
+ * may begin Friday night and end Monday morning). Empty when the allowed times
+ * cover the whole week, and when no day is picked.
+ *
+ * Worked out minute by minute rather than by interval arithmetic, because the
+ * allowed windows can overlap each other round the week's edge (a Sunday night
+ * window running into Monday) and the complement of that is easiest to get
+ * right when it is just the minutes nothing claims.
+ */
+export function blockedArcs(s: Pick<BlockSchedule, 'days' | 'startMinutes' | 'endMinutes'>): { start: number; length: number }[] {
+  const allowed = new Uint8Array(WEEK_MINUTES);
+  const length = isAllDay(s) ? MINUTES_PER_DAY : windowLengthMinutes(s.startMinutes, s.endMinutes);
+  for (const day of s.days) {
+    const from = day * MINUTES_PER_DAY + s.startMinutes;
+    for (let i = 0; i < length; i += 1) allowed[(from + i) % WEEK_MINUTES] = 1;
+  }
+  const first = allowed.indexOf(1);
+  if (first < 0) return [];
+  const arcs: { start: number; length: number }[] = [];
+  let runStart = -1;
+  let runLength = 0;
+  // From just after an allowed minute round to that minute again, so a run
+  // that wraps the week's end is one run and the last one is always closed.
+  for (let k = 1; k <= WEEK_MINUTES; k += 1) {
+    const pos = (first + k) % WEEK_MINUTES;
+    if (!allowed[pos]) {
+      if (runStart < 0) { runStart = pos; runLength = 0; }
+      runLength += 1;
+    } else if (runStart >= 0) {
+      arcs.push({ start: runStart, length: runLength });
+      runStart = -1;
+    }
+  }
+  return arcs.sort((a, b) => a.start - b.start);
+}
+
+/**
+ * What the native side is handed for a schedule: a plain window as itself, an
+ * allow window as the blocking windows its blocked arcs come to. A window is a
+ * set of days with a time range that belongs to the day it starts on, and
+ * holds at most a day, so an arc is cut at each midnight, and the two halves of
+ * a night are put back together as one overnight window when they fit. Windows
+ * with the same times share one entry across their days.
+ */
+export function blockingWindows(
+  s: Pick<BlockSchedule, 'id' | 'days' | 'startMinutes' | 'endMinutes' | 'allowWindow'>,
+): { id: string; days: number[]; startMinutes: number; endMinutes: number }[] {
+  if (!s.allowWindow) return [{ id: s.id, days: [...s.days], startMinutes: s.startMinutes, endMinutes: s.endMinutes }];
+  const byTimes = new Map<string, { days: Set<number>; startMinutes: number; endMinutes: number }>();
+  const add = (day: number, startMinutes: number, endMinutes: number) => {
+    const key = `${startMinutes}-${endMinutes}`;
+    const entry = byTimes.get(key) ?? { days: new Set<number>(), startMinutes, endMinutes };
+    entry.days.add(day);
+    byTimes.set(key, entry);
+  };
+  for (const arc of blockedArcs(s)) {
+    const pieces: { day: number; from: number; to: number }[] = [];
+    let at = arc.start;
+    let left = arc.length;
+    while (left > 0) {
+      const from = at % MINUTES_PER_DAY;
+      const take = Math.min(left, MINUTES_PER_DAY - from);
+      pieces.push({ day: Math.floor(at / MINUTES_PER_DAY) % 7, from, to: from + take });
+      at = (at + take) % WEEK_MINUTES;
+      left -= take;
+    }
+    const [head, tail] = pieces;
+    if (pieces.length === 2 && head.to === MINUTES_PER_DAY && tail.from === 0 && tail.to < head.from) {
+      add(head.day, head.from, tail.to);
+      continue;
+    }
+    // A piece that runs to midnight ends at 00:00, the overnight form's way of
+    // saying so (and 00:00 to 00:00 is a whole day).
+    for (const p of pieces) add(p.day, p.from, p.to === MINUTES_PER_DAY ? 0 : p.to);
+  }
+  return [...byTimes.values()].map((w, i) => ({
+    id: `${s.id}_${i}`,
+    days: [...w.days].sort(),
+    startMinutes: w.startMinutes,
+    endMinutes: w.endMinutes,
+  }));
+}
+
+/**
+ * iOS lets an app register about twenty monitored activities in all, and an
+ * allow window can need several windows where a block needs one.
+ */
+export const MAX_ARMED_ACTIVITIES = 20;
+export const ARMED_ACTIVITIES_MESSAGE = 'That needs more separate blocks than iOS allows an app to schedule. Pick fewer days or fewer schedules.';
+
+/**
+ * How many iOS activities a set of schedules arms. A window takes one, an
+ * overnight one two, except one ending at midnight, whose second half would be
+ * empty and is not armed. Counts switched-off schedules too, so switching one
+ * on can't push the total over.
+ */
+export function armedActivityCount(schedules: readonly Pick<BlockSchedule, 'id' | 'days' | 'startMinutes' | 'endMinutes' | 'allowWindow'>[]): number {
+  let total = 0;
+  for (const s of schedules) {
+    for (const w of blockingWindows(s)) {
+      total += w.endMinutes <= w.startMinutes && w.endMinutes > 0 ? 2 : 1;
+    }
+  }
+  return total;
+}
+
 /** The start and end of the window covering `now`, ignoring enabled and paused, or null when none does. */
 export function windowCovering(
-  s: Pick<BlockSchedule, 'days' | 'startMinutes' | 'endMinutes'>,
+  s: Pick<BlockSchedule, 'days' | 'startMinutes' | 'endMinutes' | 'allowWindow'>,
   now: Date,
 ): { start: Date; end: Date } | null {
+  if (s.allowWindow) {
+    // The whole blocked stretch, not the night's own window: a tag lifts the
+    // block until the allowed time returns, not until the next midnight.
+    const weekStart = dayOffset(now, -now.getDay());
+    const weekMinute = now.getDay() * MINUTES_PER_DAY + now.getHours() * 60 + now.getMinutes();
+    for (const arc of blockedArcs(s)) {
+      if ((weekMinute - arc.start + WEEK_MINUTES) % WEEK_MINUTES >= arc.length) continue;
+      const start = arc.start > weekMinute ? arc.start - WEEK_MINUTES : arc.start;
+      return { start: atWeekMinute(weekStart, start), end: atWeekMinute(weekStart, start + arc.length) };
+    }
+    return null;
+  }
   const minute = now.getHours() * 60 + now.getMinutes();
   const today = dayOffset(now, 0);
   if (!isOvernight(s)) {
@@ -237,7 +387,16 @@ export function nextScheduleBoundary(schedules: readonly BlockSchedule[], now: D
   };
   for (const s of schedules) {
     if (!s.enabled) continue;
-    for (let offset = -1; offset <= 7; offset += 1) {
+    if (s.allowWindow) {
+      const weekStart = dayOffset(now, -now.getDay());
+      for (const arc of blockedArcs(s)) {
+        for (const week of [-1, 0, 1]) {
+          consider(atWeekMinute(weekStart, arc.start + week * WEEK_MINUTES));
+          consider(atWeekMinute(weekStart, arc.start + arc.length + week * WEEK_MINUTES));
+        }
+      }
+    }
+    for (let offset = -1; !s.allowWindow && offset <= 7; offset += 1) {
       const day = dayOffset(now, offset);
       if (!s.days.includes(day.getDay())) continue;
       consider(atMinutes(day, s.startMinutes));
@@ -283,15 +442,15 @@ export function nativeScheduleWindows(
   schedules: readonly BlockSchedule[],
   resolveGroup: GroupResolver,
 ): NativeScheduleWindow[] {
-  return schedules.filter(s => s.enabled && !scheduleProblem(s)).map(s => ({
-    id: s.id,
+  return schedules.filter(s => s.enabled && !scheduleProblem(s)).flatMap(s => blockingWindows(s).map(w => ({
+    id: w.id,
     name: s.name,
     ...resolvedGroups(s.groupIds, resolveGroup),
-    days: [...s.days],
-    startMinutes: s.startMinutes,
-    endMinutes: s.endMinutes,
+    days: w.days,
+    startMinutes: w.startMinutes,
+    endMinutes: w.endMinutes,
     pausedUntilIso: s.pausedUntil,
-  }));
+  })));
 }
 
 const DAY_LETTERS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -314,8 +473,9 @@ export function formatMinutes(minutes: number, use24Hour: boolean): string {
   return `${h % 12 === 0 ? 12 : h % 12}:${m} ${suffix}`;
 }
 
-export function describeWindow(s: Pick<BlockSchedule, 'startMinutes' | 'endMinutes'>, use24Hour: boolean): string {
-  if (isAllDay(s)) return 'All day';
-  return `${formatMinutes(s.startMinutes, use24Hour)} to ${formatMinutes(s.endMinutes, use24Hour)}`;
+export function describeWindow(s: Pick<BlockSchedule, 'startMinutes' | 'endMinutes' | 'allowWindow'>, use24Hour: boolean): string {
+  if (isAllDay(s)) return s.allowWindow ? 'Allowed all day' : 'All day';
+  const span = `${formatMinutes(s.startMinutes, use24Hour)} to ${formatMinutes(s.endMinutes, use24Hour)}`;
+  return s.allowWindow ? `Allowed ${span}` : span;
 }
 
