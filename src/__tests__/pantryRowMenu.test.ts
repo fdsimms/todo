@@ -55,3 +55,32 @@ describe('pantryRowMarks', () => {
     expect(pantryRowMarks(item({ opened: true, frozen: true }))).toEqual(['frozen']);
   });
 });
+
+describe('a container', () => {
+  const container = (over: Partial<PantryRowFacts> = {}) => item({ kind: 'leftover', ...over });
+
+  it('has a chip that says where it is', () => {
+    expect(pantryRowChip(container())).toBe('fridge');
+    expect(pantryRowChip(container({ frozen: true }))).toBe('freezer');
+  });
+
+  it('offers both outcomes by name rather than guessing one', () => {
+    expect(pantryRowMenu(container()).map(e => e.key)).toEqual([
+      'finished', 'tossed', 'freeze', 'split', 'edit',
+    ]);
+  });
+
+  it('flips the freezer entries when it is frozen', () => {
+    expect(pantryRowMenu(container({ frozen: true }))).toEqual([
+      { key: 'finished', label: 'Finished it' },
+      { key: 'tossed', label: 'Threw it out' },
+      { key: 'thaw', label: 'Take out of the freezer' },
+      { key: 'split', label: 'Split into the fridge' },
+      { key: 'edit', label: 'Edit' },
+    ]);
+  });
+
+  it('wears no tag, since the chip already says freezer', () => {
+    expect(pantryRowMarks(container({ frozen: true, opened: true }))).toEqual([]);
+  });
+});

@@ -128,10 +128,10 @@ import { useFabBottom } from '../components/Fab';
  * "Went bad" are `markOutOfMany`'s two outcomes chosen up front rather than
  * asked for afterwards. The row itself opens `GroceryItemSheet` with the
  * Pantry pills already showing (`initialField`) for anything past that.
- * **A container carries no chip**, deliberately: closing one out is a
- * two-way question ("Eaten" / "Thrown out") that a menu of packet states can't
- * ask, and guessing "eaten" would quietly write a fridge-history row the user
- * never chose. Its row opens `LeftoverSheet`, which asks properly.
+ * **A container's chip says where it is** ("Fridge" or "Freezer"), and its
+ * menu has "Finished it" and "Threw it out" as two entries the person picks,
+ * because guessing "eaten" would quietly write a fridge-history row they never
+ * chose. Its row still opens `LeftoverSheet` for anything past that.
  *
  * **A row is dragged to say where the thing is.** Long-pressing one and
  * dropping it under another heading is the same gesture the shopping list uses
@@ -187,6 +187,10 @@ const ROW_ACTION_ICON: Record<PantryRowAction, IconName> = {
   freeze: 'snow-outline',
   thaw: 'sunny-outline',
   out: 'close-circle-outline',
+  finished: 'checkmark-circle-outline',
+  tossed: 'trash-bin-outline',
+  split: 'git-branch-outline',
+  edit: 'create-outline',
 };
 
 export function KitchenScreen() {
@@ -504,7 +508,11 @@ export function KitchenScreen() {
   // What a row's chip says about its packet, read off the store row it was
   // built from.
   const rowFacts = (entry: KitchenEntry): PantryRowFacts | null => {
-    if (entry.kind === 'leftover') return null;
+    if (entry.kind === 'leftover') {
+      const leftover = leftovers.find(l => l.id === entry.sourceId);
+      if (!leftover) return null;
+      return { kind: 'leftover', portion: false, low: false, opened: false, frozen: !!leftover.frozenAt };
+    }
     if (entry.kind === 'product') {
       const product = itemProducts.find(p => p.id === entry.sourceId);
       if (!product) return null;
@@ -541,6 +549,18 @@ export function KitchenScreen() {
   // of vegan ground beef, and a box's own opened or frozen stamp is its own.
   // A portion's out deletes it (see `markProductsOutOf`).
   const applyRowAction = (entry: KitchenEntry, action: PantryRowAction) => {
+    if (entry.kind === 'leftover') {
+      // The container sheet's own actions, each chosen here on purpose.
+      switch (action) {
+        case 'finished': haptics.success(); finishLeftover(entry.sourceId, 'eaten'); break;
+        case 'tossed': haptics.warning(); finishLeftover(entry.sourceId, 'tossed'); break;
+        case 'freeze': setLeftoverFrozen(entry.sourceId, true); break;
+        case 'thaw': setLeftoverFrozen(entry.sourceId, false); break;
+        case 'split': splitLeftover(entry.sourceId); break;
+        case 'edit': setOpenLeftoverId(entry.sourceId); break;
+      }
+      return;
+    }
     if (entry.kind === 'product') {
       if (action === 'out') {
         if (markProductsOutOf([entry.sourceId]) > 0) haptics.success();
@@ -891,15 +911,15 @@ export function KitchenScreen() {
         </View>
         {/* The state the row is in, which also opens everything that can be
             said about it. The chip replaces a bare ✕ that only said "out",
-            and a container has none: "gone" is a two-way question there, and
-            its row's tap asks it properly. */}
+            and a container's says where it is, with "finished" and "threw it
+            out" as two entries of its menu so neither is guessed. */}
         {facts && (
           <PressableScale
             style={[styles.chip, chipKind === 'low' && styles.chipLow]}
             onPress={e => openRowMenu(entry, { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
             hitSlop={8}
             accessibilityLabel={`${entry.productName ? `${entry.productName} ` : ''}${entry.title}, ${PANTRY_CHIP_LABEL[chipKind]}`}
-            accessibilityHint="Opens the ways to mark it, such as out, running low or bought more"
+            accessibilityHint="Opens the ways to mark it, such as finished, running low or bought more"
           >
             <Text style={[styles.chipText, chipKind === 'low' && styles.chipTextLow]}>
               {PANTRY_CHIP_LABEL[chipKind]}
