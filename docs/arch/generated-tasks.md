@@ -804,9 +804,17 @@ forecast changes nothing. `src/utils/ruleEstimate.ts` has the three homes:
 
 - **A rule somebody wrote** (weather, Screen Time, Health, calendar events):
   on the rule itself, via `ruleEstimateDraft` in each rule's draft.
-- **A follow-up rule**: in `followUpTaskDraft`. The source pointer goes stale
-  after another cycle, so the write walks forward along `previousOccurrenceId`
-  to the row holding the rule now (`liveFollowUpSource`).
+- **A follow-up rule**: in `followUpTaskDraft`, and the one home that asks. An
+  edit to any field the draft holds (`FOLLOW_UP_DRAFT_FIELDS`: category,
+  project, tags, priority, effort, difficulty, estimate, time of day, vacation
+  pause, notes) gets "This task / This and future tasks" from the editor, the
+  Today drag and the bulk bar, and is written back only on an explicit
+  `scope: 'series'` (`writeEditToFollowUpSource`). No scope, or "this task",
+  writes nothing. The source pointer goes stale after another cycle, so the
+  write walks forward along `previousOccurrenceId` to the row holding the rule
+  now (`liveFollowUpSource`); with no live rule there is nothing to ask. A
+  category or project equal to the parent's is stored as null, so it keeps
+  following the parent. Undo restores the row, not the rule.
 - **Every other generator**: one entry per kind in the `generatorEstimates`
   setting, filled in by `addTask` when a draft carrying a `generatedKind` names
   no estimate. Meal tasks are left out (`holdsKindEstimate`): they arrive

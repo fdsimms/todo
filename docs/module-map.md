@@ -66,7 +66,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/brands.ts` — BrandSummary, brandSummaries, planBrandRename
 - `src/utils/bulkCompletion.ts` — tasksAskingOnCompletion, unansweredCompletionCopy, stackCompletionScope
 - `src/utils/bulkDelete.ts` — isMissableOneOff, BulkDeletePrompt, bulkDeletePrompt
-- `src/utils/bulkScopePrompt.ts` — confirmBulkScope, bulkSetPriorityAsking, bulkSetDifficultyAsking, bulkAddTagsAsking
+- `src/utils/bulkScopePrompt.ts` — confirmBulkScope, confirmFollowUpScope, bulkSetPriorityAsking, bulkSetDifficultyAsking, bulkAddTagsAsking
 - `src/utils/busyEvenings.ts` — BUSY_EVENING_MIN_MINUTES, BusyEvening, busyEveningOn, describeBusyEvening
 - `src/utils/calendarBusy.ts` — BusyEvent, hasVideoCallLink, BusyInterval, isLiveEvent, occupiesTime, allDayRangeMs, busyIntervalsIn, busyMinutesIn, freeGapsIn, freeMinutesIn, +4 more
 - `src/utils/calendarDrag.ts` — CellRect, cellAt, isMoveDrop
@@ -173,7 +173,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/focusStats.ts` — MIN_ACCURACY_SAMPLES, FocusDayTotal, focusMinutesByDay, FocusSummary, focusSummary, focusRecordsSince, FocusAccuracy, focusAccuracy, BreakUse, breakUse
 - `src/utils/focusSuggest.ts` — MAX_SUGGESTED_FOCUS, FOCUS_BUDGET_MINUTES, FocusContext, buildFocusContext, fitsWindow, scoreFocusTask, nextFocusSuggestion, suggestFocusTasks, focusQueueFromPinned, focusReason
 - `src/utils/focusWindow.ts` — FOCUS_CALENDAR_HORIZON_MINUTES, CalendarWindow, calendarWindow, FOCUS_MEETING_LEAD_MINUTES, FOCUS_MEETING_HORIZON_MINUTES, FocusMeetingHeadsUp, focusMeetingHeadsUp
-- `src/utils/followUpTask.ts` — MIN_FOLLOW_UP_TASK_EVERY_N, MAX_FOLLOW_UP_TASK_EVERY_N, canHoldFollowUpTask, FollowUpTaskRule, followUpTaskRule, FollowUpTaskEndRule, repeatHasEnd, followUpTaskEndRule, advanceFollowUpTaskTally, FollowUpTaskSuppression, +8 more
+- `src/utils/followUpTask.ts` — MIN_FOLLOW_UP_TASK_EVERY_N, MAX_FOLLOW_UP_TASK_EVERY_N, canHoldFollowUpTask, FollowUpTaskRule, followUpTaskRule, FollowUpTaskEndRule, repeatHasEnd, followUpTaskEndRule, advanceFollowUpTaskTally, FollowUpTaskSuppression, +13 more
 - `src/utils/foodKinds.ts` — FOOD_KINDS, FOOD_KIND_LABELS, guessFoodKinds, foodKindsOf, isFoodKind, parseFoodKinds, normalizeFoodKinds, serializeFoodKinds, describeFoodKinds
 - `src/utils/foodLog.ts` — FoodLogTotals, FoodLogSection, isBeverageName, scalePanelToAmount, portionExamples, amountHint, amountExample, FoodUnitOption, VOLUME_UNIT_OPTIONS, foodUnitOptionsFor, +50 more
 - `src/utils/foodLogEntry.ts` — buildFoodLogEntry

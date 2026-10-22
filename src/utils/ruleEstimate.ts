@@ -6,7 +6,7 @@ import type { Effort, GeneratedKind, RuleTaskEstimate } from '../types';
  * Every generated task (and every follow-up) is a fresh one-off row, so an
  * estimate set or timed on one used to be lost with it. Editing the row's
  * estimate now writes it back onto whatever wrote the row
- * (`writeEstimateToSource` in `useTaskStore`), and the next row reads it from
+ * (`writeEstimateToSource` in `useTaskStore`; a follow-up rule instead asks first, see `docs/arch/generated-tasks.md`), and the next row reads it from
  * there. The title plays no part, so a title carrying a date or a forecast
  * changes nothing.
  *

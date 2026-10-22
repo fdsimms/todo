@@ -3,6 +3,7 @@ import type { Difficulty, Priority, Task } from '../types';
 import { BUTTON_LABEL } from '../copy/shared';
 import { useTaskStore } from '../store/useTaskStore';
 import { hasLaterRows } from './taskUpdate';
+import { hasFollowUpSource } from './followUpTask';
 
 /**
  * Ask whether a bulk edit to a field applies to a repeating task's future
@@ -19,9 +20,14 @@ export function confirmBulkScope(
   what: string,
   proceed: (scope: 'occurrence' | 'series') => void,
 ): void {
-  const asked = changing.filter(hasLaterRows);
+  const all = useTaskStore.getState().tasks;
+  const asked = changing.filter(t => hasLaterRows(t) || hasFollowUpSource(t, all));
   if (asked.length === 0) {
     proceed('series');
+    return;
+  }
+  if (asked.every(t => !hasLaterRows(t))) {
+    confirmFollowUpScope(what, proceed, { count: asked.length });
     return;
   }
   const one = asked.length === 1;
@@ -37,6 +43,29 @@ export function confirmBulkScope(
       { text: isSeries ? 'This date' : 'This task', onPress: () => proceed('occurrence') },
       { text: isSeries ? 'This and later dates' : 'This and future tasks', onPress: () => proceed('series') },
       { text: BUTTON_LABEL.cancel, style: 'cancel' },
+    ],
+  );
+}
+
+/**
+ * The same question for a task that a repeating task adds (a follow-up task),
+ * which has nothing of its own to repeat: "future" means the ones the rule adds
+ * next. `what` completes "Apply ___ to this task only", as above.
+ */
+export function confirmFollowUpScope(
+  what: string,
+  proceed: (scope: 'occurrence' | 'series') => void,
+  { count = 1, onCancel }: { count?: number; onCancel?: () => void } = {},
+): void {
+  Alert.alert(
+    'Update follow-up task',
+    count === 1
+      ? `A repeating task adds this one. Apply ${what} to this task only, or to it and the ones added later?`
+      : `A repeating task adds each of these. Apply ${what} to just these tasks, or to them and the ones added later?`,
+    [
+      { text: 'This task', onPress: () => proceed('occurrence') },
+      { text: 'This and future tasks', onPress: () => proceed('series') },
+      { text: BUTTON_LABEL.cancel, style: 'cancel', onPress: onCancel },
     ],
   );
 }

@@ -326,7 +326,7 @@ import {
 } from '../utils/postpone';
 import {
   followUpTaskRule, advanceFollowUpTaskTally, followUpTaskSuppressedBy, canHoldFollowUpTask,
-  emptyFollowUpTaskDraft, followUpTaskDraftIsEmpty,
+  emptyFollowUpTaskDraft, followUpTaskDraftIsEmpty, liveFollowUpSource, hasFollowUpSource, followUpDraftAfterEdit,
 } from '../utils/followUpTask';
 import type { FollowUpTaskSuppression } from '../utils/followUpTask';
 import { normalizeTitle } from '../utils/taskInstances';
@@ -2482,23 +2482,18 @@ interface TaskStore extends UndoHistoryActions {
 }
 
 /**
- * The row holding the follow-up rule that wrote `task`, now.
- *
- * `followUpTaskSourceId` names the successor that was live when the follow-up
- * landed, and goes stale once that row is completed in turn. Each completion's
- * successor points back at it through `previousOccurrenceId`, so the walk
- * steps forward along those until it reaches a row still open. A follow-up
- * task points back the same way, which is why rows carrying
- * `followUpTaskSourceTitle` are passed over. Null when the chain ends (the
- * rule's task stopped repeating, or a purge took a link).
+ * Carry an edit made to a follow-up task back to the rule that adds it, once
+ * the person has said "this and future tasks", so the next one starts from it.
+ * Never silent and never default: it runs only for an explicit `scope: 'series'`
+ * (the answer to the prompt), because the same edit on one task is also a
+ * perfectly good "just this one". Which fields count is `FOLLOW_UP_DRAFT_FIELDS`.
  */
-function liveFollowUpSource(task: Task, tasks: readonly Task[]): Task | null {
-  let row = tasks.find(t => t.id === task.followUpTaskSourceId);
-  for (let steps = 0; row && row.completed && steps < 1000; steps++) {
-    const prev: Task = row;
-    row = tasks.find(t => t.previousOccurrenceId === prev.id && !t.followUpTaskSourceTitle);
-  }
-  return row && !row.completed && followUpTaskRule(row) ? row : null;
+function writeEditToFollowUpSource(before: Task, after: Task): void {
+  const store = useTaskStore.getState();
+  const source = liveFollowUpSource(after, store.tasks);
+  if (!source) return;
+  const next = followUpDraftAfterEdit(before, after, source);
+  if (next) store.updateTask(source.id, { followUpTaskDraft: followUpTaskDraftIsEmpty(next) ? null : next });
 }
 
 /**
@@ -2508,17 +2503,6 @@ function liveFollowUpSource(task: Task, tasks: readonly Task[]): Task | null {
  */
 function writeEstimateToSource(task: Task): void {
   const estimate = { estimatedMinutes: task.estimatedMinutes, effort: task.effort };
-  if (task.followUpTaskSourceId) {
-    const store = useTaskStore.getState();
-    const source = liveFollowUpSource(task, store.tasks);
-    if (source) {
-      const draft = source.followUpTaskDraft ?? emptyFollowUpTaskDraft();
-      if (draft.estimatedMinutes !== estimate.estimatedMinutes || draft.effort !== estimate.effort) {
-        const next = { ...draft, ...estimate };
-        store.updateTask(source.id, { followUpTaskDraft: followUpTaskDraftIsEmpty(next) ? null : next });
-      }
-    }
-  }
   const settings = useSettingsStore.getState();
   switch (task.generatedKind) {
     case 'weather': {
@@ -3128,8 +3112,8 @@ function writeScopedRows(
   scope: 'occurrence' | 'series' | undefined,
 ): string[] {
   const store = useTaskStore.getState();
-  const scoped = store.tasks.filter(t => ids.includes(t.id) && hasLaterRows(t));
-  const options = scope === 'occurrence' ? { scope: 'occurrence' as const } : undefined;
+  const scoped = store.tasks.filter(t => ids.includes(t.id) && (hasLaterRows(t) || hasFollowUpSource(t, store.tasks)));
+  const options = scope ? { scope } : undefined;
   scoped.forEach(t => store.updateTask(t.id, patch(t), options));
   return ids.filter(id => !scoped.some(t => t.id === id));
 }
@@ -3969,12 +3953,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (releasedItemId) useGroceryStore.getState().setRunningLow(releasedItemId, false, { registerUndo: false });
     // Compared on the values rather than on the patch's keys, since an undo
     // and a whole-row write both name these fields without changing them.
-    if (current && edited && (edited.generatedKind || edited.followUpTaskSourceId)
+    if (current && edited && edited.generatedKind
       && (current.estimatedMinutes !== edited.estimatedMinutes || current.effort !== edited.effort)) {
       writeEstimateToSource(edited);
     }
     if (current && edited && edited.generatedKind && taskLogChanged(current, edited)) {
       writeLogToSource(edited);
+    }
+    if (current && edited && options?.scope === 'series' && edited.followUpTaskSourceId) {
+      writeEditToFollowUpSource(current, edited);
     }
     if (scope === 'series' && edited?.seriesId) {
       const patched = seriesFanOutRows(edited, updates, get().tasks);
@@ -9350,7 +9337,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   reorderWithCategoryUpdates(orders, categoryUpdates, options) {
-    const scope = options?.scope ?? 'series';
     dbBatchUpdateSortOrders(orders);
     const byId = new Map(orders.map(u => [u.id, { sortOrder: u.sortOrder }]));
     set(s => ({ tasks: patchTasksById(s.tasks, byId) }));
@@ -9365,7 +9351,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       .map(t => ({ ...t }));
 
     categoryUpdates.forEach(u => {
-      get().updateTask(u.id, { category: u.category }, scope === 'occurrence' ? { scope: 'occurrence' } : undefined);
+      get().updateTask(u.id, { category: u.category }, options?.scope ? { scope: options.scope } : undefined);
     });
 
     if (snapshots.length > 0) {

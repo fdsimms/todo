@@ -338,3 +338,105 @@ export function describeFollowUpTaskDraft(
   return `${parts.length} details`;
 }
 
+
+/**
+ * The row holding the follow-up rule that wrote `task`, now.
+ *
+ * `followUpTaskSourceId` names the successor that was live when the follow-up
+ * landed, and goes stale once that row is completed in turn. Each completion's
+ * successor points back at it through `previousOccurrenceId`, so the walk
+ * steps forward along those until it reaches a row still open. A follow-up
+ * task points back the same way, which is why rows carrying
+ * `followUpTaskSourceTitle` are passed over. Null when the chain ends (the
+ * rule's task stopped repeating, or a purge took a link).
+ */
+export function liveFollowUpSource(
+  task: Pick<Task, 'followUpTaskSourceId'>,
+  tasks: readonly Task[],
+): Task | null {
+  if (!task.followUpTaskSourceId) return null;
+  let row = tasks.find(t => t.id === task.followUpTaskSourceId);
+  for (let steps = 0; row && row.completed && steps < 1000; steps++) {
+    const prev: Task = row;
+    row = tasks.find(t => t.previousOccurrenceId === prev.id && !t.followUpTaskSourceTitle);
+  }
+  return row && !row.completed && followUpTaskRule(row) ? row : null;
+}
+
+/**
+ * Whether an edit to this task has later tasks to reach: a follow-up task whose
+ * rule is still live, so the next one it adds could start from the edit. The
+ * counterpart of `hasLaterRows` for a row that repeats nothing itself.
+ */
+export function hasFollowUpSource(
+  task: Pick<Task, 'followUpTaskSourceId'>,
+  tasks: readonly Task[],
+): boolean {
+  return liveFollowUpSource(task, tasks) !== null;
+}
+
+/**
+ * The fields of a follow-up task that its rule's draft also holds. An edit to
+ * one of these is a question about the tasks added later; an edit to anything
+ * else (title, link, date) is about this row alone, and asking would offer a
+ * reach the draft has no place for.
+ */
+export const FOLLOW_UP_DRAFT_FIELDS = [
+  'notes', 'category', 'projectId', 'tags', 'priority', 'effort',
+  'difficulty', 'estimatedMinutes', 'timeSegments', 'vacationPause',
+] as const satisfies readonly (keyof Task)[];
+
+type DraftFieldValues = Partial<Pick<Task, typeof FOLLOW_UP_DRAFT_FIELDS[number]>>;
+
+/** Whether `after` differs from `before` in a field the rule's draft holds. */
+export function followUpDraftFieldsChanged(before: DraftFieldValues, after: DraftFieldValues): boolean {
+  return FOLLOW_UP_DRAFT_FIELDS.some(key => key in after && !sameDraftValue(before[key], after[key]));
+}
+
+/** Null and undefined are one answer for the optional fields (difficulty). */
+function sameDraftValue(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+}
+
+/**
+ * The rule's draft after the person said "this and future tasks" about an edit
+ * to one follow-up task, or null when nothing in the edit belongs to a draft.
+ *
+ * Only the fields the edit changed are written, so the rest of the draft stands.
+ * Category and project hold null for "wherever the task that adds it lives"
+ * (see FollowUpTaskDraft), so a destination that is the parent's own is stored
+ * as that null and keeps following the parent. A task moved to no category and
+ * no project writes nothing for them: a draft has no "none" to say it, and the
+ * drag's offer to a generator makes the same call.
+ */
+export function followUpDraftAfterEdit(
+  before: DraftFieldValues,
+  after: DraftFieldValues,
+  source: Task,
+): FollowUpTaskDraft | null {
+  const next: FollowUpTaskDraft = { ...(source.followUpTaskDraft ?? emptyFollowUpTaskDraft()) };
+  let changed = false;
+  const take = <K extends keyof FollowUpTaskDraft>(key: K, value: FollowUpTaskDraft[K]) => {
+    if (sameDraftValue(next[key], value)) return;
+    next[key] = value;
+    changed = true;
+  };
+  const edited = (key: typeof FOLLOW_UP_DRAFT_FIELDS[number]) =>
+    key in after && !sameDraftValue(before[key], after[key]);
+
+  if (edited('notes')) take('notes', after.notes ?? '');
+  if (edited('category') && after.category) {
+    take('category', after.category === source.category ? null : after.category);
+  }
+  if (edited('projectId') && after.projectId) {
+    take('projectId', after.projectId === source.projectId ? null : after.projectId);
+  }
+  if (edited('tags')) take('tags', after.tags ?? []);
+  if (edited('priority')) take('priority', after.priority ?? 0);
+  if (edited('effort')) take('effort', after.effort ?? 0);
+  if (edited('difficulty')) take('difficulty', after.difficulty ?? null);
+  if (edited('estimatedMinutes')) take('estimatedMinutes', after.estimatedMinutes ?? null);
+  if (edited('timeSegments')) take('timeSegments', after.timeSegments ?? []);
+  if (edited('vacationPause')) take('vacationPause', after.vacationPause ?? false);
+  return changed ? next : null;
+}

@@ -19670,9 +19670,101 @@ describe('estimates kept on the generator', () => {
       ],
     });
 
-    useTaskStore.getState().updateTask('towel', { estimatedMinutes: 1, effort: 1 });
+    useTaskStore.getState().updateTask('towel', { estimatedMinutes: 1, effort: 1 }, { scope: 'series' });
 
     expect(rowOf('laundry').followUpTaskDraft).toEqual({ ...emptyFollowUpTaskDraft(), estimatedMinutes: 1, effort: 1 });
+  });
+
+  // The write is the answer to "this and future tasks", so anything short of
+  // that answer leaves the rule alone: an edit that names no scope, and an
+  // explicit "this task".
+  it('leaves the rule alone unless the edit was told to reach later tasks', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'laundry', recurrenceType: 'weekly', followUpTaskEveryN: 2, followUpTaskTitle: 'Put a new towel out' }),
+        makeTask({ id: 'towel', title: 'Put a new towel out', followUpTaskSourceId: 'laundry', followUpTaskSourceTitle: 'Laundry' }),
+      ],
+    });
+
+    useTaskStore.getState().updateTask('towel', { estimatedMinutes: 1, effort: 1 });
+    useTaskStore.getState().updateTask('towel', { priority: 3 }, { scope: 'occurrence' });
+
+    expect(rowOf('laundry').followUpTaskDraft).toBeNull();
+  });
+
+  it('writes the other fields of a follow-up task into the rule, keeping the rest of its draft', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({
+          id: 'laundry', recurrenceType: 'weekly', category: 'Chores', followUpTaskEveryN: 2,
+          followUpTaskTitle: 'Put a new towel out',
+          followUpTaskDraft: { ...emptyFollowUpTaskDraft(), estimatedMinutes: 5 },
+        }),
+        makeTask({ id: 'towel', title: 'Put a new towel out', followUpTaskSourceId: 'laundry', followUpTaskSourceTitle: 'Laundry', category: 'Chores' }),
+      ],
+    });
+
+    useTaskStore.getState().updateTask(
+      'towel', { category: 'Bathroom', priority: 2, tags: ['house'] }, { scope: 'series' },
+    );
+
+    expect(rowOf('laundry').followUpTaskDraft).toEqual({
+      ...emptyFollowUpTaskDraft(), estimatedMinutes: 5, category: 'Bathroom', priority: 2, tags: ['house'],
+    });
+  });
+
+  it('stores the rule task\'s own category as "same as the parent" rather than by name', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({
+          id: 'laundry', recurrenceType: 'weekly', category: 'Chores', followUpTaskEveryN: 2,
+          followUpTaskTitle: 'Put a new towel out',
+          followUpTaskDraft: { ...emptyFollowUpTaskDraft(), category: 'Bathroom' },
+        }),
+        makeTask({ id: 'towel', title: 'Put a new towel out', followUpTaskSourceId: 'laundry', followUpTaskSourceTitle: 'Laundry', category: 'Bathroom' }),
+      ],
+    });
+
+    useTaskStore.getState().updateTask('towel', { category: 'Chores' }, { scope: 'series' });
+
+    expect(rowOf('laundry').followUpTaskDraft).toBeNull();
+  });
+
+  it('carries a category drag to the rule only when the drop was told to reach later tasks', () => {
+    const tasks = () => [
+      makeTask({ id: 'laundry', recurrenceType: 'weekly', category: 'Chores', followUpTaskEveryN: 2, followUpTaskTitle: 'Put a new towel out' }),
+      makeTask({ id: 'towel', title: 'Put a new towel out', followUpTaskSourceId: 'laundry', followUpTaskSourceTitle: 'Laundry', category: 'Chores' }),
+    ];
+    const orders = [{ id: 'towel', sortOrder: 1 }];
+    const moved = [{ id: 'towel', category: 'Bathroom' }];
+
+    useTaskStore.setState({ tasks: tasks() });
+    useTaskStore.getState().reorderWithCategoryUpdates(orders, moved, { scope: 'occurrence' });
+    expect(rowOf('towel').category).toBe('Bathroom');
+    expect(rowOf('laundry').followUpTaskDraft).toBeNull();
+
+    useTaskStore.setState({ tasks: tasks() });
+    useTaskStore.getState().reorderWithCategoryUpdates(orders, moved);
+    expect(rowOf('laundry').followUpTaskDraft).toBeNull();
+
+    useTaskStore.setState({ tasks: tasks() });
+    useTaskStore.getState().reorderWithCategoryUpdates(orders, moved, { scope: 'series' });
+    expect(rowOf('laundry').followUpTaskDraft).toEqual({ ...emptyFollowUpTaskDraft(), category: 'Bathroom' });
+  });
+
+  it('does not write a bulk priority change to the rule unless the answer was "future"', () => {
+    const tasks = () => [
+      makeTask({ id: 'laundry', recurrenceType: 'weekly', followUpTaskEveryN: 2, followUpTaskTitle: 'Put a new towel out' }),
+      makeTask({ id: 'towel', title: 'Put a new towel out', followUpTaskSourceId: 'laundry', followUpTaskSourceTitle: 'Laundry' }),
+    ];
+    useTaskStore.setState({ tasks: tasks() });
+    useTaskStore.getState().bulkSetPriority(['towel'], 3, { scope: 'occurrence' });
+    expect(rowOf('towel').priority).toBe(3);
+    expect(rowOf('laundry').followUpTaskDraft).toBeNull();
+
+    useTaskStore.setState({ tasks: tasks() });
+    useTaskStore.getState().bulkSetPriority(['towel'], 3, { scope: 'series' });
+    expect(rowOf('laundry').followUpTaskDraft).toEqual({ ...emptyFollowUpTaskDraft(), priority: 3 });
   });
 
   // The pointer names the row that was live when the follow-up landed. Leave
@@ -19687,7 +19779,7 @@ describe('estimates kept on the generator', () => {
       ],
     });
 
-    useTaskStore.getState().updateTask('towel', { estimatedMinutes: 1, effort: 1 });
+    useTaskStore.getState().updateTask('towel', { estimatedMinutes: 1, effort: 1 }, { scope: 'series' });
 
     expect(rowOf('laundry-1').followUpTaskDraft).toBeNull();
     expect(rowOf('laundry-2').followUpTaskDraft).toEqual({ ...emptyFollowUpTaskDraft(), estimatedMinutes: 1, effort: 1 });

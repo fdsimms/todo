@@ -91,7 +91,9 @@ import { MAX_TARGET_UNIT_LENGTH, formatQuotaProgress, formatQuotaTarget, normali
 import {
   MIN_FOLLOW_UP_TASK_EVERY_N, MAX_FOLLOW_UP_TASK_EVERY_N,
   describeFollowUpTaskDraft, describeFollowUpTaskRule, followUpTaskSummary,
+  followUpDraftFieldsChanged, hasFollowUpSource,
 } from '../utils/followUpTask';
+import { confirmFollowUpScope } from '../utils/bulkScopePrompt';
 import { ordinal } from '../utils/ordinal';
 import { tagColor } from '../utils/tagColor';
 import { useTaskStore, CONTENT_FIELDS, derivedTargetCount, type TimeBlockPlan } from '../store/useTaskStore';
@@ -2467,7 +2469,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
         // in case something else pointed at this task while the sheet was up.
         const blocksBefore = blockedTasksOf(task.id).map(t => t.id);
         updateTask(task.id, data, {
-          ...(scope === 'occurrence' ? { scope: 'occurrence' as const } : {}),
+          ...(scope ? { scope } : {}),
           // The user is looking at this task right now, so if this save is
           // what makes it visible today it must not also read as unseen.
           markSeenOnBecomeVisible: true,
@@ -2588,6 +2590,14 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
         );
         return;
       }
+    }
+    // A follow-up task repeats nothing, but the tasks its rule adds later start
+    // from what this one looks like, so an edit to a field the rule's draft
+    // holds gets the same question. Anything else about this row is its own.
+    if (task && hasFollowUpSource(task, useTaskStore.getState().tasks)
+      && followUpDraftFieldsChanged(task, data)) {
+      confirmFollowUpScope('this change', commitSave);
+      return;
     }
     commitSave();
   };

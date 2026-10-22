@@ -911,7 +911,7 @@ export function buildCompletion(
       // and would override a configured new-task default.
       priority: spec?.priority,
       // An estimate edited on an earlier follow-up is written back into this
-      // draft (writeEstimateToSource), which is how the next one starts with it.
+      // draft (writeEditToFollowUpSource, once the person says "this and future tasks"), which is how the next one starts with it.
       effort: spec?.effort,
       difficulty: spec?.difficulty ?? null,
       estimatedMinutes: spec?.estimatedMinutes ?? null,
