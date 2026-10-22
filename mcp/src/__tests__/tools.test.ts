@@ -129,6 +129,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     moodLogs: () => [],
     medicationLogs: () => [],
     medicationSummary: (log: MedicationLog) => log.name,
+    medicationIngredients: () => null,
     medicationSettings: () => [],
     // No store configured is the ordinary state for a replica pointed at a
     // file somebody copied, and the tool layer never calls this anyway.
@@ -933,6 +934,17 @@ describe('listMedicationLogs', () => {
     );
     expect(result.logs[0].summary).toBe('Ibuprofen · 400 mg · as needed');
     expect(result.logs[0]).toMatchObject({ amount: 400, unit: 'mg', asNeeded: true });
+  });
+
+  it('carries the ingredients outside the nutrient list a dose took, and leaves it out when there are none', () => {
+    const result = listMedicationLogs(
+      stubReplica({
+        medicationLogs: () => [dose({ id: 'd1', name: 'Stress Relief' }), dose({ id: 'd2', name: 'Zinc' })],
+        medicationIngredients: (log: MedicationLog) => (log.name === 'Stress Relief' ? 'L-theanine 200 mg' : null),
+      })
+    );
+    expect(result.logs[0].otherIngredients).toBe('L-theanine 200 mg');
+    expect(result.logs[1].otherIngredients).toBeUndefined();
   });
 
   it('omits asNeeded when a dose was scheduled', () => {

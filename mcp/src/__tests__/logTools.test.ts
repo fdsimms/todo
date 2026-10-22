@@ -536,6 +536,11 @@ describe('set_supplement_nutrients', () => {
       otherIngredients: [{ name: 'Ashwagandha', amount: 80, unit: 'mg' }],
     });
     expect(replica.medicationSettings().find(m => m.name === 'Multivitamin')).toMatchObject({ nutrients: 'Per 1 capsule: 1 other ingredient' });
+
+    // A dose carries what it took, scaled to the dose and read from the panel.
+    logMedication(replica, { name: 'Multivitamin', amount: 2, unit: 'capsule' });
+    const two = replica.medicationLogs('0000-01-01', '9999-12-31').find(l => l.name === 'Multivitamin' && l.amount === 2);
+    expect(replica.medicationIngredients(two!)).toBe('Ashwagandha 160 mg');
   });
 
   it('refuses an ingredient the app\'s sheet would', () => {

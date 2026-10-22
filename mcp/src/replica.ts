@@ -1189,6 +1189,13 @@ export interface Replica {
   /** "Ibuprofen · 400 mg · as needed", the app's own one-line rendering of a dose. */
   medicationSummary(log: MedicationLog): string;
   /**
+   * "Ashwagandha 80 mg, L-theanine 200 mg": what the dose took of the
+   * ingredients its supplement's label lists outside the nutrient list, scaled
+   * to the dose, or null when the medicine names none. Read from the panel as
+   * it stands now, which is how the app reads it.
+   */
+  medicationIngredients(log: MedicationLog): string | null;
+  /**
    * The limit and supply the person set per medication, read the app's way:
    * where each one stands against its limit now, and what's left of its
    * supply (derived from the doses, never stored as a running number).
@@ -4164,6 +4171,11 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     medicationLogs: (from: string, to: string) =>
       db.dbGetAllMedicationLogs().filter(l => l.dayKey >= from && l.dayKey <= to),
     medicationSummary: (log: MedicationLog) => medication.medicationLogSummary(log),
+    medicationIngredients: (log: MedicationLog) => {
+      const map = medicationSettings.parseMedicationSettings(db.dbGetSetting(medicationSettings.MEDICATION_SETTINGS_KEY));
+      const list = supplementDose.doseIngredients(medicationSettings.prefsFor(map, log.name).nutrition, log);
+      return list.length > 0 ? supplementDose.describeIngredients(list) : null;
+    },
     medicationSettings: () => {
       const logs = db.dbGetAllMedicationLogs();
       const map = medicationSettings.parseMedicationSettings(db.dbGetSetting(medicationSettings.MEDICATION_SETTINGS_KEY));
