@@ -9657,6 +9657,36 @@ describe('skipNextRecurrence', () => {
     expect(new Date(updated.dueDate!).getTime()).toBeGreaterThan(new Date(task.dueDate!).getTime());
   });
 
+  it('offers an undo that puts the occurrence back', () => {
+    const task = makeTask({
+      id: 't1',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      recurrenceCount: 3,
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().skipNextRecurrence('t1');
+    const action = useTaskStore.getState().lastAction;
+    expect(action?.label).toBe('Task skipped');
+    action?.undo();
+    const restored = useTaskStore.getState().tasks[0];
+    expect(restored.dueDate).toBe(task.dueDate);
+    expect(restored.recurrenceCount).toBe(3);
+  });
+
+  it('registers no undo when the skip is unattended', () => {
+    const task = makeTask({
+      id: 't1',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().skipNextRecurrence('t1', { registerUndo: false });
+    expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+
   it.each([[false, false], [true, true]])('pinEachOccurrence=%s leaves the next occurrence pinned=%s', (each, pinned) => {
     const task = makeTask({
       id: 't1',
