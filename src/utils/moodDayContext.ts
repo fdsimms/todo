@@ -1,8 +1,6 @@
-import type { Person } from '../types';
 import type { BusyEvent } from './calendarBusy';
 import type { EventPeopleIndex } from './eventPeople';
 import { peopleForEvent } from './eventPeople';
-import { birthdayInYear } from './birthdayTasks';
 import { holidayOn, type HolidayConfig } from './holidays';
 import { EXERCISED_MINUTES, OUTSIDE_MINUTES, type MoodContextSources } from './moodContextSources';
 
@@ -13,7 +11,7 @@ import { EXERCISED_MINUTES, OUTSIDE_MINUTES, type MoodContextSources } from './m
  * `seededContextTags` and docs/arch/mood-log.md).
  *
  * **Every source answers only with a positive.** A day with no holiday, no
- * linked event, no birthday and no recorded exercise offers nothing, because
+ * linked event and no recorded exercise offers nothing, because
  * none of those is a claim about the day. A calendar that didn't load and a
  * day with no events look the same from here, so "no social event" is never an
  * answer, and neither is "didn't exercise" (a refused Health read and a day
@@ -30,7 +28,6 @@ export interface MoodDayInputs {
   /** Null when the calendar hasn't been read, which offers nothing. */
   events: readonly BusyEvent[] | null;
   eventPeople: EventPeopleIndex;
-  people: readonly Pick<Person, 'birthdayMonth' | 'birthdayDay' | 'archived'>[];
   /** Today's exercise so far, or null when Health has nothing. Read only for today. */
   exerciseMinutesToday: number | null;
   /** Today's Time in Daylight so far, or null. Read only for today. */
@@ -53,16 +50,6 @@ export function moodDayOffers(sources: MoodContextSources, input: MoodDayInputs)
       && Date.parse(e.start) < input.dayEnd.getTime()
       && peopleForEvent(input.eventPeople, e).length > 0);
     if (social) tags.push('Social event');
-  }
-
-  if (sources.birthday) {
-    const year = Number(input.dayKey.slice(0, 4));
-    const has = input.people.some(p => {
-      if (p.archived) return false;
-      const date = birthdayInYear(p, year);
-      return date !== null && date >= input.dayStart && date < input.dayEnd;
-    });
-    if (has) tags.push('Birthday');
   }
 
   if (sources.exercise && input.isToday

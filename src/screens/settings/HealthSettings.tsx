@@ -100,15 +100,13 @@ const MOOD_SOURCE_ROWS: readonly {
   key: keyof MoodContextSources; entryId: string; icon: string; label: string; hint: string;
 }[] = [
   { key: 'dayOff', entryId: 'moodSourceDayOff', icon: 'flag-outline', label: 'Holidays and days off',
-    hint: 'Picks Holiday on a public holiday, and Day off on one of your own days off.' },
+    hint: 'Picks “Holiday” on a public holiday, and “Day off” on one of your own days off.' },
   { key: 'social', entryId: 'moodSourceSocial', icon: 'people-outline', label: 'Social events',
-    hint: 'Picks Social event on a day with a calendar event you linked to someone.' },
-  { key: 'birthday', entryId: 'moodSourceBirthday', icon: 'gift-outline', label: 'Birthdays',
-    hint: 'Picks Birthday on a day someone in People has one.' },
+    hint: 'Picks “Social event” on a day with a calendar event you linked to someone.' },
   { key: 'exercise', entryId: 'moodSourceExercise', icon: 'barbell-outline', label: 'Exercise',
-    hint: 'Picks Exercised once Health shows 30 minutes of exercise today. Needs Read Apple Health.' },
+    hint: 'Picks “Exercised” once Health shows 30 minutes of exercise today. Needs Read Apple Health.' },
   { key: 'outside', entryId: 'moodSourceOutside', icon: 'sunny-outline', label: 'Time outside',
-    hint: 'Picks Went outside once Health shows 30 minutes in daylight today. Needs Read Apple Health and an Apple Watch. If you allowed Health access earlier, tap Health access again to include it.' },
+    hint: 'Picks “Went outside” once Health shows 30 minutes in daylight today. Needs Read Apple Health and an Apple Watch. If you allowed Health access earlier, tap Health access again to include it.' },
 ];
 
 export function HealthSettings() {

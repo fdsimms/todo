@@ -656,8 +656,6 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['mood', 'context', 'tag', 'public holiday', 'suggest', 'pre-pick'] },
   { id: 'moodSourceSocial', groupId: 'health', label: 'Social events', section: 'Mood log suggestions',
     keywords: ['mood', 'context', 'tag', 'calendar', 'people', 'friends', 'suggest', 'pre-pick'] },
-  { id: 'moodSourceBirthday', groupId: 'health', label: 'Birthdays', section: 'Mood log suggestions',
-    keywords: ['mood', 'context', 'tag', 'people', 'party', 'suggest', 'pre-pick'] },
   { id: 'moodSourceExercise', groupId: 'health', label: 'Exercise', section: 'Mood log suggestions',
     keywords: ['mood', 'context', 'tag', 'workout', 'activity', 'health', 'suggest', 'pre-pick'] },
   { id: 'moodSourceOutside', groupId: 'health', label: 'Time outside', section: 'Mood log suggestions',

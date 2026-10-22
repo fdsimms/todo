@@ -2,7 +2,6 @@ import { addDays } from 'date-fns/addDays';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { useEventPeopleStore } from '../store/useEventPeopleStore';
-import { usePersonStore } from '../store/usePersonStore';
 import { useHealthStore } from '../store/useHealthStore';
 import { dayKeyOf, getDayStart } from './dateUtils';
 import { moodDayOffers as offersFor } from './moodDayContext';
@@ -31,7 +30,6 @@ export function moodDayOffersFor(day: Date, isToday: boolean): string[] {
     holidays: { set: holidaySet, custom: customHolidays },
     events: calendar.loaded ? calendar.events : null,
     eventPeople: useEventPeopleStore.getState().links,
-    people: usePersonStore.getState().people,
     exerciseMinutesToday: health.today?.dayKey === dayKey ? health.today.exerciseMinutes : null,
     daylightMinutesToday: health.today?.dayKey === dayKey ? health.today.daylightMinutes : null,
   });

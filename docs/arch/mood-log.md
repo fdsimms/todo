@@ -110,13 +110,14 @@ telling somebody why they feel a certain way, which is exactly what
 `moodInsights.ts`'s association-not-cause rule exists to forbid. Widening the
 source list is a real feature decision each time, not a default to reach for.
 
-**Five more come from facts about the day, each behind its own switch that
+**Four more come from facts about the day, each behind its own switch that
 ships off** (`MoodContextSources`, Settings › Health › Mood log suggestions;
 `moodDayContext.ts` is the rule and `moodDayOffers.ts` reads the stores):
 "Holiday" or "Day off" from `holidays.ts`, "Social event" from a calendar event
-with someone linked (`eventPeople`), "Birthday" from People, and "Exercised"
-once today's Health exercise reaches 30 minutes, and "Went outside" once
-today's Time in Daylight (an Apple Watch reading, iOS 17+) reaches 30 minutes.
+with someone linked (`eventPeople`), "Exercised" once today's Health exercise
+reaches 30 minutes, and "Went outside" once today's Time in Daylight (an Apple
+Watch reading, iOS 17+) reaches 30 minutes. A "Birthday" source was removed, and
+`parseMoodContextSources` drops it from an older stored value.
 Three rules keep them honest.
 Every one answers only with a positive: a calendar that wasn't read and a day
 with no events look the same, and a refused Health read and a day with nothing

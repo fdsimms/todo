@@ -4,7 +4,7 @@
  * settings store can hold the type without importing the calendar and People
  * code the offers read.
  *
- * **All five are off until the person turns them on**, since seeding a tag the
+ * **All four are off until the person turns them on**, since seeding a tag the
  * person did not ask for makes the log less their own record. Each is rare
  * enough to mean something: a tag that applied every weekday would give the
  * contrast card nothing to compare.
@@ -14,8 +14,6 @@ export interface MoodContextSources {
   dayOff: boolean;
   /** "Social event" on a day with a calendar event linked to somebody. */
   social: boolean;
-  /** "Birthday" on a day someone in People has one. */
-  birthday: boolean;
   /** "Exercised" once today's exercise reaches `EXERCISED_MINUTES`. */
   exercise: boolean;
   /** "Went outside" once today's Time in Daylight reaches `OUTSIDE_MINUTES`. */
@@ -23,10 +21,10 @@ export interface MoodContextSources {
 }
 
 export const NO_MOOD_CONTEXT_SOURCES: MoodContextSources = {
-  dayOff: false, social: false, birthday: false, exercise: false, outside: false,
+  dayOff: false, social: false, exercise: false, outside: false,
 };
 
-export const MOOD_CONTEXT_SOURCE_KEYS = ['dayOff', 'social', 'birthday', 'exercise', 'outside'] as const;
+export const MOOD_CONTEXT_SOURCE_KEYS = ['dayOff', 'social', 'exercise', 'outside'] as const;
 
 /**
  * Apple's default Exercise ring goal. A fixed figure rather than a setting:
@@ -42,7 +40,11 @@ export const EXERCISED_MINUTES = 30;
  */
 export const OUTSIDE_MINUTES = 30;
 
-/** Tolerant of a missing or malformed stored value: anything unreadable is off. */
+/**
+ * Tolerant of a missing or malformed stored value: anything unreadable is off.
+ * Only the keys above are read, so a source since removed (a Birthday switch
+ * once lived here) is dropped from an older stored value rather than kept.
+ */
 export function parseMoodContextSources(raw: string | null | undefined): MoodContextSources {
   if (!raw) return { ...NO_MOOD_CONTEXT_SOURCES };
   try {

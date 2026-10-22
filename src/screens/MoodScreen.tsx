@@ -81,6 +81,8 @@ import { usePullToSearch } from '../hooks/usePullToSearch';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { InlineAction } from '../components/InlineAction';
+import { animateLayout } from '../utils/layoutAnimation';
+import { joinAnd } from '../utils/workoutProgression';
 import { MoodLogSheet, type MoodLogPrefill } from '../components/MoodLogSheet';
 import { MoodEntryRow } from '../components/MoodEntryRow';
 import { MoodFace } from '../components/MoodFace';
@@ -95,6 +97,8 @@ import { LazySheet } from '../components/LazySheet';
 
 /** How many days the chart shows. Two weeks fits a phone width at a readable bar. */
 const CHART_DAYS = 14;
+/** Repeating-task rows shown before the rest fold behind Show all. */
+const TASK_ROWS_SHOWN = 4;
 
 const BAR_HEIGHT = 90;
 
@@ -380,13 +384,20 @@ export function MoodScreen() {
   // Mood on the days one repeating task got done, against the days it didn't.
   // The app's answer to medication tracking: a tablet, a supplement or a walk
   // is already a repeating task here, so this needs no second list to keep.
+  // Every row, not a top slice: past the first few they fold behind Show all,
+  // since the task someone is asking about is rarely the one with the biggest
+  // gap. Tasks finished on exactly the same days arrive as one row.
   const taskRows = useMemo(() => {
     const titles = taskContrastTitles(tasks);
-    return taskMoodContrasts(days).slice(0, 4).map(row => ({
+    return taskMoodContrasts(days).map(row => ({
       ...row,
       label: titles.get(row.label) ?? row.label,
+      sameDays: row.sameDays.map(key => titles.get(key) ?? key)
+        .sort((a, b) => a.localeCompare(b)),
     }));
   }, [days, tasks]);
+  const [allTaskRows, setAllTaskRows] = useState(false);
+  const shownTaskRows = allTaskRows ? taskRows : taskRows.slice(0, TASK_ROWS_SHOWN);
 
   // Mood before a milestone's date, against on and after it. Unlike every
   // contrast above, this isn't a with/without split over a vocabulary of
@@ -852,20 +863,31 @@ export function MoodScreen() {
             <>
               <Text style={styles.sectionTitle}>MOOD AND YOUR REPEATING TASKS</Text>
               <View style={styles.card}>
-                {taskRows.map((row, i) => (
+                {shownTaskRows.map((row, i) => (
                   <ContrastBars
                     key={row.label}
                     first={i === 0}
                     label={row.label}
+                    detail={row.sameDays.length > 0 ? `Same days as ${joinAnd(row.sameDays)}` : undefined}
                     withLabel="Did it"
                     withoutLabel="Didn’t"
                     withFraction={moodBarFraction(row.moodWith)}
                     withoutFraction={moodBarFraction(row.moodWithout)}
                     withText={row.moodWith.toFixed(1)}
                     withoutText={row.moodWithout.toFixed(1)}
-                    accessibilityLabel={`${row.label}, average mood ${row.moodWith.toFixed(1)} on the ${row.withDays} days you finished it, ${row.moodWithout.toFixed(1)} on the ${row.withoutDays} days you didn’t`}
+                    accessibilityLabel={`${row.label}${row.sameDays.length > 0 ? `, done on the same days as ${joinAnd(row.sameDays)}` : ''}, average mood ${row.moodWith.toFixed(1)} on the ${row.withDays} days you finished it, ${row.moodWithout.toFixed(1)} on the ${row.withoutDays} days you didn’t`}
                   />
                 ))}
+                {taskRows.length > TASK_ROWS_SHOWN && (
+                  <View style={styles.showAll}>
+                    <InlineAction
+                      variant="neutral"
+                      icon={allTaskRows ? 'chevron-up' : 'chevron-down'}
+                      label={allTaskRows ? 'Show fewer' : `Show all ${taskRows.length}`}
+                      onPress={() => { animateLayout(); setAllTaskRows(v => !v); }}
+                    />
+                  </View>
+                )}
                 <Text style={styles.chartCaption}>
                   Your average mood on days you finished a repeating task, against days you
                   didn’t. This doesn’t show cause and effect.
@@ -1232,6 +1254,7 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   lookBackWhen: { fontSize: font.xs, color: colors.textSecondary, marginBottom: spacing.xs },
   lookBackNote: { fontSize: font.md, color: colors.text, marginTop: spacing.xxs },
   chartCaption: { fontSize: font.xs, color: colors.textTertiary, marginTop: spacing.sm },
+  showAll: { flexDirection: 'row', marginTop: spacing.md },
   pending: { fontSize: font.sm, color: colors.textSecondary, lineHeight: 20 },
   finding: { fontSize: font.md, color: colors.text, lineHeight: 22 },
   findings: { gap: spacing.sm },

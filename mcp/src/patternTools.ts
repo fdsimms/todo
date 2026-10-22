@@ -193,6 +193,8 @@ export interface Contrast {
   /** Average mood, 1 to 5, on each side. */
   moodWith: number;
   moodWithout: number;
+  /** byRepeatingTask only: other tasks finished on exactly the same days, so these figures are theirs too. */
+  sameDays?: string[];
 }
 
 export interface MoodInsights {
@@ -310,7 +312,13 @@ export function moodInsights(replica: Replica): MoodInsights {
             : 'No relationship to report.',
         },
     byCategory: contrasts(mi.categoryMoodContrasts(days), k => k),
-    byRepeatingTask: contrasts(mi.taskMoodContrasts(days), k => taskTitles.get(k) ?? k),
+    byRepeatingTask: (() => {
+      const rows = mi.taskMoodContrasts(days);
+      const title = (k: string) => taskTitles.get(k) ?? k;
+      return contrasts(rows, title).map((c, i) => rows[i].sameDays.length > 0
+        ? { ...c, sameDays: rows[i].sameDays.map(title) }
+        : c);
+    })(),
     bySymptom: contrasts(mi.symptomMoodContrasts(days), k => symptomNames.get(k) ?? k),
     byRating: contrasts(mi.factorMoodContrasts(days), k => factorNames.get(k) ?? k),
     byContextTag: contrasts(mi.contextTagMoodContrasts(days), k => tagNames.get(k) ?? k),
