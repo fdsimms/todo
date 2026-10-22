@@ -1,0 +1,1 @@
+{ "message": "Fixed AI features that stopped working with the Sonnet model and showed \"Anthropic rejected the request\". Errors from Anthropic now say what it objected to.", "date": "2026-10-22" }

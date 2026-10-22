@@ -117,6 +117,7 @@ import {
 import { EXERCISE_EQUIPMENT, MUSCLE_GROUPS } from '../../src/utils/workoutData';
 import { deleteJournalEntry, listJournalEntries, logJournalEntry, searchJournalEntries, updateJournalEntry } from './journalTools';
 import { setVacationMode } from './vacationTools';
+import { withLogSyncNote } from './logSync';
 import { getSettings, updateSettings } from './settingsTools';
 import { SETTINGS_SPEC } from './settingsSpec';
 import { MAX_DELETE, deleteTag, deleteTasks, duplicateTask, renameTag, setCompletionDate, setTaskDates, skipOccurrence } from './taskTools';
@@ -328,7 +329,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'get_settings',
-    "The person's settings that can be changed from here, grouped as in Settings, each with its value and what it does: when the day starts and its parts, task defaults, what is switched on (the kitchen, simplified mode, rewards), the kitchen's units, and each automation's own timing.",
+    "The person's settings that can be changed from here, grouped as in Settings, each with its value and what it does: when the day starts and its parts, task defaults, what is switched on (the kitchen, simplified mode, rewards), how a focus session plans its stretches and breaks, the kitchen's units and what it does after cooking, and each automation's own timing.",
     {},
     async () => json(await withFresh(() => getSettings(replica)))
   );
@@ -499,7 +500,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     'list_food_log',
     'Logged food over a range of days, with summed nutrients and, in produce, an estimate of vegetable and fruit servings per day: 80 g servings, beans count once a day, rounded to the nearest half. It is read from food names and weights, so a food not named as produce counts as none, and unmeasured is how many entries that day could not be weighed and are not counted. Say it is an estimate, and say when unmeasured is above zero. A nutrient nobody logged is absent rather than zero. Each entry carries its own figures as amounts (a nutrient it did not state is absent), so a surprising total can be traced to the entry behind it, and inAppleHealth: true when it was written to Apple Health, which refresh_dish_entry, update_food_entry and delete_food_entry refuse and only the phone can change. An entry the person described and the app estimated may carry a breakdown, the same estimate split across what it named (for example the beer and the pretzel); it adds up to the entry\'s own figures, so do not add it to the totals again. Defaults to the last 7 days. Empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that nothing was logged.',
     logRange,
-    async input => json(await withFresh(() => listFoodLog(replica, input)))
+    async input => json(await withFresh(() => withLogSyncNote(replica, 'healthLogs', listFoodLog(replica, input))))
   );
 
   server.tool(
@@ -518,7 +519,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
       tag: z.string().min(1).optional().describe('Only entries carrying this tag (a label the person typed).'),
       personId: z.string().min(1).optional().describe('Only entries about this person, by id from list_people.'),
     },
-    async input => json(await withFresh(() => listJournalEntries(replica, input)))
+    async input => json(await withFresh(() => withLogSyncNote(replica, 'journal', listJournalEntries(replica, input))))
   );
 
   server.tool(
@@ -533,21 +534,21 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
       to: dayKey.optional(),
       limit: z.number().int().positive().max(50).optional(),
     },
-    async input => json(await withFresh(() => searchJournalEntries(replica, input)))
+    async input => json(await withFresh(() => withLogSyncNote(replica, 'journal', searchJournalEntries(replica, input))))
   );
 
   server.tool(
     'list_mood_logs',
     'Mood check-ins over a range of days: the 1 to 5 rating, any symptoms and their severity, context tags and notes. Defaults to the last 7 days. Empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that nothing was logged.',
     logRange,
-    async input => json(await withFresh(() => listMoodLogs(replica, input)))
+    async input => json(await withFresh(() => withLogSyncNote(replica, 'healthLogs', listMoodLogs(replica, input))))
   );
 
   server.tool(
     'list_medication_logs',
     'Doses recorded over a range of days, including as-needed ones, plus the limit and supply the person set for each medication (limitsAndSupply: their own limit, how many doses in the last 24 hours, the total against a limit on an amount, when the next is within it, and how many are left; also whether they take it as needed, their usual amount, and medicines added with no dose yet). Each dose of a supplement whose label lists herbs, amino acids or omega-3s carries otherIngredients ("Ashwagandha 80 mg, L-theanine 200 mg"), worked out from the label as it stands now; those are never in the food log. A limit is the person\'s own, never a prescription; say it that way. Defaults to the last 7 days. Empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that nothing was logged.',
     logRange,
-    async input => json(await withFresh(() => listMedicationLogs(replica, input)))
+    async input => json(await withFresh(() => withLogSyncNote(replica, 'healthLogs', listMedicationLogs(replica, input))))
   );
 
   server.tool(
@@ -561,7 +562,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     'list_milestones',
     'The days something changed in the person\'s life that they have marked on the mood log ("Started sertraline", "New job"), each with its date. mood_insights reads mood before and after each one, under its own minimum-days rules; a start and a later stop are two milestones and are never paired. Empty unless the person has turned on Include health logs for the sync server on their phone.',
     {},
-    async () => json(await withFresh(() => listMilestones(replica)))
+    async () => json(await withFresh(() => withLogSyncNote(replica, 'healthLogs', listMilestones(replica))))
   );
 
   server.tool(
@@ -588,7 +589,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     'list_workouts',
     'Workouts the person logged over a range of days, newest first, each with its exercises and sets (weights in kg, whatever unit the phone shows; done: false is a set laid out but not done), plus their routines (planned sets per exercise), programs and gyms (where they train, the equipment each has and a note for an exercise there). Defaults to the last 7 days. Workout history is part of the health record: it is empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that they did not train. Routines and programs are plans and arrive either way. Report what was logged. Never estimate calories from sets, and never work anything out from body weight.',
     logRange,
-    async input => json(await withFresh(() => listWorkouts(replica, input)))
+    async input => json(await withFresh(() => withLogSyncNote(replica, 'healthLogs', listWorkouts(replica, input))))
   );
 
   server.tool(
@@ -1068,7 +1069,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'get_overview',
-    "Start here. The person's time zone and logical today (their day can start after midnight), how many tasks are in each of Today, Later, Unscheduled and Inbox and how many are overdue, their categories (with any hours a category is limited to), most-used tags, active projects, which areas of the app are switched off, whether health logs reach this server, and whether you can write.",
+    "Start here. The person's time zone and logical today (their day can start after midnight), how many tasks are in each of Today, Later, Unscheduled and Inbox and how many are overdue, their categories (with any hours a category is limited to), most-used tags, active projects, which areas of the app are switched off, whether the phone is sending the health logs and the journal here (logSync), and whether you can write.",
     {},
     async () => json(await withFresh(() => getOverview(replica, scope)))
   );

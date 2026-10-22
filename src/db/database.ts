@@ -124,6 +124,7 @@ import {
   KEY_SEPARATOR,
   NOW_EXPR,
   isSyncedSettingKey,
+  serverSharingKey,
   SYNCED_SETTING_KEYS,
   isDeviceLocalColumn,
   withoutDeviceLocalColumns,
@@ -3276,6 +3277,115 @@ export function dbGetSyncCursor(source: string): string | null {
 
 export function dbSetSyncCursor(source: string, cursor: string): void {
   dbSetSetting(`${CURSOR_KEY_PREFIX}${source}`, cursor);
+}
+
+/**
+ * Tracked tables the app writes into on its own, with nobody having entered
+ * anything: the settings table, the error log and the record of unattended
+ * writes. A device holding rows only in these has nothing of the person's.
+ */
+const SELF_WRITTEN_SYNC_TABLES = new Set(['settings', 'error_log', 'unattended_log']);
+
+/**
+ * Whether this device holds anything a person entered, which is what decides
+ * whether turning sync on has to ask what happens to it (`joinChoiceNeeded`).
+ * One indexed probe per table rather than `dbSyncChangesSince(null)`, which
+ * reads every row there is just to answer yes.
+ */
+export function dbHasOwnSyncData(): boolean {
+  return SYNC_TRACKED_TABLES.some(
+    t => !SELF_WRITTEN_SYNC_TABLES.has(t.name)
+      && db.getFirstSync(`SELECT 1 AS present FROM "${t.name}" LIMIT 1`) !== null
+  );
+}
+
+/**
+ * Device-only tables about the rows an erase removes: a focus session over
+ * tasks that are gone, and meals or recipes waiting for an estimate.
+ */
+const ERASED_DEVICE_TABLES = ['focus_sessions', 'pending_estimates', 'pending_recipe_estimates'];
+
+/**
+ * Empties this device so it can join sync holding only what its other devices
+ * have (`joinAfterErasing` in syncEngine). Not a restore with no rows, which
+ * is `dbReplaceAllData({})`, for two reasons, and both are about what the
+ * erase must not do to the other devices:
+ *
+ * - **It leaves no tombstones.** Every DELETE writes one through the ordinary
+ *   triggers, and pushed, they would delete the same rows on every peer that
+ *   holds them: all of them, on a device that has synced before. A restore
+ *   wants its deletions to travel; this is the one replace that must not, so
+ *   the tombstones are cleared in the same transaction, along with the record
+ *   of which rows arrived from where (they are all gone) and the fold aliases.
+ *   The single exception is this device's own sharing report, below.
+ * - **Only the settings that sync go**, plus this device's sync id and every
+ *   cursor. The synced ones would otherwise win over a peer's when they were
+ *   changed more recently here. The rest are this device's own (calendar ids,
+ *   the API key) or one-time migration flags, and those have to stay: the data
+ *   arriving is already migrated, and a cleared flag reruns the migration over
+ *   it.
+ *
+ * A new device id makes this a new peer, so the pull that follows also applies
+ * the payloads this device pushed before, which the echo filter would skip
+ * under the old id. Without it, a row only this device ever wrote would never
+ * come back. Cursors go so that pull starts from the beginning, for every
+ * transport.
+ *
+ * Returns the calendar events the erased rows held, for the caller to delete
+ * through `reconcileSyncedEvents`, as a synced deletion does.
+ */
+export function dbEraseForSyncJoin(): Pick<ApplyReport, 'removedMealEvents' | 'removedTaskEvents'> {
+  const removed: Pick<ApplyReport, 'removedMealEvents' | 'removedTaskEvents'> = {
+    removedMealEvents: [],
+    removedTaskEvents: [],
+  };
+  withTransaction(() => {
+    // The calendar events this device wrote for the rows about to go, read
+    // first because the event ids are device-local columns and nothing else
+    // holds them (the same read a synced deletion makes, `dbApplySyncChanges`).
+    // The same two kinds a deletion removes: a meal's event and a task's
+    // deadline event, never a time block or a completion event.
+    for (const meal of db.getAllSync<{ calendar_event_id: string; calendar_event_external_id: string | null; date: string }>(
+      'SELECT calendar_event_id, calendar_event_external_id, date FROM meal_plan_entries WHERE calendar_event_id IS NOT NULL'
+    )) {
+      removed.removedMealEvents.push({
+        eventId: meal.calendar_event_id,
+        externalId: meal.calendar_event_external_id ?? null,
+        date: meal.date,
+      });
+    }
+    for (const task of db.getAllSync<{ calendar_event_id: string; calendar_event_external_id: string | null }>(
+      'SELECT calendar_event_id, calendar_event_external_id FROM tasks WHERE calendar_event_id IS NOT NULL'
+    )) {
+      removed.removedTaskEvents.push({ eventId: task.calendar_event_id, externalId: task.calendar_event_external_id ?? null });
+    }
+
+    for (const table of SYNC_TRACKED_TABLES) {
+      if (table.name !== 'settings') db.runSync(`DELETE FROM "${table.name}"`);
+    }
+    for (const table of ERASED_DEVICE_TABLES) db.runSync(`DELETE FROM "${table}"`);
+    const oldDeviceId = dbGetSetting(DEVICE_ID_KEY);
+    const keys = db
+      .getAllSync<{ key: string }>('SELECT key FROM settings')
+      .map(row => row.key)
+      .filter(key => isSyncedSettingKey(key) || key === DEVICE_ID_KEY || key.startsWith(CURSOR_KEY_PREFIX));
+    for (const key of keys) db.runSync('DELETE FROM settings WHERE key = ?', [key]);
+    db.runSync(`DELETE FROM ${SYNC_DELETIONS_TABLE}`);
+    db.runSync(`DELETE FROM ${SYNC_RECEIVED_TABLE}`);
+    db.runSync(`DELETE FROM ${SYNC_ALIASES_TABLE}`);
+    // The one deletion that should travel: this device's sharing report under
+    // the id it is giving up. Only this device ever writes that row, so
+    // deleting it everywhere loses nobody's data, and left alone the server
+    // would keep reading switches from a device that no longer exists.
+    const oldReport = oldDeviceId ? serverSharingKey(oldDeviceId) : null;
+    if (oldReport && keys.includes(oldReport)) {
+      db.runSync(
+        `INSERT OR REPLACE INTO ${SYNC_DELETIONS_TABLE} (table_name, row_key, deleted_at) VALUES ('settings', ?, ${NOW_EXPR})`,
+        [oldReport]
+      );
+    }
+  });
+  return removed;
 }
 
 /** The tracked-table definition for a name off the wire, or null if unknown. */

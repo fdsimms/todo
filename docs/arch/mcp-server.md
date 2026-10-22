@@ -1626,6 +1626,16 @@ transport can withhold tables (`SyncTransport.withhold`, applied by `withholdCha
   per device, with its own resend mark. The server is what an agent reads, and
   being happy for Claude to see a food log is not being happy for it to read a
   diary, so the journal is not part of the health switch.
+- **The server is told which way both switches point.** The switches stay on the device (synced,
+  one phone could start sending another's journal), but each device writes a report of them,
+  `syncServerSharing:<deviceId>` (`SERVER_SHARING_KEY_PREFIX`, `reportServerSharing`), on every
+  change and once at launch. iCloud withholds the prefix, so only the server gets it. Without it the
+  replica could see only what had arrived, and with a switch off and older entries still here, a
+  short history read as the whole of one: an agent concluded the person barely journals when the
+  switch had simply been turned off. `logSync.ts` folds the reports into `on`, `off`, `mixed` (one
+  device sends, another doesn't) or `unknown` (a phone too old to report), `get_overview` returns
+  it as `logSync`, and every log tool adds a `syncNote` while its switch is off. The cost is that
+  the server learns a journal exists, which the person agreed to when this was added.
 - **iCloud always withholds them.** App Review guideline 5.1.3(ii) says an app "may not store
   personal health information in iCloud". It sits among the HealthKit rules and may not reach a mood
   log somebody typed, but the strict reading costs only cross-device sync of these three logs for

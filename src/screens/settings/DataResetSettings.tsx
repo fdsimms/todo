@@ -5,9 +5,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useTaskStore } from '../../store/useTaskStore';
-import { clearUndoHistories, useDemoStore } from '../../store/useDemoStore';
-import { useSharedLinkStore } from '../../store/useSharedLinkStore';
-import { useStepTimerStore } from '../../store/useStepTimerStore';
+import { reloadAfterDataReplaced, useDemoStore } from '../../store/useDemoStore';
 import { dbExportTables, dbReplaceAllData, dbSetRecipeImagePath } from '../../db/database';
 import { confirmDelete } from '../../utils/confirmDelete';
 import {
@@ -71,10 +69,8 @@ function restoreRecipeImages(backup: Backup): number {
 }
 
 /**
- * Restoring rebuilds every table, so both stores have to re-read from scratch
- * afterwards. Tasks first, then settings — settings is what the visibility
- * rules read, so a task list rebuilt against the *old* day reset would be
- * wrong for a frame.
+ * Restoring rebuilds every table, so the stores have to re-read from scratch
+ * afterwards (`reloadAfterDataReplaced`).
  */
 function applyBackup(backup: Backup): number {
   // Only this line can fail with nothing changed: it is one transaction. Past
@@ -85,17 +81,7 @@ function applyBackup(backup: Backup): number {
   try {
     return restoreRecipeImages(backup);
   } finally {
-    useTaskStore.getState().initialize();
-    useSettingsStore.getState().initialize();
-    // The rest of what leaving demo mode resets, for the same reason: a
-    // restore swaps every row out from under the stores just as that does.
-    // The two queues re-read the restored database, and every undo history
-    // goes, because an undo writes its row snapshots back by id, and those
-    // rows belong to the data that was just replaced. Kept, a shake after
-    // restoring put pre-restore rows into the restored data.
-    useSharedLinkStore.getState().reload();
-    useStepTimerStore.getState().reload();
-    clearUndoHistories();
+    reloadAfterDataReplaced();
   }
 }
 
@@ -274,7 +260,10 @@ export function DataResetSettings() {
       title: 'Reset settings to defaults?',
       // It also clears remindersImportEnabled, which no version of this copy
       // used to mention — so a reset quietly stopped Siri capture from working.
-      message: 'This resets appearance, day and time, haptics, the daily agenda and the tasks and projects toggles, and turns off importing from Apple Reminders. Your tasks, API key, app lock and vacation mode aren’t affected.',
+      // Same for the calendars this device writes to (deadline, completion,
+      // meal, Claude's requests): resetToDefaults clears all four, and the
+      // events already written stay where they are.
+      message: 'This resets appearance, day and time, haptics, the daily agenda and the tasks and projects toggles. It also turns off importing from Apple Reminders and stops this device adding deadlines, completions, meals and Claude’s events to your calendar. Your tasks, API key, app lock and vacation mode aren’t affected, and events already in your calendar stay.',
       confirmLabel: 'Reset',
       onConfirm: () => resetToDefaults(),
     });
@@ -392,7 +381,7 @@ export function DataResetSettings() {
           iconColor={colors.red}
           label="Reset to defaults"
           labelColor={colors.redText}
-          hint="Puts every setting in the app back to its default."
+          hint="Puts most settings back to their defaults. Your data and a few settings, like the app lock, are kept."
           onPress={confirmResetToDefaults}
           accessibilityLabel="Reset settings to defaults"
         />

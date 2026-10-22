@@ -371,6 +371,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     dryRun: () => { throw new Error('not stubbed'); },
     withBatch: (_id, fn) => fn(),
     agentNotes: () => [],
+    serverSharingReports: () => [],
     writeAgentNotes: () => {},
     deviceId: () => 'stub-device',
     syncable: () => true,

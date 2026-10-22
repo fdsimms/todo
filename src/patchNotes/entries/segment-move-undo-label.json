@@ -1,0 +1,1 @@
+{ "message": "The Undo bar after moving tasks now says where they went. Changing only the time of day says so (\"Moved “Play violin” to evening\") instead of naming the day, and moving several tasks says \"Moved 3 tasks to Thursday\" instead of \"3 tasks rescheduled\".", "date": "2026-10-22" }
