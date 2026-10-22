@@ -197,12 +197,12 @@ export function nextBirthday(
  * correctly with no meta line beside it, on the widget, in Search and in the
  * Logbook — the standard `projectReviewTitle` sets.
  *
- * Always "'s", including after a name ending in s ("Chris's birthday"), which
+ * Always "’s", including after a name ending in s ("Chris’s birthday"), which
  * is the American convention the rest of the app's copy follows.
  */
 export function birthdayTitle(person: Pick<Person, 'name' | 'nickname'>): string {
   const who = primaryNickname(person.nickname) || person.name.trim();
-  return `${who}'s birthday`;
+  return `${who}’s birthday`;
 }
 
 /**

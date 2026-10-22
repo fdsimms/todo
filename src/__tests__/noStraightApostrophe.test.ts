@@ -56,7 +56,10 @@ function isDeveloperMessage(node: t.Node): boolean {
 
 function textOf(node: t.Node): string | null {
   if (t.isStringLiteral(node) || t.isJSXText(node)) return node.value;
-  if (t.isTemplateElement(node)) return node.value.cooked ?? null;
+  // A template literal is read whole, each `${…}` standing in as a letter, so
+  // the ' in `${name}'s birthday` is between two letters the way the screen
+  // shows it. Read piece by piece, that piece starts with the ' and slipped by.
+  if (t.isTemplateLiteral(node)) return node.quasis.map(q => q.value.cooked ?? '').join('x');
   return null;
 }
 
@@ -97,6 +100,7 @@ describe('straight apostrophes in copy', () => {
     const sample = [
       'const a = "Isn\'t it";',
       'const b = `Today\'s ${x}`;',
+      'const g = `${name}\'s birthday`;',
       'const c = <Text>Don\'t</Text>;',
       'const d = "Isn’t it";',
       'throw new Error("isn\'t synced");',
@@ -104,7 +108,7 @@ describe('straight apostrophes in copy', () => {
       'const e = new Set(["it\'s"]);',
       'const f = `PRAGMA x; -- it\'s fine`;',
     ].join('\n');
-    expect(straightApostrophes(sample, true)).toEqual(["1: Isn't it", "2: Today's", "3: Don't"]);
+    expect(straightApostrophes(sample, true)).toEqual(["1: Isn't it", "2: Today's x", "3: x's birthday", "4: Don't"]);
   });
 
   it('has none in src/', () => {

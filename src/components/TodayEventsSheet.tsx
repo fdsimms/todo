@@ -230,7 +230,7 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
 
   /**
    * "Make this a trip": a project away for exactly the event's days
-   * (`tripEvents.ts`), named after it, then opened, since the project page is
+   * (`tripEvents.ts`), named after it and with the event's people, then opened, since the project page is
    * where a trip is filled in (destination, the list, a template). When a
    * project is already away for those days the button opens that one instead,
    * so asking twice never makes two.
@@ -242,6 +242,11 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
       const fields = awayFieldsFromEvent(event);
       if (!fields) return;
       projectId = createProject(event.title.trim() || 'Trip', fields).id;
+      // Who the event is with comes along (#3690), so the trip shows on each
+      // of their pages. Its location doesn't: a calendar location is free
+      // text, and a trip's destination is a geocoded place.
+      const people = peopleForEvent(eventPeople, event);
+      if (people.length > 0) updateProject(projectId, { personIds: people });
       haptics.success();
     } else {
       haptics.tap();
@@ -263,8 +268,11 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
     const fields = awayFieldsFromEvent(event);
     const project = projects.find(p => p.id === projectId);
     if (!fields || !project) return;
+    // The event's people join any the project already names; none is dropped.
+    const people = peopleForEvent(eventPeople, event);
+    const personIds = [...new Set([...(project.personIds ?? []), ...people])];
     const apply = () => {
-      updateProject(projectId, fields);
+      updateProject(projectId, personIds.length > (project.personIds ?? []).length ? { ...fields, personIds } : fields);
       haptics.success();
       onClose();
       navigation.navigate('ProjectDetail', { projectId });

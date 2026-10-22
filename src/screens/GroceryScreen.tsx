@@ -84,6 +84,8 @@ import { describeListEstimate, estimateListTotal, priceToInput, tripPriceFor } f
 import { buildGroceryListShareText, buildGroceryListText } from '../utils/shareText';
 import { subscribeCartHoldRelease, useGroceryStore } from '../store/useGroceryStore';
 import { useTaskStore } from '../store/useTaskStore';
+import { tripTasksToComplete } from '../utils/groceryTripTasks';
+import { isTaskVisible } from '../utils/visibilityUtils';
 import { describeSupplyStockCaption, suppliesStockedFrom } from '../utils/supply';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { alternativeCaptions } from '../utils/recipeComponents';
@@ -96,7 +98,7 @@ import { haptics } from '../utils/haptics';
 import { generateId } from '../utils/id';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
-import { groceriesLinkUrl } from '../utils/deepLinks';
+import { groceriesLinkUrl, groceriesUrlShop, isGroceriesUrl } from '../utils/deepLinks';
 import type { GroceryItem, ItemProduct, Recipe, Shop } from '../types';
 import { describeProduct, preferredProductOf } from '../utils/groceryProduct';
 import { entryFor, itemsOnList, listNameFor, isAwayList, HOME_LIST_NAME } from '../utils/groceryLists';
@@ -1165,7 +1167,17 @@ export function GroceryScreen() {
       // again here.
       // A whole trip closing out is more than one more item ticked off, same
       // distinction chainFinish already draws for a task chain's last step.
-      if (finishShopping(shopId, priceById, purchasedAt, frozenIds, priceQuantityById) > 0) haptics.chainFinish();
+      const bought = finishShopping(shopId, priceById, purchasedAt, frozenIds, priceQuantityById);
+      if (bought > 0) {
+        haptics.chainFinish();
+        // The errand is done, so its "Get groceries at X" task is too (#3699):
+        // matched by the store its link names, never by title, and only one
+        // on Today now (see tripTasksToComplete). A finish with nothing bought
+        // is a trip abandoned rather than an errand run, so it leaves them.
+        // Each completion is an ordinary one, so the undo bar takes it back.
+        const { tasks, completeTask } = useTaskStore.getState();
+        for (const task of tripTasksToComplete(tasks, shopId, isTaskVisible, { isGroceriesUrl, groceriesUrlShop })) completeTask(task.id);
+      }
       // Consumed either way: an id finishShopping didn't end up touching
       // (marked unavailable, substituted away) was never going to be applied
       // on some later trip either.
