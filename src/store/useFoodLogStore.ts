@@ -786,7 +786,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
 
     if (opts?.undoable !== false) {
       get().setLastAction({
-        label: `Logged “${entry.label}”`,
+        label: `Logged “${entry.label}” in the food log`,
         // removeEntry also retracts what was written to Health.
         undo: () => get().removeEntry(entry.id),
         redo: () => { get().addEntry(draft); },
