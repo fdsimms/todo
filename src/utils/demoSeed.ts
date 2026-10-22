@@ -22,6 +22,7 @@ import { useAgentSuggestionStore } from '../store/useAgentSuggestionStore';
 import { useCookwareStore } from '../store/useCookwareStore';
 import { useMeterReadingStore } from '../store/useMeterReadingStore';
 import { useFastStore } from '../store/useFastStore';
+import { addSavedPlace, readSavedPlaces, writeSavedPlaces } from './savedPlaces';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useGymStore } from '../store/useGymStore';
 import { useJournalStore } from '../store/useJournalStore';
@@ -2415,6 +2416,7 @@ export function seedDemoData(): void {
   seedCookware();
   seedMeterTask(today);
   seedFast();
+  seedPlaceReminder();
   seedWorkouts(today);
   seedJournal(today);
   seedAsNeededDoses(today);
@@ -3341,6 +3343,21 @@ function seedMeterTask(today: Date): void {
  * so the Food log opens with the fasting card showing. Only the running one:
  * the card is the whole feature, and a history of fasts would show nowhere.
  */
+function seedPlaceReminder(): void {
+  // A saved place with a pin, in the demo's own settings table, and a task that
+  // rings on arriving there, so its row shows "Arriving at Home". Nothing is
+  // scheduled: every notification path is shut in demo mode.
+  const places = addSavedPlace(readSavedPlaces(), {
+    name: 'Home', text: '1 Main St', place: { latitude: 40.7128, longitude: -74.006 },
+  });
+  writeSavedPlaces(places);
+  const home = places.find(p => p.name === 'Home');
+  if (!home) return;
+  const { addTask, updateTask } = useTaskStore.getState();
+  const task = addTask({ title: 'Take the recycling out', category: 'Home', effort: 1 });
+  updateTask(task.id, { reminderPlaceId: home.id, reminderPlaceOn: 'arrive' });
+}
+
 function seedFast(): void {
   useFastStore.getState().startFast(new Date(Date.now() - (13 * 60 + 42) * 60_000), 16);
 }

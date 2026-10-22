@@ -143,3 +143,17 @@ describe('a task that waits if the day is full', () => {
     expect(buildTaskSummary({ waitsIfFull: true })).toEqual([]);
   });
 });
+
+describe('the place reminder clause', () => {
+  const text = (parts: { text: string }[]) => parts.map(p => p.text).join('');
+
+  it('says where it rings on its own', () => {
+    expect(text(buildTaskSummary({ placeReminder: 'Arriving at Home' }))).toBe('Reminds you when arriving at Home.');
+  });
+
+  it('follows a timed reminder as a second clause, opening its own row', () => {
+    const parts = buildTaskSummary({ reminder: 'At 9:00 AM', placeReminder: 'Leaving Office' });
+    expect(text(parts)).toBe('Reminds you at 9:00 AM, and again when leaving Office.');
+    expect(parts.find(p => p.key === 'remindAtPlace')?.text).toBe('leaving Office');
+  });
+});

@@ -2433,6 +2433,9 @@ function runInitDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN medication_extras TEXT',
     // Task.attachments: a JSON array of { name, kind, title }; null when there are none.
     'ALTER TABLE tasks ADD COLUMN attachments TEXT',
+    // Task.reminderPlaceId / reminderPlaceOn: a reminder at a saved place.
+    'ALTER TABLE tasks ADD COLUMN reminder_place_id TEXT',
+    'ALTER TABLE tasks ADD COLUMN reminder_place_on TEXT',
     'ALTER TABLE cookware ADD COLUMN kind TEXT',
     // WorkoutSession.measuredOnWatch: the Apple Watch measured the workout and
     // saves it to Health itself. 0 on every existing row, none of which a
@@ -4077,6 +4080,9 @@ function rowToTask(row: Record<string, unknown>): Task {
     quotaRestAfterLog: Boolean(row.quota_rest_after_log),
     quotaLoggedDayKey: (row.quota_logged_day_key as string | null) ?? null,
     // Read only alongside a name, for the reason Task.medicationName gives.
+    ...(typeof row.reminder_place_id === 'string' && row.reminder_place_id
+      ? { reminderPlaceId: row.reminder_place_id, reminderPlaceOn: row.reminder_place_on === 'leave' ? 'leave' as const : 'arrive' as const }
+      : {}),
     ...(row.attachments ? (() => {
       const attachments = parseTaskAttachments(row.attachments);
       return attachments.length > 0 ? { attachments } : {};
@@ -4301,8 +4307,8 @@ export function dbInsertTask(task: Task): void {
       pin_each_occurrence, bounty_pushes, difficulty, answer_gate, deliverable_why, deliverable_revisit_if, extra_task_at_end, weather_wait, wait_for_series_end, rotation_plan, slip_allowance, done_by_other_at, window_start_sun, window_end_sun, recurrence_holidays,
       meter_name, meter_unit, meter_every, meter_due_at, meter_limit_months, meter_held_until, rain_skip_mm, rain_skipped_on, review_of_task_id,
       quota_ramp_step, quota_ramp_every, quota_ramp_goal, quota_ramp_hits, streak_counts_units, log_saved_meal_id, coins_per_tap, log_meal_slot_by_time, quota_place_ids, gate_group_id, workout_routine_id, workout_program_id, generated_ready_at,
-      slot_in, slot_decided_on, slot_waiting_since, quota_rest_after_log, quota_logged_day_key, medication_extras, attachments
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      slot_in, slot_decided_on, slot_waiting_since, quota_rest_after_log, quota_logged_day_key, medication_extras, attachments, reminder_place_id, reminder_place_on
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deadlineTime ?? null, task.deferUntil,
@@ -4459,6 +4465,8 @@ export function dbInsertTask(task: Task): void {
       task.quotaLoggedDayKey ?? null,
       task.medicationName && task.medicationExtras?.length ? JSON.stringify(task.medicationExtras) : null,
       task.attachments?.length ? JSON.stringify(task.attachments) : null,
+      task.reminderPlaceId ?? null,
+      task.reminderPlaceId ? (task.reminderPlaceOn ?? 'arrive') : null,
     ]
   );
 }
@@ -4498,7 +4506,7 @@ export function dbUpdateTask(task: Task): void {
       pin_each_occurrence=?, bounty_pushes=?, difficulty=?, answer_gate=?, deliverable_why=?, deliverable_revisit_if=?, extra_task_at_end=?, weather_wait=?, wait_for_series_end=?, rotation_plan=?, slip_allowance=?, done_by_other_at=?, window_start_sun=?, window_end_sun=?, recurrence_holidays=?,
       meter_name=?, meter_unit=?, meter_every=?, meter_due_at=?, meter_limit_months=?, meter_held_until=?, rain_skip_mm=?, rain_skipped_on=?, review_of_task_id=?,
       quota_ramp_step=?, quota_ramp_every=?, quota_ramp_goal=?, quota_ramp_hits=?, streak_counts_units=?, log_saved_meal_id=?, coins_per_tap=?, log_meal_slot_by_time=?, quota_place_ids=?, gate_group_id=?, workout_routine_id=?, workout_program_id=?, generated_ready_at=?,
-      slot_in=?, slot_decided_on=?, slot_waiting_since=?, quota_rest_after_log=?, quota_logged_day_key=?, medication_extras=?, attachments=?
+      slot_in=?, slot_decided_on=?, slot_waiting_since=?, quota_rest_after_log=?, quota_logged_day_key=?, medication_extras=?, attachments=?, reminder_place_id=?, reminder_place_on=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -4656,6 +4664,8 @@ export function dbUpdateTask(task: Task): void {
       task.quotaLoggedDayKey ?? null,
       task.medicationName && task.medicationExtras?.length ? JSON.stringify(task.medicationExtras) : null,
       task.attachments?.length ? JSON.stringify(task.attachments) : null,
+      task.reminderPlaceId ?? null,
+      task.reminderPlaceId ? (task.reminderPlaceOn ?? 'arrive') : null,
       task.id,
     ]
   );

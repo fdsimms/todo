@@ -321,7 +321,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/nicknames.ts` — nicknamesOf, primaryNickname
 - `src/utils/notificationTapRoute.ts` — NotificationTapData, NotificationTapRoute, routeNotificationTap
 - `src/utils/notificationTapSync.ts` — useNotificationTapSync
-- `src/utils/notifications.ts` — isWithinQuietHours, deferPastQuietHours, TASK_REMINDER_CATEGORY, COMPLETE_ACTION_IDENTIFIER, SNOOZE_ACTION_IDENTIFIER, SNOOZE_MINUTES, requestNotificationPermissions, NotificationPermission, getNotificationPermission, scheduleTaskReminder, +38 more
+- `src/utils/notifications.ts` — isWithinQuietHours, deferPastQuietHours, TASK_REMINDER_CATEGORY, COMPLETE_ACTION_IDENTIFIER, SNOOZE_ACTION_IDENTIFIER, SNOOZE_MINUTES, requestNotificationPermissions, NotificationPermission, getNotificationPermission, scheduleTaskReminder, +39 more
 - `src/utils/nowTick.ts` — NOW_TICK_MS, subscribeToNowTick, emitNowTick
 - `src/utils/nudgeCadence.ts` — NudgeMode, NUDGE_MODES, nudgeModeOf, nudgeFieldsFor, FALLBACK_CADENCE_DAYS, NUDGE_MODE_LABEL, describeNudge, CadenceUnit, CADENCE_UNITS, CADENCE_UNIT_DAYS, +7 more
 - `src/utils/nutrientLog.ts` — isNutrientOnlyEntry, nutrientOnlyKey, nutrientOnlyEntryOf, NutrientHelping, nutrientHelping
@@ -367,6 +367,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/pillOverflow.ts` — OverflowPill, PillOverflowResult, PillOverflowOptions, DEFAULT_PILL_LIMIT, resolvePillOverflow, PillSubmit, resolvePillSubmit
 - `src/utils/pinSuggest.ts` — MAX_SUGGESTED_PINS, PinContext, buildCoOccurrenceIndex, currentTimeSegment, buildPinContext, overdueDays, scoreTask, nextPinSuggestion, suggestPins, pinReason, +1 more
 - `src/utils/placeGate.ts` — PLACE_FIX_TTL_MS, PLACE_FIX_KEY, StoredPlaceFix, pinnedPlaces, placeIdAt, isPlaceLimited, placeGateAllows, placeTrustedUntil, readPlaceFix, writePlaceFix, +1 more
+- `src/utils/placeReminders.ts` — PLACE_REMINDER_PREFIX, PLACE_REMINDER_RADIUS_M, MAX_PLACE_REMINDERS, placeReminderId, remindablePlaces, describePlaceReminder, WantedPlaceReminder, wantedPlaceReminders, placeRemindersToCancel
 - `src/utils/places.ts` — PlaceResult, parsePlaceResults, placeLocationText, placeSubtitle, placeRowTitle, PLACE_SUGGESTION_LIMIT, PLACE_QUERY_MIN_LENGTH
 - `src/utils/plannedDayNutrition.ts` — PlannedDayNutrition, plannedDayNutrition
 - `src/utils/plateMath.ts` — PlateSlot, PlateLoad, DEFAULT_PLATE_INVENTORY_LB, effectivePlateInventory, isPlateLoaded, barKgFor, plateLoad, platesOnSide, describePlateLoad, WarmupStep, +2 more
@@ -468,7 +469,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/savedEventTasks.ts` — BOOK_LEAD_DAYS, bookSourceId, bookEventSourceOf, bookDueDay, wantsBookTask, bookTaskTitle, bookTaskNotes
 - `src/utils/savedEvents.ts` — SAVED_EVENTS_KEY, BOOK_EVERY_MONTHS_MAX, SavedEvent, SavedEventFields, parseSavedEvents, readSavedEvents, writeSavedEvents, findSavedEvent, sortedSavedEvents, saveEventAs, +10 more
 - `src/utils/savedMealReview.ts` — ReviewLine, reviewLinesFor, ItemAmountEdit, itemAmountEdit, ESTIMATE_CHOICES, ItemChange, itemAtAmount, itemAtEstimateFactor, replaceLine, appendLine, +6 more
-- `src/utils/savedPlaces.ts` — SAVED_PLACES_KEY, SAVED_PLACES_LIMIT, SAVED_PLACE_SUGGEST_MIN_LENGTH, SavedPlace, savedPlaceKey, parseSavedPlaces, SavedPlaceInput, addSavedPlace, renameSavedPlace, editSavedPlace, +6 more
+- `src/utils/savedPlaces.ts` — SAVED_PLACES_KEY, SAVED_PLACES_LIMIT, SAVED_PLACE_SUGGEST_MIN_LENGTH, SavedPlace, savedPlaceKey, parseSavedPlaces, SavedPlaceInput, addSavedPlace, renameSavedPlace, editSavedPlace, +7 more
 - `src/utils/savedViews.ts` — SAVED_VIEW_CLAUSE_KINDS, savedViewClauseLabel, SAVED_VIEW_ICONS, DEFAULT_SAVED_VIEW_ICON, SavedViewContext, matchesClause, matchesSavedView, isSavedViewCandidate, filterTasksForView, SavedViewLabels, +11 more
 - `src/utils/scanPortion.ts` — PackageChoice, servingsPerPackage, packSizeGrams, servingsIn, packageChoices, packageFractions, servingDescription, packageHelping
 - `src/utils/scanResolve.ts` — ScannedItem, ScannedGtinLink, shopperNameFor, newItemBox, nameFromScanFor, sourceLabelFor, sourceLineFor, variantFor, ScanBoxSource, scanBoxChoice, +11 more

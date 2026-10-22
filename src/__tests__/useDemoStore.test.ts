@@ -305,6 +305,7 @@ jest.mock('expo-sqlite', () => {
 // module graph. Reminder hygiene across the swap comes free — initialize()
 // already reschedules from whichever task list it just loaded.
 jest.mock('../utils/notifications', () => ({
+  rescheduleAllPlaceReminders: jest.fn(() => Promise.resolve()),
   scheduleTaskReminder: jest.fn(),
   scheduleFastGoal: jest.fn(() => Promise.resolve()),
   cancelFastGoal: jest.fn(() => Promise.resolve()),
@@ -988,6 +989,14 @@ describe('demo mode', () => {
     const garden = useTaskStore.getState().tasks.find(t => t.title === 'Water the garden' && !t.completed);
     expect(garden?.rainSkipMm).toBe(5);
     expect(garden?.recurrenceType).toBe('daily');
+    useDemoStore.getState().exitDemoMode();
+  });
+
+  it('seeds a task that reminds on arriving at a saved place', () => {
+    useDemoStore.getState().enterDemoMode();
+    const task = useTaskStore.getState().tasks.find(t => t.title === 'Take the recycling out');
+    expect(task?.reminderPlaceId).toBeTruthy();
+    expect(task?.reminderPlaceOn).toBe('arrive');
     useDemoStore.getState().exitDemoMode();
   });
 

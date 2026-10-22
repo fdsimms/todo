@@ -59,7 +59,7 @@ const PERMISSIONS: PermissionSpec[] = [
   },
   {
     entryId: 'permLocation', icon: 'location-outline', label: 'Location',
-    hint: 'Checks the forecast for weather rules and finds sunrise and sunset for tasks timed by the sun',
+    hint: 'Checks the forecast for weather rules, finds sunrise and sunset for tasks timed by the sun, and lets iPhone remind you of a task at a place',
     getStatus: getLocationPermission, requestAccess: requestLocationPermission, iosOnly: true,
   },
   {

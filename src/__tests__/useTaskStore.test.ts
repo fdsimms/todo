@@ -331,6 +331,7 @@ jest.mock('../store/useSettingsStore', () => ({
 }));
 
 jest.mock('../utils/notifications', () => ({
+  rescheduleAllPlaceReminders: jest.fn(() => Promise.resolve()),
   scheduleFastGoal: jest.fn(() => Promise.resolve()),
   cancelFastGoal: jest.fn(() => Promise.resolve()),
   scheduleTaskReminder: jest.fn().mockResolvedValue(undefined),

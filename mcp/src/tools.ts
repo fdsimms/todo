@@ -216,6 +216,8 @@ export interface GetTaskResult {
   medication?: { name: string; amount?: number; unit?: string; also?: { name: string; amount?: number; unit?: string }[] };
   /** What is attached to the task, by kind and name; the files stay on the phone. */
   attachments?: { kind: 'photo' | 'file'; title: string }[];
+  /** A reminder that rings on arriving at, or leaving, one of the person's saved places. Set on the phone. */
+  remindAtPlace?: { place: string; on: 'arrive' | 'leave' };
   /** "HH:MM" bounds: shown from `start`, expired after `end`. */
   window?: { start?: string; end?: string };
   /** Present only for a "don't do this" habit, which is never completed. */
@@ -488,6 +490,9 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
     // phone and never reach this server, so this is all there is to read.
     attachments: task.attachments?.length
       ? task.attachments.map(a => ({ kind: a.kind, title: a.title }))
+      : undefined,
+    remindAtPlace: task.reminderPlaceId
+      ? { place: replica.savedPlaceNames([task.reminderPlaceId])[0] ?? 'a saved place', on: task.reminderPlaceOn === 'leave' ? 'leave' : 'arrive' }
       : undefined,
     // Today's times, with a bound that follows the sun resolved for today, and
     // the anchor itself as `startFollows`/`endFollows` so it can be read back.

@@ -75,7 +75,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "dundundun checks today’s weather where you are, so a rule you’ve set up (like sunscreen on a sunny day) can add its task. It also finds sunrise and sunset times for a task timed by the sun when you tap to save your location. If you turn on Suggest in mood log for a saved place, it also checks whether you’re there when you start a new mood entry. It never reads your location in the background."
+          "locationWhenInUsePermission": "dundundun checks today’s weather where you are, so a rule you’ve set up (like sunscreen on a sunny day) can add its task. It also finds sunrise and sunset times for a task timed by the sun when you tap to save your location. If you turn on Suggest in mood log for a saved place, it also checks whether you’re there when you start a new mood entry. For a task set to remind you at a place, iPhone itself watches for that place and shows the reminder. The app never reads your location in the background."
         }
       ],
       [

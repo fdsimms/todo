@@ -182,4 +182,20 @@ export function readSavedPlaces(): SavedPlace[] {
 
 export function writeSavedPlaces(places: readonly SavedPlace[]): void {
   dbSetSetting(SAVED_PLACES_KEY, JSON.stringify(places));
+  nameCache = null;
+}
+
+// Names by id, for a task row that says where its reminder rings: a row renders
+// often and the list lives in the settings table. Cleared on this device's own
+// writes, and re-read after a minute for a list another device changed.
+let nameCache: { at: number; byId: Map<string, string> } | null = null;
+const NAME_CACHE_MS = 60_000;
+
+/** A saved place's name by id, or null when there is no such place. */
+export function savedPlaceName(id: string): string | null {
+  const now = Date.now();
+  if (!nameCache || now - nameCache.at > NAME_CACHE_MS) {
+    nameCache = { at: now, byId: new Map(readSavedPlaces().map(p => [p.id, p.name])) };
+  }
+  return nameCache.byId.get(id) ?? null;
 }

@@ -13,7 +13,8 @@ import {
   isFocusRunning,
   isFocusSessionFinished,
 } from './focusPlan';
-import { displayTitleFor, isHeldBack, isQuotaTask, isTaskNotNeeded, isWithheld, windowBoundsFor } from './visibilityUtils';
+import { displayTitleFor, hasDayArrived, isHeldBack, isQuotaTask, isTaskNotNeeded, isWithheld, windowBoundsFor } from './visibilityUtils';
+import { PLACE_REMINDER_PREFIX, placeRemindersToCancel, wantedPlaceReminders } from './placeReminders';
 import { agendaBirthdays, agendaCounts, agendaBody, agendaDinners, agendaMeetings, agendaSpokenBody, nextAgendaTime } from './dailyAgenda';
 import { calendarCovers } from './eventConflicts';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -655,9 +656,41 @@ export async function rescheduleAllReminders(
   // kind's cancel, which is the point: a sixth kind is one more function, not
   // an edit to a shared teardown no test would catch omitting.
   await rescheduleAllTimerAlarms(tasks);
+  await rescheduleAllPlaceReminders(tasks);
   await scheduleDailyAgenda(tasks);
   await rescheduleTripReminder(trip?.shopId ?? null, trip?.startedAt ?? null, trip?.shops ?? []);
   await rescheduleAllEventReminders(eventReminders ?? []);
+}
+
+// ─── Place reminders ─────────────────────────────────────────────────────────
+
+/**
+ * Arms the reminders at a place (src/utils/placeReminders.ts) that should be
+ * pending, and cancels the rest. Their own namespace (`place:`), scheduled by
+ * the system's location trigger through todo-eventkit-bridge rather than
+ * expo-notifications, which has no schedulable location trigger. A build
+ * without the native function arms nothing.
+ */
+export async function rescheduleAllPlaceReminders(tasks: readonly Task[]): Promise<void> {
+  if (isDemoModeActive()) return;
+  let bridge: typeof import('todo-eventkit-bridge');
+  try {
+    bridge = require('todo-eventkit-bridge') as typeof import('todo-eventkit-bridge');
+  } catch {
+    return;
+  }
+  if (!bridge.canSchedulePlaceNotifications()) return;
+  // Required here rather than imported: savedPlaces reads the settings table,
+  // and this file is loaded by tests and the widget path with no database.
+  const { readSavedPlaces } = require('./savedPlaces') as typeof import('./savedPlaces');
+  const wanted = wantedPlaceReminders(
+    tasks as Task[],
+    readSavedPlaces(),
+    task => !isWithheld(task) && !isHeldBack(task) && !isTaskNotNeeded(task) && hasDayArrived(task),
+  );
+  const pending = await bridge.pendingNotificationIds(PLACE_REMINDER_PREFIX);
+  await bridge.cancelPlaceNotifications(placeRemindersToCancel(pending, wanted));
+  for (const reminder of wanted) await bridge.schedulePlaceNotification(reminder);
 }
 
 // ─── Daily agenda ────────────────────────────────────────────────────────────

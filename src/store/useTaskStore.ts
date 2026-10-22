@@ -380,7 +380,7 @@ import {
   waitingFollowUpsHandledRecently,
   staleWaitingFollowUpTasks,
 } from '../utils/waitingFollowUpTasks';
-import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm, scheduleQuotaNudges, cancelQuotaNudges, cancelCompletionTimer } from '../utils/notifications';
+import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, rescheduleAllPlaceReminders, scheduleTimerAlarm, cancelTimerAlarm, scheduleQuotaNudges, cancelQuotaNudges, cancelCompletionTimer } from '../utils/notifications';
 import { syncDeadlineEvent, taskEventsAfterSync, deadlineEventLink, deleteDeadlineEvent } from '../utils/deadlineCalendarSync';
 import type { ApplyReport } from '../utils/syncMerge';
 import { logTaskCompletionToCalendar, completionEventLink, deleteCompletionEvent } from '../utils/completionCalendarSync';
@@ -3973,6 +3973,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       ) {
         cancelTaskReminder(id);
         scheduleTaskReminder(updated);
+      }
+      // A reminder at a place is armed from the whole list (it is capped and
+      // ordered), so a change to one rebuilds them all. Cheap: no location is
+      // read, and nothing is scheduled where the build can't.
+      if (
+        'reminderPlaceId' in updates || 'reminderPlaceOn' in updates
+        || ((updated.reminderPlaceId || current?.reminderPlaceId) && ('completed' in updates || 'archived' in updates || 'title' in updates || 'dueDate' in updates || 'deferUntil' in updates))
+      ) {
+        // After this update lands: inside the map, get() still holds the old list.
+        void Promise.resolve().then(() => rescheduleAllPlaceReminders(get().tasks));
       }
       // The nudge grid is rebuilt whenever anything it's derived from moves —
       // the span fields, the count that divides it, the toggle itself — plus

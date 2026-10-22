@@ -3688,6 +3688,16 @@ export interface Task {
   // track the device's current timezone. Fixed reminders are left alone.
   // See #1205.
   reminderTimeAnchor: 'wallClock' | 'fixed';
+  /**
+   * A reminder at a place rather than a time: the saved place's id
+   * (`SavedPlace.id`, Settings › Calendar › Places) and whether it rings on
+   * arriving there or on leaving. The system watches the place, so the app
+   * never reads a location in the background (`src/utils/placeReminders.ts`).
+   * Independent of `reminderTime`: a task can have either or both. Optional so
+   * a row from before this reads as having none.
+   */
+  reminderPlaceId?: string | null;
+  reminderPlaceOn?: 'arrive' | 'leave' | null;
 
   // UTC offset in minutes (Date.getTimezoneOffset()) captured from
   // reminderTime's own moment the last time reminderTime was set — not from
