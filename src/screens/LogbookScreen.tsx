@@ -84,7 +84,6 @@ import { matchPersonMentions } from '../utils/parseTaskInput';
 import { HighlightedText } from '../components/HighlightedText';
 import { formatQuotaProgress } from '../utils/quotaUnit';
 import { asksOnCompletion, deliverableKindFor, formatTaskDeliverable } from '../utils/deliverables';
-import { decisionOutcomes } from '../utils/decisionReview';
 import { isRotationTask, rotationCoveredOf } from '../utils/rotation';
 import { DeliverablePromptSheet } from '../components/DeliverablePromptSheet';
 import { sectionListCellLayout } from '../utils/sectionListLayout';
@@ -233,8 +232,6 @@ export function LogbookScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const navigation = useNavigation<any>();
   const completedTasks = useTaskStore(useShallow(s => s.completedTasks()));
-  // How each decision turned out, from its answered look-back (decisionReview.ts).
-  const outcomes = useMemo(() => decisionOutcomes(completedTasks), [completedTasks]);
   const uncompleteTask = useTaskStore(s => s.uncompleteTask);
   const bulkUncompleteTasks = useTaskStore(s => s.bulkUncompleteTasks);
   const deleteTask = useTaskStore(s => s.deleteTask);
@@ -819,7 +816,6 @@ export function LogbookScreen() {
                   : null
               }
               projectTitle={item.projectId ? projectNamesById.get(item.projectId) ?? null : null}
-              outcome={outcomes.get(item.id)?.text ?? null}
               onOpenProject={openProject}
               styles={styles}
               colors={colors}
@@ -985,8 +981,6 @@ interface RowProps {
   categoryLabel: string | null;
   /** The task's project title, or null when it isn't filed under one. */
   projectTitle: string | null;
-  /** How the answer turned out, from its look-back, or null. A string so the memo holds. */
-  outcome: string | null;
   /** Opens the project from its chip. Stable, so the memo holds. */
   onOpenProject: (projectId: string) => void;
   styles: ReturnType<typeof makeStyles>;
@@ -1011,7 +1005,6 @@ const LogbookRow = React.memo(function LogbookRow({
   task,
   categoryLabel,
   projectTitle,
-  outcome,
   onOpenProject,
   styles,
   colors,
@@ -1145,7 +1138,6 @@ const LogbookRow = React.memo(function LogbookRow({
             // what makes the ⋯ menu's "Add Answer" make sense to someone who
             // can't see the glyph.
             asksOnCompletion(task) ? (answer !== null ? `answered ${answer}` : 'no answer') : null,
-            outcome ? `turned out: ${outcome}` : null,
           ].filter(Boolean).join(', ')}
         >
           <HighlightedText
@@ -1231,9 +1223,7 @@ const LogbookRow = React.memo(function LogbookRow({
             {asksOnCompletion(task) && (
               answer !== null ? (
                 <View style={styles.answerPill}>
-                  {/* The outcome rides in the same pill rather than a line of
-                      its own, since this row's height is pinned. */}
-                  <Text style={styles.answer} numberOfLines={1}>{outcome ? `${answer} → ${outcome}` : answer}</Text>
+                  <Text style={styles.answer} numberOfLines={1}>{answer}</Text>
                 </View>
               ) : (
                 <Text style={styles.noAnswer} numberOfLines={1}>No answer</Text>

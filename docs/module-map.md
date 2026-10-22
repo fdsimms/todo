@@ -92,7 +92,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/categoryLabel.ts` — categoryLabel
 - `src/utils/categoryOrder.ts` — moveCategory, alphabeticalCategories, sortCategoriesByTaskCount
 - `src/utils/categoryPicker.ts` — CategoryOption, CategoryFilterResult, optionLabel, filterCategories, CategorySubmit, resolveCategorySubmit
-- `src/utils/categoryRename.ts` — renameInSeriesDefaults, renameInFollowUpDraft, renameInViewClauses, renameInTitleRules, renameInReminderCaptures
+- `src/utils/categoryRename.ts` — renameInSeriesDefaults, renameInFollowUpDraft, renameInTitleRules, renameInReminderCaptures
 - `src/utils/categorySchedule.ts` — DAY_LABELS, FULL_DAY_NAMES, formatScheduleTime, formatScheduleDays, formatCategorySchedule
 - `src/utils/chain.ts` — ChainCarrier, ChainCompletionCarrier, activeChainStep, nextChainStep, nextChainStepTitle, parseChainItems, ChainPreview, chainPreview, chainStepAdvancesInPlace, isChainFinish
 - `src/utils/chipUses.ts` — ChipUses, ChipUseKind, chipUseKey, bumpChipUses, rankByUse, parseChipUses, suggestExistingTags
@@ -126,7 +126,6 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/daySegments.ts` — DAY_SEGMENT_KEYS, DaySegmentKey, DaySegmentTimes, applyDaySegmentTime, daySegmentsInOrder
 - `src/utils/dayTimeline.ts` — MINUTES_IN_DAY, DEFAULT_FIRST_HOUR, DEFAULT_LAST_HOUR, TimelineEntry, DayTimeline, DayTimelineInput, clockToDayMinutes, instantToDayMinutes, buildDayTimeline, SLOT_STEP_MINUTES, +1 more
 - `src/utils/deadlineCalendarSync.ts` — syncDeadlineEvent, deadlineEventLink, deleteDeadlineEvent, TaskEventSyncPlan, taskEventsAfterSync
-- `src/utils/decisionReview.ts` — ReviewAfter, REVIEW_AFTER_OPTIONS, isReviewAfter, reviewDueDay, canReviewDecision, reviewTaskDraft, DecisionOutcome, decisionOutcomes, pendingReviewOf
 - `src/utils/deepLinks.ts` — AddTaskLink, parseAddTaskUrl, handleIncomingUrl, isQuickAddUrl, isAddEventUrl, isOpenAppUrl, isGroceriesUrl, groceriesUrlFinish, groceriesLinkUrl, groceriesUrlShop, +55 more
 - `src/utils/deliverables.ts` — DELIVERABLE_TEXT_MAX_LENGTH, DeliverableReasoning, DELIVERABLE_REASONING_MAX_LENGTH, cleanDeliverableReasoning, reasoningOf, DELIVERABLE_META, YES_NO_OPTIONS, DELIVERABLE_OPTIONS_MAX, isTentativeAnswer, RSVP_OPTIONS, +12 more
 - `src/utils/deloadPlan.ts` — DeloadDestination, DeloadProposal, DeloadPlan, buildDeloadPlan
@@ -297,16 +296,16 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/medicationSchedule.ts` — MedicationSchedule, MAX_SCHEDULE_INTERVAL, parseSchedule, describeSchedule, ScheduleState, ScheduleStatus, scheduleStatus, describeScheduleStatus
 - `src/utils/medicationSettings.ts` — MEDICATION_SETTINGS_KEY, AmountCap, MedicationLimit, MedicationSupply, SupplementPanel, PanelIngredient, INGREDIENT_UNITS, MAX_PANEL_INGREDIENTS, UsualDose, MedicationPrefs, +22 more
 - `src/utils/medicationSummary.ts` — SummaryPreset, SummaryRange, summaryRange, rangeDays, describeRange, SummaryCandidate, summaryCandidates, missedCountsByMedication, DoseAmount, DoseRun, +15 more
-- `src/utils/meters.ts` — METER_CHECK_IN_DAYS, METER_RATE_MIN_DAYS, METER_RATE_WINDOW_DAYS, METER_NAME_MAX_LENGTH, meterKey, canFollowMeter, hasMeter, NO_METER, readingsFor, latestReading, +23 more
 - `src/utils/metricKit.ts` — DeviceMetricSummary, DEVICE_METRIC_LIMIT, Bucket, histogramBuckets, bucketTotal, bucketMedianMs, parseMetricPayload, parseSummaries, mergeSummaries, collectSummaries, +1 more
 - `src/utils/mirroringDefault.ts` — shouldDefaultMirroringOn
 - `src/utils/missed.ts` — isMissed, isRealCompletion, isDoneByOther, isResolvedAsDone, MostMissedGroup, mostMissed
-- `src/utils/moodContextSources.ts` — MoodContextSources, NO_MOOD_CONTEXT_SOURCES, MOOD_CONTEXT_SOURCE_KEYS, EXERCISED_MINUTES, OUTSIDE_MINUTES, parseMoodContextSources
-- `src/utils/moodDayContext.ts` — MoodDayInputs, moodDayOffers
+- `src/utils/moodContextSources.ts` — MoodContextSources, NO_MOOD_CONTEXT_SOURCES, MOOD_CONTEXT_SOURCE_KEYS, EXERCISED_MINUTES, OUTSIDE_MINUTES, RAIN_TAG_MM, parseMoodContextSources, MoodEventTag, MOOD_EVENT_TAG_MAX_LENGTH, parseMoodEventTags
+- `src/utils/moodDayContext.ts` — MoodDayInputs, DayRain, rainForDay, moodDayOffers
 - `src/utils/moodDayOffers.ts` — moodDayOffersFor
+- `src/utils/moodEventTagOffers.ts` — MOOD_TAG_OFFER_DAYS, MoodEventTagOffer, clipAtWord, moodEventTagOffers, filterMoodEventTagOffers, describeMoodEventTagOffer, ruleFromOffer, moodTagOfferWindow
 - `src/utils/moodExport.ts` — MOOD_EXPORT_COLUMNS, csvCell, moodExportCsv, moodExportFileName, moodExportSummary
 - `src/utils/moodHistory.ts` — MoodFilter, EMPTY_MOOD_FILTER, isMoodFilterActive, hasWrittenNote, toggleFilterValue, filterMoodLogs, searchMoodLogs, textMatchesQuery, adjacentLogDays, MoodLogDay, +10 more
-- `src/utils/moodInsights.ts` — MIN_PAIRED_DAYS, MIN_CONTRAST_DAYS, MoodDay, taskIdentityKey, HealthDayInput, FoodDayInput, NUTRIENT_INSIGHT_KEYS, InsightNutrient, completionDayKey, buildMoodDays, +48 more
+- `src/utils/moodInsights.ts` — MIN_PAIRED_DAYS, MIN_CONTRAST_DAYS, MoodDay, taskIdentityKey, HealthDayInput, FoodDayInput, NUTRIENT_INSIGHT_KEYS, InsightNutrient, completionDayKey, buildMoodDays, +49 more
 - `src/utils/moodLog.ts` — MOOD_LEVELS, FACTOR_LEVELS, DEFAULT_FACTORS, LOW_MOOD_AT_OR_BELOW, DEFAULT_CONTEXT_TAGS, SYMPTOM_SEVERITIES, moodLabel, factorLabel, severityLabel, symptomKey, +23 more
 - `src/utils/moodPlaceNow.ts` — moodPlaceTagNow
 - `src/utils/moodPlaces.ts` — PLACE_MATCH_RADIUS_M, PLACE_MAX_FIX_ERROR_M, PlaceFix, distanceMeters, moodPlacesOf, placeTagName, placeAt, placeTagAt
@@ -345,7 +344,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/pantryStanding.ts` — PantryStanding, pantryStanding
 - `src/utils/pantryWrite.ts` — onHandRow, markedOutRow, disposalRow, thawedPortionsOf, frozenRow, openedRow, reviewedRow, runningLowRow, productOnHandRow, productsOutPlan, +16 more
 - `src/utils/parseNaturalDate.ts` — WEEKDAYS, MONTHS, ClockTime, strip, extractTime, extractDayPart, clockBesideDayPart, dayPartBesideClock, DatePart, NUMBER_WORDS, +5 more
-- `src/utils/parseTaskInput.ts` — withTrailingSpace, ParsedSchedule, ParsedTaskInput, segmentForHour, dueAt, parseFromCompletionSuffix, parseTaskInput, ParsedLink, parseLinkInput, ParsedPhone, +60 more
+- `src/utils/parseTaskInput.ts` — withTrailingSpace, ParsedSchedule, ParsedTaskInput, segmentForHour, dueAt, parseFromCompletionSuffix, parseTaskInput, ParsedLink, parseLinkInput, ParsedPhone, +58 more
 - `src/utils/pastWorkout.ts` — PastSetText, PastExerciseDraft, PAST_WORKOUT_DEFAULT_MINUTES, PAST_WORKOUT_MIN_MINUTES, PAST_WORKOUT_MAX_MINUTES, PastWorkoutProblem, nextSetText, newSupersetKey, withoutPastExercise, joinPastSuperset, +4 more
 - `src/utils/pastedLines.ts` — cleanPastedLines
 - `src/utils/patchNotes.ts` — PatchNote
@@ -420,7 +419,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/recipeComponents.ts` — parseRecipeComponents, normalizeComponent, componentPlacement, LayoutItem, ingredientLayout, reanchorComponents, parseRecipeChoices, parseRecipeOverrides, makeComponent, ChoiceResolution, +34 more
 - `src/utils/recipeCost.ts` — CostEstimate, estimateRecipeCost, estimateWeekCost, describeRecipeCost, describeWeekCost
 - `src/utils/recipeEstimateQueue.ts` — PendingRecipeEstimateStatus, PendingRecipeEstimate, liveFor, awaitingRecipeEstimate
-- `src/utils/recipeImageSync.ts` — recipeImageNames, readRecipeImageForSync, hasRecipeImageForSync, writeRecipeImageFromSync, recipeIdsIn, unreferencedImageNames, applyWithRecipeImages
+- `src/utils/recipeImageSync.ts` — recipeImageNames, readRecipeImageForSync, hasRecipeImageForSync, writeRecipeImageFromSync, recipeIdsIn, unreferencedImageNames, recipeImagePaths, deleteUnreferencedImages, applyWithRecipeImages
 - `src/utils/recipeImportComponents.ts` — ReferenceCandidate, referencePageNumber, importableReferences, coveredIngredients, ComponentImportState, seededComponentKeys, nextComponentPhotos, coveringComponentKeys, ComponentCommit, componentCommitFor, +6 more
 - `src/utils/recipeImportPreview.ts` — ImportPreviewLine, methodRowMeta, prepTasksRowMeta, methodPreviewLines, prepTaskPreviewLines, previewToggleLabel
 - `src/utils/recipeNutrition.ts` — RecipeNutrition, NutritionLineState, recipeNutrition, componentShares, RecipeNutritionReading, readRecipeNutrition, NutritionLine, recipeNutritionLines, ExcludedNutritionLine, excludedNutritionLines, +10 more
@@ -471,7 +470,6 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/savedEvents.ts` — SAVED_EVENTS_KEY, BOOK_EVERY_MONTHS_MAX, SavedEvent, SavedEventFields, parseSavedEvents, readSavedEvents, writeSavedEvents, findSavedEvent, sortedSavedEvents, saveEventAs, +10 more
 - `src/utils/savedMealReview.ts` — ReviewLine, reviewLinesFor, ItemAmountEdit, itemAmountEdit, ESTIMATE_CHOICES, ItemChange, itemAtAmount, itemAtEstimateFactor, replaceLine, appendLine, +6 more
 - `src/utils/savedPlaces.ts` — SAVED_PLACES_KEY, SAVED_PLACES_LIMIT, SAVED_PLACE_SUGGEST_MIN_LENGTH, SavedPlace, savedPlaceKey, parseSavedPlaces, SavedPlaceInput, addSavedPlace, renameSavedPlace, editSavedPlace, +7 more
-- `src/utils/savedViews.ts` — SAVED_VIEW_CLAUSE_KINDS, savedViewClauseLabel, SAVED_VIEW_ICONS, DEFAULT_SAVED_VIEW_ICON, SavedViewContext, matchesClause, matchesSavedView, isSavedViewCandidate, filterTasksForView, SavedViewLabels, +11 more
 - `src/utils/scanPortion.ts` — PackageChoice, servingsPerPackage, packSizeGrams, servingsIn, packageChoices, packageFractions, servingDescription, packageHelping
 - `src/utils/scanResolve.ts` — ScannedItem, ScannedGtinLink, shopperNameFor, newItemBox, nameFromScanFor, sourceLabelFor, sourceLineFor, variantFor, ScanBoxSource, scanBoxChoice, +11 more
 - `src/utils/scheduleMovePrompt.ts` — confirmScheduleMove, confirmSegmentScope, confirmBulkSetWhen
@@ -482,7 +480,6 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/screenTimeRules.ts` — SCREEN_TIME_RULE_TITLE_MAX_LENGTH, SCREEN_TIME_THRESHOLD_MIN, SCREEN_TIME_THRESHOLD_MAX, SCREEN_TIME_THRESHOLD_DEFAULT, clampThresholdMinutes, defaultScreenTimeRules, parseScreenTimeRules, serializeScreenTimeRules, screenTimeSourceId, parseScreenTimeSourceId, +3 more
 - `src/utils/scrollClamp.ts` — maxRestingOffset, strandedScrollOffset, NO_INSET, NO_INSET_ALT, pulseNoInset
 - `src/utils/scrollFade.ts` — SCROLL_FADE_HEIGHT, SCROLL_FADE_TOLERANCE, ScrollEdgeMetrics, hiddenBelow, hiddenAbove, edgeFadeOpacity
-- `src/utils/scrollNudge.ts` — SCROLL_NUDGE_DEFAULT_SECONDS, SCROLL_NUDGE_MIN_SECONDS, SCROLL_NUDGE_MAX_SECONDS, SCROLL_NUDGE_STEP_SECONDS, SCROLL_IDLE_GAP_MS, SCROLL_NUDGE_DEFAULT_COOLDOWN_MINUTES, SCROLL_NUDGE_MIN_COOLDOWN_MINUTES, SCROLL_NUDGE_MAX_COOLDOWN_MINUTES, SCROLL_NUDGE_COOLDOWN_STEP_MINUTES, SCROLL_NUDGE_DEFAULT_DAILY_CAP, +17 more
 - `src/utils/sealedNoteTasks.ts` — addSealedNoteReminder, dropSealedNoteReminder
 - `src/utils/searchActionRun.ts` — SearchActionReceipt, addWaterAt, waterTodayMl, waterTargetTodayMl, openMoodLogFor, runSearchAction
 - `src/utils/searchActions.ts` — QUICK_ACTION_LIMIT, MAX_GLASSES, MAX_DOSE_STEPS, DoseAction, WaterAction, MoodAction, SymptomAction, GroceryAction, PantryAnswer, PantryAction, +12 more
@@ -541,7 +538,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/swipeArm.ts` — SwipeArmSides, swipeArmDistance, nextSwipeArm
 - `src/utils/swipeDismiss.ts` — SWIPE_DISMISS_DISTANCE, SWIPE_DISMISS_VELOCITY, OVERSCROLL_DISMISS_DISTANCE, isDownwardDrag, shouldDismissOnSwipe, swipeFollowOffset, overscrollDismisses, quickSearchMaxHeight
 - `src/utils/symptomQuickLog.ts` — SymptomPhrase, resolveClockTime, parseSymptomPhrase, matchSymptoms
-- `src/utils/syncEngine.ts` — SyncTransport, SyncImageStore, SyncWithholding, withholdChanges, pushCursorKey, PullResult, SyncLocal, IMAGE_PAYLOAD_BUDGET_CHARS, imagesSentKey, imagesKnownKey, +11 more
+- `src/utils/syncEngine.ts` — SyncTransport, SyncImageStore, SyncWithholding, withholdChanges, pushCursorKey, PullResult, SyncLocal, IMAGE_PAYLOAD_BUDGET_CHARS, imagesSentKey, imagesKnownKey, +13 more
 - `src/utils/syncIds.ts` — derivedId, isDerivedId, spawnSeed
 - `src/utils/syncLocal.ts` — databaseSyncLocal
 - `src/utils/syncMerge.ts` — SyncDeletion, SyncChangeSet, SYNC_FORMAT, SyncPayload, MAX_SYNC_IMAGE_CHARS, isSyncImageName, ParsedPayload, buildPayload, buildImagePayload, serializePayload, +9 more
@@ -549,7 +546,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/tabFreeze.ts` — shouldFreezeTab, isTabFocused, TAB_FREEZE_DELAY_MS
 - `src/utils/tabHubMenu.ts` — HUB_MENU_ROW_HEIGHT, HUB_MENU_PADDING, HUB_MENU_WIDTH, HUB_MENU_EDGE, HUB_MENU_ARROW_SIZE, HUB_MENU_ARROW_TIP, HUB_MENU_TIP_GAP, HUB_MENU_HIT_SLACK, hubMenuItems, HubMenuLayout, +6 more
 - `src/utils/tagColor.ts` — tagColor
-- `src/utils/tagRename.ts` — normalizeTagName, renameInTagList, renameTagInSeriesDefaults, renameTagInFollowUpDraft, renameTagInTitleRules, renameTagInViewClauses, renameTagInReminderCaptures, renameTagInGeneratedExtras
+- `src/utils/tagRename.ts` — normalizeTagName, renameInTagList, renameTagInSeriesDefaults, renameTagInFollowUpDraft, renameTagInTitleRules, renameTagInReminderCaptures, renameTagInGeneratedExtras
 - `src/utils/taskAgain.ts` — AgainFields, againFields, describeAgainFields, againDraft
 - `src/utils/taskCompletion.ts` — CompletionOptions, CompletionContext, CompletionRows, completionRefusal, buildCompletion, completionSettings
 - `src/utils/taskDates.ts` — calendarDayKey, SeriesRepeat, seriesRows, DatesAnchorStep, datesAnchorStep, DatesReconcile, datesReconcile
@@ -669,7 +666,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useCategoryStore.ts` — useCategoryStore, CALENDAR_EVENTS_CATEGORY, HEALTH_CATEGORY, ensureCalendarEventCategory, ensureHealthCategory, renameGeneratedCategorySettings, getGeneratedCategory, setGeneratedCategory, clearGeneratedCategorySettings, ensureGeneratedTaskCategory, +1 more
 - `src/store/useCookwareStore.ts` — CookwarePatch, useCookwareStore
 - `src/store/useCopyFlagStore.ts` — useCopyFlagStore
-- `src/store/useDemoStore.ts` — clearUndoHistories, useDemoStore
+- `src/store/useDemoStore.ts` — clearUndoHistories, reloadAfterDataReplaced, useDemoStore
 - `src/store/useEventCreatedToastStore.ts` — SaveAs, CreatedEvent, useEventCreatedToastStore
 - `src/store/useEventPeopleStore.ts` — EVENT_PEOPLE_SETTING_KEY, EVENT_PEOPLE_MIGRATION_FLAG, useEventPeopleStore
 - `src/store/useEventReminderStore.ts` — useEventReminderStore
@@ -689,7 +686,6 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useManualBlockStore.ts` — useManualBlockStore
 - `src/store/useMealPlanStore.ts` — MealPlanDraft, CookRecap, sameMealPlanEntries, useMealPlanStore
 - `src/store/useMedicationStore.ts` — SUMMARY_LAST_SETTING_KEY, MILESTONE_DISMISSED_SETTING_KEY, DoseInput, DoseEffects, setDoseEffects, MedicationLogPatch, useMedicationStore
-- `src/store/useMeterReadingStore.ts` — useMeterReadingStore
 - `src/store/useMilestoneStore.ts` — MilestonePatch, useMilestoneStore
 - `src/store/useMoodStore.ts` — MoodLogPatch, useMoodStore
 - `src/store/useNfcKeyStore.ts` — KeyScanResult, EnrollResult, useNfcKeyStore
@@ -704,13 +700,12 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useRecipeStore.ts` — CookStats, useRecipeStore
 - `src/store/useRewardStore.ts` — COIN_BURST_MS, RewardDetails, useRewardStore
 - `src/store/useSavedMealsStore.ts` — useSavedMealsStore
-- `src/store/useSavedViewStore.ts` — useSavedViewStore
 - `src/store/useScreenTimeStore.ts` — useScreenTimeStore, useScreenTimeSync
 - `src/store/useSettingsStore.ts` — PatchNoteQaStatus, WeekStart, FabHand, MapsApp, MealsOnToday, NewTaskDefaults, DEFAULT_REMINDER_LEAD_OPTIONS, useSettingsStore
 - `src/store/useSharedLinkStore.ts` — useSharedLinkStore
 - `src/store/useShieldReleaseStore.ts` — useShieldReleaseStore
 - `src/store/useStepTimerStore.ts` — useStepTimerStore
-- `src/store/useSyncStore.ts` — SERVER_HEALTH_LOGS_KEY, SERVER_HEALTH_RESEND_KEY, NOTHING_OWED, SERVER_JOURNAL_KEY, SERVER_JOURNAL_RESEND_KEY, SYNC_EPOCH, withholdingFor, markHealthLogsWithheld, settleHealthLogResend, SyncPhase, +5 more
+- `src/store/useSyncStore.ts` — SERVER_HEALTH_LOGS_KEY, SERVER_HEALTH_RESEND_KEY, NOTHING_OWED, SERVER_JOURNAL_KEY, SERVER_JOURNAL_RESEND_KEY, SYNC_EPOCH, withholdingFor, reportServerSharing, markHealthLogsWithheld, settleHealthLogResend, +11 more
 - `src/store/useTabHubMenuStore.ts` — TabHubMenu, useTabHubMenuStore
 - `src/store/useTaskGroupStore.ts` — useTaskGroupStore
 - `src/store/useTaskStore.ts` — offerMealLog, TimeBlockPlan, writeEditToFollowUpSource, hasEstimateSource, redoRestoringRows, captureFollowUpDrafts, useTaskStore
@@ -764,7 +759,6 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useMacMirroringDefault.ts` — useMacMirroringDefault
 - `src/hooks/useMealPlanNudgeProgress.ts` — useMealPlanNudgeProgress
 - `src/hooks/useMeasuredTextWidth.ts` — useMeasuredTextWidth
-- `src/hooks/useMeterHoldSync.ts` — useMeterHoldSync
 - `src/hooks/useNavMenuOptions.ts` — useNavMenuOptions, navMenuOptionsNow
 - `src/hooks/useNotificationPermission.ts` — useNotificationPermission
 - `src/hooks/useNowTick.ts` — useNowTick
@@ -788,7 +782,6 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useScreenSettingControls.ts` — ScreenSettingControl, useScreenSettingControls
 - `src/hooks/useScreenSettings.ts` — useScreenSettings, withScreenSettings
 - `src/hooks/useScrollEdgeFade.ts` — ScrollEdgeFadeScrollProps, ScrollEdgeFadeBinding, useScrollEdgeFade
-- `src/hooks/useScrollNudge.ts` — useScrollNudge
 - `src/hooks/useScrollToTopOnTabPress.ts` — useScrollToTopOnTabPress
 - `src/hooks/useScrollToTopVisibility.ts` — useScrollToTopVisibility
 - `src/hooks/useSearchActions.ts` — SearchActionsView, useSearchActions, useSearchActionReceipts
@@ -821,8 +814,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 
 ## `src/db`
 
-- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, ensureDatabaseReady, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, +312 more
-- `src/db/syncTracking.ts` — SyncTable, KEY_SEPARATOR, SYNC_TRACKED_TABLES, SYNC_DEVICE_LOCAL_COLUMNS, isDeviceLocalColumn, withoutDeviceLocalColumns, SYNC_EXCLUDED_TABLES, SYNCED_SETTING_KEYS, isSyncedSettingKey, HEALTH_SYNC_TABLES, +16 more
+- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, ensureDatabaseReady, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, +305 more
+- `src/db/syncTracking.ts` — SyncTable, KEY_SEPARATOR, SYNC_TRACKED_TABLES, SYNC_DEVICE_LOCAL_COLUMNS, isDeviceLocalColumn, withoutDeviceLocalColumns, SYNC_EXCLUDED_TABLES, SYNCED_SETTING_KEYS, isSyncedSettingKey, SERVER_SHARING_KEY_PREFIX, +19 more
 
 ## `src/services`
 

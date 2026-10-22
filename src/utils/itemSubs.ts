@@ -298,18 +298,24 @@ export function describeSubstitutesOnHand(subs: readonly Substitute[]): string |
  * allowed to write — a rule restated here so it's covered by a test rather
  * than trusted to the sheet.
  *
- * `substituteFor` maps an item id to what the trip answered for it. Only a
- * row that is **both** ticked unavailable **and** answered survives: an
- * unticked row's answer (stale from before it was un-ticked) is dropped, and
- * a row with no answer is dropped too — skipping the follow-up is silent, the
- * same rule the unavailable ticks themselves follow.
+ * `substituteFor` maps an item id to what the trip answered for it, and
+ * `rememberedIds` names the rows whose answer the person chose to keep. What
+ * came home on one trip is not a standing substitute (they didn't have tofu, so
+ * seitan came home), so an answer is written as a link only when it was ticked
+ * to be remembered. A row survives only if it is **all** of: ticked
+ * unavailable, answered, and remembered. An unticked row's answer (stale from
+ * before it was un-ticked) is dropped, and so is a row with no answer or no
+ * tick to remember it: skipping the follow-up is silent, the same rule the
+ * unavailable ticks themselves follow.
  */
 export function resolveShoppingSubstitutes(
   unavailableIds: readonly string[],
-  substituteFor: Readonly<Record<string, string>>
+  substituteFor: Readonly<Record<string, string>>,
+  rememberedIds: readonly string[]
 ): Array<{ itemId: string; subItemId: string }> {
   const unavailable = new Set(unavailableIds);
+  const remembered = new Set(rememberedIds);
   return Object.entries(substituteFor)
-    .filter(([itemId, subItemId]) => unavailable.has(itemId) && !!subItemId)
+    .filter(([itemId, subItemId]) => unavailable.has(itemId) && remembered.has(itemId) && !!subItemId)
     .map(([itemId, subItemId]) => ({ itemId, subItemId }));
 }

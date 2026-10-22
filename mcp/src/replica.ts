@@ -52,13 +52,10 @@ import type {
   Cookware,
   CookwareType,
   CopyFlag,
-  MeterReading,
   Fast,
   JournalEntry,
   JournalKind,
   FocusSessionRecord,
-  SavedView,
-  SavedViewClause,
   ScreenTimeRule,
   BlockOfferRule,
   TitleRule,
@@ -114,6 +111,7 @@ import { sectionListPatch } from '../../src/utils/listMode';
 import { rotationItemFromInput, rotationMemberTitle, rotationMembers } from '../../src/utils/rotation';
 import { programVersionsOf, routineVersionsOf } from '../../src/utils/routineVersions';
 import { sunAnchorHHMM } from '../../src/utils/sunTimes';
+import { SERVER_SHARING_KEY_PREFIX, type ServerSharing } from '../../src/db/syncTracking';
 import type { AwaySpan } from '../../src/utils/awayDates';
 import type { WaterUnit } from '../../src/utils/waterLog';
 import type { FoodLogTotals } from '../../src/utils/foodLog';
@@ -918,8 +916,6 @@ export interface CompletedResult {
   nextTask: Task | null;
   /** The every-Nth-completion task, where this completion earned one. */
   followUpTask: Task | null;
-  /** The "How did it turn out?" look-back, where the answer asked for one. */
-  reviewTask: Task | null;
   /** The next set of a repeating dated series, where its last date just landed. */
   rolledOver: Task[];
   /** True when a dose was recorded against the medication the task names. */
@@ -1289,17 +1285,8 @@ export interface Replica {
   addCookware(name: string, weightG: number, kind?: CookwareType | null): Cookware;
   updateCookware(id: string, patch: { name?: string; weightG?: number; kind?: CookwareType | null }): Cookware;
   deleteCookware(id: string): Cookware;
-  /** Every meter reading, oldest first. See src/utils/meters.ts. */
-  meterReadings(): MeterReading[];
   /** Every fast, oldest first. See src/utils/fasting.ts. */
   fasts(): Fast[];
-  /**
-   * Through `useMeterReadingStore`'s own action, so a blank name or a reading
-   * that isn't a number is refused as the app refuses it. The tasks on that
-   * meter are held or released by the phone's own pass on its next sync.
-   */
-  logMeterReading(name: string, value: number, readAt: Date): MeterReading;
-  deleteMeterReading(id: string): MeterReading;
   /**
    * The person's custom exercises and their changes to built-in ones: the rows
    * `src/utils/exerciseCatalog.ts` merges over the library. Plans, so they
@@ -1432,19 +1419,6 @@ export interface Replica {
    * never syncs, so this is the nearest an agent can get (`storageTools.ts`).
    */
   storage(): { databaseBytes: number; freeBytes: number; autoReclaim: boolean; tables: { name: string; bytes: number }[] };
-  /** The person's saved views, in their own order. */
-  savedViews(): SavedView[];
-  /**
-   * The tasks one view holds now, through the app's own matcher
-   * (`filterTasksForView`) with the app's own held-back rule and logical day,
-   * the way `SavedViewsScreen` counts them.
-   */
-  savedViewTasks(clauses: readonly SavedViewClause[]): Task[];
-  /** A view through `useSavedViewStore.createView`, which takes the next slot at the bottom of the list. The clauses are already checked. */
-  createSavedView(name: string, icon: string, clauses: SavedViewClause[]): SavedView;
-  deleteSavedView(id: string): SavedView;
-  /** Change a view's name, icon or clauses (already checked), and optionally move it to a place in the list (0 is first). */
-  updateSavedView(id: string, patch: { name?: string; icon?: string; clauses?: SavedViewClause[] }, position?: number): SavedView;
   /**
    * Vacation mode through the settings store's own setter, the way the
    * Settings toggle does it. On the way off the protected streaks are forgiven
@@ -1704,6 +1678,11 @@ export interface Replica {
   withBatch<T>(batchId: string, fn: () => T): T;
   /** What the person wants an agent to keep in mind (`src/utils/agentNotes.ts`). */
   agentNotes(): AgentNote[];
+  /**
+   * Each device's report of its two sync switches (`SERVER_SHARING_KEY_PREFIX`),
+   * one per device that has sent one. A row that doesn't parse is left out.
+   */
+  serverSharingReports(): ServerSharing[];
   writeAgentNotes(notes: readonly AgentNote[]): void;
   /**
    * Apply a validated plan, returning the template it built.
@@ -1896,7 +1875,7 @@ export interface Replica {
   /**
    * Rename a tag everywhere the app's rename reaches (`renameTag` in the task
    * store): every task, finished ones included, the tag list, stacks, template
-   * items, saved views, title rules, reminder captures and generator extras.
+   * items, title rules, reminder captures and generator extras.
    * Onto a tag that already exists it merges the two. Returns each task it
    * changed, before and after.
    */
@@ -3818,7 +3797,6 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       now: new Date(),
       allTasks: tasks(),
       subtasks: tasks().filter(t => t.parentId === id),
-      meterReadings: db.dbGetAllMeterReadings(),
     });
     // Unreachable: completionRefusal above is the same guard buildCompletion
     // runs. Narrowing rather than asserting, so a rule added to one and not
@@ -3831,7 +3809,6 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       ...built.nextSubtasks,
       ...(built.followUpTask ? [built.followUpTask] : []),
       ...built.followUpSubtasks,
-      ...(built.reviewTask ? [built.reviewTask] : []),
       ...built.rolledOver,
     ]) {
       db.dbInsertTask(row);
@@ -3876,7 +3853,6 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       completed: built.completed,
       nextTask: built.nextTask,
       followUpTask: built.followUpTask,
-      reviewTask: built.reviewTask,
       rolledOver: built.rolledOver,
       loggedDose: dose !== null,
     };
@@ -4535,7 +4511,6 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       store.removeCookware(id);
       return item;
     },
-    meterReadings: () => db.dbGetAllMeterReadings(),
     fasts: () => db.dbGetAllFasts(),
     exercises: () => db.dbGetAllExercises(),
     workoutRoutines: () => db.dbGetAllWorkoutRoutines(),
@@ -4763,25 +4738,6 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       store.deleteSession(id);
       return { session, sets };
     },
-    logMeterReading(name: string, value: number, readAt: Date): MeterReading {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { useMeterReadingStore } = require('../../src/store/useMeterReadingStore') as typeof import('../../src/store/useMeterReadingStore');
-      const store = useMeterReadingStore.getState();
-      store.initialize();
-      const reading = store.logReading(name, value, readAt);
-      if (!reading) throw new Error('A reading needs a meter name and a number zero or above.');
-      return reading;
-    },
-    deleteMeterReading(id: string): MeterReading {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { useMeterReadingStore } = require('../../src/store/useMeterReadingStore') as typeof import('../../src/store/useMeterReadingStore');
-      const store = useMeterReadingStore.getState();
-      store.initialize();
-      const reading = store.readings.find(r => r.id === id);
-      if (!reading) throw new Error(`No meter reading with id ${id}. list_meter_readings names them.`);
-      store.removeReading(id);
-      return reading;
-    },
     journalWordGoal(): number | null {
       return useSettingsStore.getState().journalWordGoal;
     },
@@ -4826,46 +4782,6 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     focusHistory: () => db.dbGetFocusSessionLog(),
     errorLog: () => db.dbGetErrorLog(),
     storage: () => db.dbStorageStats(),
-    savedViews: () => db.dbGetAllSavedViews(),
-    savedViewTasks(clauses: readonly SavedViewClause[]): Task[] {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const savedViews = require('../../src/utils/savedViews') as typeof import('../../src/utils/savedViews');
-      return savedViews.filterTasksForView(tasks(), clauses, {
-        todayStart: dates.getCurrentDayStart(),
-        heldBack: visibility.isHeldBack,
-      });
-    },
-    createSavedView(name: string, icon: string, clauses: SavedViewClause[]): SavedView {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { useSavedViewStore } = require('../../src/store/useSavedViewStore') as typeof import('../../src/store/useSavedViewStore');
-      const store = useSavedViewStore.getState();
-      store.initialize();
-      return store.createView(name, icon, clauses);
-    },
-    deleteSavedView(id: string): SavedView {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { useSavedViewStore } = require('../../src/store/useSavedViewStore') as typeof import('../../src/store/useSavedViewStore');
-      const store = useSavedViewStore.getState();
-      store.initialize();
-      const view = store.views.find(v => v.id === id);
-      if (!view) throw new Error(`No saved view with id ${id}. list_saved_views names them.`);
-      store.removeView(id);
-      return view;
-    },
-    updateSavedView(id: string, patch: { name?: string; icon?: string; clauses?: SavedViewClause[] }, position?: number): SavedView {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { useSavedViewStore } = require('../../src/store/useSavedViewStore') as typeof import('../../src/store/useSavedViewStore');
-      const store = useSavedViewStore.getState();
-      store.initialize();
-      if (!store.views.some(v => v.id === id)) throw new Error(`No saved view with id ${id}. list_saved_views names them.`);
-      if (Object.keys(patch).length > 0) store.updateView(id, patch);
-      if (position !== undefined) {
-        const others = useSavedViewStore.getState().views.map(v => v.id).filter(v => v !== id);
-        const at = Math.max(0, Math.min(others.length, Math.floor(position)));
-        store.reorderViews([...others.slice(0, at), id, ...others.slice(at)]);
-      }
-      return useSavedViewStore.getState().views.find(v => v.id === id)!;
-    },
     setVacationMode(on: boolean, until?: Date | null): VacationSwitchOutcome {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const streaks = require('../../src/utils/vacationStreaks') as typeof import('../../src/utils/vacationStreaks');
@@ -5972,6 +5888,21 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     withBatch: () => { throw new Error('withBatch is only available on the wrapped replica.'); },
 
     agentNotes: () => notesModule().readAgentNotes(),
+    serverSharingReports(): ServerSharing[] {
+      const reports: ServerSharing[] = [];
+      for (const [key, value] of db.dbGetAllSettings()) {
+        if (!key.startsWith(SERVER_SHARING_KEY_PREFIX)) continue;
+        try {
+          const parsed = JSON.parse(value) as Partial<ServerSharing>;
+          if (typeof parsed.healthLogs === 'boolean' && typeof parsed.journal === 'boolean') {
+            reports.push({ healthLogs: parsed.healthLogs, journal: parsed.journal });
+          }
+        } catch {
+          // A report this build can't read says nothing either way.
+        }
+      }
+      return reports;
+    },
     writeAgentNotes: (notes: readonly AgentNote[]) => notesModule().writeAgentNotes(notes),
 
     createTemplate(plan: TemplatePlan): TaskTemplate {
@@ -6543,13 +6474,6 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         for (const template of db.dbGetAllTemplates()) {
           if (!template.items.some(i => i.tags.includes(from))) continue;
           db.dbUpdateTemplate({ ...template, items: template.items.map(i => ({ ...i, tags: rename.renameInTagList(i.tags, from, to) })) });
-        }
-        const { useSavedViewStore } = require('../../src/store/useSavedViewStore') as typeof import('../../src/store/useSavedViewStore'); // eslint-disable-line @typescript-eslint/no-require-imports
-        const views = useSavedViewStore.getState();
-        views.initialize();
-        for (const v of views.views) {
-          const clauses = rename.renameTagInViewClauses(v.clauses, from, to);
-          if (clauses !== v.clauses) views.updateView(v.id, { clauses });
         }
         const settings = useSettingsStore.getState();
         const titleRules = rename.renameTagInTitleRules(settings.titleRules, from, to);
@@ -8065,13 +7989,6 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           const seriesDefaults = rename.renameInSeriesDefaults(t.seriesDefaults, from, to);
           const followUpTaskDraft = rename.renameInFollowUpDraft(t.followUpTaskDraft, from, to);
           if (seriesDefaults !== t.seriesDefaults || followUpTaskDraft !== t.followUpTaskDraft) db.dbUpdateTask({ ...t, seriesDefaults, followUpTaskDraft });
-        }
-        const { useSavedViewStore } = require('../../src/store/useSavedViewStore') as typeof import('../../src/store/useSavedViewStore'); // eslint-disable-line @typescript-eslint/no-require-imports
-        const views = useSavedViewStore.getState();
-        views.initialize();
-        for (const v of views.views) {
-          const clauses = rename.renameInViewClauses(v.clauses, from, to);
-          if (clauses !== v.clauses) views.updateView(v.id, { clauses });
         }
         for (const template of db.dbGetAllTemplates()) {
           if (!template.items.some(i => i.category === from)) continue;

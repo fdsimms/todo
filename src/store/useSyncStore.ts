@@ -13,8 +13,19 @@
  * device must not be able to switch the feature on for another one.
  */
 import { create } from 'zustand';
-import { dbGetSetting, dbGetSyncCursor, dbHasLocalChangesSince, dbSetSetting, dbSetSyncCursor } from '../db/database';
-import { HEALTH_SYNC_SETTING_KEYS, HEALTH_SYNC_TABLES, JOURNAL_SYNC_TABLES } from '../db/syncTracking';
+import {
+  dbEraseForSyncJoin,
+  dbGetDeviceId,
+  dbGetSetting,
+  dbGetSyncCursor,
+  dbHasLocalChangesSince,
+  dbHasOwnSyncData,
+  dbSetSetting,
+  dbSetSyncCursor,
+} from '../db/database';
+import {
+  HEALTH_SYNC_SETTING_KEYS, HEALTH_SYNC_TABLES, JOURNAL_SYNC_TABLES, SERVER_SHARING_KEY_PREFIX, serverSharingKey, type ServerSharing,
+} from '../db/syncTracking';
 import { CLOUDKIT_SOURCE, cloudKitTransport, cloudKitUnavailableReason, isCloudKitSyncAvailable } from '../utils/cloudKitTransport';
 import { HTTP_SYNC_SOURCE, httpSyncTransport, isHttpSyncConfigured } from '../utils/httpSyncTransport';
 import {
@@ -25,7 +36,9 @@ import {
   SYNC_TOKEN_SECURE_KEY,
 } from '../utils/secureApiKey';
 import { databaseSyncLocal } from '../utils/syncLocal';
+import { deleteUnreferencedImages, recipeImagePaths } from '../utils/recipeImageSync';
 import {
+  joinAfterErasing,
   pushCursorKey,
   runSyncAll,
   summarizeRuns,
@@ -69,6 +82,18 @@ export function withholdingFor(opts: { healthLogs: boolean; journal: boolean }):
 }
 
 /**
+ * Write this device's report of its two switches (`SERVER_SHARING_KEY_PREFIX`),
+ * so the MCP server can tell a log that isn't sent from one that is empty.
+ * Only when it differs from what is stored: rewriting it on every launch would
+ * restamp the row and send it again for nothing.
+ */
+export function reportServerSharing(sharing: ServerSharing): void {
+  const key = serverSharingKey(dbGetDeviceId());
+  const value = JSON.stringify({ healthLogs: sharing.healthLogs, journal: sharing.journal });
+  if (dbGetSetting(key) !== value) dbSetSetting(key, value);
+}
+
+/**
  * Turning health logs off: remember where the server's cursor stood.
  *
  * A withheld row is refused rather than left pending, so the cursor moves past
@@ -107,6 +132,46 @@ export function settleHealthLogResend(resendKey: string = SERVER_HEALTH_RESEND_K
 }
 
 export type SyncPhase = 'idle' | 'syncing';
+
+/** Where a device joins sync: iCloud, or a sync server the person runs. */
+export type SyncDestination = 'icloud' | 'server';
+
+/** How `eraseAndJoin` ended. Only `joined` erased anything. */
+export type EraseAndJoinOutcome =
+  | { status: 'joined' }
+  /** The destination holds nothing yet. */
+  | { status: 'nothing-to-join' }
+  | { status: 'failed'; reason: string };
+
+/**
+ * Set once this device has chosen what happens to its data on joining sync
+ * (`keepAndJoin` or `eraseAndJoin`), so it is asked once, not once per
+ * destination. Device-local: never synced, never in a backup.
+ */
+export const JOIN_DECIDED_KEY = 'syncJoinDecided';
+
+function sourceOf(destination: SyncDestination): string {
+  return destination === 'icloud' ? CLOUDKIT_SOURCE : HTTP_SYNC_SOURCE;
+}
+
+/**
+ * Whether joining `destination` has to ask first what happens to this
+ * device's data: it has never synced there, has not answered already, and
+ * holds something a person entered. Sync is two-way with no device in
+ * charge, so a device joining with data of its own sends it to every other
+ * device, and this is the one moment it can choose not to. A device that has
+ * synced is already a peer, and an empty one has nothing to send.
+ */
+export function joinChoiceNeeded(destination: SyncDestination): boolean {
+  const source = sourceOf(destination);
+  return dbGetSetting(JOIN_DECIDED_KEY) !== '1'
+    && dbGetSyncCursor(pushCursorKey(source)) === null
+    && dbGetSyncCursor(`${source}:pull`) === null
+    && dbHasOwnSyncData();
+}
+
+/** What `eraseAndJoin`'s caller is handed: the calendar events the erased rows held. */
+export type ErasedEvents = Pick<ApplyReport, 'removedMealEvents' | 'removedTaskEvents'>;
 
 interface SyncState {
   initialized: boolean;
@@ -148,9 +213,28 @@ interface SyncState {
    * (see JOURNAL_SYNC_TABLES); iCloud never gets them either way.
    */
   serverJournal: boolean;
+  /**
+   * A sync server is set up, but this device hasn't chosen what happens to
+   * its own data yet (`joinChoiceNeeded`), so nothing is sent to it until it
+   * does. The Settings row that asks reads this.
+   */
+  serverHeld: boolean;
 
   initialize: () => void;
   setEnabled: (enabled: boolean) => Promise<void>;
+  /**
+   * Joins `destination` keeping this device's data, which is merged with the
+   * other devices' and sent to them, and records the choice.
+   */
+  keepAndJoin: (destination: SyncDestination) => Promise<void>;
+  /**
+   * Erases this device and joins `destination` holding only what is there,
+   * so nothing that was only here is sent anywhere. Also how a device already
+   * syncing replaces its data. `afterErase` runs straight after the erase,
+   * before anything is awaited, and is where the caller reloads the stores,
+   * drops every undo history and deletes the calendar events it is handed.
+   */
+  eraseAndJoin: (destination: SyncDestination, afterErase: (erased: ErasedEvents) => void) => Promise<EraseAndJoinOutcome>;
   setServerUrl: (url: string) => void;
   setServerToken: (token: string) => Promise<boolean>;
   setServerHealthLogs: (on: boolean) => void;
@@ -168,22 +252,37 @@ interface SyncState {
  */
 type SyncConfig = { enabled: boolean; serverUrl: string; serverHealthLogs: boolean; serverJournal: boolean };
 
+/**
+ * iCloud, which never gets the health logs or the journal (see
+ * HEALTH_SYNC_TABLES), nor the sharing reports, every device's: they are for
+ * the server, and a phone relays rows it pulled from one transport to the other.
+ */
+function iCloudTransport(): SyncTransport {
+  const withhold = withholdingFor({ healthLogs: false, journal: false })!;
+  return { ...cloudKitTransport(), withhold: { ...withhold, settingKeyPrefixes: [SERVER_SHARING_KEY_PREFIX] } };
+}
+
+/**
+ * The sync server's transport, holding back what this device hasn't switched
+ * on for it. No recipe photos: nothing on the server reads one, and a store
+ * full of them is what a replica and every other device then has to page
+ * through. iCloud still carries them between Apple devices.
+ */
+function serverTransport(config: { url: string; token: string }, state: SyncConfig): SyncTransport {
+  const server = { ...httpSyncTransport(config), sendsImages: false };
+  const withhold = withholdingFor({ healthLogs: state.serverHealthLogs, journal: state.serverJournal });
+  return withhold ? { ...server, withhold } : server;
+}
+
 async function configuredTransports(state: SyncConfig): Promise<SyncTransport[]> {
   const transports: SyncTransport[] = [];
-  if (state.enabled && isCloudKitSyncAvailable()) {
-    transports.push({ ...cloudKitTransport(), withhold: withholdingFor({ healthLogs: false, journal: false }) });
-  }
+  if (state.enabled && isCloudKitSyncAvailable()) transports.push(iCloudTransport());
 
   const token = await loadSecureKey(SYNC_TOKEN_SECURE_KEY);
   const config = { url: state.serverUrl, token };
-  if (isHttpSyncConfigured(config)) {
-    // No recipe photos: nothing on the server reads one, and a store full of
-    // them is what a replica and every other device then has to page through.
-    // iCloud still carries them between Apple devices.
-    const server = { ...httpSyncTransport(config), sendsImages: false };
-    const withhold = withholdingFor({ healthLogs: state.serverHealthLogs, journal: state.serverJournal });
-    transports.push(withhold ? { ...server, withhold } : server);
-  }
+  // Held until this device has said what happens to its data (serverHeld).
+  // iCloud needs no such check: its switch only turns on once that's asked.
+  if (isHttpSyncConfigured(config) && !joinChoiceNeeded('server')) transports.push(serverTransport(config, state));
 
   return transports;
 }
@@ -244,22 +343,28 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   hasServerToken: false,
   serverHealthLogs: false,
   serverJournal: false,
+  serverHeld: false,
 
   initialize: () => {
+    const serverHealthLogs = dbGetSetting(SERVER_HEALTH_LOGS_KEY) === '1';
+    const serverJournal = dbGetSetting(SERVER_JOURNAL_KEY) === '1';
     set({
       initialized: true,
       enabled: dbGetSetting(ENABLED_KEY) === '1',
       supported: isCloudKitSyncAvailable(),
       lastSyncedAt: dbGetSetting(LAST_SYNCED_KEY),
       serverUrl: dbGetSetting(SERVER_URL_KEY) ?? '',
-      serverHealthLogs: dbGetSetting(SERVER_HEALTH_LOGS_KEY) === '1',
-      serverJournal: dbGetSetting(SERVER_JOURNAL_KEY) === '1',
+      serverHealthLogs,
+      serverJournal,
     });
+    // An install from before the report existed has switches and no row.
+    reportServerSharing({ healthLogs: serverHealthLogs, journal: serverJournal });
     // The keychain read is async and initialize is not, so the flag lands a
     // tick later. Nothing gates on it except a settings row's subtitle, and a
     // sync reads the token itself rather than trusting this.
     void loadSecureKey(SYNC_TOKEN_SECURE_KEY).then(token => {
       set({ hasServerToken: !!token });
+      refreshServerHeld();
       // A token saved before setServerToken made it readable while locked is
       // re-saved once, so the background sync can read it on the charger.
       // Only once it's done is it marked: a launch on a locked phone reads
@@ -276,6 +381,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     const trimmed = url.trim();
     dbSetSetting(SERVER_URL_KEY, trimmed);
     set({ serverUrl: trimmed, problem: null });
+    refreshServerHeld();
   },
 
   setServerToken: async (token: string) => {
@@ -283,6 +389,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     const saved = await saveSecureKey(SYNC_TOKEN_SECURE_KEY, token.trim(), { readableWhileLocked: true });
     if (saved && token.trim()) dbSetSetting(SYNC_TOKEN_READABLE_LOCKED_SETTING, '1');
     if (saved) set({ hasServerToken: !!token.trim(), problem: null });
+    refreshServerHeld();
     return saved;
   },
 
@@ -291,6 +398,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     if (!on) markHealthLogsWithheld();
     dbSetSetting(SERVER_HEALTH_LOGS_KEY, on ? '1' : '0');
     set({ serverHealthLogs: on });
+    reportServerSharing({ healthLogs: on, journal: get().serverJournal });
   },
 
   setServerJournal: (on: boolean) => {
@@ -298,6 +406,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     if (!on) markHealthLogsWithheld(SERVER_JOURNAL_RESEND_KEY);
     dbSetSetting(SERVER_JOURNAL_KEY, on ? '1' : '0');
     set({ serverJournal: on });
+    reportServerSharing({ healthLogs: get().serverHealthLogs, journal: on });
   },
 
   setEnabled: async (enabled: boolean) => {
@@ -327,6 +436,88 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       return;
     }
     await get().syncNow();
+  },
+
+  keepAndJoin: async (destination: SyncDestination) => {
+    dbSetSetting(JOIN_DECIDED_KEY, '1');
+    refreshServerHeld();
+    if (destination === 'icloud') await get().setEnabled(true);
+    else await get().syncNow();
+  },
+
+  eraseAndJoin: async (destination: SyncDestination, afterErase: (erased: ErasedEvents) => void) => {
+    // The same claim syncNow makes, for the same reason: a sync running
+    // beside the erase would push from the rows it is deleting.
+    if (get().phase === 'syncing' || syncInFlight) {
+      return { status: 'failed', reason: 'A sync is already running. Try again in a moment.' };
+    }
+    syncInFlight = true;
+    set({ phase: 'syncing', problem: null });
+    // The photo files the erased recipes used, deleted once the join has
+    // brought back whichever ones the other devices still point at.
+    const photosBefore = recipeImagePaths();
+    const run = (async (): Promise<EraseAndJoinOutcome> => {
+      const transport = await joinTransport(destination, get());
+      if ('reason' in transport) return { status: 'failed', reason: transport.reason };
+
+      // Whether a failure below can still say nothing was erased.
+      let erased = false;
+      let problem: string | null = null;
+      try {
+        const result = await joinAfterErasing(
+          transport,
+          databaseSyncLocal(),
+          () => {
+            const events = dbEraseForSyncJoin();
+            erased = true;
+            // The erase took this device's sharing report with the rest of the
+            // synced settings, and minted the id it is keyed by, so the server
+            // hears the switches again under the new one.
+            const { serverHealthLogs, serverJournal } = get();
+            reportServerSharing({ healthLogs: serverHealthLogs, journal: serverJournal });
+            afterErase(events);
+          },
+          reloadAfterSync
+        );
+        if (result.status !== 'joined') return result;
+        if (result.run.status === 'failed') problem = result.run.reason ?? 'Couldn’t receive changes.';
+      } catch (e) {
+        const message = e instanceof Error && e.message ? e.message : 'Something went wrong.';
+        if (!erased) return { status: 'failed', reason: message };
+        problem = message;
+      }
+
+      // Joined from here whatever the run did: the device is already erased,
+      // and a run that failed partway is finished by the next sync, which
+      // starts from the beginning again because no cursor moved.
+      dbSetSetting(JOIN_DECIDED_KEY, '1');
+      if (destination === 'icloud') {
+        dbSetSetting(ENABLED_KEY, '1');
+        set({ enabled: true });
+      }
+      set({ problem });
+      return { status: 'joined' };
+    })();
+    currentRun = run.then(() => null);
+    let outcome: EraseAndJoinOutcome;
+    try {
+      outcome = await run;
+    } finally {
+      syncInFlight = false;
+      syncAgain = false;
+      currentRun = null;
+      set({ phase: 'idle' });
+      refreshServerHeld();
+    }
+    if (outcome.status === 'joined') {
+      // The ordinary run after it stamps the time and syncs the other
+      // destination too, which reads everything again since its cursors went
+      // with the erase. A throw here can't say nothing was erased, and the
+      // next sync tries again whatever it was.
+      await get().syncNow().catch(() => null);
+      deleteUnreferencedImages(photosBefore);
+    }
+    return outcome;
   },
 
   syncNow: async () => {
@@ -360,6 +551,27 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     }
   },
 }));
+
+/** Recomputes `serverHeld` from what is stored now. */
+function refreshServerHeld(): void {
+  const { serverUrl, hasServerToken } = useSyncStore.getState();
+  useSyncStore.setState({ serverHeld: !!serverUrl && hasServerToken && joinChoiceNeeded('server') });
+}
+
+/** The transport `eraseAndJoin` downloads from, or why there isn't one. */
+async function joinTransport(destination: SyncDestination, state: SyncConfig): Promise<SyncTransport | { reason: string }> {
+  if (destination === 'icloud') {
+    try {
+      const reason = await cloudKitUnavailableReason();
+      return reason ? { reason } : iCloudTransport();
+    } catch {
+      return { reason: 'Couldn’t check your iCloud account.' };
+    }
+  }
+  const config = { url: state.serverUrl, token: await loadSecureKey(SYNC_TOKEN_SECURE_KEY) };
+  if (!isHttpSyncConfigured(config)) return { reason: 'Add the sync server’s address and token first.' };
+  return serverTransport(config, state);
+}
 
 async function syncOnce(state: SyncConfig): Promise<SyncSummary | null> {
   const set = useSyncStore.setState;

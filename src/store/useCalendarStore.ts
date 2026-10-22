@@ -7,6 +7,7 @@ import type { BusyEvent } from '../utils/calendarBusy';
 import { fetchEvents, type CalendarInfo, type CalendarReadStatus } from '../utils/calendarSync';
 import { isDemoModeActive } from '../utils/demoState';
 import { FOLLOW_UP_AHEAD_DAYS, FOLLOW_UP_LOOKBACK_DAYS, needsFollowUpWindow } from '../utils/eventTasks';
+import { moodTagOfferWindow } from '../utils/moodEventTagOffers';
 import {
   shouldReadPastCalendar,
   pastWindowStart,
@@ -179,6 +180,14 @@ interface CalendarState {
   followUpEvents: BusyEvent[];
   followUpLoaded: boolean;
   refreshFollowUp: () => Promise<void>;
+  /**
+   * Two weeks either side of today, for the Calendar keywords sheet to offer
+   * event names as mood tags (`moodEventTagOffers.ts`). A **separate read** for
+   * the reason the others are, fetched only while that sheet is open.
+   */
+  recentEvents: BusyEvent[];
+  recentLoaded: boolean;
+  refreshRecent: () => Promise<void>;
   /** Records one answer, and persists the pruned record. */
   markHistoryHandled: (key: string, dayKey: string) => void;
   /** Drops everything — used when the feature is switched off. */
@@ -222,6 +231,7 @@ const windowGuard = createRefreshGuard();
 const pastGuard = createRefreshGuard();
 const aheadGuard = createRefreshGuard();
 const followUpGuard = createRefreshGuard();
+const recentGuard = createRefreshGuard();
 
 export const useCalendarStore = create<CalendarState>((set, get) => ({
   events: [],
@@ -241,6 +251,8 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
   aheadWindowEnd: null,
   followUpEvents: [],
   followUpLoaded: false,
+  recentEvents: [],
+  recentLoaded: false,
   handledHistory: {},
   handledLoaded: false,
 
@@ -423,6 +435,29 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
     set({ followUpEvents, followUpLoaded: true });
   },
 
+  async refreshRecent() {
+    const settings = useSettingsStore.getState();
+    // Demo mode in the gate: a rule made from an offer is written to settings,
+    // and a demo must not turn somebody's real calendar into one.
+    if (
+      !settings.calendarReadEnabled || settings.calendarIds.length === 0
+      || Platform.OS !== 'ios' || isDemoModeActive()
+    ) {
+      recentGuard.invalidate();
+      set({ recentEvents: [], recentLoaded: false });
+      return;
+    }
+    const { start, end } = moodTagOfferWindow(new Date(), settings.dayResetTime);
+    const token = recentGuard.begin();
+    const result = await fetchEvents(settings.calendarIds, start, end);
+    if (!recentGuard.isCurrent(token)) return;
+    if (result === null) {
+      set({ recentLoaded: false });
+      return;
+    }
+    set({ recentEvents: result.events, recentLoaded: true });
+  },
+
   markHistoryHandled(key, dayKey) {
     const floorDayKey = dayKeyOf(pastWindowStart(new Date()));
     // Guarded rather than assumed: a mark can only follow a successful
@@ -450,11 +485,13 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
     pastGuard.invalidate();
     aheadGuard.invalidate();
     followUpGuard.invalidate();
+    recentGuard.invalidate();
     set({
       events: [], vacationReturnEvents: [], vacationReturnLoaded: false, perCalendar: {}, calendarsById: {}, windowStart: null, windowEnd: null, loaded: false, readFailed: false,
       pastEvents: [], pastLoaded: false, pastReadAt: null,
       aheadEvents: [], aheadLoaded: false, aheadWindowEnd: null,
       followUpEvents: [], followUpLoaded: false,
+      recentEvents: [], recentLoaded: false,
     });
   },
 }));

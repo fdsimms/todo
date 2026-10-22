@@ -1,7 +1,6 @@
 import type {
   FollowUpTaskDraft,
   ReminderCapture,
-  SavedViewClause,
   Task,
   TitleRule,
 } from '../types';
@@ -33,22 +32,6 @@ export function renameInFollowUpDraft(
 ): FollowUpTaskDraft | null {
   if (!draft || draft.category !== from) return draft;
   return { ...draft, category: to };
-}
-
-export function renameInViewClauses(
-  clauses: SavedViewClause[],
-  from: string,
-  to: string
-): SavedViewClause[] {
-  let changed = false;
-  const next = clauses.map(c => {
-    if (c.kind !== 'category' || !c.values.includes(from)) return c;
-    changed = true;
-    // A view already listing the new name as well would otherwise hold it twice.
-    const values = c.values.map(v => (v === from ? to : v));
-    return { ...c, values: values.filter((v, i) => values.indexOf(v) === i) };
-  });
-  return changed ? next : clauses;
 }
 
 export function renameInTitleRules(rules: TitleRule[], from: string, to: string): TitleRule[] {

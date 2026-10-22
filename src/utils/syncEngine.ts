@@ -88,6 +88,8 @@ export interface SyncImageStore {
 export interface SyncWithholding {
   tables: readonly string[];
   settingKeys: readonly string[];
+  /** Keys of the `settings` table held back by prefix, for a key minted per device. */
+  settingKeyPrefixes?: readonly string[];
 }
 
 /**
@@ -102,8 +104,10 @@ export function withholdChanges(changes: SyncChangeSet, withholding: SyncWithhol
   if (!withholding) return changes;
   const tables = new Set(withholding.tables);
   const keys = new Set(withholding.settingKeys);
+  const prefixes = withholding.settingKeyPrefixes ?? [];
   const held = (table: string, key: unknown) =>
-    tables.has(table) || (table === 'settings' && typeof key === 'string' && keys.has(key));
+    tables.has(table)
+    || (table === 'settings' && typeof key === 'string' && (keys.has(key) || prefixes.some(p => key.startsWith(p))));
 
   const kept: SyncChangeSet['tables'] = {};
   for (const [name, rows] of Object.entries(changes.tables)) {
@@ -657,6 +661,73 @@ export async function runSync(
 function messageOf(e: unknown, fallback: string): string {
   if (e instanceof Error && e.message) return e.message;
   return fallback;
+}
+
+/** How `joinAfterErasing` ended. Only `joined` erased anything. */
+export type JoinAfterErasingResult =
+  | { status: 'joined'; run: SyncRunResult }
+  /** The store holds no rows at all. */
+  | { status: 'nothing-to-join' }
+  /** The download failed, or this is the demo database. */
+  | { status: 'failed'; reason: string };
+
+/**
+ * Erases this device and joins `transport` holding only what other devices
+ * have published to it, for a device whose own data should not reach them.
+ *
+ * **The download comes first, and the erase waits for it.** A device erased
+ * and then left offline, or erased to join a store nothing has synced to yet,
+ * is a device emptied for nothing. So the whole store is pulled before
+ * `erase` runs, and nothing is erased unless that worked and it holds rows.
+ * That is also the only guard against choosing this on the device that was
+ * meant to be kept, when it syncs first. This device's own earlier payloads
+ * count: they come back under the new id, so a device erased against a store
+ * only it ever wrote to gets its own data back, and one whose history it
+ * compacted into a snapshot of its own is not refused.
+ *
+ * The rows that pull brought are then applied by an ordinary `runSync`, handed
+ * the same result rather than downloading it twice. Its push finds nothing to
+ * send, since `erase` leaves no rows and no tombstones, and the new device id
+ * `erase` leaves behind is what lets it apply payloads this device pushed
+ * under its old one (`dbEraseForSyncJoin`).
+ *
+ * `erase` runs synchronously between the two, so the caller can reload its
+ * in-memory copies before anything else is awaited, for the reason `onApplied`
+ * gives on runSync.
+ */
+export async function joinAfterErasing(
+  transport: SyncTransport,
+  local: SyncLocal,
+  erase: () => void,
+  onApplied?: (applied: ApplyReport) => void
+): Promise<JoinAfterErasingResult> {
+  if (!local.isSyncable()) return { status: 'failed', reason: 'Demo mode.' };
+
+  let pulled: PullResult;
+  try {
+    pulled = await transport.pull(null);
+  } catch (e) {
+    return { status: 'failed', reason: messageOf(e, 'Couldn’t receive changes.') };
+  }
+
+  const holdsRows = pulled.payloads.some(raw => {
+    const parsed = parsePayload(raw);
+    return parsed.ok && Object.values(parsed.payload.tables).some(rows => rows.length > 0);
+  });
+  if (!holdsRows) return { status: 'nothing-to-join' };
+
+  erase();
+
+  let served = false;
+  const replay: SyncTransport = {
+    ...transport,
+    pull: async since => {
+      if (served) return transport.pull(since);
+      served = true;
+      return pulled;
+    },
+  };
+  return { status: 'joined', run: await runSync(replay, local, onApplied) };
 }
 
 /** One transport's run, labelled, so a caller with several can say which failed. */

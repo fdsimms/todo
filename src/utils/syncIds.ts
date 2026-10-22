@@ -70,8 +70,6 @@ export const spawnSeed = {
    * same reasoning as the extra_task_* db columns in database.ts.
    */
   extra: (completedTaskId: string) => `extra:${completedTaskId}`,
-  /** The "How did it turn out?" look-back an answered decision asked for. One per completion. */
-  review: (completedTaskId: string) => `review:${completedTaskId}`,
   /** One row per date when a repeating series rolls over to its next set. */
   seriesDate: (completedTaskId: string, date: string) => `series:${completedTaskId}:${date}`,
   /** A subtask carried onto a fresh occurrence, keyed by the one it copies. */

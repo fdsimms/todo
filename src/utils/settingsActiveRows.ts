@@ -18,7 +18,6 @@ export type SettingsGateState = GeneratedEnabledFlags & {
   kitchenEnabled: boolean;
   simpleMode: boolean;
   postponeCheckEnabled: boolean;
-  scrollNudgeEnabled: boolean;
   focusLongRestEvery: number | null;
   focusShieldEnabled: boolean;
   penaltyShieldEnabled: boolean;
@@ -50,7 +49,6 @@ export interface SyncGateState {
 export function activeSettingsEntryIds(settings: SettingsGateState, sync: SyncGateState): Set<string> {
   const on = new Set<string>();
   if (settings.postponeCheckEnabled) on.add('postponeCheck');
-  if (settings.scrollNudgeEnabled) on.add('scrollNudge');
   if (settings.focusLongRestEvery !== null) on.add('focusLongRestEvery');
   if (settings.focusShieldEnabled) on.add('focusShield');
   if (settings.penaltyShieldEnabled) on.add('penaltyShield');

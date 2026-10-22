@@ -886,69 +886,6 @@ export interface TaskGroup {
 }
 
 /**
- * A saved view: a named, reusable lens over the task list (#2679).
- *
- * The filter state this joins was three settings on `useSettingsStore` —
- * `filterPriorities`, `filterEfforts` — plus a sort, all
- * of them global and shared by Today, Later, Unscheduled and Inbox. One state,
- * no name, nothing kept, so "under 10 minutes and nothing blocked" had to be
- * re-derived by hand every time or never got asked at all.
- *
- * A view is a name and a set of clauses. The rules for matching them live in
- * `src/utils/savedViews.ts`, which is deliberately store-free; this is only the
- * shape.
- */
-export interface SavedView {
-  id: string;
-  name: string;
-  // An Ionicons glyph, picked from the closed set in utils/savedViews.ts. Not
-  // free text: it is drawn at iconSize.sm in a tinted circle, and a name the
-  // library doesn't have renders as nothing at all.
-  icon: string;
-  clauses: SavedViewClause[];
-  // The user's own order, same number space and same convention as Category —
-  // REAL, assigned max + 1 on create, renumbered by a batch update on reorder.
-  sortOrder: number;
-  createdAt: string;
-}
-
-/**
- * One predicate in a saved view.
- *
- * **The set is closed on purpose.** Every variant reads a field that already
- * exists on Task, and the matcher is a switch the compiler checks for
- * exhaustiveness, so adding a clause is one variant, one case and one control.
- * The alternative was a query language — a grammar, a parser, and an operator
- * set that grows whenever somebody wants one more — which is a far larger
- * thing to own and a far worse thing to draw: the editor renders one control
- * per kind precisely because the kinds can be enumerated.
- *
- * **Clauses AND; values within a clause OR.** "Work or Home, and high
- * priority" is the shape people mean, and it is the shape the existing filter
- * sheet already implies with its multi-select chip rows. There is deliberately
- * no OR between clauses: that needs a tree rather than a list, and a tree
- * needs an editor nobody has asked for.
- *
- * The two-position clauses carry their own boolean rather than there being a
- * `not` wrapper, for the same reason. "Has no reminder" is a control with two
- * settings; negation in general is the tree again.
- */
-export type SavedViewClause =
-  | { kind: 'category'; values: string[] }  // category names, as stored on Task.category
-  | { kind: 'tag'; values: string[] }
-  | { kind: 'project'; values: string[] }   // project ids
-  | { kind: 'priority'; values: Priority[] }
-  | { kind: 'effort'; values: Effort[] }
-  | { kind: 'taskType'; values: string[] }  // TaskTypeFilter keys; unknown ones match nothing
-  | { kind: 'maxMinutes'; minutes: number }
-  | { kind: 'overdue'; overdue: boolean }
-  | { kind: 'hasReminder'; hasReminder: boolean }
-  | { kind: 'heldBack'; heldBack: boolean }
-  | { kind: 'undated'; undated: boolean };
-
-export type SavedViewClauseKind = SavedViewClause['kind'];
-
-/**
  * One stretch of a focus session — either work on a task, or a break.
  *
  * A session is a *plan*: an ordered list of these, built once when the session
@@ -1140,11 +1077,13 @@ export type UnattendedSubject =
   | 'milestone'
   // A journal or dream entry (`JournalEntry`). Titled by kind, never by its text, for the same reason.
   | 'journal'
-  // A saved view (`SavedView`), created or deleted by an agent. Record only.
+  // A saved view, created or deleted by an agent. The feature is gone; kept so
+  // older entries still read.
   | 'view'
   // A switch in Settings an agent flipped (vacation mode). Record only: the switch is one tap.
   | 'setting'
-  // A meter reading (`MeterReading`) an agent logged or deleted. Record only.
+  // A meter reading an agent logged or deleted. The feature is gone; kept so
+  // older entries still read.
   | 'meter'
   // A pot, pan, lid or tub (`Cookware`) an agent added, changed or deleted. Record only.
   | 'cookware'
@@ -2118,25 +2057,6 @@ export interface Fast {
   /** Null while the fast is running. */
   endedAt: string | null;
   goalHours: number;
-  createdAt: string;
-}
-
-/**
- * One reading of a meter the user tracks by hand: an odometer, a hobbs meter,
- * an espresso machine's shot counter. Readings are keyed by the meter, not by
- * a task, so a single entry serves every task following that meter
- * (`Task.meterName`). Rows are only ever added or deleted, never merged, so
- * two devices logging at once both keep their reading. See src/utils/meters.ts.
- */
-export interface MeterReading {
-  id: string;
-  /** `meterKey(name)`: trimmed and lowercased, so "Car" and "car " are one meter. */
-  meterKey: string;
-  /** The name as it was typed, for display. */
-  meterName: string;
-  value: number;
-  /** When the reading was taken. */
-  readAt: string;
   createdAt: string;
 }
 
@@ -3935,18 +3855,6 @@ export interface Task {
    * `src/utils/deliverables.ts` for the terms a second destination has to meet.
    */
   deliverableSetsAway?: boolean;
-  /**
-   * On a look-back task ("How did it turn out?"), the answered row it looks
-   * back on; null on every other task. Its own answer is that decision's
-   * outcome, read beside the original answer by joining on this
-   * (`decisionOutcomes`), so the decision's row is never written again. See
-   * src/utils/decisionReview.ts.
-   *
-   * Points at the completed row, not at a successor: that row is the one
-   * holding the answer, and retention never purges an answered row.
-   * Resolve-or-shrug like every cross-row pointer.
-   */
-  reviewOfTaskId?: string | null;
 
   // Which generator wrote this task, and the row it was projected from — both
   // null on every task a person typed. See src/utils/generatedTasks.ts for the
@@ -4525,35 +4433,10 @@ export interface Task {
   // carries it. See src/utils/weatherWait.ts.
   weatherWait?: WeatherCondition | null;
 
-  // A one-off due at a reading rather than a date: "change the oil every 5,000
-  // miles". The readings belong to the meter, not the task (`MeterReading`,
-  // keyed by `meterKey(meterName)`), so one odometer entry speaks for every
-  // task on the car. While set, the meter pass owns `deferUntil` the way the
-  // weather pass does: it holds the task until a reading reaches `meterDueAt`,
-  // the date the reading rate projects, or `meterLimitMonths` after the task
-  // was made, whichever comes first. Completing it writes the next one, due
-  // `meterEvery` further on. Only a plain one-off may follow a meter (see
-  // `canFollowMeter`). See src/utils/meters.ts and docs/arch/meters.md.
-  meterName?: string | null;
-  // What the meter counts, as the user wrote it ("miles", "hours", "shots").
-  // Display only: nothing converts it.
-  meterUnit?: string | null;
-  // How far the meter runs between occurrences.
-  meterEvery?: number | null;
-  // The reading this occurrence is due at.
-  meterDueAt?: number | null;
-  // "Or every 6 months, whichever comes first": a time limit counted from the
-  // task's createdAt, so a meter nobody reads still surfaces. Null = none.
-  meterLimitMonths?: number | null;
-  // The day key of the last hold the meter pass wrote into `deferUntil`, so it
-  // only ever moves its own: a defer that doesn't match is the user's snooze
-  // and is left alone. Null when the pass has written nothing.
-  meterHeldUntil?: string | null;
-
   // "If the day is full": true waits for a day that isn't (see
   // src/utils/slotIn.ts), false keeps the date, null has no answer and follows
   // the category's `slotIn`. The pass owns `deferUntil` while it holds one,
-  // the same way the meter and weather passes do.
+  // the same way the weather pass does.
   slotIn?: boolean | null;
   // The logical day the slot-in pass last decided this task, whether it held
   // it or let it through. Synced, so a second device doesn't decide the same

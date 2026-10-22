@@ -82,7 +82,15 @@ export function isDeviceLocalSetting(key: unknown): boolean {
   const k = String(key);
   return REDACTED_SETTING_KEYS.includes(k)
     || k === 'syncDeviceId'
+    // Whether this device chose what happens to its data on joining sync
+    // (JOIN_DECIDED_KEY in useSyncStore): a fact about this device, and
+    // carried to another one it would skip that device's question.
+    || k === 'syncJoinDecided'
     || k.startsWith('syncCursor:')
+    // A device's report of its own sync switches (SERVER_SHARING_KEY_PREFIX
+    // in syncTracking.ts); restored onto another device it would speak for a
+    // phone that isn't there.
+    || k.startsWith('syncServerSharing:')
     || DEVICE_ID_SETTING_KEYS.includes(k)
     || DEVICE_ID_SETTING_PREFIXES.some(p => k.startsWith(p));
 }

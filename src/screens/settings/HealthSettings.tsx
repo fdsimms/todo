@@ -30,7 +30,9 @@ import { formatWordCount } from '../../utils/journal';
 import { resetToWeightGoal } from '../../navigation/navigationRef';
 import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
-import type { MoodContextSources } from '../../utils/moodContextSources';
+import { RAIN_TAG_MM, type MoodContextSources } from '../../utils/moodContextSources';
+import { formatRain, rainUnitFor, type RainUnit } from '../../utils/rainSkip';
+import { MoodEventTagsSheet } from '../../components/MoodEventTagsSheet';
 import { SettingsRow } from './SettingsRow';
 import { SettingsSegments } from './SettingsSegments';
 import { makeSettingsStyles } from './settingsStyles';
@@ -97,18 +99,23 @@ const DEMO_HINT = 'Not available in demo mode. Demo mode does not read or write 
  * toggle would only add a way to be refused twice for the same reason.
  */
 const MOOD_SOURCE_ROWS: readonly {
-  key: keyof MoodContextSources; entryId: string; icon: string; label: string; hint: string;
+  key: keyof MoodContextSources; entryId: string; icon: string; label: string;
+  hint: string | ((ctx: { shortNightMinutes: number; rainUnit: RainUnit }) => string);
 }[] = [
   { key: 'dayOff', entryId: 'moodSourceDayOff', icon: 'flag-outline', label: 'Holidays and days off',
-    hint: 'Picks Holiday on a public holiday, and Day off on one of your own days off.' },
+    hint: 'Picks “Holiday” on a public holiday, and “Day off” on one of your own days off.' },
   { key: 'social', entryId: 'moodSourceSocial', icon: 'people-outline', label: 'Social events',
-    hint: 'Picks Social event on a day with a calendar event you linked to someone.' },
-  { key: 'birthday', entryId: 'moodSourceBirthday', icon: 'gift-outline', label: 'Birthdays',
-    hint: 'Picks Birthday on a day someone in People has one.' },
+    hint: 'Picks “Social event” on a day with a calendar event you linked to someone.' },
   { key: 'exercise', entryId: 'moodSourceExercise', icon: 'barbell-outline', label: 'Exercise',
-    hint: 'Picks Exercised once Health shows 30 minutes of exercise today. Needs Read Apple Health.' },
+    hint: 'Picks “Worked out” once Health shows 30 minutes of exercise today. Needs Read Apple Health.' },
+  { key: 'workout', entryId: 'moodSourceWorkout', icon: 'fitness-outline', label: 'Workouts',
+    hint: 'Picks “Worked out” on a day you finished a workout in the app.' },
+  { key: 'shortNight', entryId: 'moodSourceShortNight', icon: 'moon-outline', label: 'Short night',
+    hint: ({ shortNightMinutes }) => `Picks “Short night” when Health shows less than ${formatSleepDuration(shortNightMinutes)} of sleep, your Short night threshold under Sleep. Needs Read Apple Health.` },
   { key: 'outside', entryId: 'moodSourceOutside', icon: 'sunny-outline', label: 'Time outside',
-    hint: 'Picks Went outside once Health shows 30 minutes in daylight today. Needs Read Apple Health and an Apple Watch. If you allowed Health access earlier, tap Health access again to include it.' },
+    hint: 'Picks “Went outside” once Health shows 30 minutes in daylight today. Needs Read Apple Health and an Apple Watch. If you allowed Health access earlier, tap Health access again to include it.' },
+  { key: 'rain', entryId: 'moodSourceRain', icon: 'rainy-outline', label: 'Rain',
+    hint: ({ rainUnit }) => `Picks “Rain” once at least ${formatRain(RAIN_TAG_MM, rainUnit)} of rain has fallen that day. Needs Weather-based tasks, with location access.` },
 ];
 
 export function HealthSettings() {
@@ -142,6 +149,9 @@ export function HealthSettings() {
   const journalWordGoal = useSettingsStore(s => s.journalWordGoal);
   const moodContextSources = useSettingsStore(s => s.moodContextSources);
   const setMoodContextSource = useSettingsStore(s => s.setMoodContextSource);
+  const moodEventTagCount = useSettingsStore(s => s.moodEventTags.filter(r => r.enabled).length);
+  const rainUnit = rainUnitFor(useSettingsStore(s => s.unitSystem));
+  const [eventTagsOpen, setEventTagsOpen] = useState(false);
   const journalCustomPrompts = useSettingsStore(s => s.journalCustomPrompts);
   const [wordGoalOpen, setWordGoalOpen] = useState(false);
   const [promptsOpen, setPromptsOpen] = useState(false);
@@ -350,14 +360,25 @@ export function HealthSettings() {
             icon={icon}
             iconColor={moodContextSources[key] ? colors.accent : undefined}
             label={label}
-            hint={hint}
+            hint={typeof hint === 'function' ? hint({ shortNightMinutes, rainUnit }) : hint}
             toggle={moodContextSources[key]}
             onPress={() => setMoodContextSource(key, !moodContextSources[key])}
             accessibilityLabel={label}
           />
         </React.Fragment>
       ))}
+      <View style={styles.sep} />
+      <SettingsRow
+        entryId="moodEventTags"
+        icon="calendar-outline"
+        iconColor={moodEventTagCount > 0 ? colors.accent : undefined}
+        label="Calendar keywords"
+        hint="Picks your own tag on a day with an event whose title has one of your keywords."
+        value={moodEventTagCount === 0 ? 'None' : String(moodEventTagCount)}
+        onPress={() => { haptics.tap(); setEventTagsOpen(true); }}
+      />
     </SettingsSection>
+    <MoodEventTagsSheet visible={eventTagsOpen} onClose={() => setEventTagsOpen(false)} />
     <JournalWordGoalSheet visible={wordGoalOpen} onClose={() => setWordGoalOpen(false)} />
     <JournalPromptsSheet visible={promptsOpen} onClose={() => setPromptsOpen(false)} />
     </>
@@ -769,9 +790,9 @@ export function HealthSettings() {
             toggle={shortNightNoteEnabled}
             onPress={() => setShortNightNoteEnabled(!shortNightNoteEnabled)}
             accessibilityLabel="Short night note"
-            tight={shortNightNoteEnabled}
+            tight={shortNightNoteEnabled || moodContextSources.shortNight}
           />
-          {shortNightNoteEnabled && (
+          {(shortNightNoteEnabled || moodContextSources.shortNight) && (
             <>
               <SettingsRow
                 entryId="shortNightThreshold"

@@ -1,4 +1,4 @@
-import { NO_MOOD_CONTEXT_SOURCES, parseMoodContextSources, type MoodContextSources } from '../utils/moodContextSources';
+import { NO_MOOD_CONTEXT_SOURCES, parseMoodContextSources, parseMoodEventTags, type MoodContextSources, type MoodEventTag } from '../utils/moodContextSources';
 import { parseTaskTypeFilters, type TaskTypeFilter } from '../utils/taskTypeFilter';
 import { create } from 'zustand';
 import { dbGetAllSettings, dbGetDeviceId, dbGetSetting, dbSetSetting } from '../db/database';
@@ -119,10 +119,6 @@ import {
   DEFAULT_MEAL_PLAN_NUDGE_TIME, DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY, MEAL_PLAN_NUDGE_SLOTS,
 } from '../utils/mealPlanNudge';
 import { DEFAULT_POSTPONE_THRESHOLD, parsePostponeThreshold } from '../utils/postpone';
-import {
-  SCROLL_NUDGE_DEFAULT_COOLDOWN_MINUTES, SCROLL_NUDGE_DEFAULT_DAILY_CAP, SCROLL_NUDGE_DEFAULT_SECONDS,
-  parseScrollNudgeCooldownMinutes, parseScrollNudgeDailyCap, parseScrollNudgeSeconds,
-} from '../utils/scrollNudge';
 import { DEFAULT_BOUNTY_LIMIT, parseBountyLimit, parseWeeklyBudget } from '../utils/rewards';
 import {
   FOCUS_DEFAULTS,
@@ -533,21 +529,6 @@ interface SettingsStore {
   postponeCheckEnabled: boolean;
   /** How many pushes before it says something. */
   postponeCheckThreshold: number;
-  /**
-   * Whether Today offers a focus session after the lists have been scrolled
-   * for scrollNudgeSeconds with no tap. See src/utils/scrollNudge.ts.
-   *
-   * Defaults OFF, and the `=== 'true'` read is what keeps it off for an
-   * install that predates it: it acts on a pattern of use nobody asked to be
-   * watched for, so it is opt-in. Nothing it reads leaves the device.
-   */
-  scrollNudgeEnabled: boolean;
-  /** Seconds of unbroken scrolling before it speaks up. */
-  scrollNudgeSeconds: number;
-  /** Minutes after it appears before it may appear again. */
-  scrollNudgeCooldownMinutes: number;
-  /** Times it may appear in one logical day. */
-  scrollNudgeDailyCap: number;
   /**
    * Focus sessions — the run of work stretches and breaks a queue of tasks is
    * turned into (see src/utils/focusPlan.ts). Defaults are a classic pomodoro;
@@ -1265,6 +1246,12 @@ interface SettingsStore {
    * (`moodDayContext.ts`). Every one is off until turned on.
    */
   moodContextSources: MoodContextSources;
+  /**
+   * Calendar keyword -> mood tag rules ("therapy" picks Therapy). Kept out of
+   * DEFAULT_SETTINGS for the reason eventRules is: String() can't round-trip
+   * an array.
+   */
+  moodEventTags: MoodEventTag[];
 
   /**
    * A weight to reach, the rate to reach it at, and the weight it was set
@@ -2173,10 +2160,6 @@ interface SettingsStore {
   setOnDeviceAiEnabled: (on: boolean) => void;
   setPostponeCheckEnabled: (on: boolean) => void;
   setPostponeCheckThreshold: (count: number) => void;
-  setScrollNudgeEnabled: (on: boolean) => void;
-  setScrollNudgeSeconds: (seconds: number) => void;
-  setScrollNudgeCooldownMinutes: (minutes: number) => void;
-  setScrollNudgeDailyCap: (count: number) => void;
   setAppLockEnabled: (on: boolean) => void;
   setAppLockGraceSeconds: (seconds: number) => void;
   setJournalLockEnabled: (on: boolean) => void;
@@ -2262,6 +2245,7 @@ interface SettingsStore {
   setWorkoutLiveActivity: (on: boolean) => void;
   setExerciseImagesEnabled: (on: boolean) => void;
   setMoodContextSource: (key: keyof MoodContextSources, on: boolean) => void;
+  setMoodEventTags: (rules: MoodEventTag[]) => void;
   /** Sets the weight goal, or clears it with null. */
   setWeightGoal: (goal: WeightGoal | null) => void;
   /** Sets the sleep goal in minutes, or clears it with null. */
@@ -2541,10 +2525,6 @@ const DEFAULT_SETTINGS = {
   autoCompleteProjectsOnDone: false,
   postponeCheckEnabled: true,
   postponeCheckThreshold: DEFAULT_POSTPONE_THRESHOLD,
-  scrollNudgeEnabled: false,
-  scrollNudgeSeconds: SCROLL_NUDGE_DEFAULT_SECONDS,
-  scrollNudgeCooldownMinutes: SCROLL_NUDGE_DEFAULT_COOLDOWN_MINUTES,
-  scrollNudgeDailyCap: SCROLL_NUDGE_DEFAULT_DAILY_CAP,
   focusWorkCapMinutes: FOCUS_DEFAULTS.workCapMinutes,
   focusDefaultWorkMinutes: FOCUS_DEFAULTS.defaultWorkMinutes,
   focusRestAfterTasks: FOCUS_DEFAULTS.restAfterTasks,
@@ -2993,10 +2973,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   autoCompleteProjectsOnDone: false,
   postponeCheckEnabled: true,
   postponeCheckThreshold: DEFAULT_POSTPONE_THRESHOLD,
-  scrollNudgeEnabled: false,
-  scrollNudgeSeconds: SCROLL_NUDGE_DEFAULT_SECONDS,
-  scrollNudgeCooldownMinutes: SCROLL_NUDGE_DEFAULT_COOLDOWN_MINUTES,
-  scrollNudgeDailyCap: SCROLL_NUDGE_DEFAULT_DAILY_CAP,
   focusWorkCapMinutes: FOCUS_DEFAULTS.workCapMinutes,
   focusDefaultWorkMinutes: FOCUS_DEFAULTS.defaultWorkMinutes,
   focusRestAfterTasks: FOCUS_DEFAULTS.restAfterTasks,
@@ -3169,6 +3145,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   eventTasks: false,
   eventTaskCategory: null,
   eventRules: [],
+  moodEventTags: [],
   generatorEstimates: {},
   eventTaskHandled: {},
   travelTasks: false,
@@ -3345,10 +3322,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // that predates the setting starts with it rather than without it.
     const postponeCheckEnabled = dbGetSetting('postponeCheckEnabled') !== 'false';
     const postponeCheckThreshold = parsePostponeThreshold(dbGetSetting('postponeCheckThreshold'));
-    const scrollNudgeEnabled = dbGetSetting('scrollNudgeEnabled') === 'true';
-    const scrollNudgeSeconds = parseScrollNudgeSeconds(dbGetSetting('scrollNudgeSeconds'));
-    const scrollNudgeCooldownMinutes = parseScrollNudgeCooldownMinutes(dbGetSetting('scrollNudgeCooldownMinutes'));
-    const scrollNudgeDailyCap = parseScrollNudgeDailyCap(dbGetSetting('scrollNudgeDailyCap'));
     const vacationMode = dbGetSetting('vacationMode') === 'true';
     const vacationStart = dbGetSetting('vacationStart') ?? null;
     const vacationEnd = dbGetSetting('vacationEnd') || null;
@@ -3561,6 +3534,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const defaultGymId = dbGetSetting('defaultGymId') || null;
     const defaultRestSeconds = parseRestSeconds(dbGetSetting('defaultRestSeconds'));
     const moodContextSources = parseMoodContextSources(dbGetSetting('moodContextSources'));
+    const moodEventTags = parseMoodEventTags(dbGetSetting('moodEventTags'));
     // Both parsers salvage rather than throw: an unreadable goal reads back as
     // no goal, and an unreadable profile as an empty one, so a blob written by
     // a future build can never stop the settings loading.
@@ -4102,6 +4076,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       menuArrangement,
       mirroringMode,
       moodContextSources,
+      moodEventTags,
       moodLogLastDayKey,
       moodLogTaskCategory,
       moodLogTasks,
@@ -4168,10 +4143,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       screenTimeRules,
       screenTimeTaskCategory,
       screenTimeTasks,
-      scrollNudgeCooldownMinutes,
-      scrollNudgeDailyCap,
-      scrollNudgeEnabled,
-      scrollNudgeSeconds,
       seenTips,
       shakeToUndoEnabled,
       shortNightMinutes,
@@ -5347,29 +5318,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ postponeCheckThreshold: clamped });
   },
 
-  setScrollNudgeEnabled(on: boolean) {
-    dbSetSetting('scrollNudgeEnabled', on ? 'true' : 'false');
-    set({ scrollNudgeEnabled: on });
-  },
-
-  setScrollNudgeSeconds(seconds: number) {
-    const clamped = parseScrollNudgeSeconds(String(seconds));
-    dbSetSetting('scrollNudgeSeconds', String(clamped));
-    set({ scrollNudgeSeconds: clamped });
-  },
-
-  setScrollNudgeCooldownMinutes(minutes: number) {
-    const clamped = parseScrollNudgeCooldownMinutes(String(minutes));
-    dbSetSetting('scrollNudgeCooldownMinutes', String(clamped));
-    set({ scrollNudgeCooldownMinutes: clamped });
-  },
-
-  setScrollNudgeDailyCap(count: number) {
-    const clamped = parseScrollNudgeDailyCap(String(count));
-    dbSetSetting('scrollNudgeDailyCap', String(clamped));
-    set({ scrollNudgeDailyCap: clamped });
-  },
-
   // Every focus setting re-parses on the way in as well as on the way out, so
   // a value that somehow got past the stepper can't put the plan builder in a
   // state the UI has no way to show or undo.
@@ -5919,6 +5867,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setExerciseImagesEnabled(on: boolean) {
     dbSetSetting('exerciseImagesEnabled', on ? 'true' : 'false');
     set({ exerciseImagesEnabled: on });
+  },
+
+  // Written whole, like setEventRules.
+  setMoodEventTags(rules: MoodEventTag[]) {
+    dbSetSetting('moodEventTags', JSON.stringify(rules));
+    set({ moodEventTags: rules });
   },
 
   setMoodContextSource(key: keyof MoodContextSources, on: boolean) {

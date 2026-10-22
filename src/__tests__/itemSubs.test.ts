@@ -476,23 +476,32 @@ describe('describeSubstitutesOnHand', () => {
 
 describe('resolveShoppingSubstitutes', () => {
   it('writes nothing for an empty answer', () => {
-    expect(resolveShoppingSubstitutes([butter.id], {})).toEqual([]);
+    expect(resolveShoppingSubstitutes([butter.id], {}, [butter.id])).toEqual([]);
   });
 
   it('drops an answer for a row that was never ticked unavailable', () => {
     // Stale from before the row was un-ticked, or an id that was never on the
     // unavailable list at all — either way, not something to write.
-    expect(resolveShoppingSubstitutes([], { [butter.id]: margarine.id })).toEqual([]);
+    expect(resolveShoppingSubstitutes([], { [butter.id]: margarine.id }, [butter.id])).toEqual([]);
   });
 
-  it('keeps an answer for a row that is ticked unavailable and answered', () => {
-    expect(resolveShoppingSubstitutes([butter.id], { [butter.id]: margarine.id })).toEqual([
-      { itemId: butter.id, subItemId: margarine.id },
-    ]);
+  it('keeps an answer for a row that is ticked unavailable, answered and remembered', () => {
+    expect(
+      resolveShoppingSubstitutes([butter.id], { [butter.id]: margarine.id }, [butter.id])
+    ).toEqual([{ itemId: butter.id, subItemId: margarine.id }]);
   });
 
-  it('only writes the ticked rows that were actually answered', () => {
-    const result = resolveShoppingSubstitutes([butter.id, oil.id], { [butter.id]: margarine.id });
+  it('writes nothing for an answer nobody ticked to remember', () => {
+    // What came home on one trip is not a standing substitute.
+    expect(resolveShoppingSubstitutes([butter.id], { [butter.id]: margarine.id }, [])).toEqual([]);
+  });
+
+  it('only writes the rows that were answered and remembered', () => {
+    const result = resolveShoppingSubstitutes(
+      [butter.id, oil.id],
+      { [butter.id]: margarine.id, [oil.id]: ghee.id },
+      [butter.id]
+    );
     expect(result).toEqual([{ itemId: butter.id, subItemId: margarine.id }]);
   });
 });

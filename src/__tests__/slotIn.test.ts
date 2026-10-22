@@ -25,7 +25,6 @@ function task(overrides: Partial<Task> = {}): Task {
     polarity: 'positive',
     reminderTime: null,
     generatedKind: null,
-    meterName: null,
     weatherWait: null,
     slotIn: true,
     category: null,
@@ -62,7 +61,6 @@ describe('canSlotIn', () => {
     expect(canSlotIn(task({ recurrenceType: 'daily', recurrenceInterval: 1 }))).toBe(false);
     expect(canSlotIn(task({ recurrenceType: 'hours' }))).toBe(false);
     expect(canSlotIn(task({ targetCount: 3 }))).toBe(false);
-    expect(canSlotIn(task({ meterName: 'Car' }))).toBe(false);
     expect(canSlotIn(task({ weatherWait: 'sunny' }))).toBe(false);
     expect(canSlotIn(task({ polarity: 'negative' }))).toBe(false);
     expect(canSlotIn(task({ reminderTime: iso('2026-10-19') }))).toBe(false);

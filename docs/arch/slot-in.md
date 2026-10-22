@@ -18,7 +18,7 @@ the pushed things still come back.
 
 ## The hold is `deferUntil`
 
-The same mechanism as meter holds and weather waits (`docs/arch/meters.md`): hiding a task until a
+The same mechanism as weather waits (`docs/arch/generated-tasks.md`): hiding a task until a
 day is what a defer already is, so visibility, Later, the month grid and Look ahead need nothing
 new. `slotDecidedOn` is the logical day the pass last decided the task, and a hold is a defer to
 **the day after it**. Any other future defer is the person's own and is left alone. One field,
@@ -58,7 +58,7 @@ out of it, so slot-in agrees with the cue the month grid and the date picker sho
 ## What can't wait (`canSlotIn`)
 
 A task with no date (no day to be full), a daily repeat or daily target (tomorrow has its own, so
-waiting is a skipped day), every-N-hours, a meter or weather wait (each owns `deferUntil`), an
+waiting is a skipped day), every-N-hours, a weather wait (which owns `deferUntil`), an
 avoid-habit, a reminder at a set moment (it would fire on a day the task is no longer on), and
 generated tasks other than catching up with someone: the rest are about a specific day, and a
 use-up task's deadline is the day the food spoils.

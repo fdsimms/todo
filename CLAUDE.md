@@ -425,7 +425,6 @@ file: the two maps are indexes, not write-ups.
 | a planned meal whose food is only in the freezer | `src/utils/mealThawTasks.ts` — see `docs/arch/generated-tasks.md`. `mealShortfallTasks.ts` asking about the `FROZEN_REASON` rows instead of the missing ones |
 | a one-off task that waits for a kind of day ("next sunny day") | `src/utils/weatherWait.ts` + `applyWeatherWaits` in `useTaskStore` + `Task.weatherWait` — see `docs/arch/generated-tasks.md`. The task's own `deferUntil` is the hold, and it is released for good once the matched day arrives |
 | a repeating task that skips a day it rained ("water the garden unless it rained") | `src/utils/rainSkip.ts` + `applyRainSkips` in `useTaskStore` + `Task.rainSkipMm`, over the rainfall `snapshotFromResponse` reads (`weatherLookup.ts`) — see `docs/arch/generated-tasks.md`. It skips, never misses, forgives the streak, and records the skip in Activity |
-| a task due at a reading rather than a date ("every 5,000 miles"), and the readings behind it | `src/utils/meters.ts` + `src/store/useMeterReadingStore.ts` + `applyMeterHolds` in `useTaskStore` — see `docs/arch/meters.md`. Like a weather wait, the hold is the task's own `deferUntil`, and the pass only ever moves a hold it wrote (`meterHeldUntil`). Quick add's phrase is `parseMeterInput`; the screen is `MetersScreen` |
 | date math, recurrence | `src/utils/dateUtils.ts` |
 | a repeating task that skips or moves off holidays | `src/utils/holidays.ts` (the US set and your own days off, computed, never read from the calendar) + `recurrenceHolidays` in `getNextOccurrence` (`dateUtils.ts`) — see Recurrence below |
 | a time window that starts or ends at sunrise or sunset | `src/utils/sunTimes.ts` (computed on the device, never the forecast) + `windowBoundsFor`/`sunLocationOn` in `visibilityUtils.ts` (home's `sunLocation`, or a trip's `destinationLatitude` on its days). **A reader of a window's times goes through `windowBoundsFor`**, since `windowStart`/`windowEnd` hold only the time an anchor resolved to when it was set; see `Task.windowStartSun` |
@@ -452,7 +451,7 @@ file: the two maps are indexes, not write-ups.
 | moving a whole trip when its dates change | `src/utils/awayShift.ts` + `src/components/AwayShiftSheet.tsx` — see `docs/arch/away-dates.md`. The offsets are deliberately not stored on the task, and that section says why |
 | where you're going, and the forecast for it | `Project.destination` + `src/services/geocode.ts` + `src/utils/tripForecast.ts` — see `docs/arch/away-dates.md`, including the itinerary boundary it refuses to cross |
 | vacation mode turning itself on for a trip, and the list you shop from while away | `Project.awayPauses`/`checkAwayVacation` + `Project.awayListId`/`checkAwayGroceryList` — see `docs/arch/away-dates.md` |
-| a task that asks a question when it's completed | `src/utils/deliverables.ts` (+ `src/utils/bulkCompletion.ts` for the paths that complete several at once). Looking back on an answer ("How did it turn out?") is `src/utils/decisionReview.ts`: a plain task pointing at the answered row by `Task.reviewOfTaskId`, whose answer is read beside the original by joining (`decisionOutcomes`), never written onto it |
+| a task that asks a question when it's completed | `src/utils/deliverables.ts` (+ `src/utils/bulkCompletion.ts` for the paths that complete several at once). |
 | a task falling on several dates | `seriesId` in `src/store/useTaskStore.ts` (`applyTaskDates`) — see Series below |
 | the month grid, and drawing an occurrence that has no row | `src/utils/calendarMonth.ts` + `src/screens/CalendarScreen.tsx` — see `docs/arch/month-grid.md` |
 | a column, migration, or row↔object mapping | `src/db/database.ts` (`initDatabase`, `rowToTask`) |
@@ -731,7 +730,6 @@ decided, and the design system every screen is built from. Individual features a
 | `docs/arch/timed-tasks.md` | Countdowns, and splitting one across subtasks |
 | `docs/arch/rewards.md` | Coins and rewards: why the balance is a ledger, and what may and may not earn or cost coins |
 | `docs/arch/supplies.md` | A consumable counted down by a repeating task, and the reorder it asks for |
-| `docs/arch/meters.md` | A task due at a meter reading (an odometer), the readings, and the hold that surfaces it |
 | `docs/arch/slot-in.md` | A task that waits for a day that isn't full: the once-a-day decision, the floor that drains the queue, and what can't wait |
 | `docs/arch/focus-sessions.md` | Focus sessions: the plan, its breaks, and why a step that runs out waits |
 | `docs/arch/reminders-import.md` | Apple Reminders import, and the data it deletes elsewhere |
@@ -745,7 +743,6 @@ decided, and the design system every screen is built from. Individual features a
 | `docs/arch/nfc-key.md` | Key tags: why a tag is one shield reason among four, the two kinds of key, and what isn't verified without a device |
 | `docs/arch/mcp-server.md` | The MCP server: why it is a syncing replica rather than an in-app or backup-file one, and what it costs the "no backend" promise |
 | `docs/arch/wide-layout.md` | iPad and the iPhone app on a Mac: the centered column, the sidebar, what resizing breaks, and the two-pane plan |
-| `docs/arch/desktop-client.md` | A Mac desktop client (design only, not built): why Electron over the existing logic layer, and what the desktop leaves to the phone |
 | `docs/arch/workouts.md` | The strength-training tracker (being built in phases): what it stores against what it reads from Health, why sessions are part of the health record, and the phase plan |
 | `docs/native-targets.md` | Adding an iOS native target (widget, Watch app, Live Activity) |
 

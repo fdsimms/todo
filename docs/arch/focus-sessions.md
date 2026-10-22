@@ -500,23 +500,3 @@ the next event that takes time (`focusMeetingHeadsUp` in `focusWindow.ts`, sched
 `scheduleFocusMeetingHeadsUp` beside the step chime on every session write). It says so and
 nothing else: like the step chime, it never advances, pauses or ends the session. It is computed at
 the last session write, so a meeting booked mid-session is heard about from the next write onward.
-
-## Offering one after a stretch of scrolling
-
-`src/utils/scrollNudge.ts` (rules) + `src/hooks/useScrollNudge.ts` (events) +
-`ScrollNudgeBanner`, off by default (`scrollNudgeEnabled`). The app cannot tell
-reading from drifting, so it does not claim to: a run is the lists scrolling
-with no tap or row swipe, a pause over 15 seconds ends it, and the banner
-appears once a run reaches `scrollNudgeSeconds` (60 by default).
-
-- **Scroll comes from the lists' own `onScroll`, taps from the screen's
-  passive touch events.** A touch handler on the container also hears a scroll
-  inside any sheet raised from it, which would count a long picker as drifting.
-  A tap in a sheet only resets the run, which is harmless.
-- **The repeat limits are settings:** minutes between offers (30) and offers
-  per logical day (3), measured from when it was shown, whether or not it was
-  taken. The state is a ref and is never persisted: a cooldown that survived a restart
-  would be a promise the app has no reason to keep.
-- **It only offers.** Start opens the normal setup sheet; nothing begins until
-  the person confirms there. It is suspended during a session and while
-  selecting rows, and hidden with the rest of Focus in simplified mode.

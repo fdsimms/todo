@@ -35,7 +35,6 @@ import { useTaskStore } from '../store/useTaskStore';
 import { bulkSetCategoryOffering } from '../utils/generatedCategoryPrompt';
 import { bulkAddTagsAsking, bulkSetPriorityAsking, bulkSetDifficultyAsking } from '../utils/bulkScopePrompt';
 import { useProjectStore, projectDecisions, projectProgress, projectCompletedRows, isProjectPastWindow, projectAnswerTallies, answerTallyParts } from '../store/useProjectStore';
-import { decisionOutcomes } from '../utils/decisionReview';
 import { AddGuestsSheet } from '../components/AddGuestsSheet';
 import { describeProjectActivity, overdueRoutines, projectActivity, projectCardCaption, projectMoveTargets, projectProgressNote } from '../utils/projectList';
 import { isPausedOn, isPlanning } from '../utils/projectPause';
@@ -680,7 +679,6 @@ function ProjectDetailContent() {
   // answer first. It does its own filtering (members, unarchived, collapsed by
   // identity), so it takes the whole task list rather than projectTasks.
   const decisions = useMemo(() => projectDecisions(projectId, allTasks), [projectId, allTasks]);
-  const decisionOutcomeMap = useMemo(() => decisionOutcomes(allTasks), [allTasks]);
   const answerTask = answerTaskId !== null ? allTasks.find(t => t.id === answerTaskId) ?? null : null;
   // Held so the sheet can close through `visible` rather than by leaving
   // the tree while still on screen. See useSheetSubject.
@@ -1837,7 +1835,6 @@ function ProjectDetailContent() {
       <ProjectDecisions
         label="Decisions"
         decisions={decisions}
-        outcomes={decisionOutcomeMap}
         onPress={selectionMode ? undefined : task => setAnswerTaskId(task.id)}
       />
     </>

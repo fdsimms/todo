@@ -99,7 +99,7 @@ For the same reason the Settings toggle calls `unlock()` *before*
     changes**, so `useProjectLockStore.revision` is mirrored into
     `useTaskStore.lockRevision` on every lock or unlock.
   - **Screens that read the whole task array** (Calendar, Stats, Tags, Stacks,
-    Reminders, Saved views, Stuck, Backfill, Search, a category or person
+    Reminders, Stuck, Backfill, Search, a category or person
     page) take it through `useWithoutLockedTasks`. A new screen that lists
     tasks renders them through `TaskItem` (redacted) or filters with that.
   - **Not covered:** Claude's MCP tools (a lock is a screen guard on this

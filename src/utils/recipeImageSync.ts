@@ -114,6 +114,29 @@ export function unreferencedImageNames(before: Iterable<string>, after: Iterable
   return [...out];
 }
 
+/** Every recipe photo path this device's rows hold, for `deleteUnreferencedImages`. */
+export function recipeImagePaths(): string[] {
+  try {
+    return [...dbRecipeImagePaths().values()];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Removes the file of every photo in `before` that no recipe points at now,
+ * after something replaced the recipes wholesale (this device erased to join
+ * sync). The per-payload version is `applyWithRecipeImages`.
+ */
+export function deleteUnreferencedImages(before: readonly string[]): void {
+  if (before.length === 0) return;
+  try {
+    for (const name of unreferencedImageNames(before, dbRecipeImagePaths().values())) deleteRecipeImage(name);
+  } catch {
+    // Best effort: a file left behind costs space, never data.
+  }
+}
+
 /**
  * Applies a payload and then removes the file of any photo it left nothing
  * pointing at: a recipe another device deleted, or one whose photo it

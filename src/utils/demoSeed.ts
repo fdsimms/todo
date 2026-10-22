@@ -5,7 +5,6 @@ import { subYears } from 'date-fns/subYears';
 import { subHours } from 'date-fns/subHours';
 import { setHours } from 'date-fns/setHours';
 import { useTaskStore } from '../store/useTaskStore';
-import type { ReviewAfter } from './decisionReview';
 import { addSealedNoteReminder } from './sealedNoteTasks';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
@@ -20,7 +19,6 @@ import { useMoodStore } from '../store/useMoodStore';
 import { useMilestoneStore } from '../store/useMilestoneStore';
 import { useAgentSuggestionStore } from '../store/useAgentSuggestionStore';
 import { useCookwareStore } from '../store/useCookwareStore';
-import { useMeterReadingStore } from '../store/useMeterReadingStore';
 import { useFastStore } from '../store/useFastStore';
 import { addSavedPlace, readSavedPlaces, writeSavedPlaces } from './savedPlaces';
 import { useWorkoutStore } from '../store/useWorkoutStore';
@@ -30,7 +28,6 @@ import { useMedicationStore } from '../store/useMedicationStore';
 import { installSupplementDoseEffects } from './supplementDoseSync';
 import { useRewardStore } from '../store/useRewardStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
-import { useSavedViewStore } from '../store/useSavedViewStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useStepTimerStore } from '../store/useStepTimerStore';
@@ -193,22 +190,6 @@ export function seedDemoData(): void {
     setCategoryEmoji(name, emoji);
   });
   ['bills', 'quick', 'reading', 'admin'].forEach(addTag);
-
-  // --- Saved views ---------------------------------------------------------
-  // A view is invisible until one exists, so the seed carries two. The first
-  // is built from dimensions the filter sheet already has, which is where
-  // "save as view" comes from; the second uses a category and an overdue
-  // clause the sheet has no control for at all, which is the half that says
-  // why a view is more than the filter row it was saved from.
-  const { createView } = useSavedViewStore.getState();
-  createView('Quick wins', 'flash-outline', [
-    { kind: 'effort', values: [1, 2] },
-    { kind: 'heldBack', heldBack: false },
-  ]);
-  createView('Overdue errands', 'cart-outline', [
-    { kind: 'category', values: ['Errands'] },
-    { kind: 'overdue', overdue: true },
-  ]);
 
   // --- Recent searches -----------------------------------------------------
   // The Search screen's empty-field state is the recents list, so with nothing
@@ -1439,26 +1420,19 @@ export function seedDemoData(): void {
     answer?: string;
     dueDate?: string;
     deferUntil?: string;
-    /** Asks how the answer turned out after this long (decisionReview.ts). */
-    lookBack?: ReviewAfter;
-    /** Answered that long ago, so its look-back has already come round. */
+    /** Answered that long ago. */
     answeredDaysAgo?: number;
-    /** The look-back's own answer: how the decision turned out. */
-    outcome?: string;
   }> = [
     { title: 'Measure the counters', effort: 1, done: true },
-    // Both decisions asked to be looked back on: the tile two months ago, with
-    // the look-back since answered (so its outcome shows beside the answer),
-    // and the budget just now, so its look-back is waiting in Later.
     {
       title: 'Pick a tile', effort: 2, done: true, deliverableKind: 'text', answer: 'Matte white 4x12',
-      lookBack: '1m', answeredDaysAgo: 60, outcome: 'Easy to clean, and no regrets on the white',
+      answeredDaysAgo: 60,
     },
-    { title: 'Set the budget', effort: 1, done: true, deliverableKind: 'number', answer: '6500', lookBack: '1m' },
+    { title: 'Set the budget', effort: 1, done: true, deliverableKind: 'number', answer: '6500' },
     { title: 'Get three quotes', effort: 3, done: false, dueDate: addDays(today, 2).toISOString() },
     { title: 'Book the installer', effort: 2, done: false, deferUntil: addDays(today, 9).toISOString() },
   ];
-  projectTasks.forEach(({ title, effort, done, deliverableKind, answer, dueDate, deferUntil, lookBack, answeredDaysAgo, outcome }) => {
+  projectTasks.forEach(({ title, effort, done, deliverableKind, answer, dueDate, deferUntil, answeredDaysAgo }) => {
     const t = addTask({
       title,
       category: 'Home',
@@ -1472,12 +1446,9 @@ export function seedDemoData(): void {
       completeTask(t.id, answer !== undefined
         ? {
             deliverableValue: answer,
-            ...(lookBack ? { reviewAfter: lookBack } : {}),
             ...(answeredDaysAgo ? { completedAt: subDays(today, answeredDaysAgo).toISOString() } : {}),
           }
         : undefined);
-      const review = outcome ? useTaskStore.getState().tasks.find(x => x.reviewOfTaskId === t.id) : undefined;
-      if (review) completeTask(review.id, { deliverableValue: outcome });
     }
   });
 
@@ -2416,7 +2387,6 @@ export function seedDemoData(): void {
   seedMilestone(today);
   seedSuggestions(today);
   seedCookware();
-  seedMeterTask(today);
   seedFast();
   seedPlaceReminder();
   seedWorkouts(today);
@@ -3317,38 +3287,11 @@ function seedMoodTasks(today: Date): void {
  * cannot drift from the type.
  */
 /**
- * A task due at a reading rather than a date: the car's oil change, with two
- * odometer readings a month apart so the row shows an estimate ("est. Nov 3")
- * rather than asking for a reading. Readings go through `logReading` and the
- * task through `addTask`, and `applyMeterHolds` places it the way the pass
- * would, so nothing here can drift from what the app writes.
- */
-function seedMeterTask(today: Date): void {
-  const { logReading } = useMeterReadingStore.getState();
-  const read = (daysAgo: number, value: number) => {
-    const at = subDays(today, daysAgo);
-    at.setHours(9, 0, 0, 0);
-    logReading('Car', value, at);
-  };
-  read(40, 38200);
-  read(10, 39400);
-  const { addTask, updateTask, applyMeterHolds } = useTaskStore.getState();
-  const task = addTask({ title: 'Change the oil', category: 'Home', effort: 2 });
-  updateTask(task.id, {
-    meterName: 'Car', meterUnit: 'miles', meterEvery: 5000, meterDueAt: 40500, meterLimitMonths: 6,
-  });
-  applyMeterHolds();
-}
-
-/**
- * A fast that started last night and is a couple of hours short of its goal,
- * so the Food log opens with the fasting card showing. Only the running one:
- * the card is the whole feature, and a history of fasts would show nowhere.
+ * A saved place with a pin, in the demo's own settings table, and a task that
+ * rings on arriving there, so its row shows "Arriving at Home". Nothing is
+ * scheduled: every notification path is shut in demo mode.
  */
 function seedPlaceReminder(): void {
-  // A saved place with a pin, in the demo's own settings table, and a task that
-  // rings on arriving there, so its row shows "Arriving at Home". Nothing is
-  // scheduled: every notification path is shut in demo mode.
   const places = addSavedPlace(readSavedPlaces(), {
     name: 'Home', text: '1 Main St', place: { latitude: 40.7128, longitude: -74.006 },
   });
@@ -3360,6 +3303,11 @@ function seedPlaceReminder(): void {
   updateTask(task.id, { reminderPlaceId: home.id, reminderPlaceOn: 'arrive' });
 }
 
+/**
+ * A fast that started last night and is a couple of hours short of its goal,
+ * so the Food log opens with the fasting card showing. Only the running one:
+ * the card is the whole feature, and a history of fasts would show nowhere.
+ */
 function seedFast(): void {
   useFastStore.getState().startFast(new Date(Date.now() - (13 * 60 + 42) * 60_000), 16);
 }

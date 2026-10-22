@@ -19,6 +19,7 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { resolveActiveTrip } from '../utils/activeTrip';
+import { CheckPop } from './CheckPop';
 import { EmptyNote } from './EmptyNote';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -232,16 +233,18 @@ function sameMembers<T>(a: ReadonlySet<T>, b: ReadonlySet<T>): boolean {
  * the user to go and say so in the item sheet, which is exactly why it's
  * worth capturing well here. It unfolds under the row itself rather than
  * opening anything. What it offers is narrow on purpose
- * (`substituteCandidates`): the row's usual substitute, what came home that the
- * list never had, and anything from the same aisle already in the trolley. The
- * answer to "what did you get instead" is nearly always something that was not
- * on the list, so the whole trolley as one-tap picks was mostly paper towels
- * offered for skyr. A name outside that set is typed into the same
- * find-or-add `PillGroup` the store picker uses, which puts it in the cart
+ * (`substituteCandidates`): the row's usual substitute, and what came home that
+ * the list never had. The answer to "what did you get instead" is nearly always
+ * something that was not on the list, so the trolley as one-tap picks was mostly
+ * items already planned (paper towels, or oat milk, offered for tofu). A name
+ * outside that set is typed into the same find-or-add `PillGroup` the store picker uses, which puts it in the cart
  * (`addToCartMany`) and picks it, since it did come home. Someone who bought
  * nothing else this trip can still say what they got. It follows the same
  * silence rule as the tick above it: nothing is picked by default, and
- * skipping it writes nothing. Changing the store clears these answers along
+ * skipping it writes nothing. **A pick is about this trip, and saving it is a
+ * separate tick** ("Save seitan as a substitute for marinated tofu", off by
+ * default, with a note saying what saving does and where to undo it): the only thing a pick writes is a substitute link, and what came
+ * home when a store ran out doesn't make it a standing substitute. Changing the store clears these answers along
  * with the ticks — "got margarine instead" is an answer about Safeway's
  * shelves, not Costco's. `resolveShoppingSubstitutes` is what turns the
  * sheet's per-row answers into the pairs actually worth writing.
@@ -334,6 +337,10 @@ export function FinishShoppingSheet({
   // item's id, or absent when the follow-up was left alone. Resolved down to
   // what's actually writable at Finish time by resolveShoppingSubstitutes.
   const [substituteFor, setSubstituteFor] = useState<Record<string, string>>({});
+  // The unavailable rows whose answer is to be kept as a substitute link. Off
+  // for every pick: one trip's replacement says nothing about the next. A new
+  // pick for a row clears its tick, since the tick was about the old one.
+  const [rememberSub, setRememberSub] = useState<string[]>([]);
   // Prices exactly as typed, keyed by item id — parsed on Finish rather than on
   // every keystroke, so a half-typed "4." is a field mid-edit and not a
   // rejected value flashing an error at someone holding a receipt.
@@ -376,7 +383,6 @@ export function FinishShoppingSheet({
   }, [listEntries, activeListId, activeTrip, tripStartedAt, addedHere]);
   const incidentalRows = purchased.filter(p => incidental.has(p.id));
   const picks = useMemo(() => incidentalPicks(items, listEntries), [items, listEntries]);
-  const aisleById = useMemo(() => new Map(items.map(i => [i.id, i.aisle])), [items]);
 
   // ==== seeding ====
   // The prices typed into a row's price tag during this trip, as field text.
@@ -451,6 +457,7 @@ export function FinishShoppingSheet({
       // setSelected to the value it already holds changes nothing.
       setUnavailable([]);
       setSubstituteFor({});
+      setRememberSub([]);
       setAddedHere([]);
     }
   }, [visible]);
@@ -476,6 +483,7 @@ export function FinishShoppingSheet({
   useEffect(() => {
     setUnavailable([]);
     setSubstituteFor({});
+    setRememberSub([]);
   }, [selected]);
 
   // ==== finish ====
@@ -530,7 +538,7 @@ export function FinishShoppingSheet({
       selected,
       selected ? stillLeftover : [],
       priceById,
-      selected ? resolveShoppingSubstitutes(stillLeftover, substituteFor) : [],
+      selected ? resolveShoppingSubstitutes(stillLeftover, substituteFor, rememberSub) : [],
       seedPurchasedAt,
       frozenIds
     );
@@ -611,6 +619,7 @@ export function FinishShoppingSheet({
   // item clears the answer, same toggle shape the store pills use.
   const toggleSubstitute = (itemId: string, subItemId: string) => {
     haptics.tap();
+    setRememberSub(prev => prev.filter(id => id !== itemId));
     setSubstituteFor(prev =>
       prev[itemId] === subItemId
         ? Object.fromEntries(Object.entries(prev).filter(([id]) => id !== itemId))
@@ -711,7 +720,13 @@ export function FinishShoppingSheet({
     if (!created) return 'Enter a name.';
     haptics.success();
     addIncidental(created.id);
+    setRememberSub(prev => prev.filter(id => id !== itemId));
     setSubstituteFor(prev => ({ ...prev, [itemId]: created.id }));
+  };
+
+  const toggleRemember = (itemId: string) => {
+    haptics.tap();
+    setRememberSub(prev => (prev.includes(itemId) ? prev.filter(id => id !== itemId) : [...prev, itemId]));
   };
 
   // ==== prices ====
@@ -873,17 +888,16 @@ export function FinishShoppingSheet({
                   const ticked = unavailable.includes(row.id);
                   const chosenId = substituteFor[row.id] ?? null;
                   // What the item's own substitute links already say to use
-                  // instead, then what came home that the list never had, then
-                  // anything from the same aisle already in the cart. Nothing
-                  // else is offered: the rest of the trolley is never the
-                  // answer, and a name outside this set is one field away.
+                  // instead, then what came home that the list never had.
+                  // Nothing else is offered: a row that was already on the
+                  // list is not a replacement, and a name outside this set is
+                  // one field away.
                   const knownSubs = substitutesFor(row.id, itemSubs, items);
                   const candidates = substituteCandidates({
-                    missing: { id: row.id, aisle: aisleById.get(row.id) ?? '' },
+                    missing: { id: row.id },
                     usual: knownSubs.map(s => ({ id: s.item.id, name: s.item.name })),
                     incidental,
                     purchased,
-                    aisleById,
                   });
                   // A pick can be a name typed into the create field and minted
                   // on the spot, which isn't in the candidates until the cart
@@ -918,7 +932,7 @@ export function FinishShoppingSheet({
                           way to answer. */}
                       {ticked && (
                         <View style={styles.substituteWrap}>
-                          <Text style={styles.substituteLabel}>Replaced by</Text>
+                          <Text style={styles.substituteLabel}>What did you get instead?</Text>
                           {renderNewItemField(
                             substituteText[row.id] ?? '',
                             text => setSubstituteText(prev => ({ ...prev, [row.id]: text })),
@@ -937,13 +951,8 @@ export function FinishShoppingSheet({
                               ...candidates.map(c => ({
                                 key: c.id,
                                 label: c.name,
-                                suffix: c.reason === 'usual' ? ' · usual substitute' : undefined,
                                 pinned: c.reason === 'usual',
                                 selected: chosenId === c.id,
-                                accessibilityLabel:
-                                  c.reason === 'usual'
-                                    ? `${c.name}, the usual substitute for ${row.name}`
-                                    : undefined,
                                 onPress: () => toggleSubstitute(row.id, c.id),
                               })),
                               ...(chosenExtra
@@ -958,6 +967,47 @@ export function FinishShoppingSheet({
                                 : []),
                             ]}
                           />
+                          {/* Saving is its own answer, off until ticked: what
+                              came home today is not a rule for next time. It
+                              names both items so it can't read as a general
+                              setting. Not help text, since it is the control. */}
+                          {(() => {
+                            const pickedName = candidates.find(c => c.id === chosenId)?.name ?? chosenExtra?.name;
+                            if (!chosenId || !pickedName) return null;
+                            const remembered = rememberSub.includes(row.id);
+                            return (
+                              <TouchableOpacity
+                                style={styles.rememberRow}
+                                activeOpacity={interaction.activeOpacity}
+                                onPress={() => toggleRemember(row.id)}
+                                accessibilityRole="checkbox"
+                                accessibilityState={{ checked: remembered }}
+                                accessibilityLabel={`Save ${pickedName} as a substitute for ${row.name}`}
+                              >
+                                <CheckPop
+                                  checked={remembered}
+                                  style={styles.rememberBox}
+                                  checkedStyle={styles.rememberBoxOn}
+                                >
+                                  <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />
+                                </CheckPop>
+                                <View style={styles.rememberBody}>
+                                  <Text style={styles.rememberText}>
+                                    Save {pickedName} as a substitute for {row.name}
+                                  </Text>
+                                  <Text style={styles.rememberNote}>
+                                    {remembered && (
+                                      <Text style={styles.rememberNoteStrong}>
+                                        Saved when you mark this trip finished.{' '}
+                                      </Text>
+                                    )}
+                                    Next time a store is out of {row.name}, we’ll offer {pickedName}.{' '}
+                                    {remembered ? 'Remove it' : 'You can remove it later'} under {row.name} › Substitutes.
+                                  </Text>
+                                </View>
+                              </TouchableOpacity>
+                            );
+                          })()}
                         </View>
                       )}
                     </View>
@@ -1202,6 +1252,21 @@ function makeStyles(colors: Colors) {
       gap: spacing.smd,
     },
     substituteLabel: { fontSize: font.sm, color: colors.textTertiary },
+    rememberRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.smd, paddingTop: spacing.xs },
+    rememberBox: {
+      width: CHECK_SIZE,
+      height: CHECK_SIZE,
+      borderRadius: checkboxRadius(CHECK_SIZE),
+      borderWidth: border.md,
+      borderColor: colors.controlBorder,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    rememberBoxOn: { backgroundColor: colors.accentFill, borderColor: colors.accentFill },
+    rememberBody: { flex: 1, gap: spacing.xxs },
+    rememberText: { color: colors.text, fontSize: font.md },
+    rememberNote: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 19 },
+    rememberNoteStrong: { color: colors.text, fontWeight: fontWeight.semibold },
     // The leading tile on an incidental row, in place of the checkbox: nothing
     // here is ticked or unticked, it is already in the cart. Tinted rather than
     // `bgQuaternary` so it doesn't read as the red "they didn't have it" mark.

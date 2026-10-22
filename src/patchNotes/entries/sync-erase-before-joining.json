@@ -1,0 +1,1 @@
+{ "message": "Turning on iCloud sync or a sync server on a device that already has data now asks whether to keep that data or erase it. If you erase it, the device starts over with only what your other devices have synced, and nothing from it is sent to them. A device that already syncs can do the same with Replace with synced data in Settings › Sync.", "date": "2026-10-22" }

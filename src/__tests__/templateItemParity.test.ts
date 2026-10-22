@@ -35,7 +35,7 @@ const NOT_SEEDED: Record<string, string[]> = {
     'waitingOnPersonSince', 'waitingFollowUpDeclinedAt', 'generatedKind', 'generatedSourceId', 'generatedReadyAt', 'calendarEventId',
     'calendarEventExternalId', 'completionCalendarEventId', 'completionCalendarEventExternalId', 'timeBlockEventId',
     'timeBlockExternalId', 'reminderUtcOffsetMinutes', 'recurrenceAnchorDay', 'recurrenceAnchorDate',
-    'meterHeldUntil', 'rainSkippedOn', 'reviewOfTaskId', 'slotDecidedOn', 'slotWaitingSince',
+    'rainSkippedOn', 'slotDecidedOn', 'slotWaitingSince',
   ],
 
   // A group of apps is a selection of tokens that exists only on one phone, and
@@ -82,13 +82,6 @@ const NOT_SEEDED: Record<string, string[]> = {
   // The same reason: a program is a row of this person's own, which a shared
   // template (or one run before the program synced) would name and not find.
   'names a workout program outside the template': ['workoutProgramId'],
-
-  // The reading a task is due at is where one meter stood at one moment. A run
-  // can't know where the odometer is now, so a seeded "due at 45,000" would be
-  // wrong for every run but the first.
-  'a meter reading outside the template': [
-    'meterName', 'meterUnit', 'meterEvery', 'meterDueAt', 'meterLimitMonths',
-  ],
 
   // Read from and written to Apple Health. Withheld from templates for the
   // reason a medication is withheld over MCP: a template is a way to hand them

@@ -84,6 +84,12 @@ describe('table definitions', () => {
     expect(isSyncedSettingKey('effort_xxs_migration_done')).toBe(false);
   });
 
+  it('travels a device\'s report of its sync switches, never the switches themselves', () => {
+    expect(isSyncedSettingKey('syncServerSharing:device-A')).toBe(true);
+    expect(isSyncedSettingKey('syncServerJournal')).toBe(false);
+    expect(isSyncedSettingKey('syncServerHealthLogs')).toBe(false);
+  });
+
   it('keeps every migration flag and device-local record off the allowlist', () => {
     for (const key of SYNCED_SETTING_KEYS) {
       expect(key.endsWith('_done')).toBe(false);
