@@ -6,7 +6,7 @@
 //   ==== <name> ====        the section banners through the logic half
 //   makeStyles              styles, at the bottom
 //   QuickButton             one quick-day button, above the styles
-import React, { useMemo, useRef, useState, useEffect } from 'react';
+import React, { useMemo, useRef, useState, useEffect, useDeferredValue } from 'react';
 import {
   Alert,
   Keyboard,
@@ -375,8 +375,13 @@ export function WhenPicker({
     [visible, projects, dayResetTime],
   );
 
+  // The load dots walk every task and project recurrences across the grid, which
+  // on a big list is long enough to hold the sheet off screen when it was
+  // computed in the render that opens it. The deferred flag lets the sheet
+  // paint first and the dots fill in a beat later.
+  const loadsWanted = useDeferredValue(visible);
   const dayLoads = useMemo(() => {
-    if (!visible || calendarDays.length === 0) return new Map<string, DayLoad>();
+    if (!loadsWanted || calendarDays.length === 0) return new Map<string, DayLoad>();
     const buckets = buildDayBuckets(tasks, {
       from: calendarDays[0],
       to: calendarDays[calendarDays.length - 1],
@@ -394,7 +399,7 @@ export function WhenPicker({
       dayResetTime,
       assumedTaskMinutes: assumedMinutesFor(tasks),
     });
-  }, [visible, calendarDays, tasks, dayResetTime, calendarReadEnabled, calendarLoaded, calendarEvents,
+  }, [loadsWanted, calendarDays, tasks, dayResetTime, calendarReadEnabled, calendarLoaded, calendarEvents,
       calendarWindowStart, calendarWindowEnd, awaySpans, today]);
 
   // ==== picking a day or a time of day ====
