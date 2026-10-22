@@ -24,6 +24,7 @@ import { SettingsFocusProvider, useSettingsFocusScroll } from './settings/Settin
 import { SearchField } from '../components/SearchField';
 import { useFilterField } from '../hooks/useFilterField';
 import { usePullToSearch } from '../hooks/usePullToSearch';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 
 type AutomationsParams = {
   Automations: {
@@ -63,6 +64,13 @@ export function AutomationsScreen() {
   const focusStamp = route.params?.focusStamp;
   const returnTo = route.params?.returnTo;
   const searchFilter = useFilterField();
+  // The search field sits over the list rather than in it, so without this the
+  // keyboard covers the last rows with no room to scroll them clear (see the
+  // hook's `fieldAbove` note).
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({
+    fieldAbove: true,
+    refreshing: pullSearch.pulling,
+  });
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -76,6 +84,13 @@ export function AutomationsScreen() {
   )));
 
   const { scrollRef, contentRef, reportRow, scrollProps } = useSettingsFocusScroll(focusStamp);
+
+  // The list is scrolled by both: a search result scrolls it to a row, and the
+  // keyboard hook re-clamps it once the keyboard goes.
+  const setScrollRefs = useCallback((node: ScrollView | null) => {
+    scrollRef.current = node;
+    keyboardScroll.ref.current = node;
+  }, [scrollRef, keyboardScroll.ref]);
 
   // A tab keeps its params, so a row found by search would otherwise count as
   // "the one you searched for" on every later visit from the menu. Cleared on
@@ -119,10 +134,11 @@ export function AutomationsScreen() {
       />
       <ScrollView
         refreshControl={pullSearch.refreshControl}
-        ref={scrollRef}
+        ref={setScrollRefs}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         contentContainerStyle={{ paddingBottom: tabBarHeight + spacing.xl }}
+        {...keyboardScroll.props}
         {...scrollProps}
       >
         {/* Keyed on the stamp so a repeat search for the same row remounts
