@@ -5,6 +5,7 @@ import { EmptyNote } from './EmptyNote';
 import { HelpText } from './HelpText';
 import { InlineAction } from './InlineAction';
 import { PillGroup } from './PillGroup';
+import { RoutinePickerList } from './RoutinePicker';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import type { RotationItem } from '../types';
 import { useColors } from '../theme/ThemeContext';
@@ -95,19 +96,11 @@ export function RotationWorkoutSheet({ visible, member, onSave, onNewRoutine, on
                   <Text style={styles.group}>Routines</Text>
                 </>
               )}
-              <PillGroup
-                noun="routine"
-                options={[
-                  ...(livePrograms.length > 0 ? [] : [none]),
-                  ...routines
-                    .filter(r => !r.archived || r.id === member?.workoutRoutineId)
-                    .map(r => ({
-                      key: r.id,
-                      label: r.name,
-                      selected: r.id === member?.workoutRoutineId,
-                      onPress: () => choose({ routineId: r.id }),
-                    })),
-                ]}
+              <RoutinePickerList
+                routines={routines.filter(r => !r.archived || r.id === member?.workoutRoutineId)}
+                selectedId={member?.workoutRoutineId ?? null}
+                onSelect={id => choose({ routineId: id })}
+                none={livePrograms.length > 0 ? undefined : { selected: none.selected, onPress: none.onPress }}
               />
             </>
           )}

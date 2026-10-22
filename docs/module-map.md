@@ -461,6 +461,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/rhythmsSettings.ts` — rhythmOptionsFromSettings
 - `src/utils/rotation.ts` — RotationMember, RotationCarrier, MAX_ROTATION_PER_WEEK, rotationPerWeek, withPerWeek, withWorkout, rotationMemberForWorkout, RotationMemberInput, rotationMemberTitle, rotationItemFromInput, +29 more
 - `src/utils/routineGroups.ts` — RoutineGroup, RoutineSections, groupNames, resolveGroupName, routineSections, renamedRegistry, FlatRoutineRow, placementsFromList
+- `src/utils/routinePicker.ts` — RoutineOption, RoutineFilterResult, filterRoutines, resolveRoutineSubmit
 - `src/utils/routineProgress.ts` — RoutineWorkoutPoint, RoutineExerciseProgress, RoutineProgress, routineSessions, RoutineProgressInput, routineProgress, volumeForChart
 - `src/utils/routineUpdate.ts` — RoutineChange, RepRange, RoutineDiffInput, routineChanges, applyRoutineChanges, describeRoutineChange
 - `src/utils/routineVersions.ts` — initialRoutineVersionId, initialProgramVersionId, implicitRoutineVersion, routineVersionsOf, currentRoutineVersion, versionNumber, versionAt, sessionVersionId, routineSessionsByVersion, routineVersionTrained, +34 more
