@@ -635,6 +635,14 @@ export function FinishShoppingSheet({
     addIncidental(created.id);
   };
 
+  const [newItemText, setNewItemText] = useState('');
+  const submitNewItem = () => {
+    const name = newItemText.trim();
+    if (!name) return;
+    handleCreateIncidental(name);
+    setNewItemText('');
+  };
+
   const removeIncidental = (itemId: string) => {
     haptics.tap();
     removeFromListMany([itemId]);
@@ -956,15 +964,30 @@ export function FinishShoppingSheet({
               );
             })}
             <View style={[styles.incidentalAdd, incidentalRows.length > 0 && styles.rowDivided]}>
-              {/* "New item" sits above the suggestions, not in their grid: it
-                  isn't something bought before, so it mustn't read as one. */}
-              <PillGroup
-                noun="item"
-                surface="card"
-                createMaxLength={GROCERY_NAME_MAX_LENGTH}
-                onCreate={handleCreateIncidental}
-                options={[]}
-              />
+              {/* Typed here rather than offered as a pill among the suggestions:
+                  a new item isn't something bought before, so it mustn't read as
+                  one. Above them so it is found without scrolling past a long
+                  list of picks. */}
+              <View style={styles.newItemField}>
+                <TextField
+                  style={styles.newItemInput}
+                  value={newItemText}
+                  onChangeText={setNewItemText}
+                  onSubmitEditing={submitNewItem}
+                  returnKeyType="done"
+                  placeholder="e.g. Paper towels"
+                  placeholderTextColor={colors.textTertiary}
+                  maxLength={GROCERY_NAME_MAX_LENGTH}
+                  autoCorrect={false}
+                  accessibilityLabel="Add an item you bought"
+                />
+                <InlineAction
+                  label="Add"
+                  onPress={submitNewItem}
+                  disabled={!newItemText.trim()}
+                  accessibilityLabel="Add to the cart"
+                />
+              </View>
               {picks.length > 0 && (
                 <>
                   <Text style={styles.substituteLabel}>Bought before</Text>
@@ -1156,7 +1179,20 @@ function makeStyles(colors: Colors) {
       alignItems: 'center',
       justifyContent: 'center',
     },
-    incidentalAdd: { padding: spacing.md, gap: spacing.sm },
+    incidentalAdd: { padding: spacing.md, gap: spacing.smd },
+    // The field's own surface, one step up from the card, like a pill's.
+    newItemField: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      minHeight: 40,
+      paddingLeft: spacing.smd,
+      paddingRight: spacing.xsm,
+      borderRadius: radius.md,
+      backgroundColor: colors.bgTertiary,
+    },
+    // No lineHeight: see the note in CLAUDE.md about a TextInput.
+    newItemInput: { flex: 1, color: colors.text, fontSize: font.md, padding: 0 },
     priceName: { flex: 1, gap: spacing.xxs },
     rowQuantity: { color: colors.textTertiary, fontSize: font.sm },
     // A bordered box rather than a bare input: it's the only thing on this
