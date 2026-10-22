@@ -315,6 +315,28 @@ describe('contrasts', () => {
     const [row] = contextTagMoodContrasts(days);
     expect(row).toMatchObject({ label: 'vacation', withDays: 5, withoutDays: 5, delta: 3 });
   });
+
+  it('leaves the days before a tag or symptom first appeared out of "didn\'t"', () => {
+    // Four older days with no tag, then the tag added: only the days from its
+    // first use onward are a fair "without".
+    const days = build([
+      ...Array(4).fill(0).map(() => ({ mood: 1 })),
+      ...Array(3).fill(0).map(() => ({ mood: 5, contextTagKeys: ['gym'], symptomKeys: ['aches'] })),
+      ...Array(3).fill(0).map(() => ({ mood: 3 })),
+    ]);
+    expect(contextTagMoodContrasts(days)[0]).toMatchObject({ withDays: 3, withoutDays: 3, moodWithout: 3 });
+    expect(symptomMoodContrasts(days)[0]).toMatchObject({ withDays: 3, withoutDays: 3 });
+  });
+
+  it('counts a symptom-only entry as the first use of its name', () => {
+    const days = build([
+      ...Array(4).fill(0).map(() => ({ mood: 1 })),
+      { mood: null as unknown as number, symptomKeys: ['aches'] },
+      ...Array(3).fill(0).map(() => ({ mood: 4, symptomKeys: ['aches'] })),
+      ...Array(3).fill(0).map(() => ({ mood: 3 })),
+    ]);
+    expect(symptomMoodContrasts(days)[0]).toMatchObject({ withDays: 3, withoutDays: 3 });
+  });
 });
 
 describe('milestoneMoodContrast', () => {

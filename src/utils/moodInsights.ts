@@ -610,7 +610,10 @@ export function symptomMoodContrasts(days: readonly MoodDay[]): GroupContrast[] 
   if (paired.length < MIN_PAIRED_DAYS) return [];
   const labels = new Set<string>();
   for (const day of paired) for (const s of day.symptomKeys) labels.add(s);
-  return contrastsFor(paired, [...labels], (day, label) => day.symptomKeys.includes(label));
+  return contrastsFor(
+    paired, [...labels], (day, label) => day.symptomKeys.includes(label),
+    firstDayOf(days, d => d.symptomKeys),
+  );
 }
 
 /**
@@ -627,7 +630,10 @@ export function contextTagMoodContrasts(days: readonly MoodDay[]): GroupContrast
   if (paired.length < MIN_PAIRED_DAYS) return [];
   const labels = new Set<string>();
   for (const day of paired) for (const t of day.contextTagKeys) labels.add(t);
-  return contrastsFor(paired, [...labels], (day, label) => day.contextTagKeys.includes(label));
+  return contrastsFor(
+    paired, [...labels], (day, label) => day.contextTagKeys.includes(label),
+    firstDayOf(days, d => d.contextTagKeys),
+  );
 }
 
 /** A day's average rating at or above this is a high day for that factor. */
@@ -803,15 +809,42 @@ export function trainingDayMoodContrast(
   return contrastsFor(paired, ['training'], day => trainingDayKeys.has(day.dayKey))[0] ?? null;
 }
 
+/**
+ * The first day each name appears in `keysOf`, over every day rather than only
+ * the paired ones: a symptom-only entry is the first use of its name even though
+ * it has no mood to compare.
+ */
+function firstDayOf(
+  days: readonly MoodDay[],
+  keysOf: (day: MoodDay) => readonly string[],
+): (label: string) => string | undefined {
+  const first = new Map<string, string>();
+  for (const day of days) {
+    for (const key of keysOf(day)) {
+      const seen = first.get(key);
+      if (seen === undefined || day.dayKey < seen) first.set(key, day.dayKey);
+    }
+  }
+  return label => first.get(label);
+}
+
 function contrastsFor(
   paired: readonly MoodDay[],
   labels: readonly string[],
   present: (day: MoodDay, label: string) => boolean,
+  /**
+   * The first day a label could have been recorded, for a label the person
+   * names themselves. Days before it are left out of "without": a tag added
+   * yesterday says nothing about the weeks before it existed, and counting
+   * them reads as "never did it until yesterday".
+   */
+  since?: (label: string) => string | undefined,
 ): GroupContrast[] {
   const rows: GroupContrast[] = [];
   for (const label of labels) {
     const withIt = paired.filter(d => present(d, label));
-    const without = paired.filter(d => !present(d, label));
+    const from = since?.(label);
+    const without = paired.filter(d => !present(d, label) && (from === undefined || d.dayKey >= from));
     // Both sides need enough days: a symptom logged twice tells you nothing
     // about its days, and a category you completed on every single day has no
     // "without" to compare against.

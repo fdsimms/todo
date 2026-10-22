@@ -246,6 +246,9 @@ rules hold it, and none should be relaxed to make the screen look fuller:
 
 `correlation` returns null on zero variance rather than 0 — "no relationship"
 is a claim, and there's nothing there to have one. Contrasts need
+A symptom or context tag is only compared from the day it first appears (any
+entry, mood or not): the days before it existed are not "days you didn't have
+it", so a tag added yesterday cannot read as a habit begun yesterday.
 `MIN_CONTRAST_DAYS` on *both* sides: a symptom logged twice says nothing about
 its days, and a category completed every single day has no "without" to compare
 against. They sort by the size of the gap in either direction, since "the days
