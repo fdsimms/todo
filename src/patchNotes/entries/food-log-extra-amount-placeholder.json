@@ -1,0 +1,4 @@
+{
+  "message": "When you log a dish, the ingredients with no set amount in the recipe now take a number and a unit you pick from a menu. If a unit has no weight yet, it asks how many grams once and remembers it. A food with no nutrition info can have it added right there",
+  "date": "2026-10-21"
+}
