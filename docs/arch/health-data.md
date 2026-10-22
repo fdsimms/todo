@@ -2202,6 +2202,35 @@ rule. "Writing what a task names: a logged nutrient", "The second write: body
 mass" and "The third write: a logged meal" above carry the arguments in full;
 read them rather than a summary before adding one.
 
+## Maintenance measured from the log (`adaptiveExpenditure.ts`)
+
+**The second carve-out from "nothing derives anything from a weight", asked
+for, and fenced the way the weight goal's is.** "Your log" on the weight goal's
+basis works out what a body burns from what was eaten against how the weight
+moved: the average calories over fully logged days in the last four weeks,
+minus the slope of a least-squares line through the weigh-ins, converted at the
+same energy per kilogram the goal's rate uses. Four posts hold it:
+
+- **Picking it is the opt-in, and it is stored on the goal**
+  (`WeightGoal.maintenanceBasis`). Nothing computes it otherwise, and unlike the
+  Apple Health basis (chosen per sitting, never remembered) it is saved,
+  because the automatic target has to follow it.
+- **It proposes a maintenance figure and nothing else.** The target is
+  `budgetFromMaintenance` with the goal's own rate and `MIN_PROPOSED_KCAL`, so
+  this basis can't produce a number the profile basis couldn't.
+- **It shows its working and refuses rather than guesses.** The sheet says the
+  days and weigh-ins counted, the average eaten and where the trend line
+  started and ended. Under 14 fully logged days, 3 weigh-ins or a two-week span
+  there is no figure, only what is missing, and a figure outside what a body
+  produces is refused. Until there is a figure the activity level stands, in
+  the sheet and in the automatic target alike.
+- **It reads only what is already on the device**: the food log, and the weight
+  series the health store already holds in memory. The thin-day rules are
+  `foodDayInputs`', today is left out, and nothing is stored.
+
+It already counts activity, so the sheet says to leave Add active calories off
+with it, or a busy day counts twice.
+
 ## Fasting (`Fast`, `src/utils/fasting.ts`)
 
 A fast is started and ended by hand on the Food log and read against a goal in

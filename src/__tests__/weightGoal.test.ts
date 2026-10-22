@@ -97,6 +97,30 @@ describe('autoCalorieTargetKcal', () => {
     const gaining = autoCalorieTargetKcal(losingGoal({ targetKg: 85 }), completeProfile, 80, today);
     expect(losing).not.toBe(gaining);
   });
+
+  it('builds on the measured maintenance when the goal asks for the log basis', () => {
+    const goal = losingGoal({ maintenanceBasis: 'log' });
+    const rate = signedRateKgPerWeek(goal);
+    // 2,600 measured, less the goal's own daily shortfall for its rate.
+    const shortfall = Math.round((rate / 0.45359237) * 3500 / 7);
+    expect(autoCalorieTargetKcal(goal, completeProfile, 80, today, 2600)).toBe(2600 + shortfall);
+  });
+
+  it('keeps the profile figure until the log has one, and ignores a measured figure on the profile basis', () => {
+    const profileOnly = autoCalorieTargetKcal(losingGoal(), completeProfile, 80, today);
+    expect(autoCalorieTargetKcal(losingGoal({ maintenanceBasis: 'log' }), completeProfile, 80, today, null)).toBe(profileOnly);
+    expect(autoCalorieTargetKcal(losingGoal(), completeProfile, 80, today, 2600)).toBe(profileOnly);
+  });
+});
+
+describe('the goal\'s maintenance basis', () => {
+  it('round-trips the log basis and reads an older goal as the profile basis', () => {
+    const goal = losingGoal({ maintenanceBasis: 'log' });
+    expect(parseWeightGoal(serializeWeightGoal(goal))!.maintenanceBasis).toBe('log');
+    const older = parseWeightGoal(serializeWeightGoal(losingGoal()));
+    expect(older!.maintenanceBasis).toBeUndefined();
+    expect(parseWeightGoal(JSON.stringify({ ...losingGoal(), maintenanceBasis: 'nonsense' }))!.maintenanceBasis).toBeUndefined();
+  });
 });
 
 describe('goalProgress', () => {

@@ -352,7 +352,8 @@ export interface WeightTrendPoint {
  * a second time with the day-to-day noise averaged out. It says nothing a
  * careful reader of the dots couldn't already work out; it just makes the
  * shape easier to see. No slope is fitted, no direction is named, and nothing
- * here decides whether the trend is "good".
+ * here decides whether the trend is "good". The one slope the app fits is the
+ * opt-in "Your log" basis on a weight goal, fenced in `adaptiveExpenditure.ts`.
  */
 export function weightTrendPoints(
   points: WeightPoint[],
