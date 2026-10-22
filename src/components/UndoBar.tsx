@@ -216,7 +216,7 @@ export function UndoBar() {
     <BannerBar
       bottom={bottom}
       label={shown.mode === 'redo' ? `Undone: ${shown.label}` : shown.label}
-      labelLines={1}
+      labelLines={3}
       onDismiss={handleDismiss}
       leaving={leaving}
       onLeft={handleLeft}
