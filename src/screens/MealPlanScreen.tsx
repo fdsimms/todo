@@ -2277,26 +2277,26 @@ export function MealPlanScreen() {
                       : 'Nothing planned this week. Tap + on any day to plan a meal.'}
                   </Text>
                 )}
-                {/* Reads as the answer to the hint directly above it, and
-                    disappears the moment the week has anything — see
-                    copySourceKey. */}
-                {!!copySourceKey && (
+                {/* One row for everything done to the week, wrapping as a
+                    group. Each offer used to be its own row with a block of
+                    margin under it, so three pills read as three unrelated
+                    strips. The whole-week copy reads as the answer to the hint
+                    above it and disappears the moment the week has anything
+                    (see copySourceKey); the per-slot copies are never on screen
+                    with it (see slotCopyOffers) and are quieter: in a week
+                    already being planned they're a shortcut rather than the
+                    obvious next step. One pill per slot, so taking the lunches
+                    never takes the breakfasts too. */}
+                {(!!copySourceKey || slotCopyOffers.length > 0 || hasPlannableEntries || canSuggestMeals) && (
                   <View style={styles.weekActions}>
-                    <InlineAction
-                      label={`Copy ${copySourceLabel}`}
-                      icon="copy-outline"
-                      onPress={handleCopyWeek}
-                      accessibilityLabel={`Copy the meals from ${copySourceLabel} onto this week`}
-                    />
-                  </View>
-                )}
-                {/* The same place and pill as the whole-week copy, which is
-                    never on screen with it (see slotCopyOffers), but quieter:
-                    in a week already being planned it's a shortcut rather
-                    than the obvious next step. One pill per slot, so taking
-                    the lunches never takes the breakfasts too. */}
-                {slotCopyOffers.length > 0 && (
-                  <View style={styles.weekActions}>
+                    {!!copySourceKey && (
+                      <InlineAction
+                        label={`Copy ${copySourceLabel}`}
+                        icon="copy-outline"
+                        onPress={handleCopyWeek}
+                        accessibilityLabel={`Copy the meals from ${copySourceLabel} onto this week`}
+                      />
+                    )}
                     {slotCopyOffers.map(slot => (
                       <InlineAction
                         key={slot}
@@ -2308,10 +2308,6 @@ export function MealPlanScreen() {
                         accessibilityLabel={`Copy the ${slotPlural(slot)} from ${copySourceLabel} onto this week`}
                       />
                     ))}
-                  </View>
-                )}
-                {(hasPlannableEntries || canSuggestMeals) && (
-                  <View style={styles.weekActions}>
                     {hasPlannableEntries && (
                       <InlineAction
                         label="Add week to list"
@@ -2978,17 +2974,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
-    gap: spacing.xs,
+    gap: spacing.sm,
     marginHorizontal: spacing.md,
     // A block's worth of gap under it, not half of one: the first day header
     // has no top margin of its own, so spacing.sm left the week jammed up
     // against a row of buttons that isn't part of it.
     marginBottom: spacing.md,
   },
-  // PeriodNav's own vertical padding is xs on each side, sized for sitting
-  // under a header — not enough on its own to separate it from the week
-  // actions/hint directly below, which (like weekActions above) carry no top
-  // margin of their own.
+  // The nav card has no vertical padding of its own; this is the gap to the
+  // hint or action row under it, which (like weekActions above) carry no top
+  // margin of their own. Smaller than weekActions' bottom margin so the
+  // actions read as belonging to the week they sit under.
   weekNav: {
     marginBottom: spacing.sm,
   },

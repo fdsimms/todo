@@ -125,18 +125,19 @@ const makeStyles = (colors: Colors) =>
       fontSize: font.xxs,
       fontWeight: fontWeight.medium,
     },
+    // A full-width card on the same edges as the cards around it (the meal
+    // plan's fridge, its day cards), with the arrows at its ends. A shrink-
+    // wrapped centered pill sat on neither edge of a left-aligned column.
     navGrouped: {
-      alignItems: 'center',
       paddingHorizontal: spacing.md,
-      paddingTop: spacing.xs,
-      paddingBottom: spacing.xs,
     },
     pill: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.xs,
+      justifyContent: 'space-between',
+      minHeight: 52,
       backgroundColor: colors.bgSecondary,
-      borderRadius: radius.full,
+      borderRadius: radius.md,
       paddingHorizontal: spacing.sm,
     },
   });
