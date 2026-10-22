@@ -463,6 +463,10 @@ export function ReorderableList<T>({
   const onEndReachedThresholdRef = useRef(onEndReachedThreshold);
   const endReachedFiredRef = useRef(false);
   const scrollOffsetRef = useRef(0);
+  // The last offset seen while the list was laid out at a real size. A hidden
+  // tab (FreezeWhenBlurred) collapses the list to nothing and the offset reads
+  // 0 afterwards, so this is what the list is put back to when it returns.
+  const lastShownOffsetRef = useRef(0);
   const scrollOffsetAtStartRef = useRef(0);
   const viewportHeightRef = useRef(0);
   const contentHeightRef = useRef(0);
@@ -549,6 +553,7 @@ export function ReorderableList<T>({
     // current offset now overshoots the new content.
     if (data.length === 0 && scrollOffsetRef.current > 0) {
       scrollOffsetRef.current = 0;
+      lastShownOffsetRef.current = 0;
       scrollRef.current?.scrollTo({ y: 0, animated: false });
     }
     // A stale keyboard inset left over from an inline field on a row that's
@@ -1163,6 +1168,7 @@ export function ReorderableList<T>({
   const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const { contentOffset, contentSize, layoutMeasurement, contentInset } = e.nativeEvent;
     scrollOffsetRef.current = contentOffset.y;
+    if (layoutMeasurement.height > 0 && contentSize.height > 0) lastShownOffsetRef.current = contentOffset.y;
     keyboardScroll.noteScroll(e);
     onScrollActivity?.();
     // The net under every way the offset can be moved without a finger on the
@@ -1217,7 +1223,16 @@ export function ReorderableList<T>({
         // always one of the two and never a row. Constant for the life of the
         // list on purpose: that doc comment says what toggling it did.
         maintainVisibleContentPosition={holdRowsOnHeaderResize ? HOLD_ROWS_POSITION : undefined}
-        onLayout={(e: LayoutChangeEvent) => { viewportHeightRef.current = e.nativeEvent.layout.height; }}
+        onLayout={(e: LayoutChangeEvent) => {
+          const wasHidden = viewportHeightRef.current <= 0;
+          viewportHeightRef.current = e.nativeEvent.layout.height;
+          // Back from a hidden tab with the offset lost: restore it.
+          if (wasHidden && viewportHeightRef.current > 0 && scrollOffsetRef.current === 0 && lastShownOffsetRef.current > 0) {
+            const y = lastShownOffsetRef.current;
+            scrollOffsetRef.current = y;
+            scrollRef.current?.scrollTo({ y, animated: false });
+          }
+        }}
         onContentSizeChange={(_w, h) => {
           contentHeightRef.current = h;
           // Same clamp as the data-empty case above, for shrinks that leave
