@@ -6201,6 +6201,29 @@ describe('checkTravelTasks', () => {
       expect(travelTasks()[0].title).toBe('Leave for Dentist');
     });
 
+    it('reschedules the reminder when only the note changes, since its body leads with it', () => {
+      const handled = { [sourceId]: dentist().end };
+      useSettingsStore.getState.mockReturnValue(withTransit());
+      useTransitStore.getState.mockReturnValue(snapshot(true));
+      useTaskStore.getState().checkTravelTasks();
+      // Second pass on the same row: records what it was scheduled with.
+      useSettingsStore.getState.mockReturnValue(withTransit({ travelTaskHandled: handled }));
+      useTaskStore.getState().checkTravelTasks();
+      (scheduleTaskReminder as jest.Mock).mockClear();
+
+      // Same title, same (empty) notes, so no field changes: only the note does.
+      const changed = snapshot(true);
+      changed.snapshot.alerts[0].effect = 'reduced';
+      useTransitStore.getState.mockReturnValue(changed);
+      useTaskStore.getState().checkTravelTasks();
+      expect(scheduleTaskReminder).toHaveBeenCalledTimes(1);
+
+      // Unchanged again: nothing to reschedule.
+      (scheduleTaskReminder as jest.Mock).mockClear();
+      useTaskStore.getState().checkTravelTasks();
+      expect(scheduleTaskReminder).not.toHaveBeenCalled();
+    });
+
     it('rewrites a task written with a note in its title back to the plain title', () => {
       useTaskStore.getState().checkTravelTasks();
       const [task] = travelTasks();

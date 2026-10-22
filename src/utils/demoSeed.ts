@@ -35,6 +35,7 @@ import { stepDurationOffers, stepTimerExcerpt } from './stepTimers';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore, type WeekStart } from '../store/useSettingsStore';
+import { useTransitStore } from '../store/useTransitStore';
 import { useNfcKeyStore } from '../store/useNfcKeyStore';
 import { useAppGroupStore } from '../store/useAppGroupStore';
 import { sunAnchorHHMM } from './sunTimes';
@@ -1953,13 +1954,33 @@ export function seedDemoData(): void {
   addCategory('Leave By');
   setCategoryEmoji('Leave By', '🚶');
   useSettingsStore.getState().setTravelTaskCategory('Leave By');
+  useSettingsStore.getState().setTransitAlerts(true);
   useSettingsStore.getState().setTransitLines(['L']);
+  // Planned work on the L across the day, held as the snapshot the row reads its
+  // note from. `useDemoStore` clears the store on entering and leaving demo mode.
+  const demoDayStart = new Date(today);
+  demoDayStart.setHours(0, 0, 0, 0);
+  const demoAlertHeadline = 'Some Manhattan-bound L trains are running local.';
+  useTransitStore.setState({
+    snapshot: {
+      fetchedAt: new Date().toISOString(),
+      alerts: [{
+        id: 'demo-l-local',
+        routeIds: ['L'],
+        effect: 'local',
+        planned: true,
+        periods: [{ start: demoDayStart.getTime(), end: demoDayStart.getTime() + 24 * 60 * 60 * 1000 }],
+        headline: demoAlertHeadline,
+      }],
+    },
+  });
   const demoDentistStart = new Date(today);
   demoDentistStart.setHours(15, 0, 0, 0);
   const demoDentist = { id: 'demo-dentist', start: demoDentistStart.toISOString() };
   const demoLeaveAt = new Date(demoDentistStart.getTime() - TRAVEL_LEAD_MINUTES_DEFAULT * 60 * 1000);
   addTask({
     title: travelTaskTitle('Dentist'),
+    notes: demoAlertHeadline,
     dueDate: today.toISOString(),
     reminderTime: demoLeaveAt.toISOString(),
     windowEnd: dateToHHMM(demoDentistStart),
