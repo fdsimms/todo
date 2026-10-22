@@ -1,6 +1,6 @@
 import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { PanResponder, StyleSheet, View } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import { DarkTheme, DefaultTheme, NavigationContainer, type Theme } from '@react-navigation/native';
 import { navigationRef, navigateToTab, flushPendingNavigation, currentTabName } from './navigationRef';
 import { navigateToSettingsEntry } from './openSettings';
 import { BottomTabBarHeightCallbackContext, createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -588,6 +588,28 @@ export default function AppNavigator() {
     }
   }, [flushScreenBookkeeping]);
 
+  // Every scene the navigators draw (each tab, each pushed card) paints the
+  // navigation theme's background under the screen, and with no theme that is
+  // React Navigation's light grey in every app theme. Anything transparent on
+  // top showed it: the empty second pane on a wide Mac window was a light grey
+  // panel in Dark. So the scenes paint the app's own page colour.
+  const navigationTheme = useMemo<Theme>(() => {
+    const base = isDark ? DarkTheme : DefaultTheme;
+    return {
+      ...base,
+      dark: isDark,
+      colors: {
+        ...base.colors,
+        primary: colors.accent,
+        background: colors.bg,
+        card: colors.bg,
+        text: colors.text,
+        border: colors.separator,
+        notification: colors.red,
+      },
+    };
+  }, [colors, isDark]);
+
   const screenOptions = useMemo(() => ({
     headerShown: false,
     tabBarStyle: {
@@ -654,6 +676,7 @@ export default function AppNavigator() {
       <MenuOpenContext.Provider value={menuOpen}>
       <NavigationContainer
         ref={navRef}
+        theme={navigationTheme}
         onStateChange={handleStateChange}
         // Replays any resetTo*/openQuickAdd* call that arrived before the
         // container was ready — a widget tap or Home Screen quick action that
