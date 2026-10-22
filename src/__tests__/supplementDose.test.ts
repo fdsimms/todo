@@ -4,7 +4,10 @@ import type { LabelReading } from '../utils/labelOcr';
 import {
   applyLabelToSupplementForm,
   buildSupplementPanel,
+  describeIngredients,
   describeSupplementPanel,
+  doseIngredients,
+  emptyIngredientForm,
   doseSourceId,
   emptySupplementForm,
   entryForDose,
@@ -219,6 +222,72 @@ describe('describeSupplementPanel', () => {
     const d = describeSupplementPanel(big);
     expect(d.heading).toBe('Per 1 capsule: 6 nutrients');
     expect(d.detail.endsWith('and 2 more')).toBe(true);
+  });
+});
+
+describe('other ingredients', () => {
+  const calm: SupplementPanel = {
+    servingAmount: 1,
+    servingUnit: 'capsule',
+    amounts: {},
+    others: [
+      { name: 'Saffron extract', amount: 28, unit: 'mg' },
+      { name: 'L-theanine', amount: 200, unit: 'mg' },
+    ],
+  };
+
+  it('builds a panel from ingredients alone, trimming the name', () => {
+    const form = supplementFormFrom(null);
+    form.others = [{ name: '  L-theanine ', amount: '200', unit: 'mg' }];
+    expect(buildSupplementPanel(form)).toEqual({
+      servingAmount: 1, servingUnit: 'tablet', amounts: {}, others: [{ name: 'L-theanine', amount: 200, unit: 'mg' }],
+    });
+  });
+
+  it('ignores a row with nothing typed and refuses a half-filled one', () => {
+    const form = supplementFormFrom(calm);
+    form.others.push(emptyIngredientForm());
+    expect(invalidSupplementFields(form)).toEqual([]);
+    expect(buildSupplementPanel(form)?.others).toHaveLength(2);
+    form.others.push({ name: 'Ashwagandha', amount: '', unit: 'mg' });
+    form.others.push({ name: '', amount: '5', unit: 'mg' });
+    form.others.push({ name: 'Zero', amount: '0', unit: 'mg' });
+    expect(invalidSupplementFields(form)).toEqual(['other3', 'other4', 'other5']);
+    expect(buildSupplementPanel(form)).toBeNull();
+  });
+
+  it('round-trips through the form, and a blank added row is not an edit', () => {
+    const form = supplementFormFrom(calm);
+    expect(buildSupplementPanel(form)).toEqual(calm);
+    expect(supplementFormDirty(form, calm)).toBe(false);
+    expect(supplementFormDirty({ ...form, others: [...form.others, emptyIngredientForm()] }, calm)).toBe(false);
+    expect(supplementFormDirty({ ...form, others: [form.others[0]] }, calm)).toBe(true);
+    expect(supplementFormDirty({ ...form, others: [{ ...form.others[0], unit: 'mcg' }, form.others[1]] }, calm)).toBe(true);
+  });
+
+  it('scales by the serving rule and leaves the panel untouched', () => {
+    expect(doseIngredients(calm, { amount: 2, unit: 'capsule' })).toEqual([
+      { name: 'Saffron extract', amount: 56, unit: 'mg' },
+      { name: 'L-theanine', amount: 400, unit: 'mg' },
+    ]);
+    expect(doseIngredients(calm, { amount: null, unit: null })[1].amount).toBe(200);
+    expect(doseIngredients(null, { amount: 1, unit: 'capsule' })).toEqual([]);
+    expect(doseIngredients(multi, { amount: 1, unit: 'tablet' })).toEqual([]);
+    expect(calm.others?.[0].amount).toBe(28);
+  });
+
+  it('writes nothing to the food log for ingredients alone', () => {
+    expect(supplementHelping(calm, dose({ amount: 1, unit: 'capsule' }))).toBeNull();
+  });
+
+  it('describes them beside the nutrients', () => {
+    expect(describeIngredients(calm.others ?? [])).toBe('Saffron extract 28 mg, L-theanine 200 mg');
+    expect(describeSupplementPanel(calm)).toEqual({
+      heading: 'Per 1 capsule: 2 other ingredients',
+      detail: 'Saffron extract 28 mg, L-theanine 200 mg',
+    });
+    expect(describeSupplementPanel({ ...multi, others: [calm.others![1]] }).heading).toBe('Per 2 tablets: 4 nutrients, 1 other ingredient');
+    expect(supplementFieldCount({ ...multi, others: calm.others })).toBe(6);
   });
 });
 

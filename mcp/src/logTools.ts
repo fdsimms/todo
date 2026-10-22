@@ -23,7 +23,9 @@ import { getRecipe, type RecipeDetail } from './kitchenTools';
 // safe to import for its value here; the replica loads the same module for the
 // write.
 import { describeWater, waterToMl, type WaterUnit } from '../../src/utils/waterLog';
-import { MAX_USUAL_DOSES, PANEL_UNITS, SUPPLY_UNITS } from '../../src/utils/medicationSettings';
+import { INGREDIENT_UNITS, MAX_PANEL_INGREDIENTS, MAX_USUAL_DOSES, PANEL_UNITS, SUPPLY_UNITS } from '../../src/utils/medicationSettings';
+import type { PanelIngredient } from '../../src/utils/medicationSettings';
+import { MAX_SCHEDULE_INTERVAL, describeSchedule, parseSchedule, type MedicationSchedule } from '../../src/utils/medicationSchedule';
 import { DOSE_UNITS, STRENGTH_UNITS } from '../../src/utils/medicationLog';
 import { describeSupplementPanel } from '../../src/utils/supplementDose';
 
@@ -387,7 +389,14 @@ export function deleteRecipe(replica: Replica, id: string) {
  */
 export function setSupplementNutrients(
   replica: Replica,
-  input: { name: string; servingAmount?: number; servingUnit?: string; amounts?: Record<string, number>; clear?: boolean },
+  input: {
+    name: string;
+    servingAmount?: number;
+    servingUnit?: string;
+    amounts?: Record<string, number>;
+    otherIngredients?: Array<{ name: string; amount: number; unit: string }>;
+    clear?: boolean;
+  },
 ) {
   if (input.clear) {
     const medicine = replica.setSupplementPanel(input.name, null);
@@ -412,10 +421,21 @@ export function setSupplementNutrients(
     }
     amounts[key] = value;
   }
-  if (Object.keys(amounts).length === 0) {
-    throw new Error(`Give at least one nutrient in amounts, keyed by name: ${NUTRIENT_KEYS.join(', ')}.`);
+  const others: PanelIngredient[] = [];
+  for (const item of input.otherIngredients ?? []) {
+    const name = typeof item.name === 'string' ? item.name.trim() : '';
+    if (!name || typeof item.amount !== 'number' || !Number.isFinite(item.amount) || item.amount <= 0 || !INGREDIENT_UNITS.includes(item.unit)) {
+      throw new Error(`Each otherIngredients entry needs a name, an amount above 0 and a unit (${INGREDIENT_UNITS.join(', ')}), exactly as the label prints it.`);
+    }
+    others.push({ name, amount: item.amount, unit: item.unit });
   }
-  const panel = { servingAmount: amount, servingUnit: input.servingUnit as string, amounts };
+  if (others.length > MAX_PANEL_INGREDIENTS) {
+    throw new Error(`otherIngredients holds at most ${MAX_PANEL_INGREDIENTS} entries.`);
+  }
+  if (Object.keys(amounts).length === 0 && others.length === 0) {
+    throw new Error(`Give at least one nutrient in amounts, keyed by name (${NUTRIENT_KEYS.join(', ')}), or one entry in otherIngredients.`);
+  }
+  const panel = { servingAmount: amount, servingUnit: input.servingUnit as string, amounts, ...(others.length > 0 ? { others } : {}) };
   const medicine = replica.setSupplementPanel(input.name, panel);
   const described = describeSupplementPanel(panel);
   return {
@@ -423,7 +443,9 @@ export function setSupplementNutrients(
     nutrients: described.heading,
     detail: described.detail,
     ...(ignored.length > 0 ? { ignored } : {}),
-    note: 'Doses recorded from now on add these to the day\'s food log, and the phone writes them to Apple Health if that is on. Earlier doses are unchanged.',
+    note: others.length > 0
+      ? 'Doses recorded from now on add the nutrients to the day\'s food log, and the phone writes them to Apple Health if that is on. The other ingredients show with each dose and are never logged. Earlier doses keep what they added.'
+      : 'Doses recorded from now on add these to the day\'s food log, and the phone writes them to Apple Health if that is on. Earlier doses are unchanged.',
   };
 }
 
@@ -449,13 +471,33 @@ export function removeMedication(replica: Replica, name: string): { removed: str
   return { removed: replica.removeMedication(name) };
 }
 
-/** How a medicine is taken and the amounts usually taken. See `Replica.setMedicationProfile`. */
+/** How a medicine is taken, on which days, and the amounts usually taken. See `Replica.setMedicationProfile`. */
 export function setMedicationProfile(
   replica: Replica,
-  input: { name: string; asNeeded?: boolean | null; usualAmounts?: { amount: number; unit: string }[]; strength?: { amount: number; unit: string } | null },
-): { medicine: string; asNeeded?: boolean | null; usualAmounts?: string[]; strength?: string | null } {
-  if (input.asNeeded === undefined && input.usualAmounts === undefined && input.strength === undefined) {
-    throw new Error('Give asNeeded, usualAmounts, strength, or any of them.');
+  input: {
+    name: string;
+    asNeeded?: boolean | null;
+    usualAmounts?: { amount: number; unit: string }[];
+    strength?: { amount: number; unit: string } | null;
+    schedule?: { everyDays: number } | { weekdays: number[] } | null;
+  },
+): { medicine: string; asNeeded?: boolean | null; usualAmounts?: string[]; strength?: string | null; schedule?: string | null } {
+  if (input.asNeeded === undefined && input.usualAmounts === undefined && input.strength === undefined && input.schedule === undefined) {
+    throw new Error('Give asNeeded, usualAmounts, strength, schedule, or any of them.');
+  }
+  let schedule: MedicationSchedule | null | undefined;
+  if (input.schedule === null) schedule = null;
+  else if (input.schedule !== undefined) {
+    const given = input.schedule as { everyDays?: number; weekdays?: number[] };
+    if ((given.everyDays === undefined) === (given.weekdays === undefined)) {
+      throw new Error('schedule is either { everyDays } or { weekdays }, not both and not neither. null clears it.');
+    }
+    schedule = parseSchedule(given.everyDays !== undefined
+      ? { kind: 'interval', everyDays: given.everyDays }
+      : { kind: 'weekdays', days: given.weekdays });
+    if (!schedule) {
+      throw new Error(`everyDays is a whole number from 1 to ${MAX_SCHEDULE_INTERVAL} (2 is every other day). weekdays are numbers 0 to 6, 0 being Sunday, with at least one.`);
+    }
   }
   if (input.strength) {
     const unit = input.strength.unit?.trim();
@@ -479,12 +521,14 @@ export function setMedicationProfile(
     ...(input.asNeeded !== undefined ? { asNeeded: input.asNeeded } : {}),
     ...(usualDoses !== undefined ? { usualDoses } : {}),
     ...(input.strength !== undefined ? { strength: input.strength } : {}),
+    ...(schedule !== undefined ? { schedule } : {}),
   });
   return {
     medicine,
     ...(input.strength !== undefined ? { strength: input.strength ? `${input.strength.amount} ${input.strength.unit}` : null } : {}),
     ...(input.asNeeded !== undefined ? { asNeeded: input.asNeeded } : {}),
     ...(usualDoses !== undefined ? { usualAmounts: usualDoses.map(d => `${d.amount} ${d.unit}`) } : {}),
+    ...(schedule !== undefined ? { schedule: schedule ? describeSchedule(schedule) : null } : {}),
   };
 }
 

@@ -543,7 +543,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_medication_logs',
-    'Doses recorded over a range of days, including as-needed ones, plus the limit and supply the person set for each medication (limitsAndSupply: their own limit, how many doses in the last 24 hours, the total against a limit on an amount, when the next is within it, and how many are left; also whether they take it as needed, their usual amount, and medicines added with no dose yet). A limit is the person\'s own, never a prescription; say it that way. Defaults to the last 7 days. Empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that nothing was logged.',
+    'Doses recorded over a range of days, including as-needed ones, plus the limit and supply the person set for each medication (limitsAndSupply: their own limit, how many doses in the last 24 hours, the total against a limit on an amount, when the next is within it, and how many are left; also whether they take it as needed, their usual amount, and medicines added with no dose yet). Each dose of a supplement whose label lists herbs, amino acids or omega-3s carries otherIngredients ("Ashwagandha 80 mg, L-theanine 200 mg"), worked out from the label as it stands now; those are never in the food log. A limit is the person\'s own, never a prescription; say it that way. Defaults to the last 7 days. Empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that nothing was logged.',
     logRange,
     async input => json(await withFresh(() => listMedicationLogs(replica, input)))
   );
@@ -2858,12 +2858,17 @@ function registerWriteTools(
 
   server.tool(
     'set_supplement_nutrients',
-    'Set what one serving of a supplement contains, from its label, or clear it with clear: true. Every dose of that medicine recorded afterwards (here or on the phone) adds those vitamins and minerals to the day\'s food log, and the phone writes them to Apple Health if that is on; earlier doses keep what they added. servingAmount and servingUnit are the serving the label\'s figures are for (serving size 2 tablets: 2 and "tablet"); a dose recorded in that unit counts that many servings and any other dose counts one. amounts are keyed by nutrient name, each in the unit its name states (vitaminDMcg is micrograms, magnesiumMg milligrams). Leave out any nutrient the label does not list: a blank is unknown, and a 0 says the label stated none. Only from a label the person gave you, never estimated.',
+    'Set what one serving of a supplement contains, from its label, or clear it with clear: true. Every dose of that medicine recorded afterwards (here or on the phone) adds those vitamins and minerals to the day\'s food log, and the phone writes them to Apple Health if that is on; earlier doses keep what they added. servingAmount and servingUnit are the serving the label\'s figures are for (serving size 2 tablets: 2 and "tablet"); a dose recorded in that unit counts that many servings and any other dose counts one. amounts are keyed by nutrient name, each in the unit its name states (vitaminDMcg is micrograms, magnesiumMg milligrams). Leave out any nutrient the label does not list: a blank is unknown, and a 0 says the label stated none. otherIngredients is for what the label lists that is not one of those nutrients (ashwagandha, L-theanine, saffron, EPA/DHA): each is a name, an amount and a unit (mg, mcg, g or IU) per serving. They show with each dose in the app and are never added to the food log or Apple Health. A supplement with only such ingredients is fine. Only from a label the person gave you, never estimated.',
     {
       name: z.string().min(1),
       servingAmount: z.number().positive().optional(),
       servingUnit: z.string().optional().describe('tablet, capsule, drop, spray, ml or g.'),
-      amounts: z.record(z.number()).optional().describe(`Nutrient names to amounts. Names: ${NUTRIENT_KEY_LIST.join(', ')}.`),
+      amounts: z.record(z.number()).optional().describe(`Nutrient names to amounts. Names: ${NUTRIENT_KEY_LIST.join(', ')}. May be left out when otherIngredients is given.`),
+      otherIngredients: z.array(z.object({
+        name: z.string().min(1).describe('As the label names it, e.g. "Ashwagandha root/leaf extract".'),
+        amount: z.number().positive(),
+        unit: z.enum(['mg', 'mcg', 'g', 'IU']),
+      })).max(12).optional(),
       clear: z.literal(true).optional(),
     },
     async input => {
@@ -2955,10 +2960,15 @@ function registerWriteTools(
 
   server.tool(
     'set_medication_profile',
-    'Set how a listed medicine is taken and the amounts usually taken, as its page does. asNeeded: true for taken as needed (the Medications screen then offers a button that records another dose), false for on a schedule, null to go back to reading it off the recorded doses. usualAmounts is the whole list (e.g. [{amount: 400, unit: "mg"}, {amount: 200, unit: "mg"}], at most 6): the first is what a new dose starts from and what the round button records before any dose exists, and all of them are quick picks when recording a dose; [] clears them. strength is what one capsule, tablet, puff or drop contains (a dose of "1 capsule" then reads as 125 mcg and counts toward a limit in mcg). A field left out is unchanged. Only from what the person told you.',
+    'Set how a listed medicine is taken and the amounts usually taken, as its page does. asNeeded: true for taken as needed (the Medications screen then offers a button that records another dose), false for on a schedule, null to go back to reading it off the recorded doses. usualAmounts is the whole list (e.g. [{amount: 400, unit: "mg"}, {amount: 200, unit: "mg"}], at most 6): the first is what a new dose starts from and what the round button records before any dose exists, and all of them are quick picks when recording a dose; [] clears them. strength is what one capsule, tablet, puff or drop contains (a dose of "1 capsule" then reads as 125 mcg and counts toward a limit in mcg). schedule sets the days a regular medicine is taken: { everyDays: 2 } is every other day (counted from the last dose, so a late dose moves the next one), { weekdays: [1, 3, 5] } is Monday, Wednesday and Friday (0 is Sunday); null clears it. The app shows where it stands (due today, taken today, next day) and list_medication_logs reports it as schedule and scheduleStatus. It does not create a task or a reminder. A field left out is unchanged. Only from what the person told you.',
     {
       name: z.string().min(1),
       asNeeded: z.boolean().nullable().optional(),
+      schedule: z.union([
+        z.object({ everyDays: z.number().int().min(1).max(30) }),
+        z.object({ weekdays: z.array(z.number().int().min(0).max(6)).min(1).max(7) }),
+        z.null(),
+      ]).optional(),
       usualAmounts: z.array(z.object({ amount: z.number().positive(), unit: z.string() })).max(6).optional(),
       strength: z.object({ amount: z.number().positive(), unit: z.string() }).nullable().optional()
         .describe('What one capsule, tablet, puff or drop contains, e.g. {amount: 125, unit: "mcg"}; null clears it. Doses recorded in a counted unit after this carry it, so "1 capsule" reads as 125 mcg; earlier doses keep what they were stamped with.'),

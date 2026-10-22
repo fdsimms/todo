@@ -520,6 +520,36 @@ describe('set_supplement_nutrients', () => {
     expect(() => setSupplementNutrients(replica, { name: 'Multivitamin', servingAmount: 1, servingUnit: 'tablet', amounts: {} })).toThrow(/at least one/);
   });
 
+  it('keeps other ingredients beside the nutrients, or on their own', () => {
+    const both = setSupplementNutrients(replica, {
+      name: 'Multivitamin', servingAmount: 1, servingUnit: 'capsule', amounts: { zincMg: 11 },
+      otherIngredients: [{ name: 'L-theanine', amount: 200, unit: 'mg' }],
+    });
+    expect(both).toMatchObject({ nutrients: 'Per 1 capsule: 1 nutrient, 1 other ingredient' });
+    expect(both).toMatchObject({ detail: expect.stringContaining('L-theanine 200 mg') });
+    // Only the nutrients reach the food log: an herb has nowhere to go there.
+    logMedication(replica, { name: 'Multivitamin', amount: 1, unit: 'capsule' });
+    expect(entries()[0].nutrition.amounts).toEqual({ zincMg: 11 });
+
+    setSupplementNutrients(replica, {
+      name: 'Multivitamin', servingAmount: 1, servingUnit: 'capsule',
+      otherIngredients: [{ name: 'Ashwagandha', amount: 80, unit: 'mg' }],
+    });
+    expect(replica.medicationSettings().find(m => m.name === 'Multivitamin')).toMatchObject({ nutrients: 'Per 1 capsule: 1 other ingredient' });
+
+    // A dose carries what it took, scaled to the dose and read from the panel.
+    logMedication(replica, { name: 'Multivitamin', amount: 2, unit: 'capsule' });
+    const two = replica.medicationLogs('0000-01-01', '9999-12-31').find(l => l.name === 'Multivitamin' && l.amount === 2);
+    expect(replica.medicationIngredients(two!)).toBe('Ashwagandha 160 mg');
+  });
+
+  it('refuses an ingredient the app\'s sheet would', () => {
+    const base = { name: 'Multivitamin', servingAmount: 1, servingUnit: 'capsule' };
+    expect(() => setSupplementNutrients(replica, { ...base, otherIngredients: [{ name: ' ', amount: 5, unit: 'mg' }] })).toThrow(/otherIngredients/);
+    expect(() => setSupplementNutrients(replica, { ...base, otherIngredients: [{ name: 'X', amount: 0, unit: 'mg' }] })).toThrow(/otherIngredients/);
+    expect(() => setSupplementNutrients(replica, { ...base, otherIngredients: [{ name: 'X', amount: 5, unit: 'oz' }] })).toThrow(/otherIngredients/);
+  });
+
   it('clears a panel without touching another medicine\'s', () => {
     setSupplementNutrients(replica, { name: 'Multivitamin', servingAmount: 1, servingUnit: 'tablet', amounts: { zincMg: 11 } });
     setSupplementNutrients(replica, { name: 'Fish oil', servingAmount: 1, servingUnit: 'capsule', amounts: { vitaminEMg: 2 } });
@@ -559,6 +589,36 @@ describe('add_medication and set_medication_profile', () => {
     setMedicationProfile(replica, { name: 'Magnesium', asNeeded: null, usualAmounts: [] });
     expect(replica.medicationSettings().find(m => m.name === 'Magnesium')).toMatchObject({ noDosesYet: true });
     expect(replica.medicationSettings().find(m => m.name === 'Magnesium')?.takenAsNeeded).toBeUndefined();
+  });
+
+  it('sets the days a medicine is taken and reports where it stands', () => {
+    addMedication(replica, 'Vitamin C');
+    expect(setMedicationProfile(replica, { name: 'vitamin c', schedule: { everyDays: 2 } }))
+      .toEqual({ medicine: 'Vitamin C', schedule: 'Every other day' });
+    // No dose yet, so it is due now; a dose today moves it two days on.
+    expect(replica.medicationSettings().find(m => m.name === 'Vitamin C'))
+      .toMatchObject({ schedule: 'Every other day', scheduleStatus: 'Due today' });
+    logMedication(replica, { name: 'Vitamin C' });
+    expect(replica.medicationSettings().find(m => m.name === 'Vitamin C')?.scheduleStatus).toMatch(/^Taken today\. Next on /);
+
+    expect(setMedicationProfile(replica, { name: 'Vitamin C', schedule: { weekdays: [5, 1, 3] } }).schedule).toBe('Mon, Wed, Fri');
+    // An as-needed medicine keeps its days but has no status to report.
+    setMedicationProfile(replica, { name: 'Vitamin C', asNeeded: true });
+    expect(replica.medicationSettings().find(m => m.name === 'Vitamin C')).toMatchObject({ schedule: 'Mon, Wed, Fri' });
+    expect(replica.medicationSettings().find(m => m.name === 'Vitamin C')?.scheduleStatus).toBeUndefined();
+
+    expect(setMedicationProfile(replica, { name: 'Vitamin C', schedule: null })).toEqual({ medicine: 'Vitamin C', schedule: null });
+    expect(replica.medicationSettings().find(m => m.name === 'Vitamin C')?.schedule).toBeUndefined();
+  });
+
+  it('refuses a schedule that is neither or both kinds, or out of range', () => {
+    addMedication(replica, 'Zinc picolinate');
+    const name = 'Zinc picolinate';
+    expect(() => setMedicationProfile(replica, { name, schedule: {} as never })).toThrow(/either/);
+    expect(() => setMedicationProfile(replica, { name, schedule: { everyDays: 2, weekdays: [1] } as never })).toThrow(/either/);
+    expect(() => setMedicationProfile(replica, { name, schedule: { everyDays: 0 } })).toThrow(/whole number/);
+    expect(() => setMedicationProfile(replica, { name, schedule: { everyDays: 2.5 } })).toThrow(/whole number/);
+    expect(() => setMedicationProfile(replica, { name, schedule: { weekdays: [7] } })).toThrow(/0 to 6/);
   });
 
   it('refuses an unlisted medicine and an incomplete or unknown dose', () => {

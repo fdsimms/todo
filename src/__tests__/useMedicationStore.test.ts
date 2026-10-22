@@ -542,4 +542,22 @@ describe('usual amount and strength on a dose', () => {
     state().setStrength('Vitamin D', { amount: 1, unit: 'capsule' });
     expect(state().settings.vitamind).toBeUndefined();
   });
+
+  it('sets, replaces and clears the days a medicine is taken, leaving its other settings', () => {
+    state().setStrength('Vitamin D', { amount: 125, unit: 'mcg' });
+    state().setSchedule('Vitamin D', { kind: 'interval', everyDays: 2 });
+    expect(state().settings['vitamin d']).toEqual(expect.objectContaining({
+      schedule: { kind: 'interval', everyDays: 2 }, strength: { amount: 125, unit: 'mcg' },
+    }));
+    state().setSchedule('Vitamin D', { kind: 'weekdays', days: [5, 1] });
+    expect(state().settings['vitamin d']?.schedule).toEqual({ kind: 'weekdays', days: [1, 5] });
+    state().setSchedule('Vitamin D', null);
+    expect(state().settings['vitamin d']?.schedule).toBeUndefined();
+    expect(state().settings['vitamin d']?.strength).toEqual({ amount: 125, unit: 'mcg' });
+  });
+
+  it('refuses a schedule it cannot read rather than storing it', () => {
+    state().setSchedule('Zinc', { kind: 'interval', everyDays: 0 });
+    expect(state().settings.zinc).toBeUndefined();
+  });
 });

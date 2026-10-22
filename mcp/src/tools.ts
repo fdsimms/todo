@@ -884,6 +884,8 @@ export interface SerializedMedicationLog {
   amount?: number;
   unit?: string;
   asNeeded?: boolean;
+  /** "Ashwagandha 80 mg, L-theanine 200 mg": the ingredients outside the nutrient list this dose took, per the supplement's label. */
+  otherIngredients?: string;
 }
 
 export interface SerializedTemplate {
@@ -1232,6 +1234,7 @@ export function listMedicationLogs(
       unit: log.unit ?? undefined,
       ...(log.strength ? { eachContained: `${log.strength.amount} ${log.strength.unit}` } : {}),
       asNeeded: log.asNeeded ? true : undefined,
+      otherIngredients: replica.medicationIngredients(log) ?? undefined,
     })),
   };
 }

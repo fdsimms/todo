@@ -1,6 +1,7 @@
 import type { MedicationLog, NutrientKey } from '../types';
 import { NUTRIENT_KEYS } from '../types';
 import { DOSE_UNITS, STRENGTH_UNITS, amountInUnit, medicationKey } from './medicationLog';
+import { parseSchedule, type MedicationSchedule } from './medicationSchedule';
 
 /**
  * What you have told the app about one medication: a limit on how often you
@@ -114,9 +115,30 @@ export interface SupplementPanel {
   servingAmount: number;
   /** One of `SUPPLY_UNITS` other than 'dose': the unit a dose is recorded in. */
   servingUnit: string;
-  /** The stated figures, in each key's own unit. At least one. */
+  /** The stated figures, in each key's own unit. At least one, unless `others` is given. */
   amounts: Partial<Record<NutrientKey, number>>;
+  /**
+   * Ingredients the label lists that aren't one of the nutrients (an herb, an
+   * amino acid, an omega-3). They are shown with each dose and never reach the
+   * food log, which has nowhere to put them. Absent when none were entered.
+   */
+  others?: PanelIngredient[];
 }
+
+/** An ingredient outside the nutrient list, as the label prints it. */
+export interface PanelIngredient {
+  /** As the label names it ("Ashwagandha root/leaf extract"). */
+  name: string;
+  /** Positive, per serving. */
+  amount: number;
+  /** One of `INGREDIENT_UNITS`. */
+  unit: string;
+}
+
+/** The units a label prints an ingredient in. */
+export const INGREDIENT_UNITS: readonly string[] = ['mg', 'mcg', 'g', 'IU'];
+/** More than a label prints, so a runaway list can't fill the settings row. */
+export const MAX_PANEL_INGREDIENTS = 12;
 
 /** An amount you usually take: prefills a dose, and the first one is what the round button records before any dose exists. */
 export interface UsualDose {
@@ -134,6 +156,12 @@ export interface MedicationPrefs {
    * had before this existed: any dose recorded as needed makes it as needed.
    */
   asNeeded?: boolean | null;
+  /**
+   * The days it is taken on, or absent when none were set (`medicationSchedule.ts`).
+   * Only meaningful for a medicine taken on a schedule: an as-needed one has no
+   * days, and keeps whatever was set so switching back finds it.
+   */
+  schedule?: MedicationSchedule | null;
   /**
    * The amounts you usually take, at most `MAX_USUAL_DOSES`. The first is the
    * default; the rest are quick picks in the dose sheet. Absent or empty when
@@ -226,7 +254,7 @@ export function defaultUsualDose(prefs: Pick<MedicationPrefs, 'usualDoses'> | un
 
 /** Whether an entry says anything; an entry that doesn't is dropped rather than stored empty. */
 function hasPrefs(p: MedicationPrefs): boolean {
-  return !!(p.limit || p.supply || p.nutrition || p.strength || p.usualDoses?.length || typeof p.asNeeded === 'boolean');
+  return !!(p.limit || p.supply || p.nutrition || p.strength || p.schedule || p.usualDoses?.length || typeof p.asNeeded === 'boolean');
 }
 
 function parseSupply(raw: unknown): MedicationSupply | null {
@@ -263,8 +291,7 @@ function parseSupplementPanel(raw: unknown): SupplementPanel | null {
   if (servingAmount === null) return null;
   const servingUnit = typeof r.servingUnit === 'string' && PANEL_UNITS.includes(r.servingUnit) ? r.servingUnit : null;
   if (!servingUnit) return null;
-  if (!r.amounts || typeof r.amounts !== 'object' || Array.isArray(r.amounts)) return null;
-  const given = r.amounts as Record<string, unknown>;
+  const given = (r.amounts && typeof r.amounts === 'object' && !Array.isArray(r.amounts) ? r.amounts : {}) as Record<string, unknown>;
   const amounts: Partial<Record<NutrientKey, number>> = {};
   // Unknown keys are dropped: this build has no unit for a nutrient it doesn't
   // know, the rule `readAmounts` in `foodNutrition.ts` states. A negative or
@@ -273,8 +300,24 @@ function parseSupplementPanel(raw: unknown): SupplementPanel | null {
     const v = given[key];
     if (typeof v === 'number' && Number.isFinite(v) && v >= 0) amounts[key] = v;
   }
-  if (Object.keys(amounts).length === 0) return null;
-  return { servingAmount, servingUnit, amounts };
+  const others = parsePanelIngredients(r.others);
+  if (Object.keys(amounts).length === 0 && others.length === 0) return null;
+  return { servingAmount, servingUnit, amounts, ...(others.length > 0 ? { others } : {}) };
+}
+
+function parsePanelIngredients(raw: unknown): PanelIngredient[] {
+  if (!Array.isArray(raw)) return [];
+  const out: PanelIngredient[] = [];
+  for (const item of raw) {
+    if (out.length >= MAX_PANEL_INGREDIENTS) break;
+    if (!item || typeof item !== 'object') continue;
+    const r = item as Record<string, unknown>;
+    const name = typeof r.name === 'string' ? r.name.trim() : '';
+    const amount = positiveOrNull(r.amount, 1_000_000);
+    const unit = typeof r.unit === 'string' && INGREDIENT_UNITS.includes(r.unit) ? r.unit : null;
+    if (name && amount !== null && unit) out.push({ name, amount, unit });
+  }
+  return out;
 }
 
 /** Read the stored map back, dropping anything that isn't a well-formed entry. */
@@ -296,6 +339,7 @@ export function parseMedicationSettings(raw: string | null): MedicationSettingsM
     // the field existed.
     const usualDoses = parseUsualDoses(v.usualDoses, v.usualDose);
     const strength = parseStrength(v.strength);
+    const schedule = parseSchedule(v.schedule);
     const prefs: MedicationPrefs = {
       limit: parseLimit(v.limit),
       supply: parseSupply(v.supply),
@@ -303,6 +347,7 @@ export function parseMedicationSettings(raw: string | null): MedicationSettingsM
       ...(typeof v.asNeeded === 'boolean' ? { asNeeded: v.asNeeded } : {}),
       ...(usualDoses.length > 0 ? { usualDoses } : {}),
       ...(strength ? { strength } : {}),
+      ...(schedule ? { schedule } : {}),
     };
     if (hasPrefs(prefs)) out[key] = prefs;
   }

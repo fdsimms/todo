@@ -2557,6 +2557,7 @@ describe('demo seed — people', () => {
     const panel = prefsFor(settings, 'Multivitamin').nutrition;
     expect(panel).toMatchObject({ servingAmount: 1, servingUnit: 'tablet' });
     expect(panel!.amounts.magnesiumMg).toBe(50);
+    expect(prefsFor(settings, 'Multivitamin').schedule).toEqual({ kind: 'interval', everyDays: 1 });
     const doses = logs.filter(l => l.name === 'Multivitamin');
     expect(doses.length).toBeGreaterThanOrEqual(3);
 
@@ -2567,6 +2568,16 @@ describe('demo seed — people', () => {
     expect(new Set(entries.map(supplementDoseIdOf))).toEqual(new Set(doses.map(d => d.id)));
     expect(entries.every(e => e.slot === null && isNutrientOnlyEntry(e))).toBe(true);
     expect(entries[0].nutrition.amounts.vitaminDMcg).toBe(25);
+  });
+
+  it('seeds a supplement of herbs only, which shows on its doses and adds nothing to the food log', () => {
+    const { logs, settings } = useMedicationStore.getState();
+    const panel = prefsFor(settings, 'Stress Relief').nutrition;
+    expect(panel?.others?.map(o => o.name)).toContain('L-theanine');
+    expect(logs.filter(l => l.name === 'Stress Relief').length).toBeGreaterThanOrEqual(2);
+    const entries = useFoodLogStore.getState().recentEntries('0000-01-01', '9999-12-31')
+      .filter(e => e.label === 'Stress Relief');
+    expect(entries).toHaveLength(0);
   });
 
   it('seeds a medication started recently enough to offer a milestone', () => {

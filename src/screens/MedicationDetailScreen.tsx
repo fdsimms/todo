@@ -36,6 +36,9 @@ import { allowOkAgainNotification, syncOkAgainNotification } from '../utils/dose
 import { DetailHeader } from '../components/DetailHeader';
 import { EmptyState } from '../components/EmptyState';
 import { CountStepper } from '../components/CountStepper';
+import { WeekdaySelector } from '../components/WeekdaySelector';
+import { MAX_SCHEDULE_INTERVAL, describeSchedule, describeScheduleStatus, scheduleStatus } from '../utils/medicationSchedule';
+import { HelpText } from '../components/HelpText';
 import { SegmentedControl } from '../components/SegmentedControl';
 import { DoseAmountField } from '../components/DoseAmountField';
 import { InlineAction } from '../components/InlineAction';
@@ -44,7 +47,7 @@ import { SheetUndoBar } from '../components/SheetUndoBar';
 import { useDeletedDoseUndo } from '../hooks/useDeletedDoseUndo';
 import { MedicationRenameSheet } from '../components/MedicationRenameSheet';
 import { SupplementPanelSheet } from '../components/SupplementPanelSheet';
-import { describeSupplementPanel } from '../utils/supplementDose';
+import { describeIngredients, describeSupplementPanel, doseIngredients } from '../utils/supplementDose';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { useLingering } from '../hooks/useLingering';
@@ -94,6 +97,7 @@ export function MedicationDetailScreen() {
   const setSupply = useMedicationStore(s => s.setSupply);
   const setSupplementPanel = useMedicationStore(s => s.setSupplementPanel);
   const setAsNeeded = useMedicationStore(s => s.setAsNeeded);
+  const setSchedule = useMedicationStore(s => s.setSchedule);
   const setUsualDoses = useMedicationStore(s => s.setUsualDoses);
   const setStrength = useMedicationStore(s => s.setStrength);
   const refillSupply = useMedicationStore(s => s.refillSupply);
@@ -225,7 +229,17 @@ export function MedicationDetailScreen() {
 
   const name = stat.name;
   const isArchived = archived.includes(key);
-  const { limit, supply, nutrition: supplementPanel = null } = prefsFor(settings, name);
+  const { limit, supply, nutrition: supplementPanel = null, schedule = null } = prefsFor(settings, name);
+  const dayKeyNow = dayKeyOf(getCurrentDayStart());
+  const scheduleLine = schedule && howValue !== 'asNeeded'
+    ? describeScheduleStatus(scheduleStatus(schedule, entries.map(l => l.dayKey), dayKeyNow), dayKeyNow)
+    : null;
+  const daysMode = !schedule ? 'none' : schedule.kind;
+  const changeDaysMode = (mode: string) => {
+    if (mode === 'none') setSchedule(name, null);
+    else if (mode === 'interval') setSchedule(name, { kind: 'interval', everyDays: schedule?.kind === 'interval' ? schedule.everyDays : 2 });
+    else setSchedule(name, { kind: 'weekdays', days: schedule?.kind === 'weekdays' ? schedule.days : [getCurrentDayStart().getDay()] });
+  };
   const panelSummary = supplementPanel ? describeSupplementPanel(supplementPanel) : null;
   const status = limitStatus(logs, name, limit, new Date());
   const remaining = supplyRemaining(logs, name, supply);
@@ -433,7 +447,7 @@ export function MedicationDetailScreen() {
         <View style={[styles.card, styles.formCard]}>
           <SegmentedControl
             options={[
-              { value: 'auto', label: 'From doses' },
+              { value: 'auto', label: 'Automatic' },
               { value: 'asNeeded', label: 'As needed' },
               { value: 'scheduled', label: 'Scheduled' },
             ]}
@@ -445,8 +459,47 @@ export function MedicationDetailScreen() {
             }}
           />
           <Text style={styles.fieldHint}>
-            As needed shows a button on the Medications screen that records another dose, and compares how often you take it. It is not on Today until you take it; add a daily task to have it listed there every day. From doses marks it as needed once a dose is recorded as needed.
+            As needed shows a button on the Medications screen that records another dose, and compares how often you take it. It is not on Today until you take it; add a daily task to have it listed there every day. Automatic marks it as needed once a dose is recorded as needed.
           </Text>
+          {howValue !== 'asNeeded' && (
+            <>
+              <Text style={[styles.fieldLabel, styles.panelHeading]}>Days</Text>
+              <SegmentedControl
+                options={[
+                  { value: 'none', label: 'No set days' },
+                  { value: 'interval', label: 'Every N days' },
+                  { value: 'weekdays', label: 'Certain days' },
+                ]}
+                value={daysMode}
+                columns={3}
+                label="Days you take it"
+                onChange={changeDaysMode}
+              />
+              {schedule?.kind === 'interval' && (
+                <CountStepper
+                  value={schedule.everyDays}
+                  onChange={n => { if (n !== null) setSchedule(name, { kind: 'interval', everyDays: n }); }}
+                  min={1}
+                  max={MAX_SCHEDULE_INTERVAL}
+                  format={n => describeSchedule({ kind: 'interval', everyDays: n })}
+                  label="days between doses"
+                />
+              )}
+              {schedule?.kind === 'weekdays' && (
+                <WeekdaySelector
+                  value={schedule.days}
+                  // At least one day stays picked: none at all is "No set days", which has its own button.
+                  onChange={days => { if (days.length > 0) setSchedule(name, { kind: 'weekdays', days }); }}
+                />
+              )}
+              {scheduleLine && <Text style={styles.fieldLabel}>{scheduleLine}</Text>}
+              <HelpText style={styles.fieldHint}>
+                {schedule?.kind === 'interval'
+                  ? 'Counted from your last dose, so a late dose moves the next one. This doesn’t add a task or a reminder.'
+                  : 'Shows whether a dose is due. It doesn’t add a task or a reminder.'}
+              </HelpText>
+            </>
+          )}
           <Text style={[styles.fieldLabel, styles.panelHeading]}>Usual amounts</Text>
           {storedUsuals.length > 0 && (
             <View style={styles.usualChips}>
@@ -664,11 +717,11 @@ export function MedicationDetailScreen() {
             </>
           ) : (
             <Text style={styles.fieldHint}>
-              No nutrients entered. Enter what one serving contains from the label, such as a multivitamin’s vitamins and minerals.
+              No nutrients entered. Enter what one serving contains from the label, such as a multivitamin’s vitamins and minerals, or herbs like ashwagandha.
             </Text>
           )}
           <Text style={styles.fieldNote}>
-            Each dose you record adds these to the day’s nutrient totals in the food log, and to Apple Health if you write nutrients there. Past doses keep what they added.
+            Each dose you record adds the nutrients to the day’s totals in the food log, and to Apple Health if you write nutrients there. Past doses keep what they added. Other ingredients show with each dose and aren’t logged.
           </Text>
           <View style={styles.panelActions}>
             <InlineAction
@@ -696,6 +749,9 @@ export function MedicationDetailScreen() {
               <Text style={styles.doseMeta} numberOfLines={1}>
                 {[formatDose(log), log.asNeeded ? 'as needed' : 'on schedule', log.note].filter(Boolean).join(' · ')}
               </Text>
+              {doseIngredients(supplementPanel, log).length > 0 && (
+                <Text style={styles.doseMeta}>{describeIngredients(doseIngredients(supplementPanel, log))}</Text>
+              )}
             </TouchableOpacity>
           ))}
         </View>

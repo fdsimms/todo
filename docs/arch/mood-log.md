@@ -550,6 +550,22 @@ unit counts that many servings and any other dose counts one, which is
 changes an entry that already exists, and the panel applies to doses recorded
 after it.
 
+### The days a medicine is taken on
+
+A medicine taken on a schedule can say which days (`MedicationPrefs.schedule`, rules in
+`src/utils/medicationSchedule.ts`): every N days, or certain weekdays. **It is a setting on the
+medicine, not a repeating task**: a task is one reminder, and a medicine can be taken with no task at
+all. It adds no task, reminder or notification, and it is read only on the medicine's page and over
+MCP (`schedule`, `scheduleStatus` in `list_medication_logs`).
+
+- **Every N days counts from the last dose**, not from a start date, so a late dose moves the next
+  one and nothing is ever early or late for good. No dose yet is due now.
+- **A weekday that passed with no dose is not carried forward.** There is no dose to catch up on, and
+  a count of missed days is the nagging this log avoids. Only an every-N-days schedule reports
+  `overdue`.
+- **It is kept when the medicine is switched to as needed**, and reports no status while it is, so
+  switching back finds it.
+
 ### A task's dose defaults to the usual amount, and a capsule has a strength
 
 **A task that logs a dose and names no amount records the medication's default
