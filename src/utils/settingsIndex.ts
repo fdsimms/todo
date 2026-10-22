@@ -1092,6 +1092,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['devices', 'mac', 'laptop', 'phone', 'across', 'same'] },
   { id: 'syncNow', requires: ['syncEnabled', 'syncServerToken'], groupId: 'dataReset', label: 'Sync now', section: 'Sync',
     keywords: ['refresh', 'update', 'fetch'] },
+  { id: 'syncReplaceData', requires: ['syncEnabled', 'syncServerToken'], groupId: 'dataReset', label: 'Replace with synced data', section: 'Sync',
+    keywords: ['erase', 'reset', 'wipe', 'download', 'redownload', 'start over', 'source of truth'] },
   { id: 'syncServerUrl', groupId: 'dataReset', label: 'Sync server', section: 'Sync',
     keywords: ['self-hosted', 'url', 'address', 'mcp', 'claude', 'computer', 'replica', 'privacy', 'copy'] },
   { id: 'syncServerToken', groupId: 'dataReset', label: 'Sync server token', section: 'Sync',

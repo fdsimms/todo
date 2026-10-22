@@ -1,7 +1,16 @@
-import React, { useMemo, useState } from 'react';
-import { View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { useSyncStore } from '../../store/useSyncStore';
+import {
+  joinChoiceNeeded,
+  useSyncStore,
+  type ErasedEvents,
+  type SyncDestination,
+} from '../../store/useSyncStore';
+import { useTaskStore } from '../../store/useTaskStore';
+import { useMealPlanStore } from '../../store/useMealPlanStore';
+import { reloadAfterDataReplaced } from '../../store/useDemoStore';
+import { BUTTON_LABEL } from '../../copy/shared';
 import { useColors } from '../../theme/ThemeContext';
 import { animateLayout } from '../../utils/layoutAnimation';
 import { SettingsSection } from './SettingsSection';
@@ -44,7 +53,24 @@ import { AgentNotesRows } from './AgentNotesRows';
  * exactly what leaves the device, and this is the same obligation for a bigger
  * departure. See "The privacy consequence, stated plainly" in
  * docs/arch/mcp-server.md.
+ *
+ * **Turning iCloud on asks first when this device has data of its own** and
+ * has never synced (`joinChoiceNeeded`): keep it, and it is merged with the
+ * other devices' data and sent to them, or erase it and take only theirs
+ * (`eraseAndJoin`). Sync is two-way with no device in charge, so this is the
+ * one moment a device can join without adding anything to the others.
  */
+/**
+ * Straight after the erase: every store re-reads the empty database and drops
+ * its undo history, then the calendar events the erased rows held go the way a
+ * synced deletion's do, since only this device can delete them.
+ */
+function afterErase(erased: ErasedEvents): void {
+  reloadAfterDataReplaced();
+  useTaskStore.getState().reconcileSyncedEvents({ taskIds: [], removedTaskEvents: erased.removedTaskEvents });
+  useMealPlanStore.getState().reconcileSyncedEvents({ mealEntryIds: [], removedMealEvents: erased.removedMealEvents });
+}
+
 export function SyncSettings() {
   const supported = useSyncStore(s => s.supported);
   const enabled = useSyncStore(s => s.enabled);
@@ -56,6 +82,9 @@ export function SyncSettings() {
   const serverHealthLogs = useSyncStore(s => s.serverHealthLogs);
   const serverJournal = useSyncStore(s => s.serverJournal);
   const setEnabled = useSyncStore(s => s.setEnabled);
+  const eraseAndJoin = useSyncStore(s => s.eraseAndJoin);
+  const keepAndJoin = useSyncStore(s => s.keepAndJoin);
+  const serverHeld = useSyncStore(s => s.serverHeld);
   const setServerUrl = useSyncStore(s => s.setServerUrl);
   const setServerToken = useSyncStore(s => s.setServerToken);
   const setServerHealthLogs = useSyncStore(s => s.setServerHealthLogs);
@@ -77,14 +106,85 @@ export function SyncSettings() {
     }, [])
   );
 
+  // While an erase-and-join is downloading, before sync reads as on.
+  const [joining, setJoining] = useState(false);
+
+  const eraseThenJoin = async (destination: SyncDestination) => {
+    setJoining(true);
+    try {
+      const outcome = await eraseAndJoin(destination, afterErase);
+      const where = destination === 'icloud' ? 'iCloud' : 'the sync server';
+      if (outcome.status === 'nothing-to-join') {
+        Alert.alert(
+          `Nothing to download from ${where}`,
+          destination === 'icloud'
+            ? 'None of your other devices has synced yet, so nothing on this device was erased. Turn on sync on the device whose data you want to keep, then try again here.'
+            : 'The sync server holds nothing yet, so nothing on this device was erased. Set up sync on the device whose data you want to keep, then try again here.'
+        );
+      } else if (outcome.status === 'failed') {
+        const reason = /[.!?]$/.test(outcome.reason) ? outcome.reason : `${outcome.reason}.`;
+        Alert.alert(`Couldn’t download from ${where}`, `${reason} Nothing on this device was erased.`);
+      }
+    } finally {
+      setJoining(false);
+    }
+  };
+
+  // Asked before a device with data of its own first joins a destination.
+  const askHowToJoin = (destination: SyncDestination) => {
+    Alert.alert(
+      'Keep the data on this device?',
+      destination === 'icloud'
+        ? 'If you keep it, it’s merged with your other devices’ data and sent to them. If you erase it, this device starts over with only what your other devices have synced. Erasing also removes the mood, medication and food logs, workouts and journal on this device, since iCloud doesn’t carry them. This can’t be undone.'
+        : 'If you keep it, it’s merged with the data on the sync server and sent to it. If you erase it, this device starts over with only what the server holds. Erasing also removes the mood, medication and food logs, workouts and journal on this device unless the server holds them too. This can’t be undone.',
+      [
+        { text: 'Keep and merge', onPress: () => { animateLayout(); void keepAndJoin(destination); } },
+        { text: 'Erase and sync', style: 'destructive', onPress: () => void eraseThenJoin(destination) },
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
+      ]
+    );
+  };
+
   const onToggle = () => {
+    if (joining) return;
+    if (!enabled && joinChoiceNeeded('icloud')) {
+      askHowToJoin('icloud');
+      return;
+    }
     animateLayout();
     void setEnabled(!enabled);
   };
 
+  // Asked the moment the server's address and token are both in, while the
+  // fields are still in front of the person; the row below asks again later.
+  const wasHeld = useRef(serverHeld);
+  useEffect(() => {
+    if (serverHeld && !wasHeld.current) askHowToJoin('server');
+    wasHeld.current = serverHeld;
+    // askHowToJoin is rebuilt each render and only read at the transition.
+  }, [serverHeld]);
+
   // Sync is reachable when either destination is set up, so the rows below that
-  // report on a sync can't hang off the iCloud switch alone.
-  const anyDestination = (supported && enabled) || (!!serverUrl && hasServerToken);
+  // report on a sync can't hang off the iCloud switch alone. A held server is
+  // set up but not syncing yet.
+  const serverSyncing = !!serverUrl && hasServerToken && !serverHeld;
+  const anyDestination = (supported && enabled) || serverSyncing;
+  // What "Replace with synced data" downloads from: iCloud when it's on, since
+  // the other destination then fills in from its own beginning anyway.
+  const replaceFrom: SyncDestination = supported && enabled ? 'icloud' : 'server';
+
+  const confirmReplace = () => {
+    Alert.alert(
+      'Replace this device’s data?',
+      replaceFrom === 'icloud'
+        ? 'Everything on this device is erased and replaced with what your devices have synced to iCloud. Changes made here that haven’t synced yet are lost, and so are the mood, medication and food logs, workouts and journal on this device, since iCloud doesn’t carry them. This can’t be undone.'
+        : 'Everything on this device is erased and replaced with what the sync server holds. Changes made here that haven’t synced yet are lost. Mood, medication and food logs, workouts and the journal come back only if the server holds them. This can’t be undone.',
+      [
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
+        { text: 'Erase and sync', style: 'destructive', onPress: () => void eraseThenJoin(replaceFrom) },
+      ]
+    );
+  };
 
   return (
     <SettingsSection
@@ -108,6 +208,8 @@ export function SyncSettings() {
           hint="Syncs your data across devices signed in to this Apple ID."
           toggle={enabled}
           value={enabled ? 'On' : 'Off'}
+          busy={joining}
+          disabled={joining}
           onPress={onToggle}
           accessibilityLabel="Sync with iCloud"
         />
@@ -158,6 +260,23 @@ export function SyncSettings() {
           accessibilityLabel="Sync server token"
         />
       </SettingsRow>
+
+      {serverHeld && (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            icon="warning-outline"
+            iconColor={colors.orange}
+            label="Sync server is waiting"
+            hint="This device already has data. Choose whether to merge it with the server or erase it first."
+            alwaysShowHint
+            chevron
+            busy={joining}
+            disabled={joining}
+            onPress={() => askHowToJoin('server')}
+          />
+        </>
+      )}
 
       <View style={styles.sep} />
 
@@ -211,6 +330,23 @@ export function SyncSettings() {
           onPress={() => void syncNow()}
           disabled={phase === 'syncing'}
         />
+      )}
+
+      {anyDestination && (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="syncReplaceData"
+            icon="arrow-down-circle-outline"
+            iconColor={colors.red}
+            label="Replace with synced data"
+            labelColor={colors.redText}
+            hint="Erases everything on this device and downloads what your other devices have synced."
+            busy={joining}
+            disabled={joining || phase === 'syncing'}
+            onPress={confirmReplace}
+          />
+        </>
       )}
 
       {anyDestination && problem !== null && (
