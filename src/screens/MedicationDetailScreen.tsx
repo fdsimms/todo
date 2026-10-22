@@ -447,7 +447,7 @@ export function MedicationDetailScreen() {
         <View style={[styles.card, styles.formCard]}>
           <SegmentedControl
             options={[
-              { value: 'auto', label: 'From doses' },
+              { value: 'auto', label: 'Automatic' },
               { value: 'asNeeded', label: 'As needed' },
               { value: 'scheduled', label: 'Scheduled' },
             ]}
@@ -459,7 +459,7 @@ export function MedicationDetailScreen() {
             }}
           />
           <Text style={styles.fieldHint}>
-            As needed shows a button on the Medications screen that records another dose, and compares how often you take it. It is not on Today until you take it; add a daily task to have it listed there every day. From doses marks it as needed once a dose is recorded as needed.
+            As needed shows a button on the Medications screen that records another dose, and compares how often you take it. It is not on Today until you take it; add a daily task to have it listed there every day. Automatic marks it as needed once a dose is recorded as needed.
           </Text>
           {howValue !== 'asNeeded' && (
             <>
