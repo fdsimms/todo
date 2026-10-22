@@ -1957,10 +1957,17 @@ describe('routine and program history', () => {
   });
 
   it('merges one routine into another as its earlier history', () => {
+    // Versions sort by createdAt, then id. Made in one tick, the two routines'
+    // versions tie and the random ids decide their order, which failed CI now
+    // and then. Only Date is faked, so nothing else the store schedules moves.
+    jest.useFakeTimers({ doNotFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'setImmediate', 'clearImmediate', 'nextTick', 'queueMicrotask'] });
+    jest.setSystemTime(new Date(2026, 7, 1, 9));
     const old = ok(state().addRoutine('HW Day One', [work(squat)]));
     const s1 = train(old.id);
+    jest.setSystemTime(new Date(2026, 7, 1, 9, 0, 1));
     const into = ok(state().addRoutine('HW Day One v2', [work(bench)]));
     train(into.id);
+    jest.useRealTimers();
     const p = ok(state().addProgram({ name: 'HW', rotation: [old.id] }));
     mockTasks = [
       { id: 't1', completed: false, workoutRoutineId: old.id } as Task,
