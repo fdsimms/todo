@@ -62,6 +62,7 @@ import { negativeHoldNow, negativeHoldOffered } from '../utils/negativeHold';
 import type { NegativeHold } from '../utils/negativeHabits';
 import { scheduleMoveUpdates } from '../utils/taskMoves';
 import { confirmScheduleMove, confirmSegmentScope } from '../utils/scheduleMovePrompt';
+import { describeReschedule } from '../utils/rescheduleLabel';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { confirmSlip } from '../utils/slipConfirm';
 import { scheduleCompletionTimer } from '../utils/notifications';
@@ -72,7 +73,7 @@ import {
 import { useHealthStore } from '../store/useHealthStore';
 import { activeSegment, segmentPhase, segmentRemaining, timerSegments } from '../utils/timerSegments';
 import { isStreakAtRecord } from '../utils/streakRecord';
-import { sameTimeSegments, isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isMissableMealPlanTask, isTaskNew, isTaskVisible, isQuotaTask, isQuotaPartial, quotaRidesOutTheDay, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, formatQuotaNextDue, quotaFraction, quotaPaceFraction, quotaUnitsToPace, activeChainStepTitle, displayTitleFor, isTaskNotNeeded, isPinnedOnToday } from '../utils/visibilityUtils';
+import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isMissableMealPlanTask, isTaskNew, isTaskVisible, isQuotaTask, isQuotaPartial, quotaRidesOutTheDay, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, formatQuotaNextDue, quotaFraction, quotaPaceFraction, quotaUnitsToPace, activeChainStepTitle, displayTitleFor, isTaskNotNeeded, isPinnedOnToday } from '../utils/visibilityUtils';
 import { openTasksOf } from '../utils/openTasks';
 import { asksOnCompletion, deliverableKindFor, isTentativeAnswer, type DeliverableReasoning } from '../utils/deliverables';
 import { offersMealLogOnCompletion } from '../utils/completionTap';
@@ -376,12 +377,6 @@ interface Props {
 // its own stretch, running the full height so the rows join up, and the last
 // one stops at its branch. It sits in the row's left padding, so nothing
 // positions outside the row's box (SortableList clips what does).
-/** Where a reschedule put a task, for the undo bar: "tomorrow", "Thursday", "Oct 22". */
-function movedDayLabel(date: Date): string {
-  const day = formatScheduledDate(date.toISOString());
-  return day === 'Today' || day === 'Tomorrow' ? day.toLowerCase() : day;
-}
-
 function SubtaskRail({ last, color }: { last: boolean; color: string }) {
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
@@ -5373,13 +5368,7 @@ const TaskItemRow = React.memo(function TaskItem({
               { markSeenOnBecomeVisible: true, ...(segmentScope === 'occurrence' ? { scope: 'occurrence' as const } : {}) },
             );
             setLastAction({
-              label: !date
-                ? 'Task rescheduled'
-                : picked?.getTime() === previousDay && segs.length > 0 && !sameTimeSegments(task.timeSegments, segs)
-                  // Same day, new part of it: naming the day would say it moved
-                  // to a day it was already on.
-                  ? `Moved “${task.title}” to ${segs.map(s => s.toLowerCase()).join(', ')}`
-                  : `Moved “${task.title}” to ${movedDayLabel(date)}`,
+              label: describeReschedule([snapshot], date, segs),
               // On the bar, not only the shake: the row usually leaves the list
               // it was on, so the bar is the one place left to take it back.
               announce: true,
