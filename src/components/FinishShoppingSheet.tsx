@@ -880,13 +880,8 @@ export function FinishShoppingSheet({
                               ...candidates.map(c => ({
                                 key: c.id,
                                 label: c.name,
-                                suffix: c.reason === 'usual' ? ' · usual substitute' : undefined,
                                 pinned: c.reason === 'usual',
                                 selected: chosenId === c.id,
-                                accessibilityLabel:
-                                  c.reason === 'usual'
-                                    ? `${c.name}, the usual substitute for ${row.name}`
-                                    : undefined,
                                 onPress: () => toggleSubstitute(row.id, c.id),
                               })),
                               ...(chosenExtra
