@@ -24,6 +24,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { pickRecipePhoto, type RecipePhoto } from '../utils/recipePhoto';
+import { alertPermissionOff } from '../utils/permissionAlert';
 import { SheetModal } from './SheetModal';
 import { LimitImpactLines } from './LimitImpactLines';
 import { useLimitImpact } from '../hooks/useLimitImpact';
@@ -568,6 +570,11 @@ export function FoodLogEntrySheet({
   // over (it resets by remounting; see `EstimatePanel`).
   const [estimateOpen, setEstimateOpen] = useState(false);
   const [estimateKey, setEstimateKey] = useState(0);
+  // The plate photo the open panel is estimating from ("Photograph your
+  // meal"), or null for a typed estimate. Dropped whenever the panel closes,
+  // so the next estimate doesn't quietly carry an old photo along.
+  const [estimatePhoto, setEstimatePhoto] = useState<RecipePhoto | null>(null);
+  useEffect(() => { if (!estimateOpen) setEstimatePhoto(null); }, [estimateOpen]);
   /**
    * Which queued meal the open panel is refining, or null. Cleared when the
    * panel is dismissed, so tapping Estimate again afterwards asks afresh
@@ -1686,6 +1693,30 @@ export function FoodLogEntrySheet({
     setEstimateOpen(true);
   };
 
+  /**
+   * "Photograph your meal": the camera, then the estimate panel asking about
+   * the photo, with whatever is typed in the field beside it. The model
+   * proposes and nothing is logged until the panel's Log, the same as a typed
+   * estimate.
+   */
+  const startMealPhoto = async () => {
+    haptics.tap();
+    Keyboard.dismiss();
+    const picked = await pickRecipePhoto('camera');
+    if (picked.status === 'canceled') return;
+    if (picked.status === 'denied') {
+      alertPermissionOff('Camera access is off', 'Turn it on in Settings to photograph a meal, or type what you ate.');
+      return;
+    }
+    if (picked.status === 'failed') {
+      Alert.alert('Couldn’t open the camera', picked.message);
+      return;
+    }
+    setEstimatePhoto(picked.photo);
+    setEstimateKey(k => k + 1);
+    setEstimateOpen(true);
+  };
+
   // Asked every time, with the search field's text as Food: a typed name may
   // already have the brand in it, and only this sheet can say which part is which.
   const [labelAsk, setLabelAsk] = useState(false);
@@ -1922,6 +1953,7 @@ export function FoodLogEntrySheet({
   // figures, and these are the way to one that doesn't. Each leaves while its
   // own results are open, which have their own way to search again.
   const offerDatabase = hasQuery && !dbOpen;
+  const startTileCount = [onScan, onPhotographLabel, canEstimate, onSavedMeal].filter(Boolean).length;
   const offerEstimate = hasQuery && !!canEstimate && !estimateOpen;
   const lookupOffers = offerDatabase || offerEstimate ? (
     <View style={styles.lookupOffers}>
@@ -1971,6 +2003,7 @@ export function FoodLogEntrySheet({
           reviewing={reviewing && reviewId === reviewing.id ? reviewing : null}
           onDismiss={() => { setEstimateOpen(false); setReviewId(null); }}
           onLogAction={setEstimateLog}
+          photo={estimatePhoto}
         />
       )}
       {dbOpen && (
@@ -2523,9 +2556,11 @@ export function FoodLogEntrySheet({
                 the list. The two ways past what this app has figures for are
                 what the typed text can be sent to, and they appear then, as
                 the first rows of the list (`lookupOffers`). */}
-            {!hasQuery && (!!onScan || !!onPhotographLabel || !!onSavedMeal) && (
+            {!hasQuery && (!!onScan || !!onPhotographLabel || !!canEstimate || !!onSavedMeal) && (
               <>
                 <Text style={styles.startLabel}>OR START FROM</Text>
+                {/* Two to a row once there are four: four across left each
+                    label a word or two wide at a larger text size. */}
                 <View style={styles.startRow}>
                   {!!onScan && (
                     <StartTile
@@ -2534,6 +2569,7 @@ export function FoodLogEntrySheet({
                       icon="barcode-outline"
                       label="Scan a barcode"
                       onPress={() => { haptics.tap(); Keyboard.dismiss(); onScan(); }}
+                      wide={startTileCount >= 4}
                     />
                   )}
                   {!!onPhotographLabel && (
@@ -2543,6 +2579,17 @@ export function FoodLogEntrySheet({
                       icon="camera-outline"
                       label="Photograph a label"
                       onPress={startLabelPhoto}
+                      wide={startTileCount >= 4}
+                    />
+                  )}
+                  {!!canEstimate && (
+                    <StartTile
+                      styles={styles}
+                      colors={colors}
+                      icon="restaurant-outline"
+                      label="Photograph your meal"
+                      onPress={() => { void startMealPhoto(); }}
+                      wide={startTileCount >= 4}
                     />
                   )}
                   {!!onSavedMeal && (
@@ -2552,6 +2599,7 @@ export function FoodLogEntrySheet({
                       icon="bookmark-outline"
                       label="Log a saved meal"
                       onPress={() => { haptics.tap(); Keyboard.dismiss(); onSavedMeal(); }}
+                      wide={startTileCount >= 4}
                     />
                   )}
                 </View>
@@ -2716,15 +2764,17 @@ interface StartTileProps {
   icon: React.ComponentProps<typeof Ionicons>['name'];
   label: string;
   onPress: () => void;
+  /** Half the row rather than an even share, once there are four tiles. */
+  wide?: boolean;
 }
 
 /**
  * One of the ways to start that need no text (scan, photograph a label, a
  * saved meal): equal thirds of one row, icon over label.
  */
-function StartTile({ styles, colors, icon, label, onPress }: StartTileProps) {
+function StartTile({ styles, colors, icon, label, onPress, wide = false }: StartTileProps) {
   return (
-    <PressableScale style={styles.startTile} onPress={onPress} accessibilityRole="button" accessibilityLabel={label}>
+    <PressableScale style={[styles.startTile, wide && styles.startTileHalf]} onPress={onPress} accessibilityRole="button" accessibilityLabel={label}>
       <Ionicons name={icon} size={iconSize.md} color={colors.accentText} />
       <Text style={styles.startTileText} numberOfLines={2}>{label}</Text>
     </PressableScale>
@@ -2969,6 +3019,7 @@ function makeStyles(colors: Colors) {
     },
     startRow: {
       flexDirection: 'row',
+      flexWrap: 'wrap',
       gap: spacing.sm,
       marginHorizontal: spacing.md,
       marginBottom: spacing.md,
@@ -2986,6 +3037,8 @@ function makeStyles(colors: Colors) {
       borderRadius: radius.md,
       backgroundColor: colors.bgSecondary,
     },
+    // Overrides flex: 1's zero basis so the row wraps two to a line.
+    startTileHalf: { flexBasis: '45%' },
     startTileText: {
       color: colors.text,
       fontSize: font.sm,

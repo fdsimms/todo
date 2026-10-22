@@ -289,7 +289,7 @@ const AI_FEATURE_KEYWORDS: Record<AiFeatureId, string[]> = {
   cookHelp: ['claude', 'model', 'cooking', 'step', 'question', 'ask', 'method', 'instead of'],
   nutritionEstimate: [
     'claude', 'model', 'food log', 'calories', 'nutrition', 'restaurant', 'takeout',
-    'eating out', 'ate out', 'guess',
+    'eating out', 'ate out', 'guess', 'photo of my meal', 'picture of food', 'camera',
   ],
   nutritionLabelPhoto: [
     'claude', 'model', 'nutrition panel', 'nutrition facts', 'calories', 'barcode',

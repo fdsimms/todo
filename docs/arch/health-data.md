@@ -1004,6 +1004,24 @@ phantom entry would corrupt the day's totals. And **a missed completion logs not
 saved meal that has since been deleted: that case falls back to the manual offer, so the tick is
 never a silent no-op. Deleting the task leaves its entries, since the food was eaten.
 
+### A photo of the plate is a description in another form
+
+"Photograph your meal" on the add sheet sends a photo to the same
+`estimateMealNutrition` call as a typed description, on the same switch
+(`nutritionEstimate`), into the same panel. Everything above holds unchanged:
+the model proposes, the panel's Log is the confirmation, and the result is
+`source: 'estimated'` for good. Three things are particular to it:
+
+- **The photo rides every ask.** An answer or a typed amount re-asks with the
+  photo attached, so a refinement is about the meal in the photo and not a
+  description of it. Words typed beside it outrank it about what the food is.
+- **The portion is the weakest claim, so it is said.** `describeEstimate` adds
+  "The portion is judged from your photo." after the basis and confidence, and
+  `grams` stays null like any estimate.
+- **It can't be saved for later.** The queue below holds a description, and
+  keeping the words without the photo would quietly be a different meal, so the
+  offer isn't made for a photo (`EstimatePanel`'s `photo`).
+
 ### A meal described with no signal waits as a description, never as an entry
 
 `utils/estimateQueue.ts`, `usePendingEstimateStore`, `PendingEstimatesCard`. When
