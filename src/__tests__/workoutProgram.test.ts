@@ -1,5 +1,5 @@
 import type { WorkoutProgram, WorkoutSession } from '../types';
-import { describeProgress, liveRotation, programProgress, programSessions, weekLabel } from '../utils/workoutProgram';
+import { currentProgram, describeProgress, isRunnableProgram, liveRotation, programProgress, programSessions, weekLabel } from '../utils/workoutProgram';
 
 const program = (over: Partial<WorkoutProgram> = {}): WorkoutProgram => ({
   id: 'p1', name: 'Upper / Lower', weeks: null, rotation: ['A', 'B'], scheme: 'double',
@@ -111,5 +111,36 @@ describe('the words', () => {
     expect(describeProgress(program({ scheme: null }), programProgress(program({ scheme: null }), [session('A')]), name)).not.toContain('Rep range');
     expect(describeProgress(short, programProgress(short, [session('A'), session('B')]), name)).toBe('1-week program done · % of max · Next: Upper A');
     expect(describeProgress(program({ rotation: [] }), programProgress(program({ rotation: [] }), []), name)).toBe('Week 1 · Rep range · No routines yet');
+  });
+});
+
+describe('currentProgram', () => {
+  const a = program({ id: 'a' });
+  const b = program({ id: 'b' });
+
+  it('is the picked program when it is in use', () => {
+    expect(currentProgram([a, b], 'b')).toBe(b);
+  });
+
+  it('is the only program in use when nothing is picked', () => {
+    expect(currentProgram([a], null)).toBe(a);
+    expect(currentProgram([a, program({ id: 'old', archived: true })], undefined)).toBe(a);
+  });
+
+  it('is none with several in use and no pick, so a caller asks', () => {
+    expect(currentProgram([a, b], null)).toBeNull();
+    expect(currentProgram([], null)).toBeNull();
+  });
+
+  it('passes over a pick that was archived, emptied or deleted', () => {
+    expect(currentProgram([a, program({ id: 'b', archived: true })], 'b')).toBe(a);
+    expect(currentProgram([a, program({ id: 'b', rotation: [] })], 'b')).toBe(a);
+    expect(currentProgram([a, b], 'gone')).toBeNull();
+  });
+
+  it('needs a rotation and not to be archived to be runnable', () => {
+    expect(isRunnableProgram(a)).toBe(true);
+    expect(isRunnableProgram(program({ rotation: [] }))).toBe(false);
+    expect(isRunnableProgram(program({ archived: true }))).toBe(false);
   });
 });

@@ -48,6 +48,7 @@ function fakeReplica(over: Partial<Replica> = {}): Replica {
     programVersions: () => [],
     routineGroups: () => ['Gym', 'Travel'],
     workoutPrograms: () => [program],
+    currentProgramId: () => null,
     gyms: () => [],
     gymExercises: () => [],
     workoutSessions: (from: string, to: string) => sessions.filter(s => s.startedAt.slice(0, 10) >= from && s.startedAt.slice(0, 10) <= to),

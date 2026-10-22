@@ -208,6 +208,15 @@ describe('resolveQueuedWorkoutStart', () => {
       expect(resolveQueuedWorkoutStart([myWorkout], ctx())).toEqual({ kind: 'openWorkouts' });
     });
 
+    it('with several programs, starts the current one and ignores a pick that is gone', () => {
+      const two = [program(), program({ id: 'p2' })];
+      expect(resolveQueuedWorkoutStart([myWorkout], ctx({ programs: two, currentProgramId: 'p2' })))
+        .toEqual({ kind: 'start', input: { programId: 'p2' } });
+      expect(resolveQueuedWorkoutStart([myWorkout], ctx({ programs: [...two.slice(0, 1), program({ id: 'p2', archived: true })], currentProgramId: 'p2' })))
+        .toEqual({ kind: 'start', input: { programId: 'p1' } });
+      expect(resolveQueuedWorkoutStart([myWorkout], ctx({ programs: two, currentProgramId: 'deleted' }))).toEqual({ kind: 'openWorkouts' });
+    });
+
     it('opens the Workouts screen for a program with nothing in its rotation', () => {
       expect(resolveQueuedWorkoutStart([myWorkout], ctx({ programs: [program({ rotation: [] })] }))).toEqual({ kind: 'openWorkouts' });
     });

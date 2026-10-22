@@ -31,7 +31,7 @@ import type { SetInput } from '../../src/store/useWorkoutStore';
 import { catalogExercise, exerciseName, searchExercises, type CatalogExercise } from '../../src/utils/exerciseCatalog';
 import { analyzeExercise, countsForRecords, volumeUnit, type RecordSession, type RecordType } from '../../src/utils/workoutRecords';
 import { recordLabel } from '../../src/utils/workoutRecordText';
-import { programProgress, type ProgramProgress } from '../../src/utils/workoutProgram';
+import { currentProgram, isRunnableProgram, programProgress, type ProgramProgress } from '../../src/utils/workoutProgram';
 import { proposalHeadline, schemeFor, trainingMaxRaises, type SetProposal } from '../../src/utils/workoutProgression';
 import { exerciseProposal, proposalRamp } from '../../src/utils/workoutProposal';
 
@@ -304,6 +304,8 @@ export interface ProgramRow {
   week: number;
   workoutsDone: number;
   next?: { routineId: string; name: string };
+  /** The program next_workout and the phone's Start default to: the one picked with save_program's isCurrent, or the only one in use. */
+  isCurrent?: true;
   /** A whole cycle was just finished: the moment a percentage program's training maxes are raised. */
   cycleDone?: true;
 }
@@ -313,6 +315,7 @@ function programRow(
   progress: ProgramProgress,
   rows: readonly Exercise[],
   routineName: ReadonlyMap<string, string>,
+  isCurrent = false,
 ): ProgramRow {
   return {
     id: p.id,
@@ -328,6 +331,7 @@ function programRow(
     week: progress.week,
     workoutsDone: progress.sessionsDone,
     ...(progress.nextRoutineId ? { next: { routineId: progress.nextRoutineId, name: routineName.get(progress.nextRoutineId) ?? 'A deleted routine' } } : {}),
+    ...(isCurrent ? { isCurrent: true as const } : {}),
     ...(progress.cycleDone ? { cycleDone: true as const } : {}),
   };
 }
@@ -343,6 +347,7 @@ export function listWorkouts(
   const rows = replica.exercises();
   const routines = replica.workoutRoutines();
   const programs = replica.workoutPrograms();
+  const current = currentProgram(programs, replica.currentProgramId());
   const routineName = new Map(routines.map(r => [r.id, r.name]));
   const programName = new Map(programs.map(p => [p.id, p.name]));
   const gyms = replica.gyms();
@@ -367,7 +372,7 @@ export function listWorkouts(
     }),
     routineGroups: replica.routineGroups(),
     programs: programs.filter(p => !p.archived)
-      .map(p => programRow(p, programProgress(p, allSessions(replica), routines), rows, routineName)),
+      .map(p => programRow(p, programProgress(p, allSessions(replica), routines), rows, routineName, p.id === current?.id)),
     gyms: gyms.map(g => gymRow(g, replica.gymExercises(), rows, replica.defaultGymId())),
     ...(workouts.length === 0 ? { note: WITHHELD_NOTE } : {}),
   };
@@ -971,6 +976,8 @@ export interface SaveProgramInput {
    * maxes are raised, and the phone offers the raise a second time.
    */
   startNextCycle?: true;
+  /** true makes it the current program; false clears that if it is the one. Needs a program that is not archived and has routines. */
+  isCurrent?: boolean;
 }
 
 export function saveProgram(replica: Replica, input: SaveProgramInput, now: Date = new Date()): { program: ProgramRow; note: string } {
@@ -991,9 +998,18 @@ export function saveProgram(replica: Replica, input: SaveProgramInput, now: Date
     ...(input.startNextCycle ? { startedAt: now.toISOString() } : {}),
   });
   const routines = replica.workoutRoutines();
+  // Not an error: the program is already saved by here, so a refusal would
+  // report a failed call for a write that happened.
+  const notCurrent = input.isCurrent === true && !isRunnableProgram(program);
+  if (input.isCurrent === true && !notCurrent) {
+    replica.setCurrentProgramId(program.id);
+  } else if (input.isCurrent === false && replica.currentProgramId() === program.id) {
+    replica.setCurrentProgramId(null);
+  }
+  const current = currentProgram(replica.workoutPrograms(), replica.currentProgramId());
   return {
-    program: programRow(program, programProgress(program, allSessions(replica), routines), replica.exercises(), new Map(routines.map(r => [r.id, r.name]))),
-    note: `A plan. Which week it is and which routine is next are worked out from the workouts finished in it, never set${input.startNextCycle ? ', and the count now starts again from this moment' : ''}. To put it on the schedule, create or update a task with workoutProgramId: its row then starts the next routine.`,
+    program: programRow(program, programProgress(program, allSessions(replica), routines), replica.exercises(), new Map(routines.map(r => [r.id, r.name])), program.id === current?.id),
+    note: `${notCurrent ? 'Saved, but not made current: a program needs routines in its rotation (routineIds), and not to be archived, to be the current one. ' : ''}A plan. Which week it is and which routine is next are worked out from the workouts finished in it, never set${input.startNextCycle ? ', and the count now starts again from this moment' : ''}. To put it on the schedule, create or update a task with workoutProgramId: its row then starts the next routine.`,
   };
 }
 
@@ -1065,13 +1081,13 @@ export function nextWorkout(replica: Replica, input: NextWorkoutInput = {}): {
     if (!routine) throw new Error(`No routine with id ${input.routineId}. list_workouts lists the routines.`);
     program = routine.programId ? programs.find(p => p.id === routine!.programId) ?? null : null;
   } else {
-    const running = programs.filter(p => p.rotation.length > 0);
-    if (running.length !== 1) {
+    program = currentProgram(programs, replica.currentProgramId());
+    if (!program) {
+      const running = programs.filter(isRunnableProgram);
       throw new Error(running.length === 0
         ? 'No program to read the next workout of. Name a routineId, or make a program with save_program.'
-        : `Several programs: name one with programId (${running.map(p => `${p.name}: ${p.id}`).join('; ')}).`);
+        : `Several programs and none is current: name one with programId (${running.map(p => `${p.name}: ${p.id}`).join('; ')}), or ask the person which to follow and make it current with save_program's isCurrent.`);
     }
-    program = running[0];
   }
   const progress = program ? programProgress(program, sessions, routines) : null;
   if (!routine) {

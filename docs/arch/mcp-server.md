@@ -1560,7 +1560,11 @@ Three areas had no MCP read or write, and the shape of each answer follows from 
   (refused by name when one is unknown), a scheme, a cycle length and training maxes in kg, through
   `addProgram`/`updateProgram`, which file the rotation's routines under the program the way the
   editor does. Where a program is (its week and next routine) is never written: `list_workouts` and
-  `next_workout` derive it with the app's own `programProgress`. `next_workout` is one read for the
+  `next_workout` derive it with the app's own `programProgress`. Which program counts when none is
+  named is the phone's `currentProgram` (the `currentProgramId` setting, or the only one in use):
+  `list_workouts` marks it `isCurrent`, `save_program`'s `isCurrent` sets or clears it, and
+  `next_workout` with several programs and none current asks for a `programId` rather than guessing.
+  `next_workout` is one read for the
   whole next workout rather than an `exercise_history` per exercise, since "what do I lift on
   Thursday" is about every exercise at once: it runs `proposeNext` against the person's plates and
   unit (`workoutLoads`), returns the proposed sets in kg beside the phone's own words for them, and

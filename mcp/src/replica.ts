@@ -1324,6 +1324,10 @@ export interface Replica {
   workoutLoads(): { unit: 'kg' | 'lb'; plateInventory: PlateInventory };
   /** The gym a workout starts at before a position says otherwise, or null for the one last used. */
   defaultGymId(): string | null;
+  /** The program the person picked as current (`currentProgramId`), or null for none picked. `currentProgram` reads it, never trusting it. */
+  currentProgramId(): string | null;
+  /** Picks the current program, or null to clear the pick. */
+  setCurrentProgramId(id: string | null): void;
   /**
    * Workout writes, through `useWorkoutStore`'s own actions (hydrated per
    * write, like the milestone store): its name rules, its set cleaning and its
@@ -4543,6 +4547,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return { unit: s.workoutUnit, plateInventory: s.plateInventory };
     },
     defaultGymId: () => useSettingsStore.getState().defaultGymId,
+    currentProgramId: () => useSettingsStore.getState().currentProgramId,
+    setCurrentProgramId: id => useSettingsStore.getState().setCurrentProgramId(id),
     saveRoutine(input) {
       const store = workoutStore();
       if (input.id) {
