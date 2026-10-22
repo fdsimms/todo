@@ -3,7 +3,7 @@ import { subDays } from 'date-fns/subDays';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { addDays } from 'date-fns/addDays';
 import type { MedicationLog, Milestone, Task } from '../types';
-import { formatDose, medicationFor, medicationKey } from './medicationLog';
+import { formatDose, medicationsFor, medicationKey } from './medicationLog';
 import {
   describeLimit,
   limitBreaches,
@@ -154,10 +154,10 @@ export function missedCountsByMedication(
     if (!task.missedAt) continue;
     const key = keyOf(new Date(task.missedAt));
     if (key < range.startKey || key > range.endKey) continue;
-    const dose = medicationFor(task);
-    if (!dose) continue;
-    const med = medicationKey(dose.name);
-    out[med] = (out[med] ?? 0) + 1;
+    for (const dose of medicationsFor(task)) {
+      const med = medicationKey(dose.name);
+      out[med] = (out[med] ?? 0) + 1;
+    }
   }
   return out;
 }

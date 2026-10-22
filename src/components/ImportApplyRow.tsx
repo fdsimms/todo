@@ -148,7 +148,7 @@ export function ImportApplyRow({
       </View>
 
       {hasPreview && (
-        <AnimatedCollapsible expanded={expanded}>
+        <AnimatedCollapsible expanded={expanded} lazy>
           <View style={styles.preview}>
             {lines.map((line, i) => {
               const lineChecked = acceptedLines?.has(i) ?? true;

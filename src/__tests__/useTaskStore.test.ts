@@ -9657,6 +9657,36 @@ describe('skipNextRecurrence', () => {
     expect(new Date(updated.dueDate!).getTime()).toBeGreaterThan(new Date(task.dueDate!).getTime());
   });
 
+  it('offers an undo that puts the occurrence back', () => {
+    const task = makeTask({
+      id: 't1',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      recurrenceCount: 3,
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().skipNextRecurrence('t1');
+    const action = useTaskStore.getState().lastAction;
+    expect(action?.label).toBe('Task skipped');
+    action?.undo();
+    const restored = useTaskStore.getState().tasks[0];
+    expect(restored.dueDate).toBe(task.dueDate);
+    expect(restored.recurrenceCount).toBe(3);
+  });
+
+  it('registers no undo when the skip is unattended', () => {
+    const task = makeTask({
+      id: 't1',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().skipNextRecurrence('t1', { registerUndo: false });
+    expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+
   it.each([[false, false], [true, true]])('pinEachOccurrence=%s leaves the next occurrence pinned=%s', (each, pinned) => {
     const task = makeTask({
       id: 't1',
@@ -20746,6 +20776,54 @@ describe('a task that records a dose', () => {
     expect(useMedicationStore.getState().logs[0]).toMatchObject({
       name: 'Sertraline', amount: 50, unit: 'mg', taskId: 't1', asNeeded: false,
     });
+  });
+
+  it('records a dose of each medicine taken together, and takes them all back on uncheck', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 't1', title: 'Iron + Vitamin C',
+        medicationName: 'Ritual Iron Bio Series', medicationAmount: 1, medicationUnit: 'capsule',
+        medicationExtras: [{ name: 'Thorne Vitamin C 500 mg', amount: 1, unit: 'capsule' }],
+      })],
+    });
+    useTaskStore.getState().completeTask('t1');
+    const logs = useMedicationStore.getState().logs;
+    expect(logs.map(l => l.name).sort()).toEqual(['Ritual Iron Bio Series', 'Thorne Vitamin C 500 mg']);
+    expect(logs.every(l => l.taskId === 't1')).toBe(true);
+    expect(useTaskStore.getState().lastAction).toMatchObject({
+      label: 'Logged Ritual Iron Bio Series and Thorne Vitamin C 500 mg in the medication log',
+    });
+    useTaskStore.getState().uncompleteTask('t1');
+    expect(useMedicationStore.getState().logs).toHaveLength(0);
+  });
+
+  it('records no extras when the task has no main medicine, or when it is a target', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', medicationExtras: [{ name: 'Zinc', amount: null, unit: null }] })],
+    });
+    useTaskStore.getState().completeTask('t1');
+    expect(useMedicationStore.getState().logs).toHaveLength(0);
+
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 't2', targetCount: 3, progressCount: 0, medicationName: 'Sertraline',
+        medicationExtras: [{ name: 'Zinc', amount: null, unit: null }],
+      })],
+    });
+    useTaskStore.getState().logQuotaUnit('t2');
+    expect(useMedicationStore.getState().logs.map(l => l.name)).toEqual(['Sertraline']);
+  });
+
+  it('carries the extras onto the next occurrence', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 't1', recurrenceType: 'daily', dueDate: new Date(2025, 5, 10).toISOString(),
+        medicationName: 'Iron', medicationExtras: [{ name: 'Vitamin C', amount: 500, unit: 'mg' }],
+      })],
+    });
+    useTaskStore.getState().completeTask('t1');
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 't1');
+    expect(next?.medicationExtras).toEqual([{ name: 'Vitamin C', amount: 500, unit: 'mg' }]);
   });
 
   it('records nothing for a task carrying no medication', () => {

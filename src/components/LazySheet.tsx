@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { InteractionManager } from 'react-native';
 import { useSheetMount } from '../hooks/useSheetMount';
 
 /**
@@ -21,7 +22,31 @@ import { useSheetMount } from '../hooks/useSheetMount';
  *   <GroceryCatalogSheet visible={catalogOpen} onClose={closeCatalog} />
  * </LazySheet>
  * ```
+ *
+ * **`warm` is for a sheet that is opened often and costs a lot to build**
+ * (the task editor). Mounted only on first open, its whole first render lands
+ * on the tap that asked for it. `warm` builds it once the screen's own
+ * animations and first paint are done instead, so the screen opens without it
+ * and the first tap still finds it ready. It changes only when the sheet is
+ * built; a sheet that is warmed stays mounted exactly as an opened one does.
  */
-export function LazySheet({ open, children }: { open: boolean; children: React.ReactNode }) {
-  return useSheetMount(open) ? <>{children}</> : null;
+export function LazySheet({
+  open,
+  warm = false,
+  children,
+}: {
+  open: boolean;
+  warm?: boolean;
+  children: React.ReactNode;
+}) {
+  const opened = useSheetMount(open);
+  const [warmed, setWarmed] = useState(false);
+  useEffect(() => {
+    // Effects run again each time a frozen tab comes back; once warmed there
+    // is nothing left to schedule.
+    if (!warm || warmed) return;
+    const handle = InteractionManager.runAfterInteractions(() => setWarmed(true));
+    return () => handle.cancel();
+  }, [warm, warmed]);
+  return opened || warmed ? <>{children}</> : null;
 }

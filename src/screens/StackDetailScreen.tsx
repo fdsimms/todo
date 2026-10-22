@@ -34,6 +34,7 @@ import { TaskGroupEditor } from '../components/TaskGroupEditor';
 import { EmptyState } from '../components/EmptyState';
 import { Fab } from '../components/Fab';
 import { QuickAddModal } from '../components/QuickAddModal';
+import { LazySheet } from '../components/LazySheet';
 import { useStableCallback } from '../hooks/useStableCallback';
 import { haptics } from '../utils/haptics';
 import { BulkActionBar } from '../components/BulkActionBar';
@@ -357,24 +358,28 @@ export function StackDetailScreen() {
 
         <DeliverablePromptQueue {...queueProps} />
 
-        <TaskEditor
-          visible={editorVisible}
-          task={editingTask}
-          initialDraft={editorInitialDraft}
-          onClose={() => {
-            setEditorVisible(false);
-            setExpandedTaskId(null);
-            setEditorInitialDraft(null);
-          }}
-        />
+        <LazySheet open={editorVisible} warm>
+          <TaskEditor
+            visible={editorVisible}
+            task={editingTask}
+            initialDraft={editorInitialDraft}
+            onClose={() => {
+              setEditorVisible(false);
+              setExpandedTaskId(null);
+              setEditorInitialDraft(null);
+            }}
+          />
+        </LazySheet>
 
-        <QuickAddModal
-          visible={quickAddVisible}
-          onClose={onQuickAddClose}
-          onOpenFull={onQuickAddOpenFull}
-          seed={quickAddSeed}
-          seedLabel={group?.title}
-        />
+        <LazySheet open={quickAddVisible} warm>
+          <QuickAddModal
+            visible={quickAddVisible}
+            onClose={onQuickAddClose}
+            onOpenFull={onQuickAddOpenFull}
+            seed={quickAddSeed}
+            seedLabel={group?.title}
+          />
+        </LazySheet>
 
         <TaskGroupEditor
           visible={groupEditorOpen && !!group}

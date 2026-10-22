@@ -2859,6 +2859,13 @@ export interface AnswerGate {
   answers: string[];
 }
 
+/** A medicine a task records beside its main one: a name, and the dose where one was stated. */
+export interface TaskMedicationExtra {
+  name: string;
+  amount: number | null;
+  unit: string | null;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -3256,6 +3263,17 @@ export interface Task {
    * by `unlogQuotaUnit`, and never carried onto a successor.
    */
   quotaLoggedDayKey?: string | null;
+
+  /**
+   * Further medicines this task records alongside `medicationName`, for things
+   * taken together ("Iron + Vitamin C"): completing the task writes one dose per
+   * entry, and unchecking it takes them all back. Meaningless without a primary
+   * `medicationName`, which is still the switch, and read through
+   * `medicationsFor` rather than directly. Not for a chain step, and not for a
+   * daily or weekly target, whose unit logs record one dose each. See
+   * `docs/arch/mood-log.md`.
+   */
+  medicationExtras?: TaskMedicationExtra[];
 
   /**
    * The stretch of time the target is counted over: one logical day (every

@@ -36,6 +36,7 @@ import { BulkActionBar } from '../components/BulkActionBar';
 import { DetailHeader } from '../components/DetailHeader';
 import { Fab } from '../components/Fab';
 import { QuickAddModal } from '../components/QuickAddModal';
+import { LazySheet } from '../components/LazySheet';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, interaction, type Colors, textScale } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -357,24 +358,28 @@ export function CategoryDetailScreen() {
 
         <DeliverablePromptQueue {...queueProps} />
 
-        <TaskEditor
-          visible={editorVisible}
-          task={editingTask}
-          initialDraft={editorInitialDraft}
-          onClose={() => {
-            setEditorVisible(false);
-            setExpandedTaskId(null);
-            setEditorInitialDraft(null);
-          }}
-        />
+        <LazySheet open={editorVisible} warm>
+          <TaskEditor
+            visible={editorVisible}
+            task={editingTask}
+            initialDraft={editorInitialDraft}
+            onClose={() => {
+              setEditorVisible(false);
+              setExpandedTaskId(null);
+              setEditorInitialDraft(null);
+            }}
+          />
+        </LazySheet>
 
-        <QuickAddModal
-          visible={quickAddVisible}
-          onClose={onQuickAddClose}
-          onOpenFull={onQuickAddOpenFull}
-          seed={quickAddSeed}
-          seedLabel={category}
-        />
+        <LazySheet open={quickAddVisible} warm>
+          <QuickAddModal
+            visible={quickAddVisible}
+            onClose={onQuickAddClose}
+            onOpenFull={onQuickAddOpenFull}
+            seed={quickAddSeed}
+            seedLabel={category}
+          />
+        </LazySheet>
         <ScrollToTopButton {...scrollTop.buttonProps} />
       {pullSearch.sheet}
       </View>

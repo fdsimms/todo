@@ -117,10 +117,14 @@ export function renamedChain(
 export function renamedTask(task: Task, fromKey: string, to: string): Task | null {
   const named = !!task.medicationName && medicationKey(task.medicationName) === fromKey;
   const chainItems = renamedChain(task.chainItems, fromKey, to);
-  if (!named && chainItems === task.chainItems) return null;
+  const extraNamed = !!task.medicationExtras?.some(e => medicationKey(e.name) === fromKey);
+  if (!named && !extraNamed && chainItems === task.chainItems) return null;
   return {
     ...task,
     medicationName: named ? to : task.medicationName,
+    ...(extraNamed
+      ? { medicationExtras: task.medicationExtras!.map(e => (medicationKey(e.name) === fromKey ? { ...e, name: to } : e)) }
+      : {}),
     chainItems: chainItems ?? task.chainItems,
   };
 }

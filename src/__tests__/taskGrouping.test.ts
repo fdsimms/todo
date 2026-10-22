@@ -195,6 +195,39 @@ const seq = (tasks: Task[], categoryOrder?: string[]) =>
     item.type === 'header' ? `#${item.label}` : item.type === 'group' ? `g-${item.group.id}` : item.task.id,
   );
 
+describe('makeCategoryGroups travel rows', () => {
+  const leave = (id: string, reminderTime: string | null) =>
+    makeTask({ id, category: 'Leave by', generatedKind: 'travel', reminderTime });
+  const ids = (items: CategoryListItem[]) =>
+    items.flatMap(i => (i.type === 'task' ? [i.task.id] : []));
+
+  it('orders Leave for rows by reminder time whatever order they were created in', () => {
+    const tasks = [
+      leave('am', '2026-10-22T09:30:00'),
+      leave('late', '2026-10-22T19:10:00'),
+      leave('early', '2026-10-22T18:05:00'),
+    ];
+    expect(ids(makeCategoryGroups(tasks))).toEqual(['am', 'early', 'late']);
+  });
+
+  it('leaves other tasks in their own slots', () => {
+    const tasks = [
+      leave('late', '2026-10-22T19:10:00'),
+      makeTask({ id: 'other', category: 'Leave by' }),
+      leave('early', '2026-10-22T18:05:00'),
+    ];
+    expect(ids(makeCategoryGroups(tasks))).toEqual(['early', 'other', 'late']);
+  });
+
+  it('keeps stored order when a sort is chosen', () => {
+    const tasks = [
+      leave('late', '2026-10-22T19:10:00'),
+      leave('early', '2026-10-22T18:05:00'),
+    ];
+    expect(ids(makeCategoryGroups(tasks, [], [], { interleaveGroups: false }))).toEqual(['late', 'early']);
+  });
+});
+
 describe('makeCategoryGroups', () => {
   // Uncategorized tasks are a header-less group at the top, so an all-
   // uncategorized list is simply a flat list with no headers.

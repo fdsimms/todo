@@ -528,16 +528,18 @@ export function TagsScreen() {
               a hidden sheet's children unmount. See SheetModal. */}
           <DeliverablePromptQueue {...queueProps} />
 
-          <TaskEditor
-            visible={editorVisible}
-            task={editingTask}
-            initialDraft={editorDraft ?? undefined}
-            onClose={() => {
-              setEditorVisible(false);
-              setExpandedTaskId(null);
-              setEditorDraft(null);
-            }}
-          />
+          <LazySheet open={editorVisible} warm>
+            <TaskEditor
+              visible={editorVisible}
+              task={editingTask}
+              initialDraft={editorDraft ?? undefined}
+              onClose={() => {
+                setEditorVisible(false);
+                setExpandedTaskId(null);
+                setEditorDraft(null);
+              }}
+            />
+          </LazySheet>
 
           <LazySheet open={taskQuickAddVisible}>
             <QuickAddModal

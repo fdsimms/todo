@@ -1049,6 +1049,30 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     expect(dbGetAllTasks()[0].chainItems).toEqual(chainItems);
   });
 
+  it('round-trips the further medicines a task records, on insert and on update', () => {
+    const extras = [
+      { name: 'Thorne Vitamin C 500 mg', amount: 1, unit: 'capsule' },
+      { name: 'Zinc', amount: null, unit: null },
+    ];
+    dbInsertTask(makeTask({
+      id: 'med-extras', medicationName: 'Ritual Iron Bio Series', medicationAmount: 1, medicationUnit: 'capsule',
+      medicationExtras: extras,
+    }));
+    expect(dbGetAllTasks().find(t => t.id === 'med-extras')?.medicationExtras).toEqual(extras);
+
+    const stored = dbGetAllTasks().find(t => t.id === 'med-extras')!;
+    dbUpdateTask({ ...stored, medicationExtras: [extras[1]] });
+    expect(dbGetAllTasks().find(t => t.id === 'med-extras')?.medicationExtras).toEqual([extras[1]]);
+
+    dbUpdateTask({ ...stored, medicationExtras: [] });
+    expect(dbGetAllTasks().find(t => t.id === 'med-extras')?.medicationExtras).toBeUndefined();
+  });
+
+  it('reads no extras for a task with no main medicine, whatever the column holds', () => {
+    dbInsertTask(makeTask({ id: 'med-none', medicationName: null, medicationExtras: [{ name: 'Zinc', amount: null, unit: null }] }));
+    expect(dbGetAllTasks().find(t => t.id === 'med-none')?.medicationExtras).toBeUndefined();
+  });
+
   it("round-trips a chain step's own link", () => {
     // Rides inside the cycle_items JSON like the fields above, so the round
     // trip is what proves parseChainItems and the serializer agree about it.

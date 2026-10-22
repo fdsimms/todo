@@ -205,7 +205,7 @@ import {
   taskEarnsCoins,
   BOUNTY_WITHDRAWN,
 } from '../utils/rewards';
-import { medicationFor } from '../utils/medicationLog';
+import { medicationFor, medicationsFor } from '../utils/medicationLog';
 import { installSupplementDoseEffects } from '../utils/supplementDoseSync';
 import { eventsIn } from '../utils/calendarBusy';
 import { isDemoModeActive } from '../utils/demoState';
@@ -2274,7 +2274,7 @@ interface TaskStore extends UndoHistoryActions {
    * stamping a miss they never made would put a fabricated entry in their
    * Logbook.
    */
-  skipNextRecurrence: (id: string) => void;
+  skipNextRecurrence: (id: string, opts?: { registerUndo?: boolean }) => void;
   togglePin: (id: string) => void;
   /**
    * Post a bounty on a task (see "Bounties" in utils/rewards.ts). Refused with
@@ -3440,7 +3440,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // of those promises resolve. It is the db writes that are batched, not the
     // notification work. The per-row set() stays, because collapsing that would
     // mean reimplementing skipNextRecurrence's own rules out here.
-    dbTransaction(() => rolled.forEach(t => get().skipNextRecurrence(t.id)));
+    // registerUndo: false, as the delete below: nobody tapped Skip.
+    dbTransaction(() => rolled.forEach(t => get().skipNextRecurrence(t.id, { registerUndo: false })));
     // skipGeneratedOptOut: this runs unattended at startup — a window closing
     // on its own is the app tidying up, not the user declining the source.
     // registerUndo: false for the same reason, so the first shake of the
@@ -4297,18 +4298,27 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Read through medicationFor rather than off the task, so a chain step
     // carrying its own medication records that one — "morning pills / evening
     // pills" would otherwise log the morning dose again at night.
-    const completedDose = options?.missed ? null : medicationFor(task);
+    // A target records one dose per unit logged, so its extras are left out:
+    // `uncompleteTask` takes back only the last of those, which would strand the
+    // others' doses. Every other task records its main dose and its extras.
+    const completedDoses = options?.missed
+      ? []
+      : isQuotaTask(task) ? [medicationFor(task)].filter(d => d !== null) : medicationsFor(task);
     // What the tick wrote into the app's own logs, named on the undo bar so a
     // dose or a meal landing in a log isn't silent (see UndoableAction.announce).
     let loggedLabel: string | null = null;
-    if (completedDose) {
-      loggedLabel = `Logged ${completedDose.name} in the medication log`;
-      useMedicationStore.getState().addLog({
-        ...completedDose,
-        taskId: id,
-        at: completedAt,
-        useUsualDose: true,
-      });
+    if (completedDoses.length > 0) {
+      loggedLabel = completedDoses.length === 1
+        ? `Logged ${completedDoses[0].name} in the medication log`
+        : `Logged ${completedDoses.map(d => d.name).join(' and ')} in the medication log`;
+      for (const dose of completedDoses) {
+        useMedicationStore.getState().addLog({
+          ...dose,
+          taskId: id,
+          at: completedAt,
+          useUsualDose: true,
+        });
+      }
     }
 
     cancelTaskReminder(id);
@@ -9081,11 +9091,21 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }
   },
 
-  skipNextRecurrence(id) {
+  skipNextRecurrence(id, opts) {
     const task = get().tasks.find(t => t.id === id);
     if (!task) return;
     const patch = skipPatch(task, useSettingsStore.getState().dayResetTime);
-    if (patch) get().updateTask(id, patch, SKIP_POSTPONE);
+    if (!patch) return;
+    const snapshot = { ...task };
+    get().updateTask(id, patch, SKIP_POSTPONE);
+    // A skip rewrites the date, count, reminder and chain position in one go,
+    // so the undo puts the whole row back rather than inverting each field.
+    if (opts?.registerUndo === false) return;
+    get().setLastAction({
+      label: 'Task skipped',
+      undo: () => get().updateTask(id, snapshot),
+      redo: redoRestoringRows([id]),
+    });
   },
 
   postBounty(id) {

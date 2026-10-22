@@ -3858,12 +3858,16 @@ parsed
     </SheetModal>
     {/* newTaskDefaults.openEditorAfterQuickAdd hand-off — see createTask. A
         sibling of the sheet above rather than something rendered inside it,
-        so it stays mounted (and visible) once the sheet has closed. */}
-    <TaskEditor
-      visible={postCreateTask !== null}
-      task={postCreateTask}
-      onClose={closePostCreateEditor}
-    />
+        so it stays mounted (and visible) once the sheet has closed. Lazy: that
+        setting is off for most people, and a closed task editor is the heaviest
+        thing a host of quick add could be carrying. */}
+    <LazySheet open={postCreateTask !== null}>
+      <TaskEditor
+        visible={postCreateTask !== null}
+        task={postCreateTask}
+        onClose={closePostCreateEditor}
+      />
+    </LazySheet>
     </>
   );
 });

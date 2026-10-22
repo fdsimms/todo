@@ -19,7 +19,7 @@ jest.mock('../db/database', () => ({ dbReclaimFreePages: jest.fn() }));
 jest.mock('../utils/notifications', () => ({ rescheduleAllReminders: jest.fn() }));
 jest.mock('../utils/deviceTimeZone', () => ({ recordDeviceTimeZone: jest.fn() }));
 
-import { catchUpPasses, expiryPasses, retentionPasses } from '../utils/maintenancePasses';
+import { catchUpPasses, expiryPasses, launchCatchUpPasses, retentionPasses } from '../utils/maintenancePasses';
 
 const names = (steps: [string, () => void][]) => steps.map(([name]) => name);
 
@@ -105,5 +105,32 @@ describe('the three maintenance groups', () => {
     }
     // No duplicates: two steps sharing a name makes a failure unattributable.
     expect(new Set(names(all)).size).toBe(all.length);
+  });
+});
+
+describe('the launch split of the catch-up passes', () => {
+  it('cuts the same list in two without reordering it', () => {
+    const { first, deferred } = launchCatchUpPasses();
+    expect([...names(first), ...names(deferred)]).toEqual(names(catchUpPasses()));
+  });
+
+  it('runs what changes existing rows before the first frame and the generators after it', () => {
+    const { first, deferred } = launchCatchUpPasses();
+    expect(names(first)).toEqual([
+      'record time zone',
+      'check vacation expiry',
+      'check away vacation',
+      'check away grocery list',
+      'roll over quotas',
+      'sweep overshoot quotas',
+      'sync water quotas',
+      'sync snack nudge',
+      'sync limit warnings',
+      'sync goal targets',
+      'check book-event tasks',
+      'drip stalled projects',
+    ]);
+    expect(names(deferred)[0]).toBe('check meal plan nudge');
+    expect(names(deferred)).toContain('sweep task penalties');
   });
 });

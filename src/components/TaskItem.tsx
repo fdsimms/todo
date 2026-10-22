@@ -4968,29 +4968,21 @@ const TaskItemRow = React.memo(function TaskItem({
                       <Ionicons name="play-circle-outline" size={iconSize.sm} color={colors.textSecondary} />
                     </PressableScale>
                   )}
-                  {/* A meal-plan task is generated fresh each day by
-                      writeMealSlotTasks rather than through recurrenceType,
-                      but it's recurring in every way a user would recognize
-                      — so it gets the same missed button once its own day
-                      has come. Unlike a real recurring task it has no
-                      schedule to show ahead of time in Later (tomorrow's row
-                      already exists independently), so there's no "not yet
-                      due" state to show the button for. */}
-                  {canMiss && (
+                  {/* Mark missed, Skip, ending a chain, and moving between its
+                      steps live in the long-press menu on the checkbox
+                      (CompletionOptionsMenu), not here: nine buttons in a
+                      panel read as noise, and the menu already held the first
+                      two. Where that menu isn't offered (a repeat not yet
+                      due, a negative habit) the two that still apply stay
+                      here. */}
+                  {!completionMenuOffered && canMiss && (
                     <PressableScale
                       style={styles.iconActionBtn}
                       onPress={async () => {
                         await haptics.impactMedium();
-                        // Plays the completion send-off; the expanded-row spotlight
-                        // is cleared when that ends (or at once on the silent roll).
                         handleMiss();
                       }}
                       hitSlop={8}
-                      // The same control does two things depending on where the
-                      // row is showing, and says which: on a row whose day has
-                      // come it records a miss, but on one sitting in Later
-                      // ahead of its day markMissed degrades to a silent roll
-                      // forward, because there is nothing to have missed yet.
                       accessibilityLabel={
                         recurrenceNotYetDue
                           ? `Skip this repeat of ${task.title}`
@@ -5001,90 +4993,6 @@ const TaskItemRow = React.memo(function TaskItem({
                     >
                       <Ionicons name="close-circle-outline" size={iconSize.sm} color={colors.textSecondary} />
                     </PressableScale>
-                  )}
-                  {/* The missed button above always advances a mid-chain miss
-                      into the next step (see the comment on `atChainEnd` in
-                      taskCompletion.ts) — right for a chain of independent
-                      steps, wrong for one whose later steps depend on the
-                      one just missed (meal-slot's Choose → Prepare → Eat:
-                      nothing to prepare with nothing chosen). This is that
-                      other case: it ends the whole chain here instead of
-                      spawning the next step. Only offered while there's a
-                      later step for it to matter against — on the chain's
-                      last step it would be identical to the button above. */}
-                  {chainStep &&
-                    chainStepIndex < task.chainItems.length - 1 &&
-                    (task.recurrenceType !== 'none' || isMissableMealPlanTask(task)) && (
-                    <PressableScale
-                      style={styles.iconActionBtn}
-                      onPress={async () => {
-                        await haptics.impactMedium();
-                        handleMiss(true);
-                      }}
-                      hitSlop={8}
-                      accessibilityLabel={`Mark ${task.title} missed and end the rest of its chain for today`}
-                    >
-                      <Ionicons name="stop-circle-outline" size={iconSize.sm} color={colors.textSecondary} />
-                    </PressableScale>
-                  )}
-                  {/* Distinct from the missed button above: this occurrence
-                      wasn't skipped because it got missed, it just didn't need
-                      doing this time — so it moves on with no Logbook row, no
-                      streak break, nothing recorded, same as markMissed already
-                      does silently for a not-yet-due row. Hidden in that state
-                      because the missed button above is already this action
-                      there (see its own accessibilityLabel). */}
-                  {task.recurrenceType !== 'none' && !recurrenceNotYetDue && (
-                    <PressableScale
-                      style={styles.iconActionBtn}
-                      onPress={async () => {
-                        await haptics.tap();
-                        skipNextRecurrence(task.id);
-                        if (expandedRef.current) onPress(rowId);
-                      }}
-                      hitSlop={8}
-                      accessibilityLabel={`Skip this repeat of ${task.title}, without counting it as missed`}
-                    >
-                      <Ionicons name="play-skip-forward-outline" size={iconSize.sm} color={colors.textSecondary} />
-                    </PressableScale>
-                  )}
-                  {chainStep && (
-                    <>
-                      {/* Chain-position-only moves — no schedule/date math and no
-                          completion/streak bookkeeping, unlike markMissed or the
-                          Skip button above. Deliberately not routed through
-                          skipNextRecurrence: that action always moves forward one
-                          occurrence, where these two need to move a single step
-                          either direction regardless of the recurrence schedule —
-                          so this reaches updateTask directly, the same way
-                          TaskEditor's own tap-a-dot control does. */}
-                      {chainStepIndex > 0 && (
-                        <PressableScale
-                          style={styles.iconActionBtn}
-                          onPress={() => {
-                            haptics.tap();
-                            updateTask(task.id, { chainIndex: chainStepIndex - 1 });
-                          }}
-                          hitSlop={8}
-                          accessibilityLabel={`Back a step in ${task.title}’s chain`}
-                        >
-                          <Ionicons name="play-back-outline" size={iconSize.sm} color={colors.textSecondary} />
-                        </PressableScale>
-                      )}
-                      {chainStepIndex < task.chainItems.length - 1 && (
-                        <PressableScale
-                          style={styles.iconActionBtn}
-                          onPress={() => {
-                            haptics.tap();
-                            updateTask(task.id, { chainIndex: chainStepIndex + 1 });
-                          }}
-                          hitSlop={8}
-                          accessibilityLabel={`Skip to the next step of ${task.title}’s chain, without completing ${chainStepPreview?.currentTitle ?? 'this step'}`}
-                        >
-                          <Ionicons name="play-forward-outline" size={iconSize.sm} color={colors.textSecondary} />
-                        </PressableScale>
-                      )}
-                    </>
                   )}
                 </View>
                 <View style={styles.editSectionRight}>
@@ -5124,17 +5032,19 @@ const TaskItemRow = React.memo(function TaskItem({
                     )}
                   </TouchableOpacity>
                   )}
-                  <PressableScale
-                    style={styles.iconActionBtn}
-                    onPress={async () => {
-                      await haptics.tap();
-                      duplicateTask(task.id);
-                    }}
-                    hitSlop={8}
-                    accessibilityLabel={`Duplicate ${task.title}`}
-                  >
-                    <Ionicons name="duplicate-outline" size={iconSize.sm} color={colors.textSecondary} />
-                  </PressableScale>
+                  {!completionMenuOffered && (
+                    <PressableScale
+                      style={styles.iconActionBtn}
+                      onPress={async () => {
+                        await haptics.tap();
+                        duplicateTask(task.id);
+                      }}
+                      hitSlop={8}
+                      accessibilityLabel={`Duplicate ${task.title}`}
+                    >
+                      <Ionicons name="duplicate-outline" size={iconSize.sm} color={colors.textSecondary} />
+                    </PressableScale>
+                  )}
                   {/* A list line already has its trash in the date's place.
                       Every other row asks what its kind needs asked first
                       (missed instead, this date or all), the same questions
@@ -5332,6 +5242,17 @@ const TaskItemRow = React.memo(function TaskItem({
           onSomeoneElse={handleSomeoneElse}
           takeOffCount={meterInteractive && task.progressCount > 0 ? task.progressCount : undefined}
           onTakeOff={handleQuotaUndo}
+          onNextStep={chainStep && chainStepIndex < task.chainItems.length - 1
+            ? () => updateTask(task.id, { chainIndex: chainStepIndex + 1 })
+            : undefined}
+          onPrevStep={chainStep && chainStepIndex > 0
+            ? () => updateTask(task.id, { chainIndex: chainStepIndex - 1 })
+            : undefined}
+          onEndChain={canMiss && chainStep && chainStepIndex < task.chainItems.length - 1 &&
+            (task.recurrenceType !== 'none' || isMissableMealPlanTask(task))
+            ? () => handleMiss(true)
+            : undefined}
+          onDuplicate={() => duplicateTask(task.id)}
         />
       )}
       {mountNegativeMenu && (
@@ -5505,7 +5426,11 @@ const TaskItemRow = React.memo(function TaskItem({
   );
 });
 
-const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
+const makeStyles = (colors: Colors, trayRaised: boolean) => {
+  // A control or fill drawn on the card. The card is bgTertiary in a raised
+  // tray, so a bgTertiary control there is invisible and has to step up.
+  const onCard = trayRaised ? colors.bgQuaternary : colors.bgTertiary;
+  return StyleSheet.create({
   itemWrapper: {
     marginHorizontal: spacing.md,
     marginVertical: spacing.xxs,
@@ -5632,7 +5557,7 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
   // that completes it, without filling the circle — it isn't done yet.
   circleReady: {
     borderColor: colors.green,
-    backgroundColor: colors.bgTertiary,
+    backgroundColor: onCard,
   },
   circleQuota: {
     borderColor: colors.accent,
@@ -6195,7 +6120,7 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
     width: 16,
     height: 16,
     borderRadius: radius.full,
-    backgroundColor: colors.bgTertiary,
+    backgroundColor: onCard,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
@@ -6324,7 +6249,7 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: colors.bgTertiary,
+    backgroundColor: onCard,
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: radius.full,
@@ -6341,7 +6266,7 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: radius.full,
-    backgroundColor: colors.bgTertiary,
+    backgroundColor: onCard,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -6364,7 +6289,8 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
     fontSize: font.sm,
     fontWeight: fontWeight.semibold,
   },
-});
+  });
+};
 
 /**
  * The row every list renders. A task in a locked project draws as

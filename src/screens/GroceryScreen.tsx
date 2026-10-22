@@ -1673,11 +1673,9 @@ export function GroceryScreen() {
     [styles, colors, cartOpen, skippedOpen, skipForTrip, unskipForTrip, collapsedGroups, toggleGroupCollapsed, handleToggle, handleEdit, handleOpenSubstitutes, handleSwapForSubstitute, zoneByKey, grouped.kind, selectionMode, selectedIds, toggleSelection, enterSelectionMode, alternativeCaptionById, stockedForById, storeMarkers, tripPriceById, handleSetTripPrice]
   );
 
-  // The "Start shopping" card, mounted either as the list's header or as a
-  // sibling above it depending on whether the trolley has anything in it —
-  // see both call sites below. Hidden while selecting and while a trip is
-  // running, the same two conditions every header action and the trip banner
-  // already answer to.
+  // The "Start shopping" card, a sibling above the grouping control. Hidden
+  // while selecting and while a trip is running, the same two conditions every
+  // header action and the trip banner already answer to.
   const startCard =
     selectionMode || activeTripShop || featureHidden('shoppingTrips', simpleMode) ? null : (
       <StartTripPrompt
@@ -1781,6 +1779,12 @@ export function GroceryScreen() {
       />
       <HubPills hub="kitchen" active="Groceries" />
       <TipHost screen="groceries" />
+      {/* The starting card sits above the grouping control: starting a shop is
+          the first decision on the screen, and how the list is grouped is a
+          setting for the list under it. It stays put rather than scrolling
+          with the rows, which also keeps the Finish button (which it grows once
+          something is ticked) from being scrolled out of reach. */}
+      {startCard}
       {/* How the list is grouped, on the list itself: it was a tab inside the
           Aisles sheet, three taps from the list it changes. A lens switch
           under the header (SegmentedControl's `surface="page"`). An away list
@@ -1824,14 +1828,6 @@ export function GroceryScreen() {
           onClear={handleClearTrip}
         />
       )}
-      {/* The starting card scrolls with the list (see ListHeaderComponent
-          below) right up until it grows a Finish button, and then it moves up
-          here beside the trip banner for the banner's own reason: the action a
-          shop ends in can't be something you have to scroll back to the top to
-          find. One card and one set of props either way — only where it's
-          mounted changes, on the tick that gives it something to do. */}
-      {checkedCount > 0 && startCard}
-
       {/* A drag down the column of selection dots picks up a run of rows
           (#2944), as on every other selectable list. Outside the drop zones,
           the way ProjectsScreen nests the same two. */}
@@ -1863,30 +1859,6 @@ export function GroceryScreen() {
         placeholderStyle={styles.dropSlot}
         onReorder={reordered => applyDrop(resolveGroceryDrop(reordered))}
         contentContainerStyle={rows.length === 0 ? styles.emptyContainer : styles.list}
-        // Scrolls with the rows rather than sitting above the list: it's worth
-        // seeing when you open the screen and worth getting out of the way for
-        // the rest of the shop. Inside the ScrollView is also the only place a
-        // header can go here — see ReorderableList.ListHeaderComponent, where
-        // one hung in the container silently offsets the drag math. Hidden
-        // while selecting, like every header action is.
-        // The banner replaces this outright once a trip is running: this card
-        // is for deciding whether/where to go, and the banner says you've
-        // gone. Two cards about one trip would be the "two controls for one
-        // plan" StartTripPrompt's own note warns about.
-        //
-        // Always StartTripPrompt, never the coverage-scored card it used to
-        // race with — #1662. That card announced "Likely has 2/3 items on
-        // your list" as permanent screen furniture on every visit, most of
-        // which are checking off items or browsing recipes, not deciding
-        // where to shop. The same coverage reasoning still exists — it's
-        // what ShoppingTripSheet ranks and captions with once you've
-        // actually said you're about to shop, via `summarizeTrip` and
-        // `describeShopCoverage` (shoppingTrip.ts) — it's just not announced
-        // unprompted at the top of the list any more.
-        //
-        // Only while the trolley is empty: with anything ticked the same card
-        // is rendered as a sibling above instead (see there).
-        ListHeaderComponent={checkedCount > 0 ? null : startCard}
         // Nothing in the footer applies to an empty list, and the tab-bar
         // spacer would take its height off the box the empty state centres in
         // (the empty state clears the tab bar itself, via bottomOffset).

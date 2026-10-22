@@ -60,6 +60,7 @@ import { journalPlainText } from '../utils/journalMarkdown';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { BUTTON_LABEL } from '../copy/shared';
+import { LazySheet } from '../components/LazySheet';
 
 /**
  * The labels and people on an entry, under its words. A tag is a button that
@@ -336,21 +337,27 @@ function JournalLogContent({ kind }: { kind: JournalKind }) {
 
   const sheet = (
     <>
-      <JournalEntrySheet visible={sheetOpen} kind={kind} editing={editing} dictateOnOpen={dictateOnOpen} onClose={closeSheet} />
-      <JournalMonthSheet
-        visible={monthOpen}
-        kind={kind}
-        onPickDay={dayKey => showDay(dayKey, false)}
-        onClose={() => setMonthOpen(false)}
-      />
-      <JournalDaySheet
-        visible={dayOpen}
-        kind={kind}
-        dayKey={shownDay}
-        onAnother={dayIsRandom ? showRandomDay : undefined}
-        onEdit={entry => { setDayOpen(false); openEdit(entry); }}
-        onClose={() => setDayOpen(false)}
-      />
+      <LazySheet open={sheetOpen}>
+        <JournalEntrySheet visible={sheetOpen} kind={kind} editing={editing} dictateOnOpen={dictateOnOpen} onClose={closeSheet} />
+      </LazySheet>
+      <LazySheet open={monthOpen}>
+        <JournalMonthSheet
+          visible={monthOpen}
+          kind={kind}
+          onPickDay={dayKey => showDay(dayKey, false)}
+          onClose={() => setMonthOpen(false)}
+        />
+      </LazySheet>
+      <LazySheet open={dayOpen}>
+        <JournalDaySheet
+          visible={dayOpen}
+          kind={kind}
+          dayKey={shownDay}
+          onAnother={dayIsRandom ? showRandomDay : undefined}
+          onEdit={entry => { setDayOpen(false); openEdit(entry); }}
+          onClose={() => setDayOpen(false)}
+        />
+      </LazySheet>
     </>
   );
 
