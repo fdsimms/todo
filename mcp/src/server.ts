@@ -1164,7 +1164,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'mood_insights',
-    "The Mood screen's findings: mood against what got done, by category, by repeating task, by symptom, by context tag, by food, on days they finished a workout (when Workouts is on and workout history reaches this server; otherwise absent), by time of day, and before and after each milestone the person marked. Every comparison is held to the app's minimum number of days and reports both sides' day counts. They are associations, never causes; read the rules field and stay inside it when explaining. Empty unless health logs reach this server.",
+    "The Mood screen's findings: mood against what got done, by category, by repeating task, by symptom, by rating (their own 1 to 5 factors, high days against low days), by context tag, by food, on days they finished a workout (when Workouts is on and workout history reaches this server; otherwise absent), by time of day, and before and after each milestone the person marked. Every comparison is held to the app's minimum number of days and reports both sides' day counts. They are associations, never causes; read the rules field and stay inside it when explaining. Empty unless health logs reach this server.",
     {},
     async () => json(await withFresh(() => moodInsights(replica)))
   );
@@ -2025,11 +2025,12 @@ function registerWriteTools(
 
   server.tool(
     'log_mood',
-    'Record a mood check-in: a rating from 1 (low) to 5 (great), and/or symptoms with a severity of 1 (mild) to 3 (severe), context tags ("work", "poor sleep"), and a short note. Dreams and longer writing go in the journal (log_journal_entry). Leave the rating out when the person gave none; an unrated check-in is not a 3. Symptoms and tags are matched to the spellings already in their log. Log only what they told you, never an inference about how they seem.',
+    'Record a mood check-in: a rating from 1 (low) to 5 (great), factors they rated 1 to 5 (stress, energy), and/or symptoms with a severity of 1 (mild) to 3 (severe), context tags ("work", "poor sleep"), and a short note. Dreams and longer writing go in the journal (log_journal_entry). Leave the rating out when the person gave none; an unrated check-in is not a 3. Symptoms and tags are matched to the spellings already in their log. Log only what they told you, never an inference about how they seem.',
     {
       mood: z.number().int().min(1).max(5).nullable().optional(),
       symptoms: z.array(z.object({ name: z.string().min(1), severity: z.number().int().min(1).max(3).optional() })).optional(),
       contextTags: z.array(z.string().min(1)).optional(),
+      factors: z.array(z.object({ name: z.string().min(1), value: z.number().int().min(1).max(5) })).optional().describe('Things they rated, such as Stress or Energy, each 1 to 5. High means more of it, never better. Matched to the names already in their log.'),
       note: z.string().nullable().optional(),
       at: z.string().optional().describe('An ISO date-time, or YYYY-MM-DD for a day gone by. Default now.'),
     },
@@ -2146,12 +2147,13 @@ function registerWriteTools(
 
   server.tool(
     'update_mood_log',
-    'Correct a mood check-in. Only what you name changes; symptoms and contextTags replace the whole list, and null clears the rating or the note. A check-in cannot be left empty: delete it instead.' + dayNote,
+    'Correct a mood check-in. Only what you name changes; symptoms, factors and contextTags replace the whole list, and null clears the rating or the note. A check-in cannot be left empty: delete it instead.' + dayNote,
     {
       id: entryId,
       mood: z.number().int().min(1).max(5).nullable().optional(),
       symptoms: z.array(z.object({ name: z.string().min(1), severity: z.number().int().min(1).max(3).optional() })).optional(),
       contextTags: z.array(z.string().min(1)).optional(),
+      factors: z.array(z.object({ name: z.string().min(1), value: z.number().int().min(1).max(5) })).optional().describe('Things they rated, such as Stress or Energy, each 1 to 5. High means more of it, never better. Matched to the names already in their log.'),
       note: z.string().nullable().optional(),
     },
     async ({ id, ...patch }) => {

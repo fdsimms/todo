@@ -606,6 +606,8 @@ export interface MoodInput {
   mood?: number | null;
   symptoms?: { name: string; severity?: number }[];
   contextTags?: string[];
+  /** Rated factors, each 1 to 5. */
+  factors?: { name: string; value: number }[];
   note?: string | null;
   at?: Date;
 }
@@ -695,7 +697,7 @@ export interface FoodAmount {
   quantity?: string;
 }
 
-export type MoodPatch = Partial<Pick<MoodInput, 'mood' | 'symptoms' | 'contextTags' | 'note'>>;
+export type MoodPatch = Partial<Pick<MoodInput, 'mood' | 'symptoms' | 'contextTags' | 'factors' | 'note'>>;
 
 export type DosePatch = Partial<Omit<DoseInput, 'at'>>;
 
@@ -3008,7 +3010,15 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
    * on the existing "Headache" rather than starting a second symptom the
    * insights would count apart. Shared by logging and editing a check-in.
    */
-  function moodSpelling(): { symptom: (n: string) => string; tag: (n: string) => string } {
+  /** A rating is a whole number from 1 to 5; anything else is refused rather than clamped. */
+  function factorValue(value: number): 1 | 2 | 3 | 4 | 5 {
+    if (!Number.isInteger(value) || value < 1 || value > 5) {
+      throw new Error('A rating is a whole number from 1 to 5.');
+    }
+    return value as 1 | 2 | 3 | 4 | 5;
+  }
+
+  function moodSpelling(): { symptom: (n: string) => string; tag: (n: string) => string; factor: (n: string) => string } {
     const moodLog = require('../../src/utils/moodLog') as typeof import('../../src/utils/moodLog'); // eslint-disable-line @typescript-eslint/no-require-imports
     const logs = db.dbGetAllMoodLogs();
     const spelled = (vocab: string[], key: (s: string) => string) => {
@@ -3018,6 +3028,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     return {
       symptom: spelled(moodLog.symptomVocabulary(logs), moodLog.symptomKey),
       tag: spelled(moodLog.contextTagVocabulary(logs), moodLog.contextTagKey),
+      factor: spelled(moodLog.factorVocabulary(logs), moodLog.factorKey),
     };
   }
 
@@ -5238,7 +5249,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (input.mood != null && (!Number.isInteger(input.mood) || input.mood < 1 || input.mood > 5)) {
         throw new Error('mood is a whole number from 1 (low) to 5 (great), or left out.');
       }
-      const { symptom, tag } = moodSpelling();
+      const { symptom, tag, factor } = moodSpelling();
+      const factors = (input.factors ?? []).map(f => ({ name: factor(f.name), value: factorValue(f.value) }));
       const symptoms = (input.symptoms ?? []).map(s => ({
         name: symptom(s.name),
         severity: (s.severity === 1 || s.severity === 3 ? s.severity : 2) as 1 | 2 | 3,
@@ -5249,8 +5261,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         input.note ?? null,
         input.at,
         (input.contextTags ?? []).map(tag),
+        factors,
       );
-      if (!log) throw new Error('A check-in needs a mood, a symptom, a tag or a note.');
+      if (!log) throw new Error('A check-in needs a mood, a rating, a symptom, a tag or a note.');
       return log;
     },
 
@@ -5502,11 +5515,12 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (patch.mood !== undefined) next.mood = patch.mood as MoodLog['mood'];
       if (patch.symptoms !== undefined) next.symptoms = patch.symptoms.map(s => ({ name: spelling.symptom(s.name), severity: (s.severity === 1 || s.severity === 3 ? s.severity : 2) as 1 | 2 | 3 }));
       if (patch.contextTags !== undefined) next.contextTags = patch.contextTags.map(spelling.tag);
+      if (patch.factors !== undefined) next.factors = patch.factors.map(f => ({ name: spelling.factor(f.name), value: factorValue(f.value) }));
       if (patch.note !== undefined) next.note = patch.note;
       // An edit may not empty the entry: a check-in recording nothing is a day
       // marked as logged with nothing on it. Delete it instead.
       const after = { ...existing, ...next };
-      if (after.mood == null && after.symptoms.length === 0 && after.contextTags.length === 0 && !after.note?.trim()) {
+      if (after.mood == null && after.factors.length === 0 && after.symptoms.length === 0 && after.contextTags.length === 0 && !after.note?.trim()) {
         throw new Error('That would leave the check-in empty. Delete it instead.');
       }
       useMoodStore.getState().updateLog(id, next);
