@@ -7,7 +7,7 @@
 //
 // Leftovers and the fridge are planned from here too; the rules live in
 // src/utils/leftovers.ts and src/utils/mealPlan.ts.
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Animated, View, Text, FlatList, StyleSheet, Alert, TouchableOpacity, Share, type GestureResponderEvent } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -1014,7 +1014,11 @@ export function MealPlanScreen() {
 
   const mealDrag = useDragToDay<MealPlanEntry>(mealDragHandlers);
 
-  useEffect(() => {
+  // A layout effect, so the week is read before the frame is drawn. The store
+  // holds nothing until a screen asks for a window, so read after paint, the
+  // first visit drew an empty week and filled it a frame later (the food log's
+  // `loadRange` had the same flash).
+  useLayoutEffect(() => {
     if (range) loadRange(range.startKey, range.endKey);
   }, [range?.startKey, range?.endKey, loadRange]);
 
