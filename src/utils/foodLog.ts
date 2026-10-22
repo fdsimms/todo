@@ -6,6 +6,7 @@ import { looseNameWeight } from './looseNameMatch';
 import { isWaterEntry } from './waterLog';
 import { mealHelping, weighedHelping, type DishFigures } from './mealLog';
 import { isNutrientOnlyEntry } from './nutrientLog';
+import { panelGramsFor, stateAmountHint, stateUnitLabel, takesStateAmount } from './cookedState';
 import { gramsForLine, hasKnownDensity, panelMultiplier } from './ingredientGrams';
 import { formatQuantityAmount, inflectUnit, parseQuantity, rationalToNumber } from './quantity';
 import { measureParsedQuantity, unitBase } from './unitConvert';
@@ -136,12 +137,19 @@ export function scalePanelToAmount(
   const target = nutrientTarget(quantity);
   if (target !== null) return scaleToNutrient(panel, target, quantity, now);
 
-  let factor = panelMultiplier(quantity, prep, panel);
+  // "100 g raw" over a cooked panel: weighed in the other state, so it becomes
+  // grams of the state the panel describes before anything else reads it. A
+  // food with no ratio refuses rather than reading the text as plain grams.
+  const stated = panelGramsFor(panel, quantity);
+  if (stated === 'refused') return null;
+  const measured = stated ? `${round(stated.grams)}g` : quantity;
+
+  let factor = panelMultiplier(measured, prep, panel);
   let approximate = false;
   let fallbackGrams: number | null = null;
 
   if (factor === null && panel.basis !== 'per100ml' && foodName !== null && isBeverageName(foodName)) {
-    const millilitres = volumeMillilitres(quantity);
+    const millilitres = volumeMillilitres(measured);
     if (millilitres !== null && millilitres > 0) {
       const scaled = panel.basis === 'per100g'
         ? millilitres / 100
@@ -160,11 +168,11 @@ export function scalePanelToAmount(
   // check is needed, and a weighed portion (which `panelMultiplier` reads
   // first) always outranks this.
   if (factor === null && panel.basis === 'per100ml') {
-    const measured = measureParsedQuantity(parseQuantity(quantity));
-    if (measured && measured.dimension === 'mass' && measured.base > 0) {
-      factor = measured.base / 100;
+    const weighed = measureParsedQuantity(parseQuantity(measured));
+    if (weighed && weighed.dimension === 'mass' && weighed.base > 0) {
+      factor = weighed.base / 100;
       approximate = true;
-      fallbackGrams = measured.base;
+      fallbackGrams = weighed.base;
     }
   }
 
@@ -191,7 +199,7 @@ export function scalePanelToAmount(
   // fact `panelMultiplier` used to answer `factor` above — `gramsForLine`
   // can't answer this at all, since it only reads the portion table, and a
   // packaged product's table never names a "serving" (see `FoodPortion`).
-  const parsedQuantity = parseQuantity(quantity);
+  const parsedQuantity = parseQuantity(measured);
   const rawGrams = fallbackGrams !== null
     ? fallbackGrams
     : parsedQuantity.unit === 'serving' && parsedQuantity.amount !== null
@@ -371,6 +379,8 @@ export function amountHint(panel: FoodNutrition): string {
   if (panel.basis === 'per100ml' && !hasKnownDensity(panel.portions)) {
     parts.push('A weight also works, counted as water, so it is approximate.');
   }
+  const stateHint = stateAmountHint(panel);
+  if (stateHint) parts.push(stateHint);
   const names: string[] = [];
   for (const unit of NUTRIENT_UNIT_OPTIONS) {
     const stated = panel.amounts[unit.nutrient];
@@ -479,6 +489,15 @@ export function foodUnitOptionsFor(panel: FoodNutrition): FoodUnitOption[] {
       if (seen.has(unit.key)) continue;
       seen.add(unit.key);
       out.push(unit);
+    }
+    // The weight in the state the panel isn't in ("g cooked" over a raw panel),
+    // right after the plain weights it is a sibling of.
+    if (takesStateAmount(panel) && panel.cooking) {
+      const label = stateUnitLabel(panel.cooking);
+      if (!seen.has(label)) {
+        seen.add(label);
+        out.push({ key: label, label, suffix: ` ${label}` });
+      }
     }
   }
   if (panel.basis === 'perServing' || panel.servingGrams !== null) {

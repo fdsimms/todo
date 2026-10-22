@@ -3528,6 +3528,7 @@ function registerWriteTools(
           estimated: z.boolean().optional(),
           novaGroup: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).nullable().optional().describe('NOVA processing group, 1 unprocessed to 4 ultra-processed. Omit to keep the current one; null clears it. Only set what you know, never a guess from the name.'),
           packageGrams: z.number().nullable().optional().describe('What the whole package weighs in grams, as the label prints it. Omit to keep the current one; null clears it. Leave out for a pack sold by volume.'),
+        cooking: z.object({ panelState: z.enum(['raw', 'cooked']), cookedPerRaw: z.number() }).nullable().optional().describe('Which state the figures describe and cooked grams per raw gram (white rice about 2.8, raw chicken about 0.75). Lets a log amount like "100 g cooked" be converted. Omit to keep the current one; null clears it. Only set a ratio the person gave or weighed.'),
           portions: z.array(z.object({
             label: z.string().min(1),
             grams: z.number(),
@@ -3547,7 +3548,7 @@ function registerWriteTools(
 
   server.tool(
     'set_nutrition_panel',
-    `Set what a grocery item is made of (its nutrition panel), or one of its brands' (boxId), as the app's panel editor does; panel null removes it. Figures are keyed ${NUTRIENT_KEY_LIST.join(', ')}, per 100g, per 100ml (a drink), or per serving. Leave out any the label does not state: absent is unknown, not zero. Set estimated when the figures are yours rather than read off a label. Recipes and the food log read it; a recipe counts a line written in a volume or a count only when the item has a portion weighing it, so send portions too. Check get_grocery_item first: this replaces the figures it shows. Portions merge by label, so an old one stays beside a new one: an existing "cup" and your "cup, packed" that disagree on density stop the app weighing any volume. The result lists the figures replaced (with their source) and the portions the item will have, so check both in the preview; overwrite a wrong portion by sending its exact label.`,
+    `Set what a grocery item is made of (its nutrition panel), or one of its brands' (boxId), as the app's panel editor does; panel null removes it. Figures are keyed ${NUTRIENT_KEY_LIST.join(', ')}, per 100g, per 100ml (a drink), or per serving. Leave out any the label does not state: absent is unknown, not zero. Set estimated when the figures are yours rather than read off a label. For a food weighed raw and cooked (rice, pasta, meat), send cooking with the ratio the person gave or weighed; never guess one. Recipes and the food log read it; a recipe counts a line written in a volume or a count only when the item has a portion weighing it, so send portions too. Check get_grocery_item first: this replaces the figures it shows. Portions merge by label, so an old one stays beside a new one: an existing "cup" and your "cup, packed" that disagree on density stop the app weighing any volume. The result lists the figures replaced (with their source) and the portions the item will have, so check both in the preview; overwrite a wrong portion by sending its exact label.`,
     {
       item: z.string().min(1),
       boxId: z.string().optional(),
@@ -3559,6 +3560,7 @@ function registerWriteTools(
         estimated: z.boolean().optional(),
         novaGroup: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).nullable().optional().describe('NOVA processing group, 1 unprocessed to 4 ultra-processed. Omit to keep the current one; null clears it. Only set what you know, never a guess from the name.'),
         packageGrams: z.number().nullable().optional().describe('What the whole package weighs in grams, as the label prints it. Omit to keep the current one; null clears it. Leave out for a pack sold by volume.'),
+        cooking: z.object({ panelState: z.enum(['raw', 'cooked']), cookedPerRaw: z.number() }).nullable().optional().describe('Which state the figures describe and cooked grams per raw gram (white rice about 2.8, raw chicken about 0.75). Lets a log amount like "100 g cooked" be converted. Omit to keep the current one; null clears it. Only set a ratio the person gave or weighed.'),
         portions: z.array(z.object({
           label: z.string().min(1),
           grams: z.number(),

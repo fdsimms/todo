@@ -5564,6 +5564,20 @@ export type FoodNutritionSource = 'fdc' | 'openFoodFacts' | 'manual' | 'estimate
  * pair through `nutritionFor` (`foodNutrition.ts`); nothing reads either field
  * raw.
  */
+/**
+ * How a food's weight changes when it is cooked, so an amount weighed in the
+ * other state can be logged against the one panel it has.
+ *
+ * `panelState` is the state the panel's figures describe (a source's "Rice,
+ * raw" panel is `'raw'`), and `cookedPerRaw` is cooked grams per raw gram: about
+ * 2.8 for white rice, about 0.75 for chicken breast. Typed or measured by the
+ * person, never looked up. See `cookedState.ts`.
+ */
+export interface FoodCooking {
+  panelState: 'raw' | 'cooked';
+  cookedPerRaw: number;
+}
+
 /** A NOVA food processing group: 1 minimally processed, 2 culinary ingredient, 3 processed, 4 ultra-processed. */
 export type NovaGroup = 1 | 2 | 3 | 4;
 
@@ -5717,6 +5731,15 @@ export interface FoodNutrition {
    * path that builds a panel from more than one food (`combineFoodNutrition`),
    * because that panel is no longer the estimate the lines were split from.
    */
+  /**
+   * The raw-to-cooked weight ratio, when the person set one. Lets an amount be
+   * typed in the state the panel isn't in ("100 g raw" on a cooked panel),
+   * converted by `panelGramsFor`. Absent is the ordinary case, and then a raw or
+   * cooked amount is refused rather than read as plain grams. A property of the
+   * food, so a logged helping does not carry it (`scalePanelToAmount` builds its
+   * panel field by field).
+   */
+  cooking?: FoodCooking;
   breakdown?: FoodBreakdownLine[];
 }
 

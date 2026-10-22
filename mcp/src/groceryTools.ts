@@ -31,6 +31,7 @@ import { brandSummaries } from '../../src/utils/brands';
 import { findPantryItem } from './pantryTools';
 import { NUTRIENT_KEYS } from '../../src/types';
 import { describeFoodPanel } from '../../src/utils/foodNutrition';
+import { readCooking } from '../../src/utils/cookedState';
 import { foodKindsOf } from '../../src/utils/foodKinds';
 
 const HOME = 'home';
@@ -154,6 +155,8 @@ export interface NutritionPanelDetail {
   novaGroup?: number;
   /** What the whole package weighs in grams, when typed from the label. Lets a scan offer "the whole package". */
   packageGrams?: number;
+  /** Which state the figures describe and cooked grams per raw gram, when the person set one. Absent means the food takes no raw or cooked amount. */
+  cooking?: { panelState: 'raw' | 'cooked'; cookedPerRaw: number };
   /** What an amount weighs; this is what lets a tablespoon or clove line be counted. `custom` is one the person weighed. */
   portions?: { label: string; grams: number; amount?: number; custom?: boolean }[];
   recordedAt: string;
@@ -170,6 +173,7 @@ function nutritionDetail(n: FoodNutrition | null | undefined): { nutrition?: Nut
       amounts: { ...n.amounts } as Record<string, number>,
       ...(n.novaGroup ? { novaGroup: n.novaGroup } : {}),
       ...(n.packageGrams ? { packageGrams: n.packageGrams } : {}),
+      ...(n.cooking ? { cooking: n.cooking } : {}),
       ...(n.portions.length > 0
         ? { portions: n.portions.map(p => ({ label: p.label, grams: p.grams, ...(p.amount !== 1 ? { amount: p.amount } : {}), ...(p.custom ? { custom: true } : {}) })) }
         : {}),
@@ -648,6 +652,14 @@ export interface NutritionPanelInput {
    */
   packageGrams?: number | null;
   /**
+   * How the food's weight changes when cooked: which state the figures describe
+   * and cooked grams per raw gram (white rice about 2.8). With it, a log amount
+   * like "100 g cooked" or "100 g raw" is converted; without it, such an amount
+   * is refused. Omit to keep the one the panel already has; null clears it. Only
+   * set a ratio the person gave or weighed, never one worked out from the name.
+   */
+  cooking?: { panelState: 'raw' | 'cooked'; cookedPerRaw: number } | null;
+  /**
    * What an amount of the food weighs, so a recipe line in tablespoons or cloves
    * can be turned into grams ("tbsp" = 13.5, "cup, shredded" = 113). Merged into
    * the portions the item already has: a row with the same label replaces it, the
@@ -702,6 +714,15 @@ function buildPanel(input: NutritionPanelInput, previous: FoodNutrition | null):
     ...(() => {
       const grams = input.packageGrams === undefined ? previous?.packageGrams ?? null : input.packageGrams;
       return grams && grams > 0 ? { packageGrams: grams } : {};
+    })(),
+    ...(() => {
+      const given = input.cooking === undefined ? previous?.cooking ?? null : input.cooking;
+      if (!given) return {};
+      const cooking = readCooking(given);
+      if (!cooking) {
+        throw new Error('cooking needs panelState "raw" or "cooked" and cookedPerRaw between 0.1 and 20 (cooked grams per raw gram).');
+      }
+      return { cooking };
     })(),
   };
 }
