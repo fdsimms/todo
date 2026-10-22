@@ -19,6 +19,7 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { resolveActiveTrip } from '../utils/activeTrip';
+import { CheckPop } from './CheckPop';
 import { EmptyNote } from './EmptyNote';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -235,12 +236,15 @@ function sameMembers<T>(a: ReadonlySet<T>, b: ReadonlySet<T>): boolean {
  * (`substituteCandidates`): the row's usual substitute, and what came home that
  * the list never had. The answer to "what did you get instead" is nearly always
  * something that was not on the list, so the trolley as one-tap picks was mostly
- * items already planned (paper towels, or oat milk, offered for tofu). A name outside that set is typed into the same
- * find-or-add `PillGroup` the store picker uses, which puts it in the cart
+ * items already planned (paper towels, or oat milk, offered for tofu). A name
+ * outside that set is typed into the same find-or-add `PillGroup` the store picker uses, which puts it in the cart
  * (`addToCartMany`) and picks it, since it did come home. Someone who bought
  * nothing else this trip can still say what they got. It follows the same
  * silence rule as the tick above it: nothing is picked by default, and
- * skipping it writes nothing. Changing the store clears these answers along
+ * skipping it writes nothing. **A pick is about this trip, and saving it is a
+ * separate tick** ("Offer seitan next time marinated tofu is missing", off by
+ * default): the only thing a pick writes is a substitute link, and what came
+ * home when a store ran out doesn't make it a standing substitute. Changing the store clears these answers along
  * with the ticks — "got margarine instead" is an answer about Safeway's
  * shelves, not Costco's. `resolveShoppingSubstitutes` is what turns the
  * sheet's per-row answers into the pairs actually worth writing.
@@ -333,6 +337,10 @@ export function FinishShoppingSheet({
   // item's id, or absent when the follow-up was left alone. Resolved down to
   // what's actually writable at Finish time by resolveShoppingSubstitutes.
   const [substituteFor, setSubstituteFor] = useState<Record<string, string>>({});
+  // The unavailable rows whose answer is to be kept as a substitute link. Off
+  // for every pick: one trip's replacement says nothing about the next. A new
+  // pick for a row clears its tick, since the tick was about the old one.
+  const [rememberSub, setRememberSub] = useState<string[]>([]);
   // Prices exactly as typed, keyed by item id — parsed on Finish rather than on
   // every keystroke, so a half-typed "4." is a field mid-edit and not a
   // rejected value flashing an error at someone holding a receipt.
@@ -449,6 +457,7 @@ export function FinishShoppingSheet({
       // setSelected to the value it already holds changes nothing.
       setUnavailable([]);
       setSubstituteFor({});
+      setRememberSub([]);
       setAddedHere([]);
     }
   }, [visible]);
@@ -474,6 +483,7 @@ export function FinishShoppingSheet({
   useEffect(() => {
     setUnavailable([]);
     setSubstituteFor({});
+    setRememberSub([]);
   }, [selected]);
 
   // ==== finish ====
@@ -528,7 +538,7 @@ export function FinishShoppingSheet({
       selected,
       selected ? stillLeftover : [],
       priceById,
-      selected ? resolveShoppingSubstitutes(stillLeftover, substituteFor) : [],
+      selected ? resolveShoppingSubstitutes(stillLeftover, substituteFor, rememberSub) : [],
       seedPurchasedAt,
       frozenIds
     );
@@ -609,6 +619,7 @@ export function FinishShoppingSheet({
   // item clears the answer, same toggle shape the store pills use.
   const toggleSubstitute = (itemId: string, subItemId: string) => {
     haptics.tap();
+    setRememberSub(prev => prev.filter(id => id !== itemId));
     setSubstituteFor(prev =>
       prev[itemId] === subItemId
         ? Object.fromEntries(Object.entries(prev).filter(([id]) => id !== itemId))
@@ -660,7 +671,13 @@ export function FinishShoppingSheet({
     if (!created) return 'Enter a name.';
     haptics.success();
     addIncidental(created.id);
+    setRememberSub(prev => prev.filter(id => id !== itemId));
     setSubstituteFor(prev => ({ ...prev, [itemId]: created.id }));
+  };
+
+  const toggleRemember = (itemId: string) => {
+    haptics.tap();
+    setRememberSub(prev => (prev.includes(itemId) ? prev.filter(id => id !== itemId) : [...prev, itemId]));
   };
 
   // ==== prices ====
@@ -866,7 +883,7 @@ export function FinishShoppingSheet({
                           way to answer. */}
                       {ticked && (
                         <View style={styles.substituteWrap}>
-                          <Text style={styles.substituteLabel}>Replaced by</Text>
+                          <Text style={styles.substituteLabel}>What did you get instead?</Text>
                           <PillGroup
                             noun="item"
                             surface="card"
@@ -896,6 +913,36 @@ export function FinishShoppingSheet({
                                 : []),
                             ]}
                           />
+                          {/* Saving is its own answer, off until ticked: what
+                              came home today is not a rule for next time. It
+                              names both items so it can't read as a general
+                              setting. Not help text, since it is the control. */}
+                          {(() => {
+                            const pickedName = candidates.find(c => c.id === chosenId)?.name ?? chosenExtra?.name;
+                            if (!chosenId || !pickedName) return null;
+                            const remembered = rememberSub.includes(row.id);
+                            return (
+                              <TouchableOpacity
+                                style={styles.rememberRow}
+                                activeOpacity={interaction.activeOpacity}
+                                onPress={() => toggleRemember(row.id)}
+                                accessibilityRole="checkbox"
+                                accessibilityState={{ checked: remembered }}
+                                accessibilityLabel={`Offer ${pickedName} next time ${row.name} is missing`}
+                              >
+                                <CheckPop
+                                  checked={remembered}
+                                  style={styles.rememberBox}
+                                  checkedStyle={styles.rememberBoxOn}
+                                >
+                                  <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />
+                                </CheckPop>
+                                <Text style={styles.rememberText}>
+                                  Offer {pickedName} next time {row.name} is missing
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })()}
                         </View>
                       )}
                     </View>
@@ -1126,6 +1173,18 @@ function makeStyles(colors: Colors) {
       gap: spacing.sm,
     },
     substituteLabel: { fontSize: font.sm, color: colors.textTertiary },
+    rememberRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.smd, paddingTop: spacing.xs },
+    rememberBox: {
+      width: CHECK_SIZE,
+      height: CHECK_SIZE,
+      borderRadius: checkboxRadius(CHECK_SIZE),
+      borderWidth: border.md,
+      borderColor: colors.controlBorder,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    rememberBoxOn: { backgroundColor: colors.accentFill, borderColor: colors.accentFill },
+    rememberText: { flex: 1, color: colors.text, fontSize: font.md },
     // The leading tile on an incidental row, in place of the checkbox: nothing
     // here is ticked or unticked, it is already in the cart. Tinted rather than
     // `bgQuaternary` so it doesn't read as the red "they didn't have it" mark.

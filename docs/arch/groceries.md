@@ -885,6 +885,13 @@ bought.
   later version added same-aisle rows already on the list, which meant oat milk for tofu. A row that
   was planned is not a replacement for another planned row. Don't widen it back; a name outside the
   set is one typed field away, and typing one adds it to the cart and picks it.
+- **A pick is about this trip; saving it is its own tick.** The only thing a "What did you get
+  instead?" pick writes is a one-way substitute link (`linkItemSub`), and that link is a standing
+  fact (it feeds the "or seitan" offer, the pantry hint and the pinned pill next time). They were out
+  of tofu, so seitan came home: that is not a universal substitute. So the link is written only when
+  the person ticks "Offer seitan next time marinated tofu is missing", which starts off and clears
+  when the pick changes (`resolveShoppingSubstitutes`' `rememberedIds`). An already-recorded pair is
+  never rewritten, so its note and ratio survive.
 - **"Bought before" is `purchaseCount`, not a history of off-list buys** (`incidentalPicks`). The app
   records no such history, and a staple missing from the list this week is exactly what tends to come
   home anyway. The label says what it is.
