@@ -1,3 +1,11 @@
+// The Pantry screen: what the app thinks is in the kitchen, sorted by
+// freshness, with one field that finds and adds, a tap to mark something out,
+// drag between freezer, fridge and aisles, recipes for what's about to go, and
+// scans that fill it (see the note above the component). One component of
+// ~870 lines, so grep a landmark:
+//
+//   ==== <name> ====        the section banners through the logic half
+//   makeStyles              styles, at the bottom
 import React, { useCallback, useMemo, useState, useEffect } from 'react';
 import {
   View,
@@ -154,6 +162,7 @@ import { useFabBottom } from '../components/Fab';
  * inventory, and stay out.
  */
 export function KitchenScreen() {
+  // ==== layout, theme, settings and navigation ====
   const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
@@ -165,6 +174,7 @@ export function KitchenScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
 
+  // ==== the grocery store ====
   const items = useGroceryStore(useShallow(s => s.items));
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const addToPantry = useGroceryStore(s => s.addToPantry);
@@ -201,6 +211,7 @@ export function KitchenScreen() {
     endTrip();
   }, [endTrip]);
 
+  // ==== recipes and leftovers ====
   const recipes = useRecipeStore(useShallow(s => s.recipes));
 
   const leftovers = useLeftoverStore(useShallow(s => s.leftovers));
@@ -214,6 +225,7 @@ export function KitchenScreen() {
   const reopenLeftover = useLeftoverStore(s => s.reopenLeftover);
   const deleteLeftover = useLeftoverStore(s => s.deleteLeftover);
 
+  // ==== local state (the field, sheets, scan, receipt, review) ====
   const { query, clear: clearQuery, props: filterField } = useFilterField();
   const [openItemId, setOpenItemId] = useState<string | null>(null);
   // Which field the sheet opens on. Pantry for every row tap (see the sheet
@@ -225,6 +237,7 @@ export function KitchenScreen() {
   const [reviewOpen, setReviewOpen] = useState(false);
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
 
+  // ==== what is in the kitchen (entries, sections, drag rows) ====
   // This screen never unmounts once visited (the drawer's tabs stay mounted
   // under `enableScreens(false)`), so a use-by day computed once at mount
   // would go stale the same way an unmemoized LeftoversCard row would — see
@@ -275,6 +288,7 @@ export function KitchenScreen() {
     [sections, entries, dropNonce, query]
   );
 
+  // ==== recipes for what is about to go ====
   // What to cook with what's dying. Off `useUpEntries` rather than the whole
   // kitchen, so this answers "what saves the spinach" and not "what could I
   // make for dinner" — the recipe list is already the second question.
@@ -293,6 +307,7 @@ export function KitchenScreen() {
     [suggestions]
   );
 
+  // ==== the list header rows ====
   // Inside the list's header rather than fixed above it, so it scrolls away
   // with the content it's about. The screen already spends its fixed height on
   // the hub pills and the find-or-add field; two more permanent rows would push
@@ -353,6 +368,7 @@ export function KitchenScreen() {
     </View>
   );
 
+  // ==== links in (an entry, the pantry review) ====
   // The grocery/leftover "Use up X" tasks' own link (resetToKitchen in
   // navigationRef.ts) and Today's kitchen context row both name one entry to
   // open straight to, rather than leaving the plain list for the user to find
@@ -413,6 +429,7 @@ export function KitchenScreen() {
     setReviewOpen(true);
   }, [reviewStamp, handledReviewStamp]);
 
+  // ==== find or add, and marking out ====
   // Read live from the store by id so the sheet's caption follows an edit it
   // just made.
   const openLeftover = useMemo(
@@ -459,6 +476,7 @@ export function KitchenScreen() {
     if (changed > 0) haptics.success();
   };
 
+  // ==== writing a drop ====
   // The other half of a drop (`resolveKitchenDrop` is the first): each move is
   // written through the same store action the row's own sheet writes, so a
   // drag says exactly what the freezer toggle and the aisle picker already
@@ -498,6 +516,7 @@ export function KitchenScreen() {
     haptics.success();
   };
 
+  // ==== barcode scan and receipt ====
   // The scan sheet only ever hands back which rows to check off a list
   // (itemIds) and which to mint or promote (toAdd) — shopping-list concepts
   // that don't apply here. What this screen wants out of a session is just
@@ -689,6 +708,7 @@ export function KitchenScreen() {
     ) haptics.success();
   };
 
+  // ==== row renderers ====
   const renderEntry = (entry: KitchenEntry, drag: () => void, isActive: boolean) => {
     // Three levels for four states, the fridge card's own rule: `fresh` reads
     // as ordinary tertiary text, so most of a kitchen stays quiet and the one

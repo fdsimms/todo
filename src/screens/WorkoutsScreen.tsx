@@ -1,3 +1,9 @@
+// The Workouts area: history (with Health's workouts mixed in), routines,
+// programs and the exercise library (see the file note under the imports and
+// docs/arch/workouts.md). One component of ~800 lines, so grep a landmark:
+//
+//   ==== <name> ====        the section banners through the logic half
+//   makeStyles              styles, at the bottom
 import React, { useCallback, useMemo, useState } from 'react';
 import { Alert, FlatList, StyleSheet, Text, TouchableOpacity, View, type GestureResponderEvent } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -157,12 +163,14 @@ const figuresLabel = (date: string, stats: SessionStat[]) =>
   [date, ...stats.map(s => (s.value === null ? s.unit : `${s.value} ${s.unit}`))].join(', ');
 
 export function WorkoutsScreen() {
+  // ==== environment ====
   const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
+  // ==== store reads and the gym you are at ====
   const sessions = useWorkoutStore(s => s.sessions);
   const setCounts = useWorkoutStore(s => s.setCounts);
   const volumeKgBySession = useWorkoutStore(s => s.volumeKgBySession);
@@ -180,6 +188,7 @@ export function WorkoutsScreen() {
     const id = startingGymId(defaultGymId, gyms, sessions);
     return gyms.find(g => g.id === id) ?? null;
   }, [defaultGymId, gyms, sessions]);
+  // ==== local state (editors, group sheet, row menus, folds) ====
   // Which routine the editor is on (null for a new one), kept through the
   // close so the sheet doesn't retitle itself while it slides away.
   const [editorOpen, setEditorOpen] = useState(false);
@@ -204,6 +213,7 @@ export function WorkoutsScreen() {
   const [foldedGroups, setFoldedGroups] = useState<string[]>([]);
   const [archivedOpen, setArchivedOpen] = useState(false);
 
+  // ==== local state (header menu, import, export, gyms, log past) ====
   // The menu off the header's "…", the file picked to import (kept through the
   // sheet's close so it doesn't empty while it slides away) and the export sheet.
   const [menuOpen, setMenuOpen] = useState(false);
@@ -216,6 +226,7 @@ export function WorkoutsScreen() {
   const workoutUnit = useSettingsStore(s => s.workoutUnit);
   const loadSets = useWorkoutStore(s => s.loadSets);
 
+  // ==== the view, and searching the library ====
   const [view, setView] = useState<View_>('history');
   // Only the library has a field, so only its list listens for the keyboard.
   const keyboardScroll = useKeyboardInsetScroll<FlatList>({
@@ -239,6 +250,7 @@ export function WorkoutsScreen() {
     setDetailOpen(true);
   }, []);
 
+  // ==== history ====
   // The workout whose page is open. Its sets are read before the page opens,
   // so it never draws a frame without them.
   const [openSessionId, setOpenSessionId] = useState<string | null>(null);
@@ -305,6 +317,7 @@ export function WorkoutsScreen() {
     );
   }, [styles, setCounts, volumeKgBySession, workoutUnit, colors, openSession]);
 
+  // ==== exercise rows ====
   const renderExercise = useCallback(({ item }: { item: CatalogExercise }) => (
     <TouchableOpacity
       style={[styles.row, styles.exerciseRow]}
@@ -325,6 +338,7 @@ export function WorkoutsScreen() {
   // Clears the start button floating in the corner, so the last row can scroll out from under it.
   const listBottom = { paddingBottom: tabBarHeight + FAB_SIZE + spacing.xl };
 
+  // ==== routine and group actions ====
   const openEditor = useCallback((routineId: string | null, newInGroup: string | null = null) => {
     haptics.tap();
     setEditorRoutineId(routineId);
@@ -376,6 +390,7 @@ export function WorkoutsScreen() {
     });
   }, []);
 
+  // ==== the routine list ====
   const sections = useMemo(() => routineSections(routines, routineGroups), [routines, routineGroups]);
   const routineItems = useMemo<RoutineListItem[]>(() => {
     const out: RoutineListItem[] = sections.ungrouped.map(routine => ({ kind: 'routine', key: routine.id, routine }));
@@ -528,6 +543,7 @@ export function WorkoutsScreen() {
     );
   }, [styles, colors, exercises, openEditor, startWorkout, fitLine, toggleHeader, archiveRoutine, deleteRoutine, mirroringMode]);
 
+  // ==== programs ====
   const openProgram = useCallback((programId: string | null) => {
     haptics.tap();
     setEditorProgramId(programId);
@@ -615,6 +631,7 @@ export function WorkoutsScreen() {
     </View>
   );
 
+  // ==== CSV import and export ====
   // Reads the file before opening the review sheet, so a file that isn't a
   // Strong or Hevy export is told so here, with what to do, rather than as an
   // empty sheet. In demo mode the import writes to the demo database like any
@@ -653,6 +670,7 @@ export function WorkoutsScreen() {
       .map(session => ({ session, sets: loadSets(session.id) })),
   [sessions, loadSets]);
 
+  // ==== the live workout card ====
   const liveDone = (liveSets ?? []).filter(x => x.completedAt !== null).length;
   const liveCard = live ? (
     <View style={styles.liveCard}>

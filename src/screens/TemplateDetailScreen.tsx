@@ -1,3 +1,12 @@
+// One template's page: its items in a list you reorder and group, added by
+// dragging the add button, edited, selected in bulk, nested and applied. One
+// component of ~550 lines of logic and render, so grep a landmark:
+//
+//   ==== <name> ====        the section banners through the logic half
+//   makeStyles              styles, at the bottom
+//
+// AddItemFabWithDropLabel above it, and TemplateItemRow and TemplateGroupHeader
+// below it, are its parts.
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import {
   View,
@@ -85,6 +94,7 @@ function AddItemFabWithDropLabel({
 }
 
 export function TemplateDetailScreen() {
+  // ==== environment ====
   const insets = useSafeAreaInsets();
   const fabBottom = useFabBottom();
   const navigation = useNavigation();
@@ -93,6 +103,7 @@ export function TemplateDetailScreen() {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
+  // ==== store reads ====
   const templates = useTemplateStore(s => s.templates);
   const templatesInitialized = useTemplateStore(s => s.initialized);
   const deleteItem = useTemplateStore(s => s.deleteItem);
@@ -109,6 +120,7 @@ export function TemplateDetailScreen() {
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const allTags = useTaskStore(useShallow(s => s.allTags()));
 
+  // ==== local state (apply, sheets, item editor, selection, groups) ====
   const [applyTemplateId, setApplyTemplateId] = useState<string | null>(null);
   // Named straight off a successful apply — this screen has no task list of
   // its own to land the created tasks in, so without this the run leaves no
@@ -143,7 +155,7 @@ export function TemplateDetailScreen() {
 
   const template = templates.find(t => t.id === templateId) ?? null;
 
-  // ——— Dragging the add button into the list ———————————————————————————
+  // ==== dragging the add button into the list ====
   //
   // Same gesture as Templates and Projects. Items are one flat run here (a
   // group is a header drawn above its first member, not a row of its own), so
@@ -162,6 +174,7 @@ export function TemplateDetailScreen() {
   // can't place a later item.
   const pendingDropRef = useRef<Extract<FabDropIntent, { kind: 'insert' }> | null>(null);
 
+  // ==== the template and what it references ====
   const applyTemplateObj = templates.find(t => t.id === applyTemplateId) ?? null;
 
   const templatesById = useMemo(() => new Map(templates.map(t => [t.id, t])), [templates]);
@@ -170,6 +183,7 @@ export function TemplateDetailScreen() {
     [template, templatesById]
   );
 
+  // ==== nested templates ====
   const openNestedPicker = useCallback((replacingItemId: string | null) => {
     haptics.tap();
     setNestedPickerReplacingId(replacingItemId);
@@ -183,6 +197,7 @@ export function TemplateDetailScreen() {
     (navigation as any).push('TemplateDetail', { templateId: refTemplateId });
   }, [navigation]);
 
+  // ==== placing a dropped item ====
   /**
    * Move a just-added item to the spot the add button was dropped on.
    *
@@ -230,6 +245,7 @@ export function TemplateDetailScreen() {
     },
   };
 
+  // ==== choosing a nested template, and closing ====
   const handleNestedTemplateSelected = (target: TaskTemplate) => {
     if (!templateId) return;
     if (nestedPickerReplacingId) {
@@ -257,6 +273,7 @@ export function TemplateDetailScreen() {
 
   const onClose = () => navigation.goBack();
 
+  // ==== closing when the template is deleted ====
   // The settings sheet can delete the template out from under this screen,
   // which would otherwise leave an empty list under a blank title. Waits for
   // the sheet to close first so the dismiss and the pop don't animate at once,
@@ -266,6 +283,7 @@ export function TemplateDetailScreen() {
     if (templatesInitialized && !template && settingsTemplate === null) navigation.goBack();
   }, [templatesInitialized, template, settingsTemplate, navigation]);
 
+  // ==== item and bulk actions ====
   const handleDeleteItem = (itemId: string) => {
     if (!templateId) return;
     confirmDelete({
@@ -311,6 +329,7 @@ export function TemplateDetailScreen() {
     exitSelectionMode();
   };
 
+  // ==== groups ====
   const toggleGroupCollapsed = (groupId: string) => {
     haptics.tap();
     animateLayout();
@@ -335,6 +354,7 @@ export function TemplateDetailScreen() {
     });
   };
 
+  // ==== row layout ====
   // Which item in each group renders the header above it (first occurrence in
   // current order), and which items are hidden while their group is collapsed.
   const { firstOfGroup, hiddenByCollapse } = useMemo(() => {

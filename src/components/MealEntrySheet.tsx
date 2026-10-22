@@ -1,3 +1,13 @@
+// The action sheet for one planned meal: move, re-slot, copy or rename it,
+// settle its recipe's choices, overrides and scale, mark it cooked or log it,
+// and reach its recipe, list and prep tasks. Every tap applies at once and the
+// sheet stays open. One component, mostly render, so grep a landmark:
+//
+//   ==== <name> ====        the section banners through its short logic half
+//   makeStyles              styles, at the bottom
+//
+// Past the render banner, the landmarks are the accessibilityLabel strings on
+// each row.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Keyboard,
@@ -265,6 +275,7 @@ export function MealEntrySheet({
   onLogLeftovers,
   onFinishLeftover, onSetCookTask, hasCookTask = false, onClose,
 }: Props) {
+  // ==== theme, layout and scroll fade ====
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -272,9 +283,11 @@ export function MealEntrySheet({
   const { height: windowHeight } = useWindowDimensions();
   const cooked = !!entry?.cookedAt;
 
+  // ==== sheet motion ====
   const sheet = useSheetMotion(visible);
   const { translateY, backdropOpacity } = sheet;
 
+  // ==== opening, and renaming in place ====
   const [editingTitle, setEditingTitle] = useState(false);
   const [draftTitle, setDraftTitle] = useState(title);
 
@@ -294,6 +307,7 @@ export function MealEntrySheet({
     else setDraftTitle(title);
   };
 
+  // ==== dismissing ====
   const dismiss = (after?: () => void) => {
     Keyboard.dismiss();
     sheet.hide(() => {

@@ -1,3 +1,12 @@
+// The recipe box: search, filters, meal-type sections, the Up next shelf, bulk
+// selection, and the add menu (see the file note under the imports). One
+// component (RecipesList) of ~1,050 lines, so grep a landmark:
+//
+//   ==== <name> ====        the section banners through the logic half
+//   makeStyles              styles, at the bottom
+//
+// RecipeRow below it is the row; RecipesScreen near the bottom is the two-pane
+// wrapper.
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
@@ -188,6 +197,7 @@ interface RecipePane {
 const RecipePaneContext = createContext<RecipePane | null>(null);
 
 function RecipesList() {
+  // ==== layout, navigation and opening a recipe in the pane ====
   const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const fabBottom = useFabBottom();
@@ -208,6 +218,7 @@ function RecipesList() {
     else navigation.navigate('RecipeDetail', params);
   }, [paneSelect, navigation]);
 
+  // ==== store reads, Up next and sort settings ====
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   // Recipes another recipe shares a name with lead their subtitle with the book.
   const sharedNames = useMemo(() => sharedRecipeNameKeys(recipes), [recipes]);
@@ -239,6 +250,7 @@ function RecipesList() {
   const setRecipeSort = useSettingsStore(s => s.setRecipeSortOption);
   const recipeLovedOnly = useSettingsStore(s => s.recipeLovedOnly);
   const setRecipeLovedOnly = useSettingsStore(s => s.setRecipeLovedOnly);
+  // ==== folded sections and the active trip ====
   // Which meal-type sections are folded shut — see the doc comment above.
   // Kept as a Set locally, same wrapper shape TodayScreen uses around its own
   // collapsedCategories, so callers can toggle with a Set-updater instead of
@@ -283,6 +295,7 @@ function RecipesList() {
     endTrip();
   }, [endTrip]);
 
+  // ==== local state (planning, search, filters, sheets, selection) ====
   const { planRecipe, offerPrepTasks, earliestUnplannedSlotToday } = usePlanMeal();
   // The recipe whose day is being picked; null closes the sheet.
   const [planningRecipe, setPlanningRecipe] = useState<Recipe | null>(null);
@@ -320,6 +333,7 @@ function RecipesList() {
     paintProps,
   } = useRowSelection();
 
+  // ==== new recipes and the add menu ====
   // The mealType a drop landed on, read once the recipe comes back from the
   // name sheet. Left at null for a plain drop or the Untagged section — a
   // freshly created recipe already has mealType: null, so there's nothing to
@@ -388,6 +402,7 @@ function RecipesList() {
     else startBlankRecipe();
   }, [startBlankRecipe]);
 
+  // ==== pages shared in from another app ====
   // A page saved from another app's share sheet. Only the front of the queue is
   // offered at a time — see SharedLinkBanner.
   const sharedUrls = useSharedLinkStore(useShallow(s => s.pendingUrls));
@@ -414,6 +429,7 @@ function RecipesList() {
     openDetail({ recipeId });
   }, [dismissSharedLink, openDetail]);
 
+  // ==== tags, filters, sort and grouping ====
   // The whole box's vocabulary, and the counts beside each chip. Derived from
   // the recipes rather than stored (see Recipe.tags), so the row holds exactly
   // the tags that are on something right now.
@@ -463,6 +479,7 @@ function RecipesList() {
     [groupByMealType, query, visible, recipeSort]
   );
 
+  // ==== draggable sections and drop targets ====
   // The row list ReorderableList drags. Kept as its own state (rather than
   // deriving it inline from `grouped`) so a drop can show its settled layout
   // immediately — see resolveRecipeMealTypeDrop — instead of flashing the raw
@@ -519,7 +536,7 @@ function RecipesList() {
     return map;
   }, [draggableData]);
 
-  // ——— Dragging the add button into a section ————————————————————————————
+  // ==== dragging the add button into a section ====
   //
   // Same FabDropZoneProvider/FabDropZone wiring ProjectsScreen uses over its
   // own category-sectioned list: no stacks or pinning here either, so a drop
@@ -559,6 +576,7 @@ function RecipesList() {
     },
   };
 
+  // ==== pantry counts and row descriptions ====
   // Computed once for the whole box rather than per row render — same
   // classifyPlanned pass RecipeToListSheet/AddMealsToListSheet already run,
   // just reduced to a count per recipe. Keyed on what a count reads and
@@ -581,6 +599,7 @@ function RecipesList() {
     return map;
   }, [recipes, pantryCounts, sharedNames, libraryById]);
 
+  // ==== bulk actions ====
   // "Love"/"Unlove" flips direction based on the selection itself, the
   // same way the grocery bulk bar's Check/Uncheck does — a selection that's
   // already all loved has nothing left to love.
@@ -642,6 +661,7 @@ function RecipesList() {
     });
   };
 
+  // ==== row handlers, rows and the Up next shelf ====
   const openRecipe = useCallback((recipe: Recipe) => {
     haptics.tap();
     openDetail({ recipeId: recipe.id });

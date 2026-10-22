@@ -1,3 +1,10 @@
+// The editor for a project: name, notes, categories, task defaults, dates
+// (deadline, event, away), review nudges, pause, people, links and order, with
+// the offer to shift dated tasks when the dates move. One component of ~1,350
+// lines, so grep a landmark rather than reading it start to finish:
+//
+//   ==== <name> ====        the section banners through the logic half
+//   makeStyles              styles, at the bottom
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
@@ -6,6 +13,7 @@ import {
   StyleSheet,
   Alert,
 } from 'react-native';
+import { DESTINATION_MAX_LENGTH } from '../utils/tripEvents';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Project, ProjectLink, TaskFieldDefaults } from '../types';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
@@ -107,6 +115,7 @@ interface Props {
 }
 
 export function ProjectEditor({ visible, project: liveProject, isNew, onClose }: Props) {
+  // ==== setup and the project held while closing ====
   // Held past the host clearing it, so the `return null` below can't tear the
   // presented sheet out of the tree while it is still closing: every host
   // clears the project in the same commit that lowers `visible`, and that
@@ -125,6 +134,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
   const categories = useProjectCategoryStore(useShallow(s => s.categories));
   const addCategory = useProjectCategoryStore(s => s.addCategory);
 
+  // ==== form state (title, notes, categories, task defaults) ====
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   // The notes field's measured content height, same fix as PersonEditor: the
@@ -141,6 +151,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
   const setLastAction = useTaskStore(s => s.setLastAction);
   const updateTask = useTaskStore(s => s.updateTask);
   const taskCategories = useCategoryStore(useShallow(s => s.categories));
+  // ==== dates (deadline, event, away span, destination) ====
   const [deadline, setDeadline] = useState<Date | null>(null);
   const [showDeadlinePicker, setShowDeadlinePicker] = useState(false);
   // Project.eventDate: the day it's all for. Its own row, beside the deadline.
@@ -161,6 +172,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
   const [pickedDestination, setPickedDestination] = useState<string | null>(null);
   const setPlaceSuggestionsEnabled = useSettingsStore(s => s.setPlaceSuggestionsEnabled);
   const placeSuggestions = usePlaceSuggestions(destination, visible && awayStart !== null && destination !== pickedDestination);
+  // ==== settings and grocery list reads ====
   // The lists to nominate from, and whether there is a Groceries tab at all to
   // nominate one for. With the kitchen switched off this row would name a
   // screen the user cannot reach.
@@ -179,6 +191,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
   // Rule 2 of simplified mode: a project that already has a trip keeps its
   // rows, whatever the switch says.
   const awayFieldShown = featureShown('awayDates', simpleMode, awayStart !== null);
+  // ==== form state (nudges, flags, pause, people, links, order) ====
   // Collapsed to the chosen category until tapped, like every other editor.
   const [categoryOpen, setCategoryOpen] = useState(false);
   // The merged nudge control: one chosen answer, plus the cadence the third of
@@ -207,6 +220,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
   const [groupOnToday, setGroupOnToday] = useState(false);
   const people = usePersonStore(useShallow(s => s.people.filter(p => !p.archived)));
 
+  // ==== link drafts and the away list ====
   // Returns the typed link to the list, or says why it can't.
   const addLinkDraft = () => {
     if (!linkDraft.trim()) return;
@@ -248,6 +262,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
     setAwayListOpen(false);
   };
 
+  // ==== filling the form from the project ====
   // Keyed on `visible` too, now that the held project survives a close: a
   // reopen on the same row has to reseed from it rather than show the last
   // opening's state.
@@ -291,6 +306,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
     setCadenceOpen(false);
   }, [visible, project]);
 
+  // ==== small helpers ====
   const closeCategory = () => { animateLayout(); setCategoryOpen(false); };
 
   // The cadence is stored in days; the picker shows it as a count and a unit.
@@ -303,6 +319,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
   const pausedUntilKey = (): string | null =>
     planning ? PLANNING_PAUSE_KEY : pausedUntil ? dayKeyOf(pausedUntil) : null;
 
+  // ==== task defaults and the date shift ====
   /**
    * The departure this sheet opened on, and where it has just been moved to.
    *
@@ -350,6 +367,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
   const [shiftFrom, setShiftFrom] = useState<Date | null>(null);
   const [shiftTo, setShiftTo] = useState<Date | null>(null);
 
+  // ==== committing edits ====
   /**
    * Writes everything on the sheet. Split from the close because Mark complete
    * and Archive also end the session, and they used to close without it: every
@@ -452,6 +470,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
     return null;
   };
 
+  // ==== save and close ====
   const saveAndClose = (skipLinkCheck = false) => {
     // A new project can't be saved without a name. It used to close anyway,
     // and the host then deleted the unnamed row along with the deadline,
@@ -495,6 +514,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
     onClose();
   };
 
+  // ==== cancel, project actions, category options and lock ====
   // The name as it reads on screen right now, for the confirms below: the
   // snapshot's title is blank for a project fresh from quick add, and stale
   // for one renamed in this session.
@@ -820,7 +840,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
               onChangeText={setDestination}
               placeholder="e.g. Lisbon"
               placeholderTextColor={colors.textTertiary}
-              maxLength={80}
+              maxLength={DESTINATION_MAX_LENGTH}
               accessibilityLabel="Where you’re going"
             />
           </View>
