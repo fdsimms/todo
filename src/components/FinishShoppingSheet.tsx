@@ -1029,11 +1029,12 @@ export function FinishShoppingSheet({
                             // walk down it and covers the Finish button.
                             returnKeyType="done"
                             inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
-                            // "Price" rather than a bare "0.00" when nothing
-                            // is known: a figure in the placeholder's grey
-                            // reads as a price already saved (CLAUDE.md's
-                            // placeholder rule), and $0.00 is a real price.
-                            placeholder={known !== null ? `e.g. ${priceToInput(known)}` : 'Price'}
+                            // Empty when nothing is known: a bare figure in the
+                            // placeholder's grey reads as a price already saved
+                            // (CLAUDE.md's placeholder rule), and the symbol and
+                            // row name already say what the field is, so a
+                            // repeated "Price" on every unpriced row was noise.
+                            placeholder={known !== null ? `e.g. ${priceToInput(known)}` : undefined}
                             placeholderTextColor={colors.textTertiary}
                             maxLength={PRICE_INPUT_MAX_LENGTH}
                             accessibilityLabel={`Price for ${row.name}`}
