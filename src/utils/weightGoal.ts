@@ -45,14 +45,16 @@
  * function is what `useSettingsStore.syncWeightGoalCalorieTarget` and
  * `WeightGoalSheet`'s Save both call to keep the two in step automatically.
  * It is scoped to the plain calorie figure alone — macros stay manual, same
- * as before — and it always uses the multiplier basis (never the measured
- * Apple Health one), since the measured figure needs a live read with nobody
- * necessarily there to ask for it.
+ * as before — and it uses the multiplier basis (never the measured Apple
+ * Health one), since that figure needs a live read with nobody necessarily
+ * there to ask for it. The one exception is a goal set to the log basis
+ * (`maintenanceBasis: 'log'`), which the caller computes from data already on
+ * the device and passes in; see `src/utils/adaptiveExpenditure.ts`.
  */
 
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { dayKeyToDate } from './dateUtils';
-import { calorieBudget, type BodyProfile } from './energyBudget';
+import { budgetFromMaintenance, calorieBudget, type BodyProfile } from './energyBudget';
 import { MAX_WEIGHT_KG, unitToKg, type WeightPoint, type WeightUnit } from './weightLog';
 
 /**
@@ -79,6 +81,15 @@ export interface WeightGoal {
    * together for the callers that need a signed figure.
    */
   rateKgPerWeek: number;
+  /**
+   * Where the maintenance figure under the calorie target comes from:
+   * `'profile'` (the body profile and an activity level, the default) or
+   * `'log'`, what was eaten against how the weight moved
+   * (`src/utils/adaptiveExpenditure.ts`). Choosing `'log'` is the opt-in to
+   * that calculation, and the automatic target follows it once there is
+   * enough data, falling back to the profile until then.
+   */
+  maintenanceBasis?: 'profile' | 'log';
 }
 
 /**
@@ -150,8 +161,18 @@ export function autoCalorieTargetKcal(
   profile: BodyProfile,
   currentKg: number | null,
   today: Date,
+  /**
+   * The maintenance figure measured from the log (`measuredExpenditure`), or
+   * null when there isn't one yet. Read only when the goal asks for the log
+   * basis; until it has a figure the profile's estimate stands, so choosing
+   * "Your log" never leaves the target without one.
+   */
+  measuredMaintenanceKcal: number | null = null,
 ): number | null {
   if (goal === null) return null;
+  if (goal.maintenanceBasis === 'log' && measuredMaintenanceKcal !== null) {
+    return budgetFromMaintenance(measuredMaintenanceKcal, profile.sex, signedRateKgPerWeek(goal))?.proposedKcal ?? null;
+  }
   const weightKg = currentKg ?? goal.startKg;
   const budget = calorieBudget(profile, weightKg, signedRateKgPerWeek(goal), today);
   return budget?.proposedKcal ?? null;
@@ -393,6 +414,9 @@ export function parseWeightGoal(raw: string | null | undefined): WeightGoal | nu
       // somebody meant, where a nonsense *weight* is a typo with nothing to
       // salvage. Same split parseWeightInput draws between the two.
       rateKgPerWeek: Math.min(rate, MAX_RATE_KG_PER_WEEK),
+      // Anything but a recognised 'log' reads as the default, so a goal
+      // written before this existed keeps the profile basis it always had.
+      ...(parsed.maintenanceBasis === 'log' ? { maintenanceBasis: 'log' as const } : {}),
     };
   } catch {
     return null;

@@ -398,6 +398,7 @@ file: the two maps are indexes, not write-ups.
 | what appears on Today / Later / Unscheduled / Inbox | `src/utils/visibilityUtils.ts` + the selectors in `useTaskStore` |
 | any task create/complete/defer/delete | `src/store/useTaskStore.ts` |
 | the task edit sheet | `src/components/TaskEditor.tsx` |
+| photos and files on a task | `src/utils/taskFiles.ts` (the rules) + `src/utils/taskFileSync.ts` (they travel with the recipe photos, routed by the `task-` name prefix) + `TaskAttachmentStrip`. A file is never deleted with its task, for the undo's sake; the launch sweep takes one no task names. Journal photos are the device-only sibling, `src/utils/journalPhotos.ts` |
 | picking a task's category, anywhere | `src/components/CategoryPicker.tsx` (+ `src/utils/categoryPicker.ts`) |
 | a task row — swipes, checkbox, expansion | `src/components/TaskItem.tsx` |
 | quick-add text parsing (`"pay rent tmrw 5p #home"`) | `src/utils/parseTaskInput.ts`, `parseNaturalDate.ts`. What a line offers after the date, `#word` and `@name` (priority, project, link, phone, timer, target and the rest) is picked in `src/utils/titleSuggestion.ts`, which `QuickAddModal` and `TaskEditor` both call: a new title parse goes there, not into either component |
@@ -458,7 +459,7 @@ file: the two maps are indexes, not write-ups.
 | colors, spacing, animation | `src/theme/index.ts`, `src/theme/ThemeContext.tsx` |
 | pinning, the Pinned Tasks block | `pinnedBlock` in `src/screens/TodayScreen.tsx` — see Pinning below |
 | bulk selection | `src/hooks/useTaskSelection.ts` + `src/components/BulkActionBar.tsx` |
-| reminders | `src/utils/notifications.ts` |
+| reminders | `src/utils/notifications.ts`. A reminder at a place is `src/utils/placeReminders.ts`, armed through a system location trigger in `todo-eventkit-bridge` (expo-notifications has none), so the app itself never reads a location in the background |
 | how long completed tasks are kept | `src/utils/retention.ts` + `purgeOldCompletedTasks` in `useTaskStore` |
 | how you're feeling, and what that looks like against your tasks | `src/utils/moodLog.ts` + `src/utils/moodInsights.ts` + `src/utils/moodTasks.ts` — see `docs/arch/mood-log.md` |
 | reading the mood log back — the whole history, one symptom, or a file for a doctor | `src/utils/moodHistory.ts` + `src/utils/moodExport.ts` — see `docs/arch/mood-log.md` |
@@ -469,7 +470,7 @@ file: the two maps are indexes, not write-ups.
 | a medication's limit, its supply, recording a dose by any route, and the summary for a visit | `src/utils/medicationSettings.ts` (limit and supply; the count is derived from doses, never decremented) + `src/utils/doseRecording.ts` (every hand-recorded dose goes through `recordDose`) + `src/utils/medicationSummary.ts` — see `docs/arch/mood-log.md` |
 | how you're feeling against what you ate | `foodDayInputs` in `src/utils/nutritionStats.ts` + `nutrientInsight`/`foodMoodContrasts` in `src/utils/moodInsights.ts` — see `docs/arch/mood-log.md`, whose two rules about a too-thinly-logged day come first |
 | a symptom against what you ate | `symptomFoodContrasts` + `symptomFoodDays` in `src/utils/moodInsights.ts`, rendered on `SymptomDetailScreen` — see `docs/arch/mood-log.md`. Scoped to one symptom on purpose |
-| the people you want to keep up with, and their birthdays | `src/store/usePersonStore.ts` + `src/utils/birthdayTasks.ts` — see `docs/arch/people.md` |
+| the people you want to keep up with, their birthdays and other dates | `src/store/usePersonStore.ts` + `src/utils/birthdayTasks.ts` + `src/utils/personDateTasks.ts` — see `docs/arch/people.md` |
 | filling a person in from the contact book | `src/utils/contactsImport.ts` + `src/utils/contactsAccess.ts` — see `docs/arch/people.md` |
 | what demo mode shows | `src/utils/demoSeed.ts` — see Demo data below |
 | the switch that hides the advanced half of the app | `src/utils/simpleMode.ts` — see `docs/arch/simple-mode.md` |
@@ -506,6 +507,7 @@ file: the two maps are indexes, not write-ups.
 | whether a planned meal counts as eaten, in either screen | `src/utils/mealLogCoverage.ts`. The join is the **(day, slot) pair**, not `FoodLogEntry.mealPlanEntryId` (which only one route into the log stamps); read its header before narrowing it |
 | writing down what you ate, and a day's totals | `src/utils/foodLog.ts` + `src/store/useFoodLogStore.ts` (+ `src/utils/nutritionTargets.ts` for the figure a total is read against) |
 | correcting an entry rather than deleting and relogging it | `foodLogEntryEdit` in `src/utils/foodLog.ts` (which entries can reopen) + `reviseEntry` in `useFoodLogStore` (the Health retract-then-rewrite) + `editing` on `FoodLogEntrySheet`; an estimate is scaled through `estimateAmountPatch` + `EstimateAmountSheet` — see `docs/arch/health-data.md`. An amount is re-measured against the food's own panel, never multiplied out of the stored helping |
+| a fast, its goal, and the card on the Food log | `src/utils/fasting.ts` + `src/store/useFastStore.ts` + `FastingCard`/`FastSheet` — see `docs/arch/health-data.md`, "Fasting". The start is never inferred from the log, nothing grades a fast, and the card shows only while one runs or on the day one ended |
 | a glass of water | `src/utils/waterLog.ts` — one food log entry a day, stepped up and down; `isWaterEntry` is a derived rule, not a column, and `waterUnit` is display only |
 | saying which catalog row a scanned or logged food is | `CatalogLinkPicker` + `scanLinkTarget` in `src/utils/scanResolve.ts` + `catalogPanelWrite` in `src/utils/foodNutrition.ts`. An entry's `itemId` is provenance only: re-pointing it never rewrites `FoodLogEntry.nutrition` |
 | a food weighed raw or cooked (rice, pasta, meat), and logging it in either state | `src/utils/cookedState.ts` + `FoodNutrition.cooking` + `scalePanelToAmount`/`foodUnitOptionsFor` in `src/utils/foodLog.ts` — see `docs/arch/health-data.md`. One panel plus a typed or weighed ratio; a raw/cooked amount on a food with no ratio is refused rather than read as plain grams |
@@ -556,6 +558,7 @@ file: the two maps are indexes, not write-ups.
 | writing tasks to the system calendar | `src/utils/calendarSync.ts` (+ `deadlineCalendarSync.ts`, `mealCalendarSync.ts`). Meal and deadline events go through `writeAllDayEvent` (`src/utils/calendarEventLink.ts`) and deletes through `deleteLinkedEvent`, both of which keep and fall back to the calendar server's id |
 | reading free/busy out of the system calendar | `src/utils/calendarBusy.ts` + `src/store/useCalendarStore.ts` |
 | pulling tasks out of a project | `src/utils/projectPull.ts` |
+| a project page drawn as a board, a column per section | `src/utils/projectBoard.ts` (columns, where a drop lands, what it writes) + `src/components/ProjectBoard.tsx` + `Project.boardView`. A second drawing of the same order the list draws, never a second order: a drop writes through the list's own actions (`addExistingToGroup`, `removeFromGroup`, `reorderGroupChildren`, `reorderProjectItems`) |
 | a project or section that is a list (a wish list, a packing list), and the shorter editor its items open in | `src/utils/listMode.ts`. A section can override its project in either direction (`TaskGroup.checklist` / `keepsTasks`), so every reader goes through `sectionIsList`/`listItemFinder` rather than one field. Turning List on rewrites nothing, and items stay ordinary tasks |
 | what a task is waiting on, and what it blocks | `src/utils/blocking.ts` + `src/utils/blockerRegistry.ts`. A task can wait on several, so **read blockers only through `blockerIdsOf` / `liveBlockersOf` / `isBlocked`, and write them only through `blockerFields`**: `blockedById` alone is just the first, and a finished blocker holds nothing |
 | how loaded a day is, and lightening an overloaded one | `src/utils/dayLoad.ts` + `src/utils/deloadPlan.ts` |

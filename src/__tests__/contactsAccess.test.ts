@@ -144,7 +144,7 @@ describe('searchContacts', () => {
       email: 'd@example.com',
       birthdayMonth: 3,
       birthdayDay: 14,
-      birthYear: 1992, address: null,
+      birthYear: 1992, address: null, dates: [],
     }]);
   });
 
@@ -234,7 +234,7 @@ describe('fetchLimitedContacts', () => {
       email: null,
       birthdayMonth: null,
       birthdayDay: null,
-      birthYear: null, address: null,
+      birthYear: null, address: null, dates: [],
     }]);
   });
 

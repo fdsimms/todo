@@ -53,6 +53,7 @@ import {
   hasBirthday,
   nextBirthday,
 } from '../utils/birthdayTasks';
+import { nextPersonDate } from '../utils/personDateTasks';
 import {
   daysSinceTogether,
   describeDaysSince,
@@ -493,6 +494,21 @@ export function PersonDetailScreen() {
             </Text>
           </View>
         )}
+
+        {/* A person's other dates, the same line as the birthday's and the
+            same rule: the date, never a countdown (docs/arch/people.md). */}
+        {(person.dates ?? []).map(date => {
+          const next = nextPersonDate(date, today);
+          if (!next || !date.label.trim()) return null;
+          return (
+            <View key={date.id} style={styles.summary}>
+              <Text style={styles.summaryLabel}>{date.label.trim()}</Text>
+              <Text style={styles.summaryValue}>
+                {next.toLocaleDateString(undefined, date.yearly ? { month: 'long', day: 'numeric' } : { month: 'long', day: 'numeric', year: 'numeric' })}
+              </Text>
+            </View>
+          );
+        })}
 
         {person.notes.trim().length > 0 && (
           <View style={styles.notesCard}>

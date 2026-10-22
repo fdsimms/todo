@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Platform, View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import type { Person } from '../types';
+import type { Person, PersonDate } from '../types';
 import { TITLE_MAX_LENGTH } from '../types';
 import { usePersonStore } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
@@ -10,6 +10,8 @@ import { ContactPickerSheet } from './ContactPickerSheet';
 import { InlineAction } from './InlineAction';
 import { fillFromContactPatch } from '../utils/contactsImport';
 import { BirthdayPicker } from './BirthdayPicker';
+import { PersonDateRows } from './PersonDateRows';
+import { cleanPersonDates } from '../utils/personDateTasks';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
@@ -106,6 +108,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
   const [birthYear, setBirthYear] = useState<number | null>(null);
   const [birthdayTaskOptOut, setBirthdayTaskOptOut] = useState(false);
   const [birthdayGiftTaskOptOut, setBirthdayGiftTaskOptOut] = useState(false);
+  const [dates, setDates] = useState<PersonDate[]>([]);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [faxNumber, setFaxNumber] = useState('');
   const [address, setAddress] = useState('');
@@ -152,6 +155,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
     setBirthYear(person.birthYear);
     setBirthdayTaskOptOut(person.birthdayTaskOptOut);
     setBirthdayGiftTaskOptOut(person.birthdayGiftTaskOptOut);
+    setDates(person.dates ?? []);
     setPhoneNumber(formatPhoneInput(person.phoneNumber ?? ''));
     setFaxNumber(formatPhoneInput(person.faxNumber ?? ''));
     setAddress(person.address ?? '');
@@ -187,6 +191,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
       birthYear,
       birthdayTaskOptOut,
       birthdayGiftTaskOptOut,
+      dates: cleanPersonDates(dates),
       phoneNumber: phoneNumber.trim() || null,
       faxNumber: faxNumber.trim() || null,
       address: address.trim() || null,
@@ -281,7 +286,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
             // saved by Done and can be undone by editing it back.
             onPick={draft => {
               const patch = fillFromContactPatch(
-                { phoneNumber: phoneNumber.trim() || null, email: email.trim() || null, birthdayMonth, birthdayDay, birthYear, address: address.trim() || null },
+                { phoneNumber: phoneNumber.trim() || null, email: email.trim() || null, birthdayMonth, birthdayDay, birthYear, address: address.trim() || null, dates },
                 draft
               );
               if (patch.phoneNumber) setPhoneNumber(formatPhoneInput(patch.phoneNumber));
@@ -292,6 +297,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
                 setBirthdayDay(patch.birthdayDay);
                 setBirthYear(patch.birthYear ?? null);
               }
+              if (patch.dates) setDates(patch.dates);
             }}
             onClose={() => setShowContactPicker(false)}
           />
@@ -346,7 +352,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
 
       {kind === 'individual' && (
       <>
-      <Text style={styles.groupLabel}>BIRTHDAY</Text>
+      <Text style={styles.groupLabel}>DATES</Text>
       <View style={styles.sectionCard}>
         <EditorRow
           icon="gift-outline"
@@ -390,6 +396,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
             </TouchableOpacity>
           </>
         )}
+        <PersonDateRows dates={dates} onChange={setDates} />
       </View>
 
       <Text style={styles.groupLabel}>KEEPING IN TOUCH</Text>

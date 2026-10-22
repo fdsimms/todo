@@ -9,6 +9,7 @@ jest.mock('../../../src/store/useTaskStore', () => ({ useTaskStore: {} }));
 jest.mock('../../../src/store/useRecipeStore', () => ({ useRecipeStore: {} }));
 jest.mock('../../../src/store/useMealPlanStore', () => ({ useMealPlanStore: {} }));
 jest.mock('../../../src/store/useStepTimerStore', () => ({ useStepTimerStore: {} }));
+jest.mock('../../../src/store/useFastStore', () => ({ useFastStore: {} }));
 jest.mock('../../../src/store/useFocusStore', () => ({ useFocusStore: {} }));
 jest.mock('../../../src/utils/releaseBlocks', () => ({ applyKeyScan: () => ({ outcome: 'unknown' }) }));
 jest.mock('../../../src/store/useWidgetCompletionStore', () => ({ useWidgetCompletionStore: {} }));

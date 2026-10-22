@@ -6,6 +6,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useProjectActions } from '../hooks/useProjectActions';
+import { useProjectStore } from '../store/useProjectStore';
 import type { Project } from '../types';
 
 interface Props {
@@ -53,15 +54,18 @@ function MenuRow({ card, icon, label, hint, onPress, destructive, checked, acces
 }
 
 /**
- * The project page's overflow ("...") menu: the one-shot actions on the page
- * itself: finish, file away, reuse and delete are the same actions the
- * editor's bottom cards run, through `useProjectActions`.
+ * The project page's overflow ("...") menu: how the page is drawn (a list or a
+ * board, `Project.boardView`), then the one-shot actions on the page itself:
+ * finish, file away, reuse and delete are the same actions the editor's bottom
+ * cards run, through `useProjectActions`.
  */
 export function ProjectPageMenu({ visible, onClose, anchor, project }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const card = useCardSheet();
   const actions = useProjectActions(project);
+  const updateProject = useProjectStore(s => s.updateProject);
+  const board = !!project.boardView;
 
   return (
     <CardSheet
@@ -73,6 +77,13 @@ export function ProjectPageMenu({ visible, onClose, anchor, project }: Props) {
       popoverWidth={300}
       scrimLabel="Close menu"
     >
+      <MenuRow card={card}
+        icon={board ? 'list-outline' : 'grid-outline'}
+        label={board ? 'View as list' : 'View as board'}
+        hint={board ? 'Shows the tasks as one list again' : 'A column for each section, with tasks dragged between them'}
+        onPress={() => updateProject(project.id, { boardView: !board })}
+      />
+      <View style={styles.sep} />
       <MenuRow card={card}
         icon={project.completed ? 'refresh-outline' : 'checkmark-circle-outline'}
         label={project.completed ? 'Reopen' : 'Mark complete'}

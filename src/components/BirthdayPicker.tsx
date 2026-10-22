@@ -59,6 +59,10 @@ interface Props {
   onConfirm: (month: number, day: number, year: number | null) => void;
   onClear: () => void;
   onCancel: () => void;
+  /** The header. A person's other dates use this picker too (`PersonDateRows`). */
+  title?: string;
+  /** The line under the header. */
+  hint?: string;
 }
 
 
@@ -70,7 +74,10 @@ const PLACEHOLDER_YEAR = 2024;
 
 const MIN_DATE = new Date(1900, 0, 1);
 
-export function BirthdayPicker({ visible, month, day, year, onConfirm, onClear, onCancel }: Props) {
+export function BirthdayPicker({
+  visible, month, day, year, onConfirm, onClear, onCancel,
+  title = 'Birthday', hint = 'The year is optional and isn’t used to calculate an age.',
+}: Props) {
   const colors = useColors();
   const { isDark, shadows } = useTheme();
   const { width: windowWidth } = useWindowDimensions();
@@ -128,11 +135,11 @@ export function BirthdayPicker({ visible, month, day, year, onConfirm, onClear, 
         <Animated.View style={[styles.card, shadows.popover, { opacity: enterAnim, transform: [{ scale: cardScale }] }]}>
           <View style={styles.header}>
             <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={onCancel} minWidth={28} />
-            <Text style={styles.headerTitle}>Birthday</Text>
+            <Text style={styles.headerTitle}>{title}</Text>
             <SheetHeaderButton label={BUTTON_LABEL.save} onPress={confirm} minWidth={28} />
           </View>
 
-          <HelpText style={styles.hint}>The year is optional and isn’t used to calculate an age.</HelpText>
+          <HelpText style={styles.hint}>{hint}</HelpText>
 
           {pickerReady && (
             <DateTimePicker

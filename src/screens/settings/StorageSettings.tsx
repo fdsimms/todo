@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Alert } from 'react-native';
 import { useDemoStore } from '../../store/useDemoStore';
 import { dbOptimizeStorage, dbStorageStats } from '../../db/database';
-import { availableDiskBytes, recipeImagesBytes } from '../../utils/recipePhoto';
+import { availableDiskBytes, recipeImagesBytes, storedFolderBytes } from '../../utils/recipePhoto';
 import {
   describeAreas,
   formatBytes,
@@ -17,7 +17,11 @@ import { makeSettingsStyles } from './settingsStyles';
 
 function readStats(): StorageStats | null {
   try {
-    return { ...dbStorageStats(), photoBytes: recipeImagesBytes() };
+    return {
+      ...dbStorageStats(),
+      photoBytes: recipeImagesBytes(),
+      otherFileBytes: { journal: storedFolderBytes('journal-photos'), task: storedFolderBytes('task-files') },
+    };
   } catch {
     return null;
   }
@@ -65,7 +69,9 @@ export function StorageSettings() {
   };
 
   const unavailable = 'Unavailable while demo mode is on';
-  const total = stats ? stats.databaseBytes + stats.photoBytes : null;
+  const total = stats
+    ? stats.databaseBytes + stats.photoBytes + (stats.otherFileBytes?.journal ?? 0) + (stats.otherFileBytes?.task ?? 0)
+    : null;
 
   let compactHint: string;
   if (demoActive) compactHint = unavailable;
@@ -99,6 +105,31 @@ export function StorageSettings() {
         hint="Saved on this device, outside the database"
         value={stats ? formatBytes(stats.photoBytes) : undefined}
       />
+      {/* Only once there are any: most people will never add one. */}
+      {!!stats?.otherFileBytes?.journal && (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="storageJournalPhotos"
+            icon="book-outline"
+            label="Journal photos"
+            hint="Kept on this device and in backups, never on iCloud"
+            value={formatBytes(stats.otherFileBytes.journal)}
+          />
+        </>
+      )}
+      {!!stats?.otherFileBytes?.task && (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="storageTaskFiles"
+            icon="attach-outline"
+            label="Task photos and files"
+            hint="Saved on this device, outside the database"
+            value={formatBytes(stats.otherFileBytes.task)}
+          />
+        </>
+      )}
       <View style={styles.sep} />
       <SettingsRow
         entryId="optimizeStorage"

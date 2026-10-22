@@ -75,7 +75,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "dundundun checks today’s weather where you are, so a rule you’ve set up (like sunscreen on a sunny day) can add its task. It also finds sunrise and sunset times for a task timed by the sun when you tap to save your location. If you turn on Suggest in mood log for a saved place, it also checks whether you’re there when you start a new mood entry. It never reads your location in the background."
+          "locationWhenInUsePermission": "dundundun checks today’s weather where you are, so a rule you’ve set up (like sunscreen on a sunny day) can add its task. It also finds sunrise and sunset times for a task timed by the sun when you tap to save your location. If you turn on Suggest in mood log for a saved place, it also checks whether you’re there when you start a new mood entry. For a task set to remind you at a place, iPhone itself watches for that place and shows the reminder. The app never reads your location in the background."
         }
       ],
       [
@@ -93,14 +93,14 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "dundundun reads a recipe from a photo you’ve already taken, so you don’t have to retype a cookbook page.",
-          "cameraPermission": "dundundun reads what you point the camera at: a recipe from a cookbook page or clipping, a store receipt, or the barcode on a grocery item as you unpack it."
+          "photosPermission": "dundundun uses a photo you choose: a recipe page to read instead of retyping it, or a picture to keep with a journal entry or a task.",
+          "cameraPermission": "dundundun uses the camera for what you point it at: a recipe page, a store receipt or a barcode to read, a meal to estimate, or a photo to keep with a journal entry or a task."
         }
       ],
       [
         "expo-camera",
         {
-          "cameraPermission": "dundundun reads what you point the camera at: a recipe from a cookbook page or clipping, a store receipt, or the barcode on a grocery item as you unpack it.",
+          "cameraPermission": "dundundun uses the camera for what you point it at: a recipe page, a store receipt or a barcode to read, a meal to estimate, or a photo to keep with a journal entry or a task.",
           "recordAudioAndroid": false
         }
       ],

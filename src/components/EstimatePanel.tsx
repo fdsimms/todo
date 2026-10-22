@@ -16,6 +16,8 @@ import { usePendingEstimateStore } from '../store/usePendingEstimateStore';
 import { MAX_PENDING_ESTIMATES, isQueueableFailure, type PendingEstimate } from '../utils/estimateQueue';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { describeAIError, estimateMealNutrition } from '../services/aiSuggestions';
+import type { RecipePhoto } from '../utils/recipePhoto';
+import { FadeInImage } from './FadeInImage';
 import {
   ESTIMATE_AMOUNT_MAX_LENGTH,
   ESTIMATE_DESCRIPTION_MAX_LENGTH,
@@ -227,6 +229,13 @@ interface Props {
   /** The × in the panel's own header. */
   onDismiss: () => void;
   /**
+   * A photo of the plate ("Photograph your meal"). Sent with every ask, re-asks
+   * included, and enough to ask with when nothing is typed. Save for later is
+   * not offered with one: the queue keeps a description, and quietly keeping
+   * the words without the photo would be a different meal.
+   */
+  photo?: RecipePhoto | null;
+  /**
    * When given, the host draws the Log button (pinned, so a tall estimate can't
    * push it off screen) and this panel doesn't. Called with what to draw while
    * there is an estimate to log, and with null when there isn't or the panel
@@ -243,7 +252,7 @@ export interface EstimateLogAction {
   run: () => void;
 }
 
-export function EstimatePanel({ description: rawDescription, onDescriptionChange, slot, at, mealPlanEntryId, onPickRecipe, onLogged, onQueued, reviewing = null, onDismiss, onLogAction }: Props) {
+export function EstimatePanel({ description: rawDescription, onDescriptionChange, slot, at, mealPlanEntryId, onPickRecipe, onLogged, onQueued, reviewing = null, onDismiss, onLogAction, photo = null }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -485,7 +494,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
     setQueueableText(null);
     setSavedRecipeId(null);
     try {
-      const result = await estimateMealNutrition(text, context);
+      const result = await estimateMealNutrition(text, context, photo ?? undefined);
       if (token !== runTokenRef.current) return null;
       setEstimate(result);
       if (fresh) setQuestions(result.questions);
@@ -498,7 +507,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
       // than the whole card going blank over one bad request.
       if (fresh) setEstimate(null);
       setError(describeAIError(e));
-      setQueueableText(fresh && isQueueableFailure(e) ? text : null);
+      setQueueableText(fresh && !photo && isQueueableFailure(e) ? text : null);
       return false;
     } finally {
       if (token === runTokenRef.current) setLoading(false);
@@ -506,7 +515,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
   };
 
   const handleEstimate = () => {
-    if (!description.trim() || loading) return;
+    if ((!description.trim() && !photo) || loading) return;
     haptics.tap();
     Keyboard.dismiss();
     setAnswers({});
@@ -1287,7 +1296,29 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
 
           {showEstimateRow && !offersFirst && renderEstimateRow(false)}
 
-          {!trimmed && !estimate && (
+          {!!photo && (
+            <View style={styles.photoRow}>
+              <FadeInImage
+                source={{ uri: photo.sourceUri }}
+                style={styles.photoThumb}
+                accessibilityLabel="Your photo of the meal"
+              />
+              <View style={styles.offerMain}>
+                <Text style={styles.offerName}>Your photo</Text>
+                <Text style={styles.offerMeta}>
+                  {loading && !estimate
+                    ? 'Reading what’s on the plate…'
+                    : 'Type anything it can’t show, like a sauce or what’s inside, then estimate again.'}
+                </Text>
+                {!loading && !!error && !estimate && !trimmed && (
+                  <InlineAction label="Try again" onPress={handleEstimate} style={styles.offerChange} />
+                )}
+              </View>
+              {loading && !estimate && <ActivityIndicator size="small" color={colors.accent} />}
+            </View>
+          )}
+
+          {!trimmed && !estimate && !photo && (
             <Text style={styles.listHint}>
               Type what you ate. Foods you’ve logged before show up here, and new ones
               can be estimated.
@@ -1368,7 +1399,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
                 </View>
               )}
               {/* What the figures claim, stated rather than implied. */}
-              <Text style={styles.claim}>{describeEstimate(estimate)}</Text>
+              <Text style={styles.claim}>{describeEstimate(estimate, { fromPhoto: !!photo })}</Text>
               <LimitImpactLines impacts={limitImpacts} style={styles.limitImpacts} />
 
               <TouchableOpacity
@@ -1682,6 +1713,11 @@ function makeStyles(colors: Colors) {
       justifyContent: 'center',
     },
     estimateTitle: { color: colors.accent, fontSize: font.md, fontWeight: fontWeight.medium },
+    photoRow: {
+      flexDirection: 'row', alignItems: 'center', gap: spacing.smd,
+      backgroundColor: colors.bgSecondary, borderRadius: radius.md, padding: spacing.smd,
+    },
+    photoThumb: { width: 56, height: 56, borderRadius: radius.sm, backgroundColor: colors.bgTertiary },
     cardBusy: { opacity: 0.5 },
     resultHead: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
     estimateTag: { color: colors.textSecondary, fontSize: font.xs },

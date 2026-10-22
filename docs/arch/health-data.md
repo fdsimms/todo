@@ -1004,6 +1004,24 @@ phantom entry would corrupt the day's totals. And **a missed completion logs not
 saved meal that has since been deleted: that case falls back to the manual offer, so the tick is
 never a silent no-op. Deleting the task leaves its entries, since the food was eaten.
 
+### A photo of the plate is a description in another form
+
+"Photograph your meal" on the add sheet sends a photo to the same
+`estimateMealNutrition` call as a typed description, on the same switch
+(`nutritionEstimate`), into the same panel. Everything above holds unchanged:
+the model proposes, the panel's Log is the confirmation, and the result is
+`source: 'estimated'` for good. Three things are particular to it:
+
+- **The photo rides every ask.** An answer or a typed amount re-asks with the
+  photo attached, so a refinement is about the meal in the photo and not a
+  description of it. Words typed beside it outrank it about what the food is.
+- **The portion is the weakest claim, so it is said.** `describeEstimate` adds
+  "The portion is judged from your photo." after the basis and confidence, and
+  `grams` stays null like any estimate.
+- **It can't be saved for later.** The queue below holds a description, and
+  keeping the words without the photo would quietly be a different meal, so the
+  offer isn't made for a photo (`EstimatePanel`'s `photo`).
+
 ### A meal described with no signal waits as a description, never as an entry
 
 `utils/estimateQueue.ts`, `usePendingEstimateStore`, `PendingEstimatesCard`. When
@@ -2183,6 +2201,65 @@ real sample in somebody's Health record if anything about it is wrong**, so
 rule. "Writing what a task names: a logged nutrient", "The second write: body
 mass" and "The third write: a logged meal" above carry the arguments in full;
 read them rather than a summary before adding one.
+
+## Maintenance measured from the log (`adaptiveExpenditure.ts`)
+
+**The second carve-out from "nothing derives anything from a weight", asked
+for, and fenced the way the weight goal's is.** "Your log" on the weight goal's
+basis works out what a body burns from what was eaten against how the weight
+moved: the average calories over fully logged days in the last four weeks,
+minus the slope of a least-squares line through the weigh-ins, converted at the
+same energy per kilogram the goal's rate uses. Four posts hold it:
+
+- **Picking it is the opt-in, and it is stored on the goal**
+  (`WeightGoal.maintenanceBasis`). Nothing computes it otherwise, and unlike the
+  Apple Health basis (chosen per sitting, never remembered) it is saved,
+  because the automatic target has to follow it.
+- **It proposes a maintenance figure and nothing else.** The target is
+  `budgetFromMaintenance` with the goal's own rate and `MIN_PROPOSED_KCAL`, so
+  this basis can't produce a number the profile basis couldn't.
+- **It shows its working and refuses rather than guesses.** The sheet says the
+  days and weigh-ins counted, the average eaten and where the trend line
+  started and ended. Under 14 fully logged days, 3 weigh-ins or a two-week span
+  there is no figure, only what is missing, and a figure outside what a body
+  produces is refused. Until there is a figure the activity level stands, in
+  the sheet and in the automatic target alike.
+- **It reads only what is already on the device**: the food log, and the weight
+  series the health store already holds in memory. The thin-day rules are
+  `foodDayInputs`', today is left out, and nothing is stored.
+
+It already counts activity, so the sheet says to leave Add active calories off
+with it, or a busy day counts twice.
+
+## Fasting (`Fast`, `src/utils/fasting.ts`)
+
+A fast is started and ended by hand on the Food log and read against a goal in
+hours. Health has no type for it, so it is the app's own record (`fasts`), and
+it travels with the health record (`HEALTH_SYNC_TABLES`) beside the food log it
+is read with. Four decisions in it are load-bearing:
+
+- **The start is never inferred.** The food log's times are when an entry was
+  logged, not when it was eaten, so the last meal logged is offered as a start
+  ("From last meal, 7:45 PM") and taken only on a tap.
+- **Nothing grades a fast.** One bar colour under and past the goal, no
+  streak, no "broken". Reaching the goal changes the line under the clock and
+  sends one notification (`scheduleFastGoal`) that rings through quiet hours,
+  like the medication notice, because it answers a question about a clock the
+  person set.
+- **The card costs nothing for somebody who never fasts.** It shows while a
+  fast runs and through the day one ended on (`showsFastingCard`); starting one
+  is in the Food log's options menu, not a setting to turn on.
+- **The MCP reads fasts and never starts one** (`list_fasts`): the timer and its
+  notification live on the phone, and a fast an agent started could ring.
+- **The Lock Screen shows it on the running-timer activity** (`fastRun` in
+  `liveActivity.ts`, behind the same switch as every other timer): a countdown
+  to the goal, then a count up from the start under "Goal reached", since the
+  fast goes on until it is ended. The swap at the goal changes the run, so the
+  sync hook sets a timeout for it; nothing in a store changes at that moment.
+  Done ends the fast (`fast:` in `deepLinks.ts`), and no Swift knows it is one.
+- **Past fasts is a list, not a chart** (`FastHistorySheet`, `pastFasts`): each
+  ended fast with its start, goal and length, newest first, and a tap to edit.
+  No average or trend, for the reason nothing grades a single fast.
 
 ## One thing worth knowing before scoping the background half
 

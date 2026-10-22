@@ -4,12 +4,20 @@ import {
   dbUpdateJournalEntry,
   dbDeleteJournalEntry,
 } from '../db/database';
+import { deleteStoredFile } from '../utils/recipePhoto';
 
 jest.mock('../db/database', () => ({
   dbGetAllJournalEntries: jest.fn(() => []),
   dbInsertJournalEntry: jest.fn(),
   dbUpdateJournalEntry: jest.fn(),
   dbDeleteJournalEntry: jest.fn(),
+}));
+
+jest.mock('../utils/recipePhoto', () => ({
+  deleteStoredFile: jest.fn(),
+  listStoredFiles: jest.fn(() => []),
+  storedFileOnDevice: jest.fn(() => true),
+  storedFileUri: jest.fn((folder: string, name: string) => `file:///${folder}/${name}`),
 }));
 
 jest.mock('../utils/dateUtils', () => ({
@@ -124,5 +132,44 @@ describe('tags and people', () => {
   it('ignores an unknown id', () => {
     state().setEntryMeta('nope', { tags: ['x'] });
     expect(dbUpdateJournalEntry).not.toHaveBeenCalled();
+  });
+});
+
+describe('photos', () => {
+  it('takes an entry that is only photos', () => {
+    const entry = state().addEntry('journal', '   ', undefined, null, { photos: ['a.jpg'] })!;
+    expect(entry).toMatchObject({ text: '', photos: ['a.jpg'] });
+  });
+
+  it('lets the words go from an entry that has a photo, and not from one that has none', () => {
+    const withPhoto = state().addEntry('journal', 'Words', undefined, null, { photos: ['a.jpg'] })!;
+    state().updateEntry(withPhoto.id, '');
+    expect(state().entries.find(e => e.id === withPhoto.id)!.text).toBe('');
+
+    const plain = state().addEntry('journal', 'Only words')!;
+    state().updateEntry(plain.id, '');
+    expect(state().entries.find(e => e.id === plain.id)!.text).toBe('Only words');
+  });
+
+  it('deletes the file a new photo list drops, and keeps the rest', () => {
+    const entry = state().addEntry('journal', 'Hike', undefined, null, { photos: ['a.jpg', 'b.jpg'] })!;
+    state().setEntryMeta(entry.id, { photos: ['b.jpg', 'c.jpg'] });
+    expect(state().entries[0].photos).toEqual(['b.jpg', 'c.jpg']);
+    expect(deleteStoredFile).toHaveBeenCalledTimes(1);
+    expect(deleteStoredFile).toHaveBeenCalledWith('journal-photos', 'a.jpg');
+  });
+
+  it('leaves the photos alone when only the tags change', () => {
+    const entry = state().addEntry('journal', 'Hike', undefined, null, { photos: ['a.jpg'] })!;
+    state().setEntryMeta(entry.id, { tags: ['outdoors'] });
+    expect(state().entries[0].photos).toEqual(['a.jpg']);
+    expect(deleteStoredFile).not.toHaveBeenCalled();
+  });
+
+  it('deletes an entry\'s photos with it', () => {
+    const entry = state().addEntry('journal', 'Hike', undefined, null, { photos: ['a.jpg', 'b.jpg'] })!;
+    state().removeEntry(entry.id);
+    expect(deleteStoredFile).toHaveBeenCalledWith('journal-photos', 'a.jpg');
+    expect(deleteStoredFile).toHaveBeenCalledWith('journal-photos', 'b.jpg');
   });
 });

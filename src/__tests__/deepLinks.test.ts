@@ -27,6 +27,8 @@ const mockOpenQuickAddEvent = jest.fn();
 const mockEnqueueWidgetCompletion = jest.fn();
 const mockStopCookTimer = jest.fn();
 const mockRemoveStepTimer = jest.fn();
+const mockEndFast = jest.fn();
+let mockFasts: Array<{ id: string; endedAt: string | null }> = [];
 const mockStopPrepTimer = jest.fn();
 const mockFinishCookForRecipe = jest.fn();
 const mockEntryById = jest.fn();
@@ -63,6 +65,9 @@ jest.mock('../store/useMealPlanStore', () => ({
 }));
 jest.mock('../store/useStepTimerStore', () => ({
   useStepTimerStore: { getState: () => ({ remove: mockRemoveStepTimer }) },
+}));
+jest.mock('../store/useFastStore', () => ({
+  useFastStore: { getState: () => ({ fasts: mockFasts, endFast: mockEndFast }) },
 }));
 // What a workout link does is workoutLinkActions.test.ts's; here, only that
 // the right link reaches it.
@@ -792,6 +797,19 @@ describe('openInAppUrl', () => {
   // Skipping it, and opening workout mode again when it was the live
   // workout's (the dismiss-all every link runs had closed it), is
   // skipRestFromLink's; see workoutLinkActions.test.ts.
+  it('ends the running fast for its fast: key, and only that one', () => {
+    mockFasts = [{ id: 'f1', endedAt: null }];
+    expect(openInAppUrl('dundundun://stopTimer?key=fast:f1')).toBe(true);
+    expect(mockEndFast).toHaveBeenCalledTimes(1);
+    mockEndFast.mockClear();
+    // Ended from the app since the activity was drawn: nothing left to end.
+    mockFasts = [{ id: 'f1', endedAt: '2026-10-22T08:00:00.000Z' }];
+    openInAppUrl('dundundun://stopTimer?key=fast:f1');
+    openInAppUrl('dundundun://stopTimer?key=fast:other');
+    expect(mockEndFast).not.toHaveBeenCalled();
+    expect(mockStopCookTimer).not.toHaveBeenCalled();
+  });
+
   it('skips a workout rest for a rest: key, and moves nothing else on', () => {
     expect(openInAppUrl('dundundun://stopTimer?key=rest:r1')).toBe(true);
     expect(mockSkipRestFromLink).toHaveBeenCalledWith('r1');

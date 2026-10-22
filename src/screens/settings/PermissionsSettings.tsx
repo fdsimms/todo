@@ -59,17 +59,17 @@ const PERMISSIONS: PermissionSpec[] = [
   },
   {
     entryId: 'permLocation', icon: 'location-outline', label: 'Location',
-    hint: 'Checks the forecast for weather rules and finds sunrise and sunset for tasks timed by the sun',
+    hint: 'Checks the forecast for weather rules, finds sunrise and sunset for tasks timed by the sun, and lets iPhone remind you of a task at a place',
     getStatus: getLocationPermission, requestAccess: requestLocationPermission, iosOnly: true,
   },
   {
     entryId: 'permCamera', icon: 'camera-outline', label: 'Camera',
-    hint: 'Scans a barcode, and photographs a receipt, a nutrition label or a recipe',
+    hint: 'Scans a barcode, and photographs a receipt, a label, a recipe, a meal, or a picture for a journal entry or a task',
     getStatus: getCameraPermission, requestAccess: requestCameraPermission,
   },
   {
     entryId: 'permPhotos', icon: 'images-outline', label: 'Photos',
-    hint: 'Picks an existing photo of a recipe or a product from your library',
+    hint: 'Picks an existing photo from your library: a recipe, a product, or a picture for a journal entry or a task',
     getStatus: getPhotoLibraryPermission, requestAccess: requestPhotoLibraryPermission,
   },
   {

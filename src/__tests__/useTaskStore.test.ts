@@ -120,6 +120,7 @@ jest.mock('../db/database', () => ({
   dbGetAllMilestones: jest.fn().mockReturnValue([]),
   dbGetAllCookware: jest.fn().mockReturnValue([]),
   dbGetAllCopyFlags: jest.fn().mockReturnValue([]),
+  dbGetAllFasts: jest.fn().mockReturnValue([]),
   // Workouts ride the same fan-out, right after the copy flags.
   dbGetAllExercises: jest.fn().mockReturnValue([]),
   dbGetAllWorkoutRoutines: jest.fn().mockReturnValue([]),
@@ -325,6 +326,9 @@ jest.mock('../store/useSettingsStore', () => ({
 }));
 
 jest.mock('../utils/notifications', () => ({
+  rescheduleAllPlaceReminders: jest.fn(() => Promise.resolve()),
+  scheduleFastGoal: jest.fn(() => Promise.resolve()),
+  cancelFastGoal: jest.fn(() => Promise.resolve()),
   scheduleTaskReminder: jest.fn().mockResolvedValue(undefined),
   cancelTaskReminder: jest.fn().mockResolvedValue(undefined),
   scheduleQuotaNudges: jest.fn().mockResolvedValue(undefined),
@@ -5667,6 +5671,107 @@ describe('checkReachOutTasks', () => {
       expect(row(task.id).personIds.sort()).toEqual(['p1', 'p2']);
       usePersonGroupStore.setState({ groups: [] });
     });
+  });
+});
+
+// ─── birthday opt-out ───────────────────────────────────────────────────────
+
+describe('deleting a birthday task', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+
+  const settings = (overrides: Record<string, unknown> = {}) => ({
+    dayResetTime: '00:00',
+    birthdayTasks: true,
+    birthdayLeadDays: 7,
+    birthdayTaskCategory: null,
+    birthdayGiftTasks: true,
+    birthdayGiftLeadDays: 14,
+    birthdayGiftTaskCategory: null,
+    newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+    titleRules: [],
+    collapsedCategories: [],
+    ...overrides,
+  });
+
+  // A birthday three days out: inside both lead windows.
+  const soon = new Date(Date.now() + 3 * 86_400_000);
+  const person = (): Person => ({
+    id: 'p1', name: 'Sarah', kind: 'individual', nickname: '', notes: '', sortOrder: 1,
+    archived: false, archivedAt: null, createdAt: new Date().toISOString(),
+    birthdayMonth: soon.getMonth() + 1, birthdayDay: soon.getDate(), birthYear: null,
+    birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false, pinned: false,
+    phoneNumber: null, email: null, linkUrl: null,
+    cadenceDays: 0, nudgeOptIn: false, cadenceSetAt: null,
+    reachOutDeclinedAt: null, reachOutOfferDeclinedAt: null, askAbout: '',
+    backfillDismissedFields: [],
+    groupId: null,
+    location: null, faxNumber: null, address: null,
+  });
+
+  const live = (kind: 'birthday' | 'birthdayGift') =>
+    useTaskStore.getState().tasks.filter(t => t.generatedKind === kind && !t.completed && !t.archived);
+
+  beforeEach(() => {
+    useSettingsStore.getState.mockReturnValue(settings());
+    useTaskStore.setState({ tasks: [] });
+    usePersonStore.setState({ people: [person()], initialized: true });
+  });
+
+  // The bug this guards: nothing wrote birthdayTaskOptOut on a delete, so the
+  // next pass saw the same birthday in its window and recreated the task.
+  it('records the opt-out, so the next pass does not hand it back', () => {
+    useTaskStore.getState().checkBirthdayTasks();
+    expect(live('birthday')).toHaveLength(1);
+
+    useTaskStore.getState().deleteTask(live('birthday')[0].id);
+    expect(usePersonStore.getState().people[0].birthdayTaskOptOut).toBe(true);
+
+    useTaskStore.getState().checkBirthdayTasks();
+    expect(live('birthday')).toHaveLength(0);
+  });
+
+  it('undo clears the opt-out again', () => {
+    useTaskStore.getState().checkBirthdayTasks();
+    useTaskStore.getState().deleteTask(live('birthday')[0].id);
+    useTaskStore.getState().lastAction!.undo();
+
+    expect(usePersonStore.getState().people[0].birthdayTaskOptOut).toBe(false);
+  });
+
+  it('a deleted gift task opts out of the gift task only', () => {
+    useTaskStore.getState().checkBirthdayGiftTasks();
+    expect(live('birthdayGift')).toHaveLength(1);
+
+    useTaskStore.getState().bulkDeleteTasks([live('birthdayGift')[0].id]);
+    const after = usePersonStore.getState().people[0];
+    expect(after.birthdayGiftTaskOptOut).toBe(true);
+    expect(after.birthdayTaskOptOut).toBe(false);
+
+    useTaskStore.getState().checkBirthdayGiftTasks();
+    expect(live('birthdayGift')).toHaveLength(0);
+  });
+
+  // The same opt-out, one date at a time, for a person's other dates.
+  it('turns a deleted date task\'s reminder off, and only that date\'s', () => {
+    const anniversary = { id: 'd1', label: 'Anniversary', month: soon.getMonth() + 1, day: soon.getDate(), year: null, yearly: true, remind: true };
+    const met = { ...anniversary, id: 'd2', label: 'Day we met' };
+    usePersonStore.setState({ people: [{ ...person(), dates: [anniversary, met] }], initialized: true });
+
+    useTaskStore.getState().checkPersonDateTasks();
+    const dateTasks = useTaskStore.getState().tasks.filter(t => t.generatedKind === 'personDate' && !t.completed);
+    expect(dateTasks.map(t => t.title).sort()).toEqual(['Sarah: Anniversary', 'Sarah: Day we met']);
+
+    useTaskStore.getState().deleteTask(dateTasks.find(t => t.title === 'Sarah: Anniversary')!.id);
+    expect(usePersonStore.getState().people[0].dates!.map(d => d.remind)).toEqual([false, true]);
+
+    useTaskStore.getState().checkPersonDateTasks();
+    expect(useTaskStore.getState().tasks.filter(t => t.generatedKind === 'personDate').map(t => t.title))
+      .toEqual(['Sarah: Day we met']);
+
+    useTaskStore.getState().lastAction!.undo();
+    expect(usePersonStore.getState().people[0].dates!.map(d => d.remind)).toEqual([true, true]);
   });
 });
 

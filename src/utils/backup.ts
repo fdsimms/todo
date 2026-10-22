@@ -106,6 +106,13 @@ export interface Backup {
   tables: Record<string, BackupRow[]>;
   /** Recipe photo bytes, base64-encoded and keyed by filename — see the note above. */
   images: Record<string, string>;
+  /**
+   * The other stored files (`StoredFileFolder`): a journal entry's photos, a
+   * task's attachments. Keyed by folder, then by the file name the row holds,
+   * for the reason `images` is keyed by filename. Optional: a backup taken
+   * before these existed has none. See `storedFileBackup.ts`.
+   */
+  storedFiles?: Record<string, Record<string, string>>;
 }
 
 export type ParseResult =
@@ -133,7 +140,7 @@ export function redactSettings(rows: BackupRow[]): BackupRow[] {
 
 export function buildBackup(
   tables: Record<string, BackupRow[]>,
-  opts: { appVersion: string; exportedAt: Date; images?: Record<string, string> }
+  opts: { appVersion: string; exportedAt: Date; images?: Record<string, string>; storedFiles?: Record<string, Record<string, string>> }
 ): Backup {
   const safe: Record<string, BackupRow[]> = {};
   for (const [table, rows] of Object.entries(tables)) {
@@ -145,6 +152,7 @@ export function buildBackup(
     exportedAt: opts.exportedAt.toISOString(),
     tables: safe,
     images: opts.images ?? {},
+    ...(opts.storedFiles && Object.keys(opts.storedFiles).length > 0 ? { storedFiles: opts.storedFiles } : {}),
   };
 }
 
@@ -216,6 +224,14 @@ export function parseBackup(text: string): ParseResult {
     images = raw.images as Record<string, string>;
   }
 
+  let storedFiles: Record<string, Record<string, string>> | undefined;
+  if (raw.storedFiles !== undefined) {
+    const ok = isPlainObject(raw.storedFiles) && Object.values(raw.storedFiles).every(folder =>
+      isPlainObject(folder) && Object.values(folder).every(v => typeof v === 'string'));
+    if (!ok) return { ok: false, error: 'That backup’s photo and file data is damaged.' };
+    storedFiles = raw.storedFiles as Record<string, Record<string, string>>;
+  }
+
   return {
     ok: true,
     backup: {
@@ -224,6 +240,7 @@ export function parseBackup(text: string): ParseResult {
       exportedAt: typeof raw.exportedAt === 'string' ? raw.exportedAt : '',
       tables,
       images,
+      ...(storedFiles ? { storedFiles } : {}),
     },
   };
 }

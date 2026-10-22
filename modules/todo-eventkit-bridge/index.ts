@@ -32,6 +32,18 @@ interface TodoEventKitBridgeNativeModule {
     originLongitude: number | null,
   ): Promise<number>;
   eventCoordinates?(eventIds: string[]): Promise<unknown>;
+  schedulePlaceNotification?(
+    id: string,
+    taskId: string,
+    title: string,
+    body: string,
+    latitude: number,
+    longitude: number,
+    radius: number,
+    onEntry: boolean,
+  ): Promise<boolean>;
+  cancelPlaceNotifications?(ids: string[]): Promise<boolean>;
+  pendingNotificationIds?(prefix: string): Promise<string[]>;
 }
 
 // requireNativeModule throws when the module isn't linked (Android, web,
@@ -206,5 +218,56 @@ export async function eventCoordinatesRaw(eventIds: string[]): Promise<Record<st
   } catch (error) {
     console.warn('[todo-eventkit-bridge] event coordinate read failed', error);
     return {};
+  }
+}
+
+/** Whether this build can schedule a reminder at a place. False on an older build, Android and web. */
+export function canSchedulePlaceNotifications(): boolean {
+  return !!nativeModule && typeof nativeModule.schedulePlaceNotification === 'function';
+}
+
+/**
+ * Schedules a one-shot reminder for arriving at (`onEntry`) or leaving a circle
+ * around a place. False when it couldn't be scheduled, including on a build
+ * without the function.
+ */
+export async function schedulePlaceNotification(input: {
+  id: string;
+  taskId: string;
+  title: string;
+  body: string;
+  latitude: number;
+  longitude: number;
+  radius: number;
+  onEntry: boolean;
+}): Promise<boolean> {
+  if (!nativeModule || typeof nativeModule.schedulePlaceNotification !== 'function') return false;
+  try {
+    return (await nativeModule.schedulePlaceNotification(
+      input.id, input.taskId, input.title, input.body, input.latitude, input.longitude, input.radius, input.onEntry,
+    )) === true;
+  } catch (error) {
+    console.warn('[todo-eventkit-bridge] place notification failed', error);
+    return false;
+  }
+}
+
+export async function cancelPlaceNotifications(ids: string[]): Promise<void> {
+  if (!nativeModule || typeof nativeModule.cancelPlaceNotifications !== 'function' || ids.length === 0) return;
+  try {
+    await nativeModule.cancelPlaceNotifications(ids);
+  } catch {
+    // Nothing to do: a reminder left pending fires once and is gone.
+  }
+}
+
+/** The pending notification ids starting with `prefix`, or [] where the build can't say. */
+export async function pendingNotificationIds(prefix: string): Promise<string[]> {
+  if (!nativeModule || typeof nativeModule.pendingNotificationIds !== 'function') return [];
+  try {
+    const ids = await nativeModule.pendingNotificationIds(prefix);
+    return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [];
+  } catch {
+    return [];
   }
 }

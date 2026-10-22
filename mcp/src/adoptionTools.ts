@@ -235,6 +235,34 @@ export const ADOPTION_CHECKS: readonly AdoptionCheck[] = [
     },
   },
   {
+    id: 'personDates',
+    title: 'Dates for people',
+    benefit: 'An anniversary, the day you met, or any other date on a person adds a reminder a few days before it, the way a birthday does.',
+    advanced: true,
+    since: '2026-10-22',
+    evidence: ({ replica }) => {
+      const people = replica.people().filter(p => !p.archived && p.kind === 'individual');
+      return people.length >= 3 && people.every(p => (p.dates ?? []).length === 0)
+        ? `${people.length} people are saved and none has a date besides a birthday.`
+        : null;
+    },
+  },
+  {
+    id: 'projectBoard',
+    title: 'Project boards',
+    benefit: 'A project with sections can be shown as a board, a column per section, with tasks dragged from one column to another.',
+    advanced: true,
+    since: '2026-10-22',
+    evidence: ({ replica }) => {
+      const open = replica.projects().filter(p => !p.archived && !p.completed);
+      if (open.some(p => p.boardView)) return null;
+      const sectioned = open.filter(p => replica.stacks().filter(g => g.projectId === p.id).length >= 3);
+      return sectioned.length > 0
+        ? `${sectioned.length === 1 ? `"${sectioned[0].title}" has` : `${sectioned.length} projects have`} three or more sections and no project is shown as a board.`
+        : null;
+    },
+  },
+  {
     id: 'milestones',
     title: 'Milestones',
     benefit: 'Marking the day something changed (a new medicine, a new job) lets the Mood screen compare how you felt before and after.',

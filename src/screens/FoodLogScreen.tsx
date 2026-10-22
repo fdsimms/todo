@@ -123,6 +123,12 @@ import { Fab, FAB_SIZE, type FabDragHandlers, useFabBottom } from '../components
 import { useRowSelection } from '../hooks/useRowSelection';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { LazySheet } from '../components/LazySheet';
+import { FastingCard } from '../components/FastingCard';
+import { FastSheet } from '../components/FastSheet';
+import { FastHistorySheet } from '../components/FastHistorySheet';
+import { useFastStore } from '../store/useFastStore';
+import { activeFast, lastMealLoggedAt, showsFastingCard } from '../utils/fasting';
+import type { Fast } from '../types';
 import { ActionMenu, type ActionMenuAction, type ActionMenuChoice } from '../components/ActionMenu';
 import type { CardAnchor } from '../components/CardSheet';
 import { resetToMealPlan } from '../navigation/navigationRef';
@@ -1007,13 +1013,40 @@ export function FoodLogScreen() {
   const [optionsAnchor, setOptionsAnchor] = useState<CardAnchor | null>(null);
   // totalCount rather than this day's entries for Export: it reaches across
   // the whole history, the condition the mood and medication screens carry.
+  // ==== Fasting ====
+  // The card shows while a fast runs or on the day one ended
+  // (showsFastingCard), so it costs nothing on screen for somebody who never
+  // fasts; starting one is in the options menu.
+  const fasts = useFastStore(s => s.fasts);
+  const endFast = useFastStore(s => s.endFast);
+  const [fastSheetOpen, setFastSheetOpen] = useState(false);
+  // Kept while the sheet fades out, so it doesn't flip to "Start a fast" on the way down.
+  const [fastEditing, setFastEditing] = useState<Fast | null>(null);
+  const [lastMealAt, setLastMealAt] = useState<Date | null>(null);
+  const fastRunning = activeFast(fasts) !== null;
+  const anyFastEnded = fasts.some(f => f.endedAt !== null);
+  const [fastHistoryOpen, setFastHistoryOpen] = useState(false);
+  const openFastSheet = useCallback((fast: Fast | null) => {
+    const now = new Date();
+    if (!fast) {
+      // Read from the database rather than the visible range: last night's
+      // dinner is on a day this screen may not have loaded.
+      const since = dayKeyOf(new Date(now.getTime() - 3 * 86_400_000));
+      setLastMealAt(lastMealLoggedAt(useFoodLogStore.getState().entriesSince(since), now, isWaterEntry));
+    }
+    setFastEditing(fast);
+    setFastSheetOpen(true);
+  }, []);
+
   const optionsActions = useMemo<ActionMenuAction[]>(() => [
+    ...(fastRunning ? [] : [{ key: 'fast', label: 'Start a fast', icon: 'timer-outline', onPress: () => openFastSheet(null) } as ActionMenuAction]),
+    ...(anyFastEnded ? [{ key: 'pastFasts', label: 'Past fasts', icon: 'time-outline', onPress: () => setFastHistoryOpen(true) } as ActionMenuAction] : []),
     { key: 'saved', label: 'Saved meals', icon: 'bookmark-outline', onPress: () => setBrowseMealsOpen(true) },
     { key: 'targets', label: 'Nutrition settings', icon: 'flag-outline', onPress: () => setTargetsOpen(true) },
     ...(totalCount > 0
       ? [{ key: 'export', label: 'Export food log', icon: 'share-outline', onPress: () => setExportOpen(true) } as ActionMenuAction]
       : []),
-  ], [totalCount]);
+  ], [totalCount, fastRunning, anyFastEnded, openFastSheet]);
 
   const plannedMenuActions = useMemo<ActionMenuAction[]>(() => {
     const coverage = plannedMenuCoverage;
@@ -1079,6 +1112,16 @@ export function FoodLogScreen() {
    * logged yet is exactly the day somebody opens this to add a first glass,
    * and the list (whose header this used to live in) isn't drawn on it.
    */
+  const fastingCard = isToday && showsFastingCard(fasts, getCurrentDayStart()) ? (
+    <FastingCard
+      fasts={fasts}
+      onStart={() => openFastSheet(null)}
+      onEdit={openFastSheet}
+      onHistory={() => setFastHistoryOpen(true)}
+      onEnd={() => { haptics.success(); endFast(); }}
+    />
+  ) : null;
+
   const waterCard = (
     <View style={styles.waterCard}>
       <View style={styles.waterRow}>
@@ -1479,6 +1522,7 @@ export function FoodLogScreen() {
               </EmptyNote>
             </View>
             <PendingEstimatesCard onRefine={setReviewing} />
+            {fastingCard}
             {plannedCard}
             {totalsCard}
             {produceCard}
@@ -1508,6 +1552,7 @@ export function FoodLogScreen() {
             ListHeaderComponent={
               <>
               <PendingEstimatesCard onRefine={setReviewing} />
+              {fastingCard}
               {plannedCard}
               {totalsCard}
               {produceCard}
@@ -1698,6 +1743,23 @@ export function FoodLogScreen() {
         anchor={optionsAnchor}
         onClose={() => setOptionsOpen(false)}
       />
+      <LazySheet open={fastSheetOpen}>
+        <FastSheet
+          visible={fastSheetOpen}
+          fast={fastEditing}
+          lastMealAt={lastMealAt}
+          onClose={() => setFastSheetOpen(false)}
+        />
+      </LazySheet>
+      <LazySheet open={fastHistoryOpen}>
+        <FastHistorySheet
+          visible={fastHistoryOpen}
+          // One sheet at a time: the list closes as the editor opens, which
+          // SheetModal sequences (see "Two sibling Modals" in CLAUDE.md).
+          onEdit={fast => { setFastHistoryOpen(false); openFastSheet(fast); }}
+          onClose={() => setFastHistoryOpen(false)}
+        />
+      </LazySheet>
       <ActionMenu
         visible={plannedMenuCoverage !== null}
         title={plannedMenuCoverage ? describePlannedSlot(plannedMenuCoverage) : ''}

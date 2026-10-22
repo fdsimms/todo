@@ -20,6 +20,7 @@ import { MIN_ROTATION_ITEMS, plannedRotationItem, rotationTargetTotal } from '..
 import { useTaskStore } from '../store/useTaskStore';
 import { useNfcKeyStore } from '../store/useNfcKeyStore';
 import { useAppGroupStore } from '../store/useAppGroupStore';
+import { useFastStore } from '../store/useFastStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { usePersonStore } from '../store/usePersonStore';
 import { personUndated, personWaiting } from '../utils/personHistory';
@@ -300,7 +301,10 @@ jest.mock('expo-sqlite', () => {
 // module graph. Reminder hygiene across the swap comes free — initialize()
 // already reschedules from whichever task list it just loaded.
 jest.mock('../utils/notifications', () => ({
+  rescheduleAllPlaceReminders: jest.fn(() => Promise.resolve()),
   scheduleTaskReminder: jest.fn(),
+  scheduleFastGoal: jest.fn(() => Promise.resolve()),
+  cancelFastGoal: jest.fn(() => Promise.resolve()),
   cancelTaskReminder: jest.fn(),
   scheduleQuotaNudges: jest.fn(),
   cancelQuotaNudges: jest.fn(),
@@ -952,6 +956,23 @@ describe('demo mode', () => {
     const garden = useTaskStore.getState().tasks.find(t => t.title === 'Water the garden' && !t.completed);
     expect(garden?.rainSkipMm).toBe(5);
     expect(garden?.recurrenceType).toBe('daily');
+    useDemoStore.getState().exitDemoMode();
+  });
+
+  it('seeds a task that reminds on arriving at a saved place', () => {
+    useDemoStore.getState().enterDemoMode();
+    const task = useTaskStore.getState().tasks.find(t => t.title === 'Take the recycling out');
+    expect(task?.reminderPlaceId).toBeTruthy();
+    expect(task?.reminderPlaceOn).toBe('arrive');
+    useDemoStore.getState().exitDemoMode();
+  });
+
+  it('seeds a running fast, so the Food log opens with the fasting card', () => {
+    useDemoStore.getState().enterDemoMode();
+    const running = useFastStore.getState().fasts.filter(f => f.endedAt === null);
+    expect(running).toHaveLength(1);
+    expect(running[0].goalHours).toBe(16);
+    expect(useFastStore.getState().fasts.filter(f => f.endedAt !== null)).toHaveLength(1);
     useDemoStore.getState().exitDemoMode();
   });
 
@@ -1626,6 +1647,15 @@ describe('demo mode', () => {
   // The only stack in the seed with no members at all. Every other screen
   // finds a stack through its children, so without one homed on a project
   // there's nothing in demo mode that shows a stack can be empty.
+  it('seeds a project drawn as a board, with sections for its columns', () => {
+    useDemoStore.getState().enterDemoMode();
+
+    const camping = useProjectStore.getState().projects.find(p => p.title === 'Camping kit');
+    expect(camping?.boardView).toBe(true);
+    const sections = useTaskGroupStore.getState().groups.filter(g => g.projectId === camping!.id);
+    expect(sections.length).toBeGreaterThanOrEqual(2);
+  });
+
   it('seeds a project grouped on Today, with a stack in its band', () => {
     useDemoStore.getState().enterDemoMode();
 
@@ -2028,6 +2058,15 @@ describe('demo seed — people', () => {
     // And it names nobody, so the app's own row can't enter a history meant to
     // hold what you actually did together.
     expect(birthdayTasks[0].personIds).toEqual([]);
+  });
+
+  // Same reason as the birthday above: a date's task only exists once the date
+  // is near, so the seed puts one inside the window.
+  it('puts a task for a person\'s other date on the list', () => {
+    const dateTasks = useTaskStore.getState().tasks.filter(t => t.generatedKind === 'personDate');
+    expect(dateTasks.map(t => t.title)).toEqual(['Tess: Anniversary']);
+    expect(dateTasks[0].deadline).not.toBeNull();
+    expect(dateTasks[0].personIds).toEqual([]);
   });
 
   // The Activity screen is empty until something the app did unattended has

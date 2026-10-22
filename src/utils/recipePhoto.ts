@@ -344,6 +344,19 @@ export const MAX_IMAGE_EDGE = 2000;
 /** Subdirectory of the document directory recipe images are saved under. */
 const RECIPE_IMAGE_DIR = 'recipe-images';
 
+/**
+ * The document-directory folders the app keeps pictures and files in, one per
+ * owner. Each owner stores only a file's name (never a path, which bakes in
+ * one install's container), and every reader resolves it against this launch's
+ * folder through the functions below.
+ *
+ * - `recipe-images`: one photo per recipe, synced (`recipeImageSync.ts`).
+ * - `journal-photos`: a journal entry's photos, which stay on the device and
+ *   travel only in backups, as the journal stays off iCloud.
+ * - `task-files`: a task's photos and files (`Task.attachments`).
+ */
+export type StoredFileFolder = 'recipe-images' | 'journal-photos' | 'task-files';
+
 export interface RecipeImageAttachment {
   /** file:// URI under the app's document directory — survives a relaunch. */
   uri: string;
@@ -360,9 +373,14 @@ export type RecipeImageResult =
 
 /** Bytes the saved recipe photos take, for the Storage readout. 0 when there are none. */
 export function recipeImagesBytes(): number {
+  return storedFolderBytes(RECIPE_IMAGE_DIR);
+}
+
+/** Bytes one folder's files take, for the Storage readout. 0 when there are none. */
+export function storedFolderBytes(folder: StoredFileFolder): number {
   try {
     const { Directory, Paths } = fileSystem();
-    const dir = new Directory(Paths.document, RECIPE_IMAGE_DIR);
+    const dir = new Directory(Paths.document, folder);
     if (!dir.exists) return 0;
     let total = 0;
     for (const entry of dir.list()) total += (entry as { size?: number | null }).size ?? 0;
@@ -384,8 +402,22 @@ export function availableDiskBytes(): number | null {
 
 /** The document-directory folder recipe images live in, created on first use. */
 function recipeImageDirectory(): import('expo-file-system').Directory {
+  return storedFolderDirectory(RECIPE_IMAGE_DIR);
+}
+
+/**
+ * What a new file's name starts with in each folder. Task files say so in their
+ * name because they share sync's one flat namespace with the recipe photos, and
+ * the prefix is how a name a peer sends finds its folder (`taskFileSync.ts`).
+ */
+function storedFilePrefix(folder: StoredFileFolder): string {
+  return folder === 'task-files' ? 'task-' : '';
+}
+
+/** One of the stored-file folders, created on first use. */
+function storedFolderDirectory(folder: StoredFileFolder): import('expo-file-system').Directory {
   const { Directory, Paths } = fileSystem();
-  const dir = new Directory(Paths.document, RECIPE_IMAGE_DIR);
+  const dir = new Directory(Paths.document, folder);
   if (!dir.exists) dir.create({ intermediates: true });
   return dir;
 }
@@ -397,6 +429,11 @@ function recipeImageDirectory(): import('expo-file-system').Directory {
  * document directory so it survives the app being closed and reopened.
  */
 async function saveIntoRecipeImageDirectory(uri: string, width: number, height: number): Promise<RecipeImageResult> {
+  return savePhotoIntoFolder(RECIPE_IMAGE_DIR, uri, width, height);
+}
+
+/** `saveIntoRecipeImageDirectory` for any of the stored-file folders. */
+async function savePhotoIntoFolder(folder: StoredFileFolder, uri: string, width: number, height: number): Promise<RecipeImageResult> {
   const { ImageManipulator, SaveFormat } = imageManipulator();
   const context = ImageManipulator.manipulate(uri);
   const target = photoTargetSize(width, height, MAX_IMAGE_EDGE);
@@ -410,7 +447,7 @@ async function saveIntoRecipeImageDirectory(uri: string, width: number, height: 
   if (!saved.uri) return { status: 'failed', message: 'Couldn’t read that photo. Try another.' };
 
   const { File } = fileSystem();
-  const dest = new File(recipeImageDirectory(), `${generateId()}.jpg`);
+  const dest = new File(storedFolderDirectory(folder), `${storedFilePrefix(folder)}${generateId()}.jpg`);
   // Awaited, not fire-and-forget: `move()` became asynchronous in SDK 57
   // (it was synchronous through SDK 54). Left floating, this returned `ok`
   // with `dest.uri` before the move had necessarily landed, and a rejection
@@ -434,13 +471,22 @@ async function saveIntoRecipeImageDirectory(uri: string, width: number, height: 
  * requested; nothing here needs the bytes in JS, only the file on disk.
  */
 export async function pickRecipeImage(source: RecipePhotoSource): Promise<RecipeImageResult> {
+  return pickPhotoIntoFolder(RECIPE_IMAGE_DIR, source);
+}
+
+/**
+ * `pickRecipeImage` for any of the stored-file folders: takes, picks or pastes
+ * a photo, sizes it for display and saves it there. The result's `uri` ends in
+ * the file name the owner should store (`storedFileName`).
+ */
+export async function pickPhotoIntoFolder(folder: StoredFileFolder, source: RecipePhotoSource): Promise<RecipeImageResult> {
   try {
     if (source === 'clipboard') {
       const pasted = await writeClipboardImageToTempFile();
       if (!pasted) {
         return { status: 'failed', message: 'No image on the clipboard. Copy one, then try pasting.' };
       }
-      return await saveIntoRecipeImageDirectory(pasted.uri, pasted.width, pasted.height);
+      return await savePhotoIntoFolder(folder, pasted.uri, pasted.width, pasted.height);
     }
 
     const ImagePicker = imagePicker();
@@ -469,7 +515,7 @@ export async function pickRecipeImage(source: RecipePhotoSource): Promise<Recipe
     const asset = result.assets?.[0];
     if (!asset?.uri) return { status: 'failed', message: 'Couldn’t get the photo. Try again.' };
 
-    return await saveIntoRecipeImageDirectory(asset.uri, asset.width, asset.height);
+    return await savePhotoIntoFolder(folder, asset.uri, asset.width, asset.height);
   } catch (e) {
     logPickFailure('recipe-image-pick', e);
     return {
@@ -586,5 +632,82 @@ export function deleteRecipeImage(uri: string | null | undefined): void {
     if (file.exists) file.delete();
   } catch {
     // Best effort — see the note above.
+  }
+}
+
+// ==== stored files by name ====
+// The same operations the recipe functions above make, for an owner that keeps
+// a bare file name in one of the stored-file folders.
+
+/** The file name at the end of a stored file's URI, which is what an owner keeps. */
+export function storedFileName(uri: string): string | null {
+  return recipeImageBasename(uri);
+}
+
+/** Where a stored file lives on this install. */
+export function storedFileUri(folder: StoredFileFolder, name: string): string {
+  return new (fileSystem().File)(storedFolderDirectory(folder), name).uri;
+}
+
+/** Whether a stored file is on this device: false for one that hasn't arrived by sync, or was lost. */
+export function storedFileOnDevice(folder: StoredFileFolder, name: string): boolean {
+  try {
+    return new (fileSystem().File)(storedFolderDirectory(folder), name).exists;
+  } catch {
+    return false;
+  }
+}
+
+/** A stored file's bytes as base64, for a backup or a sync push. Null when it is gone. */
+export function readStoredFileBase64(folder: StoredFileFolder, name: string): string | null {
+  try {
+    const file = new (fileSystem().File)(storedFolderDirectory(folder), name);
+    return file.exists ? file.base64Sync() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Writes bytes into a stored-file folder under `name`, overwriting, and returns its URI. */
+export function writeStoredFile(folder: StoredFileFolder, name: string, base64: string): string {
+  const { File } = fileSystem();
+  const dest = new File(storedFolderDirectory(folder), name);
+  if (!dest.exists) dest.create();
+  dest.write(base64, { encoding: 'base64' });
+  return dest.uri;
+}
+
+/** Deletes a stored file, best effort, like `deleteRecipeImage`. */
+export function deleteStoredFile(folder: StoredFileFolder, name: string): void {
+  try {
+    const file = new (fileSystem().File)(storedFolderDirectory(folder), name);
+    if (file.exists) file.delete();
+  } catch {
+    // Best effort.
+  }
+}
+
+/**
+ * Copies a picked document (a PDF, say) into a stored-file folder under a
+ * fresh name that keeps its extension, and returns that name. Unlike a photo
+ * nothing is resized: a document is kept exactly as it was.
+ */
+export async function copyFileIntoFolder(folder: StoredFileFolder, uri: string, originalName: string): Promise<string> {
+  const { File } = fileSystem();
+  const ext = /\.([A-Za-z0-9]{1,8})$/.exec(originalName)?.[1]?.toLowerCase() ?? 'bin';
+  const dest = new File(storedFolderDirectory(folder), `${storedFilePrefix(folder)}${generateId()}.${ext}`);
+  await new File(uri).copy(dest);
+  return dest.name;
+}
+
+/** The names of every file in a stored-file folder. Empty when it has none or can't be read. */
+export function listStoredFiles(folder: StoredFileFolder): string[] {
+  try {
+    const { Directory, Paths, File } = fileSystem();
+    const dir = new Directory(Paths.document, folder);
+    if (!dir.exists) return [];
+    return dir.list().filter(entry => entry instanceof File).map(entry => entry.name);
+  } catch {
+    return [];
   }
 }

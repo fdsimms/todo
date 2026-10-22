@@ -11,6 +11,7 @@ jest.mock('../store/useRecipeStore', () => ({ useRecipeStore: { subscribe: jest.
 jest.mock('../store/useSettingsStore', () => ({ useSettingsStore: { subscribe: jest.fn(), getState: jest.fn() } }));
 jest.mock('../store/useStepTimerStore', () => ({ useStepTimerStore: { subscribe: jest.fn(), getState: jest.fn() } }));
 jest.mock('../store/useWorkoutStore', () => ({ useWorkoutStore: { subscribe: jest.fn(), getState: jest.fn() } }));
+jest.mock('../store/useFastStore', () => ({ useFastStore: { subscribe: jest.fn(), getState: jest.fn() } }));
 // Pulled in transitively via visibilityUtils.ts (displayTitleFor); this
 // suite's tasks never carry a category, so a stub that resolves nothing is
 // enough — mirrors snoozeEngine.test.ts's own mock of the same store.
@@ -18,8 +19,8 @@ jest.mock('../store/useCategoryStore', () => ({
   useCategoryStore: { getState: () => ({ getCategoryByName: () => null }) },
 }));
 
-import { buildTimerRuns } from '../utils/liveActivity';
-import type { Task, Recipe, ChainItem, RecipeStepTimer, RestTimer } from '../types';
+import { buildTimerRuns, fastRun } from '../utils/liveActivity';
+import type { Task, Recipe, ChainItem, RecipeStepTimer, RestTimer, Fast } from '../types';
 
 const NOW = new Date(2026, 7, 11, 12, 0, 0).getTime();
 
@@ -477,5 +478,31 @@ describe('buildTimerRuns', () => {
     const overdue = makeStepTimer({ startedAt: startedAgo(5), elapsedSeconds: 20 * 60 });
     const [run] = buildTimerRuns([], [], [overdue], { enabled: true });
     expect(run.targetEndMs).toBe(run.startedAtMs);
+  });
+});
+
+describe('a running fast', () => {
+  const start = new Date(2026, 9, 21, 20, 0);
+  const fast = (over: Partial<Fast> = {}): Fast => ({
+    id: 'f1', startedAt: start.toISOString(), endedAt: null, goalHours: 16, createdAt: start.toISOString(), ...over,
+  });
+
+  it('counts down to its goal until the goal is reached', () => {
+    const run = fastRun(fast(), start.getTime() + 60 * 60_000);
+    expect(run).toMatchObject({ key: 'fast:f1', kind: 'fast', title: 'Fasting', subtitle: '16-hour goal', startedAtMs: start.getTime() });
+    expect(run.targetEndMs).toBe(start.getTime() + 16 * 3_600_000);
+  });
+
+  it('counts up from its start once the goal has passed', () => {
+    const run = fastRun(fast(), start.getTime() + 17 * 3_600_000);
+    expect(run.subtitle).toBe('Goal reached');
+    expect(run.targetEndMs).toBeNull();
+  });
+
+  it('is one of the runs only while the fast is running and the setting is on', () => {
+    const now = start.getTime() + 3_600_000;
+    expect(buildTimerRuns([], [], [], { enabled: true, fasts: [fast()], nowMs: now }).map(r => r.key)).toEqual(['fast:f1']);
+    expect(buildTimerRuns([], [], [], { enabled: true, fasts: [fast({ endedAt: new Date(now).toISOString() })], nowMs: now })).toEqual([]);
+    expect(buildTimerRuns([], [], [], { enabled: false, fasts: [fast()], nowMs: now })).toEqual([]);
   });
 });

@@ -7,6 +7,7 @@ import {
   canSearchContacts,
   contactBirthday,
   contactPersonDraft,
+  contactDates,
   describeCandidateBirthday,
   contactAddress,
   fillFromContactPatch,
@@ -26,6 +27,7 @@ function candidate(over: Partial<ContactCandidate> = {}): ContactCandidate {
     birthdayMonth: null,
     birthdayDay: null,
     birthYear: null,
+    dates: [],
     ...over,
   };
 }
@@ -280,7 +282,7 @@ describe('contactPersonDraft', () => {
       email: 'd@example.com',
       birthdayMonth: 3,
       birthdayDay: 14,
-      birthYear: 1992, address: null,
+      birthYear: 1992, address: null, dates: [],
     });
   });
 
@@ -290,6 +292,36 @@ describe('contactPersonDraft', () => {
     const draft = contactPersonDraft(candidate({ phoneNumber: '   ', email: '' }));
     expect(draft.phoneNumber).toBeNull();
     expect(draft.email).toBeNull();
+  });
+});
+
+describe('contactDates', () => {
+  it('reads a dated label off the card, month moved off 0-11', () => {
+    const [anniversary] = contactDates([{ label: 'anniversary', month: 5, day: 21, year: 2015 }]);
+    expect(anniversary).toMatchObject({ label: 'Anniversary', month: 6, day: 21, year: 2015, yearly: true, remind: true });
+    expect(anniversary.id).toBeTruthy();
+  });
+
+  it('names an unlabelled or "other" date, and keeps a custom label as written', () => {
+    expect(contactDates([{ month: 0, day: 2 }, { label: 'other', month: 1, day: 3 }]).map(d => d.label)).toEqual(['Other date']);
+    expect(contactDates([{ label: 'first job', month: 8, day: 1 }])[0].label).toBe('First job');
+  });
+
+  it('leaves out a date in another calendar, a missing part, or an impossible day', () => {
+    expect(contactDates([
+      { label: 'lunar', month: 0, day: 1, format: 'chinese' },
+      { label: 'half', month: 3 },
+      { label: 'bad', month: 12, day: 1 },
+      { label: 'worse', month: 1, day: 0 },
+    ])).toEqual([]);
+  });
+
+  it('keeps a year only when there is one', () => {
+    expect(contactDates([{ label: 'met', month: 2, day: 9 }])[0].year).toBeNull();
+  });
+
+  it('answers nothing for a card with no dates', () => {
+    expect(contactDates(undefined)).toEqual([]);
   });
 });
 
@@ -319,6 +351,15 @@ describe('fillFromContactPatch', () => {
   it('skips fields the contact does not have', () => {
     const bare = { ...draft, phoneNumber: null, email: null, birthdayMonth: null, birthdayDay: null, birthYear: null, address: null };
     expect(fillFromContactPatch(empty, bare)).toEqual({});
+  });
+
+  it("adds the card's dates under names the person does not have yet", () => {
+    const anniversary = { id: 'c', label: 'Anniversary', month: 6, day: 21, year: 2015, yearly: true, remind: true };
+    const met = { id: 'd', label: 'Met', month: 2, day: 9, year: null, yearly: true, remind: true };
+    const typed = { id: 'p', label: 'anniversary', month: 6, day: 20, year: null, yearly: true, remind: true };
+    expect(fillFromContactPatch({ ...empty, dates: [typed] }, { ...draft, dates: [anniversary, met] }).dates)
+      .toEqual([typed, met]);
+    expect(fillFromContactPatch({ ...empty, dates: [typed] }, { ...draft, dates: [anniversary] }).dates).toBeUndefined();
   });
 
   it('takes the birthday as a whole, so the year never lands beside another date', () => {

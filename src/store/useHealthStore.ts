@@ -3,6 +3,7 @@ import { AppState, Platform } from 'react-native';
 import { create } from 'zustand';
 import { addDays } from 'date-fns/addDays';
 import { dayKeyOf, getCurrentDayStart, getLogicalDayKey } from '../utils/dateUtils';
+import { measuredMaintenanceKcal } from '../utils/adaptiveExpenditureRead';
 import type { HealthDayInput } from '../utils/moodInsights';
 import { latestWeight, type WeightPoint } from '../utils/weightLog';
 import { healthBridge } from '../utils/healthBridge';
@@ -212,7 +213,9 @@ export const WEIGHT_HISTORY_DAYS = 365;
 /**
  * How far back the weight-target sync looks for a weigh-in. A month, because
  * this runs on every foreground and a short window is the cheap query; a
- * person with nothing newer keeps the targets the last longer read set.
+ * person with nothing newer keeps the targets the last longer read set. It
+ * also has to cover `EXPENDITURE_WINDOW_DAYS`, the log basis's four weeks,
+ * since that figure is worked out from this same read.
  */
 const WEIGHT_TARGETS_WINDOW_DAYS = 30;
 
@@ -502,7 +505,12 @@ export const useHealthStore = create<HealthState>((set, get) => ({
       // worked out against the current weight), so keep the food log target
       // in step here too, not just when the goal or profile sheet is saved.
       const latestKg = latestWeight(weightSeries)?.kilograms ?? null;
-      useSettingsStore.getState().syncWeightGoalCalorieTarget(latestKg);
+      // The log basis reads the window of this same series; worked out only
+      // when the goal asks for it, which is the opt-in.
+      const measured = useSettingsStore.getState().weightGoal?.maintenanceBasis === 'log'
+        ? measuredMaintenanceKcal(weightSeries)
+        : null;
+      useSettingsStore.getState().syncWeightGoalCalorieTarget(latestKg, measured);
       // The protein target pinned to a ratio of this weight, if it's on.
       useSettingsStore.getState().syncProteinToWeight(latestKg);
     } finally {
@@ -588,7 +596,8 @@ export const useHealthStore = create<HealthState>((set, get) => ({
     // otherwise fall back to the weight the goal started from, which is older
     // than the longer read `refreshWeight` may have used.
     if (kg === null) return;
-    settings.syncWeightGoalCalorieTarget(kg);
+    const measured = settings.weightGoal?.maintenanceBasis === 'log' ? measuredMaintenanceKcal(points) : null;
+    settings.syncWeightGoalCalorieTarget(kg, measured);
     settings.syncProteinToWeight(kg);
   },
 

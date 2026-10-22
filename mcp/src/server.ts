@@ -109,6 +109,7 @@ import { DEFAULT_PATTERN_DAYS, focusHistory, habitPatterns, moodInsights } from 
 import { addMilestone, deleteMilestone, listMilestones, updateMilestone } from './milestoneTools';
 import { addCookware, deleteCookware, listCookware, updateCookware } from './cookwareTools';
 import { listCopyFlags, resolveCopyFlag } from './copyFlagTools';
+import { DEFAULT_FAST_LIMIT, MAX_FAST_LIMIT, listFasts } from './fastTools';
 import {
   DEFAULT_EXERCISE_LIMIT, MAX_EXERCISE_LIMIT, deleteGym, deleteProgram, deleteRoutine, deleteRoutineGroup, deleteWorkout, exerciseHistory, listExercises,
   listWorkouts, logWorkout, nextWorkout, routineHistoryOut, restoreRoutineVersionOut, copyRoutineVersionOut, mergeRoutinesOut,
@@ -570,6 +571,13 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     'Lines of on-screen copy the person long-pressed in the app to mark as needing a manual pass, each with the exact text, the screen it was on, their note and a find command to run in the source checkout (it lists the matching strings with file and line). Open flags by default. This is how copy fixes are requested: run the find command, rewrite the copy, then call resolve_copy_flag. Temporary dev tooling.',
     { status: z.enum(['open', 'resolved', 'all']).optional().describe('Default open.') },
     async input => json(await withFresh(() => listCopyFlags(replica, input)))
+  );
+
+  server.tool(
+    'list_fasts',
+    `The fast running now, if any, and the most recent ones that ended, newest first (${DEFAULT_FAST_LIMIT} unless limit says more). Each has its start, its end, its goal in hours, how long it ran and when the goal was reached. Fasts are part of the health record: empty unless the person has turned on Include health logs for the sync server, so an empty result is not evidence they never fast. Report lengths as they are; never grade a fast or call one broken.`,
+    { limit: z.number().int().positive().max(MAX_FAST_LIMIT).optional() },
+    async input => json(await withFresh(() => listFasts(replica, input)))
   );
 
   server.tool(
@@ -1062,7 +1070,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'upcoming_birthdays',
-    `Birthdays in the next N days (default ${DEFAULT_BIRTHDAY_DAYS}), soonest first.`,
+    `Birthdays and the other dates saved on people (an anniversary, the day they met) in the next N days (default ${DEFAULT_BIRTHDAY_DAYS}), soonest first. occasion says which: "Birthday" or the date's own name.`,
     { days: z.number().int().positive().max(MAX_BIRTHDAY_DAYS).optional() },
     async ({ days }) => json(await withFresh(() => upcomingBirthdays(replica, days)))
   );
@@ -3731,7 +3739,7 @@ function registerWriteTools(
 
   server.tool(
     'update_project',
-    'Change a project: rename it, edit its notes, deadline or event date, set or clear its away dates and destination, re-file it, pause it until a day, set who it is with, its links, whether its steps go in order and how it nudges, mark it complete, or archive it. Its tasks are not touched unless moveTasks asks for them to follow a new event date; add steps with add_project_steps and edit them with update_task. The away dates are what the app\'s scheduled vacation mode and away grocery list run on, where the person has turned those on for the project (get_project shows pausesTasksWhileAway), so setting them is what schedules those.',
+    'Change a project: rename it, edit its notes, deadline or event date, set or clear its away dates and destination, re-file it, pause it until a day, set who it is with, its links, whether its steps go in order, whether its page is a board, and how it nudges, mark it complete, or archive it. Its tasks are not touched unless moveTasks asks for them to follow a new event date; add steps with add_project_steps and edit them with update_task. The away dates are what the app\'s scheduled vacation mode and away grocery list run on, where the person has turned those on for the project (get_project shows pausesTasksWhileAway), so setting them is what schedules those.',
     {
       id: z.string().min(1),
       title: z.string().optional(),
@@ -3771,6 +3779,7 @@ function registerWriteTools(
       weekendSource: z.boolean().optional().describe('Somewhere the weekend nudge looks for something to do when a weekend is bare.'),
       hideNextStep: z.boolean().optional().describe('Leave the "Next:" line off its card on the Projects screen.'),
       groupOnToday: z.boolean().optional().describe('Today shows its tasks and stacks for the day together under its name, at the top below the pinned tasks, instead of in their categories. A trip with a packing list is the usual case. Display only: it changes nothing about what is due.'),
+      boardView: z.boolean().optional().describe('The project page shows a column for the tasks in no section and one per section, with tasks dragged between them, instead of one list. Display only: sections and order are the same either way.'),
     },
     async ({ id, moveTasks, moveTasksFrom, archiveRemaining, ...patch }) => {
       try {
@@ -4268,6 +4277,14 @@ function registerWriteTools(
     pinned: z.boolean().optional().describe('true holds them at the top of the People list, above the people and business sections. false unpins.'),
     birthdayTaskOptOut: z.boolean().optional().describe('true: the app writes no birthday task for them.'),
     birthdayGiftTaskOptOut: z.boolean().optional().describe('true: the app writes no birthday gift task for them.'),
+    dates: z.array(z.object({
+      label: z.string().min(1).describe('What the day is: "Anniversary", "Day we met", "Started new job".'),
+      month: z.number().int().min(1).max(12),
+      day: z.number().int().min(1).max(31),
+      year: z.number().int().nullable().optional().describe('Required when yearly is false.'),
+      yearly: z.boolean().optional().describe('Comes round every year (the default). false: it happens once, in year.'),
+      remind: z.boolean().optional().describe('A task a few days before it, like a birthday (the default). false: no task.'),
+    })).optional().describe('Their dates besides the birthday. Replaces the whole list; [] clears it.'),
   };
   const PEOPLE_RULE = ' Nothing here sets how often to reach out or turns on nudges for someone: the app never scores anyone, and a rhythm with someone is the person\'s own choice.';
 

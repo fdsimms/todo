@@ -431,6 +431,8 @@ export function newTaskFromDraft(
     medicationAmount: draft.medicationAmount ?? null,
     medicationUnit: draft.medicationUnit ?? null,
     ...(draft.medicationName && draft.medicationExtras?.length ? { medicationExtras: draft.medicationExtras } : {}),
+    ...(draft.attachments?.length ? { attachments: draft.attachments } : {}),
+    ...(draft.reminderPlaceId ? { reminderPlaceId: draft.reminderPlaceId, reminderPlaceOn: draft.reminderPlaceOn ?? 'arrive' } : {}),
     logMealSlot: draft.logMealSlot ?? null,
     logSavedMealId: draft.logSavedMealId ?? null,
     logMealSlotByTime: draft.logMealSlotByTime ?? false,

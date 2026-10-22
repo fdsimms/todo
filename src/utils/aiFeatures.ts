@@ -144,7 +144,7 @@ export const AI_FEATURES: AiFeatureMeta[] = [
   {
     id: 'nutritionEstimate',
     label: 'Estimate what a meal contained',
-    hint: 'Turns a description of a restaurant meal into nutrition figures for you to confirm',
+    hint: 'Turns a description or a photo of a meal into nutrition figures for you to confirm',
     kitchen: true,
     // The food log is itself one of the things simplified mode takes away
     // (`foodLogScreen` in simpleMode.ts), so the only surface this configures

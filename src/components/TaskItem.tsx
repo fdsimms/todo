@@ -36,6 +36,9 @@ import Reanimated, {
 } from 'react-native-reanimated';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
+import { describePlaceReminder } from '../utils/placeReminders';
+import { savedPlaceName } from '../utils/savedPlaces';
+import { TaskAttachmentStrip } from './TaskAttachmentStrip';
 import { PinIcon } from './PinIcon';
 import { LockedTaskRow } from './LockedTaskRow';
 import { StrikeReveal } from './StrikeReveal';
@@ -1694,6 +1697,10 @@ const TaskItemRow = React.memo(function TaskItem({
   // reminder is its own fact about the task, the same way a deadline badge
   // renders regardless of whether the scheduled chip is showing.
   const reminderTimeLabel = task.reminderTime ? formatTimeOfDay(new Date(task.reminderTime)) : null;
+  // The same fact for a reminder at a place: where, and arriving or leaving.
+  const placeReminderLabel = task.reminderPlaceId
+    ? describePlaceReminder(task.reminderPlaceOn, savedPlaceName(task.reminderPlaceId) ?? 'a saved place')
+    : null;
   // A deadline with a time of day is late from that minute, not from midnight.
   const deadlineClosed = deadlineDays !== null && (
     deadlineDays < 0 || isDeadlineTimePassed(task.deadline!, task.deadlineTime)
@@ -3086,7 +3093,7 @@ const TaskItemRow = React.memo(function TaskItem({
   // Whether the meta row has anything to show besides the notes and deadline
   // markers. The notes icon alone is a bare glyph, so it never takes a line
   // of its own (see `notesStayInTitle`).
-  const hasOtherMeta = isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || (showStreakChip && !nutrientRow) || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || slotInText !== null || reminderTimeLabel !== null || travelNote !== null || travelDisruption !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.generatedKind === 'calendarReview';
+  const hasOtherMeta = isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || (showStreakChip && !nutrientRow) || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || slotInText !== null || reminderTimeLabel !== null || travelNote !== null || travelDisruption !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.generatedKind === 'calendarReview' || placeReminderLabel !== null;
   const deadlineOnMeta = markersOnMeta && deadlineDays !== null;
   const notesStayInTitle = markersOnMeta && hasNotes && !hasOtherMeta && !deadlineOnMeta;
 
@@ -3862,6 +3869,12 @@ const TaskItemRow = React.memo(function TaskItem({
                 </Text>
               </View>
             )}
+            {placeReminderLabel !== null && (
+              <View style={styles.metaChip} accessibilityLabel={`Reminder when ${placeReminderLabel.toLowerCase()}`}>
+                <Ionicons name="location-outline" size={iconSize.xs} color={colors.textSecondary} />
+                <Text style={styles.scheduledLabel} numberOfLines={1}>{placeReminderLabel}</Text>
+              </View>
+            )}
             {travelNote !== null && (
               <View style={styles.metaChip} accessibilityLabel={`Travel time ${travelNote}`}>
                 <Ionicons name="navigate-outline" size={iconSize.xs} color={colors.textSecondary} />
@@ -4599,6 +4612,19 @@ const TaskItemRow = React.memo(function TaskItem({
                 (showSubtaskSection || isRotation || hasFollowUpRows) && styles.sectionDivider,
               ]}>
                 <Text style={styles.expandNotes} selectable>{task.notes}</Text>
+              </View>
+            )}
+
+            {/* Photos and files, under the notes they usually go with. Read
+                only here: they are added and removed in the editor. */}
+            {(task.attachments ?? []).length > 0 && (
+              <View style={[
+                styles.sectionEnd,
+                (task.notes.length === 0 && (showSubtaskSection || isRotation || hasFollowUpRows)) && styles.sectionDivider,
+              ]}>
+                <View style={styles.expandAttachments}>
+                  <TaskAttachmentStrip attachments={task.attachments ?? []} title={task.title} size={52} />
+                </View>
               </View>
             )}
 
@@ -6017,6 +6043,8 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => {
     lineHeight: lineHeight.sm,
     paddingLeft: spacing.xl,
   },
+  // On the notes' own inset, so the thumbnails line up under the text.
+  expandAttachments: { paddingLeft: spacing.xl, paddingTop: spacing.xs },
   expandSection: {
     gap: spacing.xsm,
   },

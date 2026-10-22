@@ -321,7 +321,8 @@ describe('eraseAndJoin', () => {
 
   it('reports a throw before the erase as a failure that erased nothing', async () => {
     (joinAfterErasing as jest.Mock).mockImplementation(async (_t, _l, erase: () => void) => {
-      (dbEraseForSyncJoin as jest.Mock).mockImplementation(() => { throw new Error('disk full'); });
+      // Once: clearAllMocks keeps an implementation, so a lasting one fails every erase test after this.
+      (dbEraseForSyncJoin as jest.Mock).mockImplementationOnce(() => { throw new Error('disk full'); });
       erase();
       return { status: 'joined', run: okResult() };
     });

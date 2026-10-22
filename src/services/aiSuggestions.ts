@@ -251,6 +251,9 @@ export function describeAIError(error: unknown, source: string = 'ai'): string {
   if (message === 'No estimate returned') {
     return 'That description could not be read into figures. Try naming the dish and the place.';
   }
+  if (message === 'No food in the photo') {
+    return 'No meal could be made out in that photo. Try again closer up, or type what it was.';
+  }
   // Neither of these is the network, and the fallthrough below sends
   // somebody to check a connection that was fine. Demo mode refuses every
   // request on purpose (see `callAnthropic`); the other two are a reply that
@@ -2650,13 +2653,20 @@ const WEB_SEARCH_TIMEOUT_MS = 60_000;
 export async function estimateMealNutrition(
   description: string,
   context: readonly EstimateContextFood[] = [],
+  /**
+   * A photo of the plate, taken from the add sheet's "Photograph your meal".
+   * It rides every ask, re-asks included, so an answer refines the meal in the
+   * photo rather than a description of it. The same switch as a typed
+   * estimate: it is one feature, asked in two ways.
+   */
+  photo?: RecipeImage,
 ): Promise<NutritionEstimate> {
   const { apiKey, model } = requireFeature('nutritionEstimate');
 
   // Capped at the refined length rather than the description's own: the
   // answers ride on the end of it (`refineDescription`).
   const asked = description.trim().slice(0, ESTIMATE_REQUEST_MAX_LENGTH);
-  if (!asked) throw new Error('No estimate returned');
+  if (!asked && !photo) throw new Error('No estimate returned');
 
   // Named foods with their figures, for a description that refers to one of
   // them — "half my chili recipe with rice" is the case, and it is the one
@@ -2675,6 +2685,11 @@ export async function estimateMealNutrition(
       'You estimate what one described meal contains, for somebody writing it down in a food diary.',
       ...(search ? [
         'You may search the web, but only when the description names a specific chain, restaurant or packaged brand whose published nutrition you are not sure of. Prefer the brand\'s own nutrition page. Do not search for a generic dish. When you find figures, use them, set basis to "published" and name the source in attribution. When the search finds nothing usable, estimate as usual with basis "typical". Always finish by calling estimate_meal.',
+      ] : []),
+      ...(photo ? [
+        'A photo of the meal is attached. Work out what is on the plate from it, and judge the portion from the photo, using the plate, the cutlery, a hand or packaging for scale. Words given beside the photo outrank it about what the food is.',
+        'Say the portion you judged in quantity as plainly as for a described meal. When the photo cannot settle something that would move the figures a lot (a dressing, what is under a sauce, what a drink is), ask about it.',
+        'If the photo shows no food, still call the tool, with an empty label and no amounts.',
       ] : []),
       'Give figures for the whole thing described, as one helping. Do not give per-100g figures.',
       'A line reading "Amount eaten: ..." is the amount the person actually had. Base every figure on exactly that amount and state it in quantity.',
@@ -2739,11 +2754,19 @@ export async function estimateMealNutrition(
     tool_choice: search ? { type: 'auto' } : { type: 'tool', name: 'estimate_meal' },
     messages: [{
       role: 'user',
-      content: known
-        ? `The meal:\n${asked}\n\nFigures the user already has:\n${known}`
-        : `The meal:\n${asked}`,
+      content: (() => {
+        const text = known
+          ? `The meal:\n${asked || 'The one in the photo.'}\n\nFigures the user already has:\n${known}`
+          : `The meal:\n${asked || 'The one in the photo.'}`;
+        return photo
+          ? [
+            { type: 'image', source: { type: 'base64', media_type: photo.mediaType, data: photo.base64 } },
+            { type: 'text', text },
+          ]
+          : text;
+      })(),
     }],
-  }, apiKey, model, search ? WEB_SEARCH_TIMEOUT_MS : undefined);
+  }, apiKey, model, search ? WEB_SEARCH_TIMEOUT_MS : photo ? IMAGE_REQUEST_TIMEOUT_MS : undefined);
 
   const estimateCall = (data: AnthropicResponse | null) =>
     data?.content?.find(c => c.type === 'tool_use' && c.name === 'estimate_meal');
@@ -2764,8 +2787,9 @@ export async function estimateMealNutrition(
   );
   // A reply with no figures or no name is refused rather than repaired: an
   // entry nobody could identify, or one carrying no numbers, is worse than
-  // telling somebody the description could not be read.
-  if (!estimate) throw new Error('No estimate returned');
+  // telling somebody the description could not be read. A photo says so in
+  // its own words, since there was no description to fault.
+  if (!estimate) throw new Error(photo && !asked ? 'No food in the photo' : 'No estimate returned');
   return estimate;
 }
 

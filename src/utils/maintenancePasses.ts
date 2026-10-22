@@ -48,6 +48,9 @@ import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useEventReminderStore } from '../store/useEventReminderStore';
 import { useUnattendedStore } from '../store/useUnattendedStore';
+import { sweepJournalPhotos } from './journalPhotos';
+import { sweepTaskFiles } from './taskFiles';
+import { useJournalStore } from '../store/useJournalStore';
 import { dbReclaimFreePages } from '../db/database';
 import { rescheduleAllReminders } from './notifications';
 import { recordDeviceTimeZone } from './deviceTimeZone';
@@ -244,6 +247,7 @@ export function catchUpPasses(): MaintenanceStep[] {
     // After useSettingsStore.initialize for the same reason the meal pass is: the day a task
     // lands on is the logical one, and the lead time is a setting.
     ['check birthday tasks', () => tasks().checkBirthdayTasks()],
+    ['check person date tasks', () => tasks().checkPersonDateTasks()],
     // Beside the birthday pass, sharing its trigger and reading the same
     // people — off by default, so in practice this rarely does anything
     // until somebody has switched it on.
@@ -343,6 +347,15 @@ export function retentionPasses(): MaintenanceStep[] {
     // the ledger is the one table in the app with no "keep forever" answer
     // available to it (see ledgerCutoff).
     ['purge unattended ledger', () => useUnattendedStore.getState().purgeOldEntries()],
+    // Journal photo files no entry names any more: an entry deleted on another
+    // device, whose files never travelled and so were never deleted here.
+    // Launch-only because a sheet open later could hold a photo it just took
+    // and hasn't saved yet. Skips itself in demo mode (sweepJournalPhotos).
+    ['sweep unused journal photos', () => { sweepJournalPhotos(useJournalStore.getState().entries); }],
+    // Task files likewise: a task's file is never deleted with the row, for the
+    // undo's sake (taskFiles.ts), so this is where one finally goes. Every row
+    // counts, completed and archived included, since each still shows its files.
+    ['sweep unused task files', () => { sweepTaskFiles(useTaskStore.getState().tasks); }],
     // Then give the pages all of the above freed back to the device. Last on
     // purpose: it can only release what the deletes before it have already
     // freed. It deletes no rows and does nothing until the person has run

@@ -52,6 +52,7 @@ import type {
   Cookware,
   CookwareType,
   CopyFlag,
+  Fast,
   JournalEntry,
   JournalKind,
   FocusSessionRecord,
@@ -679,6 +680,12 @@ export interface PersonFields {
   /** Never write a birthday task, or a birthday gift task, for this person. */
   birthdayTaskOptOut?: boolean;
   birthdayGiftTaskOptOut?: boolean;
+  /**
+   * Their other dates, replacing the whole list ([] clears it). A date whose
+   * label matches one already there keeps that one's id, so a reminder task
+   * already written for it isn't dropped and written again.
+   */
+  dates?: { label: string; month: number; day: number; year?: number | null; yearly?: boolean; remind?: boolean }[];
 }
 
 export interface FoodPatch {
@@ -1014,6 +1021,8 @@ export interface ProjectPatch {
   hideNextStep?: boolean;
   /** Today gathers its tasks for the day under its name, at the top. */
   groupOnToday?: boolean;
+  /** The project page draws a column per section instead of one list. */
+  boardView?: boolean;
 }
 
 /** A glass (or a bottle) of water, added onto the day's single water entry. */
@@ -1276,6 +1285,8 @@ export interface Replica {
   addCookware(name: string, weightG: number, kind?: CookwareType | null): Cookware;
   updateCookware(id: string, patch: { name?: string; weightG?: number; kind?: CookwareType | null }): Cookware;
   deleteCookware(id: string): Cookware;
+  /** Every fast, oldest first. See src/utils/fasting.ts. */
+  fasts(): Fast[];
   /**
    * The person's custom exercises and their changes to built-in ones: the rows
    * `src/utils/exerciseCatalog.ts` merges over the library. Plans, so they
@@ -3114,7 +3125,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   }
 
   /** The Person columns a PersonFields names, validated. A birthday of null clears all three. */
-  function personPatch(f: PersonFields): Partial<Person> {
+  function personPatch(f: PersonFields, existing?: Person): Partial<Person> {
     const out: Partial<Person> = {};
     if (f.name !== undefined) out.name = f.name.trim();
     if (f.nickname !== undefined) out.nickname = f.nickname.trim();
@@ -3156,6 +3167,21 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         }
         Object.assign(out, { birthdayMonth: month, birthdayDay: day, birthYear: year ?? null });
       }
+    }
+    if (f.dates !== undefined) {
+      const before = existing?.dates ?? [];
+      out.dates = f.dates.map(d => {
+        const label = d.label.trim();
+        const length = new Date(2024, d.month, 0).getDate();
+        if (!label) throw new Error('Each date needs a label, like "Anniversary".');
+        if (!Number.isInteger(d.month) || d.month < 1 || d.month > 12 || !Number.isInteger(d.day) || d.day < 1 || d.day > length) {
+          throw new Error(`"${label}" needs a real month (1 to 12) and day of that month.`);
+        }
+        const yearly = d.yearly ?? true;
+        if (!yearly && d.year == null) throw new Error(`"${label}" happens once, so it needs a year.`);
+        const same = before.find(b => b.label.trim().toLowerCase() === label.toLowerCase());
+        return { id: same?.id ?? generateId(), label, month: d.month, day: d.day, year: d.year ?? null, yearly, remind: d.remind ?? true };
+      });
     }
     return out;
   }
@@ -4485,6 +4511,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       store.removeCookware(id);
       return item;
     },
+    fasts: () => db.dbGetAllFasts(),
     exercises: () => db.dbGetAllExercises(),
     workoutRoutines: () => db.dbGetAllWorkoutRoutines(),
     routineVersions: () => db.dbGetAllRoutineVersions(),
@@ -8152,7 +8179,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           ongoing: source.ongoing, nudgeOptIn: source.nudgeOptIn, nudgeCadenceDays: source.nudgeCadenceDays,
           autoSchedule: source.autoSchedule, weekendSource: source.weekendSource, destination: source.destination,
           personIds: source.personIds, links: source.links, inOrder: source.inOrder, hideNextStep: source.hideNextStep,
-          groupOnToday: source.groupOnToday, list: source.list ?? false,
+          groupOnToday: source.groupOnToday, list: source.list ?? false, boardView: source.boardView ?? false,
         });
         const sectionFor = new Map<string, string>();
         for (const section of blueprint.sections) {
@@ -8846,7 +8873,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const existing = people().find(p => p.id === id);
       if (!existing) throw new Error(`No person with id ${id}.`);
       if (fields.name !== undefined && !fields.name.trim()) throw new Error('A person needs a name.');
-      const patch = personPatch(fields);
+      const patch = personPatch(fields, existing);
       // Archiving again does not re-stamp the day it was filed away.
       if (fields.archived !== undefined && fields.archived === existing.archived) delete patch.archivedAt;
       const next = { ...existing, ...patch };

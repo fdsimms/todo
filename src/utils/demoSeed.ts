@@ -19,6 +19,8 @@ import { useMoodStore } from '../store/useMoodStore';
 import { useMilestoneStore } from '../store/useMilestoneStore';
 import { useAgentSuggestionStore } from '../store/useAgentSuggestionStore';
 import { useCookwareStore } from '../store/useCookwareStore';
+import { useFastStore } from '../store/useFastStore';
+import { addSavedPlace, readSavedPlaces, writeSavedPlaces } from './savedPlaces';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useGymStore } from '../store/useGymStore';
 import { useJournalStore } from '../store/useJournalStore';
@@ -1545,7 +1547,9 @@ export function seedDemoData(): void {
 
   // A packing list in sections, checked off and used again.
   const camping = createProject('Camping kit', { ongoing: true });
-  updateProject(camping.id, { category: 'Ideas' });
+  // Drawn as a board (Project.boardView), a column per section, since its two
+  // sections are what a board is for.
+  updateProject(camping.id, { category: 'Ideas', boardView: true });
   ([['Sleeping', ['Tent', 'Sleeping bags', 'Headlamps']], ['Kitchen', ['Camp stove', 'Lighter', 'Coffee']]] as const)
     .forEach(([section, items], s) => {
       const group = createGroup(section, null, camping.id);
@@ -2383,6 +2387,8 @@ export function seedDemoData(): void {
   seedMilestone(today);
   seedSuggestions(today);
   seedCookware();
+  seedFast();
+  seedPlaceReminder();
   seedWorkouts(today);
   seedJournal(today);
   seedAsNeededDoses(today);
@@ -2912,6 +2918,15 @@ function seedPeople(today: Date): void {
     // worth filling in.
     email: 'tess@example.com',
   });
+  // Her other dates (Person.dates): an anniversary two days out, so its
+  // reminder task is genuinely on Today, and a yearly one months away, so the
+  // editor's DATES card shows more than one row.
+  updatePerson(tessa.id, {
+    dates: [
+      { id: generateId(), label: 'Anniversary', month: bdayNear.getMonth() + 1, day: bdayNear.getDate(), year: bdayNear.getFullYear() - 6, yearly: true, remind: true },
+      { id: generateId(), label: 'Day we met', month: bdayFar.getMonth() + 1, day: bdayFar.getDate(), year: null, yearly: true, remind: true },
+    ],
+  });
 
   // A group, so a fresh install of demo mode actually shows the capability
   // rather than reading as a feature the app doesn't have. Named single-word
@@ -3073,6 +3088,8 @@ function seedPeople(today: Date): void {
   // than from a row written by hand here: a seeded row that skipped the
   // generator could drift from what the generator actually produces.
   useTaskStore.getState().checkBirthdayTasks();
+  // Tessa's anniversary, through the same pass for the same reason.
+  useTaskStore.getState().checkPersonDateTasks();
   // The gift task is written by hand instead, for pantryCheck's reason: that
   // pass reads the real install's own settings, and this generator ships off,
   // so a demo relying on it would show the feature only to people who had
@@ -3269,6 +3286,36 @@ function seedMoodTasks(today: Date): void {
  * Goes through `addMilestone` like everything else here, so a seeded row
  * cannot drift from the type.
  */
+/**
+ * A saved place with a pin, in the demo's own settings table, and a task that
+ * rings on arriving there, so its row shows "Arriving at Home". Nothing is
+ * scheduled: every notification path is shut in demo mode.
+ */
+function seedPlaceReminder(): void {
+  const places = addSavedPlace(readSavedPlaces(), {
+    name: 'Home', text: '1 Main St', place: { latitude: 40.7128, longitude: -74.006 },
+  });
+  writeSavedPlaces(places);
+  const home = places.find(p => p.name === 'Home');
+  if (!home) return;
+  const { addTask, updateTask } = useTaskStore.getState();
+  const task = addTask({ title: 'Take the recycling out', category: 'Home', effort: 1 });
+  updateTask(task.id, { reminderPlaceId: home.id, reminderPlaceOn: 'arrive' });
+}
+
+/**
+ * One fast that ended two days ago, so Past fasts has a row, then one that
+ * started last night and is a couple of hours short of its goal, so the Food
+ * log opens with the fasting card showing. Through the store's own start and
+ * end, which only take a start within the last three days.
+ */
+function seedFast(): void {
+  const { startFast, endFast } = useFastStore.getState();
+  const hour = 3_600_000;
+  if (startFast(new Date(Date.now() - 60 * hour), 16)) endFast(new Date(Date.now() - 44 * hour + 20 * 60_000));
+  startFast(new Date(Date.now() - (13 * 60 + 42) * 60_000), 16);
+}
+
 /**
  * Six weeks of training, so the Workouts area reads as a feature the app has: a
  * program added from the library ("Upper / Lower") with its first two routines

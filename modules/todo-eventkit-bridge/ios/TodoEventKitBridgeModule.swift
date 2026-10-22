@@ -2,6 +2,7 @@ import ExpoModulesCore
 import EventKit
 import MapKit
 import CoreLocation
+import UserNotifications
 
 /// Reads `calendarItemExternalIdentifier` for events the app already reads
 /// through expo-calendar, which exposes only the device-local
@@ -127,6 +128,49 @@ public class TodoEventKitBridgeModule: Module {
 
     Function("isAvailable") { () -> Bool in
       return true
+    }
+
+    /// A reminder the system delivers when the device enters, or leaves, a
+    /// circle around a saved place (src/utils/placeReminders.ts). The system
+    /// watches the region itself, so the app never reads a location in the
+    /// background, and when-in-use permission is enough: "Because the system
+    /// actually monitors the regions, you don't need to request always
+    /// permissions" (UNLocationNotificationTrigger's documentation). One-shot:
+    /// the next reminder rebuild arms it again while the task is still open.
+    /// `userInfo` carries the task id the way expo-notifications' own task
+    /// reminders do, so a tap is routed like theirs.
+    AsyncFunction("schedulePlaceNotification") { (id: String, taskId: String, title: String, body: String, latitude: Double, longitude: Double, radius: Double, onEntry: Bool, promise: Promise) in
+      let region = CLCircularRegion(
+        center: CLLocationCoordinate2D(latitude: latitude, longitude: longitude),
+        radius: radius,
+        identifier: id
+      )
+      region.notifyOnEntry = onEntry
+      region.notifyOnExit = !onEntry
+      let content = UNMutableNotificationContent()
+      content.title = title
+      content.body = body
+      content.sound = .default
+      content.userInfo = ["taskId": taskId]
+      let trigger = UNLocationNotificationTrigger(region: region, repeats: false)
+      let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
+      UNUserNotificationCenter.current().add(request) { error in
+        promise.resolve(error == nil)
+      }
+    }
+
+    /// Removes pending place reminders by id. Ids with nothing pending are ignored.
+    AsyncFunction("cancelPlaceNotifications") { (ids: [String]) -> Bool in
+      UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ids)
+      return true
+    }
+
+    /// The ids of the pending notifications starting with `prefix`, so a rebuild
+    /// can cancel the ones it no longer wants.
+    AsyncFunction("pendingNotificationIds") { (prefix: String, promise: Promise) in
+      UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
+        promise.resolve(requests.map { $0.identifier }.filter { $0.hasPrefix(prefix) })
+      }
     }
 
     /// Local id -> external id, for every id that resolves. An id that does

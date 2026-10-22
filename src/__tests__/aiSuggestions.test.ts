@@ -2682,6 +2682,41 @@ describe('estimateMealNutrition web search', () => {
   });
 });
 
+describe('estimateMealNutrition with a photo', () => {
+  const PHOTO = { base64: 'QUJD', mediaType: 'image/jpeg' as const };
+  const reply = (input: object) => ({ content: [{ type: 'tool_use', name: 'estimate_meal', input }] });
+  const ESTIMATE = { label: 'Chicken burrito bowl', quantity: '1 large bowl (about 550 g)', amounts: { calorieKcal: 780 }, basis: 'typical', confidence: 'medium', questions: [] };
+
+  it('sends the photo ahead of the text, and asks about the one in the photo when nothing was typed', async () => {
+    const spy = mockFetchOnce(reply(ESTIMATE));
+    const result = await estimateMealNutrition('', [], PHOTO);
+    const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+    const content = body.messages[0].content;
+    expect(content[0]).toEqual({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: 'QUJD' } });
+    expect(content[1]).toEqual({ type: 'text', text: 'The meal:\nThe one in the photo.' });
+    expect(body.system).toContain('judge the portion from the photo');
+    expect(result.label).toBe('Chicken burrito bowl');
+  });
+
+  it('keeps typed words beside the photo', async () => {
+    const spy = mockFetchOnce(reply(ESTIMATE));
+    await estimateMealNutrition('burrito bowl, no rice', [], PHOTO);
+    const content = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string).messages[0].content;
+    expect(content[1].text).toBe('The meal:\nburrito bowl, no rice');
+  });
+
+  it('says there was no food in the photo when the reply names nothing', async () => {
+    mockFetchOnce(reply({ ...ESTIMATE, label: '', amounts: {} }));
+    const failure = estimateMealNutrition('', [], PHOTO);
+    await expect(failure).rejects.toThrow('No food in the photo');
+    expect(describeAIError(new Error('No food in the photo'))).toMatch(/No meal could be made out/);
+  });
+
+  it('still refuses an empty description with no photo', async () => {
+    await expect(estimateMealNutrition('  ')).rejects.toThrow('No estimate returned');
+  });
+});
+
 // ============================================================================
 // draftWorkoutFromText
 // ============================================================================

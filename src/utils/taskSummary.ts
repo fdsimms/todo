@@ -47,6 +47,8 @@ export interface TaskSummaryInput {
   deadline?: string;
   /** The Remind me row's value. */
   reminder?: string;
+  /** The Remind me at a place row's value ("Arriving at Home"). */
+  placeReminder?: string;
   /** describeRecurrence, for a repeating task. */
   repeat?: string;
   streak?: number;
@@ -162,7 +164,11 @@ function deadlineSentence(i: TaskSummaryInput): Clause[] {
 }
 
 function reminderSentence(i: TaskSummaryInput): Clause[] {
-  return i.reminder ? [[w('reminds you '), v(inSentence(i.reminder), 'remindMe')]] : [];
+  const clauses: Clause[] = i.reminder ? [[w('reminds you '), v(inSentence(i.reminder), 'remindMe')]] : [];
+  if (i.placeReminder) {
+    clauses.push([w(i.reminder ? 'and again when ' : 'reminds you when '), v(inSentence(i.placeReminder), 'remindAtPlace')]);
+  }
+  return clauses;
 }
 
 function repeatSentence(i: TaskSummaryInput): Clause[] {

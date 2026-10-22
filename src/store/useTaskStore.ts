@@ -188,6 +188,7 @@ import { useJournalStore } from './useJournalStore';
 import { useMilestoneStore } from './useMilestoneStore';
 import { useCookwareStore } from './useCookwareStore';
 import { useCopyFlagStore } from './useCopyFlagStore';
+import { useFastStore } from './useFastStore';
 import { useWorkoutStore } from './useWorkoutStore';
 import { useGymStore } from './useGymStore';
 import { useMedicationStore } from './useMedicationStore';
@@ -342,6 +343,13 @@ import {
   staleBirthdayGiftTasks,
 } from '../utils/birthdayTasks';
 import {
+  parsePersonDateSource,
+  personDateDrift,
+  stalePersonDateTasks,
+  wantedPersonDateTasks,
+  withPersonDateRemind,
+} from '../utils/personDateTasks';
+import {
   declinedRecently,
   reachOutPersonId,
   reachOutTitle,
@@ -368,7 +376,7 @@ import {
   waitingFollowUpsHandledRecently,
   staleWaitingFollowUpTasks,
 } from '../utils/waitingFollowUpTasks';
-import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm, scheduleQuotaNudges, cancelQuotaNudges, cancelCompletionTimer } from '../utils/notifications';
+import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, rescheduleAllPlaceReminders, scheduleTimerAlarm, cancelTimerAlarm, scheduleQuotaNudges, cancelQuotaNudges, cancelCompletionTimer } from '../utils/notifications';
 import { syncDeadlineEvent, taskEventsAfterSync, deadlineEventLink, deleteDeadlineEvent } from '../utils/deadlineCalendarSync';
 import type { ApplyReport } from '../utils/syncMerge';
 import { logTaskCompletionToCalendar, completionEventLink, deleteCompletionEvent } from '../utils/completionCalendarSync';
@@ -1004,6 +1012,30 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
       } else {
         usePersonStore.getState().updatePerson(sourceId, { reachOutDeclinedAt: stamp });
       }
+      return;
+    }
+    // The permanent "no" Person.birthdayTaskOptOut / birthdayGiftTaskOptOut
+    // were declared for and nothing used to write: deleting the row removed
+    // only the task, so the next pass saw the same birthday in its window and
+    // handed it straight back. The source is `personId#year`, so the person is
+    // the part before the year.
+    case 'birthday':
+    case 'birthdayGift': {
+      const source = task.generatedKind === 'birthday' ? parseBirthdaySource(task) : parseBirthdayGiftSource(task);
+      if (!source) return;
+      const field = task.generatedKind === 'birthday' ? 'birthdayTaskOptOut' : 'birthdayGiftTaskOptOut';
+      usePersonStore.getState().updatePerson(source.personId, { [field]: value === false });
+      return;
+    }
+    // The date's own `remind`, turned off for good by deleting its task and
+    // back on by the undo, the birthday's permanent "no" one date at a time.
+    case 'personDate': {
+      const source = parsePersonDateSource(task);
+      if (!source) return;
+      const { people, updatePerson } = usePersonStore.getState();
+      const person = people.find(p => p.id === source.personId);
+      const dates = withPersonDateRemind(person?.dates, source.dateId, value !== false);
+      if (person && dates) updatePerson(person.id, { dates });
       return;
     }
     case 'supplyReorder': {
@@ -2125,6 +2157,8 @@ interface TaskStore extends UndoHistoryActions {
    * clear the ones whose reason has gone. See src/utils/birthdayTasks.ts.
    */
   checkBirthdayTasks: () => void;
+  /** A person's other dates (Person.dates): the birthday pass, per date. See src/utils/personDateTasks.ts. */
+  checkPersonDateTasks: () => void;
   /**
    * Give everybody with a birthday coming up (who hasn't opted out) a task to
    * get them a gift, on its own separately configured lead time, and clear the
@@ -3314,6 +3348,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Temporary dev tooling (see CopyFlag): on the fan-out so a demo session
     // doesn't show real flags, and so a flag the MCP resolved shows up after a pull.
     useCopyFlagStore.getState().initialize();
+    // Fasts are part of the health record, so like the workouts below they are
+    // read from whichever database is live after a demo swap or a restore.
+    useFastStore.getState().initialize();
     // Workouts: custom exercises, routines, programs and sessions. A session is
     // part of the health record, so after a demo swap or a restore it has to
     // be read from the database the rest came from, never kept from the last.
@@ -3916,6 +3953,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       ) {
         cancelTaskReminder(id);
         scheduleTaskReminder(updated);
+      }
+      // A reminder at a place is armed from the whole list (it is capped and
+      // ordered), so a change to one rebuilds them all. Cheap: no location is
+      // read, and nothing is scheduled where the build can't.
+      if (
+        'reminderPlaceId' in updates || 'reminderPlaceOn' in updates
+        || ((updated.reminderPlaceId || current?.reminderPlaceId) && ('completed' in updates || 'archived' in updates || 'title' in updates || 'dueDate' in updates || 'deferUntil' in updates))
+      ) {
+        // After this update lands: inside the map, get() still holds the old list.
+        void Promise.resolve().then(() => rescheduleAllPlaceReminders(get().tasks));
       }
       // The nudge grid is rebuilt whenever anything it's derived from moves —
       // the span fields, the count that divides it, the toggle itself — plus
@@ -6494,6 +6541,51 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       });
     });
     // No setLastAction, same reasoning as checkBirthdayTasks above.
+  },
+
+  checkPersonDateTasks() {
+    const settings = useSettingsStore.getState();
+    // The birthday's switch, lead time and category: see the personDate spec.
+    if (!settings.birthdayTasks) return;
+
+    const tasks = get().tasks;
+    const people = usePersonStore.getState().people;
+    // A day-placing decision, so the logical day start rather than the clock,
+    // as checkBirthdayTasks explains.
+    const today = getCurrentDayStart();
+    const wanted = wantedPersonDateTasks(people, settings.birthdayLeadDays, today);
+
+    // Clear first, create second, and through dropGeneratedTask: deleting
+    // through deleteTask would turn the date's reminder off on the strength of
+    // the app's own tidying up.
+    stalePersonDateTasks(tasks, wanted).forEach(task => {
+      dropGeneratedTask('personDate', task.generatedSourceId);
+    });
+
+    if (wanted.length === 0) return;
+
+    ensureGeneratedTaskCategory('personDate');
+    const category = useSettingsStore.getState().birthdayTaskCategory;
+
+    wanted.forEach(want => {
+      reconcileGeneratedTask({
+        kind: 'personDate',
+        sourceId: want.sourceId,
+        // Never false, for the reason checkBirthdayTasks gives.
+        wanted: true,
+        drift: existing => personDateDrift(existing, want),
+        draft: () => ({
+          title: want.title,
+          dueDate: want.dueDate.toISOString(),
+          deadline: want.deadline.toISOString(),
+          linkUrl: personLinkUrl(want.personId),
+          phoneNumber: want.phoneNumber,
+          category,
+          // No personIds, for the reason the birthday task carries none.
+          ...generatedBy('personDate', want.sourceId),
+        }),
+      });
+    });
   },
 
   checkReachOutTasks() {
@@ -10323,6 +10415,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       hideNextStep: source.hideNextStep,
       groupOnToday: source.groupOnToday,
       list: source.list ?? false,
+      boardView: source.boardView ?? false,
     });
 
     const sectionFor = new Map<string, string>();

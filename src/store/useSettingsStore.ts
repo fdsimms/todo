@@ -2275,7 +2275,7 @@ interface SettingsStore {
    * No-ops when there's no goal or the profile can't support an estimate,
    * leaving whatever calorie target is already stored untouched.
    */
-  syncWeightGoalCalorieTarget: (currentKg: number | null) => void;
+  syncWeightGoalCalorieTarget: (currentKg: number | null, measuredMaintenanceKcal?: number | null) => void;
   setHealthCategory: (category: string | null) => void;
   /** Replaces the whole set of Health readings left off Today's rows. */
   setHealthTodayHidden: (keys: HealthRowKey[]) => void;
@@ -5949,9 +5949,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   // Called after the goal or profile changes (WeightGoalSheet's Save) and
   // after a fresh weigh-in (useHealthStore's refreshWeight) — see
   // autoCalorieTargetKcal's own doc comment for why this exists at all.
-  syncWeightGoalCalorieTarget(currentKg: number | null) {
+  // `measuredMaintenanceKcal` is the log basis's figure (adaptiveExpenditure.ts),
+  // read only when the goal asks for that basis.
+  syncWeightGoalCalorieTarget(currentKg: number | null, measuredMaintenanceKcal: number | null = null) {
     const { weightGoal, bodyProfile } = get();
-    const proposed = autoCalorieTargetKcal(weightGoal, bodyProfile, currentKg, getLogicalToday());
+    const proposed = autoCalorieTargetKcal(weightGoal, bodyProfile, currentKg, getLogicalToday(), measuredMaintenanceKcal);
     if (proposed === null) return;
     get().setNutritionTarget('calorieKcal', proposed);
   },

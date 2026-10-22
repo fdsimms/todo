@@ -1,6 +1,8 @@
 import { nicknamesOf } from './nicknames';
 import { format } from 'date-fns/format';
-import type { Person } from '../types';
+import type { Person, PersonDate } from '../types';
+import { generateId } from './id';
+import { PERSON_DATE_LABEL_MAX_LENGTH } from './personDateTasks';
 
 /**
  * Filling one person in from the system contact book — see
@@ -60,12 +62,14 @@ export interface ContactCandidate {
   birthYear: number | null;
   /** The first postal address on the card, joined into lines; see `contactAddress`. */
   address: string | null;
+  /** The card's other dates (an anniversary), already converted; see `contactDates`. */
+  dates: PersonDate[];
 }
 
 /** What gets written when one is picked. Deliberately a subset of `Person`. */
 export type ContactPersonDraft = Pick<
   Person,
-  'name' | 'phoneNumber' | 'email' | 'birthdayMonth' | 'birthdayDay' | 'birthYear' | 'address'
+  'name' | 'phoneNumber' | 'email' | 'birthdayMonth' | 'birthdayDay' | 'birthYear' | 'address' | 'dates'
 >;
 
 /**
@@ -125,6 +129,41 @@ export function contactBirthday(
     ? rawYear
     : null;
   return { birthdayMonth: month, birthdayDay: day, birthYear: year };
+}
+
+/**
+ * A card's other dates (an anniversary, a custom one), as a person's dates.
+ *
+ * Same month conversion as `contactBirthday`: the native module hands back
+ * 0-11. A date in another calendar (a lunar one) is left out rather than read
+ * as Gregorian, since its numbers would land on the wrong day. A date with no
+ * label of its own, or iOS's "other", is named "Other date"; every other label
+ * keeps its words with a capital first letter. Each repeats every year and
+ * reminds, the way a birthday does, and a label already taken earlier on the
+ * card is skipped so the person never holds two of one name.
+ */
+export function contactDates(
+  dates: ReadonlyArray<{ day?: number | null; month?: number | null; year?: number | null; label?: string | null; format?: string | null }> | null | undefined
+): PersonDate[] {
+  const out: PersonDate[] = [];
+  const seen = new Set<string>();
+  for (const date of dates ?? []) {
+    if (date.format && date.format !== 'gregorian') continue;
+    const rawMonth = date.month;
+    const day = date.day;
+    if (typeof rawMonth !== 'number' || typeof day !== 'number') continue;
+    const month = rawMonth + 1;
+    if (!Number.isInteger(month) || month < 1 || month > 12 || !Number.isInteger(day) || day < 1 || day > 31) continue;
+    const raw = (date.label ?? '').trim();
+    const words = !raw || raw.toLowerCase() === 'other' ? 'Other date' : raw.charAt(0).toUpperCase() + raw.slice(1);
+    const label = words.slice(0, PERSON_DATE_LABEL_MAX_LENGTH);
+    const key = label.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const year = typeof date.year === 'number' && Number.isInteger(date.year) && date.year > 0 ? date.year : null;
+    out.push({ id: generateId(), label, month, day, year, yearly: true, remind: true });
+  }
+  return out;
 }
 
 /** Digits only, so "(555) 018-2277" and "5550182277" are the same number. */
@@ -299,6 +338,7 @@ export function contactPersonDraft(candidate: ContactCandidate): ContactPersonDr
     birthdayDay: candidate.birthdayDay,
     birthYear: candidate.birthYear,
     address: address ? address : null,
+    dates: candidate.dates,
   };
 }
 
@@ -314,9 +354,9 @@ export function contactPersonDraft(candidate: ContactCandidate): ContactPersonDr
  * all, so a contact's year can't end up beside somebody else's date.
  */
 export function fillFromContactPatch(
-  current: Pick<Person, 'phoneNumber' | 'email' | 'birthdayMonth' | 'birthdayDay' | 'birthYear' | 'address'>,
+  current: Pick<Person, 'phoneNumber' | 'email' | 'birthdayMonth' | 'birthdayDay' | 'birthYear' | 'address' | 'dates'>,
   draft: ContactPersonDraft
-): Partial<Pick<Person, 'phoneNumber' | 'email' | 'birthdayMonth' | 'birthdayDay' | 'birthYear' | 'address'>> {
+): Partial<Pick<Person, 'phoneNumber' | 'email' | 'birthdayMonth' | 'birthdayDay' | 'birthYear' | 'address' | 'dates'>> {
   const patch: ReturnType<typeof fillFromContactPatch> = {};
   if (!current.phoneNumber?.trim() && draft.phoneNumber) patch.phoneNumber = draft.phoneNumber;
   if (!current.email?.trim() && draft.email) patch.email = draft.email;
@@ -327,5 +367,10 @@ export function fillFromContactPatch(
     patch.birthdayDay = draft.birthdayDay;
     patch.birthYear = draft.birthYear;
   }
+  // A date is added only under a name the person doesn't already have, so an
+  // anniversary somebody typed is never replaced by the card's.
+  const have = new Set((current.dates ?? []).map(d => d.label.trim().toLowerCase()));
+  const added = (draft.dates ?? []).filter(d => !have.has(d.label.trim().toLowerCase()));
+  if (added.length > 0) patch.dates = [...(current.dates ?? []), ...added];
   return patch;
 }

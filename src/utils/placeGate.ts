@@ -10,7 +10,9 @@ import type { SavedPlace } from './savedPlaces';
  * forbids it, and there is no always-on permission), so nothing can ask where
  * the phone is when a reminder is due. What it can do is remember the last
  * foreground fix and schedule reminders only while that fix is recent and
- * inside one of the task's places. Two consequences are the design, not gaps:
+ * inside one of the task's places. (A reminder that rings on arriving or
+ * leaving is the other answer, `placeReminders.ts`: the system watches the
+ * place and the app reads nothing.) Two consequences are the design, not gaps:
  *
  * - **A fix that can't be vouched for allows nothing.** A stale fix, a coarse
  *   one, no permission and demo mode all read as "unknown", and unknown

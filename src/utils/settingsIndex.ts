@@ -289,7 +289,7 @@ const AI_FEATURE_KEYWORDS: Record<AiFeatureId, string[]> = {
   cookHelp: ['claude', 'model', 'cooking', 'step', 'question', 'ask', 'method', 'instead of'],
   nutritionEstimate: [
     'claude', 'model', 'food log', 'calories', 'nutrition', 'restaurant', 'takeout',
-    'eating out', 'ate out', 'guess',
+    'eating out', 'ate out', 'guess', 'photo of my meal', 'picture of food', 'camera',
   ],
   nutritionLabelPhoto: [
     'claude', 'model', 'nutrition panel', 'nutrition facts', 'calories', 'barcode',
@@ -333,6 +333,8 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
   mealSlot: ['meal plan', 'recipe', 'cook', 'cook task', 'breakfast', 'lunch', 'dinner', 'eat',
     'what to eat', 'auto', 'generated', 'automatic'],
   mealCook: ['meal plan', 'recipe', 'cook', 'generated', 'automatic'],
+  // Renders no row of its own either: it rides the birthday row's switch.
+  personDate: ['anniversary', 'people', 'person', 'date', 'generated', 'automatic'],
   groceryUseUp: ['expiry', 'expires', 'expiration', 'use by', 'best before', 'perishable', 'spoil',
     'waste', 'fridge', 'grocery', 'food', 'leftovers', 'generated', 'automatic'],
   pantryCheck: ['cupboard', 'stock', 'still have', 'run out', 'out of', 'grocery', 'kitchen',
@@ -1114,6 +1116,10 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['size', 'space', 'disk', 'documents', 'data', 'megabytes', 'large', 'big'] },
   { id: 'storagePhotos', groupId: 'dataReset', label: 'Recipe photos', section: 'Storage',
     keywords: ['size', 'space', 'images', 'pictures'] },
+  { id: 'storageJournalPhotos', groupId: 'dataReset', label: 'Journal photos', section: 'Storage',
+    keywords: ['size', 'space', 'images', 'pictures', 'diary'] },
+  { id: 'storageTaskFiles', groupId: 'dataReset', label: 'Task photos and files', section: 'Storage',
+    keywords: ['size', 'space', 'images', 'attachments', 'documents', 'pdf'] },
   { id: 'optimizeStorage', groupId: 'dataReset', label: 'Compact the database', section: 'Storage',
     keywords: ['vacuum', 'shrink', 'space', 'free', 'size', 'optimize', 'reclaim', 'smaller'] },
   { id: 'demoMode', groupId: 'dataReset', label: 'Demo mode', section: 'Demo',

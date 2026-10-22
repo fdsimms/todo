@@ -1491,6 +1491,14 @@ export interface Project {
    */
   groupOnToday?: boolean;
   /**
+   * The project page draws its open tasks as a board: a column for the tasks in
+   * no section and one per section, with cards dragged between them
+   * (`src/utils/projectBoard.ts`). Presentation only: a card moved on the
+   * board is written through the same store actions as a drag in the list, so
+   * the two drawings never disagree. Optional for rows built before it existed.
+   */
+  boardView?: boolean;
+  /**
    * The project is a list (a wish list, gift ideas, a bucket list): its
    * sections and loose rows are items to check off rather than tasks to
    * schedule, unless a section says otherwise (`TaskGroup.keepsTasks`). What
@@ -1713,6 +1721,44 @@ export interface Person {
    * never geocoded, never sorted or grouped by, and nothing matches against it.
    */
   address: string | null;
+  /**
+   * Days worth remembering besides the birthday: an anniversary, the day you
+   * met, the day they started a new job. Each can repeat every year or happen
+   * once, and each can put a task on the list a few days ahead, the way the
+   * birthday does (`src/utils/personDateTasks.ts`).
+   *
+   * Optional so a row written before this existed reads as having none, and a
+   * JSON list on the row rather than a table of its own: a date is edited only
+   * from its person's editor, travels with that person, and is never looked up
+   * on its own.
+   */
+  dates?: PersonDate[];
+}
+
+/**
+ * One date on a person besides their birthday (see `Person.dates`).
+ *
+ * Month and day are stored apart from the year for the reason `Person` stores
+ * a birthday that way: February 29 clamps to the 28th in a common year without
+ * the clamp ever feeding the next one. `year` is optional for a yearly date
+ * ("our anniversary is June 14", year not given) and required for a one-off,
+ * which has no other way to say when it is.
+ */
+export interface PersonDate {
+  id: string;
+  /** What the day is, as the person wrote it: "Anniversary", "Met", "Started new job". */
+  label: string;
+  /** 1 to 12. */
+  month: number;
+  day: number;
+  year: number | null;
+  /** Comes round every year. False is a one-off on `year` itself. */
+  yearly: boolean;
+  /**
+   * Whether a task shows up ahead of it. Turned off by deleting that task, the
+   * permanent "no" `Person.birthdayTaskOptOut` is for a birthday.
+   */
+  remind: boolean;
 }
 
 /**
@@ -1989,6 +2035,29 @@ export interface JournalEntry {
    * not a ranking. Optional so an older row reads as about nobody.
    */
   personIds?: string[];
+  /**
+   * Photos on the entry: file names in the `journal-photos` folder
+   * (`src/utils/journalPhotos.ts`). Device-local like the files themselves,
+   * which stay on this device and travel only in a backup, as the journal
+   * stays off iCloud. Optional so a row written before photos existed reads
+   * as having none.
+   */
+  photos?: string[];
+}
+
+/**
+ * One fast: a span with no food, started and ended by hand, read against a
+ * goal in hours (`src/utils/fasting.ts`). Health has no type for fasting, so
+ * this is the app's own record, and it travels with the health record
+ * (`HEALTH_SYNC_TABLES`). At most one is open (`endedAt` null) at a time.
+ */
+export interface Fast {
+  id: string;
+  startedAt: string;
+  /** Null while the fast is running. */
+  endedAt: string | null;
+  goalHours: number;
+  createdAt: string;
 }
 
 // ─── Workouts ────────────────────────────────────────────────────────────────
@@ -2679,6 +2748,11 @@ export type GeneratedKind =
   // generatedSourceId that 'birthday' does; the kind is what keeps the two
   // from being read as one another's task (see generatedSourceOf).
   | 'birthdayGift'
+  // A date on a person besides their birthday (Person.dates). Its own kind
+  // rather than a second meaning of 'birthday', because the birthday kind's
+  // source id is personId#year and a person can have several dates in a year.
+  // It shares the birthday's switch, lead time and category (see its spec).
+  | 'personDate'
   // A person you asked to be reminded about, whose cadence has run out — see
   // src/utils/reachOutTasks.ts. Silent on everybody until they are explicitly
   // opted in, which is what keeps "who am I neglecting" a question the app
@@ -2804,6 +2878,15 @@ export interface AnswerGate {
   taskId: string;
   /** The answers that open it, as the question's own option text. */
   answers: string[];
+}
+
+/** One photo or file on a task (see `Task.attachments`). */
+export interface TaskAttachment {
+  /** The file's name in the `task-files` folder, always starting `task-`. */
+  name: string;
+  kind: 'photo' | 'file';
+  /** What to call it: the file's own name for a document, "Photo" for a picture. */
+  title: string;
 }
 
 /** A medicine a task records beside its main one: a name, and the dose where one was stated. */
@@ -3223,6 +3306,16 @@ export interface Task {
   medicationExtras?: TaskMedicationExtra[];
 
   /**
+   * Photos and files kept with the task: a scan of a form, a photo of a part
+   * to buy, a PDF. Each names a file in the `task-files` folder
+   * (`src/utils/taskFiles.ts`), and the files travel between devices the way
+   * recipe photos do. Carried onto the next occurrence like the notes, and
+   * never deleted with the row (a delete can be undone): the launch sweep takes
+   * a file once no task names it.
+   */
+  attachments?: TaskAttachment[];
+
+  /**
    * The stretch of time the target is counted over: one logical day (every
    * quota that predates this field, and the default) or one logical week.
    *
@@ -3523,6 +3616,16 @@ export interface Task {
   // track the device's current timezone. Fixed reminders are left alone.
   // See #1205.
   reminderTimeAnchor: 'wallClock' | 'fixed';
+  /**
+   * A reminder at a place rather than a time: the saved place's id
+   * (`SavedPlace.id`, Settings › Calendar › Places) and whether it rings on
+   * arriving there or on leaving. The system watches the place, so the app
+   * never reads a location in the background (`src/utils/placeReminders.ts`).
+   * Independent of `reminderTime`: a task can have either or both. Optional so
+   * a row from before this reads as having none.
+   */
+  reminderPlaceId?: string | null;
+  reminderPlaceOn?: 'arrive' | 'leave' | null;
 
   // UTC offset in minutes (Date.getTimezoneOffset()) captured from
   // reminderTime's own moment the last time reminderTime was set — not from

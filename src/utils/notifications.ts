@@ -13,7 +13,8 @@ import {
   isFocusRunning,
   isFocusSessionFinished,
 } from './focusPlan';
-import { displayTitleFor, isHeldBack, isQuotaTask, isTaskNotNeeded, isWithheld, windowBoundsFor } from './visibilityUtils';
+import { displayTitleFor, hasDayArrived, isHeldBack, isQuotaTask, isTaskNotNeeded, isWithheld, windowBoundsFor } from './visibilityUtils';
+import { PLACE_REMINDER_PREFIX, placeRemindersToCancel, wantedPlaceReminders } from './placeReminders';
 import { agendaBirthdays, agendaCounts, agendaBody, agendaDinners, agendaMeetings, agendaSpokenBody, nextAgendaTime } from './dailyAgenda';
 import { calendarCovers } from './eventConflicts';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -417,6 +418,37 @@ export async function cancelMedicationOkAgain(key: string): Promise<void> {
   await Notifications.cancelScheduledNotificationAsync(medicationOkAgainId(key)).catch(() => {});
 }
 
+// One fixed id: only one fast runs at a time, and scheduling replaces it.
+const FAST_GOAL_ID = 'fast-goal';
+
+/**
+ * The notice that a running fast has reached its goal (src/utils/fasting.ts).
+ * Rings through quiet hours, like the medication notice above it, because it
+ * answers a question the person asked about a clock. Neutral by design: it
+ * says the goal was reached and nothing about what to do next.
+ */
+export async function scheduleFastGoal(goalHours: number, at: Date): Promise<void> {
+  if (isDemoModeActive()) return;
+  await Notifications.cancelScheduledNotificationAsync(FAST_GOAL_ID).catch(() => {});
+  if (at.getTime() <= Date.now()) return;
+  await Notifications.scheduleNotificationAsync({
+    identifier: FAST_GOAL_ID,
+    content: {
+      title: 'Fasting goal reached',
+      body: `It has been ${goalHours} ${goalHours === 1 ? 'hour' : 'hours'} since your fast started.`,
+      data: { fastGoal: true },
+      sound: true,
+      interruptionLevel: REMINDER_INTERRUPTION_LEVEL,
+    },
+    trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: at },
+  });
+}
+
+export async function cancelFastGoal(): Promise<void> {
+  if (isDemoModeActive()) return;
+  await Notifications.cancelScheduledNotificationAsync(FAST_GOAL_ID).catch(() => {});
+}
+
 // iOS caps pending local notification requests at 64.
 export const MAX_PENDING_REMINDERS = 64;
 
@@ -624,9 +656,41 @@ export async function rescheduleAllReminders(
   // kind's cancel, which is the point: a sixth kind is one more function, not
   // an edit to a shared teardown no test would catch omitting.
   await rescheduleAllTimerAlarms(tasks);
+  await rescheduleAllPlaceReminders(tasks);
   await scheduleDailyAgenda(tasks);
   await rescheduleTripReminder(trip?.shopId ?? null, trip?.startedAt ?? null, trip?.shops ?? []);
   await rescheduleAllEventReminders(eventReminders ?? []);
+}
+
+// ─── Place reminders ─────────────────────────────────────────────────────────
+
+/**
+ * Arms the reminders at a place (src/utils/placeReminders.ts) that should be
+ * pending, and cancels the rest. Their own namespace (`place:`), scheduled by
+ * the system's location trigger through todo-eventkit-bridge rather than
+ * expo-notifications, which has no schedulable location trigger. A build
+ * without the native function arms nothing.
+ */
+export async function rescheduleAllPlaceReminders(tasks: readonly Task[]): Promise<void> {
+  if (isDemoModeActive()) return;
+  let bridge: typeof import('todo-eventkit-bridge');
+  try {
+    bridge = require('todo-eventkit-bridge') as typeof import('todo-eventkit-bridge');
+  } catch {
+    return;
+  }
+  if (!bridge.canSchedulePlaceNotifications()) return;
+  // Required here rather than imported: savedPlaces reads the settings table,
+  // and this file is loaded by tests and the widget path with no database.
+  const { readSavedPlaces } = require('./savedPlaces') as typeof import('./savedPlaces');
+  const wanted = wantedPlaceReminders(
+    tasks as Task[],
+    readSavedPlaces(),
+    task => !isWithheld(task) && !isHeldBack(task) && !isTaskNotNeeded(task) && hasDayArrived(task),
+  );
+  const pending = await bridge.pendingNotificationIds(PLACE_REMINDER_PREFIX);
+  await bridge.cancelPlaceNotifications(placeRemindersToCancel(pending, wanted));
+  for (const reminder of wanted) await bridge.schedulePlaceNotification(reminder);
 }
 
 // ─── Daily agenda ────────────────────────────────────────────────────────────

@@ -380,7 +380,7 @@ export function readNutritionEstimate(
  *   gets stated, because hiding it would leave every estimate reading as
  *   confidently as the ones that happen to be published.
  */
-export function describeEstimate(estimate: NutritionEstimate): string {
+export function describeEstimate(estimate: NutritionEstimate, opts: { fromPhoto?: boolean } = {}): string {
   const where = estimate.basis === 'published'
     ? estimate.attribution
       ? `Published figures for ${estimate.attribution}.`
@@ -393,7 +393,10 @@ export function describeEstimate(estimate: NutritionEstimate): string {
     : estimate.confidence === 'medium'
       ? ' Close, not exact.'
       : ' A rough guess.';
-  return `${where}${sure}`;
+  // A portion judged by eye from a photo is the weakest part of the claim, so
+  // it is said, like a rough guess is.
+  const portion = opts.fromPhoto ? ' The portion is judged from your photo.' : '';
+  return `${where}${sure}${portion}`;
 }
 
 /**

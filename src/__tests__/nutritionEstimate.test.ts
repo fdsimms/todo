@@ -266,6 +266,11 @@ describe('describeEstimate', () => {
       .toBe('Typical figures for this dish. A rough guess.');
   });
 
+  it('says the portion was judged from a photo, after the other claims', () => {
+    expect(describeEstimate(estimate({ basis: 'typical', confidence: 'medium' }), { fromPhoto: true }))
+      .toBe('Typical figures for this dish. Close, not exact. The portion is judged from your photo.');
+  });
+
   it('says when the figures leaned on the user\'s own records', () => {
     expect(describeEstimate(estimate({ basis: 'own', confidence: 'high' })))
       .toBe('Worked out from figures already in your own records.');

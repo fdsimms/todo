@@ -77,6 +77,7 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   // Copy flags (CopyFlag): temporary dev tooling. They have to travel so the
   // MCP server can read what the phone flagged and resolve it.
   { name: 'copy_flags', key: ['id'] },
+  { name: 'fasts', key: ['id'] },
   // Workouts (docs/arch/workouts.md). Custom exercises, routines and programs
   // are plans, and travel like any other synced data; a custom exercise's name
   // is a natural key (NATURAL_KEYS), so the same one made on two phones folds
@@ -264,6 +265,11 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
  */
 export const SYNC_DEVICE_LOCAL_COLUMNS: Readonly<Record<string, readonly string[]>> = {
   meal_plan_entries: ['calendar_event_id', 'calendar_event_external_id'],
+  // A journal entry's photos are files that never leave this device (the
+  // journal stays off iCloud, and the sync server carries no files), so a
+  // peer's copy would name pictures that aren't there. A peer's delete leaves
+  // the files behind, and the launch sweep (sweepJournalPhotos) takes them.
+  journal_entries: ['photos'],
   tasks: [
     'calendar_event_id', 'calendar_event_external_id',
     'completion_calendar_event_id', 'completion_calendar_event_external_id',
@@ -890,6 +896,8 @@ export interface ServerSharing {
  */
 export const HEALTH_SYNC_TABLES: readonly string[] = [
   'mood_logs', 'milestones', 'medication_logs', 'food_logs', 'workout_sessions', 'workout_sets',
+  // A fast is a record of what a body did, beside the food log it is read with.
+  'fasts',
 ];
 export const HEALTH_SYNC_SETTING_KEYS: readonly string[] = [
   'medication_archived', 'medication_registered', 'medication_settings', 'medication_summary_last',

@@ -16,6 +16,8 @@ import type {
   Milestone,
   Cookware,
   CopyFlag,
+  TaskAttachment,
+  Fast,
   Exercise,
   Gym,
   GymExerciseSetting,
@@ -37,6 +39,7 @@ import type {
   MoodLog,
   NutrientKey,
   Person,
+  PersonDate,
   PersonGroup,
   PersonNote,
   PersonNoteKind,
@@ -556,6 +559,16 @@ function runInitDatabase(): void {
       created_at TEXT NOT NULL
     );
 
+
+    -- Fasts, started and ended by hand (src/utils/fasting.ts). At most one
+    -- row has a null ended_at. See Fast.
+    CREATE TABLE IF NOT EXISTS fasts (
+      id TEXT PRIMARY KEY NOT NULL,
+      started_at TEXT NOT NULL,
+      ended_at TEXT,
+      goal_hours REAL NOT NULL,
+      created_at TEXT NOT NULL
+    );
 
     -- Workouts (docs/arch/workouts.md). The built-in exercise library is code
     -- (utils/exerciseLibrary.ts); exercises holds custom exercises and the
@@ -1993,6 +2006,9 @@ function runInitDatabase(): void {
     'ALTER TABLE people ADD COLUMN address TEXT',
     // Person.pinned. Default 0 on every existing row: nobody starts pinned.
     'ALTER TABLE people ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0',
+    // Person.dates: a person's other dates (an anniversary, the day you met), as
+    // a JSON list. Empty on every existing row.
+    "ALTER TABLE people ADD COLUMN dates TEXT NOT NULL DEFAULT '[]'",
     // Null on every existing row: a completion timer is something a task opts
     // into, not something to infer. See Task.completionTimerMinutes.
     'ALTER TABLE tasks ADD COLUMN completion_timer_minutes INTEGER',
@@ -2331,9 +2347,13 @@ function runInitDatabase(): void {
     // JournalEntry.tags / JournalEntry.personIds: JSON arrays of strings.
     'ALTER TABLE journal_entries ADD COLUMN tags TEXT',
     'ALTER TABLE journal_entries ADD COLUMN person_ids TEXT',
+    // JournalEntry.photos: a JSON array of file names, device-local (syncTracking.ts).
+    'ALTER TABLE journal_entries ADD COLUMN photos TEXT',
     // Off on every existing project: Today keeps its category sections until
     // a project asks for a band of its own. See Project.groupOnToday.
     'ALTER TABLE projects ADD COLUMN group_on_today INTEGER NOT NULL DEFAULT 0',
+    // Off on every existing project: the page stays a list. See Project.boardView.
+    'ALTER TABLE projects ADD COLUMN board_view INTEGER NOT NULL DEFAULT 0',
     // Null on every existing reward: none guards a habit. See Reward.guardsTaskId.
     'ALTER TABLE rewards ADD COLUMN guards_task_id TEXT',
     // Null on every existing reward: none is limited. See Reward.claimEveryDays.
@@ -2386,6 +2406,11 @@ function runInitDatabase(): void {
     // medication_name, as a JSON array. NULL on every existing row, which reads
     // as none.
     'ALTER TABLE tasks ADD COLUMN medication_extras TEXT',
+    // Task.attachments: a JSON array of { name, kind, title }; null when there are none.
+    'ALTER TABLE tasks ADD COLUMN attachments TEXT',
+    // Task.reminderPlaceId / reminderPlaceOn: a reminder at a saved place.
+    'ALTER TABLE tasks ADD COLUMN reminder_place_id TEXT',
+    'ALTER TABLE tasks ADD COLUMN reminder_place_on TEXT',
     'ALTER TABLE cookware ADD COLUMN kind TEXT',
     // WorkoutSession.measuredOnWatch: the Apple Watch measured the workout and
     // saves it to Health itself. 0 on every existing row, none of which a
@@ -2838,6 +2863,8 @@ export const BACKUP_TABLES = [
   'milestones',
   // Copy flags point at nothing.
   'copy_flags',
+  // Fasts point at nothing either.
+  'fasts',
   // Workouts, parents first: a routine names a program and exercises, a
   // session names a routine and a program, a set names a session and an
   // exercise. All of them are ids that may dangle (a set on a built-in
@@ -4059,6 +4086,20 @@ export function dbDeleteSetting(key: string): void {
 
 // ─── Tasks ────────────────────────────────────────────────────────────────────
 
+/** Task.attachments off its JSON column, keeping only whole entries with a `task-` file name. */
+function parseTaskAttachments(raw: unknown): TaskAttachment[] {
+  if (typeof raw !== 'string' || !raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((a): a is TaskAttachment =>
+      !!a && typeof a.name === 'string' && /^task-[A-Za-z0-9._-]+$/.test(a.name)
+      && (a.kind === 'photo' || a.kind === 'file') && typeof a.title === 'string');
+  } catch {
+    return [];
+  }
+}
+
 function rowToTask(row: Record<string, unknown>): Task {
   return {
     id: row.id as string,
@@ -4118,6 +4159,13 @@ function rowToTask(row: Record<string, unknown>): Task {
     quotaRestAfterLog: Boolean(row.quota_rest_after_log),
     quotaLoggedDayKey: (row.quota_logged_day_key as string | null) ?? null,
     // Read only alongside a name, for the reason Task.medicationName gives.
+    ...(typeof row.reminder_place_id === 'string' && row.reminder_place_id
+      ? { reminderPlaceId: row.reminder_place_id, reminderPlaceOn: row.reminder_place_on === 'leave' ? 'leave' as const : 'arrive' as const }
+      : {}),
+    ...(row.attachments ? (() => {
+      const attachments = parseTaskAttachments(row.attachments);
+      return attachments.length > 0 ? { attachments } : {};
+    })() : {}),
     ...((row.medication_name as string | null) && row.medication_extras
       ? (() => {
           const extras = parseMedicationExtras(row.medication_extras);
@@ -4337,8 +4385,8 @@ export function dbInsertTask(task: Task): void {
       pin_each_occurrence, bounty_pushes, difficulty, answer_gate, deliverable_why, deliverable_revisit_if, extra_task_at_end, weather_wait, wait_for_series_end, rotation_plan, slip_allowance, done_by_other_at, window_start_sun, window_end_sun, recurrence_holidays,
       rain_skip_mm, rain_skipped_on,
       quota_ramp_step, quota_ramp_every, quota_ramp_goal, quota_ramp_hits, streak_counts_units, log_saved_meal_id, coins_per_tap, log_meal_slot_by_time, quota_place_ids, gate_group_id, workout_routine_id, workout_program_id, generated_ready_at,
-      slot_in, slot_decided_on, slot_waiting_since, quota_rest_after_log, quota_logged_day_key, medication_extras
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      slot_in, slot_decided_on, slot_waiting_since, quota_rest_after_log, quota_logged_day_key, medication_extras, attachments, reminder_place_id, reminder_place_on
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deadlineTime ?? null, task.deferUntil,
@@ -4487,6 +4535,9 @@ export function dbInsertTask(task: Task): void {
       task.quotaRestAfterLog ? 1 : 0,
       task.quotaLoggedDayKey ?? null,
       task.medicationName && task.medicationExtras?.length ? JSON.stringify(task.medicationExtras) : null,
+      task.attachments?.length ? JSON.stringify(task.attachments) : null,
+      task.reminderPlaceId ?? null,
+      task.reminderPlaceId ? (task.reminderPlaceOn ?? 'arrive') : null,
     ]
   );
 }
@@ -4526,7 +4577,7 @@ export function dbUpdateTask(task: Task): void {
       pin_each_occurrence=?, bounty_pushes=?, difficulty=?, answer_gate=?, deliverable_why=?, deliverable_revisit_if=?, extra_task_at_end=?, weather_wait=?, wait_for_series_end=?, rotation_plan=?, slip_allowance=?, done_by_other_at=?, window_start_sun=?, window_end_sun=?, recurrence_holidays=?,
       rain_skip_mm=?, rain_skipped_on=?,
       quota_ramp_step=?, quota_ramp_every=?, quota_ramp_goal=?, quota_ramp_hits=?, streak_counts_units=?, log_saved_meal_id=?, coins_per_tap=?, log_meal_slot_by_time=?, quota_place_ids=?, gate_group_id=?, workout_routine_id=?, workout_program_id=?, generated_ready_at=?,
-      slot_in=?, slot_decided_on=?, slot_waiting_since=?, quota_rest_after_log=?, quota_logged_day_key=?, medication_extras=?
+      slot_in=?, slot_decided_on=?, slot_waiting_since=?, quota_rest_after_log=?, quota_logged_day_key=?, medication_extras=?, attachments=?, reminder_place_id=?, reminder_place_on=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -4676,6 +4727,9 @@ export function dbUpdateTask(task: Task): void {
       task.quotaRestAfterLog ? 1 : 0,
       task.quotaLoggedDayKey ?? null,
       task.medicationName && task.medicationExtras?.length ? JSON.stringify(task.medicationExtras) : null,
+      task.attachments?.length ? JSON.stringify(task.attachments) : null,
+      task.reminderPlaceId ?? null,
+      task.reminderPlaceId ? (task.reminderPlaceOn ?? 'arrive') : null,
       task.id,
     ]
   );
@@ -7338,6 +7392,22 @@ export function dbRecipeImagePaths(ids?: readonly string[]): Map<string, string>
   return out;
 }
 
+/**
+ * Every attachment file name any task holds (Task.attachments), each once: the
+ * names this device offers to sync and keeps on disk. Read straight off the
+ * column so a pass over thousands of tasks needs no row mapping.
+ */
+export function dbTaskAttachmentNames(): string[] {
+  const names = new Set<string>();
+  const rows = db.getAllSync<{ attachments: string }>(
+    "SELECT attachments FROM tasks WHERE attachments IS NOT NULL AND attachments <> ''"
+  );
+  for (const row of rows) {
+    for (const a of parseTaskAttachments(row.attachments)) names.add(a.name);
+  }
+  return [...names];
+}
+
 // ─── Meal plan ──────────────────────────────────────────────────────────────
 
 /**
@@ -7587,6 +7657,7 @@ function rowToJournalEntry(row: Record<string, unknown>): JournalEntry {
     openOn: typeof row.open_on === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.open_on) ? row.open_on : null,
     tags: parseStringList(row.tags),
     personIds: parseStringList(row.person_ids),
+    photos: parseStringList(row.photos),
   };
 }
 
@@ -7603,11 +7674,12 @@ export function dbGetAllJournalEntries(): JournalEntry[] {
 
 export function dbInsertJournalEntry(entry: JournalEntry): void {
   db.runSync(
-    'INSERT INTO journal_entries (id, kind, logged_at, day_key, text, open_on, tags, person_ids) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    'INSERT INTO journal_entries (id, kind, logged_at, day_key, text, open_on, tags, person_ids, photos) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
     [
       entry.id, entry.kind, entry.loggedAt, entry.dayKey, entry.text, entry.openOn ?? null,
       entry.tags?.length ? JSON.stringify(entry.tags) : null,
       entry.personIds?.length ? JSON.stringify(entry.personIds) : null,
+      entry.photos?.length ? JSON.stringify(entry.photos) : null,
     ]
   );
 }
@@ -7618,11 +7690,12 @@ export function dbInsertJournalEntry(entry: JournalEntry): void {
  * (opened early).
  */
 export function dbUpdateJournalEntry(entry: JournalEntry): void {
-  db.runSync('UPDATE journal_entries SET text=?, open_on=?, tags=?, person_ids=? WHERE id=?', [
+  db.runSync('UPDATE journal_entries SET text=?, open_on=?, tags=?, person_ids=?, photos=? WHERE id=?', [
     entry.text,
     entry.openOn ?? null,
     entry.tags?.length ? JSON.stringify(entry.tags) : null,
     entry.personIds?.length ? JSON.stringify(entry.personIds) : null,
+    entry.photos?.length ? JSON.stringify(entry.photos) : null,
     entry.id,
   ]);
 }
@@ -7772,6 +7845,40 @@ export function dbUpdateCopyFlag(flag: CopyFlag): void {
 
 export function dbDeleteCopyFlag(id: string): void {
   db.runSync('DELETE FROM copy_flags WHERE id = ?', [id]);
+}
+
+// ─── Fasts ───────────────────────────────────────────────────────────────────
+
+function rowToFast(row: Record<string, unknown>): Fast {
+  return {
+    id: row.id as string,
+    startedAt: row.started_at as string,
+    endedAt: (row.ended_at as string | null) ?? null,
+    goalHours: row.goal_hours as number,
+    createdAt: row.created_at as string,
+  };
+}
+
+export function dbGetAllFasts(): Fast[] {
+  return db.getAllSync<Record<string, unknown>>('SELECT * FROM fasts ORDER BY started_at ASC').map(rowToFast);
+}
+
+export function dbInsertFast(fast: Fast): void {
+  db.runSync(
+    'INSERT INTO fasts (id, started_at, ended_at, goal_hours, created_at) VALUES (?, ?, ?, ?, ?)',
+    [fast.id, fast.startedAt, fast.endedAt, fast.goalHours, fast.createdAt]
+  );
+}
+
+export function dbUpdateFast(fast: Fast): void {
+  db.runSync(
+    'UPDATE fasts SET started_at = ?, ended_at = ?, goal_hours = ? WHERE id = ?',
+    [fast.startedAt, fast.endedAt, fast.goalHours, fast.id]
+  );
+}
+
+export function dbDeleteFast(id: string): void {
+  db.runSync('DELETE FROM fasts WHERE id = ?', [id]);
 }
 
 // ─── Workouts ────────────────────────────────────────────────────────────────
@@ -9364,6 +9471,7 @@ function rowToProject(row: Record<string, unknown>): Project {
     hideNextStep: row.hide_next_step === 1,
     groupOnToday: row.group_on_today === 1,
     list: row.is_list === 1,
+    boardView: row.board_view === 1,
     eventDate: (row.event_date as string) ?? null,
     taskDefaults: parseTaskFieldDefaults(row.task_defaults),
   };
@@ -9376,7 +9484,7 @@ export function dbGetAllProjects(): Project[] {
 
 export function dbInsertProject(project: Project): void {
   db.runSync(
-    'INSERT INTO projects (id, title, notes, target_end_date, category, default_task_category, sort_order, archived, archived_at, completed, completed_at, ongoing, created_at, nudge_cadence_days, auto_schedule, nudge_opt_in, weekend_source, review_declined_at, reviewed_at, backfill_dismissed_fields, away_start, away_end, away_pauses, away_pause_declined_for, destination, away_list_id, away_list_declined_for, paused_until, person_ids, links, in_order, hide_next_step, event_date, task_defaults, destination_latitude, destination_longitude, group_on_today, is_list) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO projects (id, title, notes, target_end_date, category, default_task_category, sort_order, archived, archived_at, completed, completed_at, ongoing, created_at, nudge_cadence_days, auto_schedule, nudge_opt_in, weekend_source, review_declined_at, reviewed_at, backfill_dismissed_fields, away_start, away_end, away_pauses, away_pause_declined_for, destination, away_list_id, away_list_declined_for, paused_until, person_ids, links, in_order, hide_next_step, event_date, task_defaults, destination_latitude, destination_longitude, group_on_today, is_list, board_view) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     [
       project.id, project.title, project.notes, project.deadline,
       project.category, project.defaultTaskCategory, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
@@ -9393,13 +9501,14 @@ export function dbInsertProject(project: Project): void {
       project.destinationLatitude ?? null, project.destinationLongitude ?? null,
       project.groupOnToday ? 1 : 0,
       project.list ? 1 : 0,
+      project.boardView ? 1 : 0,
     ]
   );
 }
 
 export function dbUpdateProject(project: Project): void {
   db.runSync(
-    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, default_task_category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, ongoing=?, nudge_cadence_days=?, auto_schedule=?, nudge_opt_in=?, weekend_source=?, review_declined_at=?, reviewed_at=?, backfill_dismissed_fields=?, away_start=?, away_end=?, away_pauses=?, away_pause_declined_for=?, destination=?, away_list_id=?, away_list_declined_for=?, paused_until=?, person_ids=?, links=?, in_order=?, hide_next_step=?, event_date=?, task_defaults=?, destination_latitude=?, destination_longitude=?, group_on_today=?, is_list=? WHERE id=?',
+    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, default_task_category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, ongoing=?, nudge_cadence_days=?, auto_schedule=?, nudge_opt_in=?, weekend_source=?, review_declined_at=?, reviewed_at=?, backfill_dismissed_fields=?, away_start=?, away_end=?, away_pauses=?, away_pause_declined_for=?, destination=?, away_list_id=?, away_list_declined_for=?, paused_until=?, person_ids=?, links=?, in_order=?, hide_next_step=?, event_date=?, task_defaults=?, destination_latitude=?, destination_longitude=?, group_on_today=?, is_list=?, board_view=? WHERE id=?',
     [
       project.title, project.notes, project.deadline,
       project.category, project.defaultTaskCategory, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
@@ -9416,6 +9525,7 @@ export function dbUpdateProject(project: Project): void {
       project.destinationLatitude ?? null, project.destinationLongitude ?? null,
       project.groupOnToday ? 1 : 0,
       project.list ? 1 : 0,
+      project.boardView ? 1 : 0,
       project.id,
     ]
   );
@@ -9466,7 +9576,22 @@ function rowToPerson(row: Record<string, unknown>): Person {
     faxNumber: (row.fax_number as string) ?? null,
     address: (row.address as string) ?? null,
     pinned: Boolean(row.pinned),
+    dates: parsePersonDates(row.dates),
   };
+}
+
+/** Person.dates off its JSON column, dropping anything that isn't a whole date. */
+function parsePersonDates(raw: unknown): PersonDate[] {
+  if (typeof raw !== 'string' || !raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((d): d is PersonDate =>
+      !!d && typeof d.id === 'string' && typeof d.label === 'string'
+      && Number.isInteger(d.month) && Number.isInteger(d.day));
+  } catch {
+    return [];
+  }
 }
 
 export function dbGetAllPeople(): Person[] {
@@ -9481,8 +9606,8 @@ export function dbInsertPerson(person: Person): void {
       birthday_month, birthday_day, birth_year, birthday_task_opt_out, birthday_gift_task_opt_out,
       phone_number, email, link_url, cadence_days, nudge_opt_in, cadence_set_at, reach_out_declined_at,
       reach_out_offer_declined_at, ask_about,
-      backfill_dismissed_fields, group_id, location, fax_number, address, pinned
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      backfill_dismissed_fields, group_id, location, fax_number, address, pinned, dates
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       person.id, person.name, person.kind, person.nickname, person.notes, person.sortOrder,
       person.archived ? 1 : 0, person.archivedAt, person.createdAt,
@@ -9498,6 +9623,7 @@ export function dbInsertPerson(person: Person): void {
       person.faxNumber,
       person.address,
       person.pinned ? 1 : 0,
+      JSON.stringify(person.dates ?? []),
     ]
   );
 }
@@ -9509,7 +9635,7 @@ export function dbUpdatePerson(person: Person): void {
       birthday_month=?, birthday_day=?, birth_year=?, birthday_task_opt_out=?, birthday_gift_task_opt_out=?,
       phone_number=?, email=?, link_url=?, cadence_days=?, nudge_opt_in=?, cadence_set_at=?, reach_out_declined_at=?,
       reach_out_offer_declined_at=?, ask_about=?,
-      backfill_dismissed_fields=?, group_id=?, location=?, fax_number=?, address=?, pinned=?
+      backfill_dismissed_fields=?, group_id=?, location=?, fax_number=?, address=?, pinned=?, dates=?
     WHERE id=?`,
     [
       person.name, person.kind, person.nickname, person.notes, person.sortOrder,
@@ -9526,6 +9652,7 @@ export function dbUpdatePerson(person: Person): void {
       person.faxNumber,
       person.address,
       person.pinned ? 1 : 0,
+      JSON.stringify(person.dates ?? []),
       person.id,
     ]
   );

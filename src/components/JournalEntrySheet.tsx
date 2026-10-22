@@ -57,6 +57,8 @@ import { EditorRow } from './EditorRow';
 import { WhenPicker } from './WhenPicker';
 import { TextField } from './TextField';
 import { InlineAction } from './InlineAction';
+import { JournalPhotoStrip } from './JournalPhotoStrip';
+import { deleteJournalPhotos } from '../utils/journalPhotos';
 import { CollapsibleField } from './CollapsibleField';
 import { PillGroup } from './PillGroup';
 import { PressableScale } from './PressableScale';
@@ -134,6 +136,12 @@ export function JournalEntrySheet({ visible, kind, editing = null, dictateOnOpen
   // Labels and people the person attaches (JournalEntry.tags / personIds).
   const [tags, setTags] = useState<string[]>([]);
   const [personIds, setPersonIds] = useState<string[]>([]);
+  // The entry's photos as this sitting has them, and the ones added in it. A
+  // photo added here is a file nothing names until Save, so Cancel deletes
+  // those, and removing one deletes it at once; removing a saved one only
+  // drops it from the list, and Save deletes the file (setEntryMeta).
+  const [photos, setPhotos] = useState<string[]>([]);
+  const addedPhotos = useRef<string[]>([]);
   const [tagsOpen, setTagsOpen] = useState(false);
   const [peopleOpen, setPeopleOpen] = useState(false);
   const [hideOpen, setHideOpen] = useState(false);
@@ -175,6 +183,8 @@ export function JournalEntrySheet({ visible, kind, editing = null, dictateOnOpen
     setRestoredDraft(draft !== null);
     setTags(editing?.tags ?? []);
     setPersonIds(editing?.personIds ?? []);
+    setPhotos(editing?.photos ?? []);
+    addedPhotos.current = [];
     setTagsOpen(false);
     setPeopleOpen(false);
     setHideOpen(false);
@@ -272,8 +282,24 @@ export function JournalEntrySheet({ visible, kind, editing = null, dictateOnOpen
   const prompts = useMemo(() => journalPromptList(customPrompts), [customPrompts]);
   const metaChanged = !!editing && (
     !sameList(tags, editing.tags ?? []) || !sameList(personIds, editing.personIds ?? [])
+    || !sameList(photos, editing.photos ?? [])
   );
-  const canSave = text.trim().length > 0 && (!editing || text.trim() !== editing.text || metaChanged);
+  // Words or a photo: a page that is only a picture is still a page.
+  const canSave = (text.trim().length > 0 || photos.length > 0)
+    && (!editing || text.trim() !== editing.text || metaChanged);
+  const addPhoto = (name: string) => {
+    addedPhotos.current = [...addedPhotos.current, name];
+    animateLayout();
+    setPhotos(list => [...list, name]);
+  };
+  const removePhoto = (name: string) => {
+    if (addedPhotos.current.includes(name)) {
+      addedPhotos.current = addedPhotos.current.filter(n => n !== name);
+      deleteJournalPhotos([name]);
+    }
+    animateLayout();
+    setPhotos(list => list.filter(n => n !== name));
+  };
 
   // Tags already in use on this kind (open entries only, so a sealed note's
   // labels aren't shown early), then any picked in this sheet.
@@ -329,13 +355,17 @@ export function JournalEntrySheet({ visible, kind, editing = null, dictateOnOpen
   const save = () => {
     if (!canSave) return;
     haptics.success();
+    // Saved photos are named by the entry now, so Cancel's cleanup must not take them.
+    addedPhotos.current = [];
     if (editing) {
+      // Photos first: the words can only be cleared from an entry that already
+      // holds the photo that keeps it from being empty.
+      if (metaChanged) setEntryMeta(editing.id, { tags, personIds, photos });
       updateEntry(editing.id, text);
-      if (metaChanged) setEntryMeta(editing.id, { tags, personIds });
     } else {
       const isToday = isSameDay(day, getLogicalToday());
       const sealUntil = canSeal && openOn ? dayKeyOf(openOn) : null;
-      const entry = addEntry(kind, text, isToday ? undefined : noonOn(day), sealUntil, { tags, personIds });
+      const entry = addEntry(kind, text, isToday ? undefined : noonOn(day), sealUntil, { tags, personIds, photos });
       if (entry?.openOn) addSealedNoteReminder(entry);
       // The page answers today's journal or dream task, so its row plays the
       // tick and leaves. The request skips a task this entry doesn't answer.
@@ -361,9 +391,11 @@ export function JournalEntrySheet({ visible, kind, editing = null, dictateOnOpen
     // The words heard so far are what the check below judges; the last ones
     // still in flight are not worth holding the sheet open for.
     dictation.stop();
-    const dirty = text.trim() !== (editing?.text ?? '') || metaChanged || (!editing && (tags.length > 0 || personIds.length > 0));
-    if (!dirty) { if (!editing) clearJournalDraft(kind); onClose(); return; }
-    confirmDiscard(() => { if (!editing) clearJournalDraft(kind); onClose(); });
+    const dirty = text.trim() !== (editing?.text ?? '') || metaChanged || (!editing && (tags.length > 0 || personIds.length > 0 || photos.length > 0));
+    // What this sitting added is named by nothing once it closes unsaved.
+    const discardAdded = () => { deleteJournalPhotos(addedPhotos.current); addedPhotos.current = []; };
+    if (!dirty) { if (!editing) clearJournalDraft(kind); discardAdded(); onClose(); return; }
+    confirmDiscard(() => { if (!editing) clearJournalDraft(kind); discardAdded(); onClose(); });
   };
 
   const requestDelete = () => {
@@ -461,6 +493,14 @@ export function JournalEntrySheet({ visible, kind, editing = null, dictateOnOpen
         />
         <Text style={styles.wordCount}>{wordsLine}</Text>
         {restoredDraft && <Text style={styles.wordCount}>Restored the draft you hadn’t saved.</Text>}
+        <View style={styles.photos}>
+          <JournalPhotoStrip
+            photos={photos}
+            title={kind === 'dream' ? 'Dream' : 'Journal'}
+            onAdd={addPhoto}
+            onRemove={removePhoto}
+          />
+        </View>
         {mentionSuggestion && (
           <View style={styles.mentionRow}>
             {mentionSuggestion.candidates.map(candidate => (
@@ -661,6 +701,7 @@ export function JournalEntrySheet({ visible, kind, editing = null, dictateOnOpen
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
+  photos: { marginTop: spacing.smd },
   root: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row',

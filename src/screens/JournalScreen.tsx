@@ -52,6 +52,7 @@ import { usePullToSearch } from '../hooks/usePullToSearch';
 import { EmptyState } from '../components/EmptyState';
 import { SearchField } from '../components/SearchField';
 import { JournalEntrySheet } from '../components/JournalEntrySheet';
+import { JournalPhotoStrip } from '../components/JournalPhotoStrip';
 import { JournalText } from '../components/JournalText';
 import { JournalWordGoalSheet } from '../components/JournalWordGoalSheet';
 import { JournalDaySheet } from '../components/JournalDaySheet';
@@ -501,6 +502,11 @@ function JournalLogContent({ kind }: { kind: JournalKind }) {
                 >
                   <Text style={styles.entryTime}>{format(new Date(entry.loggedAt), 'h:mm a')}</Text>
                   <JournalText text={entry.text} textStyle={styles.entryText} />
+                  {(entry.photos ?? []).length > 0 && (
+                    <View style={styles.entryPhotos}>
+                      <JournalPhotoStrip photos={entry.photos ?? []} title={format(new Date(entry.loggedAt), 'MMMM d, h:mm a')} size={72} />
+                    </View>
+                  )}
                   <EntryMeta entry={entry} personName={personName} onTag={setTagFilter} styles={styles} />
                 </TouchableOpacity>
               ))}
@@ -566,6 +572,7 @@ export function DreamsScreen() {
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
+  entryPhotos: { marginTop: spacing.sm },
   metaRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
   metaText: { color: colors.textSecondary, fontSize: font.xs },
   tagChip: {

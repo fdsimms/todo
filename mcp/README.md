@@ -98,6 +98,7 @@ only the fallback until the first sync.
 | `resolve_copy_flag` | **Write.** Closes a copy flag once the copy has been changed in the source, with what it became. |
 | `add_milestone` / `update_milestone` / `delete_milestone` | **Write.** A milestone by label and day; the day is anchored at noon as the app's sheet does. |
 | `add_cookware` / `update_cookware` / `delete_cookware` | **Write.** A pot, pan, lid or tub and what it weighs empty. A recipe's `cookedWeightG` stays the food alone, so these never rewrite a recipe. |
+| `list_fasts` | The fast running now and the recent ones that ended, each with its goal and how long it ran. Part of the health record. |
 | `list_exercises` | The exercise library the app ships merged with the person's own exercises and their notes on built-in ones, each with its kind, equipment, muscles, a one-line cue any other names the person gave it and, for a dumbbell exercise, how many dumbbells it is held in (a weight is always one dumbbell's). Filters by a query (which also matches those other names), a muscle or equipment. |
 | `list_workouts` | Workouts logged over a day range with their sets (weights in kg), plus the routines and programs. Workout history is a health log, so it arrives only with Include health logs on; routines and programs arrive either way. |
 | `routine_history` | A routine's versions, newest first: each one's plan, when it was in use, how many workouts were done on it, and what it changed from the one before. Read-only; `restore_routine_version`, `copy_routine_version` and `merge_routines` act on it. Workout counts need Include health logs. |
@@ -142,7 +143,7 @@ only the fallback until the first sync.
 | `list_recipes` / `get_recipe` | Recipes by name, tag or ingredient; one recipe's ingredients, steps and source. |
 | `list_meal_plan` | Planned meals over a range of days, the coming week by default. |
 | `list_people` / `get_person` | People in the user's own order; one person's details, gift ideas, other notes and shared history, each with its id. |
-| `upcoming_birthdays` | Birthdays in the next N days, soonest first. |
+| `upcoming_birthdays` | Birthdays and people's other dates (an anniversary) in the next N days, soonest first, each naming its occasion. |
 | `list_grocery_items` | The home grocery list, or the whole catalog with `onListOnly: false`. `query` finds items by name across the whole catalog (`onListOnly: true` limits it to the list). A separate list (a trip's, say) is not included. |
 | `grocery_setup` | The aisles (and which are non-food), the stores (with receipt style, their own aisles and order), the lists (home and separate) with item counts, and the trip in progress. |
 | `get_grocery_item` | One item's whole catalog record: aisle, quantity, note, last price, brands, stores, substitutes, lists, receipt names, and its nutrition panel (with its source) when it has one, so a `set_nutrition_panel` write can be checked against what it would replace. |

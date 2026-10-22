@@ -6,7 +6,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { dayKeyOf, getCurrentDayStart, getLogicalToday } from '../utils/dateUtils';
+import { dayKeyOf, dayKeyToDate, getCurrentDayStart, getLogicalToday } from '../utils/dateUtils';
 import {
   formatWeight,
   kgToUnit,
@@ -43,6 +43,9 @@ import {
   type BodyProfile,
   type BodySex,
 } from '../utils/energyBudget';
+import { describeLogBasis as describeLogWorking } from '../utils/adaptiveExpenditure';
+import { format } from 'date-fns/format';
+import { readMeasuredExpenditure } from '../utils/adaptiveExpenditureRead';
 import {
   typicalActiveEnergyKcal,
   TYPICAL_ACTIVE_ENERGY_WINDOW_DAYS,
@@ -161,7 +164,8 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
    * is simply right. Opening on the measured figure would be the app deciding
    * that somebody's watch knows them better than they do.
    */
-  const [measuredBasis, setMeasuredBasis] = useState(false);
+  const [basis, setBasis] = useState<'activity' | 'health' | 'log'>('activity');
+  const measuredBasis = basis === 'health';
   /**
    * Whether the Apple Health figure adds the energy spent digesting food. On by
    * default, since that is how it has always read; off gives the measured burn
@@ -227,10 +231,12 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
     setSex(profile.sex);
     setActivity(profile.activity);
     setMacroPresetId(null);
-    // Reset with the rest of the form: the basis is a choice about this
-    // sitting, not a setting, so a sheet reopened later opens on the
-    // multiplier again rather than on whatever was picked last time.
-    setMeasuredBasis(false);
+    // Reset with the rest of the form: the Apple Health basis is a choice about
+    // this sitting, not a setting, so a sheet reopened later opens on the
+    // multiplier again rather than on whatever was picked last time. The log
+    // basis is the exception, because it is stored on the goal (the automatic
+    // target follows it), so the sheet opens on what was saved.
+    setBasis(storedGoal?.maintenanceBasis === 'log' ? 'log' : 'activity');
     setCountDigestion(true);
 
     if (storedGoal) {
@@ -314,7 +320,24 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
   // working option is a control that lies about having a choice, so the picker
   // below renders only while this holds.
   const canUseMeasured = measuredBudget !== null;
-  const budget = measuredBasis && measuredBudget !== null ? measuredBudget : multiplierBudget;
+  // What the food log and the scale say (adaptiveExpenditure.ts), worked out
+  // only once "Your log" is picked, since picking it is the opt-in. Reads the
+  // weight series the Weight screen already holds; nothing is fetched or kept.
+  const weightSeries = useHealthStore(s => s.weightSeries);
+  const logResult = useMemo(
+    () => (visible && basis === 'log' ? readMeasuredExpenditure(weightSeries ?? []) : null),
+    [visible, basis, weightSeries],
+  );
+  const logBudget = logResult?.kind === 'measured'
+    ? budgetFromMaintenance(logResult.kcal, sex, signedRateKg)
+    : null;
+  // Until the log has a figure the activity level stands, which is also what
+  // the automatic target does (autoCalorieTargetKcal), so the two agree.
+  const budget = measuredBasis && measuredBudget !== null
+    ? measuredBudget
+    : basis === 'log' && logBudget !== null
+      ? logBudget
+      : multiplierBudget;
 
   // ==== saving, clearing, applying targets ====
 
@@ -332,12 +355,13 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
         : storedGoal.startDayKey,
       targetKg,
       rateKgPerWeek: maintaining ? 0 : (rateKg ?? 0),
+      ...(basis === 'log' ? { maintenanceBasis: 'log' as const } : {}),
     });
     // Keeps the food log's calorie target in step with the goal automatically
-    // — see autoCalorieTargetKcal's doc comment. Whichever basis (multiplier
-    // or measured) is on screen right now is the one that gets written; a
-    // later weigh-in or profile edit re-syncs on the multiplier basis, via
-    // useSettingsStore.syncWeightGoalCalorieTarget.
+    // — see autoCalorieTargetKcal's doc comment. Whichever basis is on screen
+    // right now is the one that gets written; a later weigh-in or profile edit
+    // re-syncs on the multiplier basis, or on the log basis when that is the
+    // one saved on the goal, via useSettingsStore.syncWeightGoalCalorieTarget.
     if (budget !== null) setNutritionTarget('calorieKcal', budget.proposedKcal);
     onClose();
   };
@@ -685,22 +709,28 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                     in the order that puts the one somebody typed first, and
                     `measuredMaintenanceKcal` explains why neither is ranked
                     above the other. */}
-                {canUseMeasured && (
-                  <SegmentedControl
-                    options={[
-                      { value: false, label: 'Activity level' },
-                      { value: true, label: 'Apple Health' },
-                    ]}
-                    value={measuredBasis}
-                    onChange={next => setMeasuredBasis(next)}
-                    label="How activity is counted"
-                  />
-                )}
+                <SegmentedControl
+                  options={[
+                    { value: 'activity' as const, label: 'Activity level' },
+                    ...(canUseMeasured ? [{ value: 'health' as const, label: 'Apple Health' }] : []),
+                    { value: 'log' as const, label: 'Your log' },
+                  ]}
+                  value={basis}
+                  onChange={next => setBasis(next)}
+                  label="How the figure is worked out"
+                />
                 <Text style={styles.help}>
                   {measuredBasis
                     ? `Resting rate, plus ${(typicalActiveKcal ?? 0).toLocaleString()} cal of activity on a typical recent day${countDigestion ? `, plus about ${Math.round(budget.maintenanceKcal * DIGESTION_SHARE).toLocaleString()} cal for digesting food` : ''}.`
-                    : 'The activity level you picked above, as a multiplier on your resting rate.'}
+                    : basis === 'log'
+                      ? describeLogWorking(logResult, kg => `${kgToUnit(kg, unit).toFixed(1)} ${unit}`, key => format(dayKeyToDate(key), 'MMM d'))
+                      : 'The activity level you picked above, as a multiplier on your resting rate.'}
                 </Text>
+                {basis === 'log' && logResult?.kind === 'measured' && (
+                  <Text style={styles.help}>
+                    Days with only one meal logged are left out. If you log less than you eat, this reads low.
+                  </Text>
+                )}
                 {canUseMeasured && measuredBasis && (
                   <TouchableOpacity
                     style={styles.toggleRow}
@@ -753,7 +783,9 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                 <HelpText style={styles.help}>
                   {measuredBasis
                     ? `Still an estimate. The resting rate comes from a population formula (Mifflin-St Jeor), ${countDigestion ? 'digestion is a rule of thumb, and ' : ''}only the activity is measured. Adjust it based on what the scale shows. To raise the target on days you move more than usual, turn on Add active calories under Daily targets.`
-                    : 'An estimate from a population formula (Mifflin-St Jeor). Adjust it based on what the scale shows.'}
+                    : basis === 'log' && logBudget !== null
+                      ? 'Your own log and scale already count how active you are, so leave Add active calories under Daily targets off, or a busy day counts twice. It updates as you keep logging.'
+                      : 'An estimate from a population formula (Mifflin-St Jeor). Adjust it based on what the scale shows.'}
                 </HelpText>
 
                 {!alreadyApplied && (
