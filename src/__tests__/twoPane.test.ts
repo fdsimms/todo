@@ -5,7 +5,7 @@ import {
   twoPaneFor,
 } from '../utils/twoPane';
 import { SIDEBAR_WIDTH } from '../utils/frameWidth';
-import { TWO_PANE_LIST_WIDTH } from '../utils/twoPane';
+import { TWO_PANE_LIST_MAX_WIDTH, TWO_PANE_LIST_WIDTH, twoPaneListWidthFor } from '../utils/twoPane';
 
 describe('twoPaneFor', () => {
   it('is false on a phone, an upright iPad and a window that only fits the sidebar', () => {
@@ -45,5 +45,24 @@ describe('columnUncappedFor', () => {
   it('keeps the cap on a page pushed over a two-pane screen', () => {
     expect(TWO_PANE_ROUTES.has('RecipeDetail')).toBe(false);
     expect(columnUncappedFor(1440, 'RecipeDetail')).toBe(false);
+  });
+});
+
+describe('twoPaneListWidthFor', () => {
+  it('is the narrowest width at the breakpoint', () => {
+    expect(twoPaneListWidthFor(TWO_PANE_MIN_WINDOW_WIDTH)).toBe(TWO_PANE_LIST_WIDTH);
+  });
+
+  it('grows with a wider window, up to its cap', () => {
+    const laptop = twoPaneListWidthFor(1512);
+    expect(laptop).toBeGreaterThan(TWO_PANE_LIST_WIDTH);
+    expect(laptop).toBeLessThan(TWO_PANE_LIST_MAX_WIDTH);
+    expect(twoPaneListWidthFor(2560)).toBe(TWO_PANE_LIST_MAX_WIDTH);
+  });
+
+  it('always leaves the page at least a phone wide', () => {
+    for (let w = TWO_PANE_MIN_WINDOW_WIDTH; w <= 2560; w += 10) {
+      expect(w - SIDEBAR_WIDTH - twoPaneListWidthFor(w)).toBeGreaterThan(393);
+    }
   });
 });

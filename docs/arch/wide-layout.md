@@ -1,6 +1,6 @@
 # Wide windows: iPad and the iPhone app on a Mac
 
-**Status: phases 0 to 3 are built, and phase 4 is the iPhone Mirroring setting, turned on by default on a Mac. Hover states are the one thing left.** The app ships as a universal iOS app
+**Status: phases 0 to 5 are built. Phase 4 is the iPhone Mirroring setting, turned on by default on a Mac; phase 5 is the Mac's own conventions (the menu bar, hover, right-click menus, tooltips and the window). None of phase 5 has run on a Mac yet.** The app ships as a universal iOS app
 (`ios.supportsTablet`), so an iPad runs it natively and an Apple silicon Mac runs it as a "Designed
 for iPad" app in a resizable window. This is the route to a desktop-friendly app.
 
@@ -59,7 +59,7 @@ to know:
 ## Two panes (phase 3, Recipes, Projects, Today and Groceries)
 
 From `TWO_PANE_MIN_WINDOW_WIDTH` (1100pt) up, Recipes, Projects, Today and Groceries show the list on the left
-(`TWO_PANE_LIST_WIDTH`, 400pt) and the open page on the right. Below it they are the single column
+(`twoPaneListWidthFor`: 400pt at the breakpoint, growing with the window to 560pt) and the open page on the right. Below it they are the single column
 they always were, and a tap pushes the page. Four things to know:
 
 - **The page is the pushed screen, drawn in place.** `RecipeDetailScreen` and `ProjectDetailScreen`
@@ -92,11 +92,46 @@ they always were, and a tap pushes the page. Four things to know:
 - **Anything else that opens the same page still pushes it** (a meal plan row, a search result, a
   deep link). Only the list screen's own rows and the "new" flows open it in the pane.
 
+## The Mac's own conventions (phase 5)
+
+An iPad app on a Mac can't have a Mac toolbar, a title bar of its own, AppKit controls, a menu
+bar extra or (here) a second window: those need a Mac Catalyst build or a separate desktop
+client. What it can have is below, all of it in
+`modules/todo-key-commands` with the rules in `src/utils/macMenu.ts`. None of it has run on a Mac;
+the native half was written against Apple's declarations and can only be checked by a build.
+
+- **The menu bar** (`TodoMenuBar.swift`, `useMenuBar`). File › New Task ⌘N, Edit › Search… ⌘F,
+  View › Today, Later, Unscheduled and Inbox (⌘1 to ⌘4), a Go menu that is the side menu with hubs
+  as submenus, Settings… ⌘, in the app menu and Help › Keyboard Shortcuts ⌘/. It uses
+  `UIMainMenuSystem` (iOS 26), set once at launch from an app delegate subscriber because Apple
+  asks for exactly that; later changes only rebuild. It exists on a Mac and on an iPad, never a
+  phone. Three rules: **only chords go in a menu**, since a menu's key equivalent can beat a
+  text field to a plain key; **a chord has one handler**, so the key sink drops the chords the menu
+  carries (`sinkShortcuts`); and **⌘1 to ⌘4 are menu-only** (`MENU_SHORTCUTS`), because on a phone
+  they belong to iPhone Mirroring. The system's Find, New Window, document, printing, toolbar,
+  sidebar and inspector groups are removed, since Find and New Window bind ⌘F and ⌘N.
+- **Hover** (`RowHoverContext` in `SwipeableRow`). On a Mac a row's mirroring buttons
+  (`SwipeActionButtons`) show only while the pointer is over the row. They keep their space while
+  hidden: showing them in place reflowed the title and moved every row below as the pointer passed.
+  React Native reports hover as `onPointerEnter`/`onPointerLeave` with no flag. Rows and the
+  sidebar get no hover tint, which is the Mac's own convention for lists.
+- **Right-click menus and tooltips** (`PointerView`, over `TodoPointerView`). A tooltip is a
+  `UIToolTipInteraction` and a menu a `UIContextMenuInteraction`, both attached only on a Mac: on
+  a touch screen a context menu opens on a long press, which on a row here means drag. A row's menu
+  offers what the row already offers and nothing new, under the same conditions: the task row
+  (Edit, Complete, Reschedule, Pin, Select, and Delete through `confirmDeleteTask`), a grocery row,
+  a recipe, a project, a stack and a stack's header on Today. A row with no delete of its own gets
+  none in its menu either. Header icon buttons and the mirroring buttons carry their accessibility label as a
+  tooltip. Elsewhere `PointerView` is a plain View with the same props, so layout doesn't change.
+- **The window** (`useMacWindow`). Its title is the screen's name in the side menu
+  (`windowTitleFor`), the app's name for a pushed page, and it can't be dragged below
+  `MIN_WINDOW_SIZE`, the phone layout's width.
+
 ## What isn't, and the plan
 
 | Phase | What | Notes |
 |---|---|---|
-| 4 | Desktop input: `mirroringMode`, on by default on a Mac | **Mostly built, under the iPhone Mirroring setting** (`useSettingsStore.mirroringMode`, Settings › Appearance). On, every swipeable row shows its swipe actions as buttons (`SwipeActionButtons`), the undo bar offers every action, Return accepts a title suggestion, and the hardware-keyboard shortcuts are on (`keyShortcuts.ts`: `n`, `/`, `⌘N`, `⌘F`, `⌘Z`, Escape, `1` to `4` for the Today views). A swipe is only ever select (left) or reschedule (right), never destructive. **A Mac gets it on without asking**: `useMacMirroringDefault` reads `isRunningOnMac` (`todo-key-commands`, `ProcessInfo.isiOSAppOnMac`) at launch and turns it on when the stored setting is absent (`shouldDefaultMirroringOn`). Nothing is written, so a Mac follows the device until someone turns it off, and the stored `false` then wins. iPhone Mirroring itself still needs the toggle, since the app runs on the phone there. Left: hover states. |
+| 4 | Desktop input: `mirroringMode`, on by default on a Mac | **Mostly built, under the iPhone Mirroring setting** (`useSettingsStore.mirroringMode`, Settings › Appearance). On, every swipeable row shows its swipe actions as buttons (`SwipeActionButtons`), the undo bar offers every action, Return accepts a title suggestion, and the hardware-keyboard shortcuts are on (`keyShortcuts.ts`: `n`, `/`, `⌘N`, `⌘F`, `⌘Z`, Escape, `1` to `4` for the Today views). A swipe is only ever select (left) or reschedule (right), never destructive. **A Mac gets it on without asking**: `useMacMirroringDefault` reads `isRunningOnMac` (`todo-key-commands`, `ProcessInfo.isiOSAppOnMac`) at launch and turns it on when the stored setting is absent (`shouldDefaultMirroringOn`). Nothing is written, so a Mac follows the device until someone turns it off, and the stored `false` then wins. iPhone Mirroring itself still needs the toggle, since the app runs on the phone there. Hover is phase 5. |
 
 Not available on a Mac: HealthKit, Screen Time,
 widgets, the Watch app, Live Activities and NFC. The logic layer already guards each behind a

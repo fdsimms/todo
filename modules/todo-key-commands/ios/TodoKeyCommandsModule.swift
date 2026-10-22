@@ -6,6 +6,11 @@ import UIKit
 // an `onKeyCommand` event naming the shortcut's id, and JS decides what it
 // does. Nothing here knows what a shortcut means.
 //
+// The rest of what makes the app behave like a desktop app lives here too, so
+// there is one native module for it: the menu bar (`TodoMenuBar.swift`), the
+// window's title and minimum size, and `TodoPointerView`, which adds a tooltip
+// and a right-click menu to whatever it wraps.
+//
 // Two things make this work, and both are UIKit rules rather than choices:
 //
 // - **Key commands are found on the responder chain, starting at the first
@@ -30,7 +35,7 @@ import UIKit
 public class TodoKeyCommandsModule: Module {
   /// The live module, for the responder extension to report to. Weak: a
   /// development reload makes a new module and the old one should go.
-  fileprivate static weak var current: TodoKeyCommandsModule?
+  static weak var current: TodoKeyCommandsModule?
 
   /// "input|modifierFlags" → the id JS gave that shortcut.
   private var ids: [String: String] = [:]
@@ -44,7 +49,7 @@ public class TodoKeyCommandsModule: Module {
   public func definition() -> ModuleDefinition {
     Name("TodoKeyCommands")
 
-    Events("onKeyCommand")
+    Events("onKeyCommand", "onMenuCommand")
 
     OnCreate {
       TodoKeyCommandsModule.current = self
@@ -64,6 +69,45 @@ public class TodoKeyCommandsModule: Module {
     // and later, so it needs no main-thread hop.
     Function("isOnMac") { () -> Bool in
       return ProcessInfo.processInfo.isiOSAppOnMac
+    }
+
+    // Whether the menu bar was set up at launch (iOS 26, on a Mac or an iPad).
+    // Read on the JS thread: `installed` is written once, in
+    // didFinishLaunching, before JS starts.
+    Function("isMenuBarAvailable") { () -> Bool in
+      return TodoMenuBar.installed
+    }
+
+    // The menu bar's items (`src/utils/macMenu.ts`). A pick comes back as an
+    // `onMenuCommand` event with the item's id.
+    Function("setMenuItems") { (specs: [MenuItemSpec]) in
+      let entries = specs.map { $0.entry }
+      DispatchQueue.main.async { TodoMenuBar.update(entries) }
+    }
+
+    // What the window's title bar says, on a Mac. On an iPad it names the
+    // window in the app switcher.
+    Function("setWindowTitle") { (title: String) in
+      DispatchQueue.main.async { Self.hostScene()?.title = title }
+    }
+
+    // The smallest the window may be dragged to, in points.
+    Function("setMinimumWindowSize") { (width: Double, height: Double) in
+      DispatchQueue.main.async {
+        Self.hostScene()?.sizeRestrictions?.minimumSize = CGSize(width: width, height: height)
+      }
+    }
+
+    View(TodoPointerView.self) {
+      Events("onMenuSelect")
+
+      Prop("toolTip") { (view: TodoPointerView, text: String?) in
+        view.setToolTip(text)
+      }
+
+      Prop("menuItems") { (view: TodoPointerView, items: [PointerMenuItemSpec]?) in
+        view.setMenuItems((items ?? []).map { $0.item })
+      }
     }
 
     // An empty list switches everything off: the sink leaves the window, the
@@ -161,6 +205,10 @@ public class TodoKeyCommandsModule: Module {
     sendEvent("onKeyCommand", ["id": id])
   }
 
+  func fireMenu(_ id: String) {
+    sendEvent("onMenuCommand", ["id": id])
+  }
+
   // MARK: - Helpers
 
   private static func lookupKey(input: String, flags: UIKeyModifierFlags) -> String {
@@ -181,7 +229,7 @@ public class TodoKeyCommandsModule: Module {
     }
   }
 
-  private static func modifierFlags(_ names: [String]) -> UIKeyModifierFlags {
+  static func modifierFlags(_ names: [String]) -> UIKeyModifierFlags {
     var flags: UIKeyModifierFlags = []
     for name in names {
       switch name {
@@ -193,6 +241,11 @@ public class TodoKeyCommandsModule: Module {
       }
     }
     return flags
+  }
+
+  private static func hostScene() -> UIWindowScene? {
+    let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+    return scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
   }
 
   private static func hostWindow() -> UIWindow? {

@@ -23,6 +23,8 @@ import { useNotificationTapSync } from './src/utils/notificationTapSync';
 import { useShakeToUndo } from './src/utils/useShakeToUndo';
 import { useKeyShortcuts } from './src/hooks/useKeyShortcuts';
 import { useMacMirroringDefault } from './src/hooks/useMacMirroringDefault';
+import { useMenuBar } from './src/hooks/useMenuBar';
+import { useMacWindow } from './src/hooks/useMacWindow';
 import { useTaskDeepLinks } from './src/utils/deepLinks';
 import { useHomeScreenQuickActions } from './src/utils/quickActions';
 import { quickActionScreenList } from './src/utils/screenLinks';
@@ -91,6 +93,18 @@ SplashScreen.setOptions({ fade: true, duration: animation.duration.normal });
 // optimization layer.
 enableScreens(false);
 
+/**
+ * The menu bar and the Mac window's title and size. A component of its own
+ * rather than hooks in AppContent: the menu follows every screen the side menu
+ * can reach and the title follows every navigation, and either one re-rendering
+ * AppContent would re-render the navigator under it.
+ */
+function DesktopChrome() {
+  useMenuBar();
+  useMacWindow();
+  return null;
+}
+
 function AppContent() {
   const { isDark } = useTheme();
   const shakeToUndoEnabled = useSettingsStore(s => s.shakeToUndoEnabled);
@@ -103,6 +117,7 @@ function AppContent() {
   return (
     <View style={{ flex: 1 }}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
+      <DesktopChrome />
       <AppNavigator />
       {/* The one-time setup questions on a new install. A sheet, so it presents
           above the navigator whatever screen it opened on. */}

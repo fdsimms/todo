@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useContext } from 'react';
 import { TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import type { SelectAction, UndoAction, WhenAction } from './SwipeableRow';
+import { RowHoverContext, type SelectAction, type UndoAction, type WhenAction } from './SwipeableRow';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { PointerView } from './PointerView';
 import { useColors } from '../theme/ThemeContext';
 import { iconSize, spacing } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -39,47 +40,60 @@ interface Props {
  * ellipsis-in-a-circle sits too close to those "…" buttons, so it's the empty
  * radio ring the row turns into once it's selectable, drawn smaller and
  * dimmer than `SelectionDot` so a list doesn't look mid-selection at rest.
+ *
+ * **On a Mac they wait for the pointer** (`RowHoverContext`): drawn only while
+ * it is over the row, the way a Mac list shows a row's controls. They keep
+ * their space while hidden, so a title never re-wraps and the rows below never
+ * move as the pointer passes down the list.
  */
 export function SwipeActionButtons({ undoAction, whenAction, selectAction, enabled = true }: Props) {
   const colors = useColors();
   const mirroringMode = useSettingsStore(s => s.mirroringMode);
+  const hovered = useContext(RowHoverContext);
   if (!mirroringMode || !enabled) return null;
+  const buttonStyle = hovered === false ? [styles.button, styles.hidden] : styles.button;
 
   return (
     <>
       {undoAction ? (
-        <TouchableOpacity
-          onPress={() => { haptics.tap(); undoAction.onUndo(); }}
-          hitSlop={8}
-          style={styles.button}
-          accessibilityRole="button"
-          accessibilityLabel={undoAction.accessibilityLabel}
-        >
-          <Ionicons name="arrow-undo-outline" size={iconSize.sm} color={colors.textSecondary} />
-        </TouchableOpacity>
+        <PointerView toolTip={undoAction.accessibilityLabel}>
+          <TouchableOpacity
+            onPress={() => { haptics.tap(); undoAction.onUndo(); }}
+            hitSlop={8}
+            style={buttonStyle}
+            accessibilityRole="button"
+            accessibilityLabel={undoAction.accessibilityLabel}
+          >
+            <Ionicons name="arrow-undo-outline" size={iconSize.sm} color={colors.textSecondary} />
+          </TouchableOpacity>
+        </PointerView>
       ) : whenAction ? (
-        <TouchableOpacity
-          onPress={() => { haptics.tap(); whenAction.onAction(); }}
-          hitSlop={8}
-          style={styles.button}
-          accessibilityRole="button"
-          accessibilityLabel={whenAction.accessibilityLabel}
-        >
-          <Ionicons name={outlineOf(whenAction.icon ?? 'time')} size={iconSize.sm} color={colors.textSecondary} />
-        </TouchableOpacity>
+        <PointerView toolTip={whenAction.accessibilityLabel}>
+          <TouchableOpacity
+            onPress={() => { haptics.tap(); whenAction.onAction(); }}
+            hitSlop={8}
+            style={buttonStyle}
+            accessibilityRole="button"
+            accessibilityLabel={whenAction.accessibilityLabel}
+          >
+            <Ionicons name={outlineOf(whenAction.icon ?? 'time')} size={iconSize.sm} color={colors.textSecondary} />
+          </TouchableOpacity>
+        </PointerView>
       ) : null}
       {selectAction && (
-        <TouchableOpacity
-          // No tap of its own: onSelect enters selection mode, which fires a
-          // heavy impact (useRowSelection), and the two landed together.
-          onPress={selectAction.onSelect}
-          hitSlop={8}
-          style={styles.button}
-          accessibilityRole="button"
-          accessibilityLabel={selectAction.accessibilityLabel}
-        >
-          <Ionicons name="radio-button-off" size={iconSize.sm} color={colors.textTertiary} />
-        </TouchableOpacity>
+        <PointerView toolTip={selectAction.accessibilityLabel}>
+          <TouchableOpacity
+            // No tap of its own: onSelect enters selection mode, which fires a
+            // heavy impact (useRowSelection), and the two landed together.
+            onPress={selectAction.onSelect}
+            hitSlop={8}
+            style={buttonStyle}
+            accessibilityRole="button"
+            accessibilityLabel={selectAction.accessibilityLabel}
+          >
+            <Ionicons name="radio-button-off" size={iconSize.sm} color={colors.textTertiary} />
+          </TouchableOpacity>
+        </PointerView>
       )}
     </>
   );
@@ -99,5 +113,8 @@ function outlineOf(name: keyof typeof Ionicons.glyphMap): keyof typeof Ionicons.
 const styles = StyleSheet.create({
   button: {
     padding: spacing.xs,
+  },
+  hidden: {
+    opacity: 0,
   },
 });

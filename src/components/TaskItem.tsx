@@ -183,6 +183,8 @@ import { ProgressBar } from './ProgressBar';
 import { TextField } from './TextField';
 import { useActionMenu } from '../hooks/useActionMenu';
 import { BUTTON_LABEL } from '../copy/shared';
+import { PointerView, pointerMenuItem, type PointerMenuItem } from './PointerView';
+import { runningOnMac } from '../utils/runningOnMac';
 
 /**
  * This device's id for the event a "Leave for X" row was written for. The row
@@ -5141,6 +5143,41 @@ const TaskItemRow = React.memo(function TaskItem({
     </Reanimated.View>
   );
 
+  // ==== the right-click menu (Mac) ====
+  // What the row already offers, gathered where a Mac user looks for it: the
+  // pencil, the checkbox, the reschedule and select swipes, the pin button and
+  // the panel's trash, each under the condition that shows it on the row. Nothing new,
+  // and nothing while bulk selecting (the row is a selection target then).
+  // Built only on a Mac, the one place PointerView shows it.
+  const contextMenuItems: PointerMenuItem[] | undefined = !runningOnMac() || selectionMode || spotlightDisabled ? undefined : [
+    ...(onEdit && !notice ? [pointerMenuItem('edit', 'Edit', 'pencil')] : []),
+    ...(!task.completed && !completing && !isNegative && !isRotation
+      ? [pointerMenuItem('complete', 'Complete', 'checkmark.circle')]
+      : []),
+    ...(swipeWhen ? [pointerMenuItem('when', 'Reschedule…', 'calendar')] : []),
+    ...(showActions && showPin && canPinTask(task) && !pinWaiting
+      ? [pinLit ? pointerMenuItem('pin', 'Unpin', 'pin.slash') : pointerMenuItem('pin', 'Pin', 'pin')]
+      : []),
+    ...(swipeSelect ? [pointerMenuItem('select', 'Select', 'checklist')] : []),
+    // The expanded panel's trash, asking what it asks: a list line goes at
+    // once (the Undo bar brings it back), anything else confirms first.
+    pointerMenuItem('delete', listRow ? BUTTON_LABEL.delete : `${BUTTON_LABEL.delete}…`, 'trash', true),
+  ];
+  const handleContextMenu = (id: string) => {
+    switch (id) {
+      case 'edit': onEdit?.(task.id); return;
+      // The checkbox's own dispatch for the rows offered it: a target logs one
+      // unit, anything else completes.
+      case 'complete': if (showQuotaMeter) handleQuotaTap(); else void handleComplete(); return;
+      case 'when': swipeWhen?.onAction(); return;
+      case 'pin': animateLayout(); togglePin(task.id); return;
+      case 'select': swipeSelect?.onSelect(); return;
+      case 'delete':
+        if (listRow) { animateLayout(); deleteTask(task.id); } else confirmDeleteTask(task);
+        return;
+    }
+  };
+
   // ==== render. Everything below is JSX ====
   return (
     <>
@@ -5219,7 +5256,7 @@ const TaskItemRow = React.memo(function TaskItem({
             selectAction={swipeSelect}
             whenAction={swipeWhen}
             >
-            <View>
+            <PointerView menuItems={contextMenuItems} onMenuSelect={handleContextMenu}>
               <View pointerEvents={spotlightDisabled ? 'none' : 'auto'}>
                 {rowBody}
               </View>
@@ -5236,7 +5273,7 @@ const TaskItemRow = React.memo(function TaskItem({
                   importantForAccessibility="no-hide-descendants"
                 />
               )}
-            </View>
+            </PointerView>
           </SwipeableRow>
           {expandedPanel}
           {/* A scrim drawn on top of the row rather than fading the row's own

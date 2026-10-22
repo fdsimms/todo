@@ -61,6 +61,8 @@ import { ListBulkBar } from '../components/ListBulkBar';
 import { SelectionDot } from '../components/SelectionDot';
 import { SwipeableRow } from '../components/SwipeableRow';
 import { SwipeActionButtons } from '../components/SwipeActionButtons';
+import { PointerView, pointerMenuItem, type PointerMenuItem } from '../components/PointerView';
+import { runningOnMac } from '../utils/runningOnMac';
 import { PaintSelectionProvider, usePaintSelectionRow } from '../components/PaintSelection';
 import { useRowSelection } from '../hooks/useRowSelection';
 import { useColors } from '../theme/ThemeContext';
@@ -871,6 +873,27 @@ const ProjectRow = React.memo(function ProjectRow({
   const toggleSelect = () => onToggleSelect(project.id);
   // Shared by the swipe and the iPhone Mirroring button.
   const swipeSelect = { onSelect: () => onSwipeSelect(project.id), accessibilityLabel: `Select ${project.title}` };
+  // What the row already offers, for a right-click on a Mac: a tap, the
+  // pencil, the quick complete/restore buttons, and the select swipe, each
+  // under the condition that shows it. None while selecting or dragging.
+  const contextMenuItems: PointerMenuItem[] | undefined = !runningOnMac() || selectionMode || isActive ? undefined : [
+    pointerMenuItem('open', 'Open', 'folder'),
+    pointerMenuItem('edit', 'Edit…', 'pencil'),
+    ...(projectFilter === 'archived' ? [pointerMenuItem('unarchive', 'Unarchive', 'arrow.uturn.backward')] : []),
+    ...(projectFilter === 'completed' ? [pointerMenuItem('uncomplete', 'Restore to Active', 'arrow.uturn.backward')] : []),
+    ...(allDone && !locked ? [pointerMenuItem('complete', 'Mark Complete', 'checkmark.circle')] : []),
+    pointerMenuItem('select', 'Select', 'checklist'),
+  ];
+  const handleContextMenu = (id: string) => {
+    switch (id) {
+      case 'open': press(); return;
+      case 'edit': onEdit(project); return;
+      case 'unarchive': onQuickUnarchive(project); return;
+      case 'uncomplete': onQuickUncomplete(project); return;
+      case 'complete': onQuickComplete(project); return;
+      case 'select': swipeSelect.onSelect(); return;
+    }
+  };
 
   return (
     <SwipeableRow
@@ -879,6 +902,7 @@ const ProjectRow = React.memo(function ProjectRow({
       selectAction={swipeSelect}
     >
       <View ref={paintRef}>
+        <PointerView menuItems={contextMenuItems} onMenuSelect={handleContextMenu}>
         <TouchableOpacity
           style={[
             styles.projectRow,
@@ -1004,6 +1028,7 @@ const ProjectRow = React.memo(function ProjectRow({
             )}
           </View>
         </TouchableOpacity>
+        </PointerView>
       </View>
     </SwipeableRow>
   );

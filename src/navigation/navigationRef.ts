@@ -263,6 +263,11 @@ export function showTodayViewMode(mode: 'today' | 'later' | 'unscheduled' | 'inb
 
 export const showTodayViewModeFromKeyboard = showTodayViewMode;
 
+/** Settings, from the menu bar's Settings… (⌘,). A card pushed over whatever is on show. */
+export function openSettingsFromKeyboard(): void {
+  runWhenReady(() => navigationRef.navigate('Settings'));
+}
+
 // `dundundun://addevent` — the Today widget's event shortcut. The event
 // counterpart of openQuickAddFromShortcut above: lands on Today and pops
 // QuickEventSheet instead of quick add, the same sheet the FAB's "Event" row

@@ -17,8 +17,9 @@ Pod::Spec.new do |s|
   s.dependency 'ExpoModulesCore'
 
   # UIKit only: no entitlement, no Info.plist key, no permission, so no config
-  # plugin beside it. UIKeyCommand.wantsPriorityOverSystemBehavior is the
-  # newest API here (iOS 15.0), under the 15.1 deployment target.
+  # plugin beside it. UIToolTipInteraction (iOS 15.0) is the newest API used
+  # unguarded, under the 15.1 deployment target; the menu bar's
+  # UIMainMenuSystem (iOS 26.0) sits behind an availability check.
   s.frameworks = 'UIKit'
 
   s.source_files = '**/*.{h,m,swift}'
