@@ -84,8 +84,10 @@ describe('agentRecordPlan', () => {
 
   it('cancels a calendar request only while it is still waiting for the phone', () => {
     const e = entry({ taskId: null, subject: 'event', action: 'created', title: 'Dentist', recordId: 'c1', revert: null });
-    const at = (status: 'pending' | 'written' | 'failed' | 'cancelled') => state({ calendarRequest: () => ({ status }) });
+    const at = (status: 'proposed' | 'pending' | 'written' | 'failed' | 'cancelled') => state({ calendarRequest: () => ({ status }) });
     expect(agentRecordPlan(e, at('pending'))).toEqual({ kind: 'cancelCalendarRequest', id: 'c1' });
+    // A suggestion nobody has tapped is taken back the same way.
+    expect(agentRecordPlan(e, at('proposed'))).toEqual({ kind: 'cancelCalendarRequest', id: 'c1' });
     expect(agentUndoLabel(agentRecordPlan(e, at('pending')))).toBe('Don’t add');
     expect(agentRecordPlan(e, at('written'))).toEqual({ kind: 'none', reason: 'On your calendar' });
     expect(agentRecordPlan(e, at('failed'))).toEqual({ kind: 'none', reason: 'Not added' });

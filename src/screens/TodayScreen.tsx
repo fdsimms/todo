@@ -208,6 +208,7 @@ import {
 import { BulkActionBar } from '../components/BulkActionBar';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
+import { AgentSuggestionCards, useSuggestionCount } from '../components/AgentSuggestionCards';
 import { AllClearMark } from '../components/AllClearMark';
 import { CompletionCollapse } from '../components/CompletionCollapse';
 import { NewTasksBanner } from '../components/NewTasksBanner';
@@ -804,6 +805,10 @@ export function TodayScreen() {
   const filterTypes = useSettingsStore(useShallow(s => s.filterTypes));
   const setFilterTypes = useSettingsStore(s => s.setFilterTypes);
   const inboxTasks = useMemo(() => filterByTaskTypes(inboxTasksAll, filterTypes), [inboxTasksAll, filterTypes]);
+  // What an agent suggested and is waiting on a tap. Shown above the Inbox's
+  // tasks and counted on its pill, so an Inbox holding only suggestions is not
+  // drawn as an empty one.
+  const suggestionCount = useSuggestionCount();
   const deferredTasks = useMemo(() => filterByTaskTypes(deferredTasksAll, filterTypes), [deferredTasksAll, filterTypes]);
   const unscheduledTasks = useMemo(
     () => filterByTaskTypes(unscheduledTasksAll, filterTypes),
@@ -2584,6 +2589,7 @@ export function TodayScreen() {
     }
     return items;
   }, [inboxTasks, inboxGroupItems]);
+  const inboxIsEmpty = inboxData.length === 0 && suggestionCount === 0;
 
   const upcomingUngroupedTasks = useMemo(
     () => upcomingTodayTasks.filter(t => !t.groupId),
@@ -5026,7 +5032,7 @@ export function TodayScreen() {
         <ViewModePills
           modes={viewModes}
           viewMode={viewMode}
-          inboxCount={inboxTasksAll.length}
+          inboxCount={inboxTasksAll.length + suggestionCount}
           unscheduledCount={unscheduledCount}
           onLeave={leaveViewMode}
           onSelect={selectViewMode}
@@ -5606,13 +5612,14 @@ export function TodayScreen() {
               if (content === null) return null;
               return <FabDropZone zone={inboxZoneByKey.get(listItemKey(item)) ?? null}>{content}</FabDropZone>;
             }}
+            ListHeaderComponent={<AgentSuggestionCards />}
             contentContainerStyle={
-              inboxData.length === 0
+              inboxIsEmpty
                 ? styles.emptyContainer
                 : [styles.listContent, extraListBottomPadding !== undefined && { paddingBottom: extraListBottomPadding }]
             }
             ListEmptyComponent={
-              typeFilterEmptied(inboxTasksAll) ? typeFilterEmptyState : isEmptyDatabase ? (
+              suggestionCount > 0 ? null : typeFilterEmptied(inboxTasksAll) ? typeFilterEmptyState : isEmptyDatabase ? (
                 <EmptyState
                   icon="rocket-outline"
                   title="No tasks yet"
@@ -5634,12 +5641,12 @@ export function TodayScreen() {
             }
             ListFooterComponent={
               <TouchableOpacity
-                style={[styles.listFooter, inboxData.length === 0 && styles.listFooterFixed]}
+                style={[styles.listFooter, inboxIsEmpty && styles.listFooterFixed]}
                 activeOpacity={1}
                 onPress={() => setExpandedTaskId(null)}
               />
             }
-            ListFooterComponentStyle={inboxData.length === 0 ? undefined : styles.listFooterCell}
+            ListFooterComponentStyle={inboxIsEmpty ? undefined : styles.listFooterCell}
             refreshControl={
               <RefreshControl
                 refreshing={pullingToSearch}

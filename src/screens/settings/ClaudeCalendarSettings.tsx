@@ -36,6 +36,8 @@ export function ClaudeCalendarSettings() {
   const writerId = useSettingsStore(s => s.calendarRequestDeviceId);
   const requestCalendarId = useSettingsStore(s => s.calendarRequestCalendarId);
   const setCalendarRequestCalendar = useSettingsStore(s => s.setCalendarRequestCalendar);
+  const asksFirst = useSettingsStore(s => s.calendarRequestAsksFirst);
+  const setAsksFirst = useSettingsStore(s => s.setCalendarRequestAsksFirst);
   const selfId = useMemo(() => dbGetDeviceId(), []);
   const here = isCalendarRequestWriter(writerId, selfId);
   // Only this device's own choice counts: a calendar id left behind from
@@ -130,7 +132,8 @@ export function ClaudeCalendarSettings() {
         title: 'How Claude’s events work',
         paragraphs: [
           'Only one device adds them, so picking a calendar here turns this off on other devices.',
-          'Claude can’t see your calendar and doesn’t change or delete events after they’re added.',
+          'Claude can’t see your calendar. It can only change or remove an event it added itself.',
+          'Putting a task’s deadline on your calendar, or giving a task an alarm, always waits for your tap in the Inbox.',
         ],
       }}
     >
@@ -176,6 +179,25 @@ export function ClaudeCalendarSettings() {
               accessibilityLabelFor={option => (option.id ? `Add to ${option.title}` : 'Off')}
             />
           )}
+        </>
+      )}
+
+      {/* Whichever device adds them, this decides whether they wait for a tap,
+          and it syncs, so it is shown wherever a writer is set. */}
+      {!!writerId && (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="claudeCalendarAsksFirst"
+            icon="hand-left-outline"
+            label="Ask before adding"
+            hint={asksFirst
+              ? 'Events from Claude wait in your Inbox until you tap Add to calendar'
+              : 'Events from Claude are added without asking'}
+            toggle={asksFirst}
+            onPress={() => setAsksFirst(!asksFirst)}
+            accessibilityLabel="Ask before adding the events Claude asks for"
+          />
         </>
       )}
 

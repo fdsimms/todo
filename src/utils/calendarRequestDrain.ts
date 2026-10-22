@@ -14,6 +14,7 @@ import {
   CALENDAR_REQUEST_PAST_REASON,
   CALENDAR_CHANGE_NO_EVENT_REASON,
   CALENDAR_REQUEST_REFUSED_REASON,
+  CALENDAR_SUGGESTION_STALE_REASON,
   changeRequestProblem,
   eventFieldsForChange,
   eventFieldsForRequest,
@@ -73,7 +74,7 @@ async function drainOnce(): Promise<void> {
   for (const r of plan.expire) {
     dbResolveCalendarRequest(r.id, {
       status: 'failed',
-      failureReason: CALENDAR_REQUEST_PAST_REASON,
+      failureReason: r.status === 'proposed' ? CALENDAR_SUGGESTION_STALE_REASON : CALENDAR_REQUEST_PAST_REASON,
       eventExternalId: null,
       resolvedAt: new Date().toISOString(),
     });

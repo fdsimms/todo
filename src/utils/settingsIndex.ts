@@ -609,6 +609,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     kitchen: true },
   { id: 'claudeCalendar', groupId: 'calendar', label: 'Add Claude’s events to', section: 'Claude’s events on your calendar',
     keywords: ['mcp', 'agent', 'ai', 'assistant', 'appointment', 'sync server', 'calendar'] },
+  { id: 'claudeCalendarAsksFirst', requires: 'claudeCalendar', groupId: 'calendar', label: 'Ask before adding', section: 'Claude’s events on your calendar',
+    keywords: ['mcp', 'agent', 'ai', 'assistant', 'approve', 'confirm', 'suggestion', 'inbox', 'calendar'] },
 
   { id: 'healthRead', groupId: 'health', label: 'Read Apple Health', section: 'Apple Health',
     keywords: ['steps', 'fitness', 'activity', 'healthkit', 'walking', 'watch'] },

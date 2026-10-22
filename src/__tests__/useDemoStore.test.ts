@@ -98,6 +98,7 @@ import { isStepTimerRunning, parseStepDurations, stepDurationOffers, stepTimerRe
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { useMoodStore } from '../store/useMoodStore';
+import { useAgentSuggestionStore } from '../store/useAgentSuggestionStore';
 import { useMilestoneStore } from '../store/useMilestoneStore';
 import { useCookwareStore } from '../store/useCookwareStore';
 import { effectiveCookwareType } from '../utils/cookware';
@@ -2584,6 +2585,16 @@ describe('demo seed — people', () => {
     const entries = useFoodLogStore.getState().recentEntries('0000-01-01', '9999-12-31')
       .filter(e => e.label === 'Stress Relief');
     expect(entries).toHaveLength(0);
+  });
+
+  it('seeds the Inbox suggestions: an event, a deadline and an alarm, each for a task that exists', () => {
+    const rows = useAgentSuggestionStore.getState().requests;
+    expect(rows.filter(r => r.status === 'proposed').map(r => r.kind ?? 'event').sort())
+      .toEqual(['event', 'task_alarm', 'task_deadline']);
+    const tasks = useTaskStore.getState().tasks;
+    for (const r of rows.filter(x => x.kind === 'task_alarm' || x.kind === 'task_deadline')) {
+      expect(tasks.some(t => t.id === r.taskId)).toBe(true);
+    }
   });
 
   it('seeds a medication started recently enough to offer a milestone', () => {

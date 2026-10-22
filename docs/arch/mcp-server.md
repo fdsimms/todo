@@ -1438,6 +1438,34 @@ is how `list_calendar_requests` reads the outcome. The rules are in `src/utils/c
 - **The race it accepts:** a cancel and the phone's write can cross in sync, and last writer wins on
   the row. The phone re-reads each row just before writing, which makes the window one sync wide.
 
+#### Suggestions: the same rows, waiting for a tap
+
+The Inbox's "Suggested by Claude" cards (`AgentSuggestionCards`, rules in `src/utils/agentSuggestions.ts`)
+are `calendar_requests` rows in a fifth status, `proposed`. They share the table because a second one
+would have meant a second sync registration, backup entry, replica, ledger path and undo for the same
+shape of thing: an agent's request that the phone answers. Two things use the status:
+
+- **Ask before adding** (`calendarRequestAsksFirst`, synced so the replica reads it). On, a new event
+  request or change starts `proposed` instead of `pending`. Nothing in the drain acts on `proposed`,
+  so approving is only moving the row to `pending` and the writer drains it as it always did; Skip is
+  `cancelled`. It is turned on the first time a device is chosen to write, and left off for a writer
+  that existed before the switch, so nothing changes under anyone.
+- **Task suggestions** (`propose_task_device_action`, `kind: 'task_deadline' | 'task_alarm'`, with
+  `taskId` and a `payload`). These are the two device effects on a task an agent can't write over MCP
+  (`deadlineOnCalendar`, an alarm `reminderKind`, both in `taskFieldCoverage`'s not-exposed list). They
+  are **always** a card, never queued, because the effect is the phone's. The tap applies them on
+  whichever device it happens on, through `updateTask` with the patch the task editor writes for the
+  same fields (`planTaskSuggestion`), so it needs no writer device and the task change syncs like any
+  edit. A deadline with no deadline calendar picked on that device opens the editor's calendar sheet
+  first. An alarm falls back to a plain notification where AlarmKit is missing, and the card already
+  says "Reminder" instead of "Alarm" there. A time block is deliberately not offered: it can only be
+  made through the system event sheet, which has to be the person's.
+
+A task kind's start and end sit at the epoch, like a change row's, so a build that predates the kinds
+expires one instead of writing an event. A proposal for a moment that has gone (an event already over,
+an alarm time passed, or a month unanswered) is not shown and is failed by the next drain on a writer
+device. `cancel_calendar_request` takes a proposal back, and the Activity entry's undo does too.
+
 ### Settings: an allowlist, through the store's own setters
 
 `get_settings` and `update_settings` (`mcp/src/settingsTools.ts`) read and change the preferences

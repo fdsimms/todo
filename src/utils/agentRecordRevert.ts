@@ -1,4 +1,4 @@
-import type { CalendarRequestStatus, Person, PersonNote, Project, Task, TaskGroup, UnattendedEntry, UnattendedRevert } from '../types';
+import type { CalendarRequestKind, CalendarRequestStatus, Person, PersonNote, Project, Task, TaskGroup, UnattendedEntry, UnattendedRevert } from '../types';
 import { catalogRecordPlan, type CatalogRecordPlan, type CatalogRecordState } from './agentCatalogRevert';
 import { pantryRecordPlan, type PantryRecordPlan, type PantryRecordState } from './agentPantryRevert';
 
@@ -48,7 +48,7 @@ export interface RecordState extends PantryRecordState, CatalogRecordState {
   ruleList(type: RuleListName): unknown;
   hasNote(text: string): boolean;
   /** Where a calendar request stands, or null when it is gone. */
-  calendarRequest(id: string): { status: CalendarRequestStatus } | null;
+  calendarRequest(id: string): { status: CalendarRequestStatus; kind?: CalendarRequestKind } | null;
 }
 
 /**
@@ -189,8 +189,10 @@ export function agentRecordPlan(entry: UnattendedEntry, state: RecordState): Age
       const request = state.calendarRequest(id);
       if (!request) return { kind: 'none', reason: 'Removed since' };
       switch (request.status) {
+        // A proposal is taken back the same way: the person has not tapped it.
+        case 'proposed':
         case 'pending': return { kind: 'cancelCalendarRequest', id };
-        case 'written': return { kind: 'none', reason: 'On your calendar' };
+        case 'written': return { kind: 'none', reason: request.kind === 'task_alarm' ? 'Alarm set' : 'On your calendar' };
         case 'failed': return { kind: 'none', reason: 'Not added' };
         case 'cancelled': return { kind: 'none', reason: 'Undone' };
       }

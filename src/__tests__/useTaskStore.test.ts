@@ -148,6 +148,10 @@ jest.mock('../db/database', () => ({
   dbGetAllEventPeopleLinks: jest.fn().mockReturnValue([]),
   dbUpsertEventPeopleLink: jest.fn(),
   dbDeleteEventPeopleLinks: jest.fn(),
+  // What an agent suggested rides the fan-out too (useAgentSuggestionStore).
+  dbGetAllCalendarRequests: jest.fn().mockReturnValue([]),
+  dbInsertCalendarRequest: jest.fn(),
+  dbResolveCalendarRequest: jest.fn(),
   // ...and its one-time migration off the old setting deletes that setting.
   dbDeleteSetting: jest.fn(),
   // The medication log rides the same fan-out, and completing a task carrying
