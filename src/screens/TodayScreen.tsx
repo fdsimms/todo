@@ -969,6 +969,12 @@ export function TodayScreen() {
   const [pullOnDay, setPullOnDay] = useState<string | null>(null);
   const [showUpcoming, setShowUpcoming] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  // For the header toggles below, which only ask "is a row spotlighted" at tap
+  // time: read through this rather than listed as a dependency, so a task
+  // expanding or closing doesn't hand every memoized stack header a new
+  // callback and re-render them all in the frame the row starts opening.
+  const expandedTaskIdRef = useRef(expandedTaskId);
+  expandedTaskIdRef.current = expandedTaskId;
   // Stable, so the memoized editor sitting closed under this screen isn't
   // re-rendered by every render of it (see TaskEditor).
   // The tab a task link was tapped from (Backfill's "Open this task"), handed
@@ -3592,7 +3598,7 @@ export function TodayScreen() {
   // copy of this handler was the one that missed the guard, so a stack down
   // there collapsed under a tap the other four read as a dismissal.
   const handleGroupToggleCollapse = useCallback((groupId: string) => {
-    if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
+    if (expandedTaskIdRef.current !== null) { setExpandedTaskId(null); return; }
     haptics.tap();
     setDraggingGroupId(null);
     const group = useTaskGroupStore.getState().getGroupById(groupId);
@@ -3605,17 +3611,17 @@ export function TodayScreen() {
       setPinnedGroupOpen(prev => (prev.has(groupId) ? prev : new Map(prev).set(groupId, !group.collapsed)));
     }
     setGroupCollapsed(groupId, !group.collapsed);
-  }, [expandedTaskId, setGroupCollapsed]);
+  }, [setGroupCollapsed]);
   // The pinned copy's own toggle: session state only, never `group.collapsed`,
   // so the stack's tray down in its category stays exactly as it was.
   const handlePinnedGroupToggleCollapse = useCallback((groupId: string) => {
-    if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
+    if (expandedTaskIdRef.current !== null) { setExpandedTaskId(null); return; }
     haptics.tap();
     setDraggingGroupId(null);
     const group = useTaskGroupStore.getState().getGroupById(groupId);
     if (!group) return;
     setPinnedGroupOpen(prev => new Map(prev).set(groupId, !(prev.get(groupId) ?? !group.collapsed)));
-  }, [expandedTaskId]);
+  }, []);
   const handleGroupPin = useCallback((groupId: string) => { animateLayout(); pinGroup(groupId); }, [pinGroup]);
   const handleGroupPressEdit = useCallback((groupId: string) => {
     const group = useTaskGroupStore.getState().getGroupById(groupId);
@@ -4747,14 +4753,14 @@ export function TodayScreen() {
   const [openLaterStacks, setOpenLaterStacks] = useState<ReadonlySet<string>>(() => new Set());
   const [expandedLaterStacks, setExpandedLaterStacks] = useState<ReadonlySet<string>>(() => new Set());
   const handleLaterStackToggle = useCallback((key: string) => {
-    if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
+    if (expandedTaskIdRef.current !== null) { setExpandedTaskId(null); return; }
     haptics.tap();
     setOpenLaterStacks(prev => {
       const next = new Set(prev);
       if (!next.delete(key)) next.add(key);
       return next;
     });
-  }, [expandedTaskId]);
+  }, []);
   const handleLaterStackShowAll = useCallback((key: string) => {
     setExpandedLaterStacks(prev => new Set(prev).add(key));
   }, []);

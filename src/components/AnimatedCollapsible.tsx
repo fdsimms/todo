@@ -49,6 +49,21 @@ interface Props {
 const UNMEASURED_MAX = 100000;
 
 /**
+ * The clock every tap-to-open section runs on: this component, a task row's
+ * own panel (TaskItem) and a stack's tray surface (TaskGroupTray), which has
+ * to fold in step with the rows under it.
+ *
+ * Ease-out, not ease-in-out. An in-out cubic spends its first quarter barely
+ * moving (about 3% of the way after 50ms, 11% after 75ms), so a tap read as a
+ * pause before anything opened; ease-out is past half by then and still
+ * decelerates into rest, so the motion lands as smoothly as before.
+ */
+export const DISCLOSURE_TIMING = {
+  duration: animation.duration.normal,
+  easing: Easing.out(Easing.cubic),
+};
+
+/**
  * Animates `children` open/closed on the UI thread — the same technique
  * TaskItem uses for its own detail panel. A plain
  * `LayoutAnimation.configureNext` reflow (the usual RN shortcut for this)
@@ -120,10 +135,7 @@ export function AnimatedCollapsible({ expanded, clip = true, lazy = false, child
     // read as jitter is the clip style's, below.)
     progress.value = withTiming(
       expanded ? 1 : 0,
-      {
-        duration: animation.duration.normal,
-        easing: Easing.inOut(Easing.cubic),
-      },
+      DISCLOSURE_TIMING,
       // `finished` is false when a re-tap interrupts this, in which case the
       // next run of this effect is what settles the state instead.
       finished => {
