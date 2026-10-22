@@ -20759,7 +20759,7 @@ describe('a task that records a dose', () => {
       tasks: [makeTask({ id: 't1', medicationName: 'Sertraline' }), makeTask({ id: 't2' })],
     });
     useTaskStore.getState().completeTask('t1');
-    expect(useTaskStore.getState().lastAction).toMatchObject({ label: 'Logged Sertraline', announce: true });
+    expect(useTaskStore.getState().lastAction).toMatchObject({ label: 'Logged Sertraline in your medication log', announce: true });
     useTaskStore.getState().completeTask('t2');
     expect(useTaskStore.getState().lastAction?.announce).toBe(false);
   });
