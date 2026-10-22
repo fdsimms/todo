@@ -4932,12 +4932,20 @@ export function TodayScreen() {
       }] : []),
   ];
 
+  // Today's header is the tallest of the four: its workload line can run to two
+  // lines (events left is a line of its own), where the others reserve one. The
+  // other lenses are held to its measured height, or the pills and the list
+  // under them jump up on every switch away from Today.
+  const [todayHeaderHeight, setTodayHeaderHeight] = useState<number | undefined>(undefined);
+
   // ==== render. Everything below is JSX ====
   const screenBody = (
     <SpotlightProvider progress={spotlightProgress}>
       <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View onLayout={viewMode === 'today' ? e => setTodayHeaderHeight(e.nativeEvent.layout.height) : undefined}>
         <ScreenHeader
           title={VIEW_TITLES[viewMode]}
+          minHeight={viewMode === 'today' ? undefined : todayHeaderHeight}
           overline={viewMode === 'today' ? today : undefined}
           subtitle={workloadSubtitle}
           // The total is what makes a day feel too full, so it's where the way
@@ -4979,6 +4987,7 @@ export function TodayScreen() {
             ) : undefined
           }
         />
+        </View>
 
         <ViewModePills
           modes={viewModes}
