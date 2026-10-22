@@ -4661,8 +4661,11 @@ export function TodayScreen() {
     if (home === 'today') {
       landed = revealTaskInToday(root);
     } else if (home === 'later') {
-      // Later pages itself in behind a task budget — see goToCreatedTask.
-      setLaterTaskLimit(limit => Math.max(limit, LATER_SETTLED_TASK_LIMIT));
+      // Later pages itself in behind a task budget — see goToCreatedTask. The
+      // settled budget stops at 60 rows, so a task further down than that has
+      // no row to scroll to; the budget has to reach the task itself.
+      const position = laterOrder.findIndex(o => o.task.id === root.id);
+      setLaterTaskLimit(limit => Math.max(limit, LATER_SETTLED_TASK_LIMIT, position + 1));
       setPendingLaterJump({ key: root.id, n: jumpCount.current++ });
       landed = true;
     } else if (home) {
