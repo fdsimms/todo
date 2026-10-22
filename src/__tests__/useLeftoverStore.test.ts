@@ -450,6 +450,17 @@ describe('setFrozen', () => {
 });
 
 describe('splitLeftover', () => {
+  it('can be undone, which removes the new container and leaves the original', () => {
+    seed([makeLeftover({ id: 'lo-a', storedAt: localIso('2026-08-10T09:00'), keepUntil: '2026-08-13' })]);
+
+    useLeftoverStore.getState().splitLeftover('lo-a');
+    expect(useLeftoverStore.getState().leftovers).toHaveLength(2);
+
+    useLeftoverStore.getState().lastAction!.undo();
+
+    expect(useLeftoverStore.getState().leftovers.map(l => l.id)).toEqual(['lo-a']);
+  });
+
   it('writes a second row on the opposite side, leaving the original untouched', () => {
     const original = makeLeftover({
       id: 'lo-a',

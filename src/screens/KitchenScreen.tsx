@@ -217,6 +217,8 @@ export function KitchenScreen() {
   const setOnHandUntil = useGroceryStore(s => s.setOnHandUntil);
   const setRunningLow = useGroceryStore(s => s.setRunningLow);
   const setProductOpened = useGroceryStore(s => s.setProductOpened);
+  const setGroceryLastAction = useGroceryStore(s => s.setLastAction);
+  const setLeftoverLastAction = useLeftoverStore(s => s.setLastAction);
   const setAisle = useGroceryStore(s => s.setAisle);
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
   // The frozen portions among the boxes (#2925). Their rows open the item's
@@ -554,7 +556,13 @@ export function KitchenScreen() {
       switch (action) {
         case 'finished': haptics.success(); finishLeftover(entry.sourceId, 'eaten'); break;
         case 'tossed': haptics.warning(); finishLeftover(entry.sourceId, 'tossed'); break;
-        case 'freeze': setLeftoverFrozen(entry.sourceId, true); break;
+        case 'freeze':
+          setLeftoverFrozen(entry.sourceId, true);
+          setLeftoverLastAction({
+            label: `Froze “${entry.title}”`,
+            undo: () => setLeftoverFrozen(entry.sourceId, false),
+          });
+          break;
         case 'thaw': setLeftoverFrozen(entry.sourceId, false); break;
         case 'split': splitLeftover(entry.sourceId); break;
         case 'edit': setOpenLeftoverId(entry.sourceId); break;
@@ -566,15 +574,37 @@ export function KitchenScreen() {
         if (markProductsOutOf([entry.sourceId]) > 0) haptics.success();
       } else if (action === 'opened' || action === 'unopened') {
         setProductOpened(entry.sourceId, action === 'opened');
+        if (action === 'opened') {
+          setGroceryLastAction({
+            label: `Marked “${entry.title}” opened`,
+            undo: () => setProductOpened(entry.sourceId, false),
+          });
+        }
       } else if (action === 'freeze' || action === 'thaw') {
         setProductFrozen(entry.sourceId, action === 'freeze');
+        if (action === 'freeze') {
+          setGroceryLastAction({
+            label: `Froze “${entry.title}”`,
+            undo: () => setProductFrozen(entry.sourceId, false),
+          });
+        }
       }
       return;
     }
     const item = items.find(i => i.id === entry.sourceId);
     if (!item) return;
     switch (action) {
-      case 'have': setOnHandUntil(item.id, defaultOnHandUntil(item, new Date())); break;
+      case 'have': {
+        // Undo puts back what the row said before, which may have been an
+        // earlier "Got it" rather than nothing.
+        const before = item.onHandUntil;
+        setOnHandUntil(item.id, defaultOnHandUntil(item, new Date()));
+        setGroceryLastAction({
+          label: `Marked “${item.name}” as on hand`,
+          undo: () => setOnHandUntil(item.id, before),
+        });
+        break;
+      }
       case 'low': setRunningLow(item.id, true); break;
       case 'clearLow': setRunningLow(item.id, false); break;
       case 'usedUp': if (markOutOfMany([item.id], 'usedUp') > 0) haptics.success(); break;
@@ -584,9 +614,23 @@ export function KitchenScreen() {
       case 'boughtMore':
         if (addManyToPantry([item.name], undefined, undefined, undefined, { acquired: true }) > 0) haptics.success();
         break;
-      case 'opened': setOpened(item.id, true); break;
+      // Undo is offered for the way in only. The way out (not opened, thawed)
+      // has no stamp to restore, so the opposite entry is its undo.
+      case 'opened':
+        setOpened(item.id, true);
+        setGroceryLastAction({
+          label: `Marked “${item.name}” opened`,
+          undo: () => setOpened(item.id, false),
+        });
+        break;
       case 'unopened': setOpened(item.id, false); break;
-      case 'freeze': setFrozen(item.id, true); break;
+      case 'freeze':
+        setFrozen(item.id, true);
+        setGroceryLastAction({
+          label: `Froze “${item.name}”`,
+          undo: () => setFrozen(item.id, false),
+        });
+        break;
       case 'thaw': setFrozen(item.id, false); break;
     }
   };
