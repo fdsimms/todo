@@ -213,6 +213,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/groceryShops.ts` — isUnavailable, isAsserted, lacksWantedProduct, countsForItem, sellsAisle, isOutOfRange, describeShopAisles, shopWalkOrder, shopAisleOrderToSave, describeOwnAisleOrders, +14 more
 - `src/utils/grocerySuggest.ts` — GrocerySuggestion, GrocerySection, GroceryRecipeSection, NO_RECIPE_LABEL, matchWeight, rankGrocerySuggestions, buyAgainItems, rankedCatalogItems, sectionsInAisleOrder, buildGrocerySections, +17 more
 - `src/utils/groceryTripTasks.ts` — TripLinkReaders, tripTasksToComplete
+- `src/utils/groupFold.ts` — sameGroupsApartFromFold
 - `src/utils/gtin.ts` — gtinCheckDigit, normalizeGtin, expandUpcE, isStoreInternalGtin, isGtin, formatGtin, GTIN_MISS_TTL_DAYS, isCacheEntryFresh
 - `src/utils/gymLocation.ts` — defaultGymId, applyLocationGym
 - `src/utils/gyms.ts` — GYM_DEFAULT_RADIUS_M, GYM_MIN_RADIUS_M, GYM_MAX_RADIUS_M, GYM_RADIUS_STEP_M, gymExerciseId, equipmentAvailable, unavailableExerciseIds, RoutineFit, routineFit, describeRoutineFit, +13 more

@@ -34,6 +34,7 @@ import { format } from 'date-fns/format';
 import type { ContextRow, NutrientKey, Task, TaskGroup, TaskTemplate, Category, TimeOfDay } from '../types';
 import { taskHomeFor } from '../utils/taskHome';
 import { isTaskNew, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedToday, isRelevantToGroupToday, groupRoster } from '../utils/visibilityUtils';
+import { sameGroupsApartFromFold } from '../utils/groupFold';
 import { openTasksOf } from '../utils/openTasks';
 import { reuseUnchangedLists } from '../utils/stableLists';
 import { confirmBulkSetWhen } from '../utils/scheduleMovePrompt';
@@ -317,6 +318,7 @@ const NO_SECTION_TASKS: string[] = [];
 // here would be exactly the identity churn NO_SUBTASKS above exists to avoid.
 const NO_GROUP_CHILDREN: Task[] = [];
 const NO_PINNED_ITEMS: never[] = [];
+const NO_LIST_ITEMS: never[] = [];
 
 // The add button's drop target for "create this already pinned". A module
 // constant so its identity is stable across renders — FabDropZone keys zones by
@@ -842,7 +844,21 @@ export function TodayScreen() {
   const bulkTogglePin = useTaskStore(s => s.bulkTogglePin);
   const markTasksSeen = useTaskStore(s => s.markTasksSeen);
   const markTaskSeen = useTaskStore(s => s.markTaskSeen);
-  const taskGroups = useTaskGroupStore(useShallow(s => s.groups));
+  // Two views of the stacks. `liveTaskGroups` is the store as it is, for
+  // anything that draws a stack open or shut (`liveGroup` below).
+  // `taskGroups` is the array every list-building pass reads, held across a
+  // change that only folds a stack open or shut, so a tap on a stack header
+  // doesn't re-run the rosters, sections and counts built from it (see
+  // sameGroupsApartFromFold). Its `collapsed` and `onToday` can be stale:
+  // read those through `liveGroup` or the store, never off it.
+  const liveTaskGroups = useTaskGroupStore(useShallow(s => s.groups));
+  const structuralGroupsRef = useRef(liveTaskGroups);
+  if (!sameGroupsApartFromFold(structuralGroupsRef.current, liveTaskGroups)) {
+    structuralGroupsRef.current = liveTaskGroups;
+  }
+  const taskGroups = structuralGroupsRef.current;
+  const liveGroupById = useMemo(() => new Map(liveTaskGroups.map(g => [g.id, g] as const)), [liveTaskGroups]);
+  const liveGroup = (group: TaskGroup): TaskGroup => liveGroupById.get(group.id) ?? group;
   const setGroupCollapsed = useTaskGroupStore(s => s.setGroupCollapsed);
   const updateGroup = useTaskGroupStore(s => s.updateGroup);
   const createTaskGroup = useTaskGroupStore(s => s.createGroup);
@@ -2940,6 +2956,20 @@ export function TodayScreen() {
     // task id sharing this list.
     : item.type === 'context' ? item.row.id
     : item.task.id;
+  // The rows a collapsed section (or the pinned block's "hide everything
+  // else") has taken out of `data`, handed to the list as `parked` so a row
+  // already drawn stays built while it's folded away. Opening the section
+  // again then shows rows that exist rather than building every one of them
+  // in the tap's frame. Headers are left out: they're never folded away by a
+  // collapse, only by Hide categories, and they cost nothing to build.
+  const parkedRows = useMemo((): ListItem[] => {
+    if (collapsedCategories.size === 0 && restVisible) return NO_LIST_ITEMS;
+    const shown = new Set(data.map(listItemKey));
+    return listItems.filter(item => item.type !== 'header' && !shown.has(listItemKey(item)));
+    // listItemKey is a pure function of the item, rebuilt each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listItems, data, collapsedCategories, restVisible]);
+
   // Inbox's own elevated-cell renderer — same reasoning as
   // elevatedUnscheduledCell above, keyed the same way the list itself is.
   const elevatedInboxCell = useElevatedCellRenderer<ListItem>(listItemKey, expandedTaskId);
@@ -3778,11 +3808,12 @@ export function TodayScreen() {
       );
     }
     if (item.type === 'group') {
-      const allChildren = childrenByGroupId.get(item.group.id) ?? NO_GROUP_CHILDREN;
+      const group = liveGroup(item.group);
+      const allChildren = childrenByGroupId.get(group.id) ?? NO_GROUP_CHILDREN;
       return (
         <GroupDropTargetRow
           channel={fabIntentChannel}
-          groupId={item.group.id}
+          groupId={group.id}
           dragTarget={dropTargetChannel}
         >
           {/* The tray leaves in the same motion as its last rows, instead of
@@ -3790,30 +3821,30 @@ export function TodayScreen() {
               Its ids are the visible children only, so it never collapses
               while any member is still live. */}
           <CompletionCollapse taskIds={item.children.map(c => c.id)}>
-          <TaskGroupTray collapsed={item.group.collapsed}>
+          <TaskGroupTray collapsed={group.collapsed}>
             <TaskGroupHeader
               selectionMode={selectionMode}
-              group={item.group}
+              group={group}
               allChildren={allChildren}
               filtered={groupTallyFiltered}
-              pinned={groupPinInfo.get(item.group.id)?.pinned ?? false}
-              pinDisabled={!(groupPinInfo.get(item.group.id)?.pinnable ?? false)}
+              pinned={groupPinInfo.get(group.id)?.pinned ?? false}
+              pinDisabled={!(groupPinInfo.get(group.id)?.pinnable ?? false)}
               onToggleCollapse={handleGroupToggleCollapse}
               {...groupHeaderProps}
-              onDrag={!selectionMode && drag ? groupDragHandlerFor(item.group.id, drag) : undefined}
+              onDrag={!selectionMode && drag ? groupDragHandlerFor(group.id, drag) : undefined}
             />
             <TaskGroupBody
-              expanded={!item.group.collapsed && draggingGroupId !== item.group.id}
+              expanded={!group.collapsed && draggingGroupId !== group.id}
               hasChildren={item.children.length > 0}
               // Lets the dragged child's floating card cross the tray's edge
               // on its way out of the stack instead of being clipped there.
-              dragging={draggingStackChildGroupId === item.group.id}
+              dragging={draggingStackChildGroupId === group.id}
             >
               <SortableList
                 data={item.children}
-                onReorder={reordered => reorderGroupChildren(item.group.id, reordered.map(t => t.id))}
+                onReorder={reordered => reorderGroupChildren(group.id, reordered.map(t => t.id))}
                 onDragOut={task => removeFromGroup(task.id)}
-                onDragStateChange={dragging => setDraggingStackChildGroupId(dragging ? item.group.id : null)}
+                onDragStateChange={dragging => setDraggingStackChildGroupId(dragging ? group.id : null)}
                 // The same drop slot the main list leaves behind — a stack's
                 // rows are the main list's rows, so the gap should read the same.
                 placeholderStyle={styles.stackDropSlot}
@@ -3928,7 +3959,8 @@ export function TodayScreen() {
   // this group's later-today children (dueTodayOverride) rather than
   // TaskGroupHeader's default isRelevantToGroupToday filter, since those
   // children aren't currently visible yet and would otherwise never count.
-  const renderLaterGroup = (group: TaskGroup, children: Task[]) => {
+  const renderLaterGroup = (structuralGroup: TaskGroup, children: Task[]) => {
+    const group = liveGroup(structuralGroup);
     const allChildren = childrenByGroupId.get(group.id) ?? NO_GROUP_CHILDREN;
     return (
       <TaskGroupTray collapsed={group.collapsed}>
@@ -3986,7 +4018,8 @@ export function TodayScreen() {
   // so the honest "N/M today" tally is the one TaskGroupHeader computes from
   // the full roster — 0 for an all-Inbox stack, which hides the badge, and
   // the real count for a stack that also has members due today.
-  const renderInboxGroup = (group: TaskGroup, children: Task[]) => {
+  const renderInboxGroup = (structuralGroup: TaskGroup, children: Task[]) => {
+    const group = liveGroup(structuralGroup);
     const allChildren = childrenByGroupId.get(group.id) ?? NO_GROUP_CHILDREN;
     return (
       <CompletionCollapse taskIds={children.map(c => c.id)}>
@@ -4094,7 +4127,8 @@ export function TodayScreen() {
   // filtered is passed unconditionally: the "N/M done today" tally is
   // computed from the full roster, which would overstate what's actually
   // shown under a header rendering only its pinned members.
-  const renderPinnedGroup = (group: TaskGroup, children: Task[], drag?: () => void) => {
+  const renderPinnedGroup = (structuralGroup: TaskGroup, children: Task[], drag?: () => void) => {
+    const group = liveGroup(structuralGroup);
     const open = pinnedGroupOpen.get(group.id) ?? !group.collapsed;
     return (
     <CompletionCollapse taskIds={children.map(c => c.id)}>
@@ -4538,7 +4572,7 @@ export function TodayScreen() {
         next.delete(band.project.id);
         return next;
       });
-      const group = task.groupId ? taskGroups.find(g => g.id === task.groupId) : undefined;
+      const group = task.groupId ? useTaskGroupStore.getState().getGroupById(task.groupId) : null;
       if (group?.collapsed) setGroupCollapsed(group.id, false);
       setExpandedTaskId(null);
       return true;
@@ -4571,7 +4605,7 @@ export function TodayScreen() {
     // (No animateLayout here, for the reason TaskGroupHeader's own toggle
     // gives: AnimatedCollapsible already drives this transition.)
     if (target.groupId) {
-      const group = taskGroups.find(g => g.id === target.groupId);
+      const group = useTaskGroupStore.getState().getGroupById(target.groupId);
       if (group?.collapsed) setGroupCollapsed(group.id, false);
     }
     setExpandedTaskId(null);
@@ -5216,6 +5250,7 @@ export function TodayScreen() {
             data={draggableData}
             keyExtractor={listItemKey}
             renderItem={renderItem}
+            parked={parkedRows}
             // Two rows draw outside their own slot and so have to be lifted
             // over the ones below them: a stack whose child is being dragged
             // (the nested SortableList's floating card only paints above its
