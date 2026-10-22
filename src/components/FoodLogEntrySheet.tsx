@@ -59,6 +59,8 @@ import {
   type EstimateAmountPatch,
   matchMealPlanEntry,
   parseFoodAmount,
+  convertAmountNumber,
+  largeAmountWarning,
   recallAmount,
   describeRecalledAmount,
   recipeHelpingNutrition,
@@ -104,6 +106,7 @@ import type { PendingEstimate } from '../utils/estimateQueue';
 import { useFoodDatabaseSearch } from '../hooks/useFoodDatabaseSearch';
 import type { RankedFood } from '../utils/foodSearchMatch';
 import { confirmDiscard } from '../utils/confirmDiscard';
+import { confirmLargeAmount } from '../utils/confirmLargeAmount';
 import { EstimateAmountSheet } from './EstimateAmountSheet';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
@@ -1480,7 +1483,20 @@ export function FoodLogEntrySheet({
     },
   }));
 
+  // An amount the person set that reads like a weight in the wrong unit is asked
+  // about before it is logged. One filled in from last time, or an entry's own
+  // amount left as it was, is not: neither is a slip made in this sheet.
   const handleSave = () => {
+    if (picked?.kind === 'food' && picked.panel && built) {
+      const typed = amount.trim();
+      const untouched = typed === (recalledAmount ?? '') || (editing && typed === seededRef.current?.amount);
+      const large = untouched ? null : largeAmountWarning(picked.panel, typed, picked.label);
+      if (large) { confirmLargeAmount(large, commitSave); return; }
+    }
+    commitSave();
+  };
+
+  const commitSave = () => {
     if (!picked || !built) return;
     const answeredExtras = varyingResolved.filter(r => r.resolved).map(r => r.line.name);
     // A dish says how much in the words its helping already chose ("320 g",
@@ -2165,8 +2181,14 @@ export function FoodLogEntrySheet({
                           return;
                         }
                         const option = foodUnitOptions.find(o => o.key === key);
+                        // A different unit keeps the amount the same amount (57 g
+                        // is 1.8 servings) where the two can be weighed against
+                        // each other, and the typed number where they can't.
+                        const kept = picked.panel
+                          ? convertAmountNumber(picked.panel, amountNumber, foodUnitOptions.find(o => o.key === amountUnit), option) ?? amountNumber
+                          : amountNumber;
                         // Picking "serving" with nothing typed means one serving.
-                        const number = key === 'serving' && !amountNumber.trim() ? '1' : amountNumber;
+                        const number = key === 'serving' && !kept.trim() ? '1' : kept;
                         setAmountUnit(key);
                         setAmountNumber(number);
                         setAmount(composeAmount(number, option));
