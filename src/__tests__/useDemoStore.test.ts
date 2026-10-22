@@ -972,6 +972,7 @@ describe('demo mode', () => {
     const running = useFastStore.getState().fasts.filter(f => f.endedAt === null);
     expect(running).toHaveLength(1);
     expect(running[0].goalHours).toBe(16);
+    expect(useFastStore.getState().fasts.filter(f => f.endedAt !== null)).toHaveLength(1);
     useDemoStore.getState().exitDemoMode();
   });
 

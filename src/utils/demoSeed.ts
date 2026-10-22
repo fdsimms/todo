@@ -3304,12 +3304,16 @@ function seedPlaceReminder(): void {
 }
 
 /**
- * A fast that started last night and is a couple of hours short of its goal,
- * so the Food log opens with the fasting card showing. Only the running one:
- * the card is the whole feature, and a history of fasts would show nowhere.
+ * One fast that ended two days ago, so Past fasts has a row, then one that
+ * started last night and is a couple of hours short of its goal, so the Food
+ * log opens with the fasting card showing. Through the store's own start and
+ * end, which only take a start within the last three days.
  */
 function seedFast(): void {
-  useFastStore.getState().startFast(new Date(Date.now() - (13 * 60 + 42) * 60_000), 16);
+  const { startFast, endFast } = useFastStore.getState();
+  const hour = 3_600_000;
+  if (startFast(new Date(Date.now() - 60 * hour), 16)) endFast(new Date(Date.now() - 44 * hour + 20 * 60_000));
+  startFast(new Date(Date.now() - (13 * 60 + 42) * 60_000), 16);
 }
 
 /**

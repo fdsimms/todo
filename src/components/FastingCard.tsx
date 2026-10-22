@@ -21,6 +21,8 @@ interface Props {
   onStart: () => void;
   onEdit: (fast: Fast) => void;
   onEnd: () => void;
+  /** Opens the past fasts sheet; shown once any fast has ended. */
+  onHistory: () => void;
 }
 
 /**
@@ -32,11 +34,12 @@ interface Props {
  * changes only the line under it: see the header of `src/utils/fasting.ts` for
  * why nothing here grades a fast.
  */
-export function FastingCard({ fasts, onStart, onEdit, onEnd }: Props) {
+export function FastingCard({ fasts, onStart, onEdit, onEnd, onHistory }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const running = activeFast(fasts);
   const last = running ? null : lastEndedFast(fasts);
+  const anyEnded = fasts.some(f => f.endedAt !== null);
 
   // Ticks while a fast runs. Every 30 seconds is enough for a clock that reads
   // in minutes, and nothing ticks once it has ended.
@@ -77,6 +80,7 @@ export function FastingCard({ fasts, onStart, onEdit, onEnd }: Props) {
         <View style={styles.actions}>
           <InlineAction label="End fast" onPress={onEnd} />
           <InlineAction label="Edit" variant="neutral" onPress={() => onEdit(running)} />
+          {anyEnded && <InlineAction label="Past fasts" variant="neutral" onPress={onHistory} />}
         </View>
       </View>
     );
@@ -92,6 +96,7 @@ export function FastingCard({ fasts, onStart, onEdit, onEnd }: Props) {
       <View style={styles.actions}>
         <InlineAction label="Start a fast" onPress={onStart} />
         <InlineAction label="Edit" variant="neutral" onPress={() => onEdit(last)} />
+        <InlineAction label="Past fasts" variant="neutral" onPress={onHistory} />
       </View>
     </View>
   );

@@ -107,7 +107,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/confirmDiscard.ts` — confirmDiscard
 - `src/utils/confirmLargeAmount.ts` — confirmLargeAmount
 - `src/utils/contactsAccess.ts` — ContactsPermission, getContactsPermission, ContactsAccessScope, getContactsAccessScope, requestContactsPermission, toCandidate, searchContacts, fetchLimitedContacts
-- `src/utils/contactsImport.ts` — MIN_CONTACT_QUERY_LENGTH, MAX_CONTACT_RESULTS, ContactCandidate, ContactPersonDraft, contactAddress, contactBirthday, normalizePhone, alreadyAdded, canSearchContacts, rankContacts, +5 more
+- `src/utils/contactsImport.ts` — MIN_CONTACT_QUERY_LENGTH, MAX_CONTACT_RESULTS, ContactCandidate, ContactPersonDraft, contactAddress, contactBirthday, contactDates, normalizePhone, alreadyAdded, canSearchContacts, +6 more
 - `src/utils/contextCards.ts` — CardPosition, isCardRow, contextCardPositions, contextSectionSummaries
 - `src/utils/cookMode.ts` — CookStep, stepsFromNotes, cookNotesPanel, cookSteps, clampStepIndex, describeStepPosition
 - `src/utils/cookPosition.ts` — CookPosition, saveCookPosition, savedCookPosition, clearCookPosition, CookSetup, saveCookSetup, savedCookSetup, restingCookPosition
@@ -167,7 +167,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/exerciseSwap.ts` — swappableSets, swapKindsMatch, swapCandidates
 - `src/utils/expiredTaskGrace.ts` — ExpiredTaskGraceDays, EXPIRED_TASK_GRACE_OPTIONS, expiredTaskGraceLabel, parseExpiredTaskGrace, serializeExpiredTaskGrace
 - `src/utils/fabDrop.ts` — ScheduleInfo, DropZone, ZoneRect, FabDropIntent, zoneKey, ZONE_HIT_SLOP, TAIL_HIT_SLOP, zoneAtY, DEFAULT_DROP_SLOT, slotAtX, +13 more
-- `src/utils/fasting.ts` — DEFAULT_FAST_GOAL_HOURS, MIN_FAST_GOAL_HOURS, MAX_FAST_GOAL_HOURS, MAX_FAST_START_AGE_HOURS, clampFastGoalHours, activeFast, lastEndedFast, fastElapsedMs, fastGoalAt, fastProgress, +6 more
+- `src/utils/fasting.ts` — DEFAULT_FAST_GOAL_HOURS, MIN_FAST_GOAL_HOURS, MAX_FAST_GOAL_HOURS, MAX_FAST_START_AGE_HOURS, clampFastGoalHours, activeFast, lastEndedFast, pastFasts, formatFastLengthShort, fastElapsedMs, +8 more
 - `src/utils/fieldBackfill.ts` — BackfillFieldId, BackfillFieldDef, BACKFILL_FIELDS, backfillFieldsFor, BackfillCandidatesOptions, isFieldMissing, isBackfillDismissed, backfillCandidates, backfillSeriesPeers, backfillFieldCounts, +3 more
 - `src/utils/firstRun.ts` — FirstRunAnswers, FIRST_RUN_DEFAULTS, FirstRunSettings, firstRunSettings, FirstRunState, shouldOfferFirstRun
 - `src/utils/focusLiveActivity.ts` — FocusRun, buildFocusRun, useFocusLiveActivitySync
@@ -266,7 +266,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/lineWeight.ts` — lineWeightGrams, lineWeightText, panelForLine, WeightLookups, weightLookups, ingredientWeightText
 - `src/utils/listLineParse.ts` — LineParseContext, LineMarkerFields, lineMarkerFields, LineSuggestion, lineSuggestion, LinePending, NO_LINE_PENDING, confirmLineSuggestion, linePendingFields
 - `src/utils/listMode.ts` — sectionIsList, sectionListPatch, listItemFinder, isOpenEnded, listCountNote, LIST_ITEM_EDITOR_ROWS, listItemRowShown
-- `src/utils/liveActivity.ts` — TimerRunKind, TimerRun, buildTimerRuns, useTimerLiveActivitySync
+- `src/utils/liveActivity.ts` — TimerRunKind, TimerRun, buildTimerRuns, fastRun, useTimerLiveActivitySync
 - `src/utils/livePickerConfirm.ts` — confirmLivePicker
 - `src/utils/lookAhead.ts` — LookAheadWindow, LookAheadDay, AwayEntry, TightDeadline, LookAheadTotals, LookAhead, BuildLookAheadOptions, buildLookAhead, carriedOverTasks, awayEntries, +8 more
 - `src/utils/looseNameMatch.ts` — LOOSE_NAME_WEIGHT, looseNameWeight

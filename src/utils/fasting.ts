@@ -47,6 +47,22 @@ export function lastEndedFast(fasts: readonly Fast[]): Fast | null {
   return latest;
 }
 
+/** Every fast that has ended, newest first: the past fasts sheet's list. */
+export function pastFasts(fasts: readonly Fast[]): Fast[] {
+  return fasts
+    .filter(f => f.endedAt !== null)
+    .sort((a, b) => (a.startedAt < b.startedAt ? 1 : a.startedAt > b.startedAt ? -1 : 0));
+}
+
+/** "16 h 12 min", the short form a list row has room for. Never negative. */
+export function formatFastLengthShort(ms: number): string {
+  const minutes = Math.floor(Math.max(0, ms) / 60_000);
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `${m} min`;
+  return m === 0 ? `${h} h` : `${h} h ${m} min`;
+}
+
 /** How long a fast has run: to now while it is open, to its end once it has one. Never negative. */
 export function fastElapsedMs(fast: Pick<Fast, 'startedAt' | 'endedAt'>, now: Date): number {
   const end = fast.endedAt ? new Date(fast.endedAt).getTime() : now.getTime();

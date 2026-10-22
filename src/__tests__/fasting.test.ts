@@ -1,5 +1,7 @@
 import type { Fast } from '../types';
 import {
+  pastFasts,
+  formatFastLengthShort,
   activeFast,
   clampFastGoalHours,
   describeFastLength,
@@ -124,5 +126,26 @@ describe('clampFastGoalHours', () => {
     expect(clampFastGoalHours(0)).toBe(1);
     expect(clampFastGoalHours(500)).toBe(72);
     expect(clampFastGoalHours(NaN)).toBe(16);
+  });
+});
+
+describe('past fasts', () => {
+  const f = (id: string, startedAt: string, endedAt: string | null): Fast =>
+    ({ id, startedAt, endedAt, goalHours: 16, createdAt: startedAt });
+
+  it('lists the ended ones, newest first, leaving out the one running', () => {
+    const fasts = [
+      f('a', '2026-10-15T20:00:00', '2026-10-16T12:00:00'),
+      f('b', '2026-10-19T20:00:00', '2026-10-20T10:00:00'),
+      f('c', '2026-10-21T20:00:00', null),
+    ];
+    expect(pastFasts(fasts).map(x => x.id)).toEqual(['b', 'a']);
+  });
+
+  it('says a length the short way a row has room for', () => {
+    expect(formatFastLengthShort((16 * 60 + 12) * 60_000)).toBe('16 h 12 min');
+    expect(formatFastLengthShort(16 * 3_600_000)).toBe('16 h');
+    expect(formatFastLengthShort(42 * 60_000)).toBe('42 min');
+    expect(formatFastLengthShort(-5)).toBe('0 min');
   });
 });

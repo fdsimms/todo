@@ -2251,6 +2251,15 @@ is read with. Four decisions in it are load-bearing:
   is in the Food log's options menu, not a setting to turn on.
 - **The MCP reads fasts and never starts one** (`list_fasts`): the timer and its
   notification live on the phone, and a fast an agent started could ring.
+- **The Lock Screen shows it on the running-timer activity** (`fastRun` in
+  `liveActivity.ts`, behind the same switch as every other timer): a countdown
+  to the goal, then a count up from the start under "Goal reached", since the
+  fast goes on until it is ended. The swap at the goal changes the run, so the
+  sync hook sets a timeout for it; nothing in a store changes at that moment.
+  Done ends the fast (`fast:` in `deepLinks.ts`), and no Swift knows it is one.
+- **Past fasts is a list, not a chart** (`FastHistorySheet`, `pastFasts`): each
+  ended fast with its start, goal and length, newest first, and a tap to edit.
+  No average or trend, for the reason nothing grades a single fast.
 
 ## One thing worth knowing before scoping the background half
 

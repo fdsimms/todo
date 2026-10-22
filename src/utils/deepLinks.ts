@@ -8,6 +8,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useStepTimerStore } from '../store/useStepTimerStore';
+import { useFastStore } from '../store/useFastStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { WORKOUT_LINK_VERBS, type WorkoutLink, type WorkoutLinkVerb } from './workoutLink';
 import { applyWorkoutLink, skipRestFromLink } from './workoutLinkActions';
@@ -723,7 +724,7 @@ export function cookSessionRecipeId(
   return null;
 }
 
-// `dundundun://stopTimer?key=cook:<id>|prep:<id>|step:<id>|rest:<id>` — the peer of
+// `dundundun://stopTimer?key=cook:<id>|prep:<id>|step:<id>|rest:<id>|fast:<id>` — the peer of
 // completeTask above for the Done button on a recipe's cook/prep Live Activity
 // and on a cooking step timer's. The host is still named for stopping because
 // that is what the *timer* does in all three cases, but what Done means differs
@@ -1060,6 +1061,12 @@ export function openInAppUrl(url: string | null | undefined): boolean {
     // The session is untouched and nothing moves on; the next set is logged
     // from the workout itself, which opens again if it was the one resting.
     else if (key?.startsWith('rest:')) skipRestFromLink(key.slice('rest:'.length));
+    // A fast's Done ends it now, as the Food log card's End fast does. Only
+    // the fast it names: one already ended from the app leaves nothing to do.
+    else if (key?.startsWith('fast:')) {
+      const fast = useFastStore.getState().fasts.find(f => f.id === key.slice('fast:'.length));
+      if (fast && fast.endedAt === null) useFastStore.getState().endFast();
+    }
     // A completion timer's Done ends its countdown early without touching
     // the task (already completed, long before this fired) or the pending
     // notification scheduleCompletionTimer set up alongside it — same

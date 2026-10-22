@@ -125,6 +125,7 @@ import { usePullToSearch } from '../hooks/usePullToSearch';
 import { LazySheet } from '../components/LazySheet';
 import { FastingCard } from '../components/FastingCard';
 import { FastSheet } from '../components/FastSheet';
+import { FastHistorySheet } from '../components/FastHistorySheet';
 import { useFastStore } from '../store/useFastStore';
 import { activeFast, lastMealLoggedAt, showsFastingCard } from '../utils/fasting';
 import type { Fast } from '../types';
@@ -1023,6 +1024,8 @@ export function FoodLogScreen() {
   const [fastEditing, setFastEditing] = useState<Fast | null>(null);
   const [lastMealAt, setLastMealAt] = useState<Date | null>(null);
   const fastRunning = activeFast(fasts) !== null;
+  const anyFastEnded = fasts.some(f => f.endedAt !== null);
+  const [fastHistoryOpen, setFastHistoryOpen] = useState(false);
   const openFastSheet = useCallback((fast: Fast | null) => {
     const now = new Date();
     if (!fast) {
@@ -1037,12 +1040,13 @@ export function FoodLogScreen() {
 
   const optionsActions = useMemo<ActionMenuAction[]>(() => [
     ...(fastRunning ? [] : [{ key: 'fast', label: 'Start a fast', icon: 'timer-outline', onPress: () => openFastSheet(null) } as ActionMenuAction]),
+    ...(anyFastEnded ? [{ key: 'pastFasts', label: 'Past fasts', icon: 'time-outline', onPress: () => setFastHistoryOpen(true) } as ActionMenuAction] : []),
     { key: 'saved', label: 'Saved meals', icon: 'bookmark-outline', onPress: () => setBrowseMealsOpen(true) },
     { key: 'targets', label: 'Nutrition settings', icon: 'flag-outline', onPress: () => setTargetsOpen(true) },
     ...(totalCount > 0
       ? [{ key: 'export', label: 'Export food log', icon: 'share-outline', onPress: () => setExportOpen(true) } as ActionMenuAction]
       : []),
-  ], [totalCount, fastRunning, openFastSheet]);
+  ], [totalCount, fastRunning, anyFastEnded, openFastSheet]);
 
   const plannedMenuActions = useMemo<ActionMenuAction[]>(() => {
     const coverage = plannedMenuCoverage;
@@ -1113,6 +1117,7 @@ export function FoodLogScreen() {
       fasts={fasts}
       onStart={() => openFastSheet(null)}
       onEdit={openFastSheet}
+      onHistory={() => setFastHistoryOpen(true)}
       onEnd={() => { haptics.success(); endFast(); }}
     />
   ) : null;
@@ -1744,6 +1749,15 @@ export function FoodLogScreen() {
           fast={fastEditing}
           lastMealAt={lastMealAt}
           onClose={() => setFastSheetOpen(false)}
+        />
+      </LazySheet>
+      <LazySheet open={fastHistoryOpen}>
+        <FastHistorySheet
+          visible={fastHistoryOpen}
+          // One sheet at a time: the list closes as the editor opens, which
+          // SheetModal sequences (see "Two sibling Modals" in CLAUDE.md).
+          onEdit={fast => { setFastHistoryOpen(false); openFastSheet(fast); }}
+          onClose={() => setFastHistoryOpen(false)}
         />
       </LazySheet>
       <ActionMenu

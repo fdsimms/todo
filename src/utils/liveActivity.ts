@@ -1,11 +1,13 @@
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
-import type { Task, Recipe, RestTimer, StepTimer } from '../types';
+import type { Task, Recipe, RestTimer, StepTimer, Fast } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useStepTimerStore } from '../store/useStepTimerStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useWorkoutStore } from '../store/useWorkoutStore';
+import { useFastStore } from '../store/useFastStore';
+import { activeFast, fastGoalAt } from './fasting';
 import { widgetBridge } from './widgetBridge';
 import { workoutActivitySessionId } from './workoutLiveActivity';
 import { isTimedTask, timerRemaining } from './timer';
@@ -41,10 +43,10 @@ function truncate(title: string): string {
   return title.length > TITLE_MAX ? `${title.slice(0, TITLE_MAX - 1)}…` : title;
 }
 
-export type TimerRunKind = 'task' | 'cook' | 'prep' | 'step' | 'rest' | 'completionTimer';
+export type TimerRunKind = 'task' | 'cook' | 'prep' | 'step' | 'rest' | 'completionTimer' | 'fast';
 
 export interface TimerRun {
-  /** How the native side tells which activities are still wanted — 'task:<id>' | 'cook:<id>' | 'prep:<id>' | 'step:<id>' | 'rest:<id>' | 'completionTimer:<id>'. */
+  /** How the native side tells which activities are still wanted — 'task:<id>' | 'cook:<id>' | 'prep:<id>' | 'step:<id>' | 'rest:<id>' | 'completionTimer:<id>' | 'fast:<id>'. */
   key: string;
   kind: TimerRunKind;
   itemId: string; // task id, recipe id for cook/prep, or step or rest timer id
@@ -70,7 +72,13 @@ export function buildTimerRuns(
   tasks: Task[],
   recipes: Recipe[],
   stepTimers: StepTimer[],
-  opts: { enabled: boolean; restsShownElsewhere?: string | null },
+  opts: {
+    enabled: boolean;
+    restsShownElsewhere?: string | null;
+    /** The fast log, for a running fast's activity, and the moment to judge its goal against. */
+    fasts?: readonly Fast[];
+    nowMs?: number;
+  },
 ): TimerRun[] {
   if (!opts.enabled) return [];
   const runs: TimerRun[] = [];
@@ -186,7 +194,36 @@ export function buildTimerRuns(
     });
   }
 
+  const fast = activeFast(opts.fasts ?? []);
+  if (fast) runs.push(fastRun(fast, opts.nowMs ?? Date.now()));
+
   return runs;
+}
+
+/**
+ * A running fast (`useFastStore`), on the same activity as every other timer:
+ * a countdown to its goal, and once the goal has passed a count up from its
+ * start under "Goal reached", since the fast goes on until it is ended. The
+ * switch from one to the other changes the run, so the native side replaces
+ * the activity (`timerActivityMatches`); the sync hook re-runs at the goal for
+ * that. Done ends the fast (`fast:` in deepLinks.ts), the way the card's own
+ * button does.
+ */
+export function fastRun(fast: Fast, nowMs: number): TimerRun {
+  const startedAtMs = new Date(fast.startedAt).getTime();
+  const goalMs = fastGoalAt(fast).getTime();
+  const reached = nowMs >= goalMs;
+  return {
+    key: `fast:${fast.id}`,
+    kind: 'fast',
+    itemId: fast.id,
+    title: 'Fasting',
+    subtitle: reached ? 'Goal reached' : `${fast.goalHours}-hour goal`,
+    symbolName: 'hourglass',
+    startedAtMs,
+    // Clamped like every countdown here: an inverted range crashes the extension.
+    targetEndMs: reached ? null : Math.max(startedAtMs, goalMs),
+  };
 }
 
 /**
@@ -244,8 +281,18 @@ export function useTimerLiveActivitySync(): void {
   useEffect(() => {
     if (Platform.OS !== 'ios') return;
 
+    // Fires at a running fast's goal, when its countdown turns into a count
+    // up (fastRun). Nothing else changes at that moment for a store to report.
+    let goalTimer: ReturnType<typeof setTimeout> | null = null;
+
     const sync = () => {
       const settings = useSettingsStore.getState();
+      const fasts = useFastStore.getState().fasts;
+      const nowMs = Date.now();
+      if (goalTimer) { clearTimeout(goalTimer); goalTimer = null; }
+      const running = activeFast(fasts);
+      const goalMs = running ? fastGoalAt(running).getTime() : null;
+      if (goalMs !== null && goalMs > nowMs) goalTimer = setTimeout(sync, goalMs - nowMs + 1000);
       const runs = buildTimerRuns(
         useTaskStore.getState().tasks,
         useRecipeStore.getState().recipes,
@@ -257,6 +304,8 @@ export function useTimerLiveActivitySync(): void {
             enabled: settings.workoutLiveActivity,
             workoutsEnabled: settings.workoutsEnabled,
           }),
+          fasts,
+          nowMs,
         },
       );
       scheduleSync(runs);
@@ -284,6 +333,9 @@ export function useTimerLiveActivitySync(): void {
     const unsubWorkouts = useWorkoutStore.subscribe((state, prevState) => {
       if (state.sessions !== prevState.sessions) sync();
     });
+    const unsubFasts = useFastStore.subscribe((state, prevState) => {
+      if (state.fasts !== prevState.fasts) sync();
+    });
 
     sync();
 
@@ -293,6 +345,8 @@ export function useTimerLiveActivitySync(): void {
       unsubStepTimers();
       unsubSettings();
       unsubWorkouts();
+      unsubFasts();
+      if (goalTimer) clearTimeout(goalTimer);
     };
   }, []);
 }
