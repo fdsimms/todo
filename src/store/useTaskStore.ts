@@ -2488,7 +2488,7 @@ interface TaskStore extends UndoHistoryActions {
  * (the answer to the prompt), because the same edit on one task is also a
  * perfectly good "just this one". Which fields count is `FOLLOW_UP_DRAFT_FIELDS`.
  */
-function writeEditToFollowUpSource(before: Task, after: Task): void {
+export function writeEditToFollowUpSource(before: Task, after: Task): void {
   const store = useTaskStore.getState();
   const source = liveFollowUpSource(after, store.tasks);
   if (!source) return;

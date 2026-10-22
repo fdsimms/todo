@@ -803,8 +803,9 @@ starts from there. **It asks first**: the editor puts "This task / This and
 future tasks" to an estimate change (`hasEstimateSource` says whether there is a
 generator to keep it on), and the write happens only for an explicit
 `scope: 'series'`. A measured run (`stopTimer`, `setMeasuredTime`) passes that
-scope itself, since it is the estimate learned rather than an edit, and any
-other estimate setter (Backfill, say) writes only the row. The title plays no part, so a title carrying a date or a
+scope itself, since it is the estimate learned rather than an edit. Backfill
+writes only the row, then asks (`offerFollowUpWriteBack`) for a follow-up task,
+and offers "use this for new tasks" for a generated one (`offerKindDefault`). The title plays no part, so a title carrying a date or a
 forecast changes nothing. `src/utils/ruleEstimate.ts` has the three homes:
 
 - **A rule somebody wrote** (weather, Screen Time, Health, calendar events):
