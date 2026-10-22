@@ -274,7 +274,10 @@ export function DataResetSettings() {
       title: 'Reset settings to defaults?',
       // It also clears remindersImportEnabled, which no version of this copy
       // used to mention — so a reset quietly stopped Siri capture from working.
-      message: 'This resets appearance, day and time, haptics, the daily agenda and the tasks and projects toggles, and turns off importing from Apple Reminders. Your tasks, API key, app lock and vacation mode aren’t affected.',
+      // Same for the calendars this device writes to (deadline, completion,
+      // meal, Claude's requests): resetToDefaults clears all four, and the
+      // events already written stay where they are.
+      message: 'This resets appearance, day and time, haptics, the daily agenda and the tasks and projects toggles. It also turns off importing from Apple Reminders and stops this device adding deadlines, completions, meals and Claude’s events to your calendar. Your tasks, API key, app lock and vacation mode aren’t affected, and events already in your calendar stay.',
       confirmLabel: 'Reset',
       onConfirm: () => resetToDefaults(),
     });
@@ -392,7 +395,7 @@ export function DataResetSettings() {
           iconColor={colors.red}
           label="Reset to defaults"
           labelColor={colors.redText}
-          hint="Puts every setting in the app back to its default."
+          hint="Puts most settings back to their defaults. Your data and a few settings, like the app lock, are kept."
           onPress={confirmResetToDefaults}
           accessibilityLabel="Reset settings to defaults"
         />
