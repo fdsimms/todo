@@ -1,6 +1,6 @@
 import { format } from 'date-fns/format';
 import { subDays } from 'date-fns/subDays';
-import type { MedicationLog, Task } from '../types';
+import type { MedicationLog, Task, TaskMedicationExtra } from '../types';
 import { activeChainStep, type ChainCarrier } from './chain';
 
 /**
@@ -132,6 +132,65 @@ export function medicationFor(task: MedicationSource): MedicationDose | null {
     amount: task.medicationAmount ?? null,
     unit: task.medicationUnit ?? null,
   };
+}
+
+/** How many further medicines one task may record beside its main one. */
+export const MAX_MEDICATION_EXTRAS = 4;
+
+/** A stored extras list read back: well-formed entries only, each as a set. */
+export function parseMedicationExtras(raw: unknown): TaskMedicationExtra[] {
+  let list: unknown = raw;
+  if (typeof raw === 'string') {
+    try {
+      list = JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(list)) return [];
+  const out: TaskMedicationExtra[] = [];
+  for (const item of list) {
+    if (out.length >= MAX_MEDICATION_EXTRAS) break;
+    if (!item || typeof item !== 'object') continue;
+    const r = item as Record<string, unknown>;
+    const name = typeof r.name === 'string' ? r.name.trim() : '';
+    if (!name) continue;
+    // A dose is an amount and a unit together or neither, the same set-or-
+    // nothing rule `medicationFor` resolves by.
+    const amount = typeof r.amount === 'number' && Number.isFinite(r.amount) && r.amount > 0 ? r.amount : null;
+    const unit = typeof r.unit === 'string' && r.unit.trim() ? r.unit.trim() : null;
+    const paired = amount !== null && unit !== null;
+    out.push({ name, amount: paired ? amount : null, unit: paired ? unit : null });
+  }
+  return out;
+}
+
+/**
+ * Every dose completing this task records: the main one (`medicationFor`) and
+ * the extras beside it.
+ *
+ * **Extras are task-level and never come from a chain step**, so a step that
+ * names its own medicine still records only that one. And a task with no main
+ * medicine records none, whatever its extras say: the name is the switch.
+ * Two entries naming one medicine are one dose, not two, so a task can't write
+ * the same medicine twice from a slip in the editor.
+ */
+export function medicationsFor(task: MedicationSource & { medicationExtras?: TaskMedicationExtra[] }): MedicationDose[] {
+  const main = medicationFor(task);
+  if (!main) return [];
+  const out: MedicationDose[] = [main];
+  const seen = new Set([medicationKey(main.name)]);
+  // A chain step that has its own medicine is recording that, not the task's
+  // pair, so the task's extras don't belong beside it.
+  const stepOwn = activeChainStep(task)?.medicationName?.trim();
+  if (stepOwn) return out;
+  for (const extra of task.medicationExtras ?? []) {
+    const key = medicationKey(extra.name);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ name: extra.name.trim(), amount: extra.amount ?? null, unit: extra.unit ?? null });
+  }
+  return out;
 }
 
 /**
@@ -661,6 +720,8 @@ export function hasScheduledTask<T extends MedicationSource & Pick<Task,
 ): boolean {
   const key = medicationKey(name);
   if (!key) return false;
+  // Any dose the task records counts, extras included: "Iron + Vitamin C" is
+  // the scheduled task for both.
   return tasks.some(t => !t.completed && !t.archived && !t.parentId && t.recurrenceType !== 'none'
-    && medicationKey(medicationFor(t)?.name ?? '') === key);
+    && medicationsFor(t).some(d => medicationKey(d.name) === key));
 }

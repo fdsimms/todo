@@ -523,6 +523,7 @@ describe('getTask', () => {
       id: 'rich-1', title: 'Take vitamin D', waitingOnPersonId: 'per1', followUpOn: '2026-10-09',
       linkUrl: 'https://example.com', phoneNumber: '555-0100', emailAddress: 'a@b.co', location: 'Clinic',
       streakCount: 4, streakDate: '2026-10-03', medicationName: 'Vitamin D', medicationAmount: 1000, medicationUnit: 'IU',
+      medicationExtras: [{ name: 'Zinc', amount: 15, unit: 'mg' }, { name: 'Magnesium', amount: null, unit: null }],
       logHealthMetric: 'waterMl', logHealthAmount: 250, logMealSlot: 'breakfast',
       timedMinutes: 15, healthMetric: 'steps', healthTarget: 8000, actualMinutes: 12,
       postponeCount: 3, driftingSince: '2026-09-01', postponeMuted: true,
@@ -537,6 +538,7 @@ describe('getTask', () => {
     expect(result.streak).toEqual({ days: 4, lastDay: '2026-10-03' });
     expect(result.onCompletion).toEqual({
       logsMedication: { name: 'Vitamin D', amount: 1000, unit: 'IU' },
+      alsoLogsMedication: [{ name: 'Zinc', amount: 15, unit: 'mg' }, { name: 'Magnesium' }],
       logsHealth: { metric: 'waterMl', amount: 250 },
       logsMealSlot: 'breakfast',
     });

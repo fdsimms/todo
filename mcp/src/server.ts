@@ -1623,6 +1623,12 @@ const taskFieldsShape = {
     name: z.string().describe('Use the spelling list_medication_logs already has.'),
     amount: z.number().nullable().optional(),
     unit: z.string().nullable().optional().describe('E.g. "mg".'),
+    also: z.array(z.object({
+      name: z.string().describe('Use the spelling list_medication_logs already has.'),
+      amount: z.number().nullable().optional(),
+      unit: z.string().nullable().optional().describe('E.g. "mg".'),
+    })).max(4).optional()
+      .describe('Further medicines taken together with this one ("Iron + Vitamin C"): completing the task records a dose of each, and reopening it takes them all back. Replaces the whole list; [] clears it. Not for a task with a daily or weekly target.'),
   }).nullable().optional()
     .describe('Completing it also records a dose of this medicine in the medication log ("take vitamin D"). Undone with the completion by reopen_task. null stops it.'),
   deadlineRule: z.object({

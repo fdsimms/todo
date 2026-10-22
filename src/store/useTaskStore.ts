@@ -205,7 +205,7 @@ import {
   taskEarnsCoins,
   BOUNTY_WITHDRAWN,
 } from '../utils/rewards';
-import { medicationFor } from '../utils/medicationLog';
+import { medicationFor, medicationsFor } from '../utils/medicationLog';
 import { installSupplementDoseEffects } from '../utils/supplementDoseSync';
 import { eventsIn } from '../utils/calendarBusy';
 import { isDemoModeActive } from '../utils/demoState';
@@ -4298,18 +4298,27 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Read through medicationFor rather than off the task, so a chain step
     // carrying its own medication records that one — "morning pills / evening
     // pills" would otherwise log the morning dose again at night.
-    const completedDose = options?.missed ? null : medicationFor(task);
+    // A target records one dose per unit logged, so its extras are left out:
+    // `uncompleteTask` takes back only the last of those, which would strand the
+    // others' doses. Every other task records its main dose and its extras.
+    const completedDoses = options?.missed
+      ? []
+      : isQuotaTask(task) ? [medicationFor(task)].filter(d => d !== null) : medicationsFor(task);
     // What the tick wrote into the app's own logs, named on the undo bar so a
     // dose or a meal landing in a log isn't silent (see UndoableAction.announce).
     let loggedLabel: string | null = null;
-    if (completedDose) {
-      loggedLabel = `Logged ${completedDose.name} in the medication log`;
-      useMedicationStore.getState().addLog({
-        ...completedDose,
-        taskId: id,
-        at: completedAt,
-        useUsualDose: true,
-      });
+    if (completedDoses.length > 0) {
+      loggedLabel = completedDoses.length === 1
+        ? `Logged ${completedDoses[0].name} in the medication log`
+        : `Logged ${completedDoses.map(d => d.name).join(' and ')} in the medication log`;
+      for (const dose of completedDoses) {
+        useMedicationStore.getState().addLog({
+          ...dose,
+          taskId: id,
+          at: completedAt,
+          useUsualDose: true,
+        });
+      }
     }
 
     cancelTaskReminder(id);

@@ -108,6 +108,11 @@ describe('chain, task and template item', () => {
   });
 
   it('renames a task on its own name or a step', () => {
+    const viaExtra = renamedTask({
+      medicationName: 'Iron', chainItems: [], medicationExtras: [{ name: 'Vit C ', amount: 500, unit: 'mg' }, { name: 'Zinc', amount: null, unit: null }],
+    } as unknown as Task, 'vit c', 'Vitamin C');
+    expect(viaExtra?.medicationName).toBe('Iron');
+    expect(viaExtra?.medicationExtras).toEqual([{ name: 'Vitamin C', amount: 500, unit: 'mg' }, { name: 'Zinc', amount: null, unit: null }]);
     const named = renamedTask({ medicationName: 'Ibuprofen 200', chainItems: [] } as unknown as Task, 'ibuprofen 200', 'Ibuprofen');
     expect(named?.medicationName).toBe('Ibuprofen');
     const viaStep = renamedTask({ medicationName: null, chainItems: steps } as unknown as Task, 'ibuprofen 200', 'Ibuprofen');

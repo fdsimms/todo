@@ -566,6 +566,23 @@ MCP (`schedule`, `scheduleStatus` in `list_medication_logs`).
 - **It is kept when the medicine is switched to as needed**, and reports no status while it is, so
   switching back finds it.
 
+### A task that records several medicines
+
+Things taken together ("Iron + Vitamin C") are one task with several doses, not several tasks: split, the
+two would be ticked separately and drift out of step. `Task.medicationExtras` is a list of further
+`{ name, amount, unit }` beside `medicationName`, and `medicationsFor` (`medicationLog.ts`) is the one reader
+of "every dose completing this records".
+
+- **The main medicine is still the switch.** Extras without a `medicationName` record nothing, and two entries
+  naming one medicine are one dose (`medicationKey`).
+- **Extras are task-level, never a chain step's.** A step that names its own medicine records only that one.
+- **A daily or weekly target ignores them.** Each unit log records one dose, and `uncompleteTask` takes back only
+  the newest, which would strand the extras' doses. The editor hides the rows on a target.
+- **Unchecking takes all of them back**, because every dose carries the task's id and `removeLogsForTask` removes
+  by it. They ride onto the next occurrence like the main medicine, and a rename of a medicine renames it in
+  the extras too (`renamedTask`).
+- **Not offered on a template yet** (`templateItemParity.test.ts` names it), and not in the chain-step sheet.
+
 ### A task's dose defaults to the usual amount, and a capsule has a strength
 
 **A task that logs a dose and names no amount records the medication's default
