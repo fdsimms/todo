@@ -1,0 +1,1 @@
+{ "message": "The food log and meal plan no longer flicker when they open. They used to show an empty day or week for a moment before your entries appeared, and the food log could show yesterday for a moment when you came back after midnight. View in food log from the meal plan also stays on the entry's day instead of jumping back to today.", "date": "2026-10-22" }

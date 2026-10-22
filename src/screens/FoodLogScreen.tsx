@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View, type GestureResponderEvent } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -392,7 +392,14 @@ export function FoodLogScreen() {
 
   const foodScrollControl = useRef<DragScroller | null>(null);
   const arrivedBefore = useRef(false);
-  useEffect(() => {
+  // A layout effect, so the read lands before the frame is drawn. The store
+  // holds the day that was current when the app launched, and the app often
+  // lives across midnight: read after paint, the first visit of a new day
+  // drew the empty-day layout (its note and the cards in a plain scroll) and
+  // swapped it for the list a frame later, remounting every card and
+  // restarting every bar's sweep. The same happened on each step to another
+  // day.
+  useLayoutEffect(() => {
     loadRange(dayKey, dayKey);
   }, [dayKey, loadRange]);
 
@@ -420,15 +427,34 @@ export function FoodLogScreen() {
 
   // The screen is a hidden tab and stays mounted for the life of the session,
   // so stepping to another day and then leaving without stepping back would
-  // otherwise leave it stranded there on the next visit. Every arrival lands
-  // on today, except the one caller that names a specific day to open
-  // (`openEntry`, e.g. Meal plan's "View in food log") — that request is still
-  // pending its own effect above the first time focus fires for it.
+  // otherwise leave it stranded there on the next visit, and so would leaving
+  // on today and coming back after midnight. Every arrival lands on today,
+  // except the one caller that names a specific day to open (`openEntry`,
+  // e.g. Meal plan's "View in food log") — that request is still pending its
+  // own effect above the first time an arrival sees it.
+  //
+  // Read through a ref so neither caller below re-runs when `handledOpenEntry`
+  // changes. As a focus-effect dependency it did: handling an `openEntry`
+  // re-fired the focus effect, which found the request handled and put the
+  // day straight back to today.
+  const landOnToday = () => {
+    const pendingEntry = route.params?.openEntry;
+    if (pendingEntry && pendingEntry.nonce !== handledOpenEntry) return;
+    setDayKey(dayKeyOf(getCurrentDayStart()));
+  };
+  const landOnTodayRef = useRef(landOnToday);
+  landOnTodayRef.current = landOnToday;
+  // Before the arrival's first frame is drawn. A blurred tab is frozen in an
+  // Activity, which re-creates the hidden subtree's effects when it shows it
+  // again, so this runs on every arrival from another tab as well as on mount.
+  // The focus effect below runs only after that frame, which is a frame of the
+  // day left behind (yesterday, after midnight) before today replaced it.
+  useLayoutEffect(() => { landOnTodayRef.current(); }, []);
   useFocusEffect(
     useCallback(() => {
-      const pendingEntry = route.params?.openEntry;
-      if (pendingEntry && pendingEntry.nonce !== handledOpenEntry) return;
-      setDayKey(dayKeyOf(getCurrentDayStart()));
+      // Again here for an arrival that wasn't frozen (a sheet was still up as
+      // the tab was left, see `shouldFreezeTab`). A no-op otherwise.
+      landOnTodayRef.current();
       // Every arrival lands on today at the top. The list keeps the offset it
       // was left at while the tab is blurred, and the day it comes back to can
       // be shorter, so without this it paints scrolled off the top for a
@@ -443,7 +469,7 @@ export function FoodLogScreen() {
       if (arrivedBefore.current) resetScroll();
       arrivedBefore.current = true;
       return resetScroll;
-    }, [route.params?.openEntry, handledOpenEntry]),
+    }, []),
   );
 
   const dayEntries = useMemo(() => entries.filter(e => e.dayKey === dayKey), [entries, dayKey]);
