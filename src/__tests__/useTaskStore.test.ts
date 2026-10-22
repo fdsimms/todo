@@ -3,7 +3,7 @@ import { isStreakAtRecord } from '../utils/streakRecord';
 import { registerPausedProjectSource } from '../utils/projectPause';
 import { dayKeyOf, getCurrentDayStart, getCurrentLogicalDayKey } from '../utils/dateUtils';
 import { logTaskHealthValue, unlogTaskNutrientFromFoodLog } from '../utils/healthCompletionSync';
-import { useTaskStore } from '../store/useTaskStore';
+import { useTaskStore, hasEstimateSource } from '../store/useTaskStore';
 import { useProjectLockStore } from '../store/useProjectLockStore';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { useMedicationStore } from '../store/useMedicationStore';
@@ -6609,9 +6609,25 @@ describe('checkWeatherTasks', () => {
     // The pass saves the rules itself, to mark the day considered.
     current.setWeatherRules.mockClear();
 
-    useTaskStore.getState().updateTask(task.id, { estimatedMinutes: 2, effort: 1 });
+    useTaskStore.getState().updateTask(task.id, { estimatedMinutes: 2, effort: 1 }, { scope: 'series' });
 
     expect(current.setWeatherRules).toHaveBeenCalledWith([{ ...rainyRule, estimatedMinutes: 2, effort: 1 }]);
+  });
+
+  // The editor asks "this task / this and future tasks" first, so a write that
+  // names no scope (or this task only) is the first answer and leaves the rule.
+  it('leaves the rule alone for an estimate edit that was not told to reach later tasks', () => {
+    const current = settings();
+    useSettingsStore.getState.mockReturnValue(current);
+    useWeatherStore.getState.mockReturnValue({ snapshot: snapshot({ weatherCode: 61 }), snapshotDayKey: TODAY_KEY });
+    useTaskStore.getState().checkWeatherTasks();
+    const [task] = weatherTasks();
+    current.setWeatherRules.mockClear();
+
+    useTaskStore.getState().updateTask(task.id, { estimatedMinutes: 2, effort: 1 });
+    useTaskStore.getState().updateTask(task.id, { estimatedMinutes: 3 }, { scope: 'occurrence' });
+
+    expect(current.setWeatherRules).not.toHaveBeenCalled();
   });
 
   it('leaves the rule alone when a write names the estimate without changing it', () => {
@@ -19649,9 +19665,16 @@ describe('estimates kept on the generator', () => {
     const current = withEstimates({});
     useTaskStore.setState({ tasks: [makeTask({ id: 'nudge', generatedKind: 'mealPlanNudge', generatedSourceId: '2026-10-05' })] });
 
-    useTaskStore.getState().updateTask('nudge', { estimatedMinutes: 10, effort: 2 });
+    useTaskStore.getState().updateTask('nudge', { estimatedMinutes: 10, effort: 2 }, { scope: 'series' });
 
     expect(current.setGeneratorEstimates).toHaveBeenCalledWith({ mealPlanNudge: { estimatedMinutes: 10, effort: 2 } });
+  });
+
+  it('only offers to keep an estimate where there is a generator to keep it on', () => {
+    withEstimates({});
+    expect(hasEstimateSource(makeTask({ generatedKind: 'mealPlanNudge', generatedSourceId: 'x' }))).toBe(true);
+    expect(hasEstimateSource(makeTask({ generatedKind: 'mealSlot', generatedSourceId: 'x' }))).toBe(false);
+    expect(hasEstimateSource(makeTask({ title: 'typed by hand' }))).toBe(false);
   });
 
   it('keeps no kind estimate for meal tasks, which take theirs from the recipe', () => {
@@ -19671,9 +19694,123 @@ describe('estimates kept on the generator', () => {
       ],
     });
 
-    useTaskStore.getState().updateTask('towel', { estimatedMinutes: 1, effort: 1 });
+    useTaskStore.getState().updateTask('towel', { estimatedMinutes: 1, effort: 1 }, { scope: 'series' });
 
     expect(rowOf('laundry').followUpTaskDraft).toEqual({ ...emptyFollowUpTaskDraft(), estimatedMinutes: 1, effort: 1 });
+  });
+
+  // The write is the answer to "this and future tasks", so anything short of
+  // that answer leaves the rule alone: an edit that names no scope, and an
+  // explicit "this task".
+  it('leaves the rule alone unless the edit was told to reach later tasks', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'laundry', recurrenceType: 'weekly', followUpTaskEveryN: 2, followUpTaskTitle: 'Put a new towel out' }),
+        makeTask({ id: 'towel', title: 'Put a new towel out', followUpTaskSourceId: 'laundry', followUpTaskSourceTitle: 'Laundry' }),
+      ],
+    });
+
+    useTaskStore.getState().updateTask('towel', { estimatedMinutes: 1, effort: 1 });
+    useTaskStore.getState().updateTask('towel', { priority: 3 }, { scope: 'occurrence' });
+
+    expect(rowOf('laundry').followUpTaskDraft).toBeNull();
+  });
+
+  it('writes the other fields of a follow-up task into the rule, keeping the rest of its draft', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({
+          id: 'laundry', recurrenceType: 'weekly', category: 'Chores', followUpTaskEveryN: 2,
+          followUpTaskTitle: 'Put a new towel out',
+          followUpTaskDraft: { ...emptyFollowUpTaskDraft(), estimatedMinutes: 5 },
+        }),
+        makeTask({ id: 'towel', title: 'Put a new towel out', followUpTaskSourceId: 'laundry', followUpTaskSourceTitle: 'Laundry', category: 'Chores' }),
+      ],
+    });
+
+    useTaskStore.getState().updateTask(
+      'towel', { category: 'Bathroom', priority: 2, tags: ['house'] }, { scope: 'series' },
+    );
+
+    expect(rowOf('laundry').followUpTaskDraft).toEqual({
+      ...emptyFollowUpTaskDraft(), estimatedMinutes: 5, category: 'Bathroom', priority: 2, tags: ['house'],
+    });
+  });
+
+  it('stores the rule task\'s own category as "same as the parent" rather than by name', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({
+          id: 'laundry', recurrenceType: 'weekly', category: 'Chores', followUpTaskEveryN: 2,
+          followUpTaskTitle: 'Put a new towel out',
+          followUpTaskDraft: { ...emptyFollowUpTaskDraft(), category: 'Bathroom' },
+        }),
+        makeTask({ id: 'towel', title: 'Put a new towel out', followUpTaskSourceId: 'laundry', followUpTaskSourceTitle: 'Laundry', category: 'Bathroom' }),
+      ],
+    });
+
+    useTaskStore.getState().updateTask('towel', { category: 'Chores' }, { scope: 'series' });
+
+    expect(rowOf('laundry').followUpTaskDraft).toBeNull();
+  });
+
+  it('carries a category drag to the rule only when the drop was told to reach later tasks', () => {
+    const tasks = () => [
+      makeTask({ id: 'laundry', recurrenceType: 'weekly', category: 'Chores', followUpTaskEveryN: 2, followUpTaskTitle: 'Put a new towel out' }),
+      makeTask({ id: 'towel', title: 'Put a new towel out', followUpTaskSourceId: 'laundry', followUpTaskSourceTitle: 'Laundry', category: 'Chores' }),
+    ];
+    const orders = [{ id: 'towel', sortOrder: 1 }];
+    const moved = [{ id: 'towel', category: 'Bathroom' }];
+
+    useTaskStore.setState({ tasks: tasks() });
+    useTaskStore.getState().reorderWithCategoryUpdates(orders, moved, { scope: 'occurrence' });
+    expect(rowOf('towel').category).toBe('Bathroom');
+    expect(rowOf('laundry').followUpTaskDraft).toBeNull();
+
+    useTaskStore.setState({ tasks: tasks() });
+    useTaskStore.getState().reorderWithCategoryUpdates(orders, moved);
+    expect(rowOf('laundry').followUpTaskDraft).toBeNull();
+
+    useTaskStore.setState({ tasks: tasks() });
+    useTaskStore.getState().reorderWithCategoryUpdates(orders, moved, { scope: 'series' });
+    expect(rowOf('laundry').followUpTaskDraft).toEqual({ ...emptyFollowUpTaskDraft(), category: 'Bathroom' });
+  });
+
+  it('undoes and redoes the rule along with the row for a drag told to reach later tasks', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'laundry', recurrenceType: 'weekly', category: 'Chores', followUpTaskEveryN: 2, followUpTaskTitle: 'Put a new towel out' }),
+        makeTask({ id: 'towel', title: 'Put a new towel out', followUpTaskSourceId: 'laundry', followUpTaskSourceTitle: 'Laundry', category: 'Chores' }),
+      ],
+    });
+
+    useTaskStore.getState().reorderWithCategoryUpdates(
+      [{ id: 'towel', sortOrder: 1 }], [{ id: 'towel', category: 'Bathroom' }], { scope: 'series' },
+    );
+    expect(rowOf('laundry').followUpTaskDraft).toEqual({ ...emptyFollowUpTaskDraft(), category: 'Bathroom' });
+
+    useTaskStore.getState().lastAction!.undo();
+    expect(rowOf('towel').category).toBe('Chores');
+    expect(rowOf('laundry').followUpTaskDraft).toBeNull();
+
+    useTaskStore.getState().lastAction!.redo!();
+    expect(rowOf('towel').category).toBe('Bathroom');
+    expect(rowOf('laundry').followUpTaskDraft).toEqual({ ...emptyFollowUpTaskDraft(), category: 'Bathroom' });
+  });
+
+  it('does not write a bulk priority change to the rule unless the answer was "future"', () => {
+    const tasks = () => [
+      makeTask({ id: 'laundry', recurrenceType: 'weekly', followUpTaskEveryN: 2, followUpTaskTitle: 'Put a new towel out' }),
+      makeTask({ id: 'towel', title: 'Put a new towel out', followUpTaskSourceId: 'laundry', followUpTaskSourceTitle: 'Laundry' }),
+    ];
+    useTaskStore.setState({ tasks: tasks() });
+    useTaskStore.getState().bulkSetPriority(['towel'], 3, { scope: 'occurrence' });
+    expect(rowOf('towel').priority).toBe(3);
+    expect(rowOf('laundry').followUpTaskDraft).toBeNull();
+
+    useTaskStore.setState({ tasks: tasks() });
+    useTaskStore.getState().bulkSetPriority(['towel'], 3, { scope: 'series' });
+    expect(rowOf('laundry').followUpTaskDraft).toEqual({ ...emptyFollowUpTaskDraft(), priority: 3 });
   });
 
   // The pointer names the row that was live when the follow-up landed. Leave
@@ -19688,7 +19825,7 @@ describe('estimates kept on the generator', () => {
       ],
     });
 
-    useTaskStore.getState().updateTask('towel', { estimatedMinutes: 1, effort: 1 });
+    useTaskStore.getState().updateTask('towel', { estimatedMinutes: 1, effort: 1 }, { scope: 'series' });
 
     expect(rowOf('laundry-1').followUpTaskDraft).toBeNull();
     expect(rowOf('laundry-2').followUpTaskDraft).toEqual({ ...emptyFollowUpTaskDraft(), estimatedMinutes: 1, effort: 1 });

@@ -23,6 +23,7 @@ import type { AnswerEdit, MedicationSettingsView, Replica } from './replica';
 import type { ReviewAfter } from '../../src/utils/decisionReview';
 import { describeTemplateChanges, resolveRef, templateToPlan, templateVersion, templateWarnings, type TemplatePatch, type TemplatePlan } from './templatePlan';
 import { isRotationTask } from '../../src/utils/rotation';
+import { liveFollowUpSource } from '../../src/utils/followUpTask';
 import { groceryNameKey } from '../../src/utils/groceryParse';
 import { roundToHalf } from '../../src/utils/produceServings';
 import { entryNovaGroup, processingMix } from '../../src/utils/processingStats';
@@ -229,6 +230,12 @@ export interface GetTaskResult {
   onlyIfAnswer?: { taskId: string; question: string; answers: string[]; answered?: string };
   /** "Every Nth completion, add this task." */
   followUp?: { everyN?: number; atEnd?: boolean; title: string; oneAtATime?: boolean; completionsSoFar?: number };
+  /**
+   * Set on a task a repeating task's follow-up rule added. `ruleLive` is whether
+   * that rule is still there to take an edit: update_task's futureFollowUps only
+   * does anything when it is.
+   */
+  addedByFollowUp?: { title: string; ruleLive: boolean };
   project?: { id: string; title: string };
   /** Somebody this task is waiting on. A person, as opposed to `waitsOn`, which is other tasks. */
   waitingOnPerson?: { personId: string; name?: string; since?: string; followUpOn?: string };
@@ -514,6 +521,9 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
           ...(task.followUpTaskOneAtATime ? { oneAtATime: true } : {}),
           completionsSoFar: task.followUpTaskTally ?? 0,
         }
+      : undefined,
+    addedByFollowUp: task.followUpTaskSourceTitle
+      ? { title: task.followUpTaskSourceTitle, ruleLive: liveFollowUpSource(task, replica.tasks()) !== null }
       : undefined,
     project: project ? { id: project.id, title: project.title } : undefined,
     ...taskExtras(replica, task),
@@ -1027,6 +1037,12 @@ export interface UpdateTaskResult extends GetTaskResult {
    * the deadline on every occurrence.
    */
   deadlineRuleCleared?: string;
+  /**
+   * The title of the repeating task whose follow-up rule took this edit too,
+   * set only when `futureFollowUps` was passed and the rule was live. Said so a
+   * caller can tell the person the next follow-up task will start from it.
+   */
+  followUpRuleUpdated?: string;
 }
 
 /**
@@ -1034,16 +1050,22 @@ export interface UpdateTaskResult extends GetTaskResult {
  * empty. The result is the task in full, the same shape `get_task` returns, so
  * a caller can check what the rules made of the edit.
  */
-export function updateTask(replica: Replica, id: string, input: TaskFieldsInput): UpdateTaskResult {
+export function updateTask(
+  replica: Replica,
+  id: string,
+  input: TaskFieldsInput,
+  options?: { futureFollowUps?: boolean },
+): UpdateTaskResult {
   const current = replica.taskById(id);
   if (!current) throw new Error(`No task with id ${id}.`);
   const patch = replica.taskPatch(input, current, !!current.parentId);
   if (Object.keys(patch).length === 0) throw new Error('Nothing to change: name at least one field.');
   const ruleCleared = hasRelativeDeadline(current) && 'deadline' in patch && patch.deadlineOffsetDays === null && patch.deadlineMonthDay === null;
-  const { alsoUpdated } = replica.updateTask(id, patch);
+  const { alsoUpdated, followUpRule } = replica.updateTask(id, patch, options);
   return {
     ...getTask(replica, id)!,
     ...(alsoUpdated > 0 ? { alsoUpdatedLaterDates: alsoUpdated } : {}),
+    ...(followUpRule ? { followUpRuleUpdated: followUpRule.after.title } : {}),
     ...(ruleCleared
       ? {
           deadlineRuleCleared: patch.deadline

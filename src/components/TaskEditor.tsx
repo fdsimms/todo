@@ -91,10 +91,12 @@ import { MAX_TARGET_UNIT_LENGTH, formatQuotaProgress, formatQuotaTarget, normali
 import {
   MIN_FOLLOW_UP_TASK_EVERY_N, MAX_FOLLOW_UP_TASK_EVERY_N,
   describeFollowUpTaskDraft, describeFollowUpTaskRule, followUpTaskSummary,
+  followUpDraftFieldsChanged, hasFollowUpSource,
 } from '../utils/followUpTask';
+import { confirmFollowUpScope, confirmGeneratedScope } from '../utils/bulkScopePrompt';
 import { ordinal } from '../utils/ordinal';
 import { tagColor } from '../utils/tagColor';
-import { useTaskStore, CONTENT_FIELDS, derivedTargetCount, type TimeBlockPlan } from '../store/useTaskStore';
+import { useTaskStore, CONTENT_FIELDS, captureFollowUpDrafts, derivedTargetCount, hasEstimateSource, type TimeBlockPlan } from '../store/useTaskStore';
 import { useAppGroupStore } from '../store/useAppGroupStore';
 import { allGroups as allAppGroups, groupName } from '../utils/appGroups';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -2466,8 +2468,9 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
         // set to put back, and it has to be read now rather than at open time
         // in case something else pointed at this task while the sheet was up.
         const blocksBefore = blockedTasksOf(task.id).map(t => t.id);
+        const restoreRule = captureFollowUpDrafts([task.id], scope);
         updateTask(task.id, data, {
-          ...(scope === 'occurrence' ? { scope: 'occurrence' as const } : {}),
+          ...(scope ? { scope } : {}),
           // The user is looking at this task right now, so if this save is
           // what makes it visible today it must not also read as unseen.
           markSeenOnBecomeVisible: true,
@@ -2498,10 +2501,12 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
         // stack membership and category included.
         // Read after every write above, so redo puts back what the save left.
         const saved = useTaskStore.getState().tasks.find(t => t.id === snapshot.id);
+        const redoRule = captureFollowUpDrafts([task.id], scope);
         setLastAction({
           label: 'Edit saved',
           undo: () => {
             updateTask(snapshot.id, snapshot);
+            restoreRule();
             // The blocked rows aren't in the snapshot — they're other tasks —
             // so putting the set back is the same call that changed it.
             setBlockedTasks(snapshot.id, blocksBefore);
@@ -2511,6 +2516,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
           redo: saved
             ? () => {
                 updateTask(saved.id, { ...saved });
+                redoRule();
                 setBlockedTasks(saved.id, blocksIds);
               }
             : undefined,
@@ -2588,6 +2594,21 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
         );
         return;
       }
+    }
+    // A follow-up task repeats nothing, but the tasks its rule adds later start
+    // from what this one looks like, so an edit to a field the rule's draft
+    // holds gets the same question. Anything else about this row is its own.
+    if (task && hasFollowUpSource(task, useTaskStore.getState().tasks)
+      && followUpDraftFieldsChanged(task, data)) {
+      confirmFollowUpScope('this change', commitSave);
+      return;
+    }
+    // An app-written task's estimate is kept on whatever writes the next one,
+    // so changing it asks the same thing (see writeEstimateToSource).
+    if (task && task.generatedKind && hasEstimateSource(task)
+      && (task.estimatedMinutes !== data.estimatedMinutes || task.effort !== data.effort)) {
+      confirmGeneratedScope('the new estimate', commitSave);
+      return;
     }
     commitSave();
   };

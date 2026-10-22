@@ -1,6 +1,8 @@
 import { Alert } from 'react-native';
+import type { Task } from '../types';
 import { confirmBulkScope } from './bulkScopePrompt';
-import { useTaskStore } from '../store/useTaskStore';
+import { useTaskStore, writeEditToFollowUpSource } from '../store/useTaskStore';
+import { followUpDraftFieldsChanged, hasFollowUpSource } from './followUpTask';
 import {
   generatedCategoryOffer,
   writeCategoryToSource,
@@ -53,4 +55,31 @@ export function bulkSetCategoryOffering(ids: string[], category: string | null, 
     offerGeneratedCategoryWriteBack(changed.map(id => ({ id, category })));
     onDone?.();
   });
+}
+
+/**
+ * After Backfill set fields on follow-up tasks, ask whether the ones the rule
+ * adds later should start from them. `before` are the rows as they stood before
+ * the write. The write is already applied, so "Just this task" does nothing. One
+ * question however many were answered, since Backfill answers a card at a time
+ * and a batch must not ask once per row. Generated tasks have their own offer
+ * on that screen ("use this for new tasks"); a follow-up task had none.
+ */
+export function offerFollowUpWriteBack(before: Task[]): void {
+  const { tasks } = useTaskStore.getState();
+  const changed = before.flatMap(old => {
+    const now = tasks.find(t => t.id === old.id);
+    return now && hasFollowUpSource(now, tasks) && followUpDraftFieldsChanged(old, now) ? [{ old, now }] : [];
+  });
+  if (changed.length === 0) return;
+  Alert.alert(
+    'Use this for future tasks too?',
+    changed.length === 1
+      ? 'A repeating task adds this one. Start the ones added later from this answer as well?'
+      : 'A repeating task adds each of these. Start the ones added later from these answers as well?',
+    [
+      { text: 'Just this task', style: 'cancel' },
+      { text: 'Future tasks too', onPress: () => changed.forEach(({ old, now }) => writeEditToFollowUpSource(old, now)) },
+    ],
+  );
 }

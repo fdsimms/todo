@@ -97,7 +97,8 @@ import { useElevatedCellRenderer } from '../hooks/useElevatedCellRenderer';
 import { useMealPlanNudgeProgress } from '../hooks/useMealPlanNudgeProgress';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { offerGeneratedCategoryWriteBack, bulkSetCategoryOffering } from '../utils/generatedCategoryPrompt';
-import { bulkAddTagsAsking, bulkSetPriorityAsking, bulkSetDifficultyAsking } from '../utils/bulkScopePrompt';
+import { bulkAddTagsAsking, bulkSetPriorityAsking, bulkSetDifficultyAsking, confirmFollowUpScope } from '../utils/bulkScopePrompt';
+import { hasFollowUpSource } from '../utils/followUpTask';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useSettingsStore, type MealsOnToday } from '../store/useSettingsStore';
@@ -5419,6 +5420,17 @@ export function TodayScreen() {
                 const task = allTasks.find(t => t.id === u.id);
                 return task && task.recurrenceType !== 'none';
               });
+              // A follow-up task repeats nothing itself, but the ones its rule
+              // adds later are filed where the rule's draft says, so a drag
+              // gets the same question with the wording for that.
+              const recategorizedFollowUp = !recategorizedRecurring && categoryUpdates.some(u => {
+                const task = allTasks.find(t => t.id === u.id);
+                return task && hasFollowUpSource(task, allTasks);
+              });
+              if (recategorizedFollowUp) {
+                confirmFollowUpScope('this category change', commitDrop, { onCancel: () => setDraggableData([...draggableData]) });
+                return;
+              }
               if (recategorizedRecurring) {
                 Alert.alert(
                   'Update recurring task',
