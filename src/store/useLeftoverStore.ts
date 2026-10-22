@@ -355,7 +355,21 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
     // The original's own put-away instant and window, on the other side of
     // the freezer line: see leftoverSplitDraft.
     const draft = leftoverSplitDraft(leftover);
-    return draft ? get().logLeftover(draft) : null;
+    const created = draft ? get().logLeftover(draft) : null;
+    if (!created) return null;
+    // The new container is all a split changes, so undo removes it quietly.
+    // `deleteLeftover` would put its own "Deleted" entry on top of this one,
+    // offering to bring the half back that the person just undid.
+    get().setLastAction({
+      label: `Split “${leftover.title}”`,
+      redo: () => { get().splitLeftover(id); },
+      undo: () => {
+        dbDeleteLeftover(created.id);
+        set(s => ({ leftovers: s.leftovers.filter(l => l.id !== created.id) }));
+        dropLeftoverTask(created.id);
+      },
+    });
+    return created;
   },
 
   setLeftoverWeight(id, grams) {
