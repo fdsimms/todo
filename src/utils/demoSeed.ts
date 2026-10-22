@@ -21,6 +21,7 @@ import { useMilestoneStore } from '../store/useMilestoneStore';
 import { useAgentSuggestionStore } from '../store/useAgentSuggestionStore';
 import { useCookwareStore } from '../store/useCookwareStore';
 import { useMeterReadingStore } from '../store/useMeterReadingStore';
+import { useFastStore } from '../store/useFastStore';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useGymStore } from '../store/useGymStore';
 import { useJournalStore } from '../store/useJournalStore';
@@ -2413,6 +2414,7 @@ export function seedDemoData(): void {
   seedSuggestions(today);
   seedCookware();
   seedMeterTask(today);
+  seedFast();
   seedWorkouts(today);
   seedJournal(today);
   seedAsNeededDoses(today);
@@ -3332,6 +3334,15 @@ function seedMeterTask(today: Date): void {
     meterName: 'Car', meterUnit: 'miles', meterEvery: 5000, meterDueAt: 40500, meterLimitMonths: 6,
   });
   applyMeterHolds();
+}
+
+/**
+ * A fast that started last night and is a couple of hours short of its goal,
+ * so the Food log opens with the fasting card showing. Only the running one:
+ * the card is the whole feature, and a history of fasts would show nowhere.
+ */
+function seedFast(): void {
+  useFastStore.getState().startFast(new Date(Date.now() - (13 * 60 + 42) * 60_000), 16);
 }
 
 /**

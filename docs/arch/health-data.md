@@ -2184,6 +2184,27 @@ rule. "Writing what a task names: a logged nutrient", "The second write: body
 mass" and "The third write: a logged meal" above carry the arguments in full;
 read them rather than a summary before adding one.
 
+## Fasting (`Fast`, `src/utils/fasting.ts`)
+
+A fast is started and ended by hand on the Food log and read against a goal in
+hours. Health has no type for it, so it is the app's own record (`fasts`), and
+it travels with the health record (`HEALTH_SYNC_TABLES`) beside the food log it
+is read with. Four decisions in it are load-bearing:
+
+- **The start is never inferred.** The food log's times are when an entry was
+  logged, not when it was eaten, so the last meal logged is offered as a start
+  ("From last meal, 7:45 PM") and taken only on a tap.
+- **Nothing grades a fast.** One bar colour under and past the goal, no
+  streak, no "broken". Reaching the goal changes the line under the clock and
+  sends one notification (`scheduleFastGoal`) that rings through quiet hours,
+  like the medication notice, because it answers a question about a clock the
+  person set.
+- **The card costs nothing for somebody who never fasts.** It shows while a
+  fast runs and through the day one ended on (`showsFastingCard`); starting one
+  is in the Food log's options menu, not a setting to turn on.
+- **The MCP reads fasts and never starts one** (`list_fasts`): the timer and its
+  notification live on the phone, and a fast an agent started could ring.
+
 ## One thing worth knowing before scoping the background half
 
 `backgroundRefresh.ts` deliberately takes no weather read, because the location

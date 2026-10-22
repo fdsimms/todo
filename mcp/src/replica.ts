@@ -53,6 +53,7 @@ import type {
   CookwareType,
   CopyFlag,
   MeterReading,
+  Fast,
   JournalEntry,
   JournalKind,
   FocusSessionRecord,
@@ -1288,6 +1289,8 @@ export interface Replica {
   deleteCookware(id: string): Cookware;
   /** Every meter reading, oldest first. See src/utils/meters.ts. */
   meterReadings(): MeterReading[];
+  /** Every fast, oldest first. See src/utils/fasting.ts. */
+  fasts(): Fast[];
   /**
    * Through `useMeterReadingStore`'s own action, so a blank name or a reading
    * that isn't a number is refused as the app refuses it. The tasks on that
@@ -4531,6 +4534,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return item;
     },
     meterReadings: () => db.dbGetAllMeterReadings(),
+    fasts: () => db.dbGetAllFasts(),
     exercises: () => db.dbGetAllExercises(),
     workoutRoutines: () => db.dbGetAllWorkoutRoutines(),
     routineVersions: () => db.dbGetAllRoutineVersions(),

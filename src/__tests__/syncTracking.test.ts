@@ -145,7 +145,7 @@ describe('the health record', () => {
   // somebody state (App Review 5.1.3(ii); see HEALTH_SYNC_TABLES).
   it('withholds exactly the logs of what a body did, and nothing that is a plan', () => {
     expect([...HEALTH_SYNC_TABLES].sort()).toEqual([
-      'food_logs', 'medication_logs', 'milestones', 'mood_logs', 'workout_sessions', 'workout_sets',
+      'fasts', 'food_logs', 'medication_logs', 'milestones', 'mood_logs', 'workout_sessions', 'workout_sets',
     ]);
     // Workout plans travel like any other data; only the record is withheld.
     for (const plan of [

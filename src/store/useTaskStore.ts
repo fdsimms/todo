@@ -191,6 +191,7 @@ import { useMilestoneStore } from './useMilestoneStore';
 import { useCookwareStore } from './useCookwareStore';
 import { useCopyFlagStore } from './useCopyFlagStore';
 import { useMeterReadingStore } from './useMeterReadingStore';
+import { useFastStore } from './useFastStore';
 import { useWorkoutStore } from './useWorkoutStore';
 import { useGymStore } from './useGymStore';
 import { useMedicationStore } from './useMedicationStore';
@@ -3367,6 +3368,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Meter readings: a task due at 45,000 miles is held or released on them,
     // so they have to swap with the database the tasks came from.
     useMeterReadingStore.getState().initialize();
+    // Fasts are part of the health record, so like the workouts below they are
+    // read from whichever database is live after a demo swap or a restore.
+    useFastStore.getState().initialize();
     // Workouts: custom exercises, routines, programs and sessions. A session is
     // part of the health record, so after a demo swap or a restore it has to
     // be read from the database the rest came from, never kept from the last.

@@ -2091,6 +2091,21 @@ export interface JournalEntry {
 }
 
 /**
+ * One fast: a span with no food, started and ended by hand, read against a
+ * goal in hours (`src/utils/fasting.ts`). Health has no type for fasting, so
+ * this is the app's own record, and it travels with the health record
+ * (`HEALTH_SYNC_TABLES`). At most one is open (`endedAt` null) at a time.
+ */
+export interface Fast {
+  id: string;
+  startedAt: string;
+  /** Null while the fast is running. */
+  endedAt: string | null;
+  goalHours: number;
+  createdAt: string;
+}
+
+/**
  * One reading of a meter the user tracks by hand: an odometer, a hobbs meter,
  * an espresso machine's shot counter. Readings are keyed by the meter, not by
  * a task, so a single entry serves every task following that meter

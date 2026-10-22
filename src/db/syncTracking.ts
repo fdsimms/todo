@@ -83,6 +83,7 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   // inserted or deleted, never edited, so two devices logging at once both
   // keep theirs.
   { name: 'meter_readings', key: ['id'] },
+  { name: 'fasts', key: ['id'] },
   // Workouts (docs/arch/workouts.md). Custom exercises, routines and programs
   // are plans, and travel like any other synced data; a custom exercise's name
   // is a natural key (NATURAL_KEYS), so the same one made on two phones folds
@@ -807,6 +808,8 @@ export function isSyncedSettingKey(key: string): boolean {
  */
 export const HEALTH_SYNC_TABLES: readonly string[] = [
   'mood_logs', 'milestones', 'medication_logs', 'food_logs', 'workout_sessions', 'workout_sets',
+  // A fast is a record of what a body did, beside the food log it is read with.
+  'fasts',
 ];
 export const HEALTH_SYNC_SETTING_KEYS: readonly string[] = [
   'medication_archived', 'medication_registered', 'medication_settings', 'medication_summary_last',

@@ -17,6 +17,7 @@ import type {
   Cookware,
   CopyFlag,
   MeterReading,
+  Fast,
   Exercise,
   Gym,
   GymExerciseSetting,
@@ -568,6 +569,16 @@ function runInitDatabase(): void {
       meter_name TEXT NOT NULL,
       value REAL NOT NULL,
       read_at TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    -- Fasts, started and ended by hand (src/utils/fasting.ts). At most one
+    -- row has a null ended_at. See Fast.
+    CREATE TABLE IF NOT EXISTS fasts (
+      id TEXT PRIMARY KEY NOT NULL,
+      started_at TEXT NOT NULL,
+      ended_at TEXT,
+      goal_hours REAL NOT NULL,
       created_at TEXT NOT NULL
     );
 
@@ -2868,6 +2879,8 @@ export const BACKUP_TABLES = [
   'copy_flags',
   // Meter readings point at nothing: the meter is a name, not a row.
   'meter_readings',
+  // Fasts point at nothing either.
+  'fasts',
   // Workouts, parents first: a routine names a program and exercises, a
   // session names a routine and a program, a set names a session and an
   // exercise. All of them are ids that may dangle (a set on a built-in
@@ -7804,6 +7817,40 @@ export function dbInsertMeterReading(reading: MeterReading): void {
 
 export function dbDeleteMeterReading(id: string): void {
   db.runSync('DELETE FROM meter_readings WHERE id = ?', [id]);
+}
+
+// ─── Fasts ───────────────────────────────────────────────────────────────────
+
+function rowToFast(row: Record<string, unknown>): Fast {
+  return {
+    id: row.id as string,
+    startedAt: row.started_at as string,
+    endedAt: (row.ended_at as string | null) ?? null,
+    goalHours: row.goal_hours as number,
+    createdAt: row.created_at as string,
+  };
+}
+
+export function dbGetAllFasts(): Fast[] {
+  return db.getAllSync<Record<string, unknown>>('SELECT * FROM fasts ORDER BY started_at ASC').map(rowToFast);
+}
+
+export function dbInsertFast(fast: Fast): void {
+  db.runSync(
+    'INSERT INTO fasts (id, started_at, ended_at, goal_hours, created_at) VALUES (?, ?, ?, ?, ?)',
+    [fast.id, fast.startedAt, fast.endedAt, fast.goalHours, fast.createdAt]
+  );
+}
+
+export function dbUpdateFast(fast: Fast): void {
+  db.runSync(
+    'UPDATE fasts SET started_at = ?, ended_at = ?, goal_hours = ? WHERE id = ?',
+    [fast.startedAt, fast.endedAt, fast.goalHours, fast.id]
+  );
+}
+
+export function dbDeleteFast(id: string): void {
+  db.runSync('DELETE FROM fasts WHERE id = ?', [id]);
 }
 
 // ─── Workouts ────────────────────────────────────────────────────────────────

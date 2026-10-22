@@ -417,6 +417,37 @@ export async function cancelMedicationOkAgain(key: string): Promise<void> {
   await Notifications.cancelScheduledNotificationAsync(medicationOkAgainId(key)).catch(() => {});
 }
 
+// One fixed id: only one fast runs at a time, and scheduling replaces it.
+const FAST_GOAL_ID = 'fast-goal';
+
+/**
+ * The notice that a running fast has reached its goal (src/utils/fasting.ts).
+ * Rings through quiet hours, like the medication notice above it, because it
+ * answers a question the person asked about a clock. Neutral by design: it
+ * says the goal was reached and nothing about what to do next.
+ */
+export async function scheduleFastGoal(goalHours: number, at: Date): Promise<void> {
+  if (isDemoModeActive()) return;
+  await Notifications.cancelScheduledNotificationAsync(FAST_GOAL_ID).catch(() => {});
+  if (at.getTime() <= Date.now()) return;
+  await Notifications.scheduleNotificationAsync({
+    identifier: FAST_GOAL_ID,
+    content: {
+      title: 'Fasting goal reached',
+      body: `It has been ${goalHours} ${goalHours === 1 ? 'hour' : 'hours'} since your fast started.`,
+      data: { fastGoal: true },
+      sound: true,
+      interruptionLevel: REMINDER_INTERRUPTION_LEVEL,
+    },
+    trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: at },
+  });
+}
+
+export async function cancelFastGoal(): Promise<void> {
+  if (isDemoModeActive()) return;
+  await Notifications.cancelScheduledNotificationAsync(FAST_GOAL_ID).catch(() => {});
+}
+
 // iOS caps pending local notification requests at 64.
 export const MAX_PENDING_REMINDERS = 64;
 

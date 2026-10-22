@@ -123,6 +123,7 @@ jest.mock('../db/database', () => ({
   dbGetAllCookware: jest.fn().mockReturnValue([]),
   dbGetAllCopyFlags: jest.fn().mockReturnValue([]),
   dbGetAllMeterReadings: jest.fn().mockReturnValue([]),
+  dbGetAllFasts: jest.fn().mockReturnValue([]),
   dbInsertMeterReading: jest.fn(),
   dbDeleteMeterReading: jest.fn(),
   // Workouts ride the same fan-out, right after the meter readings.
@@ -330,6 +331,8 @@ jest.mock('../store/useSettingsStore', () => ({
 }));
 
 jest.mock('../utils/notifications', () => ({
+  scheduleFastGoal: jest.fn(() => Promise.resolve()),
+  cancelFastGoal: jest.fn(() => Promise.resolve()),
   scheduleTaskReminder: jest.fn().mockResolvedValue(undefined),
   cancelTaskReminder: jest.fn().mockResolvedValue(undefined),
   scheduleQuotaNudges: jest.fn().mockResolvedValue(undefined),

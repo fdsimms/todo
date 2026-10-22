@@ -316,6 +316,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     updateMilestone: () => { throw new Error('not stubbed'); },
     deleteMilestone: () => { throw new Error('not stubbed'); },
     meterReadings: () => [],
+    fasts: () => [],
     logMeterReading: () => { throw new Error('not stubbed'); },
     deleteMeterReading: () => { throw new Error('not stubbed'); },
     exercises: () => [],

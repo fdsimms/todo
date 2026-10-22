@@ -99,6 +99,7 @@ only the fallback until the first sync.
 | `add_milestone` / `update_milestone` / `delete_milestone` | **Write.** A milestone by label and day; the day is anchored at noon as the app's sheet does. |
 | `add_cookware` / `update_cookware` / `delete_cookware` | **Write.** A pot, pan, lid or tub and what it weighs empty. A recipe's `cookedWeightG` stays the food alone, so these never rewrite a recipe. |
 | `list_meter_readings` | The meters the person reads by hand, each with its readings, the rate they imply, and the open tasks due at a reading on it. |
+| `list_fasts` | The fast running now and the recent ones that ended, each with its goal and how long it ran. Part of the health record. |
 | `log_meter_reading` / `delete_meter_reading` | **Write.** A reading of a meter ("Car", 45,120). Every task on that meter uses it; the phone moves them on its next sync. |
 | `list_exercises` | The exercise library the app ships merged with the person's own exercises and their notes on built-in ones, each with its kind, equipment, muscles, a one-line cue any other names the person gave it and, for a dumbbell exercise, how many dumbbells it is held in (a weight is always one dumbbell's). Filters by a query (which also matches those other names), a muscle or equipment. |
 | `list_workouts` | Workouts logged over a day range with their sets (weights in kg), plus the routines and programs. Workout history is a health log, so it arrives only with Include health logs on; routines and programs arrive either way. |

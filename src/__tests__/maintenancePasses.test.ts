@@ -67,6 +67,7 @@ describe('the three maintenance groups', () => {
       'check weekend nudge tasks',
       'check weigh-in tasks',
       'check birthday tasks',
+      'check person date tasks',
       'check birthday gift tasks',
       'check reach-out tasks',
       'check waiting follow-up tasks',

@@ -110,6 +110,7 @@ import { addMilestone, deleteMilestone, listMilestones, updateMilestone } from '
 import { addCookware, deleteCookware, listCookware, updateCookware } from './cookwareTools';
 import { listCopyFlags, resolveCopyFlag } from './copyFlagTools';
 import { deleteMeterReading, listMeterReadings, logMeterReading } from './meterTools';
+import { DEFAULT_FAST_LIMIT, MAX_FAST_LIMIT, listFasts } from './fastTools';
 import {
   DEFAULT_EXERCISE_LIMIT, MAX_EXERCISE_LIMIT, deleteGym, deleteProgram, deleteRoutine, deleteRoutineGroup, deleteWorkout, exerciseHistory, listExercises,
   listWorkouts, logWorkout, nextWorkout, routineHistoryOut, restoreRoutineVersionOut, copyRoutineVersionOut, mergeRoutinesOut,
@@ -574,6 +575,13 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     'The meters the person reads by hand (a car\'s odometer, an espresso machine\'s shot counter), each with its readings, the rate they imply when there are readings at least a week apart, and the open tasks due at a reading on it with what their row says ("Due at 45,000 miles · est. Dec 10"). Pass meter to see one.',
     { meter: z.string().optional().describe('One meter by name, e.g. "Car".') },
     async input => json(await withFresh(() => listMeterReadings(replica, input)))
+  );
+
+  server.tool(
+    'list_fasts',
+    `The fast running now, if any, and the most recent ones that ended, newest first (${DEFAULT_FAST_LIMIT} unless limit says more). Each has its start, its end, its goal in hours, how long it ran and when the goal was reached. Fasts are part of the health record: empty unless the person has turned on Include health logs for the sync server, so an empty result is not evidence they never fast. Report lengths as they are; never grade a fast or call one broken.`,
+    { limit: z.number().int().positive().max(MAX_FAST_LIMIT).optional() },
+    async input => json(await withFresh(() => listFasts(replica, input)))
   );
 
   server.tool(

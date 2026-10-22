@@ -21,6 +21,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useNfcKeyStore } from '../store/useNfcKeyStore';
 import { useAppGroupStore } from '../store/useAppGroupStore';
 import { useMeterReadingStore } from '../store/useMeterReadingStore';
+import { useFastStore } from '../store/useFastStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { usePersonStore } from '../store/usePersonStore';
 import { personUndated, personWaiting } from '../utils/personHistory';
@@ -305,6 +306,8 @@ jest.mock('expo-sqlite', () => {
 // already reschedules from whichever task list it just loaded.
 jest.mock('../utils/notifications', () => ({
   scheduleTaskReminder: jest.fn(),
+  scheduleFastGoal: jest.fn(() => Promise.resolve()),
+  cancelFastGoal: jest.fn(() => Promise.resolve()),
   cancelTaskReminder: jest.fn(),
   scheduleQuotaNudges: jest.fn(),
   cancelQuotaNudges: jest.fn(),
@@ -985,6 +988,14 @@ describe('demo mode', () => {
     const garden = useTaskStore.getState().tasks.find(t => t.title === 'Water the garden' && !t.completed);
     expect(garden?.rainSkipMm).toBe(5);
     expect(garden?.recurrenceType).toBe('daily');
+    useDemoStore.getState().exitDemoMode();
+  });
+
+  it('seeds a running fast, so the Food log opens with the fasting card', () => {
+    useDemoStore.getState().enterDemoMode();
+    const running = useFastStore.getState().fasts.filter(f => f.endedAt === null);
+    expect(running).toHaveLength(1);
+    expect(running[0].goalHours).toBe(16);
     useDemoStore.getState().exitDemoMode();
   });
 
