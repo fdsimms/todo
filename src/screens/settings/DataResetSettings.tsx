@@ -395,7 +395,7 @@ export function DataResetSettings() {
           iconColor={colors.red}
           label="Reset to defaults"
           labelColor={colors.redText}
-          hint="Puts every setting in the app back to its default."
+          hint="Puts most settings back to their defaults. Your data and a few settings, like the app lock, are kept."
           onPress={confirmResetToDefaults}
           accessibilityLabel="Reset settings to defaults"
         />
