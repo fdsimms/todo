@@ -47,6 +47,21 @@ describe('settings', () => {
     expect(result.changed[0].to).toBeLessThanOrEqual(14);
   });
 
+  it('changes the focus session plan, with null turning a break trigger off', () => {
+    updateSettings(replica, { focusRestMinutes: 10, focusRestAfterTasks: null, focusBreaksEnabled: true });
+    expect(getSettings(replica).settings.focus.focusRestMinutes.value).toBe(10);
+    expect(getSettings(replica).settings.focus.focusRestAfterTasks.value).toBeNull();
+    expect(mockRaw.getFirstSync<{ value: string }>("SELECT value FROM settings WHERE key = 'focusRestAfterTasks'")?.value).toBe('');
+    expect(() => updateSettings(replica, { focusRestMinutes: 0 })).toThrow(/whole number from 1/);
+  });
+
+  it('takes known subway lines and refuses an unknown one', () => {
+    updateSettings(replica, { transitLines: ['L', 'G'] });
+    // The picker's own order, not the order given.
+    expect(getSettings(replica).settings.automations.transitLines.value).toEqual(['G', 'L']);
+    expect(() => updateSettings(replica, { transitLines: ['L', 'X'] })).toThrow(/list of 1, 2/);
+  });
+
   it('files Health readings under a category, creating it, or hides them', () => {
     const result = updateSettings(replica, { healthCategory: 'Activity' });
     expect(result.changed[0]).toMatchObject({ setting: 'healthCategory', to: 'Activity' });

@@ -1154,25 +1154,25 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
       );
     }
     const rowKcal = stagedKcal(row);
-    // What the + writes, stated on the row: "last as 1 teaspoon" alone read as
-    // the amount typed in the field, which the + only uses when the food has a
-    // weight to measure it against. A typed weight it can't use is said.
+    // What the + writes, stated in the row's title: "last as 1 teaspoon" alone
+    // read as the amount typed in the field, which the + only uses when the food
+    // has a weight to measure it against. A typed weight it can't use is said.
     const rowWrite = stagedWrite(row, stagedDefaults(row));
     const rowAsk = askFor(row);
     const typedWeight = describedGrams(row.clause);
     const typedApplied = rowAsk.kind === 'weight'
       ? scaledWeight(row) !== null
       : rowAsk.kind === 'none' ? false : describedEstimateFactor((row as Extract<PendingRecallLog, { kind: 'recall' }>).food, row.clause) !== null;
-    const logsLine = 'error' in rowWrite
-      ? null
-      : `Logs ${rowWrite.quantity}.${typedWeight && !typedApplied ? ` Not ${typedWeight.replace(/g$/, ' g')}: this food has no recorded weight to measure it against. Use Estimate below to log it by weight.` : ''}`;
+    const rowTitle = 'error' in rowWrite ? food.label : `${rowWrite.quantity} ${food.label}`;
+    const unusedWeightNote = !('error' in rowWrite) && typedWeight && !typedApplied
+      ? `Not ${typedWeight.replace(/g$/, ' g')}: this food has no recorded weight to measure it against. Use Estimate below to log it by weight.`
+      : null;
     return (
       <View key={`${row.kind}-${food.key}`} style={[styles.offerRow, styles.offerRowTop, index > 0 && styles.offerDivider]}>
         <View style={styles.offerMain}>
-          <Text style={styles.offerName}>{food.label}</Text>
-          {/* What the + will write leads, then the history it came from. */}
-          {logsLine && <Text style={styles.offerLogs}>{logsLine}</Text>}
-          <Text style={logsLine ? styles.offerHistory : styles.offerMeta}>{meta}</Text>
+          <Text style={styles.offerName}>{rowTitle}</Text>
+          <Text style={styles.offerMeta}>{meta}</Text>
+          {unusedWeightNote && <Text style={styles.offerMeta}>{unusedWeightNote}</Text>}
           {/* On its own line under the name, so the name keeps the row's width. */}
           <InlineAction
             label="Change amount"
@@ -1186,7 +1186,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
         <PressableScale
           style={styles.offerAdd}
           onPress={() => quickLog(row)}
-          accessibilityLabel={logsLine ? `Log ${food.label}. ${logsLine}` : `Log ${food.label}, same amount as before`}
+          accessibilityLabel={'error' in rowWrite ? `Log ${food.label}, same amount as before` : `Log ${rowTitle}`}
         >
           <Ionicons name="add" size={iconSize.md} color={colors.accent} />
         </PressableScale>
@@ -1651,8 +1651,6 @@ function makeStyles(colors: Colors) {
     // lines tall and centered they floated beside its middle.
     offerRowTop: { alignItems: 'flex-start' },
     offerMeta: { color: colors.textSecondary, fontSize: font.xs },
-    offerLogs: { color: colors.textSecondary, fontSize: font.sm },
-    offerHistory: { color: colors.textTertiary, fontSize: font.xs },
     offerChange: { alignSelf: 'flex-start', marginTop: spacing.xsm },
     offerAdd: {
       width: 32,

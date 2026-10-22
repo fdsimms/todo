@@ -105,6 +105,8 @@ describe('table definitions', () => {
       'hapticsEnabled',       // a Mac has no haptics
       'mirroringMode',        // how one phone is being driven
       'grocery_trip_shop_id', // what one device is doing right now
+      'tabRoutes',            // an iPad's sidebar and a phone's tab bar differ
+      'confirmBeforeDeleting', // how much one device interrupts
     ]) {
       expect(isSyncedSettingKey(key)).toBe(false);
     }
@@ -171,6 +173,12 @@ describe('the health record', () => {
   // route. The sleep goal sat on the health list alone and so never synced.
   it('withholds only settings that are synced at all', () => {
     expect(HEALTH_SYNC_SETTING_KEYS.filter(k => !SYNCED_SETTING_KEYS.includes(k))).toEqual([]);
+  });
+
+  it('withholds the figures about a body from iCloud', () => {
+    for (const key of ['bodyProfile', 'weightGoal', 'proteinPerWeight', 'activeEnergyBoost', 'waterExerciseBoost']) {
+      expect(HEALTH_SYNC_SETTING_KEYS).toContain(key);
+    }
   });
 });
 

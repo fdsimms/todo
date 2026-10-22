@@ -329,7 +329,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'get_settings',
-    "The person's settings that can be changed from here, grouped as in Settings, each with its value and what it does: when the day starts and its parts, task defaults, what is switched on (the kitchen, simplified mode, rewards), the kitchen's units, and each automation's own timing.",
+    "The person's settings that can be changed from here, grouped as in Settings, each with its value and what it does: when the day starts and its parts, task defaults, what is switched on (the kitchen, simplified mode, rewards), how a focus session plans its stretches and breaks, the kitchen's units and what it does after cooking, and each automation's own timing.",
     {},
     async () => json(await withFresh(() => getSettings(replica)))
   );

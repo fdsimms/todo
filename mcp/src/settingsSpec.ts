@@ -17,12 +17,18 @@ import type { MealSlot, NutrientKey, TimeOfDay } from '../../src/types';
 // A value import, unlike the rest: the nutrient list is plain data with no
 // imports of its own, so loading it here needs nothing from the shim.
 import { NUTRIENT_KEYS } from '../../src/types';
+// The same for the subway lines, and the focus bounds the Settings rows use.
+import { TRANSIT_LINES } from '../../src/utils/transitAlerts';
+import {
+  FOCUS_LONG_REST_EVERY_MAX, FOCUS_LONG_REST_EVERY_MIN, FOCUS_REST_AFTER_MINUTES_MAX, FOCUS_REST_AFTER_MINUTES_MIN,
+  FOCUS_REST_AFTER_TASKS_MAX, FOCUS_REST_MAX, FOCUS_REST_MIN, FOCUS_WORK_CAP_MAX, FOCUS_WORK_CAP_MIN,
+} from '../../src/utils/focusSettings';
 
 type SettingsState = ReturnType<typeof useSettingsStore.getState>;
 
 export interface SettingSpec {
   /** Which part of Settings it is in, for the read. */
-  group: 'day' | 'tasks' | 'features' | 'rewards' | 'kitchen' | 'automations';
+  group: 'day' | 'tasks' | 'features' | 'focus' | 'rewards' | 'kitchen' | 'automations';
   /** What it does, in the app's own plain words. */
   describe: string;
   read: (s: SettingsState) => unknown;
@@ -58,6 +64,16 @@ function nutrients(name: string, v: unknown): NutrientKey[] {
   const allowed = NUTRIENT_KEYS.filter(k => k !== 'waterMl');
   if (!Array.isArray(v) || v.some(x => !allowed.includes(x))) throw new Error(`${name} is a list of ${allowed.join(', ')}.`);
   return [...new Set(v as NutrientKey[])];
+}
+function optionalInt(name: string, v: unknown, lo: number, hi: number): number | null {
+  if (v === null) return null;
+  if (typeof v !== 'number' || !Number.isInteger(v) || v < lo || v > hi) throw new Error(`${name} is a whole number from ${lo} to ${hi}, or null for off.`);
+  return v;
+}
+function lines(name: string, v: unknown): string[] {
+  const known = TRANSIT_LINES.map(l => l.key);
+  if (!Array.isArray(v) || v.some(x => !known.includes(x))) throw new Error(`${name} is a list of ${known.join(', ')}.`);
+  return [...new Set(v as string[])];
 }
 function slots(name: string, v: unknown): MealSlot[] {
   if (!Array.isArray(v) || v.some(x => !SLOTS.includes(x))) throw new Error(`${name} is a list of ${SLOTS.join(', ')}.`);
@@ -132,6 +148,17 @@ export const SETTINGS_SPEC: Record<string, SettingSpec> = {
   mealsOnToday: { group: 'features', describe: 'Show the day\'s planned meals on Today (inline) or not (off).', read: s => s.mealsOnToday, write: (s, v) => s.setMealsOnToday(oneOf('mealsOnToday', v, ['inline', 'off'] as const)) },
   mealSlotsEnabled: { group: 'features', describe: 'The meals of the day the meal plan has rows for.', read: s => s.mealSlotsEnabled, write: (s, v) => s.setMealSlotsEnabled(slots('mealSlotsEnabled', v)) },
 
+  // ---- focus sessions -----------------------------------------------------
+  focusWorkCapMinutes: { group: 'focus', describe: `The longest a single work stretch runs, in minutes (${FOCUS_WORK_CAP_MIN}-${FOCUS_WORK_CAP_MAX}). A task estimated for longer is split into equal parts.`, read: s => s.focusWorkCapMinutes, write: (s, v) => s.setFocusWorkCapMinutes(int('focusWorkCapMinutes', v, FOCUS_WORK_CAP_MIN, FOCUS_WORK_CAP_MAX)) },
+  focusDefaultWorkMinutes: { group: 'focus', describe: `The stretch, in minutes, a task with no estimate gets (${FOCUS_WORK_CAP_MIN}-${FOCUS_WORK_CAP_MAX}).`, read: s => s.focusDefaultWorkMinutes, write: (s, v) => s.setFocusDefaultWorkMinutes(int('focusDefaultWorkMinutes', v, FOCUS_WORK_CAP_MIN, FOCUS_WORK_CAP_MAX)) },
+  focusBreaksEnabled: { group: 'focus', describe: 'Breaks in a focus session. Off plans none and keeps the break settings below for when it is turned back on.', read: s => s.focusBreaksEnabled, write: (s, v) => s.setFocusBreaksEnabled(bool('focusBreaksEnabled', v)) },
+  focusRestAfterMinutes: { group: 'focus', describe: `A break after this many minutes of work (${FOCUS_REST_AFTER_MINUTES_MIN}-${FOCUS_REST_AFTER_MINUTES_MAX}), or null for no time-based breaks.`, read: s => s.focusRestAfterMinutes, write: (s, v) => s.setFocusRestAfterMinutes(optionalInt('focusRestAfterMinutes', v, FOCUS_REST_AFTER_MINUTES_MIN, FOCUS_REST_AFTER_MINUTES_MAX)) },
+  focusRestAfterTasks: { group: 'focus', describe: `A break after this many tasks (1-${FOCUS_REST_AFTER_TASKS_MAX}), or null for no task-based breaks.`, read: s => s.focusRestAfterTasks, write: (s, v) => s.setFocusRestAfterTasks(optionalInt('focusRestAfterTasks', v, 1, FOCUS_REST_AFTER_TASKS_MAX)) },
+  focusRestMinutes: { group: 'focus', describe: `How long a break is, in minutes (${FOCUS_REST_MIN}-${FOCUS_REST_MAX}).`, read: s => s.focusRestMinutes, write: (s, v) => s.setFocusRestMinutes(int('focusRestMinutes', v, FOCUS_REST_MIN, FOCUS_REST_MAX)) },
+  focusLongRestEvery: { group: 'focus', describe: `Every nth break is a long one (${FOCUS_LONG_REST_EVERY_MIN}-${FOCUS_LONG_REST_EVERY_MAX}), or null to keep every break the same length.`, read: s => s.focusLongRestEvery, write: (s, v) => s.setFocusLongRestEvery(optionalInt('focusLongRestEvery', v, FOCUS_LONG_REST_EVERY_MIN, FOCUS_LONG_REST_EVERY_MAX)) },
+  focusLongRestMinutes: { group: 'focus', describe: `How long a long break is, in minutes (${FOCUS_REST_MIN}-${FOCUS_REST_MAX}).`, read: s => s.focusLongRestMinutes, write: (s, v) => s.setFocusLongRestMinutes(int('focusLongRestMinutes', v, FOCUS_REST_MIN, FOCUS_REST_MAX)) },
+  focusHideTimers: { group: 'focus', describe: 'Hide the countdowns while a session runs.', read: s => s.focusHideTimers, write: (s, v) => s.setFocusHideTimers(bool('focusHideTimers', v)) },
+
   // ---- rewards ------------------------------------------------------------
   rewardsEnabled: { group: 'rewards', describe: 'Coins for completing tasks, and rewards to spend them on. Off hides the Rewards screen.', read: s => s.rewardsEnabled, write: (s, v) => s.setRewardsEnabled(bool('rewardsEnabled', v)) },
   rewardListProjectId: { group: 'rewards', describe: 'A list (project) whose items can be bought with coins, as a wish list, or null.', read: s => s.rewardListProjectId, write: (s, v) => s.setRewardListProjectId(v === null ? null : String(v)) },
@@ -146,6 +173,10 @@ export const SETTINGS_SPEC: Record<string, SettingSpec> = {
   nutritionLimits: { group: 'kitchen', describe: 'The nutrients whose food log target is a limit to stay under rather than a figure to reach (keys as in set_nutrition_targets). The Food log then says what is left and turns red past it. Only mark one the person said is a limit.', read: s => s.nutritionLimits, write: (s, v) => s.setNutritionLimits(nutrients('nutritionLimits', v)) },
   limitWarnPercent: { group: 'kitchen', describe: 'The share of a limit, as a percent (50-100), at which a day counts as close to it: the Food log bar and the Today row turn orange.', read: s => s.limitWarnPercent, write: (s, v) => s.setLimitWarnPercent(int('limitWarnPercent', v, 50, 100)) },
   limitsTodayCategory: { group: 'kitchen', describe: 'The category Today shows a row per limit under ("Sat fat 9 of 16g, 7g left"), or null for none. It must already exist.', read: s => s.limitsTodayCategory, write: (s, v) => s.setLimitsTodayCategory(v === null ? null : String(v)) },
+
+  cookRecapEnabled: { group: 'kitchen', describe: 'When a meal is marked cooked, ask how it was, whether there are leftovers, and what it used up.', read: s => s.cookRecapEnabled, write: (s, v) => s.setCookRecapEnabled(bool('cookRecapEnabled', v)) },
+  restockOfferEnabled: { group: 'kitchen', describe: 'After cooking, list what the meal used that is not on the grocery list, with a button to add it.', read: s => s.restockOfferEnabled, write: (s, v) => s.setRestockOfferEnabled(bool('restockOfferEnabled', v)) },
+  runningLowAddsToList: { group: 'kitchen', describe: 'Marking an item as running low adds it to the grocery list. Off keeps it as a note in the pantry.', read: s => s.runningLowAddsToList, write: (s, v) => s.setRunningLowAddsToList(bool('runningLowAddsToList', v)) },
 
   // ---- automations' own settings -----------------------------------------
   birthdayLeadDays: { group: 'automations', describe: 'Days before a birthday its task appears.', read: s => s.birthdayLeadDays, write: (s, v) => s.setBirthdayLeadDays(int('birthdayLeadDays', v, 0, 60)) },
@@ -168,6 +199,7 @@ export const SETTINGS_SPEC: Record<string, SettingSpec> = {
   travelLeadMinutes: { group: 'automations', describe: 'Minutes of travel assumed before an event, where none is set on it.', read: s => s.travelLeadMinutes, write: (s, v) => s.setTravelLeadMinutes(int('travelLeadMinutes', v, 5, 180)) },
   travelArriveEarlyMinutes: { group: 'automations', describe: 'Minutes to arrive before an event starts, added to the travel time, where none is set on the event. Negative arrives late.', read: s => s.travelArriveEarlyMinutes, write: (s, v) => s.setTravelArriveEarlyMinutes(int('travelArriveEarlyMinutes', v, -30, 60)) },
   travelWalkUnderMinutes: { group: 'automations', describe: 'Walk instead of using travelMode when the walk is this many minutes or fewer (0 is off, steps of 5, up to 60). Needs Apple Maps estimates on.', read: s => s.travelWalkUnderMinutes, write: (s, v) => s.setTravelWalkUnderMinutes(int('travelWalkUnderMinutes', v, 0, 60)) },
+  transitLines: { group: 'automations', describe: 'The subway lines whose service alerts are added to a travel task. Alerts on other lines are left out.', read: s => s.transitLines, write: (s, v) => s.setTransitLines(lines('transitLines', v)) },
   travelMode: { group: 'automations', describe: 'How they get to events: driving, transit or walking.', read: s => s.travelMode, write: (s, v) => s.setTravelMode(oneOf('travelMode', v, ['driving', 'transit', 'walking'] as const)) },
   wanikaniReviewThreshold: { group: 'automations', describe: 'How many WaniKani reviews (1-500) have to be waiting before the WaniKani task appears. Fewer waiting now holds the task until the hour WaniKani expects that many.', read: s => s.wanikaniReviewThreshold, write: (s, v) => s.setWanikaniReviewThreshold(int('wanikaniReviewThreshold', v, 1, 500)) },
   wanikaniLessonsPerDay: { group: 'automations', describe: 'Lessons a day (1-100) the daily WaniKani lessons task asks for, or null for no lessons task.', read: s => s.wanikaniLessonsPerDay, write: (s, v) => s.setWanikaniLessonsPerDay(v === null ? null : int('wanikaniLessonsPerDay', v, 1, 100)) },
