@@ -5706,16 +5706,18 @@ export function TodayScreen() {
           />
         )}
 
-        <QuickAddModal
-          visible={quickAddVisible}
-          onClose={onQuickAddClose}
-          onOpenFull={onQuickAddOpenFull}
-          context={viewMode}
-          onCreated={onQuickAddCreated}
-          seed={quickAddSeed}
-          seedLabel={quickAddSeedLabel}
-          initialType={quickAddType}
-        />
+        <LazySheet open={quickAddVisible} warm>
+          <QuickAddModal
+            visible={quickAddVisible}
+            onClose={onQuickAddClose}
+            onOpenFull={onQuickAddOpenFull}
+            context={viewMode}
+            onCreated={onQuickAddCreated}
+            seed={quickAddSeed}
+            seedLabel={quickAddSeedLabel}
+            initialType={quickAddType}
+          />
+        </LazySheet>
 
         <LazySheet open={inboxSortVisible}>
           <InboxSortSheet
@@ -5786,12 +5788,14 @@ export function TodayScreen() {
 
         {/* A sheet over the list, unless there is room for it beside it (below). */}
         {!twoPane && (
-          <TaskEditor
-            visible={editorVisible}
-            task={editingTask}
-            initialDraft={editorInitialDraft}
-            onClose={closeEditor}
-          />
+          <LazySheet open={editorVisible} warm>
+            <TaskEditor
+              visible={editorVisible}
+              task={editingTask}
+              initialDraft={editorInitialDraft}
+              onClose={closeEditor}
+            />
+          </LazySheet>
         )}
 
         <LazySheet open={filterVisible}>

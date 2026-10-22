@@ -62,6 +62,7 @@ import { anchorLabel, formatOffsetLabel, getDirectBrokenRefItemIds, findMissingR
 import { describeConditionAnswers, liveConditions } from '../utils/templateQuestions';
 import type { TaskTemplate, TemplateItem } from '../types';
 import { BUTTON_LABEL } from '../copy/shared';
+import { LazySheet } from '../components/LazySheet';
 
 type RootStackParamList = {
   TemplateDetail: { templateId: string };
@@ -561,75 +562,87 @@ export function TemplateDetailScreen() {
         />
       )}
 
-      <TemplateEditor
-        visible={settingsTemplate !== null}
-        template={settingsTemplate}
-        onClose={() => setSettingsTemplate(null)}
-      />
+      <LazySheet open={settingsTemplate !== null}>
+        <TemplateEditor
+          visible={settingsTemplate !== null}
+          template={settingsTemplate}
+          onClose={() => setSettingsTemplate(null)}
+        />
+      </LazySheet>
 
       {template && (
-        <TemplateItemQuickAdd
-          visible={quickAddVisible}
-          templateId={template.id}
-          templateName={template.name}
-          onClose={() => setQuickAddVisible(false)}
-          onCreated={placeDroppedItem}
-          onOpenFull={(draft) => {
-            setQuickAddVisible(false);
-            openItemEditor(null, draft);
-          }}
-          onAddNested={() => {
-            setQuickAddVisible(false);
-            openNestedPicker(null);
-          }}
-        />
+        <LazySheet open={quickAddVisible}>
+          <TemplateItemQuickAdd
+            visible={quickAddVisible}
+            templateId={template.id}
+            templateName={template.name}
+            onClose={() => setQuickAddVisible(false)}
+            onCreated={placeDroppedItem}
+            onOpenFull={(draft) => {
+              setQuickAddVisible(false);
+              openItemEditor(null, draft);
+            }}
+            onAddNested={() => {
+              setQuickAddVisible(false);
+              openNestedPicker(null);
+            }}
+          />
+        </LazySheet>
       )}
 
       {template && (
-        <NestedTemplatePicker
-          visible={nestedPickerVisible}
-          currentTemplateId={template.id}
-          onClose={() => setNestedPickerVisible(false)}
-          onSelect={handleNestedTemplateSelected}
-        />
+        <LazySheet open={nestedPickerVisible}>
+          <NestedTemplatePicker
+            visible={nestedPickerVisible}
+            currentTemplateId={template.id}
+            onClose={() => setNestedPickerVisible(false)}
+            onSelect={handleNestedTemplateSelected}
+          />
+        </LazySheet>
       )}
 
       {template && (
-        <TemplateItemEditor
-          visible={itemEditorVisible}
-          templateId={template.id}
-          templateName={template.name}
-          item={editingItem}
-          initialDraft={itemEditorDraft}
-          onClose={() => setItemEditorVisible(false)}
-          onCreated={placeDroppedItem}
-        />
+        <LazySheet open={itemEditorVisible}>
+          <TemplateItemEditor
+            visible={itemEditorVisible}
+            templateId={template.id}
+            templateName={template.name}
+            item={editingItem}
+            initialDraft={itemEditorDraft}
+            onClose={() => setItemEditorVisible(false)}
+            onCreated={placeDroppedItem}
+          />
+        </LazySheet>
       )}
 
       {template && (
-        <TemplateSuggestionsSheet
-          visible={suggestVisible}
-          templateId={template.id}
-          templateName={template.name}
-          existingTitles={template.items.map(i => i.title)}
-          onClose={() => setSuggestVisible(false)}
-        />
+        <LazySheet open={suggestVisible}>
+          <TemplateSuggestionsSheet
+            visible={suggestVisible}
+            templateId={template.id}
+            templateName={template.name}
+            existingTitles={template.items.map(i => i.title)}
+            onClose={() => setSuggestVisible(false)}
+          />
+        </LazySheet>
       )}
 
       {/* Nested inside this screen's own tree — a sibling top-level Modal
           can't present over it on iOS while this screen is open (it silently
           waits until the screen dismisses). */}
       {template && (
-        <ApplyTemplateSheet
-          visible={applyTemplateObj !== null}
-          template={applyTemplateObj}
-          onClose={() => setApplyTemplateId(null)}
-          onApplied={tasks => {
-          if (tasks.length === 0) return;
-          setTemplateAppliedCount(tasks.length);
-          setTemplateAppliedDest(templateRunDestination(tasks));
-        }}
-        />
+        <LazySheet open={applyTemplateObj !== null}>
+          <ApplyTemplateSheet
+            visible={applyTemplateObj !== null}
+            template={applyTemplateObj}
+            onClose={() => setApplyTemplateId(null)}
+            onApplied={tasks => {
+            if (tasks.length === 0) return;
+            setTemplateAppliedCount(tasks.length);
+            setTemplateAppliedDest(templateRunDestination(tasks));
+          }}
+          />
+        </LazySheet>
       )}
 
       {templateAppliedCount !== null && (

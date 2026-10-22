@@ -2392,52 +2392,62 @@ function ProjectDetailContent() {
           />
         )}
 
-        <TaskGroupEditor
-          visible={groupEditorVisible}
-          group={editingGroup}
-          projectId={project?.id}
-          onClose={() => {
-            setGroupEditorVisible(false);
-            setEditingGroup(null);
-          }}
-        />
+        <LazySheet open={groupEditorVisible}>
+          <TaskGroupEditor
+            visible={groupEditorVisible}
+            group={editingGroup}
+            projectId={project?.id}
+            onClose={() => {
+              setGroupEditorVisible(false);
+              setEditingGroup(null);
+            }}
+          />
+        </LazySheet>
 
-        <QuickAddModal
-          visible={quickAddVisible}
-          onClose={onQuickAddClose}
-          onOpenFull={onQuickAddOpenFull}
-          // Project tasks are picked off over time rather than scheduled for
-          // today, so the quick add opens with no due date.
-          context="unscheduled"
-          intoProjectId={project?.id ?? null}
-          onCreated={onQuickAddCreated}
-          onResumed={onQuickAddResumed}
-          seed={quickAddSeed}
-          seedLabel={quickAddSeedLabel}
-        />
+        <LazySheet open={quickAddVisible} warm>
+          <QuickAddModal
+            visible={quickAddVisible}
+            onClose={onQuickAddClose}
+            onOpenFull={onQuickAddOpenFull}
+            // Project tasks are picked off over time rather than scheduled for
+            // today, so the quick add opens with no due date.
+            context="unscheduled"
+            intoProjectId={project?.id ?? null}
+            onCreated={onQuickAddCreated}
+            onResumed={onQuickAddResumed}
+            seed={quickAddSeed}
+            seedLabel={quickAddSeedLabel}
+          />
+        </LazySheet>
 
         {/* Add from a template: pick one here, then the apply sheet below —
             same two-step flow as Today, but the applied tasks land directly
             in this project instead of the template's own container. */}
-        <AddGuestsSheet
-          visible={guestsOpen}
-          onClose={() => setGuestsOpen(false)}
-          onAdd={addGuests}
-        />
+        <LazySheet open={guestsOpen}>
+          <AddGuestsSheet
+            visible={guestsOpen}
+            onClose={() => setGuestsOpen(false)}
+            onAdd={addGuests}
+          />
+        </LazySheet>
 
-        <TemplatePickerSheet
-          visible={templatePickerVisible}
-          onClose={() => setTemplatePickerVisible(false)}
-          onSelect={setApplyTemplate}
-        />
+        <LazySheet open={templatePickerVisible}>
+          <TemplatePickerSheet
+            visible={templatePickerVisible}
+            onClose={() => setTemplatePickerVisible(false)}
+            onSelect={setApplyTemplate}
+          />
+        </LazySheet>
 
-        <ApplyTemplateSheet
-          visible={applyTemplate !== null}
-          template={applyTemplate}
-          onClose={() => setApplyTemplate(null)}
-          projectId={project?.id}
-          onApplied={tasks => { if (tasks.length > 0) setTemplateAppliedCount(tasks.length); }}
-        />
+        <LazySheet open={applyTemplate !== null}>
+          <ApplyTemplateSheet
+            visible={applyTemplate !== null}
+            template={applyTemplate}
+            onClose={() => setApplyTemplate(null)}
+            projectId={project?.id}
+            onApplied={tasks => { if (tasks.length > 0) setTemplateAppliedCount(tasks.length); }}
+          />
+        </LazySheet>
 
         {templateAppliedCount !== null && (
           <TemplateAppliedToast
@@ -2464,11 +2474,13 @@ function ProjectDetailContent() {
           />
         )}
 
-        <LookAheadSheet
-          visible={lookAheadOpen}
-          tripProjectId={project?.id ?? null}
-          onClose={() => setLookAheadOpen(false)}
-        />
+        <LazySheet open={lookAheadOpen}>
+          <LookAheadSheet
+            visible={lookAheadOpen}
+            tripProjectId={project?.id ?? null}
+            onClose={() => setLookAheadOpen(false)}
+          />
+        </LazySheet>
 
         {sectionMenu.element}
         <LazySheet open={pageMenuVisible}>
@@ -2479,36 +2491,42 @@ function ProjectDetailContent() {
             project={project}
           />}
         </LazySheet>
-        <ProjectEditor
-          visible={editingProject !== null}
-          project={editingProject}
-          onClose={() => setEditingProject(null)}
-        />
+        <LazySheet open={editingProject !== null}>
+          <ProjectEditor
+            visible={editingProject !== null}
+            project={editingProject}
+            onClose={() => setEditingProject(null)}
+          />
+        </LazySheet>
 
-        <ProjectTaskSuggestionsSheet
-          visible={suggestionsVisible}
-          projectId={project?.id ?? null}
-          projectTitle={project?.title ?? ''}
-          projectNotes={project?.notes ?? ''}
-          existingTitles={projectTasks.map(t => t.title)}
-          // Same toast a template apply gets: the new rows land at the end of
-          // the list, often out of sight, and nothing else said they arrived.
-          onAdded={count => setTemplateAppliedCount(count)}
-          onClose={() => setSuggestionsVisible(false)}
-        />
+        <LazySheet open={suggestionsVisible}>
+          <ProjectTaskSuggestionsSheet
+            visible={suggestionsVisible}
+            projectId={project?.id ?? null}
+            projectTitle={project?.title ?? ''}
+            projectNotes={project?.notes ?? ''}
+            existingTitles={projectTasks.map(t => t.title)}
+            // Same toast a template apply gets: the new rows land at the end of
+            // the list, often out of sight, and nothing else said they arrived.
+            onAdded={count => setTemplateAppliedCount(count)}
+            onClose={() => setSuggestionsVisible(false)}
+          />
+        </LazySheet>
 
         <DeliverablePromptQueue {...queueProps} />
 
-        <TaskEditor
-          visible={editorVisible}
-          task={editingTask}
-          initialDraft={editorInitialDraft}
-          onClose={() => {
-            setEditorVisible(false);
-            setEditorInitialDraft(null);
-            setExpandedTaskId(null);
-          }}
-        />
+        <LazySheet open={editorVisible} warm>
+          <TaskEditor
+            visible={editorVisible}
+            task={editingTask}
+            initialDraft={editorInitialDraft}
+            onClose={() => {
+              setEditorVisible(false);
+              setEditorInitialDraft(null);
+              setExpandedTaskId(null);
+            }}
+          />
+        </LazySheet>
         {pullSearch.sheet}
       </View>
     </SpotlightProvider>

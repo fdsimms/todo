@@ -297,6 +297,31 @@ export function catchUpPasses(): MaintenanceStep[] {
   ];
 }
 
+/**
+ * The first catch-up pass that only ever *adds* a task. Everything before it
+ * changes what an existing row looks like (vacation turning off, a quota day
+ * closing, a stalled project dripping its next task), which Today shows on its
+ * first frame, so those run before the splash hides. Everything from here on is
+ * a generator or a housekeeping pass whose result is a row appearing, and a row
+ * that appears a moment after the first frame costs less than holding the
+ * splash for all of them.
+ */
+const LAUNCH_DEFER_FROM = 'check meal plan nudge';
+
+/**
+ * `catchUpPasses` cut in two for the launch sequence, in the same order:
+ * `first` runs ahead of the first frame, `deferred` right after it. The cut is
+ * the only difference from the list above, and the background refresh keeps
+ * spreading that whole list. If the boundary pass is ever renamed the cut
+ * disappears and everything runs up front, which is the old behaviour.
+ */
+export function launchCatchUpPasses(): { first: MaintenanceStep[]; deferred: MaintenanceStep[] } {
+  const all = catchUpPasses();
+  const at = all.findIndex(([name]) => name === LAUNCH_DEFER_FROM);
+  if (at < 0) return { first: all, deferred: [] };
+  return { first: all.slice(0, at), deferred: all.slice(at) };
+}
+
 /** The passes that delete, and the one that hands their space back. Launch-time, with a person present. */
 export function retentionPasses(): MaintenanceStep[] {
   return [

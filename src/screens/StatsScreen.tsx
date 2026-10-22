@@ -43,6 +43,7 @@ import { usePullToSearch } from '../hooks/usePullToSearch';
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { getRepeatedInstances, normalizeTitle, taskForTitleKey } from '../utils/taskInstances';
 import { TaskEditor } from '../components/TaskEditor';
+import { LazySheet } from '../components/LazySheet';
 import type { Task } from '../types';
 import { onTimeSummary } from '../utils/stats';
 import { calibrationFrom, describeCalibration } from '../utils/estimateCalibration';
@@ -1444,7 +1445,9 @@ export function StatsScreen() {
         </ScrollView>
       )}
       <ScrollToTopButton {...scrollTop.buttonProps} />
-      <TaskEditor visible={openTask !== null} task={openTask} onClose={closeTask} />
+      <LazySheet open={openTask !== null} warm>
+        <TaskEditor visible={openTask !== null} task={openTask} onClose={closeTask} />
+      </LazySheet>
       {pullSearch.sheet}
     </View>
   );

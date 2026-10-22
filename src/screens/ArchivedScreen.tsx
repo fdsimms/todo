@@ -11,6 +11,7 @@ import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskEditor } from '../components/TaskEditor';
+import { LazySheet } from '../components/LazySheet';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
@@ -302,11 +303,13 @@ export function ArchivedScreen() {
         />
       )}
 
-      <TaskEditor
-        visible={editorVisible}
-        task={editingTask}
-        onClose={() => setEditorVisible(false)}
-      />
+      <LazySheet open={editorVisible} warm>
+        <TaskEditor
+          visible={editorVisible}
+          task={editingTask}
+          onClose={() => setEditorVisible(false)}
+        />
+      </LazySheet>
       <ScrollToTopButton {...scrollTop.buttonProps} />
       {pullSearch.sheet}
     </View>

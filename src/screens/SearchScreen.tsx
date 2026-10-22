@@ -958,12 +958,14 @@ export function SearchScreen() {
         )}
       </KeyboardAvoidingView>
 
-      <TaskEditor
-        visible={editorVisible}
-        task={editingTask}
-        initialDraft={editorInitialDraft}
-        onClose={closeEditor}
-      />
+      <LazySheet open={editorVisible} warm>
+        <TaskEditor
+          visible={editorVisible}
+          task={editingTask}
+          initialDraft={editorInitialDraft}
+          onClose={closeEditor}
+        />
+      </LazySheet>
 
       <LazySheet open={groupEditorVisible}>
         <TaskGroupEditor

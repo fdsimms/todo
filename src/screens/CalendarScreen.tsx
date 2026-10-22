@@ -1462,12 +1462,14 @@ export function CalendarScreen() {
         </Animated.View>
       )}
 
-      <TaskEditor
-        visible={editorVisible}
-        task={editingTask}
-        initialDraft={editorInitialDraft}
-        onClose={closeEditor}
-      />
+      <LazySheet open={editorVisible} warm>
+        <TaskEditor
+          visible={editorVisible}
+          task={editingTask}
+          initialDraft={editorInitialDraft}
+          onClose={closeEditor}
+        />
+      </LazySheet>
 
       <LazySheet open={quickAddVisible}>
         <QuickAddModal

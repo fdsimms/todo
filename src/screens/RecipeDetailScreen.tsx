@@ -155,6 +155,7 @@ import type { ActionMenuAction } from '../components/ActionMenu';
 import { FadeInImage } from '../components/FadeInImage';
 import { HelpText } from '../components/HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
+import { LazySheet } from '../components/LazySheet';
 
 type RootStackParamList = {
   /**
@@ -3146,34 +3147,40 @@ export function RecipeDetailScreen() {
         />
       )}
 
-      <RecipeEditor
-        visible={editorVisible}
-        recipe={recipe}
-        draft={editingDraft}
-        onClose={() => { setEditorVisible(false); setEditingDraft(false); }}
-        onDeleted={() => { setEditorVisible(false); setEditingDraft(false); navigation.goBack(); }}
-      />
+      <LazySheet open={editorVisible}>
+        <RecipeEditor
+          visible={editorVisible}
+          recipe={recipe}
+          draft={editingDraft}
+          onClose={() => { setEditorVisible(false); setEditingDraft(false); }}
+          onDeleted={() => { setEditorVisible(false); setEditingDraft(false); navigation.goBack(); }}
+        />
+      </LazySheet>
 
-      <RecipeIngredientSheet
-        visible={editingIngredient !== null}
-        recipeId={recipe.id}
-        ingredient={editingIngredient}
-        onClose={() => setEditingIngredient(null)}
-      />
+      <LazySheet open={editingIngredient !== null}>
+        <RecipeIngredientSheet
+          visible={editingIngredient !== null}
+          recipeId={recipe.id}
+          ingredient={editingIngredient}
+          onClose={() => setEditingIngredient(null)}
+        />
+      </LazySheet>
 
-      <IngredientCatalogMatchSheet
-        visible={matchSheetOpen}
-        recipeId={recipe.id}
-        scopeIds={matchScopeIds}
-        onClose={() => setMatchSheetOpen(false)}
-        onEditIngredient={ingredient => {
-          // Closes itself first: two Modals presented from one parent is the
-          // second one asking a presenter that's already presenting, so the
-          // ingredient sheet opens as this one leaves rather than on top of it.
-          setMatchSheetOpen(false);
-          setEditingIngredient(ingredient);
-        }}
-      />
+      <LazySheet open={matchSheetOpen}>
+        <IngredientCatalogMatchSheet
+          visible={matchSheetOpen}
+          recipeId={recipe.id}
+          scopeIds={matchScopeIds}
+          onClose={() => setMatchSheetOpen(false)}
+          onEditIngredient={ingredient => {
+            // Closes itself first: two Modals presented from one parent is the
+            // second one asking a presenter that's already presenting, so the
+            // ingredient sheet opens as this one leaves rather than on top of it.
+            setMatchSheetOpen(false);
+            setEditingIngredient(ingredient);
+          }}
+        />
+      </LazySheet>
 
       {!!nutritionReading && (
         <RecipeNutritionSheet
@@ -3186,38 +3193,46 @@ export function RecipeDetailScreen() {
         />
       )}
 
-      <PrepTaskSheet
-        visible={editingPrepTask !== null}
-        recipeId={recipe.id}
-        prepTask={editingPrepTask}
-        onClose={() => setEditingPrepTask(null)}
-      />
+      <LazySheet open={editingPrepTask !== null}>
+        <PrepTaskSheet
+          visible={editingPrepTask !== null}
+          recipeId={recipe.id}
+          prepTask={editingPrepTask}
+          onClose={() => setEditingPrepTask(null)}
+        />
+      </LazySheet>
 
-      <PlanMealSheet
-        visible={planVisible}
-        title={pendingPlanScale != null ? `${recipe.name} (${formatScale(pendingPlanScale)})` : recipe.name}
-        defaultSlot={earliestUnplannedSlotToday()}
-        onPlan={(dateKey, slot) => planRecipe(recipe, dateKey, slot, pendingPlanScale ?? undefined)}
-        // After the dismissal, never before — see PlanMealSheet.onPlanned.
-        onPlanned={offerPrepTasks}
-        onClose={() => { setPlanVisible(false); setPendingPlanScale(null); }}
-      />
+      <LazySheet open={planVisible}>
+        <PlanMealSheet
+          visible={planVisible}
+          title={pendingPlanScale != null ? `${recipe.name} (${formatScale(pendingPlanScale)})` : recipe.name}
+          defaultSlot={earliestUnplannedSlotToday()}
+          onPlan={(dateKey, slot) => planRecipe(recipe, dateKey, slot, pendingPlanScale ?? undefined)}
+          // After the dismissal, never before — see PlanMealSheet.onPlanned.
+          onPlanned={offerPrepTasks}
+          onClose={() => { setPlanVisible(false); setPendingPlanScale(null); }}
+        />
+      </LazySheet>
 
-      <RecipeToListSheet
-        visible={addToListVisible}
-        recipe={recipe}
-        recipesById={recipesById}
-        initialScale={scale}
-        initialOverrides={overrides}
-        onAdded={offerPlanForScaledShop}
-        onClose={() => setAddToListVisible(false)}
-      />
+      <LazySheet open={addToListVisible}>
+        <RecipeToListSheet
+          visible={addToListVisible}
+          recipe={recipe}
+          recipesById={recipesById}
+          initialScale={scale}
+          initialOverrides={overrides}
+          onAdded={offerPlanForScaledShop}
+          onClose={() => setAddToListVisible(false)}
+        />
+      </LazySheet>
 
-      <RecipeExtractSheet
-        visible={extractVisible}
-        recipe={recipe}
-        onClose={() => setExtractVisible(false)}
-      />
+      <LazySheet open={extractVisible}>
+        <RecipeExtractSheet
+          visible={extractVisible}
+          recipe={recipe}
+          onClose={() => setExtractVisible(false)}
+        />
+      </LazySheet>
 
       {/* The scale travels in, the way it does into the add-to-list sheet — a
           halved recipe has to read halved mid-step too. The either/or picks
@@ -3232,47 +3247,55 @@ export function RecipeDetailScreen() {
         />
       )}
 
-      <CookModeSheet
-        visible={cookModeVisible}
-        recipe={recipe}
-        recipesById={recipesById}
-        scale={scale}
-        onScaleChange={setScale}
-        choices={choices}
-        overrides={overrides}
-        onChoicesChange={setChoices}
-        onOverridesChange={setOverrides}
-        onClose={() => setCookModeVisible(false)}
-        onLogCooked={() => cookRecipeNow(recipe)}
-        onLogFood={nutritionReading?.nutrition ? handleLogToFoodLog : undefined}
-      />
+      <LazySheet open={cookModeVisible}>
+        <CookModeSheet
+          visible={cookModeVisible}
+          recipe={recipe}
+          recipesById={recipesById}
+          scale={scale}
+          onScaleChange={setScale}
+          choices={choices}
+          overrides={overrides}
+          onChoicesChange={setChoices}
+          onOverridesChange={setOverrides}
+          onClose={() => setCookModeVisible(false)}
+          onLogCooked={() => cookRecipeNow(recipe)}
+          onLogFood={nutritionReading?.nutrition ? handleLogToFoodLog : undefined}
+        />
+      </LazySheet>
 
-      <ComponentChoiceSheet
-        visible={choiceComponent !== null}
-        recipe={recipe}
-        component={choiceComponent}
-        onClose={() => setChoiceComponent(null)}
-      />
+      <LazySheet open={choiceComponent !== null}>
+        <ComponentChoiceSheet
+          visible={choiceComponent !== null}
+          recipe={recipe}
+          component={choiceComponent}
+          onClose={() => setChoiceComponent(null)}
+        />
+      </LazySheet>
 
-      <BlankEditorSheet
-        visible={editingBlank !== null}
-        recipeId={recipe.id}
-        blankId={editingBlank === 'new' ? null : editingBlank}
-        onClose={() => setEditingBlank(null)}
-      />
+      <LazySheet open={editingBlank !== null}>
+        <BlankEditorSheet
+          visible={editingBlank !== null}
+          recipeId={recipe.id}
+          blankId={editingBlank === 'new' ? null : editingBlank}
+          onClose={() => setEditingBlank(null)}
+        />
+      </LazySheet>
 
-      <RecipeComponentPicker
-        visible={componentPickerVisible}
-        recipe={recipe}
-        onClose={() => setComponentPickerVisible(false)}
-        onSelect={component => {
-          animateLayout();
-          // The picker already disabled everything addComponent would refuse,
-          // so a false here means the library moved under the sheet — nothing
-          // to explain, and nothing added.
-          addComponent(recipe.id, component.id);
-        }}
-      />
+      <LazySheet open={componentPickerVisible}>
+        <RecipeComponentPicker
+          visible={componentPickerVisible}
+          recipe={recipe}
+          onClose={() => setComponentPickerVisible(false)}
+          onSelect={component => {
+            animateLayout();
+            // The picker already disabled everything addComponent would refuse,
+            // so a false here means the library moved under the sheet — nothing
+            // to explain, and nothing added.
+            addComponent(recipe.id, component.id);
+          }}
+        />
+      </LazySheet>
 
       {/* For the "or log a time" field on the prep and cook timer rows, which
           ask for this bar by nativeID and until now had nothing on this screen

@@ -13,6 +13,7 @@ import { resolvePerson } from '../utils/peopleRegistry';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { TaskEditor } from '../components/TaskEditor';
+import { LazySheet } from '../components/LazySheet';
 import { TaskBreakdownSheet } from '../components/TaskBreakdownSheet';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
@@ -584,11 +585,13 @@ export function StuckScreen() {
         />
       )}
 
-      <TaskEditor
-        visible={editorVisible}
-        task={editingTask}
-        onClose={() => setEditorVisible(false)}
-      />
+      <LazySheet open={editorVisible} warm>
+        <TaskEditor
+          visible={editorVisible}
+          task={editingTask}
+          onClose={() => setEditorVisible(false)}
+        />
+      </LazySheet>
       {shownBreakdownId && (
         <TaskBreakdownSheet
           visible={breakdownId !== null}

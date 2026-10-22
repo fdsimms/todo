@@ -18,6 +18,7 @@ import type { JournalKind } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { TaskEditor } from '../components/TaskEditor';
+import { LazySheet } from '../components/LazySheet';
 import { useProjectStore } from '../store/useProjectStore';
 import { DetailHeader } from '../components/DetailHeader';
 import { EmptyState } from '../components/EmptyState';
@@ -823,40 +824,52 @@ export function PersonDetailScreen() {
         </View>
       </ScrollView>
 
-      <PersonEditor visible={editing} person={person} onClose={() => setEditing(false)} />
-      <PersonHistorySheet
-        visible={addingHistory || editingHistoryEntry !== null}
-        personName={name}
-        entry={editingHistoryEntry}
-        onSave={saveHistoryEntry}
-        onDelete={deleteHistoryEntry}
-        onClose={() => { setAddingHistory(false); setEditingHistoryEntry(null); }}
-      />
-      <QuickEventSheet
-        visible={planningEvent}
-        onClose={() => setPlanningEvent(false)}
-        seed={{ personIds: [person.id] }}
-      />
-      <TaskEditor
-        visible={editingTaskId !== null}
-        task={editingTask}
-        onClose={() => setEditingTaskId(null)}
-      />
-      <PersonNoteSheet
-        visible={noteSheet !== null}
-        personId={person.id}
-        personName={name}
-        note={noteSheet?.note ?? null}
-        initialKind={noteSheet?.kind ?? 'note'}
-        onClose={() => setNoteSheet(null)}
-      />
-      <JournalDaySheet
-        visible={pageOpen}
-        kind={pageDay?.kind ?? 'journal'}
-        dayKey={pageDay?.dayKey ?? null}
-        onEdit={entry => { setPageOpen(false); navigateToTab(entry.kind === 'dream' ? 'Dreams' : 'Journal'); }}
-        onClose={() => setPageOpen(false)}
-      />
+      <LazySheet open={editing}>
+        <PersonEditor visible={editing} person={person} onClose={() => setEditing(false)} />
+      </LazySheet>
+      <LazySheet open={addingHistory || editingHistoryEntry !== null}>
+        <PersonHistorySheet
+          visible={addingHistory || editingHistoryEntry !== null}
+          personName={name}
+          entry={editingHistoryEntry}
+          onSave={saveHistoryEntry}
+          onDelete={deleteHistoryEntry}
+          onClose={() => { setAddingHistory(false); setEditingHistoryEntry(null); }}
+        />
+      </LazySheet>
+      <LazySheet open={planningEvent}>
+        <QuickEventSheet
+          visible={planningEvent}
+          onClose={() => setPlanningEvent(false)}
+          seed={{ personIds: [person.id] }}
+        />
+      </LazySheet>
+      <LazySheet open={editingTaskId !== null} warm>
+        <TaskEditor
+          visible={editingTaskId !== null}
+          task={editingTask}
+          onClose={() => setEditingTaskId(null)}
+        />
+      </LazySheet>
+      <LazySheet open={noteSheet !== null}>
+        <PersonNoteSheet
+          visible={noteSheet !== null}
+          personId={person.id}
+          personName={name}
+          note={noteSheet?.note ?? null}
+          initialKind={noteSheet?.kind ?? 'note'}
+          onClose={() => setNoteSheet(null)}
+        />
+      </LazySheet>
+      <LazySheet open={pageOpen}>
+        <JournalDaySheet
+          visible={pageOpen}
+          kind={pageDay?.kind ?? 'journal'}
+          dayKey={pageDay?.dayKey ?? null}
+          onEdit={entry => { setPageOpen(false); navigateToTab(entry.kind === 'dream' ? 'Dreams' : 'Journal'); }}
+          onClose={() => setPageOpen(false)}
+        />
+      </LazySheet>
       <ScrollToTopButton {...scrollTop.buttonProps} />
     </View>
   );
