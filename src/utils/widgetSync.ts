@@ -266,7 +266,7 @@ async function processPendingFoods(): Promise<void> {
     }
     if (dropped > 0) {
       Alert.alert(
-        "Couldn't save the meal",
+        "Couldn’t save the meal",
         'The list of meals waiting to be logged is full. Log or remove one on the Food log screen, then say it again.',
       );
     } else {

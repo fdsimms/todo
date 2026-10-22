@@ -1196,7 +1196,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                               onPress={() => openNote(viewed, 'today')}
                               activeOpacity={interaction.activeOpacity}
                               accessibilityRole="button"
-                              accessibilityLabel={`Edit today's note: ${todayNote}`}
+                              accessibilityLabel={`Edit today’s note: ${todayNote}`}
                             >
                               <Text style={styles.noteLabel}>Today</Text>
                               <Text style={styles.noteText}>{todayNote}</Text>
@@ -1275,7 +1275,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                             onPress={() => fillFromPrevious(set, prev)}
                             hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
                             accessibilityRole="button"
-                            accessibilityLabel={`Use last time's ${prevLine}${prevMark ? ` (${setName(prev!.kind, '')})` : ''} for ${setName(set.kind, label)}`}
+                            accessibilityLabel={`Use last time’s ${prevLine}${prevMark ? ` (${setName(prev!.kind, '')})` : ''} for ${setName(set.kind, label)}`}
                           >
                             <Text style={styles.prevText} numberOfLines={1}>
                               {prevLine}

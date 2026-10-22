@@ -5717,8 +5717,8 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                 icon="hourglass-outline"
                 summary={slotInShown ? 'Wait' : 'Keep the date'}
                 hint={slotInCategory !== null
-                  ? `Wait moves this to the next day that isn't full, but at least one waiting task still shows every day. Set for every task in ${slotInCategory}.`
-                  : "Wait moves this to the next day that isn't full, but at least one waiting task still shows every day."}
+                  ? `Wait moves this to the next day that isn’t full, but at least one waiting task still shows every day. Set for every task in ${slotInCategory}.`
+                  : "Wait moves this to the next day that isn’t full, but at least one waiting task still shows every day."}
                 expanded={fieldOpen('slotIn')}
                 onToggle={() => toggleField('slotIn')}
               >

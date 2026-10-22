@@ -362,7 +362,7 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
             <EmptyState
               icon="stats-chart-outline"
               title="No history yet"
-              subtitle={gymFilter ? 'No sets logged at this gym yet. Choose All gyms to see the rest.' : "Sets you log for this exercise show up here, with a chart of how it's going and your personal records."}
+              subtitle={gymFilter ? 'No sets logged at this gym yet. Choose All gyms to see the rest.' : "Sets you log for this exercise show up here, with a chart of how it’s going and your personal records."}
             />
           </View>
         )}
