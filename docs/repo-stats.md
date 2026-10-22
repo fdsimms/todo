@@ -28,5 +28,5 @@ one component holding most of the file is owed a header map and banners (CLAUDE.
 `screens/ProjectsScreen.tsx`, `screens/RecipesScreen.tsx`, `screens/SearchScreen.tsx`,
 `screens/TemplateDetailScreen.tsx`, `screens/WorkoutsScreen.tsx`.
 
-The suite is **723 test files**, and `npm test` runs all of them in about a minute.
+The suite is **724 test files**, and `npm test` runs all of them in about a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists.

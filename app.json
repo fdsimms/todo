@@ -29,6 +29,8 @@
         "NSAlarmKitUsageDescription": "dundundun rings reminders as system alarms that sound even in silent mode.",
         "NSSupportsLiveActivities": true,
         "NSSiriUsageDescription": "dundundun uses Siri to add a task, log a dose or a dream, mark a grocery item used up, or start a workout by voice, including from the Action Button.",
+        "NSMicrophoneUsageDescription": "dundundun listens while you dictate a journal entry or a dream, so you can say it instead of typing it. The audio is turned into text on your phone and is never recorded or sent anywhere.",
+        "NSSpeechRecognitionUsageDescription": "dundundun turns what you say into text when you dictate a journal entry or a dream. It does this on your phone, without the internet.",
         "NFCReaderUsageDescription": "dundundun reads an NFC tag so you can use it as a key that locks and unlocks the apps you chose to block."
       },
       "entitlements": {

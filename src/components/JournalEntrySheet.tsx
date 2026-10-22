@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Keyboard } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { isSameDay } from 'date-fns/isSameDay';
@@ -64,6 +64,8 @@ import { SegmentedControl } from './SegmentedControl';
 import { JournalText } from './JournalText';
 import { JOURNAL_FORMAT_BAR_HEIGHT, JournalFormatBar, type FormatAction } from './JournalFormatBar';
 import { useTitleSelection } from '../hooks/useTitleSelection';
+import { useDictation } from '../hooks/useDictation';
+import { JOURNAL_DICTATION_BAR_HEIGHT, JournalDictationBar } from './JournalDictationBar';
 import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
 
@@ -89,6 +91,8 @@ interface Props {
   kind: JournalKind;
   /** The entry being edited, or null to write a new one. */
   editing?: JournalEntry | null;
+  /** Start listening as the sheet opens (the row's microphone). A new entry only. */
+  dictateOnOpen?: boolean;
   onClose: () => void;
 }
 
@@ -104,7 +108,7 @@ interface Props {
  * only, so a snippet written at 3pm carries on from the morning's rather than
  * starting a blank page. The screen draws the day's snippets as one page.
  */
-export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Props) {
+export function JournalEntrySheet({ visible, kind, editing = null, dictateOnOpen = false, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const copy = JOURNAL_KIND_COPY[kind];
@@ -144,6 +148,19 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
   const caret = useTitleSelection(text);
   const [focused, setFocused] = useState(false);
 
+  // Speaking the entry (docs/arch/journal.md, "Dictating an entry"). The words
+  // go into the same field as typed ones, so everything downstream (word count,
+  // draft, Save) is unchanged. `seedRef` is what the field held when the sheet
+  // opened, which a recording that starts with the sheet appends to. `dictated`
+  // is whether anything has been said in this opening, which is what keeps the
+  // bar's "Keep talking" there afterwards.
+  const seedRef = useRef('');
+  const [dictated, setDictated] = useState(false);
+  const dictation = useDictation({
+    maxLength: TEXT_MAX_LENGTH,
+    onText: next => { setText(next); caret.moveCaret(next); },
+  });
+
   // Reseeds on every open, so a reopened sheet never hands back a half-written page.
   useEffect(() => {
     if (!visible) return;
@@ -153,6 +170,8 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
     const seed = editing?.text ?? draft ?? '';
     setText(seed);
     caret.resetCaret(seed);
+    setDictated(false);
+    seedRef.current = seed;
     setRestoredDraft(draft !== null);
     setTags(editing?.tags ?? []);
     setPersonIds(editing?.personIds ?? []);
@@ -177,6 +196,31 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
     const timer = setTimeout(() => writeJournalDraft(kind, text), JOURNAL_DRAFT_DELAY_MS);
     return () => clearTimeout(timer);
   }, [visible, editing, kind, text]);
+
+  // The row's microphone: listen from the moment the sheet is open, adding to
+  // whatever the reseed above put in the field. `dictation.start` asks for the
+  // permissions first and explains a refusal itself.
+  useEffect(() => {
+    if (!visible || !dictateOnOpen || editing) return;
+    Keyboard.dismiss();
+    setDictated(true);
+    void dictation.start(seedRef.current);
+    // `dictation` is rebuilt every render; only an opening should start one.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, dictateOnOpen, editing]);
+
+  // Closing the sheet ends any recording, so none runs behind a screen that is gone.
+  useEffect(() => {
+    if (!visible) dictation.cancel();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+
+  const keepTalking = () => {
+    Keyboard.dismiss();
+    setDictated(true);
+    void dictation.start(text);
+  };
+  const dictationBarShown = visible && !focused && (dictation.state !== 'idle' || dictated) && dictation.available;
 
   // A formatting button: rewrite the text round the selection, then put the
   // selection back over the same words (or the caret between an empty pair).
@@ -314,6 +358,9 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
   // A journal page can be long, so Cancel asks before throwing words away.
   // The copy is TaskEditor's own handleCancel's.
   const handleCancel = () => {
+    // The words heard so far are what the check below judges; the last ones
+    // still in flight are not worth holding the sheet open for.
+    dictation.stop();
     const dirty = text.trim() !== (editing?.text ?? '') || metaChanged || (!editing && (tags.length > 0 || personIds.length > 0));
     if (!dirty) { if (!editing) clearJournalDraft(kind); onClose(); return; }
     confirmDiscard(() => { if (!editing) clearJournalDraft(kind); onClose(); });
@@ -339,15 +386,28 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
       rootStyle={styles.root}
       headerStyle={styles.header}
       scrollStyle={styles.scroll}
-      scrollContentStyle={styles.scrollContent}
-      footer={<JournalFormatBar focused={visible && focused} onFormat={applyFormat} />}
+      scrollContentStyle={[styles.scrollContent, dictationBarShown && { paddingBottom: JOURNAL_DICTATION_BAR_HEIGHT + spacing.md }]}
+      footer={(
+        <>
+          <JournalFormatBar focused={visible && focused} onFormat={applyFormat} />
+          {dictationBarShown && (
+            <JournalDictationBar
+              state={dictation.state}
+              levels={dictation.levels}
+              elapsed={dictation.elapsed}
+              onStop={dictation.stop}
+              onKeepTalking={keepTalking}
+            />
+          )}
+        </>
+      )}
       keyboardAccessoryHeight={JOURNAL_FORMAT_BAR_HEIGHT}
       header={
         <SheetHeader
           bare
           title={title}
           left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={64} />}
-          right={<SheetHeaderButton label={BUTTON_LABEL.save} onPress={save} disabled={!canSave} minWidth={64} />}
+          right={<SheetHeaderButton label={BUTTON_LABEL.save} onPress={save} disabled={!canSave || dictation.state !== 'idle'} minWidth={64} />}
         />
       }
     >
@@ -391,11 +451,12 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
           onSelectionChange={caret.onSelectionChange}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
-          placeholder={canSeal && openOn ? 'e.g. What you want to tell yourself then' : soFar.length > 0 ? copy.continuePlaceholder : copy.placeholder}
+          placeholder={dictation.state === 'listening' ? 'Listening…' : canSeal && openOn ? 'e.g. What you want to tell yourself then' : soFar.length > 0 ? copy.continuePlaceholder : copy.placeholder}
           placeholderTextColor={colors.textTertiary}
           maxLength={TEXT_MAX_LENGTH}
           multiline
-          autoFocus={!editing}
+          autoFocus={!editing && !dictateOnOpen}
+          editable={dictation.state === 'idle'}
           accessibilityLabel={kind === 'dream' ? 'A dream you remember' : 'Journal entry'}
         />
         <Text style={styles.wordCount}>{wordsLine}</Text>

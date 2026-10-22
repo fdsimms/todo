@@ -29,6 +29,11 @@ export function journalLogTitle(segments: readonly TimeOfDay[]): string {
 /** The generated kind that asks for each journal kind. */
 export const JOURNAL_TASK_KIND = { journal: 'journalLog', dream: 'dreamLog' } as const;
 
+/** The link the row's microphone opens: the same sheet, already listening. */
+export function journalMicUrl(kind: JournalKind): string {
+  return `${journalLogUrl(kind)}&mic=1`;
+}
+
 /** The deep link a task's row opens, to the sheet that answers it. */
 export function journalLogUrl(kind: JournalKind): string {
   return kind === 'dream' ? 'dundundun://dreams?log=1' : 'dundundun://journal?log=1';

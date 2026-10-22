@@ -118,6 +118,7 @@
     "todo-nfc-bridge": "file:./modules/todo-nfc-bridge",
     "todo-privacy-shield": "file:./modules/todo-privacy-shield",
     "todo-screentime-bridge": "file:./modules/todo-screentime-bridge",
+    "todo-speech-bridge": "file:./modules/todo-speech-bridge",
     "todo-vision-bridge": "file:./modules/todo-vision-bridge",
     "todo-widget-bridge": "file:./modules/todo-widget-bridge",
     "zustand": "^5.0.15"

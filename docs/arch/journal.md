@@ -251,6 +251,32 @@ navigates nowhere, so the Face ID lock is untouched. The queue file holds the wo
 text until the app drains it, the same as a task title queued by `AddTaskIntent`. Saying one for
 today answers that day's dream reminder.
 
+## Dictating an entry
+
+The journal and dream reminder rows carry a microphone (`recordMicUrl` in `recordTasks.ts`) that
+opens the entry sheet already listening: the row's link with `mic=1`, which `resetToJournal` turns
+into a `dictate` stamp on the route and `JournalScreen` hands to the sheet as `dictateOnOpen`.
+`useDictation` runs the recording over `modules/todo-speech-bridge` (Apple's `SFSpeechRecognizer`).
+The words go into the same field as typed ones, so the word count, the draft and Save are
+unchanged, and **nothing is saved until Save is tapped**: the transcript is there to be read and
+fixed first. "Keep talking" adds to what is on the page.
+
+- **Audio never leaves the phone.** Every request sets `requiresOnDeviceRecognition`, and `start`
+  refuses when `supportsOnDeviceRecognition` is false for the person's language, because Apple honors
+  the flag only when the recognizer supports it and otherwise sends the audio to a server. A refusal,
+  not a fallback (`dictationRefusal('unavailable')`), and `isSpeechAvailable` is false in that case so
+  the row shows no microphone at all. The audio is never written to disk, which also answers where the
+  recordings go: nowhere.
+- **The row's tap is unchanged.** Only the microphone starts a recording. A bare `log=1` link, the row
+  body and a note-to-self `entry=` link open the sheet silent.
+- **Every recording is numbered, and every event carries it** (`startSpeech`), so a result from a
+  recording already stopped can't land on the one that replaced it. Closing the sheet cancels any
+  recording (`useDictation`'s token), including one still waiting on the permission prompt.
+- **Not dictated:** mood and weight tasks (answered with a tap, not words), and an edit of a saved
+  entry. A microphone on every task was considered and left out: it needs an answer to where audio
+  would live and which tasks would use it, and a transcript that becomes a task's notes is a
+  different feature from a journal page.
+
 ## Markdown export
 
 The share action offers Markdown beside CSV (`journalExportMarkdown`): a heading per day, each

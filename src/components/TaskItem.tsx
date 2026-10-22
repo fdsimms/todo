@@ -82,7 +82,8 @@ import type { ReviewAfter } from '../utils/decisionReview';
 import { offersMealLogOnCompletion } from '../utils/completionTap';
 import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { chainPreview, isChainFinish, chainStepAdvancesInPlace, nextChainStep } from '../utils/chain';
-import { isAnsweredByRecord, recordLogUrl } from '../utils/recordTasks';
+import { isAnsweredByRecord, recordLogUrl, recordMicUrl } from '../utils/recordTasks';
+import { dictationSupported } from '../utils/speechSupport';
 import { offerBlockStart } from '../utils/blockOfferAccept';
 import { offersBlockStart } from '../utils/blockOfferTasks';
 import { useRecordTaskReady } from '../hooks/useRecordTaskReady';
@@ -1372,6 +1373,10 @@ const TaskItemRow = React.memo(function TaskItem({
   // tick completes it (see recordTasks.ts).
   const recordReady = useRecordTaskReady(task);
   const recordLog = isAnsweredByRecord(task) && !recordReady ? recordLogUrl(task) : null;
+  // A journal or dream task also offers a microphone that opens its sheet
+  // already listening. Only until the entry exists, and only on a phone that can
+  // recognize speech on its own, so there is never a button that can only fail.
+  const recordMic = recordLog && dictationSupported() ? recordMicUrl(task) : null;
   const reviewProject = useProjectStore(s =>
     reviewProjectId ? s.projects.find(p => p.id === reviewProjectId) ?? null : null
   );
@@ -4207,6 +4212,19 @@ const TaskItemRow = React.memo(function TaskItem({
             style={!timerRunning && styles.rowTimerGlyphPlay}
             color={timerRunning ? colors.onAccent : colors.accent}
           />
+        </TouchableOpacity>
+      )}
+
+      {!selectionMode && showActions && recordMic && !completing && (
+        <TouchableOpacity
+          onPress={() => handleOpenLink(recordMic)}
+          hitSlop={8}
+          style={styles.rowTimerBtn}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="button"
+          accessibilityLabel={`Say your ${task.generatedKind === 'dreamLog' ? 'dream' : 'journal entry'} out loud`}
+        >
+          <Ionicons name="mic" size={iconSize.sm} color={colors.accent} />
         </TouchableOpacity>
       )}
 

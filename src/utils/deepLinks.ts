@@ -539,6 +539,19 @@ export function journalUrlWantsLog(url: string): boolean {
 }
 
 /**
+ * Does a journal or dreams link ask for the sheet to start listening (`mic=1`)?
+ * Only the microphone button on the reminder task's row carries it; the row
+ * itself and the bare `log=1` link open the sheet silent.
+ */
+export function journalUrlWantsMic(url: string): boolean {
+  if (typeof url !== 'string') return false;
+  const match = JOURNAL_RE.exec(url.trim());
+  if (!match) return false;
+  const value = (parseQuery(match[2] ?? '').mic ?? '').trim();
+  return value === '1' || value.toLowerCase() === 'true';
+}
+
+/**
  * The entry a journal link opens (`?entry=<id>`), which is what a note to your
  * future self's reminder task carries (journalEntryLink), or null.
  */
@@ -932,7 +945,7 @@ export function openInAppUrl(url: string | null | undefined): boolean {
   }
   const journalKind = journalUrlKind(url);
   if (journalKind) {
-    resetToJournal(journalKind, journalUrlWantsLog(url), journalUrlEntryId(url));
+    resetToJournal(journalKind, journalUrlWantsLog(url), journalUrlEntryId(url), journalUrlWantsMic(url));
     return true;
   }
   if (isFoodLogUrl(url)) {
