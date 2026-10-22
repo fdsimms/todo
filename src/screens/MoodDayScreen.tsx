@@ -14,7 +14,7 @@ import { haptics } from '../utils/haptics';
 import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
 import { openEntries } from '../utils/journal';
 import { MoodFace } from '../components/MoodFace';
-import { logsOnDay, moodLabel, severityLabel } from '../utils/moodLog';
+import { factorsSummary, logsOnDay, moodLabel, severityLabel } from '../utils/moodLog';
 import { adjacentLogDays } from '../utils/moodHistory';
 import { DetailHeader } from '../components/DetailHeader';
 import { EmptyState } from '../components/EmptyState';
@@ -116,6 +116,7 @@ export function MoodDayScreen() {
                 format(new Date(log.loggedAt), 'h:mm a'),
                 log.mood === null ? null : moodLabel(log.mood),
                 log.note || null,
+                log.factors.length > 0 ? factorsSummary(log.factors) : null,
                 log.symptoms.length > 0
                   ? log.symptoms.map(s => `${s.name}, ${severityLabel(s.severity)}`).join(', ')
                   : null,
@@ -128,6 +129,7 @@ export function MoodDayScreen() {
                 {log.mood !== null && <MoodFace level={log.mood} size={iconSize.sm} />}
               </View>
               {!!log.note && <Text style={styles.note}>{log.note}</Text>}
+              {log.factors.length > 0 && <Text style={styles.foot}>{factorsSummary(log.factors)}</Text>}
               {log.symptoms.length > 0 && (
                 <Text style={styles.foot}>
                   {log.symptoms.map(s => `${s.name} (${severityLabel(s.severity).toLowerCase()})`).join(', ')}

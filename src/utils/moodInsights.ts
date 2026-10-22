@@ -4,6 +4,7 @@ import { isRealCompletion } from './missed';
 import {
   contextTagKey,
   dayContextTags,
+  dayFactorAverages,
   dayMoodAverage,
   daySymptoms,
   symptomKey,
@@ -68,6 +69,8 @@ export interface MoodDay {
   symptomKeys: string[];
   /** Context tag names logged that day, lowercased for matching. */
   contextTagKeys: string[];
+  /** What each rated factor averaged that day (1..5), by lowercased name. Absent means not rated. */
+  factorLevels: Record<string, number>;
   /**
    * Top-level real completions that day, or null when the task record for the
    * day is gone. Subtasks and missed rows excluded.
@@ -310,7 +313,7 @@ export function buildMoodDays(
     let day = days.get(dayKey);
     if (!day) {
       day = {
-        dayKey, mood: null, symptomKeys: [], contextTagKeys: [], completed: 0,
+        dayKey, mood: null, symptomKeys: [], contextTagKeys: [], factorLevels: {}, completed: 0,
         categories: [], taskKeys: [], steps: null, sleepHours: null,
         nutrients: null, foodKeys: [],
       };
@@ -327,6 +330,7 @@ export function buildMoodDays(
       day.contextTagKeys = dayContextTags(logs, log.dayKey).map(contextTagKey);
     }
   }
+  for (const day of days.values()) day.factorLevels = dayFactorAverages(logs, day.dayKey);
   // A day whose entries were all symptoms/tags-only still needs them, and the
   // loop above only fills them alongside a mood it found. Cheap to redo for
   // the handful of such days rather than restructuring the pass.
@@ -624,6 +628,45 @@ export function contextTagMoodContrasts(days: readonly MoodDay[]): GroupContrast
   const labels = new Set<string>();
   for (const day of paired) for (const t of day.contextTagKeys) labels.add(t);
   return contrastsFor(paired, [...labels], (day, label) => day.contextTagKeys.includes(label));
+}
+
+/** A day's average rating at or above this is a high day for that factor. */
+export const FACTOR_HIGH_AT_OR_ABOVE = 3.5;
+/** At or below this is a low day. Days between are left out of the comparison. */
+export const FACTOR_LOW_AT_OR_BELOW = 2.5;
+
+/**
+ * For each rated factor: how your mood ran on the days it was high, against the
+ * days it was low.
+ *
+ * Direction-free on purpose. The names are the person's own, so the app cannot
+ * know whether a high rating is the good end (energy) or the bad one (stress);
+ * `delta` only says whether the mood was higher when the factor was, never
+ * that anything was better or worse. Days in the middle belong to neither side
+ * and are dropped rather than split, so the gap is between days that differ.
+ * The days a factor was not rated are absent, not low (rule 3), and the usual
+ * gates apply: `MIN_PAIRED_DAYS` paired days overall, `MIN_CONTRAST_DAYS` on
+ * each side. `GroupContrast.withDays` is the high days and `withoutDays` the
+ * low ones.
+ */
+export function factorMoodContrasts(days: readonly MoodDay[]): GroupContrast[] {
+  const paired = pairedDays(days);
+  if (paired.length < MIN_PAIRED_DAYS) return [];
+  const keys = new Set<string>();
+  for (const day of paired) for (const key of Object.keys(day.factorLevels)) keys.add(key);
+  const rows: GroupContrast[] = [];
+  for (const key of keys) {
+    const high = paired.filter(d => (d.factorLevels[key] ?? 0) >= FACTOR_HIGH_AT_OR_ABOVE);
+    const low = paired.filter(d => d.factorLevels[key] !== undefined && d.factorLevels[key] <= FACTOR_LOW_AT_OR_BELOW);
+    if (high.length < MIN_CONTRAST_DAYS || low.length < MIN_CONTRAST_DAYS) continue;
+    const moodWith = mean(high.map(d => d.mood as number));
+    const moodWithout = mean(low.map(d => d.mood as number));
+    rows.push({
+      label: key, withDays: high.length, withoutDays: low.length,
+      moodWith, moodWithout, delta: moodWith - moodWithout,
+    });
+  }
+  return rows.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
 }
 
 /**

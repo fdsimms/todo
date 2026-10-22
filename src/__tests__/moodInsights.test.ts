@@ -8,6 +8,7 @@ import {
   categoryMoodContrasts,
   completionDayKey,
   contextTagMoodContrasts,
+  factorMoodContrasts,
   correlation,
   correlationStrength,
   describeHealthInsight,
@@ -47,6 +48,7 @@ function log(dayKey: string, mood: number | null, over: Partial<MoodLog> = {}): 
     loggedAt: over.loggedAt ?? `${dayKey}T09:00:00.000Z`,
     dayKey,
     mood: mood as MoodLog['mood'],
+    factors: over.factors ?? [],
     symptoms: over.symptoms ?? [],
     contextTags: over.contextTags ?? [],
     note: over.note ?? null,
@@ -74,7 +76,7 @@ function daysWithMoods(moods: (number | null)[], completed: number[] = []): Mood
     dayKey: `2026-08-${String(i + 1).padStart(2, '0')}`,
     mood,
     symptomKeys: [],
-    contextTagKeys: [],
+    contextTagKeys: [], factorLevels: {},
     completed: completed[i] ?? 0,
     categories: [],
     taskKeys: [],
@@ -214,13 +216,55 @@ describe('mood against what you finish', () => {
   });
 });
 
+describe('factorMoodContrasts', () => {
+  const rated = (mood: number, stress?: number): { mood: number; factorLevels: Record<string, number> } =>
+    ({ mood, factorLevels: stress === undefined ? {} : { stress } });
+  const build = (rows: ReturnType<typeof rated>[]): MoodDay[] =>
+    rows.map((r, i) => ({
+      dayKey: `2026-08-${String(i + 1).padStart(2, '0')}`,
+      mood: r.mood,
+      symptomKeys: [], contextTagKeys: [], factorLevels: r.factorLevels,
+      completed: 0, categories: [], taskKeys: [],
+      steps: null, sleepHours: null, nutrients: null, foodKeys: [],
+    }));
+
+  it('compares mood on the days a factor was high against the days it was low', () => {
+    const days = build([
+      ...Array(5).fill(0).map(() => rated(2, 5)),
+      ...Array(5).fill(0).map(() => rated(4, 1)),
+    ]);
+    const [row] = factorMoodContrasts(days);
+    expect(row).toMatchObject({ label: 'stress', withDays: 5, withoutDays: 5, moodWith: 2, moodWithout: 4, delta: -2 });
+  });
+
+  it('leaves the middle days and the unrated days out of both sides', () => {
+    const days = build([
+      ...Array(3).fill(0).map(() => rated(1, 4)),
+      ...Array(3).fill(0).map(() => rated(5, 2)),
+      ...Array(2).fill(0).map(() => rated(3, 3)),
+      ...Array(2).fill(0).map(() => rated(3)),
+    ]);
+    expect(factorMoodContrasts(days)[0]).toMatchObject({ withDays: 3, withoutDays: 3 });
+  });
+
+  it('says nothing below the paired-day floor or without enough days on a side', () => {
+    expect(factorMoodContrasts(build(Array(6).fill(0).map(() => rated(3, 5))))).toEqual([]);
+    const lopsided = build([
+      ...Array(8).fill(0).map(() => rated(2, 5)),
+      ...Array(2).fill(0).map(() => rated(4, 1)),
+    ]);
+    expect(factorMoodContrasts(lopsided)).toEqual([]);
+  });
+});
+
 describe('contrasts', () => {
-  const build = (rows: { mood: number; categories?: string[]; symptomKeys?: string[]; contextTagKeys?: string[]; taskKeys?: string[] }[]): MoodDay[] =>
+  const build = (rows: { mood: number; categories?: string[]; symptomKeys?: string[]; contextTagKeys?: string[]; taskKeys?: string[]; factorLevels?: Record<string, number> }[]): MoodDay[] =>
     rows.map((r, i) => ({
       dayKey: `2026-08-${String(i + 1).padStart(2, '0')}`,
       mood: r.mood,
       symptomKeys: r.symptomKeys ?? [],
       contextTagKeys: r.contextTagKeys ?? [],
+      factorLevels: r.factorLevels ?? {},
       completed: 0,
       categories: r.categories ?? [],
       taskKeys: r.taskKeys ?? [],
@@ -279,7 +323,7 @@ describe('milestoneMoodContrast', () => {
       dayKey: `2026-08-${String(i + 1).padStart(2, '0')}`,
       mood,
       symptomKeys: [],
-      contextTagKeys: [],
+      contextTagKeys: [], factorLevels: {},
       completed: 0,
       categories: [],
       taskKeys: [],
@@ -368,8 +412,8 @@ describe('the summary', () => {
 
   it('counts a symptom-only day as logged but not toward the average', () => {
     const days: MoodDay[] = [
-      { dayKey: '2026-08-01', mood: null, symptomKeys: ['headache'], contextTagKeys: [], completed: 0, categories: [], taskKeys: [], steps: null, sleepHours: null, nutrients: null, foodKeys: [] },
-      { dayKey: '2026-08-02', mood: 4, symptomKeys: [], contextTagKeys: [], completed: 0, categories: [], taskKeys: [], steps: null, sleepHours: null, nutrients: null, foodKeys: [] },
+      { dayKey: '2026-08-01', mood: null, symptomKeys: ['headache'], contextTagKeys: [], factorLevels: {}, completed: 0, categories: [], taskKeys: [], steps: null, sleepHours: null, nutrients: null, foodKeys: [] },
+      { dayKey: '2026-08-02', mood: 4, symptomKeys: [], contextTagKeys: [], factorLevels: {}, completed: 0, categories: [], taskKeys: [], steps: null, sleepHours: null, nutrients: null, foodKeys: [] },
     ];
     const summary = moodSummary(days, '2026-08-02');
     expect(summary.loggedDays).toBe(2);
@@ -381,7 +425,7 @@ describe('the summary', () => {
 describe('the logging streak', () => {
   const dayRows = (keys: string[]): MoodDay[] =>
     keys.map(dayKey => ({
-      dayKey, mood: 3, symptomKeys: [], contextTagKeys: [], completed: 0, categories: [], taskKeys: [],
+      dayKey, mood: 3, symptomKeys: [], contextTagKeys: [], factorLevels: {}, completed: 0, categories: [], taskKeys: [],
       steps: null, sleepHours: null, nutrients: null, foodKeys: [],
     }));
 
@@ -415,7 +459,7 @@ describe('the health axis', () => {
       // taken at its word.
       mood: opts.mood ? (opts.mood[i] ?? null) : 3,
       symptomKeys: [],
-      contextTagKeys: [],
+      contextTagKeys: [], factorLevels: {},
       completed: opts.completed?.[i] ?? 0,
       categories: [],
       taskKeys: [],
@@ -643,7 +687,7 @@ describe('a purged task record', () => {
       '00:00',
     );
     expect(days[0]).toMatchObject({
-      mood: 4, completed: null, categories: [], taskKeys: [], contextTagKeys: ['vacation'],
+      mood: 4, completed: null, categories: [], taskKeys: [], contextTagKeys: ['vacation'], factorLevels: {},
     });
     expect(taskPairedDays(days)).toEqual([]);
   });
@@ -759,7 +803,7 @@ describe('the food axis', () => {
       dayKey: `2026-08-${String(i + 1).padStart(2, '0')}`,
       mood: opts.mood ? (opts.mood[i] ?? null) : 3,
       symptomKeys: [],
-      contextTagKeys: [],
+      contextTagKeys: [], factorLevels: {},
       completed: opts.completed?.[i] ?? 0,
       categories: [],
       taskKeys: [],
@@ -917,7 +961,7 @@ describe('mood by what you ate', () => {
       dayKey: `2026-08-${String(i + 1).padStart(2, '0')}`,
       mood: i < withIt ? moodWith : moodWithout,
       symptomKeys: [],
-      contextTagKeys: [],
+      contextTagKeys: [], factorLevels: {},
       completed: 0,
       categories: [],
       taskKeys: [],
@@ -994,7 +1038,7 @@ describe('the lines the eating card says', () => {
       dayKey: `2026-08-${String(i + 1).padStart(2, '0')}`,
       mood: opts.mood?.[i] ?? 3,
       symptomKeys: [],
-      contextTagKeys: [],
+      contextTagKeys: [], factorLevels: {},
       completed: opts.completed?.[i] ?? 0,
       categories: [],
       taskKeys: [],
@@ -1069,7 +1113,7 @@ describe('a symptom against what you ate', () => {
       dayKey: `2026-08-${String(i + 1).padStart(2, '0')}`,
       mood: 3,
       symptomKeys: hit.includes(i) ? ['headache'] : [],
-      contextTagKeys: [],
+      contextTagKeys: [], factorLevels: {},
       completed: 0,
       categories: [],
       taskKeys: [],
@@ -1212,7 +1256,7 @@ describe('trainingDayMoodContrast', () => {
       dayKey: dayKey(i),
       mood,
       symptomKeys: [],
-      contextTagKeys: [],
+      contextTagKeys: [], factorLevels: {},
       completed: 0,
       categories: [],
       taskKeys: [],

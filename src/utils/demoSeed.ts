@@ -45,7 +45,7 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { useSharedLinkStore } from '../store/useSharedLinkStore';
 import { useUnattendedStore } from '../store/useUnattendedStore';
-import type { DeliverableKind, FocusSession, GroceryItem, MealSlot, MoodLevel, NovaGroup, Recipe, RecipeOverride, Shop, SymptomSeverity, TemplateItem, WorkoutRoutineItem } from '../types';
+import type { DeliverableKind, FactorLevel, FocusSession, GroceryItem, MealSlot, MoodLevel, NovaGroup, Recipe, RecipeOverride, Shop, SymptomSeverity, TemplateItem, WorkoutRoutineItem } from '../types';
 import { dbGetFocusSessionLog, dbInsertFocusSessionRecord, dbSetGtinLookup } from '../db/database';
 import { advanceFocusSession, buildFocusPlan, closeFocusSession } from './focusPlan';
 import { buildWeekDays } from './calendarGrid';
@@ -3165,24 +3165,26 @@ function seedMoodLog(today: Date): void {
     symptoms?: [string, SymptomSeverity][];
     contextTags?: string[];
     note?: string;
+    stress: FactorLevel;
+    energy?: FactorLevel;
   }[] = [
-    { back: 17, mood: 4 },
-    { back: 16, mood: 4, note: 'Good week so far' },
-    { back: 15, mood: 5, contextTags: ['Vacation'] },
-    { back: 14, mood: 3, symptoms: [['Poor sleep', 2]] },
-    { back: 13, mood: 4 },
-    { back: 12, mood: 3 },
-    { back: 11, mood: 2, symptoms: [['Headache', 2], ['Poor sleep', 2]], contextTags: ['Big deadline'] },
-    { back: 10, mood: 2, symptoms: [['Headache', 3]], note: 'Long day, skipped lunch', contextTags: ['Big deadline'] },
-    { back: 9, mood: 1, symptoms: [['Headache', 3], ['Poor sleep', 3]], contextTags: ['Big deadline'] },
-    { back: 8, mood: 2, symptoms: [['Headache', 1]] },
-    { back: 7, mood: 3 },
-    { back: 6, mood: 3, symptoms: [['Poor sleep', 1]] },
-    { back: 5, mood: 4, note: 'Back to it' },
-    { back: 4, mood: 4 },
-    { back: 3, mood: 5 },
-    { back: 2, mood: 4, symptoms: [['Poor sleep', 1]] },
-    { back: 1, mood: 4 },
+    { back: 17, mood: 4, stress: 2 },
+    { back: 16, mood: 4, note: 'Good week so far', stress: 2 },
+    { back: 15, mood: 5, contextTags: ['Vacation'], stress: 1 },
+    { back: 14, mood: 3, symptoms: [['Poor sleep', 2]], stress: 3, energy: 2 },
+    { back: 13, mood: 4, stress: 2 },
+    { back: 12, mood: 3, stress: 3 },
+    { back: 11, mood: 2, symptoms: [['Headache', 2], ['Poor sleep', 2]], contextTags: ['Big deadline'], stress: 4, energy: 2 },
+    { back: 10, mood: 2, symptoms: [['Headache', 3]], note: 'Long day, skipped lunch', contextTags: ['Big deadline'], stress: 5, energy: 2 },
+    { back: 9, mood: 1, symptoms: [['Headache', 3], ['Poor sleep', 3]], contextTags: ['Big deadline'], stress: 5, energy: 1 },
+    { back: 8, mood: 2, symptoms: [['Headache', 1]], stress: 4 },
+    { back: 7, mood: 3, stress: 3 },
+    { back: 6, mood: 3, symptoms: [['Poor sleep', 1]], stress: 3, energy: 2 },
+    { back: 5, mood: 4, note: 'Back to it', stress: 2 },
+    { back: 4, mood: 4, stress: 2 },
+    { back: 3, mood: 5, stress: 1, energy: 5 },
+    { back: 2, mood: 4, symptoms: [['Poor sleep', 1]], stress: 3 },
+    { back: 1, mood: 4, stress: 2, energy: 4 },
   ];
 
   for (const day of history) {
@@ -3196,6 +3198,10 @@ function seedMoodLog(today: Date): void {
       day.note ?? null,
       at,
       day.contextTags ?? [],
+      [
+        { name: 'Stress', value: day.stress },
+        ...(day.energy ? [{ name: 'Energy', value: day.energy }] : []),
+      ],
     );
   }
 
