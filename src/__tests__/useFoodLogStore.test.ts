@@ -572,7 +572,7 @@ describe('addEntry undo', () => {
     state().loadRange('2026-04-02', '2026-04-02');
     const entry = state().addEntry(draft({ label: 'Porridge' }))!;
     const action = state().lastAction;
-    expect(action?.label).toBe('Logged “Porridge”');
+    expect(action?.label).toBe('Logged “Porridge” in the food log');
     expect(action?.destructive).toBeUndefined();
 
     state().undoLastAction();
