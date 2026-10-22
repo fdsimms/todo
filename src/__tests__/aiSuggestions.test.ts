@@ -18,6 +18,7 @@ import {
   suggestSubstitutes,
   suggestSubtasks,
   describeAIError,
+  forgetToolChoiceRefusals,
   readLabelPhotoWithAi,
   nutritionLabelPhotoAiAvailable,
   estimateRecipeNutrition,
@@ -244,6 +245,7 @@ function mockFetchOnce(body: object, status = 200) {
 
 beforeEach(() => {
   resetMockSettings();
+  forgetToolChoiceRefusals();
   mockOnDeviceAvailable.mockReturnValue(false);
   mockGenerateOnDevice.mockReset();
 });
@@ -278,12 +280,62 @@ describe('suggestTemplateItems', () => {
   });
 
   it('logs the body of a refused request, since the status alone does not say why', async () => {
-    mockFetchOnce({ error: { message: 'tool_choice is not supported' } }, 400);
+    mockFetchOnce({ error: { message: 'max_tokens: too large for this model' } }, 400);
     await expect(suggestTemplateItems('Vacation prep', [])).rejects.toThrow('API error 400');
     expect(logError).toHaveBeenCalledWith(
       'ai',
-      expect.objectContaining({ message: expect.stringContaining('tool_choice is not supported') }),
+      expect.objectContaining({ message: expect.stringContaining('max_tokens: too large') }),
     );
+  });
+
+  it('puts the reason of a refused request in the copy the person sees', async () => {
+    mockFetchOnce({ error: { message: 'max_tokens: too large for this model.' } }, 400);
+    const error = await suggestTemplateItems('Vacation prep', []).catch(e => e);
+    expect(describeAIError(error)).toBe(
+      'Anthropic rejected the request (max_tokens: too large for this model). Try another model for this feature in Settings.',
+    );
+  });
+
+  describe('a model that refuses a forced tool_choice', () => {
+    const refusal = { error: { type: 'invalid_request_error', message: 'tool_choice: type "tool" and "any" are not supported for this model.' } };
+    const bodyAt = (spy: jest.SpyInstance, n: number) =>
+      JSON.parse((spy.mock.calls[n][1] as RequestInit).body as string);
+
+    it('asks again with the choice left to the model and the tool named in the prompt', async () => {
+      const spy = mockFetchOnce(refusal, 400);
+      spy.mockResolvedValueOnce({
+        ok: true, status: 200,
+        json: () => Promise.resolve(toolUseResponse('suggest_tasks', { tasks: [{ title: 'Pack', notes: '' }] })),
+      } as Response);
+      await expect(suggestTemplateItems('Vacation prep', [])).resolves.toEqual([{ title: 'Pack', notes: '' }]);
+      expect(spy).toHaveBeenCalledTimes(2);
+      expect(bodyAt(spy, 0).tool_choice).toEqual({ type: 'tool', name: 'suggest_tasks' });
+      expect(bodyAt(spy, 1).tool_choice).toEqual({ type: 'auto' });
+      expect(bodyAt(spy, 1).system).toContain('Respond by calling the suggest_tasks tool.');
+    });
+
+    it('does not spend the refusal again on the next request to that model', async () => {
+      const spy = mockFetchOnce(refusal, 400);
+      const ok = () => ({
+        ok: true, status: 200,
+        json: () => Promise.resolve(toolUseResponse('suggest_tasks', { tasks: [{ title: 'Pack', notes: '' }] })),
+      } as Response);
+      spy.mockResolvedValueOnce(ok()).mockResolvedValueOnce(ok());
+      await suggestTemplateItems('Vacation prep', []);
+      await suggestTemplateItems('Vacation prep', []);
+      expect(spy).toHaveBeenCalledTimes(3);
+      expect(bodyAt(spy, 2).tool_choice).toEqual({ type: 'auto' });
+    });
+
+    it('stops after one retry', async () => {
+      const spy = mockFetchOnce(refusal, 400);
+      spy.mockResolvedValueOnce({
+        ok: false, status: 400,
+        text: () => Promise.resolve(JSON.stringify(refusal)),
+      } as Response);
+      await expect(suggestTemplateItems('Vacation prep', [])).rejects.toThrow('API error 400');
+      expect(spy).toHaveBeenCalledTimes(2);
+    });
   });
 
   it('does not log a 401, whose status says everything', async () => {
