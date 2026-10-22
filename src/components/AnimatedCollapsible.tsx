@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, LayoutChangeEvent, StyleSheet } from 'react-native';
 import Reanimated, {
   useSharedValue,
@@ -27,6 +27,17 @@ interface Props {
    * rendering fault rather than as a gesture.
    */
   clip?: boolean;
+  /**
+   * Build `children` the first time the section opens rather than on mount,
+   * and keep them from then on. For a list whose every row carries a closed
+   * section (the food log's nutrient panels): mounting them all up front was
+   * most of what the list cost to draw, for panels that are rarely opened.
+   *
+   * The first open waits for the new children's first layout before it
+   * animates, since an unmeasured section would otherwise grow toward the
+   * sentinel below rather than toward its own height.
+   */
+  lazy?: boolean;
   children: React.ReactNode;
 }
 
@@ -69,15 +80,31 @@ const UNMEASURED_MAX = 100000;
  * the animated style stays attached on every render, and what alternates is a
  * plain style sitting after it. See that pair's own note for what it is for.
  */
-export function AnimatedCollapsible({ expanded, clip = true, children }: Props) {
+export function AnimatedCollapsible({ expanded, clip = true, lazy = false, children }: Props) {
   const [contentHeight, setContentHeight] = useState<number | null>(null);
   const progress = useSharedValue(expanded ? 1 : 0);
   // Which resting state React itself should commit — see `resting` below. It
   // moves only when an animation *lands*, in either direction, so a transition
   // commits the state the section is coming *from*.
   const [settledOpen, setSettledOpen] = useState(expanded);
+  // See `lazy`. Set during render, so the children mount in the same commit as
+  // the expansion they are for (TaskItem's `panelMounted` does the same).
+  const [mounted, setMounted] = useState(!lazy || expanded);
+  if (expanded && !mounted) setMounted(true);
+  const awaitingLayout = lazy && expanded && contentHeight === null;
+  // The target the shared value was last sent toward. Nothing to do while
+  // `expanded` is still there: the section mounting (the shared value starts
+  // there) or its effects running again because the tab it's on was hidden and
+  // shown, which otherwise started an animation and a JS callback on every
+  // section each time the screen came back.
+  const appliedRef = useRef(expanded);
 
   useEffect(() => {
+    if (appliedRef.current === expanded) return;
+    // A lazy section's first open: progress stays at 0 until the children it
+    // just mounted report a height, and this runs again when they do.
+    if (awaitingLayout) return;
+    appliedRef.current = expanded;
     // **Both directions settle in the callback below, and nowhere else.**
     // Writing the closed state eagerly here on the closing edge used to look
     // like the tidy thing to do, and it scheduled a React commit of its own a
@@ -102,7 +129,7 @@ export function AnimatedCollapsible({ expanded, clip = true, children }: Props) 
         if (finished) runOnJS(setSettledOpen)(expanded);
       },
     );
-  }, [expanded]);
+  }, [expanded, awaitingLayout]);
 
   // A zero measurement is treated as no measurement: an empty section has
   // nothing to clamp anyway (its natural height is 0), and falling back to the
@@ -149,8 +176,10 @@ export function AnimatedCollapsible({ expanded, clip = true, children }: Props) 
           while collapsed — and, because the wrapper clips with `scroll`
           rather than `hidden` (see `clip`), keeping that measurement costs
           nothing on any frame of the animation. */}
-      <View onLayout={handleLayout}>
-        <PaintSelectionSuspend suspended={!expanded}>{children}</PaintSelectionSuspend>
+      {/* Measured only once there is something in it: an unbuilt lazy section
+          would report 0 and read as measured. */}
+      <View onLayout={mounted ? handleLayout : undefined}>
+        {mounted && <PaintSelectionSuspend suspended={!expanded}>{children}</PaintSelectionSuspend>}
       </View>
     </Reanimated.View>
   );

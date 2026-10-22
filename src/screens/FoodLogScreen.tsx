@@ -2172,7 +2172,9 @@ const FoodLogRow = React.memo(function FoodLogRow({
         <SwipeActionButtons enabled={!selectionMode} selectAction={swipeSelect} />
       </View>
       {canExpand && (
-        <AnimatedCollapsible expanded={expanded}>
+        // Lazy: a day's rows each carry a closed panel of ten-odd lines, and
+        // building them all on arrival was most of what the list cost to draw.
+        <AnimatedCollapsible expanded={expanded} lazy>
           <View style={styles.entryNutrients}>
             {statedKeys.map(key => (
               <View key={key} style={styles.entryNutrientRow}>
