@@ -96,10 +96,11 @@ import { reuseUnchangedLists } from '../utils/stableLists';
 // the circle instead of in their own row below it, the cell's content no
 // longer needs a square box to fit in.
 const cellHeightFor = (cellSize: number) => cellSize - 10;
-// The red dot under a date with an open deadline, and the slot reserved for
-// it on every cell so a marked circle sits in line with its neighbours.
-const DEADLINE_DOT = 5;
-const DEADLINE_DOT_GAP = 2;
+// The red dot on a date with an open deadline. It sits on the circle's top-right
+// edge, inside the cell, because rows are too close together for a dot below the
+// circle to read as belonging to its own day rather than the one underneath.
+const DEADLINE_DOT = 8;
+const DEADLINE_DOT_RING = 2;
 
 // One shared empty array for a task with no subtasks — a fresh `[]` per row per
 // render is exactly the identity churn the grouping below exists to avoid.
@@ -1576,8 +1577,6 @@ const DayCell = React.memo(function DayCell({
         ]}>
           {day.getDate()}
         </Text>
-      </View>
-      <View style={styles.deadlineSlot}>
         {hasOpenDeadline(bucket) && <View style={styles.deadlineDot} />}
       </View>
     </TouchableOpacity>
@@ -1749,16 +1748,18 @@ function makeStyles(colors: Colors, textScaleFactor = 1, cellSize = 0) {
       alignItems: 'center',
       justifyContent: 'center',
     },
-    deadlineSlot: {
-      height: DEADLINE_DOT,
-      marginTop: DEADLINE_DOT_GAP,
-      justifyContent: 'center',
-    },
+    // The ring is the page color, so the dot reads as a badge cut into the
+    // circle's edge and stays legible over a shaded or selected circle.
     deadlineDot: {
+      position: 'absolute',
+      top: -1,
+      right: -1,
       width: DEADLINE_DOT,
       height: DEADLINE_DOT,
       borderRadius: DEADLINE_DOT / 2,
       backgroundColor: colors.red,
+      borderWidth: DEADLINE_DOT_RING,
+      borderColor: colors.bg,
     },
     dayCircleSelected: {
       backgroundColor: colors.accentFill,

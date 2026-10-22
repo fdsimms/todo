@@ -69,7 +69,7 @@ exist, which is why the whole feature is a util plus a screen.
   It replaced a dot per mark kind in three states, a meal dot and a weight bar, up to fourteen
   symbols with no legend, which read as noise. The grid is looked at for which days are heavy; the
   day's list says what's on them. Don't add a second mark back to a cell without a reason that
-  outweighs that. The one exception is a small red dot under a date holding an open deadline
+  outweighs that. The one exception is a small red dot on the top-right edge of a date's circle for an open deadline
   (`hasOpenDeadline`): a deadline isn't work landing on the day, so `buildDayLoads` skips it and a
   deadline-only day would otherwise look empty. `WhenPicker` draws the same shade
   (`dayShadeBackground` in `src/theme/dayShade.ts`), so a day reads the same in both grids, and
