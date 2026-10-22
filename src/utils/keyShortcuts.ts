@@ -29,7 +29,8 @@ export type ShortcutAction =
   | 'viewLater'
   | 'viewUnscheduled'
   | 'viewInbox'
-  | 'showShortcuts';
+  | 'showShortcuts'
+  | 'openSettings';
 
 export interface KeyShortcut {
   /** Sent to native and back, so it must be unique. */
@@ -57,9 +58,28 @@ export const KEY_SHORTCUTS: readonly KeyShortcut[] = [
   { id: 'showShortcuts', action: 'showShortcuts', input: '/', modifiers: ['command'], screenOnly: false },
 ];
 
-/** The shortcut an id names, or null for one this build doesn't know. */
+/**
+ * Chords that exist only as menu bar items (`macMenu.ts`), on a Mac or an iPad
+ * with a menu bar, and are never handed to the key sink. ⌘1 to ⌘3 belong to
+ * iPhone Mirroring on a phone (see the header), and a phone builds no menu
+ * bar, so these can't reach one.
+ */
+export const MENU_SHORTCUTS: readonly KeyShortcut[] = [
+  { id: 'menuSettings', action: 'openSettings', input: ',', modifiers: ['command'], screenOnly: true },
+  { id: 'menuViewToday', action: 'viewToday', input: '1', modifiers: ['command'], screenOnly: true },
+  { id: 'menuViewLater', action: 'viewLater', input: '2', modifiers: ['command'], screenOnly: true },
+  { id: 'menuViewUnscheduled', action: 'viewUnscheduled', input: '3', modifiers: ['command'], screenOnly: true },
+  { id: 'menuViewInbox', action: 'viewInbox', input: '4', modifiers: ['command'], screenOnly: true },
+];
+
+/** The shortcut an id names, menu-only ones included, or null for one this build doesn't know. */
 export function shortcutById(id: string): KeyShortcut | null {
-  return KEY_SHORTCUTS.find(s => s.id === id) ?? null;
+  return KEY_SHORTCUTS.find(s => s.id === id) ?? MENU_SHORTCUTS.find(s => s.id === id) ?? null;
+}
+
+/** A chord as one comparable string: the modifiers in a fixed order, then the key. */
+export function chordKey(shortcut: Pick<KeyShortcut, 'input' | 'modifiers'>): string {
+  return `${MODIFIER_ORDER.filter(m => shortcut.modifiers.includes(m)).join('+')}|${shortcut.input}`;
 }
 
 const MODIFIER_GLYPHS: Record<KeyModifier, string> = {
@@ -89,20 +109,26 @@ const ACTION_LABELS: Record<ShortcutAction, string> = {
   viewUnscheduled: 'Unscheduled',
   viewInbox: 'Inbox',
   showShortcuts: 'Show this list',
+  openSettings: 'Settings',
 };
 
 /**
  * One line per action, its keys joined with "or", in table order. The text of
  * the shortcuts alert; `hiddenActions` drops the ones the app has switched off
- * (Unscheduled, in simplified mode).
+ * (Unscheduled, in simplified mode). With a menu bar, `shortcuts` adds the
+ * menu-only chords (`MENU_SHORTCUTS`), so the list says what the keyboard can
+ * actually do there.
  */
-export function describeShortcuts(hiddenActions: readonly ShortcutAction[] = []): string {
+export function describeShortcuts(
+  hiddenActions: readonly ShortcutAction[] = [],
+  shortcuts: readonly KeyShortcut[] = KEY_SHORTCUTS,
+): string {
   const lines: string[] = [];
   const seen = new Set<ShortcutAction>();
-  for (const shortcut of KEY_SHORTCUTS) {
+  for (const shortcut of shortcuts) {
     if (seen.has(shortcut.action) || hiddenActions.includes(shortcut.action)) continue;
     seen.add(shortcut.action);
-    const keys = KEY_SHORTCUTS.filter(s => s.action === shortcut.action).map(shortcutKeys).join(' or ');
+    const keys = shortcuts.filter(s => s.action === shortcut.action).map(shortcutKeys).join(' or ');
     lines.push(`${keys}: ${ACTION_LABELS[shortcut.action]}`);
   }
   return lines.join('\n');
