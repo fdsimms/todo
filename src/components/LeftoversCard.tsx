@@ -376,7 +376,7 @@ export function freshnessFill(freshness: LeftoverFreshness, colors: Colors): str
 const makeStyles = (colors: Colors) => StyleSheet.create({
   wrap: {
     paddingHorizontal: spacing.md,
-    paddingBottom: spacing.md,
+    paddingBottom: spacing.smd,
     gap: spacing.xs,
   },
   header: {
@@ -389,11 +389,20 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // button floating at the far edge, reading as three loose pieces; in the
   // card's own surface and row padding it is a row like the ones it stands in
   // for, so the status and its two actions belong to each other.
+  //
+  // `paddingBottom` is set here as well as `paddingVertical`: `header`'s own
+  // `paddingBottom: xxs` is the more specific style and won over the shorthand,
+  // which left 10pt above the content and 2pt below it, so the row sat low in
+  // its card. The right inset is smaller than the left because the add button's
+  // circle is what the eye measures it against, not its 24pt box.
   headerEmpty: {
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
+    minHeight: 44,
+    paddingLeft: spacing.md,
+    paddingRight: spacing.smd,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.xs,
   },
   headerLeft: {
     flexDirection: 'row',
