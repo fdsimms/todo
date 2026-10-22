@@ -23,6 +23,7 @@ import { useAppGroupStore } from '../store/useAppGroupStore';
 import { useMeterReadingStore } from '../store/useMeterReadingStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { usePersonStore } from '../store/usePersonStore';
+import { personUndated, personWaiting } from '../utils/personHistory';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { useProjectStore, projectDecisions, projectProgress, projectAnswerTallies, describeAnswerTally } from '../store/useProjectStore';
 import { nextPullCandidate } from '../utils/projectPull';
@@ -1722,6 +1723,15 @@ describe('demo mode', () => {
     const remodel = projects.find(p => p.title === 'Kitchen remodel')!;
     expect(remodel.inOrder).toBe(true);
     expect(nextPullCandidate(remodel, useTaskStore.getState().tasks)?.title).toBe('Get quotes from contractors');
+  });
+
+  it('fills both lists on Gideon’s page: something waiting on him and an undated task naming him', () => {
+    useDemoStore.getState().enterDemoMode();
+    const gideon = usePersonStore.getState().people.find(p => p.name.startsWith('Gideon'))!;
+    const tasks = useTaskStore.getState().tasks;
+    expect(personWaiting(tasks, gideon.id).length).toBeGreaterThan(0);
+    expect(personUndated(tasks.filter(t => t.personIds.includes(gideon.id)), gideon.id).map(e => e.title))
+      .toContain('Return Gideon’s drill');
   });
 
   it('seeds a wait with its own follow-up day, not a due date', () => {

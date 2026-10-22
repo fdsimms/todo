@@ -5,7 +5,9 @@ import {
   describeLastTogether,
   lastTogether,
   personHistory,
+  personUndated,
   personUpcoming,
+  personWaiting,
 } from '../utils/personHistory';
 
 const iso = (y: number, m: number, d: number) => new Date(y, m - 1, d, 12).toISOString();
@@ -180,5 +182,40 @@ describe('the day count, allowed on one screen', () => {
     expect(describeDaysSince(0)).toBe('Today');
     expect(describeDaysSince(1)).toBe('Yesterday');
     expect(describeDaysSince(19)).toBe('19 days ago');
+  });
+});
+
+describe('waiting on them, and undated tasks (#3695)', () => {
+  it('lists undated live tasks that name them, which Coming up leaves out', () => {
+    const tasks = [
+      make({ id: 'drill', title: 'Return the drill' }),
+      make({ id: 'beach', dueDate: iso(2026, 3, 25) }),
+      make({ id: 'done', completed: true }),
+      make({ id: 'filed', archived: true }),
+      make({ id: 'sub', parentId: 'drill' }),
+    ];
+    expect(personUndated(tasks, 'p1').map(e => e.taskId)).toEqual(['drill']);
+    expect(personUpcoming(tasks, 'p1').map(e => e.taskId)).toEqual(['beach']);
+  });
+
+  it('lists what is waiting on them, dated soonest first and undated after', () => {
+    const tasks = [
+      make({ id: 'photos', personIds: [], waitingOnPersonId: 'p1' } as Partial<Task>),
+      make({ id: 'lease', personIds: [], waitingOnPersonId: 'p1', dueDate: iso(2026, 4, 3) } as Partial<Task>),
+      make({ id: 'keys', personIds: [], waitingOnPersonId: 'p1', dueDate: iso(2026, 3, 28) } as Partial<Task>),
+      make({ id: 'other', personIds: [], waitingOnPersonId: 'p2' } as Partial<Task>),
+      make({ id: 'gone', personIds: [], waitingOnPersonId: 'p1', completed: true } as Partial<Task>),
+    ];
+    expect(personWaiting(tasks, 'p1').map(e => e.taskId)).toEqual(['keys', 'lease', 'photos']);
+  });
+
+  it('shows a task that both names them and waits on them only under Waiting', () => {
+    const tasks = [
+      make({ id: 'dated', waitingOnPersonId: 'p1', dueDate: iso(2026, 3, 25) } as Partial<Task>),
+      make({ id: 'undated', waitingOnPersonId: 'p1' } as Partial<Task>),
+    ];
+    expect(personUpcoming(tasks, 'p1')).toEqual([]);
+    expect(personUndated(tasks, 'p1')).toEqual([]);
+    expect(personWaiting(tasks, 'p1').map(e => e.taskId)).toEqual(['dated', 'undated']);
   });
 });
