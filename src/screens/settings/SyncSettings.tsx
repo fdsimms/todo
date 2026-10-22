@@ -1,7 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { View } from 'react-native';
+import { Alert, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { useSyncStore } from '../../store/useSyncStore';
+import { joinChoiceNeeded, useSyncStore } from '../../store/useSyncStore';
+import { reloadAfterDataReplaced } from '../../store/useDemoStore';
+import { BUTTON_LABEL } from '../../copy/shared';
 import { useColors } from '../../theme/ThemeContext';
 import { animateLayout } from '../../utils/layoutAnimation';
 import { SettingsSection } from './SettingsSection';
@@ -44,6 +46,12 @@ import { AgentNotesRows } from './AgentNotesRows';
  * exactly what leaves the device, and this is the same obligation for a bigger
  * departure. See "The privacy consequence, stated plainly" in
  * docs/arch/mcp-server.md.
+ *
+ * **Turning iCloud on asks first when this device has data of its own** and
+ * has never synced (`joinChoiceNeeded`): keep it, and it is merged with the
+ * other devices' data and sent to them, or erase it and take only theirs
+ * (`eraseAndJoin`). Sync is two-way with no device in charge, so this is the
+ * one moment a device can join without adding anything to the others.
  */
 export function SyncSettings() {
   const supported = useSyncStore(s => s.supported);
@@ -56,6 +64,7 @@ export function SyncSettings() {
   const serverHealthLogs = useSyncStore(s => s.serverHealthLogs);
   const serverJournal = useSyncStore(s => s.serverJournal);
   const setEnabled = useSyncStore(s => s.setEnabled);
+  const eraseAndJoin = useSyncStore(s => s.eraseAndJoin);
   const setServerUrl = useSyncStore(s => s.setServerUrl);
   const setServerToken = useSyncStore(s => s.setServerToken);
   const setServerHealthLogs = useSyncStore(s => s.setServerHealthLogs);
@@ -77,7 +86,41 @@ export function SyncSettings() {
     }, [])
   );
 
+  // While an erase-and-join is downloading, before sync reads as on.
+  const [joining, setJoining] = useState(false);
+
+  const eraseThenJoin = async () => {
+    setJoining(true);
+    try {
+      const outcome = await eraseAndJoin(reloadAfterDataReplaced);
+      if (outcome.status === 'nothing-to-join') {
+        Alert.alert(
+          'Nothing to download from iCloud',
+          'None of your other devices has synced yet, so nothing on this device was erased. Turn on sync on the device whose data you want to keep, then try again here.'
+        );
+      } else if (outcome.status === 'failed') {
+        const reason = /[.!?]$/.test(outcome.reason) ? outcome.reason : `${outcome.reason}.`;
+        Alert.alert('Couldn’t download from iCloud', `${reason} Nothing on this device was erased.`);
+      }
+    } finally {
+      setJoining(false);
+    }
+  };
+
   const onToggle = () => {
+    if (joining) return;
+    if (!enabled && joinChoiceNeeded()) {
+      Alert.alert(
+        'Keep the data on this device?',
+        'If you keep it, it’s merged with your other devices’ data and sent to them. If you erase it, this device starts over with only what your other devices have synced. Erasing also removes the mood, medication and food logs, workouts and journal on this device, since iCloud doesn’t carry them. This can’t be undone.',
+        [
+          { text: 'Keep and merge', onPress: () => { animateLayout(); void setEnabled(true); } },
+          { text: 'Erase and sync', style: 'destructive', onPress: () => void eraseThenJoin() },
+          { text: BUTTON_LABEL.cancel, style: 'cancel' },
+        ]
+      );
+      return;
+    }
     animateLayout();
     void setEnabled(!enabled);
   };
@@ -108,6 +151,8 @@ export function SyncSettings() {
           hint="Syncs your data across devices signed in to this Apple ID."
           toggle={enabled}
           value={enabled ? 'On' : 'Off'}
+          busy={joining}
+          disabled={joining}
           onPress={onToggle}
           accessibilityLabel="Sync with iCloud"
         />

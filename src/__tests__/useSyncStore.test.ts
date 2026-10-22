@@ -1,4 +1,5 @@
 import {
+  joinChoiceNeeded,
   registerSyncReload,
   whenSyncIdle,
   useSyncStore,
@@ -9,11 +10,11 @@ import {
   SERVER_HEALTH_RESEND_KEY,
   SYNC_EPOCH,
 } from '../store/useSyncStore';
-import { dbGetSetting, dbGetSyncCursor, dbSetSetting, dbSetSyncCursor } from '../db/database';
+import { dbEraseForSyncJoin, dbGetSetting, dbGetSyncCursor, dbHasOwnSyncData, dbSetSetting, dbSetSyncCursor } from '../db/database';
 import { HEALTH_SYNC_TABLES, JOURNAL_SYNC_TABLES } from '../db/syncTracking';
 import { cloudKitTransport, cloudKitUnavailableReason, isCloudKitSyncAvailable } from '../utils/cloudKitTransport';
 import { databaseSyncLocal } from '../utils/syncLocal';
-import { runSyncAll } from '../utils/syncEngine';
+import { joinAfterErasing, runSyncAll } from '../utils/syncEngine';
 import { loadSecureKey, makeSecureKeyReadableWhileLocked, saveSecureKey } from '../utils/secureApiKey';
 import { emptyApplyReport } from '../utils/syncMerge';
 
@@ -22,9 +23,12 @@ jest.mock('../db/database', () => ({
   dbSetSetting: jest.fn(),
   dbGetSyncCursor: jest.fn().mockReturnValue(null),
   dbSetSyncCursor: jest.fn(),
+  dbEraseForSyncJoin: jest.fn(),
+  dbHasOwnSyncData: jest.fn().mockReturnValue(true),
 }));
 
 jest.mock('../utils/cloudKitTransport', () => ({
+  CLOUDKIT_SOURCE: 'cloudkit',
   cloudKitTransport: jest.fn().mockReturnValue({}),
   cloudKitUnavailableReason: jest.fn().mockResolvedValue(null),
   isCloudKitSyncAvailable: jest.fn().mockReturnValue(true),
@@ -40,6 +44,7 @@ jest.mock('../utils/syncLocal', () => ({
 jest.mock('../utils/syncEngine', () => ({
   ...jest.requireActual('../utils/syncEngine'),
   runSyncAll: jest.fn().mockResolvedValue([]),
+  joinAfterErasing: jest.fn(),
 }));
 
 jest.mock('../utils/secureApiKey', () => ({
@@ -174,6 +179,90 @@ describe('setEnabled', () => {
     expect(useSyncStore.getState().problem).toBeNull();
     expect(cloudKitUnavailableReason).not.toHaveBeenCalled();
     expect(runSyncAll).not.toHaveBeenCalled();
+  });
+});
+
+describe('joinChoiceNeeded', () => {
+  it('asks a device with data of its own that has never synced to iCloud', () => {
+    (dbHasOwnSyncData as jest.Mock).mockReturnValue(true);
+    expect(joinChoiceNeeded()).toBe(true);
+  });
+
+  it('does not ask a device that has synced before, or one with nothing to send', () => {
+    (dbGetSyncCursor as jest.Mock).mockImplementation((key: string) => (key === 'cloudkit:pull' ? '7' : null));
+    expect(joinChoiceNeeded()).toBe(false);
+
+    (dbGetSyncCursor as jest.Mock).mockReturnValue(null);
+    (dbHasOwnSyncData as jest.Mock).mockReturnValue(false);
+    expect(joinChoiceNeeded()).toBe(false);
+  });
+});
+
+describe('eraseAndJoin', () => {
+  /** Runs the erase callback the way the engine does, then reports a run. */
+  const joinWith = (run: Record<string, unknown>) =>
+    (joinAfterErasing as jest.Mock).mockImplementation(async (_t, _l, erase: () => void) => {
+      erase();
+      return { status: 'joined', run };
+    });
+
+  it('stops at the account check without erasing anything', async () => {
+    (cloudKitUnavailableReason as jest.Mock).mockResolvedValue('Sign in to iCloud on this device to sync.');
+    const outcome = await useSyncStore.getState().eraseAndJoin(jest.fn());
+    expect(outcome).toEqual({ status: 'failed', reason: 'Sign in to iCloud on this device to sync.' });
+    expect(joinAfterErasing).not.toHaveBeenCalled();
+    expect(useSyncStore.getState().enabled).toBe(false);
+  });
+
+  it('leaves sync off when no other device has synced', async () => {
+    (joinAfterErasing as jest.Mock).mockResolvedValue({ status: 'nothing-to-join' });
+    const outcome = await useSyncStore.getState().eraseAndJoin(jest.fn());
+    expect(outcome.status).toBe('nothing-to-join');
+    expect(dbSetSetting).not.toHaveBeenCalledWith('syncEnabled', '1');
+    expect(useSyncStore.getState().phase).toBe('idle');
+  });
+
+  it('erases, reloads, turns sync on and runs an ordinary sync after', async () => {
+    joinWith(okResult());
+    (runSyncAll as jest.Mock).mockResolvedValue(runs(okResult()));
+    const order: string[] = [];
+    (dbEraseForSyncJoin as jest.Mock).mockImplementation(() => order.push('erase'));
+
+    const outcome = await useSyncStore.getState().eraseAndJoin(() => order.push('reload'));
+
+    expect(outcome).toEqual({ status: 'joined' });
+    expect(order).toEqual(['erase', 'reload']);
+    expect(dbSetSetting).toHaveBeenCalledWith('syncEnabled', '1');
+    expect(useSyncStore.getState().enabled).toBe(true);
+    expect(runSyncAll).toHaveBeenCalled();
+  });
+
+  it('keeps sync on and says why when the run after the erase failed', async () => {
+    joinWith({ ...okResult(), status: 'failed', reason: 'Couldn’t reach iCloud.' });
+    // The ordinary sync after it fails the same way, which must not clear the problem.
+    (runSyncAll as jest.Mock).mockResolvedValue(runs({ ...okResult(), status: 'failed', reason: 'Couldn’t reach iCloud.' }));
+    const outcome = await useSyncStore.getState().eraseAndJoin(jest.fn());
+    expect(outcome.status).toBe('joined');
+    expect(useSyncStore.getState().enabled).toBe(true);
+    expect(useSyncStore.getState().problem).toContain('Couldn’t reach iCloud.');
+  });
+
+  it('reports a throw before the erase as a failure that erased nothing', async () => {
+    (joinAfterErasing as jest.Mock).mockImplementation(async (_t, _l, erase: () => void) => {
+      (dbEraseForSyncJoin as jest.Mock).mockImplementation(() => { throw new Error('disk full'); });
+      erase();
+      return { status: 'joined', run: okResult() };
+    });
+    const outcome = await useSyncStore.getState().eraseAndJoin(jest.fn());
+    expect(outcome).toEqual({ status: 'failed', reason: 'disk full' });
+    expect(useSyncStore.getState().enabled).toBe(false);
+  });
+
+  it('refuses while a sync is running', async () => {
+    useSyncStore.setState({ phase: 'syncing' });
+    const outcome = await useSyncStore.getState().eraseAndJoin(jest.fn());
+    expect(outcome.status).toBe('failed');
+    expect(joinAfterErasing).not.toHaveBeenCalled();
   });
 });
 

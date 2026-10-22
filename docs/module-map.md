@@ -534,7 +534,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/swipeArm.ts` — SwipeArmSides, swipeArmDistance, nextSwipeArm
 - `src/utils/swipeDismiss.ts` — SWIPE_DISMISS_DISTANCE, SWIPE_DISMISS_VELOCITY, OVERSCROLL_DISMISS_DISTANCE, isDownwardDrag, shouldDismissOnSwipe, swipeFollowOffset, overscrollDismisses, quickSearchMaxHeight
 - `src/utils/symptomQuickLog.ts` — SymptomPhrase, resolveClockTime, parseSymptomPhrase, matchSymptoms
-- `src/utils/syncEngine.ts` — SyncTransport, SyncImageStore, SyncWithholding, withholdChanges, pushCursorKey, PullResult, SyncLocal, IMAGE_PAYLOAD_BUDGET_CHARS, imagesSentKey, imagesKnownKey, +11 more
+- `src/utils/syncEngine.ts` — SyncTransport, SyncImageStore, SyncWithholding, withholdChanges, pushCursorKey, PullResult, SyncLocal, IMAGE_PAYLOAD_BUDGET_CHARS, imagesSentKey, imagesKnownKey, +13 more
 - `src/utils/syncIds.ts` — derivedId, isDerivedId, spawnSeed
 - `src/utils/syncLocal.ts` — databaseSyncLocal
 - `src/utils/syncMerge.ts` — SyncDeletion, SyncChangeSet, SYNC_FORMAT, SyncPayload, MAX_SYNC_IMAGE_CHARS, isSyncImageName, ParsedPayload, buildPayload, buildImagePayload, serializePayload, +9 more
@@ -659,7 +659,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useCategoryStore.ts` — useCategoryStore, CALENDAR_EVENTS_CATEGORY, HEALTH_CATEGORY, ensureCalendarEventCategory, ensureHealthCategory, renameGeneratedCategorySettings, getGeneratedCategory, setGeneratedCategory, clearGeneratedCategorySettings, ensureGeneratedTaskCategory, +1 more
 - `src/store/useCookwareStore.ts` — CookwarePatch, useCookwareStore
 - `src/store/useCopyFlagStore.ts` — useCopyFlagStore
-- `src/store/useDemoStore.ts` — clearUndoHistories, useDemoStore
+- `src/store/useDemoStore.ts` — clearUndoHistories, reloadAfterDataReplaced, useDemoStore
 - `src/store/useEventCreatedToastStore.ts` — SaveAs, CreatedEvent, useEventCreatedToastStore
 - `src/store/useEventPeopleStore.ts` — EVENT_PEOPLE_SETTING_KEY, EVENT_PEOPLE_MIGRATION_FLAG, useEventPeopleStore
 - `src/store/useEventReminderStore.ts` — useEventReminderStore
@@ -699,7 +699,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useSharedLinkStore.ts` — useSharedLinkStore
 - `src/store/useShieldReleaseStore.ts` — useShieldReleaseStore
 - `src/store/useStepTimerStore.ts` — useStepTimerStore
-- `src/store/useSyncStore.ts` — SERVER_HEALTH_LOGS_KEY, SERVER_HEALTH_RESEND_KEY, NOTHING_OWED, SERVER_JOURNAL_KEY, SERVER_JOURNAL_RESEND_KEY, SYNC_EPOCH, withholdingFor, markHealthLogsWithheld, settleHealthLogResend, SyncPhase, +5 more
+- `src/store/useSyncStore.ts` — SERVER_HEALTH_LOGS_KEY, SERVER_HEALTH_RESEND_KEY, NOTHING_OWED, SERVER_JOURNAL_KEY, SERVER_JOURNAL_RESEND_KEY, SYNC_EPOCH, withholdingFor, markHealthLogsWithheld, settleHealthLogResend, SyncPhase, +7 more
 - `src/store/useTabHubMenuStore.ts` — TabHubMenu, useTabHubMenuStore
 - `src/store/useTaskGroupStore.ts` — useTaskGroupStore
 - `src/store/useTaskStore.ts` — offerMealLog, TimeBlockPlan, writeEditToFollowUpSource, hasEstimateSource, redoRestoringRows, captureFollowUpDrafts, useTaskStore
@@ -810,7 +810,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 
 ## `src/db`
 
-- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, ensureDatabaseReady, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, +307 more
+- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, ensureDatabaseReady, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, +309 more
 - `src/db/syncTracking.ts` — SyncTable, KEY_SEPARATOR, SYNC_TRACKED_TABLES, SYNC_DEVICE_LOCAL_COLUMNS, isDeviceLocalColumn, withoutDeviceLocalColumns, SYNC_EXCLUDED_TABLES, SYNCED_SETTING_KEYS, isSyncedSettingKey, HEALTH_SYNC_TABLES, +16 more
 
 ## `src/services`

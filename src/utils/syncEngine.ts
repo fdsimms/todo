@@ -659,6 +659,73 @@ function messageOf(e: unknown, fallback: string): string {
   return fallback;
 }
 
+/** How `joinAfterErasing` ended. Only `joined` erased anything. */
+export type JoinAfterErasingResult =
+  | { status: 'joined'; run: SyncRunResult }
+  /** The store holds nothing from another device. */
+  | { status: 'nothing-to-join' }
+  /** The download failed, or this is the demo database. */
+  | { status: 'failed'; reason: string };
+
+/**
+ * Erases this device and joins `transport` holding only what other devices
+ * have published to it, for a device whose own data should not reach them.
+ *
+ * **The download comes first, and the erase waits for it.** A device erased
+ * and then left offline, or erased to join a store nothing has synced to yet,
+ * is a device emptied for nothing. So the whole store is pulled before
+ * `erase` runs, and nothing is erased unless that worked and it holds rows
+ * from some other device. That is also the only guard against choosing this
+ * on the device that was meant to be kept, when it syncs first.
+ *
+ * The rows that pull brought are then applied by an ordinary `runSync`, handed
+ * the same result rather than downloading it twice. Its push finds nothing to
+ * send, since `erase` leaves no rows and no tombstones, and the new device id
+ * `erase` leaves behind is what lets it apply payloads this device pushed
+ * under its old one (`dbEraseForSyncJoin`).
+ *
+ * `erase` runs synchronously between the two, so the caller can reload its
+ * in-memory copies before anything else is awaited, for the reason `onApplied`
+ * gives on runSync.
+ */
+export async function joinAfterErasing(
+  transport: SyncTransport,
+  local: SyncLocal,
+  erase: () => void,
+  onApplied?: (applied: ApplyReport) => void
+): Promise<JoinAfterErasingResult> {
+  if (!local.isSyncable()) return { status: 'failed', reason: 'Demo mode.' };
+
+  let pulled: PullResult;
+  try {
+    pulled = await transport.pull(null);
+  } catch (e) {
+    return { status: 'failed', reason: messageOf(e, 'Couldn’t receive changes.') };
+  }
+
+  const before = local.deviceId();
+  const fromAnotherDevice = pulled.payloads.some(raw => {
+    const parsed = parsePayload(raw);
+    return parsed.ok
+      && parsed.payload.deviceId !== before
+      && Object.values(parsed.payload.tables).some(rows => rows.length > 0);
+  });
+  if (!fromAnotherDevice) return { status: 'nothing-to-join' };
+
+  erase();
+
+  let served = false;
+  const replay: SyncTransport = {
+    ...transport,
+    pull: async since => {
+      if (served) return transport.pull(since);
+      served = true;
+      return pulled;
+    },
+  };
+  return { status: 'joined', run: await runSync(replay, local, onApplied) };
+}
+
 /** One transport's run, labelled, so a caller with several can say which failed. */
 export interface NamedSyncRun {
   transport: string;

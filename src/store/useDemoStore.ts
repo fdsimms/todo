@@ -47,6 +47,23 @@ export function clearUndoHistories(): void {
   useFoodLogStore.getState().clearUndoHistory();
 }
 
+/**
+ * Re-reads the data stores after every row was replaced under them: a restore
+ * from a backup, or this device erased to join sync. Tasks first, then
+ * settings, since settings is what the visibility rules read and a task list
+ * rebuilt against the old day reset would be wrong for a frame. The two
+ * queues re-read too, and every undo history goes, for the reason
+ * clearUndoHistories gives: an undo kept across either one writes rows from
+ * the old data back into the new.
+ */
+export function reloadAfterDataReplaced(): void {
+  useTaskStore.getState().initialize();
+  useSettingsStore.getState().initialize();
+  useSharedLinkStore.getState().reload();
+  useStepTimerStore.getState().reload();
+  clearUndoHistories();
+}
+
 // Demo mode replaces the app's entire data source with a throwaway one, so
 // handing someone the phone shows them a believable task list and none of
 // the user's own. It works by pointing the SQLite handle at a scratch file

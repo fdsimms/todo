@@ -52,7 +52,7 @@ jest.mock('expo-sqlite', () => ({
 }));
 
 import type { SyncLocal, SyncTransport } from '../utils/syncEngine';
-import { runSync } from '../utils/syncEngine';
+import { joinAfterErasing, runSync } from '../utils/syncEngine';
 
 type DatabaseModule = typeof import('../db/database');
 
@@ -327,6 +327,74 @@ function compactingICloud(compactAfter: number) {
   };
   return cloud;
 }
+
+describe('a device erased to join, so the phone stays the source', () => {
+  async function eraseAndJoin(cloud: SyncTransport, d: Device): Promise<string> {
+    later();
+    const result = await joinAfterErasing(cloud, d.local, () => d.db.dbEraseForSyncJoin());
+    return result.status;
+  }
+
+  it('counts only what a person entered as data of its own', () => {
+    const mac = newDevice('mac');
+    mac.db.dbSetSetting('theme', 'dark');
+    expect(mac.db.dbHasOwnSyncData()).toBe(false);
+
+    addTask(mac, 'm', 'Mac task');
+    expect(mac.db.dbHasOwnSyncData()).toBe(true);
+  });
+
+  it('takes only the phone\'s data and sends the phone nothing, settings included', async () => {
+    const cloud = fakeICloud();
+    const phone = newDevice('phone');
+    addTask(phone, 'a', 'Pay rent');
+    phone.db.dbSetSetting('theme', 'phone-theme');
+    await settle(cloud, phone);
+
+    const mac = newDevice('mac');
+    addTask(mac, 'm', 'Mac task');
+    later();
+    // Changed after the phone's, so it would win if it were sent.
+    mac.db.dbSetSetting('theme', 'mac-theme');
+    mac.db.dbSetSetting('anthropicApiKey', 'mac-key');
+
+    expect(await eraseAndJoin(cloud, mac)).toBe('joined');
+    await settle(cloud, phone, mac);
+
+    expect(titles(phone)).toEqual(['Pay rent']);
+    expect(titles(mac)).toEqual(['Pay rent']);
+    expect(phone.db.dbGetSetting('theme')).toBe('phone-theme');
+    expect(mac.db.dbGetSetting('theme')).toBe('phone-theme');
+    // This device's own: a credential stays, and so does every migration flag,
+    // since the rows arriving are already migrated.
+    expect(mac.db.dbGetSetting('anthropicApiKey')).toBe('mac-key');
+    expect(mac.db.dbGetSetting('effort_xxs_migration_done')).not.toBeNull();
+  });
+
+  it('leaves no deletion behind on a device that had synced, and gets back what only it wrote', async () => {
+    const cloud = fakeICloud();
+    const phone = newDevice('phone');
+    const mac = newDevice('mac');
+    addTask(phone, 'a', 'Pay rent');
+    addTask(mac, 'm', 'Written on the Mac');
+    await settle(cloud, phone, mac);
+
+    expect(await eraseAndJoin(cloud, mac)).toBe('joined');
+    await settle(cloud, phone, mac);
+
+    expect(titles(phone)).toEqual(['Pay rent', 'Written on the Mac']);
+    expect(tasks(mac)).toEqual(tasks(phone));
+  });
+
+  it('erases nothing when the phone has not synced yet', async () => {
+    const cloud = fakeICloud();
+    const mac = newDevice('mac');
+    addTask(mac, 'm', 'Mac task');
+
+    expect(await eraseAndJoin(cloud, mac)).toBe('nothing-to-join');
+    expect(titles(mac)).toEqual(['Mac task']);
+  });
+});
 
 describe('compacting the history behind a snapshot', () => {
   /** Edits a task enough times on `d` to push past the threshold. */

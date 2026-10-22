@@ -7,6 +7,7 @@
  * whether two devices actually agree.
  */
 import {
+  joinAfterErasing,
   runSync,
   runSyncAll,
   summarizeRuns,
@@ -493,6 +494,103 @@ describe('two devices converge', () => {
 
     expect(idle.pushed).toBe(false);
     expect(idle.applied).toMatchObject({ inserted: 0, updated: 0, deleted: 0 });
+  });
+});
+
+/** What dbEraseForSyncJoin does to a device: no rows, no tombstones, no cursors, a new id. */
+function eraseDevice(device: FakeDevice, newId: string): void {
+  device.rows.clear();
+  device.tombstones.clear();
+  device.cursors.clear();
+  Object.assign(device, { id: newId });
+}
+
+describe('joinAfterErasing', () => {
+  it('erases nothing on the demo database', async () => {
+    const device = new FakeDevice('mac');
+    device.syncable = false;
+    const erase = jest.fn();
+
+    const result = await joinAfterErasing(new FakeCloud(), device, erase);
+
+    expect(result.status).toBe('failed');
+    expect(erase).not.toHaveBeenCalled();
+  });
+
+  it('erases nothing when the download fails', async () => {
+    const device = new FakeDevice('mac');
+    device.write('m1', 'Mac task', '2026-01-01T00:00:00.000Z');
+    const cloud = new FakeCloud();
+    cloud.pullThrows = true;
+    const erase = jest.fn();
+
+    const result = await joinAfterErasing(cloud, device, erase);
+
+    expect(result).toEqual({ status: 'failed', reason: 'pull blew up' });
+    expect(erase).not.toHaveBeenCalled();
+    expect(device.titleOf('m1')).toBe('Mac task');
+  });
+
+  it('erases nothing when no other device has synced, so the one to keep cannot be emptied', async () => {
+    const device = new FakeDevice('phone');
+    device.write('p1', 'Phone task', '2026-01-01T00:00:00.000Z');
+    const erase = jest.fn();
+
+    expect((await joinAfterErasing(new FakeCloud(), device, erase)).status).toBe('nothing-to-join');
+    expect(erase).not.toHaveBeenCalled();
+  });
+
+  it('does not count this device\'s own payloads, or ones with no rows, as another device', async () => {
+    const device = new FakeDevice('mac');
+    const cloud = new FakeCloud();
+    cloud.entries.push(serializePayload(payloadOf({ deviceId: 'mac', tables: { tasks: [{ id: 'm1', title: 'x', updated_at: '2026-01-01T00:00:00.000Z' }] } })));
+    cloud.entries.push(serializePayload(payloadOf({ deviceId: 'phone' })));
+    const erase = jest.fn();
+
+    expect((await joinAfterErasing(cloud, device, erase)).status).toBe('nothing-to-join');
+    expect(erase).not.toHaveBeenCalled();
+  });
+
+  it('erases, then holds only what the other device synced, and sends the store nothing', async () => {
+    const phone = new FakeDevice('phone');
+    phone.write('p1', 'Phone task', '2026-01-01T00:00:00.000Z');
+    const cloud = new FakeCloud();
+    await runSync(cloud, phone);
+
+    const mac = new FakeDevice('mac');
+    mac.write('m1', 'Mac task', '2026-06-01T00:00:00.000Z');
+    const pull = jest.spyOn(cloud, 'pull');
+    const entriesBefore = cloud.entries.length;
+
+    const result = await joinAfterErasing(cloud, mac, () => eraseDevice(mac, 'mac-2'));
+
+    expect(result.status).toBe('joined');
+    expect([...mac.rows.keys()]).toEqual(['p1']);
+    expect(cloud.entries).toHaveLength(entriesBefore);
+    // The download that decided to erase is the one applied, not a second one.
+    expect(pull).toHaveBeenCalledTimes(1);
+    expect(mac.getCursor('fake:pull')).toBe(String(cloud.entries.length));
+
+    await runSync(cloud, phone);
+    expect([...phone.rows.keys()]).toEqual(['p1']);
+  });
+
+  it('applies what it pushed under its old id, which the new id no longer filters as an echo', async () => {
+    const phone = new FakeDevice('phone');
+    const mac = new FakeDevice('mac');
+    const cloud = new FakeCloud();
+    phone.write('p1', 'Phone task', '2026-01-01T00:00:00.000Z');
+    mac.write('m1', 'Written on the Mac', '2026-01-02T00:00:00.000Z');
+    await runSync(cloud, phone);
+    await runSync(cloud, mac);
+    await runSync(cloud, phone);
+
+    const result = await joinAfterErasing(cloud, mac, () => eraseDevice(mac, 'mac-2'));
+
+    expect(result.status).toBe('joined');
+    expect([...mac.rows.keys()].sort()).toEqual(['m1', 'p1']);
+    await runSync(cloud, phone);
+    expect([...phone.rows.keys()].sort()).toEqual(['m1', 'p1']);
   });
 });
 

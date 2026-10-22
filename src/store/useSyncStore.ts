@@ -13,7 +13,15 @@
  * device must not be able to switch the feature on for another one.
  */
 import { create } from 'zustand';
-import { dbGetSetting, dbGetSyncCursor, dbHasLocalChangesSince, dbSetSetting, dbSetSyncCursor } from '../db/database';
+import {
+  dbEraseForSyncJoin,
+  dbGetSetting,
+  dbGetSyncCursor,
+  dbHasLocalChangesSince,
+  dbHasOwnSyncData,
+  dbSetSetting,
+  dbSetSyncCursor,
+} from '../db/database';
 import { HEALTH_SYNC_SETTING_KEYS, HEALTH_SYNC_TABLES, JOURNAL_SYNC_TABLES } from '../db/syncTracking';
 import { CLOUDKIT_SOURCE, cloudKitTransport, cloudKitUnavailableReason, isCloudKitSyncAvailable } from '../utils/cloudKitTransport';
 import { HTTP_SYNC_SOURCE, httpSyncTransport, isHttpSyncConfigured } from '../utils/httpSyncTransport';
@@ -26,6 +34,7 @@ import {
 } from '../utils/secureApiKey';
 import { databaseSyncLocal } from '../utils/syncLocal';
 import {
+  joinAfterErasing,
   pushCursorKey,
   runSyncAll,
   summarizeRuns,
@@ -108,6 +117,25 @@ export function settleHealthLogResend(resendKey: string = SERVER_HEALTH_RESEND_K
 
 export type SyncPhase = 'idle' | 'syncing';
 
+/** How `eraseAndJoin` ended. Only `joined` erased anything. */
+export type EraseAndJoinOutcome =
+  | { status: 'joined' }
+  /** No other device has synced to iCloud yet. */
+  | { status: 'nothing-to-join' }
+  | { status: 'failed'; reason: string };
+
+/**
+ * Whether turning iCloud sync on should first ask what happens to this
+ * device's data: it has never synced there, and it holds something a person
+ * entered. A device that has synced before is already a peer, and an empty
+ * one has nothing to send, so neither is asked.
+ */
+export function joinChoiceNeeded(): boolean {
+  return dbGetSyncCursor(pushCursorKey(CLOUDKIT_SOURCE)) === null
+    && dbGetSyncCursor(`${CLOUDKIT_SOURCE}:pull`) === null
+    && dbHasOwnSyncData();
+}
+
 interface SyncState {
   initialized: boolean;
   enabled: boolean;
@@ -151,6 +179,13 @@ interface SyncState {
 
   initialize: () => void;
   setEnabled: (enabled: boolean) => Promise<void>;
+  /**
+   * Turns iCloud sync on by erasing this device and taking what the other
+   * devices have synced, so nothing that was only here is sent to them.
+   * `afterErase` runs straight after the erase, before anything is awaited,
+   * and is where the caller reloads the stores and drops every undo history.
+   */
+  eraseAndJoin: (afterErase: () => void) => Promise<EraseAndJoinOutcome>;
   setServerUrl: (url: string) => void;
   setServerToken: (token: string) => Promise<boolean>;
   setServerHealthLogs: (on: boolean) => void;
@@ -168,11 +203,14 @@ interface SyncState {
  */
 type SyncConfig = { enabled: boolean; serverUrl: string; serverHealthLogs: boolean; serverJournal: boolean };
 
+/** iCloud, which never gets the health logs or the journal (see HEALTH_SYNC_TABLES). */
+function iCloudTransport(): SyncTransport {
+  return { ...cloudKitTransport(), withhold: withholdingFor({ healthLogs: false, journal: false }) };
+}
+
 async function configuredTransports(state: SyncConfig): Promise<SyncTransport[]> {
   const transports: SyncTransport[] = [];
-  if (state.enabled && isCloudKitSyncAvailable()) {
-    transports.push({ ...cloudKitTransport(), withhold: withholdingFor({ healthLogs: false, journal: false }) });
-  }
+  if (state.enabled && isCloudKitSyncAvailable()) transports.push(iCloudTransport());
 
   const token = await loadSecureKey(SYNC_TOKEN_SECURE_KEY);
   const config = { url: state.serverUrl, token };
@@ -327,6 +365,70 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       return;
     }
     await get().syncNow();
+  },
+
+  eraseAndJoin: async (afterErase: () => void) => {
+    // The same claim syncNow makes, for the same reason: a sync running
+    // beside the erase would push from the rows it is deleting.
+    if (get().phase === 'syncing' || syncInFlight) {
+      return { status: 'failed', reason: 'A sync is already running. Try again in a moment.' };
+    }
+    syncInFlight = true;
+    set({ phase: 'syncing', problem: null });
+    const run = (async (): Promise<EraseAndJoinOutcome> => {
+      let reason: string | null;
+      try {
+        reason = await cloudKitUnavailableReason();
+      } catch {
+        reason = 'Couldn’t check your iCloud account.';
+      }
+      if (reason) return { status: 'failed', reason };
+
+      // Whether a failure below can still say nothing was erased.
+      let erased = false;
+      let problem: string | null = null;
+      try {
+        const result = await joinAfterErasing(
+          iCloudTransport(),
+          databaseSyncLocal(),
+          () => {
+            dbEraseForSyncJoin();
+            erased = true;
+            afterErase();
+          },
+          reloadAfterSync
+        );
+        if (result.status !== 'joined') return result;
+        if (result.run.status === 'failed') problem = result.run.reason ?? 'Couldn’t receive changes.';
+      } catch (e) {
+        const message = e instanceof Error && e.message ? e.message : 'Something went wrong.';
+        if (!erased) return { status: 'failed', reason: message };
+        problem = message;
+      }
+
+      // On from here whatever the run did: the device is already erased, and
+      // a run that failed partway is finished by the next sync, which starts
+      // from the beginning again because no cursor moved.
+      dbSetSetting(ENABLED_KEY, '1');
+      set({ enabled: true, problem });
+      return { status: 'joined' };
+    })();
+    currentRun = run.then(() => null);
+    let outcome: EraseAndJoinOutcome;
+    try {
+      outcome = await run;
+    } finally {
+      syncInFlight = false;
+      syncAgain = false;
+      currentRun = null;
+      set({ phase: 'idle' });
+    }
+    // The ordinary run after it stamps the time and syncs a server too, which
+    // reads everything again since its cursors went with the erase.
+    // A throw here can't say nothing was erased, and the run it belongs to
+    // already reported; whatever it was, the next sync tries again.
+    if (outcome.status === 'joined') await get().syncNow().catch(() => null);
+    return outcome;
   },
 
   syncNow: async () => {

@@ -3305,6 +3305,74 @@ export function dbSetSyncCursor(source: string, cursor: string): void {
   dbSetSetting(`${CURSOR_KEY_PREFIX}${source}`, cursor);
 }
 
+/**
+ * Tracked tables the app writes into on its own, with nobody having entered
+ * anything: the settings table, the error log and the record of unattended
+ * writes. A device holding rows only in these has nothing of the person's.
+ */
+const SELF_WRITTEN_SYNC_TABLES = new Set(['settings', 'error_log', 'unattended_log']);
+
+/**
+ * Whether this device holds anything a person entered, which is what decides
+ * whether turning sync on has to ask what happens to it (`joinChoiceNeeded`).
+ * One indexed probe per table rather than `dbSyncChangesSince(null)`, which
+ * reads every row there is just to answer yes.
+ */
+export function dbHasOwnSyncData(): boolean {
+  return SYNC_TRACKED_TABLES.some(
+    t => !SELF_WRITTEN_SYNC_TABLES.has(t.name)
+      && db.getFirstSync(`SELECT 1 AS present FROM "${t.name}" LIMIT 1`) !== null
+  );
+}
+
+/**
+ * Device-only tables about the rows an erase removes: a focus session over
+ * tasks that are gone, and meals or recipes waiting for an estimate.
+ */
+const ERASED_DEVICE_TABLES = ['focus_sessions', 'pending_estimates', 'pending_recipe_estimates'];
+
+/**
+ * Empties this device so it can join sync holding only what its other devices
+ * have (`joinAfterErasing` in syncEngine). Not a restore with no rows, which
+ * is `dbReplaceAllData({})`, for two reasons, and both are about what the
+ * erase must not do to the other devices:
+ *
+ * - **It leaves no tombstones.** Every DELETE writes one through the ordinary
+ *   triggers, and pushed, they would delete the same rows on every peer that
+ *   holds them: all of them, on a device that has synced before. A restore
+ *   wants its deletions to travel; this is the one replace that must not, so
+ *   the tombstones are cleared in the same transaction, along with the record
+ *   of which rows arrived from where (they are all gone) and the fold aliases.
+ * - **Only the settings that sync go**, plus this device's sync id and every
+ *   cursor. The synced ones would otherwise win over a peer's when they were
+ *   changed more recently here. The rest are this device's own (calendar ids,
+ *   the API key) or one-time migration flags, and those have to stay: the data
+ *   arriving is already migrated, and a cleared flag reruns the migration over
+ *   it.
+ *
+ * A new device id makes this a new peer, so the pull that follows also applies
+ * the payloads this device pushed before, which the echo filter would skip
+ * under the old id. Without it, a row only this device ever wrote would never
+ * come back. Cursors go so that pull starts from the beginning, for every
+ * transport.
+ */
+export function dbEraseForSyncJoin(): void {
+  withTransaction(() => {
+    for (const table of SYNC_TRACKED_TABLES) {
+      if (table.name !== 'settings') db.runSync(`DELETE FROM "${table.name}"`);
+    }
+    for (const table of ERASED_DEVICE_TABLES) db.runSync(`DELETE FROM "${table}"`);
+    const keys = db
+      .getAllSync<{ key: string }>('SELECT key FROM settings')
+      .map(row => row.key)
+      .filter(key => isSyncedSettingKey(key) || key === DEVICE_ID_KEY || key.startsWith(CURSOR_KEY_PREFIX));
+    for (const key of keys) db.runSync('DELETE FROM settings WHERE key = ?', [key]);
+    db.runSync(`DELETE FROM ${SYNC_DELETIONS_TABLE}`);
+    db.runSync(`DELETE FROM ${SYNC_RECEIVED_TABLE}`);
+    db.runSync(`DELETE FROM ${SYNC_ALIASES_TABLE}`);
+  });
+}
+
 /** The tracked-table definition for a name off the wire, or null if unknown. */
 function trackedTable(name: string): SyncTable | null {
   return SYNC_TRACKED_TABLES.find(t => t.name === name) ?? null;
