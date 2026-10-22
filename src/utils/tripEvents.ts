@@ -71,6 +71,27 @@ export function awayFieldsFromEvent(event: BusyEvent): { awayStart: string; away
 }
 
 /**
+ * The trip's destination from the event's location (#3690), or null.
+ *
+ * Carried as text, which is what `Project.destination` is: no lookup happens
+ * here, and the geocode that turns it into a forecast still waits on its own
+ * switch, exactly as a typed destination does (docs/arch/away-dates.md). A
+ * location no geocoder knows simply gets no forecast, the "Mum's" rule.
+ *
+ * The first line only, since EventKit often stores a venue's name over its
+ * street address. Null past the destination field's own 80 characters, which
+ * is an address rather than a place to name a trip by, and the project page
+ * this opens onto is where anything else gets typed.
+ */
+export const DESTINATION_MAX_LENGTH = 80;
+
+export function destinationFromEvent(event: Pick<BusyEvent, 'location'>): string | null {
+  const first = (event.location ?? '').split(/\r?\n/)[0].trim();
+  if (!first || first.length > DESTINATION_MAX_LENGTH) return null;
+  return first;
+}
+
+/**
  * A live project already away for exactly the event's days, so the sheet can
  * open it rather than offer to make a second one. Matched on dates rather than
  * on a stored link: the app keeps no record of which event a project came

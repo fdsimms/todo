@@ -1,3 +1,11 @@
+// The mood and symptom log and what it says against your tasks, Health, food,
+// workouts and milestones, each comparison with its sample size beside it (see
+// docs/arch/mood-log.md). One component of ~1,000 lines, so grep a landmark
+// rather than reading it start to finish:
+//
+//   ==== <name> ====        the section banners through the logic half
+//   makeStyles              styles, at the bottom
+//   Stat                    one stat tile, above the styles
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -104,6 +112,7 @@ const GUIDE_LABEL_WIDTH = 60;
  * a finding built on eleven days reads as one.
  */
 export function MoodScreen() {
+  // ==== screen setup ====
   const pullSearch = usePullToSearch();
   const navigation = useNavigation<{ navigate: (screen: string, params?: object) => void }>();
   const colors = useColors();
@@ -116,6 +125,7 @@ export function MoodScreen() {
   const scrollTop = useListScrollToTop();
   const tabBarHeight = useBottomTabBarHeight();
 
+  // ==== store reads, and the Health and food windows loaded on demand ====
   const logs = useMoodStore(s => s.logs);
   const milestones = useMilestoneStore(s => s.milestones);
   const tasks = useTaskStore(s => s.tasks);
@@ -153,6 +163,7 @@ export function MoodScreen() {
     }, [kitchenEnabled, loadFoodInsightWindow]),
   );
 
+  // ==== settings and sheet state ====
   const settings = useSettingsStore(useShallow(s => ({
     dayResetTime: s.dayResetTime,
     completedRetentionDays: s.completedRetentionDays,
@@ -168,6 +179,7 @@ export function MoodScreen() {
   const [milestoneSheetOpen, setMilestoneSheetOpen] = useState(false);
   const [editingMilestone, setEditingMilestone] = useState<Milestone | null>(null);
 
+  // ==== opening the log sheet from a link ====
   // `dundundun://mood?log=1` — the daily check-in task's link button. Stamped
   // with the arrival time rather than a boolean, and tracked against what has
   // already been handled, so tapping the same row twice opens the sheet twice:
@@ -199,6 +211,7 @@ export function MoodScreen() {
     setSheetOpen(true);
   }, [route.params?.openLog, route.params?.returnTo, handledOpenLog]);
 
+  // ==== today, and the journal looking back ====
   const todayKey = dayKeyOf(getCurrentDayStart());
   const journal = useJournalStore(s => s.entries);
   // A sealed note to your future self is no look back until its day (openEntries).
@@ -209,6 +222,7 @@ export function MoodScreen() {
     [logs, todayKey, journal, journalLocked],
   );
 
+  // ==== which days count (retention, food days) ====
   // The first day the task record is complete for. `completedRetentionDays`
   // deletes completed rows on a schedule while the mood log keeps every entry
   // forever, so without this the days behind the window read as days on which
@@ -247,6 +261,7 @@ export function MoodScreen() {
     return days.filter(d => d.dayKey < completionsKnownFrom && d.mood !== null).length;
   }, [days, completionsKnownFrom]);
 
+  // ==== Health and nutrition findings ====
   // Every pairing the data can actually speak to, in the order they read: what
   // you got done first, because that is the join no health app can make, and
   // mood second even though this is the Mood screen — the card above it already
@@ -292,6 +307,7 @@ export function MoodScreen() {
     [days, kitchenEnabled, todayKey],
   );
 
+  // ==== food contrasts ====
   // A contrast is keyed on what a food is (a catalog row, a recipe, or a
   // lowercased label for anything unlinked), none of which is what the user
   // reads. `foodKeyNames` names a row or recipe as it is called now and an
@@ -313,6 +329,7 @@ export function MoodScreen() {
     })) : []),
     [days, foodNames, kitchenEnabled],
   );
+  // ==== the other contrasts (training, work, symptoms, milestones, tags, time of day) ====
   // Mood on the days a workout was logged here, against the other days since
   // the first one. Only this app's own finished sessions: a day with no Health
   // workout is ambiguous, so Health's are never read (see
@@ -403,6 +420,7 @@ export function MoodScreen() {
     [logs, settings.morningStart, settings.afternoonStart, settings.eveningStart, settings.nightStart],
   );
 
+  // ==== the fourteen-day chart ====
   // The last CHART_DAYS logical days, whether or not each was logged — a gap in
   // the chart is the honest picture of a day nobody logged, and squeezing the
   // logged days together would draw a fortnight of entries out of four.
@@ -435,11 +453,13 @@ export function MoodScreen() {
     return out;
   }, [days, todayKey]);
 
+  // ==== today and recent entries ====
   // Today's entries sit in their own card at the top, so the history below
   // starts where they stop rather than listing them twice.
   const todayLogs = useMemo(() => logs.filter(l => l.dayKey === todayKey), [logs, todayKey]);
   const recent = useMemo(() => logs.filter(l => l.dayKey !== todayKey).slice(0, 20), [logs, todayKey]);
 
+  // ==== opening and closing the sheets ====
   const openNew = () => { haptics.tap(); setReturnTo(undefined); setPrefill(null); setEditing(null); setSheetOpen(true); };
   // A face opens the sheet with that mood already picked rather than saving
   // on the tap: the sheet is where symptoms, tags and the note go, and saving

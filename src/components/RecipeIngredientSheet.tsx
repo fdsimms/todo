@@ -1,3 +1,10 @@
+// The editor for one ingredient line: name, quantity, prep, purpose, section,
+// aisle, alternatives and its flags, tied to its catalog row, with one-tap
+// fixes (a catalog name, a variety, splitting "or" and "and") before Done. One
+// component of ~1,100 lines, so grep a landmark:
+//
+//   ==== <name> ====        the section banners through the logic half
+//   makeStyles              styles, at the bottom
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
@@ -86,6 +93,7 @@ const andPartLabel = (part: AndSplitPart) => [part.quantity, part.name].filter(B
  * alternatives — that most lines never carry.
  */
 export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngredient, onClose }: Props) {
+  // ==== the held line, theme, navigation and recipe store ====
   // Held past the host clearing it, so the sheet can draw its subject for the
   // commit it spends closing. Both hosts clear `ingredient` in the same commit
   // that lowers `visible`, and without this the `return null` below tore the
@@ -116,6 +124,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
   const recipeEmptySections = useRecipeStore(
     useShallow(s => s.recipes.find(r => r.id === recipeId)?.emptySections ?? [])
   );
+  // ==== grocery store and existing sections ====
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const rememberedAisleFor = useGroceryStore(s => s.rememberedAisleFor);
   const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
@@ -133,6 +142,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
     [recipeIngredients, recipeEmptySections]
   );
 
+  // ==== drafts (fields, group rename, flags, pickers) ====
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState('');
   const [prep, setPrep] = useState('');
@@ -174,6 +184,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
   // than one shared "a picker is open": they sit in different cards and either
   // can be the one you want open.
 
+  // ==== filling the drafts on open ====
   // Keyed on `visible` too: the held subject above means reopening the same
   // line is the same object, and seeding on `ingredient` alone left the last
   // visit's abandoned edits in the fields.
@@ -197,6 +208,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
     setLinkOpen(false);
   }, [ingredient, visible]);
 
+  // ==== the catalog row and choice-group siblings ====
   // The catalog row this line resolves to. Above the early return, like every
   // other hook here — an ingredient sheet with nothing to edit still has to run
   // the same hooks in the same order.
@@ -229,6 +241,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
 
   const groupLabel = cleanChoiceGroup(choiceGroup);
 
+  // ==== writing the choice group ====
   // Writes this ingredient's own choiceGroup immediately, rather than
   // deferring it to Done like the rest of the sheet's fields. It has to: the
   // group is shared state with other rows (join/leave writes them the same
@@ -254,6 +267,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
     return renamed ?? cleanChoiceGroup(choiceGroup);
   };
 
+  // ==== the pan question and calories ====
   // The pan question, for a cooking oil only. The draft name decides whether it
   // applies, the same as the catalog card above reads the draft.
   const recipeSteps = useRecipeStore(
@@ -284,6 +298,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
     return { whole: Math.round(whole), counted: Math.round(whole * cookingShare) };
   }, [askPan, ingredient, allRecipes, recipeId, groceryItems, itemProducts, quantity, prep, cookingShare]);
 
+  // ==== save and close ====
   const saveAndClose = () => {
     if (!ingredient) { onClose(); return; }
     // Tapping Done can beat the group name field's own blur — flush it here
@@ -311,6 +326,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
 
   if (!ingredient) return null;
 
+  // ==== aisle, catalog and variety offers ====
   // What "wherever it usually goes" will actually resolve to, said out loud:
   // the user's own filing first, then the offline lexicon, then Other. Same
   // precedence addByName applies.
@@ -374,6 +390,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
     animateLayout();
   };
 
+  // ==== splitting a line ====
   // "cheddar or manchego" wants to be two rows in a choice group, not one
   // catalog entry nothing can ever match — see splitAlternativeNames. Offered,
   // never applied on its own: the split is verbatim, so "chicken or vegetable
@@ -430,6 +447,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
     onClose();
   };
 
+  // ==== adding to the catalog, and alternatives ====
   // Mints the catalog row and nothing else — off-list, and with no claim that
   // you have any. `ensureCatalogItem` is the primitive for exactly this (see
   // its doc comment): a name gets a row so a standing fact can hang off it,
@@ -478,6 +496,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
     return null;
   };
 
+  // ==== the alternatives picker ====
   // Every other line's own key, so the catalog picker below can't offer
   // something this recipe already lists — that's a sibling pill's job, and
   // offering it twice makes one of the two a no-op the user can't predict.

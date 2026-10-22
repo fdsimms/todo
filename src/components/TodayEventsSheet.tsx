@@ -47,7 +47,7 @@ import { useEventTaskLinkStore } from '../store/useEventTaskLinkStore';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useNavigation } from '@react-navigation/native';
-import { awayFieldsFromEvent, projectForTripEvent, spansDays } from '../utils/tripEvents';
+import { awayFieldsFromEvent, destinationFromEvent, projectForTripEvent, spansDays } from '../utils/tripEvents';
 import {
   anchorsForEvent,
   eventTaskKey,
@@ -241,10 +241,10 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
     if (!projectId) {
       const fields = awayFieldsFromEvent(event);
       if (!fields) return;
-      projectId = createProject(event.title.trim() || 'Trip', fields).id;
+      projectId = createProject(event.title.trim() || 'Trip', { ...fields, destination: destinationFromEvent(event) }).id;
       // Who the event is with comes along (#3690), so the trip shows on each
-      // of their pages. Its location doesn't: a calendar location is free
-      // text, and a trip's destination is a geocoded place.
+      // of their pages. Its location becomes the destination's text (see
+      // destinationFromEvent), on the page this opens, where it can be edited.
       const people = peopleForEvent(eventPeople, event);
       if (people.length > 0) updateProject(projectId, { personIds: people });
       haptics.success();
@@ -271,8 +271,14 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
     // The event's people join any the project already names; none is dropped.
     const people = peopleForEvent(eventPeople, event);
     const personIds = [...new Set([...(project.personIds ?? []), ...people])];
+    // A destination already typed stays; an empty one takes the event's.
+    const destination = project.destination ? null : destinationFromEvent(event);
     const apply = () => {
-      updateProject(projectId, personIds.length > (project.personIds ?? []).length ? { ...fields, personIds } : fields);
+      updateProject(projectId, {
+        ...fields,
+        ...(personIds.length > (project.personIds ?? []).length ? { personIds } : {}),
+        ...(destination ? { destination } : {}),
+      });
       haptics.success();
       onClose();
       navigation.navigate('ProjectDetail', { projectId });

@@ -1,3 +1,11 @@
+// The date picker: a month grid, Today/Tomorrow and the other quick days,
+// time-of-day segments, a typed date, Suggest, how full each day is, and the
+// offer for a task that keeps being put off. One component of ~760 lines, so
+// grep a landmark rather than reading it start to finish:
+//
+//   ==== <name> ====        the section banners through the logic half
+//   makeStyles              styles, at the bottom
+//   QuickButton             one quick-day button, above the styles
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import {
   Alert,
@@ -218,6 +226,7 @@ export function WhenPicker({
   postponeTaskId, onBreakUp, nlEnabled,
   projectAnchor = null,
 }: Props) {
+  // ==== theme, and the task and calendar stores ====
   const colors = useColors();
   const { shadows } = useTheme();
   const { width: windowWidth } = useWindowDimensions();
@@ -233,6 +242,7 @@ export function WhenPicker({
   const calendarWindowStart = useCalendarStore(s => s.windowStart);
   const calendarWindowEnd = useCalendarStore(s => s.windowEnd);
 
+  // ==== local state (month, time of day, typed date, pending pick) ====
   const [displayMonth, setDisplayMonth] = useState(() => new Date());
   const [segments, setSegments] = useState<TimeOfDay[]>([]);
   const [nlText, setNlText] = useState('');
@@ -246,6 +256,7 @@ export function WhenPicker({
   const [suggestion, setSuggestion] = useState<{ key: string; reason: string } | null>(null);
   const [suggestError, setSuggestError] = useState<string | null>(null);
 
+  // ==== animation and the confirm timer ====
   const popAnim = useRef(new Animated.Value(1)).current;
   // The entrance. This used to be a spring layered on top of the Modal's own
   // `animationType="fade"`, which is a UIKit cross-dissolve — ~350ms during
@@ -258,6 +269,7 @@ export function WhenPicker({
   const pendingRef = useRef(false);
   const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ==== date bounds (today, tomorrow, the past and future limits) ====
   const today = useMemo(() => getLogicalToday(dayResetTime), [visible, dayResetTime]);
   const tomorrow = useMemo(() => getLogicalTomorrow(dayResetTime), [visible, dayResetTime]);
   const tomorrowKey = dayKeyOf(tomorrow);
@@ -267,6 +279,7 @@ export function WhenPicker({
   // The ceiling, or null for none — see the allowFuture prop.
   const latestDay = allowFuture ? null : today;
 
+  // ==== the after-vacation day ====
   // "After vacation" — only when there's a real date to land on. `vacationEnd`
   // is the day vacation mode reads as "back", the same date LookAheadSheet
   // prefills its own "back on" field from (see the comment there): it's
@@ -283,6 +296,7 @@ export function WhenPicker({
   }, [vacationMode, vacationEnd, today, latestDay]);
   const afterVacationKey = afterVacationDay ? dayKeyOf(afterVacationDay) : null;
 
+  // ==== resetting on open ====
   useEffect(() => {
     if (visible) {
       // Clamped, so a picker holding a value from before the floor doesn't open
@@ -318,6 +332,7 @@ export function WhenPicker({
     };
   }, [visible]);
 
+  // ==== the month grid ====
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
   const calendarDays = useMemo(
     () => buildCalendarGrid(displayMonth, weekStartsOn),
@@ -333,6 +348,7 @@ export function WhenPicker({
   const canPageBack = canPageToPreviousMonth(displayMonth, earliestDay);
   const canPageForward = canPageToNextMonth(displayMonth, latestDay);
 
+  // ==== how full each day is, and away spans ====
   /**
    * How full each day of the visible month already is (#1791).
    *
@@ -381,6 +397,7 @@ export function WhenPicker({
   }, [visible, calendarDays, tasks, dayResetTime, calendarReadEnabled, calendarLoaded, calendarEvents,
       calendarWindowStart, calendarWindowEnd, awaySpans, today]);
 
+  // ==== picking a day or a time of day ====
   const toggleSegment = (seg: TimeOfDay) => {
     setSegments(prev =>
       prev.includes(seg) ? [] : [seg]
@@ -435,6 +452,7 @@ export function WhenPicker({
     [projectAnchor, latestDay, today],
   );
 
+  // ==== the typed date ====
   // As-you-type: just page the grid to what's been typed so far, the same
   // preview CalendarPicker's own nlText gives. Nothing commits until Enter —
   // partial text like "next tu" resolves to a real (wrong) date along the way
@@ -457,6 +475,7 @@ export function WhenPicker({
     confirmWithFeedback(noonOf(parsed), isSameDay(parsed, today) ? 'today' : dayKeyOf(parsed));
   };
 
+  // ==== save and Suggest ====
   // Lets the time-of-day segment be changed on its own, without also
   // having to tap a calendar day just to commit the change.
   const handleSave = () => {
@@ -495,7 +514,7 @@ export function WhenPicker({
     }
   };
 
-  // ── Postpone check ──────────────────────────────────────────────────────
+  // ==== the postpone check ====
   const postponeCheckEnabled = useSettingsStore(s => s.postponeCheckEnabled);
   const postponeCheckThreshold = useSettingsStore(s => s.postponeCheckThreshold);
   const updateTask = useTaskStore(s => s.updateTask);

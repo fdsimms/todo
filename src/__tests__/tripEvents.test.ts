@@ -1,6 +1,6 @@
 import type { Project } from '../types';
 import type { BusyEvent } from '../utils/calendarBusy';
-import { awayFieldsFromEvent, projectForTripEvent, spansDays, tripSpanOf } from '../utils/tripEvents';
+import { awayFieldsFromEvent, destinationFromEvent, projectForTripEvent, spansDays, tripSpanOf } from '../utils/tripEvents';
 import { dayKeyOf } from '../utils/dateUtils';
 
 jest.mock('../store/useSettingsStore', () => ({
@@ -77,5 +77,18 @@ describe('projectForTripEvent', () => {
     const fields = awayFieldsFromEvent(event)!;
     expect(projectForTripEvent([project({ archived: true, ...fields })], event)).toBeNull();
     expect(projectForTripEvent([project({ ...fields, awayEnd: awayFieldsFromEvent(allDay([9, 19], [9, 27]))!.awayEnd })], event)).toBeNull();
+  });
+});
+
+describe('destinationFromEvent (#3690)', () => {
+  it('takes the location as written, first line only', () => {
+    expect(destinationFromEvent({ location: '  Lisbon ' })).toBe('Lisbon');
+    expect(destinationFromEvent({ location: 'Hotel Avenida\n123 Rua Augusta, Lisbon' })).toBe('Hotel Avenida');
+  });
+
+  it('gives nothing for no location, or one too long to name a trip by', () => {
+    expect(destinationFromEvent({ location: null })).toBeNull();
+    expect(destinationFromEvent({ location: '   ' })).toBeNull();
+    expect(destinationFromEvent({ location: 'x'.repeat(81) })).toBeNull();
   });
 });

@@ -1,3 +1,10 @@
+// "What can I use instead?" for one grocery item: the substitutes on record,
+// a search or add for another, AI suggestions, and the link's ratio, note and
+// direction. Nothing is saved until Add (see the note above the component).
+// One component of ~350 lines of logic and a long render, so grep a landmark:
+//
+//   ==== <name> ====        the section banners through the logic half
+//   makeStyles              styles, at the bottom
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -99,6 +106,7 @@ interface Props {
  * whole-row tap.
  */
 export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId = null, onSwap, onClose }: Props) {
+  // ==== the held item, keyboard scroll and theme ====
   // Held past the host clearing it, so the `return null` below can't tear the
   // presented sheet out of the tree while it is still closing: every host
   // clears the id in the same commit that lowers `visible`. That unmount is
@@ -113,6 +121,7 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
+  // ==== store reads ====
   const items = useGroceryStore(useShallow(s => s.items));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
@@ -125,6 +134,7 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
 
   const item = items.find(i => i.id === itemId) ?? null;
 
+  // ==== form state ====
   /**
    * The recorded substitute being reviewed because it was tapped *here*, as
    * opposed to `editingSubItemId`, which is a host opening this sheet straight
@@ -154,6 +164,7 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
   );
   const editingSub = editing ? existing.find(s => s.item.id === activeSubId) ?? null : null;
 
+  // ==== the dirty baseline and seeding ====
   // What every field above got seeded to, so the dirty check in handleCancel
   // can tell real typing apart from the form simply being (re)seeded under it.
   const baselineRef = useRef({
@@ -212,6 +223,7 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
     setSuggestLoading(false);
     setSuggestAsked(false);
   }, [visible, itemId]);
+  // ==== AI suggestions ====
   // The same, for a proposal still on its way when that reset ran: it landed
   // after the clear, so butter's substitutes were offered under margarine, or
   // under a sheet that had been closed. Read after the await and compared
@@ -242,6 +254,7 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
       .finally(() => { if (stillHere()) setSuggestLoading(false); });
   };
 
+  // ==== searching for a substitute ====
   const picked = items.find(i => i.id === pickedId) ?? null;
   // The substitute already set to "always use this instead", when it isn't
   // the one being written now.
@@ -284,6 +297,7 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
   // that would quietly resolve to it anyway. See groceryPlural.ts.
   const canAdd = !!typed && !catalogItemForKey(typedKey, items);
 
+  // ==== adding a typed or suggested one ====
   const handleAddTyped = () => {
     const created = ensureCatalogItem(typed);
     if (!created) {
@@ -313,6 +327,7 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
     }
   };
 
+  // ==== the ratio and its preview ====
   // The unit the ratio actually constrains on — named back at the user so the
   // "only applies to a recipe line measured in X" hint states the constraint
   // it's *actually* enforcing rather than a canned sentence. Null while the
@@ -365,6 +380,7 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
     return [build(doubled.text, `${doubled.text} ${item.name.toLowerCase()}`)];
   }, [item, picked, ratioFrom, ratioTo]);
 
+  // ==== confirm, cancel and back ====
   const handleConfirm = () => {
     if (!item || !picked) return;
     linkItemSub(item.id, picked.id, { note, bothWays: bothWays || either, ratioFrom, ratioTo, standing, either });
@@ -413,6 +429,7 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
     confirmDiscard(back);
   };
 
+  // ==== swap and remove ====
   // "Use instead", on a substitute already recorded: the answer to the
   // question the swap glyph asks mid-shop, so the sheet has nothing left to
   // do once it's applied.

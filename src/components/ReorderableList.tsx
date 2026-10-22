@@ -1,3 +1,11 @@
+// The list a row is long-pressed and dragged in: a placeholder gap and a
+// finger-anchored card, autoscroll, drops onto rows or the header, and scroll
+// handles for the caller. Read the comment above the component and CLAUDE.md's
+// drag-and-drop note before changing render order, the animation driver or the
+// responder lifecycle. One component of ~860 lines, so grep a landmark:
+//
+//   ==== <name> ====        the section banners through the logic half
+//   styles                  at the bottom
 import React, { useRef, useState, useEffect, useCallback, useImperativeHandle } from 'react';
 import {
   View,
@@ -360,6 +368,7 @@ export function ReorderableList<T>({
   scrollToTop,
   dropCaptureRef,
 }: Props<T>) {
+  // ==== theme, drag state and the card's animated values ====
   const { shadows } = useTheme();
   const scrollToTopVisibility = useScrollToTopVisibility();
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
@@ -385,6 +394,7 @@ export function ReorderableList<T>({
   const overlayScale = useRef(new Animated.Value(1.03)).current;
   const overlayOpacity = useRef(new Animated.Value(1)).current;
 
+  // ==== keyboard inset and cached drag handlers ====
   // Owns the scroll ref so it can pull the list back out of a keyboard inset
   // it was left parked in (see the hook).
   // `refreshing` read off the element rather than asked for as a prop of our
@@ -422,6 +432,7 @@ export function ReorderableList<T>({
     }
     return handler;
   };
+  // ==== refs for the drag, measurements and scroll ====
   const onReorderRef = useRef(onReorder);
   const onDragEndRef = useRef(onDragEnd);
   const activeIndexRef = useRef<number | null>(null);
@@ -490,6 +501,7 @@ export function ReorderableList<T>({
   // the gesture handlers always operate on the same array the user is seeing.
   const renderData = committedData ?? data;
   dataRef.current = renderData;
+  // ==== syncing props, and resetting when the data changes ====
   useEffect(() => { onReorderRef.current = onReorder; }, [onReorder]);
   useEffect(() => { onDragEndRef.current = onDragEnd; }, [onDragEnd]);
   useEffect(() => { onHoverChangeRef.current = onHoverChange; }, [onHoverChange]);
@@ -555,6 +567,7 @@ export function ReorderableList<T>({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dataKeySignature]);
 
+  // ==== scroll handles for the caller ====
   // Same optimistic bookkeeping this component's own autoscroll does: record
   // the offset as commanded, because the scroll event confirming it lands a
   // frame later and a caller stepping every frame would keep re-issuing the
@@ -623,6 +636,7 @@ export function ReorderableList<T>({
     },
   }), [scrollRowIntoView, doScrollToTop, scrollRef]);
 
+  // ==== resetting a drag, and row offsets ====
   const stopAutoscroll = () => {
     if (autoscrollTimerRef.current !== null) {
       clearInterval(autoscrollTimerRef.current);
@@ -661,6 +675,7 @@ export function ReorderableList<T>({
     rowTargetsRef.current.clear();
   };
 
+  // ==== the drop gap and rows moving aside ====
   // Measured content-Y of the gap the dragged item will drop into (matches the
   // real laid-out positions, so it's correct regardless of list padding).
   const gapContentY = (a: number, t: number): number => {
@@ -708,6 +723,7 @@ export function ReorderableList<T>({
     });
   };
 
+  // ==== where the card sits ====
   // On-screen tops of the drop slots at the two ends of this drag's range —
   // where the card would come to rest at either extreme, so they're the span it
   // is allowed to float across (see clampCardToSlots). Null when there's
@@ -793,6 +809,7 @@ export function ReorderableList<T>({
     return cardTopNow() + scrollOffsetRef.current + activeHeight / 2;
   };
 
+  // ==== what the card is over, and drop capture ====
   // The row the card is on top of, measured against resting layout (see the
   // onDragMove docs for why resting rather than displaced).
   const rowUnderCard = (): number | null => {
@@ -884,6 +901,7 @@ export function ReorderableList<T>({
     },
   }));
 
+  // ==== autoscroll and committing a drop ====
   const maybeAutoscroll = () => {
     const ai = activeIndexRef.current;
     if (ai === null) return;
@@ -973,6 +991,7 @@ export function ReorderableList<T>({
     });
   }, [resetDrag, keyExtractor, overlayY, overlayX, overlayScale, overlayOpacity]);
 
+  // ==== calibrating the card, and starting a drag ====
   /**
    * Ask the shadow tree where the dragged row REALLY is, and pin the floating
    * card to it if that is still the slot the finger took hold of.
@@ -1092,6 +1111,7 @@ export function ReorderableList<T>({
   // when the row first rendered.
   startDragRef.current = startDrag;
 
+  // ==== the responder and scroll handling ====
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => false,
