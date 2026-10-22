@@ -92,6 +92,7 @@ describe('redactSettings', () => {
     const rows: BackupRow[] = [
       { key: 'syncDeviceId', value: 'device-A' },
       { key: 'syncCursor:cloudkit:pull', value: 'c1' },
+      { key: 'syncServerSharing:device-A', value: '{"healthLogs":true,"journal":false}' },
       { key: 'themeMode', value: 'dark' },
     ];
     expect(redactSettings(rows)).toEqual([{ key: 'themeMode', value: 'dark' }]);

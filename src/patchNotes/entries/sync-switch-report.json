@@ -1,0 +1,4 @@
+{
+  "message": "The sync server now knows whether Include health logs and Include journal and dreams are on, so Claude can tell you when what it sees is incomplete. Only the setting is sent, not any entries.",
+  "date": "2026-10-22"
+}

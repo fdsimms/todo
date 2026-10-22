@@ -110,6 +110,7 @@ import { sectionListPatch } from '../../src/utils/listMode';
 import { rotationItemFromInput, rotationMemberTitle, rotationMembers } from '../../src/utils/rotation';
 import { programVersionsOf, routineVersionsOf } from '../../src/utils/routineVersions';
 import { sunAnchorHHMM } from '../../src/utils/sunTimes';
+import { SERVER_SHARING_KEY_PREFIX, type ServerSharing } from '../../src/db/syncTracking';
 import type { AwaySpan } from '../../src/utils/awayDates';
 import type { WaterUnit } from '../../src/utils/waterLog';
 import type { FoodLogTotals } from '../../src/utils/foodLog';
@@ -1666,6 +1667,11 @@ export interface Replica {
   withBatch<T>(batchId: string, fn: () => T): T;
   /** What the person wants an agent to keep in mind (`src/utils/agentNotes.ts`). */
   agentNotes(): AgentNote[];
+  /**
+   * Each device's report of its two sync switches (`SERVER_SHARING_KEY_PREFIX`),
+   * one per device that has sent one. A row that doesn't parse is left out.
+   */
+  serverSharingReports(): ServerSharing[];
   writeAgentNotes(notes: readonly AgentNote[]): void;
   /**
    * Apply a validated plan, returning the template it built.
@@ -5855,6 +5861,21 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     withBatch: () => { throw new Error('withBatch is only available on the wrapped replica.'); },
 
     agentNotes: () => notesModule().readAgentNotes(),
+    serverSharingReports(): ServerSharing[] {
+      const reports: ServerSharing[] = [];
+      for (const [key, value] of db.dbGetAllSettings()) {
+        if (!key.startsWith(SERVER_SHARING_KEY_PREFIX)) continue;
+        try {
+          const parsed = JSON.parse(value) as Partial<ServerSharing>;
+          if (typeof parsed.healthLogs === 'boolean' && typeof parsed.journal === 'boolean') {
+            reports.push({ healthLogs: parsed.healthLogs, journal: parsed.journal });
+          }
+        } catch {
+          // A report this build can't read says nothing either way.
+        }
+      }
+      return reports;
+    },
     writeAgentNotes: (notes: readonly AgentNote[]) => notesModule().writeAgentNotes(notes),
 
     createTemplate(plan: TemplatePlan): TaskTemplate {

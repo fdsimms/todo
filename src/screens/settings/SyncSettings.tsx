@@ -166,7 +166,7 @@ export function SyncSettings() {
         icon="heart-outline"
         iconColor={serverHealthLogs ? colors.accent : undefined}
         label="Include health logs"
-        hint="Sends your mood, medication and food logs, your workouts and your milestones to the sync server. Turning this off stops sending new entries. Entries already sent stay on the server."
+        hint="Sends your mood, medication and food logs, your workouts and your milestones to the sync server. Turning this off stops sending new entries. Entries already sent stay on the server, and the server is told this is off so Claude knows they may be incomplete."
         toggle={serverHealthLogs}
         value={serverHealthLogs ? 'On' : 'Off'}
         onPress={() => setServerHealthLogs(!serverHealthLogs)}
@@ -183,7 +183,7 @@ export function SyncSettings() {
         icon="book-outline"
         iconColor={serverJournal ? colors.accent : undefined}
         label="Include journal and dreams"
-        hint="Sends your journal entries and dreams to the sync server so Claude can read and write them. Turning this off stops sending new entries. Entries already sent stay on the server."
+        hint="Sends your journal entries and dreams to the sync server so Claude can read and write them. Turning this off stops sending new entries. Entries already sent stay on the server, and the server is told this is off so Claude knows they may be incomplete."
         toggle={serverJournal}
         value={serverJournal ? 'On' : 'Off'}
         onPress={() => setServerJournal(!serverJournal)}

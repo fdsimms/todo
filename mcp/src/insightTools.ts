@@ -27,6 +27,7 @@ import { serializeTask, serializeTasks, type SerializedTask } from './serialize'
 import { listProjects, resolveRange, type DayRange, type LogRangeInput } from './tools';
 import { activeTimeZone } from './timeZone';
 import { vacationState, type VacationState } from './vacationTools';
+import { logSyncNote, summarizeLogSync, type LogSync } from './logSync';
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
 
@@ -107,6 +108,12 @@ export interface Overview {
    * phone, so zero means "not sent", not "nothing logged".
    */
   healthLogs: { food: number; mood: number; medication: number; workouts: number; note?: string };
+  /**
+   * Whether the phone is sending the health logs and the journal here, from
+   * each device's report of its switches (`logSync.ts`). `off` or `mixed`
+   * means what this server holds is partial, however much of it there is.
+   */
+  logSync: LogSync;
   completedTasksKeptForDays: number | 'forever';
   /**
    * What the person has asked Claude to keep in mind, in their own words. Follow
@@ -145,6 +152,13 @@ export function getOverview(replica: Replica, access: 'read' | 'write' = 'read')
   const mood = replica.moodLogs(healthFrom, today).length;
   const medication = replica.medicationLogs(healthFrom, today).length;
   const workouts = replica.workoutSessions(healthFrom, today).length;
+  const logSync = summarizeLogSync(replica.serverSharingReports());
+  // The switch's own state says it plainly when there is one; the empty-count
+  // guess is only for a phone too old to report it.
+  const healthNote = logSyncNote(logSync.healthLogs, 'healthLogs')
+    ?? (logSync.healthLogs === 'unknown' && food + mood + medication + workouts === 0
+      ? 'None in the last 30 days. They reach the server only with Settings › Data & reset › Sync › Include health logs turned on, so this may mean they were never sent.'
+      : undefined);
   const synced = replica.lastSyncedAt();
 
   return {
@@ -187,10 +201,9 @@ export function getOverview(replica: Replica, access: 'read' | 'write' = 'read')
       mood,
       medication,
       workouts,
-      ...(food + mood + medication + workouts === 0
-        ? { note: 'None in the last 30 days. They reach the server only with Settings › Data & reset › Sync › Include health logs turned on, so this may mean they were never sent.' }
-        : {}),
+      ...(healthNote ? { note: healthNote } : {}),
     },
+    logSync,
     completedTasksKeptForDays: settings.completedRetentionDays ?? 'forever',
     notesForClaude: replica.agentNotes().map(n => ({ id: n.id, text: n.text })),
     ...(synced ? { lastSyncedAt: synced } : {}),
