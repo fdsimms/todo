@@ -26,6 +26,7 @@ import {
   travelSourceOf,
   travelSourceStart,
   travelSourceEventId,
+  travelDisruptionNote,
   travelTaskTitle,
   TRAVEL_LEAD_MINUTES_DEFAULT,
   TRAVEL_LEAD_MINUTES_MAX,
@@ -269,22 +270,50 @@ describe('isTravelTaskStale', () => {
 });
 
 describe('travelTaskTitle', () => {
-  it('leads with the event and appends the note in brackets', () => {
-    expect(travelTaskTitle('Dentist', null)).toBe('Leave for Dentist');
-    expect(travelTaskTitle('Dentist', 'L delayed')).toBe('Leave for Dentist (L delayed)');
+  it('is the verb and the event, with no note', () => {
+    expect(travelTaskTitle('Dentist')).toBe('Leave for Dentist');
   });
 
   it('flattens whitespace and shortens a long event title', () => {
-    expect(travelTaskTitle('  Team   sync  ', null)).toBe('Leave for Team sync');
+    expect(travelTaskTitle('  Team   sync  ')).toBe('Leave for Team sync');
     const long = 'Quarterly planning review with the whole regional operations group';
-    const title = travelTaskTitle(long, null);
+    const title = travelTaskTitle(long);
     expect(title.startsWith('Leave for Quarterly planning')).toBe(true);
     expect(title.endsWith('…')).toBe(true);
     expect(title.length).toBeLessThanOrEqual('Leave for '.length + 60);
   });
 
   it('still says something for an untitled event', () => {
-    expect(travelTaskTitle('   ', null)).toBe('Leave for your next event');
+    expect(travelTaskTitle('   ')).toBe('Leave for your next event');
+  });
+});
+
+describe('travelDisruptionNote', () => {
+  const start = '2026-10-05T15:00:00.000Z';
+  const task = {
+    generatedKind: 'travel' as const,
+    generatedSourceId: `evt|${start}`,
+    reminderTime: '2026-10-05T14:20:00.000Z',
+  };
+  const nowMs = Date.parse('2026-10-05T12:00:00.000Z');
+  const snapshot = {
+    fetchedAt: '2026-10-05T11:58:00.000Z',
+    alerts: [{ id: 'a', routeIds: ['L'], effect: 'delays' as const, planned: false, periods: [] }],
+  };
+
+  it('names the disruption on the trip the row was written for', () => {
+    expect(travelDisruptionNote(task, snapshot, ['L'], nowMs, Number.POSITIVE_INFINITY)).toBe('L delayed');
+  });
+
+  it('is null for a line the person does not ride, no snapshot, or another kind of task', () => {
+    expect(travelDisruptionNote(task, snapshot, ['G'], nowMs, Number.POSITIVE_INFINITY)).toBeNull();
+    expect(travelDisruptionNote(task, null, ['L'], nowMs, Number.POSITIVE_INFINITY)).toBeNull();
+    expect(travelDisruptionNote({ ...task, generatedKind: null }, snapshot, ['L'], nowMs, Number.POSITIVE_INFINITY)).toBeNull();
+  });
+
+  it('is null when the row has no leave time or its source id has no start', () => {
+    expect(travelDisruptionNote({ ...task, reminderTime: null }, snapshot, ['L'], nowMs, Number.POSITIVE_INFINITY)).toBeNull();
+    expect(travelDisruptionNote({ ...task, generatedSourceId: 'garbage' }, snapshot, ['L'], nowMs, Number.POSITIVE_INFINITY)).toBeNull();
   });
 });
 
@@ -348,8 +377,7 @@ describe('travel estimates', () => {
   });
 
   it('keeps the estimate out of the title', () => {
-    expect(travelTaskTitle('Dentist', 'L delayed')).toBe('Leave for Dentist (L delayed)');
-    expect(travelTaskTitle('Dentist', null)).toBe('Leave for Dentist');
+    expect(travelTaskTitle('Dentist')).toBe('Leave for Dentist');
   });
 });
 

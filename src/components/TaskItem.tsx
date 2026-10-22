@@ -103,7 +103,12 @@ import { type ReachOutKind } from '../utils/reachOutIntent';
 import { mailtoUrl } from '../utils/email';
 import { directionsUrl } from '../utils/maps';
 import { eventCoordinate } from '../utils/calendarSync';
-import { travelEventOf, travelModeFor, travelRowNote, travelSourceEventId, travelWalkUnderFor } from '../utils/travelTasks';
+import { travelDisruptionNote, travelEventOf, travelModeFor, travelRowNote, travelSourceEventId, travelSourceStart, travelWalkUnderFor } from '../utils/travelTasks';
+import { openEventInSystemCalendar } from '../utils/calendarSync';
+import { alertFailedWithSettings } from '../utils/permissionAlert';
+import { isDemoModeActive } from '../utils/demoState';
+import { useTransitStore } from '../store/useTransitStore';
+import { addDays } from 'date-fns/addDays';
 import { useTravelTimeStore } from '../store/useTravelTimeStore';
 import { confirmDeleteTask } from '../utils/confirmDeleteTask';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -721,6 +726,36 @@ const TaskItemRow = React.memo(function TaskItem({
       travelWalkUnderFor(eventId, travelEventPrefs, travelDefaultMode, travelWalkUnder),
     );
   });
+  // The same row's disruption note ("G skipping stops; F delayed"), which is no
+  // longer in its title. Worked out from the held MTA snapshot, so a refresh
+  // re-renders only travel rows (every other row selects null).
+  const transitAlertsOn = useSettingsStore(s => s.transitAlerts);
+  const transitLines = useSettingsStore(s => s.transitLines);
+  const travelDisruption = useTransitStore(s => {
+    if (task.generatedKind !== 'travel' || !transitAlertsOn) return null;
+    return travelDisruptionNote(task, s.snapshot, transitLines, Date.now(), +addDays(getCurrentDayStart(), 1));
+  });
+  const travelSource = task.generatedKind === 'travel' ? task.generatedSourceId : null;
+  const canOpenTravelEvent = !!travelSource && travelSourceEventId(travelSource) !== null && !isDemoModeActive();
+  const handleOpenTravelEvent = async () => {
+    if (!travelSource) return;
+    haptics.tap();
+    const event = travelEventOf(travelSource, useCalendarStore.getState().events);
+    const id = event?.id ?? travelSourceEventId(travelSource);
+    if (!id) return;
+    // The occurrence's start picks the instance of a repeating event; the
+    // calendar matches it exactly, so a miss retries with the event alone.
+    const startMs = event ? Date.parse(event.start) : travelSourceStart(travelSource);
+    const start = startMs !== null && Number.isFinite(startMs) ? new Date(startMs) : undefined;
+    const opened = (await openEventInSystemCalendar(id, start))
+      || (start !== undefined && (await openEventInSystemCalendar(id)));
+    if (!opened) {
+      alertFailedWithSettings(
+        'Couldn’t open the event',
+        'Open the Calendar app to see it. If calendar access is off, turn it on in Settings.',
+      );
+    }
+  };
   const canBreakUp = !!anthropicApiKey || !!onEdit;
   const handleBreakUp = () => {
     setShowWhenPicker(false);
@@ -3072,7 +3107,7 @@ const TaskItemRow = React.memo(function TaskItem({
   // Whether the meta row has anything to show besides the notes and deadline
   // markers. The notes icon alone is a bare glyph, so it never takes a line
   // of its own (see `notesStayInTitle`).
-  const hasOtherMeta = isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || (showStreakChip && !nutrientRow) || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || slotInText !== null || meterText !== null || reminderTimeLabel !== null || travelNote !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.generatedKind === 'calendarReview';
+  const hasOtherMeta = isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || (showStreakChip && !nutrientRow) || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || slotInText !== null || meterText !== null || reminderTimeLabel !== null || travelNote !== null || travelDisruption !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.generatedKind === 'calendarReview';
   const deadlineOnMeta = markersOnMeta && deadlineDays !== null;
   const notesStayInTitle = markersOnMeta && hasNotes && !hasOtherMeta && !deadlineOnMeta;
 
@@ -3874,6 +3909,17 @@ const TaskItemRow = React.memo(function TaskItem({
                 </Text>
               </View>
             )}
+            {/* What the MTA says about this trip. On its own line (basis 100%)
+                and in the warning colour, so it reads as a notice rather than as
+                one more fact beside the time. */}
+            {travelDisruption !== null && (
+              <View style={[styles.metaChip, styles.travelDisruptionChip]} accessibilityLabel={`Transit alert: ${travelDisruption}`}>
+                <Ionicons name="warning-outline" size={iconSize.xs} color={colors.warningText} />
+                <Text style={styles.travelDisruptionLabel} numberOfLines={2}>
+                  {travelDisruption}
+                </Text>
+              </View>
+            )}
             {/* Which meal this row is. Sits at the front with the scheduled
                 chip rather than back with the counters, because it places the
                 task in the day the way that one does — three of these rows
@@ -4289,6 +4335,18 @@ const TaskItemRow = React.memo(function TaskItem({
           accessibilityLabel={`Email ${contact.emailAddress} for ${task.title}`}
         >
           <Ionicons name="mail" size={iconSize.sm} color={colors.accent} />
+        </TouchableOpacity>
+      )}
+
+      {!selectionMode && showActions && canOpenTravelEvent && (
+        <TouchableOpacity
+          onPress={handleOpenTravelEvent}
+          hitSlop={8}
+          style={styles.mapBtn}
+          accessibilityRole="button"
+          accessibilityLabel={`Open the calendar event for ${task.title}`}
+        >
+          <Ionicons name="calendar-outline" size={iconSize.sm} color={colors.accent} />
         </TouchableOpacity>
       )}
 
@@ -5802,6 +5860,14 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => {
   scheduledLabel: {
     color: colors.textSecondary,
     fontSize: font.xs,
+  },
+  travelDisruptionChip: {
+    flexBasis: '100%',
+  },
+  travelDisruptionLabel: {
+    color: colors.warningText,
+    fontSize: font.xs,
+    flexShrink: 1,
   },
   blockingLabel: {
     color: colors.textSecondary,

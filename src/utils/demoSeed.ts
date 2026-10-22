@@ -1959,7 +1959,7 @@ export function seedDemoData(): void {
   const demoDentist = { id: 'demo-dentist', start: demoDentistStart.toISOString() };
   const demoLeaveAt = new Date(demoDentistStart.getTime() - TRAVEL_LEAD_MINUTES_DEFAULT * 60 * 1000);
   addTask({
-    title: travelTaskTitle('Dentist', 'L running local'),
+    title: travelTaskTitle('Dentist'),
     dueDate: today.toISOString(),
     reminderTime: demoLeaveAt.toISOString(),
     windowEnd: dateToHHMM(demoDentistStart),

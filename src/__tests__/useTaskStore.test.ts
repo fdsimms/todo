@@ -6194,45 +6194,23 @@ describe('checkTravelTasks', () => {
     const withTransit = (overrides: Record<string, unknown> = {}) =>
       settings({ transitAlerts: true, transitLines: ['L'], ...overrides });
 
-    it('adds planned work on a picked line to the title', () => {
+    it('keeps the disruption note out of the title', () => {
       useSettingsStore.getState.mockReturnValue(withTransit());
       useTransitStore.getState.mockReturnValue(snapshot(true));
       useTaskStore.getState().checkTravelTasks();
-      expect(travelTasks()[0].title).toBe('Leave for Dentist (L running local)');
+      expect(travelTasks()[0].title).toBe('Leave for Dentist');
     });
 
-    it('adds the note to a task already written, and takes it off again', () => {
+    it('rewrites a task written with a note in its title back to the plain title', () => {
       useTaskStore.getState().checkTravelTasks();
-      expect(travelTasks()[0].title).toBe('Leave for Dentist');
+      const [task] = travelTasks();
+      useTaskStore.setState({
+        tasks: useTaskStore.getState().tasks.map(t => (
+          t.id === task.id ? { ...t, title: 'Leave for Dentist (L running local)' } : t)),
+      });
 
-      const handled = { [sourceId]: dentist().end };
-      useSettingsStore.getState.mockReturnValue(withTransit({ travelTaskHandled: handled }));
+      useSettingsStore.getState.mockReturnValue(withTransit({ travelTaskHandled: { [sourceId]: dentist().end } }));
       useTransitStore.getState.mockReturnValue(snapshot(true));
-      useTaskStore.getState().checkTravelTasks();
-      expect(travelTasks()[0].title).toBe('Leave for Dentist (L running local)');
-
-      useTransitStore.getState.mockReturnValue({ snapshot: { fetchedAt: NOW.toISOString(), alerts: [] } });
-      useTaskStore.getState().checkTravelTasks();
-      expect(travelTasks()[0].title).toBe('Leave for Dentist');
-    });
-
-    it('says nothing about a line the user does not ride', () => {
-      useSettingsStore.getState.mockReturnValue(withTransit({ transitLines: ['G'] }));
-      useTransitStore.getState.mockReturnValue(snapshot(true));
-      useTaskStore.getState().checkTravelTasks();
-      expect(travelTasks()[0].title).toBe('Leave for Dentist');
-    });
-
-    it('says nothing with its switch off, even holding a snapshot', () => {
-      useSettingsStore.getState.mockReturnValue(withTransit({ transitAlerts: false }));
-      useTransitStore.getState.mockReturnValue(snapshot(true));
-      useTaskStore.getState().checkTravelTasks();
-      expect(travelTasks()[0].title).toBe('Leave for Dentist');
-    });
-
-    it('drops a live delay once the read is too old to trust', () => {
-      useSettingsStore.getState.mockReturnValue(withTransit());
-      useTransitStore.getState.mockReturnValue(snapshot(false, new Date(2026, 9, 5, 8, 0)));
       useTaskStore.getState().checkTravelTasks();
       expect(travelTasks()[0].title).toBe('Leave for Dentist');
     });

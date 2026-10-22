@@ -5094,7 +5094,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
 
     const task = tasks.find(t => t.generatedKind === 'travel');
     expect(task).toBeDefined();
-    expect(task!.title).toBe('Leave for Dentist (L running local)');
+    expect(task!.title).toBe('Leave for Dentist');
     expect(task!.category).toBe('Leave By');
     expect(settings.travelTaskCategory).toBe('Leave By');
     expect(settings.transitLines).toEqual(['L']);
