@@ -881,9 +881,10 @@ bought.
   field adds. It is offered only while shopping (a trip is running, or something is already ticked),
   so it never sits beside "Add an item" on a list nobody is shopping from.
 - **"Replaced by" offers a narrow set** (`substituteCandidates`): the row's usual substitute, then
-  incidentals, then anything in the cart from the same aisle. The old prompt offered the whole trolley,
-  which meant paper towels for skyr. Don't widen it back; a name outside the set is one typed field
-  away, and typing one adds it to the cart and picks it.
+  incidentals. The old prompt offered the whole trolley, which meant paper towels for skyr, and a
+  later version added same-aisle rows already on the list, which meant oat milk for tofu. A row that
+  was planned is not a replacement for another planned row. Don't widen it back; a name outside the
+  set is one typed field away, and typing one adds it to the cart and picks it.
 - **"Bought before" is `purchaseCount`, not a history of off-list buys** (`incidentalPicks`). The app
   records no such history, and a staple missing from the list this week is exactly what tends to come
   home anyway. The label says what it is.

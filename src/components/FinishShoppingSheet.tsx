@@ -232,11 +232,10 @@ function sameMembers<T>(a: ReadonlySet<T>, b: ReadonlySet<T>): boolean {
  * the user to go and say so in the item sheet, which is exactly why it's
  * worth capturing well here. It unfolds under the row itself rather than
  * opening anything. What it offers is narrow on purpose
- * (`substituteCandidates`): the row's usual substitute, what came home that the
- * list never had, and anything from the same aisle already in the trolley. The
- * answer to "what did you get instead" is nearly always something that was not
- * on the list, so the whole trolley as one-tap picks was mostly paper towels
- * offered for skyr. A name outside that set is typed into the same
+ * (`substituteCandidates`): the row's usual substitute, and what came home that
+ * the list never had. The answer to "what did you get instead" is nearly always
+ * something that was not on the list, so the trolley as one-tap picks was mostly
+ * items already planned (paper towels, or oat milk, offered for tofu). A name outside that set is typed into the same
  * find-or-add `PillGroup` the store picker uses, which puts it in the cart
  * (`addToCartMany`) and picks it, since it did come home. Someone who bought
  * nothing else this trip can still say what they got. It follows the same
@@ -376,7 +375,6 @@ export function FinishShoppingSheet({
   }, [listEntries, activeListId, activeTrip, tripStartedAt, addedHere]);
   const incidentalRows = purchased.filter(p => incidental.has(p.id));
   const picks = useMemo(() => incidentalPicks(items, listEntries), [items, listEntries]);
-  const aisleById = useMemo(() => new Map(items.map(i => [i.id, i.aisle])), [items]);
 
   // ==== seeding ====
   // The prices typed into a row's price tag during this trip, as field text.
@@ -824,17 +822,16 @@ export function FinishShoppingSheet({
                   const ticked = unavailable.includes(row.id);
                   const chosenId = substituteFor[row.id] ?? null;
                   // What the item's own substitute links already say to use
-                  // instead, then what came home that the list never had, then
-                  // anything from the same aisle already in the cart. Nothing
-                  // else is offered: the rest of the trolley is never the
-                  // answer, and a name outside this set is one field away.
+                  // instead, then what came home that the list never had.
+                  // Nothing else is offered: a row that was already on the
+                  // list is not a replacement, and a name outside this set is
+                  // one field away.
                   const knownSubs = substitutesFor(row.id, itemSubs, items);
                   const candidates = substituteCandidates({
-                    missing: { id: row.id, aisle: aisleById.get(row.id) ?? '' },
+                    missing: { id: row.id },
                     usual: knownSubs.map(s => ({ id: s.item.id, name: s.item.name })),
                     incidental,
                     purchased,
-                    aisleById,
                   });
                   // A pick can be a name typed into the create field and minted
                   // on the spot, which isn't in the candidates until the cart

@@ -63,40 +63,31 @@ describe('incidentalIds', () => {
 });
 
 describe('substituteCandidates', () => {
-  const missing = { id: 'skyr', aisle: 'Dairy' };
-  const aisleById = new Map([
-    ['skyr', 'Dairy'],
-    ['siggis', 'Dairy'],
-    ['butter', 'Dairy'],
-    ['towels', 'Household'],
-    ['yogurt', 'Dairy'],
-  ]);
+  const missing = { id: 'skyr' };
   const purchased = [
     { id: 'butter', name: 'butter' },
     { id: 'towels', name: 'paper towels' },
     { id: 'siggis', name: 'Siggi’s' },
   ];
 
-  it('orders usual substitutes, then incidentals, then the same aisle', () => {
+  it('orders usual substitutes, then incidentals', () => {
     const out = substituteCandidates({
       missing,
       usual: [{ id: 'yogurt', name: 'Greek yogurt' }],
       incidental: new Set(['siggis']),
       purchased,
-      aisleById,
     });
     expect(out.map(c => [c.id, c.reason])).toEqual([
       ['yogurt', 'usual'],
       ['siggis', 'incidental'],
-      ['butter', 'sameAisle'],
     ]);
   });
 
-  it('never offers an unrelated row from the trolley', () => {
+  it('never offers a row that was already on the list, even from the same aisle', () => {
     const out = substituteCandidates({
-      missing, usual: [], incidental: new Set(), purchased, aisleById,
+      missing, usual: [], incidental: new Set(['siggis']), purchased,
     });
-    expect(out.map(c => c.id)).not.toContain('towels');
+    expect(out.map(c => c.id)).toEqual(['siggis']);
   });
 
   it('lists a row once, under its strongest reason', () => {
@@ -105,7 +96,6 @@ describe('substituteCandidates', () => {
       usual: [{ id: 'siggis', name: 'Siggi’s' }],
       incidental: new Set(['siggis']),
       purchased,
-      aisleById,
     });
     expect(out.filter(c => c.id === 'siggis')).toEqual([
       { id: 'siggis', name: 'Siggi’s', reason: 'usual' },
@@ -114,7 +104,7 @@ describe('substituteCandidates', () => {
 
   it('offers a usual substitute that was not bought', () => {
     const out = substituteCandidates({
-      missing, usual: [{ id: 'yogurt', name: 'Greek yogurt' }], incidental: new Set(), purchased: [], aisleById,
+      missing, usual: [{ id: 'yogurt', name: 'Greek yogurt' }], incidental: new Set(), purchased: [],
     });
     expect(out.map(c => c.id)).toEqual(['yogurt']);
   });
@@ -125,7 +115,6 @@ describe('substituteCandidates', () => {
       usual: [],
       incidental: new Set(['skyr']),
       purchased: [{ id: 'skyr', name: 'skyr' }],
-      aisleById,
     });
     expect(out).toEqual([]);
   });
