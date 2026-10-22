@@ -2,6 +2,8 @@ import { useEffect } from 'react';
 import { AppState } from 'react-native';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useMealPlanStore } from '../store/useMealPlanStore';
+import { usePersonStore } from '../store/usePersonStore';
 import { scheduleDailyAgenda } from './notifications';
 
 // Same floor as the widget's snapshot write, and for the same reason: a bulk
@@ -41,6 +43,17 @@ export function useDailyAgendaSync(): void {
       if (state.tasks !== prev.tasks) scheduleSoon();
     });
 
+    // The dinner and birthday lines (#3697) are names read when it's scheduled,
+    // so a meal planned or a birthday entered after that has to reschedule it
+    // just as a task change does. Meal Plan's window moving is an `entries`
+    // change too, and costs one cheap reschedule.
+    const unsubscribeMeals = useMealPlanStore.subscribe((state, prev) => {
+      if (state.entries !== prev.entries) scheduleSoon();
+    });
+    const unsubscribePeople = usePersonStore.subscribe((state, prev) => {
+      if (state.people !== prev.people) scheduleSoon();
+    });
+
     // The time and the on/off switch both change what should be pending, and
     // both are set from a screen that has no business knowing about
     // scheduling. (Settings also schedules directly, so the toggle feels
@@ -50,7 +63,8 @@ export function useDailyAgendaSync(): void {
         state.dailyAgendaEnabled !== prev.dailyAgendaEnabled ||
         state.dailyAgendaTime !== prev.dailyAgendaTime ||
         state.dayResetTime !== prev.dayResetTime ||
-        state.vacationMode !== prev.vacationMode
+        state.vacationMode !== prev.vacationMode ||
+        state.kitchenEnabled !== prev.kitchenEnabled
       ) {
         scheduleSoon();
       }
@@ -62,6 +76,8 @@ export function useDailyAgendaSync(): void {
 
     return () => {
       unsubscribeTasks();
+      unsubscribeMeals();
+      unsubscribePeople();
       unsubscribeSettings();
       subscription.remove();
       if (debounceTimer) {

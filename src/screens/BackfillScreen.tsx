@@ -1,3 +1,14 @@
+// The Backfill screen: one queue at a time of tasks, categories, projects,
+// people, grocery items or recipes missing a given field, each card answered,
+// skipped or dismissed (see docs/arch/backfill.md). One component of ~3,300
+// lines, so grep a landmark rather than reading it start to finish:
+//
+//   ==== <name> ====        the section banners through the logic half, and
+//                           one where the render begins (the field picker,
+//                           then a branch per pool)
+//   SessionReview, SubjectTitle, TaskContextRow, FieldControl, SuggestionBar
+//                           the card's parts, below the component
+//   makeStyles              styles, at the bottom
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useWithoutLockedTasks } from '../hooks/useWithoutLockedTasks';
 import { View, Text, TouchableOpacity, ScrollView, FlatList, StyleSheet, Platform, Alert, ActivityIndicator } from 'react-native';
@@ -391,6 +402,7 @@ interface SessionEntry {
 }
 
 export function BackfillScreen() {
+  // ==== store bindings and navigation ====
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   // A hidden tab (see AppNavigator), so the real bottom tab bar sits behind
@@ -438,6 +450,7 @@ export function BackfillScreen() {
   const setCookedWeight = useRecipeStore(s => s.setCookedWeight);
   const setRecipeBackfillDismissedFields = useRecipeStore(s => s.setRecipeBackfillDismissedFields);
 
+  // ==== local state (queue navigation, history, per-card drafts, AI suggestions) ====
   const [entityKind, setEntityKind] = useState<EntityKind>('task');
   const simpleMode = useSettingsStore(s => s.simpleMode);
   const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
@@ -553,6 +566,7 @@ export function BackfillScreen() {
   // comment describes.
   const suggestRoute = useAiRoute('backfillSuggestions');
 
+  // ==== field lists, counts, queues and the current item ====
   const holidaysConfigured = hasAnyHolidays({ set: holidaySet, custom: customHolidays });
   const taskFields = useMemo(
     () => backfillFieldsFor(simpleMode, rewardsEnabled, holidaysConfigured),
@@ -674,6 +688,7 @@ export function BackfillScreen() {
     currentTask?.id ?? currentCategory?.id ?? currentProject?.id ?? currentPerson?.id
     ?? currentItem?.id ?? currentRecipe?.id ?? null;
 
+  // ==== the suggested queue and applying to a whole set ====
   // What "Apply all" would actually write: read off the *live* queue rather
   // than the suggestion map, so a task answered, skipped or dismissed since
   // the request drops out of the count on its own — the same reason the
@@ -726,6 +741,7 @@ export function BackfillScreen() {
     && suggestRoute !== 'unavailable';
   const currentSuggestion = currentTask ? suggestions.get(currentTask.id) ?? null : null;
 
+  // ==== cadence offers and per-card draft resets ====
   /**
    * The cadence this person's own history suggests, or null when there is not
    * enough of it to say so honestly.
@@ -840,6 +856,7 @@ export function BackfillScreen() {
     }
   }, [currentProject?.id]);
 
+  // ==== field choice, start over, and moving through the queue (previous, undo) ====
   const chooseTaskField = (id: BackfillFieldId) => {
     haptics.tap();
     animateLayout();
@@ -1060,6 +1077,7 @@ export function BackfillScreen() {
     });
   };
 
+  // ==== applying a task field (series peers, group and kind defaults, slot-in) ====
   // A tap here commits immediately and advances the queue, with no per-row
   // confirm — registering the snapshot with setLastAction, same as
   // TaskEditor's save, is what makes a mis-tap recoverable via shake-to-undo
@@ -1272,6 +1290,7 @@ export function BackfillScreen() {
     );
   };
 
+  // ==== AI suggestions: fetch and apply ====
   // The two task fields the suggestion feature answers, factored out so the
   // ordinary pills and a suggested value write through exactly the same call —
   // a suggestion accepted has to be indistinguishable from the same value
@@ -1418,6 +1437,7 @@ export function BackfillScreen() {
     );
   };
 
+  // ==== applying a category, project or person field ====
   // The category store has no generic "patch a category" setter (see
   // useCategoryStore) — each field already owns a dedicated one, matching
   // how CategoryEditor itself writes them, so this just dispatches to it.
@@ -1633,6 +1653,7 @@ export function BackfillScreen() {
     }
   };
 
+  // ==== skip and dismiss ====
   const skip = () => {
     if (!currentId) return;
     haptics.tap();
@@ -1740,6 +1761,7 @@ export function BackfillScreen() {
     }
   };
 
+  // ==== applying a grocery item field (variety, substitutes, nutrition, product, rating, rename) ====
   // The item pool's `variety` field — a value picker like category/project's
   // own applies, so no advance() call: setting a key drops the item from the
   // live queue on its own once it no longer satisfies isItemFieldMissing.
@@ -2022,6 +2044,7 @@ export function BackfillScreen() {
     });
   };
 
+  // ==== recipe fields, custom estimates and reminders ====
   /**
    * The recipe pool's three fields, which are one handler because they are one
    * control: a number is stepped and then committed, the same shape the
@@ -2104,6 +2127,7 @@ export function BackfillScreen() {
     setReminderPickerOpen(false);
   };
 
+  // ==== render: the field picker, then a branch per pool ====
   if (!active) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>

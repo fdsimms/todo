@@ -264,7 +264,7 @@ export function NotificationSettings() {
         iconColor={dailyAgendaEnabled ? colors.accent : undefined}
         label="Daily agenda"
         hint={dailyAgendaEnabled
-          ? 'One notification each morning with the day’s count'
+          ? 'One notification each morning with the day’s count, dinner and birthdays'
           : 'Nothing arrives unless a task has its own reminder'}
         toggle={dailyAgendaEnabled}
         onPress={() => onToggleDailyAgenda(!dailyAgendaEnabled)}

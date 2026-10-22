@@ -1,3 +1,10 @@
+// The Stats screen: a read-only look back over completions, rhythms, habits,
+// focus sessions, projects, cooking and eating, workouts and time with people,
+// each section shown only when it has data and its feature is on. One component
+// of ~1,250 lines, so grep a landmark rather than reading it start to finish:
+//
+//   ==== <name> ====        the section banners through the logic half
+//   makeStyles              styles, at the bottom
 import React, { useCallback, useMemo, useRef, useState, useEffect } from 'react';
 import { useWithoutLockedTasks } from '../hooks/useWithoutLockedTasks';
 import {
@@ -185,6 +192,7 @@ function expectedCount(recurrenceType: string, interval: number): number {
 }
 
 export function StatsScreen() {
+  // ==== screen chrome, navigation and the task editor ====
   const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const scrollTop = useListScrollToTop();
@@ -218,6 +226,7 @@ export function StatsScreen() {
   const textScaleFactor = useTextScale();
   const styles = useMemo(() => makeStyles(colors, textScaleFactor), [colors, textScaleFactor]);
 
+  // ==== the logical day, completions and the seven-day chart ====
   const reduceMotion = useReduceMotion();
   const now = useMemo(() => new Date(), []);
   // The day counts below bucket by the *logical* day, as Today, the widget and
@@ -283,6 +292,7 @@ export function StatsScreen() {
 
   const barMax = useMemo(() => Math.max(1, ...chartBars.map(b => b.count)), [chartBars]);
 
+  // ==== rhythms and the bars growing in ====
   // When the user actually finishes things, and where that disagrees with the
   // time of day their tasks claim. Both read the same completion history the
   // sections above do — see utils/rhythms.
@@ -363,6 +373,7 @@ export function StatsScreen() {
     }).start();
   }, [chartProgress, reduceMotion]);
 
+  // ==== habits (streaks, rates, repeats, misses, on time) ====
   const streaks = useMemo(() => rankStreaks(tasks), [tasks]);
 
   const habits = useMemo(() => {
@@ -400,7 +411,7 @@ export function StatsScreen() {
     [tasks],
   );
 
-  // --- Focus sessions -------------------------------------------------------
+  // ==== focus sessions ====
   // The one area here whose history is not the task list: a session's cost is
   // recorded as each stretch is retired (see utils/focusStats). The chart reads
   // a week and the rows read a month, deliberately — see FOCUS_DAYS.
@@ -418,7 +429,7 @@ export function StatsScreen() {
   const focusRatio = useMemo(() => focusAccuracy(focusRecent), [focusRecent]);
   const focusBreaks = useMemo(() => breakUse(focusRecent), [focusRecent]);
 
-  // --- Projects -------------------------------------------------------------
+  // ==== projects ====
   // Retrospective, like everything else here. "Which project has gone quiet" is
   // a real question and deliberately not this one's: it arrives as a task you
   // can defer (see projectReviewTasks.ts), and repeating it as a statistic
@@ -426,7 +437,7 @@ export function StatsScreen() {
   const projects = useProjectStore(useShallow(s => s.projects));
   const projectSummary = useMemo(() => projectStats(projects, tasks), [projects, tasks]);
 
-  // --- Cooking (#1367) ------------------------------------------------------
+  // ==== cooking, the fridge and time together ====
   // Three sets, read three different ways. Recipes and leftovers are both held
   // wholesale in memory, so those are plain memos; the meal plan is a window
   // MealPlanScreen owns and this screen must not touch, so its half is the
@@ -497,6 +508,7 @@ export function StatsScreen() {
   );
   const hasCooking = hasCookingData(cookingCounts, outcomeCounts(fridge), mostCooked);
 
+  // ==== eating (the nutrition read, nutrients by day) ====
   // Gated at the point of use like the cooking read above: the food log lives
   // behind the kitchen switch, so somebody who has put the kitchen away
   // shouldn't be shown what they ate, and turning it back on restores this
@@ -559,6 +571,7 @@ export function StatsScreen() {
     [kitchenEnabled, foodEntries, cookWindow],
   );
 
+  // ==== which sections show, and their stagger order ====
   // The screen used to be gated on completions alone, so someone whose history
   // is in the kitchen rather than the task list was told there was no data.
   const hasTaskData = done.length > 0;

@@ -16,6 +16,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import type { GroceryItem } from '../types';
 import { useFilterField } from '../hooks/useFilterField';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { FieldClearButton } from './FieldClearButton';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { BUTTON_LABEL } from '../copy/shared';
@@ -67,6 +68,10 @@ export function MergeItemSheet({ visible, itemId, initialPickedId, onClose, onMe
   const item = useSheetSubject(liveItem);
 
   const { query, clear: clearQuery, props: filterField } = useFilterField();
+  // The results sit under a search field, so without this the keyboard covers
+  // the last of them with no room to scroll them clear (see the hook's
+  // `fieldAbove` note, and the same list in FoodLogEntrySheet).
+  const listScroll = useKeyboardInsetScroll<FlatList>({ ownsSheet: true, fieldAbove: true });
   const [pickedId, setPickedId] = useState<string | null>(null);
 
   // The sheet stays mounted with `visible` toggling, so a fresh open has to
@@ -203,6 +208,8 @@ export function MergeItemSheet({ visible, itemId, initialPickedId, onClose, onMe
             </View>
 
             <FlatList
+              {...listScroll.props}
+              ref={listScroll.ref}
               data={results}
               keyExtractor={row => row.id}
               renderItem={renderRow}

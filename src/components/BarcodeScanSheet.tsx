@@ -1,3 +1,12 @@
+// Scanning groceries one barcode at a time, with a typed code or name as the
+// fallback: each scan is looked up, matched to the catalog and committed through
+// `onApply`. The same sheet unpacks shopping, stocks the pantry and logs food;
+// only the words differ (CONTEXT_COPY). One component of ~1,250 lines, so grep a
+// landmark rather than reading it start to finish:
+//
+//   ==== <name> ====        the section banners through the logic half
+//   StatusChip, FieldInput  small parts, above the component
+//   makeStyles              styles, at the bottom
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Keyboard,
@@ -464,6 +473,7 @@ function FieldInput({
 }
 
 export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotographLabel }: Props) {
+  // ==== store bindings and environment (scanner module, keyboard scroll) ====
   const colors = useColors();
   /**
    * The one-pass scanner, or null where it isn't supported (anything but an
@@ -487,6 +497,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
   const gtinProductFor = useGroceryStore(s => s.gtinProductFor);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
+  // ==== local state (camera permission, rows, typed entry, picker, editor) ====
   const [permission, requestPermission] = useCameraPermissions();
   const [rows, setRows] = useState<ScanRow[]>([]);
   const [manual, setManual] = useState('');
@@ -528,6 +539,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
    */
   const scannedGtinsRef = useRef<Set<string>>(new Set());
 
+  // ==== resetting the session on close ====
   const reset = useCallback(() => {
     setRows([]);
     setManual('');
@@ -543,6 +555,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
     if (!visible) reset();
   }, [visible, reset]);
 
+  // ==== scan intake and lookup (camera and data scanner handlers, retry) ====
   const patchRow = useCallback((key: string, patch: Partial<ScanRow>) => {
     setRows(current => current.map(r => (r.key === key ? { ...r, ...patch } : r)));
   }, []);
@@ -676,6 +689,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
     [addScan]
   );
 
+  // ==== typed entry ====
   /**
    * The typed field takes either half of what the camera can't do: a barcode
    * whose bars won't read (crushed box, freezer frost), or a name for something
@@ -763,6 +777,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
     haptics.tap();
   }, [manual, context, addScan, aliasItemFor, keyboardScroll.ref]);
 
+  // ==== catalog matching and what each row resolved to ====
   // The barcode first, the source's words second. A code is the one thing on a
   // scan that can't drift: rename the row to "vegan sausage" and the product
   // name has nothing left to match on, while the digits underneath are the
@@ -872,6 +887,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
   ).length;
   const needNutritionCount = rows.filter((r, i) => needsNutritionFor(r, matches[i])).length;
 
+  // ==== filing a row under a catalog item ====
   /**
    * Files a scanned row under a catalog item, from the picker's own results or
    * from a row it just minted. One path for both so a new item behaves exactly
@@ -901,6 +917,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
   });
   };
 
+  // ==== applying the scans ====
   const applyNow = useCallback(() => {
     const itemIds: string[] = [];
     const toAdd: ReceiptAddDraft[] = [];
@@ -1058,6 +1075,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
     }));
   }, [applyNow]);
 
+  // ==== row captions ====
   /** What a row resolved to, or null when it has nothing to say yet. */
   const captionFor = (row: ScanRow, index: number): string | null => {
     if (row.pending) return 'Looking it up…';
@@ -1132,6 +1150,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
     return 'Saved as a new item when you continue';
   };
 
+  // ==== the camera strip and cancel ====
   // An open editor is a form too: the 200pt camera over it left a few rows of
   // it between the camera and the bottom bar, so it folds the same way.
   const editing = openKey !== null && rows.some(r => r.key === openKey && !r.pending);

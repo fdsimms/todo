@@ -14,7 +14,7 @@ import {
   isFocusSessionFinished,
 } from './focusPlan';
 import { displayTitleFor, isHeldBack, isQuotaTask, isTaskNotNeeded, isWithheld, windowBoundsFor } from './visibilityUtils';
-import { agendaCounts, agendaBody, agendaMeetings, agendaSpokenBody, nextAgendaTime } from './dailyAgenda';
+import { agendaBirthdays, agendaCounts, agendaBody, agendaDinners, agendaMeetings, agendaSpokenBody, nextAgendaTime } from './dailyAgenda';
 import { calendarCovers } from './eventConflicts';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCalendarStore } from '../store/useCalendarStore';
@@ -23,7 +23,7 @@ import { isAlarmKitAvailable, requestAlarmAuthorization, scheduleNativeAlarm, ca
 import { ALARM_MAX_RINGS, alarmChainIds, alarmChainTimes, stepTimerAlarmUuid, taskAlarmUuid } from './alarmChain';
 import { isDemoModeActive } from './demoState';
 import { quotaRunSpan, quotaDueTimesAfter } from './quotaSchedule';
-import { formatTimeOfDay, getDayStart } from './dateUtils';
+import { dayKeyOf, formatTimeOfDay, getDayStart } from './dateUtils';
 import { focusMeetingHeadsUp } from './focusWindow';
 import { resolveActiveTrip } from './activeTrip';
 import type { Shop } from '../types';
@@ -641,7 +641,7 @@ function agendaRequest(
 ): { when: Date; body: string; spoken: string | null } | null {
   const {
     dailyAgendaEnabled, dailyAgendaTime, dayResetTime, quietHoursStart, quietHoursEnd,
-    calendarReadEnabled, use24HourTime,
+    calendarReadEnabled, use24HourTime, kitchenEnabled,
   } = useSettingsStore.getState();
   if (!dailyAgendaEnabled) return null;
 
@@ -675,6 +675,25 @@ function agendaRequest(
       counts.meetings = agendaMeetings(events, dayStart, dayEnd);
     }
   }
+  // Names rather than counts, read for the same logical day. The meal plan is
+  // left out entirely with the kitchen switched off, the way every other
+  // kitchen surface is; dayKeyOf the logical day's start, since a meal's date
+  // is a plain day key (MealPlanEntry.date).
+  //
+  // The three stores are required here rather than imported, the way
+  // healthWorkoutSync reaches its store: each opens the database, and this file
+  // is imported for its pure helpers by far more than schedules an agenda.
+  /* eslint-disable @typescript-eslint/no-require-imports */
+  const { useMealPlanStore } = require('../store/useMealPlanStore') as typeof import('../store/useMealPlanStore');
+  const { useRecipeStore } = require('../store/useRecipeStore') as typeof import('../store/useRecipeStore');
+  const { usePersonStore } = require('../store/usePersonStore') as typeof import('../store/usePersonStore');
+  /* eslint-enable @typescript-eslint/no-require-imports */
+  const agendaDay = getDayStart(when, dayResetTime);
+  const mealPlan = useMealPlanStore.getState();
+  if (kitchenEnabled && mealPlan.initialized) {
+    counts.dinners = agendaDinners(mealPlan.entriesForDayLive(dayKeyOf(agendaDay)), useRecipeStore.getState().recipes);
+  }
+  counts.birthdays = agendaBirthdays(usePersonStore.getState().people, agendaDay);
   const body = agendaBody(counts, use24HourTime);
   // Composed here and carried on the notification rather than recomputed when
   // it is tapped, which is what makes the spoken line trustworthy: it says what

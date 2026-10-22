@@ -3031,6 +3031,10 @@ function seedPeople(today: Date): void {
 
   const photos = addTask({ title: 'Photos from the trip' });
   updateTask(photos.id, { waitingOnPersonId: gideon.id });
+  // An undated task that names him, for the No date list on his page (#3695),
+  // beside the wait above in his Waiting list.
+  const drill = addTask({ title: 'Return Gideon’s drill' }, undefined, { skipTitleRules: true });
+  updateTask(drill.id, { personIds: [gideon.id] });
   // Backdated past WAITING_FOLLOW_UP_THRESHOLD_DAYS, so the follow-up task
   // below is a real answer to "how long has this been going on" rather than
   // a wait that only just started.

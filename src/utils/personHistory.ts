@@ -92,11 +92,65 @@ export interface UpcomingEntry {
  * is a wish rather than a plan, and listing it under something called Coming up
  * would be the app overstating what you have arranged.
  */
-export function personUpcoming(tasks: readonly Task[]): UpcomingEntry[] {
+export function personUpcoming(tasks: readonly Task[], personId?: string): UpcomingEntry[] {
   return tasks
-    .filter(t => t.parentId === null && !t.completed && !t.archived && t.dueDate !== null)
+    .filter(t => isLive(t) && t.dueDate !== null && !waitsOn(t, personId))
     .map(t => ({ taskId: t.id, title: t.title, on: t.dueDate! }))
     .sort((a, b) => a.on.localeCompare(b.on));
+}
+
+/** A top-level task still to do. */
+function isLive(t: Task): boolean {
+  return t.parentId === null && !t.completed && !t.archived;
+}
+
+/** Held waiting on this person, so listed under that and nowhere else on their page. */
+function waitsOn(t: Task, personId: string | undefined): boolean {
+  return personId !== undefined && t.waitingOnPersonId === personId;
+}
+
+/** A live task that names them and has no date: the wishes `personUpcoming` leaves out. */
+export interface UndatedEntry {
+  taskId: string;
+  title: string;
+}
+
+/**
+ * Live tasks naming them that carry no date, in the order given (#3695).
+ *
+ * The "someday, coffee with Gideon" rows `personUpcoming` refuses to call
+ * Coming up, given a heading that says what they are instead. Without it,
+ * "Return Gideon's drill" never appeared on the page you would open before
+ * calling him.
+ */
+export function personUndated(tasks: readonly Task[], personId?: string): UndatedEntry[] {
+  return tasks
+    .filter(t => isLive(t) && t.dueDate === null && !waitsOn(t, personId))
+    .map(t => ({ taskId: t.id, title: t.title }));
+}
+
+/** A live task held waiting on them, with its date when it has one. */
+export interface WaitingEntry {
+  taskId: string;
+  title: string;
+  /** ISO `dueDate`, or null for an undated one. */
+  on: string | null;
+}
+
+/**
+ * What you are waiting on them for (`Task.waitingOnPersonId`), dated ones
+ * soonest first and the undated after them (#3695).
+ *
+ * Takes every task rather than `tasksNaming`'s, because a wait is independent
+ * of `personIds` (see "Waiting on a person" in docs/arch/people.md): waiting
+ * on Gideon for the photos doesn't name him. A list and never a count, for
+ * that section's own rule.
+ */
+export function personWaiting(tasks: readonly Task[], personId: string): WaitingEntry[] {
+  return tasks
+    .filter(t => isLive(t) && t.waitingOnPersonId === personId)
+    .map(t => ({ taskId: t.id, title: t.title, on: t.dueDate }))
+    .sort((a, b) => (a.on === null ? 1 : 0) - (b.on === null ? 1 : 0) || (a.on ?? '').localeCompare(b.on ?? ''));
 }
 
 /** When the most recent one was, or null when there is nothing on file yet. */

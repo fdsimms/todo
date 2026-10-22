@@ -47,6 +47,7 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import type { GroceryItem } from '../types';
 import { useFilterField } from '../hooks/useFilterField';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { FieldClearButton } from './FieldClearButton';
 import { BUTTON_LABEL } from '../copy/shared';
 
@@ -93,6 +94,10 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const { query, clear: clearQuery, props: filterField } = useFilterField();
+  // The results sit under a search field, so without this the keyboard covers
+  // the last of them with no room to scroll them clear (see the hook's
+  // `fieldAbove` note, and the same list in FoodLogEntrySheet).
+  const listScroll = useKeyboardInsetScroll<FlatList>({ ownsSheet: true, fieldAbove: true });
   const [shopFilter, setShopFilter] = useState<string | null>(null);
   // Nested rather than a sibling — a Modal presents from its React parent's
   // view controller, so a sibling would ask this sheet's own presenter for a
@@ -392,6 +397,8 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
         )}
 
         <FlatList
+          {...listScroll.props}
+          ref={listScroll.ref}
           data={rows}
           keyExtractor={i => i.id}
           renderItem={renderItem}

@@ -1,3 +1,13 @@
+// One project's page: its tasks, sections and checklist lines in a reorderable
+// list, with selection and bulk actions, typed lines, the add button dragged
+// into the list, and the summary line. One component (ProjectDetailContent) of
+// ~2,100 lines, so grep a landmark rather than reading it start to finish:
+//
+//   ==== <name> ====        the section banners through the logic half
+//   makeStyles              styles, after ProjectDetailContent
+//
+// AddProjectTaskFabWithDropLabel, GroupDropTargetRow and NewLineField above it
+// are its furniture, and ProjectDetailScreen at the bottom is the route wrapper.
 import React, { useState, useMemo, useCallback, useRef, useEffect, useId } from 'react';
 import { useProjectAccess } from '../hooks/useProjectAccess';
 import {
@@ -368,6 +378,7 @@ function NewLineField({
 }
 
 function ProjectDetailContent() {
+  // ==== store bindings and navigation ====
   const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const fabBottom = useFabBottom();
@@ -418,6 +429,7 @@ function ProjectDetailContent() {
   const deferGroup = useTaskStore(s => s.deferGroup);
   const addExistingToGroup = useTaskStore(s => s.addExistingToGroup);
 
+  // ==== local state (sheets, editors, drag tracking, typed lines, toggles) ====
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const sectionMenu = useActionMenu();
   const [pageMenuVisible, setPageMenuVisible] = useState(false);
@@ -517,6 +529,7 @@ function ProjectDetailContent() {
   // snapshot taken when the row was tapped — same as the Logbook's.
   const [answerTaskId, setAnswerTaskId] = useState<string | null>(null);
   const flashTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  // ==== selection mode and bulk completion ====
   const {
     selectionMode,
     selectedIds,
@@ -555,6 +568,7 @@ function ProjectDetailContent() {
   // single motion — see SpotlightOverlay.
   const spotlightProgress = useSpotlightProgress(expandedTaskId !== null && !selectionMode);
 
+  // ==== the project and what is derived from it (tasks, progress, decisions, list items) ====
   const project = projects.find(p => p.id === projectId) ?? null;
   // Which rows here are list items rather than tasks (src/utils/listMode.ts):
   // a list section's, and in a list project the loose rows too.
@@ -780,7 +794,7 @@ function ProjectDetailContent() {
     [projectListItems, subtasksByParent, projectId],
   );
 
-  // ——— Dragging the add button into the list ———————————————————————————
+  // ==== dragging the add button into the list ====
   //
   // Same gesture as Today's and Projects' own add buttons, over the shape
   // this list actually has: no category headers, so every loose task is a
@@ -826,6 +840,7 @@ function ProjectDetailContent() {
     reorderProjectItems(projectId, spliced.map(item => (item.type === 'group' ? item.group.id : item.task.id)));
   };
 
+  // ==== row and section handlers ====
   // The row handlers take the row's own id rather than closing over it, so one
   // callback serves every row — TaskItem is memoized and a fresh arrow per row
   // per render defeats its shallow compare silently, putting every mounted row
@@ -959,6 +974,7 @@ function ProjectDetailContent() {
     if (moved < interaction.tapMoveThreshold) setExpandedTaskId(null);
   };
 
+  // ==== the add menu and quick add ====
   // Template goes in simplified mode, same as it does from Today's add button.
   const addMenuItems = useMemo(
     () => ADD_MENU_ITEMS
@@ -1073,6 +1089,7 @@ function ProjectDetailContent() {
     if (placed && dropped?.kind === 'insert') placeCreatedTask(task, dropped);
   };
 
+  // ==== the section menu and typed lines (sort A to Z, new lines) ====
   /**
    * A checklist section, A to Z, for the packing list inside a trip. One undo
    * step puts it back.
@@ -1249,6 +1266,7 @@ function ProjectDetailContent() {
     return made[made.length - 1];
   };
 
+  // ==== dropping the add button ====
   const openQuickAddForDrop = (intent: FabDropIntent) => {
     // Dropped back on the button: the drag is the whole of what happened, so
     // no sheet, and nothing left armed for the next tap.
@@ -1308,6 +1326,7 @@ function ProjectDetailContent() {
   const onQuickAddResumed = useStableCallback(attachToProject);
 
 
+  // ==== row renderers ====
   // A completed row, in the block at the bottom. Not draggable.
   const renderCheckedRow = (task: Task) => {
     const subs = subtasksOf(task.id);
@@ -1425,6 +1444,7 @@ function ProjectDetailContent() {
     return lastId;
   };
 
+  // ==== the add-existing picker and bulk-move targets ====
   const eligibleForAdd = useMemo(() => {
     // Nothing to sort while the picker is shut, and this ran on every add.
     if (!project || !showExistingPicker) return [];
@@ -1456,6 +1476,7 @@ function ProjectDetailContent() {
     [taskGroups, projectId],
   );
 
+  // ==== the summary line and guests ====
   // The line under the header: how far along the project is and its deadline,
   // or, once it's finished or filed away, that, with the way back.
   const pastWindow = project ? isProjectPastWindow(project, progress) : false;

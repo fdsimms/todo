@@ -1,8 +1,11 @@
 import { isSameDay } from 'date-fns/isSameDay';
-import type { Task } from '../types';
+import type { MealPlanEntry, Person, Recipe, Task } from '../types';
 import { formatTimeOfDay, getDayStart, getEffectiveTaskDate, getTaskDayStart } from './dateUtils';
 import { occupiesTime, type BusyEvent } from './calendarBusy';
 import { hhmmToDate } from './clockTime';
+import { recipeIndex, titleForEntry, uncookedEntries } from './mealPlan';
+import { birthdayInYear } from './birthdayTasks';
+import { primaryNickname } from './nicknames';
 
 /**
  * The daily agenda notification — what it says, and when the next one lands.
@@ -28,6 +31,13 @@ export interface AgendaCounts {
    * read for the day: unknown is left unsaid rather than reported as none.
    */
   meetings?: AgendaMeetings | null;
+  /**
+   * What's planned for dinner (`agendaDinners`). Absent with the kitchen
+   * switched off, and empty when nothing is planned: both leave the line out.
+   */
+  dinners?: string[];
+  /** Whose birthday the day is (`agendaBirthdays`), by the name the app calls them. */
+  birthdays?: string[];
 }
 
 export interface AgendaMeetings {
@@ -57,6 +67,53 @@ export function agendaMeetings(
     if (first === null || start < first) first = start;
   }
   return count > 0 && first !== null ? { count, first: new Date(first) } : null;
+}
+
+/**
+ * The day's dinners, in plan order, by the name each row shows on the week.
+ *
+ * Dinner only: it is the meal a morning summary can still do something about
+ * (a thaw, a stop at the store on the way home), and the line stays one line.
+ * A dinner already marked cooked is left out, which matters only when the
+ * agenda is rebuilt late on the day it covers.
+ */
+export function agendaDinners(entries: readonly MealPlanEntry[], recipes: readonly Recipe[]): string[] {
+  const index = recipeIndex(recipes);
+  return uncookedEntries(entries.filter(e => e.slot === 'dinner'))
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map(e => titleForEntry(e, index).trim())
+    .filter(Boolean);
+}
+
+/**
+ * Who has a birthday on the agenda's day, named the way the birthday task
+ * names them (their nickname when they have one).
+ *
+ * Read from the people themselves rather than from the birthday tasks, which
+ * land days early on purpose (`birthdayLeadDays`) and so are never dated for
+ * the birthday itself. Archived people are left out, as they are everywhere a
+ * person would otherwise surface.
+ */
+export function agendaBirthdays(people: readonly Person[], day: Date): string[] {
+  const names: string[] = [];
+  for (const person of people) {
+    if (person.archived) continue;
+    const birthday = birthdayInYear(person, day.getFullYear());
+    if (!birthday || !isSameDay(birthday, day)) continue;
+    const name = primaryNickname(person.nickname) || person.name.trim();
+    if (name) names.push(name);
+  }
+  return names;
+}
+
+/** "Dinner: Chicken tacos" and "Gideon’s birthday", each on a line of its own. */
+function extraLines(counts: AgendaCounts): string[] {
+  const lines: string[] = [];
+  if (counts.dinners && counts.dinners.length > 0) lines.push(`Dinner: ${counts.dinners.join(', ')}`);
+  const names = counts.birthdays ?? [];
+  if (names.length === 1) lines.push(`${names[0]}’s birthday`);
+  else if (names.length > 1) lines.push(`Birthdays: ${names.join(', ')}`);
+  return lines;
 }
 
 function meetingsPhrase(meetings: AgendaMeetings, use24Hour: boolean, spoken: boolean): string {
@@ -134,7 +191,11 @@ export function agendaBody(counts: AgendaCounts, use24Hour = false): string | nu
   // Last: the counts above are the app's own business, and a day of meetings
   // with no task on it is still a day worth a morning summary.
   if (counts.meetings) parts.push(meetingsPhrase(counts.meetings, use24Hour, false));
-  return parts.length > 0 ? parts.join(' · ') : null;
+  // Dinner and birthdays are names rather than counts, so they get lines of
+  // their own under the counts instead of more fragments between the dots.
+  const lines = parts.length > 0 ? [parts.join(' · ')] : [];
+  lines.push(...extraLines(counts));
+  return lines.length > 0 ? lines.join('\n') : null;
 }
 
 /**
@@ -189,8 +250,13 @@ export function agendaSpokenBody(counts: AgendaCounts, use24Hour = false): strin
     parts.push(`${counts.deadlines} deadline${counts.deadlines === 1 ? '' : 's'}`);
   }
   if (counts.meetings) parts.push(meetingsPhrase(counts.meetings, use24Hour, true));
-  if (parts.length === 0) return null;
-  return `Today: ${joinSpoken(parts)}.`;
+  const sentences: string[] = [];
+  if (parts.length > 0) sentences.push(`Today: ${joinSpoken(parts)}.`);
+  if (counts.dinners && counts.dinners.length > 0) sentences.push(`Dinner is ${joinSpoken(counts.dinners)}.`);
+  const names = counts.birthdays ?? [];
+  if (names.length === 1) sentences.push(`It’s ${names[0]}’s birthday.`);
+  else if (names.length > 1) sentences.push(`${joinSpoken(names)} have birthdays.`);
+  return sentences.length > 0 ? sentences.join(' ') : null;
 }
 
 /**

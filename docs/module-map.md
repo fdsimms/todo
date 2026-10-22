@@ -112,7 +112,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/cookware.ts` — COOKWARE_MAX_G, clampCookwareWeight, parseWeightText, CookwareNoun, NetWeight, netWeight, COOKWARE_TYPES, isCookwareType, cookwareTypeOf, effectiveCookwareType, +1 more
 - `src/utils/copyFlagMode.ts` — isFlagMode, setFlagMode, getFlagModeVersion, subscribeFlagMode, setFlaggedTexts, isTextFlagged, setCaptureListener, requestCapture, flaggableText
 - `src/utils/createdTaskPlacement.ts` — CreatedTaskDestination, describeCreatedTaskPlacement, describeMovedTaskPlacement
-- `src/utils/dailyAgenda.ts` — AgendaCounts, AgendaMeetings, agendaMeetings, agendaCounts, agendaBody, agendaSpokenBody, nextAgendaTime
+- `src/utils/dailyAgenda.ts` — AgendaCounts, AgendaMeetings, agendaMeetings, agendaDinners, agendaBirthdays, agendaCounts, agendaBody, agendaSpokenBody, nextAgendaTime
 - `src/utils/dailyAgendaSync.ts` — useDailyAgendaSync
 - `src/utils/dateUtils.ts` — getDayStart, getCurrentDayStartMs, getCurrentDayStart, getCurrentLogicalDayKey, getLogicalDayKey, dayKeyOf, dayKeyToDate, deadlineInstant, getTaskDayStart, formatHHMM, +36 more
 - `src/utils/dayContextRows.ts` — HealthRowKey, HEALTH_ROW_KEYS, HEALTH_ROW_LABELS, parseHealthRowKeys, serializeHealthRowKeys, ALL_DAY_CAPTION, startsInLabel, eventContextRows, mealContextRows, healthContextRows, +4 more
@@ -348,7 +348,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/perfLog.ts` — PerfEntry, PerfRunKind, PerfRun, PERF_RUN_LIMIT, PERF_ENTRY_LIMIT, perfNow, recordTiming, markMilestone, timed, currentEntries, +5 more
 - `src/utils/perfReport.ts` — savePerfRun, collectDeviceMetrics, perfReportText
 - `src/utils/permissionAlert.ts` — alertPermissionOff, alertFailedWithSettings
-- `src/utils/personHistory.ts` — HistoryEntry, personHistory, UpcomingEntry, personUpcoming, lastTogether, describeLastTogether, daysSinceTogether, describeDaysSince
+- `src/utils/personHistory.ts` — HistoryEntry, personHistory, UpcomingEntry, personUpcoming, UndatedEntry, personUndated, WaitingEntry, personWaiting, lastTogether, describeLastTogether, +2 more
 - `src/utils/personNotes.ts` — PERSON_NOTE_LABELS, PERSON_NOTE_HEADINGS, PERSON_NOTE_HINTS, isLiveNote, isStaleNote, notesOfKind, notesFor, describeNoteDay, giftIdeasText
 - `src/utils/phone.ts` — phoneDigits, telUrl, isDialable, smsUrl, formatPhoneInput, looksLikePhoneNumber
 - `src/utils/pillOverflow.ts` — OverflowPill, PillOverflowResult, PillOverflowOptions, DEFAULT_PILL_LIMIT, resolvePillOverflow, PillSubmit, resolvePillSubmit

@@ -58,7 +58,9 @@ import {
   describeLastTogether,
   lastTogether,
   personHistory,
+  personUndated,
   personUpcoming,
+  personWaiting,
   type HistoryEntry,
 } from '../utils/personHistory';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
@@ -157,7 +159,12 @@ export function PersonDetailScreen() {
   const [pageDay, setPageDay] = useState<{ dayKey: string; kind: JournalKind } | null>(null);
   const [pageOpen, setPageOpen] = useState(false);
   const history = useMemo(() => personHistory(tasks), [tasks]);
-  const upcoming = useMemo(() => personUpcoming(tasks), [tasks]);
+  // A task waiting on them is listed under Waiting and nowhere else here, so
+  // one carrying their id too doesn't also show as Coming up or No date.
+  const upcoming = useMemo(() => personUpcoming(tasks, personId), [tasks, personId]);
+  const undated = useMemo(() => personUndated(tasks, personId), [tasks, personId]);
+  // Every task, not `tasks`: a wait is independent of `personIds`.
+  const waiting = useMemo(() => personWaiting(allTasks, personId), [allTasks, personId]);
 
   // Everybody, archived included, because ambiguity has to be judged against
   // the whole list: with two Gideons on file, "Dinner w/ Gideon" names neither,
@@ -180,7 +187,7 @@ export function PersonDetailScreen() {
   const [showAllSuggestions, setShowAllSuggestions] = useState(false);
   const allNotes = usePersonNoteStore(useShallow(s => s.notes));
   const [noteSheet, setNoteSheet] = useState<{ note: PersonNote | null; kind: PersonNoteKind } | null>(null);
-  // A coming-up task opened from its row. Its id, read live from the store,
+  // A coming-up, waiting or undated task opened from its row. Its id, read live from the store,
   // so an edit made in the editor shows straight away.
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const editingTask = useTaskStore(s => (editingTaskId ? s.tasks.find(t => t.id === editingTaskId) ?? null : null));
@@ -561,6 +568,63 @@ export function PersonDetailScreen() {
                       <Text style={styles.entryDate}>{item.when}</Text>
                     </View>
                   )}
+                </View>
+              ))}
+            </View>
+          </>
+        )}
+
+        {/* Waiting on them, then the undated tasks that name them (#3695).
+            Rows and never a count, for "Waiting on a person" in
+            docs/arch/people.md: a number under a name reads as a tally. */}
+        {waiting.length > 0 && (
+          <>
+            <Text style={styles.groupLabel}>{`WAITING ON ${name.toUpperCase()}`}</Text>
+            <View style={styles.card}>
+              {waiting.map((entry, i) => {
+                const when = entry.on
+                  ? new Date(entry.on).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+                  : null;
+                return (
+                  <View key={entry.taskId}>
+                    {i > 0 && <View style={styles.sep} />}
+                    <TouchableOpacity
+                      style={styles.entryRow}
+                      onPress={() => { haptics.tap(); setEditingTaskId(entry.taskId); }}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open ${entry.title}${when ? `, ${when}` : ''}`}
+                    >
+                      <Ionicons name="hourglass-outline" size={14} color={colors.accent} />
+                      <Text style={styles.entryTitle} numberOfLines={1}>{entry.title}</Text>
+                      {when && <Text style={styles.entryDate}>{when}</Text>}
+                      <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+            </View>
+          </>
+        )}
+
+        {undated.length > 0 && (
+          <>
+            <Text style={styles.groupLabel}>NO DATE</Text>
+            <View style={styles.card}>
+              {undated.map((entry, i) => (
+                <View key={entry.taskId}>
+                  {i > 0 && <View style={styles.sep} />}
+                  <TouchableOpacity
+                    style={styles.entryRow}
+                    onPress={() => { haptics.tap(); setEditingTaskId(entry.taskId); }}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open ${entry.title}`}
+                  >
+                    <Ionicons name="calendar-clear-outline" size={14} color={colors.accent} />
+                    <Text style={styles.entryTitle} numberOfLines={1}>{entry.title}</Text>
+                    <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+                  </TouchableOpacity>
                 </View>
               ))}
             </View>

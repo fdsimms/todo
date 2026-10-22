@@ -20,14 +20,13 @@ context than the rest of the task will. `docs/module-map.md` says which file own
 one component holding most of the file is owed a header map and banners (CLAUDE.md,
 "single-component files"); one with real top-level symbols to grep for is not:
 
-`components/BarcodeScanSheet.tsx`, `components/FocusSetupSheet.tsx`,
-`components/MealEntrySheet.tsx`, `components/ProjectEditor.tsx`,
-`components/RecipeEditor.tsx`, `components/RecipeExtractSheet.tsx`,
-`components/RecipeIngredientSheet.tsx`, `components/ReorderableList.tsx`,
-`components/SubstituteSheet.tsx`, `components/WhenPicker.tsx`, `screens/BackfillScreen.tsx`,
-`screens/KitchenScreen.tsx`, `screens/MoodScreen.tsx`, `screens/ProjectDetailScreen.tsx`,
+`components/FocusSetupSheet.tsx`, `components/MealEntrySheet.tsx`,
+`components/ProjectEditor.tsx`, `components/RecipeEditor.tsx`,
+`components/RecipeExtractSheet.tsx`, `components/RecipeIngredientSheet.tsx`,
+`components/ReorderableList.tsx`, `components/SubstituteSheet.tsx`,
+`components/WhenPicker.tsx`, `screens/KitchenScreen.tsx`, `screens/MoodScreen.tsx`,
 `screens/ProjectsScreen.tsx`, `screens/RecipesScreen.tsx`, `screens/SearchScreen.tsx`,
-`screens/StatsScreen.tsx`, `screens/TemplateDetailScreen.tsx`, `screens/WorkoutsScreen.tsx`.
+`screens/TemplateDetailScreen.tsx`, `screens/WorkoutsScreen.tsx`.
 
 The suite is **723 test files**, and `npm test` runs all of them in about a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists.

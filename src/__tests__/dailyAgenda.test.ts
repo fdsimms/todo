@@ -1,6 +1,6 @@
-import { agendaCounts, agendaBody, agendaMeetings, agendaSpokenBody, nextAgendaTime } from '../utils/dailyAgenda';
+import { agendaBirthdays, agendaCounts, agendaBody, agendaDinners, agendaMeetings, agendaSpokenBody, nextAgendaTime } from '../utils/dailyAgenda';
 import type { BusyEvent } from '../utils/calendarBusy';
-import type { Task } from '../types';
+import type { MealPlanEntry, Person, Recipe, Task } from '../types';
 
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: { getState: () => ({ dayResetTime: '00:00' }) },
@@ -283,5 +283,53 @@ describe('the agenda with meetings', () => {
 
   it('reads out the same line', () => {
     expect(agendaSpokenBody({ ...base, meetings: two }, true)).toBe('Today: 3 tasks due and 2 meetings, the first at 10:00.');
+  });
+});
+
+describe('dinner and birthdays (#3697)', () => {
+  const meal = (overrides: Partial<MealPlanEntry>): MealPlanEntry =>
+    ({ id: 'm', date: '2026-08-06', slot: 'dinner', recipeId: null, title: 'Leftovers', sortOrder: 0, cookedAt: null, ...overrides }) as MealPlanEntry;
+  const person = (overrides: Partial<Person>): Person =>
+    ({ id: 'p', name: 'Gideon Reyes', nickname: '', archived: false, birthdayMonth: 8, birthdayDay: 6, ...overrides }) as Person;
+  const empty = { due: 0, carriedOver: 0, deadlines: 0 };
+
+  it('lists the dinners in plan order, by the live recipe name', () => {
+    const recipes = [{ id: 'r1', name: 'Chicken tacos' }] as Recipe[];
+    const entries = [
+      meal({ id: 'b', title: 'Green salad', sortOrder: 2 }),
+      meal({ id: 'a', recipeId: 'r1', title: 'Old name', sortOrder: 1 }),
+      meal({ id: 'c', slot: 'lunch', title: 'Soup' }),
+      meal({ id: 'd', title: 'Cooked already', cookedAt: iso(2026, 7, 6) }),
+    ];
+    expect(agendaDinners(entries, recipes)).toEqual(['Chicken tacos', 'Green salad']);
+  });
+
+  it('names whose birthday it is, by nickname when there is one, leaving out the archived', () => {
+    const people = [
+      person({ id: 'a' }),
+      person({ id: 'b', name: 'Tessa Moore', nickname: 'Tess' }),
+      person({ id: 'c', name: 'Archived', archived: true }),
+      person({ id: 'd', name: 'Other day', birthdayDay: 7 }),
+      person({ id: 'e', name: 'No birthday', birthdayMonth: null, birthdayDay: null }),
+    ];
+    expect(agendaBirthdays(people, new Date(2026, 7, 6, 2))).toEqual(['Gideon Reyes', 'Tess']);
+  });
+
+  it('puts each on a line of its own under the counts', () => {
+    expect(agendaBody({ due: 2, carriedOver: 0, deadlines: 0, dinners: ['Chicken tacos'], birthdays: ['Gideon'] }))
+      .toBe('2 due\nDinner: Chicken tacos\nGideon’s birthday');
+    expect(agendaBody({ ...empty, birthdays: ['Gideon', 'Tess'] })).toBe('Birthdays: Gideon, Tess');
+    expect(agendaBody({ ...empty, dinners: ['Tacos', 'Salad'] })).toBe('Dinner: Tacos, Salad');
+  });
+
+  it('still says nothing on a day with nothing on it', () => {
+    expect(agendaBody({ ...empty, dinners: [], birthdays: [] })).toBeNull();
+    expect(agendaSpokenBody({ ...empty, dinners: [], birthdays: [] })).toBeNull();
+  });
+
+  it('says them as sentences out loud', () => {
+    expect(agendaSpokenBody({ due: 1, carriedOver: 0, deadlines: 0, dinners: ['Tacos', 'Salad'], birthdays: ['Gideon'] }))
+      .toBe('Today: 1 task due. Dinner is Tacos and Salad. It’s Gideon’s birthday.');
+    expect(agendaSpokenBody({ ...empty, birthdays: ['Gideon', 'Tess'] })).toBe('Gideon and Tess have birthdays.');
   });
 });
