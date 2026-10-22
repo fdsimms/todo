@@ -22,6 +22,7 @@ import { EmptyState } from './EmptyState';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { useFilterField } from '../hooks/useFilterField';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { FieldClearButton } from './FieldClearButton';
 import { BUTTON_LABEL } from '../copy/shared';
 
@@ -58,6 +59,10 @@ export function RecipeComponentPicker({ visible, recipe, onClose, onSelect }: Pr
   const libraryById = useMemo(() => recipeMap(recipes), [recipes]);
 
   const { query, clear: clearQuery, props: filterField } = useFilterField();
+  // The results sit under a search field, so without this the keyboard covers
+  // the last of them with no room to scroll them clear (see the hook's
+  // `fieldAbove` note, and the same list in FoodLogEntrySheet).
+  const listScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true, fieldAbove: true });
   useEffect(() => { if (visible) clearQuery(); }, [visible]);
 
   const alreadyUsed = useMemo(
@@ -135,7 +140,7 @@ export function RecipeComponentPicker({ visible, recipe, onClose, onSelect }: Pr
                 subtitle={`No recipe here is called “${query.trim()}” or uses it`}
               />
             ) : (
-              <ScrollView contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">
+              <ScrollView contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled" {...listScroll.props} ref={listScroll.ref}>
                 {candidates.map(({ recipe: candidate, reason }) => (
                   <TouchableOpacity
                     key={candidate.id}

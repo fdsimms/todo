@@ -21,6 +21,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import type { FoodNutrition } from '../types';
 import { useFilterField } from '../hooks/useFilterField';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { FieldClearButton } from './FieldClearButton';
 import { BUTTON_LABEL } from '../copy/shared';
 
@@ -92,6 +93,10 @@ export function NutritionSearchSheet({ visible, itemName, onClose, onPick, onOpe
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const searchFilter = useFilterField(itemName);
+  // The results sit under a search field, so without this the keyboard covers
+  // the last of them with no room to scroll them clear (see the hook's
+  // `fieldAbove` note, and the same list in FoodLogEntrySheet).
+  const listScroll = useKeyboardInsetScroll<FlatList>({ ownsSheet: true, fieldAbove: true });
   const query = searchFilter.query;
   const db = useFoodDatabaseSearch(query);
   const { ranked, searching, searched, picking, error, errorSettingsEntryId, run, reset } = db;
@@ -196,6 +201,8 @@ export function NutritionSearchSheet({ visible, itemName, onClose, onPick, onOpe
         {!!error && <Text style={styles.error}>{error}</Text>}
 
         <FlatList
+          {...listScroll.props}
+          ref={listScroll.ref}
           style={styles.list}
           contentContainerStyle={styles.listContent}
           data={ranked}

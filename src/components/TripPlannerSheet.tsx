@@ -12,6 +12,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useFilterField } from '../hooks/useFilterField';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
@@ -39,6 +40,10 @@ export function TripPlannerSheet({ visible, people, onPickPerson, onClose }: Pro
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const { query, clear: clearQuery, props: filterField, inputRef } = useFilterField();
+  // The results sit under a search field, so without this the keyboard covers
+  // the last of them with no room to scroll them clear (see the hook's
+  // `fieldAbove` note, and the same list in FoodLogEntrySheet).
+  const listScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true, fieldAbove: true });
 
   const matches = useMemo(() => peopleNearLocation(people, query), [people, query]);
 
@@ -91,7 +96,7 @@ export function TripPlannerSheet({ visible, people, onPickPerson, onClose }: Pro
             subtitle="No saved location mentions that. Add one on a person’s page."
           />
         ) : (
-          <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+          <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" {...listScroll.props} ref={listScroll.ref}>
             {matches.map(person => (
               <TouchableOpacity
                 key={person.id}
