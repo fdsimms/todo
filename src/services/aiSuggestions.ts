@@ -146,7 +146,16 @@ async function callAnthropic(
     clearTimeout(timeout);
   }
 
-  if (!response.ok) throw new Error(`API error ${response.status}`);
+  if (!response.ok) {
+    // A 401 and a 429 say everything the status does. Any other 4xx is Anthropic
+    // refusing the request itself, and its reason is only in the body, which
+    // `describeAIError` can't show and the thrown message must keep stable.
+    if (response.status !== 401 && response.status !== 429 && response.status < 500) {
+      const detail = await response.text().catch(() => '');
+      logError('ai', new Error(`API error ${response.status} (${model}): ${detail.slice(0, 500)}`));
+    }
+    throw new Error(`API error ${response.status}`);
+  }
 
   const data = await response.json() as AnthropicResponse;
   if (data.stop_reason === 'max_tokens') throw new Error('Response was truncated');
@@ -166,10 +175,11 @@ export function describeAIError(error: unknown, source: string = 'ai'): string {
   }
   if (message === 'AI feature disabled') return 'This AI feature is turned off in Settings.';
   if (message === 'Request timed out') return 'The request timed out. Try again.';
-  if (message === 'API error 401') return 'Check your API key in Settings.';
+  if (message === 'API error 401' || message === 'API error 403') return 'Check your API key in Settings.';
   if (message === 'API error 429') return 'Rate limited by Anthropic. Try again in a moment.';
   if (message.startsWith('API error 5')) return 'Anthropic is having issues. Try again shortly.';
-  if (message.startsWith('API error')) return 'The request failed. Check your API key in Settings.';
+  // Any other 4xx is not the key (a bad key is a 401): the request itself was refused.
+  if (message.startsWith('API error')) return 'Anthropic rejected the request. Try another model for this feature in Settings.';
   if (message === 'Response was truncated') return 'The response was cut off. Try again.';
   if (message === 'No estimate returned') {
     return 'That description could not be read into figures. Try naming the dish and the place.';

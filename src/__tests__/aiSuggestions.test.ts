@@ -234,6 +234,7 @@ function mockFetchOnce(body: object, status = 200) {
     ok: status >= 200 && status < 300,
     status,
     json: () => Promise.resolve(body),
+    text: () => Promise.resolve(JSON.stringify(body)),
   } as Response);
 }
 
@@ -274,6 +275,22 @@ describe('suggestTemplateItems', () => {
   it('throws on a non-OK HTTP response', async () => {
     mockFetchOnce({}, 500);
     await expect(suggestTemplateItems('Vacation prep', [])).rejects.toThrow('API error 500');
+  });
+
+  it('logs the body of a refused request, since the status alone does not say why', async () => {
+    mockFetchOnce({ error: { message: 'tool_choice is not supported' } }, 400);
+    await expect(suggestTemplateItems('Vacation prep', [])).rejects.toThrow('API error 400');
+    expect(logError).toHaveBeenCalledWith(
+      'ai',
+      expect.objectContaining({ message: expect.stringContaining('tool_choice is not supported') }),
+    );
+  });
+
+  it('does not log a 401, whose status says everything', async () => {
+    (logError as jest.Mock).mockClear();
+    mockFetchOnce({}, 401);
+    await expect(suggestTemplateItems('Vacation prep', [])).rejects.toThrow('API error 401');
+    expect(logError).not.toHaveBeenCalled();
   });
 
   it('throws when the response contains no tool_use block', async () => {
@@ -535,6 +552,15 @@ describe('describeAIError', () => {
 
   it('mentions rate limiting for a 429', () => {
     expect(describeAIError(new Error('API error 429'))).toContain('Rate limited');
+  });
+
+  it('does not blame the API key for a request Anthropic refused', () => {
+    expect(describeAIError(new Error('API error 403'))).toContain('API key');
+    for (const status of [400, 404, 413]) {
+      const copy = describeAIError(new Error(`API error ${status}`));
+      expect(copy).toContain('rejected');
+      expect(copy).not.toContain('API key');
+    }
   });
 
   it('mentions Anthropic having issues for a 5xx', () => {
