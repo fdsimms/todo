@@ -110,14 +110,30 @@ telling somebody why they feel a certain way, which is exactly what
 `moodInsights.ts`'s association-not-cause rule exists to forbid. Widening the
 source list is a real feature decision each time, not a default to reach for.
 
-**Four more come from facts about the day, each behind its own switch that
-ships off** (`MoodContextSources`, Settings › Health › Mood log suggestions;
+**More come from facts about the day, each behind its own switch that ships
+off** (`MoodContextSources`, Settings › Health › Mood log suggestions;
 `moodDayContext.ts` is the rule and `moodDayOffers.ts` reads the stores):
-"Holiday" or "Day off" from `holidays.ts`, "Social event" from a calendar event
-with someone linked (`eventPeople`), "Exercised" once today's Health exercise
-reaches 30 minutes, and "Went outside" once today's Time in Daylight (an Apple
-Watch reading, iOS 17+) reaches 30 minutes. A "Birthday" source was removed, and
-`parseMoodContextSources` drops it from an older stored value.
+"Holiday" or "Day off" from `holidays.ts`; "Social event" from a calendar event
+with someone linked (`eventPeople`); "Worked out" once today's Health exercise
+reaches 30 minutes, or on any day a workout was finished in the app
+(`trainingDays`), one word for both so the contrast isn't split; "Short night"
+when the sleep that ended that day is under the Short night threshold the
+person set; "Went outside" once today's Time in Daylight (an Apple Watch
+reading, iOS 17+) reaches 30 minutes; and "Rain" once `RAIN_TAG_MM` of rain has
+been seen to fall (`rainForDay`: yesterday's total is a record, today's counts
+only once an hour already gone carried a rain code, since the rest is
+forecast). A "Birthday" source was removed, and `parseMoodContextSources` drops
+it from an older stored value.
+
+**Calendar keywords are the person's own rules** (`MoodEventTag`,
+`moodEventTags` in settings): a keyword in an event's title that day picks a tag
+they named, matched by the same whole-word `ruleMatchesTitle` event rules use.
+The app supplies neither the word nor the tag, which is what keeps it on the
+right side of `docs/arch/people.md`'s line about titles. The sheet lists event
+names from two weeks either side of today (`moodEventTagOffers.ts`, read by
+`refreshRecent` only while the sheet is open) so a rule can be made with one
+tap, but listing is all it does: nothing becomes a rule until tapped.
+
 Three rules keep them honest.
 Every one answers only with a positive: a calendar that wasn't read and a day
 with no events look the same, and a refused Health read and a day with nothing
