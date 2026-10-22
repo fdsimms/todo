@@ -199,7 +199,6 @@ export function KitchenScreen() {
   // See GroceryScreen's note: the scanner asks the route, not the key.
   const receiptRoute = useAiRoute('receiptImport');
   const simpleMode = useSettingsStore(s => s.simpleMode);
-  const hideHelpText = useSettingsStore(s => s.hideHelpText);
   const tripStartedAt = useGroceryStore(s => s.tripStartedAt);
   const endTrip = useGroceryStore(s => s.endTrip);
   const activeTripShop = useMemo(
@@ -924,15 +923,6 @@ export function KitchenScreen() {
         </View>
       )}
 
-      {/* The only in-app explanation of where this list comes from, so it
-          says the mechanism rather than describing the feature. */}
-      {entries.length > 0 && !typed && !hideHelpText && (
-        <Text style={styles.caption}>
-          Based on what you buy, what you’ve marked, and what
-          you’ve put in the fridge. Tap ✕ to say you’re out of something.
-        </Text>
-      )}
-
       <ReorderableList
         refreshControl={pullSearch.refreshControl}
         data={rows}
@@ -1074,17 +1064,12 @@ function makeStyles(colors: Colors) {
       flexDirection: 'row',
       paddingHorizontal: spacing.md,
     },
-    caption: {
-      fontSize: font.sm,
-      color: colors.textTertiary,
-      paddingHorizontal: spacing.md,
-    },
     list: { paddingTop: spacing.sm, paddingBottom: spacing.xl },
     emptyContainer: { flexGrow: 1 },
     suggestWrap: {
       paddingHorizontal: spacing.md,
-      // Both sides, not just the one that happened to matter: the caption
-      // below has no top margin of its own.
+      // Both sides, not just the one that happened to matter: whatever
+      // follows may have no top margin of its own.
       marginTop: spacing.md,
       marginBottom: spacing.md,
       gap: spacing.xs,
