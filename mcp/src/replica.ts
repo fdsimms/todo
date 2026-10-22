@@ -2056,8 +2056,18 @@ export interface Replica {
    * nudges, calendar events), for the reason `createTask` gives. A completed
    * task is refused: reopening one is a decision about history, and raising a
    * done target's count is the one edit the store turns into a reopen.
+   *
+   * `futureFollowUps` is the app's "This and future tasks" for a follow-up
+   * task (one a repeating task's rule adds): the fields the edit changed are
+   * also written into that rule's draft, so the ones added later start from
+   * them. Without it the edit is to this task alone, as in the app. Nothing
+   * is written when the task has no live rule; `followUpRule` says what was.
    */
-  updateTask(id: string, patch: Partial<Task>): { task: Task; alsoUpdated: number };
+  updateTask(
+    id: string,
+    patch: Partial<Task>,
+    options?: { futureFollowUps?: boolean },
+  ): { task: Task; alsoUpdated: number; followUpRule?: { before: Task; after: Task } };
 
   /**
    * A project and its whole plan, in one transaction, so a dropped connection
@@ -7649,7 +7659,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
 
     taskPatch: (input: TaskFieldsInput, current: Task | null, isSubtask: boolean) => taskPatch(input, current, isSubtask),
 
-    updateTask(id: string, patch: Partial<Task>): { task: Task; alsoUpdated: number } {
+    updateTask(id: string, patch: Partial<Task>, options?: { futureFollowUps?: boolean }) {
       const task = tasks().find(t => t.id === id);
       if (!task) throw new Error(`No task with id ${id}.`);
       if (task.completed) throw new Error('That task is completed. Reopen it in the app before editing it.');
@@ -7667,8 +7677,18 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         db.dbUpdateTask(updated);
         for (const row of siblings) db.dbUpdateTask(row);
       });
+      let followUpRule: { before: Task; after: Task } | undefined;
+      if (options?.futureFollowUps) {
+        const source = followUp.liveFollowUpSource(updated, all);
+        const draft = source ? followUp.followUpDraftAfterEdit(task, updated, source) : null;
+        if (source && draft) {
+          const after = { ...source, followUpTaskDraft: followUp.followUpTaskDraftIsEmpty(draft) ? null : draft };
+          db.dbUpdateTask(after);
+          followUpRule = { before: source, after };
+        }
+      }
       refresh();
-      return { task: updated, alsoUpdated: siblings.length };
+      return { task: updated, alsoUpdated: siblings.length, ...(followUpRule ? { followUpRule } : {}) };
     },
 
     createProjectPlan(plan: ProjectPlan): { project: Project; tasks: Task[] } {

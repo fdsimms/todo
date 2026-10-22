@@ -264,13 +264,22 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return task;
     },
 
-    updateTask(id, patch) {
+    updateTask(id, patch, options) {
       const before = snapshot(id);
-      const result = replica.updateTask(id, patch);
+      const result = replica.updateTask(id, patch, options);
       if (before) {
         log({
           action: 'edited', subject: 'task', title: result.task.title, taskId: id, revert: taskRevert(before, result.task),
           suffix: result.alsoUpdated > 0 ? ` (also applies to ${plural(result.alsoUpdated, 'later date')})` : undefined,
+        });
+      }
+      // The rule is its own row with its own revert, so undoing the task from
+      // Activity doesn't leave future follow-up tasks on the undone change.
+      if (result.followUpRule) {
+        const { before: ruleBefore, after: ruleAfter } = result.followUpRule;
+        log({
+          action: 'edited', subject: 'task', title: ruleAfter.title, taskId: ruleAfter.id, revert: taskRevert(ruleBefore, ruleAfter),
+          note: `Change the follow-up task "${result.task.title}" that "${ruleAfter.title}" adds`,
         });
       }
       return result;

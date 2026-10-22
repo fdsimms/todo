@@ -798,8 +798,13 @@ so it has no button either.
 
 Every generated task (and every follow-up task) is a fresh one-off row, so an
 estimate set or timed on one used to die with it. Editing a generated row's
-estimate now writes it back onto the generator that wrote it, and the next row
-starts from there. The title plays no part, so a title carrying a date or a
+estimate writes it back onto the generator that wrote it, and the next row
+starts from there. **It asks first**: the editor puts "This task / This and
+future tasks" to an estimate change (`hasEstimateSource` says whether there is a
+generator to keep it on), and the write happens only for an explicit
+`scope: 'series'`. A measured run (`stopTimer`, `setMeasuredTime`) passes that
+scope itself, since it is the estimate learned rather than an edit, and any
+other estimate setter (Backfill, say) writes only the row. The title plays no part, so a title carrying a date or a
 forecast changes nothing. `src/utils/ruleEstimate.ts` has the three homes:
 
 - **A rule somebody wrote** (weather, Screen Time, Health, calendar events):
@@ -814,7 +819,8 @@ forecast changes nothing. `src/utils/ruleEstimate.ts` has the three homes:
   write walks forward along `previousOccurrenceId` to the row holding the rule
   now (`liveFollowUpSource`); with no live rule there is nothing to ask. A
   category or project equal to the parent's is stored as null, so it keeps
-  following the parent. Undo restores the row, not the rule.
+  following the parent. Undo and redo of the editor save and the drag put the
+  rule's draft back too (`captureFollowUpDrafts`).
 - **Every other generator**: one entry per kind in the `generatorEstimates`
   setting, filled in by `addTask` when a draft carrying a `generatedKind` names
   no estimate. Meal tasks are left out (`holdsKindEstimate`): they arrive

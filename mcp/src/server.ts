@@ -1691,10 +1691,11 @@ function registerWriteTools(
       id: z.string().min(1),
       title: z.string().optional(),
       ...taskFieldsShape,
+      futureFollowUps: z.boolean().optional().describe('Only for a follow-up task (get_task shows addedByFollowUp with ruleLive true): also write the fields you changed into the repeating task\'s follow-up rule, so the ones added later start from them. The app asks this as "This task / This and future tasks", so ask the person which they mean; leave it out for this task only.'),
     },
-    async ({ id, ...input }) => {
+    async ({ id, futureFollowUps, ...input }) => {
       try {
-        return json(withLink(await withWrite(() => updateTask(replica, id, input as TaskFieldsInput)), LINKS?.task(id)));
+        return json(withLink(await withWrite(() => updateTask(replica, id, input as TaskFieldsInput, futureFollowUps ? { futureFollowUps } : undefined)), LINKS?.task(id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not update the task.' });
       }

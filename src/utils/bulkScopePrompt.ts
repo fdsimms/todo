@@ -70,6 +70,26 @@ export function confirmFollowUpScope(
   );
 }
 
+/**
+ * The same question for a task the app writes by itself (a weather, health or
+ * Screen Time rule, a "use up" reminder): "future" means the ones it writes
+ * next. `what` completes "Apply ___ to this task only".
+ */
+export function confirmGeneratedScope(
+  what: string,
+  proceed: (scope: 'occurrence' | 'series') => void,
+): void {
+  Alert.alert(
+    'Update automatic task',
+    `The app adds tasks like this one by itself. Apply ${what} to this task only, or to it and the ones added later?`,
+    [
+      { text: 'This task', onPress: () => proceed('occurrence') },
+      { text: 'This and future tasks', onPress: () => proceed('series') },
+      { text: BUTTON_LABEL.cancel, style: 'cancel' },
+    ],
+  );
+}
+
 const selectedTasks = (ids: string[]) => useTaskStore.getState().tasks.filter(t => ids.includes(t.id));
 
 /** The bulk bar's Priority: asks about future repeats, sets it, then calls `onDone` (not on Cancel). */

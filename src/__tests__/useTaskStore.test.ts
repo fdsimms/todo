@@ -3,7 +3,7 @@ import { isStreakAtRecord } from '../utils/streakRecord';
 import { registerPausedProjectSource } from '../utils/projectPause';
 import { dayKeyOf, getCurrentDayStart, getCurrentLogicalDayKey } from '../utils/dateUtils';
 import { logTaskHealthValue, unlogTaskNutrientFromFoodLog } from '../utils/healthCompletionSync';
-import { useTaskStore } from '../store/useTaskStore';
+import { useTaskStore, hasEstimateSource } from '../store/useTaskStore';
 import { useProjectLockStore } from '../store/useProjectLockStore';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { useMedicationStore } from '../store/useMedicationStore';
@@ -6608,9 +6608,25 @@ describe('checkWeatherTasks', () => {
     // The pass saves the rules itself, to mark the day considered.
     current.setWeatherRules.mockClear();
 
-    useTaskStore.getState().updateTask(task.id, { estimatedMinutes: 2, effort: 1 });
+    useTaskStore.getState().updateTask(task.id, { estimatedMinutes: 2, effort: 1 }, { scope: 'series' });
 
     expect(current.setWeatherRules).toHaveBeenCalledWith([{ ...rainyRule, estimatedMinutes: 2, effort: 1 }]);
+  });
+
+  // The editor asks "this task / this and future tasks" first, so a write that
+  // names no scope (or this task only) is the first answer and leaves the rule.
+  it('leaves the rule alone for an estimate edit that was not told to reach later tasks', () => {
+    const current = settings();
+    useSettingsStore.getState.mockReturnValue(current);
+    useWeatherStore.getState.mockReturnValue({ snapshot: snapshot({ weatherCode: 61 }), snapshotDayKey: TODAY_KEY });
+    useTaskStore.getState().checkWeatherTasks();
+    const [task] = weatherTasks();
+    current.setWeatherRules.mockClear();
+
+    useTaskStore.getState().updateTask(task.id, { estimatedMinutes: 2, effort: 1 });
+    useTaskStore.getState().updateTask(task.id, { estimatedMinutes: 3 }, { scope: 'occurrence' });
+
+    expect(current.setWeatherRules).not.toHaveBeenCalled();
   });
 
   it('leaves the rule alone when a write names the estimate without changing it', () => {
@@ -19648,9 +19664,16 @@ describe('estimates kept on the generator', () => {
     const current = withEstimates({});
     useTaskStore.setState({ tasks: [makeTask({ id: 'nudge', generatedKind: 'mealPlanNudge', generatedSourceId: '2026-10-05' })] });
 
-    useTaskStore.getState().updateTask('nudge', { estimatedMinutes: 10, effort: 2 });
+    useTaskStore.getState().updateTask('nudge', { estimatedMinutes: 10, effort: 2 }, { scope: 'series' });
 
     expect(current.setGeneratorEstimates).toHaveBeenCalledWith({ mealPlanNudge: { estimatedMinutes: 10, effort: 2 } });
+  });
+
+  it('only offers to keep an estimate where there is a generator to keep it on', () => {
+    withEstimates({});
+    expect(hasEstimateSource(makeTask({ generatedKind: 'mealPlanNudge', generatedSourceId: 'x' }))).toBe(true);
+    expect(hasEstimateSource(makeTask({ generatedKind: 'mealSlot', generatedSourceId: 'x' }))).toBe(false);
+    expect(hasEstimateSource(makeTask({ title: 'typed by hand' }))).toBe(false);
   });
 
   it('keeps no kind estimate for meal tasks, which take theirs from the recipe', () => {
@@ -19749,6 +19772,28 @@ describe('estimates kept on the generator', () => {
 
     useTaskStore.setState({ tasks: tasks() });
     useTaskStore.getState().reorderWithCategoryUpdates(orders, moved, { scope: 'series' });
+    expect(rowOf('laundry').followUpTaskDraft).toEqual({ ...emptyFollowUpTaskDraft(), category: 'Bathroom' });
+  });
+
+  it('undoes and redoes the rule along with the row for a drag told to reach later tasks', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'laundry', recurrenceType: 'weekly', category: 'Chores', followUpTaskEveryN: 2, followUpTaskTitle: 'Put a new towel out' }),
+        makeTask({ id: 'towel', title: 'Put a new towel out', followUpTaskSourceId: 'laundry', followUpTaskSourceTitle: 'Laundry', category: 'Chores' }),
+      ],
+    });
+
+    useTaskStore.getState().reorderWithCategoryUpdates(
+      [{ id: 'towel', sortOrder: 1 }], [{ id: 'towel', category: 'Bathroom' }], { scope: 'series' },
+    );
+    expect(rowOf('laundry').followUpTaskDraft).toEqual({ ...emptyFollowUpTaskDraft(), category: 'Bathroom' });
+
+    useTaskStore.getState().lastAction!.undo();
+    expect(rowOf('towel').category).toBe('Chores');
+    expect(rowOf('laundry').followUpTaskDraft).toBeNull();
+
+    useTaskStore.getState().lastAction!.redo!();
+    expect(rowOf('towel').category).toBe('Bathroom');
     expect(rowOf('laundry').followUpTaskDraft).toEqual({ ...emptyFollowUpTaskDraft(), category: 'Bathroom' });
   });
 

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { addDays } from 'date-fns/addDays';
 import { startOfWeek } from 'date-fns/startOfWeek';
-import type { Task, TaskDraft, Priority, TimeOfDay, TitleRule, Person, QuotaPeriod, Polarity, Difficulty, MealPlanEntry, FoodLogEntry, MedicationLog } from '../types';
+import type { Task, TaskDraft, FollowUpTaskDraft, Priority, TimeOfDay, TitleRule, Person, QuotaPeriod, Polarity, Difficulty, MealPlanEntry, FoodLogEntry, MedicationLog } from '../types';
 import {
   initDatabase,
   ensureDatabaseReady,
@@ -2500,7 +2500,23 @@ function writeEditToFollowUpSource(before: Task, after: Task): void {
  * Carry an estimate edited on an app-written task back to the generator that
  * writes the next one, so it is there next time rather than dying with this
  * row. Where each kind of generator keeps it is in `ruleEstimate.ts`.
+ *
+ * Runs only for an explicit `scope: 'series'`, the answer to "this and future
+ * tasks" (or a measured run, which is the estimate learned). `hasEstimateSource`
+ * is whether there is anywhere to write it, which is what decides if the editor
+ * asks at all.
  */
+export function hasEstimateSource(task: Task): boolean {
+  switch (task.generatedKind) {
+    case 'weather': return !!weatherRuleIdOf(task);
+    case 'screenTime': return !!screenTimeRuleIdOf(task);
+    case 'health': return !!healthRuleIdOf(task);
+    case 'eventTask': return !!eventTaskRuleIdOf(task);
+    case undefined: return false;
+    default: return !!task.generatedKind && holdsKindEstimate(task.generatedKind);
+  }
+}
+
 function writeEstimateToSource(task: Task): void {
   const estimate = { estimatedMinutes: task.estimatedMinutes, effort: task.effort };
   const settings = useSettingsStore.getState();
@@ -3028,6 +3044,25 @@ function syncGatedReminders(questionId: string, tasks: Task[]): void {
 export function redoRestoringRows(ids: string[]): () => void {
   const after = useTaskStore.getState().tasks.filter(t => ids.includes(t.id)).map(t => ({ ...t }));
   return () => after.forEach(t => useTaskStore.getState().updateTask(t.id, t));
+}
+
+/**
+ * Puts back the follow-up rules' drafts as they stand now, for an undo (or, taken
+ * again after the write, a redo) of an edit that said "this and future tasks".
+ * An undo restores the row it was registered for, and the rule is another row,
+ * so without this the next task would still start from the undone edit. Does
+ * nothing unless the edit reached the rule (`scope: 'series'`).
+ */
+export function captureFollowUpDrafts(ids: string[], scope: 'occurrence' | 'series' | undefined): () => void {
+  if (scope !== 'series') return () => {};
+  const { tasks } = useTaskStore.getState();
+  const saved = new Map<string, FollowUpTaskDraft | null>();
+  for (const id of ids) {
+    const row = tasks.find(t => t.id === id);
+    const source = row ? liveFollowUpSource(row, tasks) : null;
+    if (source) saved.set(source.id, source.followUpTaskDraft ?? null);
+  }
+  return () => saved.forEach((draft, id) => useTaskStore.getState().updateTask(id, { followUpTaskDraft: draft }));
 }
 
 /**
@@ -3953,7 +3988,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (releasedItemId) useGroceryStore.getState().setRunningLow(releasedItemId, false, { registerUndo: false });
     // Compared on the values rather than on the patch's keys, since an undo
     // and a whole-row write both name these fields without changing them.
-    if (current && edited && edited.generatedKind
+    // Like the follow-up rule's write, never silent: an estimate on one
+    // generated task is also a fine "just this one", so only the answer to
+    // that question (or a measurement, which passes it deliberately) reaches
+    // the generator.
+    if (current && edited && edited.generatedKind && options?.scope === 'series'
       && (current.estimatedMinutes !== edited.estimatedMinutes || current.effort !== edited.effort)) {
       writeEstimateToSource(edited);
     }
@@ -9251,13 +9290,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!task || (task.timerStartedAt === null && task.timerElapsedSeconds <= 0)) return;
     const minutes = timerElapsed(task) / 60;
     cancelTimerAlarm(id);
+    // scope 'series': a measured run is the estimate learned, so it goes to the
+    // generator that wrote the task without asking (see writeEstimateToSource).
     get().updateTask(id, {
       timerStartedAt: null,
       timerElapsedSeconds: 0,
       // `task` is the row as it stands before the overwrite, which is exactly
       // what applyMeasuredTime needs to keep the guess being replaced.
       ...applyMeasuredTime(minutes, task),
-    });
+    }, { scope: 'series' });
   },
 
   discardTimer(id) {
@@ -9326,7 +9367,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   setMeasuredTime(id, minutes) {
     const task = get().tasks.find(t => t.id === id);
     if (!task) return;
-    get().updateTask(id, applyMeasuredTime(minutes, task));
+    get().updateTask(id, applyMeasuredTime(minutes, task), { scope: 'series' });
   },
 
   reorderTasks(orderedIds) {
@@ -9349,16 +9390,25 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       .map(u => get().tasks.find(t => t.id === u.id))
       .filter((t): t is Task => t !== undefined)
       .map(t => ({ ...t }));
+    const restoreRules = captureFollowUpDrafts(categoryUpdates.map(u => u.id), options?.scope);
 
     categoryUpdates.forEach(u => {
       get().updateTask(u.id, { category: u.category }, options?.scope ? { scope: options.scope } : undefined);
     });
 
     if (snapshots.length > 0) {
+      const redoRules = captureFollowUpDrafts(categoryUpdates.map(u => u.id), options?.scope);
+      const redoRows = redoRestoringRows(snapshots.map(t => t.id));
       get().setLastAction({
         label: snapshots.length === 1 ? 'Category changed' : `${snapshots.length} tasks recategorized`,
-        undo: () => snapshots.forEach(snapshot => get().updateTask(snapshot.id, snapshot)),
-        redo: redoRestoringRows(snapshots.map(t => t.id)),
+        undo: () => {
+          snapshots.forEach(snapshot => get().updateTask(snapshot.id, snapshot));
+          restoreRules();
+        },
+        redo: () => {
+          redoRows();
+          redoRules();
+        },
       });
     }
   },
