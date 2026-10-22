@@ -5150,8 +5150,8 @@ const TaskItemRow = React.memo(function TaskItem({
 
   // ==== the right-click menu (Mac) ====
   // What the row already offers, gathered where a Mac user looks for it: the
-  // pencil, the checkbox, the reschedule and select swipes, and the pin
-  // button, each under the condition that shows it on the row. Nothing new,
+  // pencil, the checkbox, the reschedule and select swipes, the pin button and
+  // the panel's trash, each under the condition that shows it on the row. Nothing new,
   // and nothing while bulk selecting (the row is a selection target then).
   // Built only on a Mac, the one place PointerView shows it.
   const contextMenuItems: PointerMenuItem[] | undefined = !runningOnMac() || selectionMode || spotlightDisabled ? undefined : [
@@ -5166,6 +5166,9 @@ const TaskItemRow = React.memo(function TaskItem({
         : { id: 'pin', title: 'Pin', icon: 'pin', destructive: false }]
       : []),
     ...(swipeSelect ? [{ id: 'select', title: 'Select', icon: 'checklist', destructive: false }] : []),
+    // The expanded panel's trash, asking what it asks: a list line goes at
+    // once (the Undo bar brings it back), anything else confirms first.
+    { id: 'delete', title: listRow ? BUTTON_LABEL.delete : `${BUTTON_LABEL.delete}…`, icon: 'trash', destructive: true },
   ];
   const handleContextMenu = (id: string) => {
     switch (id) {
@@ -5176,6 +5179,9 @@ const TaskItemRow = React.memo(function TaskItem({
       case 'when': swipeWhen?.onAction(); return;
       case 'pin': animateLayout(); togglePin(task.id); return;
       case 'select': swipeSelect?.onSelect(); return;
+      case 'delete':
+        if (listRow) { animateLayout(); deleteTask(task.id); } else confirmDeleteTask(task);
+        return;
     }
   };
 

@@ -59,7 +59,7 @@ to know:
 ## Two panes (phase 3, Recipes, Projects, Today and Groceries)
 
 From `TWO_PANE_MIN_WINDOW_WIDTH` (1100pt) up, Recipes, Projects, Today and Groceries show the list on the left
-(`TWO_PANE_LIST_WIDTH`, 400pt) and the open page on the right. Below it they are the single column
+(`twoPaneListWidthFor`: 400pt at the breakpoint, growing with the window to 560pt) and the open page on the right. Below it they are the single column
 they always were, and a tap pushes the page. Four things to know:
 
 - **The page is the pushed screen, drawn in place.** `RecipeDetailScreen` and `ProjectDetailScreen`

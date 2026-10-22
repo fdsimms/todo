@@ -1,8 +1,8 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
 import { useTwoPane } from '../hooks/useTwoPane';
-import { TWO_PANE_LIST_WIDTH } from '../utils/twoPane';
+import { twoPaneListWidthFor } from '../utils/twoPane';
 
 interface Props {
   /** The screen as it is on a phone: the list, with its header. */
@@ -20,10 +20,13 @@ interface Props {
 export function TwoPane({ list, detail }: Props) {
   const colors = useColors();
   const twoPane = useTwoPane();
+  const { width: windowWidth } = useWindowDimensions();
   return (
     <View style={twoPane ? styles.row : styles.single}>
       <View
-        style={twoPane ? [styles.list, { borderRightColor: colors.separator }] : styles.single}
+        style={twoPane
+          ? [styles.list, { width: twoPaneListWidthFor(windowWidth), borderRightColor: colors.separator }]
+          : styles.single}
       >
         {list}
       </View>
@@ -35,6 +38,6 @@ export function TwoPane({ list, detail }: Props) {
 const styles = StyleSheet.create({
   single: { flex: 1 },
   row: { flex: 1, flexDirection: 'row' },
-  list: { width: TWO_PANE_LIST_WIDTH, borderRightWidth: StyleSheet.hairlineWidth },
+  list: { borderRightWidth: StyleSheet.hairlineWidth },
   detail: { flex: 1, minWidth: 0 },
 });

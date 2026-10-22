@@ -1,3 +1,5 @@
+import { sidebarWidthFor } from './frameWidth';
+
 /**
  * When a screen shows a list and the thing selected in it side by side.
  *
@@ -12,8 +14,25 @@
  */
 export const TWO_PANE_MIN_WINDOW_WIDTH = 1100;
 
-/** The list pane's width, a fixed strip so the page beside it takes the rest. */
+/** The list pane's width at the breakpoint, and the narrowest it gets. */
 export const TWO_PANE_LIST_WIDTH = 400;
+
+/** The widest the list pane gets, so a row stays a length the eye can track. */
+export const TWO_PANE_LIST_MAX_WIDTH = 560;
+
+/** How much of the room beside the sidebar the list takes, between the two widths above. */
+const TWO_PANE_LIST_SHARE = 0.4;
+
+/**
+ * The list pane's width in a window this wide. A fixed 400pt left a big
+ * window's list wrapping titles beside a page with room to spare, so it grows
+ * with the window; at the breakpoint it is still 400, which is what leaves the
+ * page a phone's width there.
+ */
+export function twoPaneListWidthFor(windowWidth: number): number {
+  const room = windowWidth - sidebarWidthFor(windowWidth);
+  return Math.min(TWO_PANE_LIST_MAX_WIDTH, Math.max(TWO_PANE_LIST_WIDTH, Math.round(room * TWO_PANE_LIST_SHARE)));
+}
 
 /**
  * The screens that have a second pane. On these the app's column
