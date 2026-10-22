@@ -472,6 +472,22 @@ describe('searchTasks', () => {
     expect(result.matched).toBe(80);
     expect(result.tasks).toHaveLength(DEFAULT_LIMIT);
   });
+
+  it('keeps only tasks holding every word of the query when exact, in the replica\'s order', () => {
+    const hits = [
+      { task: task({ id: 'a', title: 'Plan the trip' }), score: 3, projectName: null },
+      { task: task({ id: 'b', title: 'Trip budget', notes: 'plan it soon' }), score: 2, projectName: null },
+      { task: task({ id: 'c', title: 'Book flights' }), score: 1.5, projectName: 'Trip planning' },
+      { task: task({ id: 'd', title: 'Plant seeds' }), score: 1, projectName: null },
+    ];
+    const search = (query: string, exact?: boolean) =>
+      searchTasks(stubReplica({ search: () => hits }), { query, exact });
+
+    expect(search('PLAN trip', true).tasks.map(t => t.id)).toEqual(['a', 'b', 'c']);
+    expect(search('plan trip', true).matched).toBe(3);
+    expect(search('how did it turn out', true)).toMatchObject({ matched: 0, tasks: [] });
+    expect(search('how did it turn out').matched).toBe(4);
+  });
 });
 
 describe('getTask', () => {

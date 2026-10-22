@@ -29,6 +29,7 @@ import { entryNovaGroup, processingMix } from '../../src/utils/processingStats';
 import * as negativeHabits from '../../src/utils/negativeHabits';
 import { checkTemplateLibrary, type LibraryCheck } from './templateLibrary';
 import { proratedFrom } from '../../src/utils/quotaSchedule';
+import { textMatchesQuery } from '../../src/utils/moodHistory';
 import { programProgress } from '../../src/utils/workoutProgram';
 import {
   describeDeadlineRule,
@@ -143,6 +144,13 @@ function matchesView(replica: Replica, task: Task, view: TaskView): boolean {
 export interface SearchTasksInput {
   query: string;
   limit?: number;
+  /**
+   * Only tasks whose title, notes or project name hold every word of the
+   * query, in the app's order. Fuzzy ranking always returns its nearest
+   * matches, so without this a phrase nothing contains still comes back with
+   * thousands of rows and no way to tell that none of them is it.
+   */
+  exact?: boolean;
 }
 
 export interface SearchTasksResult {
@@ -153,7 +161,15 @@ export interface SearchTasksResult {
 
 export function searchTasks(replica: Replica, input: SearchTasksInput): SearchTasksResult {
   const limit = Math.min(Math.max(input.limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT);
-  const hits = replica.search(input.query);
+  const all = replica.search(input.query);
+  const hits = input.exact
+    // The title as written and as the row shows it: mid-chain the row (and the
+    // fuzzy match) reads the live step's.
+    ? all.filter(h => textMatchesQuery(
+      [h.task.title, replica.displayTitle(h.task), h.task.notes ?? '', h.projectName ?? ''].join('\n'),
+      input.query,
+    ))
+    : all;
 
   return {
     query: input.query,

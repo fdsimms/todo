@@ -350,8 +350,12 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'search_tasks',
-    'Fuzzy search across task titles, notes and project names, ranked the way the app ranks its own search.',
-    { query: z.string().min(1), limit: z.number().int().positive().optional() },
+    'Fuzzy search across task titles, notes and project names, ranked the way the app ranks its own search. Fuzzy matching always returns its nearest matches, even when no task holds the words, so for a known title or phrase pass exact: true, which keeps only tasks whose title, notes or project name contain every word of the query (any order, ignoring case); matched 0 then means there is none.',
+    {
+      query: z.string().min(1),
+      limit: z.number().int().positive().optional(),
+      exact: z.boolean().optional().describe('Only tasks containing every word of the query. Default false.'),
+    },
     async input => json(await withFresh(() => searchTasks(replica, input)))
   );
 

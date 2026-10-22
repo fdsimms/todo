@@ -137,7 +137,8 @@ refused one: it answers, and it answers wrong.
 
 The read tools are deliberately shaped like the app's own lenses rather than like the schema:
 `list_tasks` over Today/Later/Unscheduled/Inbox, `search_tasks` through the same `fuzzySearch` the
-quick-search sheet uses, `get_task`, `list_projects`, `list_grocery_items`, `list_templates`. (The
+quick-search sheet uses (with `exact` narrowing it to tasks holding every word, because fuzzy
+ranking never returns nothing), `get_task`, `list_projects`, `list_grocery_items`, `list_templates`. (The
 write tools are below; `server.ts` is the authoritative list, and registers the writes only for a
 write-scoped request.) The tool handlers are
 in `mcp/src/tools.ts` and take a replica as an argument, which is what makes them testable without
