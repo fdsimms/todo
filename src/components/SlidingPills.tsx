@@ -9,6 +9,7 @@ import Reanimated, {
 } from 'react-native-reanimated';
 import { animation } from '../theme';
 import { useReduceMotion } from '../utils/useReduceMotion';
+import { useRestKey } from '../hooks/useRestKey';
 
 /**
  * A row of separate pills whose highlight slides from one to the next, rather
@@ -27,6 +28,10 @@ import { useReduceMotion } from '../utils/useReduceMotion';
  * width and a width can't animate on Animated's native driver. Today's switch
  * renders a whole new list as it happens, which is exactly when an animation
  * left on the JS thread would stutter.
+ *
+ * The animated views are keyed on `epoch` (useRestKey), or a missed handover
+ * of the settled position puts the highlight back on the pill it left while
+ * the labels are coloured for the one it is on.
  */
 export interface PillFrame { x: number; y: number; width: number; height: number }
 
@@ -34,8 +39,6 @@ export interface PillHighlight {
   /** Measured and placed: draw the layers, and pills without backgrounds. */
   ready: boolean;
   frames: ReadonlyMap<string, PillFrame>;
-  /** The active pill's frame, for the highlight's own React-side style. */
-  activeFrame: PillFrame | undefined;
   x: SharedValue<number>;
   y: SharedValue<number>;
   width: SharedValue<number>;
@@ -43,12 +46,15 @@ export interface PillHighlight {
   onPillLayout: (key: string) => (e: LayoutChangeEvent) => void;
   /** Puts the highlight on `from` at once and slides it to the active pill. */
   slideFrom: (from: string) => void;
+  /** Bumped when the highlight comes to rest: the key for every animated view. */
+  epoch: number;
 }
 
 export function usePillHighlight(activeKey: string): PillHighlight {
   const reduceMotion = useReduceMotion();
   const frames = useRef(new Map<string, PillFrame>()).current;
   const [, setMeasured] = useState(0);
+  const { restKey: epoch, rested, onRest } = useRestKey();
   const x = useSharedValue(0);
   const y = useSharedValue(0);
   const width = useSharedValue(0);
@@ -64,16 +70,19 @@ export function usePillHighlight(activeKey: string): PillHighlight {
     width.value = f.width;
     height.value = f.height;
     placed.current = true;
+    rested();
   };
   const slideTo = (f: PillFrame) => {
     if (!placed.current || reduceMotion) {
       jumpTo(f);
       return;
     }
-    x.value = withSpring(f.x, animation.spring.snappy);
-    y.value = withSpring(f.y, animation.spring.snappy);
-    width.value = withSpring(f.width, animation.spring.snappy);
-    height.value = withSpring(f.height, animation.spring.snappy);
+    // Each spring settles on its own schedule, so each one remounts as it
+    // finishes; the last of them is the one that matters.
+    x.value = withSpring(f.x, animation.spring.snappy, onRest);
+    y.value = withSpring(f.y, animation.spring.snappy, onRest);
+    width.value = withSpring(f.width, animation.spring.snappy, onRest);
+    height.value = withSpring(f.height, animation.spring.snappy, onRest);
   };
   // Anything waiting on a frame: a first placement, or a hand-over from
   // another screen's row (slideFrom) whose pills weren't measured yet.
@@ -121,13 +130,13 @@ export function usePillHighlight(activeKey: string): PillHighlight {
   return {
     ready: placed.current && frames.has(activeKey),
     frames,
-    activeFrame: frames.get(activeKey),
     x,
     y,
     width,
     height,
     onPillLayout,
     slideFrom,
+    epoch,
   };
 }
 
@@ -148,21 +157,7 @@ export function PillHighlightLayer({ highlight, keys, restColor, activeColor, ra
     width: width.value,
     height: height.value,
   }));
-  // The sliding capsule is mounted from the first render and hidden until the
-  // pills are placed, never mounted on `ready`. The first placement writes x,
-  // y, width and height before `ready` flips, so a view mounting afterwards
-  // can miss the UI thread's one update of those values and sit at the 0 x 0
-  // it was first rendered with: the label (always mounted) turns to the
-  // accent's ink while no accent fill is behind it.
-  //
-  // The same thing happens when the row is re-committed under a mounted
-  // capsule (a tab frozen and thawed, as by a widget link that blurs and
-  // refocuses Today): the animated style is applied to the native view
-  // directly, React never wrote those numbers, so the re-commit puts back the
-  // 0 x 0 React did render. The capsule's React style therefore carries the
-  // active pill's frame in the same shape the animated style writes it, and
-  // the animated style only ever overrides it with the same or a nearer value.
-  const at = highlight.activeFrame;
+  // Keyed on `epoch` (useRestKey). Hidden until the pills are placed.
   return (
     <>
       {keys.map(key => {
@@ -177,11 +172,11 @@ export function PillHighlightLayer({ highlight, keys, restColor, activeColor, ra
         );
       })}
       <Reanimated.View
+        key={highlight.epoch}
         pointerEvents="none"
         style={[
           styles.capsule,
           { left: 0, top: 0, borderRadius: radius, backgroundColor: activeColor, opacity: highlight.ready ? 1 : 0 },
-          at && { transform: [{ translateX: at.x }, { translateY: at.y }], width: at.width, height: at.height },
           sliding,
         ]}
       />
@@ -211,7 +206,7 @@ export function PillLabel({ highlight, pillKey, style, restColor, activeColor, c
     return { color: interpolateColor(t, [0, 1], [restColor, activeColor]) };
   });
   return (
-    <Reanimated.Text style={[style, highlight.ready && frame ? tinted : null]}>
+    <Reanimated.Text key={highlight.epoch} style={[style, highlight.ready && frame ? tinted : null]}>
       {children}
     </Reanimated.Text>
   );

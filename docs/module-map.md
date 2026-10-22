@@ -770,6 +770,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useRecipeTimer.ts` — RecipeTimerBinding, useRecipeTimer
 - `src/hooks/useRecordTaskReady.ts` — useRecordTaskReady
 - `src/hooks/useReminderMeetingResync.ts` — useReminderMeetingResync
+- `src/hooks/useRestKey.ts` — useRestKey
 - `src/hooks/useRestTimer.ts` — useRestTimer, useRestChime
 - `src/hooks/useRowSelection.ts` — useRowSelection
 - `src/hooks/useScreenSettingControls.ts` — ScreenSettingControl, useScreenSettingControls

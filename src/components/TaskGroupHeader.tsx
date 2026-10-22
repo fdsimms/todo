@@ -13,7 +13,7 @@ import { SpotlightScrim } from './SpotlightOverlay';
 import { SwipeableRow } from './SwipeableRow';
 import { SwipeActionButtons } from './SwipeActionButtons';
 import { AnimatedCollapsible } from './AnimatedCollapsible';
-import { useTrayFold, useTrayRaised, TRAY_PAD, STACK_EDGE_DEPTH } from './TaskGroupTray';
+import { useTrayFold, useTrayRaised, useTrayRestKey, TRAY_PAD, STACK_EDGE_DEPTH } from './TaskGroupTray';
 import { PinIcon } from './PinIcon';
 import { useSheetMount } from '../hooks/useSheetMount';
 import { useProjectStore } from '../store/useProjectStore';
@@ -149,6 +149,8 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
   const trayFold = useTrayFold();
   const noFold = useSharedValue(0);
   const fold = trayFold ?? noFold;
+  // The key for the three layers the fold fades (see useRestKey).
+  const foldKey = useTrayRestKey();
   const deckStyle = useAnimatedStyle(() => ({ opacity: fold.value }));
   // Only the opacity is animated. The two surfaces are plain styles stacked
   // under it, because a colour read inside a worklet reached the UI thread a
@@ -253,7 +255,7 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
             this view into the room the tray makes for them, and the stack's
             rows (later siblings) draw over them while they fold away. */}
         {trayFold && (
-          <Reanimated.View style={[styles.deck, deckStyle]} pointerEvents="none">
+          <Reanimated.View key={foldKey} style={[styles.deck, deckStyle]} pointerEvents="none">
             <View style={[styles.edgeFar, shadows.card]}>
               <View style={styles.layerClip}><SpotlightScrim /></View>
             </View>
@@ -277,7 +279,7 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
           >
             <PointerView menuItems={contextMenuItems} onMenuSelect={handleContextMenu}>
             <Reanimated.View style={styles.row}>
-              <Reanimated.View style={[styles.rowCard, foldStyle]} pointerEvents="none" />
+              <Reanimated.View key={foldKey} style={[styles.rowCard, foldStyle]} pointerEvents="none" />
               {/* A filled tile, deliberately not the outlined box a task row
                   uses: this control cascades across the whole roster, and for
                   a while it wore the exact shape, size, position and colour of
@@ -310,7 +312,7 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
                 importantForAccessibility="no-hide-descendants"
               >
                 <View style={styles.glyph}>
-                  <Reanimated.View style={[styles.glyphFolded, foldStyle]} pointerEvents="none" />
+                  <Reanimated.View key={foldKey} style={[styles.glyphFolded, foldStyle]} pointerEvents="none" />
                   <Ionicons name="layers" size={iconSize.sm} color={colors.textSecondary} />
                 </View>
               </TouchableOpacity>

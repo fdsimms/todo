@@ -3,6 +3,7 @@ import type { StyleProp, ViewStyle } from 'react-native';
 import Reanimated, { useSharedValue, useAnimatedStyle, withDelay, withTiming } from 'react-native-reanimated';
 import { animation } from '../theme';
 import { useReduceMotion } from '../utils/useReduceMotion';
+import { useRestKey } from '../hooks/useRestKey';
 
 interface Props {
   /** How full the bar draws, 0..100. */
@@ -23,23 +24,26 @@ interface Props {
  *
  * Reanimated with the style attached unconditionally, for the reason
  * `EmptyState` gives: the shared value is the one source of truth, so a
- * re-render can't leave the bar stranded part-way. Reduce Motion draws the bar
- * at its length with no sweep.
+ * re-render can't leave the bar stranded part-way. Keyed on its rest
+ * (useRestKey), since its length differs from one figure to the next. Reduce
+ * Motion draws the bar at its length with no sweep.
  */
 export function AnimatedBarFill({ percent, style, delayMs = 0 }: Props) {
   const reduceMotion = useReduceMotion();
   const width = useSharedValue(0);
+  const { restKey, rested, onRest } = useRestKey();
 
   useEffect(() => {
     // Assigning a plain number also cancels a sweep already running, which
     // matters because the setting resolves asynchronously after first render.
     if (reduceMotion) {
       width.value = percent;
+      rested();
       return;
     }
-    width.value = withDelay(delayMs, withTiming(percent, { duration: animation.duration.slow }));
+    width.value = withDelay(delayMs, withTiming(percent, { duration: animation.duration.slow }, onRest));
   }, [percent, delayMs, reduceMotion]);
 
   const animatedStyle = useAnimatedStyle(() => ({ width: `${width.value}%` }));
-  return <Reanimated.View style={[style, animatedStyle]} />;
+  return <Reanimated.View key={restKey} style={[style, animatedStyle]} />;
 }
