@@ -59,7 +59,7 @@ import { addDays } from 'date-fns/addDays';
 import { subDays } from 'date-fns/subDays';
 import { subMinutes } from 'date-fns/subMinutes';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
-import type { Task, Priority, Effort, FollowUpTaskDraft, RecurrenceType, HolidayRule, ChainItem, RotationItem, DeliverableKind, TimeOfDay, ReminderKind, Polarity, Difficulty, QuotaPeriod, WeatherCondition, NutrientKey, MealSlot, AnswerGate, TaskMedicationExtra } from '../types';
+import type { Task, Priority, Effort, FollowUpTaskDraft, RecurrenceType, HolidayRule, ChainItem, RotationItem, DeliverableKind, TimeOfDay, ReminderKind, Polarity, Difficulty, QuotaPeriod, WeatherCondition, NutrientKey, MealSlot, AnswerGate, TaskMedicationExtra, TaskAttachment } from '../types';
 import { PRIORITY_LABELS, TITLE_MAX_LENGTH, HEALTH_WRITABLE_NUTRIENTS, MINERAL_KEYS, VITAMIN_KEYS, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
 import { NUTRIENT_LABEL, mlToFlOz, flOzToMl } from '../utils/foodNutrition';
 import { useColors, useTheme } from '../theme/ThemeContext';
@@ -73,6 +73,7 @@ import { useTitleSelection } from '../hooks/useTitleSelection';
 import { confirmDeleteTask } from '../utils/confirmDeleteTask';
 import { defaultReminderAt } from '../utils/reminderDefault';
 import { offerGeneratedCategoryWriteBack } from '../utils/generatedCategoryPrompt';
+import { TaskAttachmentStrip } from './TaskAttachmentStrip';
 import { animateLayout } from '../utils/layoutAnimation';
 import { formatPhoneInput } from '../utils/phone';
 import {
@@ -643,6 +644,8 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     || matchesEditorQuery({ key: 'title', label: 'Title', keywords: ['name', 'what', 'rename'] }, searchTerms);
   const notesVisible = !searching
     || matchesEditorQuery({ key: 'notes', label: 'Notes', keywords: ['description', 'details', 'memo'] }, searchTerms);
+  const attachmentsVisible = !searching
+    || matchesEditorQuery({ key: 'attachments', label: 'Photos and files', keywords: ['attachment', 'attach', 'photo', 'picture', 'image', 'file', 'document', 'pdf', 'scan'] }, searchTerms);
   const subtasksVisible = !searching
     || matchesEditorQuery({ key: 'subtasks', label: 'Subtasks', keywords: ['steps', 'checklist', 'list', 'children', 'split', 'stretch'] }, searchTerms);
   // Only ever on screen for a saved task, so the `task` check belongs here
@@ -662,9 +665,9 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
 
   const totalMatches = useMemo(() => {
     if (!searching) return 0;
-    const loose = [titleVisible, notesVisible, subtasksVisible, dangerVisible].filter(Boolean).length;
+    const loose = [titleVisible, notesVisible, attachmentsVisible, subtasksVisible, dangerVisible].filter(Boolean).length;
     return Object.values(matchCounts).reduce((sum, n) => sum + n, 0) + loose;
-  }, [searching, titleVisible, notesVisible, subtasksVisible, dangerVisible, matchCounts]);
+  }, [searching, titleVisible, notesVisible, attachmentsVisible, subtasksVisible, dangerVisible, matchCounts]);
 
   // Closing always clears the query — leaving one behind would hand the user
   // back a form still missing most of its rows, with the field that explains
@@ -687,6 +690,9 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   // the substitute.
   const [titleFocused, setTitleFocused] = useState(false);
   const [notes, setNotes] = useState('');
+  // Photos and files kept with the task (Task.attachments). A removal here only
+  // drops the name: the file stays for the undo, and the launch sweep takes it.
+  const [attachments, setAttachments] = useState<TaskAttachment[]>([]);
   const [category, setCategory] = useState<string | null>(null);
   // Which stack the task will belong to once saved. Local like every other
   // field here, so Cancel actually cancels — the membership change is applied
@@ -1215,7 +1221,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       healthMetric: null, healthTarget: null,
     };
     if (task) {
-      setTitle(task.title); titleCaret.resetCaret(task.title); setNotes(task.notes); setCategory(task.category ?? null); setProject(task.projectId ?? null); setTags(task.tags); setPersonIds(task.personIds);
+      setTitle(task.title); titleCaret.resetCaret(task.title); setNotes(task.notes); setAttachments(task.attachments ?? []); setCategory(task.category ?? null); setProject(task.projectId ?? null); setTags(task.tags); setPersonIds(task.personIds);
       setGroupId(task.groupId ?? null);
       setDueDate(task.dueDate ? new Date(task.dueDate) : null);
       // The set's other live dates. Completed ones are left out: they're
@@ -1347,7 +1353,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       // between tasks, so a field skipped here keeps whatever the last task
       // edited had: a new task opened as a weekly target, or as "Avoid this",
       // because the one before it was. A new field goes in both branches.
-      setTitle(initialDraft?.title ?? ''); titleCaret.resetCaret(initialDraft?.title ?? ''); setNotes(initialDraft?.notes ?? ''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
+      setTitle(initialDraft?.title ?? ''); titleCaret.resetCaret(initialDraft?.title ?? ''); setNotes(initialDraft?.notes ?? ''); setAttachments([]); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
       setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setDeadlineTime(null); setDeadlineTimePickerOpen(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setWindowStartSun(initialDraft?.windowStartSun ?? null); setWindowEndSun(initialDraft?.windowEndSun ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setGateGroupId(initialDraft?.gateGroupId ?? null); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day');  setStreakCountsUnits(false); setQuotaRampStep(null); setQuotaRampEvery(1); setQuotaRampGoal(null); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setCoinsPerTap(initialDraft?.coinsPerTap ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaPlaceIds(initialDraft?.quotaPlaceIds ?? []); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setQuotaRestAfterLog(initialDraft?.quotaRestAfterLog ?? false); setProrateFirstWeek(true); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setMeterInput(meterInputFromDraft(initialDraft)); setMeterOpen(false); setMeterReadingText(''); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind(initialDraft?.reminderKind ?? 'notification'); setReminderTimeAnchor(initialDraft?.reminderTimeAnchor ?? 'wallClock'); setReminderOffsetDays(initialDraft?.reminderOffsetDays ?? null); setReminderTracksVisibility(initialDraft?.reminderTracksVisibility ?? false); setReminderTouched(false);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
@@ -1580,6 +1586,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       followUpTaskDraft: task?.followUpTaskDraft ?? null,
       followUpTaskOneAtATime: task?.followUpTaskOneAtATime ?? false,
       followUpTaskAtEnd: task?.followUpTaskAtEnd ?? false,
+      attachments: task?.attachments ?? [],
     });
   }
 
@@ -2238,6 +2245,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     const savedTargetCount = savesRotation ? rotationTargetTotal(rotationItems) : targetCount;
     const data = {
       title: resolvedTitle, notes, category: resolvedCategory, projectId: project, tags: resolvedTags, personIds,
+      attachments,
       dueDate: dueDate?.toISOString() ?? null,
       deadline: deadline?.toISOString() ?? null,
       deadlineOffsetDays,
@@ -3332,6 +3340,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       followUpTaskDraft,
       followUpTaskOneAtATime,
       followUpTaskAtEnd,
+      attachments,
     }) !== initialStateRef.current;
 
   // Completing or reopening from here closes the sheet, which takes any edits
@@ -4471,6 +4480,16 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
         placeholderTextColor={colors.textTertiary}
         multiline
       />
+      )}
+      {attachmentsVisible && (
+        <View style={styles.attachments}>
+          <TaskAttachmentStrip
+            attachments={attachments}
+            title={title.trim() || 'Task'}
+            onAdd={attachment => { animateLayout(); setAttachments(list => [...list, attachment]); }}
+            onRemove={name => { animateLayout(); setAttachments(list => list.filter(a => a.name !== name)); }}
+          />
+        </View>
       )}
 
       {/* Contact nudge — "Call Kristen"/"Text the plumber"/"Email the
@@ -9023,6 +9042,8 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     marginBottom: spacing.md,
     alignItems: 'flex-start',
   },
+  // Under the notes, on their inset, and a card's gap above the next block.
+  attachments: { paddingHorizontal: spacing.md, marginBottom: spacing.md },
   notesInput: {
     color: colors.textSecondary, fontSize: font.md,
     paddingHorizontal: spacing.md, paddingBottom: spacing.lg, minHeight: 50,

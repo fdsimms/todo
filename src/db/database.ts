@@ -17,6 +17,7 @@ import type {
   Cookware,
   CopyFlag,
   MeterReading,
+  TaskAttachment,
   Fast,
   Exercise,
   Gym,
@@ -2430,6 +2431,8 @@ function runInitDatabase(): void {
     // medication_name, as a JSON array. NULL on every existing row, which reads
     // as none.
     'ALTER TABLE tasks ADD COLUMN medication_extras TEXT',
+    // Task.attachments: a JSON array of { name, kind, title }; null when there are none.
+    'ALTER TABLE tasks ADD COLUMN attachments TEXT',
     'ALTER TABLE cookware ADD COLUMN kind TEXT',
     // WorkoutSession.measuredOnWatch: the Apple Watch measured the workout and
     // saves it to Health itself. 0 on every existing row, none of which a
@@ -3995,6 +3998,20 @@ export function dbDeleteSetting(key: string): void {
 
 // ─── Tasks ────────────────────────────────────────────────────────────────────
 
+/** Task.attachments off its JSON column, keeping only whole entries with a `task-` file name. */
+function parseTaskAttachments(raw: unknown): TaskAttachment[] {
+  if (typeof raw !== 'string' || !raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((a): a is TaskAttachment =>
+      !!a && typeof a.name === 'string' && /^task-[A-Za-z0-9._-]+$/.test(a.name)
+      && (a.kind === 'photo' || a.kind === 'file') && typeof a.title === 'string');
+  } catch {
+    return [];
+  }
+}
+
 function rowToTask(row: Record<string, unknown>): Task {
   return {
     id: row.id as string,
@@ -4060,6 +4077,10 @@ function rowToTask(row: Record<string, unknown>): Task {
     quotaRestAfterLog: Boolean(row.quota_rest_after_log),
     quotaLoggedDayKey: (row.quota_logged_day_key as string | null) ?? null,
     // Read only alongside a name, for the reason Task.medicationName gives.
+    ...(row.attachments ? (() => {
+      const attachments = parseTaskAttachments(row.attachments);
+      return attachments.length > 0 ? { attachments } : {};
+    })() : {}),
     ...((row.medication_name as string | null) && row.medication_extras
       ? (() => {
           const extras = parseMedicationExtras(row.medication_extras);
@@ -4280,8 +4301,8 @@ export function dbInsertTask(task: Task): void {
       pin_each_occurrence, bounty_pushes, difficulty, answer_gate, deliverable_why, deliverable_revisit_if, extra_task_at_end, weather_wait, wait_for_series_end, rotation_plan, slip_allowance, done_by_other_at, window_start_sun, window_end_sun, recurrence_holidays,
       meter_name, meter_unit, meter_every, meter_due_at, meter_limit_months, meter_held_until, rain_skip_mm, rain_skipped_on, review_of_task_id,
       quota_ramp_step, quota_ramp_every, quota_ramp_goal, quota_ramp_hits, streak_counts_units, log_saved_meal_id, coins_per_tap, log_meal_slot_by_time, quota_place_ids, gate_group_id, workout_routine_id, workout_program_id, generated_ready_at,
-      slot_in, slot_decided_on, slot_waiting_since, quota_rest_after_log, quota_logged_day_key, medication_extras
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      slot_in, slot_decided_on, slot_waiting_since, quota_rest_after_log, quota_logged_day_key, medication_extras, attachments
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deadlineTime ?? null, task.deferUntil,
@@ -4437,6 +4458,7 @@ export function dbInsertTask(task: Task): void {
       task.quotaRestAfterLog ? 1 : 0,
       task.quotaLoggedDayKey ?? null,
       task.medicationName && task.medicationExtras?.length ? JSON.stringify(task.medicationExtras) : null,
+      task.attachments?.length ? JSON.stringify(task.attachments) : null,
     ]
   );
 }
@@ -4476,7 +4498,7 @@ export function dbUpdateTask(task: Task): void {
       pin_each_occurrence=?, bounty_pushes=?, difficulty=?, answer_gate=?, deliverable_why=?, deliverable_revisit_if=?, extra_task_at_end=?, weather_wait=?, wait_for_series_end=?, rotation_plan=?, slip_allowance=?, done_by_other_at=?, window_start_sun=?, window_end_sun=?, recurrence_holidays=?,
       meter_name=?, meter_unit=?, meter_every=?, meter_due_at=?, meter_limit_months=?, meter_held_until=?, rain_skip_mm=?, rain_skipped_on=?, review_of_task_id=?,
       quota_ramp_step=?, quota_ramp_every=?, quota_ramp_goal=?, quota_ramp_hits=?, streak_counts_units=?, log_saved_meal_id=?, coins_per_tap=?, log_meal_slot_by_time=?, quota_place_ids=?, gate_group_id=?, workout_routine_id=?, workout_program_id=?, generated_ready_at=?,
-      slot_in=?, slot_decided_on=?, slot_waiting_since=?, quota_rest_after_log=?, quota_logged_day_key=?, medication_extras=?
+      slot_in=?, slot_decided_on=?, slot_waiting_since=?, quota_rest_after_log=?, quota_logged_day_key=?, medication_extras=?, attachments=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -4633,6 +4655,7 @@ export function dbUpdateTask(task: Task): void {
       task.quotaRestAfterLog ? 1 : 0,
       task.quotaLoggedDayKey ?? null,
       task.medicationName && task.medicationExtras?.length ? JSON.stringify(task.medicationExtras) : null,
+      task.attachments?.length ? JSON.stringify(task.attachments) : null,
       task.id,
     ]
   );
@@ -7355,6 +7378,22 @@ export function dbRecipeImagePaths(ids?: readonly string[]): Map<string, string>
     ));
   }
   return out;
+}
+
+/**
+ * Every attachment file name any task holds (Task.attachments), each once: the
+ * names this device offers to sync and keeps on disk. Read straight off the
+ * column so a pass over thousands of tasks needs no row mapping.
+ */
+export function dbTaskAttachmentNames(): string[] {
+  const names = new Set<string>();
+  const rows = db.getAllSync<{ attachments: string }>(
+    "SELECT attachments FROM tasks WHERE attachments IS NOT NULL AND attachments <> ''"
+  );
+  for (const row of rows) {
+    for (const a of parseTaskAttachments(row.attachments)) names.add(a.name);
+  }
+  return [...names];
 }
 
 // ─── Meal plan ──────────────────────────────────────────────────────────────

@@ -555,6 +555,9 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/taskDraft.ts` — applyTitleRulesToDraft, newTaskFromDraft, reanchorReminder, NO_RECURRENCE, buildSeriesRow
 - `src/utils/taskDuplicate.ts` — duplicateRows
 - `src/utils/taskFieldDefaults.ts` — NO_TASK_FIELD_DEFAULTS, hasTaskFieldDefaults, parseTaskFieldDefaults, serializeTaskFieldDefaults, parseGeneratedTaskDefaults, resolveFieldDefaults, SeededFieldsInput, SeededFields, seedTaskFields, previewSeededFields, +6 more
+- `src/utils/taskFilePick.ts` — PickedTaskFile, pickTaskDocument, openTaskFile
+- `src/utils/taskFileSync.ts` — routeStoredFileName, taskFileNames, readTaskFileForSync, hasTaskFileForSync, writeTaskFileFromSync
+- `src/utils/taskFiles.ts` — TASK_FILE_FOLDER, TASK_FILE_PREFIX, MAX_TASK_ATTACHMENTS, MAX_TASK_FILE_BYTES, isTaskFileName, taskFileNamesInUse, unreferencedTaskFiles, taskFileProblem, taskAttachmentsOnDevice, attachmentBadge, +1 more
 - `src/utils/taskGrouping.ts` — CategoryListItem, ContextListItem, TodayListItem, LATER_TODAY_LABEL, orderTravelRowsByTime, makeCategoryGroups, DropResolution, resolveDrop, LaterListItem, LATER_STACK_FOLD_MIN, +24 more
 - `src/utils/taskHome.ts` — TaskHome, taskHomeFor
 - `src/utils/taskInstances.ts` — InstanceGroup, normalizeTitle, getRepeatedInstances, taskForTitleKey
@@ -816,7 +819,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 
 ## `src/db`
 
-- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, ensureDatabaseReady, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, +311 more
+- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, ensureDatabaseReady, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, +312 more
 - `src/db/syncTracking.ts` — SyncTable, KEY_SEPARATOR, SYNC_TRACKED_TABLES, SYNC_DEVICE_LOCAL_COLUMNS, isDeviceLocalColumn, withoutDeviceLocalColumns, SYNC_EXCLUDED_TABLES, SYNCED_SETTING_KEYS, isSyncedSettingKey, HEALTH_SYNC_TABLES, +16 more
 
 ## `src/services`

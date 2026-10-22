@@ -49,6 +49,7 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useEventReminderStore } from '../store/useEventReminderStore';
 import { useUnattendedStore } from '../store/useUnattendedStore';
 import { sweepJournalPhotos } from './journalPhotos';
+import { sweepTaskFiles } from './taskFiles';
 import { useJournalStore } from '../store/useJournalStore';
 import { dbReclaimFreePages } from '../db/database';
 import { rescheduleAllReminders } from './notifications';
@@ -355,6 +356,10 @@ export function retentionPasses(): MaintenanceStep[] {
     // Launch-only because a sheet open later could hold a photo it just took
     // and hasn't saved yet. Skips itself in demo mode (sweepJournalPhotos).
     ['sweep unused journal photos', () => { sweepJournalPhotos(useJournalStore.getState().entries); }],
+    // Task files likewise: a task's file is never deleted with the row, for the
+    // undo's sake (taskFiles.ts), so this is where one finally goes. Every row
+    // counts, completed and archived included, since each still shows its files.
+    ['sweep unused task files', () => { sweepTaskFiles(useTaskStore.getState().tasks); }],
     // Then give the pages all of the above freed back to the device. Last on
     // purpose: it can only release what the deletes before it have already
     // freed. It deletes no rows and does nothing until the person has run

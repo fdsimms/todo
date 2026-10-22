@@ -13,6 +13,14 @@ describe('stored files in a backup', () => {
     expect(storedFileNamesIn(tables)).toEqual({ 'journal-photos': ['a.jpg', 'b.jpg'] });
   });
 
+  it('reads a task\'s attachment names out of its objects', () => {
+    const withTasks = {
+      ...tables,
+      tasks: [{ id: 't1', attachments: JSON.stringify([{ name: 'task-a.pdf', kind: 'file', title: 'A.pdf' }]) }],
+    };
+    expect(storedFileNamesIn(withTasks)['task-files']).toEqual(['task-a.pdf']);
+  });
+
   it('embeds the files it can read and leaves out the ones that are gone', () => {
     const files = collectStoredFiles(tables, (_folder, name) => (name === 'a.jpg' ? 'QUJD' : null));
     expect(files).toEqual({ 'journal-photos': { 'a.jpg': 'QUJD' } });

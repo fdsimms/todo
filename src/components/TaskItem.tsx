@@ -36,6 +36,7 @@ import Reanimated, {
 } from 'react-native-reanimated';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
+import { TaskAttachmentStrip } from './TaskAttachmentStrip';
 import { PinIcon } from './PinIcon';
 import { LockedTaskRow } from './LockedTaskRow';
 import { StrikeReveal } from './StrikeReveal';
@@ -4641,6 +4642,19 @@ const TaskItemRow = React.memo(function TaskItem({
               </View>
             )}
 
+            {/* Photos and files, under the notes they usually go with. Read
+                only here: they are added and removed in the editor. */}
+            {(task.attachments ?? []).length > 0 && (
+              <View style={[
+                styles.sectionEnd,
+                (task.notes.length === 0 && (showSubtaskSection || isRotation || hasFollowUpRows)) && styles.sectionDivider,
+              ]}>
+                <View style={styles.expandAttachments}>
+                  <TaskAttachmentStrip attachments={task.attachments ?? []} title={task.title} size={52} />
+                </View>
+              </View>
+            )}
+
             {/* The one-line facts about the task (repeat, series, chain,
                 countdown, time spent) read as one block under one divider.
                 Each row used to draw its own, which stacked four hairlines on
@@ -6031,6 +6045,8 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => {
     lineHeight: lineHeight.sm,
     paddingLeft: spacing.xl,
   },
+  // On the notes' own inset, so the thumbnails line up under the text.
+  expandAttachments: { paddingLeft: spacing.xl, paddingTop: spacing.xs },
   expandSection: {
     gap: spacing.xsm,
   },

@@ -49,6 +49,9 @@ export const CONTENT_FIELDS: (keyof Task)[] = [
   // scope:'occurrence' change to one date's routine must not become the default
   // for every date after it.
   'workoutRoutineId', 'workoutProgramId',
+  // Photos and files go with the notes they usually explain: a scope:'occurrence'
+  // change to one date's must not become every later date's.
+  'attachments',
   // The question, not the answer — `deliverableValue` is per-occurrence data
   // like progressCount and is deliberately absent, or a scope:'occurrence'
   // edit would capture one date's answer as the default for every date after.

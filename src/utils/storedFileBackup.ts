@@ -11,6 +11,7 @@ import type { StoredFileFolder } from './recipePhoto';
 /** The folders a backup carries besides the recipe photos, and the rows that name their files. */
 const SOURCES: { folder: Exclude<StoredFileFolder, 'recipe-images'>; table: string; column: string; key?: string }[] = [
   { folder: 'journal-photos', table: 'journal_entries', column: 'photos' },
+  { folder: 'task-files', table: 'tasks', column: 'attachments', key: 'name' },
 ];
 
 function namesIn(cell: unknown, key: string | undefined): string[] {

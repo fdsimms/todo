@@ -101,6 +101,9 @@ const NOT_SEEDED: Record<string, string[]> = {
   // control in TemplateItemEditor; move it out of this list when one is built.
   // quotaIntervalMinutes derives targetCount from the time window, which needs
   // the window and the interval edited together.
+  // A file belongs to the task it was added to: a template naming one would
+  // have every task it creates point at the same file.
+  'a file belongs to one task': ['attachments'],
   'not offered on a template yet': [
     'showStreak', 'streakRequiresWindow', 'streakCountsUnits', 'deadlineMonthDay', 'deadlineOnCalendar', 'logCompletionToCalendar',
     'reminderKind', 'reminderTracksVisibility', 'reminderTimeAnchor', 'quotaIntervalMinutes', 'quotaAlwaysVisible', 'quotaRestAfterLog', 'quotaLoggedDayKey',

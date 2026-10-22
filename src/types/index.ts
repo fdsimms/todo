@@ -2952,6 +2952,15 @@ export interface AnswerGate {
   answers: string[];
 }
 
+/** One photo or file on a task (see `Task.attachments`). */
+export interface TaskAttachment {
+  /** The file's name in the `task-files` folder, always starting `task-`. */
+  name: string;
+  kind: 'photo' | 'file';
+  /** What to call it: the file's own name for a document, "Photo" for a picture. */
+  title: string;
+}
+
 /** A medicine a task records beside its main one: a name, and the dose where one was stated. */
 export interface TaskMedicationExtra {
   name: string;
@@ -3367,6 +3376,16 @@ export interface Task {
    * `docs/arch/mood-log.md`.
    */
   medicationExtras?: TaskMedicationExtra[];
+
+  /**
+   * Photos and files kept with the task: a scan of a form, a photo of a part
+   * to buy, a PDF. Each names a file in the `task-files` folder
+   * (`src/utils/taskFiles.ts`), and the files travel between devices the way
+   * recipe photos do. Carried onto the next occurrence like the notes, and
+   * never deleted with the row (a delete can be undone): the launch sweep takes
+   * a file once no task names it.
+   */
+  attachments?: TaskAttachment[];
 
   /**
    * The stretch of time the target is counted over: one logical day (every

@@ -22,6 +22,13 @@ import {
   recipeImageNames,
   writeRecipeImageFromSync,
 } from './recipeImageSync';
+import {
+  hasTaskFileForSync,
+  readTaskFileForSync,
+  routeStoredFileName,
+  taskFileNames,
+  writeTaskFileFromSync,
+} from './taskFileSync';
 
 export function databaseSyncLocal(): SyncLocal {
   return {
@@ -33,9 +40,11 @@ export function databaseSyncLocal(): SyncLocal {
     apply: (payload, transport) => applyWithRecipeImages(payload, transport, dbApplySyncChanges),
     getCursor: dbGetSyncCursor,
     setCursor: dbSetSyncCursor,
-    imageNames: recipeImageNames,
-    readImage: readRecipeImageForSync,
-    writeImage: writeRecipeImageFromSync,
-    hasImage: hasRecipeImageForSync,
+    // Recipe photos and task files share one namespace, and a task file's
+    // name says it is one (taskFileSync.ts), which is what routes each call.
+    imageNames: () => [...recipeImageNames(), ...taskFileNames()],
+    readImage: name => (routeStoredFileName(name) === 'task' ? readTaskFileForSync(name) : readRecipeImageForSync(name)),
+    writeImage: (name, data) => (routeStoredFileName(name) === 'task' ? writeTaskFileFromSync(name, data) : writeRecipeImageFromSync(name, data)),
+    hasImage: name => (routeStoredFileName(name) === 'task' ? hasTaskFileForSync(name) : hasRecipeImageForSync(name)),
   };
 }

@@ -398,6 +398,7 @@ file: the two maps are indexes, not write-ups.
 | what appears on Today / Later / Unscheduled / Inbox | `src/utils/visibilityUtils.ts` + the selectors in `useTaskStore` |
 | any task create/complete/defer/delete | `src/store/useTaskStore.ts` |
 | the task edit sheet | `src/components/TaskEditor.tsx` |
+| photos and files on a task | `src/utils/taskFiles.ts` (the rules) + `src/utils/taskFileSync.ts` (they travel with the recipe photos, routed by the `task-` name prefix) + `TaskAttachmentStrip`. A file is never deleted with its task, for the undo's sake; the launch sweep takes one no task names. Journal photos are the device-only sibling, `src/utils/journalPhotos.ts` |
 | picking a task's category, anywhere | `src/components/CategoryPicker.tsx` (+ `src/utils/categoryPicker.ts`) |
 | a task row — swipes, checkbox, expansion | `src/components/TaskItem.tsx` |
 | quick-add text parsing (`"pay rent tmrw 5p #home"`) | `src/utils/parseTaskInput.ts`, `parseNaturalDate.ts`. What a line offers after the date, `#word` and `@name` (priority, project, link, phone, timer, target and the rest) is picked in `src/utils/titleSuggestion.ts`, which `QuickAddModal` and `TaskEditor` both call: a new title parse goes there, not into either component |

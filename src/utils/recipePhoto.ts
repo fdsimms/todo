@@ -405,6 +405,15 @@ function recipeImageDirectory(): import('expo-file-system').Directory {
   return storedFolderDirectory(RECIPE_IMAGE_DIR);
 }
 
+/**
+ * What a new file's name starts with in each folder. Task files say so in their
+ * name because they share sync's one flat namespace with the recipe photos, and
+ * the prefix is how a name a peer sends finds its folder (`taskFileSync.ts`).
+ */
+function storedFilePrefix(folder: StoredFileFolder): string {
+  return folder === 'task-files' ? 'task-' : '';
+}
+
 /** One of the stored-file folders, created on first use. */
 function storedFolderDirectory(folder: StoredFileFolder): import('expo-file-system').Directory {
   const { Directory, Paths } = fileSystem();
@@ -438,7 +447,7 @@ async function savePhotoIntoFolder(folder: StoredFileFolder, uri: string, width:
   if (!saved.uri) return { status: 'failed', message: 'Couldn’t read that photo. Try another.' };
 
   const { File } = fileSystem();
-  const dest = new File(storedFolderDirectory(folder), `${generateId()}.jpg`);
+  const dest = new File(storedFolderDirectory(folder), `${storedFilePrefix(folder)}${generateId()}.jpg`);
   // Awaited, not fire-and-forget: `move()` became asynchronous in SDK 57
   // (it was synchronous through SDK 54). Left floating, this returned `ok`
   // with `dest.uri` before the move had necessarily landed, and a rejection
@@ -686,7 +695,7 @@ export function deleteStoredFile(folder: StoredFileFolder, name: string): void {
 export async function copyFileIntoFolder(folder: StoredFileFolder, uri: string, originalName: string): Promise<string> {
   const { File } = fileSystem();
   const ext = /\.([A-Za-z0-9]{1,8})$/.exec(originalName)?.[1]?.toLowerCase() ?? 'bin';
-  const dest = new File(storedFolderDirectory(folder), `${generateId()}.${ext}`);
+  const dest = new File(storedFolderDirectory(folder), `${storedFilePrefix(folder)}${generateId()}.${ext}`);
   await new File(uri).copy(dest);
   return dest.name;
 }

@@ -94,6 +94,7 @@ describe('the three maintenance groups', () => {
       'purge old leftovers',
       'purge unattended ledger',
       'sweep unused journal photos',
+      'sweep unused task files',
       'reclaim freed storage',
     ]);
   });
