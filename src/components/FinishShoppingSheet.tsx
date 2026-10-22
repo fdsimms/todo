@@ -242,8 +242,8 @@ function sameMembers<T>(a: ReadonlySet<T>, b: ReadonlySet<T>): boolean {
  * nothing else this trip can still say what they got. It follows the same
  * silence rule as the tick above it: nothing is picked by default, and
  * skipping it writes nothing. **A pick is about this trip, and saving it is a
- * separate tick** ("Offer seitan next time marinated tofu is missing", off by
- * default): the only thing a pick writes is a substitute link, and what came
+ * separate tick** ("Save seitan as a substitute for marinated tofu", off by
+ * default, with a note saying what saving does and where to undo it): the only thing a pick writes is a substitute link, and what came
  * home when a store ran out doesn't make it a standing substitute. Changing the store clears these answers along
  * with the ticks — "got margarine instead" is an answer about Safeway's
  * shelves, not Costco's. `resolveShoppingSubstitutes` is what turns the
@@ -928,7 +928,7 @@ export function FinishShoppingSheet({
                                 onPress={() => toggleRemember(row.id)}
                                 accessibilityRole="checkbox"
                                 accessibilityState={{ checked: remembered }}
-                                accessibilityLabel={`Offer ${pickedName} next time ${row.name} is missing`}
+                                accessibilityLabel={`Save ${pickedName} as a substitute for ${row.name}`}
                               >
                                 <CheckPop
                                   checked={remembered}
@@ -937,9 +937,20 @@ export function FinishShoppingSheet({
                                 >
                                   <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />
                                 </CheckPop>
-                                <Text style={styles.rememberText}>
-                                  Offer {pickedName} next time {row.name} is missing
-                                </Text>
+                                <View style={styles.rememberBody}>
+                                  <Text style={styles.rememberText}>
+                                    Save {pickedName} as a substitute for {row.name}
+                                  </Text>
+                                  <Text style={styles.rememberNote}>
+                                    {remembered && (
+                                      <Text style={styles.rememberNoteStrong}>
+                                        Saved when you mark this trip finished.{' '}
+                                      </Text>
+                                    )}
+                                    Next time a store is out of {row.name}, we’ll offer {pickedName}.{' '}
+                                    {remembered ? 'Remove it' : 'You can remove it later'} under {row.name} › Substitutes.
+                                  </Text>
+                                </View>
                               </TouchableOpacity>
                             );
                           })()}
@@ -1184,7 +1195,10 @@ function makeStyles(colors: Colors) {
       justifyContent: 'center',
     },
     rememberBoxOn: { backgroundColor: colors.accentFill, borderColor: colors.accentFill },
-    rememberText: { flex: 1, color: colors.text, fontSize: font.md },
+    rememberBody: { flex: 1, gap: spacing.xxs },
+    rememberText: { color: colors.text, fontSize: font.md },
+    rememberNote: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 19 },
+    rememberNoteStrong: { color: colors.text, fontWeight: fontWeight.semibold },
     // The leading tile on an incidental row, in place of the checkbox: nothing
     // here is ticked or unticked, it is already in the cart. Tinted rather than
     // `bgQuaternary` so it doesn't read as the red "they didn't have it" mark.

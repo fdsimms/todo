@@ -889,7 +889,7 @@ bought.
   instead?" pick writes is a one-way substitute link (`linkItemSub`), and that link is a standing
   fact (it feeds the "or seitan" offer, the pantry hint and the pinned pill next time). They were out
   of tofu, so seitan came home: that is not a universal substitute. So the link is written only when
-  the person ticks "Offer seitan next time marinated tofu is missing", which starts off and clears
+  the person ticks "Save seitan as a substitute for marinated tofu", which starts off and clears
   when the pick changes (`resolveShoppingSubstitutes`' `rememberedIds`). An already-recorded pair is
   never rewritten, so its note and ratio survive.
 - **"Bought before" is `purchaseCount`, not a history of off-list buys** (`incidentalPicks`). The app
