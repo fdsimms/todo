@@ -20,7 +20,6 @@ import { MIN_ROTATION_ITEMS, plannedRotationItem, rotationTargetTotal } from '..
 import { useTaskStore } from '../store/useTaskStore';
 import { useNfcKeyStore } from '../store/useNfcKeyStore';
 import { useAppGroupStore } from '../store/useAppGroupStore';
-import { useMeterReadingStore } from '../store/useMeterReadingStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { usePersonStore } from '../store/usePersonStore';
 import { personUndated, personWaiting } from '../utils/personHistory';
@@ -34,8 +33,6 @@ import { isPlanning } from '../utils/projectPause';
 import { proratedFrom } from '../utils/quotaSchedule';
 import { isMorningCheckInCandidate } from '../utils/morningCheckIn';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
-import { useSavedViewStore } from '../store/useSavedViewStore';
-import { filterTasksForView } from '../utils/savedViews';
 import { calibrationFrom, MIN_CALIBRATION_SAMPLES } from '../utils/estimateCalibration';
 import { useFocusStore } from '../store/useFocusStore';
 import { useUnattendedStore } from '../store/useUnattendedStore';
@@ -156,7 +153,6 @@ import { buildTodayProjectBands } from '../utils/todayProjectBands';
 import { buildKitchenSections, describeKitchen, FREEZER_SECTION, kitchenInventory, useUpEntries } from '../utils/kitchenInventory';
 import { useUpRecipes } from '../utils/useUpRecipes';
 import { recipeIndex } from '../utils/mealPlan';
-import { decisionOutcomes, pendingReviewOf } from '../utils/decisionReview';
 import { journalEntryLink, sealedEntries } from '../utils/journal';
 import { collectPlannedIngredients } from '../utils/mealPlanGroceries';
 import { probablyHaveReason } from '../utils/grocerySuggest';
@@ -597,39 +593,10 @@ describe('demo mode', () => {
     expect(s.deferredTasks().filter(t => t.groupId === poconos?.id).length).toBeGreaterThanOrEqual(3);
     expect(useCategoryStore.getState().categories.length).toBeGreaterThan(0);
     expect(s.tagRegistry.length).toBeGreaterThan(0);
-    expect(useSavedViewStore.getState().views.length).toBeGreaterThan(0);
 
     useDemoStore.getState().exitDemoMode();
   });
 
-  // A saved view is a predicate and nothing else, so the only way to tell it
-  // is seeded correctly is to run it: a view that matches nothing reads in
-  // demo mode as a feature that doesn't work, not as one nobody has used.
-  it('seeds saved views that actually match seeded tasks', () => {
-    useDemoStore.getState().enterDemoMode();
-    const views = useSavedViewStore.getState().views;
-    expect(views.map(v => v.name)).toContain('Quick wins');
-
-    const quickWins = views.find(v => v.name === 'Quick wins')!;
-    const matched = filterTasksForView(
-      useTaskStore.getState().tasks,
-      quickWins.clauses,
-      { todayStart: getCurrentDayStart(), heldBack: isHeldBack },
-    );
-    expect(matched.length).toBeGreaterThan(0);
-
-    useDemoStore.getState().exitDemoMode();
-  });
-
-  // The swap is what the whole demo mode rests on, and a store initialized
-  // outside useTaskStore.initialize()'s fan-out keeps its rows pointed at the
-  // database that just went away.
-  it('empties saved views again on the way out of demo mode', () => {
-    useDemoStore.getState().enterDemoMode();
-    expect(useSavedViewStore.getState().views.length).toBeGreaterThan(0);
-    useDemoStore.getState().exitDemoMode();
-    expect(useSavedViewStore.getState().views).toEqual([]);
-  });
   // The Stats section says nothing below MIN_CALIBRATION_SAMPLES, so seeding
   // four timed tasks would look identical to seeding none. Asserting the
   // derived read rather than the row count is what pins that.
@@ -985,18 +952,6 @@ describe('demo mode', () => {
     const garden = useTaskStore.getState().tasks.find(t => t.title === 'Water the garden' && !t.completed);
     expect(garden?.rainSkipMm).toBe(5);
     expect(garden?.recurrenceType).toBe('daily');
-    useDemoStore.getState().exitDemoMode();
-  });
-
-  it('seeds a task due at a meter reading, held on the estimate its readings give', () => {
-    useDemoStore.getState().enterDemoMode();
-    const oil = useTaskStore.getState().tasks.find(t => t.title === 'Change the oil');
-    expect(oil?.meterName).toBe('Car');
-    expect(oil?.meterDueAt).toBe(40500);
-    expect(useMeterReadingStore.getState().readings.filter(r => r.meterKey === 'car')).toHaveLength(2);
-    // 1,100 miles to go at 40 a day: held on the estimate, off Today.
-    expect(oil?.meterHeldUntil).not.toBeNull();
-    expect(useTaskStore.getState().visibleTasks().some(t => t.id === oil?.id)).toBe(false);
     useDemoStore.getState().exitDemoMode();
   });
 
@@ -2670,14 +2625,6 @@ describe('demo seed — people', () => {
     expect(targetedNutrients(targets).length).toBeGreaterThan(0);
     expect(targets.calorieKcal).toBeGreaterThan(0);
     expect(targetedNutrients(targets).length).toBeLessThan(NUTRIENT_KEYS.length);
-  });
-
-  it('seeds a decision whose look-back has been answered, and one still waiting', () => {
-    const { tasks } = useTaskStore.getState();
-    const tile = tasks.find(t => t.title === 'Pick a tile')!;
-    expect(decisionOutcomes(tasks).get(tile.id)?.text).toBe('Easy to clean, and no regrets on the white');
-    const budget = tasks.find(t => t.title === 'Set the budget')!;
-    expect(pendingReviewOf(tasks, budget.id)?.title).toBe('How did it turn out? Set the budget');
   });
 
   it('seeds a note to your future self, sealed, with its reminder', () => {

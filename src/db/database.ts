@@ -16,7 +16,6 @@ import type {
   Milestone,
   Cookware,
   CopyFlag,
-  MeterReading,
   Exercise,
   Gym,
   GymExerciseSetting,
@@ -61,7 +60,6 @@ import type {
   ReceiptStyle,
   SavedMeal,
   SavedMealItem,
-  SavedView,
   Shop,
   StoreAlias,
   TaskGroup,
@@ -101,7 +99,6 @@ import { parseUnavailableProductIds, productKeyFor } from '../utils/groceryProdu
 import { parseChainItems } from '../utils/chain';
 import { parseMedicationExtras } from '../utils/medicationLog';
 import { parseRotationItems, parseRotationLastDone, parseRotationLog, parseRotationPlan } from '../utils/rotation';
-import { parseSavedViewClauses, serializeSavedViewClauses } from '../utils/savedViews';
 import { parseFollowUpTaskDraft } from '../utils/followUpTask';
 import { cookbookKey, parseRecipeIngredients, parsePrepTasks, parseSteps } from '../utils/recipeUtils';
 import { parseRecipeTags } from '../utils/recipeTags';
@@ -558,17 +555,6 @@ function runInitDatabase(): void {
       created_at TEXT NOT NULL
     );
 
-    -- Readings of a meter the user tracks by hand (an odometer, a shot
-    -- counter), keyed by the meter rather than a task so one entry serves every
-    -- task following it. Only ever inserted or deleted. See MeterReading.
-    CREATE TABLE IF NOT EXISTS meter_readings (
-      id TEXT PRIMARY KEY NOT NULL,
-      meter_key TEXT NOT NULL,
-      meter_name TEXT NOT NULL,
-      value REAL NOT NULL,
-      read_at TEXT NOT NULL,
-      created_at TEXT NOT NULL
-    );
 
     -- Workouts (docs/arch/workouts.md). The built-in exercise library is code
     -- (utils/exerciseLibrary.ts); exercises holds custom exercises and the
@@ -1082,22 +1068,6 @@ function runInitDatabase(): void {
       slot TEXT NOT NULL,
       recipe_id TEXT,
       title TEXT NOT NULL,
-      sort_order REAL NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL
-    );
-
-    -- A named, reusable lens over the task list. See SavedView in types for
-    -- the shape and utils/savedViews.ts for what a clause means.
-    -- The clauses column is the JSON array of predicates; it is read back via
-    -- parseSavedViewClauses rather than a bare JSON.parse, because this one is
-    -- parsed while mapping rows and a throw would take every later view with
-    -- it. The category names, project ids and tags inside it are soft
-    -- references that are allowed to dangle.
-    CREATE TABLE IF NOT EXISTS saved_views (
-      id TEXT PRIMARY KEY NOT NULL,
-      name TEXT NOT NULL,
-      icon TEXT NOT NULL,
-      clauses TEXT NOT NULL DEFAULT '[]',
       sort_order REAL NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL
     );
@@ -2307,8 +2277,9 @@ function runInitDatabase(): void {
     // 'skip' / 'move' for an occurrence the rule lands on a holiday; NULL on
     // every existing row, which happens anyway. See Task.recurrenceHolidays.
     'ALTER TABLE tasks ADD COLUMN recurrence_holidays TEXT',
-    // A one-off due at a meter reading ("every 5,000 miles"); NULL on every
-    // existing row, which follows no meter. See Task.meterName.
+    // LEGACY, unread since meters were removed: a one-off due at a meter
+    // reading ("every 5,000 miles"). Kept declared because the migration list
+    // is append-only and a column can't be dropped.
     'ALTER TABLE tasks ADD COLUMN meter_name TEXT',
     'ALTER TABLE tasks ADD COLUMN meter_unit TEXT',
     'ALTER TABLE tasks ADD COLUMN meter_every REAL',
@@ -2349,7 +2320,9 @@ function runInitDatabase(): void {
     // NULL on every existing entry. See FoodLogEntry.savedMealId.
     'ALTER TABLE food_logs ADD COLUMN saved_meal_id TEXT',
     'ALTER TABLE food_logs ADD COLUMN saved_meal_name TEXT',
-    // Null on every existing task: none of them is a look-back. See Task.reviewOfTaskId.
+    // LEGACY, unread since the decision look-back was removed: the answered
+    // row a "How did it turn out?" task looked back on. Kept declared for the
+    // same reason as the meter columns.
     'ALTER TABLE tasks ADD COLUMN review_of_task_id TEXT',
     // Null on every existing entry: all of them were open when written. See
     // JournalEntry.openOn.
@@ -2357,7 +2330,6 @@ function runInitDatabase(): void {
     // JournalEntry.tags / JournalEntry.personIds: JSON arrays of strings.
     'ALTER TABLE journal_entries ADD COLUMN tags TEXT',
     'ALTER TABLE journal_entries ADD COLUMN person_ids TEXT',
-    'CREATE INDEX IF NOT EXISTS idx_meter_readings_key ON meter_readings(meter_key, read_at)',
     // Off on every existing project: Today keeps its category sections until
     // a project asks for a band of its own. See Project.groupOnToday.
     'ALTER TABLE projects ADD COLUMN group_on_today INTEGER NOT NULL DEFAULT 0',
@@ -2589,6 +2561,14 @@ function runInitDatabase(): void {
   if (dbGetSetting('cookbook_index_table_dropped_done') !== '1') {
     try { db.runSync('DROP TABLE IF EXISTS cookbook_index_entries'); } catch (_) {}
     dbSetSetting('cookbook_index_table_dropped_done', '1');
+  }
+
+  // One-time cleanup: meters and saved views were removed, so their tables are
+  // dropped from installs that still have them, sync triggers included.
+  if (dbGetSetting('meters_views_tables_dropped_done') !== '1') {
+    try { db.runSync('DROP TABLE IF EXISTS meter_readings'); } catch (_) {}
+    try { db.runSync('DROP TABLE IF EXISTS saved_views'); } catch (_) {}
+    dbSetSetting('meters_views_tables_dropped_done', '1');
   }
 
   // One-time migration: give existing categories a stable sort_order (their
@@ -2840,11 +2820,6 @@ export const BACKUP_TABLES = [
   'template_categories',
   'cookware',
   'projects',
-  // After categories and projects: a view's clauses name categories by name
-  // and projects by id. They are ids inside JSON rather than foreign keys and
-  // are allowed to dangle (an unknown project renders as "a project"), so this
-  // is about keeping related rows together rather than a restore requirement.
-  'saved_views',
   // Before people: a person's group_id points at one of these, so restoring
   // groups first means a restored person never names a group that isn't
   // there yet.
@@ -2862,8 +2837,6 @@ export const BACKUP_TABLES = [
   'milestones',
   // Copy flags point at nothing.
   'copy_flags',
-  // Meter readings point at nothing: the meter is a name, not a row.
-  'meter_readings',
   // Workouts, parents first: a routine names a program and exercises, a
   // session names a routine and a program, a set names a session and an
   // exercise. All of them are ids that may dangle (a set on a built-in
@@ -4014,12 +3987,6 @@ function rowToTask(row: Record<string, unknown>): Task {
     recurrenceCount: (row.recurrence_count as number | null) ?? null,
     recurrenceFromCompletion: Boolean(row.recurrence_from_completion),
     recurrenceHolidays: row.recurrence_holidays === 'skip' || row.recurrence_holidays === 'move' ? row.recurrence_holidays : null,
-    meterName: (row.meter_name as string | null) ?? null,
-    meterUnit: (row.meter_unit as string | null) ?? null,
-    meterEvery: (row.meter_every as number | null) ?? null,
-    meterDueAt: (row.meter_due_at as number | null) ?? null,
-    meterLimitMonths: (row.meter_limit_months as number | null) ?? null,
-    meterHeldUntil: (row.meter_held_until as string | null) ?? null,
     rainSkipMm: (row.rain_skip_mm as number | null) ?? null,
     rainSkippedOn: (row.rain_skipped_on as string | null) ?? null,
     slotIn: row.slot_in === null || row.slot_in === undefined ? null : Boolean(row.slot_in),
@@ -4047,7 +4014,6 @@ function rowToTask(row: Record<string, unknown>): Task {
           return extras.length > 0 ? { medicationExtras: extras } : {};
         })()
       : {}),
-    reviewOfTaskId: (row.review_of_task_id as string | null) ?? null,
     targetCount: (row.target_count as number | null) ?? null,
     progressCount: (row.progress_count as number) ?? 0,
     targetUnit: (row.target_unit as string | null) ?? null,
@@ -4259,10 +4225,10 @@ export function dbInsertTask(task: Task): void {
       reminder_tracks_visibility, recurrence_month,
       blocked_by_ids, deliverable_options, deliverable_sets_away, follow_up_on, extra_task_source_id,
       pin_each_occurrence, bounty_pushes, difficulty, answer_gate, deliverable_why, deliverable_revisit_if, extra_task_at_end, weather_wait, wait_for_series_end, rotation_plan, slip_allowance, done_by_other_at, window_start_sun, window_end_sun, recurrence_holidays,
-      meter_name, meter_unit, meter_every, meter_due_at, meter_limit_months, meter_held_until, rain_skip_mm, rain_skipped_on, review_of_task_id,
+      rain_skip_mm, rain_skipped_on,
       quota_ramp_step, quota_ramp_every, quota_ramp_goal, quota_ramp_hits, streak_counts_units, log_saved_meal_id, coins_per_tap, log_meal_slot_by_time, quota_place_ids, gate_group_id, workout_routine_id, workout_program_id, generated_ready_at,
       slot_in, slot_decided_on, slot_waiting_since, quota_rest_after_log, quota_logged_day_key, medication_extras
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deadlineTime ?? null, task.deferUntil,
@@ -4390,15 +4356,8 @@ export function dbInsertTask(task: Task): void {
       task.doneByOtherAt ?? null,
       task.windowStartSun ?? null, task.windowEndSun ?? null,
       task.recurrenceHolidays ?? null,
-      task.meterName ?? null,
-      task.meterUnit ?? null,
-      task.meterEvery ?? null,
-      task.meterDueAt ?? null,
-      task.meterLimitMonths ?? null,
-      task.meterHeldUntil ?? null,
       task.rainSkipMm ?? null,
       task.rainSkippedOn ?? null,
-      task.reviewOfTaskId ?? null,
       task.quotaRampStep ?? null,
       task.quotaRampEvery ?? null,
       task.quotaRampGoal ?? null,
@@ -4455,7 +4414,7 @@ export function dbUpdateTask(task: Task): void {
       reminder_tracks_visibility=?, recurrence_month=?,
       blocked_by_ids=?, deliverable_options=?, deliverable_sets_away=?, follow_up_on=?, extra_task_source_id=?,
       pin_each_occurrence=?, bounty_pushes=?, difficulty=?, answer_gate=?, deliverable_why=?, deliverable_revisit_if=?, extra_task_at_end=?, weather_wait=?, wait_for_series_end=?, rotation_plan=?, slip_allowance=?, done_by_other_at=?, window_start_sun=?, window_end_sun=?, recurrence_holidays=?,
-      meter_name=?, meter_unit=?, meter_every=?, meter_due_at=?, meter_limit_months=?, meter_held_until=?, rain_skip_mm=?, rain_skipped_on=?, review_of_task_id=?,
+      rain_skip_mm=?, rain_skipped_on=?,
       quota_ramp_step=?, quota_ramp_every=?, quota_ramp_goal=?, quota_ramp_hits=?, streak_counts_units=?, log_saved_meal_id=?, coins_per_tap=?, log_meal_slot_by_time=?, quota_place_ids=?, gate_group_id=?, workout_routine_id=?, workout_program_id=?, generated_ready_at=?,
       slot_in=?, slot_decided_on=?, slot_waiting_since=?, quota_rest_after_log=?, quota_logged_day_key=?, medication_extras=?
     WHERE id=?`,
@@ -4586,15 +4545,8 @@ export function dbUpdateTask(task: Task): void {
       task.doneByOtherAt ?? null,
       task.windowStartSun ?? null, task.windowEndSun ?? null,
       task.recurrenceHolidays ?? null,
-      task.meterName ?? null,
-      task.meterUnit ?? null,
-      task.meterEvery ?? null,
-      task.meterDueAt ?? null,
-      task.meterLimitMonths ?? null,
-      task.meterHeldUntil ?? null,
       task.rainSkipMm ?? null,
       task.rainSkippedOn ?? null,
-      task.reviewOfTaskId ?? null,
       task.quotaRampStep ?? null,
       task.quotaRampEvery ?? null,
       task.quotaRampGoal ?? null,
@@ -5276,68 +5228,6 @@ export function dbUpdateTaskGroup(group: TaskGroup): void {
 
 export function dbDeleteTaskGroup(id: string): void {
   db.runSync('DELETE FROM task_groups WHERE id = ?', [id]);
-}
-
-// ─── Saved views ────────────────────────────────────────────────────────────
-
-function rowToSavedView(row: Record<string, unknown>): SavedView {
-  return {
-    id: row.id as string,
-    name: row.name as string,
-    icon: row.icon as string,
-    clauses: parseSavedViewClauses((row.clauses as string) ?? '[]'),
-    sortOrder: row.sort_order as number,
-    createdAt: row.created_at as string,
-  };
-}
-
-export function dbGetAllSavedViews(): SavedView[] {
-  const rows = db.getAllSync<Record<string, unknown>>(
-    'SELECT * FROM saved_views ORDER BY sort_order ASC, name ASC'
-  );
-  return rows.map(rowToSavedView);
-}
-
-/** The slot a new view takes: the bottom of the list, like a new category. */
-export function dbNextSavedViewSortOrder(): number {
-  const max = db.getFirstSync<{ m: number }>(
-    'SELECT COALESCE(MAX(sort_order), 0) AS m FROM saved_views'
-  )?.m ?? 0;
-  return max + 1;
-}
-
-export function dbInsertSavedView(view: SavedView): void {
-  db.runSync(
-    'INSERT INTO saved_views (id, name, icon, clauses, sort_order, created_at) VALUES (?,?,?,?,?,?)',
-    [
-      view.id, view.name, view.icon, serializeSavedViewClauses(view.clauses),
-      view.sortOrder, view.createdAt,
-    ]
-  );
-}
-
-export function dbUpdateSavedView(view: SavedView): void {
-  db.runSync(
-    'UPDATE saved_views SET name=?, icon=?, clauses=?, sort_order=? WHERE id=?',
-    [
-      view.name, view.icon, serializeSavedViewClauses(view.clauses),
-      view.sortOrder, view.id,
-    ]
-  );
-}
-
-export function dbDeleteSavedView(id: string): void {
-  db.runSync('DELETE FROM saved_views WHERE id = ?', [id]);
-}
-
-export function dbBatchUpdateSavedViewSortOrders(
-  updates: { id: string; sortOrder: number }[]
-): void {
-  withTransaction(() => {
-    for (const { id, sortOrder } of updates) {
-      db.runSync('UPDATE saved_views SET sort_order = ? WHERE id = ?', [sortOrder, id]);
-    }
-  });
 }
 
 // ─── Focus sessions ─────────────────────────────────────────────────────────
@@ -7772,34 +7662,6 @@ export function dbUpdateCopyFlag(flag: CopyFlag): void {
 
 export function dbDeleteCopyFlag(id: string): void {
   db.runSync('DELETE FROM copy_flags WHERE id = ?', [id]);
-}
-
-function rowToMeterReading(row: Record<string, unknown>): MeterReading {
-  return {
-    id: row.id as string,
-    meterKey: row.meter_key as string,
-    meterName: row.meter_name as string,
-    value: row.value as number,
-    readAt: row.read_at as string,
-    createdAt: row.created_at as string,
-  };
-}
-
-export function dbGetAllMeterReadings(): MeterReading[] {
-  return db
-    .getAllSync<Record<string, unknown>>('SELECT * FROM meter_readings ORDER BY read_at ASC')
-    .map(rowToMeterReading);
-}
-
-export function dbInsertMeterReading(reading: MeterReading): void {
-  db.runSync(
-    'INSERT INTO meter_readings (id, meter_key, meter_name, value, read_at, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-    [reading.id, reading.meterKey, reading.meterName, reading.value, reading.readAt, reading.createdAt]
-  );
-}
-
-export function dbDeleteMeterReading(id: string): void {
-  db.runSync('DELETE FROM meter_readings WHERE id = ?', [id]);
 }
 
 // ─── Workouts ────────────────────────────────────────────────────────────────

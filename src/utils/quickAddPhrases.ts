@@ -78,7 +78,6 @@ export const QUICK_ADD_PHRASES: readonly QuickAddPhraseSection[] = [
         means: 'On a repeating task, counts down what’s left',
         reads: 'title', kind: 'supply', context: { recurrenceType: 'monthly' },
       },
-      { example: 'change the oil every 5,000 miles on the car', means: 'Due at a reading rather than a date', reads: 'title', kind: 'meter' },
     ],
   },
   {

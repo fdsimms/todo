@@ -54,10 +54,7 @@ import { AnimatedText } from '../theme/AppFont';
 import { weatherWaitChipText } from '../utils/weatherWait';
 import { slotInChipText } from '../utils/slotIn';
 import { splitWeatherTitle } from '../utils/weatherTasks';
-import { meterChipText } from '../utils/meters';
-import { useMeterReadingStore } from '../store/useMeterReadingStore';
 import { buildCompletion, completionSettings } from '../utils/taskCompletion';
-import { MeterReadingSheet } from './MeterReadingSheet';
 import { NutrientTaskBar } from './NutrientTaskBar';
 import { formatDeadlineLabel, isDeadlineTimePassed, formatScheduledDate, formatTaskDate, formatHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, getCurrentDayStart, liveStreakCount, getLogicalDayKey, dayKeyToDate, formatTimeOfDay, hoursUnlockLabel, getLogicalNow } from '../utils/dateUtils';
 import { isNegativeTask, isFailedToday, slipsToday, slipAllowanceOf } from '../utils/negativeHabits';
@@ -78,7 +75,6 @@ import { isStreakAtRecord } from '../utils/streakRecord';
 import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isMissableMealPlanTask, isTaskNew, isTaskVisible, isQuotaTask, isQuotaPartial, quotaRidesOutTheDay, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, formatQuotaNextDue, quotaFraction, quotaPaceFraction, quotaUnitsToPace, activeChainStepTitle, displayTitleFor, isTaskNotNeeded, isPinnedOnToday } from '../utils/visibilityUtils';
 import { openTasksOf } from '../utils/openTasks';
 import { asksOnCompletion, deliverableKindFor, isTentativeAnswer, type DeliverableReasoning } from '../utils/deliverables';
-import type { ReviewAfter } from '../utils/decisionReview';
 import { offersMealLogOnCompletion } from '../utils/completionTap';
 import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { chainPreview, isChainFinish, chainStepAdvancesInPlace, nextChainStep } from '../utils/chain';
@@ -701,7 +697,6 @@ const TaskItemRow = React.memo(function TaskItem({
   const pinWaiting = task.pinned && !pinLit;
   const pinWritesPending = useRef(0);
   const [showDeliverablePrompt, setShowDeliverablePrompt] = useState(false);
-  const [showMeterReading, setShowMeterReading] = useState(false);
   const [showMealPicker, setShowMealPicker] = useState(false);
   const { offerPrepTasksForEach } = usePlanMeal();
   // The postpone prompt's "Break it up" needs somewhere to send the user. With
@@ -827,8 +822,6 @@ const TaskItemRow = React.memo(function TaskItem({
   const pendingDeliverableRef = useRef<string | null | undefined>(undefined);
   // The Why / Revisit if that came with it, held for the same reason.
   const pendingReasoningRef = useRef<DeliverableReasoning | undefined>(undefined);
-  // And when to ask how that answer turned out (decisionReview.ts), likewise.
-  const pendingReviewAfterRef = useRef<ReviewAfter | undefined>(undefined);
   // Missed / done by someone else, when the in-flight send-off is one of those
   // rather than an ordinary completion. Held for the same reason as the answer
   // above: the unmount salvage must record the same outcome, not a real tick.
@@ -1160,14 +1153,12 @@ const TaskItemRow = React.memo(function TaskItem({
     completingRef.current = false;
     const deliverableValue = pendingDeliverableRef.current;
     const deliverableReasoning = pendingReasoningRef.current;
-    const reviewAfter = pendingReviewAfterRef.current;
     pendingDeliverableRef.current = undefined;
     pendingReasoningRef.current = undefined;
-    pendingReviewAfterRef.current = undefined;
     const outcome = pendingOutcomeRef.current;
     pendingOutcomeRef.current = undefined;
     completeTask(task.id, {
-      ...(deliverableValue !== undefined ? { deliverableValue, deliverableReasoning, reviewAfter } : {}),
+      ...(deliverableValue !== undefined ? { deliverableValue, deliverableReasoning } : {}),
       ...(autoCompletedRef.current ? { autoCompleted: true } : {}),
       ...outcome,
     });
@@ -1364,7 +1355,6 @@ const TaskItemRow = React.memo(function TaskItem({
   const mountWhenPicker = useSheetMount(whenPickerOpen);
   const mountBreakdown = useSheetMount(showBreakdown);
   const mountDeliverablePrompt = useSheetMount(showDeliverablePrompt);
-  const mountMeterReading = useSheetMount(showMeterReading);
   const mealPickerOpen = showMealPicker && mealSlotChooseSource !== null;
   const mountMealPicker = useSheetMount(mealPickerOpen);
   const [showRotationPick, setShowRotationPick] = useState(false);
@@ -2154,7 +2144,6 @@ const TaskItemRow = React.memo(function TaskItem({
   // A string or null, for the reason the health selectors above return a
   // number: a row with no meter answers null for ever and never re-renders on
   // a reading, and one with a meter only when its own sentence changes.
-  const meterText = useMeterReadingStore(s => (task.meterName && !task.completed ? meterChipText(task, s.readings) : null));
 
   // An "every N hours" task has no calendar grid — the row's own recurrence
   // caption just says the interval ("Every 8 hours"), never the clock time it
@@ -2195,7 +2184,7 @@ const TaskItemRow = React.memo(function TaskItem({
    * the store's completion is what stamps it onto the row, and a separate
    * write would leave a window where the task is answered but not done.
    */
-  const runCompletion = async (deliverableValue?: string | null, deliverableReasoning?: DeliverableReasoning, reviewAfter?: ReviewAfter, outcome?: CompletionOutcome) => {
+  const runCompletion = async (deliverableValue?: string | null, deliverableReasoning?: DeliverableReasoning, outcome?: CompletionOutcome) => {
     if (completingRef.current || pacingOutRef.current) return;
     // A "Maybe" leaves the task open (see completeTask), so it skips the
     // send-off: the row fading out would say it had gone when it hasn't.
@@ -2238,7 +2227,6 @@ const TaskItemRow = React.memo(function TaskItem({
     completingRef.current = true;
     pendingDeliverableRef.current = deliverableValue;
     pendingReasoningRef.current = deliverableReasoning;
-    pendingReviewAfterRef.current = reviewAfter;
     pendingOutcomeRef.current = outcome;
     const kind = neutralKindOf(outcome);
     setNeutralKind(kind);
@@ -2269,7 +2257,6 @@ const TaskItemRow = React.memo(function TaskItem({
         now: new Date(),
         allTasks: state.tasks,
         subtasks: state.subtasksOf(task.id),
-        meterReadings: useMeterReadingStore.getState().readings,
       });
       if (built && built.completed.streakCount !== shownStreak) setStreakPreview(built.completed.streakCount);
     }
@@ -2382,7 +2369,6 @@ const TaskItemRow = React.memo(function TaskItem({
         completingRef.current = false;
         pendingDeliverableRef.current = undefined;
         pendingReasoningRef.current = undefined;
-        pendingReviewAfterRef.current = undefined;
         pendingOutcomeRef.current = undefined;
         // Leaves the row checked and fully visible, holding its slot: the send-off
         // is the batched collapse (see the collapseSignal effect above), which
@@ -2393,7 +2379,7 @@ const TaskItemRow = React.memo(function TaskItem({
         // withHeldCompletions) and the row would render as ordinary work again.
         setAwaitingCollapse(true);
         completeTask(task.id, {
-          ...(deliverableValue !== undefined ? { deliverableValue, deliverableReasoning, reviewAfter } : {}),
+          ...(deliverableValue !== undefined ? { deliverableValue, deliverableReasoning } : {}),
           ...(logEarly ? { logEarly: true } : {}),
           ...(autoCompletedRef.current ? { autoCompleted: true } : {}),
           ...outcome,
@@ -2463,12 +2449,10 @@ const TaskItemRow = React.memo(function TaskItem({
     });
     completingRef.current = false;
     const deliverableReasoning = pendingReasoningRef.current;
-    const reviewAfter = pendingReviewAfterRef.current;
     pendingDeliverableRef.current = undefined;
     pendingReasoningRef.current = undefined;
-    pendingReviewAfterRef.current = undefined;
     completeTask(task.id, {
-      ...(deliverableValue !== undefined ? { deliverableValue, deliverableReasoning, reviewAfter } : {}),
+      ...(deliverableValue !== undefined ? { deliverableValue, deliverableReasoning } : {}),
       ...(logEarly ? { logEarly: true } : {}),
       ...(autoCompletedRef.current ? { autoCompleted: true } : {}),
       chainStepInPlace: true,
@@ -2529,11 +2513,11 @@ const TaskItemRow = React.memo(function TaskItem({
       if (expandedRef.current) onPress(rowId);
       return;
     }
-    void runCompletion(undefined, undefined, undefined, { missed: true, ...(wholeChain ? { missChain: true } : {}) });
+    void runCompletion(undefined, undefined, { missed: true, ...(wholeChain ? { missChain: true } : {}) });
   };
 
   const handleSomeoneElse = () => {
-    void runCompletion(undefined, undefined, undefined, { byOther: true });
+    void runCompletion(undefined, undefined, { byOther: true });
   };
 
   const handleComplete = async () => {
@@ -2941,7 +2925,6 @@ const TaskItemRow = React.memo(function TaskItem({
     completingRef.current = false;
     pendingDeliverableRef.current = undefined;
     pendingReasoningRef.current = undefined;
-    pendingReviewAfterRef.current = undefined;
     pendingOutcomeRef.current = undefined;
     // Played backwards (the check fades, the gold drains back to the centre,
     // the strike leaves) unless the row already collapsed, in which case it's
@@ -2996,7 +2979,6 @@ const TaskItemRow = React.memo(function TaskItem({
     completingRef.current = false;
     pendingDeliverableRef.current = undefined;
     pendingReasoningRef.current = undefined;
-    pendingReviewAfterRef.current = undefined;
     pendingOutcomeRef.current = undefined;
     // Nothing was completed, so the batch shouldn't keep waiting on this row.
     cancelCompletionAnimation(task.id);
@@ -3107,7 +3089,7 @@ const TaskItemRow = React.memo(function TaskItem({
   // Whether the meta row has anything to show besides the notes and deadline
   // markers. The notes icon alone is a bare glyph, so it never takes a line
   // of its own (see `notesStayInTitle`).
-  const hasOtherMeta = isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || (showStreakChip && !nutrientRow) || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || slotInText !== null || meterText !== null || reminderTimeLabel !== null || travelNote !== null || travelDisruption !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.generatedKind === 'calendarReview';
+  const hasOtherMeta = isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || (showStreakChip && !nutrientRow) || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || slotInText !== null || reminderTimeLabel !== null || travelNote !== null || travelDisruption !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.generatedKind === 'calendarReview';
   const deadlineOnMeta = markersOnMeta && deadlineDays !== null;
   const notesStayInTitle = markersOnMeta && hasNotes && !hasOtherMeta && !deadlineOnMeta;
 
@@ -3853,24 +3835,6 @@ const TaskItemRow = React.memo(function TaskItem({
                   {slotInText}
                 </Text>
               </View>
-            )}
-            {/* The one chip on the row that is also a button: the reading is
-                what moves this task, so logging one is a tap from where it's
-                read rather than a trip into the editor. */}
-            {meterText !== null && (
-              <TouchableOpacity
-                style={styles.metaChip}
-                onPress={() => { haptics.tap(); setShowMeterReading(true); }}
-                activeOpacity={interaction.activeOpacity}
-                hitSlop={6}
-                accessibilityRole="button"
-                accessibilityLabel={`${meterText}. Log a reading`}
-              >
-                <Ionicons name="speedometer-outline" size={iconSize.xs} color={colors.textSecondary} />
-                <Text style={styles.scheduledLabel} numberOfLines={1}>
-                  {meterText}
-                </Text>
-              </TouchableOpacity>
             )}
             {/* An "every N hours" task's own placement — see hoursUnlockTime's
                 comment above. Shown regardless of showDate, the same as the
@@ -5446,24 +5410,14 @@ const TaskItemRow = React.memo(function TaskItem({
           onClose={() => setShowBreakdown(false)}
         />
       )}
-      {mountMeterReading && task.meterName && (
-        <MeterReadingSheet
-          visible={showMeterReading}
-          meterName={task.meterName}
-          meterUnit={task.meterUnit ?? null}
-          dueAt={task.meterDueAt ?? null}
-          onClose={() => setShowMeterReading(false)}
-        />
-      )}
       {mountDeliverablePrompt && (
         <DeliverablePromptSheet
           visible={showDeliverablePrompt}
           task={task}
-          onConfirm={(value, reasoning, lookBack) => {
+          onConfirm={(value, reasoning) => {
             setShowDeliverablePrompt(false);
-            runCompletion(value, reasoning, lookBack);
+            runCompletion(value, reasoning);
           }}
-          offerLookBack
           // Cancel leaves the task exactly as it was — the tap is taken back,
           // not turned into an unanswered completion.
           onCancel={() => setShowDeliverablePrompt(false)}

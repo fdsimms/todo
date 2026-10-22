@@ -23,7 +23,6 @@ import { primaryNickname } from '../../src/utils/nicknames';
 import { PRIORITY_LABELS } from '../../src/types';
 import type { Task } from '../../src/types';
 import type { Replica } from './replica';
-import { decisionOutcomes } from '../../src/utils/decisionReview';
 import { isRotationTask } from '../../src/utils/rotation';
 import { proratedFrom } from '../../src/utils/quotaSchedule';
 
@@ -50,8 +49,6 @@ export interface SerializedTask {
   deferUntil?: string;
   /** Set while a one-off task is held for a kind of day ("sunny"); the app moves deferUntil to the first matching forecast day. */
   weatherWait?: string;
-  /** Set on a one-off due at a meter reading: the phone holds it until a reading, the projected day or the time limit, whichever comes first. */
-  meter?: { name: string; unit?: string; every: number; dueAt: number; limitMonths?: number };
   /** Set on a task that waits for a repeating blocker's last occurrence, not just its next. */
   waitForSeriesEnd?: true;
   timeSegments?: string[];
@@ -80,10 +77,6 @@ export interface SerializedTask {
   why?: string;
   /** What would reopen the decision, where it was recorded with it. */
   revisitIf?: string;
-  /** How the answer turned out, from the look-back that asked (decisionReview.ts). */
-  outcome?: { text: string; at: string };
-  /** On a look-back task: the answered decision it asks about. */
-  lookBackOf?: string;
   recurring?: boolean;
   /** A counted target, in brief (get_task has the rest). `alwaysVisible`: it stays on Today instead of hiding while its pace is met. */
   target?: { count: number; per: 'day' | 'week'; done: number; alwaysVisible?: true };
@@ -187,15 +180,6 @@ export function serializeTask(replica: Replica, task: Task, names?: Map<string, 
     deadline: task.deadline ?? undefined,
     deferUntil: task.deferUntil ?? undefined,
     weatherWait: task.weatherWait ?? undefined,
-    meter: task.meterName && task.meterEvery != null && task.meterDueAt != null
-      ? {
-          name: task.meterName,
-          unit: task.meterUnit ?? undefined,
-          every: task.meterEvery,
-          dueAt: task.meterDueAt,
-          limitMonths: task.meterLimitMonths ?? undefined,
-        }
-      : undefined,
     waitForSeriesEnd: task.waitForSeriesEnd ? true : undefined,
     timeSegments: task.timeSegments,
     priority: task.priority > 0 ? PRIORITY_LABELS[task.priority] : undefined,
@@ -210,8 +194,6 @@ export function serializeTask(replica: Replica, task: Task, names?: Map<string, 
     answer: task.deliverableValue ?? undefined,
     why: task.deliverableWhy ?? undefined,
     revisitIf: task.deliverableRevisitIf ?? undefined,
-    outcome: task.deliverableValue != null ? outcomeOf(replica, task.id) : undefined,
-    lookBackOf: task.reviewOfTaskId ?? undefined,
     recurring: task.recurrenceType !== 'none' ? true : undefined,
     target: hasCountedTarget(task)
       ? {
@@ -234,12 +216,6 @@ export function serializeTask(replica: Replica, task: Task, names?: Map<string, 
     slotIn: task.slotIn ?? undefined,
     waitingSince: task.slotWaitingSince ?? undefined,
   });
-}
-
-/** The latest answered look-back on a decision, read the way the app reads it (`decisionOutcomes`). */
-function outcomeOf(replica: Replica, id: string): { text: string; at: string } | undefined {
-  const outcome = decisionOutcomes(replica.tasks().filter(t => t.reviewOfTaskId === id)).get(id);
-  return outcome ? { text: outcome.text, at: outcome.at } : undefined;
 }
 
 /**

@@ -93,7 +93,6 @@ const SCREEN_SYMBOLS: Record<string, string> = {
   Tags: 'tag',
   Stacks: 'square.stack',
   Templates: 'doc.on.doc',
-  SavedViews: 'line.3.horizontal.decrease.circle',
   Tips: 'lightbulb',
   ScreenTime: 'hourglass',
   Cookbooks: 'books.vertical',

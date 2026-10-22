@@ -2,11 +2,10 @@ import type { Difficulty, Priority } from '../types';
 import {
   parsePriorityInput, parseDifficultyInput, parseProjectInput, parseChainInput, parseLinkInput, parsePhoneInput, parseEmailInput,
   parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput,
-  parseSunWindowInput, parseMeterInput, parseRainSkipInput, parseWaitingOnInput, parseSubtasksInput,
+  parseSunWindowInput, parseRainSkipInput, parseWaitingOnInput, parseSubtasksInput,
   parseAvoidInput, parseAvoidEnd,
 } from './parseTaskInput';
 import { canSkipForRain, defaultRainSkipMm, formatRain, type RainUnit } from './rainSkip';
-import { formatMeterAmount, meterKey } from './meters';
 import { formatDuration } from './effort';
 import { formatQuotaTarget } from './quotaUnit';
 import { formatSupplyLeft } from './supply';
@@ -16,7 +15,7 @@ import { KNOWN_LINK_APPS } from '../constants/linkApps';
  * The part of the title-reading chain that comes after the schedule phrase,
  * the "#category/#tag" token and the "@name" suggestion: priority, project,
  * chain, link, phone, email, timer, supply, target, estimate, weather wait,
- * sun window, meter, rain skip, waiting on, subtasks, avoid.
+ * sun window, rain skip, waiting on, subtasks, avoid.
  *
  * Quick add and the task editor both read a title for these and offer one
  * suggestion at a time, in this order, so the two can't disagree about what
@@ -46,10 +45,6 @@ export interface TitleSuggestionContext {
   polarity: 'positive' | 'negative';
   /** The task's window end, so a closing time it already has isn't offered again. */
   windowEnd: string | null;
-  /** The task already has a meter. */
-  hasMeter: boolean;
-  /** Meter names already read, so "the car" files under "Car". */
-  knownMeters: string[];
   /** The task already skips for rain. */
   hasRainSkip: boolean;
   rainUnit: RainUnit;
@@ -73,7 +68,6 @@ export type TitleSuggestion =
   | { kind: 'estimate'; hit: Hit<typeof parseEstimateInput> }
   | { kind: 'weather'; hit: Hit<typeof parseWeatherWaitInput> }
   | { kind: 'sun'; hit: Hit<typeof parseSunWindowInput> & { clock: string } }
-  | { kind: 'meter'; hit: Hit<typeof parseMeterInput> & { read: boolean } }
   | { kind: 'rain'; hit: Hit<typeof parseRainSkipInput> & { mm: number } }
   | { kind: 'waiting'; hit: Hit<typeof parseWaitingOnInput> }
   | { kind: 'subtasks'; hit: Hit<typeof parseSubtasksInput> }
@@ -127,15 +121,6 @@ export function pickTitleSuggestion(title: string, ctx: TitleSuggestionContext):
   if (sun) {
     const clock = ctx.sunClock(sun.anchor);
     if (clock) return { kind: 'sun', hit: { ...sun, clock } };
-  }
-
-  const meter = ctx.plainKind && ctx.recurrenceType === 'none' && !ctx.hasSeries && !ctx.hasChainSteps
-    && ctx.weatherWait === null && ctx.polarity !== 'negative' && !ctx.hasMeter
-    ? parseMeterInput(title) : null;
-  if (meter) {
-    const known = ctx.knownMeters.find(n => meterKey(n) === meterKey(meter.meterName));
-    const name = known?.trim() ?? meter.meterName.charAt(0).toUpperCase() + meter.meterName.slice(1);
-    return { kind: 'meter', hit: { ...meter, meterName: name, read: !!known } };
   }
 
   // Rain needs the weather switch (nothing reads rainfall otherwise) and a repeat to skip a day of.
@@ -231,10 +216,6 @@ export function describeTitleSuggestion(
     case 'sun': return {
       icon: s.hit.anchor === 'sunrise' ? 'sunny-outline' : 'moon-outline',
       label: `${s.hit.bound === 'start' ? 'Hidden until' : 'Expires at'} ${s.hit.anchor} · ${formatClock(s.hit.clock)} that day`,
-    };
-    case 'meter': return {
-      icon: 'speedometer-outline',
-      label: `Due every ${formatMeterAmount(s.hit.every, s.hit.unit)} on ${s.hit.meterName}`,
     };
     case 'rain': return { icon: 'rainy-outline', label: `Skip after ${formatRain(s.hit.mm, rainUnit)} of rain` };
     case 'waiting': return { icon: 'hourglass-outline', label: `Waiting on · ${s.hit.title}` };

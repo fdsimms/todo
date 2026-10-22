@@ -23,7 +23,6 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useProjectStore } from '../store/useProjectStore';
-import { useSavedViewStore } from '../store/useSavedViewStore';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { MAX_PROJECT_REVIEW_TASKS } from '../utils/projectReviewTasks';
 import { MAX_PANTRY_CHECK_TASKS } from '../utils/pantryCheckTasks';
@@ -94,7 +93,6 @@ jest.mock('../db/database', () => ({
   dbUpdateCategory: jest.fn(),
   dbDeleteCategory: jest.fn(),
   dbGetAllTaskGroups: jest.fn().mockReturnValue([]),
-  dbGetAllSavedViews: jest.fn().mockReturnValue([]),
   dbGetFocusSession: jest.fn().mockReturnValue(null),
   dbSaveFocusSession: jest.fn(),
   dbClearFocusSession: jest.fn(),
@@ -122,10 +120,7 @@ jest.mock('../db/database', () => ({
   dbGetAllMilestones: jest.fn().mockReturnValue([]),
   dbGetAllCookware: jest.fn().mockReturnValue([]),
   dbGetAllCopyFlags: jest.fn().mockReturnValue([]),
-  dbGetAllMeterReadings: jest.fn().mockReturnValue([]),
-  dbInsertMeterReading: jest.fn(),
-  dbDeleteMeterReading: jest.fn(),
-  // Workouts ride the same fan-out, right after the meter readings.
+  // Workouts ride the same fan-out, right after the copy flags.
   dbGetAllExercises: jest.fn().mockReturnValue([]),
   dbGetAllWorkoutRoutines: jest.fn().mockReturnValue([]),
   dbGetAllGyms: jest.fn().mockReturnValue([]),
@@ -2116,18 +2111,6 @@ describe('completeTask', () => {
     expect(task?.deliverableValue ?? null).toBeNull();
     useTaskStore.getState().completeTask('t1', { deliverableValue: 'Yes' });
     expect(useTaskStore.getState().tasks.find(t => t.id === 't1')?.completed).toBe(true);
-  });
-
-  it('adds the look-back an answer asks for, and takes it away when the completion is undone', () => {
-    useTaskStore.setState({ tasks: [makeTask({ id: 't1', title: 'Which contractor?', deliverableKind: 'text' } as Partial<Task>)] });
-    useTaskStore.getState().completeTask('t1', { deliverableValue: 'Bob', reviewAfter: '3m' });
-    const review = useTaskStore.getState().tasks.find(t => t.reviewOfTaskId === 't1');
-    expect(review).toMatchObject({ title: 'How did it turn out? Which contractor?', deliverableKind: 'text', completed: false });
-    expect(dbInsertTask).toHaveBeenCalledWith(expect.objectContaining({ id: review!.id }));
-
-    useTaskStore.getState().uncompleteTask('t1');
-    expect(useTaskStore.getState().tasks.some(t => t.reviewOfTaskId === 't1')).toBe(false);
-    expect(dbDeleteTask).toHaveBeenCalledWith(review!.id);
   });
 
   it('reconciles the deadline calendar event for the completed row', () => {
@@ -6977,106 +6960,6 @@ describe('applyRainSkips', () => {
   });
 });
 
-// ─── applyMeterHolds ────────────────────────────────────────────────────────
-
-describe('a task due at a meter reading', () => {
-  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
-    useSettingsStore: { getState: jest.Mock };
-  };
-  const { useMeterReadingStore } = require('../store/useMeterReadingStore') as typeof import('../store/useMeterReadingStore');
-
-  const NOW = new Date(2026, 9, 8, 9, 0, 0);
-
-  beforeAll(() => {
-    jest.useFakeTimers();
-    jest.setSystemTime(NOW);
-  });
-  afterAll(() => jest.useRealTimers());
-
-  beforeEach(() => {
-    useSettingsStore.getState.mockReturnValue({
-      dayResetTime: '00:00',
-      newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
-      titleRules: [],
-      collapsedCategories: [],
-    });
-    useTaskStore.setState({ tasks: [] });
-    useMeterReadingStore.setState({ readings: [] });
-  });
-
-  const addOilChange = (overrides: Record<string, unknown> = {}) => {
-    const task = useTaskStore.getState().addTask({ title: 'Change the oil' });
-    useTaskStore.getState().updateTask(task.id, {
-      meterName: 'Car', meterUnit: 'miles', meterEvery: 5000, meterDueAt: 45000, ...overrides,
-    });
-    return task.id;
-  };
-  const read = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id)!;
-  const log = (value: number, at: Date) => useMeterReadingStore.getState().logReading('Car', value, at);
-
-  it('holds the task until the day the readings project', () => {
-    log(40000, new Date(2026, 8, 1, 9));
-    log(41000, new Date(2026, 8, 21, 9));
-    const id = addOilChange();
-    useTaskStore.getState().applyMeterHolds();
-    expect(dayKeyOf(new Date(read(id).deferUntil!))).toBe('2026-12-10');
-    expect(read(id).meterHeldUntil).toBe('2026-12-10');
-  });
-
-  it('surfaces it on Today once a reading reaches it', () => {
-    log(40000, new Date(2026, 8, 1, 9));
-    log(41000, new Date(2026, 8, 21, 9));
-    const id = addOilChange();
-    useTaskStore.getState().applyMeterHolds();
-    log(45100, new Date(2026, 9, 8, 8));
-    useTaskStore.getState().applyMeterHolds();
-    expect(dayKeyOf(new Date(read(id).deferUntil!))).toBe('2026-10-08');
-    expect(useTaskStore.getState().visibleTasks().map(t => t.id)).toContain(id);
-  });
-
-  it('leaves a snooze the user set on a surfaced task alone', () => {
-    log(45100, new Date(2026, 9, 8, 8));
-    const id = addOilChange();
-    useTaskStore.getState().applyMeterHolds();
-    const saturday = new Date(2026, 9, 10).toISOString();
-    useTaskStore.getState().updateTask(id, { deferUntil: saturday });
-    useTaskStore.getState().applyMeterHolds();
-    expect(read(id).deferUntil).toBe(saturday);
-  });
-
-  it('writes the next one on completion, counted from the reading logged that day', () => {
-    log(44800, new Date(2026, 9, 8, 8));
-    const id = addOilChange();
-    useTaskStore.getState().completeTask(id);
-    const next = useTaskStore.getState().tasks.find(t => t.previousOccurrenceId === id)!;
-    expect(next).toBeDefined();
-    expect(next.completed).toBe(false);
-    expect(next.meterDueAt).toBe(49800);
-    expect(next.meterName).toBe('Car');
-    // Held until the pass looks, never left in Unscheduled.
-    expect(dayKeyOf(new Date(next.deferUntil!))).toBe('2026-10-09');
-    expect(next.meterHeldUntil).toBe('2026-10-09');
-  });
-
-  it('starts a meter set up before it was read, on the first reading', () => {
-    const id = addOilChange({ meterDueAt: null });
-    useTaskStore.getState().applyMeterHolds();
-    expect(read(id).meterDueAt).toBeNull();
-    log(41000, new Date(2026, 9, 8, 8));
-    useTaskStore.getState().applyMeterHolds();
-    expect(read(id).meterDueAt).toBe(46000);
-    // One reading and no limit: held until it asks for the next one.
-    expect(read(id).meterHeldUntil).toBe('2026-11-07');
-  });
-
-  it('takes the next one back out when the completion is undone', () => {
-    const id = addOilChange();
-    useTaskStore.getState().completeTask(id);
-    useTaskStore.getState().uncompleteTask(id);
-    expect(useTaskStore.getState().tasks.filter(t => t.meterName)).toHaveLength(1);
-  });
-});
-
 // ─── applySlotIns ───────────────────────────────────────────────────────────
 
 describe('a task that waits for a lighter day', () => {
@@ -10895,13 +10778,8 @@ describe('renameCategory', () => {
     expect(dbUpdateTask.mock.calls.map(c => c[0].id).sort()).toEqual(['t1', 't2']);
   });
 
-  it('carries the rename into project defaults, saved views and the settings that name it', () => {
+  it('carries the rename into project defaults and the settings that name it', () => {
     useProjectStore.setState({ projects: [{ id: 'p1', defaultTaskCategory: 'Work' } as never] });
-    const updateView = jest.fn();
-    useSavedViewStore.setState({
-      views: [{ id: 'v1', clauses: [{ kind: 'category', values: ['Work'] }] } as never],
-      updateView,
-    });
     const s = {
       ...settings(),
       healthCategory: 'Work',
@@ -10916,7 +10794,6 @@ describe('renameCategory', () => {
     expect(s.setEventRules).toHaveBeenCalledWith([{ id: 'e', category: 'Job' }]);
 
     expect(useProjectStore.getState().projects[0].defaultTaskCategory).toBe('Job');
-    expect(updateView).toHaveBeenCalledWith('v1', { clauses: [{ kind: 'category', values: ['Job'] }] });
     expect(s.setHealthCategory).toHaveBeenCalledWith('Job');
     expect(s.setNewTaskDefaults).toHaveBeenCalledWith({ category: 'Job' });
     expect(s.setTitleRules).toHaveBeenCalledWith([{ id: 'r', category: 'Job' }]);

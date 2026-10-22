@@ -249,7 +249,6 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     addPersonNote: () => { throw new Error('not stubbed'); },
     updatePersonNote: () => { throw new Error('not stubbed'); },
     deletePersonNote: () => { throw new Error('not stubbed'); },
-    updateSavedView: () => { throw new Error('not stubbed'); },
     updateAnswer: () => { throw new Error('not stubbed'); },
     addGroceryItem: () => { throw new Error('not stubbed'); },
     setGroceryChecked: () => { throw new Error('not stubbed'); },
@@ -315,9 +314,6 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     addMilestone: () => { throw new Error('not stubbed'); },
     updateMilestone: () => { throw new Error('not stubbed'); },
     deleteMilestone: () => { throw new Error('not stubbed'); },
-    meterReadings: () => [],
-    logMeterReading: () => { throw new Error('not stubbed'); },
-    deleteMeterReading: () => { throw new Error('not stubbed'); },
     exercises: () => [],
     workoutRoutines: () => [],
     routineVersions: () => [],
@@ -355,10 +351,6 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     focusHistory: () => [],
     errorLog: () => [],
     storage: () => ({ databaseBytes: 0, freeBytes: 0, autoReclaim: false, tables: [] }),
-    savedViews: () => [],
-    savedViewTasks: () => [],
-    createSavedView: () => { throw new Error('not stubbed'); },
-    deleteSavedView: () => { throw new Error('not stubbed'); },
     setVacationMode: () => { throw new Error('not stubbed'); },
     tagRegistry: () => [],
     createRecipe: () => { throw new Error('not stubbed'); },
@@ -479,6 +471,22 @@ describe('searchTasks', () => {
     expect(result.query).toBe('plant');
     expect(result.matched).toBe(80);
     expect(result.tasks).toHaveLength(DEFAULT_LIMIT);
+  });
+
+  it('keeps only tasks holding every word of the query when exact, in the replica\'s order', () => {
+    const hits = [
+      { task: task({ id: 'a', title: 'Plan the trip' }), score: 3, projectName: null },
+      { task: task({ id: 'b', title: 'Trip budget', notes: 'plan it soon' }), score: 2, projectName: null },
+      { task: task({ id: 'c', title: 'Book flights' }), score: 1.5, projectName: 'Trip planning' },
+      { task: task({ id: 'd', title: 'Plant seeds' }), score: 1, projectName: null },
+    ];
+    const search = (query: string, exact?: boolean) =>
+      searchTasks(stubReplica({ search: () => hits }), { query, exact });
+
+    expect(search('PLAN trip', true).tasks.map(t => t.id)).toEqual(['a', 'b', 'c']);
+    expect(search('plan trip', true).matched).toBe(3);
+    expect(search('how did it turn out', true)).toMatchObject({ matched: 0, tasks: [] });
+    expect(search('how did it turn out').matched).toBe(4);
   });
 });
 

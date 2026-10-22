@@ -20,9 +20,8 @@ import { formatStopwatch } from './effort';
  *
  * Every reader is resolve-or-shrug: a row written by a newer build, or edited
  * by hand, reads as the nearest thing this build understands rather than
- * throwing while a list is being mapped. That is the same call
- * `parseSavedViewClauses` makes, and for the same reason: one bad item must not
- * take every routine after it down with it. See docs/arch/workouts.md.
+ * throwing while a list is being mapped, because one bad item must not take
+ * every routine after it down with it. See docs/arch/workouts.md.
  */
 
 export const EXERCISE_KINDS: readonly ExerciseKind[] = [

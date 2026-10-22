@@ -177,8 +177,6 @@ import { ChoiceMenuChip, type ChoiceGroup } from './ChoiceMenuChip';
 import { TaskDoseAmount } from './TaskDoseAmount';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { WEATHER_CONDITIONS, weatherConditionLabel } from '../utils/weatherTasks';
-import { useMeterReadingStore } from '../store/useMeterReadingStore';
-import { METER_NAME_MAX_LENGTH, NO_METER, canFollowMeter, describeLatestReading, formatMeterAmount, formatMeterValue, knownMeterNames, meterFieldsFromInput, meterInputFromTask, meterSetupGap, parseMeterNumber, type MeterInput } from '../utils/meters';
 import { InlineTimePicker } from '../screens/settings/InlineTimePicker';
 import { SunBoundPanel } from './SunBoundPanel';
 import {
@@ -330,8 +328,6 @@ export interface TaskDraft {
   quotaPeriod?: QuotaPeriod;
   /** Carried over when quick add parses "on the next sunny day". */
   weatherWait?: WeatherCondition | null;
-  /** Carried over when quick add parses "every 5,000 miles on the car". The due reading is left for the editor. */
-  meter?: { name: string; unit: string; every: number } | null;
   allowOvershoot?: boolean;
   coinsPerTap?: boolean;
   quotaIntervalMinutes?: number | null;
@@ -346,14 +342,6 @@ export interface TaskDraft {
   supplyReorderAt?: number;
   supplyLeadDays?: number | null;
   supplyGroceryItemId?: string | null;
-}
-
-/** The meter a quick-add draft carried, as the editor's typed fields; empty without one. */
-function meterInputFromDraft(draft: Pick<TaskDraft, 'meter'> | null | undefined): MeterInput {
-  const m = draft?.meter;
-  return m
-    ? { name: m.name, unit: m.unit, everyText: formatMeterValue(m.every), dueText: '', limitMonths: null }
-    : meterInputFromTask(null);
 }
 
 interface Props {
@@ -974,15 +962,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   const rainUnit = rainUnitFor(useSettingsStore(s => s.unitSystem));
   // Every task, for "after <task>" in the title to name one. Read only while open.
   const allTasks = useTaskStore(s => (visible ? s.tasks : NO_TASKS));
-  // See Task.meterName. Held as typed text (MeterInput) so a half-typed
-  // "45,0" isn't snapped to a number under the cursor; meterFieldsFromInput
-  // turns it into fields on save.
-  const [meterInput, setMeterInput] = useState<MeterInput>(() => meterInputFromTask(null));
-  const [meterOpen, setMeterOpen] = useState(false);
-  const [meterReadingText, setMeterReadingText] = useState('');
-  const meterReadings = useMeterReadingStore(s => s.readings);
-  const logMeterReading = useMeterReadingStore(s => s.logReading);
-  const meterFields = useMemo(() => meterFieldsFromInput(meterInput, meterReadings), [meterInput, meterReadings]);
   // Whether "follow the water target" can mean anything for this task right
   // now: a daily target that logs water, with an amount per unit to divide by.
   const followsWaterTarget =
@@ -1020,11 +999,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   const [chainEnabled, setChainEnabled] = useState(false);
   // Only a plain one-off may wait for weather (canWaitForWeather): a repeat, a
   // chain or a set of dates already has a schedule that this would fight.
-  const weatherWaitAllowed = recurrenceType === 'none' && !chainEnabled && extraDates.length === 0 && !meterInput.name.trim();
-  // The same plain one-off, for the same reason, and never both at once: each
-  // pass owns deferUntil (see canFollowMeter). Nor an avoid-task, which is
-  // never completed and so could never be due at anything.
-  const meterAllowed = recurrenceType === 'none' && !chainEnabled && extraDates.length === 0 && weatherWait === null && polarity !== 'negative';
+  const weatherWaitAllowed = recurrenceType === 'none' && !chainEnabled && extraDates.length === 0;
   const [chainItems, setChainItems] = useState<ChainItem[]>([]);
   const [rotationEnabled, setRotationEnabled] = useState(false);
   const [rotationItems, setRotationItems] = useState<RotationItem[]>([]);
@@ -1295,7 +1270,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       setVacationPause(task.vacationPause ?? false);
       setExcludeFromSuggestions(task.excludeFromSuggestions ?? false);
       setWeatherWait(task.weatherWait ?? null); setWeatherWaitOpen(false);
-      setMeterInput(meterInputFromTask(task)); setMeterOpen(false); setMeterReadingText('');
       setDifficulty(task.difficulty ?? null);
       setSlotIn(task.slotIn ?? null);
       setBounty(isBountyLive(task));
@@ -1349,7 +1323,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       // because the one before it was. A new field goes in both branches.
       setTitle(initialDraft?.title ?? ''); titleCaret.resetCaret(initialDraft?.title ?? ''); setNotes(initialDraft?.notes ?? ''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
-      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setDeadlineTime(null); setDeadlineTimePickerOpen(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setWindowStartSun(initialDraft?.windowStartSun ?? null); setWindowEndSun(initialDraft?.windowEndSun ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setGateGroupId(initialDraft?.gateGroupId ?? null); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day');  setStreakCountsUnits(false); setQuotaRampStep(null); setQuotaRampEvery(1); setQuotaRampGoal(null); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setCoinsPerTap(initialDraft?.coinsPerTap ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaPlaceIds(initialDraft?.quotaPlaceIds ?? []); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setQuotaRestAfterLog(initialDraft?.quotaRestAfterLog ?? false); setProrateFirstWeek(true); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setMeterInput(meterInputFromDraft(initialDraft)); setMeterOpen(false); setMeterReadingText(''); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind(initialDraft?.reminderKind ?? 'notification'); setReminderTimeAnchor(initialDraft?.reminderTimeAnchor ?? 'wallClock'); setReminderOffsetDays(initialDraft?.reminderOffsetDays ?? null); setReminderTracksVisibility(initialDraft?.reminderTracksVisibility ?? false); setReminderTouched(false);
+      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setDeadlineTime(null); setDeadlineTimePickerOpen(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setWindowStartSun(initialDraft?.windowStartSun ?? null); setWindowEndSun(initialDraft?.windowEndSun ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setGateGroupId(initialDraft?.gateGroupId ?? null); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day');  setStreakCountsUnits(false); setQuotaRampStep(null); setQuotaRampEvery(1); setQuotaRampGoal(null); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setCoinsPerTap(initialDraft?.coinsPerTap ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaPlaceIds(initialDraft?.quotaPlaceIds ?? []); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setQuotaRestAfterLog(initialDraft?.quotaRestAfterLog ?? false); setProrateFirstWeek(true); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind(initialDraft?.reminderKind ?? 'notification'); setReminderTimeAnchor(initialDraft?.reminderTimeAnchor ?? 'wallClock'); setReminderOffsetDays(initialDraft?.reminderOffsetDays ?? null); setReminderTracksVisibility(initialDraft?.reminderTracksVisibility ?? false); setReminderTouched(false);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
@@ -1532,11 +1506,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       vacationPause: task?.vacationPause ?? false,
       excludeFromSuggestions: task?.excludeFromSuggestions ?? false,
       weatherWait: task ? (task.weatherWait ?? null) : (initialDraft?.weatherWait ?? null),
-      // Through the same function the live snapshot uses, so a meter saved
-      // half set up doesn't read as edited the moment the sheet opens.
-      ...(task
-        ? (canFollowMeter(task) ? meterFieldsFromInput(meterInputFromTask(task), useMeterReadingStore.getState().readings) : NO_METER)
-        : meterFieldsFromInput(meterInputFromDraft(initialDraft), useMeterReadingStore.getState().readings)),
       difficulty: task ? (task.difficulty ?? null) : (initialDraft?.difficulty ?? null),
       slotIn: task ? (task.slotIn ?? null) : (initialDraft?.slotIn ?? null),
       bounty: task ? isBountyLive(task) : false,
@@ -1695,8 +1664,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       weatherWait,
       polarity,
       windowEnd,
-      hasMeter: meterInput.name.trim() !== '',
-      knownMeters: knownMeterNames(meterReadings),
       hasRainSkip: rainSkipMm !== null,
       rainUnit,
       sunClock: anchor => sunAnchorHHMM(anchor, titleSunDayStart, titleSunLocation),
@@ -1707,7 +1674,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   }, [
     title, activeParsedSchedule, activeCategoryTags, titleMentionSuggestion, titleKind, recurrenceType,
     recurrenceInterval, recurrenceDays, extraDates, chainItems, projects, titleWaitCandidates, weatherTasksOn,
-    weatherWait, polarity, windowEnd, meterInput.name, meterReadings, rainSkipMm, rainUnit, titleSunDayStart.getTime(),
+    weatherWait, polarity, windowEnd, rainSkipMm, rainUnit, titleSunDayStart.getTime(),
     titleSunLocation,
   ]);
   const titleSuggestionMatch = titleSuggestion ? suggestionMatch(title, titleSuggestion) : null;
@@ -2010,16 +1977,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
           applyDerivedTargetCount({ windowEnd: s.hit.clock });
         }
         break;
-      case 'meter':
-        strip(s.hit.cleanTitle);
-        setMeterInput({
-          name: s.hit.meterName,
-          unit: s.hit.unit,
-          everyText: formatMeterValue(s.hit.every),
-          dueText: '',
-          limitMonths: null,
-        });
-        break;
       case 'rain':
         strip(s.hit.cleanTitle);
         setRainSkipMm(s.hit.mm);
@@ -2310,14 +2267,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       supplyReorderAt: recurrenceType !== 'none' && supplyCount !== null ? supplyReorderAt : DEFAULT_SUPPLY_REORDER_AT,
       supplyLeadDays: recurrenceType !== 'none' && supplyCount !== null ? supplyLeadDays : null,
       supplyGroceryItemId: recurrenceType !== 'none' && supplyCount !== null ? supplyGroceryItemId : null,
-      // A hold the meter pass wrote goes with the meter: left behind, it would
-      // keep a task that no longer follows anything hidden until that day.
-      // A defer that doesn't match is the user's own and stays.
-      deferUntil: !(meterAllowed && meterFields.meterName) && task?.meterHeldUntil && deferUntil
-        && dayKeyOf(deferUntil) === task.meterHeldUntil
-        ? null
-        : deferUntil?.toISOString() ?? null,
-      ...(meterAllowed && meterFields.meterName ? {} : { meterHeldUntil: null }),
+      deferUntil: deferUntil?.toISOString() ?? null,
       reminderTime: reminderTime?.toISOString() ?? null,
       reminderKind,
       reminderOffsetDays,
@@ -2373,7 +2323,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       vacationPause,
       excludeFromSuggestions,
       weatherWait: weatherWaitAllowed ? weatherWait : null,
-      ...(meterAllowed ? meterFields : NO_METER),
       difficulty,
       slotIn,
       // Only the edge is written: posting starts the count at 0, and turning a
@@ -3293,7 +3242,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       pinned, pinEachOccurrence: recurrenceType !== 'none' ? pinEachOccurrence : false, chainEnabled, chainItems, rotationItems, chainIndex, chainStepOnSchedule, vacationPause,
       excludeFromSuggestions,
       weatherWait: weatherWaitAllowed ? weatherWait : null,
-      ...(meterAllowed ? meterFields : NO_METER),
       difficulty,
       slotIn,
       bounty,
@@ -3556,7 +3504,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     parentId: task?.parentId ?? null, completed: false, archived: false,
     dueDate: dueDate?.toISOString() ?? null, targetCount, recurrenceType, recurrenceInterval, polarity,
     reminderTime: reminderTime?.toISOString() ?? null, generatedKind: task?.generatedKind ?? null,
-    meterName: meterAllowed && meterInput.name.trim() ? meterInput.name : null,
     weatherWait: weatherWaitAllowed ? weatherWait : null,
   });
   const slotInCategory = slotIn === null ? slotInFromCategory({ slotIn: null, category }, categories) : null;
@@ -4395,7 +4342,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       )}
 
       {/* Everything else a title can say — priority, project, link, phone,
-          email, timer, supply, target, estimate, weather, sun, meter, rain,
+          email, timer, supply, target, estimate, weather, sun, rain,
           waiting on, subtasks, avoid. One at a time; tap to apply, or ✕ to
           say it is just part of the title. */}
       {titleVisible && activeTitleSuggestion && titleSuggestionDescription && (
@@ -5738,7 +5685,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       />
 
       {/* When — the dates and times on the task: the day it shows up and the
-          other things it can wait for instead (a forecast, a meter reading),
+          other things it can wait for instead (a forecast),
           when it's due, when it rings, and the hours it's on. Vacation pause is
           the one "not while I'm away" rule, so it sits here too.
 
@@ -6178,162 +6125,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                     ? 'Shows up on the first day the forecast matches, within the next 14 days. If the task has a Date, the search starts on that day.'
                     : 'Turn on Weather-based tasks in Settings, with location access. Until then, this task isn’t held.'}
                 </Text>
-              </>
-            )}
-              </>
-            ),
-          }] : []),
-          ...(meterAllowed || meterInput.name.trim() ? [{
-            key: 'meter', label: 'Due by usage', set: !!meterFields.meterName,
-            keywords: ['meter', 'usage', 'miles', 'mileage', 'odometer', 'hours', 'km', 'kilometers', 'oil change', 'service', 'every', 'reading', 'shots', 'counter'],
-            node: (
-              <>
-            <EditorRow
-              icon="speedometer-outline"
-              label="Due by usage"
-              hint="Due at a reading, like every 5,000 miles on a car’s odometer."
-              value={meterFields.meterName
-                ? (meterFields.meterEvery !== null
-                    ? `Every ${formatMeterAmount(meterFields.meterEvery, meterFields.meterUnit)}`
-                    : 'Not set up yet')
-                : undefined}
-              expanded={meterOpen}
-              onPress={() => setMeterOpen(open => !open)}
-              onClear={meterInput.name.trim() ? () => {
-                setMeterInput(meterInputFromTask(null)); setMeterOpen(false); setMeterReadingText('');
-                // The pass's hold goes with the meter (see the save path).
-                if (task?.meterHeldUntil && deferUntil && dayKeyOf(deferUntil) === task.meterHeldUntil) setDeferUntil(null);
-              } : undefined}
-            />
-            {meterOpen && (
-              <>
-                {!meterAllowed && (
-                  <Text style={styles.supplyFieldHint}>
-                    Only a task that doesn’t repeat, isn’t a chain and has one date can be due by usage. This one won’t be held.
-                  </Text>
-                )}
-                <View style={styles.supplyFieldRow}>
-                  <Text style={styles.supplyFieldLabel}>Meter</Text>
-                </View>
-                <View style={styles.meterPills}>
-                  <PillGroup
-                    noun="meter"
-                    surface="card"
-                    filterPlaceholder="Find or name a meter…"
-                    createMaxLength={METER_NAME_MAX_LENGTH}
-                    options={[
-                      ...(meterInput.name.trim() && !knownMeterNames(meterReadings).some(n => n.trim().toLowerCase() === meterInput.name.trim().toLowerCase())
-                        ? [meterInput.name.trim()] : []),
-                      ...knownMeterNames(meterReadings),
-                    ].map(n => ({
-                      key: n.trim().toLowerCase(),
-                      label: n.trim(),
-                      selected: n.trim().toLowerCase() === meterInput.name.trim().toLowerCase(),
-                      onPress: () => { haptics.tap(); setMeterInput(m => ({ ...m, name: n.trim() })); },
-                    }))}
-                    onCreate={value => {
-                      if (!value.trim()) return 'Give the meter a name, like Car.';
-                      setMeterInput(m => ({ ...m, name: value.trim() }));
-                    }}
-                  />
-                </View>
-                <Text style={styles.supplyFieldHint}>
-                  What you read the number off. Tasks on the same meter share its readings.
-                </Text>
-                {!!meterInput.name.trim() && (
-                  <>
-                    <View style={styles.supplyFieldRow}>
-                      <Text style={styles.supplyFieldLabel}>Every</Text>
-                      <View style={styles.meterAmountRow}>
-                        <TextField
-                          style={[styles.fieldBox, styles.meterNumberInput]}
-                          value={meterInput.everyText}
-                          onChangeText={everyText => setMeterInput(m => ({ ...m, everyText }))}
-                          placeholder="e.g. 5,000"
-                          placeholderTextColor={colors.textTertiary}
-                          keyboardType="decimal-pad"
-                          accessibilityLabel="How far the meter runs between times"
-                        />
-                        <TextField
-                          style={[styles.fieldBox, styles.meterUnitInput]}
-                          value={meterInput.unit}
-                          onChangeText={unit => setMeterInput(m => ({ ...m, unit }))}
-                          placeholder="e.g. miles"
-                          placeholderTextColor={colors.textTertiary}
-                          maxLength={MAX_TARGET_UNIT_LENGTH}
-                          autoCapitalize="none"
-                          accessibilityLabel="What the meter counts, optional"
-                        />
-                      </View>
-                    </View>
-                    <View style={styles.supplyFieldRow}>
-                      <Text style={styles.supplyFieldLabel}>Next due at</Text>
-                      <TextField
-                        style={[styles.fieldBox, styles.meterNumberInput]}
-                        value={meterInput.dueText}
-                        onChangeText={dueText => setMeterInput(m => ({ ...m, dueText }))}
-                        placeholder={meterFields.meterDueAt !== null ? formatMeterAmount(meterFields.meterDueAt, null) : 'e.g. 45,000'}
-                        placeholderTextColor={colors.textTertiary}
-                        keyboardType="decimal-pad"
-                        accessibilityLabel="The reading it is next due at"
-                      />
-                    </View>
-                    <Text style={styles.supplyFieldHint}>
-                      {meterSetupGap(meterFields)
-                        ?? (meterInput.dueText.trim()
-                          ? 'Checking it off sets the next due reading this far ahead.'
-                          : `Left empty, it’s the last reading plus the interval: ${formatMeterAmount(meterFields.meterDueAt!, meterFields.meterUnit)}.`)}
-                    </Text>
-                    <View style={styles.supplyFieldRow}>
-                      <Text style={styles.supplyFieldLabel}>Or after</Text>
-                      <CountStepper
-                        value={meterInput.limitMonths}
-                        onChange={limitMonths => setMeterInput(m => ({ ...m, limitMonths }))}
-                        min={1}
-                        max={60}
-                        allowNull
-                        emptyLabel="No limit"
-                        format={n => `${n} mo`}
-                        label="Time limit in months"
-                        describeValue={n => (n === null ? 'no time limit' : `${n} ${n === 1 ? 'month' : 'months'}`)}
-                      />
-                    </View>
-                    <Text style={styles.supplyFieldHint}>
-                      Due at whichever comes first, so a meter nobody reads still comes up.
-                    </Text>
-                    <View style={styles.supplyFieldRow}>
-                      <Text style={styles.supplyFieldLabel}>Reading now</Text>
-                      <View style={styles.meterAmountRow}>
-                        <TextField
-                          style={[styles.fieldBox, styles.meterNumberInput]}
-                          value={meterReadingText}
-                          onChangeText={setMeterReadingText}
-                          placeholder="e.g. 41,200"
-                          placeholderTextColor={colors.textTertiary}
-                          keyboardType="decimal-pad"
-                          accessibilityLabel={`Current reading of ${meterInput.name.trim()}`}
-                        />
-                        <InlineAction
-                          icon="add"
-                          label="Log"
-                          disabled={parseMeterNumber(meterReadingText) === null}
-                          onPress={() => {
-                            const value = parseMeterNumber(meterReadingText);
-                            if (value === null) return;
-                            if (logMeterReading(meterInput.name, value)) {
-                              haptics.success();
-                              setMeterReadingText('');
-                            }
-                          }}
-                        />
-                      </View>
-                    </View>
-                    <Text style={styles.supplyFieldHint}>
-                      {describeLatestReading(meterReadings, meterInput.name, meterFields.meterUnit)
-                        ?? 'No readings yet. Two readings at least a week apart estimate when it’s due.'}
-                    </Text>
-                  </>
-                )}
               </>
             )}
               </>
@@ -9204,12 +8995,6 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   },
   /** Daily target's unit: one word, so it takes the rest of the stepper's line. */
   targetUnitInput: { flex: 1 },
-  /** The meter's name grid, inset like the fields under it. */
-  meterPills: { paddingHorizontal: spacing.md, paddingTop: spacing.xs },
-  /** A number beside its unit, or beside the Log button. */
-  meterAmountRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexShrink: 1 },
-  meterNumberInput: { minWidth: 96, textAlign: 'right' },
-  meterUnitInput: { minWidth: 80 },
   /** Sits below the medication's name. */
   medicationLabel: {
     color: colors.textSecondary, fontSize: font.xxs, fontWeight: '700',

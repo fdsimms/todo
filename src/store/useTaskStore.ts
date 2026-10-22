@@ -40,7 +40,7 @@ import { useSettingsStore } from './useSettingsStore';
 import { useWidgetCompletionStore } from './useWidgetCompletionStore';
 import { useCategoryStore, ensureCalendarEventCategory, ensureHealthCategory, ensureGeneratedTaskCategories, ensureGeneratedTaskCategory, renameGeneratedCategorySettings, clearGeneratedCategorySettings, setGeneratedCategory } from './useCategoryStore';
 import { renameInRuleCategories, ruleCategoryFor } from '../utils/ruleCategory';
-import { renameInFollowUpDraft, renameInReminderCaptures, renameInSeriesDefaults, renameInTitleRules, renameInViewClauses } from '../utils/categoryRename';
+import { renameInFollowUpDraft, renameInReminderCaptures, renameInSeriesDefaults, renameInTitleRules } from '../utils/categoryRename';
 import {
   normalizeTagName,
   renameInTagList,
@@ -49,11 +49,9 @@ import {
   renameTagInReminderCaptures,
   renameTagInSeriesDefaults,
   renameTagInTitleRules,
-  renameTagInViewClauses,
 } from '../utils/tagRename';
 import { useTemplateStore } from './useTemplateStore';
 import { useTaskGroupStore } from './useTaskGroupStore';
-import { useSavedViewStore } from './useSavedViewStore';
 import { useFocusStore } from './useFocusStore';
 import { useUnattendedStore } from './useUnattendedStore';
 import { useProjectStore, projectProgress } from './useProjectStore';
@@ -190,7 +188,6 @@ import { useJournalStore } from './useJournalStore';
 import { useMilestoneStore } from './useMilestoneStore';
 import { useCookwareStore } from './useCookwareStore';
 import { useCopyFlagStore } from './useCopyFlagStore';
-import { useMeterReadingStore } from './useMeterReadingStore';
 import { useWorkoutStore } from './useWorkoutStore';
 import { useGymStore } from './useGymStore';
 import { useMedicationStore } from './useMedicationStore';
@@ -231,7 +228,6 @@ import {
 } from '../utils/ruleEstimate';
 import { ruleLogDraft, ruleLogOfTask, taskLogChanged, withRuleLog } from '../utils/ruleLog';
 import { chainStepDatedByAnswer, cleanDeliverableReasoning, deliverableDate, deliverableKindFor, isTentativeAnswer, reasoningOf, type DeliverableReasoning } from '../utils/deliverables';
-import type { ReviewAfter } from '../utils/decisionReview';
 import { totalMinutes } from '../utils/recipeUtils';
 import { normalizeTargetUnit } from '../utils/quotaUnit';
 import {
@@ -425,7 +421,6 @@ import { useWeatherStore } from './useWeatherStore';
 import { classifyWeather } from '../utils/weatherCondition';
 import { decideWeatherWait } from '../utils/weatherWait';
 import { recentRainMm, shouldSkipForRain } from '../utils/rainSkip';
-import { canFollowMeter, decideMeterHold, meterHoldPatch, meterStartPatch } from '../utils/meters';
 import {
   weatherSourceId,
   parseWeatherSourceId,
@@ -1875,8 +1870,6 @@ interface TaskStore extends UndoHistoryActions {
     deliverableValue?: string | null;
     /** Why that answer, and what would reopen it. See CompletionOptions.deliverableReasoning. */
     deliverableReasoning?: DeliverableReasoning;
-    /** Ask how the answer turned out after this long. See CompletionOptions.reviewAfter. */
-    reviewAfter?: ReviewAfter | null;
     neutral?: boolean;
     /** See CompletionOptions.recorded (taskCompletion.ts); set only by the complete…TaskForToday actions. */
     recorded?: boolean;
@@ -2207,12 +2200,6 @@ interface TaskStore extends UndoHistoryActions {
    * `src/utils/weatherWait.ts` for the decision.
    */
   applyWeatherWaits: () => void;
-  /**
-   * Holds every task due at a meter reading until a reading reaches it, the
-   * reading rate projects it, or its time limit runs out, and surfaces it once
-   * one does. Reads `useMeterReadingStore`; see `src/utils/meters.ts`.
-   */
-  applyMeterHolds: () => void;
   /**
    * Skips today's occurrence of every repeating task whose rain threshold the
    * day's rainfall has reached, forgiving its streak and recording each in
@@ -3297,11 +3284,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     useTaskGroupStore.getState().initialize();
     useProjectStore.getState().initialize();
     useProjectCategoryStore.getState().initialize();
-    // Beside the other task-metadata stores, and on the fan-out for the same
-    // swap-the-database reason: a saved view is a lens over tasks, so a list
-    // left pointed at the previous database would filter the new one with the
-    // old one's views.
-    useSavedViewStore.getState().initialize();
     // Rides the same fan-out as everything below it, and for the identical
     // swap-the-database reason: a person list left pointed at the previous
     // database while tasks showed the new one would render demo tasks naming
@@ -3331,9 +3313,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Temporary dev tooling (see CopyFlag): on the fan-out so a demo session
     // doesn't show real flags, and so a flag the MCP resolved shows up after a pull.
     useCopyFlagStore.getState().initialize();
-    // Meter readings: a task due at 45,000 miles is held or released on them,
-    // so they have to swap with the database the tasks came from.
-    useMeterReadingStore.getState().initialize();
     // Workouts: custom exercises, routines, programs and sessions. A session is
     // part of the health record, so after a demo swap or a restore it has to
     // be read from the database the rest came from, never kept from the last.
@@ -4280,13 +4259,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       now,
       allTasks: get().tasks,
       subtasks: get().subtasksOf(task.id),
-      meterReadings: useMeterReadingStore.getState().readings,
     });
     // The three guards above already refused everything buildCompletion
     // refuses, so this is unreachable; it is here because the two run the same
     // rule and only one of them may be the authority on it.
     if (!built) return;
-    const { completed, nextTask, nextSubtasks, followUpTask, followUpSubtasks, reviewTask, rolledOver } = built;
+    const { completed, nextTask, nextSubtasks, followUpTask, followUpSubtasks, rolledOver } = built;
 
     if (task.pinned) pendingUnpinIds.push(id);
 
@@ -4380,7 +4358,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
     if (followUpTask) writeSpawnedTask(followUpTask, held);
     followUpSubtasks.forEach(sub => writeSpawnedTask(sub, held));
-    if (reviewTask) writeSpawnedTask(reviewTask, held);
     rolledOver.forEach(row => {
       writeSpawnedTask(row, held);
       scheduleTaskReminder(row);
@@ -4393,7 +4370,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         ...rolledOver,
         ...(followUpTask ? [followUpTask] : []),
         ...followUpSubtasks,
-        ...(reviewTask ? [reviewTask] : []),
       ]),
       // See the option's own doc comment: a row that already animated its own
       // transition to the successor's look has nothing left for the hold to
@@ -4864,9 +4840,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // its last outstanding date inserts every date of the next set at once
     // (see completeTask). Matching only the first left next month on the board
     // after the completion that conjured it had been taken back.
-    // A look-back the completion asked for goes the same way: the answer it
-    // was to look back on is no longer given (see decisionReview.ts).
-    const followUps = get().tasks.filter(t => (t.previousOccurrenceId === id || t.reviewOfTaskId === id) && !t.completed);
+    const followUps = get().tasks.filter(t => t.previousOccurrenceId === id && !t.completed);
     const followUpIds = new Set(followUps.map(f => f.id));
     const followUpSubtasks = followUps.flatMap(f => get().subtasksOf(f.id));
     followUps.forEach(f => {
@@ -7633,25 +7607,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       useUnattendedStore.getState().recordMany(skipped.map(t => ({
         action: 'moved' as const, kind: null, title: t.title, taskId: t.id,
       })));
-    }
-  },
-
-  applyMeterHolds() {
-    const following = get().tasks.filter(t => t.meterName && !t.completed && !t.archived);
-    if (following.length === 0) return;
-    const readings = useMeterReadingStore.getState().readings;
-    const todayKey = dayKeyOf(getCurrentDayStart());
-    for (const row of following) {
-      // A meter set up before it had a reading (quick add on a meter never
-      // read) starts the first time one arrives, by the rule the editor uses
-      // for an empty "Next due at". A plain one-off only, like the hold.
-      const start = canFollowMeter(row) ? meterStartPatch(row, readings) : null;
-      if (start) get().updateTask(row.id, start);
-      const task = start ? { ...row, ...start } : row;
-      const patch = meterHoldPatch(task, decideMeterHold(task, readings, todayKey), todayKey);
-      // Idempotent: meterHoldPatch returns null for a hold already in place,
-      // which is what keeps the subscription that re-runs this from looping.
-      if (patch) get().updateTask(task.id, patch);
     }
   },
 
@@ -11366,11 +11321,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       projects: s.projects.map(p =>
         p.defaultTaskCategory === name ? { ...p, defaultTaskCategory: trimmed } : p),
     }));
-    const views = useSavedViewStore.getState();
-    for (const v of views.views) {
-      const clauses = renameInViewClauses(v.clauses, name, trimmed);
-      if (clauses !== v.clauses) views.updateView(v.id, { clauses });
-    }
     useTaskGroupStore.setState(s => ({
       groups: s.groups.map(g => g.category === name ? { ...g, category: trimmed } : g),
     }));
@@ -11452,11 +11402,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       if (tags !== g.tags) groups.updateGroup(g.id, { tags });
     }
     useTemplateStore.getState().renameItemTag(from, to);
-    const views = useSavedViewStore.getState();
-    for (const v of views.views) {
-      const clauses = renameTagInViewClauses(v.clauses, from, to);
-      if (clauses !== v.clauses) views.updateView(v.id, { clauses });
-    }
     const settings = useSettingsStore.getState();
     const titleRules = renameTagInTitleRules(settings.titleRules, from, to);
     if (titleRules !== settings.titleRules) settings.setTitleRules(titleRules);

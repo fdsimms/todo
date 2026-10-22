@@ -11,7 +11,6 @@ function settings(overrides: Partial<SettingsGateState> = {}): SettingsGateState
     kitchenEnabled: true,
     simpleMode: false,
     postponeCheckEnabled: false,
-    scrollNudgeEnabled: false,
     focusLongRestEvery: null,
     focusShieldEnabled: false,
     penaltyShieldEnabled: false,

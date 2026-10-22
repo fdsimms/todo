@@ -20,7 +20,6 @@
 import { format } from 'date-fns/format';
 import type { FoodLogEntry, GroceryItem, GroceryListEntry, MedicationLog, MoodLog, Project, Task, TaskTemplate } from '../../src/types';
 import type { AnswerEdit, MedicationSettingsView, Replica } from './replica';
-import type { ReviewAfter } from '../../src/utils/decisionReview';
 import { describeTemplateChanges, resolveRef, templateToPlan, templateVersion, templateWarnings, type TemplatePatch, type TemplatePlan } from './templatePlan';
 import { isRotationTask } from '../../src/utils/rotation';
 import { liveFollowUpSource } from '../../src/utils/followUpTask';
@@ -30,6 +29,7 @@ import { entryNovaGroup, processingMix } from '../../src/utils/processingStats';
 import * as negativeHabits from '../../src/utils/negativeHabits';
 import { checkTemplateLibrary, type LibraryCheck } from './templateLibrary';
 import { proratedFrom } from '../../src/utils/quotaSchedule';
+import { textMatchesQuery } from '../../src/utils/moodHistory';
 import { programProgress } from '../../src/utils/workoutProgram';
 import {
   describeDeadlineRule,
@@ -144,6 +144,13 @@ function matchesView(replica: Replica, task: Task, view: TaskView): boolean {
 export interface SearchTasksInput {
   query: string;
   limit?: number;
+  /**
+   * Only tasks whose title, notes or project name hold every word of the
+   * query, in the app's order. Fuzzy ranking always returns its nearest
+   * matches, so without this a phrase nothing contains still comes back with
+   * thousands of rows and no way to tell that none of them is it.
+   */
+  exact?: boolean;
 }
 
 export interface SearchTasksResult {
@@ -154,7 +161,15 @@ export interface SearchTasksResult {
 
 export function searchTasks(replica: Replica, input: SearchTasksInput): SearchTasksResult {
   const limit = Math.min(Math.max(input.limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT);
-  const hits = replica.search(input.query);
+  const all = replica.search(input.query);
+  const hits = input.exact
+    // The title as written and as the row shows it: mid-chain the row (and the
+    // fuzzy match) reads the live step's.
+    ? all.filter(h => textMatchesQuery(
+      [h.task.title, replica.displayTitle(h.task), h.task.notes ?? '', h.projectName ?? ''].join('\n'),
+      input.query,
+    ))
+    : all;
 
   return {
     query: input.query,
@@ -1109,9 +1124,9 @@ export interface CompleteTaskResult {
 export function completeTask(
   replica: Replica,
   id: string,
-  options?: { deliverableValue?: string | null; completedAt?: string; why?: string; revisitIf?: string; lookBackAfter?: ReviewAfter },
+  options?: { deliverableValue?: string | null; completedAt?: string; why?: string; revisitIf?: string },
 ): CompleteTaskResult {
-  const { why, revisitIf, lookBackAfter, ...rest } = options ?? {};
+  const { why, revisitIf, ...rest } = options ?? {};
   // Reasoning only means something next to an answer; `in` keeps the
   // "was an answer sent at all" test the refusal makes intact.
   const result = replica.completeTask(id, options === undefined ? undefined : {
@@ -1119,7 +1134,6 @@ export function completeTask(
     ...(why !== undefined || revisitIf !== undefined
       ? { deliverableReasoning: { why: why ?? null, revisitIf: revisitIf ?? null } }
       : {}),
-    ...(lookBackAfter ? { reviewAfter: lookBackAfter } : {}),
   });
   const spawned: string[] = [];
   if (result.nextTask) {
@@ -1130,9 +1144,6 @@ export function completeTask(
   }
   if (result.followUpTask) {
     spawned.push(`This completion earned the follow-up task "${result.followUpTask.title}".`);
-  }
-  if (result.reviewTask) {
-    spawned.push(`A look-back task "${result.reviewTask.title}" was created, due ${replica.dayKeyOf(result.reviewTask.dueDate!)}. Its answer is shown as this decision's outcome.`);
   }
   if (result.rolledOver.length > 0) {
     spawned.push(`The last date of the series was completed, so the next set of ${result.rolledOver.length} was created.`);
