@@ -42,6 +42,7 @@ const DEFAULT_MOCK_SETTINGS = {
   vacationMode: false,
   dailyAgendaEnabled: false,
   dailyAgendaTime: '08:00',
+  kitchenEnabled: true,
   tripReminderEnabled: false,
   quietHoursStart: null,
   quietHoursEnd: null,
@@ -69,6 +70,27 @@ jest.mock('../store/useSettingsStore', () => ({
 const mockCalendar: Record<string, any> = { events: [], loaded: false };
 jest.mock('../store/useCalendarStore', () => ({
   useCalendarStore: { getState: () => mockCalendar },
+}));
+
+// The agenda's dinner and birthday lines (#3697). Mutable so the agenda block
+// can plan a dinner or give somebody today's birthday; reset in beforeEach.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockMealPlan: { initialized: boolean; entries: any[] } = { initialized: true, entries: [] };
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockPeople: { people: any[] } = { people: [] };
+jest.mock('../store/useMealPlanStore', () => ({
+  useMealPlanStore: {
+    getState: () => ({
+      initialized: mockMealPlan.initialized,
+      entriesForDayLive: (dayKey: string) => mockMealPlan.entries.filter(e => e.date === dayKey),
+    }),
+  },
+}));
+jest.mock('../store/useRecipeStore', () => ({
+  useRecipeStore: { getState: () => ({ recipes: [] }) },
+}));
+jest.mock('../store/usePersonStore', () => ({
+  usePersonStore: { getState: () => mockPeople },
 }));
 
 jest.mock('../store/useCategoryStore', () => ({
@@ -257,6 +279,9 @@ beforeEach(() => {
   mockCalendar.events = [];
   mockCalendar.loaded = false;
   mockAlarmKitAvailable = false;
+  mockMealPlan.initialized = true;
+  mockMealPlan.entries = [];
+  mockPeople.people = [];
 });
 
 // ─── requestNotificationPermissions ──────────────────────────────────────────
@@ -1309,6 +1334,27 @@ describe('scheduleDailyAgenda', () => {
     // not the written body: the separator in "1 due · 2 carried over" is a mark
     // that only exists on a screen.
     expect(arg.content.data).toEqual({ dailyAgenda: true, agendaSpoken: 'Today: 1 task due.' });
+  });
+
+  it('adds the day’s dinner and birthdays under the counts (#3697)', async () => {
+    mockSettings.dailyAgendaEnabled = true;
+    const day = nextAgendaTime(new Date(), mockSettings.dailyAgendaTime);
+    const dayKey = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+    mockMealPlan.entries = [{ id: 'm', date: dayKey, slot: 'dinner', recipeId: null, title: 'Chicken tacos', sortOrder: 0, cookedAt: null }];
+    mockPeople.people = [{ id: 'p', name: 'Gideon', nickname: '', archived: false, birthdayMonth: day.getMonth() + 1, birthdayDay: day.getDate() }];
+    await scheduleDailyAgenda([dueOnAgendaDay()]);
+    expect(agendaCall().content.body).toBe('1 due\nDinner: Chicken tacos\nGideon’s birthday');
+  });
+
+  it('leaves dinner out with the kitchen switched off, and fires for a birthday alone', async () => {
+    mockSettings.dailyAgendaEnabled = true;
+    mockSettings.kitchenEnabled = false;
+    const day = nextAgendaTime(new Date(), mockSettings.dailyAgendaTime);
+    const dayKey = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+    mockMealPlan.entries = [{ id: 'm', date: dayKey, slot: 'dinner', recipeId: null, title: 'Chicken tacos', sortOrder: 0, cookedAt: null }];
+    mockPeople.people = [{ id: 'p', name: 'Gideon', nickname: '', archived: false, birthdayMonth: day.getMonth() + 1, birthdayDay: day.getDate() }];
+    await scheduleDailyAgenda([]);
+    expect(agendaCall().content.body).toBe('Gideon’s birthday');
   });
 
   // The agenda was the one scheduled notification quiet hours didn't cover, and

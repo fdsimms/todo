@@ -508,7 +508,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'notifPermission', groupId: 'notifications', label: 'Reminders', section: 'Notifications',
     keywords: ['permission', 'allow', 'notification', 'alerts'] },
   { id: 'dailyAgenda', groupId: 'notifications', label: 'Daily agenda', section: 'Notifications',
-    keywords: ['morning summary', 'digest', 'notification'] },
+    keywords: ['morning summary', 'digest', 'notification', 'dinner', 'birthday'] },
   { id: 'dailyAgendaTime', requires: 'dailyAgenda', groupId: 'notifications', label: 'Send it at', section: 'Notifications',
     keywords: ['agenda time'] },
   { id: 'dailyAgendaSpoken', requires: 'dailyAgenda', groupId: 'notifications', label: 'Read it aloud', section: 'Notifications',
