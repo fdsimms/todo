@@ -72,7 +72,7 @@ import {
 import { useHealthStore } from '../store/useHealthStore';
 import { activeSegment, segmentPhase, segmentRemaining, timerSegments } from '../utils/timerSegments';
 import { isStreakAtRecord } from '../utils/streakRecord';
-import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isMissableMealPlanTask, isTaskNew, isTaskVisible, isQuotaTask, isQuotaPartial, quotaRidesOutTheDay, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, formatQuotaNextDue, quotaFraction, quotaPaceFraction, quotaUnitsToPace, activeChainStepTitle, displayTitleFor, isTaskNotNeeded, isPinnedOnToday } from '../utils/visibilityUtils';
+import { sameTimeSegments, isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isMissableMealPlanTask, isTaskNew, isTaskVisible, isQuotaTask, isQuotaPartial, quotaRidesOutTheDay, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, formatQuotaNextDue, quotaFraction, quotaPaceFraction, quotaUnitsToPace, activeChainStepTitle, displayTitleFor, isTaskNotNeeded, isPinnedOnToday } from '../utils/visibilityUtils';
 import { openTasksOf } from '../utils/openTasks';
 import { asksOnCompletion, deliverableKindFor, isTentativeAnswer, type DeliverableReasoning } from '../utils/deliverables';
 import { offersMealLogOnCompletion } from '../utils/completionTap';
@@ -5373,7 +5373,13 @@ const TaskItemRow = React.memo(function TaskItem({
               { markSeenOnBecomeVisible: true, ...(segmentScope === 'occurrence' ? { scope: 'occurrence' as const } : {}) },
             );
             setLastAction({
-              label: date ? `Moved “${task.title}” to ${movedDayLabel(date)}` : 'Task rescheduled',
+              label: !date
+                ? 'Task rescheduled'
+                : picked?.getTime() === previousDay && segs.length > 0 && !sameTimeSegments(task.timeSegments, segs)
+                  // Same day, new part of it: naming the day would say it moved
+                  // to a day it was already on.
+                  ? `Moved “${task.title}” to ${segs.map(s => s.toLowerCase()).join(', ')}`
+                  : `Moved “${task.title}” to ${movedDayLabel(date)}`,
               // On the bar, not only the shake: the row usually leaves the list
               // it was on, so the bar is the one place left to take it back.
               announce: true,
