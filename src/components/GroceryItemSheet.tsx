@@ -57,6 +57,7 @@ import { NutritionSearchSheet } from './NutritionSearchSheet';
 import { describeFoodPanel, describePanelFigures } from '../utils/foodNutrition';
 import { activeLimits } from '../utils/nutritionTargets';
 import { InlineAction } from './InlineAction';
+import { HelpText } from './HelpText';
 import { PillGroup, type PillGroupOption } from './PillGroup';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
@@ -239,6 +240,7 @@ export function GroceryItemSheet({
   const freezePortion = useGroceryStore(s => s.freezePortion);
   const setProductFrozen = useGroceryStore(s => s.setProductFrozen);
   const markProductsOutOf = useGroceryStore(s => s.markProductsOutOf);
+  const addManyToPantry = useGroceryStore(s => s.addManyToPantry);
   const setOpened = useGroceryStore(s => s.setOpened);
   const setRunningLow = useGroceryStore(s => s.setRunningLow);
   const setExpiresAt = useGroceryStore(s => s.setExpiresAt);
@@ -658,6 +660,12 @@ export function GroceryItemSheet({
   const freezeSome = () => {
     haptics.tap();
     freezePortion(item.id);
+  };
+  // A new packet, through the receipt's own path: the old packet's opened,
+  // frozen and running low marks go, along with the list entry running low made.
+  const boughtMore = () => {
+    haptics.success();
+    addManyToPantry([item.name], undefined, undefined, undefined, { acquired: true });
   };
   const takePortionOut = () => {
     if (!portion) return;
@@ -1508,6 +1516,20 @@ export function GroceryItemSheet({
                 </View>
               </View>
             )}
+            <View style={styles.portionBlock}>
+              <View style={styles.productActions}>
+                <InlineAction
+                  label="Bought more"
+                  icon="add-circle-outline"
+                  variant="neutral"
+                  onPress={boughtMore}
+                  accessibilityLabel={`Bought more ${item.name}`}
+                />
+              </View>
+              <HelpText style={styles.portionHint}>
+                A new packet. Clears Running low, Opened and In the freezer, and takes it off the list if running low put it there.
+              </HelpText>
+            </View>
             {canFreezeSome && (
               <View style={styles.portionBlock}>
                 <View style={styles.productActions}>

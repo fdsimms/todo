@@ -1,5 +1,5 @@
 // The Pantry screen: what the app thinks is in the kitchen, sorted by
-// freshness, with one field that finds and adds, a tap to mark something out,
+// freshness, with one field that finds and adds, a chip on each row that marks it,
 // drag between freezer, fridge and aisles, recipes for what's about to go, and
 // scans that fill it (see the note above the component). One component of
 // ~870 lines, so grep a landmark:
@@ -81,6 +81,16 @@ import { ReceiptImportSheet, type ReceiptAddDraft } from '../components/ReceiptI
 import { freshnessColor } from '../components/LeftoversCard';
 import { useNowTick } from '../hooks/useNowTick';
 import { haptics } from '../utils/haptics';
+import { ActionMenu, type ActionMenuAction } from '../components/ActionMenu';
+import type { CardAnchor } from '../components/CardSheet';
+import { defaultOnHandUntil, isRunningLow } from '../utils/grocerySuggest';
+import {
+  PANTRY_CHIP_LABEL,
+  pantryRowChip,
+  pantryRowMenu,
+  type PantryRowAction,
+  type PantryRowFacts,
+} from '../utils/pantryRowMenu';
 import { animateLayout } from '../utils/layoutAnimation';
 import { resolveActiveTrip } from '../utils/activeTrip';
 import { resetToGroceries } from '../navigation/navigationRef';
@@ -110,16 +120,17 @@ import { useFabBottom } from '../components/Fab';
  * file and everything in `kitchenInventory.ts` keep the `Kitchen`/`kitchen*`
  * name — see `HubPills`' doc comment for why the two differ.
  *
- * **The corrections stay where the thing lives.** A catalog row's trailing ✕
- * is the one this screen exists for most — it writes exactly what
- * `GroceryItemSheet`'s "Out of it" pill writes (`markOutOfMany`, same call
- * `CookRecapSheet` batches), in one tap, with the same undo everything else
- * in that store gets — and the row itself opens `GroceryItemSheet` with the
- * Pantry pills already showing (`initialField`) for anything past that one
- * bit. **A container carries no ✕**, deliberately: closing one out is a
- * two-way question ("Eaten" / "Thrown out") that a single glyph can't ask, and
- * guessing "eaten" would quietly write a fridge-history row the user never
- * chose. Its row opens `LeftoverSheet`, which asks properly.
+ * **The corrections stay where the thing lives.** A catalog row's trailing
+ * chip is the one this screen exists for most. It names the row's state
+ * (`pantryRowChip`) and opens a menu (`pantryRowMenu`) whose entries each write
+ * what `GroceryItemSheet`'s pill of the same name writes, so "Used it up" and
+ * "Went bad" are `markOutOfMany`'s two outcomes chosen up front rather than
+ * asked for afterwards. The row itself opens `GroceryItemSheet` with the
+ * Pantry pills already showing (`initialField`) for anything past that.
+ * **A container carries no chip**, deliberately: closing one out is a
+ * two-way question ("Eaten" / "Thrown out") that a menu of packet states can't
+ * ask, and guessing "eaten" would quietly write a fridge-history row the user
+ * never chose. Its row opens `LeftoverSheet`, which asks properly.
  *
  * **A row is dragged to say where the thing is.** Long-pressing one and
  * dropping it under another heading is the same gesture the shopping list uses
@@ -161,6 +172,22 @@ import { useFabBottom } from '../components/Fab';
  * Quantities, per-row expiry editing and checking things back in are the
  * inventory, and stay out.
  */
+type IconName = React.ComponentProps<typeof Ionicons>['name'];
+
+const ROW_ACTION_ICON: Record<PantryRowAction, IconName> = {
+  have: 'checkmark-circle-outline',
+  low: 'trending-down-outline',
+  clearLow: 'refresh-outline',
+  usedUp: 'checkmark-done-outline',
+  spoiled: 'trash-outline',
+  boughtMore: 'add-circle-outline',
+  opened: 'open-outline',
+  unopened: 'close-circle-outline',
+  freeze: 'snow-outline',
+  thaw: 'sunny-outline',
+  out: 'close-circle-outline',
+};
+
 export function KitchenScreen() {
   // ==== layout, theme, settings and navigation ====
   const pullSearch = usePullToSearch();
@@ -181,6 +208,10 @@ export function KitchenScreen() {
   const addManyToPantry = useGroceryStore(s => s.addManyToPantry);
   const markOutOfMany = useGroceryStore(s => s.markOutOfMany);
   const setFrozen = useGroceryStore(s => s.setFrozen);
+  const setOpened = useGroceryStore(s => s.setOpened);
+  const setOnHandUntil = useGroceryStore(s => s.setOnHandUntil);
+  const setRunningLow = useGroceryStore(s => s.setRunningLow);
+  const setProductOpened = useGroceryStore(s => s.setProductOpened);
   const setAisle = useGroceryStore(s => s.setAisle);
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
   // The frozen portions among the boxes (#2925). Their rows open the item's
@@ -194,6 +225,14 @@ export function KitchenScreen() {
   const listEntries = useGroceryStore(useShallow(s => s.listEntries));
   const markProductsOutOf = useGroceryStore(s => s.markProductsOutOf);
   const setProductFrozen = useGroceryStore(s => s.setProductFrozen);
+  // The chip's menu. `facts` is read when it opens and kept, so a row that
+  // changes under the card while it fades doesn't relabel the entries.
+  const [rowMenu, setRowMenu] = useState<{
+    entry: KitchenEntry;
+    anchor: CardAnchor;
+    facts: PantryRowFacts;
+  } | null>(null);
+  const [rowMenuOpen, setRowMenuOpen] = useState(false);
   const shops = useGroceryStore(useShallow(s => s.shops));
   const tripShopId = useGroceryStore(s => s.tripShopId);
   // See GroceryScreen's note: the scanner asks the route, not the key.
@@ -461,19 +500,84 @@ export function KitchenScreen() {
     clearQuery();
   };
 
-  const handleMarkOut = (entry: KitchenEntry) => {
-    haptics.tap();
-    // A box's ✕ writes the box and says nothing about its siblings — being out
-    // of the Beyond one is not being out of vegan ground beef. The item-level
-    // ✕ still means all of them, which is why an item's own "Out of it"
-    // outranks every box in `probablyHaveReason` — all but a frozen portion,
-    // which is the half of a pack that went in the freezer and which the ✕ on
-    // the rest of it says nothing about (#2925). A portion's own ✕ deletes it.
-    const changed = entry.kind === 'product'
-      ? markProductsOutOf([entry.sourceId])
-      : markOutOfMany([entry.sourceId]);
-    if (changed > 0) haptics.success();
+  // What a row's chip says about its packet, read off the store row it was
+  // built from.
+  const rowFacts = (entry: KitchenEntry): PantryRowFacts | null => {
+    if (entry.kind === 'leftover') return null;
+    if (entry.kind === 'product') {
+      const product = itemProducts.find(p => p.id === entry.sourceId);
+      if (!product) return null;
+      return {
+        kind: 'product',
+        portion: isPortionBox(product),
+        low: false,
+        opened: !!product.openedAt,
+        frozen: !!product.frozenAt,
+      };
+    }
+    const item = items.find(i => i.id === entry.sourceId);
+    if (!item) return null;
+    return {
+      kind: 'grocery',
+      portion: false,
+      low: isRunningLow(item, new Date()),
+      opened: !!item.openedAt,
+      frozen: !!item.frozenAt,
+    };
   };
+
+  const openRowMenu = (entry: KitchenEntry, anchor: CardAnchor) => {
+    const facts = rowFacts(entry);
+    if (!facts) return;
+    haptics.tap();
+    setRowMenu({ entry, anchor, facts });
+    setRowMenuOpen(true);
+  };
+
+  // Each action writes what the item sheet's pill of the same name writes.
+  // A box's ✕ used to write the box and say nothing about its siblings, and
+  // that holds for all of these: being out of the Beyond one is not being out
+  // of vegan ground beef, and a box's own opened or frozen stamp is its own.
+  // A portion's out deletes it (see `markProductsOutOf`).
+  const applyRowAction = (entry: KitchenEntry, action: PantryRowAction) => {
+    if (entry.kind === 'product') {
+      if (action === 'out') {
+        if (markProductsOutOf([entry.sourceId]) > 0) haptics.success();
+      } else if (action === 'opened' || action === 'unopened') {
+        setProductOpened(entry.sourceId, action === 'opened');
+      } else if (action === 'freeze' || action === 'thaw') {
+        setProductFrozen(entry.sourceId, action === 'freeze');
+      }
+      return;
+    }
+    const item = items.find(i => i.id === entry.sourceId);
+    if (!item) return;
+    switch (action) {
+      case 'have': setOnHandUntil(item.id, defaultOnHandUntil(item, new Date())); break;
+      case 'low': setRunningLow(item.id, true); break;
+      case 'clearLow': setRunningLow(item.id, false); break;
+      case 'usedUp': if (markOutOfMany([item.id], 'usedUp') > 0) haptics.success(); break;
+      case 'spoiled': if (markOutOfMany([item.id], 'spoiled') > 0) haptics.success(); break;
+      // A new packet through the receipt's own path, so the old one's opened,
+      // frozen and running low marks go and the list entry it made goes too.
+      case 'boughtMore':
+        if (addManyToPantry([item.name], undefined, undefined, undefined, { acquired: true }) > 0) haptics.success();
+        break;
+      case 'opened': setOpened(item.id, true); break;
+      case 'unopened': setOpened(item.id, false); break;
+      case 'freeze': setFrozen(item.id, true); break;
+      case 'thaw': setFrozen(item.id, false); break;
+    }
+  };
+
+  const rowMenuActions: ActionMenuAction[] = rowMenu
+    ? pantryRowMenu(rowMenu.facts).map(e => ({
+        key: e.key,
+        label: e.label,
+        icon: ROW_ACTION_ICON[e.key],
+        onPress: () => applyRowAction(rowMenu.entry, e.key),
+      }))
+    : [];
 
   // ==== writing a drop ====
   // The other half of a drop (`resolveKitchenDrop` is the first): each move is
@@ -714,6 +818,8 @@ export function KitchenScreen() {
     // thing going off is the one thing coloured.
     const tint = entry.freshness ? freshnessColor(entry.freshness, colors) : colors.textTertiary;
     const isPortion = entry.kind === 'product' && portionIds.has(entry.sourceId);
+    const facts = rowFacts(entry);
+    const chipKind = facts ? pantryRowChip(facts) : 'have';
     return (
       <TouchableOpacity
         style={[styles.row, isActive && styles.rowActive]}
@@ -765,30 +871,26 @@ export function KitchenScreen() {
             )}
           </Text>
         </View>
-        {/* The single most common action on a catalog row, one tap away rather
-            than two — see the doc comment above. A container has none: "gone"
-            is a two-way question there, and its row's tap asks it properly. */}
-        {entry.kind !== 'leftover' && (
+        {/* The state the row is in, which also opens everything that can be
+            said about it. The chip replaces a bare ✕ that only said "out",
+            and a container has none: "gone" is a two-way question there, and
+            its row's tap asks it properly. */}
+        {facts && (
           <PressableScale
-            style={styles.outButton}
-            onPress={() => handleMarkOut(entry)}
+            style={[styles.chip, chipKind === 'low' && styles.chipLow]}
+            onPress={e => openRowMenu(entry, { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
             hitSlop={8}
-            accessibilityLabel={
-              isPortion
-                ? `Mark the portion of ${entry.title} used up`
-                : entry.productName
-                  ? `Mark ${entry.productName} ${entry.title} out`
-                  : `Mark ${entry.title} out`
-            }
-            accessibilityHint={
-              isPortion
-                ? 'Removes this portion, leaving the rest of the item alone'
-                : entry.kind === 'product'
-                  ? 'Marks this one not on hand, leaving the others alone'
-                  : 'Marks it not on hand, without opening the item'
-            }
+            accessibilityLabel={`${entry.productName ? `${entry.productName} ` : ''}${entry.title}, ${PANTRY_CHIP_LABEL[chipKind]}`}
+            accessibilityHint="Opens the ways to mark it, such as out, running low or bought more"
           >
-            <Ionicons name="close-circle-outline" size={iconSize.md} color={colors.textTertiary} />
+            <Text style={[styles.chipText, chipKind === 'low' && styles.chipTextLow]}>
+              {PANTRY_CHIP_LABEL[chipKind]}
+            </Text>
+            <Ionicons
+              name="chevron-down"
+              size={iconSize.xs}
+              color={chipKind === 'low' ? colors.warningText : colors.textTertiary}
+            />
           </PressableScale>
         )}
       </TouchableOpacity>
@@ -1005,6 +1107,16 @@ export function KitchenScreen() {
         <PantryReviewSheet visible={reviewOpen} onClose={() => setReviewOpen(false)} />
       </LazySheet>
 
+      <LazySheet open={rowMenu !== null}>
+        <ActionMenu
+          visible={rowMenuOpen}
+          title={rowMenu ? [rowMenu.entry.productName, rowMenu.entry.title].filter(Boolean).join(' ') : ''}
+          actions={rowMenuActions}
+          anchor={rowMenu?.anchor ?? null}
+          onClose={() => setRowMenuOpen(false)}
+        />
+      </LazySheet>
+
       <LazySheet open={openLeftover !== null}>
         <LeftoverSheet
           visible={openLeftover !== null}
@@ -1145,6 +1257,18 @@ function makeStyles(colors: Colors) {
     name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
     meta: { fontSize: font.xs, color: colors.textTertiary, marginTop: spacing.xxs },
     metaBox: { color: colors.textSecondary, fontWeight: fontWeight.medium },
-    outButton: { padding: spacing.xxs },
+    chip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      paddingVertical: spacing.xsm - 1,
+      paddingHorizontal: spacing.smd - 1,
+      borderRadius: radius.full,
+      borderWidth: border.hairline,
+      borderColor: colors.separator,
+    },
+    chipLow: { borderColor: colors.warningText, backgroundColor: colors.warningBg },
+    chipText: { fontSize: font.xs, fontWeight: fontWeight.semibold, color: colors.textSecondary },
+    chipTextLow: { color: colors.warningText },
   });
 }
