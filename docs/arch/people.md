@@ -424,6 +424,33 @@ notes) had no honest way to be ticked off for one without the other.
   (`generatedSourceOf`), the same guard that already separates every other
   pair of generators sharing the mechanism.
 
+### Other dates (`Person.dates`)
+
+An anniversary, the day you met, the day somebody starts a new job. Each is a
+`PersonDate` on the person (a JSON list on the `people` row, not a table: it is
+edited only from its person's editor and travels with them), and each puts a
+task on the list a few days ahead through `src/utils/personDateTasks.ts`, kind
+`personDate`. It is the birthday generator with one more key, and the rules
+that differ are these:
+
+- **The source id is `personId#dateId#year`.** The birthday's `personId#year`
+  can't hold two dates of one person in the same year.
+- **It shares the birthday's switch, lead time and category.** The kind is not
+  in `GENERATED_KINDS` and renders no Settings row of its own (the `mealCook`
+  precedent): to somebody reading Settings, an anniversary reminder is the
+  same thing as a birthday reminder, and a second switch would leave half of
+  that idea off.
+- **A date can happen once.** `yearly: false` is wanted only in its own `year`
+  and never again once passed, which is why a one-off needs a year and the
+  editor says so beside it.
+- **The opt-out is per date**: deleting the task turns that date's `remind`
+  off (`writeGeneratedOptOut`), and the undo turns it back on.
+- **The title is "Sam: Anniversary"**, not the birthday's possessive, because a
+  label is whatever was typed and most don't read after "Sam's".
+
+The same rules as the birthday hold everywhere it shows: the person's page
+prints the date, never a countdown, and nothing orders anybody by it.
+
 ## The reach-out nudge
 
 `reachOutTasks.ts`, and structurally `projectReviewTasks.ts` one shelf over.

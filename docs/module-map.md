@@ -356,6 +356,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/perfLog.ts` — PerfEntry, PerfRunKind, PerfRun, PERF_RUN_LIMIT, PERF_ENTRY_LIMIT, perfNow, recordTiming, markMilestone, timed, currentEntries, +5 more
 - `src/utils/perfReport.ts` — savePerfRun, collectDeviceMetrics, perfReportText
 - `src/utils/permissionAlert.ts` — alertPermissionOff, alertFailedWithSettings
+- `src/utils/personDateTasks.ts` — PERSON_DATE_PRESETS, MAX_PERSON_DATES, PERSON_DATE_LABEL_MAX_LENGTH, personDateSourceId, parsePersonDateSource, isWholePersonDate, personDateInYear, nextPersonDate, personDateTitle, PersonDateWant, +5 more
 - `src/utils/personHistory.ts` — HistoryEntry, personHistory, UpcomingEntry, personUpcoming, UndatedEntry, personUndated, WaitingEntry, personWaiting, lastTogether, describeLastTogether, +2 more
 - `src/utils/personNotes.ts` — PERSON_NOTE_LABELS, PERSON_NOTE_HEADINGS, PERSON_NOTE_HINTS, isLiveNote, isStaleNote, notesOfKind, notesFor, describeNoteDay, giftIdeasText
 - `src/utils/phone.ts` — phoneDigits, telUrl, isDialable, smsUrl, formatPhoneInput, looksLikePhoneNumber

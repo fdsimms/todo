@@ -470,7 +470,7 @@ file: the two maps are indexes, not write-ups.
 | a medication's limit, its supply, recording a dose by any route, and the summary for a visit | `src/utils/medicationSettings.ts` (limit and supply; the count is derived from doses, never decremented) + `src/utils/doseRecording.ts` (every hand-recorded dose goes through `recordDose`) + `src/utils/medicationSummary.ts` — see `docs/arch/mood-log.md` |
 | how you're feeling against what you ate | `foodDayInputs` in `src/utils/nutritionStats.ts` + `nutrientInsight`/`foodMoodContrasts` in `src/utils/moodInsights.ts` — see `docs/arch/mood-log.md`, whose two rules about a too-thinly-logged day come first |
 | a symptom against what you ate | `symptomFoodContrasts` + `symptomFoodDays` in `src/utils/moodInsights.ts`, rendered on `SymptomDetailScreen` — see `docs/arch/mood-log.md`. Scoped to one symptom on purpose |
-| the people you want to keep up with, and their birthdays | `src/store/usePersonStore.ts` + `src/utils/birthdayTasks.ts` — see `docs/arch/people.md` |
+| the people you want to keep up with, their birthdays and other dates | `src/store/usePersonStore.ts` + `src/utils/birthdayTasks.ts` + `src/utils/personDateTasks.ts` — see `docs/arch/people.md` |
 | filling a person in from the contact book | `src/utils/contactsImport.ts` + `src/utils/contactsAccess.ts` — see `docs/arch/people.md` |
 | what demo mode shows | `src/utils/demoSeed.ts` — see Demo data below |
 | the switch that hides the advanced half of the app | `src/utils/simpleMode.ts` — see `docs/arch/simple-mode.md` |

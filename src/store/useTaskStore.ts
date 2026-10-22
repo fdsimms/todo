@@ -346,6 +346,13 @@ import {
   staleBirthdayGiftTasks,
 } from '../utils/birthdayTasks';
 import {
+  parsePersonDateSource,
+  personDateDrift,
+  stalePersonDateTasks,
+  wantedPersonDateTasks,
+  withPersonDateRemind,
+} from '../utils/personDateTasks';
+import {
   declinedRecently,
   reachOutPersonId,
   reachOutTitle,
@@ -1021,6 +1028,17 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
       if (!source) return;
       const field = task.generatedKind === 'birthday' ? 'birthdayTaskOptOut' : 'birthdayGiftTaskOptOut';
       usePersonStore.getState().updatePerson(source.personId, { [field]: value === false });
+      return;
+    }
+    // The date's own `remind`, turned off for good by deleting its task and
+    // back on by the undo, the birthday's permanent "no" one date at a time.
+    case 'personDate': {
+      const source = parsePersonDateSource(task);
+      if (!source) return;
+      const { people, updatePerson } = usePersonStore.getState();
+      const person = people.find(p => p.id === source.personId);
+      const dates = withPersonDateRemind(person?.dates, source.dateId, value !== false);
+      if (person && dates) updatePerson(person.id, { dates });
       return;
     }
     case 'supplyReorder': {
@@ -2144,6 +2162,8 @@ interface TaskStore extends UndoHistoryActions {
    * clear the ones whose reason has gone. See src/utils/birthdayTasks.ts.
    */
   checkBirthdayTasks: () => void;
+  /** A person's other dates (Person.dates): the birthday pass, per date. See src/utils/personDateTasks.ts. */
+  checkPersonDateTasks: () => void;
   /**
    * Give everybody with a birthday coming up (who hasn't opted out) a task to
    * get them a gift, on its own separately configured lead time, and clear the
@@ -6532,6 +6552,51 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       });
     });
     // No setLastAction, same reasoning as checkBirthdayTasks above.
+  },
+
+  checkPersonDateTasks() {
+    const settings = useSettingsStore.getState();
+    // The birthday's switch, lead time and category: see the personDate spec.
+    if (!settings.birthdayTasks) return;
+
+    const tasks = get().tasks;
+    const people = usePersonStore.getState().people;
+    // A day-placing decision, so the logical day start rather than the clock,
+    // as checkBirthdayTasks explains.
+    const today = getCurrentDayStart();
+    const wanted = wantedPersonDateTasks(people, settings.birthdayLeadDays, today);
+
+    // Clear first, create second, and through dropGeneratedTask: deleting
+    // through deleteTask would turn the date's reminder off on the strength of
+    // the app's own tidying up.
+    stalePersonDateTasks(tasks, wanted).forEach(task => {
+      dropGeneratedTask('personDate', task.generatedSourceId);
+    });
+
+    if (wanted.length === 0) return;
+
+    ensureGeneratedTaskCategory('personDate');
+    const category = useSettingsStore.getState().birthdayTaskCategory;
+
+    wanted.forEach(want => {
+      reconcileGeneratedTask({
+        kind: 'personDate',
+        sourceId: want.sourceId,
+        // Never false, for the reason checkBirthdayTasks gives.
+        wanted: true,
+        drift: existing => personDateDrift(existing, want),
+        draft: () => ({
+          title: want.title,
+          dueDate: want.dueDate.toISOString(),
+          deadline: want.deadline.toISOString(),
+          linkUrl: personLinkUrl(want.personId),
+          phoneNumber: want.phoneNumber,
+          category,
+          // No personIds, for the reason the birthday task carries none.
+          ...generatedBy('personDate', want.sourceId),
+        }),
+      });
+    });
   },
 
   checkReachOutTasks() {

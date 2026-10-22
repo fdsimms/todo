@@ -4399,6 +4399,14 @@ function registerWriteTools(
     pinned: z.boolean().optional().describe('true holds them at the top of the People list, above the people and business sections. false unpins.'),
     birthdayTaskOptOut: z.boolean().optional().describe('true: the app writes no birthday task for them.'),
     birthdayGiftTaskOptOut: z.boolean().optional().describe('true: the app writes no birthday gift task for them.'),
+    dates: z.array(z.object({
+      label: z.string().min(1).describe('What the day is: "Anniversary", "Day we met", "Started new job".'),
+      month: z.number().int().min(1).max(12),
+      day: z.number().int().min(1).max(31),
+      year: z.number().int().nullable().optional().describe('Required when yearly is false.'),
+      yearly: z.boolean().optional().describe('Comes round every year (the default). false: it happens once, in year.'),
+      remind: z.boolean().optional().describe('A task a few days before it, like a birthday (the default). false: no task.'),
+    })).optional().describe('Their dates besides the birthday. Replaces the whole list; [] clears it.'),
   };
   const PEOPLE_RULE = ' Nothing here sets how often to reach out or turns on nudges for someone: the app never scores anyone, and a rhythm with someone is the person\'s own choice.';
 

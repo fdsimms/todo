@@ -235,6 +235,19 @@ export const ADOPTION_CHECKS: readonly AdoptionCheck[] = [
     },
   },
   {
+    id: 'personDates',
+    title: 'Dates for people',
+    benefit: 'An anniversary, the day you met, or any other date on a person adds a reminder a few days before it, the way a birthday does.',
+    advanced: true,
+    since: '2026-10-22',
+    evidence: ({ replica }) => {
+      const people = replica.people().filter(p => !p.archived && p.kind === 'individual');
+      return people.length >= 3 && people.every(p => (p.dates ?? []).length === 0)
+        ? `${people.length} people are saved and none has a date besides a birthday.`
+        : null;
+    },
+  },
+  {
     id: 'milestones',
     title: 'Milestones',
     benefit: 'Marking the day something changed (a new medicine, a new job) lets the Mood screen compare how you felt before and after.',

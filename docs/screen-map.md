@@ -289,6 +289,7 @@ Where each component can appear.
 - `src/components/PatchNotesModal.tsx` — on SettingsGroupScreen
 - `src/components/PendingEstimatesCard.tsx` — on FoodLogScreen
 - `src/components/PeriodNav.tsx` — on CalendarScreen, MealPlanScreen
+- `src/components/PersonDateRows.tsx` — on PeopleScreen, PersonDetailScreen
 - `src/components/PersonEditor.tsx` — on PeopleScreen, PersonDetailScreen
 - `src/components/PersonGroupEditor.tsx` — on PeopleScreen, PersonDetailScreen
 - `src/components/PersonHistorySheet.tsx` — on PersonDetailScreen

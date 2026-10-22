@@ -88,6 +88,8 @@ export interface PersonDetail extends SerializedPerson {
   /** They get no birthday task, or no birthday gift task, from the app. */
   noBirthdayTask?: true;
   noBirthdayGiftTask?: true;
+  /** Their other dates. `remind: false` means the app writes no task for it. */
+  dates?: { label: string; date: string; yearly: boolean; remind: boolean }[];
 }
 
 export interface PersonNoteRow {
@@ -126,6 +128,14 @@ export function getPerson(replica: Replica, id: string): PersonDetail | null {
     ...(p.pinned ? { pinned: true as const } : {}),
     ...(p.birthdayTaskOptOut ? { noBirthdayTask: true as const } : {}),
     ...(p.birthdayGiftTaskOptOut ? { noBirthdayGiftTask: true as const } : {}),
+    ...((p.dates ?? []).length > 0 ? {
+      dates: p.dates!.map(d => ({
+        label: d.label,
+        date: `${MONTHS[d.month - 1]} ${d.day}${d.year ? `, ${d.year}` : ''}`,
+        yearly: d.yearly,
+        remind: d.remind,
+      })),
+    } : {}),
   };
 }
 

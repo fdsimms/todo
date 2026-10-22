@@ -1774,6 +1774,44 @@ export interface Person {
    * never geocoded, never sorted or grouped by, and nothing matches against it.
    */
   address: string | null;
+  /**
+   * Days worth remembering besides the birthday: an anniversary, the day you
+   * met, the day they started a new job. Each can repeat every year or happen
+   * once, and each can put a task on the list a few days ahead, the way the
+   * birthday does (`src/utils/personDateTasks.ts`).
+   *
+   * Optional so a row written before this existed reads as having none, and a
+   * JSON list on the row rather than a table of its own: a date is edited only
+   * from its person's editor, travels with that person, and is never looked up
+   * on its own.
+   */
+  dates?: PersonDate[];
+}
+
+/**
+ * One date on a person besides their birthday (see `Person.dates`).
+ *
+ * Month and day are stored apart from the year for the reason `Person` stores
+ * a birthday that way: February 29 clamps to the 28th in a common year without
+ * the clamp ever feeding the next one. `year` is optional for a yearly date
+ * ("our anniversary is June 14", year not given) and required for a one-off,
+ * which has no other way to say when it is.
+ */
+export interface PersonDate {
+  id: string;
+  /** What the day is, as the person wrote it: "Anniversary", "Met", "Started new job". */
+  label: string;
+  /** 1 to 12. */
+  month: number;
+  day: number;
+  year: number | null;
+  /** Comes round every year. False is a one-off on `year` itself. */
+  yearly: boolean;
+  /**
+   * Whether a task shows up ahead of it. Turned off by deleting that task, the
+   * permanent "no" `Person.birthdayTaskOptOut` is for a birthday.
+   */
+  remind: boolean;
 }
 
 /**
@@ -2759,6 +2797,11 @@ export type GeneratedKind =
   // generatedSourceId that 'birthday' does; the kind is what keeps the two
   // from being read as one another's task (see generatedSourceOf).
   | 'birthdayGift'
+  // A date on a person besides their birthday (Person.dates). Its own kind
+  // rather than a second meaning of 'birthday', because the birthday kind's
+  // source id is personId#year and a person can have several dates in a year.
+  // It shares the birthday's switch, lead time and category (see its spec).
+  | 'personDate'
   // A person you asked to be reminded about, whose cadence has run out — see
   // src/utils/reachOutTasks.ts. Silent on everybody until they are explicitly
   // opted in, which is what keeps "who am I neglecting" a question the app

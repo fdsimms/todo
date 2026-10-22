@@ -333,6 +333,8 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
   mealSlot: ['meal plan', 'recipe', 'cook', 'cook task', 'breakfast', 'lunch', 'dinner', 'eat',
     'what to eat', 'auto', 'generated', 'automatic'],
   mealCook: ['meal plan', 'recipe', 'cook', 'generated', 'automatic'],
+  // Renders no row of its own either: it rides the birthday row's switch.
+  personDate: ['anniversary', 'people', 'person', 'date', 'generated', 'automatic'],
   groceryUseUp: ['expiry', 'expires', 'expiration', 'use by', 'best before', 'perishable', 'spoil',
     'waste', 'fridge', 'grocery', 'food', 'leftovers', 'generated', 'automatic'],
   pantryCheck: ['cupboard', 'stock', 'still have', 'run out', 'out of', 'grocery', 'kitchen',

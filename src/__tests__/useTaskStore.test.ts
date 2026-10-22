@@ -5716,7 +5716,7 @@ describe('deleting a birthday task', () => {
     birthdayMonth: soon.getMonth() + 1, birthdayDay: soon.getDate(), birthYear: null,
     birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false, pinned: false,
     phoneNumber: null, email: null, linkUrl: null,
-    cadenceDays: null, nudgeOptIn: false, cadenceSetAt: null,
+    cadenceDays: 0, nudgeOptIn: false, cadenceSetAt: null,
     reachOutDeclinedAt: null, reachOutOfferDeclinedAt: null, askAbout: '',
     backfillDismissedFields: [],
     groupId: null,
@@ -5764,6 +5764,27 @@ describe('deleting a birthday task', () => {
 
     useTaskStore.getState().checkBirthdayGiftTasks();
     expect(live('birthdayGift')).toHaveLength(0);
+  });
+
+  // The same opt-out, one date at a time, for a person's other dates.
+  it('turns a deleted date task\'s reminder off, and only that date\'s', () => {
+    const anniversary = { id: 'd1', label: 'Anniversary', month: soon.getMonth() + 1, day: soon.getDate(), year: null, yearly: true, remind: true };
+    const met = { ...anniversary, id: 'd2', label: 'Day we met' };
+    usePersonStore.setState({ people: [{ ...person(), dates: [anniversary, met] }], initialized: true });
+
+    useTaskStore.getState().checkPersonDateTasks();
+    const dateTasks = useTaskStore.getState().tasks.filter(t => t.generatedKind === 'personDate' && !t.completed);
+    expect(dateTasks.map(t => t.title).sort()).toEqual(['Sarah: Anniversary', 'Sarah: Day we met']);
+
+    useTaskStore.getState().deleteTask(dateTasks.find(t => t.title === 'Sarah: Anniversary')!.id);
+    expect(usePersonStore.getState().people[0].dates!.map(d => d.remind)).toEqual([false, true]);
+
+    useTaskStore.getState().checkPersonDateTasks();
+    expect(useTaskStore.getState().tasks.filter(t => t.generatedKind === 'personDate').map(t => t.title))
+      .toEqual(['Sarah: Day we met']);
+
+    useTaskStore.getState().lastAction!.undo();
+    expect(usePersonStore.getState().people[0].dates!.map(d => d.remind)).toEqual([true, true]);
   });
 });
 

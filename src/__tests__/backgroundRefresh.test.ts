@@ -95,6 +95,7 @@ const mockTaskState = {
   // is testing.
   checkWeighInTasks: mockRecord('checkWeighInTasks'),
   checkBirthdayTasks: mockRecord('checkBirthdayTasks'),
+  checkPersonDateTasks: mockRecord('checkPersonDateTasks'),
   checkBirthdayGiftTasks: mockRecord('checkBirthdayGiftTasks'),
   checkReachOutTasks: mockRecord('checkReachOutTasks'),
   checkWaitingFollowUpTasks: mockRecord('checkWaitingFollowUpTasks'),
@@ -260,7 +261,7 @@ describe('runBackgroundRefresh', () => {
       'checkCalendarReviewTasks', 'checkWeatherTasks', 'applyWeatherWaits', 'applyRainSkips', 'applyMeterHolds', 'checkEventTasks',
       'checkTravelTasks', 'checkScreenTimeTasks', 'checkBlockOfferTasks', 'checkHealthTasks',
       'checkMoodTasks', 'checkJournalTasks', 'checkWaniKaniTasks', 'checkWeekendNudgeTasks', 'checkWeighInTasks',
-      'checkBirthdayTasks', 'checkBirthdayGiftTasks', 'checkReachOutTasks',
+      'checkBirthdayTasks', 'checkPersonDateTasks', 'checkBirthdayGiftTasks', 'checkReachOutTasks',
       'checkWaitingFollowUpTasks',
       'reconcileAllUseUpTasks', 'checkScheduledTemplates',
       'sweepExpiredCompletionTimers',

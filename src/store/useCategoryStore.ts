@@ -354,6 +354,7 @@ function generatedCategorySetting(kind: GeneratedKind): {
     case 'calendarReview':
       return { key: 'calendarReviewTaskCategory', current: s.calendarReviewTaskCategory, assign: s.setCalendarReviewTaskCategory };
     case 'birthday':
+    case 'personDate':
       return { key: 'birthdayTaskCategory', current: s.birthdayTaskCategory, assign: s.setBirthdayTaskCategory };
     case 'birthdayGift':
       return { key: 'birthdayGiftTaskCategory', current: s.birthdayGiftTaskCategory, assign: s.setBirthdayGiftTaskCategory };

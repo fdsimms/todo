@@ -482,8 +482,8 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     pausedOnVacation: false,
     enabledKey: 'birthdayTasks',
     label: 'Birthday reminders',
-    onHint: 'A person with a birthday on file gets a task a few days before it',
-    offHint: 'Birthdays add no tasks',
+    onHint: 'A birthday or other date on a person gets a task a few days before it',
+    offHint: 'Birthdays and dates add no tasks',
     icon: 'gift-outline',
     sourced: true,
     notice: false,
@@ -535,6 +535,25 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
   // Retired — see GENERATED_KINDS above. Kept in the specs because the record
   // is keyed by GeneratedKind and legacy rows still carry the kind; nothing
   // lists it, since GENERATED_KIND_LIST is built from GENERATED_KINDS.
+  // A person's other dates (Person.dates). Like mealCook it is not in
+  // GENERATED_KINDS and renders no Settings row: it shares the birthday's
+  // switch, lead time and category, because to the person reading Settings an
+  // anniversary reminder is the same thing as a birthday reminder, and a
+  // second row to turn on would leave one half of that idea off.
+  personDate: {
+    kind: 'personDate',
+    pausedOnVacation: false,
+    enabledKey: 'birthdayTasks',
+    label: 'Date reminders',
+    onHint: 'A date on a person gets a task a few days before it',
+    offHint: 'Dates on people add no tasks',
+    icon: 'heart-outline',
+    sourced: true,
+    notice: false,
+    kitchen: false,
+    categorized: true,
+    defaultCategory: 'People',
+  },
   mealCook: {
     kind: 'mealCook',
     pausedOnVacation: true,
@@ -1582,11 +1601,14 @@ const RULE_LIST_ENTRY_IDS: Partial<Record<GeneratedKind, string>> = {
  *
  * `mealCook` is retired and folded into `mealSlot`, so it has no entry of its
  * own; rows written before the fold still carry it and open the meal tasks row.
+ * `personDate` has none either, and opens the birthday row whose switch it shares.
  * Pure, so the test can check every kind in the registry resolves to a real
  * entry (`settingsEntryTarget`) and a new generator can't ship with a dead button.
  */
 export function automationEntryIdFor(kind: GeneratedKind): string {
   if (kind === 'mealCook') return 'gen:mealSlot';
+  // Shares the birthday row's switch, so it opens there.
+  if (kind === 'personDate') return 'gen:birthday';
   return RULE_LIST_ENTRY_IDS[kind] ?? `gen:${kind}`;
 }
 

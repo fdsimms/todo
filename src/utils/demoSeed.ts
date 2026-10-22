@@ -2942,6 +2942,15 @@ function seedPeople(today: Date): void {
     // worth filling in.
     email: 'tess@example.com',
   });
+  // Her other dates (Person.dates): an anniversary two days out, so its
+  // reminder task is genuinely on Today, and a yearly one months away, so the
+  // editor's DATES card shows more than one row.
+  updatePerson(tessa.id, {
+    dates: [
+      { id: generateId(), label: 'Anniversary', month: bdayNear.getMonth() + 1, day: bdayNear.getDate(), year: bdayNear.getFullYear() - 6, yearly: true, remind: true },
+      { id: generateId(), label: 'Day we met', month: bdayFar.getMonth() + 1, day: bdayFar.getDate(), year: null, yearly: true, remind: true },
+    ],
+  });
 
   // A group, so a fresh install of demo mode actually shows the capability
   // rather than reading as a feature the app doesn't have. Named single-word
@@ -3103,6 +3112,8 @@ function seedPeople(today: Date): void {
   // than from a row written by hand here: a seeded row that skipped the
   // generator could drift from what the generator actually produces.
   useTaskStore.getState().checkBirthdayTasks();
+  // Tessa's anniversary, through the same pass for the same reason.
+  useTaskStore.getState().checkPersonDateTasks();
   // The gift task is written by hand instead, for pantryCheck's reason: that
   // pass reads the real install's own settings, and this generator ships off,
   // so a demo relying on it would show the feature only to people who had

@@ -75,6 +75,7 @@ export function blankPerson(name: string, sortOrder: number): Person {
     groupId: null,
     location: null,
     address: null,
+    dates: [],
   };
 }
 
@@ -95,6 +96,7 @@ export type PersonPatch = Partial<Pick<Person,
   | 'backfillDismissedFields'
   | 'groupId'
   | 'location' | 'address'
+  | 'dates'
 >>;
 
 interface PersonStore extends UndoHistoryState, UndoHistoryActions {

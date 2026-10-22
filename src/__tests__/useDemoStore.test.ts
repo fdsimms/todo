@@ -2075,6 +2075,15 @@ describe('demo seed — people', () => {
     expect(birthdayTasks[0].personIds).toEqual([]);
   });
 
+  // Same reason as the birthday above: a date's task only exists once the date
+  // is near, so the seed puts one inside the window.
+  it('puts a task for a person\'s other date on the list', () => {
+    const dateTasks = useTaskStore.getState().tasks.filter(t => t.generatedKind === 'personDate');
+    expect(dateTasks.map(t => t.title)).toEqual(['Tess: Anniversary']);
+    expect(dateTasks[0].deadline).not.toBeNull();
+    expect(dateTasks[0].personIds).toEqual([]);
+  });
+
   // The Activity screen is empty until something the app did unattended has
   // been recorded, and a feature with no row in the seed reads as one the app
   // doesn't have. Seeded by the real generators rather than by hand: the seed

@@ -1624,6 +1624,8 @@ export function TodayScreen() {
           // wait for a force-quit. Idempotent: the source id carries the year,
           // so a second run finds the row already there and does nothing.
           useTaskStore.getState().checkBirthdayTasks();
+          // A person's other dates, same trigger and the same idempotency.
+          useTaskStore.getState().checkPersonDateTasks();
           // Beside it, same trigger, same idempotency (the source id carries
           // the year) — off by default, so ordinarily a no-op check.
           useTaskStore.getState().checkBirthdayGiftTasks();

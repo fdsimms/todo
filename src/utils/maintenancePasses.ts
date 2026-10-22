@@ -248,6 +248,7 @@ export function catchUpPasses(): MaintenanceStep[] {
     // After useSettingsStore.initialize for the same reason the meal pass is: the day a task
     // lands on is the logical one, and the lead time is a setting.
     ['check birthday tasks', () => tasks().checkBirthdayTasks()],
+    ['check person date tasks', () => tasks().checkPersonDateTasks()],
     // Beside the birthday pass, sharing its trigger and reading the same
     // people — off by default, so in practice this rarely does anything
     // until somebody has switched it on.

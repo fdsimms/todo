@@ -145,4 +145,23 @@ describe('the people writes, against a real database', () => {
     expect(agentRecordPlan(entry, { person: () => null } as never).kind).toBe('restoreDeletedPerson');
     expect(tools.savePersonGroup(real, { name: 'Family', delete: true }).group).toBeNull();
   });
+
+  it('writes a person\'s other dates, keeping a date\'s id when its label is unchanged', () => {
+    const sam = tools.createPerson(real, { name: 'Sam', dates: [{ label: 'Anniversary', month: 6, day: 14, year: 2019 }] });
+    expect(tools.getPerson(real, sam.id)!.dates).toEqual([{ label: 'Anniversary', date: 'June 14, 2019', yearly: true, remind: true }]);
+    const firstId = real.people().find(p => p.id === sam.id)!.dates![0].id;
+
+    tools.updatePerson(real, sam.id, { dates: [
+      { label: 'anniversary', month: 6, day: 15 },
+      { label: 'Starts new job', month: 11, day: 3, year: 2026, yearly: false },
+    ] });
+    const after = real.people().find(p => p.id === sam.id)!.dates!;
+    expect(after[0]).toMatchObject({ id: firstId, month: 6, day: 15, year: null });
+    expect(after[1]).toMatchObject({ label: 'Starts new job', yearly: false, year: 2026 });
+
+    expect(() => tools.updatePerson(real, sam.id, { dates: [{ label: 'Once', month: 1, day: 2, yearly: false }] })).toThrow(/needs a year/);
+    expect(() => tools.updatePerson(real, sam.id, { dates: [{ label: 'Bad', month: 2, day: 30 }] })).toThrow(/real month/);
+    tools.updatePerson(real, sam.id, { dates: [] });
+    expect(tools.getPerson(real, sam.id)!.dates).toBeUndefined();
+  });
 });

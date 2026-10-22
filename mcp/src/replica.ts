@@ -681,6 +681,12 @@ export interface PersonFields {
   /** Never write a birthday task, or a birthday gift task, for this person. */
   birthdayTaskOptOut?: boolean;
   birthdayGiftTaskOptOut?: boolean;
+  /**
+   * Their other dates, replacing the whole list ([] clears it). A date whose
+   * label matches one already there keeps that one's id, so a reminder task
+   * already written for it isn't dropped and written again.
+   */
+  dates?: { label: string; month: number; day: number; year?: number | null; yearly?: boolean; remind?: boolean }[];
 }
 
 export interface FoodPatch {
@@ -3135,7 +3141,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   }
 
   /** The Person columns a PersonFields names, validated. A birthday of null clears all three. */
-  function personPatch(f: PersonFields): Partial<Person> {
+  function personPatch(f: PersonFields, existing?: Person): Partial<Person> {
     const out: Partial<Person> = {};
     if (f.name !== undefined) out.name = f.name.trim();
     if (f.nickname !== undefined) out.nickname = f.nickname.trim();
@@ -3177,6 +3183,21 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         }
         Object.assign(out, { birthdayMonth: month, birthdayDay: day, birthYear: year ?? null });
       }
+    }
+    if (f.dates !== undefined) {
+      const before = existing?.dates ?? [];
+      out.dates = f.dates.map(d => {
+        const label = d.label.trim();
+        const length = new Date(2024, d.month, 0).getDate();
+        if (!label) throw new Error('Each date needs a label, like "Anniversary".');
+        if (!Number.isInteger(d.month) || d.month < 1 || d.month > 12 || !Number.isInteger(d.day) || d.day < 1 || d.day > length) {
+          throw new Error(`"${label}" needs a real month (1 to 12) and day of that month.`);
+        }
+        const yearly = d.yearly ?? true;
+        if (!yearly && d.year == null) throw new Error(`"${label}" happens once, so it needs a year.`);
+        const same = before.find(b => b.label.trim().toLowerCase() === label.toLowerCase());
+        return { id: same?.id ?? generateId(), label, month: d.month, day: d.day, year: d.year ?? null, yearly, remind: d.remind ?? true };
+      });
     }
     return out;
   }
@@ -8929,7 +8950,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const existing = people().find(p => p.id === id);
       if (!existing) throw new Error(`No person with id ${id}.`);
       if (fields.name !== undefined && !fields.name.trim()) throw new Error('A person needs a name.');
-      const patch = personPatch(fields);
+      const patch = personPatch(fields, existing);
       // Archiving again does not re-stamp the day it was filed away.
       if (fields.archived !== undefined && fields.archived === existing.archived) delete patch.archivedAt;
       const next = { ...existing, ...patch };
