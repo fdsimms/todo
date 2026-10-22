@@ -19,7 +19,7 @@ import { SortableList } from './SortableList';
 import { CountStepper } from './CountStepper';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { InlineAction } from './InlineAction';
-import { PillGroup } from './PillGroup';
+import { RoutinePickerList } from './RoutinePicker';
 import { HelpText } from './HelpText';
 import { TextField } from './TextField';
 import { EmptyNote } from './EmptyNote';
@@ -396,10 +396,7 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
               </>
             ) : (
               <>
-                <PillGroup
-                  noun="routine"
-                  options={routines.filter(r => !r.archived).map(r => ({ key: r.id, label: r.name, selected: false, onPress: () => addRoutine(r.id) }))}
-                />
+                <RoutinePickerList routines={routines.filter(r => !r.archived)} onSelect={addRoutine} />
                 <HelpText style={styles.hint}>A routine can come around more than once.</HelpText>
                 <View style={styles.row}>
                   <InlineAction label={BUTTON_LABEL.done} variant="neutral" onPress={() => { haptics.tap(); setAdding(false); }} />

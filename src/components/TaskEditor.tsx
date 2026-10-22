@@ -130,6 +130,7 @@ import { apportionedMinutes, timerSegments } from '../utils/timerSegments';
 import { CollapsibleField } from './CollapsibleField';
 import { canSlotIn, isSlotWaiting, slotInFromCategory } from '../utils/slotIn';
 import { PillGroup } from './PillGroup';
+import { RoutinePickerList } from './RoutinePicker';
 import { EmptyNote } from './EmptyNote';
 import { RemindersOffNote } from './RemindersOffNote';
 import { HelpText } from './HelpText';
@@ -7935,17 +7936,11 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                         <Text style={styles.workoutGroupLabel}>Routines</Text>
                       </>
                     )}
-                    <PillGroup
-                      noun="routine"
-                      options={[
-                        ...(programs.length > 0 ? [] : [none]),
-                        ...workoutRoutines.filter(r => !r.archived || r.id === workoutRoutineId).map(r => ({
-                          key: r.id,
-                          label: r.name,
-                          selected: r.id === workoutRoutineId,
-                          onPress: () => { haptics.tap(); pickWorkout({ routineId: r.id }); setShowWorkoutPicker(false); },
-                        })),
-                      ]}
+                    <RoutinePickerList
+                      routines={workoutRoutines.filter(r => !r.archived || r.id === workoutRoutineId)}
+                      selectedId={workoutRoutineId}
+                      onSelect={id => { haptics.tap(); pickWorkout({ routineId: id }); setShowWorkoutPicker(false); }}
+                      none={programs.length > 0 ? undefined : { selected: none.selected, onPress: none.onPress }}
                     />
                   </>
                 )}
