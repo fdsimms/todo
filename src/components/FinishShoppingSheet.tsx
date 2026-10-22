@@ -956,23 +956,34 @@ export function FinishShoppingSheet({
               );
             })}
             <View style={[styles.incidentalAdd, incidentalRows.length > 0 && styles.rowDivided]}>
-              {picks.length > 0 && <Text style={styles.substituteLabel}>Bought before</Text>}
+              {/* "New item" sits above the suggestions, not in their grid: it
+                  isn't something bought before, so it mustn't read as one. */}
               <PillGroup
                 noun="item"
                 surface="card"
-                limit={6}
                 createMaxLength={GROCERY_NAME_MAX_LENGTH}
                 onCreate={handleCreateIncidental}
-                options={picks.map(item => ({
-                  key: item.id,
-                  label: item.name,
-                  selected: false,
-                  onPress: () => {
-                    haptics.success();
-                    addIncidental(item.id);
-                  },
-                }))}
+                options={[]}
               />
+              {picks.length > 0 && (
+                <>
+                  <Text style={styles.substituteLabel}>Bought before</Text>
+                  <PillGroup
+                    noun="item"
+                    surface="card"
+                    limit={6}
+                    options={picks.map(item => ({
+                      key: item.id,
+                      label: item.name,
+                      selected: false,
+                      onPress: () => {
+                        haptics.success();
+                        addIncidental(item.id);
+                      },
+                    }))}
+                  />
+                </>
+              )}
             </View>
           </View>
 
