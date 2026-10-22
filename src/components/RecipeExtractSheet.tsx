@@ -1,3 +1,10 @@
+// Pulling a recipe out of a paste, link or photo, reviewing what came back
+// (ingredients, method, prep tasks, details, source), and applying the ticked
+// parts to the recipe (see the note above the component). One component of
+// ~850 lines, so grep a landmark rather than reading it start to finish:
+//
+//   ==== <name> ====        the section banners through the logic half
+//   makeStyles              styles, at the bottom
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
@@ -96,6 +103,7 @@ interface Props {
  * importing it can name.
  */
 export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
+  // ==== theme and store bindings ====
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
@@ -120,6 +128,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const updatePrepTask = useRecipeStore(s => s.updatePrepTask);
   const addStructuredIngredients = useRecipeStore(s => s.addStructuredIngredients);
 
+  // ==== the run and its result ====
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Whether the error state offers a retry or a way back to the input —
@@ -138,6 +147,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const [applyMethod, setApplyMethod] = useState(false);
   const [applyPrepTasks, setApplyPrepTasks] = useState(false);
   const [applySource, setApplySource] = useState(false);
+  // ==== working copies the review edits ====
   // Working copies of everything the review list can now correct, on the same
   // terms `ingredients` above has been on since #1608: `extracted` is what the
   // model said and is never written back to, these are what will actually be
@@ -166,11 +176,13 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   // What the source *is* — inferred, not picked. A link is a website by
   // construction; a photo is whatever the page looked like to the model.
   const [importedSourceType, setImportedSourceType] = useState<RecipeSourceType | null>(null);
+  // ==== pending edits and the import source ====
   const edits = usePendingEdits();
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
   const input = useRecipeImportSource('paste', 'read a recipe off a page', MAX_RECIPE_PHOTOS);
   const { resolveSource, reset: resetInput } = input;
 
+  // ==== referenced recipes and lines already covered ====
   // "…and there's a salsa verde on page 45." Filtered against this recipe, so a
   // component it already has isn't offered twice — see importableReferences.
   const candidates = useMemo(
@@ -210,6 +222,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     return seen;
   }, [recipe, ingredients]);
 
+  // ==== resetting on close ====
   const reset = useCallback(() => {
     setLoading(false);
     setError(null);
@@ -243,6 +256,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     if (!visible) reset();
   }, [visible, reset]);
 
+  // ==== running the extraction ====
   // `run` below awaits a network call that easily outlives a cancel — the
   // sheet stays mounted (only its Modal hides), so nothing stops that promise
   // once the user discards. Read inside the promise continuation, never as a
@@ -307,6 +321,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     }
   }, [resolveSource, aisleOrder, recipe]);
 
+  // ==== editing review rows ====
   const toggle = (index: number) => {
     setAccepted(prev => {
       const next = new Set(prev);
@@ -368,6 +383,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     setPrepTasks(prev => prev.map((task, i) => (i === index ? { ...task, ...patch } : task)));
   };
 
+  // ==== applying to the recipe ====
   const handleApply = () => {
     if (!recipe || !extracted) { onClose(); return; }
     // Tapping Add can beat a field's own blur, so every value below is read
@@ -471,6 +487,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     onClose();
   };
 
+  // ==== what can be applied ====
   // What the run found decides whether the row exists; what's in the boxes
   // right now decides whether it applies anything. Emptying them must not
   // unmount the row mid-edit — there'd be no way to type a value back in.
@@ -511,6 +528,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   })();
 
 
+  // ==== errors and cancel ====
   // A deterministic failure — a mistyped address, a site that refuses us, a page
   // that builds its recipe in the browser — fails identically however many times
   // you ask. What it needs is the input back, not another attempt at it.
@@ -529,6 +547,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     confirmDiscard(onClose);
   };
 
+  // ==== the apply rows ====
   // Unlike the method and the prep tasks, these overwrite rather than append
   // — there's only one servings field — so the row says so when the recipe
   // already has one.
@@ -559,6 +578,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       : null,
   ].filter(Boolean).join(' · ');
 
+  // ==== render helpers (references, body) ====
   /**
    * The referenced-recipes block, above the ingredients it changes the meaning
    * of. Above rather than below because accepting one unticks a line further

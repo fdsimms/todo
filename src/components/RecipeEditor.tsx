@@ -1,3 +1,10 @@
+// The editor for everything about a recipe but its ingredients: name, source,
+// servings, cooked weight, leftovers, oven, times, meal type, vote, tags and
+// notes. Saves on Done and can delete the recipe. One component of ~900 lines,
+// so grep a landmark rather than reading it start to finish:
+//
+//   ==== <name> ====        the section banners through the logic half
+//   makeStyles              styles, at the bottom
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
@@ -87,6 +94,7 @@ const ROW_CONTENT_INDENT = spacing.md + 18 + spacing.md;
  * as TemplateEditor — the rarely-changed rows sit under the name.
  */
 export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = false }: Props) {
+  // ==== theme and store actions ====
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -113,6 +121,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
   const setTags = useRecipeStore(s => s.setTags);
   const deleteRecipe = useRecipeStore(s => s.deleteRecipe);
 
+  // ==== drafts (name, notes, source, servings, meal type, vote, tags) ====
   const [name, setName] = useState('');
   const [notes, setNotesDraft] = useState('');
   const [url, setUrl] = useState('');
@@ -131,6 +140,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
   const [tagsOpen, setTagsOpen] = useState(false);
   const [addingTag, setAddingTag] = useState(false);
   const [newTag, setNewTag] = useState('');
+  // ==== drafts (leftovers, cooked weight, oven, times) ====
   const [leftoverKeepDays, setLeftoverKeepDaysDraft] = useState<number | null>(null);
   const [servingsOpen, setServingsOpen] = useState(false);
   const [yieldOpen, setYieldOpen] = useState(false);
@@ -150,6 +160,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
   const [authorOpen, setAuthorOpen] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false);
 
+  // ==== source and author suggestions ====
   // Distinct sources/authors already in use elsewhere, so a repeat ("NYT
   // Cooking" or "Alison Roman" on a fifth recipe) is one tap instead of
   // retyping it — same idea as LogbookScreen's availableCategories/
@@ -180,6 +191,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
   );
   const [linkOpen, setLinkOpen] = useState(false);
 
+  // ==== tag suggestions ====
   // The box's whole vocabulary, minus what this recipe already carries — the
   // same "computed from the data that's actually there" idea as the source
   // suggestions above, and the reason recipe tags need no registry (see
@@ -198,6 +210,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
     setAddingTag(false);
   };
 
+  // ==== oven, cooked weight and confirming a field ====
   /**
    * Confirming an inline text field closes the row that opened it, so the
    * value lands back on the row as its summary. Leaving the field open just
@@ -224,6 +237,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
     setOpen(false);
   };
 
+  // ==== the Source row summary ====
   // What the collapsed Source row reads as. Confirming closes the row, which
   // takes the type pills and the page box with it, so the row itself has to
   // carry what they were set to — otherwise entering "Cookbook, p. 142" looks
@@ -237,6 +251,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
     sourceType === 'cookbook' && sourcePage.trim() ? `p. ${sourcePage.trim()}` : '',
   ].filter(Boolean).join(' · ');
 
+  // ==== filling the drafts from the recipe ====
   useEffect(() => {
     if (!recipe) return;
     setName(draft ? '' : recipe.name);
@@ -278,6 +293,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
     setLinkOpen(false);
   }, [recipe]);
 
+  // ==== save and close ====
   const saveAndClose = () => {
     if (!recipe) { onClose(); return; }
     // A draft closed with no name and nothing on it was never a recipe. One
@@ -315,6 +331,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
     commit(intent);
   };
 
+  // ==== committing drafts ====
   const commit = (cookbookIntent: CookbookEditIntent) => {
     if (!recipe) return;
     setNotes(recipe.id, notes);
@@ -363,6 +380,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
     onClose();
   };
 
+  // ==== delete ====
   // Spells out what breaks, the way TemplateEditor's does for a nested
   // template: the links aren't rewritten (see useRecipeStore.deleteRecipe), so
   // the recipes using this one are about to show a row they have to deal with.

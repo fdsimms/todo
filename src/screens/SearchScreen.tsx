@@ -1,3 +1,12 @@
+// The Search tab: tasks, stacks, projects and the rest of the app as you
+// type, with occurrences folded into one row, recent searches, and actions run
+// from the query itself. One component of ~520 lines of logic and render:
+//
+//   ==== <name> ====        the section banners through the logic half
+//   makeStyles              styles, at the bottom
+//
+// The result rows (SearchResultItem, StackResultItem, ElsewhereResultItem,
+// ProjectResultItem) are above it.
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useWithoutLockedTasks } from '../hooks/useWithoutLockedTasks';
 import {
@@ -447,6 +456,7 @@ const ProjectResultItem = React.memo(function ProjectResultItem({ result, onPres
 const NO_ROSTERS = new Map<string, Task[]>();
 
 export function SearchScreen() {
+  // ==== layout, navigation and stores ====
   const insets = useSafeAreaInsets();
   const scrollTop = useListScrollToTop();
   const navigation = useNavigation();
@@ -460,6 +470,7 @@ export function SearchScreen() {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
+  // ==== the query field, and the sheets it opens ====
   const searchFilter = useFilterField();
   const query = searchFilter.query;
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -471,6 +482,7 @@ export function SearchScreen() {
   const [editingGroup, setEditingGroup] = useState<TaskGroup | null>(null);
   const [groupEditorVisible, setGroupEditorVisible] = useState(false);
 
+  // ==== a query handed over from quick search ====
   // Handed a query by quick search (see QuickSearchModal's footer row).
   // `at` is stamped fresh on every handoff, so searching the same term twice
   // still lands — same trick as resetToToday in navigationRef.ts.
@@ -519,6 +531,7 @@ export function SearchScreen() {
     return () => sub.remove();
   }, []);
 
+  // ==== the debounced query and stack rosters ====
   const projectNamesById = useMemo(
     () => new Map(projects.map(p => [p.id, p.title])),
     [projects]
@@ -548,6 +561,7 @@ export function SearchScreen() {
     return rosters;
   }, [tasks, hasQuery]);
 
+  // ==== held ticks and recent searches ====
   // Tasks ticked from these results, kept in the Active section so the tick
   // reads as one — the same hold Today's list keeps over a just-completed row
   // (completionHoldIds). Without it a task ticked near the top of a long list
@@ -569,6 +583,7 @@ export function SearchScreen() {
   // the whole search below for nothing.
   useEffect(() => setHeldIds(prev => (prev.size === 0 ? prev : new Set())), [debouncedQuery]);
 
+  // ==== task, stack and project results ====
   // Collapsed the same way the quick-search card collapses, and for the same
   // reason: a daily task is one thing on many days, and reading its rows back
   // one per line buried the rest of the matches under thirty copies of it.
@@ -598,6 +613,7 @@ export function SearchScreen() {
     return matched.map(r => ({ ...r, progress: progress.get(r.project.id)! }));
   }, [projects, debouncedQuery, tasks]);
 
+  // ==== results from elsewhere in the app ====
   // Screens, settings, people, recipes and groceries, searchable where the
   // side menu still offers them (see useElsewhereSearch).
   const elsewhere = useElsewhereSearch(debouncedQuery, true);
@@ -611,6 +627,7 @@ export function SearchScreen() {
   const elsewhereCount = elsewhere.goTo.length + elsewhere.people.length
     + elsewhere.recipes.length + elsewhere.groceries.length;
 
+  // ==== actions from the query ====
   // Things the query can do rather than find ("take aleve", "buy milk"); see
   // searchActions.ts. A row that ran stays put with an Undo, cleared with the
   // query.
@@ -625,6 +642,7 @@ export function SearchScreen() {
     void runReceipt(action);
   }, [runReceipt]);
 
+  // ==== result sections ====
   const isActive = (r: SearchResult) => ranksAsActive(r.task, heldIds);
   const activeResults = results.filter(isActive);
   // Open but on a branch that wasn't taken (Task.answerGate): their own
@@ -700,6 +718,7 @@ export function SearchScreen() {
     // heldIds too: it's what decides which section a completed row sits in.
   }, [results, groupResults, projectResults, heldIds, elsewhere, elsewhereCount, expandedSections, actions]);
 
+  // ==== remembering a query ====
   // A query is worth keeping once it has actually found something: recorded
   // when a result is opened, and when the field is submitted. Deliberately not
   // on every keystroke — the field is debounced but still runs a search per
@@ -716,6 +735,7 @@ export function SearchScreen() {
     rememberQuery();
   };
 
+  // ==== open handlers and quick add ====
   // The three below are handed to memoized rows, so they have to keep their
   // identity across a render the query didn't change — see the note on
   // `SearchResultItem`. Each takes what it opens rather than being closed over
@@ -758,6 +778,7 @@ export function SearchScreen() {
   const onQuickAddClose = useStableCallback(() => setQuickAddVisible(false));
   const onQuickAddOpenFull = useStableCallback(handleQuickAddOpenFull);
 
+  // ==== rows and the empty state ====
   const renderItem = ({ item }: { item: ListItem }) => {
     if (item.type === 'sectionHeader') {
       return (

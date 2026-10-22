@@ -1,3 +1,11 @@
+// The sheet before a focus session: a queue of tasks that fits the time you
+// have (or one seeded from pins or reach-outs), ticked, swapped and reordered,
+// with this session's breaks and timers, and the plan previewed before Start.
+// One component of ~750 lines, so grep a landmark rather than reading it start
+// to finish:
+//
+//   ==== <name> ====        the section banners through the logic half
+//   makeStyles              styles, at the bottom
 import React, { useRef, useEffect, useMemo, useState } from 'react';
 import {
   View,
@@ -152,6 +160,7 @@ interface Props {
  * this sheet touching the setting.
  */
 export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOutSeed, onClose, onStart }: Props) {
+  // ==== theme, window size and navigation ====
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -162,12 +171,14 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
   const topInset = useSafeAreaInsets().top;
   const navigation = useNavigation();
 
+  // ==== plan options from settings ====
   // useShallow, not a bare selector: focusPlanOptionsFrom builds a fresh
   // object every call, and an unmemoized snapshot is what useSyncExternalStore
   // refuses to work with. Compared field by field, it changes only when a
   // focus setting actually does.
   const planOptions = useSettingsStore(useShallow(s => focusPlanOptionsFrom(s)));
 
+  // ==== this session's overrides (time window, breaks, hidden timers) ====
   /**
    * Minutes the user says they have, or null for no limit.
    *
@@ -209,10 +220,12 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
   const settingsHideTimers = useSettingsStore(s => s.focusHideTimers);
   const [hideTimersEnabled, setHideTimersEnabled] = useState(settingsHideTimers);
 
+  // ==== calendar inputs ====
   const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
   const calendarEvents = useCalendarStore(s => s.events);
   const calendarLoaded = useCalendarStore(s => s.loaded);
 
+  // ==== the snapshot taken at open (pool, slots, selection, swaps, drag) ====
   // Snapshotted at open, like the pins sheet and the deload sheet: this is a
   // proposal being decided on, not a live derivation that should reshuffle
   // under the user while they read it.
@@ -230,6 +243,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
   const sheet = useSheetMotion(visible);
   const { translateY, backdropOpacity } = sheet;
 
+  // ==== picking the shortlist ====
   /**
    * Take a fresh shortlist for the given window.
    *
@@ -294,6 +308,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
     // after that only a window change re-takes it.
   }, [visible]);
 
+  // ==== changing the window, and dismissing ====
   const changeWindow = (next: number | null) => {
     setWindowMinutes(next);
     repick(next);
@@ -331,6 +346,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
     })
   ).current;
 
+  // ==== slots and stack placements ====
   const byId = useMemo(() => new Map(pool.map(t => [t.id, t])), [pool]);
   const slots = useMemo(
     () => slotIds.map(id => byId.get(id)).filter((t): t is Task => t !== undefined),
@@ -344,6 +360,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
   const placements = useMemo(() => stackPlacements(slots, groupNames), [slots, groupNames]);
   const slotIndex = useMemo(() => new Map(slots.map((t, i) => [t.id, i])), [slots]);
 
+  // ==== editing rows (reorder, swap, tick, stacks) ====
   /**
    * These run in order, so dragging a row is a real edit to the plan rather
    * than cosmetic — it changes which task each stretch is, same as swapping
@@ -399,6 +416,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
     setSelectedIds(prev => toggleRun(runIds, prev));
   };
 
+  // ==== the plan preview (totals, calendar, end time) ====
   /** The queue in run order: the slot order, minus whatever was unticked. */
   const selected = useMemo(
     () => slots.filter(t => selectedIds.has(t.id)),
@@ -442,6 +460,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
     ? formatTimeOfDay(new Date(Date.now() + totals.totalMinutes * 60_000))
     : null;
 
+  // ==== starting the session ====
   const handleStart = () => {
     if (selected.length === 0) return;
     haptics.success();
@@ -449,6 +468,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
     dismiss();
   };
 
+  // ==== row renderers ====
   const renderRow = (task: Task, drag: () => void, isActive: boolean, stackCaption: string | null = null) => {
     const checked = selectedIds.has(task.id);
     const reason = ctx ? focusReason(task, companyFor(task.id), ctx) : null;

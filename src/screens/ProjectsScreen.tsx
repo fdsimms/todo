@@ -1,3 +1,13 @@
+// The Projects tab: projects filtered, searched and grouped by category, with
+// bulk selection, reordering and the add button dragged into the list, beside
+// the open project's page when the window has room for two panes. One
+// component (ProjectsList) of ~870 lines, so grep a landmark:
+//
+//   ==== <name> ====        the section banners through the logic half
+//   makeStyles              styles, at the bottom
+//
+// AddProjectFabWithDropLabel above it and ProjectRow below it are its parts;
+// ProjectsScreen near the bottom is the two-pane wrapper.
 import React, { createContext, useContext, useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import {
   Alert,
@@ -113,6 +123,7 @@ interface ProjectPane {
 const ProjectPaneContext = createContext<ProjectPane | null>(null);
 
 function ProjectsList() {
+  // ==== screen setup ====
   const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const fabBottom = useFabBottom();
@@ -122,6 +133,7 @@ function ProjectsList() {
   const screenSettings = useScreenSettings('Projects', 'Project settings');
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
+  // ==== navigation, and opening a project in the pane ====
   const navigation = useNavigation();
   const pane = useContext(ProjectPaneContext);
   // Every way into a project's page: beside the list in a pane, over it otherwise.
@@ -133,6 +145,7 @@ function ProjectsList() {
     if (paneSelect) paneSelect(params);
     else (navigation as any).navigate('ProjectDetail', params);
   }, [paneSelect, navigation]);
+  // ==== store reads, the day rolling over, and the search field ====
   const projects = useProjectStore(useShallow(s => s.projects));
   const createProject = useProjectStore(s => s.createProject);
   const removeProjectRow = useProjectStore(s => s.removeProjectRow);
@@ -158,6 +171,7 @@ function ProjectsList() {
   const search = useFilterField();
   const query = search.query.trim();
 
+  // ==== local state (filter, editor, quick add, menus) ====
   const [projectFilter, setProjectFilter] = useState<ProjectFilter>('active');
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
@@ -166,6 +180,7 @@ function ProjectsList() {
   const [categoriesSheetVisible, setCategoriesSheetVisible] = useState(false);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
 
+  // ==== selection ====
   // Also reachable from the header, since both of a project row's own
   // gestures are already spoken for — tap opens the project, long press
   // starts a reorder drag — but swiping a row is the normal entry point
@@ -187,6 +202,7 @@ function ProjectsList() {
   // details" — discarded on close if it was never given a name.
   const newProjectIdRef = useRef<string | null>(null);
 
+  // ==== the filtered, searched and sorted list ====
   // A project that's both completed and archived reads as archived — archiving
   // is always the final resting state, so it can't show in two lists at once.
   const listProjects = useMemo(
@@ -241,6 +257,7 @@ function ProjectsList() {
   const canReorder = projectSort === 'manual' && !query;
   const showSearch = listProjects.length >= SEARCH_BAR_MIN_PROJECTS || search.query.length > 0;
 
+  // ==== category sections and counts ====
   const projectCategoryOrder = useMemo(
     () => [...projectCategories].sort((a, b) => a.sortOrder - b.sortOrder).map(c => c.name),
     [projectCategories]
@@ -275,6 +292,7 @@ function ProjectsList() {
     [projects, projectCategoryOrder]
   );
 
+  // ==== bulk actions (category, archive, delete) ====
   // Extra bottom padding so the last rows aren't hidden behind the floating
   // bulk bar, same as the other bulk-selecting screens.
   const selectionListPadding = tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm;
@@ -319,7 +337,7 @@ function ProjectsList() {
     );
   };
 
-  // ——— Dragging the add button into the list ———————————————————————————
+  // ==== dragging the add button into the list ====
   //
   // Same gesture as Today's, over the shape this list actually has: no stacks
   // and nothing pinned, so a drop means a category section and a spot in it.
@@ -440,6 +458,7 @@ function ProjectsList() {
     },
   };
 
+  // ==== handing off to the full editor ====
   // "More details" hands the draft over to the full editor. Projects have no
   // draft state of their own, so the row is created up front and discarded on
   // close if it never got a name — same trick TodayScreen uses for new stacks.
@@ -476,6 +495,7 @@ function ProjectsList() {
     openDetail({ projectId: id });
   };
 
+  // ==== row handlers ====
   // The row handlers are memoized and take the project they act on, rather
   // than the screen closing over it once per row — see `ProjectRow`'s own note.
   const handleQuickUnarchive = useCallback((project: Project) => {
@@ -521,6 +541,7 @@ function ProjectsList() {
     setEditingProject(project);
   }, []);
 
+  // ==== row rendering ====
   const renderRow = (item: ProjectListItem, drag?: () => void, isActive?: boolean) => {
     if (item.type === 'header') {
       return (
