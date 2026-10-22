@@ -65,6 +65,7 @@ import { usePullToSearch } from '../hooks/usePullToSearch';
 import { useActionMenu } from '../hooks/useActionMenu';
 import { useLingering } from '../hooks/useLingering';
 import { BUTTON_LABEL } from '../copy/shared';
+import { LazySheet } from '../components/LazySheet';
 
 /** How many recent doses the list shows at first, and how many more each tap adds. */
 const RECENT_PAGE = 25;
@@ -338,9 +339,15 @@ export function MedicationScreen() {
 
   const sheets = (
     <>
-      <MedicationLogSheet visible={sheetOpen} log={editing} onClose={closeSheet} onDeleted={deletedDose.remember} />
-      <MedicationAddSheet visible={addOpen} onClose={() => setAddOpen(false)} onAdded={key => navigation.navigate('MedicationDetail', { medicationKey: key })} />
-      <MedicationSummarySheet visible={summaryOpen} onClose={() => setSummaryOpen(false)} />
+      <LazySheet open={sheetOpen}>
+        <MedicationLogSheet visible={sheetOpen} log={editing} onClose={closeSheet} onDeleted={deletedDose.remember} />
+      </LazySheet>
+      <LazySheet open={addOpen}>
+        <MedicationAddSheet visible={addOpen} onClose={() => setAddOpen(false)} onAdded={key => navigation.navigate('MedicationDetail', { medicationKey: key })} />
+      </LazySheet>
+      <LazySheet open={summaryOpen}>
+        <MedicationSummarySheet visible={summaryOpen} onClose={() => setSummaryOpen(false)} />
+      </LazySheet>
       <DeliverablePromptQueue {...queueProps} />
     </>
   );

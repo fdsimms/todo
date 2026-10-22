@@ -21,6 +21,7 @@ import { standingSwaps } from '../../utils/standingSwaps';
 import { makeSettingsStyles } from './settingsStyles';
 import { haptics } from '../../utils/haptics';
 import { CURRENCY_SYMBOLS, CURRENCY_SYMBOL_MAX_LENGTH } from '../../types';
+import { LazySheet } from '../../components/LazySheet';
 
 /**
  * The groceries/recipes/meal-plan area's own settings — what it puts on Today,
@@ -361,15 +362,21 @@ export function KitchenSettings() {
       </SettingsSection>
       )}
 
-      <CookwareSheet visible={cookwareVisible} onClose={() => setCookwareVisible(false)} />
-      <StandingSwapsSheet
-        visible={standingSwapsVisible}
-        onClose={() => setStandingSwapsVisible(false)}
-      />
-      <NutritionTargetsSheet
-        visible={targetsOpen}
-        onClose={() => setTargetsOpen(false)}
-      />
+      <LazySheet open={cookwareVisible}>
+        <CookwareSheet visible={cookwareVisible} onClose={() => setCookwareVisible(false)} />
+      </LazySheet>
+      <LazySheet open={standingSwapsVisible}>
+        <StandingSwapsSheet
+          visible={standingSwapsVisible}
+          onClose={() => setStandingSwapsVisible(false)}
+        />
+      </LazySheet>
+      <LazySheet open={targetsOpen}>
+        <NutritionTargetsSheet
+          visible={targetsOpen}
+          onClose={() => setTargetsOpen(false)}
+        />
+      </LazySheet>
     </>
   );
 }

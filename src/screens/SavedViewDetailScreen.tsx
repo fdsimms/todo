@@ -30,6 +30,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { TaskItem } from '../components/TaskItem';
 import { SpotlightProvider, useSpotlightProgress } from '../components/SpotlightOverlay';
 import { TaskEditor } from '../components/TaskEditor';
+import { LazySheet } from '../components/LazySheet';
 import { SavedViewEditorSheet } from '../components/SavedViewEditorSheet';
 import { EmptyState } from '../components/EmptyState';
 import { BulkActionBar } from '../components/BulkActionBar';
@@ -349,14 +350,16 @@ export function SavedViewDetailScreen() {
           onClose={() => setViewEditorVisible(false)}
         />
 
-        <TaskEditor
-          visible={editorVisible}
-          task={editingTask}
-          onClose={() => {
-            setEditorVisible(false);
-            setExpandedTaskId(null);
-          }}
-        />
+        <LazySheet open={editorVisible} warm>
+          <TaskEditor
+            visible={editorVisible}
+            task={editingTask}
+            onClose={() => {
+              setEditorVisible(false);
+              setExpandedTaskId(null);
+            }}
+          />
+        </LazySheet>
         <ScrollToTopButton {...scrollTop.buttonProps} />
       {pullSearch.sheet}
       </View>

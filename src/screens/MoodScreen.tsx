@@ -88,6 +88,7 @@ import { ContrastBars } from '../components/ContrastBars';
 import { capitalize } from '../utils/capitalize';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
+import { LazySheet } from '../components/LazySheet';
 
 /** How many days the chart shows. Two weeks fits a phone width at a readable bar. */
 const CHART_DAYS = 14;
@@ -1083,30 +1084,36 @@ export function MoodScreen() {
         </ScrollView>
       )}
 
-      <MoodLogSheet
-        visible={sheetOpen}
-        editing={editing}
-        prefill={prefill}
-        onClose={closeSheet}
-      />
+      <LazySheet open={sheetOpen}>
+        <MoodLogSheet
+          visible={sheetOpen}
+          editing={editing}
+          prefill={prefill}
+          onClose={closeSheet}
+        />
+      </LazySheet>
 
-      <CsvExportSheet
-        visible={exportOpen}
-        onClose={() => setExportOpen(false)}
-        hint={'A spreadsheet of your entries: day, time, mood, any symptoms and '
-          + 'their severity, context tags and notes.'}
-        dialogTitle="Share your mood log"
-        select={from => (from === null ? logs : logsInDayRange(logs, from, null))}
-        toCsv={moodExportCsv}
-        fileName={moodExportFileName}
-        summary={moodExportSummary}
-      />
+      <LazySheet open={exportOpen}>
+        <CsvExportSheet
+          visible={exportOpen}
+          onClose={() => setExportOpen(false)}
+          hint={'A spreadsheet of your entries: day, time, mood, any symptoms and '
+            + 'their severity, context tags and notes.'}
+          dialogTitle="Share your mood log"
+          select={from => (from === null ? logs : logsInDayRange(logs, from, null))}
+          toCsv={moodExportCsv}
+          fileName={moodExportFileName}
+          summary={moodExportSummary}
+        />
+      </LazySheet>
 
-      <MilestoneSheet
-        visible={milestoneSheetOpen}
-        milestone={editingMilestone}
-        onClose={closeMilestoneSheet}
-      />
+      <LazySheet open={milestoneSheetOpen}>
+        <MilestoneSheet
+          visible={milestoneSheetOpen}
+          milestone={editingMilestone}
+          onClose={closeMilestoneSheet}
+        />
+      </LazySheet>
       <ScrollToTopButton {...scrollTop.buttonProps} />
       {pullSearch.sheet}
     </View>

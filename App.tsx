@@ -61,12 +61,12 @@ import { collectDeviceMetrics, savePerfRun } from './src/utils/perfReport';
 import { startDeviceMetrics } from './src/utils/deviceMetrics';
 import { backfillCalendarExternalIds } from './src/utils/calendarIdBackfill';
 import { drainCalendarRequests } from './src/utils/calendarRequestDrain';
-import { expiryPasses, catchUpPasses, retentionPasses } from './src/utils/maintenancePasses';
+import { expiryPasses, launchCatchUpPasses, retentionPasses } from './src/utils/maintenancePasses';
 import { useAppRefresh, useBackgroundRefresh } from './src/utils/backgroundRefresh';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { preloadAppFont, preloadBrandFonts } from './src/theme/AppFont';
 import { animation } from './src/theme';
-import { AppState, View } from 'react-native';
+import { AppState, InteractionManager, View } from 'react-native';
 import { runPendingHealthFoodWrites } from './src/utils/pendingHealthFoodWrites';
 import { runPendingHealthWorkoutWrites } from './src/utils/pendingHealthWorkoutWrites';
 import { usePendingEstimateStore } from './src/store/usePendingEstimateStore';
@@ -176,6 +176,31 @@ function AppGate() {
   return <AppRoot />;
 }
 
+/**
+ * Runs `task` once the first frame is on screen and the opening animations have
+ * settled, and returns a cancel. `runAfterInteractions` alone can wait for ever
+ * behind a looping animation that holds an interaction handle, and the work it
+ * is holding back (the purges, the generators) is not optional, so a timer runs
+ * it regardless after `fallbackMs`.
+ */
+function afterFirstFrame(task: () => void, fallbackMs = 2000): () => void {
+  let done = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const run = () => {
+    if (done) return;
+    done = true;
+    if (timer !== undefined) clearTimeout(timer);
+    task();
+  };
+  const handle = InteractionManager.runAfterInteractions(run);
+  timer = setTimeout(run, fallbackMs);
+  return () => {
+    done = true;
+    handle.cancel();
+    if (timer !== undefined) clearTimeout(timer);
+  };
+}
+
 function AppRoot() {
   const backgroundRefreshEnabled = useSettingsStore(s => s.backgroundRefreshEnabled);
   const wanikaniTasks = useSettingsStore(s => s.wanikaniTasks);
@@ -187,6 +212,7 @@ function AppRoot() {
     // The order is still load-bearing — the comments below say why each sits
     // where it does — runStartupSequence just refuses to let a failure halfway
     // down take the app with it.
+    const { first, deferred } = launchCatchUpPasses();
     runStartupSequence([
       // The task and settings stores' initialize() ran already, in AppGate
       // above — before this component even mounted — so the DB is open and
@@ -207,61 +233,74 @@ function AppRoot() {
       // dayResetTime, autoRemoveExpiredTasks) loaded for real, and has to run
       // before vacation expiry can turn vacationMode back off — see #689.
       ...expiryPasses(),
-      ...catchUpPasses(),
-      // The purges last, after everything that can write a completion.
-      ...retentionPasses(),
-      // Once per install: the calendar server id beside every event this phone
-      // wrote before the app kept one, so a backup restored on a new phone finds
-      // those events rather than writing each again (#2950). Async and not
-      // awaited; after the purges, so it reads no row they are about to delete.
-      ['backfill calendar server ids', () => { void backfillCalendarExternalIds(); }],
-      // Calendar events an agent asked for while the app was closed, on the
-      // device chosen to write them. Async and not awaited, and idempotent: a
-      // request is answered once, and a later pass skips it.
-      ['write calendar requests', () => { void drainCalendarRequests(); }],
-      // Meals an agent logged over MCP, which only the phone can write to
-      // Health. Async and not awaited, idempotent, and a no-op with the switch
-      // off. See pendingHealthFoodWrites.ts.
-      ['write pending Health meals', runPendingHealthFoodWrites],
-      // And the workouts an agent logged, by the same rules
-      // (pendingHealthWorkoutWrites.ts).
-      ['write pending Health workouts', runPendingHealthWorkoutWrites],
-      // Meals described offline get their estimate now there may be a
-      // connection. They are only estimated here, never logged: a person
-      // confirms each one on the Food log screen.
-      ['estimate meals saved offline', () => { void usePendingEstimateStore.getState().drain(); }],
-      // And the recipe estimates saved offline, which only the recipe's own
-      // sheet shows (utils/recipeEstimateQueue.ts).
-      ['estimate recipes saved offline', () => { void usePendingRecipeEstimateStore.getState().drain(); }],
-      // Read back any cooking step timer that was still counting down when the
-      // app was last closed, and re-arm its alarm (#1712). After useSettingsStore.initialize,
-      // which opens the database this reads from; before the permission
-      // request below, because rescheduling is idempotent and a permission
-      // that's already granted needs no waiting on.
-      ['restore cooking step timers', () => useStepTimerStore.getState().hydrate()],
-      // Request notification permissions
-      ['request notification permissions', requestNotificationPermissions],
-      // AlarmKit has its own authorization, separate from UNUserNotificationCenter
-      // above — only meaningful where the platform actually supports it.
-      ['request alarm authorization', () => {
-        if (isAlarmKitAvailable()) requestAlarmAuthorization();
-      }],
+      ...first,
     ]);
-    // Everything above was timed under its own name (runStartupStep). Saved
-    // here, after the sequence, so the one write is not part of what it times.
-    markMilestone('launch steps done');
-    // From here the person is in the app, so a task their own action satisfies
-    // may complete itself (src/utils/autoCompleteScope.ts). The launch passes
-    // above ran unattended and only marked rows ready.
-    setAutoCompleteAttended(true);
-    // The reports iOS builds about the app (launch time, hangs, memory) come
-    // in about once a day and only while something is listening, so listening
-    // starts at every launch. Read straight after, for any already delivered.
-    runStartupSequence([
-      ['start device metrics', startDeviceMetrics],
-      ['read device metrics', () => { collectDeviceMetrics(); }],
-    ]);
-    savePerfRun('launch');
+    markMilestone('launch passes before first frame done');
+    // Everything else waits for the first frame. The splash hides when this
+    // effect returns, so the steps above are the whole of what it waits on:
+    // what decides how an existing task looks on Today's first frame. The
+    // generators, the purges, the calendar and Health drains and the permission
+    // prompts each add a row or a side effect, and none of them needs to hold
+    // the splash. They run in the same order, one step after another, so the
+    // ordering notes in maintenancePasses.ts still hold.
+    return afterFirstFrame(() => {
+      runStartupSequence([
+        ...deferred,
+        // The purges last, after everything that can write a completion.
+        ...retentionPasses(),
+        // Once per install: the calendar server id beside every event this phone
+        // wrote before the app kept one, so a backup restored on a new phone finds
+        // those events rather than writing each again (#2950). Async and not
+        // awaited; after the purges, so it reads no row they are about to delete.
+        ['backfill calendar server ids', () => { void backfillCalendarExternalIds(); }],
+        // Calendar events an agent asked for while the app was closed, on the
+        // device chosen to write them. Async and not awaited, and idempotent: a
+        // request is answered once, and a later pass skips it.
+        ['write calendar requests', () => { void drainCalendarRequests(); }],
+        // Meals an agent logged over MCP, which only the phone can write to
+        // Health. Async and not awaited, idempotent, and a no-op with the switch
+        // off. See pendingHealthFoodWrites.ts.
+        ['write pending Health meals', runPendingHealthFoodWrites],
+        // And the workouts an agent logged, by the same rules
+        // (pendingHealthWorkoutWrites.ts).
+        ['write pending Health workouts', runPendingHealthWorkoutWrites],
+        // Meals described offline get their estimate now there may be a
+        // connection. They are only estimated here, never logged: a person
+        // confirms each one on the Food log screen.
+        ['estimate meals saved offline', () => { void usePendingEstimateStore.getState().drain(); }],
+        // And the recipe estimates saved offline, which only the recipe's own
+        // sheet shows (utils/recipeEstimateQueue.ts).
+        ['estimate recipes saved offline', () => { void usePendingRecipeEstimateStore.getState().drain(); }],
+        // Read back any cooking step timer that was still counting down when the
+        // app was last closed, and re-arm its alarm (#1712). After useSettingsStore.initialize,
+        // which opens the database this reads from; before the permission
+        // request below, because rescheduling is idempotent and a permission
+        // that's already granted needs no waiting on.
+        ['restore cooking step timers', () => useStepTimerStore.getState().hydrate()],
+        // Request notification permissions
+        ['request notification permissions', requestNotificationPermissions],
+        // AlarmKit has its own authorization, separate from UNUserNotificationCenter
+        // above — only meaningful where the platform actually supports it.
+        ['request alarm authorization', () => {
+          if (isAlarmKitAvailable()) requestAlarmAuthorization();
+        }],
+      ]);
+      // Everything above was timed under its own name (runStartupStep). Saved
+      // here, after the sequence, so the one write is not part of what it times.
+      markMilestone('launch steps done');
+      // From here the person is in the app, so a task their own action satisfies
+      // may complete itself (src/utils/autoCompleteScope.ts). The launch passes
+      // above ran unattended and only marked rows ready.
+      setAutoCompleteAttended(true);
+      // The reports iOS builds about the app (launch time, hangs, memory) come
+      // in about once a day and only while something is listening, so listening
+      // starts at every launch. Read straight after, for any already delivered.
+      runStartupSequence([
+        ['start device metrics', startDeviceMetrics],
+        ['read device metrics', () => { collectDeviceMetrics(); }],
+      ]);
+      savePerfRun('launch');
+    });
   }, [initSecrets]);
 
   // The launch step above covers a cold start; this covers the app coming back

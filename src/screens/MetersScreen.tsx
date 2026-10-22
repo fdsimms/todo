@@ -14,6 +14,7 @@ import { EmptyState } from '../components/EmptyState';
 import { InlineAction } from '../components/InlineAction';
 import { MeterReadingSheet } from '../components/MeterReadingSheet';
 import { TaskEditor } from '../components/TaskEditor';
+import { LazySheet } from '../components/LazySheet';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { useColors } from '../theme/ThemeContext';
@@ -181,11 +182,13 @@ export function MetersScreen() {
           onClose={() => setLoggingFor(null)}
         />
       )}
-      <TaskEditor
-        visible={editorVisible}
-        task={editingTask}
-        onClose={() => setEditorVisible(false)}
-      />
+      <LazySheet open={editorVisible} warm>
+        <TaskEditor
+          visible={editorVisible}
+          task={editingTask}
+          onClose={() => setEditorVisible(false)}
+        />
+      </LazySheet>
       {pullSearch.sheet}
     </View>
   );

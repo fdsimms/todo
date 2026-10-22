@@ -51,6 +51,7 @@ import {
   type PersonContactKind,
 } from '../utils/peopleList';
 import { BUTTON_LABEL } from '../copy/shared';
+import { LazySheet } from '../components/LazySheet';
 
 /**
  * The people list.
@@ -456,54 +457,62 @@ export function PeopleScreen() {
         />
       )}
 
-      <QuickAddNameSheet
-        visible={quickAddVisible}
-        placeholder="New person…"
-        noun="person"
-        autoCapitalize="words"
-        moreLabel="More details"
-        onSubmit={(name) => { add(name); setQuickAddVisible(false); }}
-        // Straight into the sheet with the row already created, so the birthday
-        // (the reason most people are added at all) is one tap away rather than
-        // needing the row to be found again afterwards.
-        onOpenFull={(name) => { setNewPerson(add(name)); setQuickAddVisible(false); }}
-        onClose={() => { pendingDropRef.current = null; setQuickAddVisible(false); }}
-      />
+      <LazySheet open={quickAddVisible}>
+        <QuickAddNameSheet
+          visible={quickAddVisible}
+          placeholder="New person…"
+          noun="person"
+          autoCapitalize="words"
+          moreLabel="More details"
+          onSubmit={(name) => { add(name); setQuickAddVisible(false); }}
+          // Straight into the sheet with the row already created, so the birthday
+          // (the reason most people are added at all) is one tap away rather than
+          // needing the row to be found again afterwards.
+          onOpenFull={(name) => { setNewPerson(add(name)); setQuickAddVisible(false); }}
+          onClose={() => { pendingDropRef.current = null; setQuickAddVisible(false); }}
+        />
+      </LazySheet>
 
-      <ContactPickerSheet
-        visible={contactPickerVisible}
-        // One tap adds one person and the sheet stays open, so a run of them is
-        // possible without the picker ever becoming a checklist of everybody.
-        onPick={draft => {
-          const person = add(draft.name);
-          updatePerson(person.id, {
-            phoneNumber: draft.phoneNumber,
-            email: draft.email,
-            birthdayMonth: draft.birthdayMonth,
-            birthdayDay: draft.birthdayDay,
-            birthYear: draft.birthYear,
-            address: draft.address,
-          });
-        }}
-        onClose={() => setContactPickerVisible(false)}
-      />
+      <LazySheet open={contactPickerVisible}>
+        <ContactPickerSheet
+          visible={contactPickerVisible}
+          // One tap adds one person and the sheet stays open, so a run of them is
+          // possible without the picker ever becoming a checklist of everybody.
+          onPick={draft => {
+            const person = add(draft.name);
+            updatePerson(person.id, {
+              phoneNumber: draft.phoneNumber,
+              email: draft.email,
+              birthdayMonth: draft.birthdayMonth,
+              birthdayDay: draft.birthdayDay,
+              birthYear: draft.birthYear,
+              address: draft.address,
+            });
+          }}
+          onClose={() => setContactPickerVisible(false)}
+        />
+      </LazySheet>
 
-      <PersonEditor
-        visible={newPerson !== null}
-        person={newPerson}
-        isNew
-        onClose={() => setNewPerson(null)}
-      />
+      <LazySheet open={newPerson !== null}>
+        <PersonEditor
+          visible={newPerson !== null}
+          person={newPerson}
+          isNew
+          onClose={() => setNewPerson(null)}
+        />
+      </LazySheet>
 
-      <TripPlannerSheet
-        visible={tripPlannerVisible}
-        people={people}
-        onPickPerson={personId => {
-          setTripPlannerVisible(false);
-          navigation.navigate('PersonDetail', { personId });
-        }}
-        onClose={() => setTripPlannerVisible(false)}
-      />
+      <LazySheet open={tripPlannerVisible}>
+        <TripPlannerSheet
+          visible={tripPlannerVisible}
+          people={people}
+          onPickPerson={personId => {
+            setTripPlannerVisible(false);
+            navigation.navigate('PersonDetail', { personId });
+          }}
+          onClose={() => setTripPlannerVisible(false)}
+        />
+      </LazySheet>
       {pullSearch.sheet}
     </View>
   );
