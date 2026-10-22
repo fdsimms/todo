@@ -277,3 +277,42 @@ describe('duplicate_task, delete_tag and set_completion_date', () => {
     expect(listTasks(replica, { view: 'all' }).tasks.map(x => x.title)).not.toContain('Old');
   });
 });
+
+describe('updateTask on a follow-up task', () => {
+  const setup = () => {
+    const rule = make('Laundry', { recurrenceType: 'weekly', dueDate: new Date(2026, 9, 26).toISOString(), followUpTaskEveryN: 2, followUpTaskTitle: 'Swap washcloth' });
+    const towel = make('Swap washcloth', { followUpTaskSourceId: rule.id, followUpTaskSourceTitle: 'Laundry' });
+    return { rule, towel };
+  };
+  const ruleDraft = (id: string) => replica.taskById(id)!.followUpTaskDraft;
+
+  it('says which rule added it and whether that rule is still there', () => {
+    const { towel } = setup();
+    const result = updateTask(replica, towel.id, { priority: 2 });
+    expect(result.addedByFollowUp).toEqual({ title: 'Laundry', ruleLive: true });
+  });
+
+  it('changes only this task unless asked to reach the ones added later', () => {
+    const { rule, towel } = setup();
+    updateTask(replica, towel.id, { priority: 2 });
+    expect(ruleDraft(rule.id)).toBeNull();
+    expect(ledger().filter(e => e.taskId === rule.id && e.action === 'edited')).toHaveLength(0);
+  });
+
+  it('writes the changed fields into the rule with futureFollowUps, with a revert of its own', () => {
+    const { rule, towel } = setup();
+    const result = updateTask(replica, towel.id, { priority: 2 }, { futureFollowUps: true });
+
+    expect(result.followUpRuleUpdated).toBe('Laundry');
+    expect(ruleDraft(rule.id)).toMatchObject({ priority: 2 });
+    expect(ledger().some(e => e.taskId === rule.id && e.action === 'edited' && e.revert)).toBe(true);
+  });
+
+  it('writes nothing when the rule is gone', () => {
+    const { rule, towel } = setup();
+    updateTask(replica, rule.id, { followUp: null });
+    const result = updateTask(replica, towel.id, { priority: 2 }, { futureFollowUps: true });
+    expect(result.followUpRuleUpdated).toBeUndefined();
+    expect(result.addedByFollowUp?.ruleLive).toBe(false);
+  });
+});

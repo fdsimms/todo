@@ -19,6 +19,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { NamedIcon } from '../components/CoinIcon';
 import { useShallow } from 'zustand/react/shallow';
 import { format } from 'date-fns/format';
+import { offerFollowUpWriteBack } from '../utils/generatedCategoryPrompt';
 import { dayKeyOf, describeReminderTracksVisibility, getEffectiveTaskDate, getLogicalToday, getTaskDayStart } from '../utils/dateUtils';
 import { addDays } from 'date-fns/addDays';
 import { buildDayBuckets } from '../utils/calendarMonth';
@@ -1138,6 +1139,7 @@ export function BackfillScreen() {
     });
     advance(currentTask.id);
     offerKindDefault(currentTask, patch, false, valueText);
+    offerFollowUpWriteBack(snapshots);
   };
 
   /**
@@ -1208,6 +1210,7 @@ export function BackfillScreen() {
       return next;
     });
     offerGroupDefault(offerFor, activeBatch.scope, defaultsFromAnswer(active.id, patchFor(offerFor), dismissed), `${fieldLabel} to ${valueText}`);
+    offerFollowUpWriteBack(snapshots);
   };
 
   /**
@@ -1420,6 +1423,7 @@ export function BackfillScreen() {
       for (const task of batch) next.add(task.id);
       return next;
     });
+    offerFollowUpWriteBack(snapshots);
   };
 
   const confirmApplyAll = () => {

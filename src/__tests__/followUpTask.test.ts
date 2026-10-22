@@ -1,4 +1,4 @@
-import type { FollowUpTaskDraft } from '@/types';
+import type { FollowUpTaskDraft, Task } from '@/types';
 import {
   MIN_FOLLOW_UP_TASK_EVERY_N,
   advanceFollowUpTaskTally,
@@ -13,6 +13,9 @@ import {
   followUpTaskSummary,
   followUpTaskSuppressedBy,
   parseFollowUpTaskDraft,
+  followUpDraftAfterEdit,
+  followUpDraftFieldsChanged,
+  hasFollowUpSource,
 } from '@/utils/followUpTask';
 
 describe('followUpTaskRule', () => {
@@ -384,5 +387,49 @@ describe('followUpTaskEndRule', () => {
     expect(followUpTaskSummary(null, true)).toBe('When it ends');
     expect(describeFollowUpTaskRule(null, 'Book the recital', true)).toBe('Added when the last repeat is done');
     expect(describeFollowUpTaskRule(null, '', true)).toBe('Name the task to add');
+  });
+});
+
+describe('editing a follow-up task', () => {
+  const parent = (over: Partial<Task> = {}) =>
+    ({ id: 'p', category: 'Chores', projectId: null, followUpTaskDraft: null, ...over }) as Task;
+
+  it('only counts the fields the rule\'s draft holds', () => {
+    expect(followUpDraftFieldsChanged({ priority: 0 }, { priority: 2 })).toBe(true);
+    expect(followUpDraftFieldsChanged({ priority: 0 }, { priority: 0 })).toBe(false);
+    expect(followUpDraftFieldsChanged({ difficulty: undefined }, { difficulty: null })).toBe(false);
+    expect(followUpDraftFieldsChanged({ tags: ['a'] }, { tags: ['a', 'b'] })).toBe(true);
+    expect(followUpDraftFieldsChanged({}, {})).toBe(false);
+  });
+
+  it('writes only what changed and keeps the rest of the draft', () => {
+    const source = parent({ followUpTaskDraft: { ...emptyFollowUpTaskDraft(), estimatedMinutes: 5 } });
+    expect(followUpDraftAfterEdit({ priority: 0, estimatedMinutes: 5 }, { priority: 2, estimatedMinutes: 5 }, source))
+      .toEqual({ ...emptyFollowUpTaskDraft(), estimatedMinutes: 5, priority: 2 });
+  });
+
+  it('answers null when nothing in the edit belongs to a draft', () => {
+    expect(followUpDraftAfterEdit({ priority: 1 }, { priority: 1 }, parent())).toBeNull();
+  });
+
+  it('files the parent\'s own category and project as "the same as the parent"', () => {
+    const source = parent({ projectId: 'home', followUpTaskDraft: { ...emptyFollowUpTaskDraft(), category: 'Bath', projectId: 'other' } });
+    expect(followUpDraftAfterEdit(
+      { category: 'Bath', projectId: 'other' }, { category: 'Chores', projectId: 'home' }, source,
+    )).toEqual(emptyFollowUpTaskDraft());
+  });
+
+  it('leaves category and project alone when the task is moved to none', () => {
+    const source = parent({ followUpTaskDraft: { ...emptyFollowUpTaskDraft(), category: 'Bath' } });
+    expect(followUpDraftAfterEdit({ category: 'Bath' }, { category: null }, source)).toBeNull();
+  });
+
+  it('has a source only while the rule is live', () => {
+    const rule = { id: 'p', completed: false, followUpTaskEveryN: 2, followUpTaskTitle: 'Swap' } as Task;
+    const row = { followUpTaskSourceId: 'p' };
+    expect(hasFollowUpSource(row, [rule])).toBe(true);
+    expect(hasFollowUpSource(row, [{ ...rule, followUpTaskEveryN: null }])).toBe(false);
+    expect(hasFollowUpSource(row, [])).toBe(false);
+    expect(hasFollowUpSource({ followUpTaskSourceId: null }, [rule])).toBe(false);
   });
 });

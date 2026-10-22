@@ -1716,3 +1716,7 @@ A project locked with Face ID (`docs/arch/app-lock.md`) is a screen guard on one
 device, kept in a device-local setting that never syncs. The replica never
 sees it, so Claude's tools read and write a locked project's tasks as usual.
 The journal lock is the same.
+
+## Editing a follow-up task over MCP
+
+A follow-up task is added by a repeating task's rule, and the next one starts from that rule's draft, not from the row. In the app an edit asks "this task or this and future tasks". `get_task` shows `addedByFollowUp` (with `ruleLive`), `update_task` takes `futureFollowUps` for the second answer, and the replica writes the changed fields into the rule through the same `followUpDraftAfterEdit` the store uses. The rule is a row of its own, so it gets its own Activity entry and revert. The replica never wrote a generator's estimate back (that write is in the store), so there is no `futureFollowUps` for rule-written tasks.
