@@ -4302,7 +4302,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // dose or a meal landing in a log isn't silent (see UndoableAction.announce).
     let loggedLabel: string | null = null;
     if (completedDose) {
-      loggedLabel = `Logged ${completedDose.name}`;
+      loggedLabel = `Logged ${completedDose.name} in the medication log`;
       useMedicationStore.getState().addLog({
         ...completedDose,
         taskId: id,
@@ -4501,7 +4501,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           completedAt,
           { taskId: id, undoable: false },
         );
-        loggedLabel = `Logged ${loggedSavedMeal.name}`;
+        loggedLabel = `Logged ${loggedSavedMeal.name} in the food log`;
       } else if (task.logMealSlot) {
         // An arbitrary task ("Log breakfast", "Pack lunch") opted into the
         // same offer, but names no recipe and no meal-plan entry — so it

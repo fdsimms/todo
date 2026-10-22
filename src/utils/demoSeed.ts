@@ -4893,6 +4893,20 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     sourceId: '173944',
     recordedAt: subDays(today, 30).toISOString(),
   });
+  // The one food weighed in two states: the panel is raw rice, and the ratio is
+  // what lets an amount be logged as cooked ("280 g cooked") against it. Without
+  // a seeded one the raw/cooked unit is a feature nothing shows.
+  setItemNutrition(itemNamed('Rice').id, {
+    basis: 'per100g',
+    servingGrams: null,
+    servingText: null,
+    amounts: { calorieKcal: 365, proteinG: 7.1, carbsG: 80, fatG: 0.7, fiberG: 1.3, sodiumMg: 5 },
+    portions: [],
+    cooking: { panelState: 'raw', cookedPerRaw: 2.8 },
+    source: 'fdc',
+    sourceId: '169756',
+    recordedAt: subDays(today, 30).toISOString(),
+  });
   setItemNutrition(itemNamed('Milk').id, {
     basis: 'per100g',
     servingGrams: null,

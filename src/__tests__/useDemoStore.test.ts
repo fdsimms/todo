@@ -4183,6 +4183,15 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     ]);
   });
 
+  it('seeds a raw panel with a cooked ratio, so a cooked weight can be logged against it', () => {
+    // Without one in the seed, the raw/cooked unit is a feature nothing shows.
+    const rice = useGroceryStore.getState().items.find(i => i.nameKey === 'rice')!;
+    expect(rice.nutrition!.cooking).toEqual({ panelState: 'raw', cookedPerRaw: 2.8 });
+    const logged = scalePanelToAmount(rice.nutrition!, '280 g cooked', null);
+    expect(logged?.grams).toBe(100);
+    expect(logged?.nutrition.amounts.calorieKcal).toBe(365);
+  });
+
   it('seeds rows that have something to say once a trip starts at Trader Joe\'s', () => {
     const { items, itemShops, shops, itemSubs, itemProducts } = useGroceryStore.getState();
 

@@ -31,6 +31,7 @@ import {
 } from '../utils/nutritionPanelForm';
 import { panelWarnings } from '../utils/nutritionSanity';
 import { packSizeGrams, servingsIn } from '../utils/scanPortion';
+import { ratioFromBatch } from '../utils/cookedState';
 import { canReadTextOnDevice } from '../utils/receiptOcr';
 import { readLabelPhoto, type LabelReading } from '../utils/labelOcr';
 import { pickRecipePhoto } from '../utils/recipePhoto';
@@ -185,6 +186,11 @@ const WEIGHT_UNIT_OPTIONS: { value: ServingWeightUnit; label: string }[] = [
   { value: 'oz', label: 'oz' },
 ];
 
+const COOKED_STATE_OPTIONS: { value: PanelForm['cookedState']; label: string }[] = [
+  { value: 'raw', label: 'Raw' },
+  { value: 'cooked', label: 'Cooked' },
+];
+
 /** What an unlabelled column is called, by position. A panel never prints more. */
 const COLUMN_ORDINAL = ['First column', 'Second column', 'Third column'];
 
@@ -225,6 +231,11 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
   // panel; the form has no field for it. See the header note.
   const pickedPortions = useRef<FoodPortion[] | null>(null);
   const [servingOpen, setServingOpen] = useState(false);
+  // Raw and cooked weights: whether the section is unfolded, and the two
+  // weights of a batch the ratio can be worked out from (never stored).
+  const [cookingOpen, setCookingOpen] = useState(false);
+  const [batchRaw, setBatchRaw] = useState('');
+  const [batchCooked, setBatchCooked] = useState('');
   // What unit Serving weight is being typed in, and the raw text in that unit
   // — kept apart from `form.servingGrams` (always grams) so typing "1" in oz
   // shows "1", not a round-tripped "1.00002". See `servingWeightToGrams`.
@@ -261,6 +272,9 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
     setFoodSearching(false);
     pickedPortions.current = null;
     setServingOpen(false);
+    setCookingOpen(false);
+    setBatchRaw('');
+    setBatchCooked('');
     setWeightUnit('g');
     setWeightText(opened.servingGrams);
     setPackageUnit('g');
@@ -456,6 +470,23 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
     const grams = servingWeightToGrams(weightText, weightUnit);
     setWeightUnit(unit);
     setWeightText(gramsToServingWeight(grams, unit));
+  };
+
+  const setCookedPerRaw = (text: string) => {
+    setForm(f => ({ ...f, cookedPerRaw: text }));
+    setBad(b => b.filter(k => k !== 'cookedPerRaw'));
+  };
+
+  // A weighed batch writes the ratio as it is typed, so the field above is
+  // always the one thing Save reads.
+  const setBatch = (raw: string, cooked: string) => {
+    setBatchRaw(raw);
+    setBatchCooked(cooked);
+    const rawGrams = readPanelNumber(raw);
+    const cookedGrams = readPanelNumber(cooked);
+    if (typeof rawGrams !== 'number' || typeof cookedGrams !== 'number') return;
+    const ratio = ratioFromBatch(rawGrams, cookedGrams);
+    if (ratio !== null) setCookedPerRaw(String(ratio));
   };
 
   const setPackageAmount = (text: string) => {
@@ -715,6 +746,90 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
                 )}
               </View>
             </View>
+            )}
+
+            {form.basis !== 'per100ml' && (
+              <>
+                <Text style={styles.groupLabel}>RAW AND COOKED</Text>
+                {form.cookedPerRaw.trim() === '' && !cookingOpen ? (
+                  <TouchableOpacity
+                    style={styles.servingRow}
+                    activeOpacity={interaction.activeOpacity}
+                    onPress={() => { haptics.tap(); setCookingOpen(true); }}
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: false }}
+                    accessibilityLabel="Raw and cooked weights, not set"
+                  >
+                    <Text style={styles.servingRowLabel}>Raw and cooked weights</Text>
+                    <Text style={styles.servingRowValue}>Not set</Text>
+                    <RotatingChevron open={false} size={14} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                ) : (
+                  <View style={styles.card}>
+                    <View style={styles.field}>
+                      <Text style={styles.fieldLabel}>These numbers are for</Text>
+                      <SegmentedControl
+                        label="These numbers are for"
+                        options={COOKED_STATE_OPTIONS}
+                        value={form.cookedState}
+                        onChange={cookedState => setForm(f => ({ ...f, cookedState }))}
+                        surface="card"
+                      />
+                    </View>
+                    <View style={styles.field}>
+                      <Text style={styles.fieldLabel}>Cooked weight per 1 g raw</Text>
+                      <TextField
+                        style={[styles.textInput, bad.includes('cookedPerRaw') && styles.inputBad]}
+                        value={form.cookedPerRaw}
+                        onChangeText={setCookedPerRaw}
+                        placeholder="e.g. 2.8"
+                        placeholderTextColor={colors.textTertiary}
+                        keyboardType="decimal-pad"
+                        inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
+                        accessibilityLabel="Cooked grams per raw gram"
+                      />
+                      <HelpText style={styles.hint}>
+                        For example, white rice is about 2.8. Lets you enter an amount as
+                        raw or cooked. Leave it blank to log in the state the numbers are for.
+                      </HelpText>
+                    </View>
+                    <View style={styles.field}>
+                      <Text style={styles.fieldLabel}>Or weigh a batch</Text>
+                      <View style={styles.numberRow}>
+                        <View style={styles.flex}>
+                          <TextField
+                            style={styles.textInput}
+                            value={batchRaw}
+                            onChangeText={t => setBatch(t, batchCooked)}
+                            placeholder="e.g. 200"
+                            placeholderTextColor={colors.textTertiary}
+                            keyboardType="decimal-pad"
+                            inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
+                            accessibilityLabel="Raw weight in grams"
+                          />
+                          <Text style={styles.hint}>Raw (g)</Text>
+                        </View>
+                        <View style={styles.flex}>
+                          <TextField
+                            style={styles.textInput}
+                            value={batchCooked}
+                            onChangeText={t => setBatch(batchRaw, t)}
+                            placeholder="e.g. 560"
+                            placeholderTextColor={colors.textTertiary}
+                            keyboardType="decimal-pad"
+                            inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
+                            accessibilityLabel="Cooked weight in grams"
+                          />
+                          <Text style={styles.hint}>Cooked (g)</Text>
+                        </View>
+                      </View>
+                      <HelpText style={styles.hint}>
+                        Weigh it before cooking and again after. The ratio is worked out for you.
+                      </HelpText>
+                    </View>
+                  </View>
+                )}
+              </>
             )}
 
             <Text style={styles.groupLabel}>NUTRIENTS</Text>

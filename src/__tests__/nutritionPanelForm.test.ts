@@ -91,6 +91,47 @@ function panel(overrides: Partial<FoodNutrition> = {}): FoodNutrition {
   };
 }
 
+describe('the raw and cooked ratio on the form', () => {
+  const withRatio = (cookedPerRaw: string, cookedState: PanelForm['cookedState'] = 'raw', basis: PanelForm['basis'] = 'per100g') =>
+    form({ amounts: { calorieKcal: '100' }, basis, cookedPerRaw, cookedState });
+
+  it('reads a stored ratio into the form and builds it back', () => {
+    const stored = panelFormFrom({ ...panel(), cooking: { panelState: 'cooked', cookedPerRaw: 2.8 } });
+    expect(stored.cookedPerRaw).toBe('2.8');
+    expect(stored.cookedState).toBe('cooked');
+    expect(buildPanelNutrition(stored, null, NOW)?.cooking).toEqual({ panelState: 'cooked', cookedPerRaw: 2.8 });
+  });
+
+  it('adds no key when blank, so clearing it clears it', () => {
+    const built = buildPanelNutrition(withRatio(''), { ...panel(), cooking: { panelState: 'raw', cookedPerRaw: 2.8 } }, NOW)!;
+    expect('cooking' in built).toBe(false);
+  });
+
+  it('refuses a ratio it cannot read or that is out of range', () => {
+    expect(invalidPanelFields(withRatio('2,8x'))).toEqual(['cookedPerRaw']);
+    expect(invalidPanelFields(withRatio('0'))).toEqual(['cookedPerRaw']);
+    expect(invalidPanelFields(withRatio('280'))).toEqual(['cookedPerRaw']);
+    expect(invalidPanelFields(withRatio('2,8'))).toEqual([]);
+  });
+
+  it('drops the ratio from a drink, which has no weight to scale', () => {
+    expect('cooking' in buildPanelNutrition(withRatio('2.8', 'raw', 'per100ml'), null, NOW)!).toBe(false);
+  });
+
+  it('counts a changed ratio or state as an edit, but not the state of a blank one', () => {
+    const base = withRatio('');
+    expect(panelFormDirty(withRatio('2.8'), base)).toBe(true);
+    expect(panelFormDirty({ ...base, cookedState: 'cooked' }, base)).toBe(false);
+    expect(panelFormDirty(withRatio('2.8', 'cooked'), withRatio('2.8'))).toBe(true);
+  });
+
+  it('keeps a typed ratio when a barcode or a photo fills the form', () => {
+    const typed = withRatio('2.8', 'cooked');
+    expect(applyFoodNutrition(typed, panel()).cookedPerRaw).toBe('2.8');
+    expect(applyFoodNutrition(typed, panel()).cookedState).toBe('cooked');
+  });
+});
+
 describe('readPanelNumber', () => {
   it('reads a blank field as unknown rather than as zero', () => {
     // The distinction the whole record is shaped around: a label that didn't
