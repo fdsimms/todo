@@ -398,6 +398,20 @@ describe('a device erased to join, so the phone stays the source', () => {
     expect(titles(mac)).toEqual([]);
   });
 
+  it('sends one deletion only: its own sharing report under the id it gave up', () => {
+    const mac = newDevice('mac');
+    const oldId = mac.db.dbGetDeviceId();
+    mac.db.dbSetSetting(`syncServerSharing:${oldId}`, '{"healthLogs":false,"journal":false}');
+    mac.db.dbSetSetting('syncServerSharing:phone', '{"healthLogs":true,"journal":false}');
+    addTask(mac, 'm', 'Mac task');
+
+    mac.db.dbEraseForSyncJoin();
+
+    const deletions = mac.db.dbSyncChangesSince(null).deletions.map(d => d.rowKey);
+    expect(deletions).toEqual([`syncServerSharing:${oldId}`]);
+    expect(mac.db.dbGetDeviceId()).not.toBe(oldId);
+  });
+
   it('erases nothing when the phone has not synced yet', async () => {
     const cloud = fakeICloud();
     const mac = newDevice('mac');

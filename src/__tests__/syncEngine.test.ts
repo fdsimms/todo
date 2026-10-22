@@ -202,6 +202,17 @@ describe('withholdChanges', () => {
     expect(withholdChanges(changes, health).tables.settings.map(r => r.key)).toEqual(['theme']);
   });
 
+  it('drops settings rows by prefix, for a key minted per device', () => {
+    const withShares: SyncChangeSet = {
+      ...changes,
+      tables: { settings: [...changes.tables.settings, { key: 'syncServerSharing:p1', value: '{}', updated_at: 'x' }] },
+      deletions: [{ table: 'settings', rowKey: 'syncServerSharing:p2', deletedAt: 'x' }],
+    };
+    const out = withholdChanges(withShares, { tables: [], settingKeys: [], settingKeyPrefixes: ['syncServerSharing:'] });
+    expect(out.tables.settings.map(r => r.key)).toEqual(['theme', 'medication_archived']);
+    expect(out.deletions).toEqual([]);
+  });
+
   it('keeps the window it was read over, so the cursor still covers it', () => {
     const out = withholdChanges(changes, health);
     expect([out.since, out.until]).toEqual(['a', 'b']);

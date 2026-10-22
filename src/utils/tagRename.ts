@@ -2,7 +2,6 @@ import type {
   FollowUpTaskDraft,
   GeneratedTaskExtras,
   ReminderCapture,
-  SavedViewClause,
   Task,
   TitleRule,
 } from '../types';
@@ -50,16 +49,6 @@ export function renameTagInFollowUpDraft(
 export function renameTagInTitleRules(rules: TitleRule[], from: string, to: string): TitleRule[] {
   if (!rules.some(r => r.tags.includes(from))) return rules;
   return rules.map(r => (r.tags.includes(from) ? { ...r, tags: renameInTagList(r.tags, from, to) } : r));
-}
-
-export function renameTagInViewClauses(clauses: SavedViewClause[], from: string, to: string): SavedViewClause[] {
-  let changed = false;
-  const next = clauses.map(c => {
-    if (c.kind !== 'tag' || !c.values.includes(from)) return c;
-    changed = true;
-    return { ...c, values: renameInTagList(c.values, from, to) };
-  });
-  return changed ? next : clauses;
 }
 
 export function renameTagInReminderCaptures(captures: ReminderCapture[], from: string, to: string): ReminderCapture[] {

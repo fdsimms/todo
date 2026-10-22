@@ -2,8 +2,7 @@
 
 **Status: phases 0 to 3 are built, and phase 4 is the iPhone Mirroring setting, turned on by default on a Mac. Hover states are the one thing left.** The app ships as a universal iOS app
 (`ios.supportsTablet`), so an iPad runs it natively and an Apple silicon Mac runs it as a "Designed
-for iPad" app in a resizable window. This is the cheap route to a desktop-friendly app, and it sits
-beside the separate desktop client in `docs/arch/desktop-client.md` rather than replacing it.
+for iPad" app in a resizable window. This is the route to a desktop-friendly app.
 
 ## What is built
 
@@ -99,6 +98,6 @@ they always were, and a tap pushes the page. Four things to know:
 |---|---|---|
 | 4 | Desktop input: `mirroringMode`, on by default on a Mac | **Mostly built, under the iPhone Mirroring setting** (`useSettingsStore.mirroringMode`, Settings › Appearance). On, every swipeable row shows its swipe actions as buttons (`SwipeActionButtons`), the undo bar offers every action, Return accepts a title suggestion, and the hardware-keyboard shortcuts are on (`keyShortcuts.ts`: `n`, `/`, `⌘N`, `⌘F`, `⌘Z`, Escape, `1` to `4` for the Today views). A swipe is only ever select (left) or reschedule (right), never destructive. **A Mac gets it on without asking**: `useMacMirroringDefault` reads `isRunningOnMac` (`todo-key-commands`, `ProcessInfo.isiOSAppOnMac`) at launch and turns it on when the stored setting is absent (`shouldDefaultMirroringOn`). Nothing is written, so a Mac follows the device until someone turns it off, and the stored `false` then wins. iPhone Mirroring itself still needs the toggle, since the app runs on the phone there. Left: hover states. |
 
-Not available on a Mac, as it isn't in the desktop-client plan either: HealthKit, Screen Time,
+Not available on a Mac: HealthKit, Screen Time,
 widgets, the Watch app, Live Activities and NFC. The logic layer already guards each behind a
 `Platform.OS` or lazy-require check, but nothing has exercised all of them absent at once on a Mac.

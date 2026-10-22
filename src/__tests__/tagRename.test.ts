@@ -3,9 +3,8 @@ import {
   renameInTagList,
   renameTagInGeneratedExtras,
   renameTagInReminderCaptures,
-  renameTagInViewClauses,
 } from '../utils/tagRename';
-import type { GeneratedTaskExtras, ReminderCapture, SavedViewClause } from '../types';
+import type { GeneratedTaskExtras, ReminderCapture } from '../types';
 
 describe('normalizeTagName', () => {
   it('stores a tag trimmed, lower case and without its #', () => {
@@ -26,17 +25,6 @@ describe('renameInTagList', () => {
 });
 
 describe('the shapes that name a tag', () => {
-  it('rewrites a saved view’s tag clause and leaves others alone', () => {
-    const clauses = [
-      { kind: 'tag', values: ['errand'] },
-      { kind: 'category', values: ['errand'] },
-    ] as SavedViewClause[];
-    const next = renameTagInViewClauses(clauses, 'errand', 'chores');
-    expect(next[0]).toEqual({ kind: 'tag', values: ['chores'] });
-    expect(next[1]).toBe(clauses[1]);
-    expect(renameTagInViewClauses(clauses, 'nope', 'x')).toBe(clauses);
-  });
-
   it('rewrites a capture filing under the tag', () => {
     const captures = [{ id: 'c', filing: { kind: 'tag', tag: 'errand' } }] as ReminderCapture[];
     expect(renameTagInReminderCaptures(captures, 'errand', 'chores')[0].filing).toEqual({ kind: 'tag', tag: 'chores' });

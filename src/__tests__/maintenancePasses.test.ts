@@ -55,7 +55,6 @@ describe('the three maintenance groups', () => {
       'check weather tasks',
       'apply weather waits',
       'apply rain skips',
-      'apply meter holds',
       'check event tasks',
       'check travel tasks',
       'check screen time tasks',

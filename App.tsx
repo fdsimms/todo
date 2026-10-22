@@ -42,7 +42,6 @@ import { useRemindersImportSync } from './src/utils/remindersImportSync';
 import { useCalendarSync } from './src/store/useCalendarStore';
 import { useWeatherSync, useWeatherStore } from './src/store/useWeatherStore';
 import { useWeatherWaitSync } from './src/hooks/useWeatherWaitSync';
-import { useMeterHoldSync } from './src/hooks/useMeterHoldSync';
 import { useSlotInSync } from './src/hooks/useSlotInSync';
 import { useTravelTaskSync } from './src/hooks/useTravelTaskSync';
 import { useWaniKaniSync } from './src/hooks/useWaniKaniSync';
@@ -363,7 +362,6 @@ function AppRoot() {
   // permission itself (see getCurrentLocation).
   useWeatherSync();
   useWeatherWaitSync();
-  useMeterHoldSync();
   // Decides, once a day, which tasks set to wait for a lighter day show
   // today (see src/utils/slotIn.ts).
   useSlotInSync();

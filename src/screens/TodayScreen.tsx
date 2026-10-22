@@ -31,7 +31,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from '../components/PinIcon';
 import { format } from 'date-fns/format';
-import type { ContextRow, NutrientKey, SavedViewClause, Task, TaskGroup, TaskTemplate, Category, TimeOfDay } from '../types';
+import type { ContextRow, NutrientKey, Task, TaskGroup, TaskTemplate, Category, TimeOfDay } from '../types';
 import { taskHomeFor } from '../utils/taskHome';
 import { isTaskNew, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedToday, isRelevantToGroupToday, groupRoster } from '../utils/visibilityUtils';
 import { openTasksOf } from '../utils/openTasks';
@@ -84,7 +84,7 @@ import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { completionTapFor } from '../utils/completionTap';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useStableCallback } from '../hooks/useStableCallback';
-import { featureHidden, featureShown, visibleLenses } from '../utils/simpleMode';
+import { featureHidden, visibleLenses } from '../utils/simpleMode';
 import { coinBalance, goalBarFill, savingForGoal, formatCoins } from '../utils/rewards';
 import { useRewardStore } from '../store/useRewardStore';
 import { CoinIcon } from '../components/CoinIcon';
@@ -153,9 +153,6 @@ import { goToTemplateRun } from '../navigation/navigationRef';
 import { SortFilterSheet } from '../components/SortFilterSheet';
 import { filterByTaskTypes } from '../utils/taskTypeFilter';
 import { slotUpdates } from '../utils/projectOrder';
-import { SavedViewEditorSheet } from '../components/SavedViewEditorSheet';
-import { clausesFromFilters } from '../utils/savedViews';
-import { useSavedViewStore } from '../store/useSavedViewStore';
 import { TodayOptionsMenu } from '../components/TodayOptionsMenu';
 import type { CardAnchor } from '../components/CardSheet';
 import { CategoryOrderSheet } from '../components/CategoryOrderSheet';
@@ -216,8 +213,6 @@ import { CreatedTaskToast } from '../components/CreatedTaskToast';
 import { TipHost } from '../components/TipHost';
 import { FocusBar } from '../components/FocusBar';
 import { FocusSetupSheet } from '../components/FocusSetupSheet';
-import { ScrollNudgeBanner } from '../components/ScrollNudgeBanner';
-import { useScrollNudge } from '../hooks/useScrollNudge';
 import { FocusSessionSheet } from '../components/FocusSessionSheet';
 import { useFocusStore } from '../store/useFocusStore';
 import { PressableScale } from '../components/PressableScale';
@@ -944,9 +939,6 @@ export function TodayScreen() {
   // The Inbox's one-card-at-a-time sort (InboxSortSheet).
   const [inboxSortVisible, setInboxSortVisible] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
-  // Non-null while the "save as view" form is open, holding the clauses the
-  // filters it was opened from stand for.
-  const [saveViewClauses, setSaveViewClauses] = useState<SavedViewClause[] | null>(null);
   const [optionsMenuVisible, setOptionsMenuVisible] = useState(false);
   const [optionsMenuAnchor, setOptionsMenuAnchor] = useState<CardAnchor | null>(null);
   // Today's own settings, from the last row of the "…" menu rather than a
@@ -1849,22 +1841,6 @@ export function TodayScreen() {
   };
 
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
-  // Off unless turned on in Settings. Suspended while a session runs or rows
-  // are being selected, since neither is drifting. See useScrollNudge.
-  const scrollNudgeEnabled = useSettingsStore(s => s.scrollNudgeEnabled && !featureHidden('focusSessions', s.simpleMode));
-  const scrollNudgeSeconds = useSettingsStore(s => s.scrollNudgeSeconds);
-  const scrollNudgeCooldownMinutes = useSettingsStore(s => s.scrollNudgeCooldownMinutes);
-  const scrollNudgeDailyCap = useSettingsStore(s => s.scrollNudgeDailyCap);
-  const scrollNudgeLimits = useMemo(
-    () => ({ seconds: scrollNudgeSeconds, cooldownMinutes: scrollNudgeCooldownMinutes, dailyCap: scrollNudgeDailyCap }),
-    [scrollNudgeSeconds, scrollNudgeCooldownMinutes, scrollNudgeDailyCap],
-  );
-  const scrollNudge = useScrollNudge({
-    enabled: scrollNudgeEnabled,
-    limits: scrollNudgeLimits,
-    dayResetTime,
-    suspended: focusSession !== null || selectionMode,
-  });
 
   // The morning check-in: recurring tasks whose day already passed with
   // nothing said about them. Shown once per logical day, on this screen's
@@ -2094,31 +2070,6 @@ export function TodayScreen() {
   // reads it for the same reason: a saved sort can't empty the list, so it
   // mustn't turn a finished day into "No tasks match these filters".
   const groupTallyFiltered = filterPriorities.length > 0 || filterEfforts.length > 0 || filterTypes.length > 0;
-
-  // Both close the filter sheet first: a sheet raised while it is still
-  // visible would be a second Modal presented from a view controller already
-  // presenting one, which silently does nothing.
-  const handleSaveAsView = useCallback(() => {
-    setFilterVisible(false);
-    setSaveViewClauses(clausesFromFilters({
-      priorities: filterPriorities,
-      efforts: filterEfforts,
-      types: filterTypes,
-    }));
-  }, [filterPriorities, filterEfforts, filterTypes]);
-
-  const handleOpenSavedViews = useCallback(() => {
-    setFilterVisible(false);
-    // A tab route now (an Organize member), so through navigateToTab.
-    navigateToTab('SavedViews');
-  }, []);
-
-  // Simplified mode takes the advanced half away, and a saved view is that.
-  // `set` is the count rather than a flag for the reason featureShown exists:
-  // somebody who kept a view before switching the mode on keeps the way back
-  // to it, rather than having it hidden with no way to reach it.
-  const savedViewCount = useSavedViewStore(s => s.views.length);
-  const savedViewsShown = featureShown('savedViews', simpleMode, savedViewCount > 0);
 
   // Every view here stays current on its own (see the tick effect above for
   // Today's), so pulling down on any of the four doesn't refresh anything —
@@ -4981,12 +4932,20 @@ export function TodayScreen() {
       }] : []),
   ];
 
+  // Today's header is the tallest of the four: its workload line can run to two
+  // lines (events left is a line of its own), where the others reserve one. The
+  // other lenses are held to its measured height, or the pills and the list
+  // under them jump up on every switch away from Today.
+  const [todayHeaderHeight, setTodayHeaderHeight] = useState<number | undefined>(undefined);
+
   // ==== render. Everything below is JSX ====
   const screenBody = (
     <SpotlightProvider progress={spotlightProgress}>
-      <View style={[styles.container, { paddingTop: insets.top }]} {...scrollNudge.touchProps}>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View onLayout={viewMode === 'today' ? e => setTodayHeaderHeight(e.nativeEvent.layout.height) : undefined}>
         <ScreenHeader
           title={VIEW_TITLES[viewMode]}
+          minHeight={viewMode === 'today' ? undefined : todayHeaderHeight}
           overline={viewMode === 'today' ? today : undefined}
           subtitle={workloadSubtitle}
           // The total is what makes a day feel too full, so it's where the way
@@ -5028,6 +4987,7 @@ export function TodayScreen() {
             ) : undefined
           }
         />
+        </View>
 
         <ViewModePills
           modes={viewModes}
@@ -5044,19 +5004,6 @@ export function TodayScreen() {
             tasks, not against a lens over them, so switching to Later must
             not make it look as though it stopped. */}
         {focusSession && <FocusBar onOpen={() => setFocusSessionVisible(true)} />}
-
-        {scrollNudge.offered && (
-          <ScrollNudgeBanner
-            seconds={scrollNudgeSeconds}
-            onDismiss={scrollNudge.dismiss}
-            onStart={() => {
-              scrollNudge.dismiss();
-              setFocusFromReachOuts(false);
-              setFocusFromPinned(false);
-              setFocusSetupVisible(true);
-            }}
-          />
-        )}
 
         {/* No `viewMode` test of its own: newTasks is already empty in the one
             sub-view that has no banner (see newTasksSource). */}
@@ -5112,7 +5059,6 @@ export function TodayScreen() {
         {viewMode === 'later' && (
           <ReorderableList
             scrollEnabled={!painting && !draggingSubtask}
-            onScrollActivity={scrollNudge.onUserScroll}
             rowScrollerRef={laterRowScroller}
             scrollToTop={{ bottom: fabBottom }}
             data={laterDraggableData}
@@ -5257,7 +5203,6 @@ export function TodayScreen() {
             // this control.
             scrollEnabled={!painting && !draggingStackChildGroupId && !draggingSubtask && !draggingPin && !draggingBand}
             scrollControlRef={todayScrollControl}
-            onScrollActivity={scrollNudge.onUserScroll}
             rowScrollerRef={todayRowScroller}
             scrollToTop={{ bottom: fabBottom }}
             data={draggableData}
@@ -5498,7 +5443,6 @@ export function TodayScreen() {
             // every event (see useKeyboardInsetScroll's noteScroll).
             onScroll={e => {
               unscheduledScrollTop.onScroll(e);
-              scrollNudge.onUserScroll();
               unscheduledScroll.noteScroll(e);
             }}
             renderItem={({ item }) => {
@@ -5599,7 +5543,6 @@ export function TodayScreen() {
             // every event (see useKeyboardInsetScroll's noteScroll).
             onScroll={e => {
               inboxScrollTop.onScroll(e);
-              scrollNudge.onUserScroll();
               inboxScroll.noteScroll(e);
             }}
             renderItem={({ item }) => {
@@ -5829,20 +5772,6 @@ export function TodayScreen() {
             onEffortsChange={setFilterEfforts}
             types={filterTypes}
             onTypesChange={setFilterTypes}
-            onSaveAsView={savedViewsShown ? handleSaveAsView : undefined}
-            onOpenSavedViews={savedViewsShown ? handleOpenSavedViews : undefined}
-          />
-        </LazySheet>
-
-        {/* Opened from the filter sheet, which closes in the same commit:
-            two sibling Modals visible at once is the presentation trap. */}
-        <LazySheet open={saveViewClauses !== null}>
-          <SavedViewEditorSheet
-            visible={saveViewClauses !== null}
-            view={null}
-            initialClauses={saveViewClauses ?? undefined}
-            onClose={() => setSaveViewClauses(null)}
-            onCreated={viewId => navigation.navigate({ name: 'SavedViewDetail', params: { viewId } } as never)}
           />
         </LazySheet>
 

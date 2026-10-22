@@ -21,6 +21,7 @@ import { loadSecureKey, makeSecureKeyReadableWhileLocked, saveSecureKey } from '
 import { emptyApplyReport } from '../utils/syncMerge';
 
 jest.mock('../db/database', () => ({
+  dbGetDeviceId: jest.fn().mockReturnValue('phone1'),
   dbGetSetting: jest.fn().mockReturnValue(null),
   dbSetSetting: jest.fn(),
   dbGetSyncCursor: jest.fn().mockReturnValue(null),
@@ -293,6 +294,8 @@ describe('eraseAndJoin', () => {
     expect(outcome).toEqual({ status: 'joined' });
     expect(order).toEqual(['erase', 'reload']);
     expect(afterErase).toHaveBeenCalledWith(events);
+    // The sharing report the erase took, written again under the new id.
+    expect(dbSetSetting).toHaveBeenCalledWith('syncServerSharing:phone1', expect.any(String));
     expect(dbSetSetting).toHaveBeenCalledWith('syncEnabled', '1');
     expect(dbSetSetting).toHaveBeenCalledWith(JOIN_DECIDED_KEY, '1');
     expect(useSyncStore.getState().enabled).toBe(true);
@@ -675,6 +678,42 @@ describe('the journal', () => {
     await useSyncStore.getState().syncNow();
     expect(cursors.get('server:push')).toBe('2026-09-01T00:00:00.000Z');
     expect(settings.get('syncServerJournalResendFrom')).toBe(NOTHING_OWED);
+  });
+});
+
+describe('the sharing report', () => {
+  it('records each switch under this device\'s own key as it changes', () => {
+    const { settings } = storedSettings();
+    useSyncStore.setState({ serverHealthLogs: false, serverJournal: false });
+
+    useSyncStore.getState().setServerJournal(true);
+    expect(JSON.parse(settings.get('syncServerSharing:phone1')!)).toEqual({ healthLogs: false, journal: true });
+
+    useSyncStore.getState().setServerHealthLogs(true);
+    expect(JSON.parse(settings.get('syncServerSharing:phone1')!)).toEqual({ healthLogs: true, journal: true });
+  });
+
+  it('is written at launch for an install that never had one, and not rewritten when unchanged', () => {
+    const { settings } = storedSettings();
+    settings.set('syncServerJournal', '1');
+
+    useSyncStore.getState().initialize();
+    expect(JSON.parse(settings.get('syncServerSharing:phone1')!)).toEqual({ healthLogs: false, journal: true });
+
+    (dbSetSetting as jest.Mock).mockClear();
+    useSyncStore.getState().initialize();
+    expect(dbSetSetting).not.toHaveBeenCalledWith('syncServerSharing:phone1', expect.anything());
+  });
+
+  it('goes to the server and never to iCloud, every device\'s report included', async () => {
+    (runSyncAll as jest.Mock).mockResolvedValue(runs(okResult()));
+    (loadSecureKey as jest.Mock).mockResolvedValue('a-token');
+    useSyncStore.setState({ enabled: true, serverUrl: 'https://sync.example.com', serverHealthLogs: true, serverJournal: true });
+
+    await useSyncStore.getState().syncNow();
+    const [icloud, server] = (runSyncAll as jest.Mock).mock.calls[0][0];
+    expect(icloud.withhold.settingKeyPrefixes).toEqual(['syncServerSharing:']);
+    expect(server.withhold).toBeUndefined();
   });
 });
 

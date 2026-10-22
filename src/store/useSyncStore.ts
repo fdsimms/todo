@@ -15,6 +15,7 @@
 import { create } from 'zustand';
 import {
   dbEraseForSyncJoin,
+  dbGetDeviceId,
   dbGetSetting,
   dbGetSyncCursor,
   dbHasLocalChangesSince,
@@ -22,7 +23,9 @@ import {
   dbSetSetting,
   dbSetSyncCursor,
 } from '../db/database';
-import { HEALTH_SYNC_SETTING_KEYS, HEALTH_SYNC_TABLES, JOURNAL_SYNC_TABLES } from '../db/syncTracking';
+import {
+  HEALTH_SYNC_SETTING_KEYS, HEALTH_SYNC_TABLES, JOURNAL_SYNC_TABLES, SERVER_SHARING_KEY_PREFIX, serverSharingKey, type ServerSharing,
+} from '../db/syncTracking';
 import { CLOUDKIT_SOURCE, cloudKitTransport, cloudKitUnavailableReason, isCloudKitSyncAvailable } from '../utils/cloudKitTransport';
 import { HTTP_SYNC_SOURCE, httpSyncTransport, isHttpSyncConfigured } from '../utils/httpSyncTransport';
 import {
@@ -76,6 +79,18 @@ export function withholdingFor(opts: { healthLogs: boolean; journal: boolean }):
   ];
   const settingKeys = opts.healthLogs ? [] : HEALTH_SYNC_SETTING_KEYS;
   return tables.length + settingKeys.length > 0 ? { tables, settingKeys } : undefined;
+}
+
+/**
+ * Write this device's report of its two switches (`SERVER_SHARING_KEY_PREFIX`),
+ * so the MCP server can tell a log that isn't sent from one that is empty.
+ * Only when it differs from what is stored: rewriting it on every launch would
+ * restamp the row and send it again for nothing.
+ */
+export function reportServerSharing(sharing: ServerSharing): void {
+  const key = serverSharingKey(dbGetDeviceId());
+  const value = JSON.stringify({ healthLogs: sharing.healthLogs, journal: sharing.journal });
+  if (dbGetSetting(key) !== value) dbSetSetting(key, value);
 }
 
 /**
@@ -237,9 +252,14 @@ interface SyncState {
  */
 type SyncConfig = { enabled: boolean; serverUrl: string; serverHealthLogs: boolean; serverJournal: boolean };
 
-/** iCloud, which never gets the health logs or the journal (see HEALTH_SYNC_TABLES). */
+/**
+ * iCloud, which never gets the health logs or the journal (see
+ * HEALTH_SYNC_TABLES), nor the sharing reports, every device's: they are for
+ * the server, and a phone relays rows it pulled from one transport to the other.
+ */
 function iCloudTransport(): SyncTransport {
-  return { ...cloudKitTransport(), withhold: withholdingFor({ healthLogs: false, journal: false }) };
+  const withhold = withholdingFor({ healthLogs: false, journal: false })!;
+  return { ...cloudKitTransport(), withhold: { ...withhold, settingKeyPrefixes: [SERVER_SHARING_KEY_PREFIX] } };
 }
 
 /**
@@ -326,15 +346,19 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   serverHeld: false,
 
   initialize: () => {
+    const serverHealthLogs = dbGetSetting(SERVER_HEALTH_LOGS_KEY) === '1';
+    const serverJournal = dbGetSetting(SERVER_JOURNAL_KEY) === '1';
     set({
       initialized: true,
       enabled: dbGetSetting(ENABLED_KEY) === '1',
       supported: isCloudKitSyncAvailable(),
       lastSyncedAt: dbGetSetting(LAST_SYNCED_KEY),
       serverUrl: dbGetSetting(SERVER_URL_KEY) ?? '',
-      serverHealthLogs: dbGetSetting(SERVER_HEALTH_LOGS_KEY) === '1',
-      serverJournal: dbGetSetting(SERVER_JOURNAL_KEY) === '1',
+      serverHealthLogs,
+      serverJournal,
     });
+    // An install from before the report existed has switches and no row.
+    reportServerSharing({ healthLogs: serverHealthLogs, journal: serverJournal });
     // The keychain read is async and initialize is not, so the flag lands a
     // tick later. Nothing gates on it except a settings row's subtitle, and a
     // sync reads the token itself rather than trusting this.
@@ -374,6 +398,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     if (!on) markHealthLogsWithheld();
     dbSetSetting(SERVER_HEALTH_LOGS_KEY, on ? '1' : '0');
     set({ serverHealthLogs: on });
+    reportServerSharing({ healthLogs: on, journal: get().serverJournal });
   },
 
   setServerJournal: (on: boolean) => {
@@ -381,6 +406,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     if (!on) markHealthLogsWithheld(SERVER_JOURNAL_RESEND_KEY);
     dbSetSetting(SERVER_JOURNAL_KEY, on ? '1' : '0');
     set({ serverJournal: on });
+    reportServerSharing({ healthLogs: get().serverHealthLogs, journal: on });
   },
 
   setEnabled: async (enabled: boolean) => {
@@ -444,6 +470,11 @@ export const useSyncStore = create<SyncState>((set, get) => ({
           () => {
             const events = dbEraseForSyncJoin();
             erased = true;
+            // The erase took this device's sharing report with the rest of the
+            // synced settings, and minted the id it is keyed by, so the server
+            // hears the switches again under the new one.
+            const { serverHealthLogs, serverJournal } = get();
+            reportServerSharing({ healthLogs: serverHealthLogs, journal: serverJournal });
             afterErase(events);
           },
           reloadAfterSync

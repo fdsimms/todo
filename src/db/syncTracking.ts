@@ -59,7 +59,6 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   { name: 'settings', key: ['key'] },
   { name: 'tasks', key: ['id'] },
   { name: 'task_groups', key: ['id'] },
-  { name: 'saved_views', key: ['id'] },
   { name: 'projects', key: ['id'] },
   { name: 'people', key: ['id'] },
   { name: 'person_notes', key: ['id'] },
@@ -78,11 +77,6 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   // Copy flags (CopyFlag): temporary dev tooling. They have to travel so the
   // MCP server can read what the phone flagged and resolve it.
   { name: 'copy_flags', key: ['id'] },
-  // Meter readings (MeterReading): an odometer entry has to travel, or a task
-  // due at 45,000 miles surfaces on one phone and not the other. Rows are
-  // inserted or deleted, never edited, so two devices logging at once both
-  // keep theirs.
-  { name: 'meter_readings', key: ['id'] },
   // Workouts (docs/arch/workouts.md). Custom exercises, routines and programs
   // are plans, and travel like any other synced data; a custom exercise's name
   // is a natural key (NATURAL_KEYS), so the same one made on two phones folds
@@ -479,10 +473,6 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'completedRetentionDays',
   'postponeCheckEnabled',
   'postponeCheckThreshold',
-  'scrollNudgeEnabled',
-  'scrollNudgeSeconds',
-  'scrollNudgeCooldownMinutes',
-  'scrollNudgeDailyCap',
   'simpleTaskForm',
   'simpleMode',
   'sortOption',
@@ -769,7 +759,32 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
  * - Anything ending `_done` — the migration flags above.
  */
 export function isSyncedSettingKey(key: string): boolean {
-  return SYNCED_SETTING_KEYS.includes(key);
+  return SYNCED_SETTING_KEYS.includes(key) || key.startsWith(SERVER_SHARING_KEY_PREFIX);
+}
+
+/**
+ * One row per device saying which of its two private switches
+ * (`syncServerHealthLogs`, `syncServerJournal`) are on, keyed by the device's
+ * own id so two phones never write over each other's.
+ *
+ * The switches themselves stay device-local (above): synced, one phone could
+ * start sending another's journal to a server. This is only a report of them,
+ * so the MCP server can say "journal sync is off" rather than leave an agent
+ * to read a short history as the whole of one. It says that a journal or a
+ * health log exists and nothing else, which is why it goes to the server only:
+ * iCloud withholds the prefix (`configuredTransports` in useSyncStore), since
+ * nothing on another phone reads it.
+ */
+export const SERVER_SHARING_KEY_PREFIX = 'syncServerSharing:';
+
+export function serverSharingKey(deviceId: string): string {
+  return `${SERVER_SHARING_KEY_PREFIX}${deviceId}`;
+}
+
+/** What a device's sharing row holds. */
+export interface ServerSharing {
+  healthLogs: boolean;
+  journal: boolean;
 }
 
 /**

@@ -1,4 +1,3 @@
-import { useSavedViewStore } from '../store/useSavedViewStore';
 import { useMemo, useState } from 'react';
 import { Platform } from 'react-native';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -7,7 +6,6 @@ import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { usePersonStore } from '../store/usePersonStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
-import { useMeterReadingStore } from '../store/useMeterReadingStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { useJournalStore } from '../store/useJournalStore';
@@ -39,8 +37,6 @@ const journalCountOf = (s: ReturnType<typeof useJournalStore.getState>) => s.ent
 const dreamCountOf = (s: ReturnType<typeof useJournalStore.getState>) => s.entries.filter(e => e.kind === 'dream').length;
 // The whole history, not today's rows — see useFoodLogStore.totalCount.
 const foodLogCountOf = (s: ReturnType<typeof useFoodLogStore.getState>) => s.totalCount;
-const meterCountOf = (s: ReturnType<typeof useMeterReadingStore.getState>) => s.readings.length;
-const savedViewCountOf = (s: ReturnType<typeof useSavedViewStore.getState>) => s.views.length;
 
 export function useNavMenuOptions(): NavMenuOptions {
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
@@ -54,9 +50,7 @@ export function useNavMenuOptions(): NavMenuOptions {
   const journalCount = useJournalStore(journalCountOf);
   const dreamCount = useJournalStore(dreamCountOf);
   const foodLogCount = useFoodLogStore(foodLogCountOf);
-  const meterCount = useMeterReadingStore(meterCountOf);
   const workoutCount = useWorkoutStore(workoutContentCount);
-  const savedViewCount = useSavedViewStore(savedViewCountOf);
   // Asked once: whether this build has the native half, on a phone new enough,
   // cannot change while the app runs. Demo mode answers yes on iOS even though
   // the bridge itself is refused there, because the page is built from stores
@@ -71,8 +65,8 @@ export function useNavMenuOptions(): NavMenuOptions {
     simpleMode,
     screenTimeSupported,
     workoutsEnabled,
-    counts: { stacks: stackCount, templates: templateCount, people: peopleCount, mood: moodCount, medications: medicationCount, foodLog: foodLogCount, journal: journalCount, dreams: dreamCount, meters: meterCount, workouts: workoutCount, savedViews: savedViewCount },
-  }), [kitchenEnabled, simpleMode, screenTimeSupported, workoutsEnabled, stackCount, templateCount, peopleCount, moodCount, medicationCount, foodLogCount, journalCount, dreamCount, meterCount, workoutCount, savedViewCount]);
+    counts: { stacks: stackCount, templates: templateCount, people: peopleCount, mood: moodCount, medications: medicationCount, foodLog: foodLogCount, journal: journalCount, dreams: dreamCount, workouts: workoutCount },
+  }), [kitchenEnabled, simpleMode, screenTimeSupported, workoutsEnabled, stackCount, templateCount, peopleCount, moodCount, medicationCount, foodLogCount, journalCount, dreamCount, workoutCount]);
 }
 
 /**
@@ -98,9 +92,7 @@ export function navMenuOptionsNow(): NavMenuOptions {
       foodLog: foodLogCountOf(useFoodLogStore.getState()),
       journal: journalCountOf(journal),
       dreams: dreamCountOf(journal),
-      meters: meterCountOf(useMeterReadingStore.getState()),
       workouts: workoutContentCount(useWorkoutStore.getState()),
-      savedViews: savedViewCountOf(useSavedViewStore.getState()),
     },
   };
 }

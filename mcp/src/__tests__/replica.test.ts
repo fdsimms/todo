@@ -1491,6 +1491,15 @@ describe('the replica', () => {
     expect(coins()).toEqual([{ task_id: task.id, amount: 5 }]);
   });
 
+  it('reads each device\'s report of its sync switches, and skips one it cannot parse', () => {
+    expect(replica.serverSharingReports()).toEqual([]);
+    mockRaw.runSync(`INSERT OR REPLACE INTO settings (key, value) VALUES ('syncServerSharing:p1', '{"healthLogs":true,"journal":false}')`);
+    mockRaw.runSync("INSERT OR REPLACE INTO settings (key, value) VALUES ('syncServerSharing:p2', 'not json')");
+    // The switch itself never travels, so a stray copy of it says nothing.
+    mockRaw.runSync("INSERT OR REPLACE INTO settings (key, value) VALUES ('syncServerJournal', '1')");
+    expect(replica.serverSharingReports()).toEqual([{ healthLogs: true, journal: false }]);
+  });
+
   describe('rewards', () => {
     const balance = () => replica.lib().rewards.coinBalance(replica.rewardState().entries);
     const earn = (minutes: number) => {
@@ -1740,17 +1749,6 @@ describe('the replica', () => {
     const task = replica.createTask({ title: 'Pick a colour', deliverableKind: 'text' });
     const result = replica.completeTask(task.id, { deliverableValue: 'Green' });
     expect(result.completed.deliverableValue).toBe('Green');
-  });
-
-  it('adds a look-back when asked, and reads its answer as the decision\'s outcome', () => {
-    const task = replica.createTask({ title: 'Which contractor?', deliverableKind: 'text' });
-    const done = completeTaskTool(replica, task.id, { deliverableValue: 'Bob', lookBackAfter: '1m' });
-    expect(done.spawned.join(' ')).toMatch(/look-back task "How did it turn out\? Which contractor\?"/);
-    const review = replica.tasks().find(t => t.reviewOfTaskId === task.id)!;
-    expect(getTaskTool(replica, review.id)?.task).toMatchObject({ lookBackOf: task.id, asksOnCompletion: 'text' });
-
-    completeTaskTool(replica, review.id, { deliverableValue: 'On time and under budget' });
-    expect(getTaskTool(replica, task.id)?.task).toMatchObject({ answer: 'Bob', outcome: { text: 'On time and under budget' } });
   });
 
   // A fixed set of answers takes one of them, in the option's own spelling,

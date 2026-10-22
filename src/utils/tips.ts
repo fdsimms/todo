@@ -257,9 +257,9 @@ export const TIPS: Tip[] = [
     id: 'quick-add-conditions',
     area: 'today',
     icon: 'partly-sunny-outline',
-    title: 'Let the weather or a reading decide when',
-    body: '“leave books out on the next sunny day” waits for the forecast, “water the garden every day unless it rains” skips rainy days, and “change the oil every 5,000 miles on the car” is due at a reading.',
-    keywords: ['weather', 'rain', 'meter', 'miles', 'odometer', 'syntax'],
+    title: 'Let the weather decide when',
+    body: '“leave books out on the next sunny day” waits for the forecast, “water the garden every day unless it rains” skips rainy days.',
+    keywords: ['weather', 'rain', 'forecast', 'sunny', 'syntax'],
   },
   {
     id: 'expand-row',

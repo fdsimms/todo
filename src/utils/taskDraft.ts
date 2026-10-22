@@ -249,7 +249,6 @@ export function newTaskFromDraft(
     rainSkipMm: draft.rainSkipMm ?? null,
     // The pass's mark, never carried: a new row hasn't been skipped.
     rainSkippedOn: null,
-    reviewOfTaskId: draft.reviewOfTaskId ?? null,
     recurrenceInterval: draft.recurrenceInterval ?? 1,
     recurrenceDays: draft.recurrenceDays ?? [],
     recurrenceMonthDay: draft.recurrenceMonthDay ?? null,
@@ -409,14 +408,6 @@ export function newTaskFromDraft(
     vacationPause: draft.vacationPause ?? seeded.vacationPause ?? false,
     excludeFromSuggestions: draft.excludeFromSuggestions ?? seeded.excludeFromSuggestions ?? false,
     weatherWait: draft.weatherWait ?? null,
-    // A meter rides in from the editor or quick add as typed; the hold is the
-    // pass's to write, so a new row never starts with one.
-    meterName: draft.meterName ?? null,
-    meterUnit: draft.meterUnit ?? null,
-    meterEvery: draft.meterEvery ?? null,
-    meterDueAt: draft.meterDueAt ?? null,
-    meterLimitMonths: draft.meterLimitMonths ?? null,
-    meterHeldUntil: null,
     slotIn: draft.slotIn ?? seeded.slotIn ?? null,
     // The slot-in pass's marks, never carried: a new row hasn't waited.
     slotDecidedOn: null,

@@ -16,12 +16,6 @@ import {
   FOCUS_REST_MAX, FOCUS_REST_MIN, FOCUS_WORK_CAP_MAX, FOCUS_WORK_CAP_MIN,
   focusRestsDisabled,
 } from '../../utils/focusSettings';
-import {
-  SCROLL_NUDGE_COOLDOWN_STEP_MINUTES, SCROLL_NUDGE_DEFAULT_COOLDOWN_MINUTES, SCROLL_NUDGE_DEFAULT_DAILY_CAP,
-  SCROLL_NUDGE_DEFAULT_SECONDS, SCROLL_NUDGE_MAX_COOLDOWN_MINUTES, SCROLL_NUDGE_MAX_DAILY_CAP,
-  SCROLL_NUDGE_MAX_SECONDS, SCROLL_NUDGE_MIN_COOLDOWN_MINUTES, SCROLL_NUDGE_MIN_DAILY_CAP,
-  SCROLL_NUDGE_MIN_SECONDS, SCROLL_NUDGE_STEP_SECONDS,
-} from '../../utils/scrollNudge';
 
 /**
  * Focus sessions, the scroll suggestion and the timers' Lock Screen activity.
@@ -59,14 +53,6 @@ export function FocusSettings() {
   const setTimerLiveActivity = useSettingsStore(s => s.setTimerLiveActivity);
   const simpleMode = useSettingsStore(s => s.simpleMode);
   const { screenTimeSupported } = useNavMenuOptions();
-  const scrollNudgeEnabled = useSettingsStore(s => s.scrollNudgeEnabled);
-  const setScrollNudgeEnabled = useSettingsStore(s => s.setScrollNudgeEnabled);
-  const scrollNudgeSeconds = useSettingsStore(s => s.scrollNudgeSeconds);
-  const setScrollNudgeSeconds = useSettingsStore(s => s.setScrollNudgeSeconds);
-  const scrollNudgeCooldownMinutes = useSettingsStore(s => s.scrollNudgeCooldownMinutes);
-  const setScrollNudgeCooldownMinutes = useSettingsStore(s => s.setScrollNudgeCooldownMinutes);
-  const scrollNudgeDailyCap = useSettingsStore(s => s.scrollNudgeDailyCap);
-  const setScrollNudgeDailyCap = useSettingsStore(s => s.setScrollNudgeDailyCap);
 
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
@@ -290,87 +276,6 @@ export function FocusSettings() {
           </>
         )}
       </SettingsSection>
-      )}
-
-      {!simpleMode && (
-        <SettingsSection
-          label="Scroll suggestion"
-          footer="Counts scrolling on Today, Later, Unscheduled and Inbox. Any tap or swipe on a row starts the count over. Nothing is recorded or sent anywhere."
-        >
-          <SettingsRow
-            entryId="scrollNudge"
-            icon="swap-vertical-outline"
-            iconColor={scrollNudgeEnabled ? colors.accent : undefined}
-            label="Suggest a focus session while scrolling"
-            hint={scrollNudgeEnabled
-              ? 'Shows a banner on Today with a button to start a focus session'
-              : undefined}
-            toggle={scrollNudgeEnabled}
-            onPress={() => setScrollNudgeEnabled(!scrollNudgeEnabled)}
-          />
-          {scrollNudgeEnabled && (
-            <>
-              <View style={styles.sep} />
-              <SettingsRow
-                entryId="scrollNudgeSeconds"
-                icon="time-outline"
-                label="Scroll time before suggesting"
-                tight
-              />
-              <View style={styles.cadenceRow}>
-                <CountStepper
-                  value={scrollNudgeSeconds}
-                  onChange={next => setScrollNudgeSeconds(next ?? SCROLL_NUDGE_DEFAULT_SECONDS)}
-                  min={SCROLL_NUDGE_MIN_SECONDS}
-                  max={SCROLL_NUDGE_MAX_SECONDS}
-                  step={SCROLL_NUDGE_STEP_SECONDS}
-                  format={n => `${n} sec`}
-                  label="Scroll time before suggesting"
-                  describeValue={n => `${n} seconds`}
-                />
-              </View>
-
-              <View style={styles.sep} />
-              <SettingsRow
-                entryId="scrollNudgeCooldownMinutes"
-                icon="hourglass-outline"
-                label="Time between suggestions"
-                tight
-              />
-              <View style={styles.cadenceRow}>
-                <CountStepper
-                  value={scrollNudgeCooldownMinutes}
-                  onChange={next => setScrollNudgeCooldownMinutes(next ?? SCROLL_NUDGE_DEFAULT_COOLDOWN_MINUTES)}
-                  min={SCROLL_NUDGE_MIN_COOLDOWN_MINUTES}
-                  max={SCROLL_NUDGE_MAX_COOLDOWN_MINUTES}
-                  step={SCROLL_NUDGE_COOLDOWN_STEP_MINUTES}
-                  format={n => `${n} min`}
-                  label="Time between suggestions"
-                  describeValue={n => `${n} minutes`}
-                />
-              </View>
-
-              <View style={styles.sep} />
-              <SettingsRow
-                entryId="scrollNudgeDailyCap"
-                icon="today-outline"
-                label="Most suggestions per day"
-                tight
-              />
-              <View style={styles.cadenceRow}>
-                <CountStepper
-                  value={scrollNudgeDailyCap}
-                  onChange={next => setScrollNudgeDailyCap(next ?? SCROLL_NUDGE_DEFAULT_DAILY_CAP)}
-                  min={SCROLL_NUDGE_MIN_DAILY_CAP}
-                  max={SCROLL_NUDGE_MAX_DAILY_CAP}
-                  format={n => `${n}`}
-                  label="Most suggestions per day"
-                  describeValue={n => `${n} per day`}
-                />
-              </View>
-            </>
-          )}
-        </SettingsSection>
       )}
 
       {Platform.OS === 'ios' && (

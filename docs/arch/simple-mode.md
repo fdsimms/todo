@@ -44,7 +44,7 @@ The one non-obvious decision. `screenShown` treats two kinds of screen different
 - **Lenses** (`SIMPLE_HIDDEN_SCREENS`: Calendar, Stats, Stuck and the like) go unconditionally.
   Every task they show is reachable from Today or Search, so hiding them costs nothing however
   much data exists.
-- **Content screens** (`SIMPLE_CONTENT_SCREENS`: Stacks, Templates, People, Meters, Mood, Medications,
+- **Content screens** (`SIMPLE_CONTENT_SCREENS`: Stacks, Templates, People, Mood, Medications,
   Food log) hold objects that live nowhere else. Hiding one while the user has some would strand real
   data, so each survives for exactly as long as it holds anything (`screenShown`'s
   `contentCounts`).

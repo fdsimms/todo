@@ -109,7 +109,6 @@ import { DEFAULT_PATTERN_DAYS, focusHistory, habitPatterns, moodInsights } from 
 import { addMilestone, deleteMilestone, listMilestones, updateMilestone } from './milestoneTools';
 import { addCookware, deleteCookware, listCookware, updateCookware } from './cookwareTools';
 import { listCopyFlags, resolveCopyFlag } from './copyFlagTools';
-import { deleteMeterReading, listMeterReadings, logMeterReading } from './meterTools';
 import {
   DEFAULT_EXERCISE_LIMIT, MAX_EXERCISE_LIMIT, deleteGym, deleteProgram, deleteRoutine, deleteRoutineGroup, deleteWorkout, exerciseHistory, listExercises,
   listWorkouts, logWorkout, nextWorkout, routineHistoryOut, restoreRoutineVersionOut, copyRoutineVersionOut, mergeRoutinesOut,
@@ -117,8 +116,8 @@ import {
 } from './workoutTools';
 import { EXERCISE_EQUIPMENT, MUSCLE_GROUPS } from '../../src/utils/workoutData';
 import { deleteJournalEntry, listJournalEntries, logJournalEntry, searchJournalEntries, updateJournalEntry } from './journalTools';
-import { SAVED_VIEW_TASK_LIMIT, createSavedView, deleteSavedView, getSavedView, listSavedViews, updateSavedView } from './savedViewTools';
 import { setVacationMode } from './vacationTools';
+import { withLogSyncNote } from './logSync';
 import { getSettings, updateSettings } from './settingsTools';
 import { SETTINGS_SPEC } from './settingsSpec';
 import { MAX_DELETE, deleteTag, deleteTasks, duplicateTask, renameTag, setCompletionDate, setTaskDates, skipOccurrence } from './taskTools';
@@ -352,8 +351,12 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'search_tasks',
-    'Fuzzy search across task titles, notes and project names, ranked the way the app ranks its own search.',
-    { query: z.string().min(1), limit: z.number().int().positive().optional() },
+    'Fuzzy search across task titles, notes and project names, ranked the way the app ranks its own search. Fuzzy matching always returns its nearest matches, even when no task holds the words, so for a known title or phrase pass exact: true, which keeps only tasks whose title, notes or project name contain every word of the query (any order, ignoring case); matched 0 then means there is none.',
+    {
+      query: z.string().min(1),
+      limit: z.number().int().positive().optional(),
+      exact: z.boolean().optional().describe('Only tasks containing every word of the query. Default false.'),
+    },
     async input => json(await withFresh(() => searchTasks(replica, input)))
   );
 
@@ -497,7 +500,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     'list_food_log',
     'Logged food over a range of days, with summed nutrients and, in produce, an estimate of vegetable and fruit servings per day: 80 g servings, beans count once a day, rounded to the nearest half. It is read from food names and weights, so a food not named as produce counts as none, and unmeasured is how many entries that day could not be weighed and are not counted. Say it is an estimate, and say when unmeasured is above zero. A nutrient nobody logged is absent rather than zero. Each entry carries its own figures as amounts (a nutrient it did not state is absent), so a surprising total can be traced to the entry behind it, and inAppleHealth: true when it was written to Apple Health, which refresh_dish_entry, update_food_entry and delete_food_entry refuse and only the phone can change. An entry the person described and the app estimated may carry a breakdown, the same estimate split across what it named (for example the beer and the pretzel); it adds up to the entry\'s own figures, so do not add it to the totals again. Defaults to the last 7 days. Empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that nothing was logged.',
     logRange,
-    async input => json(await withFresh(() => listFoodLog(replica, input)))
+    async input => json(await withFresh(() => withLogSyncNote(replica, 'healthLogs', listFoodLog(replica, input))))
   );
 
   server.tool(
@@ -516,7 +519,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
       tag: z.string().min(1).optional().describe('Only entries carrying this tag (a label the person typed).'),
       personId: z.string().min(1).optional().describe('Only entries about this person, by id from list_people.'),
     },
-    async input => json(await withFresh(() => listJournalEntries(replica, input)))
+    async input => json(await withFresh(() => withLogSyncNote(replica, 'journal', listJournalEntries(replica, input))))
   );
 
   server.tool(
@@ -531,21 +534,21 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
       to: dayKey.optional(),
       limit: z.number().int().positive().max(50).optional(),
     },
-    async input => json(await withFresh(() => searchJournalEntries(replica, input)))
+    async input => json(await withFresh(() => withLogSyncNote(replica, 'journal', searchJournalEntries(replica, input))))
   );
 
   server.tool(
     'list_mood_logs',
     'Mood check-ins over a range of days: the 1 to 5 rating, any symptoms and their severity, context tags and notes. Defaults to the last 7 days. Empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that nothing was logged.',
     logRange,
-    async input => json(await withFresh(() => listMoodLogs(replica, input)))
+    async input => json(await withFresh(() => withLogSyncNote(replica, 'healthLogs', listMoodLogs(replica, input))))
   );
 
   server.tool(
     'list_medication_logs',
     'Doses recorded over a range of days, including as-needed ones, plus the limit and supply the person set for each medication (limitsAndSupply: their own limit, how many doses in the last 24 hours, the total against a limit on an amount, when the next is within it, and how many are left; also whether they take it as needed, their usual amount, and medicines added with no dose yet). Each dose of a supplement whose label lists herbs, amino acids or omega-3s carries otherIngredients ("Ashwagandha 80 mg, L-theanine 200 mg"), worked out from the label as it stands now; those are never in the food log. A limit is the person\'s own, never a prescription; say it that way. Defaults to the last 7 days. Empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that nothing was logged.',
     logRange,
-    async input => json(await withFresh(() => listMedicationLogs(replica, input)))
+    async input => json(await withFresh(() => withLogSyncNote(replica, 'healthLogs', listMedicationLogs(replica, input))))
   );
 
   server.tool(
@@ -559,7 +562,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     'list_milestones',
     'The days something changed in the person\'s life that they have marked on the mood log ("Started sertraline", "New job"), each with its date. mood_insights reads mood before and after each one, under its own minimum-days rules; a start and a later stop are two milestones and are never paired. Empty unless the person has turned on Include health logs for the sync server on their phone.',
     {},
-    async () => json(await withFresh(() => listMilestones(replica)))
+    async () => json(await withFresh(() => withLogSyncNote(replica, 'healthLogs', listMilestones(replica))))
   );
 
   server.tool(
@@ -567,13 +570,6 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     'Lines of on-screen copy the person long-pressed in the app to mark as needing a manual pass, each with the exact text, the screen it was on, their note and a find command to run in the source checkout (it lists the matching strings with file and line). Open flags by default. This is how copy fixes are requested: run the find command, rewrite the copy, then call resolve_copy_flag. Temporary dev tooling.',
     { status: z.enum(['open', 'resolved', 'all']).optional().describe('Default open.') },
     async input => json(await withFresh(() => listCopyFlags(replica, input)))
-  );
-
-  server.tool(
-    'list_meter_readings',
-    'The meters the person reads by hand (a car\'s odometer, an espresso machine\'s shot counter), each with its readings, the rate they imply when there are readings at least a week apart, and the open tasks due at a reading on it with what their row says ("Due at 45,000 miles · est. Dec 10"). Pass meter to see one.',
-    { meter: z.string().optional().describe('One meter by name, e.g. "Car".') },
-    async input => json(await withFresh(() => listMeterReadings(replica, input)))
   );
 
   server.tool(
@@ -593,7 +589,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     'list_workouts',
     'Workouts the person logged over a range of days, newest first, each with its exercises and sets (weights in kg, whatever unit the phone shows; done: false is a set laid out but not done), plus their routines (planned sets per exercise), programs and gyms (where they train, the equipment each has and a note for an exercise there). Defaults to the last 7 days. Workout history is part of the health record: it is empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that they did not train. Routines and programs are plans and arrive either way. Report what was logged. Never estimate calories from sets, and never work anything out from body weight.',
     logRange,
-    async input => json(await withFresh(() => listWorkouts(replica, input)))
+    async input => json(await withFresh(() => withLogSyncNote(replica, 'healthLogs', listWorkouts(replica, input))))
   );
 
   server.tool(
@@ -946,28 +942,6 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     async () => json(await withFresh(() => storageReport(replica)))
   );
 
-  server.tool(
-    'list_saved_views',
-    'The person\'s saved views: each a named lens over every open task (across Today, Later, Unscheduled and Inbox at once) built from clauses a task has to pass, with the clauses in words and how many tasks it holds right now. Refer to one by its name.',
-    {},
-    async () => json(await withFresh(() => listSavedViews(replica)))
-  );
-
-  server.tool(
-    'get_saved_view',
-    `One saved view, by name or id, and the tasks it holds right now, in the app's own order (up to ${SAVED_VIEW_TASK_LIMIT}; the result says when there were more).`,
-    {
-      view: z.string().min(1).describe('The view\'s name (case does not matter) or its id from list_saved_views.'),
-      limit: z.number().int().min(1).max(SAVED_VIEW_TASK_LIMIT).optional(),
-    },
-    async ({ view, limit }) => {
-      try {
-        return json(await withFresh(() => getSavedView(replica, view, limit)));
-      } catch (e) {
-        return json({ error: e instanceof Error ? e.message : 'Could not read that view.' });
-      }
-    }
-  );
 
   server.tool(
     'list_templates',
@@ -1095,7 +1069,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'get_overview',
-    "Start here. The person's time zone and logical today (their day can start after midnight), how many tasks are in each of Today, Later, Unscheduled and Inbox and how many are overdue, their categories (with any hours a category is limited to), most-used tags, active projects, which areas of the app are switched off, whether health logs reach this server, and whether you can write.",
+    "Start here. The person's time zone and logical today (their day can start after midnight), how many tasks are in each of Today, Later, Unscheduled and Inbox and how many are overdue, their categories (with any hours a category is limited to), most-used tags, active projects, which areas of the app are switched off, whether the phone is sending the health logs and the journal here (logSync), and whether you can write.",
     {},
     async () => json(await withFresh(() => getOverview(replica, scope)))
   );
@@ -1477,14 +1451,6 @@ const taskFieldsShape = {
   estimatedMinutes: z.number().int().positive().nullable().optional(),
   weatherWait: z.enum(['sunny', 'rainy', 'snowy', 'cold', 'hot']).nullable().optional()
     .describe('Hold a one-off task until the first day in the next two weeks with this kind of forecast, e.g. "leave books on the curb on the next sunny day". The phone matches the forecast and moves the task, so it can take until the next sync to leave Today. Not for a repeating task, chain, set of dates or subtask. null stops waiting.'),
-  meter: z.object({
-    name: z.string().describe('What the reading is taken off, e.g. "Car". Tasks on the same meter share its readings.'),
-    unit: z.string().nullable().optional().describe('What it counts, for display, e.g. "miles".'),
-    every: z.number().positive().describe('How far the meter runs between occurrences, e.g. 5000.'),
-    dueAt: z.number().nonnegative().nullable().optional().describe('The reading this one is due at. Required when setting a meter up; optional on an update that keeps it.'),
-    limitMonths: z.number().int().min(1).max(60).nullable().optional().describe('Or after this many months, whichever comes first.'),
-  }).nullable().optional()
-    .describe('Make a one-off due at a meter reading rather than a date, e.g. "change the oil every 5,000 miles". The phone holds it until a logged reading reaches dueAt, the reading rate projects it, or limitMonths pass, so it can take until the next sync to move. Completing it writes the next one `every` further on. Log readings with log_meter_reading. Not for a repeating task, chain, set of dates, subtask or a task waiting on weather. null stops following the meter.'),
   pinned: z.boolean().optional().describe('Pin it to the top of Today.'),
   pinEachOccurrence: z.boolean().optional().describe('On a repeating task: every occurrence it spawns starts pinned, so the pin is not redone by hand each time. Does nothing on a task that does not repeat.'),
   deliverableKind: z.enum(DELIVERABLE_KINDS as unknown as [DeliverableKind, ...DeliverableKind[]]).nullable().optional()
@@ -1648,18 +1614,18 @@ const taskFieldsShape = {
 /**
  * The task fields a nested task takes (a project step, a batch update): the
  * plain ones. The parts that are a whole object of their own (a repeat rule, a
- * target, a meter, a chain...) are about 30 KB of schema, and nesting them
+ * target, a chain...) are about 30 KB of schema, and nesting them
  * repeated that in every tool that holds a task. They are set with update_task,
  * which takes the full set. The nested objects are `.strict()` so naming one
  * of them is an error that says so, never a field quietly dropped.
  */
 const {
-  repeat: _repeat, target: _target, meter: _meter, chain: _chain, rotation: _rotation, followUp: _followUp,
+  repeat: _repeat, target: _target, chain: _chain, rotation: _rotation, followUp: _followUp,
   supply: _supply, healthTarget: _healthTarget, timed: _timed, reminderRule: _reminderRule,
   deadlineRule: _deadlineRule, onlyIfAnswer: _onlyIfAnswer, medication: _medication,
   ...coreTaskFieldsShape
 } = taskFieldsShape;
-const ADVANCED_TASK_FIELDS_NOTE = 'Repeat, target, meter, chain, rotation, follow-up, supply, health target, timed, reminder and deadline rules, medication and onlyIfAnswer are not accepted here; set them with update_task.';
+const ADVANCED_TASK_FIELDS_NOTE = 'Repeat, target, chain, rotation, follow-up, supply, health target, timed, reminder and deadline rules, medication and onlyIfAnswer are not accepted here; set them with update_task.';
 
 function registerWriteTools(
   server: McpServer,
@@ -2390,101 +2356,6 @@ function registerWriteTools(
   );
 
   server.tool(
-    'log_meter_reading',
-    'Record a reading of a meter the person tracks by hand, e.g. "the car is at 45,120 miles". Every task due at a reading on that meter uses it: one past its due reading surfaces on Today, and the readings set the estimate for the rest. Only a number they told you; never estimate one. The date defaults to today.',
-    {
-      meter: z.string().min(1).max(40).describe('The meter, as its tasks name it, e.g. "Car".'),
-      value: z.number().nonnegative().describe('The reading.'),
-      date: dayKey.optional().describe('The day it was read, YYYY-MM-DD. Default today.'),
-    },
-    async input => {
-      try {
-        return json(await withWrite(() => logMeterReading(replica, input)));
-      } catch (e) {
-        return json({ error: e instanceof Error ? e.message : 'Could not log the reading.' });
-      }
-    }
-  );
-
-  server.tool(
-    'delete_meter_reading',
-    'Delete a meter reading by its id from list_meter_readings. Readings are never edited: a wrong one is deleted and logged again.',
-    { id: z.string().min(1) },
-    async ({ id }) => {
-      try {
-        return json(await withWrite(() => deleteMeterReading(replica, id)));
-      } catch (e) {
-        return json({ error: e instanceof Error ? e.message : 'Could not delete the reading.' });
-      }
-    }
-  );
-
-  server.tool(
-    'create_saved_view',
-    'Save a named lens over every open task, as the app\'s Saved Views screen does. Each clause is one the app stores and a task has to pass all of them: { kind: "category", values: [names] }, { kind: "tag", values: [tags] }, { kind: "project", values: [project ids] }, { kind: "priority", values: [0 to 4] }, { kind: "effort", values: [0 to 6] }, { kind: "taskType", values: ["task", "timed", "target", "health", "rotation", "chain", "repeating"] }, { kind: "maxMinutes", minutes: n }, { kind: "overdue", overdue: bool }, { kind: "hasReminder", hasReminder: bool }, { kind: "heldBack", heldBack: bool }, { kind: "undated", undated: bool }. One clause per kind; an empty values list matches everything. A name already in use, an unknown category or project, or a clause the app would not store is refused. update_saved_view edits and reorders one.',
-    {
-      name: z.string().min(1).max(80),
-      icon: z.string().optional().describe('One of the app\'s view icons (the refusal lists them). Default bookmark-outline.'),
-      clauses: z.array(z.object({
-        kind: z.string(),
-        values: z.array(z.union([z.string(), z.number()])).optional(),
-        minutes: z.number().optional(),
-        overdue: z.boolean().optional(),
-        hasReminder: z.boolean().optional(),
-        heldBack: z.boolean().optional(),
-        undated: z.boolean().optional(),
-      })).optional(),
-    },
-    async input => {
-      try {
-        return json(await withWrite(() => createSavedView(replica, input)));
-      } catch (e) {
-        return json({ error: e instanceof Error ? e.message : 'Could not create the view.' });
-      }
-    }
-  );
-
-  server.tool(
-    'update_saved_view',
-    'Change a saved view: its name, icon, or its clauses (the whole set, in the shape create_saved_view takes, checked the same way), or move it in the list with position (0 is first).',
-    {
-      view: z.string().min(1).describe('The view\'s id or name.'),
-      name: z.string().min(1).max(80).optional(),
-      icon: z.string().optional(),
-      clauses: z.array(z.object({
-        kind: z.string(),
-        values: z.array(z.union([z.string(), z.number()])).optional(),
-        minutes: z.number().optional(),
-        overdue: z.boolean().optional(),
-        hasReminder: z.boolean().optional(),
-        heldBack: z.boolean().optional(),
-        undated: z.boolean().optional(),
-      })).optional(),
-      position: z.number().int().min(0).optional(),
-    },
-    async ({ view, ...input }) => {
-      try {
-        return json(await withWrite(() => updateSavedView(replica, view, input)));
-      } catch (e) {
-        return json({ error: e instanceof Error ? e.message : 'Could not change the view.' });
-      }
-    }
-  );
-
-  server.tool(
-    'delete_saved_view',
-    'Delete a saved view by name or id. The tasks it showed are untouched; only the lens goes, and it cannot be restored from here.',
-    { view: z.string().min(1).describe('The view\'s name (case does not matter) or its id from list_saved_views.') },
-    async ({ view }) => {
-      try {
-        return json(await withWrite(() => deleteSavedView(replica, view)));
-      } catch (e) {
-        return json({ error: e instanceof Error ? e.message : 'Could not delete the view.' });
-      }
-    }
-  );
-
-  server.tool(
     'set_vacation_mode',
     'Turn vacation mode on or off, as the switch in Settings does. On, it hides every task marked for vacation pause and every category set to hide on vacation, everywhere, and protects their streaks; nothing else moves. Off, it brings them back and forgives the protected streaks, as the app does. With on: true, until (YYYY-MM-DD, after today) is the day it turns itself off; with the mode already on, until only moves that day, and null clears it. The result says what it hides. get_overview reports the mode and, when a trip switched it on, which one: turning it off during that trip counts as declining it for the trip.',
     {
@@ -2772,8 +2643,6 @@ function registerWriteTools(
         .describe('ISO date-time, for recording something done earlier. Defaults to now.'),
       why: z.string().optional().describe('With an answer: why it was chosen, in a sentence. Shown under the answer in the project\'s Decisions.'),
       revisitIf: z.string().optional().describe('With an answer: what would reopen the decision ("the guest list goes over 25").'),
-      lookBackAfter: z.enum(['2w', '1m', '3m', '6m']).optional()
-        .describe('With an answer, when the person asks for it: add a task that long from now asking how the decision turned out. Its answer becomes the decision\'s outcome. Ignored without an answer.'),
     },
     async ({ id, ...rest }) => {
       try {
@@ -3146,7 +3015,7 @@ function registerWriteTools(
 
   server.tool(
     'rename_tag',
-    'Rename a tag everywhere it is used, as the Tags screen\'s Rename does: every task that has it (finished ones included), the tag list, stacks, templates, saved views, title rules and Reminders captures. Renaming onto a tag that already exists merges the two, and they can\'t be separated again, so check with the person first when `to` is already a tag. The result says whether it merged.',
+    'Rename a tag everywhere it is used, as the Tags screen\'s Rename does: every task that has it (finished ones included), the tag list, stacks, templates, title rules and Reminders captures. Renaming onto a tag that already exists merges the two, and they can\'t be separated again, so check with the person first when `to` is already a tag. The result says whether it merged.',
     { tag: z.string().min(1), to: z.string().min(1) },
     async ({ tag, to }) => {
       try {
@@ -4025,7 +3894,7 @@ function registerWriteTools(
 
   server.tool(
     'update_category',
-    "Rename a task category, change its settings, or both. A rename reaches everywhere it is named, as the app's rename does: its tasks and stacks, project defaults, saved views, templates, automations and rules. Settings: an emoji, a schedule (the days and hours its tasks show; null removes it), hiding it on vacation, leaving it out of suggestions and of the new-tasks banner, and the time of day new tasks in it start in. To merge two categories, use delete_category with moveTo.",
+    "Rename a task category, change its settings, or both. A rename reaches everywhere it is named, as the app's rename does: its tasks and stacks, project defaults, templates, automations and rules. Settings: an emoji, a schedule (the days and hours its tasks show; null removes it), hiding it on vacation, leaving it out of suggestions and of the new-tasks banner, and the time of day new tasks in it start in. To merge two categories, use delete_category with moveTo.",
     {
       name: z.string().min(1).describe('The category, from list_categories.'),
       newName: z.string().optional(),

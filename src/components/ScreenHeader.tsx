@@ -79,20 +79,28 @@ interface Props {
    * title row so it can't take width from the title or its adornment.
    */
   topRight?: React.ReactNode;
+  /**
+   * Holds the header at least this tall, with the title block kept at the top
+   * and the actions at the bottom, as they sit in a header that grew on its
+   * own. For a screen that swaps titles in one header (Today's four lenses):
+   * the lens with the longest subtitle sets the height for the rest, so the
+   * buttons and everything under the header stay put on a switch.
+   */
+  minHeight?: number;
 }
 
 /**
  * The standard large-title header used at the top of every screen, so
  * titles, counts and 34pt icon buttons render identically app-wide.
  */
-export function ScreenHeader({ title, subtitle, overline, actions, right, onTitlePress, titleAccessibilityLabel, onSubtitlePress, subtitleAccessibilityLabel, titleAdornment, topRight }: Props) {
+export function ScreenHeader({ title, subtitle, overline, actions, right, onTitlePress, titleAccessibilityLabel, onSubtitlePress, subtitleAccessibilityLabel, titleAdornment, topRight, minHeight }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const brandFace = useBrandFace('heavy');
 
   return (
-    <View style={styles.header}>
-      <View style={styles.titleBlock}>
+    <View style={[styles.header, minHeight != null && { minHeight }]}>
+      <View style={[styles.titleBlock, minHeight != null && styles.titleBlockTop]}>
         {overline != null ? (
           <Text style={styles.overline} numberOfLines={1}>{overline}</Text>
         ) : (
@@ -203,6 +211,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // from running up against the action buttons: the block shrinks to the
   // space left, so without it the text ends flush with the first button.
   titleBlock: { flexShrink: 1, marginRight: spacing.md },
+  // The row aligns to the bottom, which in a header held taller than its title
+  // block would push the title down instead of leaving the space under it.
+  titleBlockTop: { alignSelf: 'flex-start' },
   topRight: { position: 'absolute', top: spacing.xs, right: spacing.md },
   overline: {
     color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.medium,

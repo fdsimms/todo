@@ -98,8 +98,6 @@ only the fallback until the first sync.
 | `resolve_copy_flag` | **Write.** Closes a copy flag once the copy has been changed in the source, with what it became. |
 | `add_milestone` / `update_milestone` / `delete_milestone` | **Write.** A milestone by label and day; the day is anchored at noon as the app's sheet does. |
 | `add_cookware` / `update_cookware` / `delete_cookware` | **Write.** A pot, pan, lid or tub and what it weighs empty. A recipe's `cookedWeightG` stays the food alone, so these never rewrite a recipe. |
-| `list_meter_readings` | The meters the person reads by hand, each with its readings, the rate they imply, and the open tasks due at a reading on it. |
-| `log_meter_reading` / `delete_meter_reading` | **Write.** A reading of a meter ("Car", 45,120). Every task on that meter uses it; the phone moves them on its next sync. |
 | `list_exercises` | The exercise library the app ships merged with the person's own exercises and their notes on built-in ones, each with its kind, equipment, muscles, a one-line cue any other names the person gave it and, for a dumbbell exercise, how many dumbbells it is held in (a weight is always one dumbbell's). Filters by a query (which also matches those other names), a muscle or equipment. |
 | `list_workouts` | Workouts logged over a day range with their sets (weights in kg), plus the routines and programs. Workout history is a health log, so it arrives only with Include health logs on; routines and programs arrive either way. |
 | `routine_history` | A routine's versions, newest first: each one's plan, when it was in use, how many workouts were done on it, and what it changed from the one before. Read-only; `restore_routine_version`, `copy_routine_version` and `merge_routines` act on it. Workout counts need Include health logs. |
@@ -114,9 +112,6 @@ only the fallback until the first sync.
 | `save_program` / `delete_program` | **Write.** A workout program: routines in turn, the scheme they move on by, the weeks in a cycle and training maxes in kg, and `startNextCycle` to count its weeks again from now once a cycle ends and the person agrees to the raised maxes. Its week and next routine are derived from finished workouts, never written. |
 | `next_workout` | A program's next routine (or a routine named directly) with each exercise's proposed sets in kg and the reason, as workout mode shows them, and a percentage program's raised training maxes at the end of a cycle. Proposals only. |
 | `log_workout` / `update_workout` / `delete_workout` | **Write.** A workout the person describes, after the fact, with its sets in kg. Never completes a task, and refuses the session in progress on the phone. |
-| `list_saved_views` | The person's saved views, each with its clauses in words and how many open tasks it holds right now. |
-| `get_saved_view` | One view by id or name, with the tasks it holds (up to 100). |
-| `create_saved_view` / `update_saved_view` / `delete_saved_view` | **Write.** A view by name, icon and clauses, checked by the app's own parser; a clause it would drop is refused instead. An update can also move it in the list. |
 | `set_vacation_mode` | **Write.** Turn vacation mode on or off as the Settings switch does, optionally with the day it turns itself off. On hides every task marked for vacation pause and every hide-on-vacation category; off brings them back and forgives their streaks. |
 | `plan_day` | A proposed timeline for today around busy blocks you pass in, and what does not fit. Writes nothing. |
 | `rebalance_week` | Proposed moves that bring heavy days under the busy line. Writes nothing. |
@@ -139,7 +134,7 @@ only the fallback until the first sync.
 | `batch_update_tasks` | **Write.** Edit, complete or reschedule up to 100 tasks. Previews unless `apply: true`; one refused change refuses the batch. |
 | `quick_add` | **Write.** Lines of text through the app's quick-add grammar. Previews unless `apply: true`. |
 | `list_tasks` | Tasks in one of the app's lenses: `today`, `later`, `unscheduled`, `inbox`, `all`, or `archived`. Filters by category, tag, project, or `target` (`day`, `week`, `any`: only tasks with a counted target, each showing its count and whether it is `alwaysVisible`). Archived tasks are left out of every other view, as in the app. |
-| `search_tasks` | The app's own fuzzy ranking over titles, notes and project names. |
+| `search_tasks` | The app's own fuzzy ranking over titles, notes and project names. `exact` keeps only tasks holding every word of the query, so a phrase that matches nothing says so. |
 | `get_task` | One task, with its subtasks, chain steps, repeat rule, target, window, blockers, follow-up, project, and why it is not on Today (`hiddenUntil`, or `hiddenReason` for a task held while vacation mode is on). Also, where the task has them: who it waits on, contact details, streak, what completing it also logs (medication, Health, a meal), timer and Health target, postponement history, supply (with the catalog row it reorders) and rotation, the rule behind a recomputed deadline or reminder, whether a water target follows the food log's goal, and the people it is about. |
 | `list_projects` | Active projects and how far through each one is, counting a recurring member once rather than once per completion, with each trip's away dates and destination. |
 | `get_project` | One project: its open tasks in order (each with its checklist and blockers), the most recently finished, its decisions, and its away dates, destination and whether it pauses tasks while away. |

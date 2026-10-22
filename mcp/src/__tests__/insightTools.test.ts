@@ -69,6 +69,7 @@ function stub(tasks: Task[], over: Partial<Replica> = {}): Replica {
     }),
     lastSyncedAt: () => null,
     agentNotes: () => [],
+    serverSharingReports: () => [],
     ...over,
   } as unknown as Replica;
 }
@@ -120,6 +121,24 @@ describe('getOverview', () => {
     // A workout alone is enough to say the health logs are being sent.
     const withWorkout = getOverview(stub([], { workoutSessions: () => [{} as never] }));
     expect(withWorkout.healthLogs).toEqual({ food: 0, mood: 0, medication: 0, workouts: 1 });
+  });
+
+  it('reports each switch from the phone, and says a log is partial while its switch is off', () => {
+    expect(getOverview(stub([])).logSync).toEqual({ healthLogs: 'unknown', journal: 'unknown' });
+
+    const journalOff = getOverview(stub([], {
+      serverSharingReports: () => [{ healthLogs: true, journal: false }],
+      moodLogs: () => [{} as never],
+    }));
+    expect(journalOff.logSync).toEqual({ healthLogs: 'on', journal: 'off' });
+    expect(journalOff.healthLogs.note).toBeUndefined();
+
+    const healthOff = getOverview(stub([], {
+      serverSharingReports: () => [{ healthLogs: false, journal: true }],
+      moodLogs: () => [{} as never],
+    }));
+    // Entries are here, and the note still says they are only the ones from before.
+    expect(healthOff.healthLogs.note).toMatch(/Include health logs is off.*only what was sent before/);
   });
 });
 

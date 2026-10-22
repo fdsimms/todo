@@ -55,7 +55,6 @@ export type SimpleFeatureId =
   | 'timedTasks'
   | 'dailyTargets'
   | 'supplies'
-  | 'meters'
   | 'chains'
   | 'taskSeries'
   | 'deadlines'
@@ -95,7 +94,6 @@ export type SimpleFeatureId =
   | 'workloadSubtitle'
   | 'unscheduledLens'
   | 'paintSelect'
-  | 'savedViews'
   // The kitchen's deep end. The list, the catalog, aisles, recipes and the
   // meal plan all stay — this is the machinery underneath them.
   | 'barcodeScanning'
@@ -151,9 +149,6 @@ export const SIMPLE_FEATURES: readonly SimpleFeature[] = [
   { id: 'timedTasks', label: 'Timed tasks', area: 'tasks' },
   { id: 'dailyTargets', label: 'Daily targets', area: 'tasks' },
   { id: 'supplies', label: 'Supplies', area: 'tasks' },
-  // A content screen like Stacks: its readings live nowhere else, so the
-  // Meters screen survives for as long as there are any.
-  { id: 'meters', label: 'Due by usage', area: 'tasks', screen: 'Meters', contentScreen: true },
   { id: 'chains', label: 'Chains', area: 'tasks' },
   { id: 'taskSeries', label: 'Several dates for one task', area: 'tasks' },
   { id: 'deadlines', label: 'Deadlines', area: 'tasks' },
@@ -226,10 +221,6 @@ export const SIMPLE_FEATURES: readonly SimpleFeature[] = [
   { id: 'workloadSubtitle', label: 'The workload line under the title', area: 'today' },
   { id: 'unscheduledLens', label: 'The Unscheduled view', area: 'today' },
   { id: 'paintSelect', label: 'Drag to select a run of tasks', area: 'today' },
-  // Made from Today's filter sheet, whose buttons it gates; its screen is an
-  // Organize member, shown while there are views to show (`screenShown`), so
-  // somebody who already kept a view keeps the way back to it.
-  { id: 'savedViews', label: 'Saved views', area: 'today', screen: 'SavedViews', contentScreen: true },
 
   { id: 'barcodeScanning', label: 'Barcode scanning', area: 'kitchen' },
   { id: 'receiptImport', label: 'Receipt scanning', area: 'kitchen' },
@@ -305,15 +296,13 @@ export const SIMPLE_CONTENT_SCREENS: ReadonlySet<string> = new Set(
 export function screenShown(
   routeName: string,
   simpleMode: boolean,
-  contentCounts: { stacks: number; templates: number; people?: number; mood?: number; medications?: number; foodLog?: number; journal?: number; dreams?: number; meters?: number; workouts?: number; savedViews?: number } = { stacks: 0, templates: 0 },
+  contentCounts: { stacks: number; templates: number; people?: number; mood?: number; medications?: number; foodLog?: number; journal?: number; dreams?: number; workouts?: number } = { stacks: 0, templates: 0 },
 ): boolean {
   if (!simpleMode) return true;
   if (SIMPLE_HIDDEN_SCREENS.has(routeName)) return false;
   if (routeName === 'Stacks') return contentCounts.stacks > 0;
   if (routeName === 'Templates') return contentCounts.templates > 0;
   if (routeName === 'People') return (contentCounts.people ?? 0) > 0;
-  // Readings, not meters a task names: a reading is what lives nowhere else.
-  if (routeName === 'Meters') return (contentCounts.meters ?? 0) > 0;
   // Mood was declared a content screen from the start and never got its branch,
   // so it was the one of the four shown unconditionally — the row stayed on an
   // install with no entries at all, which is the opposite of what the flag on
@@ -330,7 +319,6 @@ export function screenShown(
   // Sessions, custom exercises, routines and programs together: anything the
   // person made there. The built-in library alone is not content.
   if (routeName === 'Workouts') return (contentCounts.workouts ?? 0) > 0;
-  if (routeName === 'SavedViews') return (contentCounts.savedViews ?? 0) > 0;
   return true;
 }
 
@@ -353,7 +341,6 @@ export const SIMPLE_EDITOR_ROW_FEATURES: Readonly<Record<string, SimpleFeatureId
   duration: 'timedTasks',
   dailyTarget: 'dailyTargets',
   supply: 'supplies',
-  meter: 'meters',
   chain: 'chains',
   moreDates: 'taskSeries',
   deadline: 'deadlines',

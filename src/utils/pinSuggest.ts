@@ -177,8 +177,8 @@ export function buildPinContext(completedTasks: Task[] = []): PinContext {
  * Days a task is late by, in calendar days on the logical day boundary.
  * Positive = overdue, 0 = due today, negative = not due yet, null = no date.
  *
- * The arithmetic moved to the store-free clockTime module so savedViews.ts
- * could share it rather than fork it; the reasoning about why it is local-time
+ * The arithmetic lives in the store-free clockTime module so a store-free
+ * caller can share it rather than fork it; the reasoning about why it is local-time
  * rather than a comparison of ISO date halves lives there now.
  */
 export function overdueDays(task: Task, todayStart: Date): number | null {
