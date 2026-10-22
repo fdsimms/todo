@@ -7,6 +7,11 @@ export type PointerMenuItem = NativePointerMenuItem;
 
 const NO_ITEMS: NativePointerMenuItem[] = [];
 
+/** One right-click menu item. `icon` is an SF Symbol name. */
+export function pointerMenuItem(id: string, title: string, icon = '', destructive = false): PointerMenuItem {
+  return { id, title, icon, destructive };
+}
+
 interface Props extends ViewProps {
   /** Shown when the pointer rests on it, on a Mac. Pass the control's accessibility label. */
   toolTip?: string;

@@ -64,6 +64,8 @@ import { ReorderableList } from '../components/ReorderableList';
 import { SortableList } from '../components/SortableList';
 import { SwipeableRow } from '../components/SwipeableRow';
 import { SwipeActionButtons } from '../components/SwipeActionButtons';
+import { PointerView, pointerMenuItem, type PointerMenuItem } from '../components/PointerView';
+import { runningOnMac } from '../utils/runningOnMac';
 import { SelectionDot } from '../components/SelectionDot';
 import { PaintSelectionProvider, usePaintSelectionRow } from '../components/PaintSelection';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -1151,6 +1153,26 @@ const RecipeRow = React.memo(function RecipeRow({
     accessibilityLabel: `Select ${recipe.name}`,
   };
 
+  // What the row already offers, for a right-click on a Mac: a tap, the Up
+  // Next and plan buttons, and the select swipe. None while selecting or
+  // dragging.
+  const contextMenuItems: PointerMenuItem[] | undefined = !runningOnMac() || selectionMode || isActive ? undefined : [
+    pointerMenuItem('open', 'Open', 'book'),
+    pointerMenuItem('plan', 'Plan…', 'calendar'),
+    recipe.upNext
+      ? pointerMenuItem('upNext', 'Remove from Up Next', 'bookmark.slash')
+      : pointerMenuItem('upNext', 'Add to Up Next', 'bookmark'),
+    pointerMenuItem('select', 'Select', 'checklist'),
+  ];
+  const handleContextMenu = (id: string) => {
+    switch (id) {
+      case 'open': onOpen(recipe); return;
+      case 'plan': onPlan(recipe); return;
+      case 'upNext': onToggleUpNext(recipe); return;
+      case 'select': swipeSelect.onSelect(); return;
+    }
+  };
+
   const rowBody = (
     <TouchableOpacity
       style={[styles.row, selectionMode && selected && styles.rowSelected, paneActive && !selectionMode && styles.rowPaneActive]}
@@ -1251,7 +1273,7 @@ const RecipeRow = React.memo(function RecipeRow({
         enabled={!isActive && !selectionMode}
         selectAction={swipeSelect}
       >
-        {rowBody}
+        <PointerView menuItems={contextMenuItems} onMenuSelect={handleContextMenu}>{rowBody}</PointerView>
       </SwipeableRow>
     </View>
   );

@@ -25,6 +25,8 @@ import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { Fab, FAB_SIZE } from '../components/Fab';
 import { SwipeableRow } from '../components/SwipeableRow';
 import { SwipeActionButtons } from '../components/SwipeActionButtons';
+import { PointerView, pointerMenuItem, type PointerMenuItem } from '../components/PointerView';
+import { runningOnMac } from '../utils/runningOnMac';
 import { PaintSelectionProvider, usePaintSelectionRow } from '../components/PaintSelection';
 import { SelectionDot } from '../components/SelectionDot';
 import { ListBulkBar } from '../components/ListBulkBar';
@@ -334,6 +336,16 @@ const StackRow = React.memo(function StackRow({
   const spokenMeta = [memberLabel, todayLabel, catLabel].filter(Boolean).join('. ');
   // Shared by the swipe and the iPhone Mirroring button.
   const swipeSelect = { onSelect: () => onSwipeSelect(group.id), accessibilityLabel: `Select ${group.title}` };
+  // What the row already offers, for a right-click on a Mac: a tap and the
+  // select swipe. None while selecting.
+  const contextMenuItems: PointerMenuItem[] | undefined = !runningOnMac() || selectionMode ? undefined : [
+    pointerMenuItem('open', 'Open', 'square.stack'),
+    pointerMenuItem('select', 'Select', 'checklist'),
+  ];
+  const handleContextMenu = (id: string) => {
+    if (id === 'open') onOpen(group);
+    else if (id === 'select') swipeSelect.onSelect();
+  };
 
   return (
     <SwipeableRow
@@ -341,6 +353,7 @@ const StackRow = React.memo(function StackRow({
       enabled={!selectionMode}
       selectAction={swipeSelect}
     >
+      <PointerView menuItems={contextMenuItems} onMenuSelect={handleContextMenu}>
       <View ref={paintRef} style={[styles.row, selectionMode && selected && styles.rowSelected]}>
         <TouchableOpacity
           style={styles.rowMain}
@@ -377,6 +390,7 @@ const StackRow = React.memo(function StackRow({
           <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
         )}
       </View>
+      </PointerView>
     </SwipeableRow>
   );
 });

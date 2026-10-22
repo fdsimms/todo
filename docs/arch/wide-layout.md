@@ -118,8 +118,10 @@ the native half was written against Apple's declarations and can only be checked
 - **Right-click menus and tooltips** (`PointerView`, over `TodoPointerView`). A tooltip is a
   `UIToolTipInteraction` and a menu a `UIContextMenuInteraction`, both attached only on a Mac: on
   a touch screen a context menu opens on a long press, which on a row here means drag. A row's menu
-  offers what the row already offers and nothing new (the task row: Edit, Complete, Reschedule,
-  Pin, Select). Header icon buttons and the mirroring buttons carry their accessibility label as a
+  offers what the row already offers and nothing new, under the same conditions: the task row
+  (Edit, Complete, Reschedule, Pin, Select, and Delete through `confirmDeleteTask`), a grocery row,
+  a recipe, a project, a stack and a stack's header on Today. A row with no delete of its own gets
+  none in its menu either. Header icon buttons and the mirroring buttons carry their accessibility label as a
   tooltip. Elsewhere `PointerView` is a plain View with the same props, so layout doesn't change.
 - **The window** (`useMacWindow`). Its title is the screen's name in the side menu
   (`windowTitleFor`), the app's name for a pushed page, and it can't be dragged below

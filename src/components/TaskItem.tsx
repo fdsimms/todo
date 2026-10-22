@@ -182,7 +182,7 @@ import { ProgressBar } from './ProgressBar';
 import { TextField } from './TextField';
 import { useActionMenu } from '../hooks/useActionMenu';
 import { BUTTON_LABEL } from '../copy/shared';
-import { PointerView, type PointerMenuItem } from './PointerView';
+import { PointerView, pointerMenuItem, type PointerMenuItem } from './PointerView';
 import { runningOnMac } from '../utils/runningOnMac';
 
 /**
@@ -5155,20 +5155,18 @@ const TaskItemRow = React.memo(function TaskItem({
   // and nothing while bulk selecting (the row is a selection target then).
   // Built only on a Mac, the one place PointerView shows it.
   const contextMenuItems: PointerMenuItem[] | undefined = !runningOnMac() || selectionMode || spotlightDisabled ? undefined : [
-    ...(onEdit && !notice ? [{ id: 'edit', title: 'Edit', icon: 'pencil', destructive: false }] : []),
+    ...(onEdit && !notice ? [pointerMenuItem('edit', 'Edit', 'pencil')] : []),
     ...(!task.completed && !completing && !isNegative && !isRotation
-      ? [{ id: 'complete', title: 'Complete', icon: 'checkmark.circle', destructive: false }]
+      ? [pointerMenuItem('complete', 'Complete', 'checkmark.circle')]
       : []),
-    ...(swipeWhen ? [{ id: 'when', title: 'Reschedule…', icon: 'calendar', destructive: false }] : []),
+    ...(swipeWhen ? [pointerMenuItem('when', 'Reschedule…', 'calendar')] : []),
     ...(showActions && showPin && canPinTask(task) && !pinWaiting
-      ? [pinLit
-        ? { id: 'pin', title: 'Unpin', icon: 'pin.slash', destructive: false }
-        : { id: 'pin', title: 'Pin', icon: 'pin', destructive: false }]
+      ? [pinLit ? pointerMenuItem('pin', 'Unpin', 'pin.slash') : pointerMenuItem('pin', 'Pin', 'pin')]
       : []),
-    ...(swipeSelect ? [{ id: 'select', title: 'Select', icon: 'checklist', destructive: false }] : []),
+    ...(swipeSelect ? [pointerMenuItem('select', 'Select', 'checklist')] : []),
     // The expanded panel's trash, asking what it asks: a list line goes at
     // once (the Undo bar brings it back), anything else confirms first.
-    { id: 'delete', title: listRow ? BUTTON_LABEL.delete : `${BUTTON_LABEL.delete}…`, icon: 'trash', destructive: true },
+    pointerMenuItem('delete', listRow ? BUTTON_LABEL.delete : `${BUTTON_LABEL.delete}…`, 'trash', true),
   ];
   const handleContextMenu = (id: string) => {
     switch (id) {
