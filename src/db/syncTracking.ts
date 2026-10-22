@@ -400,6 +400,11 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // refuses a request when nobody is set to write it. The calendar it goes
   // into is `calendarRequestCalendarId`, which is device-local (below).
   'calendarRequestDeviceId',
+  // Whether an event an agent asks for waits in the Inbox for a tap
+  // (`CalendarRequest` status `proposed`) instead of being written as soon as
+  // it syncs. Synced so the MCP server, which only has a replica, reads the
+  // same answer the person set on the phone.
+  'calendarRequestAsksFirst',
 
   // Automations: every generator's own switch, and the rules the person wrote
   // for the four that take rules, plus title rules. They were missing from

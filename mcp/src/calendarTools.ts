@@ -119,9 +119,32 @@ export interface SerializedCalendarRequest {
   change?: 'update' | 'delete';
   /** The request whose event this changes. */
   changes?: string;
+  /** Present on a suggestion about a task rather than an event: what it would set up on it. */
+  taskAction?: 'deadline_on_calendar' | 'alarm';
+  taskId?: string;
+  /** For an alarm: when it rings (ISO), and whether it repeats until the task is done. */
+  alarmAt?: string;
+  ring?: 'alarm' | 'persistent';
 }
 
 export function serializeCalendarRequest(r: CalendarRequest): SerializedCalendarRequest {
+  if (r.kind === 'task_deadline' || r.kind === 'task_alarm') {
+    return {
+      id: r.id,
+      title: r.title,
+      start: '',
+      end: '',
+      allDay: false,
+      status: r.status,
+      ...(r.failureReason ? { failureReason: r.failureReason } : {}),
+      requestedAt: r.createdAt,
+      ...(r.resolvedAt ? { resolvedAt: r.resolvedAt } : {}),
+      taskAction: r.kind === 'task_alarm' ? 'alarm' : 'deadline_on_calendar',
+      ...(r.taskId ? { taskId: r.taskId } : {}),
+      ...(r.payload?.alarmAt ? { alarmAt: r.payload.alarmAt } : {}),
+      ...(r.payload?.ringKind ? { ring: r.payload.ringKind } : {}),
+    };
+  }
   if (r.action === 'update' || r.action === 'delete') {
     const c = r.changes ?? {};
     return {
@@ -157,12 +180,49 @@ export function serializeCalendarRequest(r: CalendarRequest): SerializedCalendar
   };
 }
 
+const PROPOSED_NOTE =
+  'Not on the calendar, and not queued: the person has asked to approve these first, so it is a card in their Inbox until they tap Add to calendar (or Skip). Say it is waiting for their tap, not added. Check list_calendar_requests before telling them it landed, and cancel_calendar_request takes it back.';
+
+const TASK_PROPOSED_NOTE =
+  'A card in the person\'s Inbox, waiting for their tap. Nothing is changed on the task until they accept it, and it only takes effect on their phone, so say it is suggested, not set. Check list_calendar_requests for the outcome.';
+
 const PENDING_NOTE =
   'Queued, not on the calendar yet. The phone set to add these writes it the next time it syncs (when the app is opened, or in the background). Check list_calendar_requests for the outcome rather than saying it was added.';
 
+const noteFor = (r: CalendarRequest) => (r.status === 'proposed' ? PROPOSED_NOTE : PENDING_NOTE);
+
 export function requestCalendarEvent(replica: Replica, input: CalendarRequestToolInput) {
   const request = replica.requestCalendarEvent(parseCalendarRequest(input));
-  return { request: serializeCalendarRequest(request), note: PENDING_NOTE };
+  return { request: serializeCalendarRequest(request), note: noteFor(request) };
+}
+
+export interface TaskActionToolInput {
+  taskId: string;
+  action: 'deadline_on_calendar' | 'alarm';
+  /** For an alarm: YYYY-MM-DDTHH:MM in the person's time zone. */
+  at?: string;
+  /** For an alarm: `persistent` repeats every 5 minutes until the task is done. */
+  ring?: 'alarm' | 'persistent';
+}
+
+/**
+ * Suggest, never set, a device-side change on a task. The two actions are the
+ * ones the phone applies when the person taps the Inbox card; neither is
+ * writable through update_task, which is why they go this way.
+ */
+export function proposeTaskDeviceAction(replica: Replica, input: TaskActionToolInput, now = new Date()) {
+  if (input.action === 'deadline_on_calendar') {
+    if (input.at !== undefined || input.ring !== undefined) throw new Error('Putting a deadline on the calendar takes only the task.');
+    const request = replica.proposeTaskAction({ kind: 'task_deadline', taskId: input.taskId });
+    return { request: serializeCalendarRequest(request), note: TASK_PROPOSED_NOTE };
+  }
+  if (!input.at) throw new Error('An alarm needs at: YYYY-MM-DDTHH:MM in their time zone.');
+  if (DAY.test(input.at)) throw new Error('An alarm rings at a time: give at as YYYY-MM-DDTHH:MM.');
+  const at = new Date(input.at);
+  if (Number.isNaN(at.getTime())) throw new Error(`"${input.at}" is not a time. Use YYYY-MM-DDTHH:MM.`);
+  if (at <= now) throw new Error('That time has already passed.');
+  const request = replica.proposeTaskAction({ kind: 'task_alarm', taskId: input.taskId, alarmAt: at.toISOString(), ringKind: input.ring ?? 'alarm' });
+  return { request: serializeCalendarRequest(request), note: TASK_PROPOSED_NOTE };
 }
 
 export function listCalendarRequests(replica: Replica, input: { status?: CalendarRequest['status'] }) {
@@ -203,7 +263,8 @@ export function changeCalendarEvent(replica: Replica, input: CalendarChangeInput
   const { requestId, delete: del, ...fields } = input;
   if (del) {
     if (Object.keys(fields).length > 0) throw new Error('A delete takes nothing else.');
-    return { request: serializeCalendarRequest(replica.requestCalendarChange(requestId, { delete: true })), note: PENDING_NOTE };
+    const request = replica.requestCalendarChange(requestId, { delete: true });
+    return { request: serializeCalendarRequest(request), note: noteFor(request) };
   }
   if (Object.keys(fields).length === 0) throw new Error('Nothing to change: give title, start, end, location or notes, or delete: true.');
   const was = serializeCalendarRequest(target);
@@ -228,5 +289,6 @@ export function changeCalendarEvent(replica: Replica, input: CalendarChangeInput
     ...(fields.location !== undefined ? { location: blankToNull(fields.location) } : {}),
     ...(fields.notes !== undefined ? { notes: blankToNull(fields.notes) } : {}),
   };
-  return { request: serializeCalendarRequest(replica.requestCalendarChange(requestId, { changes })), note: PENDING_NOTE };
+  const request = replica.requestCalendarChange(requestId, { changes });
+  return { request: serializeCalendarRequest(request), note: noteFor(request) };
 }

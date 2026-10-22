@@ -1,6 +1,6 @@
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
-import { cancelCalendarRequest, changeCalendarEvent, listCalendarRequests, parseCalendarRequest, requestCalendarEvent } from '../calendarTools';
+import { cancelCalendarRequest, changeCalendarEvent, listCalendarRequests, parseCalendarRequest, proposeTaskDeviceAction, requestCalendarEvent } from '../calendarTools';
 import { withAgentLedger, type AgentLedgerEntry } from '../agentLedger';
 import { describeEffects } from '../confirmWrites';
 
@@ -17,7 +17,7 @@ beforeAll(() => {
 });
 beforeEach(() => {
   mockRaw.runSync('DELETE FROM calendar_requests');
-  mockRaw.runSync("DELETE FROM settings WHERE key = 'calendarRequestDeviceId'");
+  mockRaw.runSync("DELETE FROM settings WHERE key IN ('calendarRequestDeviceId', 'calendarRequestAsksFirst')");
 });
 
 const writerOn = () => mockRaw.runSync("INSERT OR REPLACE INTO settings (key, value) VALUES ('calendarRequestDeviceId', 'phone-1')");
@@ -174,5 +174,90 @@ describe('change_calendar_event', () => {
     expect(() => changeCalendarEvent(replica, { requestId: request.id, title: 'x' })).toThrow(/not been added yet/);
     mockRaw.runSync("UPDATE calendar_requests SET status = 'written' WHERE id = ?", [request.id]);
     expect(() => changeCalendarEvent(replica, { requestId: request.id, title: 'x' })).toThrow(/cannot find it again/);
+  });
+});
+
+describe('asking first', () => {
+  const ahead = () => {
+    const d = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T10:00`;
+  };
+  const asksFirst = () => mockRaw.runSync("INSERT OR REPLACE INTO settings (key, value) VALUES ('calendarRequestAsksFirst', 'true')");
+
+  it('leaves an event as a proposal for the person to tap, and says so', () => {
+    writerOn();
+    asksFirst();
+    const { request, note } = requestCalendarEvent(replica, { title: 'Dentist', start: ahead() });
+    expect(request.status).toBe('proposed');
+    expect(note).toMatch(/Inbox/);
+    expect(listCalendarRequests(replica, { status: 'proposed' }).requests).toHaveLength(1);
+  });
+
+  it('keeps sending straight through when the person never turned it on', () => {
+    writerOn();
+    expect(requestCalendarEvent(replica, { title: 'Dentist', start: ahead() }).request.status).toBe('pending');
+  });
+
+  it('takes a proposal back, and makes a change to an unapproved event wait for the event', () => {
+    writerOn();
+    asksFirst();
+    const { request } = requestCalendarEvent(replica, { title: 'Dentist', start: ahead() });
+    expect(() => changeCalendarEvent(replica, { requestId: request.id, title: 'x' })).toThrow(/not been added yet/);
+    expect(cancelCalendarRequest(replica, { id: request.id }).cancelled.status).toBe('cancelled');
+  });
+
+  it('proposes a change to a written event as well', () => {
+    writerOn();
+    const { request } = requestCalendarEvent(replica, { title: 'Dentist', start: ahead() });
+    mockRaw.runSync("UPDATE calendar_requests SET status = 'written', event_external_id = 'ext-1' WHERE id = ?", [request.id]);
+    asksFirst();
+    expect(changeCalendarEvent(replica, { requestId: request.id, delete: true }).request.status).toBe('proposed');
+  });
+});
+
+describe('propose_task_device_action', () => {
+  const ahead = (hours = 48) => {
+    const d = new Date(Date.now() + hours * 3600_000);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+  const withDeadline = () => replica.createTask({ title: 'File taxes', deadline: new Date(Date.now() + 5 * 86400_000).toISOString() });
+
+  it('suggests an alarm without needing a writer device, as a proposal an old build would expire', () => {
+    const task = replica.createTask({ title: 'Take out recycling' });
+    const { request, note } = proposeTaskDeviceAction(replica, { taskId: task.id, action: 'alarm', at: ahead(), ring: 'persistent' });
+    expect(request).toMatchObject({ status: 'proposed', taskAction: 'alarm', taskId: task.id, ring: 'persistent' });
+    expect(note).toMatch(/suggested, not set/);
+    const row = replica.calendarRequests().find(r => r.id === request.id)!;
+    expect(row).toMatchObject({ kind: 'task_alarm', taskId: task.id, title: 'Take out recycling' });
+    expect(new Date(row.endAt).getTime()).toBe(0);
+  });
+
+  it('suggests a deadline on the calendar only for a task that has a deadline', () => {
+    const bare = replica.createTask({ title: 'No date' });
+    expect(() => proposeTaskDeviceAction(replica, { taskId: bare.id, action: 'deadline_on_calendar' })).toThrow(/no deadline/);
+    const task = withDeadline();
+    expect(proposeTaskDeviceAction(replica, { taskId: task.id, action: 'deadline_on_calendar' }).request.taskAction).toBe('deadline_on_calendar');
+  });
+
+  it('refuses a time that has passed, a missing time, and a second identical suggestion', () => {
+    const task = replica.createTask({ title: 'Call' });
+    expect(() => proposeTaskDeviceAction(replica, { taskId: task.id, action: 'alarm' })).toThrow(/needs at/);
+    expect(() => proposeTaskDeviceAction(replica, { taskId: task.id, action: 'alarm', at: '2020-01-01T08:00' })).toThrow(/already passed/);
+    expect(() => proposeTaskDeviceAction(replica, { taskId: task.id, action: 'alarm', at: '2030-01-01' })).toThrow(/YYYY-MM-DDTHH:MM/);
+    proposeTaskDeviceAction(replica, { taskId: task.id, action: 'alarm', at: ahead() });
+    expect(() => proposeTaskDeviceAction(replica, { taskId: task.id, action: 'alarm', at: ahead(72) })).toThrow(/already suggested/);
+    expect(() => proposeTaskDeviceAction(replica, { taskId: 'nope', action: 'alarm', at: ahead() })).toThrow(/No task/);
+  });
+
+  it('records the suggestion in the Activity ledger as a suggestion, and cancelling takes the card back', () => {
+    const task = replica.createTask({ title: 'Call', deadline: new Date(Date.now() + 5 * 86400_000).toISOString() });
+    const entries: AgentLedgerEntry[] = [];
+    const logged = withAgentLedger(replica, e => entries.push(...e));
+    const { request } = proposeTaskDeviceAction(logged, { taskId: task.id, action: 'deadline_on_calendar' }, new Date());
+    expect(entries[0]).toMatchObject({ action: 'created', subject: 'event', title: 'Call', recordId: request.id });
+    expect(entries[0].note).toMatch(/Suggest.*Inbox/);
+    expect(cancelCalendarRequest(replica, { id: request.id }).cancelled.status).toBe('cancelled');
   });
 });

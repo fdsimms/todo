@@ -18,6 +18,7 @@ import { useSavedMealsStore } from '../store/useSavedMealsStore';
 import { usePendingEstimateStore } from '../store/usePendingEstimateStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { useMilestoneStore } from '../store/useMilestoneStore';
+import { useAgentSuggestionStore } from '../store/useAgentSuggestionStore';
 import { useCookwareStore } from '../store/useCookwareStore';
 import { useMeterReadingStore } from '../store/useMeterReadingStore';
 import { useWorkoutStore } from '../store/useWorkoutStore';
@@ -2409,6 +2410,7 @@ export function seedDemoData(): void {
   // the pass would show the feature only to somebody who had already found it.
   seedMoodTasks(today);
   seedMilestone(today);
+  seedSuggestions(today);
   seedCookware();
   seedMeterTask(today);
   seedWorkouts(today);
@@ -3584,6 +3586,35 @@ function seedCookware(): void {
     ['Sake Akishika glass', 157],
   ];
   for (const [name, grams] of pieces) addCookware(name, grams);
+}
+
+/**
+ * The Inbox's "Suggested by Claude" cards: an event, a deadline for a task that
+ * has one, and an alarm for another. Through the store's insert, so a seeded
+ * row has the shape an agent's request has once it syncs in. The two task
+ * kinds carry the epoch start and end an agent's rows do.
+ */
+function seedSuggestions(today: Date): void {
+  const { insert } = useAgentSuggestionStore.getState();
+  const epoch = new Date(0).toISOString();
+  const createdAt = new Date().toISOString();
+  const base = { allDay: false, location: null, notes: null, status: 'proposed' as const, failureReason: null, eventExternalId: null, resolvedAt: null, createdAt };
+
+  const start = addDays(today, 3);
+  start.setHours(15, 0, 0, 0);
+  const end = new Date(start.getTime() + 60 * 60 * 1000);
+  insert({ ...base, id: 'demo-suggestion-event', title: 'Dentist cleaning', startAt: start.toISOString(), endAt: end.toISOString(), location: 'Brightside Dental' });
+
+  const roadmap = useTaskStore.getState().tasks.find(t => t.title === 'Send the Q3 roadmap to Priya');
+  if (roadmap) {
+    insert({ ...base, id: 'demo-suggestion-deadline', title: roadmap.title, startAt: epoch, endAt: epoch, kind: 'task_deadline', taskId: roadmap.id, payload: null });
+  }
+  const bill = useTaskStore.getState().tasks.find(t => t.title === 'Pay the electric bill');
+  if (bill) {
+    const at = addDays(today, 1);
+    at.setHours(8, 0, 0, 0);
+    insert({ ...base, id: 'demo-suggestion-alarm', title: bill.title, startAt: epoch, endAt: epoch, kind: 'task_alarm', taskId: bill.id, payload: { alarmAt: at.toISOString(), ringKind: 'alarm' } });
+  }
 }
 
 function seedMilestone(today: Date): void {

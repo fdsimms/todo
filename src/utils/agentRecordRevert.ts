@@ -1,4 +1,4 @@
-import type { CalendarRequestStatus, Person, PersonNote, Project, Task, TaskGroup, UnattendedEntry, UnattendedRevert } from '../types';
+import type { CalendarRequestKind, CalendarRequestStatus, Person, PersonNote, Project, Task, TaskGroup, UnattendedEntry, UnattendedRevert } from '../types';
 import { catalogRecordPlan, type CatalogRecordPlan, type CatalogRecordState } from './agentCatalogRevert';
 import { pantryRecordPlan, type PantryRecordPlan, type PantryRecordState } from './agentPantryRevert';
 
@@ -48,7 +48,7 @@ export interface RecordState extends PantryRecordState, CatalogRecordState {
   ruleList(type: RuleListName): unknown;
   hasNote(text: string): boolean;
   /** Where a calendar request stands, or null when it is gone. */
-  calendarRequest(id: string): { status: CalendarRequestStatus } | null;
+  calendarRequest(id: string): { status: CalendarRequestStatus; kind?: CalendarRequestKind } | null;
 }
 
 /**
@@ -98,7 +98,9 @@ export type AgentRecordPlan =
   | { kind: 'restoreRules'; type: RuleListName; rules: unknown }
   | { kind: 'noteRemove'; text: string }
   | { kind: 'noteAdd'; text: string }
-  | { kind: 'cancelCalendarRequest'; id: string }
+  // `what` and `proposed` only choose the confirmation's words: a suggestion
+  // nobody has tapped is skipped, a queued request is stopped.
+  | { kind: 'cancelCalendarRequest'; id: string; what: 'event' | 'deadline' | 'alarm'; proposed: boolean }
   | Exclude<PantryRecordPlan, { kind: 'none' }>
   | Exclude<CatalogRecordPlan, { kind: 'none' }>
   | { kind: 'none'; reason: string | null };
@@ -189,9 +191,14 @@ export function agentRecordPlan(entry: UnattendedEntry, state: RecordState): Age
       const request = state.calendarRequest(id);
       if (!request) return { kind: 'none', reason: 'Removed since' };
       switch (request.status) {
-        case 'pending': return { kind: 'cancelCalendarRequest', id };
-        case 'written': return { kind: 'none', reason: 'On your calendar' };
-        case 'failed': return { kind: 'none', reason: 'Not added' };
+        // A proposal is taken back the same way: the person has not tapped it.
+        case 'proposed':
+        case 'pending': {
+          const what = request.kind === 'task_alarm' ? 'alarm' : request.kind === 'task_deadline' ? 'deadline' : 'event';
+          return { kind: 'cancelCalendarRequest', id, what, proposed: request.status === 'proposed' };
+        }
+        case 'written': return { kind: 'none', reason: request.kind === 'task_alarm' ? 'Alarm set' : 'On your calendar' };
+        case 'failed': return { kind: 'none', reason: request.kind === 'task_alarm' ? 'Not set' : 'Not added' };
         case 'cancelled': return { kind: 'none', reason: 'Undone' };
       }
       return NONE;
@@ -245,7 +252,7 @@ export function agentRecordLabel(plan: AgentRecordPlan): string | null {
       return 'Restore';
     // Not "Cancel": the confirmation's own dismiss button already says that.
     case 'cancelCalendarRequest':
-      return 'Don’t add';
+      return plan.proposed ? 'Skip' : 'Don’t add';
     case 'none':
       return null;
   }

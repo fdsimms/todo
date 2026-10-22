@@ -30,6 +30,7 @@ import type {
   EventPeopleLink,
   CalendarRequest,
   CalendarRequestChanges,
+  CalendarRequestPayload,
   CalendarRequestStatus,
   MoodLevel,
   MoodLog,
@@ -2290,6 +2291,11 @@ function runInitDatabase(): void {
     "ALTER TABLE calendar_requests ADD COLUMN action TEXT NOT NULL DEFAULT 'create'",
     'ALTER TABLE calendar_requests ADD COLUMN target_request_id TEXT',
     'ALTER TABLE calendar_requests ADD COLUMN changes TEXT',
+    // 'event' on every existing row. See CalendarRequest.kind: the two task
+    // kinds name a task and carry their numbers in payload.
+    "ALTER TABLE calendar_requests ADD COLUMN kind TEXT NOT NULL DEFAULT 'event'",
+    'ALTER TABLE calendar_requests ADD COLUMN task_id TEXT',
+    'ALTER TABLE calendar_requests ADD COLUMN payload TEXT',
     // A window bound that follows the sun ("sunset-30"). NULL on every
     // existing row: a clock time stays a clock time. See Task.windowStartSun.
     'ALTER TABLE tasks ADD COLUMN window_start_sun TEXT',
@@ -8280,7 +8286,7 @@ export function dbDeleteEventPeopleLinks(ids: readonly string[]): void {
   for (const id of ids) db.runSync('DELETE FROM event_people_links WHERE id = ?', [id]);
 }
 
-const CALENDAR_REQUEST_STATUSES: readonly CalendarRequestStatus[] = ['pending', 'written', 'failed', 'cancelled'];
+const CALENDAR_REQUEST_STATUSES: readonly CalendarRequestStatus[] = ['proposed', 'pending', 'written', 'failed', 'cancelled'];
 
 function rowToCalendarRequest(row: Record<string, unknown>): CalendarRequest {
   const status = row.status as CalendarRequestStatus;
@@ -8303,7 +8309,22 @@ function rowToCalendarRequest(row: Record<string, unknown>): CalendarRequest {
     action: row.action === 'update' || row.action === 'delete' ? row.action : 'create',
     targetRequestId: (row.target_request_id as string | null) ?? null,
     changes: parseCalendarRequestChanges(row.changes),
+    // A kind from a newer peer reads as an event, which a task_ kind's epoch
+    // times make the drain expire rather than write.
+    kind: row.kind === 'task_deadline' || row.kind === 'task_alarm' ? row.kind : 'event',
+    taskId: (row.task_id as string | null) ?? null,
+    payload: parseCalendarRequestPayload(row.payload),
   };
+}
+
+function parseCalendarRequestPayload(raw: unknown): CalendarRequestPayload | null {
+  if (typeof raw !== 'string' || !raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === 'object' ? (parsed as CalendarRequestPayload) : null;
+  } catch {
+    return null;
+  }
 }
 
 function parseCalendarRequestChanges(raw: unknown): CalendarRequestChanges | null {
@@ -8331,11 +8352,12 @@ export function dbInsertCalendarRequest(r: CalendarRequest): void {
   db.runSync(
     `INSERT INTO calendar_requests
        (id, title, start_at, end_at, all_day, location, notes, status, failure_reason, event_external_id, resolved_at, created_at,
-        action, target_request_id, changes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        action, target_request_id, changes, kind, task_id, payload)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [r.id, r.title, r.startAt, r.endAt, r.allDay ? 1 : 0, r.location, r.notes, r.status,
       r.failureReason, r.eventExternalId, r.resolvedAt, r.createdAt,
-      r.action ?? 'create', r.targetRequestId ?? null, r.changes ? JSON.stringify(r.changes) : null]
+      r.action ?? 'create', r.targetRequestId ?? null, r.changes ? JSON.stringify(r.changes) : null,
+      r.kind ?? 'event', r.taskId ?? null, r.payload ? JSON.stringify(r.payload) : null]
   );
 }
 

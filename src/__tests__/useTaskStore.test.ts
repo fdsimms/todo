@@ -148,6 +148,10 @@ jest.mock('../db/database', () => ({
   dbGetAllEventPeopleLinks: jest.fn().mockReturnValue([]),
   dbUpsertEventPeopleLink: jest.fn(),
   dbDeleteEventPeopleLinks: jest.fn(),
+  // What an agent suggested rides the fan-out too (useAgentSuggestionStore).
+  dbGetAllCalendarRequests: jest.fn().mockReturnValue([]),
+  dbInsertCalendarRequest: jest.fn(),
+  dbResolveCalendarRequest: jest.fn(),
   // ...and its one-time migration off the old setting deletes that setting.
   dbDeleteSetting: jest.fn(),
   // The medication log rides the same fan-out, and completing a task carrying
@@ -2201,6 +2205,19 @@ describe('completeTask', () => {
 
     jest.advanceTimersByTime(1200);
     expect(useTaskStore.getState().tasks.find(t => t.id === 't1')?.pinned).toBe(true);
+  });
+
+  it('re-pins at its old rank when a completion is undone after the hold has unpinned it', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', pinned: true, pinnedOrder: 3 })] });
+    useTaskStore.getState().completeTask('t1');
+    jest.advanceTimersByTime(1200);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 't1')?.pinned).toBe(false);
+
+    useTaskStore.getState().uncompleteTask('t1');
+    const t = useTaskStore.getState().tasks.find(x => x.id === 't1');
+    expect(t?.completed).toBe(false);
+    expect(t?.pinned).toBe(true);
+    expect(t?.pinnedOrder).toBe(3);
   });
 
   it('cancels the reminder when completed', () => {

@@ -1634,7 +1634,21 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       const when = request.allDay ? `${replica.dayKeyOf(request.startAt)}, all day`
         : replica.dayKeyOf(request.startAt) === replica.dayKeyOf(request.endAt) ? `${replica.dayKeyOf(request.startAt)}, ${clockOf(request.startAt)} to ${clockOf(request.endAt)}`
           : `${replica.dayKeyOf(request.startAt)} ${clockOf(request.startAt)} to ${replica.dayKeyOf(request.endAt)} ${clockOf(request.endAt)}`;
-      log({ action: 'created', subject: 'event', title: request.title, taskId: null, recordId: request.id, note: `Ask the phone to add "${request.title}" to the calendar the next time it syncs: ${when}${request.location ? `, at ${request.location}` : ''}` });
+      const ask = request.status === 'proposed'
+        ? `Suggest adding "${request.title}" to the calendar, for the person to accept in their Inbox`
+        : `Ask the phone to add "${request.title}" to the calendar the next time it syncs`;
+      log({ action: 'created', subject: 'event', title: request.title, taskId: null, recordId: request.id, note: `${ask}: ${when}${request.location ? `, at ${request.location}` : ''}` });
+      return request;
+    },
+
+    // A card for the person to accept, so the entry says "suggest" and its
+    // undo is taking the card back while it is still one.
+    proposeTaskAction(input) {
+      const request = replica.proposeTaskAction(input);
+      const what = input.kind === 'task_deadline'
+        ? 'put its deadline on the calendar'
+        : `ring ${input.ringKind === 'persistent' ? 'repeating alarms' : 'an alarm'} at ${replica.dayKeyOf(input.alarmAt!)} ${clockOf(input.alarmAt!)}`;
+      log({ action: 'created', subject: 'event', title: request.title, taskId: null, recordId: request.id, note: `Suggest, for the person to accept in their Inbox, to ${what} for "${request.title}"` });
       return request;
     },
 
