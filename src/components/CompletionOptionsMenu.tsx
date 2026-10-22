@@ -20,6 +20,13 @@ interface Props {
   takeOffCount?: number;
   /** Takes the last logged unit off a target. */
   onTakeOff?: () => void;
+  /** Moves a chained task on one step without completing this one. Omitted on the last step. */
+  onNextStep?: () => void;
+  /** Moves a chained task back one step. Omitted on the first step. */
+  onPrevStep?: () => void;
+  /** Records a miss and ends the rest of the chain, rather than moving into its next step. */
+  onEndChain?: () => void;
+  onDuplicate?: () => void;
   onClose: () => void;
 }
 
@@ -31,7 +38,7 @@ interface Props {
  * that doesn't repeat has no next date to skip to, so it gets Mark missed
  * (which closes it) and the third.
  */
-export function CompletionOptionsMenu({ visible, anchor, onSkip, onMiss, onSomeoneElse, takeOffCount, onTakeOff, onClose }: Props) {
+export function CompletionOptionsMenu({ visible, anchor, onSkip, onMiss, onSomeoneElse, takeOffCount, onTakeOff, onNextStep, onPrevStep, onEndChain, onDuplicate, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const card = useCardSheet();
@@ -120,6 +127,76 @@ export function CompletionOptionsMenu({ visible, anchor, onSkip, onMiss, onSomeo
           <Text style={styles.detail}>Shows as done in your history, with no coins. Your streak is unchanged.</Text>
         </View>
       </TouchableOpacity>
+      {onNextStep && (
+        <>
+          <View style={styles.sep} />
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => choose(haptics.tap, onNextStep)}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel="Skip to the next step. This step isn’t completed."
+          >
+            <Ionicons name="play-forward-outline" size={iconSize.md} color={colors.accent} style={styles.icon} />
+            <View style={styles.text}>
+              <Text style={styles.label}>Skip to the next step</Text>
+              <Text style={styles.detail}>This step isn’t completed.</Text>
+            </View>
+          </TouchableOpacity>
+        </>
+      )}
+      {onPrevStep && (
+        <>
+          <View style={styles.sep} />
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => choose(haptics.tap, onPrevStep)}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel="Back a step"
+          >
+            <Ionicons name="play-back-outline" size={iconSize.md} color={colors.accent} style={styles.icon} />
+            <View style={styles.text}>
+              <Text style={styles.label}>Back a step</Text>
+            </View>
+          </TouchableOpacity>
+        </>
+      )}
+      {onEndChain && (
+        <>
+          <View style={styles.sep} />
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => choose(haptics.impactMedium, onEndChain)}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel="Mark missed and end the chain. Skips the rest of its steps for today."
+          >
+            <Ionicons name="stop-circle-outline" size={iconSize.md} color={colors.redText} style={styles.icon} />
+            <View style={styles.text}>
+              <Text style={[styles.label, styles.missLabel]}>Mark missed and end the chain</Text>
+              <Text style={styles.detail}>Skips the rest of its steps for today.</Text>
+            </View>
+          </TouchableOpacity>
+        </>
+      )}
+      {onDuplicate && (
+        <>
+          <View style={styles.sep} />
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => choose(haptics.tap, onDuplicate)}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel="Duplicate"
+          >
+            <Ionicons name="duplicate-outline" size={iconSize.md} color={colors.accent} style={styles.icon} />
+            <View style={styles.text}>
+              <Text style={styles.label}>Duplicate</Text>
+            </View>
+          </TouchableOpacity>
+        </>
+      )}
     </CardSheet>
   );
 }
