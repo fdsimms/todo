@@ -1010,6 +1010,19 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
       }
       return;
     }
+    // The permanent "no" Person.birthdayTaskOptOut / birthdayGiftTaskOptOut
+    // were declared for and nothing used to write: deleting the row removed
+    // only the task, so the next pass saw the same birthday in its window and
+    // handed it straight back. The source is `personId#year`, so the person is
+    // the part before the year.
+    case 'birthday':
+    case 'birthdayGift': {
+      const source = task.generatedKind === 'birthday' ? parseBirthdaySource(task) : parseBirthdayGiftSource(task);
+      if (!source) return;
+      const field = task.generatedKind === 'birthday' ? 'birthdayTaskOptOut' : 'birthdayGiftTaskOptOut';
+      usePersonStore.getState().updatePerson(source.personId, { [field]: value === false });
+      return;
+    }
     case 'supplyReorder': {
       const source = useTaskStore.getState().tasks.find(t => t.id === sourceId);
       if (!source || source.supplyCount === null) return;

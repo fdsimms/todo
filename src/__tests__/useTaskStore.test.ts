@@ -5687,6 +5687,86 @@ describe('checkReachOutTasks', () => {
   });
 });
 
+// ─── birthday opt-out ───────────────────────────────────────────────────────
+
+describe('deleting a birthday task', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+
+  const settings = (overrides: Record<string, unknown> = {}) => ({
+    dayResetTime: '00:00',
+    birthdayTasks: true,
+    birthdayLeadDays: 7,
+    birthdayTaskCategory: null,
+    birthdayGiftTasks: true,
+    birthdayGiftLeadDays: 14,
+    birthdayGiftTaskCategory: null,
+    newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+    titleRules: [],
+    collapsedCategories: [],
+    ...overrides,
+  });
+
+  // A birthday three days out: inside both lead windows.
+  const soon = new Date(Date.now() + 3 * 86_400_000);
+  const person = (): Person => ({
+    id: 'p1', name: 'Sarah', kind: 'individual', nickname: '', notes: '', sortOrder: 1,
+    archived: false, archivedAt: null, createdAt: new Date().toISOString(),
+    birthdayMonth: soon.getMonth() + 1, birthdayDay: soon.getDate(), birthYear: null,
+    birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false, pinned: false,
+    phoneNumber: null, email: null, linkUrl: null,
+    cadenceDays: null, nudgeOptIn: false, cadenceSetAt: null,
+    reachOutDeclinedAt: null, reachOutOfferDeclinedAt: null, askAbout: '',
+    backfillDismissedFields: [],
+    groupId: null,
+    location: null, faxNumber: null, address: null,
+  });
+
+  const live = (kind: 'birthday' | 'birthdayGift') =>
+    useTaskStore.getState().tasks.filter(t => t.generatedKind === kind && !t.completed && !t.archived);
+
+  beforeEach(() => {
+    useSettingsStore.getState.mockReturnValue(settings());
+    useTaskStore.setState({ tasks: [] });
+    usePersonStore.setState({ people: [person()], initialized: true });
+  });
+
+  // The bug this guards: nothing wrote birthdayTaskOptOut on a delete, so the
+  // next pass saw the same birthday in its window and recreated the task.
+  it('records the opt-out, so the next pass does not hand it back', () => {
+    useTaskStore.getState().checkBirthdayTasks();
+    expect(live('birthday')).toHaveLength(1);
+
+    useTaskStore.getState().deleteTask(live('birthday')[0].id);
+    expect(usePersonStore.getState().people[0].birthdayTaskOptOut).toBe(true);
+
+    useTaskStore.getState().checkBirthdayTasks();
+    expect(live('birthday')).toHaveLength(0);
+  });
+
+  it('undo clears the opt-out again', () => {
+    useTaskStore.getState().checkBirthdayTasks();
+    useTaskStore.getState().deleteTask(live('birthday')[0].id);
+    useTaskStore.getState().lastAction!.undo();
+
+    expect(usePersonStore.getState().people[0].birthdayTaskOptOut).toBe(false);
+  });
+
+  it('a deleted gift task opts out of the gift task only', () => {
+    useTaskStore.getState().checkBirthdayGiftTasks();
+    expect(live('birthdayGift')).toHaveLength(1);
+
+    useTaskStore.getState().bulkDeleteTasks([live('birthdayGift')[0].id]);
+    const after = usePersonStore.getState().people[0];
+    expect(after.birthdayGiftTaskOptOut).toBe(true);
+    expect(after.birthdayTaskOptOut).toBe(false);
+
+    useTaskStore.getState().checkBirthdayGiftTasks();
+    expect(live('birthdayGift')).toHaveLength(0);
+  });
+});
+
 describe('checkWaitingFollowUpTasks', () => {
   const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
     useSettingsStore: { getState: jest.Mock };
