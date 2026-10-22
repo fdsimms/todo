@@ -386,7 +386,9 @@ public class TodoScreenTimeBridgeModule: Module {
               segment(window.id, "", start, end)
             } else {
               segment(window.id, ".a", start, (23, 59, 59))
-              segment(window.id, ".b", (0, 0, 0), end)
+              // An allow window's blocked stretch can end at midnight (end 00:00
+              // with a start later in the day), which leaves no second half.
+              if window.endMinutes > 0 { segment(window.id, ".b", (0, 0, 0), end) }
             }
           }
           let wantedNames = Set(wanted.map { $0.0 })

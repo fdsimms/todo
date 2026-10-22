@@ -508,7 +508,7 @@ Where each component can appear.
 - `src/screens/settings/SettingsFocus.tsx` — on AutomationsScreen, ScreenTimeScreen, SettingsGroupScreen
 - `src/screens/settings/SettingsRow.tsx` — on AutomationsScreen, ScreenTimeScreen, SettingsGroupScreen
 - `src/screens/settings/SettingsSection.tsx` — on AutomationsScreen, ScreenTimeScreen, SettingsGroupScreen
-- `src/screens/settings/SettingsSegments.tsx` — on AutomationsScreen, SettingsGroupScreen
+- `src/screens/settings/SettingsSegments.tsx` — on AutomationsScreen, ScreenTimeScreen, SettingsGroupScreen
 - `src/screens/settings/StorageSettings.tsx` — on SettingsGroupScreen
 - `src/screens/settings/SyncSettings.tsx` — on SettingsGroupScreen
 - `src/screens/settings/TasksProjectsSettings.tsx` — on SettingsGroupScreen
