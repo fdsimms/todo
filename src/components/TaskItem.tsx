@@ -9,7 +9,7 @@
 // copy so two rows never claim one task id in the paint-select registry (see
 // the Pinning note in CLAUDE.md).
 import { countsUnits } from '../utils/streakUnits';
-import React, { useRef, useState, useMemo, useEffect } from 'react';
+import React, { createContext, useContext, useRef, useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -182,6 +182,7 @@ import { SortableList } from './SortableList';
 import { StepMinutes } from './StepMinutes';
 import { NumberPadAccessory } from './NumberPadAccessory';
 import { SpotlightScrim, useSpotlightLinger } from './SpotlightOverlay';
+import { DISCLOSURE_TIMING } from './AnimatedCollapsible';
 import { ProgressBar } from './ProgressBar';
 import { TextField } from './TextField';
 import { useActionMenu } from '../hooks/useActionMenu';
@@ -436,6 +437,86 @@ function filedOfferLabel(parsed: ParsedCategoryAndTags, categories: Parameters<t
 const markerFitCache = new Map<string, boolean>();
 const NBSP = '\u00A0';
 
+/**
+ * Whether another row on the screen is spotlighted (expanded) and this one
+ * should stand down, handed to the few views that react to it rather than
+ * passed through TaskItemRow's props.
+ *
+ * The flag flips on every row of the list at once, on the tap that expands
+ * one and again on the tap that closes it. As a prop it re-rendered every
+ * TaskItemRow on screen both times (and neither list virtualizes), all of it
+ * before the expand animation could start. Through this context, `TaskItem`
+ * below takes the prop, TaskItemRow's memo holds, and only SpotlightGate and
+ * the action buttons re-render. That holds only while nothing inside
+ * TaskItemRow's own body reads the flag; a new reader goes through
+ * `useContext(RowSpotlightDisabled)` in a small component of its own.
+ */
+const RowSpotlightDisabled = createContext(false);
+
+function SpotlitSwipeActionButtons({ enabled, ...rest }: React.ComponentProps<typeof SwipeActionButtons>) {
+  const spotlightDisabled = useContext(RowSpotlightDisabled);
+  return <SwipeActionButtons enabled={enabled && !spotlightDisabled} {...rest} />;
+}
+
+/**
+ * The swipe gesture, the Mac context menu and the dismiss-tap cover, which
+ * are what a row has to switch off while another row is spotlighted. Every
+ * caller ANDs spotlightDisabled with `!selectionMode`, so the two conditions
+ * can't both need the cover at once: it only ever renders while selectionMode
+ * is false.
+ *
+ * `children` (the row body) is an element built by TaskItemRow's last render,
+ * so a re-render that comes only from the context reuses it as is and doesn't
+ * descend into the row.
+ */
+function SpotlightGate({
+  selectionMode,
+  selectAction,
+  whenAction,
+  menuItems,
+  onMenuSelect,
+  onDismiss,
+  children,
+}: {
+  selectionMode: boolean;
+  selectAction: React.ComponentProps<typeof SwipeableRow>['selectAction'];
+  whenAction: React.ComponentProps<typeof SwipeableRow>['whenAction'];
+  menuItems: PointerMenuItem[] | undefined;
+  onMenuSelect: (id: string) => void;
+  onDismiss: () => void;
+  children: React.ReactNode;
+}) {
+  const spotlightDisabled = useContext(RowSpotlightDisabled);
+  return (
+    <SwipeableRow
+      enabled={!selectionMode && !spotlightDisabled}
+      // The three actions and their conditions are decided once, at
+      // `swipeWhen`, so the iPhone Mirroring menu offers the same set.
+      selectAction={selectAction}
+      whenAction={whenAction}
+    >
+      <PointerView menuItems={spotlightDisabled ? undefined : menuItems} onMenuSelect={onMenuSelect}>
+        <View pointerEvents={spotlightDisabled ? 'none' : 'auto'}>
+          {children}
+        </View>
+        {spotlightDisabled && (
+          // While another task is spotlighted this row must not react
+          // to touches itself — any tap on it just dismisses the spotlight.
+          // Hidden from accessibility for the same reason SpotlightOverlay's
+          // own scrim is: it covers a row that is still there and still
+          // labelled underneath it.
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={onDismiss}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          />
+        )}
+      </PointerView>
+    </SwipeableRow>
+  );
+}
+
 const TaskItemRow = React.memo(function TaskItem({
   task,
   onPress,
@@ -451,7 +532,6 @@ const TaskItemRow = React.memo(function TaskItem({
   selected = false,
   onSelect,
   onSwipeSelect,
-  spotlightDisabled = false,
   showCategory = false,
   showProject = false,
   showGroup = false,
@@ -1010,14 +1090,11 @@ const TaskItemRow = React.memo(function TaskItem({
     wasExpandedRef.current = expanded;
     // Timing rather than a spring: a spring is underdamped, so it overshoots
     // past 0 on collapse (clamped by the height interpolation), which reads as
-    // a jitter at the end. inOut easing accelerates and decelerates so the
-    // height change settles as one continuous motion.
+    // a jitter at the end. The curve is the shared disclosure one (ease-out,
+    // so the panel moves on the tap's own frame; see DISCLOSURE_TIMING).
     expansionProgress.value = withTiming(
       expanded ? 1 : 0,
-      {
-        duration: animation.duration.normal,
-        easing: Easing.inOut(Easing.cubic),
-      },
+      DISCLOSURE_TIMING,
       // `finished` is false when a re-tap interrupts this animation — the row is
       // expanding again, so it keeps the exemption and the next callback clears it.
       finished => {
@@ -4370,8 +4447,8 @@ const TaskItemRow = React.memo(function TaskItem({
       )}
 
       {showActions && (
-        <SwipeActionButtons
-          enabled={!selectionMode && !spotlightDisabled}
+        <SpotlitSwipeActionButtons
+          enabled={!selectionMode}
           whenAction={swipeWhen}
           selectAction={swipeSelect}
         />
@@ -5175,7 +5252,7 @@ const TaskItemRow = React.memo(function TaskItem({
   // the panel's trash, each under the condition that shows it on the row. Nothing new,
   // and nothing while bulk selecting (the row is a selection target then).
   // Built only on a Mac, the one place PointerView shows it.
-  const contextMenuItems: PointerMenuItem[] | undefined = !runningOnMac() || selectionMode || spotlightDisabled ? undefined : [
+  const contextMenuItems: PointerMenuItem[] | undefined = !runningOnMac() || selectionMode ? undefined : [
     ...(onEdit && !notice ? [pointerMenuItem('edit', 'Edit', 'pencil')] : []),
     ...(!task.completed && !completing && !isNegative && !isRotation
       ? [pointerMenuItem('complete', 'Complete', 'checkmark.circle')]
@@ -5269,38 +5346,21 @@ const TaskItemRow = React.memo(function TaskItem({
               which is what read as the swipe panel freezing instead of
               sliding shut. Disabling the gesture and overlaying a dismiss-tap
               Pressable keeps the same tree shape across both toggles.
-              Every caller ANDs spotlightDisabled with `!selectionMode`, so
-              the two conditions can't both need the overlay at once — it
-              only ever renders while selectionMode is false.
               No select panel unless the screen can actually bulk-select: a
               list without a bulk bar (Demo, say) would otherwise reveal an
-              accent panel whose handler is a no-op. */}
-          <SwipeableRow
-            enabled={!selectionMode && !spotlightDisabled}
-            // The three actions and their conditions are decided once, at
-            // `swipeWhen`, so the iPhone Mirroring menu offers the same set.
+              accent panel whose handler is a no-op.
+              spotlightDisabled itself is read inside SpotlightGate, not here:
+              see RowSpotlightDisabled for why. */}
+          <SpotlightGate
+            selectionMode={selectionMode}
             selectAction={swipeSelect}
             whenAction={swipeWhen}
-            >
-            <PointerView menuItems={contextMenuItems} onMenuSelect={handleContextMenu}>
-              <View pointerEvents={spotlightDisabled ? 'none' : 'auto'}>
-                {rowBody}
-              </View>
-              {spotlightDisabled && (
-                // While another task is spotlighted this row must not react
-                // to touches itself — any tap on it just dismisses the spotlight.
-                // Hidden from accessibility for the same reason SpotlightOverlay's
-                // own scrim is: it covers a row that is still there and still
-                // labelled underneath it.
-                <Pressable
-                  style={StyleSheet.absoluteFill}
-                  onPress={() => onPress(rowId)}
-                  accessibilityElementsHidden
-                  importantForAccessibility="no-hide-descendants"
-                />
-              )}
-            </PointerView>
-          </SwipeableRow>
+            menuItems={contextMenuItems}
+            onMenuSelect={handleContextMenu}
+            onDismiss={() => onPress(rowId)}
+          >
+            {rowBody}
+          </SpotlightGate>
           {expandedPanel}
           {/* A scrim drawn on top of the row rather than fading the row's own
               opacity — fading the whole card washes out low-contrast text
@@ -6392,8 +6452,17 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => {
  * `LockedTaskRow` (dates kept, title and the rest hidden) and the real row,
  * with all its hooks, mounts only once the project is unlocked.
  */
-export const TaskItem = React.memo(function TaskItem(props: React.ComponentProps<typeof TaskItemRow>) {
+export const TaskItem = React.memo(function TaskItem({
+  spotlightDisabled = false,
+  ...props
+}: React.ComponentProps<typeof TaskItemRow>) {
   const locked = useProjectLockStore(s => isProjectLockedAway(props.task.projectId, s.lockedIds, s.unlocked));
   if (locked) return <LockedTaskRow task={props.task} indented={props.indented} />;
-  return <TaskItemRow {...props} />;
+  // spotlightDisabled travels by context, so TaskItemRow's memo holds when it
+  // flips (see RowSpotlightDisabled).
+  return (
+    <RowSpotlightDisabled.Provider value={spotlightDisabled}>
+      <TaskItemRow {...props} />
+    </RowSpotlightDisabled.Provider>
+  );
 });

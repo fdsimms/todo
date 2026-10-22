@@ -4,13 +4,12 @@ import Reanimated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
-  Easing,
   type SharedValue,
 } from 'react-native-reanimated';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, animation, type Colors } from '../theme';
+import { spacing, radius, type Colors } from '../theme';
 import { SpotlightScrim } from './SpotlightOverlay';
-import { AnimatedCollapsible } from './AnimatedCollapsible';
+import { AnimatedCollapsible, DISCLOSURE_TIMING } from './AnimatedCollapsible';
 import { useRestKey } from '../hooks/useRestKey';
 
 /** Inner padding of the tray, and so the inset of everything inside it. */
@@ -121,10 +120,7 @@ export function TaskGroupTray({ collapsed = false, raised: raisedProp, children 
   const { restKey, onRest } = useRestKey();
 
   useEffect(() => {
-    fold.value = withTiming(collapsed ? 1 : 0, {
-      duration: animation.duration.normal,
-      easing: Easing.inOut(Easing.cubic),
-    }, onRest);
+    fold.value = withTiming(collapsed ? 1 : 0, DISCLOSURE_TIMING, onRest);
   }, [collapsed, fold]);
 
   const surfaceStyle = useAnimatedStyle(() => ({ opacity: 1 - fold.value }));

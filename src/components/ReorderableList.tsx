@@ -36,8 +36,11 @@ import { useScrollToTopVisibility } from '../hooks/useScrollToTopVisibility';
 import { strandedScrollOffset } from '../utils/scrollClamp';
 import { haptics } from '../utils/haptics';
 import { ScrollToTopButton } from './ScrollToTopButton';
+import { PaintSelectionSuspend } from './PaintSelection';
 
 const ROW_SHIFT_DURATION = 180;
+
+const NO_PARKED: never[] = [];
 
 /** Breathing room left above a row scrolled into view by scrollToKey. */
 const ROW_SCROLL_MARGIN = 24;
@@ -161,6 +164,21 @@ interface Props<T> {
    * for years; the nested drag card is where it finally showed.
    */
   rowElevated?: (item: T) => boolean;
+  /**
+   * Rows that are out of the list for now (Today's collapsed sections) but
+   * should stay built, so bringing them back is a style change rather than
+   * building every row in the section again. Drawn with `display: 'none'`
+   * and never part of `data`: the drag math, drop indices, `onReorder` and
+   * `scrollToKey` only ever see `data`, so a parked row can't be dragged,
+   * dropped beside, or measured.
+   *
+   * Only a row this list has already drawn is kept, so a section that has
+   * been shut since launch costs nothing until it is first opened. A key in
+   * both `data` and here is drawn from `data`. Rows go through the same
+   * keyed wrapper either way, so React keeps the row's instance as it moves
+   * between the two. They are suspended from paint selection while parked.
+   */
+  parked?: T[];
   /** Style for the slot shown where the dragged item will land. */
   placeholderStyle?: StyleProp<ViewStyle>;
   contentContainerStyle?: StyleProp<ViewStyle>;
@@ -348,6 +366,7 @@ export function ReorderableList<T>({
   dropIntoHeader = false,
   dragRange,
   rowElevated,
+  parked,
   placeholderStyle,
   contentContainerStyle,
   refreshControl,
@@ -502,6 +521,23 @@ export function ReorderableList<T>({
   // the gesture handlers always operate on the same array the user is seeing.
   const renderData = committedData ?? data;
   dataRef.current = renderData;
+  // See `parked`. Keys this list has drawn in `data`, so a parked row is kept
+  // only once it has been built for real; pruned to what either list still
+  // names. Assigned during render like dataRef, and idempotent if a render is
+  // run twice.
+  const drawnKeysRef = useRef(new Set<string>());
+  const renderKeys = new Set(renderData.map(keyExtractor));
+  const parkedKeys = new Set((parked ?? NO_PARKED).map(keyExtractor));
+  for (const key of drawnKeysRef.current) {
+    if (!renderKeys.has(key) && !parkedKeys.has(key)) drawnKeysRef.current.delete(key);
+  }
+  for (const key of renderKeys) drawnKeysRef.current.add(key);
+  const keptParked = parked
+    ? parked.filter(item => {
+        const key = keyExtractor(item);
+        return !renderKeys.has(key) && drawnKeysRef.current.has(key);
+      })
+    : NO_PARKED;
   // ==== syncing props, and resetting when the data changes ====
   useEffect(() => { onReorderRef.current = onReorder; }, [onReorder]);
   useEffect(() => { onDragEndRef.current = onDragEnd; }, [onDragEnd]);
@@ -537,9 +573,13 @@ export function ReorderableList<T>({
       }
     }
     // Same pruning for the cached drag callbacks, so a long-lived list doesn't
-    // accumulate one per key it has ever held.
+    // accumulate one per key it has ever held. A parked row keeps its own, so
+    // its `drag` prop is the same object when it comes back and a memoized row
+    // has nothing to re-render for. It does nothing while parked: the handler
+    // looks its key up in `data`.
+    const parkedLive = new Set((parked ?? NO_PARKED).map(keyExtractor));
     for (const key of Array.from(dragHandlersRef.current.keys())) {
-      if (!live.has(key)) dragHandlersRef.current.delete(key);
+      if (!live.has(key) && !parkedLive.has(key)) dragHandlersRef.current.delete(key);
     }
     // A ScrollView's native scroll offset isn't automatically clamped when its
     // content shrinks (e.g. a bulk edit removes most of the visible rows) —
@@ -1347,7 +1387,11 @@ export function ReorderableList<T>({
           />
         )}
         {renderData.length === 0 && ListEmptyComponent}
-        {renderData.map(item => {
+        {/* One array for both kinds of row, so a row moving between `data`
+            and `parked` keeps its key in the same child list and React moves
+            it rather than rebuilding it. Two `.map`s side by side would be two
+            lists, and a key can't carry across them. */}
+        {[...renderData.map(item => {
           const key = keyExtractor(item);
           // Rows render in their ORIGINAL order; displacement is purely a
           // transform, which keeps the scroll layout stable (so the transforms
@@ -1394,11 +1438,30 @@ export function ReorderableList<T>({
                   for it) and shows the drop-slot marker instead. */}
               {isPlaceholder && <View style={[StyleSheet.absoluteFill, placeholderStyle]} pointerEvents="none" />}
               <View style={isPlaceholder ? styles.placeholder : undefined}>
-                {renderItem({ item, drag: dragHandlerFor(key), isActive: false })}
+                <PaintSelectionSuspend suspended={false}>
+                  {renderItem({ item, drag: dragHandlerFor(key), isActive: false })}
+                </PaintSelectionSuspend>
               </View>
             </Animated.View>
           );
-        })}
+        }), ...keptParked.map(item => {
+          // The same element shape as a drawn row above, so the instance
+          // survives the move. No ref or onLayout: a parked row has no
+          // position, and recording one is what the data-change effect prunes.
+          const key = keyExtractor(item);
+          return (
+            <Animated.View key={key} pointerEvents="none" style={styles.parked}>
+              {/* Holds the placeholder's slot, so the View below sits at the
+                  same child index it has in a drawn row. */}
+              {null}
+              <View>
+                <PaintSelectionSuspend suspended>
+                  {renderItem({ item, drag: dragHandlerFor(key), isActive: false })}
+                </PaintSelectionSuspend>
+              </View>
+            </Animated.View>
+          );
+        })]}
         {ListFooterComponent}
       </ScrollView>
 
@@ -1452,6 +1515,8 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   scroll: { flex: 1 },
   placeholder: { opacity: 0 },
+  // See `parked`. Yoga skips the subtree and it takes no space or touches.
+  parked: { display: 'none' },
   // See the `rowElevated` prop. Same zIndex/elevation pair the rest of the
   // app reaches for to lift one row over its neighbours.
   rowElevated: {

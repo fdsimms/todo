@@ -284,7 +284,7 @@ Where each component can appear.
 - `src/components/NutritionSearchSheet.tsx` — on ArchivedScreen, BackfillScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, KitchenScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, +11 more
 - `src/components/NutritionTargetsSheet.tsx` — on FoodLogScreen, SettingsGroupScreen
 - `src/components/OfferBanner.tsx` — on FoodLogScreen, GroceryScreen, KitchenScreen, ProjectDetailScreen, ProjectsScreen, RecipeDetailScreen, RecipesScreen
-- `src/components/PaintSelection.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, LogbookScreen, MealPlanScreen, PeopleScreen, ProjectDetailScreen, ProjectsScreen, RecipeDetailScreen, RecipesScreen, +7 more
+- `src/components/PaintSelection.tsx` — on ArchivedScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, KitchenScreen, LogbookScreen, MealPlanScreen, PeopleScreen, ProjectDetailScreen, ProjectsScreen, +10 more
 - `src/components/PantryAnswerField.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, +6 more
 - `src/components/PantryCheckSheet.tsx` — on CalendarScreen, CategoryDetailScreen, ProjectDetailScreen, ProjectsScreen, StackDetailScreen, TagsScreen, TodayScreen
 - `src/components/PantryReviewSheet.tsx` — on KitchenScreen
