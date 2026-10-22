@@ -1,5 +1,5 @@
 import type { JournalEntry, MoodLog, Task } from '../types';
-import { journalLogUrl, journalTaskDayKey } from './journalTasks';
+import { journalLogUrl, journalMicUrl, journalTaskDayKey } from './journalTasks';
 import { hasLogOnDay, hasLoggedSince } from './moodLog';
 import { MOOD_LOG_LINK_URL, moodLogDayKey } from './moodTasks';
 import { timeSegmentThreshold } from './visibilityUtils';
@@ -43,6 +43,19 @@ export function recordLogUrl(task: Pick<Task, 'generatedKind'>): string | null {
     case 'journalLog': return journalLogUrl('journal');
     case 'dreamLog': return journalLogUrl('dream');
     case 'weighIn': return WEIGH_IN_LINK_URL;
+    default: return null;
+  }
+}
+
+/**
+ * The link that opens a journal or dream task's sheet already listening, or
+ * null for any other task. Only these two have a microphone: mood and weight
+ * are answered with a tap on a scale, not with words.
+ */
+export function recordMicUrl(task: Pick<Task, 'generatedKind'>): string | null {
+  switch (task.generatedKind) {
+    case 'journalLog': return journalMicUrl('journal');
+    case 'dreamLog': return journalMicUrl('dream');
     default: return null;
   }
 }

@@ -174,8 +174,11 @@ function JournalLogContent({ kind }: { kind: JournalKind }) {
   // `dundundun://journal?log=1` / `dreams?log=1`, the reminder task's link.
   // Stamped and tracked against what was handled, as MoodScreen's openLog is,
   // with the same `returnTo` hand-back once the sheet closes.
-  const routeInfo = useRoute<{ key: string; name: string; params?: { openLog?: number; openEntry?: string; returnTo?: string } }>();
+  const routeInfo = useRoute<{ key: string; name: string; params?: { openLog?: number; openEntry?: string; dictate?: number; returnTo?: string } }>();
   const [handledOpenLog, setHandledOpenLog] = useState<number | undefined>(undefined);
+  // `mic=1`, the row's microphone: the sheet opens already listening. Cleared
+  // when it closes, so reopening it any other way starts silent.
+  const [dictateOnOpen, setDictateOnOpen] = useState(false);
   const [returnTo, setReturnTo] = useState<string | undefined>(undefined);
   useEffect(() => {
     if (routeInfo.params?.openLog === undefined || routeInfo.params.openLog === handledOpenLog) return;
@@ -193,6 +196,7 @@ function JournalLogContent({ kind }: { kind: JournalKind }) {
       return;
     }
     setEditing(null);
+    setDictateOnOpen(routeInfo.params.dictate !== undefined);
     setSheetOpen(true);
     // `entries` is read when the link lands, not tracked: a later edit must not reopen it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -227,6 +231,7 @@ function JournalLogContent({ kind }: { kind: JournalKind }) {
   const closeSheet = () => {
     setSheetOpen(false);
     setEditing(null);
+    setDictateOnOpen(false);
     if (returnTo) {
       navigateToTab(returnTo);
       setReturnTo(undefined);
@@ -331,7 +336,7 @@ function JournalLogContent({ kind }: { kind: JournalKind }) {
 
   const sheet = (
     <>
-      <JournalEntrySheet visible={sheetOpen} kind={kind} editing={editing} onClose={closeSheet} />
+      <JournalEntrySheet visible={sheetOpen} kind={kind} editing={editing} dictateOnOpen={dictateOnOpen} onClose={closeSheet} />
       <JournalMonthSheet
         visible={monthOpen}
         kind={kind}

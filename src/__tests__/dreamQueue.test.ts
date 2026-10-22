@@ -8,8 +8,8 @@ describe('parseQueuedDreams', () => {
   });
 
   it('trims the text and keeps a dream whose moment is unreadable, filed as now', () => {
-    expect(parseQueuedDreams('[{"text":"  Flying ","at":"nonsense"}]')).toEqual([{ text: 'Flying', at: null }]);
-    expect(parseQueuedDreams('[{"text":"Flying"}]')).toEqual([{ text: 'Flying', at: null }]);
+    expect(parseQueuedDreams('[{"text":"  Flying ","at":"nonsense"}]')).toEqual([{ kind: 'dream', text: 'Flying', at: null }]);
+    expect(parseQueuedDreams('[{"text":"Flying"}]')).toEqual([{ kind: 'dream', text: 'Flying', at: null }]);
   });
 
   it('drops anything malformed without throwing', () => {
@@ -21,6 +21,15 @@ describe('parseQueuedDreams', () => {
 
   it('keeps the good records beside a bad one, in order', () => {
     expect(parseQueuedDreams('[{"text":"One"},{"text":7},{"text":"Two"}]').map(d => d.text)).toEqual(['One', 'Two']);
+  });
+
+  it('files a record by its kind, and one with none as a dream', () => {
+    const queued = parseQueuedDreams(
+      '[{"text":"A","kind":"journal"},{"text":"B"},{"text":"C","kind":"dream"},{"text":"D","kind":"other"}]',
+    );
+    expect(queued.map(d => [d.text, d.kind])).toEqual([
+      ['A', 'journal'], ['B', 'dream'], ['C', 'dream'], ['D', 'dream'],
+    ]);
   });
 
   it('cuts a dream to the entry limit', () => {

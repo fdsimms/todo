@@ -225,6 +225,7 @@ Where each component can appear.
 - `src/components/InventRecipeSheet.tsx` — on RecipesScreen
 - `src/components/ItemDisposalOffer.tsx` — on GroceryScreen, KitchenScreen, RecipeDetailScreen, RecipesScreen
 - `src/components/JournalDaySheet.tsx` — on JournalScreen, PersonDetailScreen
+- `src/components/JournalDictationBar.tsx` — on JournalScreen, MoodDayScreen
 - `src/components/JournalEntrySheet.tsx` — on JournalScreen, MoodDayScreen
 - `src/components/JournalFormatBar.tsx` — on JournalScreen, MoodDayScreen
 - `src/components/JournalMonthSheet.tsx` — on JournalScreen

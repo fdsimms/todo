@@ -143,6 +143,7 @@ import {
   isMedicationsUrl,
   journalUrlKind,
   journalUrlWantsLog,
+  journalUrlWantsMic,
   journalUrlEntryId,
   isProjectsUrl,
   projectsUrlPullId,
@@ -1150,9 +1151,19 @@ describe('journal and dreams links', () => {
   it('lands on the matching screen, opening the sheet when asked', () => {
     mockResetToJournal.mockClear();
     expect(openInAppUrl('dundundun://dreams?log=1')).toBe(true);
-    expect(mockResetToJournal).toHaveBeenCalledWith('dream', true, null);
+    expect(mockResetToJournal).toHaveBeenCalledWith('dream', true, null, false);
     expect(openInAppUrl('dundundun://journal')).toBe(true);
-    expect(mockResetToJournal).toHaveBeenLastCalledWith('journal', false, null);
+    expect(mockResetToJournal).toHaveBeenLastCalledWith('journal', false, null, false);
+  });
+
+  it('starts listening only with mic=1 or mic=true', () => {
+    expect(journalUrlWantsMic('dundundun://journal?log=1&mic=1')).toBe(true);
+    expect(journalUrlWantsMic('dundundun://dreams?mic=true&log=1')).toBe(true);
+    expect(journalUrlWantsMic('dundundun://journal?log=1')).toBe(false);
+    expect(journalUrlWantsMic('dundundun://mood?log=1&mic=1')).toBe(false);
+    mockResetToJournal.mockClear();
+    expect(openInAppUrl('dundundun://dreams?log=1&mic=1')).toBe(true);
+    expect(mockResetToJournal).toHaveBeenCalledWith('dream', true, null, true);
   });
 
   it('opens one entry by id, the link a note for later leaves on its day', () => {
@@ -1161,7 +1172,7 @@ describe('journal and dreams links', () => {
     expect(journalUrlEntryId('dundundun://mood?entry=x')).toBeNull();
     mockResetToJournal.mockClear();
     expect(openInAppUrl('dundundun://journal?entry=abc')).toBe(true);
-    expect(mockResetToJournal).toHaveBeenCalledWith('journal', false, 'abc');
+    expect(mockResetToJournal).toHaveBeenCalledWith('journal', false, 'abc', false);
   });
 });
 

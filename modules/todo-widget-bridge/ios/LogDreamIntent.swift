@@ -21,9 +21,14 @@ private enum PendingDreamStore {
     static let appGroupID = "group.com.fdsimms.dundundun"
     static let pendingFileName = "pending_dreams.json"
 
+    // `kind` is carried, never written here: LogJournalIntent.swift shares this
+    // file and tags its records "journal". append() re-encodes the whole queue,
+    // so a struct that dropped the field would turn a journal entry waiting
+    // beside this dream into a dream.
     struct PendingDream: Codable {
         let text: String
         let at: String
+        let kind: String?
     }
 
     static func fileURL() -> URL? {
@@ -83,7 +88,8 @@ struct LogDreamIntent: AppIntent {
         PendingDreamStore.append(
             PendingDreamStore.PendingDream(
                 text: trimmed,
-                at: ISO8601DateFormatter().string(from: Date())
+                at: ISO8601DateFormatter().string(from: Date()),
+                kind: nil
             )
         )
         return .result()

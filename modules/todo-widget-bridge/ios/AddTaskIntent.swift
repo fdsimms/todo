@@ -180,17 +180,16 @@ struct DundundunShortcuts: AppShortcutsProvider {
             shortTitle: "Start Workout",
             systemImageName: "dumbbell.fill"
         )
-        // The routine is an AppEntity, so it can be said inside the sentence,
-        // the way the pantry item and the medication are above. The app asks
-        // the system to read the names again whenever the routine list changes
-        // (writeWorkoutRoutineIndex in TodoWidgetBridgeModule.swift).
+        // Free text again, so no parameter in the phrase: Siri asks what to
+        // write down (LogJournalIntent.swift), the same way the dream does.
         AppShortcut(
-            intent: StartRoutineIntent(),
+            intent: LogJournalIntent(),
             phrases: [
-                "Start \(\.$routine) in \(.applicationName)",
+                "Write in my journal in \(.applicationName)",
+                "Log a journal entry in \(.applicationName)",
             ],
-            shortTitle: "Start a Routine",
-            systemImageName: "dumbbell"
+            shortTitle: "Log a Journal Entry",
+            systemImageName: "book"
         )
         // Nothing to fill in: one glass, the size set in the app
         // (ShortcutActionIntents.swift).
@@ -206,9 +205,10 @@ struct DundundunShortcuts: AppShortcutsProvider {
         // Free text again: Siri asks what to add (ShortcutActionIntents.swift).
         //
         // That makes ten, which is as many App Shortcuts as an app may have
-        // (the build fails past it). Log Mood and Open Screen are Shortcuts
-        // app actions with no phrase for that reason; a new phrase here has
-        // to replace one.
+        // (the build fails past it). Log Mood, Open Screen and Start a Routine
+        // (StartRoutineIntent, whose phrase "Start Push A in dundundun" gave way
+        // to the journal's) are Shortcuts app actions with no phrase for that
+        // reason; a new phrase here has to replace one.
         AppShortcut(
             intent: AddGroceryItemIntent(),
             phrases: [

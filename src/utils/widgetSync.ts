@@ -209,11 +209,11 @@ async function processPendingDoses(): Promise<void> {
   }
 }
 
-// Dreams said to Siri or the Action Button (LogDreamIntent): written into the
-// dream log, filed under the day they were said. Silent on arrival, like the
-// task capture: no navigation, so the journal lock stays closed. Saying one
-// also makes today's "write down a dream" reminder read ready, as saving it in
-// the sheet does; the tick stays the person's. Written through the store's own
+// Dreams and journal entries said to Siri or the Action Button (LogDreamIntent,
+// LogJournalIntent): written into the log each one names, filed under the day
+// they were said. Silent on arrival, like the task capture: no navigation, so
+// the journal lock stays closed. Saying one also makes today's reminder for that
+// log read ready, as saving it in the sheet does; the tick stays the person's. Written through the store's own
 // addEntry, which refuses blank text, so a malformed record costs nothing.
 async function processPendingDreams(): Promise<void> {
   const bridge = widgetBridge();
@@ -227,7 +227,7 @@ async function processPendingDreams(): Promise<void> {
     // would otherwise sort the new row into an empty list.
     if (!journal.initialized) journal.initialize();
     for (const dream of queued) {
-      useJournalStore.getState().addEntry('dream', dream.text, dream.at ?? undefined);
+      useJournalStore.getState().addEntry(dream.kind, dream.text, dream.at ?? undefined);
     }
     haptics.success();
   } catch {

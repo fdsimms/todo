@@ -1,7 +1,11 @@
 import AppIntents
 import Foundation
 
-// "Hey Siri, start my workout in dundundun." and "Start Push A in dundundun."
+// "Hey Siri, start my workout in dundundun." and, from the Shortcuts app,
+// "Start a Routine". That one has no built-in phrase any more: the app is at
+// the ten App Shortcuts iOS allows, and the journal's took its place (see the
+// provider in AddTaskIntent.swift). A person can still name a shortcut of their
+// own for it and say that.
 //
 // Two intents with one queue. StartWorkoutIntent takes nothing: which workout
 // "my workout" is (the one going, the workout task on Today, the one program's

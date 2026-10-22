@@ -24,7 +24,7 @@ jest.mock('../store/useSettingsStore', () => ({
   },
 }));
 
-import { isAnsweredByRecord, isRecordAnswered, recordLogUrl } from '../utils/recordTasks';
+import { isAnsweredByRecord, isRecordAnswered, recordLogUrl, recordMicUrl } from '../utils/recordTasks';
 import type { Task } from '../types';
 
 const of = (generatedKind: Task['generatedKind']) => ({ generatedKind });
@@ -39,6 +39,19 @@ describe('tasks a record answers', () => {
     for (const kind of [null, 'moodNudge', 'calendarReview'] as const) {
       expect(isAnsweredByRecord(of(kind))).toBe(false);
       expect(recordLogUrl(of(kind))).toBeNull();
+    }
+  });
+});
+
+describe('recordMicUrl', () => {
+  it('is the sheet link with mic=1 for a journal or dream task', () => {
+    expect(recordMicUrl(of('journalLog'))).toBe('dundundun://journal?log=1&mic=1');
+    expect(recordMicUrl(of('dreamLog'))).toBe('dundundun://dreams?log=1&mic=1');
+  });
+
+  it('is null for mood and weight, which are answered with a tap, and for any other task', () => {
+    for (const kind of [null, 'moodLog', 'weighIn', 'moodNudge'] as const) {
+      expect(recordMicUrl(of(kind))).toBeNull();
     }
   });
 });

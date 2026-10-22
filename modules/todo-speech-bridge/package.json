@@ -1,0 +1,7 @@
+{
+  "name": "todo-speech-bridge",
+  "version": "1.0.0",
+  "description": "Local Expo module that turns speech into text on the device with Speech's SFSpeechRecognizer, never sending audio anywhere, and falling back to unavailable everywhere it isn't linked.",
+  "main": "index.ts",
+  "private": true
+}

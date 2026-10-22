@@ -121,7 +121,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/dayTimeline.ts` — MINUTES_IN_DAY, DEFAULT_FIRST_HOUR, DEFAULT_LAST_HOUR, TimelineEntry, DayTimeline, DayTimelineInput, clockToDayMinutes, instantToDayMinutes, buildDayTimeline, SLOT_STEP_MINUTES, +1 more
 - `src/utils/deadlineCalendarSync.ts` — syncDeadlineEvent, deadlineEventLink, deleteDeadlineEvent, TaskEventSyncPlan, taskEventsAfterSync
 - `src/utils/decisionReview.ts` — ReviewAfter, REVIEW_AFTER_OPTIONS, isReviewAfter, reviewDueDay, canReviewDecision, reviewTaskDraft, DecisionOutcome, decisionOutcomes, pendingReviewOf
-- `src/utils/deepLinks.ts` — AddTaskLink, parseAddTaskUrl, handleIncomingUrl, isQuickAddUrl, isAddEventUrl, isOpenAppUrl, isGroceriesUrl, groceriesUrlFinish, groceriesLinkUrl, groceriesUrlShop, +54 more
+- `src/utils/deepLinks.ts` — AddTaskLink, parseAddTaskUrl, handleIncomingUrl, isQuickAddUrl, isAddEventUrl, isOpenAppUrl, isGroceriesUrl, groceriesUrlFinish, groceriesLinkUrl, groceriesUrlShop, +55 more
 - `src/utils/deliverables.ts` — DELIVERABLE_TEXT_MAX_LENGTH, DeliverableReasoning, DELIVERABLE_REASONING_MAX_LENGTH, cleanDeliverableReasoning, reasoningOf, DELIVERABLE_META, YES_NO_OPTIONS, DELIVERABLE_OPTIONS_MAX, isTentativeAnswer, RSVP_OPTIONS, +12 more
 - `src/utils/deloadPlan.ts` — DeloadDestination, DeloadProposal, DeloadPlan, buildDeloadPlan
 - `src/utils/demoHold.ts` — runOrHoldForDemo, replayHeldForDemo
@@ -130,6 +130,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/describedExercises.ts` — withCreatedExercises
 - `src/utils/deviceMetrics.ts` — startDeviceMetrics, readDevicePayloads
 - `src/utils/deviceTimeZone.ts` — DEVICE_TIME_ZONE_KEY, isValidTimeZone, currentTimeZone, recordDeviceTimeZone
+- `src/utils/dictation.ts` — DICTATION_BARS, joinDictation, pushLevel, barHeight, DictationRefusal, dictationRefusal
 - `src/utils/digitRoll.ts` — RollColumn, rollColumns, rollDirection
 - `src/utils/doseRecording.ts` — syncOkAgainNotification, allowOkAgainNotification, confirmWithinLimit, recordDose, unrecordDose, restoreDose
 - `src/utils/dreamQueue.ts` — QueuedDream, QUEUED_DREAM_MAX_LENGTH, parseQueuedDreams
@@ -240,7 +241,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/journalExport.ts` — JOURNAL_EXPORT_COLUMNS, PersonNamer, journalExportCsv, journalExportMarkdown, JournalExportFormat, journalExportFileName, journalExportSummary
 - `src/utils/journalHistory.ts` — JournalHistoryKind, JOURNAL_HISTORY_OPTIONS, canOfferJournalHistory, journalHistoryTitle, journalHistoryAt
 - `src/utils/journalMarkdown.ts` — InlineSpan, JournalBlock, parseInline, parseJournalMarkdown, SPOILER_PLAIN_TEXT, journalPlainText, EditSelection, FormatEdit, toggleWrap, continueListOnEnter, +2 more
-- `src/utils/journalTasks.ts` — JOURNAL_LOG_TITLE, JOURNAL_SNIPPET_TITLE, DREAM_LOG_TITLE, journalLogTitle, JOURNAL_TASK_KIND, journalLogUrl, journalTaskSourceId, journalTaskDayKey
+- `src/utils/journalTasks.ts` — JOURNAL_LOG_TITLE, JOURNAL_SNIPPET_TITLE, DREAM_LOG_TITLE, journalLogTitle, JOURNAL_TASK_KIND, journalMicUrl, journalLogUrl, journalTaskSourceId, journalTaskDayKey
 - `src/utils/keyScanAlert.ts` — alertKeyScanResult
 - `src/utils/keyScanQueue.ts` — QueuedKeyScan, QUEUED_KEY_CODE_MAX_LENGTH, parseQueuedKeyScans, keyCodeToken
 - `src/utils/keyShortcuts.ts` — KeyModifier, ShortcutAction, KeyShortcut, KEY_SHORTCUTS, shortcutById, shortcutKeys, describeShortcuts
@@ -424,7 +425,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/recipeTimer.ts` — CookTimerState, PrepTimerState, isCookTimerRunning, cookTimerElapsed, isPrepTimerRunning, prepTimerElapsed, hasRunningRecipeTimer, showsPrepRow, startCookingPlan, RecipeTimerReading, +2 more
 - `src/utils/recipeUrl.ts` — normalizeRecipeUrl, recipeImportedFrom, decodeEntities, htmlToText, metaContent, PageRecipe, parseIsoDuration, parseRecipeJsonLd, focusRecipeText, recipeToPlainText, +2 more
 - `src/utils/recipeUtils.ts` — parseRecipeIngredients, normalizeIngredient, makeIngredient, AndSplitPart, splitIngredientAnd, ingredientDedupeKey, duplicateIngredientIn, blockedIngredientNote, alreadyInRecipeNote, blockedReviewRows, +66 more
-- `src/utils/recordTasks.ts` — isAnsweredByRecord, recordLogUrl, RecordContext, isRecordAnswered
+- `src/utils/recordTasks.ts` — isAnsweredByRecord, recordLogUrl, recordMicUrl, RecordContext, isRecordAnswered
 - `src/utils/recurrenceLabels.ts` — recurrenceUnitLabel, ORDINAL_OPTIONS, MONTH_NAMES, MONTH_ABBREVIATIONS, RecurrenceRule, describeTaskRecurrence, recurrenceRuleOf, describeRecurrence
 - `src/utils/refreshGuard.ts` — RefreshGuard, createRefreshGuard
 - `src/utils/releaseBlocks.ts` — releaseAllBlocks, applyKeyScan
@@ -502,6 +503,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/slotIn.ts` — SLOT_IN_LIGHT_DAY_MAX, canSlotIn, effectiveSlotIn, slotInInUse, slotInFromCategory, isSlotHold, isSlotWaiting, slotWaitingSinceKey, isSlotInCandidate, SlotInDay, +7 more
 - `src/utils/snackNudgeTasks.ts` — DEFAULT_SNACK_NUDGE_FROM_HOUR, SNACK_NUDGE_FROM_HOUR_MIN, SNACK_NUDGE_FROM_HOUR_MAX, DEFAULT_SNACK_NUDGE_SHARE_PERCENT, SNACK_NUDGE_SHARE_PERCENT_MIN, SNACK_NUDGE_SHARE_PERCENT_MAX, SNACK_NUDGE_SHARE_PERCENT_STEP, clampSnackNudgeFromHour, clampSnackNudgeSharePercent, describeSnackNudgeHour, +4 more
 - `src/utils/snoozeEngine.ts` — SnoozeSuggestion, AWAY_PENALTY, computeSnoozeSuggestion
+- `src/utils/speechSupport.ts` — dictationSupported
 - `src/utils/stableLists.ts` — reuseUnchangedLists
 - `src/utils/standingSwaps.ts` — StandingSwap, StandingSwapMap, NO_STANDING_SWAPS, standingSwaps, eitherSwaps, standingSwapMap, SwappedIngredient, applyStandingSwap, describeStandingSwap
 - `src/utils/startWorkout.ts` — StartWorkoutInput, StartWorkoutResult, startWorkout
@@ -718,6 +720,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useDebouncedValue.ts` — useDebouncedValue
 - `src/hooks/useDeletedDoseUndo.ts` — useDeletedDoseUndo
 - `src/hooks/useDestinationForecast.ts` — DestinationForecastLines, useDestinationForecast
+- `src/hooks/useDictation.ts` — DictationState, useDictation
 - `src/hooks/useDragToDay.ts` — DayDragHandlers, DayDragSource, useDragToDay
 - `src/hooks/useElevatedCellRenderer.tsx` — useElevatedCellRenderer
 - `src/hooks/useElsewhereSearch.ts` — useElsewhereSearch

@@ -344,9 +344,15 @@ export function resetToFocusSession(): void {
  * Where `dundundun://journal` and `dundundun://dreams` land, with `log=1`
  * opening the writing sheet and `entry=<id>` opening that entry (a note to
  * your future self, from its reminder). `resetToMood`'s shape, `returnTo`
- * included.
+ * included. `dictate` (`mic=1`) also starts listening once the sheet is open,
+ * stamped like `openLog` so a second tap on the microphone starts again.
  */
-export function resetToJournal(kind: JournalKind, openLog = false, entryId: string | null = null): void {
+export function resetToJournal(
+  kind: JournalKind,
+  openLog = false,
+  entryId: string | null = null,
+  dictate = false,
+): void {
   const route = kind === 'dream' ? 'Dreams' : 'Journal';
   runWhenReady(() => {
     const opensSheet = openLog || entryId !== null;
@@ -357,6 +363,7 @@ export function resetToJournal(kind: JournalKind, openLog = false, entryId: stri
         ? {
             openLog: Date.now(),
             ...(entryId ? { openEntry: entryId } : {}),
+            ...(dictate && !entryId ? { dictate: Date.now() } : {}),
             returnTo: returnTo !== route ? returnTo : undefined,
           }
         : undefined
