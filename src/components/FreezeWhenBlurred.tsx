@@ -110,13 +110,34 @@ export function freezeWhenBlurred<P extends object>(Screen: React.ComponentType<
     const navigation = useNavigation();
     const [outer, setOuter] = useState('?');
     const [inner, setInner] = useState('?');
-    const onOuterLayout = useCallback((e: LayoutChangeEvent) => setOuter(sizeOf(e)), []);
-    const onInnerLayout = useCallback((e: LayoutChangeEvent) => setInner(sizeOf(e)), []);
+    // Everything below is a no-op unless the readout is on (Settings › About):
+    // every tab's wrapper renders on each tab switch, and reporting from all of
+    // them cost a state write per wrapper at the moment the destination draws.
+    const diagOn = isTabDiagEnabled();
+    const onOuterLayout = useCallback((e: LayoutChangeEvent) => {
+      if (diagOn) setOuter(sizeOf(e));
+    }, [diagOn]);
+    const onInnerLayout = useCallback((e: LayoutChangeEvent) => {
+      if (diagOn) setInner(sizeOf(e));
+    }, [diagOn]);
+    // How long the render that focused this tab took to commit: the cost of a
+    // switch to it (a thaw, or the first mount). Started in the render that
+    // first sees `focused`, read in the effect after that commit.
+    const wasFocused = useRef(false);
+    const thawStart = useRef<number | null>(null);
+    const lastThawMs = useRef<number | null>(null);
+    if (diagOn && focused && !wasFocused.current) thawStart.current = performance.now();
+    wasFocused.current = focused;
     const modeSince = useRef({ mode, at: Date.now() });
     if (modeSince.current.mode !== mode) modeSince.current = { mode, at: Date.now() };
     const renders = useRef(0);
     renders.current += 1;
     useEffect(() => {
+      if (!diagOn) return;
+      if (thawStart.current !== null) {
+        lastThawMs.current = Math.round(performance.now() - thawStart.current);
+        thawStart.current = null;
+      }
       reportTabDiag(route.name, {
         focused,
         navFocused: navigation.isFocused(),
@@ -129,6 +150,7 @@ export function freezeWhenBlurred<P extends object>(Screen: React.ComponentType<
         inner,
         renders: renders.current,
         committedAt: Date.now(),
+        thawMs: lastThawMs.current,
       });
     });
     useEffect(() => {
@@ -169,6 +191,8 @@ type TabDiagEntry = {
   inner: string;
   renders: number;
   committedAt: number;
+  /** Focus render to commit, last time this tab was switched to. */
+  thawMs: number | null;
 };
 
 const tabDiag = new Map<string, TabDiagEntry>();
@@ -268,7 +292,7 @@ function BlankTabReadout({ currentTab }: { currentTab: () => string | undefined 
       : `tab=${tab} focused=${flag(entry.focused)} nav=${flag(entry.navFocused)} sheet=${flag(entry.sheet)} ` +
         `want=${flag(entry.want)} settled=${flag(entry.settled)} mode=${entry.mode} ${ago(entry.modeAt)} ` +
         `outer=${entry.outer} inner=${entry.inner} renders=${entry.renders} ` +
-        `mounts=${tabDiagMounts.get(tab) ?? 0} commit=${ago(entry.committedAt)}` +
+        `mounts=${tabDiagMounts.get(tab) ?? 0} commit=${ago(entry.committedAt)} thaw=${entry.thawMs ?? '?'}ms` +
         (others ? ` | also ${others}` : '');
   return (
     <View pointerEvents="none" style={diagStyles.readoutWrap}>
