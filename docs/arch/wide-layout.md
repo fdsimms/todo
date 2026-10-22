@@ -95,8 +95,8 @@ they always were, and a tap pushes the page. Four things to know:
 ## The Mac's own conventions (phase 5)
 
 An iPad app on a Mac can't have a Mac toolbar, a title bar of its own, AppKit controls, a menu
-bar extra or (here) a second window: those need a Mac Catalyst build or the desktop client
-(`docs/arch/desktop-client.md`). What it can have is below, all of it in
+bar extra or (here) a second window: those need a Mac Catalyst build or a separate desktop
+client. What it can have is below, all of it in
 `modules/todo-key-commands` with the rules in `src/utils/macMenu.ts`. None of it has run on a Mac;
 the native half was written against Apple's declarations and can only be checked by a build.
 
