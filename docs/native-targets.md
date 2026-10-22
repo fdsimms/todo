@@ -196,12 +196,21 @@ the two runs compare exactly, which is how to prove a refactor left a target unc
   holds. With no API key, or the estimate feature off, the meal sits there marked as not estimated
   rather than vanishing. Written without a compiler, as the intents above were.
 - **`ToggleKeyLockIntent` (`modules/todo-widget-bridge/ios/ToggleKeyLockIntent.swift`) is `LogDreamIntent`'s shape with a code in place of the text.** One `String` parameter, the key's token; `perform()` appends `{ code, at }` to `pending_key_scans.json` and the app checks it against the key list on the next foreground (`processPendingKeyScans`, `src/utils/keyScanQueue.ts`). **It is deliberately not in `DundundunShortcuts`**: an intent in no provider still shows as an action in the Shortcuts app, which is the one place it should be, and has no Siri phrase. Why a code rather than the tag is in `docs/arch/nfc-key.md`. Written without a compiler, as the one above was.
+- **`LogJournalIntent` (`modules/todo-widget-bridge/ios/LogJournalIntent.swift`) is `LogDreamIntent`
+  for the journal, and shares its queue.** Siri asks "What do you want to write down?" and the record
+  is `{ text, at, kind: "journal" }` in `pending_dreams.json`; a record with no `kind` is a dream, so
+  the older intent's records read as before. **Both intents' structs and the drain's payload carry
+  `kind`**, because each re-encodes the whole file: one that dropped it would file a journal entry
+  waiting in the queue as a dream. Written without a compiler, as the dream intent was.
 - **`StartWorkoutIntent.swift` holds two intents and one queue.** `StartWorkoutIntent` takes
-  nothing ("Start my workout in dundundun") and `StartRoutineIntent` names a routine inside the
-  phrase, so its routine is an `AppEntity` with `MarkDisposedIntent`'s query over an index
+  nothing ("Start my workout in dundundun") and `StartRoutineIntent` names a routine, so its routine
+  is an `AppEntity` with `MarkDisposedIntent`'s query over an index
   (`siri_workout_routines.json`, `src/utils/workoutSiri.ts`). Both append `{ routineId, name, at }`
   to `pending_workout_starts.json` and open the app, which starts the newest one
-  (`processPendingWorkoutStarts`). Main app only: no widget names them. Written without a
+  (`processPendingWorkoutStarts`). Main app only: no widget names them. **`StartRoutineIntent` is not
+  in `DundundunShortcuts`**: the provider is at iOS's limit of ten App Shortcuts, so the journal took
+  that phrase and the routine start is a Shortcuts action only (`Log Mood` and `Open Screen` are the
+  others). A new phrase has to replace one of the ten. Written without a
   compiler, copying `LogMedicationIntent.swift` line for line.
 - **`ShortcutActionIntents.swift` holds four intents and one queue**: Log Water (optional glass
   count), Log Mood (an optional `AppEnum` level; none opens the mood log), Add to Grocery List

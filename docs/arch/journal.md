@@ -243,13 +243,14 @@ a prompt can be personal ("what am I not telling Sam?") and is not on the synced
 `sealShortcuts` offers a month, six months, a year and New Year's Day beside the date picker. There
 is no "on my birthday": the app doesn't hold the person's own birthday, only other people's.
 
-## Saying a dream to Siri
+## Saying a dream or a journal entry to Siri
 
-`LogDreamIntent` queues `{ text, at }` in the App Group and the app writes it as a dream on the
-next foreground (`docs/native-targets.md`). It can only add: nothing reads the journal, and the app
+`LogDreamIntent` ("Log a dream in dundundun") and `LogJournalIntent` ("Write in my journal in
+dundundun") queue `{ text, at, kind }` in one App Group file and the app writes each into its own log
+on the next foreground (`docs/native-targets.md`). A record with no `kind` is a dream. It can only add: nothing reads the journal, and the app
 navigates nowhere, so the Face ID lock is untouched. The queue file holds the words in plain
 text until the app drains it, the same as a task title queued by `AddTaskIntent`. Saying one for
-today answers that day's dream reminder.
+today answers that day's reminder for that log.
 
 ## Dictating an entry
 

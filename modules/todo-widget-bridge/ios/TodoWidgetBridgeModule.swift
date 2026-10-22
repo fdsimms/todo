@@ -74,11 +74,15 @@ private struct PendingDosePayload: Codable {
   let at: String
 }
 
-// Mirrors what LogDreamIntent queues and what processPendingDreams() in
-// widgetSync.ts expects back. `at` is the ISO 8601 moment Siri was asked.
+// Mirrors what LogDreamIntent and LogJournalIntent queue and what
+// processPendingDreams() in widgetSync.ts expects back. `at` is the ISO 8601
+// moment Siri was asked. `kind` is "journal" for a journal entry and absent for
+// a dream; it has to survive the decode and re-encode in drainPendingDreams or
+// every journal entry would be filed as a dream.
 private struct PendingDreamPayload: Codable {
   let text: String
   let at: String
+  let kind: String?
 }
 
 // Mirrors what LogFoodIntent queues and what processPendingFoods() in
@@ -567,7 +571,8 @@ public class TodoWidgetBridgeModule: Module {
       return json
     }
 
-    // Reads and clears the queue LogDreamIntent writes ("log a dream"). The
+    // Reads and clears the queue LogDreamIntent and LogJournalIntent write ("log a
+    // dream", "write in my journal"). The
     // same read-and-delete shape as drainPendingDoses: a corrupt file is
     // deleted rather than failing on every launch.
     AsyncFunction("drainPendingDreams") { () -> String in
