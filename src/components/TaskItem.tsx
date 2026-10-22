@@ -1415,7 +1415,8 @@ const TaskItemRow = React.memo(function TaskItem({
   // in `GeneratedKindSpec.notice` — here it only decides what the row offers.
   // Everything it drops is task management (reschedule, duplicate, pin, Edit,
   // renaming, adding subtasks); the checkbox, the meta chips and the link
-  // button are untouched, because those are how a notice is read and answered.
+  // button (the sparkles one, back to its automation) are untouched, because
+  // those are how a notice is read and answered.
   const notice = isNoticeTask(task);
 
   // The row's swipe actions, decided once so SwipeableRow and the iPhone
@@ -1489,9 +1490,30 @@ const TaskItemRow = React.memo(function TaskItem({
   // those the panel is empty, so the row doesn't expand at all rather than
   // animating open onto nothing (the meal-plan nudge, whose detail is the Meal
   // Plan screen its link button opens).
+  // Every notice is a generated row, so its panel always holds the link back to
+  // its automation (`automationLinkButton`), which is why none is empty now.
   const noticeHasPanel =
-    task.notes.length > 0 || subtasks.length > 0 || task.generatedKind === 'calendarReview';
+    task.notes.length > 0 || subtasks.length > 0 || task.generatedKind != null;
   const expandable = !notice || noticeHasPanel;
+
+  // Back to where the app was told to write this: the generator's row on
+  // Automations, or its rule list. Shared by the action row and a notice's
+  // panel, which drops the rest of that row. `null`: Automations is a tab
+  // screen, which openSettingsTarget reaches through navigateToTab and so
+  // needs no navigation object.
+  const automationLinkButton = task.generatedKind && !task.completed ? (
+    <PressableScale
+      style={styles.iconActionBtn}
+      onPress={async () => {
+        await haptics.tap();
+        navigateToSettingsEntry(null, automationEntryIdFor(task.generatedKind!));
+      }}
+      hitSlop={8}
+      accessibilityLabel={`Open automation settings for ${task.title}`}
+    >
+      <Ionicons name="sparkles-outline" size={iconSize.sm} color={colors.textSecondary} />
+    </PressableScale>
+  ) : null;
 
   // A "Shop for Tue ragù" row's own answer: how many lines are still to buy,
   // right now — never stored on the task, since the number moves as the
@@ -5066,22 +5088,7 @@ const TaskItemRow = React.memo(function TaskItem({
                       generator's row on Automations, or its rule list. In the
                       panel rather than on the collapsed row, which is already
                       spending its width on the row's own link and the pin. */}
-                  {task.generatedKind && !task.completed && (
-                    <PressableScale
-                      style={styles.iconActionBtn}
-                      onPress={async () => {
-                        await haptics.tap();
-                        // `null`: Automations is a tab screen, which
-                        // openSettingsTarget reaches through navigateToTab and
-                        // so needs no navigation object.
-                        navigateToSettingsEntry(null, automationEntryIdFor(task.generatedKind!));
-                      }}
-                      hitSlop={8}
-                      accessibilityLabel={`Open automation settings for ${task.title}`}
-                    >
-                      <Ionicons name="sparkles-outline" size={iconSize.sm} color={colors.textSecondary} />
-                    </PressableScale>
-                  )}
+                  {automationLinkButton}
                   <PressableScale
                     style={[styles.iconActionBtn, styles.iconActionBtnAccent]}
                     onPress={() => onEdit(task.id)}
@@ -5091,6 +5098,14 @@ const TaskItemRow = React.memo(function TaskItem({
                     <Ionicons name="create-outline" size={iconSize.sm} color={colors.accent} />
                   </PressableScale>
                 </View>
+              </View>
+            )}
+
+            {/* A notice drops the action row above, but its way back to the
+                automation that wrote it stays. */}
+            {notice && automationLinkButton && (
+              <View style={styles.editSection}>
+                <View style={styles.editSectionRight}>{automationLinkButton}</View>
               </View>
             )}
           </>
