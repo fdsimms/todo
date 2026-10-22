@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View, type LayoutChangeEvent, type StyleProp, type TextStyle } from 'react-native';
 import Reanimated, {
   interpolateColor,
-  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
@@ -10,6 +9,7 @@ import Reanimated, {
 } from 'react-native-reanimated';
 import { animation } from '../theme';
 import { useReduceMotion } from '../utils/useReduceMotion';
+import { useRestKey } from '../hooks/useRestKey';
 
 /**
  * A row of separate pills whose highlight slides from one to the next, rather
@@ -29,18 +29,9 @@ import { useReduceMotion } from '../utils/useReduceMotion';
  * renders a whole new list as it happens, which is exactly when an animation
  * left on the JS thread would stutter.
  *
- * The animated views are remounted each time the highlight comes to rest
- * (`epoch`). Reanimated 4 hands a settled animation's values back to React by
- * polling (FORCE_REACT_RENDER_FOR_SETTLED_ANIMATIONS): about a second after
- * the last frame it sets them as state on the animated component, and that
- * state goes after every style React passes, on every later commit. The
- * native side forgets a value two seconds after its last frame whether or not
- * JS took it, so a handover missed (the JS thread busy rendering the list the
- * switch just asked for, or the tab frozen and its views unregistered) leaves
- * that state holding the frame before. The next re-render of the row (a badge
- * count, the tab thawing) then commits the highlight back onto the pill it
- * left, with the labels coloured for the pill it is now on. A fresh view has
- * no such state: its first render reads the shared values as they now stand.
+ * The animated views are keyed on `epoch` (useRestKey), or a missed handover
+ * of the settled position puts the highlight back on the pill it left while
+ * the labels are coloured for the one it is on.
  */
 export interface PillFrame { x: number; y: number; width: number; height: number }
 
@@ -63,8 +54,7 @@ export function usePillHighlight(activeKey: string): PillHighlight {
   const reduceMotion = useReduceMotion();
   const frames = useRef(new Map<string, PillFrame>()).current;
   const [, setMeasured] = useState(0);
-  const [epoch, setEpoch] = useState(0);
-  const rested = () => setEpoch(n => n + 1);
+  const { restKey: epoch, rested, onRest } = useRestKey();
   const x = useSharedValue(0);
   const y = useSharedValue(0);
   const width = useSharedValue(0);
@@ -87,17 +77,12 @@ export function usePillHighlight(activeKey: string): PillHighlight {
       jumpTo(f);
       return;
     }
-    // Each spring settles on its own schedule, so each one that finishes
-    // remounts; the last of them is the one that matters. `finished` is false
-    // when a retarget cuts one short, and the retarget's own spring takes over.
-    const done = (finished?: boolean) => {
-      'worklet';
-      if (finished) runOnJS(rested)();
-    };
-    x.value = withSpring(f.x, animation.spring.snappy, done);
-    y.value = withSpring(f.y, animation.spring.snappy, done);
-    width.value = withSpring(f.width, animation.spring.snappy, done);
-    height.value = withSpring(f.height, animation.spring.snappy, done);
+    // Each spring settles on its own schedule, so each one remounts as it
+    // finishes; the last of them is the one that matters.
+    x.value = withSpring(f.x, animation.spring.snappy, onRest);
+    y.value = withSpring(f.y, animation.spring.snappy, onRest);
+    width.value = withSpring(f.width, animation.spring.snappy, onRest);
+    height.value = withSpring(f.height, animation.spring.snappy, onRest);
   };
   // Anything waiting on a frame: a first placement, or a hand-over from
   // another screen's row (slideFrom) whose pills weren't measured yet.
@@ -172,9 +157,7 @@ export function PillHighlightLayer({ highlight, keys, restColor, activeColor, ra
     width: width.value,
     height: height.value,
   }));
-  // Keyed on `epoch`, so the frame React commits for it is the one it rests
-  // on now rather than one Reanimated last managed to hand back (see the note
-  // at the top of the file). It's hidden until the pills are placed.
+  // Keyed on `epoch` (useRestKey). Hidden until the pills are placed.
   return (
     <>
       {keys.map(key => {
