@@ -138,7 +138,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked, confirmFirst }: Props)
   // is owed, which is easy to drop when the completion arrives from a sheet
   // rather than from the tap.
   const runComplete = async (deliverableValue?: string | null, deliverableReasoning?: DeliverableReasoning) => {
-    await (isChainFinish(task) ? haptics.chainFinish() : haptics.success());
+    void (isChainFinish(task) ? haptics.chainFinish() : haptics.success());
     // The same pop a task's own circle gives a check, so this box doesn't read
     // as a different control from the row it stands in for.
     if (!reduceMotion) {
@@ -153,12 +153,13 @@ export function TaskCheckbox({ task, taskLabel, onTicked, confirmFirst }: Props)
     completeTask(task.id, deliverableValue !== undefined ? { deliverableValue, deliverableReasoning } : undefined);
   };
 
-  // Every branch below awaits its haptic before it writes anything, and the
-  // store call is what makes `action` read differently next time — so without
-  // this, two taps landing inside that await both see 'complete' and both run
-  // it. On a recurring task that's two occurrences spawned for one tick. The
-  // window is only as long as the haptic, so a real second tap (a burst of
-  // quota units, say) is never swallowed.
+  // The branches that open a sheet or warn await their haptic before they do
+  // anything, and the store call is what makes `action` read differently next
+  // time — so without this, two taps landing inside that await both see the
+  // same action and both run it. The ticking branches (complete, uncomplete,
+  // log-unit) don't await, since the haptic must not hold the visual back, and
+  // write synchronously. The window is only as long as the haptic, so a real
+  // second tap (a burst of quota units, say) is never swallowed.
   const busyRef = useRef(false);
 
   const handlePress = async () => {
@@ -247,7 +248,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked, confirmFirst }: Props)
         return;
       }
       case 'log-unit':
-        await haptics.impactLight();
+        haptics.impactLight();
         scale.setValue(1);
         if (!reduceMotion) {
           Animated.sequence([
@@ -261,7 +262,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked, confirmFirst }: Props)
         // The tap right after a target's last unit is the same burst, not a
         // decision to take the day back (see isStrayTapOnFinishedTarget).
         if (isStrayTapOnFinishedTarget(task, Date.now())) return;
-        await haptics.tap();
+        haptics.tap();
         onTicked?.(task.id);
         animateLayout();
         uncompleteTask(task.id);
