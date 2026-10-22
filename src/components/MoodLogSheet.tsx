@@ -528,9 +528,6 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
 
       <View style={styles.card}>
         <Text style={styles.groupLabel}>RATINGS</Text>
-        <HelpText style={styles.hint}>
-          Rate anything you want to track from 1 to 5, like stress or energy. Add your own.
-        </HelpText>
         <PillGroup
           noun="rating"
           surface="card"
