@@ -16,6 +16,9 @@ import {
   isAsNeededMedication,
   logsOnDay,
   medicationFor,
+  medicationsFor,
+  parseMedicationExtras,
+  MAX_MEDICATION_EXTRAS,
   medicationKey,
   medicationLogSummary,
   medicationStats,
@@ -319,6 +322,62 @@ describe('frequencyTrend', () => {
     ];
     const trend = frequencyTrend(logs, 'ibuprofen', '2026-09-11', 7);
     expect(trend).toEqual({ recent: 1, previous: 3, days: 7 });
+  });
+});
+
+describe('medicationsFor and extras', () => {
+  const base = { medicationName: 'Iron', medicationAmount: 1, medicationUnit: 'capsule' as string | null, medicationExtras: [
+    { name: 'Vitamin C', amount: 500, unit: 'mg' },
+    { name: ' iron ', amount: null, unit: null },
+    { name: 'Zinc', amount: null, unit: null },
+  ] };
+
+  it('records the main dose and each distinct extra, and drops one naming the main medicine again', () => {
+    expect(medicationsFor(base)).toEqual([
+      { name: 'Iron', amount: 1, unit: 'capsule' },
+      { name: 'Vitamin C', amount: 500, unit: 'mg' },
+      { name: 'Zinc', amount: null, unit: null },
+    ]);
+  });
+
+  it('records nothing without a main medicine: the name is the switch', () => {
+    expect(medicationsFor({ ...base, medicationName: null })).toEqual([]);
+    expect(medicationsFor({ ...base, medicationName: '  ' })).toEqual([]);
+  });
+
+  it('leaves the extras out beside a chain step that names its own medicine', () => {
+    const chainItems = [
+      { id: 's1', title: 'Step', estimatedMinutes: null, deliverableKind: null, medicationName: 'Sertraline' },
+      { id: 's2', title: 'Next', estimatedMinutes: null, deliverableKind: null },
+    ] as unknown as ChainItem[];
+    expect(medicationsFor({ ...base, chainEnabled: true, chainIndex: 0, chainItems } as never)).toEqual([
+      { name: 'Sertraline', amount: null, unit: null },
+    ]);
+  });
+
+  it('counts a task as scheduling every medicine it records', () => {
+    const task = { ...base, completed: false, archived: false, parentId: null, recurrenceType: 'daily' as const };
+    expect(hasScheduledTask([task], 'Vitamin C')).toBe(true);
+    expect(hasScheduledTask([task], 'Iron')).toBe(true);
+    expect(hasScheduledTask([task], 'Magnesium')).toBe(false);
+  });
+
+  it('reads a stored list back: well-formed entries only, a dose as a pair or not at all', () => {
+    expect(parseMedicationExtras(JSON.stringify([
+      { name: 'A', amount: 5, unit: 'mg' },
+      { name: 'B', amount: 5, unit: null },
+      { name: 'C', amount: 0, unit: 'mg' },
+      { name: '', amount: 1, unit: 'mg' },
+      'junk',
+    ]))).toEqual([
+      { name: 'A', amount: 5, unit: 'mg' },
+      { name: 'B', amount: null, unit: null },
+      { name: 'C', amount: null, unit: null },
+    ]);
+    expect(parseMedicationExtras('not json')).toEqual([]);
+    expect(parseMedicationExtras(null)).toEqual([]);
+    const many = Array.from({ length: MAX_MEDICATION_EXTRAS + 3 }, (_, i) => ({ name: `M${i}`, amount: null, unit: null }));
+    expect(parseMedicationExtras(many)).toHaveLength(MAX_MEDICATION_EXTRAS);
   });
 });
 

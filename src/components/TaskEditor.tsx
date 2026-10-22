@@ -59,7 +59,7 @@ import { addDays } from 'date-fns/addDays';
 import { subDays } from 'date-fns/subDays';
 import { subMinutes } from 'date-fns/subMinutes';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
-import type { Task, Priority, Effort, FollowUpTaskDraft, RecurrenceType, HolidayRule, ChainItem, RotationItem, DeliverableKind, TimeOfDay, ReminderKind, Polarity, Difficulty, QuotaPeriod, WeatherCondition, NutrientKey, MealSlot, AnswerGate } from '../types';
+import type { Task, Priority, Effort, FollowUpTaskDraft, RecurrenceType, HolidayRule, ChainItem, RotationItem, DeliverableKind, TimeOfDay, ReminderKind, Polarity, Difficulty, QuotaPeriod, WeatherCondition, NutrientKey, MealSlot, AnswerGate, TaskMedicationExtra } from '../types';
 import { PRIORITY_LABELS, TITLE_MAX_LENGTH, HEALTH_WRITABLE_NUTRIENTS, MINERAL_KEYS, VITAMIN_KEYS, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
 import { NUTRIENT_LABEL, mlToFlOz, flOzToMl } from '../utils/foodNutrition';
 import { useColors, useTheme } from '../theme/ThemeContext';
@@ -68,7 +68,7 @@ import { useTextScale } from '../hooks/useTextScale';
 import { haptics } from '../utils/haptics';
 import { resumeTasks } from '../utils/resumePrompt';
 import { BOUNTY_WITHDRAWN, DIFFICULTY_HINT, DIFFICULTY_PICKER_SEGMENTS, DIFFICULTY_SEGMENTS, bountyCoinsFor, canPostBounty, describeBounty, formatCoins, isBountyLive, liveBountyCount } from '../utils/rewards';
-import { medicationVocabulary, medicationKey } from '../utils/medicationLog';
+import { MAX_MEDICATION_EXTRAS, medicationVocabulary, medicationKey, parseMedicationExtras } from '../utils/medicationLog';
 import { useTitleSelection } from '../hooks/useTitleSelection';
 import { confirmDeleteTask } from '../utils/confirmDeleteTask';
 import { defaultReminderAt } from '../utils/reminderDefault';
@@ -371,6 +371,20 @@ type DraftSubtask = { id: string; title: string; completed: boolean; timedMinute
 /** Editor sections that collapse to a one-line summary of their current value. */
 /** A medication name is a label on a row, not a prescription line. */
 const MEDICATION_NAME_MAX_LENGTH = 60;
+
+/** One "also logs" row of the medication field: the dose as typed. */
+interface MedicationExtraRow { name: string; amount: string; unit: string | null }
+
+function extraRowsFrom(extras: readonly TaskMedicationExtra[] | undefined): MedicationExtraRow[] {
+  return (extras ?? []).map(e => ({ name: e.name, amount: e.amount !== null ? String(e.amount) : '', unit: e.unit }));
+}
+
+/** The rows in a form two snapshots can be compared by: a row with nothing typed isn't there. */
+function serializeExtraRows(rows: readonly MedicationExtraRow[]): string {
+  return JSON.stringify(rows
+    .filter(r => r.name.trim() !== '' || r.amount.trim() !== '')
+    .map(r => [r.name.trim(), r.amount.trim(), r.unit]));
+}
 
 type FieldKey = 'kind' | 'stack' | 'category' | 'project' | 'tags' | 'people' | 'waitingOnPerson' | 'priority' | 'effort' | 'difficulty' | 'duration' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'logHealthValue' | 'medication' | 'logMealSlot' | 'slotIn';
 
@@ -822,6 +836,9 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   // thrown away mid-keystroke; parsed once, on save.
   const [medicationAmount, setMedicationAmount] = useState('');
   const [medicationUnit, setMedicationUnit] = useState<string | null>(null);
+  // Further medicines taken together with the main one ("Iron + Vitamin C"),
+  // typed as strings like the main amount. Blank rows are ignored on save.
+  const [medicationExtras, setMedicationExtras] = useState<MedicationExtraRow[]>([]);
   const [logMealSlot, setLogMealSlot] = useState<MealSlot | null>(null);
   const [logSavedMealId, setLogSavedMealId] = useState<string | null>(null);
   const [logMealSlotByTime, setLogMealSlotByTime] = useState(false);
@@ -1297,6 +1314,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       setMedicationName(task.medicationName ?? null);
       setMedicationAmount(task.medicationAmount !== null ? String(task.medicationAmount) : '');
       setMedicationUnit(task.medicationUnit ?? null);
+      setMedicationExtras(extraRowsFrom(task.medicationExtras));
       setLogMealSlot(task.logMealSlot ?? null);
       setLogSavedMealId(task.logSavedMealId ?? null);
       setLogMealSlotByTime(task.logMealSlotByTime ?? false);
@@ -1374,6 +1392,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
           : ''
       );
       setMedicationUnit(initialDraft?.medicationUnit ?? null);
+      setMedicationExtras([]);
       setLogMealSlot(initialDraft?.logMealSlot ?? null);
       setLogSavedMealId(initialDraft?.logSavedMealId ?? null);
       setLogMealSlotByTime(initialDraft?.logMealSlotByTime ?? false);
@@ -1537,6 +1556,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
         return stored !== null && stored !== undefined ? String(stored) : '';
       })(),
       medicationUnit: task ? (task.medicationUnit ?? null) : (initialDraft?.medicationUnit ?? null),
+      medicationExtras: serializeExtraRows(extraRowsFrom(task?.medicationExtras)),
       logMealSlot: task ? (task.logMealSlot ?? null) : (initialDraft?.logMealSlot ?? null),
       logSavedMealId: task ? (task.logSavedMealId ?? null) : (initialDraft?.logSavedMealId ?? null),
       logMealSlotByTime: task ? (task.logMealSlotByTime ?? false) : (initialDraft?.logMealSlotByTime ?? false),
@@ -2386,6 +2406,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       // without a unit is unreadable in a dose.
       medicationAmount: resolveMedicationAmount(),
       medicationUnit: resolveMedicationAmount() !== null ? medicationUnit : null,
+      medicationExtras: resolveMedicationExtras(),
       logMealSlot,
       // A food needs a slot to be logged under, so clearing the slot clears it.
       logSavedMealId: logMealSlot !== null ? logSavedMealId : null,
@@ -3153,6 +3174,23 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     return medicationAmount.trim() !== '' && Number.isFinite(parsed) ? parsed : null;
   };
 
+  /**
+   * The further medicines to record, or none. Dropped unless there is a main
+   * medicine (the name is the switch) and for a target, whose unit logs record
+   * one dose each. A row needs a name; its amount is kept only with a unit.
+   */
+  const resolveMedicationExtras = (): TaskMedicationExtra[] => {
+    if (!resolveMedicationName() || targetCount !== null) return [];
+    return parseMedicationExtras(medicationExtras.map(row => {
+      const parsed = Number(row.amount.trim());
+      return {
+        name: row.name,
+        amount: row.amount.trim() !== '' && Number.isFinite(parsed) ? parsed : null,
+        unit: row.unit,
+      };
+    }));
+  };
+
   // A quota only makes sense period to period: the count resets because each
   // new occurrence starts at zero, so without a repeat there'd be nothing to
   // reset it. The repeat has to match the period it's counting across — a
@@ -3251,6 +3289,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       medicationName,
       medicationAmount,
       medicationUnit,
+      medicationExtras: serializeExtraRows(medicationExtras),
       logMealSlot,
       logSavedMealId,
       logMealSlotByTime,
@@ -8539,7 +8578,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                 summary={
                   medicationName
                     ? [medicationName, resolveMedicationAmount() !== null ? `${resolveMedicationAmount()} ${medicationUnit}` : null]
-                        .filter(Boolean).join(', ')
+                        .filter(Boolean).join(', ') + (resolveMedicationExtras().length > 0 ? ` +${resolveMedicationExtras().length}` : '')
                     : undefined
                 }
                 hint="Completing this task adds a dose to your medication log. Unchecking it removes the dose."
@@ -8598,6 +8637,59 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                       unit={medicationUnit}
                       onChangeUnit={setMedicationUnit}
                     />
+                  </>
+                )}
+                {/* For things taken together ("Iron + Vitamin C"): one tick,
+                    one dose each, and unchecking takes them all back. Not on
+                    a target, whose unit logs record one dose apiece. */}
+                {medicationName !== null && targetCount === null && (
+                  <>
+                    {medicationExtras.map((row, index) => (
+                      <View key={index} style={styles.medicationExtra}>
+                        <Text style={styles.medicationLabel}>ALSO LOGS</Text>
+                        <View style={styles.medicationExtraName}>
+                          <TextField
+                            style={[styles.fieldBox, styles.medicationExtraField]}
+                            value={row.name}
+                            onChangeText={text => setMedicationExtras(rows => rows.map((r, i) => (i === index ? { ...r, name: text } : r)))}
+                            placeholder="e.g. Vitamin C"
+                            placeholderTextColor={colors.textTertiary}
+                            maxLength={MEDICATION_NAME_MAX_LENGTH}
+                            returnKeyType="done"
+                            accessibilityLabel={`Also records a dose of, number ${index + 1}`}
+                          />
+                          <TouchableOpacity
+                            onPress={() => { haptics.tap(); setMedicationExtras(rows => rows.filter((_, i) => i !== index)); }}
+                            activeOpacity={interaction.activeOpacity}
+                            hitSlop={8}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Remove ${row.name.trim() || `medication ${index + 1}`}`}
+                          >
+                            <Ionicons name="close" size={iconSize.md} color={colors.textSecondary} />
+                          </TouchableOpacity>
+                        </View>
+                        {row.name.trim() !== '' && (
+                          <TaskDoseAmount
+                            menuName="TaskEditor extra dose unit menu"
+                            medication={row.name.trim()}
+                            amount={row.amount}
+                            onChangeAmount={amount => setMedicationExtras(rows => rows.map((r, i) => (i === index ? { ...r, amount } : r)))}
+                            unit={row.unit}
+                            onChangeUnit={unit => setMedicationExtras(rows => rows.map((r, i) => (i === index ? { ...r, unit } : r)))}
+                          />
+                        )}
+                      </View>
+                    ))}
+                    {medicationExtras.length < MAX_MEDICATION_EXTRAS && (
+                      <View style={styles.medicationExtraAdd}>
+                        <InlineAction
+                          label="Also log another"
+                          icon="add"
+                          variant="neutral"
+                          onPress={() => { haptics.tap(); setMedicationExtras(rows => [...rows, { name: '', amount: '', unit: null }]); }}
+                        />
+                      </View>
+                    )}
                   </>
                 )}
               </CollapsibleField>
@@ -9103,6 +9195,10 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     textTransform: 'uppercase', letterSpacing: 0.8,
     marginTop: spacing.sm, marginBottom: spacing.xsm, marginLeft: spacing.xxs,
   },
+  medicationExtra: { gap: spacing.sm, marginTop: spacing.md },
+  medicationExtraName: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  medicationExtraField: { flex: 1 },
+  medicationExtraAdd: { marginTop: spacing.md, alignItems: 'flex-start' },
   medicationCaption: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.smd, marginBottom: spacing.xsm, marginLeft: spacing.xxs },
   /** Sits below the completion timer's stepper. */
   completionTimerNoteInput: { marginTop: spacing.sm },

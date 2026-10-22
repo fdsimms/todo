@@ -212,7 +212,7 @@ export interface GetTaskResult {
   gatesApps?: true;
   /** Failing this task blocks the apps the person picked in Settings. Read-only here: only the person sets or changes it. */
   penalty?: { minutes: number; cutoffTime?: string; chargedAt?: string; creditedAt?: string };
-  medication?: { name: string; amount?: number; unit?: string };
+  medication?: { name: string; amount?: number; unit?: string; also?: { name: string; amount?: number; unit?: string }[] };
   /** "HH:MM" bounds: shown from `start`, expired after `end`. */
   window?: { start?: string; end?: string };
   /** Present only for a "don't do this" habit, which is never completed. */
@@ -239,6 +239,8 @@ export interface GetTaskResult {
   /** What completing this task also writes elsewhere, so completing it is not a surprise. */
   onCompletion?: {
     logsMedication?: { name: string; amount?: number; unit?: string };
+    /** The medicines it records beside logsMedication, when it is taken together with others. */
+    alsoLogsMedication?: { name: string; amount?: number; unit?: string }[];
     logsHealth?: { metric: string; amount?: number };
     logsMealSlot?: string;
     /** True when the slot above is picked from the time of day at completion (`logMealSlotByTime`). */
@@ -322,6 +324,13 @@ function taskExtras(replica: Replica, task: Task): Partial<GetTaskResult> {
       ...(task.medicationAmount != null ? { amount: task.medicationAmount } : {}),
       ...(task.medicationUnit ? { unit: task.medicationUnit } : {}),
     };
+    if (task.medicationExtras?.length) {
+      onCompletion.alsoLogsMedication = task.medicationExtras.map(e => ({
+        name: e.name,
+        ...(e.amount != null ? { amount: e.amount } : {}),
+        ...(e.unit ? { unit: e.unit } : {}),
+      }));
+    }
   }
   if (task.logHealthMetric) {
     onCompletion.logsHealth = {
@@ -455,6 +464,15 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
           name: task.medicationName.trim(),
           ...(task.medicationAmount != null ? { amount: task.medicationAmount } : {}),
           ...(task.medicationUnit ? { unit: task.medicationUnit } : {}),
+          ...(task.medicationExtras?.length
+            ? {
+                also: task.medicationExtras.map(e => ({
+                  name: e.name,
+                  ...(e.amount != null ? { amount: e.amount } : {}),
+                  ...(e.unit ? { unit: e.unit } : {}),
+                })),
+              }
+            : {}),
         }
       : undefined,
     // Today's times, with a bound that follows the sun resolved for today, and

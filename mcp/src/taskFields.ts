@@ -33,6 +33,7 @@ import type {
   TimeOfDay,
 } from '../../src/types';
 import { minutesToEffort } from '../../src/utils/effort';
+import { MAX_MEDICATION_EXTRAS, parseMedicationExtras } from '../../src/utils/medicationLog';
 import { followsRingGoal, hasHealthTarget, HEALTH_TARGET_METRICS, HEALTH_TARGET_RANGES } from '../../src/utils/healthTarget';
 import { isRotationTask, MAX_ROTATION_PER_WEEK, MIN_ROTATION_ITEMS, rotationItemFromInput, rotationMemberTitle, rotationPerWeek, rotationTargetTotal, type RotationMemberInput } from '../../src/utils/rotation';
 import { normalizeTargetUnit } from '../../src/utils/quotaUnit';
@@ -291,7 +292,13 @@ export interface TaskFieldsInput {
   /** The workout program whose next routine Start workout on the task opens. A task names a routine or a program: setting one clears the other. Checked by the replica. */
   workoutProgramId?: string | null;
   /** Completing it also records a dose of this medicine, in get_task's own shape. null stops it. */
-  medication?: { name: string; amount?: number | null; unit?: string | null } | null;
+  medication?: {
+    name: string;
+    amount?: number | null;
+    unit?: string | null;
+    /** Further medicines taken together with it; completing records a dose of each. Replaces the list, [] clears it. */
+    also?: { name: string; amount?: number | null; unit?: string | null }[];
+  } | null;
   /** A deadline worked out from the date on every occurrence, in get_task's own shape. null drops the rule. */
   deadlineRule?: DeadlineRule | null;
   /** A reminder placed by rule, in get_task's own shape, plus the time of day for an offset. null drops the rule. */
@@ -975,10 +982,17 @@ export function taskFieldsPatch(
     if (m && !name) errors.push('medication needs the medicine\'s name.');
     else if (name && context.isSubtask) errors.push('medication goes on a top-level task, not a checklist item.');
     else if (m && m.amount != null && !(typeof m.amount === 'number' && m.amount > 0)) errors.push('medication.amount must be a positive number.');
-    else {
+    else if (m?.also && m.also.length > MAX_MEDICATION_EXTRAS) errors.push(`medication.also holds at most ${MAX_MEDICATION_EXTRAS} medicines.`);
+    else if (m?.also?.some(a => !a.name?.trim() || (a.amount != null && !(typeof a.amount === 'number' && a.amount > 0)))) {
+      errors.push('Each medication.also entry needs the medicine\'s name, and an amount above 0 if it has one.');
+    } else {
       patch.medicationName = name;
       patch.medicationAmount = name ? m?.amount ?? null : null;
       patch.medicationUnit = name ? m?.unit?.trim() || null : null;
+      // `medication: null` stops the whole thing, extras included. Otherwise
+      // `also` replaces the list when given and leaves it alone when not.
+      if (!name) patch.medicationExtras = [];
+      else if (m?.also !== undefined) patch.medicationExtras = parseMedicationExtras(m.also);
     }
   }
 

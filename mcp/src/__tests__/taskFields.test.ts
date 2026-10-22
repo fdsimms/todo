@@ -25,6 +25,28 @@ const existing = (over: Partial<Task> = {}): Task => ({
   targetCount: null, ...over,
 }) as Task;
 
+describe('medication taken together', () => {
+  it('sets the further medicines beside the main one, as a whole list', () => {
+    expect(ok({ medication: { name: 'Iron', amount: 1, unit: 'capsule', also: [{ name: 'Vitamin C', amount: 500, unit: 'mg' }, { name: 'Zinc' }] } })).toMatchObject({
+      medicationName: 'Iron', medicationAmount: 1, medicationUnit: 'capsule',
+      medicationExtras: [{ name: 'Vitamin C', amount: 500, unit: 'mg' }, { name: 'Zinc', amount: null, unit: null }],
+    });
+  });
+
+  it('leaves the extras alone when also is not given, clears them with [], and drops them with the medicine', () => {
+    expect('medicationExtras' in ok({ medication: { name: 'Iron' } })).toBe(false);
+    expect(ok({ medication: { name: 'Iron', also: [] } })).toMatchObject({ medicationExtras: [] });
+    expect(ok({ medication: null })).toMatchObject({ medicationName: null, medicationExtras: [] });
+  });
+
+  it('refuses more than four, a nameless one, and an amount that is not above 0', () => {
+    const five = ['A', 'B', 'C', 'D', 'E'].map(name => ({ name }));
+    expect(errorsOf({ medication: { name: 'Iron', also: five } })).toMatch(/at most 4/);
+    expect(errorsOf({ medication: { name: 'Iron', also: [{ name: ' ' }] } })).toMatch(/needs the medicine/);
+    expect(errorsOf({ medication: { name: 'Iron', also: [{ name: 'Zinc', amount: 0 }] } })).toMatch(/amount above 0/);
+  });
+});
+
 describe('pinning', () => {
   it('passes pin and pin-each-occurrence straight through', () => {
     expect(ok({ pinned: true, pinEachOccurrence: true })).toMatchObject({ pinned: true, pinEachOccurrence: true });

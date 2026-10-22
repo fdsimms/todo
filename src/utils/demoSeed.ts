@@ -1128,6 +1128,12 @@ export function seedDemoData(): void {
     dueDate: today.toISOString(),
     completionTimerMinutes: 120,
     completionTimerNote: "Don’t eat for 2 hours",
+    // Taken together with vitamin C, so one tick records both doses (see
+    // Task.medicationExtras).
+    medicationName: 'Iron',
+    medicationAmount: 1,
+    medicationUnit: 'capsule',
+    medicationExtras: [{ name: 'Vitamin C', amount: 500, unit: 'mg' }],
   });
   // Pinned as a whole via the stack editor's pin button, so the Pinned Tasks
   // block shows a copy of all three alongside the lone pinned task above.

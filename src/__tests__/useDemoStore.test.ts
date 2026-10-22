@@ -2570,6 +2570,12 @@ describe('demo seed — people', () => {
     expect(entries[0].nutrition.amounts.vitaminDMcg).toBe(25);
   });
 
+  it('seeds a task that records two medicines taken together', () => {
+    const iron = useTaskStore.getState().tasks.find(t => t.title === 'Iron' && t.medicationName);
+    expect(iron?.medicationName).toBe('Iron');
+    expect(iron?.medicationExtras).toEqual([{ name: 'Vitamin C', amount: 500, unit: 'mg' }]);
+  });
+
   it('seeds a supplement of herbs only, which shows on its doses and adds nothing to the food log', () => {
     const { logs, settings } = useMedicationStore.getState();
     const panel = prefsFor(settings, 'Stress Relief').nutrition;

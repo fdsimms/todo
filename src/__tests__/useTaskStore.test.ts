@@ -20778,6 +20778,54 @@ describe('a task that records a dose', () => {
     });
   });
 
+  it('records a dose of each medicine taken together, and takes them all back on uncheck', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 't1', title: 'Iron + Vitamin C',
+        medicationName: 'Ritual Iron Bio Series', medicationAmount: 1, medicationUnit: 'capsule',
+        medicationExtras: [{ name: 'Thorne Vitamin C 500 mg', amount: 1, unit: 'capsule' }],
+      })],
+    });
+    useTaskStore.getState().completeTask('t1');
+    const logs = useMedicationStore.getState().logs;
+    expect(logs.map(l => l.name).sort()).toEqual(['Ritual Iron Bio Series', 'Thorne Vitamin C 500 mg']);
+    expect(logs.every(l => l.taskId === 't1')).toBe(true);
+    expect(useTaskStore.getState().lastAction).toMatchObject({
+      label: 'Logged Ritual Iron Bio Series and Thorne Vitamin C 500 mg in the medication log',
+    });
+    useTaskStore.getState().uncompleteTask('t1');
+    expect(useMedicationStore.getState().logs).toHaveLength(0);
+  });
+
+  it('records no extras when the task has no main medicine, or when it is a target', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', medicationExtras: [{ name: 'Zinc', amount: null, unit: null }] })],
+    });
+    useTaskStore.getState().completeTask('t1');
+    expect(useMedicationStore.getState().logs).toHaveLength(0);
+
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 't2', targetCount: 3, progressCount: 0, medicationName: 'Sertraline',
+        medicationExtras: [{ name: 'Zinc', amount: null, unit: null }],
+      })],
+    });
+    useTaskStore.getState().logQuotaUnit('t2');
+    expect(useMedicationStore.getState().logs.map(l => l.name)).toEqual(['Sertraline']);
+  });
+
+  it('carries the extras onto the next occurrence', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 't1', recurrenceType: 'daily', dueDate: new Date(2025, 5, 10).toISOString(),
+        medicationName: 'Iron', medicationExtras: [{ name: 'Vitamin C', amount: 500, unit: 'mg' }],
+      })],
+    });
+    useTaskStore.getState().completeTask('t1');
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 't1');
+    expect(next?.medicationExtras).toEqual([{ name: 'Vitamin C', amount: 500, unit: 'mg' }]);
+  });
+
   it('records nothing for a task carrying no medication', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1' })] });
     useTaskStore.getState().completeTask('t1');
