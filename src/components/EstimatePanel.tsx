@@ -978,6 +978,9 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
   // once the field says something other than what the estimate on screen was
   // asked about.
   const showEstimateRow = !!trimmed && (!estimate || trimmed !== estimatedFor?.trim());
+  // Foods you've logged are the answer on screen, with the estimate as the way
+  // out of them; once there is an estimate it is the answer and leads.
+  const offersFirst = hasOffers && !estimate;
 
   /**
    * The open card's amount step, in whichever question `askFor` says the row
@@ -1165,7 +1168,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
       ? `Not ${typedWeight.replace(/g$/, ' g')}: this food has no recorded weight to measure it against. Use Estimate below to log it by weight.`
       : null;
     return (
-      <View key={`${row.kind}-${food.key}`} style={[styles.offerRow, index > 0 && styles.offerDivider]}>
+      <View key={`${row.kind}-${food.key}`} style={[styles.offerRow, styles.offerRowTop, index > 0 && styles.offerDivider]}>
         <View style={styles.offerMain}>
           <Text style={styles.offerName}>{rowTitle}</Text>
           <Text style={styles.offerMeta}>{meta}</Text>
@@ -1191,11 +1194,51 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
     );
   };
 
+  /**
+   * The way out of the foods above it. Over a list it is that card's last row,
+   * so the list and its escape read as one thing; alone it is a card of its own.
+   */
+  const renderEstimateRow = (inList: boolean) => (
+    <TouchableOpacity
+      style={[
+        inList ? [styles.offerRow, styles.offerDivider] : styles.estimateRow,
+        loading && styles.actionOff,
+      ]}
+      activeOpacity={interaction.activeOpacity}
+      disabled={loading}
+      onPress={handleEstimate}
+      accessibilityRole="button"
+      accessibilityLabel={`Estimate the nutrition of ${trimmed}`}
+    >
+      <View style={styles.estimateIcon}>
+        {loading
+          ? <ActivityIndicator size="small" color={colors.accent} />
+          : <Ionicons name="sparkles" size={iconSize.sm} color={colors.accent} />}
+      </View>
+      <View style={styles.offerMain}>
+        <Text style={styles.estimateTitle} numberOfLines={1}>
+          {`Estimate “${trimmed}”`}
+        </Text>
+        <Text style={styles.offerMeta}>
+          {inList
+            ? 'Something new? Name the place too for a closer estimate.'
+            : 'Name the place too for a closer estimate.'}
+        </Text>
+      </View>
+      <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
+    </TouchableOpacity>
+  );
+
   return (
     <View style={styles.root}>
+      {/* One header for the panel. Over a list of foods you've logged it is
+          that list's own label, so the strip doesn't announce "Estimate" above
+          rows that aren't one; the close button rides the same line either way. */}
       <View style={styles.panelHead}>
-        <Ionicons name="sparkles" size={iconSize.sm} color={colors.accentText} />
-        <Text style={styles.panelTitle}>ESTIMATE</Text>
+        {!offersFirst && <Ionicons name="sparkles" size={iconSize.sm} color={colors.accentText} />}
+        <Text style={offersFirst ? [styles.label, styles.panelLabel] : styles.panelTitle}>
+          {offersFirst ? 'YOU’VE HAD THIS BEFORE' : 'ESTIMATE'}
+        </Text>
         <TouchableOpacity
           style={styles.panelClose}
           activeOpacity={interaction.activeOpacity}
@@ -1210,7 +1253,6 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
 
           {hasOffers && !estimate && (
             <>
-              <Text style={styles.label}>YOU’VE HAD THIS BEFORE</Text>
               <View style={styles.offerList}>
                 {staged.map(renderStagedRow)}
                 {/* A recipe is logged in servings, a question this sheet
@@ -1238,37 +1280,12 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
                     </TouchableOpacity>
                   );
                 })}
+                {showEstimateRow && renderEstimateRow(true)}
               </View>
             </>
           )}
 
-          {showEstimateRow && (
-            <TouchableOpacity
-              style={[styles.estimateRow, loading && styles.actionOff]}
-              activeOpacity={interaction.activeOpacity}
-              disabled={loading}
-              onPress={handleEstimate}
-              accessibilityRole="button"
-              accessibilityLabel={`Estimate the nutrition of ${trimmed}`}
-            >
-              <View style={styles.estimateIcon}>
-                {loading
-                  ? <ActivityIndicator size="small" color={colors.accent} />
-                  : <Ionicons name="sparkles" size={iconSize.sm} color={colors.accent} />}
-              </View>
-              <View style={styles.offerMain}>
-                <Text style={styles.estimateTitle} numberOfLines={1}>
-                  {`Estimate \u201C${trimmed}\u201D${hasOffers && !estimate ? ' instead' : ''}`}
-                </Text>
-                <Text style={styles.offerMeta}>
-                  {hasOffers && !estimate
-                    ? 'For something new. Name the place too for a closer estimate.'
-                    : 'Name the place too for a closer estimate.'}
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
-            </TouchableOpacity>
-          )}
+          {showEstimateRow && !offersFirst && renderEstimateRow(false)}
 
           {!trimmed && !estimate && (
             <Text style={styles.listHint}>
@@ -1554,6 +1571,7 @@ function makeStyles(colors: Colors) {
       fontWeight: fontWeight.semibold,
       letterSpacing: 0.8,
     },
+    panelLabel: { flex: 1 },
     panelClose: { padding: spacing.xxs },
     label: {
       color: colors.textSecondary,
@@ -1629,6 +1647,9 @@ function makeStyles(colors: Colors) {
     offerDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator },
     offerMain: { flex: 1, minWidth: 0, gap: spacing.xxs },
     offerName: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
+    // The figure and the + line up with the name, since the row can be three
+    // lines tall and centered they floated beside its middle.
+    offerRowTop: { alignItems: 'flex-start' },
     offerMeta: { color: colors.textSecondary, fontSize: font.xs },
     offerChange: { alignSelf: 'flex-start', marginTop: spacing.xsm },
     offerAdd: {
