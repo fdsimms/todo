@@ -94,15 +94,13 @@
         "expo-image-picker",
         {
           "photosPermission": "dundundun reads a recipe from a photo you’ve already taken, so you don’t have to retype a cookbook page.",
-          "cameraPermission": "dundundun reads what you point the camera at: a recipe from a cookbook page or clipping, a store receipt, or the barcode on a grocery item as you unpack it.",
-          "microphonePermission": false
+          "cameraPermission": "dundundun reads what you point the camera at: a recipe from a cookbook page or clipping, a store receipt, or the barcode on a grocery item as you unpack it."
         }
       ],
       [
         "expo-camera",
         {
           "cameraPermission": "dundundun reads what you point the camera at: a recipe from a cookbook page or clipping, a store receipt, or the barcode on a grocery item as you unpack it.",
-          "microphonePermission": false,
           "recordAudioAndroid": false
         }
       ],
