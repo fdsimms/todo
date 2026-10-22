@@ -545,7 +545,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/taskDraft.ts` — applyTitleRulesToDraft, newTaskFromDraft, reanchorReminder, NO_RECURRENCE, buildSeriesRow
 - `src/utils/taskDuplicate.ts` — duplicateRows
 - `src/utils/taskFieldDefaults.ts` — NO_TASK_FIELD_DEFAULTS, hasTaskFieldDefaults, parseTaskFieldDefaults, serializeTaskFieldDefaults, parseGeneratedTaskDefaults, resolveFieldDefaults, SeededFieldsInput, SeededFields, seedTaskFields, previewSeededFields, +6 more
-- `src/utils/taskGrouping.ts` — CategoryListItem, ContextListItem, TodayListItem, LATER_TODAY_LABEL, makeCategoryGroups, DropResolution, resolveDrop, LaterListItem, LATER_STACK_FOLD_MIN, FlattenLaterOptions, +23 more
+- `src/utils/taskGrouping.ts` — CategoryListItem, ContextListItem, TodayListItem, LATER_TODAY_LABEL, orderTravelRowsByTime, makeCategoryGroups, DropResolution, resolveDrop, LaterListItem, LATER_STACK_FOLD_MIN, +24 more
 - `src/utils/taskHome.ts` — TaskHome, taskHomeFor
 - `src/utils/taskInstances.ts` — InstanceGroup, normalizeTitle, getRepeatedInstances, taskForTitleKey
 - `src/utils/taskKinds.ts` — TaskKind, TASK_KIND_META, taskKindOf, QuickAddChip, QUICK_ADD_CHIP_LABELS, QUICK_ADD_CHIP_LIMIT, TASK_KINDS, DEFAULT_TIMED_MINUTES, DEFAULT_TARGET_COUNT, COUNTDOWN_LADDER, +12 more

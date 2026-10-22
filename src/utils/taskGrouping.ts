@@ -67,6 +67,30 @@ export const LATER_TODAY_LABEL = 'Later Today';
 // something other than sortOrder, so merging by it would scatter the stacks
 // arbitrarily. Passing false keeps the old groups-first layout, which at
 // least stays predictable while a sort is on.
+/**
+ * "Leave for X" rows in time order. A generated row takes the next sortOrder
+ * when it is written, so its place in a section follows when its event was
+ * added rather than when it is time to go. The travel rows are put back into
+ * the slots they already hold, earliest reminder first, so every other task
+ * in the section stays exactly where it was.
+ */
+export function orderTravelRowsByTime(tasks: Task[]): Task[] {
+  const slots: number[] = [];
+  const travel: Task[] = [];
+  tasks.forEach((t, i) => {
+    if (t.generatedKind === 'travel') {
+      slots.push(i);
+      travel.push(t);
+    }
+  });
+  if (travel.length < 2) return tasks;
+  const timeOf = (t: Task) => (t.reminderTime ? new Date(t.reminderTime).getTime() : Infinity);
+  const sorted = [...travel].sort((a, b) => timeOf(a) - timeOf(b));
+  const out = [...tasks];
+  slots.forEach((slot, i) => { out[slot] = sorted[i]; });
+  return out;
+}
+
 export function makeCategoryGroups(
   tasks: Task[],
   categoryOrder: string[] = [],
@@ -105,7 +129,9 @@ export function makeCategoryGroups(
   order.forEach(key => {
     if (key !== UNCATEGORIZED) items.push({ type: 'header', label: key });
     const sectionGroups = groupsByCategory.get(key) ?? [];
-    const sectionTasks = byCategory.get(key) ?? [];
+    const rawTasks = byCategory.get(key) ?? [];
+    // Only in the hand-ordered state: a chosen sort (priority, due date...) wins.
+    const sectionTasks = interleaveGroups ? orderTravelRowsByTime(rawTasks) : rawTasks;
     const pushGroup = (g: { group: TaskGroup; children: Task[] }) =>
       items.push({ type: 'group', group: g.group, children: g.children });
     // Merge, rather than sort the two together: the tasks arrive in the order
