@@ -4667,8 +4667,20 @@ export function TodayScreen() {
       // settled budget stops at 60 rows, so a task further down than that has
       // no row to scroll to; the budget has to reach the task itself.
       const position = laterOrder.findIndex(o => o.task.id === root.id);
-      setLaterTaskLimit(limit => Math.max(limit, LATER_SETTLED_TASK_LIMIT, position + 1));
-      setPendingLaterJump({ key: root.id, n: jumpCount.current++ });
+      const limit = Math.max(laterTaskLimit, LATER_SETTLED_TASK_LIMIT, position + 1);
+      setLaterTaskLimit(limit);
+      // A task in a stack folded into one Later row has no row keyed by its
+      // own id, so the jump aims at the stack's row and opens it.
+      const rows = flattenLaterSections(
+        laterDaySections(laterOrder, limit, { cutMidDay: false, foldStacks: !selectionMode }).sections,
+        { groupsById: laterGroupsById, fold: !selectionMode },
+      );
+      const stackRow = rows.find(r => r.type === 'stack' && r.tasks.some(t => t.id === root.id));
+      if (stackRow) {
+        setOpenLaterStacks(prev => new Set(prev).add(stackRow.key));
+        setExpandedLaterStacks(prev => new Set(prev).add(stackRow.key));
+      }
+      setPendingLaterJump({ key: stackRow ? stackRow.key : root.id, n: jumpCount.current++ });
       landed = true;
     } else if (home) {
       landed = scrollToFlatViewTask(root, home);
