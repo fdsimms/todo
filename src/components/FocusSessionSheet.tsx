@@ -21,6 +21,7 @@ import { telUrl, smsUrl } from '../utils/phone';
 import { contactDetailsFor } from '../utils/peopleRegistry';
 import { mailtoUrl } from '../utils/email';
 import { displayTitleFor, isQuotaTask, isQuotaOnPace, quotaUnitsToPace, quotaRidesOutTheDay } from '../utils/visibilityUtils';
+import { isTimedTask, isTimerRunning, timerElapsed, timerRemaining } from '../utils/timer';
 import { formatQuotaCatchUp, formatQuotaProgress, formatQuotaTarget } from '../utils/quotaUnit';
 import {
   currentFocusStep,
@@ -112,6 +113,8 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   const setMeasuredTime = useTaskStore(s => s.setMeasuredTime);
   const { enqueue, queueProps } = useAnswerFirstCompletion();
   const logQuotaUnit = useTaskStore(s => s.logQuotaUnit);
+  const startTaskTimer = useTaskStore(s => s.startTimer);
+  const pauseTaskTimer = useTaskStore(s => s.pauseTimer);
   const pause = useFocusStore(s => s.pause);
   const resume = useFocusStore(s => s.resume);
   const advance = useFocusStore(s => s.advance);
@@ -269,6 +272,23 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   // summary, since being caught up isn't the same as abandoning the task.
   const onPace = quotaTask ? isQuotaOnPace(quotaTask) : false;
 
+  // A task with a countdown of its own (a timed task, or a target's time per
+  // unit) runs that, not just the session's step clock: the step is how long
+  // the session plans to spend, the countdown is how long the task takes. The
+  // big clock follows the task's own, with its Start button, and the step clock
+  // drops to a line underneath. Starting or pausing it moves the session clock
+  // with it, so the two never disagree about whether you are working.
+  const taskTimed = currentTask !== undefined && !currentTask.completed && isTimedTask(currentTask);
+  const taskTimerRunning = taskTimed && isTimerRunning(currentTask);
+  const taskTimerRemaining = taskTimed ? timerRemaining(currentTask, now) : 0;
+  const taskTimerReady = taskTimed && taskTimerRemaining <= 0;
+  const taskTimerBegun = taskTimed && timerElapsed(currentTask, now) > 0;
+  // Leaving a task (or the session) with its countdown running would keep it
+  // ticking, and ringing, for something no longer being worked on.
+  const parkTaskTimer = () => {
+    if (currentTask && isTimerRunning(currentTask)) pauseTaskTimer(currentTask.id);
+  };
+
   // Ending a session early (the header's "End") and closing one out after
   // working through the whole plan (renderFinished's "Finish") are opposite
   // moments and used to share this handler with one haptic between them —
@@ -277,6 +297,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   // same "whole routine done" pulse a chain's last task and a closed-out
   // shopping trip get.
   const handleEnd = () => {
+    parkTaskTimer();
     clearPendingUndo();
     haptics.warning();
     endSession();
@@ -291,6 +312,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   };
 
   const handleAdvance = () => {
+    parkTaskTimer();
     clearPendingUndo();
     haptics.impactLight();
     advance();
@@ -390,6 +412,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   const handleSkip = () => {
     if (!step) return;
     haptics.tap();
+    parkTaskTimer();
     if (step.kind === 'rest' || step.taskId === null) {
       clearPendingUndo();
       advance();
@@ -404,6 +427,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   const handleFinishForNow = () => {
     if (!quotaTask) return;
     haptics.success();
+    parkTaskTimer();
     const taskId = quotaTask.id;
     const sessionBefore = session;
     finishForNow(taskId);
@@ -423,6 +447,19 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   const handleClose = () => {
     clearPendingUndo();
     onClose();
+  };
+
+  const handleTaskTimer = () => {
+    if (!currentTask) return;
+    clearPendingUndo();
+    haptics.tap();
+    if (taskTimerRunning) {
+      pauseTaskTimer(currentTask.id);
+      if (running) pause();
+    } else {
+      startTaskTimer(currentTask.id);
+      if (!running) resume();
+    }
   };
 
   const handlePauseResume = () => {
@@ -591,7 +628,24 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
               focusHideTimers for someone who finds a running countdown adds
               pressure rather than helping — the step still ends and chimes
               on its own schedule underneath either way. */}
-          {!hideTimers && (
+          {!hideTimers && taskTimed && (
+            <>
+              <Text style={[styles.clock, taskTimerReady && styles.clockDone]}>
+                {formatStopwatch(Math.max(0, taskTimerRemaining))}
+              </Text>
+              <Text style={styles.clockCaption}>
+                {taskTimerReady
+                  ? 'Time’s up'
+                  : `${quotaTask ? `per ${quotaTask.targetUnit ?? 'unit'}` : `of ${formatDuration(currentTask.timedMinutes!)}`}${taskTimerRunning ? '' : (taskTimerBegun ? ' · paused' : '')}`}
+              </Text>
+              <Text style={styles.clockCaption}>
+                {stepDone
+                  ? `Session step: over ${formatDuration(step.minutes)}`
+                  : `Session step: ${formatStopwatch(remaining)} of ${formatDuration(step.minutes)}${running ? '' : ' · paused'}`}
+              </Text>
+            </>
+          )}
+          {!hideTimers && !taskTimed && (
             <>
               <Text style={[styles.clock, stepDone && styles.clockDone]}>
                 {stepDone ? `+${formatStopwatch(overBy)}` : formatStopwatch(remaining)}
@@ -621,15 +675,17 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
         <View style={styles.actions}>
           <PressableScale
             style={styles.primaryBtn}
-            onPress={stepDone ? handleAdvance : handlePauseResume}
+            onPress={stepDone ? handleAdvance : (taskTimed ? handleTaskTimer : handlePauseResume)}
             accessibilityLabel={
               stepDone
                 ? (nextStep === undefined ? 'Finish session' : (nextStep.kind === 'rest' ? 'Start break' : 'Next task'))
-                : (running ? 'Pause session' : 'Resume session')
+                : taskTimed
+                  ? (taskTimerRunning ? `Pause ${titleOf(step.taskId)} timer` : `Start ${titleOf(step.taskId)} timer`)
+                  : (running ? 'Pause session' : 'Resume session')
             }
           >
             <Ionicons
-              name={stepDone ? 'arrow-forward' : (running ? 'pause' : 'play')}
+              name={stepDone ? 'arrow-forward' : (taskTimed ? (taskTimerRunning ? 'pause' : 'play') : (running ? 'pause' : 'play'))}
               size={iconSize.md}
               color={colors.onAccent}
             />
@@ -638,7 +694,9 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
                 ? (nextStep === undefined
                     ? 'Finish'
                     : (nextStep.kind === 'rest' ? `Take a ${formatDuration(nextStep.minutes)} break` : 'Next task'))
-                : (running ? 'Pause' : 'Resume')}
+                : taskTimed
+                  ? (taskTimerRunning ? 'Pause' : (taskTimerBegun ? 'Resume' : `Start ${formatDuration(currentTask.timedMinutes!)}`))
+                  : (running ? 'Pause' : 'Resume')}
             </Text>
           </PressableScale>
 
