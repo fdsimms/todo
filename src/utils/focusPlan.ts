@@ -229,20 +229,24 @@ export function isFocusStepDone(session: FocusSession, now: number = Date.now())
 }
 
 /**
- * Minutes actually spent on the current step, for offering back as a
- * corrected estimate when the task under it is marked done.
+ * Minutes actually spent on the current task, for offering back as a
+ * corrected estimate.
  *
- * Null, not 0, for a rest step or a split task — callers use this to decide
- * whether there's anything to offer at all. A split task is excluded because
- * the session doesn't keep what its earlier stretches cost (see the module
- * note on "not a timesheet"): a step that's part 2 of 3 can only speak for a
- * third of the task, and summing would need state this store deliberately
- * doesn't keep.
+ * Null, not 0, for a rest step, and for a split task until its last stretch:
+ * an earlier stretch can only speak for part of the task. On the last stretch
+ * the earlier ones are summed from `stepLog`, which banks what each step cost
+ * as it is left, so a task worked in four stretches reads as one total. Breaks
+ * between stretches are other steps and never count.
  */
 export function focusMeasuredMinutes(session: FocusSession, now: number = Date.now()): number | null {
   const step = currentFocusStep(session);
-  if (!step || step.kind !== 'work' || step.partCount !== 1) return null;
-  return Math.max(1, Math.round(focusStepElapsed(session, now) / 60));
+  if (!step || step.kind !== 'work' || step.part !== step.partCount) return null;
+  const earlier = step.partCount === 1 || step.taskId === null
+    ? 0
+    : session.stepLog
+        .filter(r => r.kind === 'work' && r.taskId === step.taskId)
+        .reduce((total, r) => total + r.actualSeconds, 0);
+  return Math.max(1, Math.round((earlier + focusStepElapsed(session, now)) / 60));
 }
 
 // ==== Totals ====

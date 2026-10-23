@@ -171,6 +171,19 @@ question and the best answer to it is rarely a prefix of the answer to the old
 one. The window itself is *not* reset when the sheet reopens: how long you tend
 to have is a fact about your day, not about this sheet.
 
+## Saving the elapsed time as the estimate
+
+Two routes put a step's clock into a task's estimate, and they are deliberately
+different. The Done alert (`handleDone`) is an interruption, so it is gated by
+`measuredTimeWorthSuggesting` and `measuredTimeDiffersEnough`. The "Save 15m as
+new time estimate" pill under the progress bar is a button the person chose to
+press, so it skips both (`measuredEstimateOffer`) and shows from the first
+minute and through an over-run. It writes the estimate and effort only, never
+`actualMinutes`: a mid-step reading is not how long the task took. It shares
+`focusMeasuredMinutes`' refusals (a rest, or an earlier stretch of a split task: on its last stretch the earlier ones are summed from `stepLog`) and
+`measuredTimeAppliesTo`'s (a chain step with its own estimate), and is absent
+under Hide timers and for a quota task.
+
 ## Starting from what's pinned
 
 The pinned block's own header carries a shortcut into the same setup sheet,
