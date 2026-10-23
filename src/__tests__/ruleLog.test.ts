@@ -52,6 +52,7 @@ describe('parseRuleLog', () => {
 
   it('ignores an unknown meal slot', () => {
     expect(parseRuleLog({ logMealSlot: 'brunch' as never })).toEqual({});
+    expect(parseRuleLog({ logMealSlot: 'other' })).toEqual({ logMealSlot: 'other' });
   });
 
   it('keeps a dose and a food entry together, as a task can', () => {
