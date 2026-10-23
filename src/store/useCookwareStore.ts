@@ -5,9 +5,11 @@ import {
   dbInsertCookware,
   dbUpdateCookware,
   dbDeleteCookware,
+  dbGetSetting,
+  dbSetSetting,
 } from '../db/database';
 import { generateId } from '../utils/id';
-import { clampCookwareWeight } from '../utils/cookware';
+import { clampCookwareWeight, parseRecentCookware, pushRecentCookware } from '../utils/cookware';
 
 /**
  * The pots, pans and tubs a dish can be weighed in. CRUD only: the subtraction
@@ -19,21 +21,31 @@ import { clampCookwareWeight } from '../utils/cookware';
 
 export type CookwarePatch = Partial<Pick<Cookware, 'name' | 'weightG' | 'kind'>>;
 
+const RECENT_COOKWARE_SETTING = 'cookware_recent';
+
 interface CookwareStore {
   cookware: Cookware[];
+  /** Ids of the pieces picked last, newest first. Device-local, and only a shortcut: nothing reads it for a weight. */
+  recentIds: string[];
   initialized: boolean;
   initialize: () => void;
   addCookware: (name: string, weightG: number, kind?: CookwareType | null) => Cookware | null;
   updateCookware: (id: string, patch: CookwarePatch) => void;
   removeCookware: (id: string) => void;
+  markPicked: (id: string) => void;
 }
 
 export const useCookwareStore = create<CookwareStore>((set, get) => ({
   cookware: [],
+  recentIds: [],
   initialized: false,
 
   initialize() {
-    set({ cookware: dbGetAllCookware(), initialized: true });
+    set({
+      cookware: dbGetAllCookware(),
+      recentIds: parseRecentCookware(dbGetSetting(RECENT_COOKWARE_SETTING)),
+      initialized: true,
+    });
   },
 
   // Refuses a blank name or a weight that isn't one; the sheet says why before
@@ -78,5 +90,11 @@ export const useCookwareStore = create<CookwareStore>((set, get) => ({
   removeCookware(id) {
     dbDeleteCookware(id);
     set({ cookware: get().cookware.filter(c => c.id !== id) });
+  },
+
+  markPicked(id) {
+    const recentIds = pushRecentCookware(get().recentIds, id);
+    dbSetSetting(RECENT_COOKWARE_SETTING, JSON.stringify(recentIds));
+    set({ recentIds });
   },
 }));

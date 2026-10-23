@@ -66,7 +66,7 @@ export function netWeight(
 }
 
 /** The kinds cookware is shown under, in the order the sheet lists them. */
-export const COOKWARE_TYPES: readonly CookwareType[] = ['Pots', 'Pans', 'Baking', 'Bowls', 'Plates', 'Glasses', 'Other'];
+export const COOKWARE_TYPES: readonly CookwareType[] = ['Pots', 'Pans', 'Baking', 'Bowls', 'Mixing bowls', 'Plates', 'Glasses', 'Other'];
 
 export function isCookwareType(value: unknown): value is CookwareType {
   return typeof value === 'string' && (COOKWARE_TYPES as readonly string[]).includes(value);
@@ -77,6 +77,7 @@ export function isCookwareType(value: unknown): value is CookwareType {
 // a container (Other) rather than a glass.
 const TYPE_RULES: readonly [CookwareType, RegExp][] = [
   ['Other', /\b(tub|container|jar|lid only)\b/i],
+  ['Mixing bowls', /\bmixing\b/i],
   ['Baking', /\b(sheet pan|baking|cookie sheet|loaf|muffin|casserole)\b/i],
   ['Pots', /\b(pot|crock|crockpot|oven|saucier|saucepan|stockpot|kettle|lid)\b/i],
   ['Pans', /\b(pan|skillet|wok|griddle)\b/i],
@@ -111,4 +112,49 @@ export function groupCookwareByType<T extends { name: string; kind?: CookwareTyp
     if (list) list.push(item); else buckets.set(type, [item]);
   }
   return COOKWARE_TYPES.filter(t => buckets.has(t)).map(type => ({ type, items: buckets.get(type)! }));
+}
+
+/** Past this many pieces the menu grows a search field and a Recent group. */
+export const COOKWARE_MENU_SEARCH_MIN = 8;
+
+/** How many recently picked pieces the menu lists above the types. */
+export const RECENT_COOKWARE_LIMIT = 3;
+
+/**
+ * Pieces whose name or type holds every word of the query, in their incoming
+ * order. A type counts so "bowl" finds a mixing bowl whose name never says it.
+ * A blank query matches everything.
+ */
+export function filterCookware<T extends { name: string; kind?: CookwareType | null }>(
+  items: readonly T[],
+  query: string,
+): T[] {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [...items];
+  return items.filter(item => {
+    const haystack = `${item.name} ${effectiveCookwareType(item)}`.toLowerCase();
+    return words.every(w => haystack.includes(w));
+  });
+}
+
+/** The recent list after `id` is picked: it moves to the front, and the list is capped. */
+export function pushRecentCookware(recent: readonly string[], id: string): string[] {
+  return [id, ...recent.filter(x => x !== id)].slice(0, RECENT_COOKWARE_LIMIT);
+}
+
+/** The pieces behind a recent list, newest first. An id whose piece was deleted is skipped. */
+export function recentCookwareItems<T extends { id: string }>(recent: readonly string[], items: readonly T[]): T[] {
+  return recent.flatMap(id => items.find(c => c.id === id) ?? []);
+}
+
+/** Reads the stored recent list back; anything that isn't a list of strings is an empty one. */
+export function parseRecentCookware(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((x): x is string => typeof x === 'string').slice(0, RECENT_COOKWARE_LIMIT);
+  } catch {
+    return [];
+  }
 }

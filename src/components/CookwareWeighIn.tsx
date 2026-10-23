@@ -3,7 +3,12 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-nati
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useCookwareStore } from '../store/useCookwareStore';
 import type { WeighIn } from '../hooks/useWeighIn';
-import { groupCookwareByType, type CookwareNoun } from '../utils/cookware';
+import {
+  COOKWARE_MENU_SEARCH_MIN, filterCookware, groupCookwareByType, recentCookwareItems, type CookwareNoun,
+} from '../utils/cookware';
+import type { Cookware } from '../types';
+import { useFilterField } from '../hooks/useFilterField';
+import { SearchField } from './SearchField';
 import { haptics } from '../utils/haptics';
 import { CardSheet, type CardAnchor } from './CardSheet';
 import { CookwareSheet } from './CookwareSheet';
@@ -34,14 +39,24 @@ const grams = (g: number) => `${g.toLocaleString('en-US')} g`;
  * **One row that opens a menu, not a pill per piece.** A kitchen holds a dozen
  * pieces or more, and a wrapping grid of them pushed the fields the sheet exists
  * for off the screen. The menu lists them under their type (`groupCookwareByType`)
- * and scrolls. It stays open while picking, because several can be picked at once
+ * and scrolls. Past `COOKWARE_MENU_SEARCH_MIN` pieces it adds a search field above
+ * the list and a Recent group of the last few picked, so a big kitchen is a
+ * search or a tap rather than a scroll. It stays open while picking, because several can be picked at once
  * (a pot and its lid are two entries); "None" clears and closes.
  */
 export function CookwareWeighIn({ weighIn, scaleText, surface = 'card', noun = 'pot' }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors, surface), [colors, surface]);
   const cookware = useCookwareStore(s => s.cookware);
-  const groups = useMemo(() => groupCookwareByType(cookware), [cookware]);
+  const recentIds = useCookwareStore(s => s.recentIds);
+  const filter = useFilterField();
+  const searchable = cookware.length > COOKWARE_MENU_SEARCH_MIN;
+  const query = searchable ? filter.query : '';
+  const groups = useMemo(() => groupCookwareByType(filterCookware(cookware, query)), [cookware, query]);
+  const recent = useMemo(
+    () => (searchable && !query.trim() ? recentCookwareItems(recentIds, cookware) : []),
+    [searchable, query, recentIds, cookware],
+  );
   const [menuOpen, setMenuOpen] = useState(false);
   const [anchor, setAnchor] = useState<CardAnchor | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -53,6 +68,26 @@ export function CookwareWeighIn({ weighIn, scaleText, surface = 'card', noun = '
     weighIn.picked.length === 0 ? 'Subtract cookware weight'
     : weighIn.picked.length === 1 ? `${weighIn.picked[0].name} · ${grams(weighIn.picked[0].weightG)}`
     : `${weighIn.picked.length} pieces · ${grams(tare)}`;
+
+  const renderPiece = (c: Cookware, keyPrefix = '') => {
+    const on = weighIn.selected.includes(c.id);
+    return (
+      <TouchableOpacity
+        key={keyPrefix + c.id}
+        style={styles.row}
+        activeOpacity={interaction.activeOpacity}
+        onPress={() => { haptics.tap(); weighIn.toggle(c.id); }}
+        accessibilityRole="button"
+        accessibilityState={{ selected: on }}
+        accessibilityLabel={`${c.name}, ${grams(c.weightG)}`}
+      >
+        <Text style={[styles.rowText, on && styles.rowTextOn]} numberOfLines={1}>{c.name}</Text>
+        {on
+          ? <Ionicons name="checkmark" size={iconSize.sm} color={colors.accentText} />
+          : <Text style={styles.rowWeight}>{grams(c.weightG)}</Text>}
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <View>
@@ -82,13 +117,23 @@ export function CookwareWeighIn({ weighIn, scaleText, surface = 'card', noun = '
       <CardSheet
         name="CookwareWeighIn menu"
         visible={menuOpen}
-        onClose={() => setMenuOpen(false)}
+        onClose={() => { setMenuOpen(false); filter.clear(); }}
         anchor={anchor}
-        popoverWidth={260}
+        popoverWidth={searchable ? 300 : 260}
         scrimLabel="Close cookware menu"
       >
         {close => (
-          <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
+          <>
+          {searchable && (
+            <SearchField
+              field={filter}
+              placeholder="Search cookware"
+              surface="sunken"
+              style={styles.search}
+              accessibilityLabel="Search cookware"
+            />
+          )}
+          <ScrollView bounces={false} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             <View style={styles.menu}>
               <TouchableOpacity
                 style={styles.row}
@@ -101,28 +146,19 @@ export function CookwareWeighIn({ weighIn, scaleText, surface = 'card', noun = '
                 <Text style={[styles.rowText, weighIn.picked.length === 0 && styles.rowTextOn]}>None</Text>
                 {weighIn.picked.length === 0 && <Ionicons name="checkmark" size={iconSize.sm} color={colors.accentText} />}
               </TouchableOpacity>
+              {recent.length > 0 && (
+                <>
+                  <Text style={styles.header}>RECENT</Text>
+                  {recent.map(c => renderPiece(c, 'recent-'))}
+                </>
+              )}
+              {query.trim() !== '' && groups.length === 0 && (
+                <Text style={styles.noMatch}>No cookware matches “{query.trim()}”.</Text>
+              )}
               {groups.map(group => (
                 <React.Fragment key={group.type}>
                   <Text style={styles.header}>{group.type.toUpperCase()}</Text>
-                  {group.items.map(c => {
-                    const on = weighIn.selected.includes(c.id);
-                    return (
-                      <TouchableOpacity
-                        key={c.id}
-                        style={styles.row}
-                        activeOpacity={interaction.activeOpacity}
-                        onPress={() => { haptics.tap(); weighIn.toggle(c.id); }}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: on }}
-                        accessibilityLabel={`${c.name}, ${grams(c.weightG)}`}
-                      >
-                        <Text style={[styles.rowText, on && styles.rowTextOn]} numberOfLines={1}>{c.name}</Text>
-                        {on
-                          ? <Ionicons name="checkmark" size={iconSize.sm} color={colors.accentText} />
-                          : <Text style={styles.rowWeight}>{grams(c.weightG)}</Text>}
-                      </TouchableOpacity>
-                    );
-                  })}
+                  {group.items.map(c => renderPiece(c))}
                 </React.Fragment>
               ))}
               <Text style={styles.header}>{cookware.length > 0 ? 'OTHER' : 'NONE SAVED YET'}</Text>
@@ -137,6 +173,7 @@ export function CookwareWeighIn({ weighIn, scaleText, surface = 'card', noun = '
               </TouchableOpacity>
             </View>
           </ScrollView>
+          </>
         )}
       </CardSheet>
       <CookwareSheet visible={sheetOpen} onClose={() => setSheetOpen(false)} />
@@ -160,6 +197,8 @@ const makeStyles = (colors: Colors, surface: 'page' | 'card') => StyleSheet.crea
   result: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.sm },
   refusal: { color: colors.redText, fontSize: font.sm, marginTop: spacing.sm },
   menu: { paddingVertical: spacing.xs },
+  search: { marginHorizontal: spacing.smd, marginTop: spacing.sm, marginBottom: spacing.xs },
+  noMatch: { color: colors.textSecondary, fontSize: font.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.smd },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

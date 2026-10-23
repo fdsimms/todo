@@ -126,7 +126,7 @@ import { MAX_BATCH, MAX_QUICK_ADD, batchUpdateTasks, planDay, quickAdd, rebalanc
 import { SERVER_ICONS } from './serverIcon';
 import { generateId } from '../../src/utils/id';
 
-const COOKWARE_TYPE = z.enum(['Pots', 'Pans', 'Baking', 'Bowls', 'Plates', 'Glasses', 'Other']);
+const COOKWARE_TYPE = z.enum(['Pots', 'Pans', 'Baking', 'Bowls', 'Mixing bowls', 'Plates', 'Glasses', 'Other']);
 
 /** `YYYY-MM-DD`, the shape every day-keyed table stores and sorts on. */
 // A rotation member: a name, or a name with how many times a week.
