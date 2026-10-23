@@ -231,16 +231,28 @@ export function driftingTasks(tasks: readonly Task[], threshold: number): DriftE
 }
 
 /**
+ * A target with a unit already logged this period. Pushing such a task isn't
+ * avoidance, so the row's "Moved N×" chip and the date picker's check both
+ * stand down. The count itself is untouched, which keeps the bounty and the
+ * Stuck screen's history.
+ */
+export function hasQuotaProgress(task: Pick<Task, 'targetCount' | 'progressCount'>): boolean {
+  return task.targetCount !== null && task.progressCount > 0;
+}
+
+/**
  * Whether the date picker should say something when it opens on this task.
  *
  * `postponeMuted` is the per-task opt-out — some tasks genuinely are blocked on
  * something else, and being asked about them every week is how the whole
- * feature would get turned off.
+ * feature would get turned off. A target that already has progress this period
+ * is the same kind of exception: asking whether you still want it is the wrong
+ * question.
  */
 export function shouldNudgePostpone(
-  task: Pick<Task, 'postponeCount' | 'postponeMuted'>,
+  task: Pick<Task, 'postponeCount' | 'postponeMuted' | 'targetCount' | 'progressCount'>,
   enabled: boolean,
   threshold: number,
 ): boolean {
-  return enabled && !task.postponeMuted && task.postponeCount >= threshold;
+  return enabled && !task.postponeMuted && !hasQuotaProgress(task) && task.postponeCount >= threshold;
 }
