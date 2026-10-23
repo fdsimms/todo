@@ -7,6 +7,7 @@ import {
   distinctExerciseNames,
   exportDuration,
   guessEquipment,
+  heldInTwoDumbbells,
   importSessionId,
   importSummary,
   indexExisting,
@@ -792,6 +793,58 @@ describe('buildImportPlan', () => {
 
   it('treats a name with no decision as skipped', () => {
     expect(buildImportPlan(sessions, {}, []).sessions).toHaveLength(0);
+  });
+});
+
+describe('buildImportPlan with pair totals', () => {
+  // 60 lb typed for a dumbbell bench press, a barbell squat, and a goblet squat (one dumbbell).
+  const csv = [
+    HEVY_HEADER_LB,
+    '"Push","Oct 1, 2026, 8:28 PM","Oct 1, 2026, 9:20 PM","","Bench Press (Dumbbell)","","",0,"normal",60,10,"","",',
+    '"Push","Oct 1, 2026, 8:28 PM","Oct 1, 2026, 9:20 PM","","Squat (Barbell)","","",0,"normal",60,10,"","",',
+    '"Push","Oct 1, 2026, 8:28 PM","Oct 1, 2026, 9:20 PM","","Goblet Squat","","",0,"normal",60,10,"","",',
+    '"Push","Oct 1, 2026, 8:28 PM","Oct 1, 2026, 9:20 PM","","Plank","","",0,"normal","",,"",60,',
+  ].join('\n');
+  const sessions = ok(parseWorkoutCsv(csv)).sessions;
+  const resolutions = {
+    'bench press (dumbbell)': { kind: 'exercise' as const, exerciseId: 'lib:dumbbell-bench-press' },
+    'squat (barbell)': { kind: 'exercise' as const, exerciseId: 'lib:barbell-back-squat' },
+    'goblet squat': { kind: 'exercise' as const, exerciseId: 'lib:goblet-squat' },
+    plank: { kind: 'skip' as const },
+  };
+  const kgOf = (plan: ReturnType<typeof buildImportPlan>, ref: string) =>
+    plan.sessions[0].sets.find(s => s.exerciseRef === ref)?.weightKg;
+  const sixtyLb = 27.216;
+
+  it('stores the file as it is by default', () => {
+    const plan = buildImportPlan(sessions, resolutions, []);
+    expect(kgOf(plan, 'lib:dumbbell-bench-press')).toBeCloseTo(sixtyLb, 3);
+  });
+
+  it('halves only exercises held in two dumbbells', () => {
+    const plan = buildImportPlan(sessions, resolutions, [], { pairTotals: true, exercises: [] });
+    expect(kgOf(plan, 'lib:dumbbell-bench-press')).toBeCloseTo(sixtyLb / 2, 3);
+    expect(kgOf(plan, 'lib:barbell-back-squat')).toBeCloseTo(sixtyLb, 3);
+    expect(kgOf(plan, 'lib:goblet-squat')).toBeCloseTo(sixtyLb, 3);
+  });
+
+  it('follows a correction the person made to how many dumbbells an exercise uses', () => {
+    const own: Exercise = {
+      id: 'lib:goblet-squat', name: 'Goblet squat', kind: 'weight_reps', primaryMuscles: [], secondaryMuscles: [],
+      equipment: 'dumbbell', barKg: null, dumbbells: 2, loadEntry: null, notes: '', otherNames: [], archived: false, isCustom: false,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    } as Exercise;
+    const plan = buildImportPlan(sessions, resolutions, [], { pairTotals: true, exercises: [own] });
+    expect(kgOf(plan, 'lib:goblet-squat')).toBeCloseTo(sixtyLb / 2, 3);
+  });
+
+  it('halves an exercise it creates from a dumbbell name, and leaves a weightless set alone', () => {
+    const plan = buildImportPlan(sessions, {
+      ...resolutions,
+      'bench press (dumbbell)': { kind: 'create' },
+    }, [], { pairTotals: true, exercises: [] });
+    expect(kgOf(plan, 'new:bench press (dumbbell)')).toBeCloseTo(sixtyLb / 2, 3);
+    expect(heldInTwoDumbbells({ kind: 'skip' }, 'Bench Press (Dumbbell)', [])).toBe(false);
   });
 });
 
