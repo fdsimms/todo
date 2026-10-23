@@ -2524,7 +2524,8 @@ export function FoodLogEntrySheet({
                 placeholder={canEstimate ? 'A food, a recipe, or what you ate' : 'Search foods and recipes'}
                 inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
                 placeholderTextColor={colors.textTertiary}
-                autoCorrect={false}
+                autoCorrect
+                spellCheck
                 // Typing a food is the usual way in, so a fresh add opens with
                 // the keyboard up. Correcting an entry or reviewing a saved
                 // estimate opens on something already filled in, not a blank
