@@ -241,7 +241,7 @@ export function CookwareSheet({ visible, onClose }: Props) {
                         >
                           <Text style={styles.rowTitle} numberOfLines={1}>{c.name}</Text>
                           <Text style={styles.rowValue}>{c.weightG} g</Text>
-                          <Ionicons name="pencil-outline" size={18} color={colors.textSecondary} />
+                          <Ionicons name="create-outline" size={18} color={colors.textSecondary} />
                         </TouchableOpacity>
                         <TouchableOpacity
                           onPress={() => confirmDelete(c.id, c.name)}

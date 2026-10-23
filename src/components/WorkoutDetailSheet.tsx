@@ -389,7 +389,7 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose }: Props) {
                 <Text style={styles.title} numberOfLines={2}>
                   {session?.title ?? 'Workout'}
                   {'  '}
-                  <Ionicons name="pencil" size={13} color={colors.textSecondary} />
+                  <Ionicons name="create-outline" size={15} color={colors.textSecondary} />
                 </Text>
               </TouchableOpacity>
               {!!startedAt && <Text style={styles.subtitle}>{gymName ? `${dayLabel(startedAt)} · ${gymName}` : dayLabel(startedAt)}</Text>}
