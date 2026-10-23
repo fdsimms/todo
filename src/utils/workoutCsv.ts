@@ -3,6 +3,7 @@ import type { Exercise, ExerciseEquipment, WorkoutSession, WorkoutSet, WorkoutSe
 import { buildCatalog, catalogExercise, type CatalogExercise } from './exerciseCatalog';
 import { cleanWorkoutName, exerciseNameKey, machineParent, weightToDisplay } from './workoutData';
 import { csvCell } from './moodExport';
+import { dumbbellsUsed, storedKgFromShown } from './dumbbellLoad';
 import { unitToKg, type WeightUnit } from './weightLog';
 import { MIN_SIMILAR_LENGTH, withinOneEdit } from './textSimilar';
 
@@ -917,6 +918,23 @@ export function splitDuplicates(
   return { fresh, duplicates: sessions.length - fresh.length };
 }
 
+/**
+ * Whether a set's exercise is held in two dumbbells, the one case a pair total
+ * has to be halved for. A created exercise is read from its name the way
+ * `runImport` makes it (`guessEquipment`), and a custom dumbbell exercise
+ * defaults to two.
+ */
+export function heldInTwoDumbbells(
+  resolution: NameResolution,
+  exerciseName: string,
+  exercises: readonly Exercise[],
+): boolean {
+  if (resolution.kind === 'skip') return false;
+  if (resolution.kind === 'create') return guessEquipment(exerciseName) === 'dumbbell';
+  const ex = catalogExercise(exercises, resolution.exerciseId);
+  return !!ex && dumbbellsUsed(ex) === 2;
+}
+
 /** The equipment a file's name says in its words ("Squat (Barbell)"), for the custom exercise made from it. */
 export function guessEquipment(name: string): ExerciseEquipment {
   const w = nameWords(name);
@@ -941,11 +959,19 @@ export function guessEquipment(name: string): ExerciseEquipment {
  * Import button until every name has one, so this never runs on a gap. A
  * session is a duplicate when the log has its id or one that started at the
  * same time (`indexHas`), whatever it is called.
+ *
+ * `pairTotals` is for a file whose dumbbell weights are both dumbbells added
+ * together (a person who typed 100 for two 50s): a set of an exercise held in
+ * two dumbbells is halved, because a set always stores one dumbbell's weight
+ * (`dumbbellLoad.ts`). Everything else, and an exercise held in one dumbbell,
+ * is left as the file says. `exercises` is the person's own rows, which the
+ * library's answer for "how many dumbbells" is read through.
  */
 export function buildImportPlan(
   sessions: readonly ImportedSession[],
   resolutions: Readonly<Record<string, NameResolution | undefined>>,
   existing: readonly Pick<WorkoutSession, 'id' | 'startedAt'>[],
+  options: { pairTotals?: boolean; exercises?: readonly Exercise[] } = {},
 ): ImportPlan {
   const { fresh, duplicates } = splitDuplicates(sessions, existing);
   const create = new Set<string>();
@@ -962,10 +988,12 @@ export function buildImportPlan(
       if (!resolution || resolution.kind === 'skip') { skippedSets++; continue; }
       const exerciseRef = resolution.kind === 'exercise' ? resolution.exerciseId : `${NEW_EXERCISE_PREFIX}${key}`;
       if (resolution.kind === 'create') wanted.add(key);
+      const halve = options.pairTotals && s.weightKg !== null
+        && heldInTwoDumbbells(resolution, s.exerciseName, options.exercises ?? []);
       sets.push({
         exerciseRef,
         kind: s.kind,
-        weightKg: s.weightKg,
+        weightKg: halve && s.weightKg !== null ? storedKgFromShown(s.weightKg, 2) : s.weightKg,
         reps: s.reps,
         durationSeconds: s.durationSeconds,
         distanceM: s.distanceM,
