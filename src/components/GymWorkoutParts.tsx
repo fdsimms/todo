@@ -6,6 +6,7 @@ import { TextField } from './TextField';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { FieldLabel } from './FieldLabel';
 
 /**
  * The gym's parts of workout mode (docs/arch/workouts.md, "Gyms"): which gym
@@ -106,18 +107,21 @@ export function GymNoteBox({ gymName, note, editing, draft, onChangeDraft, onCom
   const styles = useMemo(() => makeStyles(colors), [colors]);
   if (editing) {
     return (
-      <TextField
-        style={styles.noteInput}
-        value={draft}
-        onChangeText={onChangeDraft}
-        onBlur={onCommit}
-        onSubmitEditing={onCommit}
-        placeholder="e.g. Seat 4, handle on the second hole"
-        placeholderTextColor={colors.textTertiary}
-        multiline
-        autoFocus
-        accessibilityLabel={`Note on this exercise at ${gymName}`}
-      />
+      <>
+        <FieldLabel>Note</FieldLabel>
+        <TextField
+          style={styles.noteInput}
+          value={draft}
+          onChangeText={onChangeDraft}
+          onBlur={onCommit}
+          onSubmitEditing={onCommit}
+          placeholder="e.g. Seat 4, handle on the second hole"
+          placeholderTextColor={colors.textTertiary}
+          multiline
+          autoFocus
+          accessibilityLabel={`Note on this exercise at ${gymName}`}
+        />
+      </>
     );
   }
   if (!note) return null;

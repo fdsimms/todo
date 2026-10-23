@@ -19,6 +19,7 @@ import {
   PERSON_DATE_PRESETS,
   personDateInYear,
 } from '../utils/personDateTasks';
+import { FieldLabel } from './FieldLabel';
 
 /** "June 14, 2019", "June 14", or "June 14, 2027, once". */
 function describeDate(date: Pick<PersonDate, 'month' | 'day' | 'year' | 'yearly'>): string {
@@ -116,6 +117,7 @@ export function PersonDateRows({ dates, onChange }: Props) {
                     );
                   })}
                 </View>
+                <FieldLabel>What it is</FieldLabel>
                 <TextField
                   style={styles.labelInput}
                   value={date.label}

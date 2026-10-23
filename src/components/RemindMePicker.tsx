@@ -36,6 +36,7 @@ import type { ReminderKind } from '../types';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
 import { pickerCardWidthFor } from '../utils/frameWidth';
+import { FieldLabel } from './FieldLabel';
 
 type Mode = 'date' | 'before' | 'visible';
 
@@ -252,6 +253,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
             {mode === 'date' && (
               <>
             {/* Natural language input */}
+            <FieldLabel inCard>Type a date</FieldLabel>
             <View style={styles.nlSection}>
               <TextField
                 style={styles.nlInput}

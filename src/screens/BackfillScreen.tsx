@@ -129,6 +129,7 @@ import {
 } from '../types';
 import { TextField } from '../components/TextField';
 import { BUTTON_LABEL } from '../copy/shared';
+import { FieldLabel } from '../components/FieldLabel';
 
 const FIELD_ICONS: Record<BackfillFieldId, keyof typeof Ionicons.glyphMap> = {
   estimate: 'time-outline',
@@ -2947,56 +2948,62 @@ export function BackfillScreen() {
             )}
 
             {active.id === 'askAbout' && (
-              <View style={styles.askAboutRow}>
-                <TextField
-                  style={styles.askAboutInput}
-                  value={askAboutText}
-                  onChangeText={setAskAboutText}
-                  placeholder="e.g. the new job"
-                  placeholderTextColor={colors.textTertiary}
-                  returnKeyType="done"
-                  onSubmitEditing={applyAskAbout}
-                  accessibilityLabel={`Something to ask ${displayNameOf(currentPerson)} about`}
-                />
-                <PressableScale
-                  style={[styles.toggleButton, { backgroundColor: colors.accentFill }, !askAboutReady && styles.toggleButtonIdle]}
-                  onPress={applyAskAbout}
-                  disabled={!askAboutReady}
-                  accessibilityRole="button"
-                  accessibilityState={{ disabled: !askAboutReady }}
-                  accessibilityLabel={`Save something to ask ${displayNameOf(currentPerson)} about`}
-                >
-                  <Ionicons name="chatbubble-ellipses" size={iconSize.md} color={colors.onAccent} />
-                  <Text style={styles.toggleButtonText}>{BUTTON_LABEL.save}</Text>
-                </PressableScale>
-              </View>
+              <>
+                <FieldLabel>Ask about</FieldLabel>
+                <View style={styles.askAboutRow}>
+                  <TextField
+                    style={styles.askAboutInput}
+                    value={askAboutText}
+                    onChangeText={setAskAboutText}
+                    placeholder="e.g. the new job"
+                    placeholderTextColor={colors.textTertiary}
+                    returnKeyType="done"
+                    onSubmitEditing={applyAskAbout}
+                    accessibilityLabel={`Something to ask ${displayNameOf(currentPerson)} about`}
+                  />
+                  <PressableScale
+                    style={[styles.toggleButton, { backgroundColor: colors.accentFill }, !askAboutReady && styles.toggleButtonIdle]}
+                    onPress={applyAskAbout}
+                    disabled={!askAboutReady}
+                    accessibilityRole="button"
+                    accessibilityState={{ disabled: !askAboutReady }}
+                    accessibilityLabel={`Save something to ask ${displayNameOf(currentPerson)} about`}
+                  >
+                    <Ionicons name="chatbubble-ellipses" size={iconSize.md} color={colors.onAccent} />
+                    <Text style={styles.toggleButtonText}>{BUTTON_LABEL.save}</Text>
+                  </PressableScale>
+                </View>
+              </>
             )}
 
             {active.id === 'location' && (
-              <View style={styles.askAboutRow}>
-                <TextField
-                  style={styles.askAboutInput}
-                  value={locationText}
-                  onChangeText={setLocationText}
-                  placeholder="e.g. Austin, TX"
-                  placeholderTextColor={colors.textTertiary}
-                  autoCapitalize="words"
-                  returnKeyType="done"
-                  onSubmitEditing={applyLocation}
-                  accessibilityLabel={`Where ${displayNameOf(currentPerson)} lives`}
-                />
-                <PressableScale
-                  style={[styles.toggleButton, { backgroundColor: colors.accentFill }, !locationReady && styles.toggleButtonIdle]}
-                  onPress={applyLocation}
-                  disabled={!locationReady}
-                  accessibilityRole="button"
-                  accessibilityState={{ disabled: !locationReady }}
-                  accessibilityLabel={`Save where ${displayNameOf(currentPerson)} lives`}
-                >
-                  <Ionicons name="airplane" size={iconSize.md} color={colors.onAccent} />
-                  <Text style={styles.toggleButtonText}>{BUTTON_LABEL.save}</Text>
-                </PressableScale>
-              </View>
+              <>
+                <FieldLabel>Lives in</FieldLabel>
+                <View style={styles.askAboutRow}>
+                  <TextField
+                    style={styles.askAboutInput}
+                    value={locationText}
+                    onChangeText={setLocationText}
+                    placeholder="e.g. Austin, TX"
+                    placeholderTextColor={colors.textTertiary}
+                    autoCapitalize="words"
+                    returnKeyType="done"
+                    onSubmitEditing={applyLocation}
+                    accessibilityLabel={`Where ${displayNameOf(currentPerson)} lives`}
+                  />
+                  <PressableScale
+                    style={[styles.toggleButton, { backgroundColor: colors.accentFill }, !locationReady && styles.toggleButtonIdle]}
+                    onPress={applyLocation}
+                    disabled={!locationReady}
+                    accessibilityRole="button"
+                    accessibilityState={{ disabled: !locationReady }}
+                    accessibilityLabel={`Save where ${displayNameOf(currentPerson)} lives`}
+                  >
+                    <Ionicons name="airplane" size={iconSize.md} color={colors.onAccent} />
+                    <Text style={styles.toggleButtonText}>{BUTTON_LABEL.save}</Text>
+                  </PressableScale>
+                </View>
+              </>
             )}
 
             {batchToggle}
@@ -3514,6 +3521,7 @@ export function BackfillScreen() {
 
           {active.id === 'scannedName' && (
             <View style={styles.renameField}>
+              <FieldLabel>New name</FieldLabel>
               <View style={styles.askAboutRow}>
                 <TextField
                   style={styles.askAboutInput}

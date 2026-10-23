@@ -83,6 +83,7 @@ import { useSheetSubject } from '../hooks/useSheetSubject';
 import { Toggle } from './Toggle';
 import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
+import { FieldLabel } from './FieldLabel';
 
 const NUDGE_MODE_OPTIONS: SegmentOption<NudgeMode>[] = NUDGE_MODES.map(mode => ({
   value: mode,
@@ -832,18 +833,21 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
           />
         )}
         {awayStart && (
-          <View style={styles.destinationRow}>
-            <Ionicons name="location-outline" size={18} color={colors.textSecondary} />
-            <TextField
-              style={styles.destinationInput}
-              value={destination}
-              onChangeText={setDestination}
-              placeholder="e.g. Lisbon"
-              placeholderTextColor={colors.textTertiary}
-              maxLength={DESTINATION_MAX_LENGTH}
-              accessibilityLabel="Where you’re going"
-            />
-          </View>
+          <>
+            <FieldLabel inCard>Destination</FieldLabel>
+            <View style={styles.destinationRow}>
+              <Ionicons name="location-outline" size={18} color={colors.textSecondary} />
+              <TextField
+                style={styles.destinationInput}
+                value={destination}
+                onChangeText={setDestination}
+                placeholder="e.g. Lisbon"
+                placeholderTextColor={colors.textTertiary}
+                maxLength={DESTINATION_MAX_LENGTH}
+                accessibilityLabel="Where you’re going"
+              />
+            </View>
+          </>
         )}
         {awayStart && placeSuggestions.results.length > 0 && (
           <View style={styles.placeList}>
@@ -1050,6 +1054,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
         {links.map((link, i) => (
           <React.Fragment key={link.id}>
             {i > 0 && <View style={styles.sep} />}
+            <FieldLabel inCard>Add a link</FieldLabel>
             <View style={styles.linkRow}>
               <Ionicons name="link-outline" size={18} color={colors.textSecondary} />
               <View style={styles.optionContent}>

@@ -8,6 +8,7 @@ import { haptics } from '../utils/haptics';
 import { useBulkBarEntrance } from '../hooks/useBulkBarEntrance';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
+import { FieldLabel } from './FieldLabel';
 
 interface Props {
   selectedCount: number;
@@ -78,6 +79,7 @@ export function TemplateItemBulkBar({ selectedCount, onDelete, onGroup, onCancel
               <Text style={[styles.applyBtnText, !groupTitle.trim() && styles.applyBtnTextDisabled]}>Apply</Text>
             </TouchableOpacity>
           </View>
+          <FieldLabel>Stack name</FieldLabel>
           <TextField
             style={styles.groupInput}
             value={groupTitle}

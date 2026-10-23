@@ -201,6 +201,7 @@ import { NewSavedMealSheet } from './NewSavedMealSheet';
 import { ProgressBar } from './ProgressBar';
 import { Toggle } from './Toggle';
 import { BUTTON_LABEL } from '../copy/shared';
+import { FieldLabel } from './FieldLabel';
 
 /** The kind picker's segments. The hint under the track says what the pick does. */
 const TASK_KIND_SEGMENTS = TASK_KIND_META.map(meta => ({
@@ -8155,15 +8156,18 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                   pick closes it: a Pick-one with no options is a question
                   with nothing to pick. */}
               {deliverableKind === 'choice' && (
-                <TextField
-                  style={[styles.fieldBox, styles.followUpTaskTitleInput]}
-                  value={deliverableOptionsText}
-                  onChangeText={setDeliverableOptionsText}
-                  placeholder="e.g. Yes, No, Maybe"
-                  placeholderTextColor={colors.textTertiary}
-                  returnKeyType="done"
-                  accessibilityLabel="Options to pick from, separated by commas"
-                />
+                <>
+                  <FieldLabel inCard>Choices</FieldLabel>
+                  <TextField
+                    style={[styles.fieldBox, styles.followUpTaskTitleInput]}
+                    value={deliverableOptionsText}
+                    onChangeText={setDeliverableOptionsText}
+                    placeholder="e.g. Yes, No, Maybe"
+                    placeholderTextColor={colors.textTertiary}
+                    returnKeyType="done"
+                    accessibilityLabel="Options to pick from, separated by commas"
+                  />
+                </>
               )}
               {/* Fewer than two options and completing asks nothing
                   (deliverableOptionsFor), so say so where they're typed. */}
@@ -8226,16 +8230,19 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                 describeValue={n => (n === null ? 'off' : formatDuration(n))}
               />
               {completionTimerMinutes !== null && (
-                <TextField
-                  style={[styles.fieldBox, styles.completionTimerNoteInput]}
-                  value={completionTimerNote ?? ''}
-                  onChangeText={text => setCompletionTimerNote(text || null)}
-                  placeholder="e.g. Don’t eat for 2 hours"
-                  placeholderTextColor={colors.textTertiary}
-                  maxLength={COMPLETION_TIMER_NOTE_MAX_LENGTH}
-                  returnKeyType="done"
-                  accessibilityLabel="What this reminder is for"
-                />
+                <>
+                  <FieldLabel inCard>Reminder note</FieldLabel>
+                  <TextField
+                    style={[styles.fieldBox, styles.completionTimerNoteInput]}
+                    value={completionTimerNote ?? ''}
+                    onChangeText={text => setCompletionTimerNote(text || null)}
+                    placeholder="e.g. Don’t eat for 2 hours"
+                    placeholderTextColor={colors.textTertiary}
+                    maxLength={COMPLETION_TIMER_NOTE_MAX_LENGTH}
+                    returnKeyType="done"
+                    accessibilityLabel="What this reminder is for"
+                  />
+                </>
               )}
             </CollapsibleField>
               </>
