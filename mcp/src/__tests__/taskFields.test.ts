@@ -395,7 +395,7 @@ describe('timed', () => {
   });
 
   it('takes seconds as a fraction of a minute', () => {
-    expect(ok({ timed: { seconds: 45 } })).toMatchObject({ timedMinutes: 0.75, estimatedMinutes: 1 });
+    expect(ok({ timed: { seconds: 45 } })).toMatchObject({ timedMinutes: 0.75, estimatedMinutes: 0.75 });
     expect(ok({ timed: { seconds: 90 } }).timedMinutes).toBe(1.5);
   });
 

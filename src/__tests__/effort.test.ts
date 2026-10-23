@@ -399,3 +399,27 @@ describe('effortRangeLabel', () => {
     expect(effortRangeLabel(0)).toBe('None');
   });
 });
+
+describe('estimatedMinutesFor on a target with a countdown per unit', () => {
+  const target = (over: Record<string, unknown> = {}) => ({
+    estimatedMinutes: null, effort: 2 as Effort, chainEnabled: false, chainIndex: 0, chainItems: [],
+    targetCount: 3, timedMinutes: 0.75, progressCount: 0, ...over,
+  }) as Parameters<typeof estimatedMinutesFor>[0];
+
+  it('is the units still to log times one unit, beating the effort bucket', () => {
+    expect(estimatedMinutesFor(target())).toBeCloseTo(2.25);
+    expect(estimatedMinutesFor(target({ progressCount: 2 }))).toBeCloseTo(0.75);
+  });
+
+  it('counts the whole set once the target is met', () => {
+    expect(estimatedMinutesFor(target({ progressCount: 3 }))).toBeCloseTo(2.25);
+  });
+
+  it('lets an estimate typed on the task win', () => {
+    expect(estimatedMinutesFor(target({ estimatedMinutes: 15 }))).toBe(15);
+  });
+
+  it('leaves a target with no countdown on its bucket', () => {
+    expect(estimatedMinutesFor(target({ timedMinutes: null }))).toBe(15);
+  });
+});
