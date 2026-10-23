@@ -1958,24 +1958,22 @@ export function FoodLogEntrySheet({
   const lookupOffers = offerDatabase || offerEstimate ? (
     <View style={styles.lookupOffers}>
       {offerDatabase && (
-        <LookupOffer
-          styles={styles}
-          colors={colors}
+        <InlineAction
           icon="search-outline"
-          label={hasFdcKey ? `Search a food database for “${query.trim()}”` : 'Add a food database key'}
+          label={hasFdcKey ? 'Food database' : 'Add database key'}
           onPress={openFoodDatabase}
+          style={styles.lookupOffer}
           accessibilityLabel={hasFdcKey
             ? `Search a food database for ${query.trim()}`
             : 'Add a food database key in Settings'}
         />
       )}
       {offerEstimate && (
-        <LookupOffer
-          styles={styles}
-          colors={colors}
+        <InlineAction
           icon="sparkles-outline"
-          label={`Estimate “${query.trim()}”`}
+          label="Estimate"
           onPress={openEstimate}
+          style={styles.lookupOffer}
           accessibilityLabel={`Estimate the nutrition of ${query.trim()}`}
         />
       )}
@@ -2076,7 +2074,8 @@ export function FoodLogEntrySheet({
               said to be for the old text and a search for the new one is a tap. */}
           {dbStale && (
             <InlineAction
-              label={`Search for \u201C${query.trim()}\u201D`}
+              label="Search again"
+              accessibilityLabel={`Search the food database for ${query.trim()}`}
               icon="search-outline"
               variant="neutral"
               onPress={openFoodDatabase}
@@ -2782,34 +2781,6 @@ function StartTile({ styles, colors, icon, label, onPress, wide = false }: Start
   );
 }
 
-interface LookupOfferProps {
-  styles: ReturnType<typeof makeStyles>;
-  colors: Colors;
-  icon: React.ComponentProps<typeof Ionicons>['name'];
-  label: string;
-  onPress: () => void;
-  accessibilityLabel: string;
-}
-
-/**
- * Something the typed text can be sent to (the food database, an estimate),
- * drawn as a row of the list it adds to rather than a button beside it.
- */
-function LookupOffer({ styles, colors, icon, label, onPress, accessibilityLabel }: LookupOfferProps) {
-  return (
-    <TouchableOpacity
-      style={styles.row}
-      activeOpacity={interaction.activeOpacity}
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-    >
-      <Ionicons name={icon} size={iconSize.sm} color={colors.accentText} />
-      <Text style={styles.lookupOfferText} numberOfLines={2}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
-
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bg },
@@ -3048,8 +3019,10 @@ function makeStyles(colors: Colors) {
     },
     // Rows of the list, so the list's own gap (the row's marginBottom) is what
     // spaces them from what follows.
-    lookupOffers: { marginBottom: spacing.xxs },
-    lookupOfferText: { flex: 1, color: colors.accentText, fontSize: font.md, fontWeight: fontWeight.semibold },
+    // One row of two pills rather than a card each: they act on text already
+    // in the field, so they needn't repeat it.
+    lookupOffers: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.smd },
+    lookupOffer: { flex: 1, justifyContent: 'center', minHeight: 36 },
     // The estimate and the database matches, above the list's own rows, with
     // a block gap between them and before what follows.
     lookupBlock: { gap: spacing.md, marginBottom: spacing.md },
