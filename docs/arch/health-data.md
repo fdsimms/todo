@@ -12,7 +12,8 @@ saves it) — plus the rules any further reader or writer has to be built agains
 
 Read this before touching `modules/todo-health-bridge/`,
 `src/utils/healthBridge.ts`, `src/utils/healthCompletionSync.ts`,
-`src/utils/healthWeightSync.ts`, `src/utils/healthFoodSync.ts`,
+`src/utils/healthWeightSync.ts`, `src/utils/healthBloodPressureSync.ts`,
+`src/utils/bloodPressureLog.ts`, `src/screens/BloodPressureScreen.tsx`, `src/utils/healthFoodSync.ts`,
 `src/utils/healthWorkouts.ts`, `src/utils/healthWorkoutSync.ts`,
 `src/utils/heartRateZones.ts`, `src/utils/watchHealthWorkout.ts`,
 `targets/todo-watch/WatchHealthSession.swift`, `src/utils/weightLog.ts`, `src/store/useFoodLogStore.ts`,
@@ -425,6 +426,40 @@ nothing to compare, and cannot be wrong about a body. Adding it as one more
 `HealthRuleMetric` would have been the obvious shape and would have
 put it back on the wrong side of the line: a rule metric is a thing the app
 judges, and there is no judgement here.
+
+## Blood pressure: written as one reading, read back as readings
+
+The weight section's rules hold unchanged (Health is the record, no local copy,
+no edit or delete, a typed number that is already true). Where blood pressure
+differs:
+
+- **One reading is two samples in a correlation.** HealthKit has a systolic type
+  and a diastolic type, and the Health app files a reading as an `HKCorrelation`
+  of type `.bloodPressure` holding both. `writeBloodPressureSample` does the
+  same, so it shows up there as one reading rather than two loose numbers. Share
+  authorization is per component type, so the write kind `'bloodPressure'` is
+  the weaker of the two, like `'nutrition'`.
+- **The bounds are an absurdity check, and a pair is refused if the bottom
+  number is not lower than the top** (`isPlausibleReading`). The native write
+  applies the same rule, so a caller that skipped the JS check cannot get past
+  the bridge.
+- **The read returns readings, not days.** Several a day is the normal way to
+  take them, and averaging a morning against an evening would hide what the
+  person is measuring. `readBloodPressureSeries` is an `HKSampleQuery` over the
+  correlation type, with whole mmHg as integers on the wire, parsed by
+  `parseBloodPressureReadings` (which drops a malformed or implausible entry
+  rather than showing it).
+- **Nothing here interprets a body, and this is the number most tempting to
+  interpret.** There is no "normal", "elevated" or "high", no colour on a
+  figure, no category, no goal, no rule metric and no generated task. Public
+  guidelines would make a band easy to draw, and drawing one is the app forming
+  an opinion about somebody's body, which is the line weight was allowed across
+  only by not crossing. The screen shows the latest reading, the count and
+  mean over a range, and the readings. If one of those ever grows a verdict,
+  this note is the thing to read first.
+- **Pulse is not written or read here.** It is a different type (`heartRate`,
+  which the app already reads only for a workout) and a cuff's pulse is not the
+  workout card's figure.
 
 ## The third write: a logged meal
 

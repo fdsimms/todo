@@ -67,6 +67,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/blockerRegistry.ts` — registerTaskSource, resolveBlocker, waitingCountFor
 - `src/utils/blockerStatus.ts` — BlockerWait, describeBlockerWait
 - `src/utils/blocking.ts` — TaskResolver, resolverFor, canBlock, blockerIdsOf, blockerFields, waitIdsOf, answerOpensGate, isNotNeeded, openOccurrenceOf, liveBlockersOf, +17 more
+- `src/utils/bloodPressureLog.ts` — BloodPressureReading, MIN_SYSTOLIC, MAX_SYSTOLIC, MIN_DIASTOLIC, MAX_DIASTOLIC, isPlausibleReading, parseBloodPressureInput, formatReading, parseBloodPressureReadings, latestReading, +2 more
 - `src/utils/brands.ts` — BrandSummary, brandSummaries, planBrandRename
 - `src/utils/bulkCompletion.ts` — tasksAskingOnCompletion, unansweredCompletionCopy, stackCompletionScope
 - `src/utils/bulkDelete.ts` — isMissableOneOff, BulkDeletePrompt, bulkDeletePrompt
@@ -218,6 +219,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/gymLocation.ts` — defaultGymId, applyLocationGym
 - `src/utils/gyms.ts` — GYM_DEFAULT_RADIUS_M, GYM_MIN_RADIUS_M, GYM_MAX_RADIUS_M, GYM_RADIUS_STEP_M, gymExerciseId, equipmentAvailable, unavailableExerciseIds, RoutineFit, routineFit, describeRoutineFit, +13 more
 - `src/utils/haptics.ts` — haptics
+- `src/utils/healthBloodPressureSync.ts` — BloodPressureWriteResult, logBloodPressureToHealth
 - `src/utils/healthBridge.ts` — HealthBridge, healthBridge, isHealthSupported, openHealthApp
 - `src/utils/healthCompletionSync.ts` — logTaskHealthValue, unlogTaskNutrientFromFoodLog
 - `src/utils/healthFoodSync.ts` — PENDING_WRITE_MAX_AGE_DAYS, pendingWriteAction, FoodWriteResult, writableFoodAmounts, logFoodEntryToHealth, retractFoodEntryFromHealth
@@ -685,7 +687,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useFoodLogStore.ts` — FOOD_INSIGHT_DAYS, FoodLogDraft, PendingMealLog, PendingManualMealLog, FoodLogPatch, FoodLogPlacement, sameEntries, useFoodLogStore
 - `src/store/useGroceryStore.ts` — subscribeCartHoldRelease, PlannedRow, PlanAddResult, describePlanAdd, useGroceryStore
 - `src/store/useGymStore.ts` — GymRefusal, GymInput, GymPatch, GymExercisePatch, useGymStore
-- `src/store/useHealthStore.ts` — HealthDay, EXERCISE_LIVE_WINDOW_DAYS, HEALTH_HISTORY_DAYS, WEIGHT_HISTORY_DAYS, SLEEP_HISTORY_DAYS, sameHealthHistory, useHealthStore, useHealthSync
+- `src/store/useHealthStore.ts` — HealthDay, EXERCISE_LIVE_WINDOW_DAYS, HEALTH_HISTORY_DAYS, WEIGHT_HISTORY_DAYS, BLOOD_PRESSURE_HISTORY_DAYS, SLEEP_HISTORY_DAYS, sameHealthHistory, useHealthStore, useHealthSync
 - `src/store/useHiddenEventsStore.ts` — useHiddenEventsStore
 - `src/store/useJournalLockStore.ts` — useJournalLockStore, isJournalLocked
 - `src/store/useJournalStore.ts` — JournalEntryMeta, useJournalStore

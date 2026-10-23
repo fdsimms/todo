@@ -193,6 +193,7 @@ const HEALTH_HUB: NavHub = {
     { route: 'Mood', label: 'Mood', icon: 'happy-outline', keywords: ['feelings', 'symptoms', 'how i feel'] },
     { route: 'Medications', label: 'Medications', icon: 'medkit-outline', keywords: ['medicine', 'pills', 'tablets', 'dose', 'supplement', 'vitamin', 'inhaler', 'painkiller'] },
     { route: 'Weight', label: 'Weight', icon: 'scale-outline', keywords: ['scale', 'kg', 'lb', 'pounds', 'body', 'mass'] },
+    { route: 'BloodPressure', label: 'Blood pressure', icon: 'pulse-outline', keywords: ['bp', 'systolic', 'diastolic', 'mmhg', 'cuff', 'hypertension', 'heart'] },
     { route: 'Sleep', label: 'Sleep', icon: 'moon-outline', keywords: ['bedtime', 'asleep', 'night', 'rest', 'tired', 'woke'] },
     { route: 'Journal', label: 'Journal', icon: 'book-outline', keywords: ['diary', 'write', 'writing', 'notes', 'reflect'] },
     { route: 'Dreams', label: 'Dreams', icon: 'cloudy-night-outline', keywords: ['dream journal', 'nightmare', 'asleep', 'woke'] },
