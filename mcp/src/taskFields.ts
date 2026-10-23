@@ -26,12 +26,14 @@ import type {
   Effort,
   FollowUpTaskDraft,
   HealthTargetMetric,
+  MealSlot,
   Priority,
   RecurrenceType,
   RotationItem,
   Task,
   TimeOfDay,
 } from '../../src/types';
+import { MEAL_SLOTS } from '../../src/types';
 import { minutesToEffort } from '../../src/utils/effort';
 import { MAX_MEDICATION_EXTRAS, parseMedicationExtras } from '../../src/utils/medicationLog';
 import { followsRingGoal, hasHealthTarget, HEALTH_TARGET_METRICS, HEALTH_TARGET_RANGES } from '../../src/utils/healthTarget';
@@ -276,6 +278,8 @@ export interface TaskFieldsInput {
     /** Further medicines taken together with it; completing records a dose of each. Replaces the list, [] clears it. */
     also?: { name: string; amount?: number | null; unit?: string | null }[];
   } | null;
+  /** Completing it also logs to the food log, in get_task's own `onCompletion` shape. null stops it and drops the saved meal and by-time choice with it. savedMealId is checked by the replica. */
+  logsMeal?: { slot: MealSlot; savedMealId?: string | null; byTime?: boolean } | null;
   /** A deadline worked out from the date on every occurrence, in get_task's own shape. null drops the rule. */
   deadlineRule?: DeadlineRule | null;
   /** A reminder placed by rule, in get_task's own shape, plus the time of day for an offset. null drops the rule. */
@@ -925,6 +929,19 @@ export function taskFieldsPatch(
       // `also` replaces the list when given and leaves it alone when not.
       if (!name) patch.medicationExtras = [];
       else if (m?.also !== undefined) patch.medicationExtras = parseMedicationExtras(m.also);
+    }
+  }
+  if (input.logsMeal !== undefined) {
+    const l = input.logsMeal;
+    const savedMealId = l?.savedMealId?.trim() || null;
+    if (l && !MEAL_SLOTS.includes(l.slot)) errors.push('logsMeal.slot must be breakfast, lunch, dinner or snack.');
+    else if (l && context.isSubtask) errors.push('logsMeal goes on a top-level task, not a checklist item.');
+    else {
+      // `logsMeal: null` stops the whole thing. Without a saved meal the phone
+      // asks what was eaten, and byTime picks the slot from the clock instead.
+      patch.logMealSlot = l ? l.slot : null;
+      patch.logSavedMealId = l ? savedMealId : null;
+      patch.logMealSlotByTime = l ? l.byTime === true : false;
     }
   }
 

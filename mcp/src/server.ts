@@ -1227,6 +1227,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
         project: id => replica.projects().find(p => p.id === id)?.title,
         task: id => replica.taskById(id)?.title,
         stack: id => replica.stacks().find(g => g.id === id)?.title,
+        savedMeal: id => replica.savedMeals().find(m => m.id === id)?.name,
       });
       const willDo = described.length > 0 ? described : ['Nothing in the app would change.'];
       return json({
@@ -1624,6 +1625,12 @@ const taskFieldsShape = {
       .describe('Further medicines taken together with this one ("Iron + Vitamin C"): completing the task records a dose of each, and reopening it takes them all back. Replaces the whole list; [] clears it. Not for a task with a daily or weekly target.'),
   }).nullable().optional()
     .describe('Completing it also records a dose of this medicine in the medication log ("take vitamin D"). Undone with the completion by reopen_task. null stops it.'),
+  logsMeal: z.object({
+    slot: z.enum(['breakfast', 'lunch', 'dinner', 'snack']),
+    savedMealId: z.string().nullable().optional().describe('A saved meal id (list_saved_meals) to log straight away. Leave it out and the phone asks what was eaten.'),
+    byTime: z.boolean().optional().describe('Choose the meal from the time of day it is completed instead, with slot as the fallback.'),
+  }).nullable().optional()
+    .describe('Completing it also logs to the food log under this meal ("2 scoops Metamucil" logs the saved meal). Undone with the completion by reopen_task. Replaces the whole setting, so name the saved meal again to keep it. null stops it, which is how to take a saved meal off a task before using medication in its place.'),
   deadlineRule: z.object({
     daysBeforeDate: z.number().int().optional(),
     daysAfterDate: z.number().int().optional(),
@@ -1649,10 +1656,10 @@ const taskFieldsShape = {
 const {
   repeat: _repeat, target: _target, chain: _chain, rotation: _rotation, followUp: _followUp,
   supply: _supply, healthTarget: _healthTarget, timed: _timed, reminderRule: _reminderRule,
-  deadlineRule: _deadlineRule, onlyIfAnswer: _onlyIfAnswer, medication: _medication,
+  deadlineRule: _deadlineRule, onlyIfAnswer: _onlyIfAnswer, medication: _medication, logsMeal: _logsMeal,
   ...coreTaskFieldsShape
 } = taskFieldsShape;
-const ADVANCED_TASK_FIELDS_NOTE = 'Repeat, target, chain, rotation, follow-up, supply, health target, timed, reminder and deadline rules, medication and onlyIfAnswer are not accepted here; set them with update_task.';
+const ADVANCED_TASK_FIELDS_NOTE = 'Repeat, target, chain, rotation, follow-up, supply, health target, timed, reminder and deadline rules, medication, logsMeal and onlyIfAnswer are not accepted here; set them with update_task.';
 
 function registerWriteTools(
   server: McpServer,

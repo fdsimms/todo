@@ -6,7 +6,8 @@
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
 import { deleteTag, deleteTasks, duplicateTask, renameTag, reorderTasks, setCompletionDate, setTaskDates, skipOccurrence } from '../taskTools';
-import { createTask, listTasks, updateTask } from '../tools';
+import { createTask, getTask, listTasks, updateTask } from '../tools';
+import { logFood, saveMealFromEntries } from '../logTools';
 import { agentRevertPlan } from '../../../src/utils/agentRevert';
 import type { Task, UnattendedEntry } from '../../../src/types';
 
@@ -65,6 +66,23 @@ describe('the new task fields', () => {
     });
     updateTask(replica, row.id, { location: '  ', medication: null, personIds: [] });
     expect(replica.taskById(row.id)).toMatchObject({ location: null, medicationName: null, medicationAmount: null, personIds: [] });
+  });
+
+  it('points a task at a saved meal, changes it, and takes it off with null', () => {
+    const entry = logFood(replica, { label: 'Toast', amounts: { calorieKcal: 150 }, at: '2030-03-10', apply: true });
+    const meal = saveMealFromEntries(replica, 'Usual', [entry.id!]).saved;
+    const made = createTask(replica, { title: 'Breakfast', category: 'Home' });
+    updateTask(replica, made.task.id, { logsMeal: { slot: 'breakfast', savedMealId: meal.id } });
+    expect(replica.taskById(made.task.id)).toMatchObject({ logMealSlot: 'breakfast', logSavedMealId: meal.id, logMealSlotByTime: false });
+    expect(getTask(replica, made.task.id)?.onCompletion).toMatchObject({ logsMealSlot: 'breakfast', logsSavedMealId: meal.id });
+    updateTask(replica, made.task.id, { logsMeal: { slot: 'snack', byTime: true } });
+    expect(replica.taskById(made.task.id)).toMatchObject({ logMealSlot: 'snack', logSavedMealId: null, logMealSlotByTime: true });
+    updateTask(replica, made.task.id, { logsMeal: null });
+    expect(replica.taskById(made.task.id)).toMatchObject({ logMealSlot: null, logSavedMealId: null, logMealSlotByTime: false });
+  });
+
+  it('refuses a saved meal that is not theirs', () => {
+    expect(() => createTask(replica, { title: 'Breakfast', category: 'Home', logsMeal: { slot: 'breakfast', savedMealId: 'gone' } })).toThrow(/no saved meal with id gone/);
   });
 
   it('refuses a person who is not theirs', () => {
