@@ -282,6 +282,12 @@ export function scanBoxChoice(args: {
   linked: Pick<ItemProduct, 'itemId' | 'brand' | 'variant'> | null | undefined;
   label: string;
   brand: string | null;
+  /**
+   * What was typed in (or filled by a type suggestion into) the row's Flavor
+   * field. When set it answers instead of `variantFor`, which finds nothing once
+   * the name has been changed to a type the product's own words don't contain.
+   */
+  variantEdit?: string;
 }): { brand: string | null; variant: string | null; source: ScanBoxSource } | null {
   const picked = scanBoxFor(args.picked, args.itemId);
   if (picked) return { ...picked, source: 'picked' };
@@ -289,7 +295,10 @@ export function scanBoxChoice(args: {
     return { brand: args.linked.brand, variant: args.linked.variant, source: 'linked' };
   }
   if (!args.label || args.itemName === null) return null;
-  const variant = variantFor(args.label, args.brand, args.itemName);
+  const variant =
+    args.variantEdit !== undefined
+      ? args.variantEdit.trim().slice(0, GROCERY_VARIANT_MAX_LENGTH) || null
+      : variantFor(args.label, args.brand, args.itemName);
   if (!args.brand && !variant) return null;
   return { brand: args.brand, variant, source: 'barcode' };
 }

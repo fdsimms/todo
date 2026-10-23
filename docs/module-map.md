@@ -475,6 +475,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/savedEvents.ts` — SAVED_EVENTS_KEY, BOOK_EVERY_MONTHS_MAX, SavedEvent, SavedEventFields, parseSavedEvents, readSavedEvents, writeSavedEvents, findSavedEvent, sortedSavedEvents, saveEventAs, +10 more
 - `src/utils/savedMealReview.ts` — ReviewLine, reviewLinesFor, ItemAmountEdit, itemAmountEdit, ESTIMATE_CHOICES, ItemChange, itemAtAmount, itemAtEstimateFactor, replaceLine, appendLine, +6 more
 - `src/utils/savedPlaces.ts` — SAVED_PLACES_KEY, SAVED_PLACES_LIMIT, SAVED_PLACE_SUGGEST_MIN_LENGTH, SavedPlace, savedPlaceKey, parseSavedPlaces, SavedPlaceInput, addSavedPlace, renameSavedPlace, editSavedPlace, +7 more
+- `src/utils/scanItemType.ts` — itemTypeFromCategory, cleanModelItemType, catalogSpellingOf, ItemTypeMove, itemTypeMoveFor
 - `src/utils/scanPortion.ts` — PackageChoice, servingsPerPackage, packSizeGrams, servingsIn, packageChoices, packageFractions, servingDescription, packageHelping
 - `src/utils/scanResolve.ts` — ScannedItem, ScannedGtinLink, shopperNameFor, newItemBox, nameFromScanFor, sourceLabelFor, sourceLineFor, variantFor, ScanBoxSource, scanBoxChoice, +11 more
 - `src/utils/scheduleMovePrompt.ts` — confirmScheduleMove, confirmSegmentScope, confirmBulkSetWhen
@@ -827,7 +828,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 
 ## `src/services`
 
-- `src/services/aiSuggestions.ts` — forgetToolChoiceRefusals, describeAIError, TemplateItemSuggestion, suggestTemplateItems, ProjectTaskSuggestion, suggestProjectTasks, SubtaskSuggestion, suggestSubtasks, suggestBackfillValues, MAX_RECIPE_CHARS, +27 more
+- `src/services/aiSuggestions.ts` — forgetToolChoiceRefusals, describeAIError, TemplateItemSuggestion, suggestTemplateItems, ProjectTaskSuggestion, suggestProjectTasks, SubtaskSuggestion, suggestSubtasks, suggestBackfillValues, MAX_RECIPE_CHARS, +28 more
 - `src/services/foodSearch.ts` — FoodSearchHit, searchFoods, fetchFoodPortions, describeFoodSearchError, foodSearchErrorSettingsEntryId
 - `src/services/geocode.ts` — GeocodedPlace, geocodePlace
 - `src/services/onDeviceModel.ts` — isOnDeviceReady, onDeviceAvailability, describeOnDeviceAvailability, isOnDeviceErrorMessage, describeOnDeviceError, runOnDevice

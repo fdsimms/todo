@@ -45,6 +45,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import { InlineAction } from './InlineAction';
+import { HelpText } from './HelpText';
 import { CatalogLinkPicker } from './CatalogLinkPicker';
 import { ProductPicker } from './ProductPicker';
 import { EmptyState } from './EmptyState';
@@ -52,6 +53,7 @@ import { ActionRow } from './ActionRow';
 import type { ReceiptAddDraft } from './ReceiptImportSheet';
 import type { ReceiptMatch } from '../utils/receiptMatch';
 import { lookupGtin, describeLookupError } from '../services/productLookup';
+import { suggestItemType } from '../services/aiSuggestions';
 import { formatGtin, normalizeGtin } from '../utils/gtin';
 import { describeProduct, productsForItem } from '../utils/groceryProduct';
 import { describeFoodPanel, nutritionFor, panelLooksWrongFor } from '../utils/foodNutrition';
@@ -72,6 +74,7 @@ import {
   type ScannedGtinLink,
   type ScannedItem,
 } from '../utils/scanResolve';
+import { catalogSpellingOf, itemTypeFromCategory, itemTypeMoveFor } from '../utils/scanItemType';
 import { generateId } from '../utils/id';
 import { haptics } from '../utils/haptics';
 import {
@@ -216,6 +219,13 @@ interface ScanRow extends ScannedItem {
    */
   brandEdit?: string;
   variantEdit?: string;
+  /**
+   * What kind of item the barcode's own words leave unsaid ("Ice cream" for a
+   * flavor name), offered as a chip under Name. `undefined` is not asked yet or
+   * still being asked, `null` is asked and nothing usable. Never applied until
+   * tapped; see `scanItemType.ts` for the rules on when it is offered.
+   */
+  typeSuggestion?: { name: string; source: 'category' | 'model' } | null;
   /**
    * The panel the lookup stated, kept so a match can be checked against what
    * the catalog already holds for that item. See `panelLooksWrongFor`.
@@ -580,13 +590,36 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
         const record = await lookupGtin(gtin);
         const known = record ? null : remembered();
         if (record) {
+          const catalogNames = useGroceryStore.getState().items.map(i => i.name);
+          const fromCategory = itemTypeFromCategory(record.category);
           patchRow(key, {
             ...scannedItemFor(record),
             hasNutrition: !!record.nutrition,
             scanPanel: record.nutrition,
             pending: false,
             included: true,
+            typeSuggestion: fromCategory
+              ? { name: catalogSpellingOf(fromCategory, catalogNames), source: 'category' }
+              : undefined,
           });
+          // Only when the source's category had no usable noun, and after the
+          // row is on screen: the person is holding the next item, so the
+          // model fills a chip in later and never holds the row up.
+          if (!fromCategory) {
+            void suggestItemType(
+              { name: record.name, brand: record.brand, category: record.category },
+              catalogNames,
+            ).then(answer => {
+              const name = answer ? catalogSpellingOf(answer, catalogNames) : null;
+              setRows(current =>
+                current.map(r =>
+                  r.key === key && r.typeSuggestion === undefined
+                    ? { ...r, typeSuggestion: name ? { name, source: 'model' } : null }
+                    : r
+                )
+              );
+            });
+          }
         } else if (known) {
           patchRow(key, { pending: false, name: known.name, included: true, error: null });
         } else {
@@ -944,6 +977,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
         linked: gtinProductFor(row.gtin),
         label: row.label,
         brand: row.brand,
+        variantEdit: row.variantEdit,
       });
       if (!choice) return;
       products.push({
@@ -1292,6 +1326,19 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                     // leaving a checked row with nothing in it.
                     included: text.trim().length > 0,
                   });
+                // Offered only while the row is still the barcode's own words and
+                // would mint a new item; see `itemTypeMoveFor` for the rest.
+                const typeMove = mintsNew ? itemTypeMoveFor(row, row.typeSuggestion?.name) : null;
+                const applyType = () => {
+                  if (!typeMove) return;
+                  haptics.tap();
+                  patchRow(row.key, {
+                    name: typeMove.name,
+                    variantEdit: typeMove.variant,
+                    typeSuggestion: null,
+                    included: true,
+                  });
+                };
                 const resolvedName = rowItem?.name ?? null;
                 const captionNote = captionNoteFor(row, index);
                 // What Add will file this row's product as, from the same rule
@@ -1304,6 +1351,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                       linked: gtinProductFor(row.gtin),
                       label: row.label,
                       brand: row.brand,
+                      variantEdit: row.variantEdit,
                     })
                   : null;
                 const boxText = boxChoice ? describeProduct(boxChoice) : null;
@@ -1484,6 +1532,20 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                         editable={nameable}
                         selectTextOnFocus
                       />
+                      {typeMove && (
+                        <View style={styles.typeSuggestion}>
+                          <InlineAction
+                            label={`Use “${typeMove.name}”`}
+                            icon={row.typeSuggestion?.source === 'model' ? 'sparkles-outline' : 'pricetag-outline'}
+                            tint={row.typeSuggestion?.source === 'model' ? colors.purpleText : undefined}
+                            onPress={applyType}
+                            accessibilityLabel={`Name it ${typeMove.name} and move ${typeMove.variant} to Flavor or type`}
+                          />
+                          <HelpText style={styles.rowLabel}>
+                            Moves “{typeMove.variant}” to Flavor or type.
+                          </HelpText>
+                        </View>
+                      )}
                       {needsNutrition && nutritionBlock}
                       {showBox && (
                         <View style={styles.fieldPair}>
@@ -1845,6 +1907,7 @@ function makeStyles(colors: Colors) {
     chipText: { fontSize: font.xs, fontWeight: fontWeight.semibold },
     rowDivided: { borderTopWidth: border.hairline, borderTopColor: colors.separator },
     rowLabel: { color: colors.textTertiary, fontSize: font.xs },
+    typeSuggestion: { alignItems: 'flex-start', gap: spacing.xs },
     // Wraps, because the caption now shares its line with up to three pills
     // and a long "Filed as …" sentence would otherwise squeeze them off the
     // right edge — see CLAUDE.md on text losing a row to its buttons.

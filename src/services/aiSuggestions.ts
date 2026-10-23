@@ -53,6 +53,7 @@ import type { AiFeatureId, AiModelId } from '../utils/aiFeatures';
 import { routeForFeature, type AiRoute } from '../utils/aiRouting';
 import { DESCRIBE_MAX_LENGTH, readWorkoutDraft, type WorkoutDraft } from '../utils/workoutDraft';
 import { canReadTextOnDevice } from '../utils/receiptOcr';
+import { cleanModelItemType } from '../utils/scanItemType';
 import {
   isOnDeviceReady, runOnDevice, describeOnDeviceError, isOnDeviceErrorMessage,
   type OnDeviceSchema,
@@ -798,11 +799,16 @@ export async function suggestGroceryAisles(
  * launch would outlive the reason for it.
  */
 function groceryAisleRoute(): AiRoute {
+  return languageModelRoute('groceryAisles');
+}
+
+/** `groceryAisleRoute` for any feature the on-device language model can carry. */
+function languageModelRoute(id: AiFeatureId): AiRoute {
   const { anthropicApiKey, aiFeatureConfig, onDeviceAiEnabled } = useSettingsStore.getState();
   const hasApiKey = !!anthropicApiKey;
-  const preferOnDevice = aiFeatureConfig.groceryAisles.preferOnDevice;
-  return routeForFeature('groceryAisles', {
-    enabled: aiFeatureConfig.groceryAisles.enabled,
+  const preferOnDevice = aiFeatureConfig[id].preferOnDevice;
+  return routeForFeature(id, {
+    enabled: aiFeatureConfig[id].enabled,
     hasApiKey,
     onDeviceEnabled: onDeviceAiEnabled,
     // Skipped when a key already wins outright (routeForFeature's rule 2) —
@@ -887,6 +893,85 @@ function matchBackAisles(
     out[original] = aisle;
   }
   return out;
+}
+
+/** The catalog names sent along as vocabulary, so the answer can be a row the person already has. */
+const MAX_ITEM_TYPE_CATALOG_NAMES = 60;
+
+/**
+ * Names the kind of item a scanned product is ("Ice cream" for "Black Tie
+ * Tiramisu" by Jeni's), for the scan sheet to offer as a chip.
+ *
+ * Returns null for every way this can come up empty: switched off, no engine,
+ * a refusal, a reply that isn't a short noun phrase. The caller offers a chip
+ * or doesn't, so there is nothing for it to do with an error, and a scan that is
+ * waiting on the next barcode is no place for an alert. `cleanModelItemType` is
+ * the layer that doesn't believe the reply.
+ */
+export async function suggestItemType(
+  product: { name: string; brand: string | null; category: string | null },
+  catalogNames: readonly string[],
+): Promise<string | null> {
+  const name = product.name.trim();
+  if (!name) return null;
+  try {
+    const route = languageModelRoute('scanItemType');
+    if (route === 'unavailable') return null;
+    const facts = [
+      `Product: ${name}`,
+      product.brand ? `Brand: ${product.brand}` : null,
+      product.category ? `Database category: ${product.category}` : null,
+    ].filter(Boolean).join('\n');
+    const instruction =
+      'Name what kind of grocery item this is, the way a shopper would write it on a list: ' +
+      'one common noun, singular, one to three words, lowercase, with no brand, flavor, size or adjectives ' +
+      '(for example "ice cream", "oat milk", "tortilla chips").';
+    let raw: unknown;
+    if (route === 'onDevice') {
+      const rows = await runOnDevice(`${instruction}\n\n${facts}`, {
+        name: 'ItemType',
+        description: 'The kind of grocery item a product is',
+        fields: [{ name: 'type', type: 'string', description: 'One common noun, singular, no brand or flavor.' }],
+      });
+      raw = rows[0]?.type;
+    } else {
+      const { apiKey, model } = requireFeature('scanItemType');
+      const known = catalogNames.slice(0, MAX_ITEM_TYPE_CATALOG_NAMES);
+      const data = await callAnthropic({
+        max_tokens: 100,
+        tools: [{
+          name: 'name_item_type',
+          description: 'Name the kind of grocery item a scanned product is',
+          input_schema: {
+            type: 'object',
+            properties: {
+              type: {
+                type: 'string',
+                description: 'One common noun, singular, one to three words, no brand, flavor or size.',
+              },
+            },
+            required: ['type'],
+          },
+        }],
+        tool_choice: { type: 'tool', name: 'name_item_type' },
+        messages: [{
+          role: 'user',
+          content: [
+            instruction,
+            known.length > 0
+              ? `If one of these items the shopper already has is the right kind, answer with it exactly: ${known.join(', ')}.`
+              : null,
+            facts,
+          ].filter(Boolean).join('\n\n'),
+        }],
+      }, apiKey, model);
+      raw = (data.content?.find(c => c.type === 'tool_use')?.input as { type?: unknown } | undefined)?.type;
+    }
+    return cleanModelItemType(raw, product.brand);
+  } catch (e) {
+    logError('suggestItemType', e);
+    return null;
+  }
 }
 
 export interface RecipeGroceryItem {
