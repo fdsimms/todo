@@ -517,6 +517,19 @@ describe('the workout write tools', () => {
       expect(() => updateWorkout(ledgered, 'gone', { notes: 'x' })).toThrow(/No workout with id gone/);
     });
 
+    it('keeps an exercise\'s superset and a set\'s time when its sets are replaced', () => {
+      const w = log();
+      const done = '2026-10-07T18:20:00.000Z';
+      mockRaw.runSync('UPDATE workout_sets SET superset_key = ?, completed_at = ? WHERE session_id = ?', ['ss-1', done, w.id]);
+      replica.refresh();
+      updateWorkout(ledgered, w.id, { exercises: [{ exerciseId: BENCH, sets: [{ weightKg: 40, reps: 8 }, { weightKg: 45, reps: 8 }] }] });
+      const sets = replica.workoutSets(w.id);
+      expect(sets.map(s => [s.weightKg, s.supersetKey, s.completedAt])).toEqual([[40, 'ss-1', done], [45, 'ss-1', expect.any(String)]]);
+      // An exercise the replacement adds has no superset to inherit.
+      updateWorkout(ledgered, w.id, { exercises: [{ exerciseId: FLY, sets: [{ weightKg: 10, reps: 15 }] }] });
+      expect(replica.workoutSets(w.id)[0].supersetKey).toBeNull();
+    });
+
     it('moves the sets with the start, and refuses a start in the future', () => {
       const w = log();
       const before = replica.workoutSets(w.id)[0].completedAt!;

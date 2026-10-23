@@ -1576,8 +1576,9 @@ Three areas had no MCP read or write, and the shape of each answer follows from 
   `scale_workout_weights` is the one-call form of the same correction across many workouts (a pair
   total stored as one dumbbell, or the wrong unit): it multiplies the named exercises' weights over a
   range, describes the change until `apply: true`, skips the session in progress, and rewrites sets
-  carrying every field over (the superset, the time done), since `update_workout`'s `exercises`
-  rebuilds a set from only the fields it exposes. Each
+  carrying every field over. `update_workout`'s `exercises` rebuilds sets from only the fields it
+  exposes, so an exercise already in the workout keeps its superset and a set already there keeps its
+  time (`setsKeepingWhatTheInputCannotSay`). Each
   write is recorded in Activity, a routine under its name and a workout titled by kind
   ("Workout"), never by what was lifted, the mood entry's reason. Weights are kilograms on the wire.
   A task names its routine with `workoutRoutineId`, or a program with `workoutProgramId` (never

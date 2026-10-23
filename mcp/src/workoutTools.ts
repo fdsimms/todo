@@ -941,9 +941,36 @@ export function updateWorkout(replica: Replica, id: string, input: UpdateWorkout
     ...(input.effort !== undefined ? { effort: input.effort } : {}),
     ...(input.startedAt !== undefined ? { startedAt: start.toISOString() } : {}),
     ...(end ? { endedAt: end.toISOString() } : {}),
-    ...(input.exercises ? { sets: setsFrom(input.exercises) } : shifted && shifted.length ? { sets: shifted } : {}),
+    ...(input.exercises ? { sets: setsKeepingWhatTheInputCannotSay(setsFrom(input.exercises), input.exercises, replica.workoutSets(id)) } : shifted && shifted.length ? { sets: shifted } : {}),
   });
   return { workout: workoutRow(replica, session, sets, namesOf(replica)) };
+}
+
+/**
+ * Replacing a workout's sets rebuilds each from the fields the tool exposes, which
+ * leaves out the superset an exercise sits in and the moment each set was done.
+ * Both belong to the workout rather than to what the agent was asked to correct, so
+ * an exercise that was already there keeps its superset, and a set that was already
+ * there (by position within its exercise) keeps its time. An exercise or set added
+ * by the replacement has neither, as before.
+ */
+function setsKeepingWhatTheInputCannotSay(
+  built: SetInput[],
+  exercises: NonNullable<LogWorkoutInput['exercises']>,
+  existing: readonly WorkoutSet[],
+): SetInput[] {
+  const before = new Map<string, WorkoutSet[]>();
+  for (const st of existing) before.set(st.exerciseId, [...(before.get(st.exerciseId) ?? []), st]);
+  let at = 0;
+  return exercises.flatMap(e => {
+    const old = before.get(e.exerciseId) ?? [];
+    const superset = old.find(st => st.supersetKey)?.supersetKey ?? null;
+    return e.sets.map((_, i) => {
+      const next = built[at++];
+      const prev = old[i];
+      return { ...next, supersetKey: superset, ...(prev?.completedAt ? { completedAt: prev.completedAt } : {}) };
+    });
+  });
 }
 
 export interface ScaleWorkoutWeightsInput extends LogRangeInput {
