@@ -23,7 +23,10 @@ import { applyTargets, applyToAllLabel, type ApplyScope } from '../utils/applyTo
 import { clearApplyOffer, setApplyOffer } from '../utils/applyToAllOffer';
 import { formatRestSeconds, formatWeightNumber } from '../utils/workoutData';
 import { parseRepsTarget, parseSetCell } from '../utils/workoutCell';
-import { columnLabel, fieldLabel, setBadge, setFieldsFor, setName, type SetField } from '../utils/workoutSession';
+import {
+  columnLabel, fieldLabel, matchPrevious, previousSets, setBadge, setFieldsFor, setName, type SetField,
+} from '../utils/workoutSession';
+import { useWorkoutStore } from '../store/useWorkoutStore';
 import {
   MAX_ROUTINE_SETS, MAX_WARMUP_SETS, SET_KIND_LABELS, addSet, addWarmup, canDuplicateSet, canRemoveSet,
   describeTargetReps, duplicateSet, kindsFor, removeSet, routineSetLabels, sameKindIndices, withSetDuration, withSetKind,
@@ -61,6 +64,16 @@ export function RoutineSetTable({ item, kind, unit, scale, weightSuffix, rampLoa
   const styles = useMemo(() => makeStyles(colors, textScale), [colors, textScale]);
   const [editing, setEditing] = useState<Editing | null>(null);
   const tableId = useId();
+  // Last time's matching set for each target: a blank cell starts from it when
+  // a workout is laid out (`plannedSetsFor`), so the placeholder shows its number.
+  const sessions = useWorkoutStore(s => s.sessions);
+  const lastSets = useMemo(
+    () => matchPrevious(
+      item.targets.map((t, i) => ({ id: String(i), kind: t.kind })),
+      previousSets(useWorkoutStore.getState().exerciseHistory(item.exerciseId), sessions, null),
+    ),
+    [item.exerciseId, item.targets, sessions],
+  );
   const fields = setFieldsFor(kind).filter(f => EDITABLE.includes(f));
   const labels = routineSetLabels(item.targets);
   const warmups = item.targets.filter(t => t.kind === 'warmup').length;
@@ -129,10 +142,16 @@ export function RoutineSetTable({ item, kind, unit, scale, weightSuffix, rampLoa
     });
   };
 
-  const placeholderFor = (t: RoutineSetTarget, field: SetField): string => {
-    if (field === 'weight') return 'Last time';
+  // A blank cell falls back to last time's matching set (`plannedSetsFor`), so
+  // it shows that number, greyed out. With nothing to fall back to it shows a
+  // dash; an AMRAP's reps are a real target and say so.
+  const placeholderFor = (t: RoutineSetTarget, field: SetField, index: number): string => {
     if (field === 'reps' && t.kind === 'amrap') return 'Max';
-    return 'Any';
+    const last = lastSets.get(String(index));
+    if (field === 'weight' && last?.weightKg != null) return formatWeightNumber(last.weightKg * scale, unit);
+    if (field === 'reps' && last?.reps != null) return String(last.reps);
+    if (field === 'duration' && last?.durationSeconds != null) return formatRestSeconds(last.durationSeconds);
+    return '–';
   };
 
   const editingTarget = editing ? item.targets[editing.index] : undefined;
@@ -192,7 +211,7 @@ export function RoutineSetTable({ item, kind, unit, scale, weightSuffix, rampLoa
                   <CellInput
                     value={text ?? ''}
                     field={f}
-                    placeholder={placeholderFor(t, f)}
+                    placeholder={placeholderFor(t, f, index)}
                     onCommit={v => commitCell(index, f, v)}
                     onDraft={v => publishOffer(index, f, v)}
                     onLeave={() => clearApplyOffer(cellKey(index, f))}
@@ -298,7 +317,7 @@ export function RoutineSetTable({ item, kind, unit, scale, weightSuffix, rampLoa
  * loses focus, because `TextField` takes a `value` only when it differs from
  * what the field last reported, so writing each keystroke through would turn
  * "10." into "10" under the person's finger (workout mode's `SetInput` does the
- * same). A blank cell is "from last time", which the placeholder says.
+ * same). A blank cell is "from last time", which the placeholder shows.
  */
 function CellInput({ value, field, placeholder, onCommit, onDraft, onLeave, styles, placeholderColor, accessibilityLabel }: {
   value: string;
