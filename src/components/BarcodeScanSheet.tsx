@@ -74,7 +74,7 @@ import {
   type ScannedGtinLink,
   type ScannedItem,
 } from '../utils/scanResolve';
-import { catalogSpellingOf, itemTypeFromCategory, itemTypeMoveFor } from '../utils/scanItemType';
+import { catalogSpellingOf, itemTypeFromCategory, itemTypeMoveFor, type ItemTypeMove } from '../utils/scanItemType';
 import { generateId } from '../utils/id';
 import { haptics } from '../utils/haptics';
 import {
@@ -920,6 +920,33 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
   ).length;
   const needNutritionCount = rows.filter((r, i) => needsNutritionFor(r, matches[i])).length;
 
+  /**
+   * The rename a row's type suggestion would make, or null. Offered only to a
+   * row that would mint a new item: one that matched something already has a name
+   * the catalog chose. Read by the row's chip, its collapsed hint and the
+   * header's apply-all, so they can't disagree about which rows have one.
+   */
+  const typeMoveOf = (row: ScanRow, match: ReceiptMatch | undefined) =>
+    !row.pending && !pickedTarget(row) && !resolvedItemId(row, match) && !pendingMatchId(row, match)
+      ? itemTypeMoveFor(row, row.typeSuggestion?.name)
+      : null;
+  const typeMoves = rows.map((row, i) => typeMoveOf(row, matches[i]));
+  const typeMoveCount = typeMoves.filter(Boolean).length;
+  const applyTypeMove = (row: ScanRow, move: ItemTypeMove) =>
+    patchRow(row.key, {
+      name: move.name,
+      variantEdit: move.variant,
+      typeSuggestion: null,
+      included: true,
+    });
+  const applyAllTypeMoves = () => {
+    haptics.tap();
+    rows.forEach((row, i) => {
+      const move = typeMoves[i];
+      if (move) applyTypeMove(row, move);
+    });
+  };
+
   // ==== filing a row under a catalog item ====
   /**
    * Files a scanned row under a catalog item, from the picker's own results or
@@ -1293,6 +1320,16 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
               {needNutritionCount > 0 && (
                 <Text style={styles.summaryWarn}>{needNutritionCount} NEED NUTRITION</Text>
               )}
+              {typeMoveCount > 0 && (
+                <InlineAction
+                  label={typeMoveCount === 1 ? 'Use suggested name' : `Use suggested names (${typeMoveCount})`}
+                  icon="sparkles-outline"
+                  tint={colors.purpleText}
+                  surface="page"
+                  onPress={applyAllTypeMoves}
+                  accessibilityLabel={`Rename ${typeMoveCount} scanned ${typeMoveCount === 1 ? 'item' : 'items'} after the kind of item they are`}
+                />
+              )}
             </View>
             <View style={styles.card}>
               {rows.map((row, index) => {
@@ -1328,16 +1365,11 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                   });
                 // Offered only while the row is still the barcode's own words and
                 // would mint a new item; see `itemTypeMoveFor` for the rest.
-                const typeMove = mintsNew ? itemTypeMoveFor(row, row.typeSuggestion?.name) : null;
+                const typeMove = typeMoves[index];
                 const applyType = () => {
                   if (!typeMove) return;
                   haptics.tap();
-                  patchRow(row.key, {
-                    name: typeMove.name,
-                    variantEdit: typeMove.variant,
-                    typeSuggestion: null,
-                    included: true,
-                  });
+                  applyTypeMove(row, typeMove);
                 };
                 const resolvedName = rowItem?.name ?? null;
                 const captionNote = captionNoteFor(row, index);
@@ -1395,7 +1427,9 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                     : caption && (needsName || pendingId || rowItemId)
                       ? caption
                       : `${
-                          [newBox.brand, newBox.variant].filter(Boolean).join(' · ') ||
+                          [newBox.brand, newBox.variant, typeMove ? `${typeMove.name}?` : null]
+                            .filter(Boolean)
+                            .join(' · ') ||
                           (row.label ? 'New item' : row.gtin ? 'Barcode not found' : 'Typed by hand')
                         }${needsNutrition ? ' · No nutrition yet' : ''}`;
                 const chip: { tone: ChipTone; label: string } | null = row.pending
@@ -1857,7 +1891,7 @@ function makeStyles(colors: Colors) {
       paddingVertical: spacing.xs,
     },
     hintText: { color: colors.onFill, fontSize: font.xs },
-    summary: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.xsm },
+    summary: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xsm },
     summaryText: {
       color: colors.textSecondary,
       fontSize: font.xs,
