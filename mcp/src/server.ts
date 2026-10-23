@@ -113,7 +113,7 @@ import { DEFAULT_FAST_LIMIT, MAX_FAST_LIMIT, listFasts } from './fastTools';
 import {
   DEFAULT_EXERCISE_LIMIT, MAX_EXERCISE_LIMIT, deleteGym, deleteProgram, deleteRoutine, deleteRoutineGroup, deleteWorkout, exerciseHistory, listExercises,
   listWorkouts, logWorkout, nextWorkout, routineHistoryOut, restoreRoutineVersionOut, copyRoutineVersionOut, mergeRoutinesOut,
-  programHistoryOut, restoreProgramVersionOut, saveGym, saveProgram, saveRoutine, saveRoutineGroup, updateWorkout,
+  programHistoryOut, restoreProgramVersionOut, saveGym, saveProgram, saveRoutine, saveRoutineGroup, updateWorkout, scaleWorkoutWeights,
 } from './workoutTools';
 import { EXERCISE_EQUIPMENT, MUSCLE_GROUPS } from '../../src/utils/workoutData';
 import { deleteJournalEntry, listJournalEntries, logJournalEntry, searchJournalEntries, updateJournalEntry } from './journalTools';
@@ -910,6 +910,24 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
         return json(await withWrite(() => updateWorkout(replica, id, input)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not change the workout.' });
+      }
+    }
+  );
+
+  server.tool(
+    'scale_workout_weights',
+    'Multiply the weights of chosen exercises across many finished workouts in one call: for a fix that would otherwise be one update_workout per workout, such as an import that stored a pair of dumbbells as one weight (factor 0.5 for those exercises) or weights logged in the wrong unit. Without apply: true it only reports how many workouts and sets it would change, with an example of each; show that to the person, then send the same arguments with apply: true. Only the exercises named change; every other set, and everything else about the changed sets (reps, type, note, superset, when it was done), is kept. Defaults to the last 365 days; pass days or from/to to narrow it. A workout still in progress on the phone is skipped. Weights stay in kg and one dumbbell is one dumbbell: check list_exercises for how many an exercise is held in before halving.',
+    {
+      exerciseIds: z.array(z.string().min(1)).min(1).max(60).describe('From list_exercises.'),
+      factor: z.number().positive().max(10).describe('What each weight is multiplied by: 0.5 halves it, 2 doubles it. Not 1.'),
+      ...logRange,
+      apply: z.boolean().optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => scaleWorkoutWeights(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the weights.' });
       }
     }
   );

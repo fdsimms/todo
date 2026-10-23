@@ -946,6 +946,91 @@ export function updateWorkout(replica: Replica, id: string, input: UpdateWorkout
   return { workout: workoutRow(replica, session, sets, namesOf(replica)) };
 }
 
+export interface ScaleWorkoutWeightsInput extends LogRangeInput {
+  /** The exercises whose weights change. Other exercises in the same workouts are left alone. */
+  exerciseIds: string[];
+  /** What each weight is multiplied by: 0.5 halves it, 2 doubles it. */
+  factor: number;
+  /** false or absent describes the change and writes nothing. */
+  apply?: boolean;
+}
+
+export interface ScaleWorkoutWeightsResult {
+  applied: boolean;
+  factor: number;
+  range: DayRange;
+  /** Workouts that hold a weight to change, and how many sets in them. */
+  workouts: { id: string; date: string; title: string; sets: number; example: string }[];
+  sets: number;
+  /** Workouts in the range that are still in progress on the phone, which are not touched. */
+  skippedInProgress: number;
+  note: string;
+}
+
+const MAX_SCALE_FACTOR = 10;
+const SCALE_DEFAULT_DAYS = 365;
+
+/**
+ * Multiplies the weight of every set of the named exercises across a range of
+ * finished workouts, for the fix `update_workout` takes one workout at a time
+ * to make: an import that stored a pair total as one dumbbell's weight, or a
+ * lift logged in the wrong unit. Everything else about a set is carried over as
+ * it is (reps, kind, rest, note, superset, when it was done), and a workout
+ * with no matching weight is not rewritten. Without `apply` it changes nothing.
+ */
+export function scaleWorkoutWeights(replica: Replica, input: ScaleWorkoutWeightsInput): ScaleWorkoutWeightsResult {
+  if (!(input.factor > 0) || input.factor > MAX_SCALE_FACTOR || input.factor === 1) {
+    throw new Error(`factor is what each weight is multiplied by: above 0, up to ${MAX_SCALE_FACTOR}, and not 1. 0.5 halves a weight and 2 doubles it.`);
+  }
+  const wanted = new Set(input.exerciseIds);
+  const unknown = unknownExercises(replica, [...wanted]);
+  if (unknown.length) throw unknownError(unknown);
+  const range = resolveRange(replica, input.from || input.days ? input : { ...input, days: SCALE_DEFAULT_DAYS });
+  const rows = replica.exercises();
+  const apply = input.apply === true;
+  const workouts: ScaleWorkoutWeightsResult['workouts'] = [];
+  let total = 0;
+  let skippedInProgress = 0;
+
+  for (const session of replica.workoutSessions(range.from, range.to)) {
+    const sets = replica.workoutSets(session.id);
+    const hit = sets.filter(st => wanted.has(st.exerciseId) && st.weightKg !== null && st.weightKg > 0);
+    if (hit.length === 0) continue;
+    if (session.endedAt === null) { skippedInProgress++; continue; }
+    const scaled = (kg: number) => Math.round(kg * input.factor * 1000) / 1000;
+    const first = hit[0];
+    workouts.push({
+      id: session.id,
+      date: replica.logicalDayKeyOf(session.startedAt),
+      title: session.title,
+      sets: hit.length,
+      example: `${catalogExercise(rows, first.exerciseId)?.name ?? 'Exercise'}: ${first.weightKg} kg to ${scaled(first.weightKg!)} kg`,
+    });
+    total += hit.length;
+    if (!apply) continue;
+    replica.updateWorkout(session.id, {
+      sets: sets.map(st => ({
+        exerciseId: st.exerciseId, kind: st.kind,
+        weightKg: wanted.has(st.exerciseId) && st.weightKg !== null && st.weightKg > 0 ? scaled(st.weightKg) : st.weightKg,
+        reps: st.reps, durationSeconds: st.durationSeconds, distanceM: st.distanceM, rpe: st.rpe,
+        supersetKey: st.supersetKey, note: st.note, completedAt: st.completedAt,
+      })),
+    });
+  }
+
+  return {
+    applied: apply,
+    factor: input.factor,
+    range,
+    workouts,
+    sets: total,
+    skippedInProgress,
+    note: apply
+      ? 'Done. Each workout keeps its other sets as they were. To undo, send the reciprocal factor (2 after 0.5) for the same exercises and range, which is exact for the weights the app rounds to 3 decimals.'
+      : 'Nothing has changed yet. Show the person how many workouts and sets this touches, and send the same arguments with apply: true once they agree.',
+  };
+}
+
 export function deleteWorkout(replica: Replica, id: string): { removed: WorkoutRow; note: string } {
   const { session, sets } = replica.deleteWorkout(id);
   return {
