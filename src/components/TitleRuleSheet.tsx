@@ -29,6 +29,7 @@ import { EditorSheet } from './EditorSheet';
 import { TextField } from './TextField';
 import { Toggle } from './Toggle';
 import { BUTTON_LABEL } from '../copy/shared';
+import { FieldLabel } from './FieldLabel';
 
 type FieldKey = 'category' | 'project' | 'tags' | 'priority' | 'effort' | 'link';
 
@@ -423,6 +424,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
               </TouchableOpacity>
             ))}
           </View>
+          <FieldLabel>Web address</FieldLabel>
           <View style={styles.linkCustomRow}>
             <Ionicons name="globe-outline" size={16} color={colors.textSecondary} />
             <TextField

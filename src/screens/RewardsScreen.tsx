@@ -89,6 +89,7 @@ import { ProgressBar } from '../components/ProgressBar';
 import { AnimatedNumber } from '../components/AnimatedNumber';
 import { HelpText } from '../components/HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
+import { FieldLabel } from '../components/FieldLabel';
 
 /**
  * Coins and rewards — the screen for `src/utils/rewards.ts`.
@@ -661,6 +662,7 @@ export function RewardsScreen() {
               );
             })}
           </View>
+          <FieldLabel>Web address</FieldLabel>
           <TextField
             style={styles.input}
             value={customLink}

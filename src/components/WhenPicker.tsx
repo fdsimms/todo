@@ -59,6 +59,7 @@ import { SheetScrim } from './SheetScrim';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
 import { pickerCardWidthFor } from '../utils/frameWidth';
+import { FieldLabel } from './FieldLabel';
 
 // Placeholder fields the snooze engine doesn't consider — only the ones it
 // actually reads (title/notes/tags/category/priority/effort) get overridden
@@ -656,6 +657,7 @@ export function WhenPicker({
           {/* Natural language input */}
           {nlEnabled && (
             <>
+              <FieldLabel inCard>Type a date</FieldLabel>
               <View style={styles.nlSection}>
                 <TextField
                   style={styles.nlInput}

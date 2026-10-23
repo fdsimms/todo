@@ -59,8 +59,8 @@ import { addDays } from 'date-fns/addDays';
 import { subDays } from 'date-fns/subDays';
 import { subMinutes } from 'date-fns/subMinutes';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
-import type { Task, Priority, Effort, FollowUpTaskDraft, RecurrenceType, HolidayRule, ChainItem, RotationItem, DeliverableKind, TimeOfDay, ReminderKind, Polarity, Difficulty, QuotaPeriod, WeatherCondition, NutrientKey, MealSlot, AnswerGate, TaskMedicationExtra, TaskAttachment } from '../types';
-import { PRIORITY_LABELS, TITLE_MAX_LENGTH, HEALTH_WRITABLE_NUTRIENTS, MINERAL_KEYS, VITAMIN_KEYS, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
+import type { Task, Priority, Effort, FollowUpTaskDraft, RecurrenceType, HolidayRule, ChainItem, RotationItem, DeliverableKind, TimeOfDay, ReminderKind, Polarity, Difficulty, QuotaPeriod, WeatherCondition, NutrientKey, LogMealSlot, AnswerGate, TaskMedicationExtra, TaskAttachment } from '../types';
+import { PRIORITY_LABELS, TITLE_MAX_LENGTH, HEALTH_WRITABLE_NUTRIENTS, MINERAL_KEYS, VITAMIN_KEYS, LOG_MEAL_SLOTS, LOG_MEAL_SLOT_LABELS } from '../types';
 import { NUTRIENT_LABEL, mlToFlOz, flOzToMl } from '../utils/foodNutrition';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, border, interaction, animation, checkboxRadius, iconSize, type Colors, textScale } from '../theme';
@@ -112,7 +112,7 @@ import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { useSavedMealsStore } from '../store/useSavedMealsStore';
-import { slotForHour } from '../utils/mealLog';
+import { logSlotToMealSlot, slotForHour } from '../utils/mealLog';
 import { categoryLabel } from '../utils/categoryLabel';
 import { askForReminderPermissionIfNeeded } from '../utils/reminderPermission';
 import { useShallow } from 'zustand/react/shallow';
@@ -201,6 +201,7 @@ import { NewSavedMealSheet } from './NewSavedMealSheet';
 import { ProgressBar } from './ProgressBar';
 import { Toggle } from './Toggle';
 import { BUTTON_LABEL } from '../copy/shared';
+import { FieldLabel } from './FieldLabel';
 
 /** The kind picker's segments. The hint under the track says what the pick does. */
 const TASK_KIND_SEGMENTS = TASK_KIND_META.map(meta => ({
@@ -318,7 +319,7 @@ export interface TaskDraft {
   medicationName?: string | null;
   medicationAmount?: number | null;
   medicationUnit?: string | null;
-  logMealSlot?: MealSlot | null;
+  logMealSlot?: LogMealSlot | null;
   logSavedMealId?: string | null;
   logMealSlotByTime?: boolean;
   workoutRoutineId?: string | null;
@@ -841,7 +842,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   // Further medicines taken together with the main one ("Iron + Vitamin C"),
   // typed as strings like the main amount. Blank rows are ignored on save.
   const [medicationExtras, setMedicationExtras] = useState<MedicationExtraRow[]>([]);
-  const [logMealSlot, setLogMealSlot] = useState<MealSlot | null>(null);
+  const [logMealSlot, setLogMealSlot] = useState<LogMealSlot | null>(null);
   const [logSavedMealId, setLogSavedMealId] = useState<string | null>(null);
   const [logMealSlotByTime, setLogMealSlotByTime] = useState(false);
   const savedMeals = useSavedMealsStore(s => s.meals);
@@ -8155,15 +8156,18 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                   pick closes it: a Pick-one with no options is a question
                   with nothing to pick. */}
               {deliverableKind === 'choice' && (
-                <TextField
-                  style={[styles.fieldBox, styles.followUpTaskTitleInput]}
-                  value={deliverableOptionsText}
-                  onChangeText={setDeliverableOptionsText}
-                  placeholder="e.g. Yes, No, Maybe"
-                  placeholderTextColor={colors.textTertiary}
-                  returnKeyType="done"
-                  accessibilityLabel="Options to pick from, separated by commas"
-                />
+                <>
+                  <FieldLabel inCard>Choices</FieldLabel>
+                  <TextField
+                    style={[styles.fieldBox, styles.followUpTaskTitleInput]}
+                    value={deliverableOptionsText}
+                    onChangeText={setDeliverableOptionsText}
+                    placeholder="e.g. Yes, No, Maybe"
+                    placeholderTextColor={colors.textTertiary}
+                    returnKeyType="done"
+                    accessibilityLabel="Options to pick from, separated by commas"
+                  />
+                </>
               )}
               {/* Fewer than two options and completing asks nothing
                   (deliverableOptionsFor), so say so where they're typed. */}
@@ -8226,16 +8230,19 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                 describeValue={n => (n === null ? 'off' : formatDuration(n))}
               />
               {completionTimerMinutes !== null && (
-                <TextField
-                  style={[styles.fieldBox, styles.completionTimerNoteInput]}
-                  value={completionTimerNote ?? ''}
-                  onChangeText={text => setCompletionTimerNote(text || null)}
-                  placeholder="e.g. Don’t eat for 2 hours"
-                  placeholderTextColor={colors.textTertiary}
-                  maxLength={COMPLETION_TIMER_NOTE_MAX_LENGTH}
-                  returnKeyType="done"
-                  accessibilityLabel="What this reminder is for"
-                />
+                <>
+                  <FieldLabel inCard>Reminder note</FieldLabel>
+                  <TextField
+                    style={[styles.fieldBox, styles.completionTimerNoteInput]}
+                    value={completionTimerNote ?? ''}
+                    onChangeText={text => setCompletionTimerNote(text || null)}
+                    placeholder="e.g. Don’t eat for 2 hours"
+                    placeholderTextColor={colors.textTertiary}
+                    maxLength={COMPLETION_TIMER_NOTE_MAX_LENGTH}
+                    returnKeyType="done"
+                    accessibilityLabel="What this reminder is for"
+                  />
+                </>
               )}
             </CollapsibleField>
               </>
@@ -8588,7 +8595,8 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                   summary={
                     chosenMeal && logMealSlot
                       ? `Logs ${chosenMeal.name}${logMealSlotByTime ? ' by time of day' : ''} when completed`
-                      : logMealSlot ? `Offers to log ${MEAL_SLOT_LABELS[logMealSlot].toLowerCase()} when completed` : undefined
+                      : logMealSlot === 'other' ? 'Offers to log food outside a meal when completed'
+                      : logMealSlot ? `Offers to log ${LOG_MEAL_SLOT_LABELS[logMealSlot].toLowerCase()} when completed` : undefined
                   }
                   hint="Adds a food log entry each time you complete this task, under the meal below. Unchecking the task removes what it logged."
                   expanded={fieldOpen('logMealSlot')}
@@ -8610,8 +8618,8 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                     </TouchableOpacity>
                   ) : undefined}
                 >
-                  <SegmentedControl<MealSlot>
-                    options={MEAL_SLOTS.map(slot => ({ value: slot, label: MEAL_SLOT_LABELS[slot] }))}
+                  <SegmentedControl<LogMealSlot>
+                    options={LOG_MEAL_SLOTS.map(slot => ({ value: slot, label: LOG_MEAL_SLOT_LABELS[slot] }))}
                     value={logMealSlot ?? 'breakfast'}
                     onChange={next => { haptics.tap(); setLogMealSlot(next); setLogMealSlotByTime(false); }}
                     columns={2}
@@ -8686,7 +8694,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                   <LazySheet open={newMealOpen}>
                     <NewSavedMealSheet
                       visible={newMealOpen}
-                      slot={logMealSlot}
+                      slot={logMealSlot ? logSlotToMealSlot(logMealSlot) : null}
                       at={getLogicalToday()}
                       onSave={(mealName, mealItems) => {
                         const made = addSavedMeal(mealName, mealItems);

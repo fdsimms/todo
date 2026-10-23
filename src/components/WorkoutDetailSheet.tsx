@@ -389,7 +389,7 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose }: Props) {
                 <Text style={styles.title} numberOfLines={2}>
                   {session?.title ?? 'Workout'}
                   {'  '}
-                  <Ionicons name="pencil" size={13} color={colors.textSecondary} />
+                  <Ionicons name="create-outline" size={15} color={colors.textSecondary} />
                 </Text>
               </TouchableOpacity>
               {!!startedAt && <Text style={styles.subtitle}>{gymName ? `${dayLabel(startedAt)} · ${gymName}` : dayLabel(startedAt)}</Text>}
@@ -523,8 +523,9 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose }: Props) {
                   describeValue={n => (n === null ? 'not set' : `${n} out of ${WORKOUT_EFFORT.max}`)}
                 />
               </View>
+              <Text style={[styles.notesLabel, styles.rowSep]}>Notes</Text>
               <TextField
-                style={[styles.notesInput, styles.rowSep]}
+                style={styles.notesInput}
                 value={notes}
                 onChangeText={setNotes}
                 onBlur={commitNotes}
@@ -625,7 +626,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   setBody: { flex: 1 },
   setValue: { color: colors.textSecondary, fontSize: font.sm, fontVariant: ['tabular-nums'] },
   setNote: { color: colors.text, fontSize: font.sm, marginTop: spacing.xxs, marginBottom: spacing.xs },
-  notesInput: { color: colors.text, fontSize: font.md, paddingHorizontal: spacing.md, paddingTop: spacing.smd, paddingBottom: spacing.md, minHeight: 64 },
+  notesLabel: { color: colors.text, fontSize: font.md, paddingHorizontal: spacing.md, paddingTop: spacing.smd },
+  notesInput: { color: colors.text, fontSize: font.md, paddingHorizontal: spacing.md, paddingTop: spacing.xs, paddingBottom: spacing.md, minHeight: 120, textAlignVertical: 'top' },
   actionRow: {
     alignItems: 'center', justifyContent: 'center', minHeight: 48, marginTop: spacing.lg,
     paddingVertical: spacing.smd, backgroundColor: colors.bgSecondary, borderRadius: radius.md,

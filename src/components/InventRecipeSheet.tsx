@@ -29,6 +29,7 @@ import { recipeInBook, recipeNameKey } from '../utils/recipeUtils';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
+import { FieldLabel } from './FieldLabel';
 
 interface Props {
   visible: boolean;
@@ -302,17 +303,20 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
           )}
 
           {!generating && (
-            <TextField
-              ref={hintsInputRef}
-              style={styles.hintInput}
-              value={hints}
-              onChangeText={setHints}
-              placeholder="e.g. quick, vegetarian, use up spinach"
-              placeholderTextColor={colors.textTertiary}
-              returnKeyType="done"
-              onSubmitEditing={() => { if (!generating) generate(); }}
-              accessibilityLabel="What kind of recipe to suggest"
-            />
+            <>
+              <FieldLabel>Preferences</FieldLabel>
+              <TextField
+                ref={hintsInputRef}
+                style={styles.hintInput}
+                value={hints}
+                onChangeText={setHints}
+                placeholder="e.g. quick, vegetarian, use up spinach"
+                placeholderTextColor={colors.textTertiary}
+                returnKeyType="done"
+                onSubmitEditing={() => { if (!generating) generate(); }}
+                accessibilityLabel="What kind of recipe to suggest"
+              />
+            </>
           )}
 
           {generating ? (

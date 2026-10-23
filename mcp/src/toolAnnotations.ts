@@ -147,6 +147,7 @@ export const WRITE_TOOLS: Record<string, { title: string; destructive: boolean; 
   delete_program: { title: 'Delete a workout program', destructive: true, idempotent: true },
   log_workout: { title: 'Log a workout', destructive: false, idempotent: false },
   update_workout: { title: 'Change a workout', destructive: true, idempotent: true },
+  scale_workout_weights: { title: 'Scale workout weights', destructive: true, idempotent: false },
   delete_workout: { title: 'Delete a workout', destructive: true, idempotent: true },
   resolve_copy_flag: { title: 'Resolve a copy flag', destructive: false, idempotent: true },
   log_journal_entry: { title: 'Write a journal entry or dream', destructive: false, idempotent: false },

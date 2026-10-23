@@ -1,0 +1,1 @@
+{ "message": "Pinned tasks you haven't reordered now sit below the ones you have, and pinning a whole stack keeps its tasks together. This fixes a stack member showing up outside its stack in the focus session picker.", "date": "2026-10-23" }

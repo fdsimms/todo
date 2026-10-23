@@ -17,13 +17,15 @@ import { haptics } from '../utils/haptics';
 import { PENDING_WORKOUT_WRITE_MAX_AGE_DAYS, describedWorkoutHealthOffer } from '../utils/healthWorkoutSync';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { catalogExercise } from '../utils/exerciseCatalog';
-import { cleanWorkoutName } from '../utils/workoutData';
+import { cleanWorkoutName, exerciseNameKey } from '../utils/workoutData';
 import type { WeightUnit } from '../utils/weightLog';
+import { DUMBBELL_ENTRY_LABELS, type DumbbellEntry } from '../utils/dumbbellLoad';
 import {
   buildImportPlan,
   describeSkipped,
   distinctExerciseNames,
   guessEquipment,
+  heldInTwoDumbbells,
   importSummary,
   inferExerciseKind,
   isAutoMatch,
@@ -61,6 +63,8 @@ const UNIT_OPTIONS = [
   { value: 'lb' as const, label: 'Pounds, miles' },
 ];
 
+const DUMBBELL_OPTIONS = (['each', 'pair'] as const).map(value => ({ value, label: DUMBBELL_ENTRY_LABELS[value] }));
+
 const CHOICE_OPTIONS = [
   { value: 'match' as const, label: 'Match' },
   { value: 'create' as const, label: 'Create' },
@@ -92,12 +96,16 @@ export function WorkoutImportSheet({ visible, onClose, fileText = '', described 
   const sessionsInLog = useWorkoutStore(s => s.sessions);
   const importSessions = useWorkoutStore(s => s.importSessions);
   const displayUnit = useSettingsStore(s => s.workoutUnit);
+  const dumbbellSetting = useSettingsStore(s => s.dumbbellEntry);
   // An import never writes to Health (it came from another app, which most
   // likely wrote it there already), so the sheet says so while saving does.
   const writesToHealth = useSettingsStore(s => s.healthWriteEnabled && s.workoutHealthWrite);
 
   const [unit, setUnit] = useState<WeightUnit>(displayUnit);
   const [unitTouched, setUnitTouched] = useState(false);
+  // How the file's dumbbell weights were typed; starts as the person types them in the app.
+  const [dumbbellEntry, setDumbbellEntry] = useState<DumbbellEntry>(dumbbellSetting);
+  const [dumbbellTouched, setDumbbellTouched] = useState(false);
   const [choices, setChoices] = useState<Record<string, NameResolution>>({});
   const [picking, setPicking] = useState<string | null>(null);
   // Only a described workout asks; on by default because the person turned on logging workouts to Health.
@@ -107,6 +115,8 @@ export function WorkoutImportSheet({ visible, onClose, fileText = '', described 
     if (visible) {
       setUnit(displayUnit);
       setUnitTouched(false);
+      setDumbbellEntry(dumbbellSetting);
+      setDumbbellTouched(false);
       setChoices({});
       setPicking(null);
       setToHealth(true);
@@ -162,12 +172,24 @@ export function WorkoutImportSheet({ visible, onClose, fileText = '', described 
     return out;
   }, [names, choices, auto]);
 
+  // Asked only when the file has a weight for an exercise held in two dumbbells,
+  // the one case where "each" and "pair" give different history. A described
+  // workout is typed in the app's own way, so it never asks.
+  const hasTwoDumbbellSets = useMemo(() => {
+    if (!ok || described) return false;
+    return split.fresh.some(session => session.sets.some(s => {
+      const r = resolutions[exerciseNameKey(s.exerciseName)];
+      return s.weightKg !== null && !!r && heldInTwoDumbbells(r, s.exerciseName, exercises);
+    }));
+  }, [ok, described, split.fresh, resolutions, exercises]);
+  const pairTotals = hasTwoDumbbellSets && dumbbellEntry === 'pair';
+
   const plan = useMemo(
-    () => (ok ? buildImportPlan(ok.sessions, resolutions, sessionsInLog) : null),
-    [ok, resolutions, sessionsInLog],
+    () => (ok ? buildImportPlan(ok.sessions, resolutions, sessionsInLog, { pairTotals, exercises }) : null),
+    [ok, resolutions, sessionsInLog, pairTotals, exercises],
   );
 
-  const dirty = Object.keys(choices).length > 0 || unitTouched;
+  const dirty = Object.keys(choices).length > 0 || unitTouched || dumbbellTouched;
   const handleCancel = () => {
     if (!dirty) { onClose(); return; }
     confirmDiscard(onClose, described
@@ -351,6 +373,22 @@ export function WorkoutImportSheet({ visible, onClose, fileText = '', described 
               />
               <HelpText style={styles.quietBelow}>
                 This file doesn’t say which units it uses. Distances are read as kilometers or miles to match.
+              </HelpText>
+            </>
+          ) : null}
+
+          {hasTwoDumbbellSets ? (
+            <>
+              <Text style={styles.groupLabel}>Dumbbell weights in the file</Text>
+              <SegmentedControl
+                label="How dumbbell weights are written in the file"
+                options={DUMBBELL_OPTIONS}
+                value={dumbbellEntry}
+                onChange={e => { if (e) { setDumbbellEntry(e); setDumbbellTouched(true); } }}
+                surface="page"
+              />
+              <HelpText style={styles.quietBelow}>
+                Choose Pair total if each weight is both dumbbells added together. They are saved as one dumbbell each.
               </HelpText>
             </>
           ) : null}

@@ -1,4 +1,4 @@
-import type { MealPlanEntry, MealSlot, NutrientKey } from '../types';
+import type { LogMealSlot, MealPlanEntry, MealSlot, NutrientKey } from '../types';
 import { NUTRIENT_KEYS } from '../types';
 
 /**
@@ -312,6 +312,11 @@ function trim(value: number): string {
  * the day rather than breakfast taking the small hours, because "a thing eaten
  * at 2am" is a snack far more often than it is breakfast.
  */
+/** The food log's slot for a task's `logMealSlot`: 'other' is an entry outside any meal, which the log stores as null. */
+export function logSlotToMealSlot(slot: LogMealSlot): MealSlot | null {
+  return slot === 'other' ? null : slot;
+}
+
 export function slotForHour(hour: number): MealSlot {
   if (hour >= 5 && hour < 11) return 'breakfast';
   if (hour >= 11 && hour < 16) return 'lunch';

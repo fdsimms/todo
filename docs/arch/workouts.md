@@ -520,7 +520,7 @@ comparable number, and changing the choice rewrites nothing (`src/utils/dumbbell
   `addWatchSession`, comparing the Crown's no-change guard in that space. Changing the setting, or an exercise's entry,
   re-sends the snapshot. A weight the watch sent for a snapshot made before the change is read at the new scale, a
   one-tap window nobody can close without versioning the snapshot.
-- **Where it is not applied, on purpose.** CSV import and export and the MCP server stay per dumbbell. The MCP says so (`dumbbells` on `list_exercises`, and the rule in `instructions.ts`), so Claude halves a pair total before writing.
+- **Where it is not applied, on purpose.** CSV export and the MCP server stay per dumbbell, and so does CSV import by default. The import review asks "Dumbbell weights in the file" (Each dumbbell or Pair total, starting at the Settings choice) whenever a file has a weight for a two-dumbbell exercise, and Pair total halves those sets in `buildImportPlan` (`pairTotals`, `heldInTwoDumbbells`) before anything is written. A one-dumbbell exercise is never halved, and a Hevy or Strong file carries no marker of its own, so the person has to say. The MCP says so (`dumbbells` on `list_exercises`, and the rule in `instructions.ts`), so Claude halves a pair total before writing.
   A new surface that shows a dumbbell exercise's weight takes a `scale` from `weightScale` rather than reading
   `weightKg` bare.
 

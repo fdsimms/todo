@@ -655,8 +655,8 @@ export function taskFieldsPatch(
       patch.timedMinutes = mins;
       // The editor hides Effort and Estimate for a timed task and derives both
       // from the countdown, so a caller that doesn't name them gets the same.
-      if (input.effort === undefined) patch.effort = minutesToEffort(Math.max(1, Math.round(mins)));
-      if (input.estimatedMinutes === undefined) patch.estimatedMinutes = Math.max(1, Math.round(mins));
+      if (input.effort === undefined) patch.effort = minutesToEffort(mins);
+      if (input.estimatedMinutes === undefined) patch.estimatedMinutes = mins;
     }
   }
 

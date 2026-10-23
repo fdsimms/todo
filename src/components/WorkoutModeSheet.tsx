@@ -777,6 +777,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                     />
                   </View>
                   <View style={styles.rowSep} />
+                  <Text style={styles.notesLabel}>Notes</Text>
                   <TextField
                     style={styles.notesInput}
                     value={sessionNotes}
@@ -1851,7 +1852,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   summaryMeta: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs },
   kv: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   kvLabel: { color: colors.text, fontSize: font.md },
-  notesInput: { color: colors.text, fontSize: font.md, paddingHorizontal: spacing.md, paddingTop: spacing.smd, paddingBottom: spacing.md, minHeight: 64 },
+  notesLabel: { color: colors.text, fontSize: font.md, paddingHorizontal: spacing.md, paddingTop: spacing.smd },
+  notesInput: { color: colors.text, fontSize: font.md, paddingHorizontal: spacing.md, paddingTop: spacing.xs, paddingBottom: spacing.md, minHeight: 120, textAlignVertical: 'top' },
   consequence: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.smd, marginHorizontal: spacing.xs },
   footRow: { flexDirection: 'row', gap: spacing.sm },
   footButton: { flex: 1, flexDirection: 'row', gap: spacing.xs, alignItems: 'center', justifyContent: 'center', minHeight: 48, borderRadius: radius.md },

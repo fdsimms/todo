@@ -1572,7 +1572,13 @@ Three areas had no MCP read or write, and the shape of each answer follows from 
   and with every set done, through `addFinishedSession`; it refuses one with no sets, one that
   starts in the future and one that ends before it starts, and it never completes a task, since a
   record of a workout is not the person ticking the task off. `update_workout` and
-  `delete_workout` refuse the session in progress on the phone, which only the person ends. Each
+  `delete_workout` refuse the session in progress on the phone, which only the person ends.
+  `scale_workout_weights` is the one-call form of the same correction across many workouts (a pair
+  total stored as one dumbbell, or the wrong unit): it multiplies the named exercises' weights over a
+  range, describes the change until `apply: true`, skips the session in progress, and rewrites sets
+  carrying every field over. `update_workout`'s `exercises` rebuilds sets from only the fields it
+  exposes, so an exercise already in the workout keeps its superset and a set already there keeps its
+  time (`setsKeepingWhatTheInputCannotSay`). Each
   write is recorded in Activity, a routine under its name and a workout titled by kind
   ("Workout"), never by what was lifted, the mood entry's reason. Weights are kilograms on the wire.
   A task names its routine with `workoutRoutineId`, or a program with `workoutProgramId` (never

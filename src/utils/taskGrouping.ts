@@ -321,6 +321,9 @@ export interface FlattenLaterOptions {
  * the same task id can occur more than once — each occurrence after the
  * first gets a suffixed key to keep list keys unique.
  */
+// A task in a folded stack has no row keyed by its own id, only the stack's
+// row does. Anything that scrolls Later to a task goes through
+// `jumpToLaterTask` in TodayScreen, which aims at the stack row's key.
 export function flattenLaterSections(days: LaterDaySection[], options?: FlattenLaterOptions): LaterListItem[] {
   const items: LaterListItem[] = [];
   const seen = new Map<string, number>();

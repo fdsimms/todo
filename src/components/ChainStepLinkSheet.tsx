@@ -16,6 +16,7 @@ import { KNOWN_LINK_APPS, linkAppsFor } from '../constants/linkApps';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
+import { FieldLabel } from './FieldLabel';
 
 /**
  * The minimum a list item has to carry to have a link button, satisfied by
@@ -139,6 +140,7 @@ export function ChainStepLinkSheet({
               </TouchableOpacity>
             ))}
           </View>
+          <FieldLabel>Web address</FieldLabel>
           <View style={styles.customRow}>
             <Ionicons name="globe-outline" size={16} color={colors.textSecondary} />
             <TextField

@@ -282,6 +282,17 @@ here is the same three files those two need.
   *and* the session sheet opens: the store can answer "pause" or "next" on its
   own, and the sheet arriving on top is how you see that it did.
 
+## A task's own countdown inside a step
+
+A step's clock is how long the session plans to spend; a timed task, or a target
+with a time per unit, also has a countdown of its own (`timedMinutes`). While
+such a task is the current step, the big clock and the primary button are the
+task's (`startTimer`/`pauseTimer`, the same timer its row runs) and the step
+clock drops to a line underneath. Starting or pausing the task's timer moves the
+session clock with it, and leaving the step (skip, advance, done for now, end)
+pauses it, so a countdown never keeps running for a task no longer being worked.
+A target's unit countdown resets on `logQuotaUnit`, as it does from Today.
+
 ## Hiding the countdown
 
 `FocusSession.hideTimers` hides the countdown clock everywhere a session

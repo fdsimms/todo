@@ -431,6 +431,25 @@ describe('scanBoxChoice', () => {
   it('does not derive from a label when the item cannot be found', () => {
     expect(scanBoxChoice({ ...base, itemName: null })).toBeNull();
   });
+
+  it('uses a typed flavor over what the name leaves, which is nothing once it became a type', () => {
+    const choice = scanBoxChoice({
+      ...base,
+      itemName: 'Ice cream',
+      label: 'Black Tie Tiramisu',
+      brand: "Jeni's Ice Cream",
+      variantEdit: 'Black Tie Tiramisu',
+    });
+    expect(choice).toEqual({ brand: "Jeni's Ice Cream", variant: 'Black Tie Tiramisu', source: 'barcode' });
+  });
+
+  it('reads an emptied flavor as no flavor rather than falling back to the label', () => {
+    expect(scanBoxChoice({ ...base, variantEdit: '' })).toEqual({
+      brand: "Dave's Killer",
+      variant: null,
+      source: 'barcode',
+    });
+  });
 });
 
 
