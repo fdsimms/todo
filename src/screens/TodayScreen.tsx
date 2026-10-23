@@ -1323,6 +1323,28 @@ export function TodayScreen() {
     return true;
   };
 
+  // Scrolls Later to a task's row. Later pages itself in behind a task budget
+  // (see laterTaskLimit), and the settled budget stops at 60 rows, so the
+  // budget has to reach the task itself. A task in a stack folded into one
+  // Later row has no row keyed by its own id (see flattenLaterSections), so
+  // the jump aims at the stack's row key and opens it. Every Later jump goes
+  // through here, so none of them can aim at a key that never lays out.
+  const jumpToLaterTask = (task: Task) => {
+    const position = laterOrder.findIndex(o => o.task.id === task.id);
+    const limit = Math.max(laterTaskLimit, LATER_SETTLED_TASK_LIMIT, position + 1);
+    setLaterTaskLimit(limit);
+    const rows = flattenLaterSections(
+      laterDaySections(laterOrder, limit, { cutMidDay: false, foldStacks: !selectionMode }).sections,
+      { groupsById: laterGroupsById, fold: !selectionMode },
+    );
+    const stackRow = rows.find(r => r.type === 'stack' && r.tasks.some(t => t.id === task.id));
+    if (stackRow) {
+      setOpenLaterStacks(prev => new Set(prev).add(stackRow.key));
+      setExpandedLaterStacks(prev => new Set(prev).add(stackRow.key));
+    }
+    setPendingLaterJump({ key: stackRow ? stackRow.key : task.id, n: jumpCount.current++ });
+  };
+
   // Switches to whichever sub-view the task got jumped to and scrolls/flashes
   // its row there — the part of landing a new task off Today that's common to
   // going there straight away (destination === 'today', in handleTaskCreated)
@@ -1341,9 +1363,7 @@ export function TodayScreen() {
       // it straight to the settled size so the new row's section is actually
       // in the data the list is about to scroll. The settled budget stops at
       // 60 rows, so the budget also has to reach the task's own position.
-      const position = laterOrder.findIndex(o => o.task.id === task.id);
-      setLaterTaskLimit(limit => Math.max(limit, LATER_SETTLED_TASK_LIMIT, position + 1));
-      setPendingLaterJump({ key: task.id, n: jumpCount.current++ });
+      jumpToLaterTask(task);
     } else {
       scrollToFlatViewTask(task, destination);
     }
@@ -4666,9 +4686,7 @@ export function TodayScreen() {
       // Later pages itself in behind a task budget — see goToCreatedTask. The
       // settled budget stops at 60 rows, so a task further down than that has
       // no row to scroll to; the budget has to reach the task itself.
-      const position = laterOrder.findIndex(o => o.task.id === root.id);
-      setLaterTaskLimit(limit => Math.max(limit, LATER_SETTLED_TASK_LIMIT, position + 1));
-      setPendingLaterJump({ key: root.id, n: jumpCount.current++ });
+      jumpToLaterTask(root);
       landed = true;
     } else if (home) {
       landed = scrollToFlatViewTask(root, home);
