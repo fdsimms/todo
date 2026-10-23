@@ -1,5 +1,5 @@
 #!/bin/bash
-# Installs dependencies so tests and the typechecker work in Claude Code on the
+# Installs dependencies (root and mcp/) so tests and the typechecker work in Claude Code on the
 # web, then warms the two caches the verification loop depends on.
 #
 # node_modules is not checked in, and postinstall does three required steps:
@@ -24,6 +24,11 @@ cd "$CLAUDE_PROJECT_DIR"
 # npm install (not ci) so a cached container reuses the existing node_modules.
 npm install --no-audit --no-fund
 
+# mcp/ is its own package with its own node_modules, and `npm run verify`
+# typechecks it (tsc -p mcp/tsconfig.json). Without this the first verify run in
+# a fresh container fails with hundreds of implicit-any errors from missing types.
+npm install --prefix mcp --no-audit --no-fund
+
 # Both caches are gitignored, so a fresh container starts cold: the first
 # typecheck costs ~27s against ~4s warm, and the first jest run pays for the
 # whole Babel transform of 300-odd suites. Warming them here spends the
@@ -31,4 +36,5 @@ npm install --no-audit --no-fund
 # run. Neither is allowed to fail the hook — a red tree is the session's
 # problem to look at, not a reason to have no dependencies installed.
 npx tsc --noEmit >/dev/null 2>&1 || true
+npx tsc -p mcp/tsconfig.json >/dev/null 2>&1 || true
 npx jest --silent >/dev/null 2>&1 || true
