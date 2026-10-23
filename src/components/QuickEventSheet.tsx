@@ -353,6 +353,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   const [travelModePick, setTravelModePick] = useState<TravelMode | null>(null);
   const [arriveEarlyPick, setArriveEarlyPick] = useState<number | null>(null);
   const [travelOriginPick, setTravelOriginPick] = useState<string | null>(null);
+  const [travelSkipPick, setTravelSkipPick] = useState(false);
   const [originPickerVisible, setOriginPickerVisible] = useState(false);
   const [travelModePickerVisible, setTravelModePickerVisible] = useState(false);
   const [arrivePickerVisible, setArrivePickerVisible] = useState(false);
@@ -427,6 +428,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     setTravelModePick(travelPref?.mode ?? null);
     setArriveEarlyPick(travelPref?.arriveEarlyMinutes ?? null);
     setTravelOriginPick(travelPref?.originPlaceId ?? null);
+    setTravelSkipPick(travelPref?.skip ?? false);
     setAvailabilityPick(event.availability);
     const people = peopleForEvent({ id: target.eventId, start: event.start.toISOString() });
     setOriginalPeople(people);
@@ -462,6 +464,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     setTravelModePick(null);
     setArriveEarlyPick(null);
     setTravelOriginPick(null);
+    setTravelSkipPick(false);
     setOriginPickerVisible(false);
     setTravelModePickerVisible(false);
     setArrivePickerVisible(false);
@@ -535,6 +538,10 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   const effectiveArriveEarly = draft.arriveEarlyMinutes ?? arriveEarlyPick;
   const shownArriveEarly = effectiveArriveEarly ?? defaultArriveEarly;
   const effectiveTravelOrigin = draft.travelOriginId ?? travelOriginPick;
+  // "Don't add a leave-by task". Typing a trip clause means a trip is wanted
+  // after all, so it wins over the pick the way it does for the other three.
+  const effectiveTravelSkip = travelSkipPick
+    && draft.travelMode === undefined && draft.arriveEarlyMinutes === undefined && draft.travelOriginId === undefined;
   // A typed "note: …" fills the Notes field; editing the field takes it out of the line.
   const effectiveNotes = draft.notes ?? notesOrLink;
   // The two "@name" states that need a pick, checked only when no schedule
@@ -981,7 +988,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
       // A new appointment starts a new booking cycle, so the old "Book …" goes now.
       useTaskStore.getState().checkBookEventTasks();
     }
-    setTravelEventPref(saved.id, { mode: effectiveTravelMode, arriveEarlyMinutes: effectiveArriveEarly, originPlaceId: effectiveTravelOrigin });
+    setTravelEventPref(saved.id, { mode: effectiveTravelMode, arriveEarlyMinutes: effectiveArriveEarly, originPlaceId: effectiveTravelOrigin, skip: effectiveTravelSkip });
     useEventCreatedToastStore.getState().announce(
       saved.id,
       effectiveStart,
@@ -1031,7 +1038,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
       );
       return;
     }
-    setTravelEventPref(id, { mode: effectiveTravelMode, arriveEarlyMinutes: effectiveArriveEarly, originPlaceId: effectiveTravelOrigin });
+    setTravelEventPref(id, { mode: effectiveTravelMode, arriveEarlyMinutes: effectiveArriveEarly, originPlaceId: effectiveTravelOrigin, skip: effectiveTravelSkip });
     onSaved?.(id);
     dismiss();
   };
@@ -1090,7 +1097,9 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
       ? `Settings default (Walk if ${walkUnderMinutes} min or less, else ${TRAVEL_MODE_LABELS[defaultTravelMode]})`
       : `Settings default (${TRAVEL_MODE_LABELS[defaultTravelMode]})` },
     ...TRAVEL_MODES.map(m => ({ key: m, label: TRAVEL_MODE_LABELS[m] })),
+    { key: TRAVEL_SKIP_KEY, label: 'Don’t add a leave-by task' },
   ];
+  const travelChipLabel = effectiveTravelSkip ? 'No leave-by task' : TRAVEL_MODE_LABELS[effectiveTravelMode ?? defaultTravelMode];
   const arriveOptions: EventOption[] = [
     { key: 'default', label: `Settings default (${describeArrival(defaultArriveEarly)})` },
     ...TRAVEL_ARRIVE_CHOICES.map(m => ({ key: String(m), label: describeArrival(m) })),
@@ -1113,7 +1122,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     { key: TRAVEL_ORIGIN_PHONE, label: 'Where I am' },
     ...originPlaces.map(p => ({ key: p.id, label: p.name })),
   ];
-  const showOriginChip = showTravelChips && travelEstimatesOn;
+  const showOriginChip = showTravelChips && travelEstimatesOn && !effectiveTravelSkip;
 
   // ==== render. Everything below is JSX ====
   return (
@@ -1521,17 +1530,18 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
             {showTravelChips && (
               <View style={styles.toolbar}>
                 <TouchableOpacity
-                  style={[styles.toolChip, styles.toolChipWide, effectiveTravelMode !== null && styles.toolChipSet]}
+                  style={[styles.toolChip, styles.toolChipWide, (effectiveTravelMode !== null || effectiveTravelSkip) && styles.toolChipSet]}
                   onPress={() => { haptics.tap(); Keyboard.dismiss(); setTravelModePickerVisible(true); }}
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
-                  accessibilityLabel={`Getting there: ${TRAVEL_MODE_LABELS[effectiveTravelMode ?? defaultTravelMode]}`}
+                  accessibilityLabel={`Getting there: ${travelChipLabel}`}
                 >
-                  <Ionicons name="navigate-outline" size={iconSize.sm} color={effectiveTravelMode !== null ? colors.accent : colors.textSecondary} />
-                  <Text style={[styles.toolChipText, effectiveTravelMode !== null && styles.toolChipTextSet]} numberOfLines={1}>
-                    {TRAVEL_MODE_LABELS[effectiveTravelMode ?? defaultTravelMode]}
+                  <Ionicons name="navigate-outline" size={iconSize.sm} color={effectiveTravelMode !== null || effectiveTravelSkip ? colors.accent : colors.textSecondary} />
+                  <Text style={[styles.toolChipText, (effectiveTravelMode !== null || effectiveTravelSkip) && styles.toolChipTextSet]} numberOfLines={1}>
+                    {travelChipLabel}
                   </Text>
                 </TouchableOpacity>
+                {!effectiveTravelSkip && (
                 <TouchableOpacity
                   style={[styles.toolChip, styles.toolChipWide, effectiveArriveEarly !== null && styles.toolChipSet]}
                   onPress={() => { haptics.tap(); Keyboard.dismiss(); setArrivePickerVisible(true); }}
@@ -1544,6 +1554,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                     {describeArrival(shownArriveEarly)}
                   </Text>
                 </TouchableOpacity>
+                )}
                 {showOriginChip && (
                   <TouchableOpacity
                     style={[styles.toolChip, styles.toolChipWide, pickedOriginName !== null && styles.toolChipSet]}
@@ -1764,10 +1775,12 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
         visible={travelModePickerVisible}
         title="Getting there"
         options={travelModeOptions}
-        selectedKey={effectiveTravelMode ?? 'default'}
+        selectedKey={effectiveTravelSkip ? TRAVEL_SKIP_KEY : effectiveTravelMode ?? 'default'}
         onSelect={key => {
           if (draft.travelSpan) cutFromLine(draft.travelSpan);
-          setTravelModePick(key === 'default' ? null : (key as TravelMode));
+          // The other picks stay as they were, so choosing a mode again picks up where it left off.
+          setTravelSkipPick(key === TRAVEL_SKIP_KEY);
+          if (key !== TRAVEL_SKIP_KEY) setTravelModePick(key === 'default' ? null : (key as TravelMode));
         }}
         onClose={() => setTravelModePickerVisible(false)}
       />
@@ -1798,6 +1811,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
 }
 
 const TRAVEL_MODE_LABELS: Record<TravelMode, string> = { driving: 'Car', transit: 'Transit', walking: 'Walking' };
+const TRAVEL_SKIP_KEY = 'skip';
 
 // Mirrors QuickAddModal's card, input and tooltip styles; the notes on why
 // each value is what it is live there.

@@ -1366,6 +1366,11 @@ argued out before it was built; read them before reopening one.
   reminder by `arriveEarlyMinutes` on top of the lead or estimate (`leadWithArrival`, never below
   zero). **`arriveEarlyMinutes` null means "follow `travelArriveEarlyMinutes`" (Settings, default 0), and 0 means "On time" for this event**; the sheet writes null until a person picks, so a changed default reaches every event that never chose (`arriveEarlyFor`). Estimates are filed under the mode they were asked for, so a pref asks again, and the same goes for a different starting point (`originPlaceId`: a saved place, `TRAVEL_ORIGIN_PHONE`, or null to follow Settings; `travelOriginForEvent` resolves it, and a removed place follows Settings rather than becoming the phone). The row shows
   a held estimate as a chip (`travelRowNote`); with `travelEstimates` off there is none to show.
+  **`skip` turns the task off for one event** ("Don't add a leave-by task" in the Getting there picker). `eventIsTravelEligible`
+  and `isTravelTaskStale` both take the prefs, so a skipped event is simply ineligible: no row is written, a live one is cleared by the
+  ordinary sweep (quietly, never recording a "never"), and the estimate refresh and Live Activity, which read eligibility or the rows,
+  follow. The sweep also drops the occurrence's handled entry when it clears a skipped event's row, so choosing a mode again brings the
+  task back. A row the user deleted keeps its entry, which is what stops it returning.
 - **The starting point is the phone's position or a saved place, chosen once** (`travelOriginPlaceId`,
   shown as "Start from"). The phone's position is the wrong origin for most of what this makes: a
   reminder queued the evening before is estimated from wherever the phone was then. A saved place

@@ -76,7 +76,7 @@ export const useTravelTimeStore = create<TravelTimeState>((set, get) => ({
     // checkTravelTasks' horizon: through the end of the logical tomorrow.
     const horizonEnd = addDays(getCurrentDayStart(), 2).getTime();
     const upcoming = calendar.events
-      .filter(event => eventIsTravelEligible(event, now) && Date.parse(event.start) < horizonEnd)
+      .filter(event => eventIsTravelEligible(event, now, settings.travelEventPrefs) && Date.parse(event.start) < horizonEnd)
       .sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
     const places = readSavedPlaces();
     const walkUnderOf = (eventId: string) =>
