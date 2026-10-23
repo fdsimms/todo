@@ -11,6 +11,8 @@ import {
   estimatedMinutesFor,
   formatDuration,
   formatStopwatch,
+  estimatePatchForMinutes,
+  measuredEstimateOffer,
   measuredTimeAppliesTo,
   measuredTimeDiffersEnough,
   measuredTimeWorthSuggesting,
@@ -51,7 +53,7 @@ import { ProgressBar } from './ProgressBar';
 import { PressableScale } from './PressableScale';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { InlineAction } from './InlineAction';
-import type { FocusSession, FocusStep, Task } from '../types';
+import type { Effort, FocusSession, FocusStep, Task } from '../types';
 import { useActionMenu } from '../hooks/useActionMenu';
 import { BUTTON_LABEL } from '../copy/shared';
 
@@ -110,6 +112,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   const coinEntries = useRewardStore(s => s.entries);
   const completeTask = useTaskStore(s => s.completeTask);
   const setMeasuredTime = useTaskStore(s => s.setMeasuredTime);
+  const updateTask = useTaskStore(s => s.updateTask);
   const { enqueue, queueProps } = useAnswerFirstCompletion();
   const logQuotaUnit = useTaskStore(s => s.logQuotaUnit);
   const pause = useFocusStore(s => s.pause);
@@ -136,6 +139,15 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
     taskUndo: (() => void) | null;
   } | null>(null);
   const clearPendingUndo = () => setPendingUndo(null);
+
+  // The estimate the "Save as new time estimate" pill just wrote, with what it
+  // replaced for Undo. Keyed on the task so it reads as saved only on the step
+  // it was saved on.
+  const [savedEstimate, setSavedEstimate] = useState<{
+    taskId: string;
+    minutes: number;
+    before: { estimatedMinutes: number | null; effort: Effort };
+  } | null>(null);
 
   const byId = useMemo(() => new Map(tasks.map(t => [t.id, t])), [tasks]);
   const stackTitles = useTaskGroupStore(s => s.groups);
@@ -387,6 +399,33 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
     completeCurrentTask();
   };
 
+  // Offered from the first minute and past the end of the step, with none of
+  // the Done alert's gates: see measuredEstimateOffer. It writes the estimate
+  // only, never `actualMinutes`, since a reading taken mid-step is not how long
+  // the task took.
+  const estimateOffer = !hideTimers && currentTask && !quotaTask
+    ? measuredEstimateOffer(currentTask, focusMeasuredMinutes(session, now))
+    : null;
+  const estimateSavedHere = savedEstimate !== null && savedEstimate.taskId === currentTask?.id;
+
+  const handleSaveEstimate = () => {
+    if (!currentTask || estimateOffer == null) return;
+    haptics.success();
+    setSavedEstimate({
+      taskId: currentTask.id,
+      minutes: estimateOffer,
+      before: { estimatedMinutes: currentTask.estimatedMinutes, effort: currentTask.effort },
+    });
+    updateTask(currentTask.id, estimatePatchForMinutes(estimateOffer), { scope: 'series' });
+  };
+
+  const handleUndoEstimate = () => {
+    if (!savedEstimate) return;
+    haptics.tap();
+    updateTask(savedEstimate.taskId, savedEstimate.before, { scope: 'series' });
+    setSavedEstimate(null);
+  };
+
   const handleSkip = () => {
     if (!step) return;
     haptics.tap();
@@ -610,6 +649,25 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
           <View style={styles.progressWrap}>
             <ProgressBar progress={focusStepProgress(session, now)} accessibilityLabel="Focus step" />
           </View>
+          {!isRest && !hideTimers && (estimateSavedHere ? (
+            <View style={styles.estimateSaved}>
+              <Ionicons name="checkmark" size={iconSize.sm} color={colors.textSecondary} />
+              <Text style={styles.estimateSavedLabel}>{`Time estimate saved as ${formatDuration(savedEstimate!.minutes)}`}</Text>
+              <InlineAction label="Undo" onPress={handleUndoEstimate} accessibilityLabel="Undo saving the time estimate" />
+            </View>
+          ) : estimateOffer != null && (
+            <View style={styles.estimateOffer}>
+              <InlineAction
+                variant="neutral"
+                surface="page"
+                icon="timer-outline"
+                label={`Save ${formatDuration(estimateOffer)} as new time estimate`}
+                onPress={handleSaveEstimate}
+                accessibilityLabel={`Save ${formatDuration(estimateOffer)} as the new time estimate for ${titleOf(step.taskId)}`}
+              />
+            </View>
+          ))}
+
 
           {stepDone && (
             <Text style={styles.doneNote}>
@@ -910,6 +968,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   clockDone: { color: colors.orangeText },
   clockCaption: { color: colors.textTertiary, fontSize: font.sm, marginTop: spacing.xxs },
   progressWrap: { alignSelf: 'stretch', marginTop: spacing.lg },
+  estimateOffer: { alignItems: 'center', marginTop: spacing.md },
+  estimateSaved: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xsm, marginTop: spacing.md },
+  estimateSavedLabel: { color: colors.textSecondary, fontSize: font.sm },
   doneNote: {
     color: colors.textSecondary,
     fontSize: font.sm,

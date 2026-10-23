@@ -142,7 +142,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/dumbbellLoad.ts` — DumbbellEntry, dumbbellsUsed, entryFor, weightScale, shownKg, storedKgFromTyped, storedKgFromShown, formatScaledWeight, weightHeadingSuffix, DUMBBELL_ENTRY_LABELS, +1 more
 - `src/utils/editorJump.ts` — ScrollMetrics, ACTIVE_THRESHOLD, JUMP_PAD, JUMP_HOLD_MS, SectionOffset, activeSectionKey, scrollTargetFor, JumpSnapshot, EditorJumpTracker
 - `src/utils/editorSearch.ts` — EditorSearchable, editorSearchTerms, matchesEditorQuery, filterEditorRows
-- `src/utils/effort.ts` — MeasuredTimeUpdate, applyMeasuredTime, formatStopwatch, EFFORT_MINUTES, effortToMinutes, minutesToEffort, effortRangeLabel, ESTIMATE_PRESET_MINUTES, estimatePatchForMinutes, nearestPresetMinutes, +12 more
+- `src/utils/effort.ts` — MeasuredTimeUpdate, applyMeasuredTime, formatStopwatch, EFFORT_MINUTES, effortToMinutes, minutesToEffort, effortRangeLabel, ESTIMATE_PRESET_MINUTES, estimatePatchForMinutes, nearestPresetMinutes, +13 more
 - `src/utils/email.ts` — mailtoUrl, isEmailable
 - `src/utils/emojiCatalog.ts` — EmojiEntry, EmojiGroup, EMOJI_GROUPS, ALL_EMOJI, searchEmoji
 - `src/utils/emojiInput.ts` — firstEmoji, isSingleEmoji

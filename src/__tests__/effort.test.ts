@@ -2,7 +2,7 @@ import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatClockDuration,
   formatDuration, formatStopwatch, applyMeasuredTime, measuredTimeAppliesTo, measuredTimeDiffersEnough,
   measuredTimeWorthSuggesting, sumEstimatedMinutes, estimatedMinutesFor,
   draftHasEstimate, ESTIMATE_PRESET_MINUTES, estimatePatchForMinutes, nearestPresetMinutes,
-  chosenEstimateMinutes, effortRangeLabel } from '../utils/effort';
+  chosenEstimateMinutes, effortRangeLabel, measuredEstimateOffer } from '../utils/effort';
 import type { ChainItem, Effort } from '../types';
 
 const step = (title: string, estimatedMinutes: number | null = null): ChainItem =>
@@ -397,5 +397,34 @@ describe('effortRangeLabel', () => {
 
   it('has a name for the unset bucket', () => {
     expect(effortRangeLabel(0)).toBe('None');
+  });
+});
+
+describe('measuredEstimateOffer', () => {
+  const plain = { estimatedMinutes: 30, effort: 0 as Effort, chainEnabled: false, chainIndex: 0, chainItems: [] };
+
+  it('offers the measured minutes when they differ from the estimate', () => {
+    expect(measuredEstimateOffer(plain, 41)).toBe(41);
+  });
+
+  it('offers them for a one-off and for a miss too small for the Done alert', () => {
+    expect(measuredEstimateOffer(plain, 31)).toBe(31);
+  });
+
+  it('offers them when there is no estimate at all', () => {
+    expect(measuredEstimateOffer({ ...plain, estimatedMinutes: null }, 15)).toBe(15);
+  });
+
+  it('offers nothing when the estimate already says so', () => {
+    expect(measuredEstimateOffer(plain, 30)).toBeNull();
+  });
+
+  it('offers nothing without a reading (a rest step or a split task)', () => {
+    expect(measuredEstimateOffer(plain, null)).toBeNull();
+  });
+
+  it('offers nothing when the active chain step carries its own estimate', () => {
+    const task = { ...plain, chainEnabled: true, chainIndex: 0, chainItems: [step('Warm up', 5), step('Main set', 45)] };
+    expect(measuredEstimateOffer(task, 41)).toBeNull();
   });
 });

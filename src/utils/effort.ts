@@ -184,6 +184,19 @@ export function measuredTimeAppliesTo(task: EstimateSource): boolean {
   return activeChainStep(task)?.estimatedMinutes == null;
 }
 
+/**
+ * The minutes a focus session's "Save as new time estimate" button offers, or
+ * null when there is nothing to offer: the task's estimate lives on a chain
+ * step (so a patch to the task would never read back), or it already says
+ * exactly this. Unlike the Done alert this skips `measuredTimeWorthSuggesting`
+ * and `measuredTimeDiffersEnough`, which exist to avoid interrupting someone;
+ * a button they chose to press is not an interruption.
+ */
+export function measuredEstimateOffer(task: EstimateSource, measured: number | null): number | null {
+  if (measured == null || !measuredTimeAppliesTo(task)) return null;
+  return estimatedMinutesFor(task) === measured ? null : measured;
+}
+
 /** What measuredTimeWorthSuggesting needs on top of EstimateSource. */
 export type SuggestionCarrier = ChainCompletionCarrier & {
   seriesId?: string | null;
