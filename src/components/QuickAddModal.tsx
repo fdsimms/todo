@@ -2055,6 +2055,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
         mode: draft.travelMode ?? null,
         arriveEarlyMinutes: draft.arriveEarlyMinutes ?? null,
         originPlaceId: draft.travelOriginId ?? null,
+        skip: false,
       });
     }
     writeQuickEventDefaults({

@@ -6146,6 +6146,7 @@ describe('checkTravelTasks', () => {
     travelArriveEarlyMinutes: 0,
     travelLeadByCalendar: {} as Record<string, number>,
     travelTaskHandled: {} as Record<string, string>,
+    travelEventPrefs: {} as Record<string, unknown>,
     setTravelTaskHandled,
     transitAlerts: false,
     transitLines: [] as string[],
@@ -6355,6 +6356,19 @@ describe('checkTravelTasks', () => {
       useCalendarStore.getState.mockReturnValue({ events: [dentist({ status: 'canceled' })], loaded: true });
       useTaskStore.getState().checkTravelTasks();
       expect(travelTasks()).toHaveLength(0);
+    });
+
+    it('clears the task when the event is turned off, and writes it again when it is turned back on', () => {
+      written();
+      const off = { 'e-1': { mode: null, arriveEarlyMinutes: null, originPlaceId: null, skip: true } };
+      useSettingsStore.getState.mockReturnValue(settings({ travelTaskHandled: { [sourceId]: dentist().end }, travelEventPrefs: off }));
+      useTaskStore.getState().checkTravelTasks();
+      expect(travelTasks()).toHaveLength(0);
+      // The handled entry went with it, or the row could never come back.
+      expect(setTravelTaskHandled).toHaveBeenLastCalledWith({});
+      useSettingsStore.getState.mockReturnValue(settings());
+      useTaskStore.getState().checkTravelTasks();
+      expect(travelTasks()).toHaveLength(1);
     });
 
     it('replaces the task when the event moves', () => {
