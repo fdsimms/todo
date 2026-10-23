@@ -1238,6 +1238,13 @@ events at once, where every other rule generator asks one question a day.**
   - **A non-matching pair is deliberately not marked.** Weather marks "considered and found not to
     apply" because tomorrow is a fresh question; here the same event asked again tomorrow is the
     same question, and an event renamed to match a rule should fire it.
+  - **A moved event is carried over, not matched again.** A new start is a new key, so a moved
+    event looked unhandled and got a second task. `movedFromHandled` (`eventTasks.ts`) reads a move
+    as `movedLinkedEvents` does: a handled entry for this rule and id with a different start still
+    ahead and inside the window, that occurrence gone, and exactly one live occurrence of the id (a
+    series is refused). The sweep then records the new key as handled and writes nothing; the
+    existing task keeps its old date, per #1953. Follow-up rules are unaffected, since they are
+    judged after the event is over.
 - **The occurrence key is the event id *and* its start.** EventKit shares one
   `calendarItemIdentifier` across every instance of a recurring series, so keying on the id alone
   would let one standing meeting's task suppress all thirteen. `EventReminder` and `HiddenEvent`
