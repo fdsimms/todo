@@ -29,6 +29,7 @@ import { MedicationScreen } from '../screens/MedicationScreen';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { useJournalStore } from '../store/useJournalStore';
 import { WeightScreen } from '../screens/WeightScreen';
+import { BloodPressureScreen } from '../screens/BloodPressureScreen';
 import { WorkoutsScreen } from '../screens/WorkoutsScreen';
 import { useWorkoutStore, workoutContentCount } from '../store/useWorkoutStore';
 import { SleepScreen } from '../screens/SleepScreen';
@@ -159,6 +160,7 @@ const TAB_SCREENS: Record<string, React.ComponentType<any>> = {
   Mood: freezeWhenBlurred(MoodScreen),
   Medications: freezeWhenBlurred(MedicationScreen),
   Weight: freezeWhenBlurred(WeightScreen),
+  BloodPressure: freezeWhenBlurred(BloodPressureScreen),
   Sleep: freezeWhenBlurred(SleepScreen),
   Journal: freezeWhenBlurred(JournalScreen),
   Dreams: freezeWhenBlurred(DreamsScreen),

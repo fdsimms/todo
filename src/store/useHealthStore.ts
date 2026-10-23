@@ -6,6 +6,7 @@ import { dayKeyOf, getCurrentDayStart, getLogicalDayKey } from '../utils/dateUti
 import { measuredMaintenanceKcal } from '../utils/adaptiveExpenditureRead';
 import type { HealthDayInput } from '../utils/moodInsights';
 import { latestWeight, type WeightPoint } from '../utils/weightLog';
+import { parseBloodPressureReadings, type BloodPressureReading } from '../utils/bloodPressureLog';
 import { healthBridge } from '../utils/healthBridge';
 import { useSettingsStore } from './useSettingsStore';
 import { useTaskStore } from './useTaskStore';
@@ -210,6 +211,9 @@ export const HEALTH_HISTORY_DAYS = 90;
  */
 export const WEIGHT_HISTORY_DAYS = 365;
 
+/** How far back the blood pressure read goes: a year, so every range on the screen is a slice of one query. Under the native 400-day ceiling. */
+export const BLOOD_PRESSURE_HISTORY_DAYS = 365;
+
 /**
  * How far back the weight-target sync looks for a weigh-in. A month, because
  * this runs on every foreground and a short window is the cheap query; a
@@ -246,6 +250,15 @@ interface HealthState {
    */
   weightSeries: WeightPoint[] | null;
   loadingWeight: boolean;
+  /**
+   * Every blood pressure reading in the last `BLOOD_PRESSURE_HISTORY_DAYS`,
+   * oldest first, or null for "not looked yet". One entry per reading rather
+   * than per day. Memory only, like the series above.
+   */
+  bloodPressure: BloodPressureReading[] | null;
+  loadingBloodPressure: boolean;
+  /** Re-read the blood pressure window. Only the Blood pressure screen calls this. */
+  refreshBloodPressure: () => Promise<void>;
   /**
    * The day key a weigh-in request was last found answered by a reading in its
    * window, or null. Memory only, and one day key rather than any weight: it is
@@ -299,6 +312,7 @@ const todayGuard = createRefreshGuard();
 const historyGuard = createRefreshGuard();
 const weightGuard = createRefreshGuard();
 const sleepGuard = createRefreshGuard();
+const bloodPressureGuard = createRefreshGuard();
 
 /** Whether a re-read of the history window came back with the days already held. */
 export function sameHealthHistory(held: readonly HealthDayInput[] | null, read: readonly HealthDayInput[]): boolean {
@@ -316,6 +330,8 @@ export const useHealthStore = create<HealthState>((set, get) => ({
   loadingHistory: false,
   weightSeries: null,
   loadingWeight: false,
+  bloodPressure: null,
+  loadingBloodPressure: false,
   weighInAnsweredOn: null,
   setWeighInAnsweredOn: dayKey => set({ weighInAnsweredOn: dayKey }),
   sleepNights: null,
@@ -519,6 +535,29 @@ export const useHealthStore = create<HealthState>((set, get) => ({
   },
 
   /**
+   * Read the blood pressure window, on demand: its own call for
+   * `refreshWeight`'s reason (one screen reads it). Written whole even when
+   * empty, so revoked access reads as no data, never as the last data.
+   */
+  async refreshBloodPressure() {
+    const bridge = healthBridge();
+    if (!bridge) return;
+    if (get().loadingBloodPressure) return;
+
+    const anchor = addDays(getCurrentDayStart(), -(BLOOD_PRESSURE_HISTORY_DAYS - 1));
+
+    set({ loadingBloodPressure: true });
+    const token = bloodPressureGuard.begin();
+    try {
+      const json = await bridge.readBloodPressureSeries(anchor.toISOString(), BLOOD_PRESSURE_HISTORY_DAYS);
+      if (!bloodPressureGuard.isCurrent(token)) return;
+      set({ bloodPressure: parseBloodPressureReadings(json) });
+    } finally {
+      set({ loadingBloodPressure: false });
+    }
+  },
+
+  /**
    * Read the sleep window, on demand, as episodes with their times.
    *
    * Its own call rather than more columns on `refreshHistory` for the reason
@@ -639,7 +678,8 @@ export const useHealthStore = create<HealthState>((set, get) => ({
     historyGuard.invalidate();
     weightGuard.invalidate();
     sleepGuard.invalidate();
-    set({ today: null, history: null, weightSeries: null, weighInAnsweredOn: null, sleepNights: null });
+    bloodPressureGuard.invalidate();
+    set({ today: null, history: null, weightSeries: null, bloodPressure: null, weighInAnsweredOn: null, sleepNights: null });
   },
 }));
 

@@ -105,7 +105,7 @@ export type HealthWriteStatus = 'unavailable' | 'notDetermined' | 'sharingDenied
  * `writeAuthorizationStatus`, which explains why under-claiming is the right
  * direction to be wrong in.
  */
-export type HealthWriteKind = 'water' | 'weight' | 'nutrition' | 'workout';
+export type HealthWriteKind = 'water' | 'weight' | 'bloodPressure' | 'nutrition' | 'workout';
 
 /**
  * One logical day's body mass, in kilograms, or null for a day with no
@@ -211,6 +211,8 @@ interface TodoHealthNativeModule {
   requestWriteAuthorization(): Promise<HealthAuthorizationResult>;
   writeNutrientSample(key: string, amount: number): Promise<boolean>;
   writeBodyMassSample(kilograms: number, whenISO: string): Promise<boolean>;
+  writeBloodPressureSample(systolic: number, diastolic: number, pulse: number, whenISO: string): Promise<string>;
+  readBloodPressureSeries(anchorISO: string, days: number): Promise<string>;
   writeFoodSamples(label: string, atISO: string, amountsJSON: string): Promise<string>;
   deleteHealthSamples(idsJSON: string): Promise<boolean>;
   writeWorkout(
@@ -290,6 +292,44 @@ export function requestHealthAuthorization(): Promise<HealthAuthorizationResult>
  */
 export function healthWriteAuthorizationStatus(kind: HealthWriteKind): HealthWriteStatus {
   return degradeOnThrow(() => nativeModule!.writeAuthorizationStatus(kind), 'unavailable');
+}
+
+/**
+ * What came of saving a reading: `saved`, `pulseRefused` (the reading landed and
+ * the optional pulse did not) or `failed` (nothing landed).
+ */
+export type BloodPressureSaveOutcome = 'saved' | 'pulseRefused' | 'failed';
+
+/**
+ * Save one blood pressure reading (whole mmHg) to Health as a systolic and
+ * diastolic pair, filed at `whenISO`, with a pulse in beats per minute or `null`
+ * for none. Resolves `failed` for the usual spread of reasons (no native half,
+ * sharing refused) and for a pair no reading could be, which the caller is
+ * expected to surface, since a mistyped digit would be a permanent false reading
+ * in somebody's Health record.
+ */
+export async function writeBloodPressureSample(
+  systolic: number,
+  diastolic: number,
+  pulse: number | null,
+  whenISO: string,
+): Promise<BloodPressureSaveOutcome> {
+  const outcome = await degradeOnReject(
+    () => nativeModule!.writeBloodPressureSample(systolic, diastolic, pulse ?? 0, whenISO),
+    'failed',
+  );
+  return outcome === 'saved' || outcome === 'pulseRefused' ? outcome : 'failed';
+}
+
+/**
+ * Every blood pressure reading in the window, as the raw JSON the native side
+ * wrote (`[{"at","sys","dia"}]`), or `"[]"` for every reason there is nothing
+ * to say. Unparsed for the reason `readActivitySummary` gives: the parse has
+ * rules worth testing (`parseBloodPressureReadings`), and tests reach `src/`,
+ * not this folder. Nothing is cached.
+ */
+export function readBloodPressureSeries(anchorISO: string, days: number): Promise<string> {
+  return degradeOnReject(() => nativeModule!.readBloodPressureSeries(anchorISO, days), '[]');
 }
 
 /**

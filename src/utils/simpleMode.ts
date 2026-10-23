@@ -77,6 +77,7 @@ export type SimpleFeatureId =
   | 'moodScreen'
   | 'medicationScreen'
   | 'weightScreen'
+  | 'bloodPressureScreen'
   | 'sleepScreen'
   | 'journalScreen'
   | 'dreamScreen'
@@ -186,6 +187,9 @@ export const SIMPLE_FEATURES: readonly SimpleFeature[] = [
   // lives in Apple Health, which the app only ever reads — hiding the screen
   // hides a view of somebody else's data and loses nothing at all.
   { id: 'weightScreen', label: 'Weight', area: 'screens', screen: 'Weight' },
+  // Not a content screen, for Weight's reason: every reading it draws lives in
+  // Apple Health.
+  { id: 'bloodPressureScreen', label: 'Blood pressure', area: 'screens', screen: 'BloodPressure' },
   // Not a content screen, for Weight's reason: every night it draws lives in
   // Apple Health, and the goal it reads against is a setting, not an entry.
   { id: 'sleepScreen', label: 'Sleep', area: 'screens', screen: 'Sleep' },

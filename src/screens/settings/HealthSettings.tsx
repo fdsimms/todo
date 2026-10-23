@@ -172,6 +172,7 @@ export function HealthSettings() {
   // whichever of the two they declined.
   const [waterWriteStatus, setWaterWriteStatus] = useState<HealthWriteStatus | null>(null);
   const [weightWriteStatus, setWeightWriteStatus] = useState<HealthWriteStatus | null>(null);
+  const [bloodPressureWriteStatus, setBloodPressureWriteStatus] = useState<HealthWriteStatus | null>(null);
   // A third, and the only one standing for more than one share type: a meal is
   // fourteen of them, and this reads as allowed only when every one is. See the
   // native `writeAuthorizationStatus`.
@@ -198,6 +199,7 @@ export function HealthSettings() {
     const bridge = healthBridge();
     setWaterWriteStatus(bridge ? bridge.healthWriteAuthorizationStatus('water') : null);
     setWeightWriteStatus(bridge ? bridge.healthWriteAuthorizationStatus('weight') : null);
+    setBloodPressureWriteStatus(bridge ? bridge.healthWriteAuthorizationStatus('bloodPressure') : null);
     setNutritionWriteStatus(bridge ? bridge.healthWriteAuthorizationStatus('nutrition') : null);
     setWorkoutWriteStatus(bridge ? bridge.healthWriteAuthorizationStatus('workout') : null);
   }, []);
@@ -261,7 +263,7 @@ export function HealthSettings() {
     // passes the whole of `writeTypes`), so it is worth raising if *any* is
     // still unanswered.
     if (next && (waterWriteStatus === 'notDetermined' || weightWriteStatus === 'notDetermined'
-      || nutritionWriteStatus === 'notDetermined' || workoutWriteStatus === 'notDetermined')) {
+      || bloodPressureWriteStatus === 'notDetermined' || nutritionWriteStatus === 'notDetermined' || workoutWriteStatus === 'notDetermined')) {
       const bridge = healthBridge();
       bridge?.requestHealthWriteAuthorization()
         .then(() => {
@@ -457,7 +459,7 @@ export function HealthSettings() {
                 // reading — see the module note in modules/todo-health-bridge/
                 // index.ts for why. Said here so the extra rows in that sheet
                 // aren't a surprise, whether or not Log to Health is even on.
-                ? "Not asked yet. Allowing this also asks about writing to Health (water, weight, meals, workouts), in the same sheet"
+                ? "Not asked yet. Allowing this also asks about writing to Health (water, weight, blood pressure, meals, workouts), in the same sheet"
                 : requestStatus === 'unnecessary'
                   ? "Already asked. To change what’s shared, open Health, tap your profile picture, then Privacy, then Apps, then dundundun"
                   : requestStatus === 'unavailable'
@@ -601,11 +603,11 @@ export function HealthSettings() {
 
     <SettingsSection
       label="Log to Health"
-      footer="Nothing else is written to Health. Deleting what the app wrote removes it from Health."
+      footer="Nothing else is written to Health. Deleting a food log entry or a workout removes what it wrote. A weight or blood pressure reading is edited or deleted in the Health app."
       explain={{
         title: 'What gets written to Health',
         paragraphs: [
-          `Writes water when a task you’ve set up to log it is completed, your weight when you record it, and a meal’s nutrition when you add it to the food log${workoutsEnabled ? ', and a workout when you save it with Workouts on' : ''}. Nothing else is written to Health.`,
+          `Writes water when a task you’ve set up to log it is completed, your weight or blood pressure when you record it, and a meal’s nutrition when you add it to the food log${workoutsEnabled ? ', and a workout when you save it with Workouts on' : ''}. Nothing else is written to Health.`,
           `Deleting a food log entry${workoutsEnabled ? ' or a workout' : ''} removes what it wrote.`,
           'Choose below which nutrients a logged meal can carry into Health. A nutrient a meal doesn’t state is never written, even if it is selected.',
         ],
@@ -639,6 +641,16 @@ export function HealthSettings() {
             label="Weight-write access"
             deniedHint="Not allowed. To record a weight, open Health, tap your profile picture, then Privacy, then Apps, then dundundun"
             status={weightWriteStatus}
+            demoActive={demoActive}
+            colors={colors}
+            onAsk={askForWriteAccess}
+          />
+          <View style={styles.sep} />
+          <WriteAccessRow
+            entryId="healthBloodPressureWriteAccess"
+            label="Blood pressure-write access"
+            deniedHint="Not allowed. To record blood pressure, open Health, tap your profile picture, then Privacy, then Apps, then dundundun"
+            status={bloodPressureWriteStatus}
             demoActive={demoActive}
             colors={colors}
             onAsk={askForWriteAccess}
