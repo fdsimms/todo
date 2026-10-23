@@ -301,6 +301,7 @@ const AI_FEATURE_KEYWORDS: Record<AiFeatureId, string[]> = {
   workoutDraft: [
     'claude', 'model', 'routine', 'exercise', 'gym', 'sets', 'reps', 'lifting', 'type', 'prose',
   ],
+  scanItemType: ['claude', 'model', 'barcode', 'flavor', 'kind of item', 'product', 'ice cream'],
 };
 
 /** One entry per row `PrivacyAiSettings` actually renders, in the same order. */

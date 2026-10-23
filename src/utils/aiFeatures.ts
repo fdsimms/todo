@@ -7,13 +7,13 @@ export type AiFeatureId =
   | 'taskBreakdown' | 'templateSuggestions' | 'projectTaskSuggestions' | 'groceryAisles'
   | 'recipeExtraction' | 'mealIdeas' | 'substitutes' | 'receiptImport' | 'calendarImport'
   | 'cookHelp' | 'nutritionEstimate' | 'nutritionLabelPhoto' | 'backfillSuggestions'
-  | 'recipeNutritionEstimate' | 'workoutDraft';
+  | 'recipeNutritionEstimate' | 'workoutDraft' | 'scanItemType';
 
 export const AI_FEATURE_IDS: AiFeatureId[] = [
   'taskBreakdown', 'templateSuggestions', 'projectTaskSuggestions', 'groceryAisles',
   'recipeExtraction', 'mealIdeas', 'substitutes', 'receiptImport', 'calendarImport',
   'cookHelp', 'nutritionEstimate', 'nutritionLabelPhoto', 'backfillSuggestions',
-  'recipeNutritionEstimate', 'workoutDraft',
+  'recipeNutritionEstimate', 'workoutDraft', 'scanItemType',
 ];
 
 export type AiModelId = 'claude-haiku-5-5' | 'claude-sonnet-5-5' | 'claude-opus-5-5';
@@ -184,6 +184,17 @@ export const AI_FEATURES: AiFeatureMeta[] = [
     hint: 'Turns a description of a routine, or of a workout you did, into one you can check and save',
     workouts: true,
   },
+  {
+    id: 'scanItemType',
+    label: 'Name scanned items',
+    // Reached from the barcode scan sheet, only when the barcode source's own
+    // category couldn't name the kind of item (`scanItemType.ts`).
+    hint: 'Suggests what kind of item a scanned product is, like “Ice cream” for a flavor name, when the barcode lookup doesn’t say',
+    kitchen: true,
+    // Barcode scanning is itself one of the things simplified mode takes away
+    // (`barcodeScanning` in simpleMode.ts), so the row would configure nothing.
+    simple: true,
+  },
 ];
 
 /**
@@ -288,5 +299,9 @@ export function defaultAiFeatureConfig(): AiFeatureConfigMap {
     // exercise name is matched against their library in code rather than
     // trusted, and nothing is saved before they have looked at the draft.
     workoutDraft: { enabled: true, model: DEFAULT_AI_MODEL },
+    // The default model, for the reason `groceryAisles` keeps it: a short pick
+    // from a closed frame (one common noun), and the answer is only a chip the
+    // person taps, so a mediocre one costs a glance.
+    scanItemType: { enabled: true, model: DEFAULT_AI_MODEL },
   };
 }

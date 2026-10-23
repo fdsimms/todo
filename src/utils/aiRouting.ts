@@ -50,6 +50,9 @@ export type OnDeviceEngine = 'languageModel' | 'vision';
  */
 const ON_DEVICE_ENGINE: Partial<Record<AiFeatureId, OnDeviceEngine>> = {
   groceryAisles: 'languageModel',
+  // A product name in, one common noun out: the smallest input here, and the
+  // answer is a chip rather than a write.
+  scanItemType: 'languageModel',
   receiptImport: 'vision',
 };
 
