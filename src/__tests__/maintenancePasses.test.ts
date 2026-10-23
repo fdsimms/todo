@@ -92,6 +92,7 @@ describe('the three maintenance groups', () => {
       'purge old meal plan entries',
       'purge old leftovers',
       'purge unattended ledger',
+      'discard idle workout',
       'sweep unused journal photos',
       'sweep unused task files',
       'reclaim freed storage',

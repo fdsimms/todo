@@ -682,3 +682,21 @@ export function sessionSummary(
   }
   return { minutes, setsDone: sets.filter(isDone).length, exercises };
 }
+
+/**
+ * How long a live workout may sit with no set done before it counts as
+ * forgotten. The Apple Watch's own workout uses the same figure
+ * (`idleOwnWorkoutLimit`, WatchWorkout.swift): change them together.
+ */
+export const IDLE_SESSION_MS = 30 * 60 * 1000;
+
+/**
+ * A live session started `IDLE_SESSION_MS` ago or more with nothing done in
+ * it. One set done makes it the person's, so this never names a workout with
+ * anything logged, however long ago it began.
+ */
+export function isIdleLiveSession(session: Pick<WorkoutSession, 'endedAt' | 'startedAt'>, sets: readonly WorkoutSet[], now: Date): boolean {
+  return session.endedAt === null
+    && !sets.some(isDone)
+    && now.getTime() - Date.parse(session.startedAt) >= IDLE_SESSION_MS;
+}

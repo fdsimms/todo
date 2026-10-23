@@ -159,18 +159,70 @@ struct WorkoutSessionView: View {
     @EnvironmentObject private var store: WatchStore
     let screen: WatchWorkoutScreen
     let onEnded: () -> Void
+    /// The workout whose Finish was tapped, from the list page's button or the
+    /// close button up here, until it is confirmed or cancelled. Held here so
+    /// both ask the same question.
+    @State private var confirming: WatchWorkoutScreen?
 
     var body: some View {
         TabView {
             WorkoutCurrentPage(screen: screen)
-            WorkoutListPage(screen: screen, onEnded: onEnded)
+            WorkoutListPage(screen: screen, confirming: $confirming)
         }
         .tabViewStyle(.verticalPage)
         .navigationTitle(screen.title)
+        // Finish is a page below the set, which nothing on the set says, so a
+        // workout started by mistake looked impossible to end without logging
+        // a set. The close button is the way out from any page.
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    confirming = screen
+                } label: {
+                    Image(systemName: "xmark")
+                }
+                .accessibilityLabel(endsWithNothing(screen) ? "End workout" : "Finish workout")
+            }
+        }
+        .confirmationDialog(
+            confirming.map { "Finish \($0.title)?" } ?? "",
+            isPresented: confirmingShown,
+            titleVisibility: .visible,
+            presenting: confirming
+        ) { screen in
+            Button(endsWithNothing(screen) ? "End workout" : "Finish workout") {
+                let nothing = endsWithNothing(screen)
+                store.finishWorkout(screen)
+                if nothing { onEnded() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { screen in
+            Text(message(screen))
+        }
         // Opening the phone's workout here is what starts measuring it
         // (`wantedMeasurement`, WatchHealthSession.swift).
         .onAppear { store.openedWorkoutScreen(screen) }
         .onChange(of: screen.sessionId) { _, _ in store.openedWorkoutScreen(screen) }
+    }
+
+    private var confirmingShown: Binding<Bool> {
+        Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } })
+    }
+
+    /// The watch's own workout with nothing done records nothing.
+    private func endsWithNothing(_ screen: WatchWorkoutScreen) -> Bool {
+        screen.source == .own && screen.setsDone == 0
+    }
+
+    private func message(_ screen: WatchWorkoutScreen) -> String {
+        if endsWithNothing(screen) { return "No sets are done, so nothing is saved." }
+        if screen.setsDone == 0 { return "No sets are done yet." }
+        let sets = screen.setsDone == 1 ? "1 set" : "\(screen.setsDone) sets"
+        let done = "\(sets) done. Sets you haven't done are left off."
+        // A workout run here says what never reached the watch, so it doesn't
+        // read as the whole routine done.
+        if screen.source == .own, let note = screen.moreSetsNote { return "\(done) \(note)" }
+        return done
     }
 }
 
@@ -546,8 +598,7 @@ struct WorkoutRestView: View {
 struct WorkoutListPage: View {
     @EnvironmentObject private var store: WatchStore
     let screen: WatchWorkoutScreen
-    let onEnded: () -> Void
-    @State private var confirming: WatchWorkoutScreen?
+    @Binding var confirming: WatchWorkoutScreen?
 
     var body: some View {
         List {
@@ -612,41 +663,6 @@ struct WorkoutListPage: View {
                 .listRowBackground(RoundedRectangle(cornerRadius: 22).fill(palette.done))
             }
         }
-        .confirmationDialog(
-            confirming.map { "Finish \($0.title)?" } ?? "",
-            isPresented: confirmingShown,
-            titleVisibility: .visible,
-            presenting: confirming
-        ) { screen in
-            Button(endsWithNothing(screen) ? "End workout" : "Finish workout") {
-                let nothing = endsWithNothing(screen)
-                store.finishWorkout(screen)
-                if nothing { onEnded() }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: { screen in
-            Text(message(screen))
-        }
-    }
-
-    private var confirmingShown: Binding<Bool> {
-        Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } })
-    }
-
-    /// The watch's own workout with nothing done records nothing.
-    private func endsWithNothing(_ screen: WatchWorkoutScreen) -> Bool {
-        screen.source == .own && screen.setsDone == 0
-    }
-
-    private func message(_ screen: WatchWorkoutScreen) -> String {
-        if endsWithNothing(screen) { return "No sets are done, so nothing is saved." }
-        if screen.setsDone == 0 { return "No sets are done yet." }
-        let sets = screen.setsDone == 1 ? "1 set" : "\(screen.setsDone) sets"
-        let done = "\(sets) done. Sets you haven't done are left off."
-        // A workout run here says what never reached the watch, so it doesn't
-        // read as the whole routine done.
-        if screen.source == .own, let note = screen.moreSetsNote { return "\(done) \(note)" }
-        return done
     }
 }
 
