@@ -257,9 +257,17 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
           right={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={onClose} minWidth={64} />}
         />
         {noHistory ? (
-          <View style={styles.flex}>
+          // The empty state sits below the name block, in the space it leaves,
+          // rather than laid over the sheet: photos and a gym list push the
+          // block past the screen's middle and the two drew on top of each other.
+          <ScrollView style={styles.flex} contentContainerStyle={styles.emptyScroll} showsVerticalScrollIndicator={false}>
             {nameBlock}
-          </View>
+            <EmptyState
+              icon="stats-chart-outline"
+              title="No history yet"
+              subtitle={gymFilter ? 'No sets logged at this gym yet. Choose All gyms to see the rest.' : "Sets you log for this exercise show up here, with a chart of how it’s going and your personal records."}
+            />
+          </ScrollView>
         ) : (
           <ScrollView style={styles.flex} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} scrollEnabled={!scrubbing}>
             {nameBlock}
@@ -354,18 +362,6 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
             )}
           </ScrollView>
         )}
-        {noHistory && (
-          // Laid over the whole sheet, header included, so the empty state
-          // centers on the screen rather than in the space beneath the name
-          // block. Touches pass through to the header and the Edit button.
-          <View style={styles.emptyLayer} pointerEvents="box-none">
-            <EmptyState
-              icon="stats-chart-outline"
-              title="No history yet"
-              subtitle={gymFilter ? 'No sets logged at this gym yet. Choose All gyms to see the rest.' : "Sets you log for this exercise show up here, with a chart of how it’s going and your personal records."}
-            />
-          </View>
-        )}
       </View>
       <ExerciseEditorSheet visible={visible && editing} exerciseId={exerciseId} onClose={() => setEditing(false)} />
       <GymExerciseSheet visible={visible && gymEditOpen} subject={gymEdit} onClose={() => setGymEditOpen(false)} />
@@ -376,7 +372,7 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
 const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   flex: { flex: 1 },
-  emptyLayer: { ...StyleSheet.absoluteFill, justifyContent: 'center' },
+  emptyScroll: { flexGrow: 1, paddingHorizontal: spacing.md, paddingBottom: spacing.xl },
   spacer: { minWidth: 64 },
   scroll: { paddingHorizontal: spacing.md, paddingBottom: spacing.xl },
   nameBlock: { paddingHorizontal: spacing.xs, paddingTop: spacing.xs, paddingBottom: spacing.xs, gap: spacing.xs },
