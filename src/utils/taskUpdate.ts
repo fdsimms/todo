@@ -169,6 +169,22 @@ export function nextPinnedOrder(tasks: Task[]): number {
   return max + 1;
 }
 
+/**
+ * The Pinned section's order: hand-ranked pins first, in rank order, then pins
+ * nobody has ranked (`pinnedOrder` 0), with `sortOrder` breaking ties.
+ *
+ * Rank 0 means "never ranked", not "first". Sorted as a plain number it landed
+ * ahead of every ranked pin, so once any pin had been dragged an unranked one
+ * jumped to the very top, away from the rest of its stack. The MCP replica
+ * already sorts it last.
+ */
+export function comparePinned(a: Task, b: Task): number {
+  const rankA = a.pinnedOrder || Infinity;
+  const rankB = b.pinnedOrder || Infinity;
+  if (rankA !== rankB) return rankA < rankB ? -1 : 1;
+  return a.sortOrder - b.sortOrder;
+}
+
 export function captureField<K extends keyof Task>(target: Partial<Task>, source: Task, key: K): void {
   target[key] = source[key];
 }

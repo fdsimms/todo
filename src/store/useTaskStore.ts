@@ -239,6 +239,7 @@ import {
   ROTATION_TARGET_FIELDS,
   mergeTaskUpdate,
   nextPinnedOrder,
+  comparePinned,
   seriesFanOutRows,
 } from '../utils/taskUpdate';
 // Re-exported: TaskEditor reads both from here, and they lived here first.
@@ -10137,8 +10138,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (ids.length === 0) return;
     const allPinned = ids.every(id => get().tasks.find(t => t.id === id)?.pinned);
     const nextPinned = !allPinned;
+    // Ranked like pinCategory, so the stack lands together at the bottom of
+    // the Pinned section instead of keeping whatever rank each member had.
+    const ranks = nextPinned ? freshPinRanks(get().tasks, ids) : null;
     dbBulkSetPinned(ids, nextPinned);
-    set(s => ({ tasks: patchTasks(s.tasks, ids, { pinned: nextPinned }) }));
+    if (ranks) dbBatchUpdatePinnedOrders(ranks);
+    set(s => ({
+      tasks: patchTasks(s.tasks, ids, t => ({ pinned: nextPinned, ...rankFor(ranks, t.id) })),
+    }));
   },
 
   deleteGroup(groupId, opts) {
@@ -11210,7 +11217,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // sortOrder breaks ties rather than being the sort: every row starts at
       // pinnedOrder 0, so an install that has never dragged a pin (or upgraded
       // into the column) reads exactly as it did before. See Task.pinnedOrder.
-      .sort((a, b) => a.pinnedOrder - b.pinnedOrder || a.sortOrder - b.sortOrder);
+      .sort(comparePinned);
   },
 
   completedTasks() {

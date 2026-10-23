@@ -11820,6 +11820,18 @@ describe('pinGroup', () => {
     expect(useTaskStore.getState().tasks.every(t => t.pinned)).toBe(true);
   });
 
+  it('ranks the stack at the bottom of the Pinned section, whatever rank its members held before', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'other', pinned: true, pinnedOrder: 3 }),
+        makeTask({ id: 'a', groupId: 'g1', dueDate: new Date().toISOString(), pinned: false, pinnedOrder: 0 }),
+        makeTask({ id: 'b', groupId: 'g1', dueDate: new Date().toISOString(), pinned: false, pinnedOrder: 1 }),
+      ],
+    });
+    useTaskStore.getState().pinGroup('g1');
+    expect(useTaskStore.getState().pinnedTasks().map(t => t.id)).toEqual(['other', 'a', 'b']);
+  });
+
   it('unpins every child due today when all are already pinned', () => {
     useTaskStore.setState({
       tasks: [

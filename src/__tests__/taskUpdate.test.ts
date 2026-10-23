@@ -4,7 +4,7 @@
  * around it is; these pin the extracted functions on their own, since the MCP
  * server calls them with no store around them at all.
  */
-import { mergeTaskUpdate, nextPinnedOrder, seriesFanOutRows, type TaskUpdateContext } from '../utils/taskUpdate';
+import { comparePinned, mergeTaskUpdate, nextPinnedOrder, seriesFanOutRows, type TaskUpdateContext } from '../utils/taskUpdate';
 import { newTaskFromDraft } from '../utils/taskDraft';
 import type { Task, TaskDraft } from '../types';
 
@@ -158,6 +158,20 @@ describe('seriesFanOutRows', () => {
 describe('nextPinnedOrder', () => {
   it('is one past the highest pinned rank, ignoring unpinned rows', () => {
     expect(nextPinnedOrder([{ ...make({}), pinned: true, pinnedOrder: 4 }, { ...make({}), pinned: false, pinnedOrder: 9 }])).toBe(5);
+  });
+});
+
+describe('comparePinned', () => {
+  const pin = (id: string, pinnedOrder: number, sortOrder = 0) => ({ ...make({}), id, pinned: true, pinnedOrder, sortOrder });
+
+  it('puts ranked pins in rank order ahead of unranked ones', () => {
+    const rows = [pin('unranked', 0), pin('second', 2), pin('first', 1)];
+    expect(rows.sort(comparePinned).map(t => t.id)).toEqual(['first', 'second', 'unranked']);
+  });
+
+  it('breaks ties by sortOrder, among ranked and among unranked pins', () => {
+    const rows = [pin('b', 0, 2), pin('a', 0, 1), pin('d', 3, 2), pin('c', 3, 1)];
+    expect(rows.sort(comparePinned).map(t => t.id)).toEqual(['c', 'd', 'a', 'b']);
   });
 });
 
