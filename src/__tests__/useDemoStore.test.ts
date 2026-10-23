@@ -203,7 +203,8 @@ import { weighableLine } from '../utils/ingredientGrams';
 import { lineWeightText, panelForLine } from '../utils/lineWeight';
 import { asksOnCompletion, chainStepDatedByAnswer, formatTaskDeliverable } from '../utils/deliverables';
 import { tripMarkerFor, describeTripMarker } from '../utils/activeTrip';
-import { buildDayBuckets, canProject } from '../utils/calendarMonth';
+import { buildDayBuckets, canProject, dayDetail, dayRows } from '../utils/calendarMonth';
+import { buildDayAgenda } from '../utils/calendarAgenda';
 import { buildDayLoads, describeDayLoad, weightFor } from '../utils/dayLoad';
 import {
   buildLookAhead,
@@ -1016,6 +1017,26 @@ describe('demo mode', () => {
     // And the three date signals a cell can colour are all represented.
     const kinds = new Set([...buckets.values()].flatMap(b => b.dots.map(d => d.kind)));
     expect([...kinds].sort()).toEqual(['deadline', 'defer', 'due']);
+
+    useDemoStore.getState().exitDemoMode();
+  });
+
+  // Demo mode reads no calendar (the real one would leak into it), so the
+  // calendar's agenda shows only tasks with a time. A seed with none would
+  // show a calendar with nothing on any day.
+  it('seeds a task with a time for the calendar agenda to list today', () => {
+    useDemoStore.getState().enterDemoMode();
+    const { tasks } = useTaskStore.getState();
+
+    const today = new Date();
+    const key = dayKeyOf(today);
+    const buckets = buildDayBuckets(tasks, { from: today, to: today });
+    const rows = dayRows(dayDetail(buckets.get(key), new Map(tasks.map(t => [t.id, t]))));
+    const dayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const agenda = buildDayAgenda({ dayStart, tasks: rows, events: [] });
+    expect(agenda.items.some(i => i.kind === 'task')).toBe(true);
+    // And the line under it, leading to the rest of the day's tasks.
+    expect(agenda.untimed.length).toBeGreaterThan(0);
 
     useDemoStore.getState().exitDemoMode();
   });

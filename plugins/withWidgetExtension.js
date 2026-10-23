@@ -27,6 +27,9 @@ const SWIFT_FILES = [
   'TodoKitchenWidget.swift',
   'TodoMedicationWidget.swift',
   'TodoLimitsWidget.swift',
+  // The Calendar widget, which reads EventKit itself (see the Info.plist and
+  // frameworks below).
+  'TodoCalendarWidget.swift',
   'TimerLiveActivity.swift',
   'TripLiveActivity.swift',
   'LeaveLiveActivity.swift',
@@ -77,6 +80,14 @@ const ALL_SWIFT_FILES = [
 // omitting CFBundleIdentifier produced a compiled .appex with a `(null)`
 // bundle identifier, failing Apple's "embedded binary must be prefixed with
 // the parent app's bundle identifier" packaging validation).
+// The Calendar widget reads the calendars the app already has permission for.
+// The extension is its own bundle, and EventKit refuses any process whose
+// Info.plist has no usage description, so it carries one too (expo-calendar's
+// own permission check reads it off `Bundle.main` the same way). The extension
+// never asks: the app does, and the widget falls back to what the app wrote
+// when the read is refused.
+const CALENDAR_USAGE = 'dundundun shows the events from the calendars you pick in its Calendar widget.';
+
 function widgetInfoPlist() {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -100,6 +111,10 @@ function widgetInfoPlist() {
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>${CALENDAR_USAGE}</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>${CALENDAR_USAGE}</string>
 	<key>NSExtension</key>
 	<dict>
 		<key>NSExtensionPointIdentifier</key>
@@ -148,6 +163,9 @@ const withWidgetExtension = config => {
         // target is 17.0, above ActivityKit's 16.1 floor. ActivityConfiguration
         // and DynamicIsland themselves live in WidgetKit, already added above.
         'ActivityKit.framework',
+        // TodoCalendarWidget.swift reads today's and tomorrow's events itself,
+        // so a meeting booked elsewhere shows without the app being opened.
+        'EventKit.framework',
       ],
     });
 

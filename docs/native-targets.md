@@ -7,7 +7,8 @@ extension). Referenced from `CLAUDE.md` — read this *before* touching `plugins
 Targets are injected at prebuild time by custom config plugins rather than a checked-in
 `ios/` folder:
 
-- **`targets/todo-widget/`** — the Today widget, added by `plugins/withWidgetExtension.js`.
+- **`targets/todo-widget/`** — the Home Screen widgets (Today, Groceries, Kitchen, Medications,
+  Limits, Calendar) and the Live Activities, added by `plugins/withWidgetExtension.js`.
 - **`targets/todo-share/`** — the share extension ("dundundun" in another app's share sheet,
   for a recipe page), added by `plugins/withShareExtension.js`.
 - **`targets/todo-activity-monitor/`** — the DeviceActivity monitor, added by
@@ -79,6 +80,20 @@ the two runs compare exactly, which is how to prove a refactor left a target unc
   and the watch's "add" taps through `WatchSession`, drained by `drainPendingAddTasks`), and every
   append and the drain go through the same helper for the same reason. A file that gains a second
   writer joins this list.
+- **The Calendar widget reads EventKit in the extension, and whether iOS lets it is not verified
+  on a device.** An extension is its own process and its own bundle, so it carries a usage
+  description (`NSCalendarsFullAccessUsageDescription`, in `withWidgetExtension.js`'s Info.plist)
+  and links `EventKit.framework`, and it never asks: it reads only when
+  `EKEventStore.authorizationStatus(for: .event)` already says `.fullAccess`. A 2022 forum thread
+  reports widget extensions getting `.denied` while their app had access, so the widget is built
+  not to depend on it: every snapshot carries the app's own read of today and tomorrow
+  (`buildWidgetCalendar`, bucketed by day in JS so the extension never has to place an all-day
+  event), and the widget draws that when EventKit refuses. If a device shows the widget lagging
+  behind the calendar until the app opens, this is why. The calendars, colors, hidden occurrences
+  and timed tasks always come from the snapshot.
+- **The widget bundle is two nested bundles** (`TodoWidgetBundle.swift`), because there are more
+  than ten widgets and a builder block past ten needs the parameter-pack `buildBlock` an older SDK
+  may lack. A new widget goes in `TodoHomeScreenWidgets` or `TodoLiveActivities`, not the outer one.
 - **A share extension's `NSExtensionPrincipalClass` failing to resolve is a silent no-op**, not
   a build error: iOS instantiates the named class when the row is tapped, and if the name is
   wrong nothing at all happens. A Swift class's Objective-C name is module-qualified, so the

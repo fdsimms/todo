@@ -4,7 +4,7 @@ import { useStableCallback } from '../hooks/useStableCallback';
 import { View, Text, ScrollView, StyleSheet, useWindowDimensions, TouchableOpacity, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { addDays } from 'date-fns/addDays';
 import { addMonths } from 'date-fns/addMonths';
@@ -200,6 +200,20 @@ export function CalendarScreen() {
 
   const [displayMonth, setDisplayMonth] = useState(() => startOfMonth(getLogicalToday()));
   const [selectedKey, setSelectedKey] = useState(() => dayKeyOf(getLogicalToday()));
+  // A link naming a day (the Calendar widget's taps, `resetToCalendar`) lands
+  // on it. Stamped rather than watched for change, the same idiom Meal Plan's
+  // `focusDay` uses: the day is the payload and the stamp is the event.
+  const route = useRoute<any>();
+  const focusDay: string | undefined = route.params?.focusDay;
+  const focusStamp: number | undefined = route.params?.focusStamp;
+  const [handledFocus, setHandledFocus] = useState<number | null>(null);
+  useEffect(() => {
+    if (focusStamp === undefined || focusStamp === handledFocus || !focusDay) return;
+    setHandledFocus(focusStamp);
+    const day = dayKeyToDate(focusDay);
+    setDisplayMonth(startOfMonth(day));
+    setSelectedKey(focusDay);
+  }, [focusDay, focusStamp, handledFocus]);
   const [syncingCalendar, setSyncingCalendar] = useState(false);
   // Month, week or one day on a clock. Session-only: which way you are reading
   // this month is not a preference about the app.

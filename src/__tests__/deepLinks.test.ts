@@ -9,6 +9,7 @@ const mockResetToGroceries = jest.fn();
 const mockResetToRecipes = jest.fn();
 const mockResetToRecipeDetail = jest.fn();
 const mockResetToMealPlan = jest.fn();
+const mockResetToCalendar = jest.fn();
 const mockResetToKitchen = jest.fn();
 const mockResetToPeople = jest.fn();
 const mockResetToJournal = jest.fn();
@@ -97,6 +98,7 @@ jest.mock('../navigation/navigationRef', () => ({
   resetToRecipes: (...args: unknown[]) => mockResetToRecipes(...args),
   resetToRecipeDetail: (...args: unknown[]) => mockResetToRecipeDetail(...args),
   resetToMealPlan: (...args: unknown[]) => mockResetToMealPlan(...args),
+  resetToCalendar: (...args: unknown[]) => mockResetToCalendar(...args),
   resetToKitchen: (...args: unknown[]) => mockResetToKitchen(...args),
   resetToPeople: (...args: unknown[]) => mockResetToPeople(...args),
   resetToJournal: (...args: unknown[]) => mockResetToJournal(...args),
@@ -132,6 +134,8 @@ import {
   groceriesUrlShop,
   isMealPlanUrl,
   mealPlanUrlDayKey,
+  isCalendarUrl,
+  calendarUrlDayKey,
   isKitchenUrl,
   kitchenUrlItemId,
   isRecipesUrl,
@@ -384,6 +388,20 @@ describe('isMealPlanUrl', () => {
     // A day is a query parameter, not a path segment.
     expect(isMealPlanUrl('dundundun://mealplan/2026-08-05')).toBe(false);
     expect(isMealPlanUrl('')).toBe(false);
+  });
+});
+
+describe('calendarUrlDayKey', () => {
+  it('recognises the link with or without a day', () => {
+    expect(isCalendarUrl('dundundun://calendar')).toBe(true);
+    expect(isCalendarUrl('dundundun://calendar?date=2026-10-24')).toBe(true);
+    expect(isCalendarUrl('dundundun://calendars')).toBe(false);
+  });
+
+  it('reads the day, and refuses one that is not a day key', () => {
+    expect(calendarUrlDayKey('dundundun://calendar?date=2026-10-24')).toBe('2026-10-24');
+    expect(calendarUrlDayKey('dundundun://calendar')).toBeNull();
+    expect(calendarUrlDayKey('dundundun://calendar?date=tomorrow')).toBeNull();
   });
 });
 
@@ -705,6 +723,14 @@ describe('openInAppUrl', () => {
     expect(openInAppUrl('dundundun://addevent')).toBe(true);
     expect(mockOpenQuickAddEvent).not.toHaveBeenCalled();
     expect(mockResetToToday).toHaveBeenCalledTimes(1);
+  });
+
+  // The Calendar widget's taps — see TodoCalendarWidget.swift.
+  it('opens the calendar on the day a calendar link names', () => {
+    expect(openInAppUrl('dundundun://calendar?date=2026-10-24')).toBe(true);
+    expect(mockResetToCalendar).toHaveBeenCalledWith('2026-10-24');
+    expect(openInAppUrl('dundundun://calendar')).toBe(true);
+    expect(mockResetToCalendar).toHaveBeenLastCalledWith(null);
   });
 
   it('opens the grocery list for the bare link, without asking for the sheet', () => {

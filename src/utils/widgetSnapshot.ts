@@ -28,6 +28,7 @@ import { agendaCounts, type AgendaCounts } from './dailyAgenda';
 import { occupiesTime, type BusyEvent } from './calendarBusy';
 import { eventTaskEventOf } from './eventTasks';
 import { addDays } from 'date-fns/addDays';
+import type { WidgetCalendar } from './widgetCalendar';
 import { widgetTapNeedsApp } from './widgetQuietTaps';
 import { formatDose, medicationStats, repeatDose } from './medicationLog';
 import { NUTRIENT_LABEL } from './foodNutrition';
@@ -279,6 +280,12 @@ export interface WidgetSnapshot {
    * at `nextDayStart`.
    */
   limits: WidgetLimit[] | null;
+  /**
+   * Today and tomorrow for the Calendar widget (`widgetCalendar.ts`), or null
+   * when the calendar isn't being read, which the widget says rather than
+   * drawing two empty days.
+   */
+  calendar: WidgetCalendar | null;
 }
 
 /**
@@ -547,6 +554,8 @@ export interface SnapshotInput {
   } | null;
   /** How many rows cross: the widget's caps unless given; the watch's copy passes `WATCH_CAPS`. */
   caps?: SnapshotCaps;
+  /** The Calendar widget's section, built by the caller (`buildWidgetCalendar`), or null. */
+  calendar?: WidgetCalendar | null;
 }
 
 /**
@@ -640,5 +649,6 @@ export function buildWidgetSnapshot(input: SnapshotInput): WidgetSnapshot {
     limits: input.limits
       ? buildWidgetLimits(input.limits.totals, input.limits.targets, input.limits.limits, input.limits.warnPercent)
       : null,
+    calendar: input.calendar ?? null,
   };
 }

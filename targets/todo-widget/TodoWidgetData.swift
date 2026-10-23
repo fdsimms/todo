@@ -259,6 +259,117 @@ struct WidgetEvent: Codable, Identifiable {
     }
 }
 
+// ==== The Calendar widget ====
+//
+// Today and tomorrow as `buildWidgetCalendar` (widgetCalendar.ts) writes them.
+// The widget reads the events from EventKit itself when it can, and from each
+// day's `events` here when it can't; the calendars, their colors, the hidden
+// occurrences and the timed tasks only ever come from here.
+
+/// An event as the app read it. Times are ISO; the widget formats them.
+struct WidgetCalendarEvent: Codable {
+    /// EventKit's `calendarItemIdentifier`, which is what the app calls an event's id.
+    let id: String
+    let title: String
+    let start: String
+    let end: String
+    let allDay: Bool
+    let calendarId: String
+    let location: String?
+    let videoCall: Bool
+
+    enum CodingKeys: String, CodingKey { case id, title, start, end, allDay, calendarId, location, videoCall }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(String.self, forKey: .id) ?? ""
+        title = try c.decodeIfPresent(String.self, forKey: .title) ?? ""
+        start = try c.decode(String.self, forKey: .start)
+        end = try c.decodeIfPresent(String.self, forKey: .end) ?? start
+        allDay = try c.decodeIfPresent(Bool.self, forKey: .allDay) ?? false
+        calendarId = try c.decodeIfPresent(String.self, forKey: .calendarId) ?? ""
+        location = try c.decodeIfPresent(String.self, forKey: .location)
+        videoCall = try c.decodeIfPresent(Bool.self, forKey: .videoCall) ?? false
+    }
+}
+
+/// A task with a time on one of the two days.
+struct WidgetCalendarTask: Codable {
+    let id: String
+    let title: String
+    let start: String
+    /// Nil when nothing says how long it runs.
+    let end: String?
+    let completed: Bool
+    let category: String?
+    /// The calendar event this task is blocked out as, drawn once, as the task.
+    let blockEventId: String?
+
+    enum CodingKeys: String, CodingKey { case id, title, start, end, completed, category, blockEventId }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        title = try c.decodeIfPresent(String.self, forKey: .title) ?? ""
+        start = try c.decode(String.self, forKey: .start)
+        end = try c.decodeIfPresent(String.self, forKey: .end)
+        completed = try c.decodeIfPresent(Bool.self, forKey: .completed) ?? false
+        category = try c.decodeIfPresent(String.self, forKey: .category)
+        blockEventId = try c.decodeIfPresent(String.self, forKey: .blockEventId)
+    }
+}
+
+/// One logical day: its bounds (which the extension can't work out, since it
+/// can't read the reset time), the app's read of its events, its timed tasks
+/// and how many tasks have no time.
+struct WidgetCalendarDay: Codable {
+    let key: String
+    let start: String
+    let end: String
+    /// Nil when the app had no read of the day to give.
+    let events: [WidgetCalendarEvent]?
+    let tasks: [WidgetCalendarTask]
+    let untimed: Int
+
+    enum CodingKeys: String, CodingKey { case key, start, end, events, tasks, untimed }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        key = try c.decode(String.self, forKey: .key)
+        start = try c.decode(String.self, forKey: .start)
+        end = try c.decode(String.self, forKey: .end)
+        events = try c.decodeIfPresent([WidgetCalendarEvent].self, forKey: .events)
+        tasks = try c.decodeIfPresent([WidgetCalendarTask].self, forKey: .tasks) ?? []
+        untimed = try c.decodeIfPresent(Int.self, forKey: .untimed) ?? 0
+    }
+}
+
+/// An occurrence hidden from Today: the event's id and its start.
+struct WidgetHiddenEvent: Codable {
+    let id: String
+    let start: String
+}
+
+struct WidgetCalendar: Codable {
+    /// The calendars the app reads, so the widget reads the same ones.
+    let calendarIds: [String]
+    /// Hex colors by calendar id, as the app shows them.
+    let colors: [String: String]
+    let hidden: [WidgetHiddenEvent]
+    /// Today, then tomorrow.
+    let days: [WidgetCalendarDay]
+
+    enum CodingKeys: String, CodingKey { case calendarIds, colors, hidden, days }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        calendarIds = try c.decodeIfPresent([String].self, forKey: .calendarIds) ?? []
+        colors = try c.decodeIfPresent([String: String].self, forKey: .colors) ?? [:]
+        hidden = try c.decodeIfPresent([WidgetHiddenEvent].self, forKey: .hidden) ?? []
+        days = try c.decodeIfPresent([WidgetCalendarDay].self, forKey: .days) ?? []
+    }
+}
+
 struct WidgetSnapshot: Codable {
     let updatedAt: String
     let visibleTasks: [WidgetTask]
@@ -291,6 +402,9 @@ struct WidgetSnapshot: Codable {
     /// Nil before the food log has loaded, or from a build predating the
     /// Limits widget; either way that widget asks for the app.
     let limits: [WidgetLimit]?
+    /// Nil while the calendar isn't read, or from a build predating the
+    /// Calendar widget; either way that widget says so in its own words.
+    let calendar: WidgetCalendar?
 
     enum CodingKeys: String, CodingKey {
         case updatedAt, visibleTasks, pinnedTasks, categories, agenda, doneToday
@@ -298,6 +412,7 @@ struct WidgetSnapshot: Codable {
         case upcomingTasks, nextDayStart, staleAfter
         case medications
         case limits
+        case calendar
     }
 
     init(from decoder: Decoder) throws {
@@ -317,6 +432,7 @@ struct WidgetSnapshot: Codable {
         staleAfter = try c.decodeIfPresent(String.self, forKey: .staleAfter)
         medications = try c.decodeIfPresent([WidgetMedication].self, forKey: .medications)
         limits = try c.decodeIfPresent([WidgetLimit].self, forKey: .limits)
+        calendar = try c.decodeIfPresent(WidgetCalendar.self, forKey: .calendar)
     }
 
     // ==== Time passing without the app ====

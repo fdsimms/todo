@@ -223,6 +223,17 @@ export function resetToMealPlan(
   });
 }
 
+/**
+ * The Calendar, on a day when one is given: the Calendar widget's taps
+ * (`dundundun://calendar?date=`). Stamped like `resetToMealPlan`, so tapping
+ * the same day twice still moves the screen there.
+ */
+export function resetToCalendar(focusDay?: string | null): void {
+  runWhenReady(() => {
+    navigateToTab('Calendar', focusDay ? { focusDay, focusStamp: Date.now() } : undefined);
+  });
+}
+
 // Where the "Search" Home Screen quick action lands. Search is a drawer
 // screen now (see AppNavigator's DRAWER_TABS), not a bottom tab, but it's
 // still a registered route, so this is the same tab navigation as before —
