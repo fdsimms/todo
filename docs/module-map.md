@@ -373,7 +373,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/plannedDayNutrition.ts` — PlannedDayNutrition, plannedDayNutrition
 - `src/utils/plateMath.ts` — PlateSlot, PlateLoad, DEFAULT_PLATE_INVENTORY_LB, effectivePlateInventory, isPlateLoaded, barKgFor, plateLoad, platesOnSide, describePlateLoad, WarmupStep, +2 more
 - `src/utils/plu.ts` — normalizePlu, splitOrganicPlu, pluNameFor
-- `src/utils/postpone.ts` — PostponeOutcome, DEFAULT_POSTPONE_THRESHOLD, MIN_POSTPONE_THRESHOLD, MAX_POSTPONE_THRESHOLD, parsePostponeThreshold, postponeOutcome, nextPostponeCount, nextDriftingSince, DriftEntry, isDriftingTask, +3 more
+- `src/utils/postpone.ts` — PostponeOutcome, DEFAULT_POSTPONE_THRESHOLD, MIN_POSTPONE_THRESHOLD, MAX_POSTPONE_THRESHOLD, parsePostponeThreshold, postponeOutcome, nextPostponeCount, nextDriftingSince, DriftEntry, isDriftingTask, +4 more
 - `src/utils/priceHistory.ts` — PRICE_HISTORY_LIMIT, parsePriceHistory, appendPriceObservation, PRODUCT_RUN_MIN, priceRunForProduct, priceBaseline, PriceStanding, priceStanding, mergePriceHistories
 - `src/utils/prioritySegments.ts` — PRIORITY_SEGMENTS
 - `src/utils/processingStats.ts` — ProcessingMix, entryNovaGroup, processingMix, formatShare, describeProcessingCoverage
