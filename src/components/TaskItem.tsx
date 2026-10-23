@@ -2060,7 +2060,10 @@ const TaskItemRow = React.memo(function TaskItem({
   // with nothing marking that history, and StuckScreen is a place you have to
   // go looking for it.
   const postponeCheckThreshold = useSettingsStore(s => s.postponeCheckThreshold);
-  const isDrifting = isDriftingTask(task, postponeCheckThreshold);
+  // A target with a unit already logged this period is being worked on, so the
+  // chip would contradict the meter beside it. Display only: the count itself
+  // is untouched, so the bounty, banner and Stuck screen still see the history.
+  const isDrifting = isDriftingTask(task, postponeCheckThreshold) && !(isQuota && task.progressCount > 0);
   // What a live bounty would pay right now (utils/rewards.ts), shown so the
   // reason to do it today sits on the row you'd otherwise push.
   const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
