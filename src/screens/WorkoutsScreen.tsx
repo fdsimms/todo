@@ -58,6 +58,7 @@ import { dayKeyOf } from '../utils/dateUtils';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { openHealthApp } from '../utils/healthBridge';
 import { BUTTON_LABEL } from '../copy/shared';
 import { catalogExercise, describeExercise, searchExercises, type CatalogExercise } from '../utils/exerciseCatalog';
 import { describeRoutine } from '../utils/workoutRoutine';
@@ -301,19 +302,30 @@ export function WorkoutsScreen() {
       );
     }
     // A reading, not an entry: it names the app that recorded it and what kind
-    // of workout it says it was, and offers nothing to tap.
+    // of workout it says it was. Its tap opens the Health app: Apple publishes
+    // no link to a single workout, so that is as close as a row can get.
     const source = healthWorkoutSource(item.workout);
     const title = healthWorkoutTitle(item.workout);
     const line = healthWorkoutLine(item.workout);
     return (
-      <View style={styles.row} accessible accessibilityLabel={`${title}, ${line}. ${source}`}>
-        <View style={styles.healthTagRow}>
-          <Ionicons name="heart" size={iconSize.xs} color={colors.textSecondary} />
-          <Text style={styles.healthTag} numberOfLines={1}>{source}</Text>
+      <TouchableOpacity
+        style={[styles.row, styles.exerciseRow]}
+        activeOpacity={interaction.activeOpacity}
+        onPress={() => { haptics.tap(); void openHealthApp(); }}
+        accessibilityRole="button"
+        accessibilityLabel={`${title}, ${line}. ${source}`}
+        accessibilityHint="Opens the Health app"
+      >
+        <View style={styles.flex}>
+          <View style={styles.healthTagRow}>
+            <Ionicons name="heart" size={iconSize.xs} color={colors.textSecondary} />
+            <Text style={styles.healthTag} numberOfLines={1}>{source}</Text>
+          </View>
+          <Text style={styles.title}>{title}</Text>
+          <Text style={styles.detail}>{line}</Text>
         </View>
-        <Text style={styles.title}>{title}</Text>
-        <Text style={styles.detail}>{line}</Text>
-      </View>
+        <Ionicons name="open-outline" size={iconSize.sm} color={colors.textTertiary} />
+      </TouchableOpacity>
     );
   }, [styles, setCounts, volumeKgBySession, workoutUnit, colors, openSession]);
 
