@@ -366,15 +366,20 @@ export function wantsWaniKaniLessonsTask(input: {
 
 /**
  * Whether a WaniKani row reads as ready to check off: its queue is empty, or
- * its day's lessons are done. Derived only, from the latest read.
+ * its day's lessons are done. Derived only, from the latest read. A task still
+ * held for the forecast is never ready: the queue is empty *because* the
+ * reviews haven't arrived yet, and the row isn't on Today to be checked off.
  */
 export function isWaniKaniTaskReady(
-  task: Pick<Task, 'generatedKind' | 'generatedSourceId'>,
+  task: Pick<Task, 'generatedKind' | 'generatedSourceId'> & Partial<Pick<Task, 'dueDate' | 'windowStart'>>,
   snapshot: WaniKaniSnapshot | null,
   perDay: number | null,
   now: Date,
+  dayResetTime = '00:00',
 ): boolean {
   if (!snapshot) return false;
+  const heldUntil = wanikaniHeldUntil({ dueDate: task.dueDate ?? null, windowStart: task.windowStart ?? null }, dayResetTime);
+  if (heldUntil && heldUntil.getTime() > now.getTime()) return false;
   const kind = wanikaniTaskKind(task);
   if (kind === 'reviews') return wanikaniQueueAt(snapshot, now) === 0;
   if (kind === 'lessons') {

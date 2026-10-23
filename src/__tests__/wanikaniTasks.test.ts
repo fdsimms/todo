@@ -278,6 +278,13 @@ describe('isWaniKaniTaskReady', () => {
     expect(isWaniKaniTaskReady(row('lessons:2026-10-18'), done, null, NOW)).toBe(false);
   });
 
+  it('is not ready while the task is still held for the forecast', () => {
+    const empty = snapshot({ reviewsNow: 0, upcoming: [] });
+    const held = { ...row('reviews:2026-10-18T09'), ...wanikaniHoldFields(at(15), '00:00') };
+    expect(isWaniKaniTaskReady(held, empty, null, NOW)).toBe(false);
+    expect(isWaniKaniTaskReady(held, empty, null, at(15))).toBe(true);
+  });
+
   it('is never ready without a read', () => {
     expect(isWaniKaniTaskReady(row('reviews:2026-10-18T09'), null, null, NOW)).toBe(false);
   });

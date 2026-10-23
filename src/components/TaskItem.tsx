@@ -1400,7 +1400,9 @@ const TaskItemRow = React.memo(function TaskItem({
   const isWaniKaniTask = task.generatedKind === 'wanikani';
   const wanikaniLessonsPerDay = useSettingsStore(s => (isWaniKaniTask ? s.wanikaniLessonsPerDay : null));
   const wanikaniReady = useWaniKaniStore(s =>
-    isWaniKaniTask && !task.completed && isWaniKaniTaskReady(task, s.snapshot, wanikaniLessonsPerDay, new Date())
+    isWaniKaniTask &&
+    !task.completed &&
+    isWaniKaniTaskReady(task, s.snapshot, wanikaniLessonsPerDay, new Date(), useSettingsStore.getState().dayResetTime)
   );
 
   // Which meal an auto-generated meal task is for (mealSlotOf, off the row's
