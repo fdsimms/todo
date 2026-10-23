@@ -1,1 +1,1 @@
-{ "message": "In the routine editor, blank weight, reps and time cells now all say \"Last time\", since each one starts from your last workout until you type a number.", "date": "2026-10-23" }
+{ "message": "In the routine editor, a blank weight, reps or time cell now shows the number from your last workout, in grey, instead of a word.", "date": "2026-10-23" }
