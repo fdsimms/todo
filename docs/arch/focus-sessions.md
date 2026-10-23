@@ -180,7 +180,7 @@ new time estimate" pill under the progress bar is a button the person chose to
 press, so it skips both (`measuredEstimateOffer`) and shows from the first
 minute and through an over-run. It writes the estimate and effort only, never
 `actualMinutes`: a mid-step reading is not how long the task took. It shares
-`focusMeasuredMinutes`' refusals (a rest, or a task split across stretches) and
+`focusMeasuredMinutes`' refusals (a rest, or an earlier stretch of a split task: on its last stretch the earlier ones are summed from `stepLog`) and
 `measuredTimeAppliesTo`'s (a chain step with its own estimate), and is absent
 under Hide timers and for a quota task.
 

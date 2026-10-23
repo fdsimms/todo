@@ -1,1 +1,1 @@
-{ "message": "In a focus session, \"Save 15m as new time estimate\" sets a task's estimate to the time it has taken so far, with Undo.", "date": "2026-10-23" }
+{ "message": "In a focus session, \"Save 15m as new time estimate\" sets a task's estimate to the time it has taken, with Undo. A task split into several stretches adds them up on its last stretch.", "date": "2026-10-23" }

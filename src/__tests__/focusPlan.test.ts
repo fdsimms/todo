@@ -343,9 +343,24 @@ describe('focusMeasuredMinutes', () => {
     expect(focusMeasuredMinutes(s, t0 + 300_000)).toBeNull();
   });
 
-  it('is null on a split task, which the session has no way to measure in full', () => {
+  it('is null on an earlier stretch of a split task, which speaks for only part of it', () => {
     const s = session([work('a', 20, 1, 2)], { stepStartedAt: new Date(t0).toISOString() });
     expect(focusMeasuredMinutes(s, t0 + 1_200_000)).toBeNull();
+  });
+
+  it('sums the earlier stretches of a split task on its last one, leaving breaks out', () => {
+    const record = (taskId: string | null, kind: 'work' | 'rest', actualSeconds: number, part: number, partCount: number) =>
+      ({ kind, taskId, plannedMinutes: 20, actualSeconds, part, partCount, long: false });
+    const s = session([work('a', 20, 3, 3)], {
+      stepStartedAt: new Date(t0).toISOString(),
+      stepLog: [
+        record('a', 'work', 20 * 60, 1, 3),
+        record(null, 'rest', 5 * 60, 1, 1),
+        record('a', 'work', 25 * 60, 2, 3),
+        record('b', 'work', 40 * 60, 1, 1),
+      ],
+    });
+    expect(focusMeasuredMinutes(s, t0 + 10 * 60_000)).toBe(55);
   });
 
   it('rounds the elapsed time on a single-stretch task', () => {
