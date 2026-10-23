@@ -218,6 +218,13 @@ public class TodoHealthBridgeModule: Module {
     if let diastolic = HKQuantityType.quantityType(forIdentifier: .bloodPressureDiastolic) {
       types.insert(diastolic)
     }
+    // The pulse a blood pressure reading may carry (its two halves are
+    // inserted above). Pulse is in the share set but deliberately not in
+    // `writeTypes(for: "bloodPressure")`: it is optional, saved after the reading, and reported on its own, so a
+    // refusal of it must not make the blood pressure row read as refused.
+    if let heartRate = HKQuantityType.quantityType(forIdentifier: .heartRate) {
+      types.insert(heartRate)
+    }
     for entry in Self.nutrientWriteTable {
       if let type = HKQuantityType.quantityType(forIdentifier: entry.identifier) {
         types.insert(type)
@@ -913,15 +920,21 @@ public class TodoHealthBridgeModule: Module {
     /// a diastolic at or above its systolic is refused, since no reading is
     /// that. Same one-shot shape as `writeBodyMassSample`: no id is kept and no
     /// edit or delete exists here, because Health is the record.
-    AsyncFunction("writeBloodPressureSample") { (systolic: Int, diastolic: Int, whenISO: String, promise: Promise) in
+    ///
+    /// `pulse` is beats per minute, or 0 for none typed. Resolves a string, not
+    /// a Bool: `"saved"`, `"pulseRefused"` (the reading landed and the pulse
+    /// did not, which the person must be told rather than left to find out) or
+    /// `"failed"` (nothing landed).
+    AsyncFunction("writeBloodPressureSample") { (systolic: Int, diastolic: Int, pulse: Int, whenISO: String, promise: Promise) in
       #if canImport(HealthKit)
       guard HKHealthStore.isHealthDataAvailable(),
             systolic >= 40, systolic <= 300, diastolic >= 20, diastolic <= 200,
             diastolic < systolic,
+            pulse == 0 || (pulse >= 30 && pulse <= 250),
             let correlationType = HKObjectType.correlationType(forIdentifier: .bloodPressure),
             let systolicType = HKQuantityType.quantityType(forIdentifier: .bloodPressureSystolic),
             let diastolicType = HKQuantityType.quantityType(forIdentifier: .bloodPressureDiastolic) else {
-        promise.resolve(false)
+        promise.resolve("failed")
         return
       }
       let when = Self.parseISO(whenISO) ?? Date()
@@ -938,13 +951,35 @@ public class TodoHealthBridgeModule: Module {
           type: correlationType, start: when, end: when,
           objects: [systolicSample, diastolicSample])
         self.store.save(correlation) { success, _ in
-          promise.resolve(success)
+          guard success else {
+            promise.resolve("failed")
+            return
+          }
+          // `pulse == 0` means none was typed. The pulse is its own sample at
+          // the same instant, saved second so that refusing it never costs the
+          // reading, and the caller is told which half landed.
+          guard pulse > 0, let heartType = HKQuantityType.quantityType(forIdentifier: .heartRate) else {
+            promise.resolve("saved")
+            return
+          }
+          let perMinute = HKUnit.count().unitDivided(by: HKUnit.minute())
+          let pulseSample = HKQuantitySample(
+            type: heartType, quantity: HKQuantity(unit: perMinute, doubleValue: Double(pulse)),
+            start: when, end: when)
+          var pulseStarted = false
+          TodoHealthExceptionCatcher.runCatchingExceptions {
+            self.store.save(pulseSample) { pulseSaved, _ in
+              promise.resolve(pulseSaved ? "saved" : "pulseRefused")
+            }
+            pulseStarted = true
+          }
+          if !pulseStarted { promise.resolve("pulseRefused") }
         }
         started = true
       }
-      if !started { promise.resolve(false) }
+      if !started { promise.resolve("failed") }
       #else
-      promise.resolve(false)
+      promise.resolve("failed")
       #endif
     }
 
@@ -1824,7 +1859,9 @@ public class TodoHealthBridgeModule: Module {
     }
 
     /// Every blood pressure reading that started inside the window, newest
-    /// last, as JSON: `[{"at":"…","sys":118,"dia":76}, …]`.
+    /// last, as JSON: `[{"at":"…","sys":118,"dia":76,"pulse":64}, …]`, where
+    /// `pulse` is present only when a heart rate was recorded at exactly the
+    /// reading's instant.
     ///
     /// One entry per reading rather than per day, because several a day is the
     /// normal way to take them and averaging a morning against an evening would
@@ -1853,15 +1890,45 @@ public class TodoHealthBridgeModule: Module {
           sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)]
         ) { _, samples, _ in
           let unit = HKUnit.millimeterOfMercury()
-          var entries: [String] = []
+          var readings: [(at: Date, sys: Int, dia: Int)] = []
           for case let correlation as HKCorrelation in samples ?? [] {
             guard let sys = (correlation.objects(for: systolicType).first as? HKQuantitySample),
                   let dia = (correlation.objects(for: diastolicType).first as? HKQuantitySample) else { continue }
-            let s = Int(sys.quantity.doubleValue(for: unit).rounded())
-            let d = Int(dia.quantity.doubleValue(for: unit).rounded())
-            entries.append("{\"at\":\"\(Self.formatISO(correlation.startDate))\",\"sys\":\(s),\"dia\":\(d)}")
+            readings.append((
+              correlation.startDate,
+              Int(sys.quantity.doubleValue(for: unit).rounded()),
+              Int(dia.quantity.doubleValue(for: unit).rounded())))
           }
-          promise.resolve("[" + entries.joined(separator: ",") + "]")
+          // A pulse belongs to a reading only when it was recorded at the same
+          // instant (what this app writes, and what a cuff's app does). Nearby
+          // is not the same: a heart rate from the Watch a minute earlier is a
+          // different measurement and is never attached.
+          let finish: ([Date: Int]) -> Void = { pulses in
+            let entries: [String] = readings.map { r in
+              let pulse = pulses[r.at].map { ",\"pulse\":\($0)" } ?? ""
+              return "{\"at\":\"\(Self.formatISO(r.at))\",\"sys\":\(r.sys),\"dia\":\(r.dia)\(pulse)}"
+            }
+            promise.resolve("[" + entries.joined(separator: ",") + "]")
+          }
+          guard !readings.isEmpty, let heartType = HKQuantityType.quantityType(forIdentifier: .heartRate) else {
+            finish([:])
+            return
+          }
+          let pulseQuery = HKSampleQuery(
+            sampleType: heartType,
+            predicate: HKQuery.predicateForSamples(withStart: anchor, end: end, options: .strictStartDate),
+            limit: HKObjectQueryNoLimit,
+            sortDescriptors: nil
+          ) { _, heartSamples, _ in
+            let perMinute = HKUnit.count().unitDivided(by: HKUnit.minute())
+            let wanted = Set(readings.map { $0.at })
+            var pulses: [Date: Int] = [:]
+            for case let sample as HKQuantitySample in heartSamples ?? [] where wanted.contains(sample.startDate) {
+              pulses[sample.startDate] = Int(sample.quantity.doubleValue(for: perMinute).rounded())
+            }
+            finish(pulses)
+          }
+          self.store.execute(pulseQuery)
         }
         self.store.execute(query)
         started = true

@@ -211,7 +211,7 @@ interface TodoHealthNativeModule {
   requestWriteAuthorization(): Promise<HealthAuthorizationResult>;
   writeNutrientSample(key: string, amount: number): Promise<boolean>;
   writeBodyMassSample(kilograms: number, whenISO: string): Promise<boolean>;
-  writeBloodPressureSample(systolic: number, diastolic: number, whenISO: string): Promise<boolean>;
+  writeBloodPressureSample(systolic: number, diastolic: number, pulse: number, whenISO: string): Promise<string>;
   readBloodPressureSeries(anchorISO: string, days: number): Promise<string>;
   writeFoodSamples(label: string, atISO: string, amountsJSON: string): Promise<string>;
   deleteHealthSamples(idsJSON: string): Promise<boolean>;
@@ -295,21 +295,30 @@ export function healthWriteAuthorizationStatus(kind: HealthWriteKind): HealthWri
 }
 
 /**
- * Save one blood pressure reading (whole mmHg) to Health as a systolic and
- * diastolic pair, filed at `whenISO`. Resolves `false` for the usual spread of
- * reasons (no native half, sharing refused) and for a pair no reading could be,
- * which the caller is expected to surface, since a mistyped digit would be a
- * permanent false reading in somebody's Health record.
+ * What came of saving a reading: `saved`, `pulseRefused` (the reading landed and
+ * the optional pulse did not) or `failed` (nothing landed).
  */
-export function writeBloodPressureSample(
+export type BloodPressureSaveOutcome = 'saved' | 'pulseRefused' | 'failed';
+
+/**
+ * Save one blood pressure reading (whole mmHg) to Health as a systolic and
+ * diastolic pair, filed at `whenISO`, with a pulse in beats per minute or `null`
+ * for none. Resolves `failed` for the usual spread of reasons (no native half,
+ * sharing refused) and for a pair no reading could be, which the caller is
+ * expected to surface, since a mistyped digit would be a permanent false reading
+ * in somebody's Health record.
+ */
+export async function writeBloodPressureSample(
   systolic: number,
   diastolic: number,
+  pulse: number | null,
   whenISO: string,
-): Promise<boolean> {
-  return degradeOnReject(
-    () => nativeModule!.writeBloodPressureSample(systolic, diastolic, whenISO),
-    false,
+): Promise<BloodPressureSaveOutcome> {
+  const outcome = await degradeOnReject(
+    () => nativeModule!.writeBloodPressureSample(systolic, diastolic, pulse ?? 0, whenISO),
+    'failed',
   );
+  return outcome === 'saved' || outcome === 'pulseRefused' ? outcome : 'failed';
 }
 
 /**

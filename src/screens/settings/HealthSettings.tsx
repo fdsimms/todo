@@ -603,7 +603,7 @@ export function HealthSettings() {
 
     <SettingsSection
       label="Log to Health"
-      footer="Nothing else is written to Health. Deleting what the app wrote removes it from Health."
+      footer="Nothing else is written to Health. Deleting a food log entry or a workout removes what it wrote. A weight or blood pressure reading is edited or deleted in the Health app."
       explain={{
         title: 'What gets written to Health',
         paragraphs: [

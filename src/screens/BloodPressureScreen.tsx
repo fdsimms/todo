@@ -29,6 +29,7 @@ import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSetting
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
+import { BloodPressureChart } from '../components/BloodPressureChart';
 import { LogBloodPressureSheet } from '../components/LogBloodPressureSheet';
 import { SegmentedControl } from '../components/SegmentedControl';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
@@ -92,10 +93,8 @@ export function BloodPressureScreen() {
 
   const readings = useMemo(() => bloodPressure ?? [], [bloodPressure]);
   const latest = useMemo(() => latestReading(readings), [readings]);
-  const inRange = useMemo(
-    () => readingsSince(readings, addDays(getCurrentDayStart(), -(rangeDays - 1))),
-    [readings, rangeDays],
-  );
+  const rangeStart = useMemo(() => addDays(getCurrentDayStart(), -(rangeDays - 1)), [rangeDays]);
+  const inRange = useMemo(() => readingsSince(readings, rangeStart), [readings, rangeStart]);
   const average = useMemo(() => averageReading(inRange), [inRange]);
   const listed = useMemo(() => inRange.slice(-MAX_LISTED).reverse(), [inRange]);
 
@@ -208,7 +207,10 @@ export function BloodPressureScreen() {
                 {formatReading(latest)}
                 <Text style={styles.unit}> mmHg</Text>
               </Text>
-              <Text style={styles.latestWhen}>{dayLabel(latest.at)}, {timeLabel(latest.at)}</Text>
+              <Text style={styles.latestWhen}>
+                {dayLabel(latest.at)}, {timeLabel(latest.at)}
+                {latest.pulse !== null ? `, pulse ${latest.pulse}` : ''}
+              </Text>
             </View>
           </>
         )}
@@ -243,6 +245,17 @@ export function BloodPressureScreen() {
           </View>
         </View>
 
+        {inRange.length > 0 && (
+          <View style={styles.card}>
+            <BloodPressureChart
+              readings={inRange}
+              startMs={rangeStart.getTime()}
+              endMs={Date.now()}
+              summary={`Chart of ${inRange.length} blood pressure readings over the last ${activeRange.spoken}, top and bottom numbers. The readings are listed below the chart.`}
+            />
+          </View>
+        )}
+
         {listed.length === 0 ? (
           <View style={styles.card}>
             <Text style={styles.empty}>Nothing recorded in this range.</Text>
@@ -256,11 +269,14 @@ export function BloodPressureScreen() {
                   key={reading.at.toISOString()}
                   style={[styles.row, i > 0 && styles.rowDivider]}
                   accessible
-                  accessibilityLabel={`${reading.systolic} over ${reading.diastolic}, ${dayLabel(reading.at)} at ${timeLabel(reading.at)}`}
+                  accessibilityLabel={`${reading.systolic} over ${reading.diastolic}, ${dayLabel(reading.at)} at ${timeLabel(reading.at)}${reading.pulse !== null ? `, pulse ${reading.pulse}` : ''}`}
                 >
                   <View style={styles.rowWhen}>
                     <Text style={styles.rowDay}>{dayLabel(reading.at)}</Text>
-                    <Text style={styles.rowTime}>{timeLabel(reading.at)}</Text>
+                    <Text style={styles.rowTime}>
+                      {timeLabel(reading.at)}
+                      {reading.pulse !== null ? `, pulse ${reading.pulse}` : ''}
+                    </Text>
                   </View>
                   <Text style={styles.rowValue}>
                     {formatReading(reading)}

@@ -67,7 +67,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/blockerRegistry.ts` — registerTaskSource, resolveBlocker, waitingCountFor
 - `src/utils/blockerStatus.ts` — BlockerWait, describeBlockerWait
 - `src/utils/blocking.ts` — TaskResolver, resolverFor, canBlock, blockerIdsOf, blockerFields, waitIdsOf, answerOpensGate, isNotNeeded, openOccurrenceOf, liveBlockersOf, +17 more
-- `src/utils/bloodPressureLog.ts` — BloodPressureReading, MIN_SYSTOLIC, MAX_SYSTOLIC, MIN_DIASTOLIC, MAX_DIASTOLIC, isPlausibleReading, parseBloodPressureInput, formatReading, parseBloodPressureReadings, latestReading, +2 more
+- `src/utils/bloodPressureLog.ts` — BloodPressureReading, MIN_SYSTOLIC, MAX_SYSTOLIC, MIN_DIASTOLIC, MAX_DIASTOLIC, MIN_PULSE, MAX_PULSE, isPlausibleReading, parseBloodPressureInput, formatReading, +9 more
 - `src/utils/brands.ts` — BrandSummary, brandSummaries, planBrandRename
 - `src/utils/bulkCompletion.ts` — tasksAskingOnCompletion, unansweredCompletionCopy, stackCompletionScope
 - `src/utils/bulkDelete.ts` — isMissableOneOff, BulkDeletePrompt, bulkDeletePrompt

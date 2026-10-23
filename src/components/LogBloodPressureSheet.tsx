@@ -50,11 +50,13 @@ export function LogBloodPressureSheet({ visible, onClose }: Props) {
 
   const [systolicText, setSystolicText] = useState('');
   const [diastolicText, setDiastolicText] = useState('');
+  const [pulseText, setPulseText] = useState('');
   const [day, setDay] = useState<Date>(() => getLogicalToday());
   const [pickerOpen, setPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const systolicRef = useRef<TextInput>(null);
   const diastolicRef = useRef<TextInput>(null);
+  const pulseRef = useRef<TextInput>(null);
 
   // The sheet stays mounted across opens (see `onShow` below), so the day it
   // was seeded with, or reset to on the last close, can be yesterday's by the
@@ -62,15 +64,16 @@ export function LogBloodPressureSheet({ visible, onClose }: Props) {
   // before, at midnight. A fresh open starts on today. A draft still holding a
   // typed reading (the "Open Settings" detour below keeps it) keeps its day too.
   useEffect(() => {
-    if (visible && systolicText === '' && diastolicText === '') setDay(getLogicalToday());
+    if (visible && systolicText === '' && diastolicText === '' && pulseText === '') setDay(getLogicalToday());
   }, [visible]);
 
-  const reading = parseBloodPressureInput(systolicText, diastolicText);
+  const reading = parseBloodPressureInput(systolicText, diastolicText, pulseText);
   const canSave = reading !== null && !saving;
 
   const close = () => {
     setSystolicText('');
     setDiastolicText('');
+    setPulseText('');
     setDay(getLogicalToday());
     setSaving(false);
     onClose();
@@ -96,9 +99,25 @@ export function LogBloodPressureSheet({ visible, onClose }: Props) {
     // sample by its instant, so the distinction is the difference between "this
     // morning" and "some time on the 3rd".
     const when = dayKeyOf(day) === dayKeyOf(getCurrentDayStart()) ? new Date() : day;
-    const result = await logBloodPressureToHealth(reading.systolic, reading.diastolic, when);
+    const result = await logBloodPressureToHealth(reading.systolic, reading.diastolic, reading.pulse, when);
     setSaving(false);
 
+    if (result === 'writtenWithoutPulse') {
+      // The reading is in Health; only the optional pulse was refused. Said
+      // rather than dropped, and the sheet closes because the reading is saved.
+      haptics.warning();
+      void refreshBloodPressure();
+      close();
+      Alert.alert(
+        'Saved without pulse',
+        'Your reading was saved, but this app isn’t allowed to write heart rate. In Health, go to Sharing, find this app and turn on heart rate.',
+        [
+          { text: 'Not now', style: 'cancel' },
+          { text: 'Open Health', onPress: () => { void openHealthApp(); } },
+        ],
+      );
+      return;
+    }
     if (result === 'written') {
       haptics.success();
       void refreshBloodPressure();
@@ -133,7 +152,7 @@ export function LogBloodPressureSheet({ visible, onClose }: Props) {
       return;
     }
     if (result === 'invalid') {
-      Alert.alert('Check the numbers', 'Enter the top and bottom numbers as whole numbers, with the top one higher.');
+      Alert.alert('Check the numbers', 'Enter the top and bottom numbers as whole numbers, with the top one higher. A pulse, if you add one, is beats per minute.');
       return;
     }
     // Demo mode refuses the write before the device is ever asked (see
@@ -240,6 +259,25 @@ export function LogBloodPressureSheet({ visible, onClose }: Props) {
               accessibilityLabel="Diastolic, the bottom number"
             />
             <Text style={styles.unit}>mmHg</Text>
+          </View>
+        </View>
+        <View style={styles.divider} />
+        <View style={styles.field}>
+          <Text style={styles.fieldLabel}>Pulse (optional)</Text>
+          <View style={styles.inputRow}>
+            <TextField
+              ref={pulseRef}
+              style={styles.input}
+              value={pulseText}
+              onChangeText={setPulseText}
+              keyboardType="number-pad"
+              maxLength={3}
+              inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
+              placeholder="e.g. 64"
+              placeholderTextColor={colors.textTertiary}
+              accessibilityLabel="Pulse in beats per minute, optional"
+            />
+            <Text style={styles.unit}>bpm</Text>
           </View>
         </View>
       </View>

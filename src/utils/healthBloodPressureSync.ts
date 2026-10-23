@@ -1,7 +1,7 @@
 import { healthBridge } from './healthBridge';
 import { isDemoModeActive } from './demoState';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { isPlausibleReading } from './bloodPressureLog';
+import { isPlausibleReading, MIN_PULSE, MAX_PULSE } from './bloodPressureLog';
 
 /**
  * Writing a blood pressure reading to Apple Health.
@@ -15,21 +15,31 @@ import { isPlausibleReading } from './bloodPressureLog';
  */
 
 /** What came of trying to write a reading. Same meanings as `WeightWriteResult`. */
-export type BloodPressureWriteResult = 'written' | 'off' | 'unavailable' | 'invalid' | 'refused';
+export type BloodPressureWriteResult =
+  | 'written'
+  /** The reading landed and the optional pulse did not. */
+  | 'writtenWithoutPulse'
+  | 'off'
+  | 'unavailable'
+  | 'invalid'
+  | 'refused';
 
 export async function logBloodPressureToHealth(
   systolic: number,
   diastolic: number,
+  pulse: number | null,
   when: Date,
 ): Promise<BloodPressureWriteResult> {
   if (isDemoModeActive()) return 'unavailable';
   if (!isPlausibleReading(systolic, diastolic)) return 'invalid';
+  if (pulse !== null && (!Number.isInteger(pulse) || pulse < MIN_PULSE || pulse > MAX_PULSE)) return 'invalid';
 
   if (!useSettingsStore.getState().healthWriteEnabled) return 'off';
 
   const bridge = healthBridge();
   if (!bridge) return 'unavailable';
 
-  const saved = await bridge.writeBloodPressureSample(systolic, diastolic, when.toISOString());
-  return saved ? 'written' : 'refused';
+  const outcome = await bridge.writeBloodPressureSample(systolic, diastolic, pulse, when.toISOString());
+  if (outcome === 'saved') return 'written';
+  return outcome === 'pulseRefused' ? 'writtenWithoutPulse' : 'refused';
 }

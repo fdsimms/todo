@@ -457,9 +457,22 @@ differs:
   only by not crossing. The screen shows the latest reading, the count and
   mean over a range, and the readings. If one of those ever grows a verdict,
   this note is the thing to read first.
-- **Pulse is not written or read here.** It is a different type (`heartRate`,
-  which the app already reads only for a workout) and a cuff's pulse is not the
-  workout card's figure.
+- **Pulse is optional, a separate sample, and attached by instant only.** It is
+  a `heartRate` sample at the reading's instant, saved *after* the correlation
+  so refusing heart rate never costs the reading. The write answers
+  `saved`, `pulseRefused` or `failed`, and the sheet says when only the pulse
+  was refused. Heart rate is in the share set but not in the `'bloodPressure'`
+  status kind, so a refused pulse never makes the blood pressure row read as
+  refused. On the read side a pulse is attached to a reading only when a heart
+  rate was recorded at exactly the same start instant; a Watch heart rate a
+  minute earlier is a different measurement and is never shown as the reading's
+  pulse. The workout card's heart rate rules (read for a workout, never
+  interpreted) are unchanged.
+- **The chart draws what the weight chart draws, and no more.** Two lines (top
+  and bottom number) and a dot per reading on a time axis, an axis that never
+  starts at zero, and a break across a gap over two weeks (`readingSegments`).
+  There are no bands, zones or colours that rate a value, and no scrub: the
+  list under it carries each exact reading.
 
 ## The third write: a logged meal
 

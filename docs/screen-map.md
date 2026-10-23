@@ -25,7 +25,7 @@ components below.
 - `src/screens/ArchivedScreen.tsx` — EmptyState, HubPills, LazySheet, PaintSelection, ScreenHeader, ScrollToTopButton, SearchField, SelectionDot, SimpleBulkBar, TaskEditor
 - `src/screens/AutomationsScreen.tsx` — GeneratedTasksSection, PressableScale, ScreenHeader, SearchField, SettingsFocus
 - `src/screens/BackfillScreen.tsx` — BirthdayPicker, CategoryPicker, CoinIcon, CountStepper, DetailHeader, EmptyState, FieldLabel, InlineAction, LazySheet, NumberPadAccessory, NutritionPanelSheet, NutritionSearchSheet, +8 more
-- `src/screens/BloodPressureScreen.tsx` — EmptyState, HubPills, LogBloodPressureSheet, ScreenHeader, ScreenSettingsSheet, SegmentedControl
+- `src/screens/BloodPressureScreen.tsx` — BloodPressureChart, EmptyState, HubPills, LogBloodPressureSheet, ScreenHeader, ScreenSettingsSheet, SegmentedControl
 - `src/screens/CalendarScreen.tsx` — BulkActionBar, DayTimeline, DeliverablePromptQueue, EmptyState, Fab, LazySheet, PaintSelection, PeriodNav, QuickAddModal, QuickEventSheet, ScreenHeader, ScreenSettingsSheet, +4 more
 - `src/screens/CategoriesScreen.tsx` — CategoryEditor, EmptyState, Fab, HubPills, QuickAddNameSheet, ReorderableList, ScreenHeader, ScreenSettingsSheet
 - `src/screens/CategoryDetailScreen.tsx` — BulkActionBar, DeliverablePromptQueue, DetailHeader, EmptyState, Fab, LazySheet, PaintSelection, PinIcon, QuickAddModal, ScrollToTopButton, SpotlightOverlay, TaskEditor, +1 more
@@ -101,6 +101,7 @@ Where each component can appear.
 - `src/components/BlankPickerSheet.tsx` — on MealPlanScreen, RecipeDetailScreen, RecipesScreen
 - `src/components/BlockOfferRulesSheet.tsx` — on AutomationsScreen
 - `src/components/BlockScheduleSheet.tsx` — on ScreenTimeScreen
+- `src/components/BloodPressureChart.tsx` — on BloodPressureScreen
 - `src/components/BulkActionBar.tsx` — on CalendarScreen, CategoryDetailScreen, ProjectDetailScreen, ProjectsScreen, StackDetailScreen, TagsScreen, TodayScreen
 - `src/components/CalendarChoiceSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, StackDetailScreen, +4 more
 - `src/components/CalendarPicker.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, SettingsGroupScreen, +6 more
