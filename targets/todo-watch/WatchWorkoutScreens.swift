@@ -80,6 +80,10 @@ struct WorkoutRootView: View {
 /// each routine carries what starting it lays out.
 struct WorkoutStartView: View {
     @EnvironmentObject private var store: WatchStore
+    /// The routine whose row was tapped, until Start workout or Cancel. A row
+    /// starts a workout and a Health session that counts every minute as
+    /// exercise, so one stray tap on the list must not do both.
+    @State private var pending: WatchRoutine?
 
     var body: some View {
         List {
@@ -107,6 +111,19 @@ struct WorkoutStartView: View {
             }
         }
         .navigationTitle("Start")
+        .confirmationDialog(
+            pending.map { "Start \($0.name)?" } ?? "",
+            isPresented: pendingShown,
+            titleVisibility: .visible,
+            presenting: pending
+        ) { routine in
+            Button("Start workout") { store.startOwnWorkout(routine) }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    private var pendingShown: Binding<Bool> {
+        Binding(get: { pending != nil }, set: { if !$0 { pending = nil } })
     }
 
     /// The phone's workout, finished here and not yet applied there.
@@ -117,7 +134,7 @@ struct WorkoutStartView: View {
 
     private func routineRow(_ routine: WatchRoutine, detail: String) -> some View {
         Button {
-            store.startOwnWorkout(routine)
+            pending = routine
         } label: {
             VStack(alignment: .leading, spacing: 2) {
                 Text(routine.name)
