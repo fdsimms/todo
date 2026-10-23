@@ -32,6 +32,7 @@ import {
 import { confirmDiscard } from '../utils/confirmDiscard';
 import type { GeneratedKind, GeneratedTaskExtras, TaskFieldDefaults, TimeOfDay } from '../types';
 import { BUTTON_LABEL } from '../copy/shared';
+import { FieldLabel } from './FieldLabel';
 
 interface Props {
   visible: boolean;
@@ -306,6 +307,7 @@ export function GeneratedTaskSettingsSheet({ visible, kind, spec, generatorLabel
             </CollapsibleField>
             {extras.deliverableKind === 'choice' && (
               <>
+                <FieldLabel>Choices</FieldLabel>
                 <TextField
                   style={styles.input}
                   value={optionsText}

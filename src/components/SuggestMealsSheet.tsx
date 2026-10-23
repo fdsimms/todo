@@ -44,6 +44,7 @@ import { confirmDiscard } from '../utils/confirmDiscard';
 import { TextField } from './TextField';
 import { useActionMenu } from '../hooks/useActionMenu';
 import { BUTTON_LABEL } from '../copy/shared';
+import { FieldLabel } from './FieldLabel';
 
 /**
  * A row Save can commit, in the order the days are handed out. The two the
@@ -857,16 +858,19 @@ export function SuggestMealsSheet({
         )}
 
         {!generating && (
-          <TextField
-            style={styles.hintInput}
-            value={hints}
-            onChangeText={setHints}
-            placeholder="e.g. quick, vegetarian"
-            placeholderTextColor={colors.textTertiary}
-            returnKeyType="done"
-            onSubmitEditing={() => { if (!generating) generate(); }}
-            accessibilityLabel="What kind of meals to suggest"
-          />
+          <>
+            <FieldLabel>Preferences</FieldLabel>
+            <TextField
+              style={styles.hintInput}
+              value={hints}
+              onChangeText={setHints}
+              placeholder="e.g. quick, vegetarian"
+              placeholderTextColor={colors.textTertiary}
+              returnKeyType="done"
+              onSubmitEditing={() => { if (!generating) generate(); }}
+              accessibilityLabel="What kind of meals to suggest"
+            />
+          </>
         )}
 
         {generating ? (

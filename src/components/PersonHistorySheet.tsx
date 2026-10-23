@@ -13,6 +13,7 @@ import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
+import { FieldLabel } from './FieldLabel';
 
 /** The fields of a `HistoryEntry` this sheet actually needs. */
 export interface EditableHistoryEntry {
@@ -115,6 +116,7 @@ export function PersonHistorySheet({ visible, personName, entry, onSave, onDelet
         />
       }
     >
+      <FieldLabel>What you did</FieldLabel>
       <TextField
         style={styles.textInput}
         value={title}

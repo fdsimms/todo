@@ -97,6 +97,7 @@ import { capitalize } from '../utils/capitalize';
 import { TextField } from './TextField';
 import { Toggle } from './Toggle';
 import { BUTTON_LABEL } from '../copy/shared';
+import { FieldLabel } from './FieldLabel';
 
 // Ceilings for the two steppers whose hand-rolled versions had none. Both sit
 // well past any real value; CountStepper needs a bound to disable its + key
@@ -1405,6 +1406,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   ]}
                 />
               </View>
+              <FieldLabel inCard>Unit</FieldLabel>
               <TextField
                 style={[styles.fieldBox, styles.deliverableOptionsInput]}
                 value={targetUnitText}
@@ -2820,15 +2822,18 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             />
           </CollapsibleField>
           {deliverableKind === 'choice' && (
-            <TextField
-              style={[styles.fieldBox, styles.deliverableOptionsInput]}
-              value={deliverableOptionsText}
-              onChangeText={setDeliverableOptionsText}
-              placeholder="e.g. Yes, No, Maybe"
-              placeholderTextColor={colors.textTertiary}
-              returnKeyType="done"
-              accessibilityLabel="Options to pick from, separated by commas"
-            />
+            <>
+              <FieldLabel inCard>Choices</FieldLabel>
+              <TextField
+                style={[styles.fieldBox, styles.deliverableOptionsInput]}
+                value={deliverableOptionsText}
+                onChangeText={setDeliverableOptionsText}
+                placeholder="e.g. Yes, No, Maybe"
+                placeholderTextColor={colors.textTertiary}
+                returnKeyType="done"
+                accessibilityLabel="Options to pick from, separated by commas"
+              />
+            </>
           )}
           {/* Fewer than two options and completing asks nothing
               (deliverableOptionsFor), so say so where they're typed. */}
@@ -2882,16 +2887,19 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               describeValue={n => (n === null ? 'off' : formatDuration(n))}
             />
             {completionTimerMinutes !== null && (
-              <TextField
-                style={[styles.fieldBox, styles.medicationAmountInput]}
-                value={completionTimerNote ?? ''}
-                onChangeText={text => setCompletionTimerNote(text || null)}
-                placeholder="e.g. Don’t eat for 2 hours"
-                placeholderTextColor={colors.textTertiary}
-                maxLength={COMPLETION_TIMER_NOTE_MAX_LENGTH}
-                returnKeyType="done"
-                accessibilityLabel="What this reminder is for"
-              />
+              <>
+                <FieldLabel inCard>Reminder note</FieldLabel>
+                <TextField
+                  style={[styles.fieldBox, styles.medicationAmountInput]}
+                  value={completionTimerNote ?? ''}
+                  onChangeText={text => setCompletionTimerNote(text || null)}
+                  placeholder="e.g. Don’t eat for 2 hours"
+                  placeholderTextColor={colors.textTertiary}
+                  maxLength={COMPLETION_TIMER_NOTE_MAX_LENGTH}
+                  returnKeyType="done"
+                  accessibilityLabel="What this reminder is for"
+                />
+              </>
             )}
           </CollapsibleField>
 

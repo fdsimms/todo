@@ -31,6 +31,7 @@ import { capitalize } from '../utils/capitalize';
 import { TextField } from './TextField';
 import { Toggle } from './Toggle';
 import { BUTTON_LABEL } from '../copy/shared';
+import { FieldLabel } from './FieldLabel';
 
 // Ten hours, well past any real estimate. CountStepper needs a bound to
 // disable its + key at; the hand-rolled version it replaced had none.
@@ -206,6 +207,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
       }
     >
       <View style={styles.sectionCard}>
+        <FieldLabel inCard>Notes</FieldLabel>
         <TextField
           ref={notesInputRef}
           style={styles.notesInput}

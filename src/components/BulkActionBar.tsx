@@ -23,6 +23,7 @@ import { CategoryPickerSheet } from './CategoryPicker';
 import { TextField } from './TextField';
 import { GlassLayer, glassSupported } from './GlassLayer';
 import { BUTTON_LABEL } from '../copy/shared';
+import { FieldLabel } from './FieldLabel';
 
 interface Props {
   selectedCount: number;
@@ -535,6 +536,7 @@ export function BulkActionBar({
                 </Text>
               </TouchableOpacity>
             </View>
+            <FieldLabel>Stack name</FieldLabel>
             <View style={styles.tagInputRow}>
               <TextField
                 style={styles.tagInput}
