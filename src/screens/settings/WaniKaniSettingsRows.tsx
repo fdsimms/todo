@@ -28,6 +28,9 @@ import { makeSettingsStyles } from './settingsStyles';
  * extras don't, and `GeneratedTasksSection` is long enough.
  */
 
+/** What the Lessons switch starts at when turned on. */
+const LESSONS_PER_DAY_START = 5;
+
 function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }
@@ -79,21 +82,22 @@ export function WaniKaniSettingsRows(): React.ReactElement {
         iconColor={s.lessonsPerDay !== null ? colors.accent : undefined}
         label="Lessons"
         hint="A task each day to do this many lessons, on a day there are lessons to do."
-        value={s.lessonsPerDay === null ? 'Off' : `${s.lessonsPerDay} a day`}
-        tight
+        toggle={s.lessonsPerDay !== null}
+        onPress={() => s.setLessonsPerDay(s.lessonsPerDay === null ? LESSONS_PER_DAY_START : null)}
+        tight={s.lessonsPerDay !== null}
       />
-      <View style={styles.cadenceRow}>
-        <CountStepper
-          value={s.lessonsPerDay}
-          onChange={s.setLessonsPerDay}
-          min={WANIKANI_LESSONS_PER_DAY_MIN}
-          max={WANIKANI_LESSONS_PER_DAY_MAX}
-          start={5}
-          allowNull
-          label="Lessons a day"
-          describeValue={n => (n === null ? 'No lessons task' : `${plural(n, 'lesson', 'lessons')} a day`)}
-        />
-      </View>
+      {s.lessonsPerDay !== null && (
+        <View style={styles.cadenceRow}>
+          <CountStepper
+            value={s.lessonsPerDay}
+            onChange={next => s.setLessonsPerDay(next ?? LESSONS_PER_DAY_START)}
+            min={WANIKANI_LESSONS_PER_DAY_MIN}
+            max={WANIKANI_LESSONS_PER_DAY_MAX}
+            label="Lessons a day"
+            describeValue={n => `${plural(n ?? LESSONS_PER_DAY_START, 'lesson', 'lessons')} a day`}
+          />
+        </View>
+      )}
 
       {s.lessonsPerDay !== null && (
         <>
@@ -101,25 +105,26 @@ export function WaniKaniSettingsRows(): React.ReactElement {
           <SettingsRow
             entryId="wanikaniApprenticeCap"
             icon="layers-outline"
+            iconColor={s.apprenticeCap !== null ? colors.accent : undefined}
             label="Skip lessons at"
             hint="No lessons task on a day this many items or more are in Apprentice."
-            value={s.apprenticeCap === null ? 'No limit' : plural(s.apprenticeCap, 'item', 'items')}
-            tight
+            toggle={s.apprenticeCap !== null}
+            onPress={() => s.setApprenticeCap(s.apprenticeCap === null ? WANIKANI_APPRENTICE_CAP_DEFAULT : null)}
+            tight={s.apprenticeCap !== null}
           />
-          <View style={styles.cadenceRow}>
-            <CountStepper
-              value={s.apprenticeCap}
-              onChange={s.setApprenticeCap}
-              allowNull
-              start={WANIKANI_APPRENTICE_CAP_DEFAULT}
-              emptyLabel="No limit"
-              min={WANIKANI_APPRENTICE_CAP_MIN}
-              max={WANIKANI_APPRENTICE_CAP_MAX}
-              step={WANIKANI_APPRENTICE_CAP_STEP}
-              label="Apprentice items"
-              describeValue={n => (n === null ? 'No limit' : plural(n, 'item', 'items'))}
-            />
-          </View>
+          {s.apprenticeCap !== null && (
+            <View style={styles.cadenceRow}>
+              <CountStepper
+                value={s.apprenticeCap}
+                onChange={next => s.setApprenticeCap(next ?? WANIKANI_APPRENTICE_CAP_DEFAULT)}
+                min={WANIKANI_APPRENTICE_CAP_MIN}
+                max={WANIKANI_APPRENTICE_CAP_MAX}
+                step={WANIKANI_APPRENTICE_CAP_STEP}
+                label="Apprentice items"
+                describeValue={n => plural(n ?? WANIKANI_APPRENTICE_CAP_DEFAULT, 'item', 'items')}
+              />
+            </View>
+          )}
         </>
       )}
 
