@@ -107,8 +107,8 @@ export function ProgramVersionSheet({ visible, programId, versionId, onClose, on
       <View style={[styles.root, { paddingTop: insets.top }]}>
         <SheetHeader
           title={entry ? `Version ${entry.number}` : 'Version'}
-          left={<SheetHeaderButton label="Program" role="cancel" onPress={onClose} minWidth={64} accessibilityLabel="Back to the program" />}
-          right={<SheetHeaderButton label="Name" onPress={() => { haptics.tap(); setNaming(true); }} minWidth={64} accessibilityLabel="Name this version" />}
+          left={<SheetHeaderButton label="Back to program" role="cancel" onPress={onClose} minWidth={120} />}
+          right={<SheetHeaderButton label="Name" onPress={() => { haptics.tap(); setNaming(true); }} minWidth={120} accessibilityLabel="Name this version" />}
         />
         {entry && (
           <ScrollView style={styles.flex} contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + spacing.xl }]} showsVerticalScrollIndicator={false}>
