@@ -184,7 +184,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.semibold,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
-    paddingTop: spacing.smd,
+    paddingTop: spacing.md,
     paddingBottom: spacing.xsm,
   },
   input: {

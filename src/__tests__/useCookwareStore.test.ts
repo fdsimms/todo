@@ -1,16 +1,18 @@
 import { useCookwareStore } from '../store/useCookwareStore';
-import { dbInsertCookware, dbUpdateCookware, dbDeleteCookware } from '../db/database';
+import { dbInsertCookware, dbUpdateCookware, dbDeleteCookware, dbSetSetting } from '../db/database';
 
 jest.mock('../db/database', () => ({
   dbGetAllCookware: jest.fn(() => []),
   dbInsertCookware: jest.fn(),
   dbUpdateCookware: jest.fn(),
   dbDeleteCookware: jest.fn(),
+  dbGetSetting: jest.fn(() => null),
+  dbSetSetting: jest.fn(),
 }));
 
 beforeEach(() => {
   jest.clearAllMocks();
-  useCookwareStore.setState({ cookware: [], initialized: false });
+  useCookwareStore.setState({ cookware: [], recentIds: [], initialized: false });
 });
 
 const state = () => useCookwareStore.getState();
@@ -81,5 +83,15 @@ describe('removeCookware', () => {
     state().removeCookware(pot.id);
     expect(state().cookware).toHaveLength(0);
     expect(dbDeleteCookware).toHaveBeenCalledWith(pot.id);
+  });
+});
+
+describe('markPicked', () => {
+  it('keeps the last picks newest first and stores them', () => {
+    state().markPicked('a');
+    state().markPicked('b');
+    state().markPicked('a');
+    expect(state().recentIds).toEqual(['a', 'b']);
+    expect(dbSetSetting).toHaveBeenLastCalledWith('cookware_recent', '["a","b"]');
   });
 });

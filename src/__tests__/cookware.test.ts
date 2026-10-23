@@ -1,4 +1,7 @@
-import { clampCookwareWeight, parseWeightText, netWeight, COOKWARE_MAX_G, cookwareTypeOf, groupCookwareByType, effectiveCookwareType, isCookwareType } from '../utils/cookware';
+import {
+  clampCookwareWeight, parseWeightText, netWeight, COOKWARE_MAX_G, cookwareTypeOf, groupCookwareByType, effectiveCookwareType, isCookwareType,
+  filterCookware, pushRecentCookware, recentCookwareItems, parseRecentCookware, RECENT_COOKWARE_LIMIT,
+} from '../utils/cookware';
 
 describe('clampCookwareWeight', () => {
   it('rounds to the gram', () => {
@@ -72,6 +75,7 @@ describe('cookwareTypeOf / groupCookwareByType', () => {
     ['Nordic Ware Half Sheet Pan', 'Baking'],
     ['Smallest Pyrex bowl', 'Bowls'],
     ['Ramekin', 'Bowls'],
+    ['Large mixing bowl', 'Mixing bowls'],
     ['Ice cream dish', 'Bowls'],
     ['Dinner plate', 'Plates'],
     ['Rocks glass', 'Glasses'],
@@ -107,5 +111,61 @@ describe('a chosen type', () => {
     expect(isCookwareType('Pots')).toBe(true);
     expect(isCookwareType('pots')).toBe(false);
     expect(isCookwareType(null)).toBe(false);
+  });
+});
+
+describe('mixing bowls', () => {
+  it('sit after Bowls and take a type chosen by hand', () => {
+    const groups = groupCookwareByType([
+      { name: 'Kitchenaid Bowl', kind: 'Mixing bowls' as const }, { name: 'Cereal bowl' }, { name: 'Dinner plate' },
+    ]);
+    expect(groups.map(g => g.type)).toEqual(['Bowls', 'Mixing bowls', 'Plates']);
+    expect(isCookwareType('Mixing bowls')).toBe(true);
+  });
+});
+
+describe('filterCookware', () => {
+  const items = [
+    { name: 'Lodge cast-iron skillet' },
+    { name: 'All-Clad Saucier' },
+    { name: 'Nordic Ware Half Sheet Pan' },
+    { name: 'Kitchenaid Bowl', kind: 'Mixing bowls' as const },
+  ];
+
+  it('returns everything for a blank query', () => {
+    expect(filterCookware(items, '  ')).toHaveLength(4);
+  });
+
+  it('matches any case, and every word has to be found', () => {
+    expect(filterCookware(items, 'CLAD').map(i => i.name)).toEqual(['All-Clad Saucier']);
+    expect(filterCookware(items, 'sheet half').map(i => i.name)).toEqual(['Nordic Ware Half Sheet Pan']);
+    expect(filterCookware(items, 'sheet saucier')).toEqual([]);
+  });
+
+  it('matches the type a piece is listed under as well as its name', () => {
+    expect(filterCookware(items, 'mixing').map(i => i.name)).toEqual(['Kitchenaid Bowl']);
+    expect(filterCookware(items, 'pans').map(i => i.name)).toEqual(['Lodge cast-iron skillet']);
+  });
+});
+
+describe('recent cookware', () => {
+  it('moves a repeat pick to the front and caps the list', () => {
+    let recent: string[] = [];
+    for (const id of ['a', 'b', 'c', 'd']) recent = pushRecentCookware(recent, id);
+    expect(recent).toEqual(['d', 'c', 'b']);
+    expect(recent).toHaveLength(RECENT_COOKWARE_LIMIT);
+    expect(pushRecentCookware(recent, 'b')).toEqual(['b', 'd', 'c']);
+  });
+
+  it('skips an id whose piece was deleted', () => {
+    expect(recentCookwareItems(['x', 'a', 'b'], [{ id: 'a' }, { id: 'b' }]).map(i => i.id)).toEqual(['a', 'b']);
+  });
+
+  it('reads a stored list back, and treats anything else as empty', () => {
+    expect(parseRecentCookware('["a","b"]')).toEqual(['a', 'b']);
+    expect(parseRecentCookware('["a",3,null]')).toEqual(['a']);
+    expect(parseRecentCookware('{"a":1}')).toEqual([]);
+    expect(parseRecentCookware('not json')).toEqual([]);
+    expect(parseRecentCookware(null)).toEqual([]);
   });
 });

@@ -13,6 +13,7 @@ import { netWeight, parseWeightText, type CookwareNoun, type NetWeight } from '.
  */
 export function useWeighIn(noun: CookwareNoun = 'pot') {
   const cookware = useCookwareStore(s => s.cookware);
+  const markPicked = useCookwareStore(s => s.markPicked);
   const [selected, setSelected] = useState<string[]>([]);
 
   const picked = useMemo(
@@ -32,8 +33,9 @@ export function useWeighIn(noun: CookwareNoun = 'pot') {
   );
 
   const toggle = useCallback((id: string) => {
+    if (!selected.includes(id)) markPicked(id);
     setSelected(cur => (cur.includes(id) ? cur.filter(x => x !== id) : [...cur, id]));
-  }, []);
+  }, [selected, markPicked]);
   const clear = useCallback(() => setSelected([]), []);
 
   return { selected, picked, toggle, clear, convert, hasCookware: cookware.length > 0 };

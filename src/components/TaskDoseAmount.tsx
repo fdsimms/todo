@@ -127,7 +127,7 @@ function makeStyles(colors: Colors) {
     label: {
       color: colors.textSecondary, fontSize: font.xxs, fontWeight: '700',
       textTransform: 'uppercase', letterSpacing: 0.8,
-      marginTop: spacing.smd, marginBottom: spacing.xsm, marginLeft: spacing.xxs,
+      marginTop: spacing.md, marginBottom: spacing.xsm, marginLeft: spacing.xxs,
     },
     usualRow: {
       flexDirection: 'row', alignItems: 'center', gap: spacing.sm,

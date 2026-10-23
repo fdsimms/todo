@@ -2461,7 +2461,7 @@ export interface CopyFlag {
  * Only a convenience for entering a number: nothing stores which pot a dish was
  * weighed in, and `Recipe.cookedWeightG` stays the food alone.
  */
-export type CookwareType = 'Pots' | 'Pans' | 'Baking' | 'Bowls' | 'Plates' | 'Glasses' | 'Other';
+export type CookwareType = 'Pots' | 'Pans' | 'Baking' | 'Bowls' | 'Mixing bowls' | 'Plates' | 'Glasses' | 'Other';
 
 export interface Cookware {
   id: string;

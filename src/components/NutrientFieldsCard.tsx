@@ -124,7 +124,7 @@ export function NutrientFieldsCard({ amounts, bad, onChange, primary = 'main' }:
     <View style={styles.card}>
       <Text style={styles.subheading}>VITAMINS</Text>
       {VITAMIN_KEYS.map(renderField)}
-      <Text style={styles.subheading}>MINERALS</Text>
+      <Text style={[styles.subheading, styles.subheadingLater]}>MINERALS</Text>
       {MINERAL_KEYS.map(renderField)}
     </View>
   );
@@ -174,6 +174,8 @@ function makeStyles(colors: Colors) {
       fontWeight: fontWeight.semibold,
       letterSpacing: 0.8,
     },
+    // The card's gap is spacing.sm; this makes it a block gap before the second group.
+    subheadingLater: { marginTop: spacing.sm },
     // One row per nutrient, like the label being copied: name on the left, the
     // figure and its unit on the right. Stacked label-over-field made each of
     // the 16 rows ~110pt tall. The name wraps rather than truncating.
