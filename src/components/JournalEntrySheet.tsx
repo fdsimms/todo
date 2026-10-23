@@ -487,6 +487,8 @@ export function JournalEntrySheet({ visible, kind, editing = null, dictateOnOpen
           placeholderTextColor={colors.textTertiary}
           maxLength={TEXT_MAX_LENGTH}
           multiline
+          autoCorrect
+          spellCheck
           autoFocus={!editing && !dictateOnOpen}
           editable={dictation.state === 'idle'}
           accessibilityLabel={kind === 'dream' ? 'A dream you remember' : 'Journal entry'}
