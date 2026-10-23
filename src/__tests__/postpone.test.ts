@@ -1,6 +1,6 @@
 import {
   postponeOutcome, nextPostponeCount, shouldNudgePostpone, parsePostponeThreshold,
-  nextDriftingSince, driftingTasks, driftingTaskList, isDriftingTask,
+  nextDriftingSince, driftingTasks, driftingTaskList, isDriftingTask, hasQuotaProgress,
 } from '../utils/postpone';
 import type { Task } from '../types';
 
@@ -137,7 +137,9 @@ describe('nextPostponeCount', () => {
 });
 
 describe('shouldNudgePostpone', () => {
-  const task = (postponeCount: number, postponeMuted = false) => ({ postponeCount, postponeMuted });
+  const task = (
+    postponeCount: number, postponeMuted = false, targetCount: number | null = null, progressCount = 0,
+  ) => ({ postponeCount, postponeMuted, targetCount, progressCount });
 
   it('stays quiet below the threshold and speaks at it', () => {
     expect(shouldNudgePostpone(task(2), true, 3)).toBe(false);
@@ -151,6 +153,19 @@ describe('shouldNudgePostpone', () => {
 
   it('respects the settings toggle at any count', () => {
     expect(shouldNudgePostpone(task(50), false, 3)).toBe(false);
+  });
+
+  it('stays quiet on a target that has progress, and speaks again at 0', () => {
+    expect(shouldNudgePostpone(task(5, false, 5, 2), true, 3)).toBe(false);
+    expect(shouldNudgePostpone(task(5, false, 5, 0), true, 3)).toBe(true);
+  });
+});
+
+describe('hasQuotaProgress', () => {
+  it('needs a target and a unit logged', () => {
+    expect(hasQuotaProgress({ targetCount: 5, progressCount: 2 })).toBe(true);
+    expect(hasQuotaProgress({ targetCount: 5, progressCount: 0 })).toBe(false);
+    expect(hasQuotaProgress({ targetCount: null, progressCount: 2 })).toBe(false);
   });
 });
 
