@@ -427,6 +427,41 @@ describe('routines and programs', () => {
 });
 
 describe('a live session', () => {
+  describe('left with nothing done', () => {
+    const later = (s: { startedAt: string }, minutes: number) => new Date(Date.parse(s.startedAt) + minutes * 60_000);
+    const routineSession = () => {
+      const r = ok(state().addRoutine('Pushups', [{
+        exerciseId: 'lib:push-up', restSeconds: null, progression: null,
+        targets: [{ kind: 'working', repsMin: 8, repsMax: 12 }],
+      }]));
+      return ok(state().startSession({ routineId: r.id }));
+    };
+
+    it('is thrown away once half an hour has passed', () => {
+      const s = routineSession();
+      expect(state().discardIdleSession(later(s, 29))).toBe(false);
+      expect(state().liveSession()?.id).toBe(s.id);
+      expect(state().discardIdleSession(later(s, 30))).toBe(true);
+      expect(state().liveSession()).toBeNull();
+      expect(state().loadSets(s.id)).toEqual([]);
+    });
+
+    it('is kept for good once any set is done', () => {
+      const s = routineSession();
+      const first = state().loadSets(s.id)[0];
+      state().replaceSets(s.id, [{ ...first, completedAt: later(s, 5).toISOString() }]);
+      expect(state().discardIdleSession(later(s, 600))).toBe(false);
+      expect(state().liveSession()?.id).toBe(s.id);
+    });
+
+    it('does nothing with no live session, and never touches a finished one', () => {
+      expect(state().discardIdleSession()).toBe(false);
+      const s = routineSession();
+      state().finishSession(s.id);
+      expect(state().discardIdleSession(later(s, 600))).toBe(false);
+    });
+  });
+
   it('starts one at a time, titled after its routine', () => {
     const r = ok(state().addRoutine('Push A'));
     const s = ok(state().startSession({ routineId: r.id }));

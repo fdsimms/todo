@@ -48,6 +48,7 @@ import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useEventReminderStore } from '../store/useEventReminderStore';
 import { useUnattendedStore } from '../store/useUnattendedStore';
+import { useWorkoutStore } from '../store/useWorkoutStore';
 import { sweepJournalPhotos } from './journalPhotos';
 import { sweepTaskFiles } from './taskFiles';
 import { useJournalStore } from '../store/useJournalStore';
@@ -347,6 +348,10 @@ export function retentionPasses(): MaintenanceStep[] {
     // the ledger is the one table in the app with no "keep forever" answer
     // available to it (see ledgerCutoff).
     ['purge unattended ledger', () => useUnattendedStore.getState().purgeOldEntries()],
+    // A workout left live with nothing done in it for half an hour, which only
+    // ever has planned sets to lose. The watch's own idle workout ends itself
+    // on the wrist (`endIdleOwnWorkout`); this is the phone's counterpart.
+    ['discard idle workout', () => { useWorkoutStore.getState().discardIdleSession(); }],
     // Journal photo files no entry names any more: an entry deleted on another
     // device, whose files never travelled and so were never deleted here.
     // Launch-only because a sheet open later could hold a photo it just took

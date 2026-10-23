@@ -56,6 +56,7 @@ import { exerciseDayNotePatches } from '../utils/exerciseDayNote';
 import {
   copyLastSet,
   finishPlan,
+  isIdleLiveSession,
   joinedSuperset,
   leftSuperset,
   matchPrevious,
@@ -569,6 +570,13 @@ interface WorkoutStore {
   deleteSession: (id: string) => void;
   /** Throws away the live session and its sets. */
   discardSession: () => void;
+  /**
+   * Throws away the live session when nothing was done in it for
+   * `IDLE_SESSION_MS`, and says whether it did. A workout with any set done is
+   * never touched. Run at launch (`retentionPasses`), where a forgotten one is
+   * found with a person present.
+   */
+  discardIdleSession: (now?: Date) => boolean;
 
   /** A session's sets, read from the database the first time and cached after. */
   loadSets: (sessionId: string) => WorkoutSet[];
@@ -2193,6 +2201,13 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
     discardSession() {
       const live = get().liveSession();
       if (live) get().deleteSession(live.id);
+    },
+
+    discardIdleSession(now = new Date()) {
+      const live = get().liveSession();
+      if (!live || !isIdleLiveSession(live, get().loadSets(live.id), now)) return false;
+      get().deleteSession(live.id);
+      return true;
     },
 
     async writePendingHealthSessions() {

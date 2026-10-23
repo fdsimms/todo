@@ -1154,6 +1154,34 @@ extension WatchStore {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
         // Measured from the start while the phone says workouts go to Health.
         syncHealthSession()
+        // A running session keeps the app alive with the wrist down, so this
+        // fires on time; the launch and foreground passes cover a relaunch.
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.idleOwnWorkoutLimit + 1) { [weak self] in
+            self?.endIdleOwnWorkout()
+        }
+    }
+
+    /// How long a workout started here may sit with no set done before it
+    /// ends by itself. Its session counts every minute as exercise in Health,
+    /// so one started by a stray tap and forgotten ran for hours.
+    static let idleOwnWorkoutLimit: TimeInterval = 30 * 60
+
+    /// Ends the workout started here and thrown away, if no set was done in
+    /// `idleOwnWorkoutLimit`: the same as Finish with nothing done, so nothing
+    /// is saved to Health or sent to the phone. A workout with any set done is
+    /// the person's and stays until they finish it.
+    func endIdleOwnWorkout(now: Date = Date()) {
+        guard let workout = ownWorkout,
+              !workout.sets.contains(where: \.isDone),
+              now.timeIntervalSince(workout.startedAt) >= Self.idleOwnWorkoutLimit else { return }
+        let health = WatchHealthSession.shared
+        ownWorkout = nil
+        if health.measuring?.sessionId == workout.id { health.discard() }
+        heartRate = nil
+        WatchOwnWorkoutFile.save(nil)
+        dismissedRestKey = nil
+        cancelRestNotification()
+        refreshRestAlarm()
     }
 
     // ---- a set ----

@@ -477,6 +477,7 @@ extension WatchStore {
     /// in front (opening the phone's workout here is what starts measuring
     /// it, as Apple's guidance has it); ending needs nothing.
     func syncHealthSession() {
+        endIdleOwnWorkout()
         let health = WatchHealthSession.shared
         let want = wantedMeasurement
         if let current = health.measuring, current.sessionId != want?.sessionId {
