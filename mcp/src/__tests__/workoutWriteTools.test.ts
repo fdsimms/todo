@@ -10,7 +10,7 @@ import { withAgentLedger, type AgentLedgerEntry } from '../agentLedger';
 import {
   copyRoutineVersionOut, deleteGym, deleteProgram, deleteRoutine, deleteWorkout, listWorkouts, mergeRoutinesOut, programHistoryOut, saveGym,
   logWorkout, nextWorkout, restoreProgramVersionOut, restoreRoutineVersionOut, routineHistoryOut, routineItemsFrom, saveProgram, saveRoutine,
-  updateWorkout,
+  updateWorkout, scaleWorkoutWeights,
 } from '../workoutTools';
 import { createTask, getTask, updateTask } from '../tools';
 
@@ -517,6 +517,19 @@ describe('the workout write tools', () => {
       expect(() => updateWorkout(ledgered, 'gone', { notes: 'x' })).toThrow(/No workout with id gone/);
     });
 
+    it('keeps an exercise\'s superset and a set\'s time when its sets are replaced', () => {
+      const w = log();
+      const done = '2026-10-07T18:20:00.000Z';
+      mockRaw.runSync('UPDATE workout_sets SET superset_key = ?, completed_at = ? WHERE session_id = ?', ['ss-1', done, w.id]);
+      replica.refresh();
+      updateWorkout(ledgered, w.id, { exercises: [{ exerciseId: BENCH, sets: [{ weightKg: 40, reps: 8 }, { weightKg: 45, reps: 8 }] }] });
+      const sets = replica.workoutSets(w.id);
+      expect(sets.map(s => [s.weightKg, s.supersetKey, s.completedAt])).toEqual([[40, 'ss-1', done], [45, 'ss-1', expect.any(String)]]);
+      // An exercise the replacement adds has no superset to inherit.
+      updateWorkout(ledgered, w.id, { exercises: [{ exerciseId: FLY, sets: [{ weightKg: 10, reps: 15 }] }] });
+      expect(replica.workoutSets(w.id)[0].supersetKey).toBeNull();
+    });
+
     it('moves the sets with the start, and refuses a start in the future', () => {
       const w = log();
       const before = replica.workoutSets(w.id)[0].completedAt!;
@@ -570,6 +583,66 @@ describe('the workout write tools', () => {
       expect(note).toMatch(/cannot be restored/);
       expect(replica.workoutSession(w.id)).toBeNull();
       expect(entries.map(e => [e.action, e.subject])).toEqual([['created', 'workout'], ['cleared', 'workout']]);
+    });
+  });
+
+  describe('scale_workout_weights', () => {
+    const SQUAT = 'lib:back-squat';
+    const log = (day: number) => logWorkout(ledgered, {
+      startedAt: new Date(2026, 9, day, 18).toISOString(), durationMinutes: 40,
+      exercises: [
+        { exerciseId: BENCH, sets: [{ weightKg: 80, reps: 8 }, { weightKg: 90, reps: 5, kind: 'amrap', note: 'grindy' }] },
+        { exerciseId: SQUAT, sets: [{ weightKg: 100, reps: 5 }] },
+      ],
+    }, new Date(2026, 9, 20)).workout;
+    const weights = (id: string) => replica.workoutSets(id).map(s => [s.exerciseId, s.weightKg]);
+
+    it('only describes the change until apply is true', () => {
+      const w = log(7);
+      const preview = scaleWorkoutWeights(ledgered, { exerciseIds: [BENCH], factor: 0.5 });
+      expect(preview).toMatchObject({ applied: false, sets: 2, workouts: [{ id: w.id, sets: 2 }] });
+      expect(preview.workouts[0].example).toBe('Barbell bench press: 80 kg to 40 kg');
+      expect(weights(w.id)).toEqual([[BENCH, 80], [BENCH, 90], [SQUAT, 100]]);
+    });
+
+    it('scales the named exercises across workouts and keeps every other field', () => {
+      const a = log(7);
+      const b = log(8);
+      const result = scaleWorkoutWeights(ledgered, { exerciseIds: [BENCH], factor: 0.5, apply: true });
+      expect(result).toMatchObject({ applied: true, sets: 4 });
+      expect(weights(a.id)).toEqual([[BENCH, 40], [BENCH, 45], [SQUAT, 100]]);
+      expect(weights(b.id)).toEqual([[BENCH, 40], [BENCH, 45], [SQUAT, 100]]);
+      const sets = replica.workoutSets(a.id);
+      expect(sets[1]).toMatchObject({ reps: 5, kind: 'amrap', note: 'grindy' });
+      expect(sets[0].completedAt).not.toBeNull();
+    });
+
+    it('leaves a workout with nothing to change alone, honors the range, and refuses nonsense', () => {
+      const old = log(2);
+      const recent = log(9);
+      const stamp = '2000-01-01T00:00:00.000Z';
+      mockRaw.runSync('UPDATE workout_sessions SET updated_at = ? WHERE id = ?', [stamp, recent.id]);
+      replica.refresh();
+      const result = scaleWorkoutWeights(ledgered, { exerciseIds: [BENCH], factor: 2, from: '2026-10-05', to: '2026-10-20', apply: true });
+      expect(result.workouts.map(x => x.id)).toEqual([recent.id]);
+      expect(weights(old.id)).toEqual([[BENCH, 80], [BENCH, 90], [SQUAT, 100]]);
+      // A sets-only rewrite does not restamp the session, or a sync could send a stale copy over the phone's.
+      expect(mockRaw.getFirstSync<{ updated_at: string }>('SELECT updated_at FROM workout_sessions WHERE id = ?', [recent.id])?.updated_at).toBe(stamp);
+      expect(() => scaleWorkoutWeights(ledgered, { exerciseIds: [BENCH], factor: 1 })).toThrow(/not 1/);
+      expect(() => scaleWorkoutWeights(ledgered, { exerciseIds: [BENCH], factor: 0 })).toThrow(/above 0/);
+      expect(() => scaleWorkoutWeights(ledgered, { exerciseIds: ['nope'], factor: 0.5 })).toThrow(/No exercise with id nope/);
+    });
+
+    it('skips a workout still in progress on the phone', () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { useWorkoutStore } = require('../../../src/store/useWorkoutStore');
+      useWorkoutStore.getState().initialize();
+      const live = useWorkoutStore.getState().startSession({ title: 'Live' });
+      useWorkoutStore.getState().logSet(live.id, { exerciseId: BENCH, kind: 'working', weightKg: 60, reps: 5 });
+      replica.refresh();
+      const result = scaleWorkoutWeights(ledgered, { exerciseIds: [BENCH], factor: 0.5, apply: true });
+      expect(result).toMatchObject({ sets: 0, skippedInProgress: 1 });
+      expect(replica.workoutSets(live.id)[0].weightKg).toBe(60);
     });
   });
 });
