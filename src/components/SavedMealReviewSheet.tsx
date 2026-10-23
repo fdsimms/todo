@@ -453,7 +453,7 @@ function makeStyles(colors: Colors) {
       fontSize: font.xs,
       fontWeight: fontWeight.semibold,
       letterSpacing: 0.8,
-      marginTop: spacing.smd,
+      marginTop: spacing.md,
       marginBottom: spacing.xs,
     },
     inputRow: {

@@ -1245,7 +1245,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.semibold,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
-    marginTop: spacing.xs,
+    marginTop: spacing.sm,
   },
   hint: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs },
   // Quick add's preset chips: shortcuts that fill the field beside them, not a

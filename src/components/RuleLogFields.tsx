@@ -180,7 +180,7 @@ export function RuleLogFields({ rule, onChange, menuName }: Props) {
               onPress: () => { haptics.tap(); onChange({ logMealSlotByTime: stored.logMealSlotByTime !== true }); },
             }]}
           />
-          <Text style={styles.label}>Food</Text>
+          <Text style={[styles.label, styles.labelAfter]}>Food</Text>
           {savedMeals.length === 0 ? (
             <Text style={styles.hint}>
               No saved meals yet. In the food log, select entries and choose Save as meal. Until then completing the task asks what you ate.
@@ -224,6 +224,8 @@ function makeStyles(colors: Colors) {
       color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold,
       textTransform: 'uppercase', letterSpacing: 0.8,
     },
+    // The section's gap is spacing.sm; this makes it a block gap after the control above.
+    labelAfter: { marginTop: spacing.sm },
     fieldBox: {
       color: colors.text, fontSize: font.md,
       backgroundColor: colors.bgTertiary, borderRadius: radius.sm,

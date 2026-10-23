@@ -277,7 +277,7 @@ function makeStyles(colors: Colors) {
       letterSpacing: 0.8,
       textTransform: 'uppercase',
       paddingHorizontal: spacing.md,
-      paddingTop: spacing.sm,
+      paddingTop: spacing.md,
       paddingBottom: spacing.xs,
     },
     row: {

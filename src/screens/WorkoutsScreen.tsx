@@ -1009,7 +1009,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   archivedRow: { opacity: 0.75 },
   groupHeader: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-    paddingHorizontal: spacing.xs, paddingTop: spacing.smd, paddingBottom: spacing.xs,
+    paddingHorizontal: spacing.xs, paddingTop: spacing.md, paddingBottom: spacing.xs,
   },
   groupHeaderMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.xsm },
   dropSlot: { borderRadius: radius.lg, backgroundColor: colors.accentSubtle, opacity: 0.7 },

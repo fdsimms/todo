@@ -83,7 +83,7 @@ export function EventPeoplePanel({ people, title, linkedIds, onToggle }: Props) 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   hint: { color: colors.textSecondary, fontSize: font.xs, marginBottom: spacing.sm },
   pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.smd },
-  field: { marginBottom: spacing.smd },
+  field: { marginBottom: spacing.md },
   label: {
     color: colors.textSecondary,
     fontSize: font.xs,
