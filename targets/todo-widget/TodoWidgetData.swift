@@ -418,6 +418,87 @@ func loadWidgetSnapshot() -> WidgetLoadResult {
     return .success(snapshot)
 }
 
+/// What the widget gallery and a placeholder draw, in place of the person's own
+/// data.
+///
+/// **The gallery is the one place a widget has to look finished with nothing
+/// behind it.** `placeholder` used to hand back `.noSnapshotYet` and `snapshot`
+/// read the live file, so every preview was either the "Open the app to get
+/// started" line or whatever happened to be empty today, and the Medications and
+/// Limits ones would have shown real health data to anyone flipping through the
+/// gallery. Built by decoding a literal, since `WidgetSnapshot` has only its
+/// tolerant `init(from:)`, which also keeps the sample honest about the shape.
+func gallerySampleResult(now: Date = Date()) -> WidgetLoadResult {
+    let stamp = ISO8601DateFormatter()
+    func at(_ minutes: Int) -> String {
+        stamp.string(from: now.addingTimeInterval(TimeInterval(minutes * 60)))
+    }
+    func dayKey(_ offset: Int) -> String {
+        let day = Calendar.current.date(byAdding: .day, value: offset, to: now) ?? now
+        let c = Calendar.current.dateComponents([.year, .month, .day], from: day)
+        return String(format: "%04d-%02d-%02d", c.year ?? 1970, c.month ?? 1, c.day ?? 1)
+    }
+    let json = """
+    {
+      "updatedAt": "\(at(0))",
+      "visibleTasks": [
+        {"id": "sample-1", "title": "Call the dentist", "priority": 3, "category": "Errands"},
+        {"id": "sample-2", "title": "Water the plants", "priority": 2, "category": "Home",
+         "recurrenceType": "daily", "streakCount": 6},
+        {"id": "sample-3", "title": "Drink water", "category": "Health",
+         "recurrenceType": "daily", "targetCount": 8, "progressCount": 3, "targetUnit": "glasses"},
+        {"id": "sample-4", "title": "Pay rent", "priority": 3, "pinned": true, "category": "Money"},
+        {"id": "sample-5", "title": "Reply to Sam", "category": "Work"}
+      ],
+      "pinnedTasks": [
+        {"id": "sample-4", "title": "Pay rent", "priority": 3, "pinned": true, "category": "Money"}
+      ],
+      "categories": ["Errands", "Home", "Health", "Money", "Work"],
+      "agenda": {"due": 5, "carriedOver": 1, "deadlines": 1},
+      "doneToday": 2,
+      "groceries": {
+        "lists": [{
+          "id": null, "name": "Groceries", "remaining": 5, "total": 8,
+          "items": ["Bananas", "Oat milk", "Eggs", "Spinach", "Sourdough"],
+          "rows": [
+            {"id": "g1", "name": "Bananas"}, {"id": "g2", "name": "Oat milk"},
+            {"id": "g3", "name": "Eggs"}, {"id": "g4", "name": "Spinach"},
+            {"id": "g5", "name": "Sourdough"}
+          ]
+        }],
+        "activeListId": null
+      },
+      "meals": [
+        {"slot": "breakfast", "slotLabel": "Breakfast", "title": "Overnight oats"},
+        {"slot": "dinner", "slotLabel": "Dinner", "title": "Chicken tacos"}
+      ],
+      "kitchen": [
+        {"title": "Spinach", "useBy": "\(dayKey(0))"},
+        {"title": "Yogurt", "useBy": "\(dayKey(1))"},
+        {"title": "Leftover rice", "useBy": "\(dayKey(2))"}
+      ],
+      "upcomingEvents": [
+        {"title": "Team standup", "start": "\(at(60))", "end": "\(at(90))"}
+      ],
+      "upcomingTasks": [],
+      "medications": [
+        {"id": "sample-med-1", "name": "Ibuprofen", "dose": "400 mg", "lastTakenAt": "\(at(-300))"},
+        {"id": "sample-med-2", "name": "Allergy tablet", "dose": "10 mg", "lastTakenAt": "\(at(-1500))"}
+      ],
+      "limits": [
+        {"id": "sodium", "label": "Sodium", "value": "1,420 mg", "detail": "of 2,300 mg", "fraction": 0.62, "status": "within"},
+        {"id": "satfat", "label": "Saturated fat", "value": "17 g", "detail": "of 20 g", "fraction": 0.85, "status": "near"},
+        {"id": "sugar", "label": "Added sugar", "value": "31 g", "detail": "of 25 g", "fraction": 1.0, "status": "over"}
+      ]
+    }
+    """
+    guard let data = json.data(using: .utf8),
+          let snapshot = try? JSONDecoder().decode(WidgetSnapshot.self, from: data) else {
+        return .noSnapshotYet
+    }
+    return .success(snapshot)
+}
+
 private func pendingCompletionsFileURL() -> URL? {
     guard let containerURL = FileManager.default.containerURL(
         forSecurityApplicationGroupIdentifier: appGroupID

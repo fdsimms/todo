@@ -17,7 +17,7 @@ struct TodoTodayProvider: AppIntentTimelineProvider {
     func placeholder(in context: Context) -> TodoEntry {
         TodoEntry(
             date: Date(),
-            result: .noSnapshotYet,
+            result: gallerySampleResult(),
             pendingCompletionIds: [],
             queuedUnits: [:],
             configuration: TodayWidgetIntent()
@@ -25,7 +25,16 @@ struct TodoTodayProvider: AppIntentTimelineProvider {
     }
 
     func snapshot(for configuration: TodayWidgetIntent, in context: Context) async -> TodoEntry {
-        entry(for: configuration)
+        if context.isPreview {
+            return TodoEntry(
+                date: Date(),
+                result: gallerySampleResult(),
+                pendingCompletionIds: [],
+                queuedUnits: [:],
+                configuration: configuration
+            )
+        }
+        return entry(for: configuration)
     }
 
     func timeline(for configuration: TodayWidgetIntent, in context: Context) async -> Timeline<TodoEntry> {

@@ -10,11 +10,15 @@ struct KitchenEntry: TimelineEntry {
 
 struct KitchenProvider: AppIntentTimelineProvider {
     func placeholder(in context: Context) -> KitchenEntry {
-        KitchenEntry(date: Date(), result: .noSnapshotYet, configuration: KitchenWidgetIntent())
+        KitchenEntry(date: Date(), result: gallerySampleResult(), configuration: KitchenWidgetIntent())
     }
 
     func snapshot(for configuration: KitchenWidgetIntent, in context: Context) async -> KitchenEntry {
-        KitchenEntry(date: Date(), result: loadWidgetSnapshot(), configuration: configuration)
+        KitchenEntry(
+            date: Date(),
+            result: context.isPreview ? gallerySampleResult() : loadWidgetSnapshot(),
+            configuration: configuration
+        )
     }
 
     func timeline(for configuration: KitchenWidgetIntent, in context: Context) async -> Timeline<KitchenEntry> {

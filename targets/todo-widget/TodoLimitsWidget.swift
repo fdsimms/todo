@@ -16,11 +16,11 @@ struct LimitsEntry: TimelineEntry {
 
 struct LimitsProvider: TimelineProvider {
     func placeholder(in context: Context) -> LimitsEntry {
-        LimitsEntry(date: Date(), result: .noSnapshotYet)
+        LimitsEntry(date: Date(), result: gallerySampleResult())
     }
 
     func getSnapshot(in context: Context, completion: @escaping (LimitsEntry) -> Void) {
-        completion(LimitsEntry(date: Date(), result: loadWidgetSnapshot()))
+        completion(LimitsEntry(date: Date(), result: context.isPreview ? gallerySampleResult() : loadWidgetSnapshot()))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<LimitsEntry>) -> Void) {
