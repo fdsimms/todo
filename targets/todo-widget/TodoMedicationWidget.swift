@@ -20,11 +20,11 @@ struct MedicationEntry: TimelineEntry {
 
 struct MedicationProvider: TimelineProvider {
     func placeholder(in context: Context) -> MedicationEntry {
-        MedicationEntry(date: Date(), result: .noSnapshotYet)
+        MedicationEntry(date: Date(), result: gallerySampleResult())
     }
 
     func getSnapshot(in context: Context, completion: @escaping (MedicationEntry) -> Void) {
-        completion(MedicationEntry(date: Date(), result: loadWidgetSnapshot()))
+        completion(MedicationEntry(date: Date(), result: context.isPreview ? gallerySampleResult() : loadWidgetSnapshot()))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<MedicationEntry>) -> Void) {

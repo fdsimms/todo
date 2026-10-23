@@ -13,11 +13,14 @@ struct GroceryEntry: TimelineEntry {
 
 struct GroceryProvider: AppIntentTimelineProvider {
     func placeholder(in context: Context) -> GroceryEntry {
-        GroceryEntry(date: Date(), result: .noSnapshotYet, configuration: GroceryWidgetIntent())
+        GroceryEntry(date: Date(), result: gallerySampleResult(), configuration: GroceryWidgetIntent())
     }
 
     func snapshot(for configuration: GroceryWidgetIntent, in context: Context) async -> GroceryEntry {
-        GroceryEntry(
+        if context.isPreview {
+            return GroceryEntry(date: Date(), result: gallerySampleResult(), configuration: configuration)
+        }
+        return GroceryEntry(
             date: Date(),
             result: loadWidgetSnapshot(),
             queuedChecks: QueuedQuietTaps.load().groceries,
