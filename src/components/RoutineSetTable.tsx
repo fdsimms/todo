@@ -129,10 +129,11 @@ export function RoutineSetTable({ item, kind, unit, scale, weightSuffix, rampLoa
     });
   };
 
+  // Every blank value cell falls back to last time's matching set (see
+  // `plannedSetsFor`), so they all say so; an AMRAP's reps are a real target.
   const placeholderFor = (t: RoutineSetTarget, field: SetField): string => {
-    if (field === 'weight') return 'Last time';
     if (field === 'reps' && t.kind === 'amrap') return 'Max';
-    return 'Any';
+    return 'Last time';
   };
 
   const editingTarget = editing ? item.targets[editing.index] : undefined;
