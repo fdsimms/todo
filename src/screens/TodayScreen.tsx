@@ -48,6 +48,7 @@ import {
   laterTaskOrder,
   LATER_TODAY_LABEL,
   laterVisibleOrder,
+  laterTaskForDay,
   laterDaySections,
   limitTodayItems,
   laterDropZones,
@@ -2070,12 +2071,18 @@ export function TodayScreen() {
   // navigationRef.ts), the same stamped-param handoff as openQuickAdd. Does
   // what a pill tap does, and nothing for a lens simplified mode has hidden.
   const [handledShowViewMode, setHandledShowViewMode] = useState<number | undefined>(undefined);
+  // A day Later should scroll to once it is the lens on show (the calendar's
+  // "open in Later"). Applied after laterOrder below, which it reads.
+  const [pendingLaterDay, setPendingLaterDay] = useState<string | null>(null);
   useEffect(() => {
     const at: number | undefined = route.params?.showViewModeAt;
     if (at === undefined || at === handledShowViewMode) return;
     setHandledShowViewMode(at);
     const mode: ViewMode = route.params.showViewMode;
-    if (!viewModes.includes(mode) || mode === viewMode) return;
+    if (!viewModes.includes(mode)) return;
+    const day: string | null = route.params.showViewModeDay ?? null;
+    if (mode === 'later' && day) setPendingLaterDay(day);
+    if (mode === viewMode) return;
     leaveViewMode();
     selectViewMode(mode);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -4741,6 +4748,17 @@ export function TodayScreen() {
   // used to run over everything and be truncated afterwards, so the budget
   // bounded how many rows mounted but not what it cost to work out which.
   const laterOrder = useMemo(() => laterVisibleOrder(deferredTasks), [deferredTasks]);
+
+  // The render that shows Later already holds its tasks (deferredTasksAll is
+  // read for the lens on show), so the day is settled on that pass whether or
+  // not anything surfaces that late.
+  useEffect(() => {
+    if (!pendingLaterDay || viewMode !== 'later') return;
+    setPendingLaterDay(null);
+    const task = laterTaskForDay(laterOrder, pendingLaterDay, dayResetTime);
+    if (task) jumpToLaterTask(task);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingLaterDay, viewMode, laterOrder]);
 
   // The Later list can grow unboundedly (nothing prunes it), and its
   // ReorderableList renders every row unmounted-free (no virtualization — see

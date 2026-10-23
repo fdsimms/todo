@@ -41,6 +41,7 @@ beforeEach(() => {
     readFailed: false,
     pastEvents: [], pastLoaded: false, pastReadAt: null, handledHistory: {}, handledLoaded: false,
     aheadEvents: [], aheadLoaded: false, aheadWindowEnd: null,
+    gridEvents: [], gridCalendarsById: {}, gridLoaded: false, gridStart: null, gridEnd: null,
   });
   useSettingsStore.setState({
     calendarReadEnabled: true, calendarIds: ['cal-1'], dayResetTime: '00:00', calendarPeopleHistory: true,
@@ -293,6 +294,70 @@ describe('refreshAhead', () => {
     await useCalendarStore.getState().refreshAhead();
     expect(useCalendarStore.getState().aheadLoaded).toBe(false);
     expect(useCalendarStore.getState().aheadEvents).toEqual([trip]);
+  });
+});
+
+describe('refreshGrid', () => {
+  const start = new Date(2026, 10, 1);
+  const end = new Date(2026, 11, 13);
+
+  it('reads exactly the days asked for, with their calendars', async () => {
+    (fetchEvents as jest.Mock).mockResolvedValue(readResult());
+    await useCalendarStore.getState().refreshGrid(start, end);
+    const state = useCalendarStore.getState();
+    expect(fetchEvents).toHaveBeenCalledWith(['cal-1'], start, end);
+    expect(state.gridLoaded).toBe(true);
+    expect(state.gridEvents.map(e => e.id)).toEqual(['e-1']);
+    expect(state.gridCalendarsById).toEqual({ 'cal-1': { title: 'Work', color: '#000' } });
+    expect(state.gridStart).toBe(start.toISOString());
+    expect(state.gridEnd).toBe(end.toISOString());
+    // The fortnight window is a different read and stays untouched.
+    expect(state.events).toEqual([]);
+  });
+
+  it('leaves out calendars vacation mode is hiding', async () => {
+    useSettingsStore.setState({ calendarIds: ['cal-1', 'cal-2'], vacationMode: true, vacationHiddenCalendarIds: ['cal-2'] });
+    (fetchEvents as jest.Mock).mockResolvedValue(readResult());
+    await useCalendarStore.getState().refreshGrid(start, end);
+    expect((fetchEvents as jest.Mock).mock.calls[0][0]).toEqual(['cal-1']);
+  });
+
+  it('reads nothing in demo mode or with reading off, and drops what it held', async () => {
+    useCalendarStore.setState({ gridEvents: [event('stale')], gridLoaded: true });
+    (isDemoModeActive as jest.Mock).mockReturnValue(true);
+    await useCalendarStore.getState().refreshGrid(start, end);
+    expect(fetchEvents).not.toHaveBeenCalled();
+    expect(useCalendarStore.getState().gridEvents).toEqual([]);
+    expect(useCalendarStore.getState().gridStart).toBeNull();
+  });
+
+  it('keeps the same array when a re-read finds the same events', async () => {
+    (fetchEvents as jest.Mock).mockResolvedValue(readResult([event('a')]));
+    await useCalendarStore.getState().refreshGrid(start, end);
+    const held = useCalendarStore.getState().gridEvents;
+    (fetchEvents as jest.Mock).mockResolvedValue(readResult([{ ...event('a') }]));
+    await useCalendarStore.getState().refreshGrid(start, end);
+    expect(useCalendarStore.getState().gridEvents).toBe(held);
+  });
+
+  it('answers only for the last range asked for when two reads overlap', async () => {
+    let resolveFirst: (v: unknown) => void = () => {};
+    (fetchEvents as jest.Mock)
+      .mockImplementationOnce(() => new Promise(r => { resolveFirst = r; }))
+      .mockResolvedValueOnce(readResult([event('december')]));
+    const first = useCalendarStore.getState().refreshGrid(start, end);
+    await useCalendarStore.getState().refreshGrid(end, new Date(2027, 0, 20));
+    resolveFirst(readResult([event('november')]));
+    await first;
+    expect(useCalendarStore.getState().gridEvents.map(e => e.id)).toEqual(['december']);
+  });
+
+  it('keeps the last events when a read fails, but says so', async () => {
+    useCalendarStore.setState({ gridEvents: [event('a')], gridLoaded: true });
+    (fetchEvents as jest.Mock).mockResolvedValue(null);
+    await useCalendarStore.getState().refreshGrid(start, end);
+    expect(useCalendarStore.getState().gridLoaded).toBe(false);
+    expect(useCalendarStore.getState().gridEvents.map(e => e.id)).toEqual(['a']);
   });
 });
 

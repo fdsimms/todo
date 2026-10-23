@@ -9,6 +9,7 @@ import {
   laterDaySections,
   limitTodayItems,
   laterVisibleOrder,
+  laterTaskForDay,
   laterTodaySections,
   categorySpan,
   applyCategoryCollapse,
@@ -1411,5 +1412,32 @@ describe('limitTodayItems', () => {
   it('counts an empty stack as one row', () => {
     const items = [group('g', 0), task('a')];
     expect(limitTodayItems(items, 1)).toEqual([group('g', 0)]);
+  });
+});
+
+describe('laterTaskForDay', () => {
+  const order = [
+    { task: makeTask({ id: 'a' }), visibleAt: new Date(2030, 0, 10, 9) },
+    { task: makeTask({ id: 'b' }), visibleAt: new Date(2030, 0, 12, 0) },
+    { task: makeTask({ id: 'c' }), visibleAt: new Date(2030, 0, 15, 18) },
+  ];
+
+  it('lands on the first task surfacing on the day', () => {
+    expect(laterTaskForDay(order, '2030-01-12', '00:00')?.id).toBe('b');
+  });
+
+  it('lands on the next day with something when the day has nothing', () => {
+    expect(laterTaskForDay(order, '2030-01-13', '00:00')?.id).toBe('c');
+  });
+
+  it('has nothing to land on past the last task', () => {
+    expect(laterTaskForDay(order, '2030-01-16', '00:00')).toBeNull();
+  });
+
+  it('reads the day through the reset time', () => {
+    // 01:00 on the 12th is still the 11th under a 04:00 reset.
+    const early = [{ task: makeTask({ id: 'x' }), visibleAt: new Date(2030, 0, 12, 1) }];
+    expect(laterTaskForDay(early, '2030-01-12', '04:00')).toBeNull();
+    expect(laterTaskForDay(early, '2030-01-11', '04:00')?.id).toBe('x');
   });
 });

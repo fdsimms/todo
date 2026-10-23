@@ -257,8 +257,13 @@ export function openQuickSearchFromKeyboard(): void {
   runWhenReady(() => navigateToTab('Today', { openQuickSearch: Date.now() }));
 }
 
-export function showTodayViewMode(mode: 'today' | 'later' | 'unscheduled' | 'inbox'): void {
-  runWhenReady(() => navigateToTab('Today', { showViewMode: mode, showViewModeAt: Date.now() }));
+/**
+ * Today on one of its lenses. `dayKey` (Later only) scrolls the list to the
+ * first task surfacing on that day or after it: the calendar's "open in
+ * Later" for a day still to come.
+ */
+export function showTodayViewMode(mode: 'today' | 'later' | 'unscheduled' | 'inbox', dayKey?: string): void {
+  runWhenReady(() => navigateToTab('Today', { showViewMode: mode, showViewModeAt: Date.now(), showViewModeDay: dayKey ?? null }));
 }
 
 export const showTodayViewModeFromKeyboard = showTodayViewMode;
