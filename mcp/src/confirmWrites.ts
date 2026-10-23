@@ -104,6 +104,7 @@ const FIELD_NAMES: Record<string, string> = {
   recurrenceWeekOrdinal: 'repeat week of month', recurrenceFromCompletion: 'repeat from completion', groupId: 'stack',
   answerGate: 'only if answered', followUpOn: 'follow-up date', medicationName: 'medication', completedAt: 'completed on',
   workoutRoutineId: 'workout routine', workoutProgramId: 'workout program',
+  logMealSlot: 'meal it logs', logSavedMealId: 'saved meal it logs',
 };
 
 /** Words for the ids a field holds, so a line never prints an opaque id. */
@@ -111,6 +112,7 @@ export interface NameLookup {
   project(id: string): string | undefined;
   task(id: string): string | undefined;
   stack(id: string): string | undefined;
+  savedMeal?(id: string): string | undefined;
 }
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -122,6 +124,7 @@ function show(value: unknown, dayOf: (iso: string) => string, key = '', names?: 
     (typeof id === 'string' ? find?.(id) : undefined) ?? 'another item';
   if (key === 'projectId') return `"${named(value, names?.project)}"`;
   if (key === 'groupId') return `"${named(value, names?.stack)}"`;
+  if (key === 'logSavedMealId') return `"${named(value, names?.savedMeal)}"`;
   if (key === 'blockedById') return `"${named(value, names?.task)}"`;
   if (key === 'blockedByIds' && Array.isArray(value)) return value.length === 0 ? 'none' : value.map(v => `"${named(v, names?.task)}"`).join(', ');
   if (key === 'recurrenceDays' && Array.isArray(value)) return value.length === 0 ? 'none' : value.map(d => WEEKDAYS[Number(d)] ?? String(d)).join(', ');

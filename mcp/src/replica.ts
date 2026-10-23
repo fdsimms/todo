@@ -3656,6 +3656,12 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         errors.push(`workoutProgramId: no program with id ${programId}. list_workouts lists the programs, and save_program makes one.`);
       }
     }
+    if (patch.logSavedMealId) {
+      const mealId = patch.logSavedMealId;
+      if (!db.dbGetSavedMeals().some(m => m.id === mealId)) {
+        errors.push(`logsMeal.savedMealId: no saved meal with id ${mealId}. list_saved_meals lists them.`);
+      }
+    }
     for (const member of patch.rotationItems ?? []) {
       const { workoutRoutineId: routineId, workoutProgramId: programId } = member;
       if (routineId && !db.dbGetAllWorkoutRoutines().some(r => r.id === routineId)) {

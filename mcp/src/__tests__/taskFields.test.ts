@@ -47,6 +47,30 @@ describe('medication taken together', () => {
   });
 });
 
+describe('logging a meal on completion', () => {
+  it('sets the slot, the saved meal and the by-time choice together', () => {
+    expect(ok({ logsMeal: { slot: 'breakfast', savedMealId: 'm1' } })).toMatchObject({
+      logMealSlot: 'breakfast', logSavedMealId: 'm1', logMealSlotByTime: false,
+    });
+    expect(ok({ logsMeal: { slot: 'lunch', byTime: true } })).toMatchObject({
+      logMealSlot: 'lunch', logSavedMealId: null, logMealSlotByTime: true,
+    });
+  });
+
+  it('drops all three with null, which is how a saved meal comes off a task', () => {
+    expect(ok({ logsMeal: null })).toMatchObject({ logMealSlot: null, logSavedMealId: null, logMealSlotByTime: false });
+  });
+
+  it('leaves the three alone when logsMeal is not given', () => {
+    const patch = ok({ title: 'x' });
+    expect('logMealSlot' in patch || 'logSavedMealId' in patch || 'logMealSlotByTime' in patch).toBe(false);
+  });
+
+  it('refuses an unknown slot', () => {
+    expect(errorsOf({ logsMeal: { slot: 'brunch' as never } })).toMatch(/breakfast, lunch, dinner or snack/);
+  });
+});
+
 describe('pinning', () => {
   it('passes pin and pin-each-occurrence straight through', () => {
     expect(ok({ pinned: true, pinEachOccurrence: true })).toMatchObject({ pinned: true, pinEachOccurrence: true });
