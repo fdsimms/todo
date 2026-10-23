@@ -2,7 +2,7 @@ import type { Task } from '../types';
 import {
   canSlotIn, effectiveSlotIn, slotInFromCategory, slotInInUse, isSlotHold, isSlotWaiting,
   slotWaitingSinceKey, isSlotInCandidate, planSlotIns, slotHoldPatch, slotLandPatch,
-  slotReleasePatch, slotInChipText, compareSlotInOrder, SLOT_IN_LIGHT_DAY_MAX, type SlotInDay,
+  slotReleasePatch, slotInChipText, slotWaitingTasks, compareSlotInOrder, SLOT_IN_LIGHT_DAY_MAX, type SlotInDay,
 } from '../utils/slotIn';
 
 const iso = (key: string) => new Date(`${key}T00:00:00`).toISOString();
@@ -128,6 +128,17 @@ describe('the hold', () => {
 
   it('only marks a task it let through', () => {
     expect(slotLandPatch(TODAY)).toEqual({ slotDecidedOn: TODAY });
+  });
+});
+
+describe('slotWaitingTasks', () => {
+  it('lists only the pass\'s own holds, longest wait first', () => {
+    const newer = task({ slotDecidedOn: TODAY, deferUntil: iso('2026-10-20'), slotWaitingSince: '2026-10-17' });
+    const older = task({ slotDecidedOn: TODAY, deferUntil: iso('2026-10-20'), slotWaitingSince: '2026-10-12' });
+    const ownDefer = task({ deferUntil: iso('2026-10-25') });
+    const done = task({ slotDecidedOn: TODAY, deferUntil: iso('2026-10-20'), completed: true });
+    const sub = task({ slotDecidedOn: TODAY, deferUntil: iso('2026-10-20'), parentId: 'p' });
+    expect(slotWaitingTasks([newer, ownDefer, done, sub, older], TODAY)).toEqual([older, newer]);
   });
 });
 

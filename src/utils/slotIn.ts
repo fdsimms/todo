@@ -114,6 +114,15 @@ export function isSlotWaiting(task: Pick<Task, 'deferUntil' | 'slotDecidedOn' | 
   return !task.completed && isSlotHold(task) && keyOfIso(task.deferUntil)! > todayKey;
 }
 
+/**
+ * The top-level tasks the pass is holding right now, longest wait first: what
+ * Today's "waiting for a lighter day" reveal lists. Only the pass's own holds,
+ * never a defer the person set, which Later already shows by its date.
+ */
+export function slotWaitingTasks(tasks: readonly Task[], todayKey: string): Task[] {
+  return tasks.filter(t => !t.parentId && isSlotWaiting(t, todayKey)).sort(compareSlotInOrder);
+}
+
 /** The day a task's date currently puts it on: the later of its date and its defer. */
 function effectiveDayKey(task: Pick<Task, 'dueDate' | 'deferUntil'>): string | null {
   const due = keyOfIso(task.dueDate);
