@@ -993,7 +993,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textSecondary,
     lineHeight: 17,
     marginTop: spacing.xs,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.md,
   },
   tiles: {
     flexDirection: 'row',

@@ -1269,7 +1269,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   previewGroup: { gap: spacing.xs },
   // Clear of the row above it; the rows' own hairlines already separate them,
   // so the heading needs the gap rather than a rule of its own.
-  previewSectionHeader: { marginTop: spacing.sm, marginBottom: spacing.xs },
+  previewSectionHeader: { marginTop: spacing.md, marginBottom: spacing.xs },
   previewIngredientRow: {
     flexDirection: 'row',
     alignItems: 'center',

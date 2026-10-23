@@ -1810,7 +1810,7 @@ export function FoodLogEntrySheet({
   // they stay on top as quick recents.
   const helpingsAfterResults = query.trim().length > 0 && results.length > 0;
   const helpingsBlock = helpings.length > 0 ? (
-    <View>
+    <View style={helpingsAfterResults ? styles.footerGap : undefined}>
       <Text style={[styles.label, styles.helpingsLabel]}>RECENTLY LOGGED</Text>
       {helpings.map(entry => (
         <View key={entry.id} style={[styles.row, styles.helpingRow]}>
@@ -1849,7 +1849,7 @@ export function FoodLogEntrySheet({
   // chose to look it up by. Rows laid out like an earlier helping's: the body
   // opens the meal for changes, the plus logs it as it was saved.
   const savedBlock = savedMatches.length > 0 ? (
-    <View>
+    <View style={usual.length > 0 || (helpings.length > 0 && !helpingsAfterResults) ? styles.usualGap : undefined}>
       <Text style={[styles.label, styles.helpingsLabel]}>SAVED MEALS</Text>
       {savedMatches.map(meal => {
         const calories = savedMealCalories(meal.items);
@@ -3027,8 +3027,10 @@ function makeStyles(colors: Colors) {
     // a block gap between them and before what follows.
     lookupBlock: { gap: spacing.md, marginBottom: spacing.md },
     // Rows keep spacing.sm below themselves; this makes it a block gap before
-    // the helpings' own label, which has none above it.
+    // the label that follows a block, which has none above it. Also used as
+    // marginTop where a block follows the list's own rows (the footer).
     usualGap: { marginBottom: spacing.sm },
+    footerGap: { marginTop: spacing.sm },
     lookupHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
     lookupTitle: { flex: 1 },
     lookupClose: { padding: spacing.xxs },
