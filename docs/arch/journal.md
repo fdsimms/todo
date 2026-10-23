@@ -333,3 +333,20 @@ an entry with a photo and no words.
 - **Not in a draft.** A draft keeps the words; a photo added to a page that is
   then left unsaved goes with it.
 
+
+## The writing timer
+
+A journal entry (not a dream) can be written against a countdown: **Start** beside a length menu
+(5, 10, 15 or 20 minutes) on the line under the field, `JournalTimer` over `journalTimer.ts`. Running
+it shows the time left and a thin bar, and a tap cancels. When it ends the chip reads "Time’s up" with
+a haptic, and typing carries on.
+
+- **A pace for one sitting, nothing more.** The running timer lives in the sheet and ends with it. It
+  is not stored on the entry, summed, or read for a streak or a total, for the reason `journalStats`
+  has no minimum and a short day is never "missed": a duration written would invite a comparison.
+- **Only the length last picked is kept** (`journalTimerMinutes`, device-local like the draft, so the
+  next sitting starts from it).
+- **No notification.** The app can't be asked to ring while closed without a new notification kind,
+  and a writing session is one the person is looking at. Time is read off `endsAt`, so coming back
+  from the background shows the right figure and the haptic fires on return.
+- **Not for dreams**, which are written as they are remembered, the reason they have no word goal.

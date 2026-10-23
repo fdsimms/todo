@@ -58,6 +58,7 @@ import { WhenPicker } from './WhenPicker';
 import { TextField } from './TextField';
 import { InlineAction } from './InlineAction';
 import { JournalPhotoStrip } from './JournalPhotoStrip';
+import { JournalTimer } from './JournalTimer';
 import { deleteJournalPhotos } from '../utils/journalPhotos';
 import { CollapsibleField } from './CollapsibleField';
 import { PillGroup } from './PillGroup';
@@ -493,7 +494,13 @@ export function JournalEntrySheet({ visible, kind, editing = null, dictateOnOpen
           editable={dictation.state === 'idle'}
           accessibilityLabel={kind === 'dream' ? 'A dream you remember' : 'Journal entry'}
         />
-        <Text style={styles.wordCount}>{wordsLine}</Text>
+        {kind === 'journal' ? (
+          <JournalTimer active={visible}>
+            <Text style={styles.timerWordCount}>{wordsLine}</Text>
+          </JournalTimer>
+        ) : (
+          <Text style={styles.wordCount}>{wordsLine}</Text>
+        )}
         {restoredDraft && <Text style={styles.wordCount}>Restored the draft you hadn’t saved.</Text>}
         <View style={styles.photos}>
           <JournalPhotoStrip
@@ -785,6 +792,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xs,
     color: colors.textSecondary,
     marginTop: spacing.sm,
+  },
+  // The same line, inside `JournalTimer`'s row, which supplies the top margin.
+  timerWordCount: {
+    fontSize: font.xs,
+    color: colors.textSecondary,
   },
   prompt: {
     fontSize: font.sm,

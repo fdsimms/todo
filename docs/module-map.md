@@ -250,6 +250,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/journalMarkdown.ts` — InlineSpan, JournalBlock, parseInline, parseJournalMarkdown, SPOILER_PLAIN_TEXT, journalPlainText, EditSelection, FormatEdit, toggleWrap, continueListOnEnter, +2 more
 - `src/utils/journalPhotos.ts` — JOURNAL_PHOTO_FOLDER, MAX_JOURNAL_PHOTOS, journalPhotoNamesInUse, droppedPhotos, unreferencedPhotos, journalPhotosOnDevice, deleteJournalPhotos, sweepJournalPhotos
 - `src/utils/journalTasks.ts` — JOURNAL_LOG_TITLE, JOURNAL_SNIPPET_TITLE, DREAM_LOG_TITLE, journalLogTitle, JOURNAL_TASK_KIND, journalMicUrl, journalLogUrl, journalTaskSourceId, journalTaskDayKey
+- `src/utils/journalTimer.ts` — JOURNAL_TIMER_MINUTES, DEFAULT_JOURNAL_TIMER_MINUTES, JOURNAL_TIMER_SETTING, parseJournalTimerMinutes, readJournalTimerMinutes, writeJournalTimerMinutes, journalTimerRemainingMs, journalTimerProgress, formatJournalTimerClock
 - `src/utils/keyScanAlert.ts` — alertKeyScanResult
 - `src/utils/keyScanQueue.ts` — QueuedKeyScan, QUEUED_KEY_CODE_MAX_LENGTH, parseQueuedKeyScans, keyCodeToken
 - `src/utils/keyShortcuts.ts` — KeyModifier, ShortcutAction, KeyShortcut, KEY_SHORTCUTS, MENU_SHORTCUTS, shortcutById, chordKey, shortcutKeys, describeShortcuts

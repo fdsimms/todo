@@ -115,7 +115,7 @@ Where each component can appear.
 - `src/components/ChartGuides.tsx` — on MedicationDetailScreen, MoodScreen, StatsScreen, SymptomDetailScreen
 - `src/components/CheckPop.tsx` — on CalendarScreen, CategoryDetailScreen, GroceryScreen, ProjectDetailScreen, ProjectsScreen, RecipeDetailScreen, RecipesScreen, StackDetailScreen, TagsScreen, TodayScreen, app shell
 - `src/components/ChipFilterSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, MoodHistoryScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, +7 more
-- `src/components/ChoiceMenuChip.tsx` — on ArchivedScreen, AutomationsScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, KitchenScreen, LogbookScreen, MealPlanScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, +13 more
+- `src/components/ChoiceMenuChip.tsx` — on ArchivedScreen, AutomationsScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, JournalScreen, KitchenScreen, LogbookScreen, MealPlanScreen, MedicationDetailScreen, MedicationScreen, MoodDayScreen, +15 more
 - `src/components/ClipboardPhotoOffer.tsx` — on GroceryScreen, KitchenScreen, RecipeDetailScreen, RecipesScreen, TodayScreen
 - `src/components/CoinBurst.tsx` — on RewardsScreen
 - `src/components/CoinIcon.tsx` — on ArchivedScreen, AutomationsScreen, BackfillScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookbookDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, JournalScreen, KitchenScreen, +33 more
@@ -234,6 +234,7 @@ Where each component can appear.
 - `src/components/JournalPhotoStrip.tsx` — on JournalScreen, MoodDayScreen
 - `src/components/JournalPromptsSheet.tsx` — on SettingsGroupScreen
 - `src/components/JournalText.tsx` — on JournalScreen, MoodDayScreen, PersonDetailScreen
+- `src/components/JournalTimer.tsx` — on JournalScreen, MoodDayScreen
 - `src/components/JournalWordGoalSheet.tsx` — on JournalScreen, SettingsGroupScreen
 - `src/components/KeywordMatchEditor.tsx` — on AutomationsScreen, SettingsGroupScreen
 - `src/components/LabelSubjectSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, +6 more
