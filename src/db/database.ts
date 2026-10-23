@@ -55,6 +55,7 @@ import type {
   ItemSubLink,
   Leftover,
   MealPlanEntry,
+  LogMealSlot,
   MealSlot,
   Recipe,
   RecipeMealType,
@@ -88,7 +89,7 @@ import type {
   UnattendedEntry,
 } from '../types';
 import { HEALTH_TARGET_METRICS } from '../utils/healthTarget';
-import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, NUTRIENT_KEYS, PERSON_NOTE_KINDS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES, isReceiptStyle } from '../types';
+import { DEFAULT_NUDGE_CADENCE_DAYS, LOG_MEAL_SLOTS, MEAL_SLOTS, NUTRIENT_KEYS, PERSON_NOTE_KINDS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES, isReceiptStyle } from '../types';
 import { generateId } from '../utils/id';
 import { isCookwareType } from '../utils/cookware';
 import type { PendingEstimate } from '../utils/estimateQueue';
@@ -4292,8 +4293,8 @@ function rowToTask(row: Record<string, unknown>): Task {
     // Narrowed the same way logHealthMetric above is: an unrecognized column
     // value reads as "not logging", the safe answer for a row this build
     // can't place.
-    logMealSlot: (MEAL_SLOTS as readonly string[]).includes(row.log_meal_slot as string)
-      ? (row.log_meal_slot as MealSlot)
+    logMealSlot: (LOG_MEAL_SLOTS as readonly string[]).includes(row.log_meal_slot as string)
+      ? (row.log_meal_slot as LogMealSlot)
       : null,
     timerElapsedSeconds: (row.timer_elapsed_seconds as number | null) ?? 0,
     previousOccurrenceId: (row.previous_occurrence_id as string | null) ?? null,

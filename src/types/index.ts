@@ -457,7 +457,7 @@ export interface RuleTaskLog {
   medicationName?: string | null;
   medicationAmount?: number | null;
   medicationUnit?: string | null;
-  logMealSlot?: MealSlot | null;
+  logMealSlot?: LogMealSlot | null;
   logSavedMealId?: string | null;
   logMealSlotByTime?: boolean;
 }
@@ -3029,7 +3029,7 @@ export interface Task {
   // a meal-plan task's own completion does (see offerMealLog), prefilled with
   // this slot and the task's title, rather than writing a FoodLogEntry
   // outright — see FoodLogEntrySheet.tsx.
-  logMealSlot: MealSlot | null;
+  logMealSlot: LogMealSlot | null;
   // A saved meal (`SavedMeal`) completing this task logs straight to the food
   // log, in `logMealSlot`'s slot: "Metamucil" logs that you took Metamucil with
   // no sheet to answer. Null or absent means the offer above is all that
@@ -4982,7 +4982,7 @@ export interface TemplateItem {
   // Seeds Task.logMealSlot, same reasoning as the medication triple above: a
   // daily "Log breakfast" routine would otherwise need its slot re-picked by
   // hand on every application.
-  logMealSlot: MealSlot | null;
+  logMealSlot: LogMealSlot | null;
   // Seeds Task.logMealSlotByTime: the slot is picked from the clock when the
   // task is completed. Optional so a stored item from before it reads as off.
   logMealSlotByTime?: boolean;
@@ -8363,6 +8363,22 @@ export const MEAL_SLOT_LABELS: Record<MealSlot, string> = {
   lunch: 'Lunch',
   dinner: 'Dinner',
   snack: 'Snack',
+};
+
+/**
+ * What a task that logs to the food log can file its entry under: a meal, or
+ * 'other' for something eaten outside of one (a supplement, a shake). It is a
+ * separate type because `Task.logMealSlot` null already means the feature is
+ * off, and a food log entry's own "no meal" is `slot: null`; `logSlotToMealSlot`
+ * (src/utils/mealSlotTasks.ts) is the one place the second turns into the first.
+ */
+export type LogMealSlot = MealSlot | 'other';
+
+export const LOG_MEAL_SLOTS: readonly LogMealSlot[] = [...MEAL_SLOTS, 'other'];
+
+export const LOG_MEAL_SLOT_LABELS: Record<LogMealSlot, string> = {
+  ...MEAL_SLOT_LABELS,
+  other: 'Other',
 };
 
 /**

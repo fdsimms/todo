@@ -2440,7 +2440,7 @@ function registerWriteTools(
         medicationName: z.string().nullable().optional().describe('Completing the task it adds logs a dose of this medication (all but title rules). Use a name from list_medication_logs so it joins that medication\'s history. null clears it.'),
         medicationAmount: z.number().positive().nullable().optional().describe('The dose amount, with medicationUnit. Leave both out to log the medication\'s usual amount.'),
         medicationUnit: z.string().nullable().optional().describe('The dose unit, e.g. mg, with medicationAmount.'),
-        logMealSlot: z.enum(['breakfast', 'lunch', 'dinner', 'snack']).nullable().optional().describe('Completing the task it adds logs to the food log under this meal (all but title rules). With no logSavedMealId the phone asks what was eaten. null clears it and the two fields below.'),
+        logMealSlot: z.enum(['breakfast', 'lunch', 'dinner', 'snack', 'other']).nullable().optional().describe('Completing the task it adds logs to the food log under this meal (other: outside any meal) (all but title rules). With no logSavedMealId the phone asks what was eaten. null clears it and the two fields below.'),
         logSavedMealId: z.string().nullable().optional().describe('With logMealSlot: a saved meal id (list_saved_meals) to log straight away.'),
         logMealSlotByTime: z.boolean().optional().describe('With logMealSlot: choose the meal from the time of day it is completed instead.'),
         keywords: z.array(z.string()).optional().describe('title: words that trigger it, 3+ letters each.'),

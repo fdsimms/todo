@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, radius, spacing, type Colors } from '../theme';
-import { MEAL_SLOTS, MEAL_SLOT_LABELS, type MealSlot, type RuleTaskLog } from '../types';
+import { LOG_MEAL_SLOTS, LOG_MEAL_SLOT_LABELS, type LogMealSlot, type RuleTaskLog } from '../types';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { useSavedMealsStore } from '../store/useSavedMealsStore';
 import { medicationKey, medicationVocabulary } from '../utils/medicationLog';
@@ -91,7 +91,7 @@ export function RuleLogFields({ rule, onChange, menuName }: Props) {
     }
   };
 
-  const slot: MealSlot = stored.logMealSlot ?? 'breakfast';
+  const slot: LogMealSlot = stored.logMealSlot ?? 'breakfast';
   const chosenMeal = stored.logSavedMealId ? savedMeals.find(m => m.id === stored.logSavedMealId) ?? null : null;
 
   return (
@@ -162,8 +162,8 @@ export function RuleLogFields({ rule, onChange, menuName }: Props) {
       {foodOn && (
         <View style={styles.section}>
           <Text style={styles.label}>Meal</Text>
-          <SegmentedControl<MealSlot>
-            options={MEAL_SLOTS.map(s => ({ value: s, label: MEAL_SLOT_LABELS[s] }))}
+          <SegmentedControl<LogMealSlot>
+            options={LOG_MEAL_SLOTS.map(s => ({ value: s, label: LOG_MEAL_SLOT_LABELS[s] }))}
             value={slot}
             onChange={next => { haptics.tap(); onChange({ logMealSlot: next, logMealSlotByTime: false }); }}
             columns={2}
