@@ -239,6 +239,7 @@ import {
   ROTATION_TARGET_FIELDS,
   mergeTaskUpdate,
   nextPinnedOrder,
+  comparePinned,
   seriesFanOutRows,
 } from '../utils/taskUpdate';
 // Re-exported: TaskEditor reads both from here, and they lived here first.
@@ -260,7 +261,7 @@ import {
 import { getNextDueDate, getNextOccurrence, getCurrentDayStart, getCurrentLogicalDayKey, getLogicalDayKey, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, dayKeyToDate, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor, captureReminderOffset, reanchorReminderToWallClock } from '../utils/dateUtils';
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, loggedMealSlotTasks, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource, slotEntryForTask, staleMealSlotTasks } from '../utils/mealSlotTasks';
-import { slotForHour, wantsMealLogPrompt } from '../utils/mealLog';
+import { logSlotToMealSlot, slotForHour, wantsMealLogPrompt } from '../utils/mealLog';
 import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOver, quotaWeekStart } from '../utils/quotaSchedule';
 import { isRotationTask, rotationCoversNew, rotationPick, rotationPlanFor, rotationUnpick, rotationUnpickUncovers } from '../utils/rotation';
 import { MIN_TARGET_COUNT, MAX_TARGET_COUNT, taskKindOf } from '../utils/taskKinds';
@@ -4556,7 +4557,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // moment of completion; the fixed slot is the fallback and the default.
       const loggedSlot = task.logMealSlotByTime && task.logMealSlot
         ? slotForHour(completedAt.getHours())
-        : task.logMealSlot ?? null;
+        : task.logMealSlot ? logSlotToMealSlot(task.logMealSlot) : null;
       if (loggable) {
         // A "Log dinner" nudge ticked is a request to log it, so a recipe with
         // no figures goes on to the search sheet rather than completing with
@@ -4584,7 +4585,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // prompt offerMealLog uses for a recipe-backed meal above.
         useFoodLogStore.getState().setPendingManualMealLog({
           label: displayTitleFor(task),
-          slot: loggedSlot ?? task.logMealSlot,
+          slot: task.logMealSlot ? loggedSlot : null,
           // The day this task was scheduled for, same call offerMealLog makes
           // from a meal plan entry's own date — a task with no due date (an
           // undated "Pack lunch") has no day to be planned for, so it falls
@@ -10137,8 +10138,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (ids.length === 0) return;
     const allPinned = ids.every(id => get().tasks.find(t => t.id === id)?.pinned);
     const nextPinned = !allPinned;
+    // Ranked like pinCategory, so the stack lands together at the bottom of
+    // the Pinned section instead of keeping whatever rank each member had.
+    const ranks = nextPinned ? freshPinRanks(get().tasks, ids) : null;
     dbBulkSetPinned(ids, nextPinned);
-    set(s => ({ tasks: patchTasks(s.tasks, ids, { pinned: nextPinned }) }));
+    if (ranks) dbBatchUpdatePinnedOrders(ranks);
+    set(s => ({
+      tasks: patchTasks(s.tasks, ids, t => ({ pinned: nextPinned, ...rankFor(ranks, t.id) })),
+    }));
   },
 
   deleteGroup(groupId, opts) {
@@ -11210,7 +11217,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // sortOrder breaks ties rather than being the sort: every row starts at
       // pinnedOrder 0, so an install that has never dragged a pin (or upgraded
       // into the column) reads exactly as it did before. See Task.pinnedOrder.
-      .sort((a, b) => a.pinnedOrder - b.pinnedOrder || a.sortOrder - b.sortOrder);
+      .sort(comparePinned);
   },
 
   completedTasks() {

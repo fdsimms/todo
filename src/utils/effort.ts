@@ -153,7 +153,27 @@ export function chosenEstimateMinutes(task: { estimatedMinutes: number | null; e
 export type EstimateSource = ChainCarrier & {
   estimatedMinutes: number | null;
   effort: Effort;
+  /** A target's count, its per-unit countdown and what's logged, for `countdownEstimate`. Omitted reads as not a countdown target. */
+  targetCount?: number | null;
+  timedMinutes?: number | null;
+  progressCount?: number;
 };
+
+/**
+ * What a target with a countdown per unit costs: the units still to log times
+ * one unit's countdown (3 wall stands of 45s is 2m 15s). Null for anything
+ * else. Only reached when the task has no estimate of its own, so typing one
+ * (the editor's Estimate) still wins; the effort bucket doesn't, since it is a
+ * coarse default and 15m for a two-minute task is the thing this replaces.
+ * A met target counts the whole set, since nothing remaining has no cost to plan.
+ */
+function countdownEstimate(task: EstimateSource): number | null {
+  const count = task.targetCount;
+  const unit = task.timedMinutes;
+  if (count == null || count <= 1 || unit == null || unit <= 0) return null;
+  const left = count - (task.progressCount ?? 0);
+  return (left > 0 ? left : count) * unit;
+}
 
 /**
  * What a task is expected to cost *right now* — the single read every workload
@@ -171,7 +191,7 @@ export type EstimateSource = ChainCarrier & {
 export function estimatedMinutesFor(task: EstimateSource): number | null {
   const step = activeChainStep(task);
   if (step?.estimatedMinutes != null) return step.estimatedMinutes;
-  return task.estimatedMinutes ?? effortToMinutes(task.effort);
+  return task.estimatedMinutes ?? countdownEstimate(task) ?? effortToMinutes(task.effort);
 }
 
 /**

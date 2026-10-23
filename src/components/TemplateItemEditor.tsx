@@ -20,8 +20,8 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from './PinIcon';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import type { HolidayRule, Priority, Effort, TimeOfDay, TemplateAnchor, TemplateItem, TemplateItemCondition, TemplateItemVariant, TemplateAnswerGate, RecurrenceType, ChainItem, RotationItem, DeliverableKind, Polarity, Difficulty, MealSlot, WeatherCondition, QuotaPeriod } from '../types';
-import { PRIORITY_LABELS, TITLE_MAX_LENGTH, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
+import type { HolidayRule, Priority, Effort, TimeOfDay, TemplateAnchor, TemplateItem, TemplateItemCondition, TemplateItemVariant, TemplateAnswerGate, RecurrenceType, ChainItem, RotationItem, DeliverableKind, Polarity, Difficulty, LogMealSlot, WeatherCondition, QuotaPeriod } from '../types';
+import { PRIORITY_LABELS, TITLE_MAX_LENGTH, LOG_MEAL_SLOTS, LOG_MEAL_SLOT_LABELS } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
 import { slotForHour } from '../utils/mealLog';
@@ -291,7 +291,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   // half-typed "2." isn't thrown away mid-keystroke.
   const [medicationAmount, setMedicationAmount] = useState('');
   const [medicationUnit, setMedicationUnit] = useState<string | null>(null);
-  const [logMealSlot, setLogMealSlot] = useState<MealSlot | null>(null);
+  const [logMealSlot, setLogMealSlot] = useState<LogMealSlot | null>(null);
   const [logMealSlotByTime, setLogMealSlotByTime] = useState(false);
   const [penaltyMinutes, setPenaltyMinutes] = useState<number | null>(null);
   const [gatesApps, setGatesApps] = useState(false);
@@ -2971,13 +2971,13 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               re-picked by hand on every application. */}
           <CollapsibleField
             label="Log to food log"
-            summary={logMealSlot ? `Offers to log ${MEAL_SLOT_LABELS[logMealSlot].toLowerCase()} when completed` : undefined}
+            summary={logMealSlot === 'other' ? 'Offers to log food outside a meal when completed' : logMealSlot ? `Offers to log ${LOG_MEAL_SLOT_LABELS[logMealSlot].toLowerCase()} when completed` : undefined}
             hint="Tasks made from this item offer to add a food log entry for the meal below when completed."
             expanded={fieldOpen('logMealSlot')}
             onToggle={() => toggleField('logMealSlot')}
           >
-            <SegmentedControl<MealSlot>
-              options={MEAL_SLOTS.map(slot => ({ value: slot, label: MEAL_SLOT_LABELS[slot] }))}
+            <SegmentedControl<LogMealSlot>
+              options={LOG_MEAL_SLOTS.map(slot => ({ value: slot, label: LOG_MEAL_SLOT_LABELS[slot] }))}
               value={logMealSlot ?? 'breakfast'}
               onChange={next => { haptics.tap(); setLogMealSlot(prev => (prev === next ? null : next)); setLogMealSlotByTime(false); }}
               columns={2}

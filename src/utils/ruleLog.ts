@@ -1,5 +1,5 @@
-import type { MealSlot, RuleTaskLog, Task } from '../types';
-import { MEAL_SLOTS } from '../types';
+import type { LogMealSlot, RuleTaskLog, Task } from '../types';
+import { LOG_MEAL_SLOTS } from '../types';
 import { medicationKey } from './medicationLog';
 
 /**
@@ -29,8 +29,8 @@ const LOG_KEYS = [
   'logMealSlot', 'logSavedMealId', 'logMealSlotByTime',
 ] as const;
 
-function isMealSlot(v: unknown): v is MealSlot {
-  return typeof v === 'string' && (MEAL_SLOTS as readonly string[]).includes(v);
+function isMealSlot(v: unknown): v is LogMealSlot {
+  return typeof v === 'string' && (LOG_MEAL_SLOTS as readonly string[]).includes(v);
 }
 
 /**
