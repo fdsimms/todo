@@ -265,17 +265,81 @@ func buildCalendarDays(_ calendar: WidgetCalendar) -> [CalendarDayModel] {
     }
 }
 
+// ==== The gallery's sample ====
+
+/**
+ * What the widget gallery and a placeholder draw: a made-up today and
+ * tomorrow, the Calendar widget's counterpart of `gallerySampleResult`. Built
+ * as days directly rather than as a snapshot, since this widget reads EventKit
+ * itself and a preview reading it would put somebody's real meetings in the
+ * gallery. Times count from now, so the sample never looks like a day that's over.
+ */
+func gallerySampleCalendarDays(now: Date = Date()) -> [CalendarDayModel] {
+    let calendar = Calendar.current
+    let todayStart = calendar.startOfDay(for: now)
+    let tomorrowStart = calendar.date(byAdding: .day, value: 1, to: todayStart) ?? todayStart
+    let dayAfter = calendar.date(byAdding: .day, value: 1, to: tomorrowStart) ?? tomorrowStart
+    let blue = Color(hex: "039BE5")
+    let green = Color(hex: "33B679")
+    let purple = Color(hex: "8E24AA")
+    func key(_ date: Date) -> String {
+        let c = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", c.year ?? 1970, c.month ?? 1, c.day ?? 1)
+    }
+    func line(_ id: String, _ title: String, start: Date, minutes: Int?, color: Color?, detail: String?, task: Bool = false) -> CalendarLine {
+        CalendarLine(
+            id: id,
+            kind: task ? .task : .event,
+            title: title,
+            start: start,
+            end: minutes.map { start.addingTimeInterval(TimeInterval($0 * 60)) },
+            color: color,
+            detail: detail,
+            completed: false,
+            taskId: task ? id : nil
+        )
+    }
+    let soon = now.addingTimeInterval(30 * 60)
+    let today = CalendarDayModel(
+        key: key(todayStart),
+        start: todayStart,
+        end: tomorrowStart,
+        allDay: [],
+        lines: [
+            line("s1", "Design review", start: soon, minutes: 60, color: blue, detail: "Video call"),
+            line("s2", "Call Mom", start: soon.addingTimeInterval(2 * 3600), minutes: nil, color: nil, detail: "Family", task: true),
+            line("s3", "Climbing", start: soon.addingTimeInterval(3.5 * 3600), minutes: 90, color: green, detail: "Brooklyn Boulders"),
+        ],
+        untimed: 4
+    )
+    let tomorrow = CalendarDayModel(
+        key: key(tomorrowStart),
+        start: tomorrowStart,
+        end: dayAfter,
+        allDay: [CalendarAllDay(id: "s4", title: "Sam’s birthday", color: purple)],
+        lines: [
+            line("s5", "1:1 with Priya", start: tomorrowStart.addingTimeInterval(10 * 3600), minutes: 60, color: blue, detail: "Video call"),
+            line("s6", "Dinner at Lilia", start: tomorrowStart.addingTimeInterval(19.5 * 3600), minutes: 120, color: green, detail: "567 Union Ave"),
+        ],
+        untimed: 2
+    )
+    return [today, tomorrow]
+}
+
 // ==== The timeline ====
 
 private let maxCalendarEntries = 40
 
 struct CalendarProvider: TimelineProvider {
     func placeholder(in context: Context) -> CalendarEntry {
-        CalendarEntry(date: Date(), days: nil, message: nil)
+        CalendarEntry(date: Date(), days: gallerySampleCalendarDays(), message: nil)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (CalendarEntry) -> Void) {
-        completion(entry(at: Date()))
+        let now = Date()
+        completion(context.isPreview
+            ? CalendarEntry(date: now, days: gallerySampleCalendarDays(now: now), message: nil)
+            : entry(at: now))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<CalendarEntry>) -> Void) {
