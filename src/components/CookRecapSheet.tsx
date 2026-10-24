@@ -48,6 +48,11 @@ interface Props {
   /** The fridge section, or null when this meal has nothing to put in one. */
   onLogLeftovers?: () => void;
   /**
+   * "Don't ask again" under that question: this recipe, or this title for a
+   * meal with no recipe, stops raising it. Unset leaves the row without one.
+   */
+  onNeverAskLeftovers?: () => void;
+  /**
    * The weigh-the-dish section, or null when there is nothing to ask — a meal
    * with no recipe to remember it on, one whose weight is already recorded, or
    * a dish whose figures the nutrition rollup declined, where a weight would
@@ -145,6 +150,7 @@ export function CookRecapSheet({
   visible,
   title,
   onLogLeftovers,
+  onNeverAskLeftovers,
   cookedWeight,
   rows,
   restockRows,
@@ -482,6 +488,16 @@ export function CookRecapSheet({
                       <InlineAction label="Log" onPress={onLogLeftovers} accessibilityLabel="Log leftovers" />
                     </View>
                   </View>
+                  {onNeverAskLeftovers && (
+                    <View style={styles.neverAskRow}>
+                      <InlineAction
+                        label="Don’t ask again"
+                        variant="neutral"
+                        onPress={onNeverAskLeftovers}
+                        accessibilityLabel="Don’t ask about leftovers for this meal again"
+                      />
+                    </View>
+                  )}
                 </View>
               </>
             )}
@@ -788,6 +804,8 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     paddingHorizontal: spacing.md,
     paddingVertical: 13,
   },
+  // Under the question rather than beside it, so the question keeps its row.
+  neverAskRow: { alignItems: 'flex-start', paddingHorizontal: spacing.md, paddingBottom: spacing.smd },
   choiceLabel: { flexGrow: 1, flexShrink: 0, color: colors.text, fontSize: font.md },
   // The same row geometry as choiceRow above, with a field where its label is.
   weighInWrap: { paddingHorizontal: spacing.md, paddingTop: spacing.smd, paddingBottom: spacing.xs },

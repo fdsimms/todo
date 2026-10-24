@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { View, Platform } from 'react-native';
+import { View, Platform, Alert } from 'react-native';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import type { UnitSystem } from '../../utils/unitConvert';
 import { useGroceryStore } from '../../store/useGroceryStore';
@@ -20,6 +20,7 @@ import { useCookwareStore } from '../../store/useCookwareStore';
 import { standingSwaps } from '../../utils/standingSwaps';
 import { makeSettingsStyles } from './settingsStyles';
 import { haptics } from '../../utils/haptics';
+import { BUTTON_LABEL } from '../../copy/shared';
 import { CURRENCY_SYMBOLS, CURRENCY_SYMBOL_MAX_LENGTH } from '../../types';
 import { LazySheet } from '../../components/LazySheet';
 import { STANDARD_DRINK_SIZES } from '../../utils/alcohol';
@@ -68,6 +69,8 @@ export function KitchenSettings() {
   const runningLowAddsToList = useSettingsStore(s => s.runningLowAddsToList);
   const setRunningLowAddsToList = useSettingsStore(s => s.setRunningLowAddsToList);
   const setRestockOfferEnabled = useSettingsStore(s => s.setRestockOfferEnabled);
+  const leftoverOptOutCount = useSettingsStore(s => s.leftoverPromptOptOuts.length);
+  const setLeftoverPromptOptOuts = useSettingsStore(s => s.setLeftoverPromptOptOuts);
   const tripLiveActivity = useSettingsStore(s => s.tripLiveActivity);
   const setTripLiveActivity = useSettingsStore(s => s.setTripLiveActivity);
   const standardDrinkGrams = useSettingsStore(s => s.standardDrinkGrams);
@@ -197,6 +200,30 @@ export function KitchenSettings() {
           toggle={restockOfferEnabled}
           onPress={() => setRestockOfferEnabled(!restockOfferEnabled)}
           accessibilityLabel="Restock after cooking"
+        />
+        )}
+        {/* The way back from "Don't ask again" on the leftovers question. Only
+            there while something has been turned off, so it isn't a row that
+            does nothing. */}
+        {cookRecapEnabled && leftoverOptOutCount > 0 && (
+        <SettingsRow
+          icon="cube-outline"
+          label="Meals skipping the leftovers question"
+          hint="Meals you chose “Don’t ask again” for."
+          value={String(leftoverOptOutCount)}
+          chevron
+          onPress={() => {
+            haptics.tap();
+            Alert.alert(
+              'Ask about leftovers again?',
+              'These meals will ask whether anything is left over the next time you mark them cooked.',
+              [
+                { text: BUTTON_LABEL.cancel, style: 'cancel' },
+                { text: 'Ask again', onPress: () => setLeftoverPromptOptOuts([]) },
+              ]
+            );
+          }}
+          accessibilityLabel="Meals skipping the leftovers question"
         />
         )}
       </SettingsSection>

@@ -61,6 +61,7 @@ import { parseGeneratorEstimates, type GeneratorEstimates } from '../utils/ruleE
 import type { SortOption, RecipeSortOption, ProjectSortOption, Priority, Effort, Difficulty, GeneratedKind, GeneratedTaskExtras, TaskFieldDefaults, MealSlot, TimeOfDay, TitleRule, WeatherRule, EventTaskRule, ScreenTimeRule, BlockOfferRule, HealthRule, NutrientKey, ReminderCapture } from '../types';
 import { clampStepGoal, parseStepGoal } from '../utils/stepGoal';
 import { clampShortNightMinutes, parseShortNightMinutes, SHORT_NIGHT_MINUTES_DEFAULT } from '../utils/shortNight';
+import { parseLeftoverOptOuts, serializeLeftoverOptOuts } from '../utils/leftoverOptOut';
 import { parseHealthRowKeys, serializeHealthRowKeys, type HealthRowKey } from '../utils/dayContextRows';
 import {
   parseNutritionTargets,
@@ -863,6 +864,9 @@ interface SettingsStore {
   // known items missing from the list (see #1481), so this is a toggle for
   // someone who never shops from a recipe, not a fix for a bad default.
   restockOfferEnabled: boolean;
+  // Meals that skip that sheet's "Anything left over?" row ("Don't ask again"):
+  // recipe ids, and titles for a meal with no recipe. See leftoverOptOut.ts.
+  leftoverPromptOptOuts: string[];
   // Whether marking an item "Running low" by hand also puts it on the grocery list.
   // Defaults on, which is how the mark has always behaved; off makes it a note
   // about the pantry only. The supply sweep and a purchase ignore it, since a
@@ -2173,6 +2177,7 @@ interface SettingsStore {
   setMealSlotStepEstimate: (stepId: string, minutes: number) => void;
   setCookRecapEnabled: (on: boolean) => void;
   setRestockOfferEnabled: (on: boolean) => void;
+  setLeftoverPromptOptOuts: (optOuts: string[]) => void;
   setRunningLowAddsToList: (on: boolean) => void;
   setProductLookupEnabled: (on: boolean) => void;
   setSortOption: (sort: SortOption) => void;
@@ -2610,6 +2615,7 @@ const DEFAULT_SETTINGS = {
   mealSlotTasksWrittenThroughDayKey: null,
   cookRecapEnabled: true,
   restockOfferEnabled: true,
+  leftoverPromptOptOuts: [],
   runningLowAddsToList: true,
   productLookupEnabled: true,
   onDeviceAiEnabled: true,
@@ -3063,6 +3069,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   mealSlotStepEstimates: {},
   cookRecapEnabled: true,
   restockOfferEnabled: true,
+  leftoverPromptOptOuts: [],
   runningLowAddsToList: true,
   productLookupEnabled: true,
   onDeviceAiEnabled: true,
@@ -3477,6 +3484,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // Both default on, same reading as mealCookTasks above.
     const cookRecapEnabled = dbGetSetting('cookRecapEnabled') !== 'false';
     const restockOfferEnabled = dbGetSetting('restockOfferEnabled') !== 'false';
+    const leftoverPromptOptOuts = parseLeftoverOptOuts(dbGetSetting('leftoverPromptOptOuts'));
     const runningLowAddsToList = dbGetSetting('runningLowAddsToList') !== 'false';
     // Reads `!== 'false'` like the booleans above it, so an install that
     // predates this setting gets the default without a migration.
@@ -4100,6 +4108,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       lastVisitedScreen,
       leaveLiveActivity,
       leaveWindowMinutes,
+      leftoverPromptOptOuts,
       leftoverUseUpTaskCategory,
       leftoverUseUpTasks,
       limitsTodayCategory,
@@ -5743,6 +5752,13 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setRestockOfferEnabled(on: boolean) {
     dbSetSetting('restockOfferEnabled', on ? 'true' : 'false');
     set({ restockOfferEnabled: on });
+  },
+
+  // Read live by CookRecap: "Don't ask again" on the open sheet drops its
+  // Leftovers row at once, and clearing the list in Settings brings it back.
+  setLeftoverPromptOptOuts(optOuts: string[]) {
+    dbSetSetting('leftoverPromptOptOuts', serializeLeftoverOptOuts(optOuts));
+    set({ leftoverPromptOptOuts: parseLeftoverOptOuts(serializeLeftoverOptOuts(optOuts)) });
   },
 
   // Read live by `setRunningLow` on each mark, so a change applies to the next

@@ -13,6 +13,7 @@ import {
   restockRows,
 } from '../utils/mealPlanGroceries';
 import { leftoverKeepDaysFor, leftoverPartsFor } from '../utils/leftovers';
+import { addLeftoverOptOut, isLeftoverOptedOut } from '../utils/leftoverOptOut';
 import { asWrittenCookedWeight } from '../utils/mealLog';
 import { recipeNutrition } from '../utils/recipeNutrition';
 import { standingSwapMap } from '../utils/standingSwaps';
@@ -63,6 +64,8 @@ export function CookRecap() {
   const pendingFinishLeftoverId = useLeftoverStore(s => s.pendingFinishLeftoverId);
   const cookRecapEnabled = useSettingsStore(s => s.cookRecapEnabled);
   const restockOfferEnabled = useSettingsStore(s => s.restockOfferEnabled);
+  const leftoverPromptOptOuts = useSettingsStore(s => s.leftoverPromptOptOuts);
+  const setLeftoverPromptOptOuts = useSettingsStore(s => s.setLeftoverPromptOptOuts);
 
   const [leftoverVisible, setLeftoverVisible] = useState(false);
 
@@ -132,7 +135,11 @@ export function CookRecap() {
     };
   }, [shownRecap, recipe, recipesById]);
 
-  const askLeftovers = !!shownRecap?.canLogLeftovers;
+  // "Don't ask again" is by recipe, or by title for a meal with no recipe. It
+  // reads the live list, so pressing it takes the row off the open sheet.
+  const askLeftovers =
+    !!shownRecap?.canLogLeftovers &&
+    !isLeftoverOptedOut(leftoverPromptOptOuts, shownRecap.recipeId, shownRecap.title);
   const hasSomethingToAsk =
     askLeftovers || askCookedWeight || rows.length > 0 || restockList.length > 0;
 
@@ -184,6 +191,11 @@ export function CookRecap() {
       visible={open}
       title={shownRecap.title}
       onLogLeftovers={askLeftovers ? () => setLeftoverVisible(true) : undefined}
+      onNeverAskLeftovers={
+        askLeftovers
+          ? () => setLeftoverPromptOptOuts(addLeftoverOptOut(leftoverPromptOptOuts, shownRecap.recipeId, shownRecap.title))
+          : undefined
+      }
       cookedWeight={
         askCookedWeight && recipe
           // Divided by this cooking's scale on the way in, because what goes on
