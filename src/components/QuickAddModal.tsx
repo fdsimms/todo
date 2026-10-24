@@ -34,6 +34,7 @@ import { alertFailedWithSettings } from '../utils/permissionAlert';
 import { askForReminderPermissionIfNeeded } from '../utils/reminderPermission';
 import { useTitleSelection } from '../hooks/useTitleSelection';
 import { animateLayout } from '../utils/layoutAnimation';
+import { RotatingChevron } from './RotatingChevron';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { medicationVocabulary, type MedicationDose } from '../utils/medicationLog';
 import { parseQuickDose } from '../utils/quickDose';
@@ -561,6 +562,8 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   const [editingStepTitle, setEditingStepTitle] = useState('');
   const [newStepTitle, setNewStepTitle] = useState('');
   const [customLinkText, setCustomLinkText] = useState('');
+  // The app shortcuts stay folded unless the link already is one: most links are a web address.
+  const [linkAppsOpen, setLinkAppsOpen] = useState(false);
   const [phoneText, setPhoneText] = useState('');
   const [emailText, setEmailText] = useState('');
   const [tagInput, setTagInput] = useState('');
@@ -2234,6 +2237,9 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     if (panel === 'link' && linkUrl && !KNOWN_LINK_APPS.some(app => app.scheme === linkUrl)) {
       setCustomLinkText(linkUrl);
     }
+    if (panel === 'link') {
+      setLinkAppsOpen(!!linkUrl && KNOWN_LINK_APPS.some(app => app.scheme === linkUrl));
+    }
     if (panel === 'phone') {
       setPhoneText(effectivePhone ?? '');
     }
@@ -3477,31 +3483,6 @@ parsed
 
           {activePanel === 'link' && (
             <View style={styles.panel}>
-              {/* A horizontal scroll rather than a wrapping row: KNOWN_LINK_APPS is
-                  long enough that wrapping it full-width turned this panel into a
-                  wall of pills before the URL input was even reached. One row keeps
-                  the panel's height in line with every other quick-add panel. */}
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.suggestionsScroll}>
-                <View style={styles.linkAppRow}>
-                  {linkAppsFor(kitchenEnabled).map(app => (
-                    <TouchableOpacity
-                      key={app.scheme}
-                      style={[styles.linkAppChip, linkUrl === app.scheme && styles.linkAppChipActive]}
-                      onPress={() => { haptics.tap(); setLinkUrl(app.scheme); setActivePanel(null); }}
-                      activeOpacity={interaction.activeOpacity}
-                    >
-                      <Ionicons
-                        name={app.icon as never}
-                        size={iconSize.sm}
-                        color={linkUrl === app.scheme ? colors.onAccent : colors.textSecondary}
-                      />
-                      <Text style={[styles.linkAppChipText, linkUrl === app.scheme && styles.linkAppChipTextActive]}>
-                        {app.name}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </ScrollView>
               <View style={styles.linkCustomRow}>
                 <Ionicons name="globe-outline" size={16} color={colors.textSecondary} />
                 <TextField
@@ -3530,6 +3511,44 @@ parsed
                   </TouchableOpacity>
                 )}
               </View>
+              <TouchableOpacity
+                style={styles.linkAppsToggle}
+                onPress={() => { haptics.tap(); animateLayout(); setLinkAppsOpen(v => !v); }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel="Open an app"
+                accessibilityState={{ expanded: linkAppsOpen }}
+              >
+                <Text style={styles.linkAppsToggleText}>Or open an app</Text>
+                <RotatingChevron open={linkAppsOpen} size={iconSize.sm} color={colors.textSecondary} />
+              </TouchableOpacity>
+              {/* A horizontal scroll rather than a wrapping row: KNOWN_LINK_APPS is
+                  long enough that wrapping it full-width turned this panel into a
+                  wall of pills before the URL input was even reached. One row keeps
+                  the panel's height in line with every other quick-add panel. */}
+              {linkAppsOpen && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.suggestionsScroll}>
+                <View style={styles.linkAppRow}>
+                  {linkAppsFor(kitchenEnabled).map(app => (
+                    <TouchableOpacity
+                      key={app.scheme}
+                      style={[styles.linkAppChip, linkUrl === app.scheme && styles.linkAppChipActive]}
+                      onPress={() => { haptics.tap(); setLinkUrl(app.scheme); setActivePanel(null); }}
+                      activeOpacity={interaction.activeOpacity}
+                    >
+                      <Ionicons
+                        name={app.icon as never}
+                        size={iconSize.sm}
+                        color={linkUrl === app.scheme ? colors.onAccent : colors.textSecondary}
+                      />
+                      <Text style={[styles.linkAppChipText, linkUrl === app.scheme && styles.linkAppChipTextActive]}>
+                        {app.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+              )}
             </View>
           )}
 
@@ -4476,6 +4495,13 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number, textScaleFactor = 1)
     fontWeight: fontWeight.semibold,
   },
   footerAddTextDisabled: { color: colors.textTertiary },
+  linkAppsToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.sm,
+  },
+  linkAppsToggleText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
   linkAppRow: {
     flexDirection: 'row',
     gap: spacing.xs,

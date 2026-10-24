@@ -182,6 +182,15 @@ public class TodoHealthBridgeModule: Module {
     if let heartRate = HKQuantityType.quantityType(forIdentifier: .heartRate) {
       types.insert(heartRate)
     }
+    // Resting heart rate, one figure a day, for the Blood pressure screen's
+    // pulse list (`readPulseSeries`). The rule that kept it out was rewritten
+    // for this: see `docs/arch/health-data.md`, "Pulse on the blood pressure
+    // screen". Like every addition here, an install that already answered the
+    // sheet gets nothing until somebody taps the access row again.
+    // (https://developer.apple.com/tutorials/data/documentation/healthkit/hkquantitytypeidentifier/restingheartrate.json)
+    if let resting = HKQuantityType.quantityType(forIdentifier: .restingHeartRate) {
+      types.insert(resting)
+    }
     return types
   }
 
@@ -229,6 +238,12 @@ public class TodoHealthBridgeModule: Module {
       if let type = HKQuantityType.quantityType(forIdentifier: entry.identifier) {
         types.insert(type)
       }
+    }
+    // The drink count a logged meal may carry (`writeFoodSamples`). Like the
+    // types added after the first thirteen, an install that already answered
+    // the sheet is asked about it when somebody next taps the access row.
+    if let alcohol = Self.alcoholType {
+      types.insert(alcohol)
     }
     // A finished strength session (`writeWorkout`), its own review in
     // `docs/arch/health-data.md`. `HKWorkoutType` inherits from
@@ -379,6 +394,24 @@ public class TodoHealthBridgeModule: Module {
     ("chlorideMg", .dietaryChloride, HKUnit.gramUnit(with: .milli)),
   ]
 
+  /// The type a drink count is saved under, kept out of `nutrientWriteTable`
+  /// on purpose. It is not a dietary type and its unit is a count of standard
+  /// drinks, where every row of that table is a mass or a volume in the key's
+  /// own unit, and a meal is saved as one food correlation of the table's
+  /// types. **Whether a food correlation accepts this type has not been
+  /// checked** (Apple's pages for the food correlation and for
+  /// `numberOfAlcoholicBeverages` do not say, and this could not be run), so it
+  /// is saved as a sample of its own beside the meal, where a refusal costs the
+  /// drink count and not the meal.
+  ///
+  /// `numberOfAlcoholicBeverages` is `HKQuantityTypeIdentifier`, iOS 15 and
+  /// later, a cumulative count read with `HKUnit.count()`; declaration and
+  /// discussion read off
+  /// https://developer.apple.com/tutorials/data/documentation/healthkit/hkquantitytypeidentifier/numberofalcoholicbeverages.json
+  private static var alcoholType: HKQuantityType? {
+    return HKQuantityType.quantityType(forIdentifier: .numberOfAlcoholicBeverages)
+  }
+
   /// The share type a write-side call is asking about, resolved from the key
   /// the JS side passes.
   ///
@@ -411,6 +444,7 @@ public class TodoHealthBridgeModule: Module {
       ].compactMap { $0 }
     case "nutrition":
       return nutrientWriteTable.compactMap { HKQuantityType.quantityType(forIdentifier: $0.identifier) }
+        + [alcoholType].compactMap { $0 }
     case "workout":
       return [HKObjectType.workoutType()]
     default:
@@ -1074,8 +1108,54 @@ public class TodoHealthBridgeModule: Module {
         let quantity = HKQuantity(unit: entry.unit, doubleValue: value)
         samples.insert(HKQuantitySample(type: type, quantity: quantity, start: when, end: when))
       }
-      guard !samples.isEmpty else {
+      // The drink count, when the meal states one and the person allowed it.
+      // Saved as a sample of its own and never put in the correlation (see
+      // `alcoholType`), so the meal above is written exactly as it was before
+      // this existed and a refusal here costs only the count.
+      var alcoholSample: HKQuantitySample?
+      if let number = parsed["alcoholDrinks"] as? NSNumber,
+         number.doubleValue.isFinite, number.doubleValue > 0,
+         let alcoholType = Self.alcoholType {
+        var allowed = false
+        TodoHealthExceptionCatcher.runCatchingExceptions {
+          allowed = self.store.authorizationStatus(for: alcoholType) == .sharingAuthorized
+        }
+        if allowed {
+          let count = HKQuantity(unit: HKUnit.count(), doubleValue: number.doubleValue)
+          alcoholSample = HKQuantitySample(type: alcoholType, quantity: count, start: when, end: when)
+        }
+      }
+
+      guard !samples.isEmpty || alcoholSample != nil else {
         promise.resolve("[]")
+        return
+      }
+
+      // Resolves the ids of everything that was saved, `"[]"` for nothing.
+      let finish: ([String]) -> Void = { ids in
+        let encoded = (try? JSONSerialization.data(withJSONObject: ids))
+          .flatMap { String(data: $0, encoding: .utf8) }
+        promise.resolve(encoded ?? "[]")
+      }
+      // Saves the drink count after the meal has been answered for, and adds its
+      // id to the list so retracting the entry retracts it too.
+      let saveAlcohol: ([String]) -> Void = { ids in
+        guard let alcohol = alcoholSample else {
+          finish(ids)
+          return
+        }
+        var alcoholStarted = false
+        TodoHealthExceptionCatcher.runCatchingExceptions {
+          self.store.save(alcohol) { success, _ in
+            finish(success ? ids + [alcohol.uuid.uuidString] : ids)
+          }
+          alcoholStarted = true
+        }
+        if !alcoholStarted { finish(ids) }
+      }
+
+      guard !samples.isEmpty else {
+        saveAlcohol([])
         return
       }
 
@@ -1093,18 +1173,16 @@ public class TodoHealthBridgeModule: Module {
       TodoHealthExceptionCatcher.runCatchingExceptions {
         self.store.save(meal) { success, _ in
           guard success else {
-            promise.resolve("[]")
+            saveAlcohol([])
             return
           }
           var ids = [meal.uuid.uuidString]
           ids.append(contentsOf: samples.map { $0.uuid.uuidString })
-          let encoded = (try? JSONSerialization.data(withJSONObject: ids))
-            .flatMap { String(data: $0, encoding: .utf8) }
-          promise.resolve(encoded ?? "[]")
+          saveAlcohol(ids)
         }
         started = true
       }
-      if !started { promise.resolve("[]") }
+      if !started { saveAlcohol([]) }
       #else
       promise.resolve("[]")
       #endif
@@ -1142,9 +1220,12 @@ public class TodoHealthBridgeModule: Module {
         return
       }
 
-      let candidates: [HKObjectType] = Self.nutrientWriteTable.compactMap {
+      var candidates: [HKObjectType] = Self.nutrientWriteTable.compactMap {
         HKQuantityType.quantityType(forIdentifier: $0.identifier)
       }
+      // The drink count a meal saved beside it (`writeFoodSamples`), retracted
+      // with the rest or it would outlive the entry it came from.
+      if let alcohol = Self.alcoholType { candidates.append(alcohol) }
       guard !candidates.isEmpty else {
         promise.resolve(false)
         return
@@ -1931,6 +2012,102 @@ public class TodoHealthBridgeModule: Module {
           self.store.execute(pulseQuery)
         }
         self.store.execute(query)
+        started = true
+      }
+      if !started { promise.resolve("[]") }
+      #else
+      promise.resolve("[]")
+      #endif
+    }
+
+    /// Save one pulse on its own, in beats per minute, filed at `whenISO`: a
+    /// heart rate sample with no blood pressure beside it. The same one-shot
+    /// shape as `writeBodyMassSample` (no id kept, no edit or delete, because
+    /// Health is the record) and the same bounds the pulse of a reading is held
+    /// to, an absurdity check for a mistyped digit and not a judgement.
+    AsyncFunction("writeHeartRateSample") { (pulse: Int, whenISO: String, promise: Promise) in
+      #if canImport(HealthKit)
+      guard HKHealthStore.isHealthDataAvailable(),
+            pulse >= 30, pulse <= 250,
+            let heartType = HKQuantityType.quantityType(forIdentifier: .heartRate) else {
+        promise.resolve(false)
+        return
+      }
+      let when = Self.parseISO(whenISO) ?? Date()
+      let perMinute = HKUnit.count().unitDivided(by: HKUnit.minute())
+      let sample = HKQuantitySample(
+        type: heartType, quantity: HKQuantity(unit: perMinute, doubleValue: Double(pulse)),
+        start: when, end: when)
+      var started = false
+      TodoHealthExceptionCatcher.runCatchingExceptions {
+        self.store.save(sample) { success, _ in
+          promise.resolve(success)
+        }
+        started = true
+      }
+      if !started { promise.resolve(false) }
+      #else
+      promise.resolve(false)
+      #endif
+    }
+
+    /// The pulses the Blood pressure screen lists, as JSON:
+    /// `[{"at":"…","bpm":64,"kind":"logged"}, {"at":"…","bpm":58,"kind":"resting"}, …]`,
+    /// oldest first.
+    ///
+    /// Two kinds and nothing else. `logged` is a heart rate sample this app
+    /// wrote (its source is this app's bundle), which is a pulse somebody typed
+    /// in: a Watch's all-day samples, another app's and the watch app's workout
+    /// samples all have other sources and never appear. `resting` is Apple's
+    /// own resting heart rate, one a day. A pulse saved with a blood pressure
+    /// reading is also `logged` here, and `src/utils/pulseLog.ts` drops it
+    /// where it sits at a reading's instant, so it isn't listed twice.
+    ///
+    /// Source is compared by bundle identifier, a plain string, rather than by
+    /// `HKSource` equality, so nothing about that comparison has to be guessed:
+    /// `HKSource.bundleIdentifier` is documented as `var bundleIdentifier: String`.
+    /// An empty answer covers a refused read and nothing recorded alike, which
+    /// is deliberate (`docs/arch/health-data.md`).
+    AsyncFunction("readPulseSeries") { (anchorISO: String, days: Int, promise: Promise) in
+      #if canImport(HealthKit)
+      let calendar = Calendar.current
+      guard HKHealthStore.isHealthDataAvailable(),
+            days > 0, days <= 400,
+            let anchor = Self.parseISO(anchorISO),
+            let end = calendar.date(byAdding: .day, value: days, to: anchor),
+            let heartType = HKQuantityType.quantityType(forIdentifier: .heartRate),
+            let restingType = HKQuantityType.quantityType(forIdentifier: .restingHeartRate) else {
+        promise.resolve("[]")
+        return
+      }
+      let ownBundle = Bundle.main.bundleIdentifier ?? ""
+      let perMinute = HKUnit.count().unitDivided(by: HKUnit.minute())
+      let predicate = HKQuery.predicateForSamples(withStart: anchor, end: end, options: .strictStartDate)
+      var started = false
+      TodoHealthExceptionCatcher.runCatchingExceptions {
+        let loggedQuery = HKSampleQuery(
+          sampleType: heartType, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: nil
+        ) { _, heartSamples, _ in
+          var entries: [(at: Date, bpm: Int, kind: String)] = []
+          for case let sample as HKQuantitySample in heartSamples ?? []
+          where !ownBundle.isEmpty && sample.sourceRevision.source.bundleIdentifier == ownBundle {
+            entries.append((sample.startDate, Int(sample.quantity.doubleValue(for: perMinute).rounded()), "logged"))
+          }
+          let restingQuery = HKSampleQuery(
+            sampleType: restingType, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: nil
+          ) { _, restingSamples, _ in
+            for case let sample as HKQuantitySample in restingSamples ?? [] {
+              entries.append((sample.startDate, Int(sample.quantity.doubleValue(for: perMinute).rounded()), "resting"))
+            }
+            entries.sort { $0.at < $1.at }
+            let json: [String] = entries.map { e in
+              "{\"at\":\"\(Self.formatISO(e.at))\",\"bpm\":\(e.bpm),\"kind\":\"\(e.kind)\"}"
+            }
+            promise.resolve("[" + json.joined(separator: ",") + "]")
+          }
+          self.store.execute(restingQuery)
+        }
+        self.store.execute(loggedQuery)
         started = true
       }
       if !started { promise.resolve("[]") }

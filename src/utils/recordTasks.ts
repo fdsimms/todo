@@ -4,12 +4,13 @@ import { hasLogOnDay, hasLoggedSince } from './moodLog';
 import { MOOD_LOG_LINK_URL, moodLogDayKey } from './moodTasks';
 import { timeSegmentThreshold } from './visibilityUtils';
 import { WEIGH_IN_LINK_URL, weighInDayKey } from './weightTasks';
+import { BLOOD_PRESSURE_LINK_URL, bloodPressureDayKey } from './bloodPressureTasks';
 
 /**
  * The generated tasks that ask for a record, and are answered by the record.
  *
  * "Log how you're feeling", "Write in your journal", "Write down your dream" and
- * "Record your weight" each have a sheet, and saving an entry for today
+ * "Record your weight" and "Record your blood pressure" each have a sheet, and saving an entry for today
  * makes its row read ready and completes it (`autoCompleteRecordTasks`); an
  * entry that arrives any other way leaves the tick to the person. So
  * the app already knows whether the thing was done, and a checkbox that
@@ -23,7 +24,7 @@ import { WEIGH_IN_LINK_URL, weighInDayKey } from './weightTasks';
  * Nothing in this file completes a task. A missed mark claims nothing, so it
  * is never gated.
  */
-const RECORD_KINDS: ReadonlySet<string> = new Set(['moodLog', 'journalLog', 'dreamLog', 'weighIn']);
+const RECORD_KINDS: ReadonlySet<string> = new Set(['moodLog', 'journalLog', 'dreamLog', 'weighIn', 'bloodPressureLog']);
 
 /** Whether this task is one a record answers, so its checkbox never completes it. */
 export function isAnsweredByRecord(task: Pick<Task, 'generatedKind'>): boolean {
@@ -43,6 +44,7 @@ export function recordLogUrl(task: Pick<Task, 'generatedKind'>): string | null {
     case 'journalLog': return journalLogUrl('journal');
     case 'dreamLog': return journalLogUrl('dream');
     case 'weighIn': return WEIGH_IN_LINK_URL;
+    case 'bloodPressureLog': return BLOOD_PRESSURE_LINK_URL;
     default: return null;
   }
 }
@@ -66,6 +68,8 @@ export interface RecordContext {
   journalEntries: readonly Pick<JournalEntry, 'kind' | 'dayKey' | 'loggedAt'>[];
   /** The day a weigh-in request was last found answered by a reading, or null. */
   weighInAnsweredOn: string | null;
+  /** The same for a blood pressure request. */
+  bloodPressureAnsweredOn: string | null;
 }
 
 /** The part of the day a check-in or journal reminder was raised for, off its source id. */
@@ -80,8 +84,8 @@ function segmentOfSource(task: Pick<Task, 'generatedSourceId'>): Parameters<type
  *
  * The same question the generating pass asks before writing the task, read
  * back: an any-time reminder is answered by an entry on its day, one raised for
- * a part of the day by an entry since that part began. A weigh-in is answered by
- * a reading in its window, which only Health can say, so the pass records the
+ * a part of the day by an entry since that part began. A weigh-in or a blood
+ * pressure request is answered by a reading in its window, which only Health can say, so the pass records the
  * answer (`weighInAnsweredOn`) rather than the row reading Health on every render.
  */
 export function isRecordAnswered(task: Task, ctx: RecordContext): boolean {
@@ -104,6 +108,10 @@ export function isRecordAnswered(task: Task, ctx: RecordContext): boolean {
     case 'weighIn': {
       const day = weighInDayKey(task);
       return day !== null && ctx.weighInAnsweredOn === day;
+    }
+    case 'bloodPressureLog': {
+      const day = bloodPressureDayKey(task);
+      return day !== null && ctx.bloodPressureAnsweredOn === day;
     }
     default:
       return false;

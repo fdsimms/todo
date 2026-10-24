@@ -88,3 +88,21 @@ describe('panelWarnings', () => {
     expect(warnings.filter(w => w.key === 'sodiumMg')).toHaveLength(1);
   });
 });
+
+describe('alcohol in the energy check', () => {
+  it('counts alcohol toward the calories, so a beer is not flagged for its energy', () => {
+    const beer = {
+      basis: 'perServing',
+      servingGrams: null,
+      servingText: null,
+      amounts: { calorieKcal: 150, proteinG: 1.6, carbsG: 13, fatG: 0, alcoholG: 14 },
+      source: 'manual',
+      sourceId: null,
+      portions: [],
+      recordedAt: '2026-09-10T12:00:00.000Z',
+    } as unknown as FoodNutrition;
+    expect(panelWarnings(beer).some(w => w.key === 'calorieKcal')).toBe(false);
+    const withoutAlcohol = { ...beer, amounts: { ...beer.amounts, alcoholG: undefined } } as unknown as FoodNutrition;
+    expect(panelWarnings(withoutAlcohol).some(w => w.key === 'calorieKcal')).toBe(true);
+  });
+});

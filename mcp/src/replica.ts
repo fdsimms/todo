@@ -258,6 +258,8 @@ export interface ReplicaSettings {
   vacationDrivenBy: string | null;
   /** The unit the person counts water in. Display only: `waterMl` is stored in millilitres whichever is picked. */
   waterUnit: WaterUnit;
+  /** Grams of alcohol the person counts as one drink (14, 10 or 8). Display only: the log stores grams. */
+  standardDrinkGrams: number;
   /** Groceries, recipes and the meal plan. Off means that whole area is hidden in the app. */
   kitchenEnabled: boolean;
   /** Simplified mode: the advanced half of the app is hidden. */
@@ -4353,6 +4355,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         vacationEnd: s.vacationEnd,
         vacationDrivenBy: s.vacationDrivenBy,
         waterUnit: s.waterUnit,
+        standardDrinkGrams: s.standardDrinkGrams,
         kitchenEnabled: s.kitchenEnabled,
         simpleMode: s.simpleMode,
         rewardsEnabled: s.rewardsEnabled,

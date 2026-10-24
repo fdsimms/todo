@@ -6,6 +6,7 @@ import type { ThemeMode } from '../theme';
 import type { WeightUnit } from '../utils/weightLog';
 import type { DumbbellEntry } from '../utils/dumbbellLoad';
 import type { WaterUnit } from '../utils/waterLog';
+import { normalizeStandardDrinkGrams, setDisplayDrinkGrams } from '../utils/alcohol';
 import type { PlateInventory } from '../types';
 import { DEFAULT_PLATE_INVENTORY, clampRestSeconds, normalizePlateInventory, parsePlateInventory, parseRestSeconds, DEFAULT_REST_SECONDS } from '../utils/workoutData';
 import { getLogicalToday } from '../utils/dateUtils';
@@ -41,6 +42,7 @@ import {
   type BodyProfile,
 } from '../utils/energyBudget';
 import { DEFAULT_WEIGH_IN_EVERY_DAYS, clampWeighInEveryDays } from '../utils/weightTasks';
+import { DEFAULT_BLOOD_PRESSURE_EVERY_DAYS, clampBloodPressureEveryDays } from '../utils/bloodPressureTasks';
 import {
   DEFAULT_SNACK_NUDGE_FROM_HOUR,
   DEFAULT_SNACK_NUDGE_SHARE_PERCENT,
@@ -1201,6 +1203,14 @@ interface SettingsStore {
   waterUnit: WaterUnit;
 
   /**
+   * How many grams of alcohol the food log counts as one drink: 14 (US), 10
+   * (Australia) or 8 (UK). Display only, like `waterUnit`: the log stores grams
+   * of ethanol, so changing it re-reads every entry in the new size and
+   * rewrites nothing. Apple Health is always told in US drinks.
+   */
+  standardDrinkGrams: number;
+
+  /**
    * The Workouts area (docs/arch/workouts.md). Off by default, since a large
    * area nobody asked for is clutter; while off, its screen leaves the menu and
    * the tab bar. Kept out of DEFAULT_SETTINGS for kitchenEnabled's reason:
@@ -1947,6 +1957,17 @@ interface SettingsStore {
   // settings for the same reason. Written by writeGeneratedOptOut's weighIn
   // case, never by the pass clearing an unanswered request.
   weighInDeclinedDayKey: string | null;
+  // Whether a stretch with no blood pressure reading adds a task to record one.
+  // Off by default, and the same three switches as weighInTasks (this, plus
+  // healthReadEnabled and healthWriteEnabled). See src/utils/bloodPressureTasks.ts.
+  bloodPressureTasks: boolean;
+  bloodPressureTaskCategory: string | null;
+  // Days without a reading before the task is offered, weighInEveryDays' twin.
+  bloodPressureEveryDays: number;
+  // The day key a request was last raised on, and the day one was last deleted
+  // on: weighInLastDayKey and weighInDeclinedDayKey, for the same reasons.
+  bloodPressureLastDayKey: string | null;
+  bloodPressureDeclinedDayKey: string | null;
   // Opt-in, off by default: a one-off task for the water still owed once a water
   // task that follows the food log's target has already been finished for the
   // day and exercise then raised the target. See src/utils/waterShortfallTasks.ts.
@@ -2244,6 +2265,7 @@ interface SettingsStore {
   setKeepOpenAfterFoodLog: (on: boolean) => void;
   setWeightUnit: (unit: WeightUnit) => void;
   setWaterUnit: (unit: WaterUnit) => void;
+  setStandardDrinkGrams: (grams: number) => void;
   setWorkoutsEnabled: (on: boolean) => void;
   setWorkoutUnit: (unit: WeightUnit) => void;
   setDumbbellEntry: (entry: DumbbellEntry) => void;
@@ -2433,6 +2455,11 @@ interface SettingsStore {
   setWeighInEveryDays: (days: number) => void;
   setWeighInLastDayKey: (dayKey: string | null) => void;
   setWeighInDeclinedDayKey: (dayKey: string | null) => void;
+  setBloodPressureTasks: (on: boolean) => void;
+  setBloodPressureTaskCategory: (category: string | null) => void;
+  setBloodPressureEveryDays: (days: number) => void;
+  setBloodPressureLastDayKey: (dayKey: string | null) => void;
+  setBloodPressureDeclinedDayKey: (dayKey: string | null) => void;
   setWaterShortfallTasks: (on: boolean) => void;
   setWaterShortfallTaskCategory: (category: string | null) => void;
   setWaterShortfallDeclinedDayKey: (dayKey: string | null) => void;
@@ -2616,6 +2643,7 @@ const DEFAULT_SETTINGS = {
   healthWorkoutWriteRefusalSeen: false,
   weightUnit: 'kg' as WeightUnit,
   waterUnit: 'ml' as WaterUnit,
+  standardDrinkGrams: 14,
   workoutUnit: 'kg' as WeightUnit,
   dumbbellEntry: 'each' as DumbbellEntry,
   defaultRestSeconds: DEFAULT_REST_SECONDS,
@@ -3100,6 +3128,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   healthWorkoutWriteRefusalSeen: false,
   weightUnit: 'kg',
   waterUnit: 'ml',
+  standardDrinkGrams: 14,
   workoutsEnabled: false,
   workoutUnit: 'kg',
   dumbbellEntry: 'each',
@@ -3235,6 +3264,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   weighInEveryDays: DEFAULT_WEIGH_IN_EVERY_DAYS,
   weighInLastDayKey: null,
   weighInDeclinedDayKey: null,
+  bloodPressureTasks: false,
+  bloodPressureTaskCategory: null,
+  bloodPressureEveryDays: DEFAULT_BLOOD_PRESSURE_EVERY_DAYS,
+  bloodPressureLastDayKey: null,
+  bloodPressureDeclinedDayKey: null,
   patchNotesQaStatus: {},
   defaultProjectNudgeCadenceDays: 0,
   mealPlanNudgeEnabled: false,
@@ -3536,6 +3570,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // than to undefined.
     const weightUnit: WeightUnit = dbGetSetting('weightUnit') === 'lb' ? 'lb' : 'kg';
     const waterUnit: WaterUnit = dbGetSetting('waterUnit') === 'flOz' ? 'flOz' : 'ml';
+    const standardDrinkGrams = normalizeStandardDrinkGrams(dbGetSetting('standardDrinkGrams'));
+    setDisplayDrinkGrams(standardDrinkGrams);
     const workoutsEnabled = dbGetSetting('workoutsEnabled') === 'true';
     // As weightUnit: anything that isn't 'lb' reads as kilograms.
     const workoutUnit: WeightUnit = dbGetSetting('workoutUnit') === 'lb' ? 'lb' : 'kg';
@@ -3802,6 +3838,15 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       : DEFAULT_WEIGH_IN_EVERY_DAYS;
     const weighInLastDayKey = dbGetSetting('weighInLastDayKey') || null;
     const weighInDeclinedDayKey = dbGetSetting('weighInDeclinedDayKey') || null;
+    const bloodPressureTasks = dbGetSetting('bloodPressureTasks') === 'true';
+    const bloodPressureTaskCategory = dbGetSetting('bloodPressureTaskCategory') || null;
+    // Clamped on read as well as on write, for weighInEveryDays' reason.
+    const storedBloodPressureEveryDays = parseInt(dbGetSetting('bloodPressureEveryDays') ?? '', 10);
+    const bloodPressureEveryDays = Number.isFinite(storedBloodPressureEveryDays)
+      ? clampBloodPressureEveryDays(storedBloodPressureEveryDays)
+      : DEFAULT_BLOOD_PRESSURE_EVERY_DAYS;
+    const bloodPressureLastDayKey = dbGetSetting('bloodPressureLastDayKey') || null;
+    const bloodPressureDeclinedDayKey = dbGetSetting('bloodPressureDeclinedDayKey') || null;
     const screenTimeTasks = dbGetSetting('screenTimeTasks') === 'true';
     const screenTimeTaskCategory = dbGetSetting('screenTimeTaskCategory') || null;
     const storedScreenTimeRules = dbGetSetting('screenTimeRules');
@@ -3941,6 +3986,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       blockOfferRules,
       blockOfferTaskCategory,
       blockOfferTasks,
+      bloodPressureDeclinedDayKey,
+      bloodPressureEveryDays,
+      bloodPressureLastDayKey,
+      bloodPressureTaskCategory,
+      bloodPressureTasks,
       bodyProfile,
       bookEventTaskCategory,
       bookEventTasks,
@@ -4168,6 +4218,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       snackNudgeTaskCategory,
       snackNudgeTasks,
       sortOption,
+      standardDrinkGrams,
       stepGoal,
       sunLocation,
       supplyReorderTaskCategory,
@@ -5205,6 +5256,32 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ weighInDeclinedDayKey: dayKey });
   },
 
+  setBloodPressureTasks(on: boolean) {
+    dbSetSetting('bloodPressureTasks', String(on));
+    set({ bloodPressureTasks: on });
+  },
+
+  setBloodPressureTaskCategory(category: string | null) {
+    dbSetSetting('bloodPressureTaskCategory', category ?? '');
+    set({ bloodPressureTaskCategory: category });
+  },
+
+  setBloodPressureEveryDays(days: number) {
+    const clamped = clampBloodPressureEveryDays(days);
+    dbSetSetting('bloodPressureEveryDays', String(clamped));
+    set({ bloodPressureEveryDays: clamped });
+  },
+
+  setBloodPressureLastDayKey(dayKey: string | null) {
+    dbSetSetting('bloodPressureLastDayKey', dayKey ?? '');
+    set({ bloodPressureLastDayKey: dayKey });
+  },
+
+  setBloodPressureDeclinedDayKey(dayKey: string | null) {
+    dbSetSetting('bloodPressureDeclinedDayKey', dayKey ?? '');
+    set({ bloodPressureDeclinedDayKey: dayKey });
+  },
+
   setWaterShortfallTasks(on: boolean) {
     dbSetSetting('waterShortfallTasks', String(on));
     set({ waterShortfallTasks: on });
@@ -5837,6 +5914,13 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setWaterUnit(unit: WaterUnit) {
     dbSetSetting('waterUnit', unit);
     set({ waterUnit: unit });
+  },
+
+  setStandardDrinkGrams(grams: number) {
+    const next = normalizeStandardDrinkGrams(grams);
+    dbSetSetting('standardDrinkGrams', String(next));
+    setDisplayDrinkGrams(next);
+    set({ standardDrinkGrams: next });
   },
 
   setWorkoutsEnabled(on: boolean) {

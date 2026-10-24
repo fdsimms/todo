@@ -451,7 +451,10 @@ differs:
   rather than showing it).
 - **Nothing here interprets a body, and this is the number most tempting to
   interpret.** There is no "normal", "elevated" or "high", no colour on a
-  figure, no category, no goal, no rule metric and no generated task. Public
+  figure, no category, no goal, no rule metric and no task that reacts to a number.
+  The one generated task is the request to record a reading (`bloodPressureLog`,
+  `docs/arch/generated-tasks.md`), which fires on the absence of one and never
+  reads a value, the position `weighIn` is in. Public
   guidelines would make a band easy to draw, and drawing one is the app forming
   an opinion about somebody's body, which is the line weight was allowed across
   only by not crossing. The screen shows the latest reading, the count and
@@ -473,6 +476,43 @@ differs:
   starts at zero, and a break across a gap over two weeks (`readingSegments`).
   There are no bands, zones or colours that rate a value, and no scrub: the
   list under it carries each exact reading.
+
+
+## Pulse on the blood pressure screen: typed in, and resting heart rate let in
+
+A pulse can be saved on its own (the log sheet's "Pulse only" switch writes one
+`heartRate` sample with no blood pressure beside it, `writeHeartRateSample`),
+and the Blood pressure screen lists pulses under its readings
+(`readPulseSeries`, `src/utils/pulseLog.ts`). Everything in the two sections
+above holds: Health is the record, there is no local copy, no edit or delete,
+and nothing here interprets a body.
+
+- **Two kinds of entry, labelled apart.** `logged` is a heart rate sample whose
+  source is this app, so it is a pulse somebody typed in. `resting` is Apple's
+  own resting heart rate, one a day. A Watch's all-day samples, another app's
+  and the watch app's workout samples have other sources and never appear. The
+  source is compared by bundle identifier (a plain string), so the comparison
+  is not a guess about `HKSource` equality.
+- **A pulse saved with a reading is not listed twice.** It is written at the
+  reading's exact instant and already shows on that reading's row, so
+  `standalonePulses` drops a `logged` entry at a reading's instant. A `resting`
+  entry is never dropped: it is a different figure, not a copy.
+- **This is the one place resting heart rate is allowed, and that is a
+  deliberate change to the ruled-out list.** The earlier objection was that a
+  resting rate is recorded by the watch unasked and is very nearly the same
+  every day, so the only thing an app can do with one is judge it. That still
+  holds for everything except showing it: the person asked for it to sit beside
+  the pulses they log, and the line on screen says whose it is ("Resting, from
+  Health") and carries nothing else. What stays true, and is the line this was
+  let in behind: it is **display-only**. It is never a `HealthRuleMetric`, never
+  a task trigger, never an input to a target, insight or contrast, and it gets
+  no band, no colour, no "normal", "high" or "low", and no trend or average. If
+  one of those ever appears beside it, this note is the thing to read first.
+  HRV and basal energy stay ruled out for their original reasons.
+- **The read is one more type.** `restingHeartRate` joins `readTypes`, so an
+  install that already answered the Health sheet sees no resting entries until
+  somebody taps the access row again. A refused read and no data are one answer
+  here too (an empty list), and the screen's wording covers both.
 
 ## The third write: a logged meal
 
@@ -623,6 +663,28 @@ A figure that is *present* and zero is written, because a label stating no fat
 is a real statement. The filter is `writableFoodAmounts`
 (`healthFoodSync.ts`), which is pure and tested for exactly this reason — the
 rest of that file is a native call nothing can test.
+
+### Alcohol is grams in the log, a drink count in Health, and not in the correlation
+
+`NutrientKey` holds `alcoholG`, grams of pure ethanol, because it is the one figure every source can state
+(a database row, a model's estimate, a label's ABV and volume turned into grams by `nutritionParse.ts`).
+Everything a person reads is drinks (`src/utils/alcohol.ts`), at the size they chose in Settings.
+
+Health has no mass of alcohol. Its type is `numberOfAlcoholicBeverages`, a cumulative count of standard
+drinks (iOS 15+, `HKUnit.count()`, read off Apple's page for it), so the write converts:
+
+- **The count is always in US drinks (14 g), whatever size the app displays.** The Health type is "standard
+  drinks" as Apple defines one and has no way to carry a size, so `healthDrinkCount` ignores the setting.
+- **It is saved as a sample of its own, not as a member of the meal's correlation.** Apple's pages for the food
+  correlation do not say whether it accepts a non-dietary type, and a rejected member would cost the whole meal.
+  This was written without a device to run it on, so it is the first thing to check if a logged drink never
+  shows up in Health. A refusal here costs the drink count and never the meal. Its id rides in the same
+  `healthSampleIds` list, which is what lets the retract and the correct-and-rewrite paths remove it.
+- **Zero is never written.** A model answers zero for every non-alcoholic food, and a zero-drink sample on a
+  sandwich is a false statement in a health record. `stripZeroAlcohol` drops it from an estimate and
+  `writableFoodAmounts` refuses it again at the write.
+- **It is not offered to a task.** A task's "log to Health" picker writes through `writeNutrientSample`, whose
+  table has no alcohol row, so the picker leaves it out rather than offer a write that would be dropped.
 
 ### Which nutrients may be written is a second, separate choice
 
@@ -1330,9 +1392,10 @@ workouts now.
 The Apple Watch measures heart rate while it runs a workout session
 (`HKWorkoutSession`, phase 9 in `docs/arch/workouts.md`), and the workout page
 on the phone reads it back. It is the first heart-rate figure this app shows.
-Resting heart rate and HRV stay on the ruled-out list at the end of this file,
-and the difference between them and this is the whole of why this is allowed,
-so it comes first.
+HRV stays on the ruled-out list at the end of this file, and resting heart
+rate was let in later for one display-only use ("Pulse on the blood pressure
+screen"). The difference between them and this is the whole of why this is
+allowed, so it comes first.
 
 ### Why this one and not resting heart rate or HRV
 
@@ -1942,13 +2005,15 @@ generator consults; see the workouts section above), and heart rate during a
 workout the watch measured (read for that workout's page only, and never
 judged; see "Heart rate during a workout"). The
 read-type list is one place (`readTypes`) and the note beside it says what
-adding to it costs; every metric this file still rules out — resting heart
-rate, HRV, heart rate outside a workout the person started, glucose, cycle
-tracking — stays ruled out for the reason given there, which is that a
+adding to it costs; every metric this file still rules out — HRV, heart rate
+outside a workout the person started (other than the pulse a person types in
+on the blood pressure screen), glucose, cycle tracking — stays ruled out for the reason given there, which is that a
 generator firing on one of them can be wrong about a body rather than about a
-day. Reading heart rate for a workout did not open the door to the other
-two: it is allowed because the person started the measurement and the claim
-is about that hour, and neither is true of a resting rate or an HRV reading.
+day. Reading heart rate for a workout did not open the door to HRV: it is
+allowed because the person started the measurement and the claim is about
+that hour, and neither is true of an HRV reading. Resting heart rate has its
+own, narrower carve-out, display-only, in "Pulse on the blood pressure
+screen".
 
 **Active energy is the most recent addition and `basalEnergyBurned` beside it
 is not.** The two arrive together in HealthKit and it would have cost one more

@@ -1007,7 +1007,6 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           <ChainStepLinkSheet
             visible={linkStepId !== null}
             step={chainItems.find(c => c.id === linkStepId) ?? null}
-            taskLinkUrl={null}
             kitchenEnabled={kitchenEnabled}
             onSave={patch => setChainItems(prev => prev.map(
               c => (c.id === linkStepId ? { ...c, ...patch } : c),
@@ -1019,7 +1018,6 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           <ChainStepLinkSheet
             visible={linkMemberId !== null}
             step={rotationItems.find(r => r.id === linkMemberId) ?? null}
-            taskLinkUrl={null}
             kitchenEnabled={kitchenEnabled}
             onSave={patch => setRotationItems(prev => prev.map(
               r => (r.id === linkMemberId ? { ...r, ...patch } : r),

@@ -2886,6 +2886,10 @@ export type GeneratedKind =
   // fires because there is no reading at all. Asking for data and reacting to
   // it are two different permissions, so they are two different switches.
   | 'weighIn'
+  // weighIn's sibling for blood pressure — see src/utils/bloodPressureTasks.ts.
+  // Same position: day-keyed with no source row, bloodPressureLastDayKey for the
+  // rest of the day and bloodPressureDeclinedDayKey for the rest of the window.
+  | 'bloodPressureLog'
   // A water task that follows the food log's target (Task.followWaterTarget),
   // finished for the day before the target rose, becomes a one-off task for
   // what is still owed — see src/utils/waterShortfallTasks.ts. Its source id is
@@ -5509,7 +5513,7 @@ export type NutrientKey =
   | 'calorieKcal' | 'proteinG' | 'carbsG' | 'fatG' | 'satFatG' | 'transFatG'
   | 'cholesterolMg' | 'fiberG' | 'sugarG' | 'addedSugarG' | 'sodiumMg'
   | 'calciumMg' | 'ironMg' | 'potassiumMg'
-  | 'caffeineMg' | 'waterMl'
+  | 'caffeineMg' | 'alcoholG' | 'waterMl'
   | MicronutrientKey;
 
 /**
@@ -5523,7 +5527,7 @@ export const NUTRIENT_KEYS: readonly NutrientKey[] = [
   'calorieKcal', 'fatG', 'satFatG', 'transFatG', 'cholesterolMg',
   'carbsG', 'fiberG', 'sugarG', 'addedSugarG', 'proteinG', 'sodiumMg',
   'calciumMg', 'ironMg', 'potassiumMg',
-  'caffeineMg', 'waterMl',
+  'caffeineMg', 'alcoholG', 'waterMl',
   ...VITAMIN_KEYS, ...MINERAL_KEYS,
 ];
 
@@ -5543,12 +5547,14 @@ export const EXTERNAL_NUTRIENT_KEYS: readonly NutrientKey[] = NUTRIENT_KEYS.filt
 );
 
 /**
- * The nutrients a photographed label can state: all of them. A label photo is a
- * transcription of print, not an estimate and not a source's default, so a
- * supplement's vitamin rows are read like any other and the person checks the
- * fields against the bottle before saving.
+ * The nutrients a photographed label can state: all of them but alcohol. A
+ * label photo is a transcription of print, not an estimate and not a source's
+ * default, so a supplement's vitamin rows are read like any other and the
+ * person checks the fields against the bottle before saving. Alcohol is the
+ * exception because a label prints it as a percentage by volume ("5% vol"),
+ * which this transcription would file as grams.
  */
-export const PRINTED_NUTRIENT_KEYS: readonly NutrientKey[] = NUTRIENT_KEYS;
+export const PRINTED_NUTRIENT_KEYS: readonly NutrientKey[] = NUTRIENT_KEYS.filter(key => key !== 'alcoholG');
 
 /**
  * The nutrients a logged meal can carry into Apple Health: one per row of the

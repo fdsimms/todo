@@ -66,6 +66,12 @@ import {
   WEIGH_IN_TITLE,
   weighInNotes,
 } from './weightTasks';
+import {
+  BLOOD_PRESSURE_LINK_URL,
+  BLOOD_PRESSURE_TITLE,
+  DEFAULT_BLOOD_PRESSURE_EVERY_DAYS,
+  bloodPressureNotes,
+} from './bloodPressureTasks';
 import { SNACK_NUDGE_NOTES, snackNudgeTitle } from './snackNudgeTasks';
 import { produceNudgeNotes, produceNudgeTitle } from './produceNudgeTasks';
 import { produceFloorNotes, produceFloorTitle } from './produceFloorTasks';
@@ -2034,6 +2040,18 @@ export function seedDemoData(): void {
     ...generatedBy('weighIn', dayKeyOf(today)),
   });
 
+  // The blood pressure request, seeded directly for the weigh-in's reason, and
+  // with no reading beside it for the same one: Health is the record.
+  useSettingsStore.getState().setBloodPressureTaskCategory('Health');
+  addTask({
+    title: BLOOD_PRESSURE_TITLE,
+    notes: bloodPressureNotes(DEFAULT_BLOOD_PRESSURE_EVERY_DAYS),
+    dueDate: today.toISOString(),
+    linkUrl: BLOOD_PRESSURE_LINK_URL,
+    category: 'Health',
+    ...generatedBy('bloodPressureLog', dayKeyOf(today)),
+  });
+
   // A weight goal and a sleep goal. Both are the person's own typed numbers
   // and live in settings rather than in Health (docs/arch/health-data.md, "A
   // goal weight was on that list too"), which is what lets a demo carry them
@@ -2779,6 +2797,41 @@ function seedFoodLog(today: Date): void {
       itemId: item.id,
       at,
     });
+  }
+
+  // A few evenings with a drink whose alcohol a barcode source states, so the
+  // day's total and the entry line show drinks and the Mood screen has days
+  // with and without to compare. A beer's panel is per 100 ml with its alcohol
+  // already converted from the percentage by volume (`readOffNutrition`), kept
+  // on the entry and scaled to the bottle the way the chicken above is, so
+  // nothing is typed in as a figure. As a snack, so it neither fills a planned
+  // dinner nor the seeded nudge's night, and on some days and not others,
+  // since a clean sweep would read as a proof.
+  {
+    const kept = {
+      basis: 'per100ml' as const,
+      servingGrams: null,
+      servingText: '1 bottle (355 ml)',
+      amounts: { calorieKcal: 43, carbsG: 3.6, proteinG: 0.5, fatG: 0, alcoholG: 3.945 },
+      portions: [],
+      source: 'openFoodFacts' as const,
+      sourceId: '0000000000024',
+      recordedAt: subDays(today, 3).toISOString(),
+    };
+    const built = scalePanelToAmount(kept, '355 ml', null, undefined, 'Lager');
+    for (const daysAgo of built ? [3, 6, 9, 13, 20] : []) {
+      const at = subDays(today, daysAgo);
+      at.setHours(21, 0, 0, 0);
+      addEntry({
+        label: 'Lager',
+        quantity: '355 ml',
+        grams: built!.grams,
+        nutrition: built!.nutrition,
+        sourcePanel: kept,
+        slot: 'snack',
+        at,
+      });
+    }
   }
 
   // A packaged snack with the group a barcode source states, so the window has

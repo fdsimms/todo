@@ -176,6 +176,10 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   // what puts it here, is the shape of the question: once in a while, record
   // something only you can record.
   'weighIn',
+  // Directly after it: the same question about a different reading, with the
+  // same two Health switches behind it. Kept beside weighIn so a person turning
+  // one on meets the other in the next row. See src/utils/bloodPressureTasks.ts.
+  'bloodPressureLog',
   // Appended, beside nothing: it is about a water target rather than a person,
   // a project or a meal, and is the only generator that reads the food log.
   'waterShortfall',
@@ -267,6 +271,7 @@ export type GeneratedEnabledKey =
   | 'moodNudgeTasks'
   | 'weekendNudgeTasks'
   | 'weighInTasks'
+  | 'bloodPressureTasks'
   | 'waterShortfallTasks'
   | 'snackNudgeTasks'
   | 'produceNudgeTasks'
@@ -1029,6 +1034,27 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     categorized: true,
     defaultCategory: 'Health',
   },
+  // weighIn's sibling and the same shape in every field: ships off, needs both
+  // Health switches (checkBloodPressureTasks is what refuses without them),
+  // and stands down on vacation.
+  bloodPressureLog: {
+    kind: 'bloodPressureLog',
+    pausedOnVacation: true,
+    enabledKey: 'bloodPressureTasks',
+    label: 'Ask for a blood pressure reading',
+    onHint: 'Adds a task when nothing has been recorded for a while',
+    offHint: 'No task when nothing has been recorded',
+    icon: 'pulse-outline',
+    // Day-keyed with no source row, weighIn's position. bloodPressureLastDayKey
+    // covers the rest of the day and bloodPressureDeclinedDayKey the rest of
+    // the window after a delete.
+    sourced: false,
+    // Not a notice: recording the reading is the work, as it is for a weight.
+    notice: false,
+    kitchen: false,
+    categorized: true,
+    defaultCategory: 'Health',
+  },
   // Ships off, like every generator that adds a surface. It only ever follows a
   // water task that has already been completed for the day, so it can't pile
   // up: at most one a day, and a completed or deleted one blocks the next.
@@ -1339,6 +1365,12 @@ export function generatorBlockedBy(
   if (kind === 'weighIn' && !flags.healthWriteEnabled) {
     return { setting: 'Log to Health', entryId: 'healthWrite' };
   }
+  if (kind === 'bloodPressureLog' && !flags.healthReadEnabled) {
+    return { setting: 'Read Apple Health', entryId: 'healthRead' };
+  }
+  if (kind === 'bloodPressureLog' && !flags.healthWriteEnabled) {
+    return { setting: 'Log to Health', entryId: 'healthWrite' };
+  }
   return null;
 }
 
@@ -1360,7 +1392,7 @@ export function generatorSwitchedOn(kind: GeneratedKind, flags: GeneratedEnabled
   // without: the read to see whether a weight is already in, the write because
   // the weight is recorded there. With either off the row read "on" and the
   // task never came.
-  if (kind === 'weighIn') return flags.healthReadEnabled && flags.healthWriteEnabled;
+  if (kind === 'weighIn' || kind === 'bloodPressureLog') return flags.healthReadEnabled && flags.healthWriteEnabled;
   return true;
 }
 

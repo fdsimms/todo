@@ -48,6 +48,11 @@ import {
   WEIGH_IN_EVERY_DAYS_MIN,
 } from '../../utils/weightTasks';
 import {
+  BLOOD_PRESSURE_EVERY_DAYS_MAX,
+  BLOOD_PRESSURE_EVERY_DAYS_MIN,
+  DEFAULT_BLOOD_PRESSURE_EVERY_DAYS,
+} from '../../utils/bloodPressureTasks';
+import {
   DEFAULT_SNACK_NUDGE_FROM_HOUR,
   DEFAULT_SNACK_NUDGE_SHARE_PERCENT,
   SNACK_NUDGE_FROM_HOUR_MAX,
@@ -405,6 +410,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
       case 'wanikani': return s.wanikaniTaskCategory;
       case 'weekendNudge': return s.weekendNudgeTaskCategory;
       case 'weighIn': return s.weighInTaskCategory;
+      case 'bloodPressureLog': return s.bloodPressureTaskCategory;
       case 'waterShortfall': return s.waterShortfallTaskCategory;
       case 'snackNudge': return s.snackNudgeTaskCategory;
       case 'produceNudge': return s.produceNudgeTaskCategory;
@@ -448,6 +454,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
       case 'wanikani': s.setWanikaniTaskCategory(category); break;
       case 'weekendNudge': s.setWeekendNudgeTaskCategory(category); break;
       case 'weighIn': s.setWeighInTaskCategory(category); break;
+      case 'bloodPressureLog': s.setBloodPressureTaskCategory(category); break;
       case 'waterShortfall': s.setWaterShortfallTaskCategory(category); break;
       case 'snackNudge': s.setSnackNudgeTaskCategory(category); break;
       case 'produceNudge': s.setProduceNudgeTaskCategory(category); break;
@@ -783,6 +790,33 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
               format={n => `${n}d`}
               label="Days without a weigh-in"
               describeValue={n => (n === 1 ? '1 day' : `${n ?? DEFAULT_WEIGH_IN_EVERY_DAYS} days`)}
+            />
+          </View>
+        </>
+      );
+    }
+
+    if (kind === 'bloodPressureLog') {
+      return (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="bloodPressureEveryDays"
+            icon="calendar-outline"
+            label="Ask after"
+            hint="How long without a reading in Apple Health before the task appears. It doesn’t appear on a day you’ve already recorded one."
+            value={s.bloodPressureEveryDays === 1 ? '1 day' : `${s.bloodPressureEveryDays} days`}
+            tight
+          />
+          <View style={styles.cadenceRow}>
+            <CountStepper
+              value={s.bloodPressureEveryDays}
+              onChange={next => s.setBloodPressureEveryDays(next ?? DEFAULT_BLOOD_PRESSURE_EVERY_DAYS)}
+              min={BLOOD_PRESSURE_EVERY_DAYS_MIN}
+              max={BLOOD_PRESSURE_EVERY_DAYS_MAX}
+              format={n => `${n}d`}
+              label="Days without a reading"
+              describeValue={n => (n === 1 ? '1 day' : `${n ?? DEFAULT_BLOOD_PRESSURE_EVERY_DAYS} days`)}
             />
           </View>
         </>

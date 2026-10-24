@@ -31,6 +31,7 @@ import {
   resetToJournal,
   resetToFoodLog,
   resetToMedications,
+  resetToBloodPressure,
   resetToWeight,
   resetToProjectPull,
   resetToProject,
@@ -653,6 +654,24 @@ export function weightUrlWantsLog(url: string): boolean {
   return value === '1' || value.toLowerCase() === 'true';
 }
 
+// `dundundun://bloodpressure[?log=1]` — what the blood pressure request carries,
+// the weight link's shape for the weight link's reason. The bare link lands on
+// the chart.
+const BLOOD_PRESSURE_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?bloodpressure\\/?(?:\\?(.*))?$`, 'i');
+
+export function isBloodPressureUrl(url: string): boolean {
+  return typeof url === 'string' && BLOOD_PRESSURE_RE.test(url.trim());
+}
+
+/** Does a blood pressure link ask for the recording sheet on arrival? */
+export function bloodPressureUrlWantsLog(url: string): boolean {
+  if (typeof url !== 'string') return false;
+  const match = BLOOD_PRESSURE_RE.exec(url.trim());
+  if (!match) return false;
+  const value = (parseQuery(match[1] ?? '').log ?? '').trim();
+  return value === '1' || value.toLowerCase() === 'true';
+}
+
 /** The person a people link asks to open, or null for the bare link. */
 export function peopleUrlPersonId(url: string): string | null {
   if (typeof url !== 'string') return null;
@@ -896,6 +915,7 @@ export function linkIconFor(url: string | null | undefined): string {
   if (isFoodLogUrl(url)) return 'fast-food-outline';
   if (isMedicationsUrl(url)) return 'medkit-outline';
   if (isWeightUrl(url)) return 'scale-outline';
+  if (isBloodPressureUrl(url)) return 'pulse-outline';
   if (isProjectsUrl(url) || isProjectUrl(url)) return 'briefcase-outline';
   if (isDeloadUrl(url)) return 'leaf-outline';
   return 'link';
@@ -986,6 +1006,10 @@ export function openInAppUrl(url: string | null | undefined): boolean {
   }
   if (isWeightUrl(url)) {
     resetToWeight(weightUrlWantsLog(url));
+    return true;
+  }
+  if (isBloodPressureUrl(url)) {
+    resetToBloodPressure(bloodPressureUrlWantsLog(url));
     return true;
   }
   if (isProjectsUrl(url)) {

@@ -386,6 +386,7 @@ export const NUTRIENT_LABEL: Record<NutrientKey, { label: string; unit: string }
   ironMg: { label: 'Iron', unit: 'mg' },
   potassiumMg: { label: 'Potassium', unit: 'mg' },
   caffeineMg: { label: 'Caffeine', unit: 'mg' },
+  alcoholG: { label: 'Alcohol', unit: 'g' },
   waterMl: { label: 'Water', unit: 'ml' },
   vitaminAMcg: { label: 'Vitamin A', unit: 'mcg' },
   vitaminCMg: { label: 'Vitamin C', unit: 'mg' },

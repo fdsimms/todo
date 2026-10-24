@@ -419,7 +419,7 @@ file: the two maps are indexes, not write-ups.
 | a weight goal, the rate it's aimed at, and progress against it | `src/utils/weightGoal.ts` + `src/components/WeightGoalSheet.tsx` — see `docs/arch/health-data.md`. The one carve-out from the weight rule above, and only because the target is typed in |
 | a calorie target that rises on a day you moved more than usual | `src/utils/activeEnergyBoost.ts` (the `waterExerciseBoost.ts` shape) — see `docs/arch/health-data.md`. Display-time only; the stored target is never touched |
 | a daily calorie figure worked out from a body, and the macro split of it | `src/utils/energyBudget.ts` — see `docs/arch/health-data.md`. It **proposes**; the sheet's button is what writes `nutritionTargets` |
-| the task asking you to weigh in | `src/utils/weightTasks.ts` — see `docs/arch/generated-tasks.md`. The only generator that fires on *missing* data, and deliberately not part of `health`: that one reacts to a reading, this one asks for one |
+| the task asking you to weigh in, or to record a blood pressure reading | `src/utils/weightTasks.ts` and `src/utils/bloodPressureTasks.ts` — see `docs/arch/generated-tasks.md`. The generators that fire on *missing* data, and deliberately not part of `health`: that one reacts to a reading, these ask for one |
 | a meal of the day as a task, and choosing one from Today | `src/utils/mealSlotTasks.ts` — see `docs/arch/generated-tasks.md` |
 | a planned meal you haven't got the ingredients for | `src/utils/mealShortfallTasks.ts` — see `docs/arch/generated-tasks.md` |
 | a planned meal whose food is only in the freezer | `src/utils/mealThawTasks.ts` — see `docs/arch/generated-tasks.md`. `mealShortfallTasks.ts` asking about the `FROZEN_REASON` rows instead of the missing ones |

@@ -8129,6 +8129,145 @@ describe('checkWeighInTasks', () => {
   });
 });
 
+describe('checkBloodPressureTasks', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+
+  let lastDayKey: string | null = null;
+  let declinedDayKey: string | null = null;
+  const settings = (overrides: Record<string, unknown> = {}) => ({
+    dayResetTime: '00:00',
+    vacationMode: false,
+    bloodPressureTasks: true,
+    bloodPressureTaskCategory: 'Health',
+    bloodPressureEveryDays: 7,
+    healthReadEnabled: true,
+    healthWriteEnabled: true,
+    get bloodPressureLastDayKey() { return lastDayKey; },
+    setBloodPressureLastDayKey: (key: string | null) => { lastDayKey = key; },
+    get bloodPressureDeclinedDayKey() { return declinedDayKey; },
+    setBloodPressureDeclinedDayKey: (key: string | null) => { declinedDayKey = key; },
+    newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+    titleRules: [],
+    collapsedCategories: [],
+    ...overrides,
+  });
+
+  const requests = () =>
+    useTaskStore.getState().tasks.filter(t => t.generatedKind === 'bloodPressureLog' && !t.completed && !t.archived);
+  const on = async (day: number) => {
+    jest.setSystemTime(new Date(2026, 8, day, 9, 0, 0));
+    await useTaskStore.getState().checkBloodPressureTasks();
+  };
+
+  const realRead = useHealthStore.getState().readRecentBloodPressure;
+  beforeEach(() => {
+    jest.useFakeTimers();
+    lastDayKey = null;
+    declinedDayKey = null;
+    useSettingsStore.getState.mockReturnValue(settings());
+    useTaskStore.setState({ tasks: [] });
+    // Health asked and had nothing: the one answer that writes a request.
+    useHealthStore.setState({ readRecentBloodPressure: jest.fn().mockResolvedValue([]) });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    useHealthStore.setState({ readRecentBloodPressure: realRead, bloodPressureAnsweredOn: null });
+  });
+
+  it('asks when the window has no reading in it, with the link that records one', async () => {
+    await on(8);
+    expect(requests().map(t => t.generatedSourceId)).toEqual(['2026-09-08']);
+    expect(requests()[0].linkUrl).toBe('dundundun://bloodpressure?log=1');
+  });
+
+  it('stays quiet when a reading is already in the window', async () => {
+    useHealthStore.setState({
+      readRecentBloodPressure: jest.fn().mockResolvedValue([{ at: new Date(2026, 8, 6, 8), systolic: 118, diastolic: 76, pulse: null }]),
+    });
+    await on(8);
+    expect(requests()).toHaveLength(0);
+  });
+
+  it('writes nothing and spends no mark when Health could not be asked', async () => {
+    useHealthStore.setState({ readRecentBloodPressure: jest.fn().mockResolvedValue(null) });
+    await on(8);
+    expect(requests()).toHaveLength(0);
+    expect(lastDayKey).toBeNull();
+  });
+
+  it('needs both Health switches and its own', async () => {
+    for (const off of [{ healthReadEnabled: false }, { healthWriteEnabled: false }, { bloodPressureTasks: false }]) {
+      useSettingsStore.getState.mockReturnValue(settings(off));
+      await on(8);
+      expect(requests()).toHaveLength(0);
+    }
+  });
+
+  it('refuses a tick until a reading exists, then lets it through', async () => {
+    await on(8);
+    const id = requests()[0].id;
+    useTaskStore.getState().completeTask(id);
+    expect(requests()).toHaveLength(1);
+
+    useHealthStore.setState({
+      readRecentBloodPressure: jest.fn().mockResolvedValue([{ at: new Date(2026, 8, 8, 8), systolic: 118, diastolic: 76, pulse: null }]),
+    });
+    await on(8);
+    expect(useHealthStore.getState().bloodPressureAnsweredOn).toBe('2026-09-08');
+    useTaskStore.getState().completeTask(id);
+    expect(requests()).toHaveLength(0);
+  });
+
+  it('is answered by a reading saved for today, and is not answered by a weight', async () => {
+    await on(8);
+    useTaskStore.getState().markWeighInAnswered('2026-09-08');
+    expect(useHealthStore.getState().bloodPressureAnsweredOn).toBeNull();
+
+    useTaskStore.getState().markBloodPressureAnswered('2026-09-08');
+    expect(useHealthStore.getState().bloodPressureAnsweredOn).toBe('2026-09-08');
+  });
+
+  it('asks Health again for a backdated reading instead of assuming it answers the request', async () => {
+    await on(8);
+    const read = useHealthStore.getState().readRecentBloodPressure as jest.Mock;
+    read.mockClear();
+
+    useTaskStore.getState().markBloodPressureAnswered('2026-09-05');
+
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(useHealthStore.getState().bloodPressureAnsweredOn).toBeNull();
+  });
+
+  it('holds a deleted request for the whole window, and takes the hold back on undo', async () => {
+    await on(8);
+    useTaskStore.getState().deleteTask(requests()[0].id);
+    expect(declinedDayKey).toBe('2026-09-08');
+
+    for (const day of [9, 14]) {
+      await on(day);
+      expect(requests()).toHaveLength(0);
+    }
+    await on(15);
+    expect(requests().map(t => t.generatedSourceId)).toEqual(['2026-09-15']);
+
+    useTaskStore.getState().deleteTask(requests()[0].id);
+    expect(declinedDayKey).toBe('2026-09-15');
+    useTaskStore.getState().lastAction!.undo();
+    expect(declinedDayKey).toBeNull();
+    expect(requests()).toHaveLength(1);
+  });
+
+  it('does not count a request nobody answered as a decline', async () => {
+    await on(8);
+    await on(9);
+    expect(declinedDayKey).toBeNull();
+    expect(requests().map(t => t.generatedSourceId)).toEqual(['2026-09-09']);
+  });
+});
+
 describe('checkMealPlanNudge', () => {
   const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
     useSettingsStore: { getState: jest.Mock };

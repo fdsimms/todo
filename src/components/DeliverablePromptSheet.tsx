@@ -436,12 +436,15 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
           </>
         ) : null}
 
-        {!reasoningOpen && (
+        {/* A date is a fact about when, not a decision with a reason behind it,
+            so it isn't offered. A date answer that already holds some keeps
+            its fields (reasoningOpen above), so nothing stored is hidden. */}
+        {!reasoningOpen && kind !== 'date' && (
           <View style={styles.extras}>
             {!reasoningOpen && (
               <InlineAction
                 icon="add"
-                label="Add why"
+                label="Add reasoning"
                 variant="neutral"
                 accessibilityLabel="Add why you chose this answer, and what would make you revisit it"
                 onPress={() => { haptics.tap(); setReasoningOpen(true); }}

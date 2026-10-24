@@ -245,6 +245,7 @@ export function catchUpPasses(): MaintenanceStep[] {
     // ordered after it, and the void return is deliberate: the sweep fires it
     // and moves on rather than waiting on the health daemon.
     ['check weigh-in tasks', () => { void tasks().checkWeighInTasks(); }],
+    ['check blood pressure tasks', () => { void tasks().checkBloodPressureTasks(); }],
     // Birthdays, which share the same trigger — a date arriving rather than a
     // source changing — and read the people useTaskStore.initialize's fan-out has loaded.
     // After useSettingsStore.initialize for the same reason the meal pass is: the day a task

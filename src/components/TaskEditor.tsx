@@ -443,6 +443,9 @@ const LOG_HEALTH_VALUE_STEPS: Record<NutrientKey, { step: number; max: number }>
   ironMg: { step: 1, max: 30 },
   potassiumMg: { step: 50, max: 2000 },
   caffeineMg: { step: 10, max: 500 },
+  // Never offered here: a completion logging alcohol has no meaning, and the
+  // Health write for it is a drink count the food log's own path converts.
+  alcoholG: { step: 14, max: 140 },
   waterMl: { step: 50, max: 1000 },
   vitaminAMcg: { step: 50, max: 3000 },
   vitaminCMg: { step: 10, max: 2000 },
@@ -484,9 +487,9 @@ const LOG_NUTRIENT_GROUPS: ChoiceGroup[] = (() => {
   const option = (key: NutrientKey) => ({ key, label: NUTRIENT_LABEL[key].label });
   const groups: ChoiceGroup[] = LOG_NUTRIENT_SECTIONS.map(sec => ({
     heading: sec.heading,
-    options: sec.keys.filter(k => HEALTH_WRITABLE_NUTRIENTS.includes(k)).map(option),
+    options: sec.keys.filter(k => HEALTH_WRITABLE_NUTRIENTS.includes(k) && k !== 'alcoholG').map(option),
   }));
-  const rest = HEALTH_WRITABLE_NUTRIENTS.filter(k => !named.has(k));
+  const rest = HEALTH_WRITABLE_NUTRIENTS.filter(k => !named.has(k) && k !== 'alcoholG');
   return rest.length > 0 ? [...groups, { options: rest.map(option) }] : groups;
 })();
 
@@ -4152,7 +4155,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
             <ChainStepLinkSheet
               visible={linkStepId !== null}
               step={chainItems.find(c => c.id === linkStepId) ?? null}
-              taskLinkUrl={linkUrl}
               kitchenEnabled={kitchenEnabled}
               onSave={patch => setChainItems(prev => prev.map(
                 c => (c.id === linkStepId ? { ...c, ...patch } : c),
@@ -4170,7 +4172,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
               // Null on purpose: a rotation's members are siblings pointing at
               // different places, so one without a link of its own has none,
               // where a chain step sensibly inherits the task's.
-              taskLinkUrl={null}
               kitchenEnabled={kitchenEnabled}
               onSave={patch => setRotationItems(prev => prev.map(
                 r => (r.id === linkMemberId ? { ...r, ...patch } : r),
