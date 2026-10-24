@@ -5104,13 +5104,6 @@ export function TodayScreen() {
           minHeight={viewMode === 'today' ? undefined : todayHeaderHeight}
           overline={viewMode === 'today' ? today : undefined}
           subtitle={workloadSubtitle}
-          // The total is what makes a day feel too full, so it's where the way
-          // to lighten one lives: the same sheet the "…" menu opens, offered
-          // on the same terms.
-          onSubtitlePress={viewMode === 'today' && visibleTasks.length > 0 && !featureHidden('deload', simpleMode)
-            ? () => setDeloadVisible(true)
-            : undefined}
-          subtitleAccessibilityLabel={workloadSubtitle ? `${workloadSubtitle}. Lighten today` : undefined}
           actions={headerActions}
           titleAdornment={
             viewMode === 'today' && headerWeather ? (
