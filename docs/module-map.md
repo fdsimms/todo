@@ -358,6 +358,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/pastedLines.ts` — cleanPastedLines
 - `src/utils/patchNotes.ts` — PatchNote
 - `src/utils/penaltyShield.ts` — penaltyCutoffAt, PenaltyCharge, penaltyChargeFor, slipPenaltyUntil, extendShieldUntil, penaltyCreditFor, uncreditShieldUntil, creditShieldUntil, penaltyShieldWanted
+- `src/utils/pendingCompletionDate.ts` — PENDING_COMPLETION_DATE_WINDOW_MS, setPendingCompletionDate, claimPendingCompletionDate
 - `src/utils/pendingHealthFoodWrites.ts` — runPendingHealthFoodWrites
 - `src/utils/pendingHealthWorkoutWrites.ts` — runPendingHealthWorkoutWrites
 - `src/utils/peopleBackfill.ts` — PersonBackfillFieldId, PersonBackfillFieldDef, PERSON_BACKFILL_FIELDS, isPersonFieldMissing, isPersonFieldApplicable, isPersonBackfillDismissed, personBackfillCandidates, personBackfillFieldCounts, dismissPersonBackfillField, personCadencePatch, +2 more
@@ -600,6 +601,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/titleSuggestion.ts` — TitleSuggestionContext, TitleSuggestion, pickTitleSuggestion, suggestionMatch, linkLabel, describeTitleSuggestion
 - `src/utils/titleSuggestions.ts` — TitleSuggestion, suggestTitles
 - `src/utils/titleTokenChips.ts` — TokenChipKind, TokenChip, TokenChipSet, TokenChipSources, MAX_TOKEN_CHIPS, tokenChipsFor, applyTokenChip
+- `src/utils/titleWrap.ts` — KEEP_TOGETHER_MAX_CHARS, keepTailTogether
 - `src/utils/todayProjectBands.ts` — TodayProjectBand, TodayProjectBands, buildTodayProjectBands
 - `src/utils/tooltipAim.ts` — TOOLTIP_CARET_W, aimTooltip
 - `src/utils/transitAlerts.ts` — TransitEffect, TransitAlert, TransitSnapshot, TRANSIT_LINES, parseTransitLines, effectOfAlertType, parseSubwayAlerts, alertOverlaps, LIVE_ALERT_MAX_AGE_MS, PLANNED_ALERT_MAX_AGE_MS, +5 more

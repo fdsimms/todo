@@ -1,4 +1,5 @@
 import { slipsToday } from '../utils/negativeHabits';
+import { setPendingCompletionDate } from '../utils/pendingCompletionDate';
 import { isStreakAtRecord } from '../utils/streakRecord';
 import { registerPausedProjectSource } from '../utils/projectPause';
 import { dayKeyOf, getCurrentDayStart, getCurrentLogicalDayKey } from '../utils/dateUtils';
@@ -5634,6 +5635,17 @@ describe('checkReachOutTasks', () => {
 
       expect(row(task.id).personIds).toEqual([]);
       expect(historyOf('p1')).toEqual([]);
+    });
+
+    it('dates the entry on the day the person said it happened', () => {
+      const task = generated();
+      const hungOut = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000);
+      hungOut.setHours(12, 0, 0, 0);
+      setPendingCompletionDate(task.id, hungOut.toISOString());
+      useTaskStore.getState().completeTask(task.id, { deliverableValue: 'Dinner at her place' });
+
+      expect(row(task.id).completedAt).toBe(hungOut.toISOString());
+      expect(historyOf('p1')[0].at).toBe(hungOut.toISOString());
     });
 
     it('leaves the history again on undo', () => {
