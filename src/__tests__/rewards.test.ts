@@ -10,6 +10,8 @@ import {
   rewardIdeas,
   describeLastClaimed,
   claimWaitDays,
+  cleanRewardGlyph,
+  splitRewardsByWait,
   cleanClaimLimit,
   describeClaimLimit,
   describeClaimWait,
@@ -460,6 +462,40 @@ describe('a reward on the list', () => {
     expect(describeLastClaimed(new Date(2026, 9, 3, 2, 30).toISOString(), today)).toBe('Claimed today');
     expect(describeLastClaimed(new Date(2026, 9, 4, 1).toISOString(), new Date(2026, 9, 3, 2, 30))).toBe('Claimed today');
     expect(describeLastClaimed(new Date(2026, 9, 2, 1).toISOString(), today)).toBe('Last claimed 2 days ago');
+  });
+
+  describe('tile glyph', () => {
+    it('keeps an emoji, trims, and stores nothing for blank text', () => {
+      expect(cleanRewardGlyph(' ☕ ')).toBe('☕');
+      expect(cleanRewardGlyph('')).toBeNull();
+      expect(cleanRewardGlyph('   ')).toBeNull();
+      expect(cleanRewardGlyph(null)).toBeNull();
+    });
+
+    it('cuts by code point so an emoji is never split', () => {
+      expect(cleanRewardGlyph('🍨🍨🍨🍨🍨🍨🍨🍨🍨🍨')).toBe('🍨'.repeat(8));
+    });
+  });
+
+  describe('grid order', () => {
+    const spend = (id: string, at: Date) => ({ id: 'e' + id, kind: 'spend' as const, amount: 5, at: at.toISOString(), taskId: null, rewardId: id, label: id });
+    const today = new Date(2026, 9, 12);
+
+    it('puts rewards resting under a claim limit last, each group in its own order', () => {
+      const rewards = [
+        { id: 'a', claimEveryDays: 7 },
+        { id: 'b', claimEveryDays: null },
+        { id: 'c', claimEveryDays: 7 },
+      ];
+      const { ready, resting } = splitRewardsByWait(rewards, [spend('a', today)], today);
+      expect(ready.map(r => r.id)).toEqual(['b', 'c']);
+      expect(resting.map(r => r.id)).toEqual(['a']);
+    });
+
+    it('has nothing resting once the limit has elapsed', () => {
+      const { resting } = splitRewardsByWait([{ id: 'a', claimEveryDays: 2 }], [spend('a', new Date(2026, 9, 8))], today);
+      expect(resting).toEqual([]);
+    });
   });
 
   describe('claim limit', () => {

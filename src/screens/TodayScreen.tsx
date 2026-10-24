@@ -330,6 +330,15 @@ const PINNED_DROP_ZONE = { kind: 'pinned', key: '__pinned-header__' } as const;
 // named by their own ids.
 const PINNED_DRAG_TARGET = '__pinned-header__';
 
+// Whether a pinned stack's copy in the Pinned Tasks block opens before anyone
+// has toggled it. It follows the stack's own flag, except when a member was
+// pinned by its own settings (`pinEachOccurrence`): that pin arrives unasked at
+// the start of the day, and the stack arriving on Today collapses
+// (`syncTodayPresence`), which would hide the very task the pin put there.
+function pinnedCopyStartsOpen(group: TaskGroup, pinnedMembers: readonly Task[]): boolean {
+  return !group.collapsed || pinnedMembers.some(t => t.pinEachOccurrence);
+}
+
 // Category section header. When `onToggle` is given, the header is a
 // tappable collapse/expand control for its category (chevron reflects
 // `collapsed`); otherwise it renders as static text (used for the
@@ -3709,10 +3718,11 @@ export function TodayScreen() {
     if (!group) return;
     // A pinned copy still following this flag keeps the state it has now,
     // rather than opening along with this tray (see pinnedGroupOpen).
-    const hasPinnedCopy = useTaskStore.getState().tasks
-      .some(t => t.pinned && t.groupId === groupId && !t.completed);
-    if (hasPinnedCopy) {
-      setPinnedGroupOpen(prev => (prev.has(groupId) ? prev : new Map(prev).set(groupId, !group.collapsed)));
+    const pinnedMembers = useTaskStore.getState().tasks
+      .filter(t => t.pinned && t.groupId === groupId && !t.completed);
+    if (pinnedMembers.length > 0) {
+      const copyOpen = pinnedCopyStartsOpen(group, pinnedMembers);
+      setPinnedGroupOpen(prev => (prev.has(groupId) ? prev : new Map(prev).set(groupId, copyOpen)));
     }
     setGroupCollapsed(groupId, !group.collapsed);
   }, [setGroupCollapsed]);
@@ -3724,7 +3734,10 @@ export function TodayScreen() {
     setDraggingGroupId(null);
     const group = useTaskGroupStore.getState().getGroupById(groupId);
     if (!group) return;
-    setPinnedGroupOpen(prev => new Map(prev).set(groupId, !(prev.get(groupId) ?? !group.collapsed)));
+    const pinnedMembers = useTaskStore.getState().tasks
+      .filter(t => t.pinned && t.groupId === groupId && !t.completed);
+    const startsOpen = pinnedCopyStartsOpen(group, pinnedMembers);
+    setPinnedGroupOpen(prev => new Map(prev).set(groupId, !(prev.get(groupId) ?? startsOpen)));
   }, []);
   const handleGroupPin = useCallback((groupId: string) => { animateLayout(); pinGroup(groupId); }, [pinGroup]);
   const handleGroupPressEdit = useCallback((groupId: string) => {
@@ -4203,7 +4216,7 @@ export function TodayScreen() {
   // shown under a header rendering only its pinned members.
   const renderPinnedGroup = (structuralGroup: TaskGroup, children: Task[], drag?: () => void) => {
     const group = liveGroup(structuralGroup);
-    const open = pinnedGroupOpen.get(group.id) ?? !group.collapsed;
+    const open = pinnedGroupOpen.get(group.id) ?? pinnedCopyStartsOpen(group, children);
     return (
     <CompletionCollapse taskIds={children.map(c => c.id)}>
     <TaskGroupTray collapsed={!open}>

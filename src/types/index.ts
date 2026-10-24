@@ -2707,6 +2707,12 @@ export interface Reward {
    * wish list reward, which are claimed once anyway.
    */
   claimEveryDays: number | null;
+  /**
+   * The emoji drawn on the reward's tile ("☕" for a coffee). Null draws the
+   * gift icon. Chosen by hand and never guessed from the title; a reward made
+   * from a wish list item has none, since the item is what is shown.
+   */
+  glyph: string | null;
 }
 
 /**

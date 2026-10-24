@@ -674,6 +674,38 @@ export function cleanClaimLimit(days: number | null | undefined, oneTime: boolea
   return Math.min(MAX_CLAIM_EVERY_DAYS, Math.round(days));
 }
 
+/** Most characters a tile glyph keeps: room for a ZWJ sequence, not for a word. */
+export const MAX_GLYPH_CHARS = 8;
+
+/**
+ * What a typed glyph is stored as: trimmed and cut to `MAX_GLYPH_CHARS`
+ * characters (counted as code points, so an emoji is never split), or null when
+ * nothing is left, which draws the gift icon.
+ */
+export function cleanRewardGlyph(text: string | null | undefined): string | null {
+  const kept = Array.from((text ?? '').trim()).slice(0, MAX_GLYPH_CHARS).join('');
+  return kept || null;
+}
+
+/**
+ * The rewards in the order the grid draws them: the ones that can be claimed
+ * now first, then the ones resting under a claim limit, each group keeping the
+ * order it came in (cheapest first, from `sortRewards`). A reward the balance
+ * can't cover yet stays with the first group; it dims, but it isn't resting.
+ */
+export function splitRewardsByWait<T extends Pick<Reward, 'id' | 'claimEveryDays'>>(
+  rewards: readonly T[],
+  entries: readonly CoinEntry[],
+  todayStart: Date,
+): { ready: T[]; resting: T[] } {
+  const ready: T[] = [];
+  const resting: T[] = [];
+  for (const reward of rewards) {
+    (claimWaitDays(reward, entries, todayStart) > 0 ? resting : ready).push(reward);
+  }
+  return { ready, resting };
+}
+
 /**
  * Logical days before a limited reward can be claimed again, 0 when it can be
  * now. Counted in logical days from the newest claim, so a claim on Monday
