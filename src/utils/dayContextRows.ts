@@ -149,9 +149,11 @@ export function eventContextRows(
      * this module still reads no store.
      */
     movedNote?: (event: BusyEvent) => string | null;
+    /** A travel time for an event with a location, or null. */
+    travelNote?: (event: BusyEvent) => string | null;
   },
 ): ContextRow[] {
-  const { now, category, use24Hour, calendarsById, isHidden, movedNote } = opts;
+  const { now, category, use24Hour, calendarsById, isHidden, movedNote, travelNote } = opts;
   const at = now.getTime();
 
   const rows: Array<{ row: ContextRow; allDay: boolean; start: number }> = [];
@@ -178,6 +180,8 @@ export function eventContextRows(
         now: running,
         calendarTag: calendar ? { name: calendar.title, color: calendar.color } : null,
         movedNote: movedNote?.(event) ?? null,
+        ...(event.location?.trim() ? { location: event.location.trim(), travelNote: travelNote?.(event) ?? null } : {}),
+        ...(event.videoCall && !event.allDay ? { videoCallStart: event.start } : {}),
       },
       allDay: event.allDay,
       start,

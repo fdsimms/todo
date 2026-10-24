@@ -225,6 +225,8 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, iconSize, textScale, animation, type Colors } from '../theme';
 import { AnimatedCollapsible } from '../components/AnimatedCollapsible';
 import { haptics } from '../utils/haptics';
+import { openEventDirections, openEventJoinLink } from '../utils/eventDirections';
+import { useEventTravelNote } from '../hooks/useEventTravelNote';
 import { openElsewhereResult } from '../navigation/openSearchResult';
 import type { ElsewhereResult } from '../utils/searchElsewhere';
 import { navigateToSettingsEntry } from '../navigation/openSettings';
@@ -2877,6 +2879,7 @@ export function TodayScreen() {
   const contextRowsPrev = useRef<ContextRow[]>([]);
   const contextRowsPainted = useRef(false);
   useEffect(() => { contextRowsPainted.current = true; }, []);
+  const eventTravelNote = useEventTravelNote();
   const contextRows = useMemo(() => {
     const rows: ContextRow[] = [];
     // Leads, above the calendar and the food. It is the only one of the four
@@ -2940,6 +2943,7 @@ export function TodayScreen() {
         calendarsById: eventCalendarTags,
         isHidden: isEventHidden,
         movedNote: event => movedEventNotes.get(eventTaskKey(event)) ?? null,
+        travelNote: eventTravelNote,
       }));
       // Events that moved off today, which today's own rows can't show.
       const todayKeys = new Set(todayCalendarEvents.map(eventTaskKey));
@@ -2974,7 +2978,7 @@ export function TodayScreen() {
     return (contextRowsPrev.current = same ? prev : rows);
   }, [
     todayCalendarEvents, calendarEventCategory, use24HourTime, eventCalendarTags,
-    isEventHidden, movedEventNotes, movedEvents, liveTaskIds,
+    isEventHidden, movedEventNotes, movedEvents, liveTaskIds, eventTravelNote,
     mealsOnToday, todayMealEntries, recipesById, mealCookTaskCategory, allTasks,
     healthToday, healthCategory, stepGoal, healthTodayHidden, dayResetTime,
     limitsTodayCategory, limitsTodayHidden, goalsTodayCategory, goalsTodayHidden, nutritionTargets, nutritionLimits, limitWarnPercent,
@@ -3990,6 +3994,16 @@ export function TodayScreen() {
           row={item.row}
           onPress={onContextPress}
           cardPosition={contextPositions.get(item.row.id)}
+          onDirections={
+            item.row.kind === 'event' && item.row.location
+              ? () => { void openEventDirections(item.row.sourceId, item.row.location); }
+              : undefined
+          }
+          onJoinCall={
+            item.row.kind === 'event' && item.row.videoCallStart
+              ? () => { void openEventJoinLink(item.row.sourceId, item.row.videoCallStart!); }
+              : undefined
+          }
           onMarkCooked={
             item.row.kind === 'meal'
               ? () => handleMarkMealCooked(item.row.sourceId, item.row.title)
