@@ -352,3 +352,52 @@ export function slotMinutesAt(
   const latest = Math.floor((lastMinute - 1) / step) * step;
   return Math.max(firstMinute, Math.min(snapped, latest));
 }
+
+/**
+ * What a drag on the Day view is doing: making an event (the finger sets its
+ * end, from a long-press on an empty stretch), moving one (both ends travel
+ * together), or resizing one (its end travels, from the grip at its foot).
+ * Making one is resizing a block that doesn't exist yet, so the two share
+ * their arithmetic.
+ */
+export type TimelineDragKind = 'create' | 'move' | 'resize';
+
+/**
+ * Where a dragged block sits, in minutes from the day's start, given where it
+ * started and how far the finger has gone. Snapped to `SLOT_STEP_MINUTES` the
+ * way a tap is, never shorter than one step, and kept inside the day: a moved
+ * block stops at either edge with its length intact, and a stretched one
+ * stops at the day's end.
+ */
+export function draggedRange(
+  kind: TimelineDragKind,
+  origin: { start: number; end: number },
+  deltaMinutes: number,
+  step: number = SLOT_STEP_MINUTES,
+): { start: number; end: number } {
+  const snap = (m: number) => Math.round(m / step) * step;
+  if (kind === 'move') {
+    const length = Math.max(step, origin.end - origin.start);
+    const start = Math.max(0, Math.min(snap(origin.start + deltaMinutes), MINUTES_IN_DAY - length));
+    return { start, end: start + length };
+  }
+  const end = Math.min(MINUTES_IN_DAY, Math.max(origin.start + step, snap(origin.end + deltaMinutes)));
+  return { start: origin.start, end };
+}
+
+/**
+ * Which of several side-by-side day columns a dragged event is over: the one
+ * it was lifted from, plus however many whole columns the finger has crossed
+ * (rounded, so it changes day once past halfway), kept inside the columns
+ * drawn. A column with no width yet (not laid out) keeps the event where it was.
+ */
+export function draggedColumn(
+  originIndex: number,
+  deltaX: number,
+  columnWidth: number,
+  columnCount: number,
+): number {
+  if (columnWidth <= 0 || columnCount <= 0) return originIndex;
+  const moved = originIndex + Math.round(deltaX / columnWidth);
+  return Math.max(0, Math.min(columnCount - 1, moved));
+}

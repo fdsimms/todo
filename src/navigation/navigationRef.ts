@@ -223,6 +223,17 @@ export function resetToMealPlan(
   });
 }
 
+/**
+ * The Calendar, on a day when one is given: the Calendar widget's taps
+ * (`dundundun://calendar?date=`). Stamped like `resetToMealPlan`, so tapping
+ * the same day twice still moves the screen there.
+ */
+export function resetToCalendar(focusDay?: string | null): void {
+  runWhenReady(() => {
+    navigateToTab('Calendar', focusDay ? { focusDay, focusStamp: Date.now() } : undefined);
+  });
+}
+
 // Where the "Search" Home Screen quick action lands. Search is a drawer
 // screen now (see AppNavigator's DRAWER_TABS), not a bottom tab, but it's
 // still a registered route, so this is the same tab navigation as before —
@@ -257,8 +268,13 @@ export function openQuickSearchFromKeyboard(): void {
   runWhenReady(() => navigateToTab('Today', { openQuickSearch: Date.now() }));
 }
 
-export function showTodayViewMode(mode: 'today' | 'later' | 'unscheduled' | 'inbox'): void {
-  runWhenReady(() => navigateToTab('Today', { showViewMode: mode, showViewModeAt: Date.now() }));
+/**
+ * Today on one of its lenses. `dayKey` (Later only) scrolls the list to the
+ * first task surfacing on that day or after it: the calendar's "open in
+ * Later" for a day still to come.
+ */
+export function showTodayViewMode(mode: 'today' | 'later' | 'unscheduled' | 'inbox', dayKey?: string): void {
+  runWhenReady(() => navigateToTab('Today', { showViewMode: mode, showViewModeAt: Date.now(), showViewModeDay: dayKey ?? null }));
 }
 
 export const showTodayViewModeFromKeyboard = showTodayViewMode;

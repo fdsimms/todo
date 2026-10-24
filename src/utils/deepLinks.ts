@@ -24,6 +24,7 @@ import {
   resetToRecipes,
   resetToRecipeDetail,
   resetToMealPlan,
+  resetToCalendar,
   resetToKitchen,
   resetToPeople,
   resetToMood,
@@ -312,6 +313,23 @@ export function isMealPlanUrl(url: string): boolean {
 export function mealPlanUrlDayKey(url: string): string | null {
   if (typeof url !== 'string') return null;
   const match = MEAL_PLAN_RE.exec(url.trim());
+  if (!match) return null;
+  const dayKey = (parseQuery(match[1] ?? '').date ?? '').trim();
+  return DAY_KEY_RE.test(dayKey) ? dayKey : null;
+}
+
+// `dundundun://calendar[?date=YYYY-MM-DD]` — the Calendar widget's taps, so a
+// day's line opens the calendar on that day.
+const CALENDAR_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?calendar\\/?(?:\\?(.*))?$`, 'i');
+
+export function isCalendarUrl(url: string): boolean {
+  return typeof url === 'string' && CALENDAR_RE.test(url.trim());
+}
+
+/** The day a calendar link asks to be opened on, or null for the bare link or a date that isn't a day key. */
+export function calendarUrlDayKey(url: string): string | null {
+  if (typeof url !== 'string') return null;
+  const match = CALENDAR_RE.exec(url.trim());
   if (!match) return null;
   const dayKey = (parseQuery(match[1] ?? '').date ?? '').trim();
   return DAY_KEY_RE.test(dayKey) ? dayKey : null;
@@ -870,6 +888,7 @@ export function linkIconFor(url: string | null | undefined): string {
   const knownApp = KNOWN_LINK_APPS.find(app => app.scheme === url);
   if (knownApp) return knownApp.icon;
   if (isRecipeUrl(url) || isRecipesUrl(url) || isMealPlanUrl(url)) return 'restaurant-outline';
+  if (isCalendarUrl(url)) return 'calendar-outline';
   if (isKitchenUrl(url)) return 'nutrition-outline';
   if (isGroceriesUrl(url)) return 'cart-outline';
   if (isPeopleUrl(url)) return 'people-outline';
@@ -930,6 +949,10 @@ export function openInAppUrl(url: string | null | undefined): boolean {
   }
   if (isMealPlanUrl(url)) {
     resetToMealPlan(mealPlanUrlDayKey(url), mealPlanUrlPickSlot(url), mealPlanUrlShopEntryId(url));
+    return true;
+  }
+  if (isCalendarUrl(url)) {
+    resetToCalendar(calendarUrlDayKey(url));
     return true;
   }
   if (isKitchenUrl(url)) {

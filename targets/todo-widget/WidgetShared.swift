@@ -357,6 +357,20 @@ let logMoodURL = URL(string: "dundundun://mood?log=1")!
 let addFoodURL = URL(string: "dundundun://foodlog?add=1")!
 let medicationsURL = URL(string: "dundundun://medications")!
 
+/// The Calendar on a day (`dundundun://calendar?date=YYYY-MM-DD`, isCalendarUrl
+/// in src/utils/deepLinks.ts): the Calendar widget's taps.
+func calendarURL(dayKey: String?) -> URL {
+    let bare = URL(string: "dundundun://calendar")!
+    guard let dayKey else { return bare }
+    return URL(string: "dundundun://calendar?date=\(dayKey)") ?? bare
+}
+
+/// One task's editor (`dundundun://task?id=`, TASK_RE in src/utils/deepLinks.ts).
+func taskURL(id: String) -> URL {
+    let encoded = id.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? id
+    return URL(string: "dundundun://task?id=\(encoded)") ?? openAppURL
+}
+
 // ==== Formatting ====
 
 func taskCountLabel(_ count: Int) -> String {

@@ -36,6 +36,8 @@ import {
   deleteEventDirect,
   eventCoordinate,
   readEventForEdit,
+  readEventJoinLink,
+  rescheduleEventDirect,
   updateEventDirect,
   moveAllDayEvent,
   presentEventCreate,
@@ -391,5 +393,60 @@ describe('editing an event from the card', () => {
     mockCalendar.deleteEventAsync.mockRejectedValue(new Error('read-only'));
 
     await expect(deleteEventDirect('evt-1')).resolves.toBe(false);
+  });
+});
+
+describe('rescheduleEventDirect', () => {
+  const start = new Date(2026, 9, 24, 10);
+  const end = new Date(2026, 9, 24, 11, 30);
+
+  beforeEach(() => {
+    mockCalendar.getCalendarPermissionsAsync.mockResolvedValue({ granted: true });
+    mockCalendar.getEventAsync.mockResolvedValue(readEvent({ allDay: false }));
+  });
+
+  it('writes the new times and the title, and sends back what the save would reset', async () => {
+    await expect(rescheduleEventDirect('evt-1', 'Pay taxes', start, end, '2026-10-24T13:00:00.000Z')).resolves.toBe('evt-1');
+    const [id, details, options] = mockCalendar.updateEventAsync.mock.calls[0];
+    expect(id).toBe('evt-1');
+    expect(details).toMatchObject({
+      title: 'Pay taxes',
+      startDate: start,
+      endDate: end,
+      location: 'Tax office, 2nd floor',
+      notes: 'Bring the blue folder',
+      allDay: false,
+    });
+    // One occurrence of a repeating event, never the rest of the series.
+    expect(options).toEqual({ futureEvents: false, instanceStartDate: '2026-10-24T13:00:00.000Z' });
+  });
+
+  it('refuses an end that is not after the start, and a demo', async () => {
+    await expect(rescheduleEventDirect('evt-1', 'x', end, start)).resolves.toBeNull();
+    mockDemo.mockReturnValue(true);
+    await expect(rescheduleEventDirect('evt-1', 'x', start, end)).resolves.toBeNull();
+    expect(mockCalendar.updateEventAsync).not.toHaveBeenCalled();
+  });
+
+  it('is null when the write fails', async () => {
+    mockCalendar.updateEventAsync.mockRejectedValue(new Error('gone'));
+    await expect(rescheduleEventDirect('evt-1', 'x', start, end)).resolves.toBeNull();
+  });
+});
+
+describe('readEventJoinLink', () => {
+  beforeEach(() => {
+    mockCalendar.getCalendarsAsync.mockResolvedValue([]);
+  });
+
+  it('reads the call link out of the event\'s notes', async () => {
+    mockCalendar.getEventAsync.mockResolvedValue(readEvent({ notes: 'Dial in: https://acme.zoom.us/j/1?pwd=a' }));
+    await expect(readEventJoinLink('evt-1')).resolves.toBe('https://acme.zoom.us/j/1?pwd=a');
+  });
+
+  it('is null with no link, or no event', async () => {
+    await expect(readEventJoinLink('evt-1')).resolves.toBeNull();
+    mockCalendar.getEventAsync.mockResolvedValue(null);
+    await expect(readEventJoinLink('evt-1')).resolves.toBeNull();
   });
 });

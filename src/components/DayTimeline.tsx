@@ -1,10 +1,17 @@
-import React, { useMemo } from 'react';
-import { Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useMemo, useRef, useState } from 'react';
+import { PanResponder, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
-import { border, font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
+import { border, flattenOverlay, font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
 import { formatTimeOfDay } from '../utils/dateUtils';
-import { slotMinutesAt, type DayTimeline as DayTimelineData } from '../utils/dayTimeline';
+import { haptics } from '../utils/haptics';
+import {
+  draggedRange,
+  MINUTES_IN_DAY,
+  slotMinutesAt,
+  type DayTimeline as DayTimelineData,
+  type TimelineDragKind,
+} from '../utils/dayTimeline';
 import { MEAL_SLOT_LABELS, type MealPlanEntry } from '../types';
 
 /** How tall one hour of the axis is. */
@@ -55,10 +62,47 @@ interface Props {
    * default length of a new event. Null when nothing is being placed.
    */
   placeholderMinutes?: number | null;
+  /** An event's calendar color, by event id. A block with none is drawn grey. */
+  eventColor?: (eventId: string) => string | undefined;
+  /**
+   * Whether an event's block can be dragged: one that starts and ends on this
+   * day, so the block is the whole event rather than the part of it the day
+   * clipped. Omit to make no event movable.
+   */
+  canMoveEvent?: (eventId: string) => boolean;
+  /** A long-press on an empty stretch, dragged down to where it should end: a new event. */
+  onCreateRange?: (startMinutes: number, endMinutes: number) => void;
+  /** An event's block moved, or stretched by its grip, to new minutes. */
+  onRescheduleEvent?: (eventId: string, startMinutes: number, endMinutes: number) => void;
+  /**
+   * True while a drag holds the finger. The screen switches its scroll view
+   * off for that long, or the scroll takes the touch on the first move (see
+   * the SortableList note in CLAUDE.md: this responder is a descendant).
+   */
+  onDragStateChange?: (dragging: boolean) => void;
 }
 
-/** How long the placeholder block is, in minutes. */
+/** How long the placeholder block is, in minutes, and a new event made by a long-press that never moved. */
 const PLACEHOLDER_MINUTES = 60;
+/** A block this short has no room for a grip to stretch it by. */
+const MIN_GRIP_BLOCK_HEIGHT = 30;
+
+/** A drag in progress: what it does, to which event, from where, and where it is now. */
+interface DragState {
+  kind: TimelineDragKind;
+  eventId: string | null;
+  origin: { start: number; end: number };
+  range: { start: number; end: number };
+}
+
+/**
+ * A calendar's color as a block's fill: a fifth of it over the page, made
+ * opaque. A color that isn't a plain hex is no color.
+ */
+function blockTint(color: string | undefined, colors: Colors): string | null {
+  if (!color || !/^#[0-9a-fA-F]{6}$/.test(color)) return null;
+  return flattenOverlay(`${color}33`, colors.bg);
+}
 
 /**
  * One day drawn against a clock (#2680).
@@ -71,10 +115,91 @@ const PLACEHOLDER_MINUTES = 60;
  */
 export function DayTimeline({
   dayStart, timeline, meals, busyKnown, tripOnly = false, use24Hour, nowMinutes, onPressTask, onPressEvent, onPressSlot,
-  placeholderMinutes = null,
+  placeholderMinutes = null, eventColor, canMoveEvent, onCreateRange, onRescheduleEvent, onDragStateChange,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  // ==== dragging: making, moving and stretching events ====
+  // Lifted by a long-press (on an empty stretch, an event's block, or its
+  // grip), then followed by a responder on the axis that claims the touch on
+  // its first move: SortableList's shape, with the screen's scroll view
+  // switched off for the drag's length (onDragStateChange). The drag's state
+  // re-renders this component only, never the screen.
+  const [drag, setDrag] = useState<DragState | null>(null);
+  const dragRef = useRef<DragState | null>(null);
+  // Where the finger was when the responder took the touch, null until then.
+  const grantYRef = useRef<number | null>(null);
+  const callbacks = useRef({ onCreateRange, onRescheduleEvent, onDragStateChange });
+  callbacks.current = { onCreateRange, onRescheduleEvent, onDragStateChange };
+
+  const beginDrag = (kind: TimelineDragKind, eventId: string | null, origin: { start: number; end: number }) => {
+    if (dragRef.current) return;
+    const state: DragState = { kind, eventId, origin, range: origin };
+    dragRef.current = state;
+    grantYRef.current = null;
+    setDrag(state);
+    haptics.impactMedium();
+    callbacks.current.onDragStateChange?.(true);
+  };
+
+  /**
+   * Lands the drag, or drops it. Reachable from the raw touch as well as from
+   * the responder, because the responder is only granted on a move: a
+   * long-press let go without moving would otherwise leave the drag (and the
+   * screen's scroll) stuck on. A new event made that way gets the hour a tap
+   * would give it; a move that went nowhere writes nothing.
+   */
+  const endDrag = (commit: boolean) => {
+    const state = dragRef.current;
+    if (!state) return;
+    dragRef.current = null;
+    grantYRef.current = null;
+    setDrag(null);
+    callbacks.current.onDragStateChange?.(false);
+    if (!commit) return;
+    const { range, origin } = state;
+    if (state.kind === 'create') {
+      callbacks.current.onCreateRange?.(range.start, range.end);
+    } else if (state.eventId && (range.start !== origin.start || range.end !== origin.end)) {
+      haptics.success();
+      callbacks.current.onRescheduleEvent?.(state.eventId, range.start, range.end);
+    }
+  };
+  const endDragRef = useRef(endDrag);
+  endDragRef.current = endDrag;
+
+  const responder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onStartShouldSetPanResponderCapture: () => false,
+      onMoveShouldSetPanResponder: () => dragRef.current !== null,
+      onMoveShouldSetPanResponderCapture: () => dragRef.current !== null,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: e => { grantYRef.current = e.nativeEvent.pageY; },
+      onPanResponderMove: e => {
+        const state = dragRef.current;
+        if (!state || grantYRef.current === null) return;
+        const delta = ((e.nativeEvent.pageY - grantYRef.current) / HOUR_HEIGHT) * 60;
+        const range = draggedRange(state.kind, state.origin, delta);
+        if (range.start === state.range.start && range.end === state.range.end) return;
+        // A tick per quarter hour crossed, so the snap can be felt.
+        haptics.tap();
+        const next = { ...state, range };
+        dragRef.current = next;
+        setDrag(next);
+      },
+      onPanResponderRelease: () => endDragRef.current(true),
+      onPanResponderTerminate: () => endDragRef.current(false),
+    }),
+  ).current;
+  const onAxisTouchEnd = () => {
+    if (dragRef.current && grantYRef.current === null) endDragRef.current(true);
+  };
+  const onAxisTouchCancel = () => {
+    if (dragRef.current && grantYRef.current === null) endDragRef.current(false);
+  };
+  const clock = (minutes: number) => formatTimeOfDay(new Date(dayStart.getTime() + minutes * 60000), use24Hour);
 
   const { entries, allDay, firstMinute, lastMinute } = timeline;
   const spanMinutes = Math.max(60, lastMinute - firstMinute);
@@ -119,20 +244,32 @@ export function DayTimeline({
         </View>
       )}
 
-      <View style={[styles.axis, { height: axisHeight }]}>
+      <View
+        style={[styles.axis, { height: axisHeight }]}
+        {...responder.panHandlers}
+        onTouchEnd={onAxisTouchEnd}
+        onTouchCancel={onAxisTouchCancel}
+      >
         {/* Under everything: the hour rules and the empty track let a tap
             through to it, and a block's own tap wins over it. */}
-        {onPressSlot && (
+        {(onPressSlot || onCreateRange) && (
           <Pressable
             style={StyleSheet.absoluteFill}
-            onPress={e => onPressSlot(
+            onPress={onPressSlot ? e => onPressSlot(
               slotMinutesAt(e.nativeEvent.locationY, firstMinute, lastMinute, HOUR_HEIGHT),
               e.nativeEvent.pageX,
               e.nativeEvent.pageY,
-            )}
+            ) : undefined}
+            onLongPress={onCreateRange ? e => {
+              const start = slotMinutesAt(e.nativeEvent.locationY, firstMinute, lastMinute, HOUR_HEIGHT);
+              beginDrag('create', null, { start, end: Math.min(MINUTES_IN_DAY, start + PLACEHOLDER_MINUTES) });
+            } : undefined}
+            delayLongPress={interaction.delayLongPress}
             accessibilityRole="button"
             accessibilityLabel="Add a task or event at a time"
-            accessibilityHint="Tap a time on the timeline to add something there."
+            accessibilityHint={onCreateRange
+              ? 'Tap a time to add something there, or touch and hold, then drag down, to make an event that long.'
+              : 'Tap a time on the timeline to add something there.'}
           />
         )}
         {hourMarks.map(mark => (
@@ -169,6 +306,11 @@ export function DayTimeline({
           const rawHeight = ((entry.endMinutes - entry.startMinutes) / 60) * HOUR_HEIGHT;
           const isTask = entry.kind === 'task';
           const pressable = isTask || (!!onPressEvent && !!entry.eventId);
+          const color = !isTask && entry.eventId ? eventColor?.(entry.eventId) : undefined;
+          const tint = blockTint(color, colors);
+          const movable = !isTask && !entry.instant && !!entry.eventId && !!onRescheduleEvent
+            && (canMoveEvent?.(entry.eventId) ?? false);
+          const beingDragged = drag !== null && drag.eventId !== null && drag.eventId === entry.eventId;
           const press = () => {
             if (isTask) { if (entry.taskId) onPressTask(entry.taskId); }
             else if (entry.eventId) onPressEvent?.(entry.eventId);
@@ -203,6 +345,7 @@ export function DayTimeline({
             );
           }
 
+          const blockHeight = Math.max(MIN_BLOCK_HEIGHT, rawHeight - BLOCK_GAP);
           return (
             <TouchableOpacity
               key={entry.key}
@@ -210,16 +353,21 @@ export function DayTimeline({
                 styles.entry,
                 styles.block,
                 isTask ? styles.blockTask : styles.blockEvent,
-                { ...position, height: Math.max(MIN_BLOCK_HEIGHT, rawHeight - BLOCK_GAP) },
+                tint !== null && { backgroundColor: tint, borderLeftColor: color },
+                { ...position, height: blockHeight },
+                beingDragged && styles.blockLifted,
               ]}
               activeOpacity={interaction.activeOpacity}
-              disabled={!pressable}
+              disabled={!pressable && !movable}
               onPress={press}
+              onLongPress={movable ? () => beginDrag('move', entry.eventId, { start: entry.startMinutes, end: entry.endMinutes }) : undefined}
+              delayLongPress={interaction.delayLongPress}
               accessibilityRole={pressable ? 'button' : undefined}
               accessibilityLabel={`${entry.title}, ${timeLabel}`}
+              accessibilityHint={movable ? 'Touch and hold, then drag, to move it.' : undefined}
             >
               <Text
-                style={[styles.blockTitle, isTask ? styles.blockTitleTask : styles.blockTitleEvent]}
+                style={[styles.blockTitle, isTask ? styles.blockTitleTask : styles.blockTitleEvent, tint !== null && styles.blockTitleTask]}
                 numberOfLines={rawHeight > MIN_BLOCK_HEIGHT * 1.6 ? 2 : 1}
               >
                 {entry.title}
@@ -227,9 +375,50 @@ export function DayTimeline({
               {rawHeight > MIN_BLOCK_HEIGHT * 1.6 && (
                 <Text style={styles.blockTime} numberOfLines={1}>{timeLabel}</Text>
               )}
+              {/* The grip at the foot of a movable event: hold and drag it to
+                  change when the event ends. Its own press target, so a hold
+                  on it stretches rather than moves. */}
+              {movable && blockHeight >= MIN_GRIP_BLOCK_HEIGHT && (
+                <Pressable
+                  style={styles.gripArea}
+                  onLongPress={() => beginDrag('resize', entry.eventId, { start: entry.startMinutes, end: entry.endMinutes })}
+                  delayLongPress={interaction.delayLongPress}
+                  hitSlop={6}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Change when ${entry.title} ends`}
+                  accessibilityHint="Touch and hold, then drag."
+                >
+                  <View style={[styles.grip, color ? { backgroundColor: color } : null]} />
+                </Pressable>
+              )}
             </TouchableOpacity>
           );
         })}
+
+        {/* The block being made, moved or stretched, where it would land now.
+            Drawn full width over whatever lanes it crosses, with its times,
+            so where it lands is never a guess. */}
+        {drag !== null && (() => {
+          const draggedColor = drag.eventId ? eventColor?.(drag.eventId) : undefined;
+          const draggedTint = blockTint(draggedColor, colors);
+          const height = Math.max(MIN_BLOCK_HEIGHT, ((drag.range.end - drag.range.start) / 60) * HOUR_HEIGHT - BLOCK_GAP);
+          return (
+            <View
+              pointerEvents="none"
+              accessibilityElementsHidden
+              importantForAccessibility="no"
+              style={[
+                drag.kind === 'create' ? styles.placeholder : [styles.block, styles.blockEvent, styles.ghost],
+                drag.kind !== 'create' && draggedTint !== null && { backgroundColor: draggedTint, borderLeftColor: draggedColor },
+                { top: offsetFor(drag.range.start), height },
+              ]}
+            >
+              <Text style={drag.kind === 'create' ? styles.placeholderTime : styles.ghostTime} numberOfLines={1}>
+                {clock(drag.range.start)} – {clock(drag.range.end)}
+              </Text>
+            </View>
+          );
+        })()}
         </View>
 
         {/* After the entries so it draws over them: a now line hidden behind a
@@ -370,6 +559,40 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xxs,
     color: colors.textTertiary,
     marginTop: 1,
+  },
+  // The block a drag has lifted, left in place faded so it's clear what moved.
+  blockLifted: {
+    opacity: 0.35,
+  },
+  // Where the dragged block would land: the full track's width, raised.
+  ghost: {
+    position: 'absolute',
+    left: 0,
+    right: spacing.xs,
+    borderWidth: 1.5,
+    borderColor: colors.accent,
+  },
+  ghostTime: {
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    color: colors.text,
+  },
+  // A touch target wider than the grip it draws, along the block's foot.
+  gripArea: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 12,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingBottom: 3,
+  },
+  grip: {
+    width: 20,
+    height: 3,
+    borderRadius: radius.full,
+    backgroundColor: colors.textTertiary,
   },
   instant: {
     flexDirection: 'row',

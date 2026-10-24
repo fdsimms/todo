@@ -11,8 +11,10 @@ import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { resetToKitchen, resetToMood, resetToToday, resetToWorkouts } from '../navigation/navigationRef';
 import { buildWidgetSnapshot, WATCH_CAPS, type SnapshotInput, type WidgetSnapshot } from './widgetSnapshot';
 import { completedOnDay } from './allClear';
-import { getDayStart, getLogicalDayKey } from './dateUtils';
-import { beginVisibleAtPass, getVisibleAt } from './visibilityUtils';
+import { dayKeyOf, dayKeyToDate, getDayStart, getLogicalDayKey } from './dateUtils';
+import { beginVisibleAtPass, getVisibleAt, sunLocationOn } from './visibilityUtils';
+import { buildWidgetCalendar, type WidgetCalendar } from './widgetCalendar';
+import { buildDayBuckets, dayDetail, dayRows } from './calendarMonth';
 import { parseQuietTaps, planQuietTaps, tapsToRequeue, workoutHandOffTaps, type QuietTap, type QuietTapWorkouts } from './widgetQuietTaps';
 import type { Task } from '../types';
 import { addDays } from 'date-fns/addDays';
@@ -699,6 +701,47 @@ function widgetUpcoming(deferred: readonly Task[], now: Date): { task: Task; vis
   return deferred.map(task => ({ task, visibleAt: getVisibleAt(task, pass) }));
 }
 
+/**
+ * The Calendar widget's today and tomorrow, or null while the calendar isn't
+ * read at all (the widget says so rather than drawing two empty days).
+ *
+ * The day rows come from the same buckets the Calendar screen builds, so a
+ * task the screen lists on a day is the one the widget does. The calendars
+ * are the ones the store reads, vacation filter included, so the widget's own
+ * EventKit read can't show a calendar the app has put away.
+ */
+function widgetCalendar(allTasks: readonly Task[], now: Date): WidgetCalendar | null {
+  const settings = useSettingsStore.getState();
+  if (!settings.calendarReadEnabled) return null;
+  const { dayResetTime, calendarIds, vacationMode, vacationHiddenCalendarIds } = settings;
+  const todayStart = getDayStart(now, dayResetTime);
+  const starts = [todayStart, addDays(todayStart, 1)];
+  const keys = starts.map(dayKeyOf);
+  const buckets = buildDayBuckets([...allTasks], {
+    from: dayKeyToDate(keys[0]),
+    to: dayKeyToDate(keys[keys.length - 1]),
+    dayResetTime,
+    projecting: false,
+    projectFrom: dayKeyToDate(keys[0]),
+  });
+  const taskById = new Map(allTasks.map(t => [t.id, t]));
+  const calendar = useCalendarStore.getState();
+  return buildWidgetCalendar({
+    days: starts.map((start, i) => ({
+      key: keys[i],
+      start,
+      end: addDays(start, 1),
+      tasks: dayRows(dayDetail(buckets.get(keys[i]), taskById)),
+      sunLocation: sunLocationOn(start),
+    })),
+    events: widgetEvents(true),
+    calendarIds: vacationMode ? calendarIds.filter(id => !vacationHiddenCalendarIds.includes(id)) : calendarIds,
+    calendarsById: calendar.calendarsById,
+    hidden: Object.values(useHiddenEventsStore.getState().hiddenByKey)
+      .map(h => ({ id: h.eventId, start: h.eventStart })),
+  });
+}
+
 // The pantry index as last written (see the end of writeSnapshotNow).
 let lastPantryIndex: string | null = null;
 
@@ -772,6 +815,7 @@ function writeSnapshotNow(): void {
     dayEnd: addDays(getDayStart(now, dayResetTime), 1),
     upcoming: widgetUpcoming(tasks.deferredTasks().filter(notLocked), now),
     mealLogPrompt: settings.mealLogPrompt,
+    calendar: widgetCalendar(tasks.tasks.filter(notLocked), now),
   };
 
   writeToNativeBridge(JSON.stringify(buildWidgetSnapshot(input)));
@@ -782,7 +826,8 @@ function writeSnapshotNow(): void {
   // the native half drops it when there's no paired watch with the app
   // installed.
   const bridge = widgetBridge();
-  lastWatchBase = buildWidgetSnapshot({ ...input, caps: WATCH_CAPS });
+  // The watch has no calendar widget, so its copy leaves that section out.
+  lastWatchBase = buildWidgetSnapshot({ ...input, caps: WATCH_CAPS, calendar: null });
   writeWatchCopy(lastWatchBase, false);
 
   // Rides the same debounce and the same store read rather than taking a
@@ -1040,7 +1085,10 @@ function subscribeToStores(): () => void {
       if (
         s.nutritionTargets !== p.nutritionTargets ||
         s.nutritionLimits !== p.nutritionLimits ||
-        s.limitWarnPercent !== p.limitWarnPercent
+        s.limitWarnPercent !== p.limitWarnPercent ||
+        // The Calendar widget reads these calendars itself.
+        s.calendarReadEnabled !== p.calendarReadEnabled ||
+        s.calendarIds !== p.calendarIds
       ) {
         scheduleSnapshotWrite();
       }

@@ -69,6 +69,25 @@ export function hasVideoCallLink(...fields: readonly (string | null | undefined)
   return fields.some(field => !!field && VIDEO_CALL_LINK.test(field));
 }
 
+/** A link written into free text, up to the first space or closing bracket. */
+const LINK_IN_TEXT = /https?:\/\/[^\s<>"')\]]+/gi;
+
+/**
+ * The first video-call link in these fields, whole, for a Join button: the
+ * same hosts `hasVideoCallLink` recognises, read out of the notes or the URL
+ * the moment it's wanted, since the notes themselves are never kept. Trailing
+ * punctuation a sentence put after the link is dropped. Null when there is none.
+ */
+export function videoCallLink(...fields: readonly (string | null | undefined)[]): string | null {
+  for (const field of fields) {
+    if (!field) continue;
+    for (const link of field.match(LINK_IN_TEXT) ?? []) {
+      if (VIDEO_CALL_LINK.test(link)) return link.replace(/[.,;:!?]+$/, '');
+    }
+  }
+  return null;
+}
+
 /** Half-open [start, end) in epoch milliseconds. */
 export interface BusyInterval {
   start: number;

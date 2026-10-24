@@ -453,7 +453,7 @@ file: the two maps are indexes, not write-ups.
 | vacation mode turning itself on for a trip, and the list you shop from while away | `Project.awayPauses`/`checkAwayVacation` + `Project.awayListId`/`checkAwayGroceryList` — see `docs/arch/away-dates.md` |
 | a task that asks a question when it's completed | `src/utils/deliverables.ts` (+ `src/utils/bulkCompletion.ts` for the paths that complete several at once). |
 | a task falling on several dates | `seriesId` in `src/store/useTaskStore.ts` (`applyTaskDates`) — see Series below |
-| the month grid, and drawing an occurrence that has no row | `src/utils/calendarMonth.ts` + `src/screens/CalendarScreen.tsx` — see `docs/arch/month-grid.md` |
+| the Calendar screen (events first, a task only when it has a time), and drawing an occurrence that has no row | `src/utils/calendarAgenda.ts` + `src/screens/CalendarScreen.tsx` (+ `src/utils/calendarMonth.ts` for projections) — see `docs/arch/month-grid.md` |
 | a column, migration, or row↔object mapping | `src/db/database.ts` (`initDatabase`, `rowToTask`) |
 | any model's shape | `src/types/index.ts` — one file, every type |
 | colors, spacing, animation | `src/theme/index.ts`, `src/theme/ThemeContext.tsx` |
@@ -726,7 +726,7 @@ decided, and the design system every screen is built from. Individual features a
 | `docs/arch/groceries.md` | Aisles, stores, the active trip, the kitchen/pantry, either/or, substitutes, standing swaps |
 | `docs/arch/recipes.md` | Composed recipes, sections, quantities, scaling, unit conversion, cook mode |
 | `docs/arch/generated-tasks.md` | The things that write a task unattended |
-| `docs/arch/month-grid.md` | The calendar month view and projected occurrences |
+| `docs/arch/month-grid.md` | The Calendar screen, its agenda and event reads, and projected occurrences |
 | `docs/arch/template-questions.md` | What a template run asks before it creates anything |
 | `docs/arch/timed-tasks.md` | Countdowns, and splitting one across subtasks |
 | `docs/arch/rewards.md` | Coins and rewards: why the balance is a ledger, and what may and may not earn or cost coins |

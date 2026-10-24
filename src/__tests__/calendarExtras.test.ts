@@ -1,9 +1,8 @@
-import type { MealPlanEntry, Person, Project, Task } from '../types';
+import type { MealPlanEntry, Person, Project } from '../types';
 import { dayKeyOf } from '../utils/dateUtils';
 import {
   buildDayExtras,
   calendarTrips,
-  completedRows,
   hasDayNotes,
   tripBandLanes,
   type DayExtras,
@@ -25,11 +24,6 @@ const person = (over: Partial<Person>): Person => ({
   id: 'a', name: 'Tessa', nickname: '', archived: false, birthdayMonth: null, birthdayDay: null, ...over,
 } as unknown as Person);
 
-const task = (over: Partial<Task>): Task => ({
-  id: 't', title: 'Task', completed: false, completedAt: null, missedAt: null,
-  parentId: null, archived: false, ...over,
-} as unknown as Task);
-
 const meal = (over: Partial<MealPlanEntry>): MealPlanEntry => ({
   id: 'm', date: '2026-10-05', slot: 'dinner', recipeId: null, title: 'Tacos', sortOrder: 0, ...over,
 } as unknown as MealPlanEntry);
@@ -38,7 +32,7 @@ const meal = (over: Partial<MealPlanEntry>): MealPlanEntry => ({
 const week = Array.from({ length: 7 }, (_, i) => new Date(2026, 9, 4 + i));
 const keys = week.map(dayKeyOf);
 
-const empty = { trips: [], meals: [], people: [], projects: [], tasks: [] };
+const empty = { trips: [], meals: [], people: [], projects: [] };
 
 describe('calendarTrips', () => {
   it('names each live project with an away span, and drops filed ones', () => {
@@ -99,30 +93,11 @@ describe('buildDayExtras', () => {
     });
     expect(extras.get('2026-10-09')?.projectDeadlines).toEqual([{ projectId: 'p1', name: 'Remodel' }]);
   });
-
-  it('files a completion on its logical day, newest first, without subtasks, archived or missed rows', () => {
-    const extras = buildDayExtras(week, {
-      ...empty,
-      dayResetTime: '02:00',
-      tasks: [
-        task({ id: 'early', completed: true, completedAt: new Date(2026, 9, 6, 9).toISOString() }),
-        task({ id: 'late', completed: true, completedAt: new Date(2026, 9, 6, 20).toISOString() }),
-        // 1 AM on the 7th is still the 6th under a 2 AM reset.
-        task({ id: 'night', completed: true, completedAt: new Date(2026, 9, 7, 1).toISOString() }),
-        task({ id: 'sub', parentId: 'early', completed: true, completedAt: new Date(2026, 9, 6, 10).toISOString() }),
-        task({ id: 'filed', archived: true, completed: true, completedAt: new Date(2026, 9, 6, 10).toISOString() }),
-        task({ id: 'missed', missedAt: new Date(2026, 9, 6, 10).toISOString(), completed: true, completedAt: new Date(2026, 9, 6, 10).toISOString() }),
-        task({ id: 'open' }),
-      ],
-    });
-    expect(extras.get('2026-10-06')?.completedIds).toEqual(['night', 'late', 'early']);
-    expect(extras.get('2026-10-07')).toBeUndefined();
-  });
 });
 
 describe('hasDayNotes', () => {
-  const base: DayExtras = { key: 'k', trips: [], meals: [], birthdays: [], projectDeadlines: [], completedIds: ['t'] };
-  it('ignores completions, which are rows rather than notes', () => {
+  const base: DayExtras = { key: 'k', trips: [], meals: [], birthdays: [], projectDeadlines: [] };
+  it('has nothing to say about an empty day', () => {
     expect(hasDayNotes(base, true)).toBe(false);
     expect(hasDayNotes(undefined, true)).toBe(false);
   });
@@ -133,20 +108,10 @@ describe('hasDayNotes', () => {
   });
 });
 
-describe('completedRows', () => {
-  it('leaves out a task the day already lists', () => {
-    const a = task({ id: 'a', completed: true });
-    const b = task({ id: 'b', completed: true });
-    const extras: DayExtras = { key: 'k', trips: [], meals: [], birthdays: [], projectDeadlines: [], completedIds: ['a', 'b', 'gone'] };
-    const byId = new Map([[a.id, a], [b.id, b]]);
-    expect(completedRows(extras, [a], byId).map(t => t.id)).toEqual(['b']);
-  });
-});
-
 describe('tripBandLanes', () => {
   const extrasFor = (byKey: Record<string, string[]>): Map<string, DayExtras> => new Map(
     Object.entries(byKey).map(([key, ids]) => [key, {
-      key, meals: [], birthdays: [], projectDeadlines: [], completedIds: [],
+      key, meals: [], birthdays: [], projectDeadlines: [],
       trips: ids.map(id => ({ projectId: id, name: id.toUpperCase() })),
     }]),
   );

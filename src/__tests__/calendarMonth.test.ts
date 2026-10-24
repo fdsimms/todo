@@ -8,11 +8,9 @@ import {
   dayDetail,
   dayRows,
   dotsFor,
-  hasOpenDeadline,
   nthOccurrence,
   projectOccurrences,
   projectedDeadlineFor,
-  summarizeDay,
 } from '../utils/calendarMonth';
 
 const mockSettings = { dayResetTime: '00:00', holidaySet: 'none', customHolidays: [] as string[] };
@@ -486,30 +484,6 @@ describe('buildDayBuckets with projection', () => {
   });
 });
 
-describe('hasOpenDeadline', () => {
-  const bucketOf = (marks: Parameters<typeof dotsFor>[0]): DayBucket =>
-    ({ dots: dotsFor(marks) } as DayBucket);
-  const mark = (over: Partial<Parameters<typeof dotsFor>[0][number]>) => ({
-    kind: 'deadline' as const,
-    taskId: 'task-1',
-    title: 'Test',
-    projected: false,
-    completed: false,
-    ...over,
-  });
-
-  it('is true for a real deadline still open', () => {
-    expect(hasOpenDeadline(bucketOf([mark({})]))).toBe(true);
-  });
-
-  it('is false for a met, projected or missing deadline', () => {
-    expect(hasOpenDeadline(bucketOf([mark({ completed: true })]))).toBe(false);
-    expect(hasOpenDeadline(bucketOf([mark({ projected: true })]))).toBe(false);
-    expect(hasOpenDeadline(bucketOf([mark({ kind: 'due' })]))).toBe(false);
-    expect(hasOpenDeadline(undefined)).toBe(false);
-  });
-});
-
 describe('dotsFor', () => {
   const mark = (over: Partial<Parameters<typeof dotsFor>[0][number]>) => ({
     kind: 'due' as const,
@@ -599,7 +573,6 @@ describe('dayDetail', () => {
   it('reads an empty day', () => {
     const detail = dayDetail(undefined, byId);
     expect(detail.isEmpty).toBe(true);
-    expect(summarizeDay(detail)).toBe('');
   });
 });
 
@@ -622,39 +595,6 @@ describe('dayRows', () => {
 
   it('leaves expected occurrences out', () => {
     expect(dayRows({ ...empty, expected: [{ taskId: 'x', title: 'Bins out' }] })).toEqual([]);
-  });
-});
-
-describe('summarizeDay', () => {
-  const byId = new Map<string, Task>();
-  const detail = (over: Partial<ReturnType<typeof dayDetail>>) => ({
-    ...dayDetail(undefined, byId),
-    ...over,
-  });
-
-  it('counts real rows by kind', () => {
-    const task = makeTask({});
-    expect(summarizeDay(detail({ due: [task, task], deadline: [task] }))).toBe('2 due · 1 deadline');
-  });
-
-  it('pluralizes deadlines and names a returning task', () => {
-    const task = makeTask({});
-    expect(summarizeDay(detail({ deadline: [task, task], defer: [task] }))).toBe('2 deadlines · 1 returning');
-  });
-
-  it('leaves expected occurrences out of the count', () => {
-    expect(summarizeDay(detail({ expected: [{ taskId: 'a', title: 'Bins out' }] }))).toBe('');
-  });
-
-  it('does not count completed rows as still due', () => {
-    const done = makeTask({ completed: true });
-    const outstanding = makeTask({});
-    expect(summarizeDay(detail({ due: [done, outstanding], deadline: [done] }))).toBe('1 due');
-  });
-
-  it('renders nothing once every row on the day is complete', () => {
-    const done = makeTask({ completed: true });
-    expect(summarizeDay(detail({ due: [done, done], deadline: [done] }))).toBe('');
   });
 });
 

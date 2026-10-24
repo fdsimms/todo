@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, View, Text, ScrollView, StyleSheet, Linking, TouchableOpacity } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import { SheetModal } from './SheetModal';
@@ -6,7 +6,8 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import type { BusyEvent } from '../utils/calendarBusy';
 import { formatTimeOfDay } from '../utils/dateUtils';
 import { directionsUrl } from '../utils/maps';
-import { eventCoordinate } from '../utils/calendarSync';
+import { eventCoordinate, readEventJoinLink } from '../utils/calendarSync';
+import { describeEventTiming } from '../utils/calendarAgenda';
 import { describeTravelEstimate, estimateFor, travelModeFor, travelOriginForEvent, travelOriginKey, travelWalkUnderFor } from '../utils/travelTasks';
 import { useTravelTimeStore } from '../store/useTravelTimeStore';
 import { readSavedPlaces } from '../utils/savedPlaces';
@@ -83,6 +84,12 @@ interface Props {
    * to the current logical day.
    */
   day?: Date;
+  /**
+   * One event to open on, from a tap on it in the Calendar: the sheet narrows
+   * to it, its details start open, and a heading says how soon it is and
+   * offers the call link when it has one. Null or omitted lists the day.
+   */
+  focus?: BusyEvent | null;
 }
 
 /**
@@ -134,9 +141,34 @@ interface Props {
  * The template sheets and the move sheet render **inside** this sheet's Modal,
  * not beside it, for the sibling-Modal rule in CLAUDE.md.
  */
-export function TodayEventsSheet({ visible, onClose, events, calendarsById, title, day }: Props) {
+export function TodayEventsSheet({ visible, onClose, events, calendarsById, title, day, focus = null }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  // The one event a focused sheet is about, matched in the day's list so its
+  // row stays current; the focus itself stands in if the read has moved on.
+  const focusKey = focus ? eventReminderKey(focus) : null;
+  const shownEvents = useMemo(() => {
+    if (!focus || focusKey === null) return events;
+    const match = events.filter(e => eventReminderKey(e) === focusKey);
+    return match.length > 0 ? match : [focus];
+  }, [events, focus, focusKey]);
+  const focused = focus ? shownEvents[0] : null;
+  // The call link, read for the focused event when it opens: the notes it
+  // lives in are never kept (`videoCallLink`). Checked against the event it
+  // was asked for, since another can be opened while the read is out.
+  const [joinLink, setJoinLink] = useState<string | null>(null);
+  const joinFor = useRef<string | null>(null);
+  useEffect(() => {
+    setJoinLink(null);
+    joinFor.current = focusKey;
+    if (!visible || !focused || !focused.videoCall) return;
+    const asked = focusKey;
+    void readEventJoinLink(focused.id, focused.start).then(link => {
+      if (joinFor.current === asked) setJoinLink(link);
+    });
+    // Keyed on the occurrence, not the object, which a re-read replaces.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, focusKey]);
   const remindersByKey = useEventReminderStore(s => s.remindersByKey);
   const setReminder = useEventReminderStore(s => s.setReminder);
   const clearReminder = useEventReminderStore(s => s.clearReminder);
@@ -205,6 +237,22 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
   useEffect(() => {
     if (!visible) setAddedKeys([]);
   }, [visible]);
+
+  // A focused sheet opens with the event's details showing: that is what the
+  // tap on it was for.
+  useEffect(() => {
+    if (visible && focusKey !== null) setOpenPanel({ key: focusKey, panel: 'details' });
+  }, [visible, focusKey]);
+
+  const openJoinLink = async () => {
+    if (!joinLink) return;
+    haptics.tap();
+    try {
+      await Linking.openURL(joinLink);
+    } catch {
+      // Same as directions: nothing to say if the system can't open it.
+    }
+  };
 
   const togglePanel = (key: string, panel: OpenPanel['panel']) => {
     animateLayout();
@@ -369,7 +417,33 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
           contentContainerStyle={styles.list}
           keyboardShouldPersistTaps="handled"
         >
-          {events.map(event => {
+          {focused && (() => {
+            const calendar = calendarsById?.[focused.calendarId];
+            const timing = focused.allDay
+              ? null
+              : describeEventTiming(new Date(focused.start), new Date(focused.end), new Date());
+            return (
+              <View style={styles.focusHeading}>
+                <View style={styles.focusTitleRow}>
+                  {calendar?.color ? <View style={[styles.focusDot, { backgroundColor: calendar.color }]} /> : null}
+                  <Text style={styles.focusTitle}>{focused.title || 'Event'}</Text>
+                </View>
+                <Text style={styles.focusWhen}>
+                  {focused.allDay
+                    ? 'All day'
+                    : `${formatTimeOfDay(new Date(focused.start))} – ${formatTimeOfDay(new Date(focused.end))}`}
+                  {calendar ? ` · ${calendar.title}` : ''}
+                </Text>
+                {timing && <Text style={styles.focusTiming}>{timing}</Text>}
+                {joinLink && (
+                  <View style={styles.focusActions}>
+                    <InlineAction icon="videocam-outline" label="Join call" onPress={() => { void openJoinLink(); }} />
+                  </View>
+                )}
+              </View>
+            );
+          })()}
+          {shownEvents.map(event => {
             const calendar = calendarsById?.[event.calendarId];
             const key = eventReminderKey(event);
             const reminder = remindersByKey[key];
@@ -600,7 +674,7 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
             );
           })}
           {/* Nothing to create in a demo: the event would land in the real calendar. */}
-          {!isDemoModeActive() && (
+          {!isDemoModeActive() && !focus && (
             <View style={styles.newEventRow}>
               <InlineAction icon="add" label="New event" surface="page" onPress={newEvent} />
             </View>
@@ -666,6 +740,18 @@ function formatMovedFrom(iso: string): string {
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
+  // The focused event's own heading, above its row.
+  focusHeading: {
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.md,
+    gap: spacing.xs,
+  },
+  focusTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  focusDot: { width: 12, height: 12, borderRadius: 4 },
+  focusTitle: { flex: 1, color: colors.text, fontSize: font.xl, fontWeight: fontWeight.bold },
+  focusWhen: { color: colors.textSecondary, fontSize: font.md },
+  focusTiming: { color: colors.accentText, fontSize: font.sm, fontWeight: fontWeight.semibold },
+  focusActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.xs },
   headerSpacer: { width: 64 },
   list: { paddingTop: spacing.md, paddingBottom: spacing.xl },
   // Same inset-grouped card footprint as CategoryOrderSheet's rows.

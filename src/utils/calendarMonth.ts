@@ -401,18 +401,6 @@ export function dotsFor(marks: readonly DayMark[]): DayDot[] {
   return dots;
 }
 
-/**
- * Whether a day holds a deadline still to hit: a real row, not ticked off.
- *
- * The one mark the calendar draws besides its shade, because the shade counts
- * work landing on the day and a deadline isn't any (`buildDayLoads` skips it),
- * so a day with only a deadline would otherwise look empty. A projected one
- * doesn't count: it's a guess about a row that doesn't exist yet.
- */
-export function hasOpenDeadline(bucket: DayBucket | undefined): boolean {
-  return bucket?.dots.some(dot => dot.kind === 'deadline' && dot.state === 'solid') ?? false;
-}
-
 export interface DayDetail {
   key: string;
   /** Real rows, by kind — these are tappable, completable, editable tasks. */
@@ -499,24 +487,4 @@ export function dayRows(detail: DayDetail): Task[] {
     out.push(task);
   }
   return out;
-}
-
-/**
- * "3 due · 1 deadline" — the one-line summary above a day's detail.
- *
- * Counts real, *outstanding* rows — the same "still work to do" reading the
- * grid's own dots and `DayBucket.outstanding` already give a day, so a day
- * you've cleared says so instead of reporting every row that ever landed on
- * it as if none were done. The expected lines caption themselves right below
- * and folding them in here would put a number on the day that no list under
- * it accounts for.
- */
-export function summarizeDay(detail: DayDetail): string {
-  const parts: string[] = [];
-  const due = detail.due.filter(t => !t.completed).length;
-  const deadline = detail.deadline.filter(t => !t.completed).length;
-  if (due > 0) parts.push(`${due} due`);
-  if (deadline > 0) parts.push(`${deadline} deadline${deadline === 1 ? '' : 's'}`);
-  if (detail.defer.length > 0) parts.push(`${detail.defer.length} returning`);
-  return parts.join(' · ');
 }

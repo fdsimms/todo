@@ -311,6 +311,12 @@ describe('buildKitchen', () => {
 });
 
 describe('buildWidgetSnapshot', () => {
+  it('carries the calendar section through, and null when there is none', () => {
+    const calendar = { calendarIds: ['work'], colors: {}, hidden: [], days: [] };
+    expect(buildWidgetSnapshot(snapshotInput()).calendar).toBeNull();
+    expect(buildWidgetSnapshot(snapshotInput({ calendar })).calendar).toBe(calendar);
+  });
+
   it('distinguishes a store that was never initialized from an empty one', () => {
     expect(buildWidgetSnapshot(snapshotInput()).groceries).toBeNull();
     expect(buildWidgetSnapshot(snapshotInput({ grocery: groceryInput() })).groceries).not.toBeNull();
