@@ -7,6 +7,7 @@ import {
   indexEventPeople,
   isEventPeopleLinkStale,
   legacyEventPeopleRows,
+  movedPeopleLinks,
   peopleForEvent,
   planEventPeopleWrite,
   staleEventPeopleIds,
@@ -268,5 +269,52 @@ describe('eventPeopleChoices', () => {
 
   it('treats a blank query as no query', () => {
     expect(eventPeopleChoices(roster, 'Walk', [], '   ').shown).toHaveLength(EVENT_PEOPLE_SUGGESTED);
+  });
+});
+
+describe('movedPeopleLinks', () => {
+  const now = new Date(2026, 7, 19, 9);
+  const winStart = new Date(2026, 7, 19);
+  const winEnd = new Date(2026, 8, 2);
+  const movedEvent = event({
+    start: new Date(2026, 7, 22, 18).toISOString(),
+    end: new Date(2026, 7, 22, 20).toISOString(),
+  });
+  const run = (rows: EventPeopleLink[], events: BusyEvent[], externalIds = {}) =>
+    movedPeopleLinks(rows, events, externalIds, winStart, winEnd, now);
+
+  it('finds a link whose event now sits at another start', () => {
+    const out = run([link()], [movedEvent]);
+    expect(out).toHaveLength(1);
+    expect(out[0].row.id).toBe('r1');
+    expect(out[0].event.start).toBe(movedEvent.start);
+  });
+
+  it('matches through the server id', () => {
+    const row = link({ eventKey: `srv1#${new Date(2026, 7, 20, 18).toISOString()}` });
+    expect(run([row], [movedEvent], { e1: 'srv1' })).toHaveLength(1);
+  });
+
+  it('leaves a link alone while its own occurrence is still there', () => {
+    expect(run([link()], [event()])).toEqual([]);
+  });
+
+  it('refuses a series, where which occurrence moved is a guess', () => {
+    const next = event({ start: new Date(2026, 7, 27, 18).toISOString(), end: new Date(2026, 7, 27, 20).toISOString() });
+    expect(run([link()], [movedEvent, next])).toEqual([]);
+  });
+
+  it('refuses when the old occurrence is also still present', () => {
+    expect(run([link()], [event(), movedEvent])).toEqual([]);
+  });
+
+  it('ignores an old start that has passed or sits outside the window', () => {
+    const past = link({ eventStart: new Date(2026, 7, 18, 18).toISOString(), eventKey: `e1#${new Date(2026, 7, 18, 18).toISOString()}` });
+    const far = link({ eventStart: new Date(2026, 8, 20, 18).toISOString(), eventKey: `e1#${new Date(2026, 8, 20, 18).toISOString()}` });
+    expect(run([past, far], [movedEvent])).toEqual([]);
+  });
+
+  it('ignores a cancelled event', () => {
+    expect(run([link()], [{ ...movedEvent, status: 'canceled' }])).toEqual([]);
   });
 });
