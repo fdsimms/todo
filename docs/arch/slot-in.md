@@ -88,6 +88,11 @@ collapsed by default. It is deliberately **not a block at the top of Today**: th
 person doesn't have to look at these tasks, and the rows are the ordinary actionable ones (no drag,
 since a held task has no slot in the category order).
 
+The hold fields (`deferUntil`, `slotDecidedOn`) stay on a task after it is archived, vacation-paused,
+blocked or put in a paused project, so `isSlotWaiting` alone says only that the pass held it. The store
+selector therefore also requires `isTaskDeferred`, the gate Later uses, and a new reader of the held
+set does the same, or the reveal lists rows that are hidden everywhere else.
+
 ## From quick add, a template, and Backfill
 
 - **Quick add**: `~` before a date ("call the dentist ~thu") sets the date and `slotIn: true`
