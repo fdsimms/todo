@@ -5,8 +5,8 @@ import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { BusyEvent } from '../utils/calendarBusy';
 import { formatTimeOfDay } from '../utils/dateUtils';
-import { directionsUrl } from '../utils/maps';
-import { eventCoordinate, readEventJoinLink } from '../utils/calendarSync';
+import { openEventDirections } from '../utils/eventDirections';
+import { readEventJoinLink } from '../utils/calendarSync';
 import { describeEventTiming } from '../utils/calendarAgenda';
 import { describeTravelEstimate, estimateFor, travelModeFor, travelOriginForEvent, travelOriginKey, travelWalkUnderFor } from '../utils/travelTasks';
 import { useTravelTimeStore } from '../store/useTravelTimeStore';
@@ -390,17 +390,7 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
 
   // Routes to the event's map pin when it has one (a place picked in quick
   // add), read for this one event on the tap, else searches for the text.
-  const openDirections = async (event: BusyEvent) => {
-    const coordinate = await eventCoordinate(event.id);
-    const url = directionsUrl(event.location, useSettingsStore.getState().mapsApp, coordinate);
-    if (!url) return;
-    haptics.tap();
-    try {
-      await Linking.openURL(url);
-    } catch {
-      // silently ignore — no toast infra for this row-level action
-    }
-  };
+  const openDirections = (event: BusyEvent) => openEventDirections(event.id, event.location);
 
   return (
     <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
