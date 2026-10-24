@@ -120,6 +120,10 @@ export interface ChainStepPlan {
   asks?: 'text' | 'date' | 'number' | 'yesno' | null;
   /** Only with asks: 'date': the answer dates the step after it. */
   answerSchedulesNextStep?: boolean;
+  /** A note for this step alone, shown on the task while the step is current. null clears it; left out on an edit keeps the step's note. */
+  notes?: string | null;
+  /** What the step's link button opens: a web address or an app scheme such as "youtube://". null clears it; left out on an edit keeps it. */
+  link?: string | null;
 }
 
 export interface VariantPlan {
@@ -699,7 +703,7 @@ export function templateToPlan(template: TaskTemplate): TemplatePlan & { id: str
       return {
         ...fields,
         ...(chainEnabled && chainItems.length > 1
-          ? { chain: { steps: chainItems.map(c => ({ title: c.title, estimatedMinutes: c.estimatedMinutes, ...(c.deliverableKind ? { asks: c.deliverableKind as ChainStepPlan['asks'] } : {}), ...(c.deliverableDatesNextStep ? { answerSchedulesNextStep: true } : {}) })) } }
+          ? { chain: { steps: chainItems.map(c => ({ title: c.title, estimatedMinutes: c.estimatedMinutes, ...(c.deliverableKind ? { asks: c.deliverableKind as ChainStepPlan['asks'] } : {}), ...(c.deliverableDatesNextStep ? { answerSchedulesNextStep: true } : {}), ...(c.notes ? { notes: c.notes } : {}), ...(c.linkUrl ? { link: c.linkUrl } : {}) })) } }
           : {}),
         ...(rotationEnabled && rotationItems.length >= 2 ? { rotation: { members: rotationItems.map(rotationMemberToInput) } } : {}),
         ...(gateTargets.has(item.id) ? { key: item.id } : {}),

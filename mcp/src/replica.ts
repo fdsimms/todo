@@ -128,7 +128,7 @@ import type { OnTimeSummary } from '../../src/utils/stats';
 import type { SyncSummary, SyncTransport } from '../../src/utils/syncEngine';
 import { CONTAINERS, DEFAULT_SCHEDULE, resolveRef, scheduleErrors as validateScheduleOf, templateToPlan, templateVersion, validateTemplatePlan, type TemplatePatch, type TemplatePlan } from './templatePlan';
 import { deliverableRefusal } from './deliverableAsk';
-import { eventNoonIso, taskFieldsPatch, type TaskFieldsInput } from './taskFields';
+import { eventNoonIso, taskFieldsPatch, stepTextFields, type TaskFieldsInput } from './taskFields';
 import { adoptTimeZone, DEVICE_TIME_ZONE_KEY } from './timeZone';
 import { SETTINGS_SPEC } from './settingsSpec';
 import { toLedgerEntries, withAgentLedger, type AgentLedgerEntry } from './agentLedger';
@@ -3265,6 +3265,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
             estimatedMinutes: s.estimatedMinutes ?? null,
             ...(s.asks ? { deliverableKind: s.asks } : {}),
             ...(s.answerSchedulesNextStep ? { deliverableDatesNextStep: true } : {}),
+            ...stepTextFields(s, keptStep),
           };
         }) : [],
         // The step a run starts on has no name in a plan, so an edit keeps the

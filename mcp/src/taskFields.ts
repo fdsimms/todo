@@ -116,6 +116,21 @@ export interface ChainStepInput {
   estimatedMinutes?: number | null;
   asks?: (typeof STEP_QUESTION_KINDS)[number] | null;
   answerSchedulesNextStep?: boolean;
+  /** A note for this step alone, shown on the task while the step is current. null clears it; left out on an edit keeps the step's note. */
+  notes?: string | null;
+  /** What the step's link button opens: a web address or an app scheme such as "youtube://". null clears it; left out on an edit keeps it. */
+  link?: string | null;
+}
+
+/**
+ * A step's note and link as an edit writes them: a value (blank clears it), or
+ * the step's stored one when the call leaves it out, so an edit that only
+ * renames or re-times a step does not wipe what the app was holding for it.
+ */
+export function stepTextFields(s: ChainStepInput, kept?: ChainItem): Pick<ChainItem, 'notes' | 'linkUrl'> {
+  const notes = s.notes !== undefined ? (s.notes?.trim() || null) : (kept?.notes ?? null);
+  const linkUrl = s.link !== undefined ? (s.link?.trim() || null) : (kept?.linkUrl ?? null);
+  return { ...(notes ? { notes } : {}), ...(linkUrl ? { linkUrl } : {}) };
 }
 
 export interface ChainInput {
@@ -610,6 +625,7 @@ export function taskFieldsPatch(
         estimatedMinutes: s.estimatedMinutes ?? null,
         ...(s.asks ? { deliverableKind: s.asks } : {}),
         ...(s.answerSchedulesNextStep ? { deliverableDatesNextStep: true } : {}),
+        ...stepTextFields(s, old[i]),
       }));
       const index = current && current.chainIndex < items.length ? current.chainIndex : 0;
       Object.assign(patch, {

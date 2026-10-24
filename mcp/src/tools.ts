@@ -183,6 +183,8 @@ export interface ChainStepDetail {
   estimatedMinutes?: number;
   asks?: string;
   answerSchedulesNextStep?: boolean;
+  notes?: string;
+  link?: string;
 }
 
 export interface GetTaskResult {
@@ -422,6 +424,8 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
             ...(s.estimatedMinutes != null ? { estimatedMinutes: s.estimatedMinutes } : {}),
             ...(s.deliverableKind ? { asks: s.deliverableKind } : {}),
             ...(s.deliverableDatesNextStep ? { answerSchedulesNextStep: true } : {}),
+            ...(s.notes ? { notes: s.notes } : {}),
+            ...(s.linkUrl ? { link: s.linkUrl } : {}),
           })),
           ...(task.chainStepOnSchedule ? { stepsFollowSchedule: true } : {}),
         }
