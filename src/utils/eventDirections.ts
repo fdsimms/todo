@@ -1,5 +1,5 @@
 import { Linking } from 'react-native';
-import { eventCoordinate } from './calendarSync';
+import { eventCoordinate, readEventJoinLink } from './calendarSync';
 import { directionsUrl } from './maps';
 import { haptics } from './haptics';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -20,6 +20,21 @@ export async function openEventDirections(eventId: string, location: string | nu
   haptics.tap();
   try {
     await Linking.openURL(url);
+  } catch {
+    // silently ignore
+  }
+}
+
+/**
+ * Opens an event's video call. The link lives in notes the app never keeps, so
+ * it is read from the calendar on the tap (`readEventJoinLink`).
+ */
+export async function openEventJoinLink(eventId: string, occurrenceStart: string): Promise<void> {
+  const link = await readEventJoinLink(eventId, occurrenceStart);
+  if (!link) return;
+  haptics.tap();
+  try {
+    await Linking.openURL(link);
   } catch {
     // silently ignore
   }

@@ -536,3 +536,16 @@ describe('goalContextRows', () => {
     expect(rows.map(r => r.id)).toEqual(['goal-proteinG', 'goal-sodiumMg']);
   });
 });
+
+describe('eventContextRows call and travel', () => {
+  it('offers the call on a timed event with one, and the travel note only with a location', () => {
+    const rows = eventContextRows(
+      [
+        ev(at(16), at(17), { title: 'Sync', videoCall: true }),
+        ev(at(18), at(19), { title: 'Dinner', id: 'a', location: '1 Main St' }),
+      ],
+      { ...eventOpts, travelNote: () => '18 min drive' },
+    );
+    expect(rows.map(r => [r.videoCallStart ? true : false, r.travelNote])).toEqual([[true, undefined], [false, '18 min drive']]);
+  });
+});

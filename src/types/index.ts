@@ -9163,6 +9163,13 @@ export interface ContextRow {
    * directions to it. Absent when the event has none, and on every other row.
    */
   location?: string | null;
+  /** "18 min drive", from the Leave-by estimates, when held. Event rows only. */
+  travelNote?: string | null;
+  /**
+   * The occurrence's start, on an event that has a video call, so the row can
+   * offer to join it. Absent when there is no call, and on every other row.
+   */
+  videoCallStart?: string;
   /**
    * How a Stay under limit's row reads against it (`limitContextRows`): the
    * glyph goes orange once the day is close and the row red once it is past.
