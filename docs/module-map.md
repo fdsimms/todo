@@ -270,6 +270,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/launchGuard.ts` — UNPROVEN_SCREEN_KEY, HEALTHY_AFTER_MS, screenToRestore, markScreenUnproven, readUnprovenScreen, clearUnprovenScreen
 - `src/utils/layoutAnimation.ts` — animateLayout
 - `src/utils/leaveLiveActivity.ts` — LEAVE_WINDOW_MS, ALREADY_THERE_MINUTES, LeaveRun, AlreadyThereCheck, isAlreadyThere, buildLeaveRun, useLeaveLiveActivitySync
+- `src/utils/leftoverOptOut.ts` — leftoverOptOutKey, isLeftoverOptedOut, addLeftoverOptOut, parseLeftoverOptOuts, serializeLeftoverOptOuts
 - `src/utils/leftoverTasks.ts` — wantsUseUpTask, plannedMealRowFor, useUpTaskTitle, useUpTaskFields, useUpTaskDraft, useUpTaskDrift
 - `src/utils/leftovers.ts` — cleanLeftoverTitle, LeftoverPart, WHOLE_PART_KEY, LeftoverDestination, LeftoverPick, leftoverContainersFor, leftoverPartsFor, clampKeepDays, leftoverKeepDaysFor, describeKeepDays, +25 more
 - `src/utils/limitWarningTasks.ts` — LimitReading, limitReadings, limitWarningKeyOf, figure, shortName, limitWarningTitle, LIMIT_WARNING_LINK, LIMIT_WARNING_TOP_FOODS, LIMIT_WARNING_NOTES, describeLimitContributors, +4 more

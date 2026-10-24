@@ -508,6 +508,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // What the kitchen does after a cook and when something runs low.
   'cookRecapEnabled',
   'restockOfferEnabled',
+  'leftoverPromptOptOuts',
   'runningLowAddsToList',
 
   // Focus sessions. The finished sessions sync (focus_session_log); these are
