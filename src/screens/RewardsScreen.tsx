@@ -33,7 +33,7 @@ import { ProjectPickerSheet } from '../components/ProjectPickerSheet';
 import { HabitPickerSheet } from '../components/HabitPickerSheet';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { usePullToSearch } from '../hooks/usePullToSearch';
-import { useRewardStore } from '../store/useRewardStore';
+import { isBalanceReset, useRewardStore } from '../store/useRewardStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore } from '../store/useProjectStore';
@@ -128,6 +128,10 @@ const KIND_LABELS: Record<CoinEntry['kind'], string> = {
   loss: 'Missed',
   spend: 'Claimed',
 };
+
+function kindLabel(entry: CoinEntry): string {
+  return isBalanceReset(entry) ? 'Reset' : KIND_LABELS[entry.kind];
+}
 
 /**
  * What the form is doing. 'item' prices a list item as a new reward; a reward
@@ -484,8 +488,39 @@ export function RewardsScreen() {
     );
   }, [setGoalId, closeDraft]);
 
+  const confirmReset = useCallback(() => {
+    Alert.alert(
+      'Reset coins to 0?',
+      `Your balance of ${formatCoins(balance)} becomes 0. Your history stays, and you can undo this right after.`,
+      [
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
+        {
+          text: 'Reset',
+          style: 'destructive',
+          onPress: () => {
+            const entry = useRewardStore.getState().resetBalance();
+            if (!entry) return;
+            haptics.warning();
+            useTaskStore.getState().setLastAction({
+              destructive: true,
+              label: 'Reset coins to 0',
+              undo: () => useRewardStore.getState().unreset(entry.id),
+            });
+          },
+        },
+      ],
+    );
+  }, [balance]);
+
   const actions = useMemo<ScreenHeaderAction[]>(() => (enabled
     ? [
+        ...(balance !== 0
+          ? [{
+              icon: 'refresh-outline' as const,
+              onPress: confirmReset,
+              accessibilityLabel: 'Reset coins to 0',
+            }]
+          : []),
         {
           icon: 'help-circle-outline',
           onPress: (e: GestureResponderEvent) => {
@@ -495,7 +530,7 @@ export function RewardsScreen() {
           accessibilityLabel: 'How coins work',
         },
       ]
-    : []), [enabled]);
+    : []), [enabled, balance, confirmReset]);
   if (!enabled) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -1257,12 +1292,12 @@ export function RewardsScreen() {
                 key={entry.id}
                 style={[styles.historyRow, i > 0 && styles.historyDivider]}
                 accessible
-                accessibilityLabel={`${KIND_LABELS[entry.kind]} ${entry.label}, ${signedAmount(entry)} coins`}
+                accessibilityLabel={`${kindLabel(entry)} ${entry.label}, ${signedAmount(entry)} coins`}
               >
                 <View style={styles.historyText}>
-                  <Text style={styles.historyLabel}>{entry.label || KIND_LABELS[entry.kind]}</Text>
+                  <Text style={styles.historyLabel}>{entry.label || kindLabel(entry)}</Text>
                   <Text style={styles.historyMeta}>
-                    {`${KIND_LABELS[entry.kind]} · ${format(parseISO(entry.at), 'MMM d, h:mm a')}`}
+                    {`${kindLabel(entry)} · ${format(parseISO(entry.at), 'MMM d, h:mm a')}`}
                   </Text>
                 </View>
                 <View style={styles.amountRow}>

@@ -207,6 +207,39 @@ describe('rewards', () => {
     expect(state().balance()).toBe(12);
   });
 
+  it('resets a positive balance to zero with a spend and undoes it', () => {
+    state().recordEarn('t1', 12, 'Run', AT);
+    const entry = state().resetBalance()!;
+    expect(entry).toMatchObject({ kind: 'spend', amount: 12, taskId: null, rewardId: null });
+    expect(state().balance()).toBe(0);
+    expect(state().entries).toHaveLength(2);
+    state().unreset(entry.id);
+    expect(state().balance()).toBe(12);
+  });
+
+  it('resets a negative balance to zero with an earning', () => {
+    state().recordMiss('t1', 5, 'Run', AT);
+    const entry = state().resetBalance()!;
+    expect(entry).toMatchObject({ kind: 'earn', amount: 5 });
+    expect(state().balance()).toBe(0);
+    state().unreset(entry.id);
+    expect(state().balance()).toBe(-5);
+  });
+
+  it('writes nothing when the balance is already zero or rewards are off', () => {
+    expect(state().resetBalance()).toBeNull();
+    state().recordEarn('t1', 4, 'Run', AT);
+    settings.rewardsEnabled = false;
+    expect(state().resetBalance()).toBeNull();
+    expect(state().balance()).toBe(4);
+  });
+
+  it('will not unreset an ordinary entry', () => {
+    state().recordEarn('t1', 12, 'Run', AT);
+    state().unreset(state().entries[0].id);
+    expect(state().balance()).toBe(12);
+  });
+
   it('will not unclaim an earning', () => {
     state().recordEarn('t1', 12, 'Run', AT);
     state().unclaim(state().entries[0].id);

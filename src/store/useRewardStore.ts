@@ -129,6 +129,24 @@ interface RewardStore {
   claimReward: (id: string, at?: Date) => CoinEntry | null;
   /** Take back a claim: the undo for `claimReward`. */
   unclaim: (entryId: string) => void;
+  /**
+   * Sets the balance to zero by writing one entry that offsets it (a spend
+   * against a positive balance, an earning against a negative one), so the
+   * balance stays a sum over the ledger and the history keeps every row.
+   * Returns the entry, or null when the balance is already zero or rewards
+   * are off.
+   */
+  resetBalance: (at?: Date) => CoinEntry | null;
+  /** The undo for `resetBalance`: drops that entry and nothing else. */
+  unreset: (entryId: string) => void;
+}
+
+/** The label a balance reset's entry carries, and how the history spots one. */
+export const BALANCE_RESET_LABEL = 'Balance reset';
+
+/** A reset belongs to no task and no reward, which no other entry can say. */
+export function isBalanceReset(entry: Pick<CoinEntry, 'taskId' | 'rewardId'>): boolean {
+  return entry.taskId === null && entry.rewardId === null;
 }
 
 /** How recent an entry's own time has to be for `CoinToast` to announce it. */
@@ -391,6 +409,29 @@ export const useRewardStore = create<RewardStore>((set, get) => {
     unclaim(entryId) {
       const entry = get().entries.find(e => e.id === entryId);
       if (entry?.kind === 'spend') remove([entryId]);
+    },
+
+    resetBalance(at) {
+      if (!enabled()) return null;
+      const balance = get().balance();
+      if (balance === 0) return null;
+      const entry: CoinEntry = {
+        id: generateId(),
+        kind: balance > 0 ? 'spend' : 'earn',
+        amount: Math.abs(balance),
+        at: (at ?? new Date()).toISOString(),
+        taskId: null,
+        rewardId: null,
+        label: BALANCE_RESET_LABEL,
+      };
+      write(entry);
+      return entry;
+    },
+
+    // Not gated, for the reason takeBackTask gives.
+    unreset(entryId) {
+      const entry = get().entries.find(e => e.id === entryId);
+      if (entry && isBalanceReset(entry)) remove([entryId]);
     },
   };
 });

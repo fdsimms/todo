@@ -712,7 +712,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useProjectLockStore.ts` — useProjectLockStore, isProjectHidden, isProjectLocked
 - `src/store/useProjectStore.ts` — projectProgress, projectDecisions, AnswerTally, projectAnswerTallies, answerTallyParts, describeAnswerTally, projectCompletedRows, isProjectPastWindow, CreateProjectOptions, useProjectStore
 - `src/store/useRecipeStore.ts` — CookStats, useRecipeStore
-- `src/store/useRewardStore.ts` — COIN_BURST_MS, RewardDetails, useRewardStore
+- `src/store/useRewardStore.ts` — BALANCE_RESET_LABEL, isBalanceReset, COIN_BURST_MS, RewardDetails, useRewardStore
 - `src/store/useSavedMealsStore.ts` — useSavedMealsStore
 - `src/store/useScreenTimeStore.ts` — useScreenTimeStore, useScreenTimeSync
 - `src/store/useSettingsStore.ts` — PatchNoteQaStatus, WeekStart, FabHand, MapsApp, MealsOnToday, NewTaskDefaults, DEFAULT_REMINDER_LEAD_OPTIONS, useSettingsStore
